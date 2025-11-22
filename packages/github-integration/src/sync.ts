@@ -3,9 +3,9 @@
  * Bidirectional synchronization between GitHub and internal state
  */
 
-import { contentRepository, questionTicketRepository, taskRepository } from '@swarm-press/backend/db/repositories'
+import { contentRepository, questionTicketRepository, taskRepository } from '@swarm-press/backend'
 import { createContentPR, approvePR, requestPRChanges, mergePR } from './pull-requests'
-import { createQuestionIssue, createTaskIssue, updateIssueLabels } from './issues'
+import { createQuestionIssue, createTaskIssue } from './issues'
 import type { ContentItem } from '@swarm-press/shared'
 
 /**
@@ -124,7 +124,7 @@ export async function syncPublishToGitHub(contentId: string): Promise<void> {
     return
   }
 
-  const result = await mergePR(
+  await mergePR(
     mapping.github_number,
     `Publish content: ${contentId}`
   )
@@ -151,7 +151,6 @@ export async function syncQuestionToGitHub(ticketId: string): Promise<void> {
   // Create issue
   const result = await createQuestionIssue({
     ticket,
-    contentId: ticket.content_id,
   })
 
   // Store mapping
@@ -253,7 +252,7 @@ export async function syncPRToInternal(pr: any): Promise<void> {
 export async function syncPRReviewToInternal(pr: any, review: any): Promise<void> {
   // Find content by PR number
   let contentId: string | undefined
-  for (const [key, mapping] of githubMappings.entries()) {
+  for (const [, mapping] of githubMappings.entries()) {
     if (mapping.github_number === pr.number && mapping.entity_type === 'content') {
       contentId = mapping.entity_id
       break
@@ -299,7 +298,7 @@ export async function syncIssueCommentToInternal(issue: any, comment: any): Prom
 
   // Find ticket by issue number
   let ticketId: string | undefined
-  for (const [key, mapping] of githubMappings.entries()) {
+  for (const [, mapping] of githubMappings.entries()) {
     if (mapping.github_number === issue.number && mapping.entity_type === 'ticket') {
       ticketId = mapping.entity_id
       break
@@ -312,15 +311,14 @@ export async function syncIssueCommentToInternal(issue: any, comment: any): Prom
   }
 
   // If comment is from CEO, mark as answered
-  // (In production, check actual user permissions)
+  // (In production, check actual user permissions and map GitHub user to agent)
   if (comment.user.login === 'CEO' || comment.author_association === 'OWNER') {
     await questionTicketRepository.update(ticketId, {
       answer_body: comment.body,
-      answered_by: comment.user.login,
-      answered_at: comment.created_at,
       status: 'answered',
+      // TODO: Map GitHub user to answer_agent_id
     })
 
-    console.log(`[Sync] Answered ticket ${ticketId} from issue comment`)
+    console.log(`[Sync] Answered ticket ${ticketId} from issue comment by ${comment.user.login}`)
   }
 }

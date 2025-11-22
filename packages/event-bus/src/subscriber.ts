@@ -1,6 +1,6 @@
 import { eventBus } from './connection'
 import { CloudEvent, validateCloudEvent } from './cloudevents'
-import { JsMsg, StringCodec } from 'nats'
+import { StringCodec } from 'nats'
 
 const codec = StringCodec()
 
@@ -21,10 +21,7 @@ export async function subscribe<T = unknown>(
 
   console.log(`📥 Subscribing to: ${natsSubject}`)
 
-  const consumer = await js.consumers.get('AGENTPRESS', {
-    durable_name: `consumer-${Date.now()}`,
-    filter_subjects: [natsSubject],
-  })
+  const consumer = await js.consumers.get('AGENTPRESS', `consumer-${Date.now()}`)
 
   const messages = await consumer.consume()
 

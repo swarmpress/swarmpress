@@ -1,5 +1,6 @@
 import { Task, TaskStatus } from '@swarm-press/shared'
 import { BaseRepository } from '../base-repository'
+import { db } from '../connection'
 
 /**
  * Repository for Task entities
@@ -34,7 +35,7 @@ export class TaskRepository extends BaseRepository<Task> {
    * Find active tasks for an agent
    */
   async findActiveByAgent(agentId: string): Promise<Task[]> {
-    const result = await this.db.query<Task>(
+    const result = await db.query<Task>(
       `SELECT * FROM ${this.tableName}
        WHERE agent_id = $1
        AND status IN ('planned', 'in_progress', 'blocked')
@@ -61,7 +62,7 @@ export class TaskRepository extends BaseRepository<Task> {
     }
 
     const { executeTransition } = await import('../../state-machine/engine')
-    const { taskStateMachine } = await import('@swarm-press/shared/state-machines')
+    const { taskStateMachine } = await import('@swarm-press/shared')
 
     const result = await executeTransition(taskStateMachine, {
       entityId: id,
@@ -127,7 +128,7 @@ export class TaskRepository extends BaseRepository<Task> {
       params.push(options.offset)
     }
 
-    const result = await this.db.query<Task>(query, params)
+    const result = await db.query<Task>(query, params)
     return result.rows
   }
 
@@ -135,17 +136,13 @@ export class TaskRepository extends BaseRepository<Task> {
    * Get state history for a task
    */
   async getStateHistory(id: string): Promise<any[]> {
-    const result = await this.db.query(
+    const result = await db.query(
       `SELECT * FROM state_audit_log
        WHERE entity_id = $1 AND entity_type = 'task'
        ORDER BY created_at DESC`,
       [id]
     )
     return result.rows
-  }
-
-  private get db() {
-    return require('../connection').db
   }
 }
 

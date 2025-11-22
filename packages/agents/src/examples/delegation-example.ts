@@ -4,7 +4,6 @@
  */
 
 import { initializeAgents, agentFactory } from '../index'
-import type { AgentContext } from '../base/agent'
 
 /**
  * Example: Writer agent delegates to Editor agent
@@ -22,19 +21,12 @@ export async function exampleWriterToEditor() {
     return
   }
 
-  // Create a context
-  const context: AgentContext = {
-    agentId: 'writer-001',
-    taskId: 'task-001',
-  }
-
   // Writer creates content and then wants editor to review
   console.log('Writer: Creating draft...')
 
   // In a real scenario, the writer would use their tools to create content
-  // Then delegate to editor for review
-  const editorPrompt = `Please review the content with ID content-123.
-Check for quality, grammar, and adherence to editorial standards.`
+  // Then delegate to editor for review with a prompt like:
+  // "Please review the content with ID content-123. Check for quality, grammar, and adherence to editorial standards."
 
   console.log('Writer: Delegating to Editor for review...')
 
@@ -65,11 +57,6 @@ export async function exampleEditorToCEOAssistant() {
   if (!editorAgent) {
     console.error('Editor agent not found')
     return
-  }
-
-  const context: AgentContext = {
-    agentId: 'editor-001',
-    taskId: 'task-002',
   }
 
   console.log('Editor: Found high-risk content requiring CEO approval...')

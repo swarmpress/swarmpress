@@ -17,6 +17,8 @@ export const contentRouter = router({
       z.object({
         status: z
           .enum([
+            'idea',
+            'planned',
             'brief_created',
             'draft',
             'in_editorial_review',
@@ -25,8 +27,6 @@ export const contentRouter = router({
             'scheduled',
             'published',
             'archived',
-            'on_hold',
-            'cancelled',
           ])
           .optional(),
         websiteId: z.string().optional(),
@@ -76,25 +76,23 @@ export const contentRouter = router({
   create: protectedProcedure
     .input(
       z.object({
-        title: z.string().min(1),
-        brief: z.string().min(1),
+        type: z.enum(['article', 'section', 'hero', 'metadata', 'component']),
         websiteId: z.string(),
-        targetPublishDate: z.string().datetime().optional(),
+        authorAgentId: z.string(),
         metadata: z.record(z.unknown()).optional(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input, ctx: _ctx }) => {
       const content = await contentRepository.create({
-        title: input.title,
-        brief: input.brief,
+        type: input.type,
         website_id: input.websiteId,
-        status: 'brief_created',
+        author_agent_id: input.authorAgentId,
+        status: 'idea',
         body: [], // Empty JSON blocks initially
-        target_publish_date: input.targetPublishDate,
         metadata: input.metadata || {},
       })
 
-      console.log(`[ContentRouter] Content created: ${content.id} by ${ctx.user.email}`)
+      console.log(`[ContentRouter] Content created: ${content.id}`)
 
       return content
     }),
@@ -106,10 +104,7 @@ export const contentRouter = router({
     .input(
       z.object({
         id: z.string(),
-        title: z.string().optional(),
-        brief: z.string().optional(),
         body: z.array(z.any()).optional(), // JSON blocks
-        targetPublishDate: z.string().datetime().optional(),
         metadata: z.record(z.unknown()).optional(),
       })
     )
@@ -125,10 +120,7 @@ export const contentRouter = router({
       }
 
       const updated = await contentRepository.update(id, {
-        title: updates.title,
-        brief: updates.brief,
         body: updates.body,
-        target_publish_date: updates.targetPublishDate,
         metadata: updates.metadata,
       })
 

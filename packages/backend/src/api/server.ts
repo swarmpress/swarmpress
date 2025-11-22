@@ -16,7 +16,7 @@ import { eventBus } from '@swarm-press/event-bus'
 /**
  * Create Express app with middleware
  */
-export function createApp() {
+export function createApp(): express.Application {
   const app = express()
 
   // CORS configuration
@@ -31,7 +31,7 @@ export function createApp() {
   app.use(express.json())
 
   // Health check endpoint
-  app.get('/health', async (req, res) => {
+  app.get('/health', async (_req, res) => {
     try {
       // Check database connection
       await db.query('SELECT 1')
@@ -88,7 +88,7 @@ export function createApp() {
   })
 
   // Error handler
-  app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error('[Express Error]:', err)
     res.status(500).json({
       error: 'Internal Server Error',

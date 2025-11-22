@@ -34,18 +34,19 @@ export async function createContentPR(params: CreateContentPRParams): Promise<PR
     await github.createBranch(branchName)
   }
 
-  // Create content file
-  const filePath = `content/${content.website_id}/${content.slug || contentId}.json`
+  // Create content file - use type and ID for naming
+  const contentTitle = `${content.type}-${contentId.substring(0, 8)}`
+  const filePath = `content/${content.website_id}/${contentId}.json`
   const fileContent = JSON.stringify(
     {
       id: content.id,
-      title: content.title,
-      slug: content.slug,
-      brief: content.brief,
+      type: content.type,
       body: content.body,
       metadata: content.metadata,
       status: content.status,
       website_id: content.website_id,
+      author_agent_id: content.author_agent_id,
+      page_id: content.page_id,
       created_at: content.created_at,
       updated_at: content.updated_at,
     },
@@ -56,7 +57,7 @@ export async function createContentPR(params: CreateContentPRParams): Promise<PR
   await github.createOrUpdateFile({
     path: filePath,
     content: fileContent,
-    message: `feat: add content "${content.title}" [${contentId}]`,
+    message: `feat: add content "${contentTitle}" [${contentId}]`,
     branch: branchName,
   })
 
@@ -64,17 +65,16 @@ export async function createContentPR(params: CreateContentPRParams): Promise<PR
   const prBody = `## Content Submission for Editorial Review
 
 **Content ID:** \`${contentId}\`
-**Title:** ${content.title}
+**Type:** ${content.type}
+**Title:** ${contentTitle}
 **Website:** ${content.website_id}
 **Author:** @${agentId}
-
-### Brief
-${content.brief || 'No brief provided'}
 
 ### Content Blocks
 This content contains ${content.body.length} blocks:
 ${content.body.map((block: any, i: number) => `- Block ${i + 1}: \`${block.type}\``).join('\n')}
 
+${content.metadata?.category ? `**Category:** ${content.metadata.category}\n` : ''}${content.metadata?.tags ? `**Tags:** ${content.metadata.tags.join(', ')}\n` : ''}
 ---
 
 **Status:** \`draft\` → \`in_editorial_review\`
@@ -90,7 +90,7 @@ ${content.body.map((block: any, i: number) => `- Block ${i + 1}: \`${block.type}
   const { data: pr } = await octokit.pulls.create({
     owner,
     repo,
-    title: `📝 ${content.title}`,
+    title: `📝 ${contentTitle}`,
     head: branchName,
     base: 'main',
     body: prBody,

@@ -11,7 +11,6 @@ const {
   getContentItem,
   transitionContentState,
   publishContentEvent,
-  createQuestionTicket,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '15 minutes',
   retry: {

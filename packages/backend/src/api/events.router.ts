@@ -3,8 +3,8 @@
  * Server-Sent Events (SSE) for real-time dashboard updates
  */
 
-import { Router, Request, Response } from 'express'
-import { events } from '@swarm-press/event-bus'
+import { Router, Request, Response, type Router as IRouter } from 'express'
+import { subscribe } from '@swarm-press/event-bus'
 
 const router = Router()
 
@@ -53,10 +53,8 @@ router.get('/stream', async (req: Request, res: Response) => {
   ]
 
   // Subscribe to all event types
-  const subscriptions: Array<() => void> = []
-
   for (const eventType of eventTypes) {
-    const unsubscribe = await events.subscribe(eventType, async (event) => {
+    await subscribe(eventType, async (event) => {
       try {
         // Send CloudEvent to client
         const data = JSON.stringify({
@@ -69,8 +67,6 @@ router.get('/stream', async (req: Request, res: Response) => {
         console.error('[EventStream] Error sending event:', error)
       }
     })
-
-    subscriptions.push(unsubscribe)
   }
 
   // Send heartbeat every 30 seconds
@@ -82,11 +78,6 @@ router.get('/stream', async (req: Request, res: Response) => {
   req.on('close', () => {
     console.log(`[EventStream] Client disconnected: ${token}`)
     clearInterval(heartbeat)
-
-    // Unsubscribe from all events
-    for (const unsubscribe of subscriptions) {
-      unsubscribe()
-    }
   })
 })
 
@@ -118,4 +109,4 @@ router.get('/recent', async (req: Request, res: Response) => {
   }
 })
 
-export const eventsRouter = router
+export const eventsRouter: IRouter = router

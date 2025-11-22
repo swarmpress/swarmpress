@@ -72,7 +72,7 @@ export class QuestionTicketRepository extends BaseRepository<QuestionTicket> {
 
     // Then transition the state
     const { executeTransition } = await import('../../state-machine/engine')
-    const { questionTicketStateMachine } = await import('@swarm-press/shared/state-machines')
+    const { questionTicketStateMachine } = await import('@swarm-press/shared')
 
     const result = await executeTransition(questionTicketStateMachine, {
       entityId: id,
@@ -107,7 +107,7 @@ export class QuestionTicketRepository extends BaseRepository<QuestionTicket> {
     }
 
     const { executeTransition } = await import('../../state-machine/engine')
-    const { questionTicketStateMachine } = await import('@swarm-press/shared/state-machines')
+    const { questionTicketStateMachine } = await import('@swarm-press/shared')
 
     const result = await executeTransition(questionTicketStateMachine, {
       entityId: id,

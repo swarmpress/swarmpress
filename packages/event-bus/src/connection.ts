@@ -1,4 +1,11 @@
-import { connect, NatsConnection, JetStreamClient, JetStreamManager } from 'nats'
+import {
+  connect,
+  NatsConnection,
+  JetStreamClient,
+  JetStreamManager,
+  StorageType,
+  RetentionPolicy,
+} from 'nats'
 import { getEnv } from '@swarm-press/shared'
 
 /**
@@ -71,8 +78,8 @@ class EventBus {
       await this.jsm.streams.add({
         name: 'AGENTPRESS',
         subjects: ['swarmpress.>'],
-        storage: 'file',
-        retention: 'limits',
+        storage: StorageType.File,
+        retention: RetentionPolicy.Limits,
         max_age: 7 * 24 * 60 * 60 * 1000000000, // 7 days in nanoseconds
         max_msgs: 1000000,
       })

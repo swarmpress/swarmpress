@@ -1,5 +1,5 @@
 import { eventBus } from './connection'
-import { CloudEvent, createCloudEvent } from './cloudevents'
+import { createCloudEvent } from './cloudevents'
 import { StringCodec } from 'nats'
 
 const codec = StringCodec()

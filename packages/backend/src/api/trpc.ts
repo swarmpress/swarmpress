@@ -26,7 +26,7 @@ export interface Context {
  */
 export async function createContext({
   req,
-  res,
+  res: _res,
 }: CreateExpressContextOptions): Promise<Context> {
   // For MVP: Simple authentication via header
   // In production: Use proper JWT or session tokens

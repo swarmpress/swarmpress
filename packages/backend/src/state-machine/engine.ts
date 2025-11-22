@@ -7,10 +7,8 @@ import { db } from '../db/connection'
 import { publishEvent } from '@swarm-press/event-bus'
 import {
   StateMachine,
-  TransitionRequest,
-  TransitionResult,
   canTransition,
-} from '@swarm-press/shared/state-machines'
+} from '@swarm-press/shared'
 import { v4 as uuidv4 } from 'uuid'
 
 // ============================================================================

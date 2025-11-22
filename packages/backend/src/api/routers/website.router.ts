@@ -4,7 +4,7 @@
  */
 
 import { z } from 'zod'
-import { router, publicProcedure, protectedProcedure, ceoProcedure } from '../trpc'
+import { router, publicProcedure, ceoProcedure } from '../trpc'
 import { websiteRepository } from '../../db/repositories'
 import { TRPCError } from '@trpc/server'
 
@@ -59,18 +59,16 @@ export const websiteRouter = router({
   create: ceoProcedure
     .input(
       z.object({
-        name: z.string().min(1),
+        title: z.string().min(1),
         domain: z.string().min(1),
         description: z.string().optional(),
-        config: z.record(z.unknown()).optional(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input, ctx: _ctx }) => {
       const website = await websiteRepository.create({
-        name: input.name,
+        title: input.title,
         domain: input.domain,
-        description: input.description || '',
-        config: input.config || {},
+        description: input.description,
       })
 
       console.log(`[WebsiteRouter] Website created: ${website.id} by CEO`)
@@ -91,7 +89,7 @@ export const websiteRouter = router({
         config: z.record(z.unknown()).optional(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input, ctx: _ctx }) => {
       const { id, ...updates } = input
 
       const existing = await websiteRepository.findById(id)
@@ -114,7 +112,7 @@ export const websiteRouter = router({
    */
   delete: ceoProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input, ctx: _ctx }) => {
       const existing = await websiteRepository.findById(input.id)
       if (!existing) {
         throw new TRPCError({
@@ -137,7 +135,18 @@ export const websiteRouter = router({
     .input(
       z.object({
         id: z.string(),
-        status: z.string().optional(),
+        status: z.enum([
+          'idea',
+          'planned',
+          'brief_created',
+          'draft',
+          'in_editorial_review',
+          'needs_changes',
+          'approved',
+          'scheduled',
+          'published',
+          'archived',
+        ]).optional(),
         limit: z.number().min(1).max(100).default(50),
         offset: z.number().min(0).default(0),
       })

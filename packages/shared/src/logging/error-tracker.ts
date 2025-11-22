@@ -204,7 +204,7 @@ export function withErrorTrackingSync<T extends any[], R>(
  * Express error middleware
  */
 export function errorMiddleware() {
-  return async (err: Error, req: any, res: any, next: any) => {
+  return async (err: Error, req: any, res: any, _next: any) => {
     const report = await errorTracker.track(err, {
       context: {
         method: req.method,

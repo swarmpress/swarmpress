@@ -45,10 +45,17 @@ export async function invokeWriterAgent(params: {
       return { success: false, error: `Agent ${params.agentId} not found` }
     }
 
-    const response = await agent.execute(params.task, {
-      agentId: params.agentId,
-      taskId: params.taskId,
-    })
+    const response = await agent.execute(
+      {
+        taskType: 'write_content',
+        description: params.task,
+        context: { contentId: params.contentId },
+      },
+      {
+        agentId: params.agentId,
+        taskId: params.taskId,
+      }
+    )
 
     return {
       success: response.success,
@@ -80,10 +87,17 @@ export async function invokeEditorAgent(params: {
       return { success: false, error: `Agent ${params.agentId} not found` }
     }
 
-    const response = await agent.execute(params.task, {
-      agentId: params.agentId,
-      taskId: params.taskId,
-    })
+    const response = await agent.execute(
+      {
+        taskType: 'editorial_review',
+        description: params.task,
+        context: { contentId: params.contentId },
+      },
+      {
+        agentId: params.agentId,
+        taskId: params.taskId,
+      }
+    )
 
     return {
       success: response.success,
@@ -115,10 +129,17 @@ export async function invokeSEOAgent(params: {
       return { success: false, error: `Agent ${params.agentId} not found` }
     }
 
-    const response = await agent.execute(params.task, {
-      agentId: params.agentId,
-      taskId: params.taskId,
-    })
+    const response = await agent.execute(
+      {
+        taskType: 'seo_optimization',
+        description: params.task,
+        context: { contentId: params.contentId },
+      },
+      {
+        agentId: params.agentId,
+        taskId: params.taskId,
+      }
+    )
 
     return {
       success: response.success,
@@ -151,10 +172,17 @@ export async function invokeEngineeringAgent(params: {
       return { success: false, error: `Agent ${params.agentId} not found` }
     }
 
-    const response = await agent.execute(params.task, {
-      agentId: params.agentId,
-      taskId: params.taskId,
-    })
+    const response = await agent.execute(
+      {
+        taskType: 'prepare_build',
+        description: params.task,
+        context: { contentId: params.contentId, websiteId: params.websiteId },
+      },
+      {
+        agentId: params.agentId,
+        taskId: params.taskId,
+      }
+    )
 
     return {
       success: response.success,
@@ -222,17 +250,15 @@ export async function transitionContentState(params: {
  * Create Task
  */
 export async function createTask(taskData: {
-  type: string
-  title: string
-  description: string
+  type: 'create_brief' | 'write_draft' | 'revise_draft' | 'editorial_review' | 'seo_optimization' | 'generate_media' | 'prepare_build' | 'publish_site'
   agent_id: string
   content_id?: string
-  priority?: 'low' | 'medium' | 'high'
+  website_id?: string
+  notes?: string
 }): Promise<{ taskId: string }> {
   const task = await taskRepository.create({
     ...taskData,
     status: 'planned',
-    priority: taskData.priority || 'medium',
   })
 
   await events.taskCreated(task.id, task.agent_id, task.type)
@@ -244,12 +270,10 @@ export async function createTask(taskData: {
  * Create Question Ticket
  */
 export async function createQuestionTicket(ticketData: {
-  question: string
-  context: string
+  subject: string
+  body: string
   created_by_agent_id: string
-  target: string
-  content_id?: string
-  task_id?: string
+  target: 'CEO' | 'ChiefEditor' | 'TechnicalLead'
 }): Promise<{ ticketId: string }> {
   const ticket = await questionTicketRepository.create({
     ...ticketData,

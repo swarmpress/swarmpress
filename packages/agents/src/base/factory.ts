@@ -56,10 +56,12 @@ export class AgentFactory {
       return null
     }
 
-    // Get agent class from registry
-    const AgentClass = agentRegistry.get(agentData.role)
+    // Note: Agent entity has role_id (UUID), not role name
+    // For now, we'll look up by agent name/capabilities to determine agent class
+    // TODO: Improve agent class resolution (perhaps use role lookup table)
+    const AgentClass = this.getAgentClassFromData(agentData)
     if (!AgentClass) {
-      console.error(`No agent class registered for role: ${agentData.role}`)
+      console.error(`Unable to determine agent class for agent: ${agentData.name}`)
       return null
     }
 
@@ -71,35 +73,70 @@ export class AgentFactory {
   }
 
   /**
-   * Get an agent by role (finds first agent with that role)
+   * Determine agent class from agent data
+   * This is a temporary solution - ideally we'd use role lookup
    */
-  async getAgentByRole(role: string): Promise<BaseAgent | null> {
-    const agents = await agentRepository.findByRole(role)
+  private getAgentClassFromData(agentData: Agent): AgentConstructor | null {
+    // Try to find by name pattern
+    const name = agentData.name.toLowerCase()
+    if (name.includes('writer')) {
+      return agentRegistry.get('Writer') || null
+    }
+    if (name.includes('editor')) {
+      return agentRegistry.get('Editor') || null
+    }
+    if (name.includes('engineering') || name.includes('engineer')) {
+      return agentRegistry.get('Engineering') || null
+    }
+    if (name.includes('ceo') || name.includes('assistant')) {
+      return agentRegistry.get('CEOAssistant') || null
+    }
+
+    // Fallback: check capabilities
+    if (agentData.capabilities.includes('content_writing')) {
+      return agentRegistry.get('Writer') || null
+    }
+    if (agentData.capabilities.includes('editorial_review')) {
+      return agentRegistry.get('Editor') || null
+    }
+
+    return null
+  }
+
+  /**
+   * Get an agent by role ID (finds first agent with that role_id)
+   */
+  async getAgentByRole(roleId: string): Promise<BaseAgent | null> {
+    const agents = await agentRepository.findByRole(roleId)
     if (agents.length === 0) {
-      console.error(`No agent found with role: ${role}`)
+      console.error(`No agent found with role_id: ${roleId}`)
       return null
     }
 
-    return this.getAgent(agents[0].id)
+    const firstAgent = agents[0]
+    if (!firstAgent) {
+      return null
+    }
+
+    return this.getAgent(firstAgent.id)
   }
 
   /**
    * Create a new agent in the database
+   * Note: Agent schema requires role_id and department_id (UUIDs), not names
    */
   async createAgent(agentData: {
     name: string
-    role: string
-    department: string
+    role_id: string
+    department_id: string
+    persona: string
     capabilities: string[]
     virtual_email: string
-    status?: 'active' | 'inactive'
+    description?: string
   }): Promise<Agent> {
-    const agent = await agentRepository.create({
-      ...agentData,
-      status: agentData.status || 'active',
-    })
+    const agent = await agentRepository.create(agentData)
 
-    console.log(`Created agent: ${agent.name} (${agent.role})`)
+    console.log(`Created agent: ${agent.name}`)
     return agent
   }
 

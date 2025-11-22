@@ -16,7 +16,7 @@ export const taskRouter = router({
   list: publicProcedure
     .input(
       z.object({
-        status: z.enum(['planned', 'in_progress', 'completed', 'failed', 'cancelled']).optional(),
+        status: z.enum(['planned', 'in_progress', 'completed', 'blocked', 'cancelled']).optional(),
         agentId: z.string().optional(),
         contentId: z.string().optional(),
         limit: z.number().min(1).max(100).default(50),
@@ -66,31 +66,36 @@ export const taskRouter = router({
   create: protectedProcedure
     .input(
       z.object({
-        type: z.string(),
-        title: z.string().min(1),
-        description: z.string().min(1),
+        type: z.enum([
+          'create_brief',
+          'write_draft',
+          'revise_draft',
+          'editorial_review',
+          'seo_optimization',
+          'generate_media',
+          'prepare_build',
+          'publish_site',
+        ]),
         agentId: z.string(),
         contentId: z.string().optional(),
-        priority: z.enum(['low', 'medium', 'high']).default('medium'),
-        metadata: z.record(z.unknown()).optional(),
+        websiteId: z.string().optional(),
+        notes: z.string().optional(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input, ctx: _ctx }) => {
       const task = await taskRepository.create({
         type: input.type,
-        title: input.title,
-        description: input.description,
         agent_id: input.agentId,
         content_id: input.contentId,
+        website_id: input.websiteId,
         status: 'planned',
-        priority: input.priority,
-        metadata: input.metadata || {},
+        notes: input.notes,
       })
 
       // Publish task created event
       await events.taskCreated(task.id, task.agent_id, task.type)
 
-      console.log(`[TaskRouter] Task created: ${task.id} by ${ctx.user.email}`)
+      console.log(`[TaskRouter] Task created: ${task.id}`)
 
       return task
     }),
@@ -102,10 +107,7 @@ export const taskRouter = router({
     .input(
       z.object({
         id: z.string(),
-        title: z.string().optional(),
-        description: z.string().optional(),
-        priority: z.enum(['low', 'medium', 'high']).optional(),
-        metadata: z.record(z.unknown()).optional(),
+        notes: z.string().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {

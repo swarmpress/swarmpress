@@ -31,7 +31,7 @@ export async function createQuestionIssue(
   const { owner, repo } = github.getRepoInfo()
   const octokit = github.getOctokit()
 
-  const issueTitle = `❓ ${ticket.question.substring(0, 100)}${ticket.question.length > 100 ? '...' : ''}`
+  const issueTitle = `❓ ${ticket.subject.substring(0, 100)}${ticket.subject.length > 100 ? '...' : ''}`
 
   const issueBody = `## Question Ticket: CEO Input Required
 
@@ -41,11 +41,11 @@ export async function createQuestionIssue(
 ${contentId ? `**Related Content:** \`${contentId}\`\n` : ''}
 ### Question
 
-${ticket.question}
+${ticket.subject}
 
-### Context
+### Details
 
-${ticket.context}
+${ticket.body}
 
 ---
 
@@ -85,30 +85,31 @@ export async function createTaskIssue(params: CreateTaskIssueParams): Promise<Is
   const { owner, repo } = github.getRepoInfo()
   const octokit = github.getOctokit()
 
-  const priorityEmoji = {
-    low: '🔵',
-    medium: '🟡',
-    high: '🔴',
+  // Task type emoji mapping
+  const typeEmoji = {
+    create_brief: '📝',
+    write_draft: '✍️',
+    revise_draft: '📝',
+    editorial_review: '👁️',
+    seo_optimization: '🔍',
+    generate_media: '🖼️',
+    prepare_build: '🔨',
+    publish_site: '🚀',
   }
 
-  const issueTitle = `${priorityEmoji[task.priority]} ${task.title}`
+  const issueTitle = `${typeEmoji[task.type] || '📋'} ${task.type.replace(/_/g, ' ').toUpperCase()}`
 
   const issueBody = `## Task
 
 **Task ID:** \`${task.id}\`
 **Type:** \`${task.type}\`
 **Assigned to:** @${task.agent_id}
-**Priority:** ${task.priority}
-${task.content_id ? `**Related Content:** \`${task.content_id}\`\n` : ''}
-### Description
-
-${task.description}
-
----
+${task.content_id ? `**Related Content:** \`${task.content_id}\`\n` : ''}${task.website_id ? `**Related Website:** \`${task.website_id}\`\n` : ''}
+${task.notes ? `### Notes\n\n${task.notes}\n\n` : ''}---
 
 **Status:** \`${task.status}\`
 
-**Labels:** \`task\`, \`priority:${task.priority}\`, \`status:${task.status}\`
+**Labels:** \`task\`, \`type:${task.type}\`, \`status:${task.status}\`
 `
 
   const { data: issue } = await octokit.issues.create({
@@ -116,7 +117,7 @@ ${task.description}
     repo,
     title: issueTitle,
     body: issueBody,
-    labels: ['task', `priority:${task.priority}`, `status:${task.status}`],
+    labels: ['task', `type:${task.type}`, `status:${task.status}`],
     assignees: [task.agent_id],
   })
 

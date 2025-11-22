@@ -57,17 +57,15 @@ export async function getTasksForAgent(agentId: string): Promise<Task[]> {
 }
 
 export async function createTask(taskData: {
-  type: string
-  title: string
-  description: string
+  type: 'create_brief' | 'write_draft' | 'revise_draft' | 'editorial_review' | 'seo_optimization' | 'generate_media' | 'prepare_build' | 'publish_site'
   agent_id: string
   content_id?: string
-  priority?: 'low' | 'medium' | 'high'
+  website_id?: string
+  notes?: string
 }): Promise<Task> {
   const task = await taskRepository.create({
     ...taskData,
     status: 'planned',
-    priority: taskData.priority || 'medium',
   })
 
   // Publish event
@@ -90,10 +88,10 @@ export async function transitionTask(
 // ============================================================================
 
 export async function createQuestionTicket(ticketData: {
-  question: string
-  context: string
+  subject: string
+  body: string
   created_by_agent_id: string
-  target: string
+  target: 'CEO' | 'ChiefEditor' | 'TechnicalLead'
   content_id?: string
   task_id?: string
 }): Promise<QuestionTicket> {

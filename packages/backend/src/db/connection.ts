@@ -1,4 +1,4 @@
-import { Pool, PoolClient, QueryResult } from 'pg'
+import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg'
 import { getEnv } from '@swarm-press/shared'
 
 /**
@@ -48,7 +48,7 @@ class Database {
   /**
    * Execute a query
    */
-  public async query<T = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
+  public async query<T extends QueryResultRow = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
     const start = Date.now()
     const result = await this.pool.query<T>(text, params)
     const duration = Date.now() - start
@@ -94,6 +94,13 @@ class Database {
    */
   public async close(): Promise<void> {
     await this.pool.end()
+  }
+
+  /**
+   * Alias for close() - for graceful shutdown
+   */
+  public async end(): Promise<void> {
+    await this.close()
   }
 
   /**

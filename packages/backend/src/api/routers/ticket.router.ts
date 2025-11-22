@@ -16,8 +16,8 @@ export const ticketRouter = router({
   list: publicProcedure
     .input(
       z.object({
-        status: z.enum(['open', 'answered', 'resolved']).optional(),
-        target: z.enum(['ceo', 'writer', 'editor', 'engineering']).optional(),
+        status: z.enum(['open', 'answered', 'closed']).optional(),
+        target: z.enum(['CEO', 'ChiefEditor', 'TechnicalLead']).optional(),
         contentId: z.string().optional(),
         limit: z.number().min(1).max(100).default(50),
         offset: z.number().min(0).default(0),
@@ -66,25 +66,19 @@ export const ticketRouter = router({
   create: protectedProcedure
     .input(
       z.object({
-        question: z.string().min(1),
-        context: z.string().min(1),
-        target: z.enum(['ceo', 'writer', 'editor', 'engineering']),
+        subject: z.string().min(1),
+        body: z.string().min(1),
+        target: z.enum(['CEO', 'ChiefEditor', 'TechnicalLead']),
         createdByAgentId: z.string(),
-        contentId: z.string().optional(),
-        taskId: z.string().optional(),
-        metadata: z.record(z.unknown()).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
       const ticket = await questionTicketRepository.create({
-        question: input.question,
-        context: input.context,
+        subject: input.subject,
+        body: input.body,
         target: input.target,
         created_by_agent_id: input.createdByAgentId,
-        content_id: input.contentId,
-        task_id: input.taskId,
         status: 'open',
-        metadata: input.metadata || {},
       })
 
       // Publish ticket created event
@@ -124,9 +118,8 @@ export const ticketRouter = router({
       }
 
       const updated = await questionTicketRepository.update(input.id, {
-        answer: input.answer,
-        answered_at: new Date().toISOString(),
-        answered_by: ctx.user.id,
+        answer_body: input.answer,
+        answer_agent_id: ctx.user.id,
         status: 'answered',
       })
 
@@ -152,16 +145,15 @@ export const ticketRouter = router({
         })
       }
 
-      if (ticket.status === 'resolved') {
+      if (ticket.status === 'closed') {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: `Ticket ${input.id} is already resolved`,
+          message: `Ticket ${input.id} is already closed`,
         })
       }
 
       const updated = await questionTicketRepository.update(input.id, {
-        status: 'resolved',
-        resolved_at: new Date().toISOString(),
+        status: 'closed',
       })
 
       console.log(`[TicketRouter] Ticket ${input.id} resolved by ${ctx.user.email}`)
@@ -175,7 +167,7 @@ export const ticketRouter = router({
   getOpenForCEO: ceoProcedure.query(async () => {
     const tickets = await questionTicketRepository.findAll({
       status: 'open',
-      target: 'ceo',
+      target: 'CEO',
     })
 
     return tickets
@@ -185,17 +177,17 @@ export const ticketRouter = router({
    * Get ticket statistics
    */
   getStats: publicProcedure.query(async () => {
-    const [open, answered, resolved] = await Promise.all([
+    const [open, answered, closed] = await Promise.all([
       questionTicketRepository.findAll({ status: 'open' }),
       questionTicketRepository.findAll({ status: 'answered' }),
-      questionTicketRepository.findAll({ status: 'resolved' }),
+      questionTicketRepository.findAll({ status: 'closed' }),
     ])
 
     return {
       open: open.length,
       answered: answered.length,
-      resolved: resolved.length,
-      total: open.length + answered.length + resolved.length,
+      closed: closed.length,
+      total: open.length + answered.length + closed.length,
     }
   }),
 })

@@ -6,7 +6,6 @@
 import {
   ContentItemStatus,
   TaskStatus,
-  ReviewResult,
   QuestionTicketStatus,
 } from '../types/entities'
 

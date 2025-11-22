@@ -1,9 +1,10 @@
-import { db, QueryResult } from './connection'
+import { db } from './connection'
+import type { QueryResultRow } from 'pg'
 
 /**
  * Base repository class with common CRUD operations
  */
-export abstract class BaseRepository<T> {
+export abstract class BaseRepository<T extends QueryResultRow> {
   constructor(protected tableName: string) {}
 
   /**
@@ -20,14 +21,18 @@ export abstract class BaseRepository<T> {
   /**
    * Find all records
    */
-  async findAll(limit?: number, offset?: number): Promise<T[]> {
+  async findAll(options?: { limit?: number; offset?: number } | number, offset?: number): Promise<T[]> {
     let query = `SELECT * FROM ${this.tableName} ORDER BY created_at DESC`
+
+    // Support both old (limit, offset) and new (options) signatures
+    const limit = typeof options === 'number' ? options : options?.limit
+    const off = typeof options === 'number' ? offset : options?.offset
 
     if (limit) {
       query += ` LIMIT ${limit}`
     }
-    if (offset) {
-      query += ` OFFSET ${offset}`
+    if (off) {
+      query += ` OFFSET ${off}`
     }
 
     const result = await db.query<T>(query)
@@ -71,7 +76,7 @@ export abstract class BaseRepository<T> {
       values
     )
 
-    return result.rows[0]
+    return result.rows[0]!
   }
 
   /**
@@ -111,7 +116,7 @@ export abstract class BaseRepository<T> {
     const result = await db.query<{ count: string }>(
       `SELECT COUNT(*) as count FROM ${this.tableName}`
     )
-    return parseInt(result.rows[0].count, 10)
+    return parseInt(result.rows[0]!.count, 10)
   }
 
   /**
@@ -122,6 +127,6 @@ export abstract class BaseRepository<T> {
       `SELECT EXISTS(SELECT 1 FROM ${this.tableName} WHERE id = $1) as exists`,
       [id]
     )
-    return result.rows[0].exists
+    return result.rows[0]!.exists
   }
 }

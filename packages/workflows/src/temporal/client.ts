@@ -3,7 +3,7 @@
  * Manages connection to Temporal server and workflow execution
  */
 
-import { Connection, Client, WorkflowClient } from '@temporalio/client'
+import { Connection, WorkflowClient } from '@temporalio/client'
 import { getEnv } from '@swarm-press/shared'
 
 /**
@@ -100,7 +100,7 @@ export const temporalClient = TemporalClientManager.getInstance()
 /**
  * Helper function to start a workflow
  */
-export async function startWorkflow<T = any>(
+export async function startWorkflow(
   workflowType: string,
   args: any[],
   options?: {
@@ -132,7 +132,8 @@ export async function queryWorkflow<T = any>(
 ): Promise<T> {
   const client = temporalClient.getClient()
   const handle = client.getHandle(workflowId)
-  return await handle.query<T>(queryType, ...(args || []))
+  const queryArgs = args || []
+  return await handle.query<T>(queryType, ...queryArgs as [])
 }
 
 /**
