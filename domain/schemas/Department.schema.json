@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agent.press/schemas/Department.schema.json",
+  "title": "Department",
+  "description": "Organizational unit (Editorial, Writers Room, SEO, Media, Engineering, Distribution, Governance)",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier",
+      "format": "uuid"
+    },
+    "company_id": {
+      "type": "string",
+      "description": "Foreign key to Company",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string",
+      "description": "Department name",
+      "enum": [
+        "Editorial",
+        "Writers Room",
+        "SEO & Analytics",
+        "Media & Design",
+        "Engineering",
+        "Distribution & Social",
+        "Governance"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed purpose and responsibilities"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["id", "company_id", "name", "description", "created_at", "updated_at"],
+  "additionalProperties": false
+}

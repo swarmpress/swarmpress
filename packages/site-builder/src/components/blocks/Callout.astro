@@ -1,0 +1,82 @@
+---
+/**
+ * Callout Block Component
+ * Highlighted box for important information
+ */
+export interface Props {
+  text: string
+  type?: 'info' | 'warning' | 'success' | 'error'
+  title?: string
+  className?: string
+}
+
+const { text, type = 'info', title, className = '' } = Astro.props
+
+const icons = {
+  info: 'ℹ️',
+  warning: '⚠️',
+  success: '✅',
+  error: '❌',
+}
+---
+
+<div class={`block-callout callout-${type} ${className}`}>
+  <div class="callout-header">
+    <span class="callout-icon">{icons[type]}</span>
+    {title && <strong class="callout-title">{title}</strong>}
+  </div>
+  <div class="callout-content" set:html={text} />
+</div>
+
+<style>
+  .block-callout {
+    padding: 1.5rem;
+    margin: 2rem 0;
+    border-radius: 8px;
+    border-left: 4px solid;
+  }
+
+  .callout-info {
+    background-color: #eff6ff;
+    border-color: #3b82f6;
+  }
+
+  .callout-warning {
+    background-color: #fef3c7;
+    border-color: #f59e0b;
+  }
+
+  .callout-success {
+    background-color: #d1fae5;
+    border-color: #10b981;
+  }
+
+  .callout-error {
+    background-color: #fee2e2;
+    border-color: #ef4444;
+  }
+
+  .callout-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .callout-icon {
+    font-size: 1.25rem;
+  }
+
+  .callout-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+  }
+
+  .callout-content {
+    line-height: 1.6;
+  }
+
+  .callout-content p:last-child {
+    margin-bottom: 0;
+  }
+</style>

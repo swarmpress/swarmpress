@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agent.press/schemas/Agent.schema.json",
+  "title": "Agent",
+  "description": "A virtual employee performing work autonomously",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique agent identifier",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-like name or label",
+      "minLength": 1
+    },
+    "role_id": {
+      "type": "string",
+      "description": "Foreign key to Role",
+      "format": "uuid"
+    },
+    "department_id": {
+      "type": "string",
+      "description": "Foreign key to Department",
+      "format": "uuid"
+    },
+    "persona": {
+      "type": "string",
+      "description": "Natural language persona guide for LLM"
+    },
+    "virtual_email": {
+      "type": "string",
+      "description": "Email-like identifier",
+      "format": "email"
+    },
+    "description": {
+      "type": "string",
+      "description": "Extended role explanation"
+    },
+    "capabilities": {
+      "type": "array",
+      "description": "List of allowed capabilities/actions",
+      "items": {
+        "type": "string"
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "role_id",
+    "department_id",
+    "persona",
+    "virtual_email",
+    "capabilities",
+    "created_at",
+    "updated_at"
+  ],
+  "additionalProperties": false
+}

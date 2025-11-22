@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agent.press/schemas/Company.schema.json",
+  "title": "Company",
+  "description": "The overarching virtual organization within which all operations occur",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier (UUID)",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable company name",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional metadata about mission, vision, etc."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["id", "name", "created_at", "updated_at"],
+  "additionalProperties": false
+}

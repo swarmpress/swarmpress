@@ -1,0 +1,30 @@
+{
+  "name": "@agent-press/github-integration",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GitHub integration for agent.press collaboration and governance",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-press/shared": "workspace:*",
+    "@agent-press/backend": "workspace:*",
+    "@octokit/rest": "^20.0.2",
+    "@octokit/webhooks": "^12.0.10",
+    "@octokit/auth-app": "^6.0.3",
+    "dotenv": "^16.3.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

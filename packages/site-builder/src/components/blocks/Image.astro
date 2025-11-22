@@ -1,0 +1,48 @@
+---
+/**
+ * Image Block Component
+ * Renders an optimized image with caption
+ */
+export interface Props {
+  url: string
+  alt: string
+  caption?: string
+  width?: number
+  height?: number
+  className?: string
+}
+
+const { url, alt, caption, width, height, className = '' } = Astro.props
+---
+
+<figure class={`block-image ${className}`}>
+  <img
+    src={url}
+    alt={alt}
+    width={width}
+    height={height}
+    loading="lazy"
+  />
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>
+
+<style>
+  .block-image {
+    margin: 2rem 0;
+  }
+
+  .block-image img {
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+
+  figcaption {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--color-text-light);
+    text-align: center;
+    font-style: italic;
+  }
+</style>

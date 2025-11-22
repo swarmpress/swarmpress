@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+             id="EditorialReviewWorkflow"
+             targetNamespace="http://agent.press/workflows">
+
+  <process id="editorialReview" name="Editorial Review Workflow" isExecutable="true">
+
+    <!-- Start Event -->
+    <startEvent id="start" name="Content Submitted">
+      <outgoing>flow1</outgoing>
+      <messageEventDefinition messageRef="contentSubmittedEvent"/>
+    </startEvent>
+
+    <!-- Get Content -->
+    <serviceTask id="getContent" name="Editor Gets Content">
+      <incoming>flow1</incoming>
+      <outgoing>flow2</outgoing>
+      <documentation>Editor agent retrieves content for review</documentation>
+    </serviceTask>
+
+    <!-- Review Content -->
+    <serviceTask id="reviewContent" name="Editor Reviews Content">
+      <incoming>flow2</incoming>
+      <outgoing>flow3</outgoing>
+      <documentation>Editor uses review_content tool with quality scoring</documentation>
+    </serviceTask>
+
+    <!-- Detect High Risk -->
+    <serviceTask id="detectRisk" name="Detect High-Risk Content">
+      <incoming>flow3</incoming>
+      <outgoing>flow4</outgoing>
+      <documentation>Editor uses detect_high_risk_content tool</documentation>
+    </serviceTask>
+
+    <!-- Gateway: Is High Risk? -->
+    <exclusiveGateway id="riskGateway" name="High Risk?">
+      <incoming>flow4</incoming>
+      <outgoing>flow5</outgoing>
+      <outgoing>flow6</outgoing>
+    </exclusiveGateway>
+
+    <!-- Escalate to CEO -->
+    <serviceTask id="escalateCEO" name="Escalate to CEO">
+      <incoming>flow5</incoming>
+      <outgoing>flow7</outgoing>
+      <documentation>Editor uses escalate_to_ceo tool to create question ticket</documentation>
+    </serviceTask>
+
+    <!-- Wait for CEO Approval -->
+    <userTask id="waitCEO" name="Wait for CEO Decision">
+      <incoming>flow7</incoming>
+      <outgoing>flow8</outgoing>
+    </userTask>
+
+    <!-- Gateway: CEO Approved? -->
+    <exclusiveGateway id="ceoGateway" name="CEO Approved?">
+      <incoming>flow8</incoming>
+      <outgoing>flow9</outgoing>
+      <outgoing>flow10</outgoing>
+    </exclusiveGateway>
+
+    <!-- Gateway: Quality Check -->
+    <exclusiveGateway id="qualityGateway" name="Quality Acceptable?">
+      <incoming>flow6</incoming>
+      <incoming>flow9</incoming>
+      <outgoing>flow11</outgoing>
+      <outgoing>flow12</outgoing>
+    </exclusiveGateway>
+
+    <!-- Approve Content -->
+    <serviceTask id="approveContent" name="Approve Content">
+      <incoming>flow11</incoming>
+      <outgoing>flow13</outgoing>
+      <documentation>Editor uses approve_content tool, transitions to approved state</documentation>
+    </serviceTask>
+
+    <!-- Reject Content -->
+    <serviceTask id="rejectContent" name="Reject Content">
+      <incoming>flow10</incoming>
+      <incoming>flow12</incoming>
+      <outgoing>flow14</outgoing>
+      <documentation>Editor uses reject_content tool with feedback, transitions to needs_changes</documentation>
+    </serviceTask>
+
+    <!-- Publish Approved Event -->
+    <intermediateThrowEvent id="eventApproved" name="Content Approved Event">
+      <incoming>flow13</incoming>
+      <outgoing>flow15</outgoing>
+      <messageEventDefinition messageRef="contentApprovedEvent"/>
+    </intermediateThrowEvent>
+
+    <!-- Publish Needs Changes Event -->
+    <intermediateThrowEvent id="eventNeedsChanges" name="Needs Changes Event">
+      <incoming>flow14</incoming>
+      <outgoing>flow16</outgoing>
+      <messageEventDefinition messageRef="contentNeedsChangesEvent"/>
+    </intermediateThrowEvent>
+
+    <!-- End Events -->
+    <endEvent id="endApproved" name="Content Approved">
+      <incoming>flow15</incoming>
+    </endEvent>
+
+    <endEvent id="endRejected" name="Content Needs Changes">
+      <incoming>flow16</incoming>
+    </endEvent>
+
+    <!-- Sequence Flows -->
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="getContent"/>
+    <sequenceFlow id="flow2" sourceRef="getContent" targetRef="reviewContent"/>
+    <sequenceFlow id="flow3" sourceRef="reviewContent" targetRef="detectRisk"/>
+    <sequenceFlow id="flow4" sourceRef="detectRisk" targetRef="riskGateway"/>
+    <sequenceFlow id="flow5" sourceRef="riskGateway" targetRef="escalateCEO" name="Yes">
+      <conditionExpression>isHighRisk</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow6" sourceRef="riskGateway" targetRef="qualityGateway" name="No"/>
+    <sequenceFlow id="flow7" sourceRef="escalateCEO" targetRef="waitCEO"/>
+    <sequenceFlow id="flow8" sourceRef="waitCEO" targetRef="ceoGateway"/>
+    <sequenceFlow id="flow9" sourceRef="ceoGateway" targetRef="qualityGateway" name="Approved">
+      <conditionExpression>ceoApproved</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow10" sourceRef="ceoGateway" targetRef="rejectContent" name="Rejected"/>
+    <sequenceFlow id="flow11" sourceRef="qualityGateway" targetRef="approveContent" name="Good Quality">
+      <conditionExpression>qualityScore >= 7</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow12" sourceRef="qualityGateway" targetRef="rejectContent" name="Poor Quality"/>
+    <sequenceFlow id="flow13" sourceRef="approveContent" targetRef="eventApproved"/>
+    <sequenceFlow id="flow14" sourceRef="rejectContent" targetRef="eventNeedsChanges"/>
+    <sequenceFlow id="flow15" sourceRef="eventApproved" targetRef="endApproved"/>
+    <sequenceFlow id="flow16" sourceRef="eventNeedsChanges" targetRef="endRejected"/>
+
+  </process>
+
+  <!-- Message Definitions -->
+  <message id="contentSubmittedEvent" name="content.submittedForReview"/>
+  <message id="contentApprovedEvent" name="content.approved"/>
+  <message id="contentNeedsChangesEvent" name="content.needsChanges"/>
+
+</definitions>

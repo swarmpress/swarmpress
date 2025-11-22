@@ -1,0 +1,118 @@
+---
+/**
+ * Hero Block Component
+ * Large featured section at the top of the page
+ */
+export interface Props {
+  title: string
+  subtitle?: string
+  backgroundImage?: string
+  ctaText?: string
+  ctaUrl?: string
+  className?: string
+}
+
+const { title, subtitle, backgroundImage, ctaText, ctaUrl, className = '' } = Astro.props
+const hasBackground = !!backgroundImage
+---
+
+<section class={`block-hero ${hasBackground ? 'with-background' : ''} ${className}`} style={hasBackground ? `background-image: url(${backgroundImage})` : ''}>
+  <div class="hero-overlay">
+    <div class="hero-content">
+      <h1 class="hero-title">{title}</h1>
+      {subtitle && <p class="hero-subtitle">{subtitle}</p>}
+      {ctaText && ctaUrl && (
+        <a href={ctaUrl} class="hero-cta">
+          {ctaText}
+        </a>
+      )}
+    </div>
+  </div>
+</section>
+
+<style>
+  .block-hero {
+    position: relative;
+    padding: 4rem 2rem;
+    text-align: center;
+    background-color: var(--color-bg-alt);
+    border-radius: 8px;
+    margin-bottom: 3rem;
+  }
+
+  .block-hero.with-background {
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    min-height: 400px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .hero-overlay {
+    width: 100%;
+    padding: 2rem;
+  }
+
+  .block-hero.with-background .hero-overlay {
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 8px;
+  }
+
+  .hero-content {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .hero-title {
+    font-size: 3rem;
+    font-weight: 800;
+    margin-bottom: 1rem;
+    line-height: 1.1;
+  }
+
+  .block-hero.with-background .hero-title {
+    color: white;
+  }
+
+  .hero-subtitle {
+    font-size: 1.25rem;
+    color: var(--color-text-light);
+    margin-bottom: 2rem;
+  }
+
+  .block-hero.with-background .hero-subtitle {
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .hero-cta {
+    display: inline-block;
+    padding: 1rem 2rem;
+    background-color: var(--color-primary);
+    color: white;
+    font-weight: 600;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: background-color 0.2s;
+  }
+
+  .hero-cta:hover {
+    background-color: var(--color-secondary);
+    text-decoration: none;
+  }
+
+  @media (max-width: 768px) {
+    .block-hero {
+      padding: 3rem 1rem;
+    }
+
+    .hero-title {
+      font-size: 2rem;
+    }
+
+    .hero-subtitle {
+      font-size: 1rem;
+    }
+  }
+</style>

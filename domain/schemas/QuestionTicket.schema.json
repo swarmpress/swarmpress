@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agent.press/schemas/QuestionTicket.schema.json",
+  "title": "QuestionTicket",
+  "description": "Escalation mechanism for agents to ask questions or report issues",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique ticket identifier",
+      "format": "uuid"
+    },
+    "created_by_agent_id": {
+      "type": "string",
+      "description": "Agent who created the ticket",
+      "format": "uuid"
+    },
+    "target": {
+      "type": "string",
+      "description": "Recipient (CEO, ChiefEditor, etc.)",
+      "enum": ["CEO", "ChiefEditor", "TechnicalLead"]
+    },
+    "subject": {
+      "type": "string",
+      "description": "Short summary of the question/issue",
+      "minLength": 1
+    },
+    "body": {
+      "type": "string",
+      "description": "Detailed explanation",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "description": "Ticket lifecycle state",
+      "enum": ["open", "answered", "closed"]
+    },
+    "answer_agent_id": {
+      "type": ["string", "null"],
+      "description": "Who answered the ticket (optional)",
+      "format": "uuid"
+    },
+    "answer_body": {
+      "type": ["string", "null"],
+      "description": "The answer (optional)"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "id",
+    "created_by_agent_id",
+    "target",
+    "subject",
+    "body",
+    "status",
+    "created_at",
+    "updated_at"
+  ],
+  "additionalProperties": false
+}

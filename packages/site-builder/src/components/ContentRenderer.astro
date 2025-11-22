@@ -1,0 +1,84 @@
+---
+/**
+ * Content Renderer
+ * Dynamically renders JSON content blocks
+ */
+import Paragraph from './blocks/Paragraph.astro'
+import Heading from './blocks/Heading.astro'
+import Hero from './blocks/Hero.astro'
+import Image from './blocks/Image.astro'
+import Gallery from './blocks/Gallery.astro'
+import Quote from './blocks/Quote.astro'
+import List from './blocks/List.astro'
+import FAQ from './blocks/FAQ.astro'
+import Callout from './blocks/Callout.astro'
+import Embed from './blocks/Embed.astro'
+
+export interface Props {
+  blocks: any[]
+}
+
+const { blocks } = Astro.props
+---
+
+<article class="content-renderer">
+  {blocks.map((block) => {
+    switch (block.type) {
+      case 'paragraph':
+        return <Paragraph text={block.text} />
+
+      case 'heading':
+        return <Heading level={block.level} text={block.text} id={block.id} />
+
+      case 'hero':
+        return (
+          <Hero
+            title={block.title}
+            subtitle={block.subtitle}
+            backgroundImage={block.backgroundImage}
+            ctaText={block.ctaText}
+            ctaUrl={block.ctaUrl}
+          />
+        )
+
+      case 'image':
+        return (
+          <Image
+            url={block.url}
+            alt={block.alt}
+            caption={block.caption}
+            width={block.width}
+            height={block.height}
+          />
+        )
+
+      case 'gallery':
+        return <Gallery images={block.images} columns={block.columns} />
+
+      case 'quote':
+        return <Quote text={block.text} author={block.author} role={block.role} />
+
+      case 'list':
+        return <List items={block.items} ordered={block.ordered} />
+
+      case 'faq':
+        return <FAQ items={block.items} />
+
+      case 'callout':
+        return <Callout text={block.text} type={block.type} title={block.title} />
+
+      case 'embed':
+        return <Embed url={block.url} type={block.embedType} caption={block.caption} />
+
+      default:
+        console.warn(`Unknown block type: ${block.type}`)
+        return null
+    }
+  })}
+</article>
+
+<style>
+  .content-renderer {
+    max-width: 100%;
+  }
+</style>

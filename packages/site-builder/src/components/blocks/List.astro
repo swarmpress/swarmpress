@@ -1,0 +1,51 @@
+---
+/**
+ * List Block Component
+ * Renders ordered or unordered lists
+ */
+export interface Props {
+  items: string[]
+  ordered?: boolean
+  className?: string
+}
+
+const { items, ordered = false, className = '' } = Astro.props
+const Tag = ordered ? 'ol' : 'ul'
+---
+
+<Tag class={`block-list ${ordered ? 'ordered-list' : 'unordered-list'} ${className}`}>
+  {items.map((item) => (
+    <li set:html={item} />
+  ))}
+</Tag>
+
+<style>
+  .block-list {
+    margin: 1.5rem 0;
+    padding-left: 2rem;
+  }
+
+  .block-list li {
+    margin-bottom: 0.75rem;
+    line-height: 1.6;
+  }
+
+  .ordered-list {
+    list-style-type: decimal;
+  }
+
+  .unordered-list {
+    list-style-type: disc;
+  }
+
+  .unordered-list li::marker {
+    color: var(--color-primary);
+    font-size: 1.2em;
+  }
+
+  @media (max-width: 768px) {
+    .block-list {
+      padding-left: 1.5rem;
+    }
+  }
+</style>

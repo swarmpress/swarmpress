@@ -1,0 +1,84 @@
+---
+/**
+ * FAQ Block Component
+ * Renders FAQ items with expandable answers
+ */
+export interface FAQItem {
+  question: string
+  answer: string
+}
+
+export interface Props {
+  items: FAQItem[]
+  className?: string
+}
+
+const { items, className = '' } = Astro.props
+---
+
+<div class={`block-faq ${className}`}>
+  {items.map((item, index) => (
+    <details class="faq-item" open={index === 0}>
+      <summary class="faq-question">{item.question}</summary>
+      <div class="faq-answer" set:html={item.answer} />
+    </details>
+  ))}
+</div>
+
+<style>
+  .block-faq {
+    margin: 2rem 0;
+  }
+
+  .faq-item {
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background-color: var(--color-bg);
+    transition: background-color 0.2s;
+  }
+
+  .faq-item:hover {
+    background-color: var(--color-bg-alt);
+  }
+
+  .faq-question {
+    font-weight: 600;
+    font-size: 1.1rem;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+  }
+
+  .faq-question::before {
+    content: '▶';
+    display: inline-block;
+    margin-right: 0.75rem;
+    transition: transform 0.2s;
+    color: var(--color-primary);
+  }
+
+  details[open] .faq-question::before {
+    transform: rotate(90deg);
+  }
+
+  .faq-answer {
+    margin-top: 1rem;
+    padding-left: 1.5rem;
+    color: var(--color-text-light);
+    line-height: 1.6;
+  }
+
+  @media (max-width: 768px) {
+    .faq-item {
+      padding: 0.75rem;
+    }
+
+    .faq-question {
+      font-size: 1rem;
+    }
+  }
+</style>

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+             id="ContentProductionWorkflow"
+             targetNamespace="http://agent.press/workflows">
+
+  <process id="contentProduction" name="Content Production Workflow" isExecutable="true">
+
+    <!-- Start Event -->
+    <startEvent id="start" name="Content Brief Created">
+      <outgoing>flow1</outgoing>
+    </startEvent>
+
+    <!-- Writer Creates Draft -->
+    <serviceTask id="writerDraft" name="Writer Creates Draft">
+      <incoming>flow1</incoming>
+      <incoming>flow6</incoming>
+      <outgoing>flow2</outgoing>
+      <documentation>Writer agent uses write_draft tool to create content using JSON blocks</documentation>
+    </serviceTask>
+
+    <!-- Transition to Draft State -->
+    <serviceTask id="transitionDraft" name="Transition to Draft State">
+      <incoming>flow2</incoming>
+      <outgoing>flow3</outgoing>
+      <documentation>State machine transitions content from brief_created to draft</documentation>
+    </serviceTask>
+
+    <!-- Writer Submits for Review -->
+    <serviceTask id="submitReview" name="Submit for Review">
+      <incoming>flow3</incoming>
+      <outgoing>flow4</outgoing>
+      <documentation>Writer uses submit_for_review tool, transitions to in_editorial_review</documentation>
+    </serviceTask>
+
+    <!-- Publish Event -->
+    <intermediateThrowEvent id="eventPublished" name="Content Submitted Event">
+      <incoming>flow4</incoming>
+      <outgoing>flow5</outgoing>
+      <messageEventDefinition messageRef="contentSubmittedEvent"/>
+    </intermediateThrowEvent>
+
+    <!-- Gateway: Check if Revision Needed -->
+    <exclusiveGateway id="revisionGateway" name="Needs Revision?">
+      <incoming>flow5</incoming>
+      <outgoing>flow6</outgoing>
+      <outgoing>flow7</outgoing>
+    </exclusiveGateway>
+
+    <!-- End Event -->
+    <endEvent id="end" name="Draft Submitted">
+      <incoming>flow7</incoming>
+    </endEvent>
+
+    <!-- Sequence Flows -->
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="writerDraft"/>
+    <sequenceFlow id="flow2" sourceRef="writerDraft" targetRef="transitionDraft"/>
+    <sequenceFlow id="flow3" sourceRef="transitionDraft" targetRef="submitReview"/>
+    <sequenceFlow id="flow4" sourceRef="submitReview" targetRef="eventPublished"/>
+    <sequenceFlow id="flow5" sourceRef="eventPublished" targetRef="revisionGateway"/>
+    <sequenceFlow id="flow6" sourceRef="revisionGateway" targetRef="writerDraft" name="Yes - Revise">
+      <conditionExpression>needsRevision</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow7" sourceRef="revisionGateway" targetRef="end" name="No - Complete"/>
+
+  </process>
+
+  <!-- Message Definitions -->
+  <message id="contentSubmittedEvent" name="content.submittedForReview"/>
+
+</definitions>

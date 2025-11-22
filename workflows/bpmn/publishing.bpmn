@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+             id="PublishingWorkflow"
+             targetNamespace="http://agent.press/workflows">
+
+  <process id="publishing" name="Publishing Workflow" isExecutable="true">
+
+    <!-- Start Event -->
+    <startEvent id="start" name="Content Approved">
+      <outgoing>flow1</outgoing>
+      <messageEventDefinition messageRef="contentApprovedEvent"/>
+    </startEvent>
+
+    <!-- SEO Optimization -->
+    <serviceTask id="seoOptimize" name="SEO Agent Optimizes">
+      <incoming>flow1</incoming>
+      <outgoing>flow2</outgoing>
+      <documentation>SEO agent optimizes metadata, keywords, descriptions</documentation>
+    </serviceTask>
+
+    <!-- Transition to Scheduled -->
+    <serviceTask id="transitionScheduled" name="Mark as Scheduled">
+      <incoming>flow2</incoming>
+      <outgoing>flow3</outgoing>
+      <documentation>Transition content from approved to scheduled state</documentation>
+    </serviceTask>
+
+    <!-- Publish Scheduled Event -->
+    <intermediateThrowEvent id="eventScheduled" name="Content Scheduled Event">
+      <incoming>flow3</incoming>
+      <outgoing>flow4</outgoing>
+      <messageEventDefinition messageRef="contentScheduledEvent"/>
+    </intermediateThrowEvent>
+
+    <!-- Validate Content Structure -->
+    <serviceTask id="validateStructure" name="Validate Content Structure">
+      <incoming>flow4</incoming>
+      <outgoing>flow5</outgoing>
+      <documentation>Engineering agent validates JSON block structure</documentation>
+    </serviceTask>
+
+    <!-- Validate Assets -->
+    <serviceTask id="validateAssets" name="Validate Assets">
+      <incoming>flow5</incoming>
+      <outgoing>flow6</outgoing>
+      <documentation>Engineering agent validates images, URLs, alt text</documentation>
+    </serviceTask>
+
+    <!-- Gateway: Validation Passed? -->
+    <exclusiveGateway id="validationGateway" name="Validation Passed?">
+      <incoming>flow6</incoming>
+      <outgoing>flow7</outgoing>
+      <outgoing>flow8</outgoing>
+    </exclusiveGateway>
+
+    <!-- Build Site -->
+    <serviceTask id="buildSite" name="Build Static Site">
+      <incoming>flow7</incoming>
+      <outgoing>flow9</outgoing>
+      <documentation>Engineering agent builds site with Astro</documentation>
+    </serviceTask>
+
+    <!-- Gateway: Build Successful? -->
+    <exclusiveGateway id="buildGateway" name="Build Successful?">
+      <incoming>flow9</incoming>
+      <outgoing>flow10</outgoing>
+      <outgoing>flow11</outgoing>
+    </exclusiveGateway>
+
+    <!-- Deploy Site -->
+    <serviceTask id="deploySite" name="Deploy to Production">
+      <incoming>flow10</incoming>
+      <outgoing>flow12</outgoing>
+      <documentation>Engineering agent deploys built site to hosting</documentation>
+    </serviceTask>
+
+    <!-- Gateway: Deploy Successful? -->
+    <exclusiveGateway id="deployGateway" name="Deploy Successful?">
+      <incoming>flow12</incoming>
+      <outgoing>flow13</outgoing>
+      <outgoing>flow14</outgoing>
+    </exclusiveGateway>
+
+    <!-- Transition to Published -->
+    <serviceTask id="transitionPublished" name="Mark as Published">
+      <incoming>flow13</incoming>
+      <outgoing>flow15</outgoing>
+      <documentation>Transition content to published state</documentation>
+    </serviceTask>
+
+    <!-- Publish Success Event -->
+    <intermediateThrowEvent id="eventPublished" name="Deploy Success Event">
+      <incoming>flow15</incoming>
+      <outgoing>flow16</outgoing>
+      <messageEventDefinition messageRef="deploySuccessEvent"/>
+    </intermediateThrowEvent>
+
+    <!-- Handle Failure -->
+    <serviceTask id="handleFailure" name="Handle Deployment Failure">
+      <incoming>flow8</incoming>
+      <incoming>flow11</incoming>
+      <incoming>flow14</incoming>
+      <outgoing>flow17</outgoing>
+      <documentation>Log error, create ticket, publish failure event</documentation>
+    </serviceTask>
+
+    <!-- Publish Failure Event -->
+    <intermediateThrowEvent id="eventFailed" name="Deploy Failed Event">
+      <incoming>flow17</incoming>
+      <outgoing>flow18</outgoing>
+      <messageEventDefinition messageRef="deployFailedEvent"/>
+    </intermediateThrowEvent>
+
+    <!-- End Events -->
+    <endEvent id="endSuccess" name="Published Successfully">
+      <incoming>flow16</incoming>
+    </endEvent>
+
+    <endEvent id="endFailure" name="Publishing Failed">
+      <incoming>flow18</incoming>
+    </endEvent>
+
+    <!-- Sequence Flows -->
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="seoOptimize"/>
+    <sequenceFlow id="flow2" sourceRef="seoOptimize" targetRef="transitionScheduled"/>
+    <sequenceFlow id="flow3" sourceRef="transitionScheduled" targetRef="eventScheduled"/>
+    <sequenceFlow id="flow4" sourceRef="eventScheduled" targetRef="validateStructure"/>
+    <sequenceFlow id="flow5" sourceRef="validateStructure" targetRef="validateAssets"/>
+    <sequenceFlow id="flow6" sourceRef="validateAssets" targetRef="validationGateway"/>
+    <sequenceFlow id="flow7" sourceRef="validationGateway" targetRef="buildSite" name="Valid">
+      <conditionExpression>validationPassed</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow8" sourceRef="validationGateway" targetRef="handleFailure" name="Invalid"/>
+    <sequenceFlow id="flow9" sourceRef="buildSite" targetRef="buildGateway"/>
+    <sequenceFlow id="flow10" sourceRef="buildGateway" targetRef="deploySite" name="Success">
+      <conditionExpression>buildSuccessful</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow11" sourceRef="buildGateway" targetRef="handleFailure" name="Failed"/>
+    <sequenceFlow id="flow12" sourceRef="deploySite" targetRef="deployGateway"/>
+    <sequenceFlow id="flow13" sourceRef="deployGateway" targetRef="transitionPublished" name="Success">
+      <conditionExpression>deploySuccessful</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow14" sourceRef="deployGateway" targetRef="handleFailure" name="Failed"/>
+    <sequenceFlow id="flow15" sourceRef="transitionPublished" targetRef="eventPublished"/>
+    <sequenceFlow id="flow16" sourceRef="eventPublished" targetRef="endSuccess"/>
+    <sequenceFlow id="flow17" sourceRef="handleFailure" targetRef="eventFailed"/>
+    <sequenceFlow id="flow18" sourceRef="eventFailed" targetRef="endFailure"/>
+
+  </process>
+
+  <!-- Message Definitions -->
+  <message id="contentApprovedEvent" name="content.approved"/>
+  <message id="contentScheduledEvent" name="content.scheduled"/>
+  <message id="deploySuccessEvent" name="deploy.success"/>
+  <message id="deployFailedEvent" name="deploy.failed"/>
+
+</definitions>

@@ -1,0 +1,91 @@
+---
+/**
+ * Gallery Block Component
+ * Renders a grid of images
+ */
+export interface GalleryImage {
+  url: string
+  alt: string
+  caption?: string
+}
+
+export interface Props {
+  images: GalleryImage[]
+  columns?: 2 | 3 | 4
+  className?: string
+}
+
+const { images, columns = 3, className = '' } = Astro.props
+---
+
+<div class={`block-gallery gallery-cols-${columns} ${className}`}>
+  {images.map((image) => (
+    <figure class="gallery-item">
+      <img
+        src={image.url}
+        alt={image.alt}
+        loading="lazy"
+      />
+      {image.caption && <figcaption>{image.caption}</figcaption>}
+    </figure>
+  ))}
+</div>
+
+<style>
+  .block-gallery {
+    display: grid;
+    gap: 1rem;
+    margin: 2rem 0;
+  }
+
+  .gallery-cols-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .gallery-cols-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .gallery-cols-4 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .gallery-item {
+    margin: 0;
+  }
+
+  .gallery-item img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    border-radius: 8px;
+    transition: transform 0.2s;
+  }
+
+  .gallery-item img:hover {
+    transform: scale(1.05);
+  }
+
+  figcaption {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--color-text-light);
+    text-align: center;
+  }
+
+  @media (max-width: 768px) {
+    .block-gallery {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .gallery-cols-4 {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 480px) {
+    .block-gallery {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -1,0 +1,21 @@
+---
+/**
+ * Paragraph Block Component
+ * Renders a simple paragraph block
+ */
+export interface Props {
+  text: string
+  className?: string
+}
+
+const { text, className = '' } = Astro.props
+---
+
+<p class={`block-paragraph ${className}`} set:html={text} />
+
+<style>
+  .block-paragraph {
+    margin-bottom: 1rem;
+    line-height: 1.7;
+  }
+</style>

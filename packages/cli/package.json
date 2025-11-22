@@ -1,0 +1,30 @@
+{
+  "name": "@agent-press/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Operator CLI for agent.press",
+  "bin": {
+    "agentpress": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "cli": "tsx src/index.ts",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@agent-press/shared": "workspace:*",
+    "@agent-press/backend": "workspace:*",
+    "commander": "^11.1.0",
+    "dotenv": "^16.3.1",
+    "chalk": "^5.3.0",
+    "ora": "^8.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

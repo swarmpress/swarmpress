@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agent.press/schemas/Task.schema.json",
+  "title": "Task",
+  "description": "Assigned work for an agent",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique task identifier",
+      "format": "uuid"
+    },
+    "type": {
+      "type": "string",
+      "description": "Type of work",
+      "enum": [
+        "create_brief",
+        "write_draft",
+        "revise_draft",
+        "editorial_review",
+        "seo_optimization",
+        "generate_media",
+        "prepare_build",
+        "publish_site"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "description": "Task lifecycle state",
+      "enum": ["planned", "in_progress", "blocked", "completed", "cancelled"]
+    },
+    "agent_id": {
+      "type": "string",
+      "description": "Assigned agent",
+      "format": "uuid"
+    },
+    "content_id": {
+      "type": ["string", "null"],
+      "description": "Related content (optional)",
+      "format": "uuid"
+    },
+    "website_id": {
+      "type": ["string", "null"],
+      "description": "Related website (optional)",
+      "format": "uuid"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Comment or context for the task"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["id", "type", "status", "agent_id", "created_at", "updated_at"],
+  "additionalProperties": false
+}

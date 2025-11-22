@@ -1,0 +1,233 @@
+/**
+ * Content API Router
+ * Endpoints for managing content items
+ */
+
+import { z } from 'zod'
+import { router, publicProcedure, protectedProcedure, ceoProcedure } from '../trpc'
+import { contentRepository } from '../../db/repositories'
+import { TRPCError } from '@trpc/server'
+
+export const contentRouter = router({
+  /**
+   * Get all content items with optional filtering
+   */
+  list: publicProcedure
+    .input(
+      z.object({
+        status: z
+          .enum([
+            'brief_created',
+            'draft',
+            'in_editorial_review',
+            'needs_changes',
+            'approved',
+            'scheduled',
+            'published',
+            'archived',
+            'on_hold',
+            'cancelled',
+          ])
+          .optional(),
+        websiteId: z.string().optional(),
+        limit: z.number().min(1).max(100).default(50),
+        offset: z.number().min(0).default(0),
+      })
+    )
+    .query(async ({ input }) => {
+      const { status, websiteId, limit, offset } = input
+
+      const items = await contentRepository.findAll({
+        status,
+        website_id: websiteId,
+        limit,
+        offset,
+      })
+
+      return {
+        items,
+        total: items.length,
+        limit,
+        offset,
+      }
+    }),
+
+  /**
+   * Get content item by ID
+   */
+  getById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input }) => {
+      const content = await contentRepository.findById(input.id)
+
+      if (!content) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Content ${input.id} not found`,
+        })
+      }
+
+      return content
+    }),
+
+  /**
+   * Create new content item
+   */
+  create: protectedProcedure
+    .input(
+      z.object({
+        title: z.string().min(1),
+        brief: z.string().min(1),
+        websiteId: z.string(),
+        targetPublishDate: z.string().datetime().optional(),
+        metadata: z.record(z.unknown()).optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const content = await contentRepository.create({
+        title: input.title,
+        brief: input.brief,
+        website_id: input.websiteId,
+        status: 'brief_created',
+        body: [], // Empty JSON blocks initially
+        target_publish_date: input.targetPublishDate,
+        metadata: input.metadata || {},
+      })
+
+      console.log(`[ContentRouter] Content created: ${content.id} by ${ctx.user.email}`)
+
+      return content
+    }),
+
+  /**
+   * Update content item
+   */
+  update: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        title: z.string().optional(),
+        brief: z.string().optional(),
+        body: z.array(z.any()).optional(), // JSON blocks
+        targetPublishDate: z.string().datetime().optional(),
+        metadata: z.record(z.unknown()).optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { id, ...updates } = input
+
+      const existing = await contentRepository.findById(id)
+      if (!existing) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Content ${id} not found`,
+        })
+      }
+
+      const updated = await contentRepository.update(id, {
+        title: updates.title,
+        brief: updates.brief,
+        body: updates.body,
+        target_publish_date: updates.targetPublishDate,
+        metadata: updates.metadata,
+      })
+
+      console.log(`[ContentRouter] Content updated: ${id} by ${ctx.user.email}`)
+
+      return updated
+    }),
+
+  /**
+   * Transition content state
+   */
+  transition: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        event: z.string(),
+        metadata: z.record(z.unknown()).optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const result = await contentRepository.transition(
+        input.id,
+        input.event,
+        ctx.user.role === 'ceo' ? 'CEO' : 'System',
+        ctx.user.id,
+        input.metadata
+      )
+
+      if (!result.success) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: result.error || 'State transition failed',
+        })
+      }
+
+      console.log(
+        `[ContentRouter] Content ${input.id} transitioned via ${input.event} by ${ctx.user.email}`
+      )
+
+      return result
+    }),
+
+  /**
+   * Get content state history
+   */
+  getHistory: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input }) => {
+      const history = await contentRepository.getStateHistory(input.id)
+      return history
+    }),
+
+  /**
+   * Archive content item
+   */
+  archive: ceoProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const result = await contentRepository.transition(
+        input.id,
+        'archive',
+        'CEO',
+        ctx.user.id
+      )
+
+      if (!result.success) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: result.error || 'Archive failed',
+        })
+      }
+
+      console.log(`[ContentRouter] Content ${input.id} archived by CEO`)
+
+      return result
+    }),
+
+  /**
+   * Cancel content item
+   */
+  cancel: ceoProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const result = await contentRepository.transition(
+        input.id,
+        'cancel',
+        'CEO',
+        ctx.user.id
+      )
+
+      if (!result.success) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: result.error || 'Cancel failed',
+        })
+      }
+
+      console.log(`[ContentRouter] Content ${input.id} cancelled by CEO`)
+
+      return result
+    }),
+})

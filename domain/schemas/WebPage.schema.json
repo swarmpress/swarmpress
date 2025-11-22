@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agent.press/schemas/WebPage.schema.json",
+  "title": "WebPage",
+  "description": "A route or page within a website",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique page identifier",
+      "format": "uuid"
+    },
+    "website_id": {
+      "type": "string",
+      "description": "Foreign key to Website",
+      "format": "uuid"
+    },
+    "slug": {
+      "type": "string",
+      "description": "Route (e.g. /riomaggiore)",
+      "pattern": "^/[a-z0-9-/]*$"
+    },
+    "template": {
+      "type": "string",
+      "description": "Template assigned to the page",
+      "minLength": 1
+    },
+    "metadata": {
+      "type": "object",
+      "description": "SEO metadata, OpenGraph tags, etc.",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "og_image": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["id", "website_id", "slug", "template", "created_at", "updated_at"],
+  "additionalProperties": false
+}
