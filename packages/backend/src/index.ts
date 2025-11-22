@@ -23,8 +23,10 @@ async function main() {
 
   console.log('✅ Database connected')
 
-  // TODO: Start Express server (Phase 5)
-  console.log('⏸️  API server not yet implemented (Phase 5)')
+  // Start Express + tRPC API server
+  const { startServer } = await import('./api/server.js')
+  const port = parseInt(env.API_PORT || '3000', 10)
+  await startServer(port)
 
   // Graceful shutdown
   process.on('SIGINT', async () => {

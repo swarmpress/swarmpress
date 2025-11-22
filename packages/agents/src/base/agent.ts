@@ -73,10 +73,10 @@ export class BaseAgent {
         content: userMessage,
       })
 
-      // Call Claude
+      // Call Claude Sonnet 4.5
       const response = await this.client.messages.create({
-        model: this.config.model || 'claude-3-5-sonnet-20241022',
-        max_tokens: this.config.maxTokens || 4096,
+        model: this.config.model || 'claude-sonnet-4-5-20250929',
+        max_tokens: this.config.maxTokens || 8192,
         system: this.config.systemPrompt,
         messages: this.conversationHistory,
       })

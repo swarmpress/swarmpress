@@ -4,6 +4,11 @@
  * Populates database with initial data for development/testing
  */
 
+// Load environment variables FIRST
+import dotenv from 'dotenv'
+import { resolve } from 'path'
+dotenv.config({ path: resolve(__dirname, '../.env') })
+
 import { v4 as uuidv4 } from 'uuid'
 import { db } from '../packages/backend/src/db/connection'
 import { eventBus } from '../packages/backend/src/event-bus/connection'
