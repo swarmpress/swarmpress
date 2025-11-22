@@ -1,10 +1,10 @@
 {
-  "name": "@agent-press/cli",
+  "name": "@swarm-press/cli",
   "version": "0.1.0",
   "private": true,
-  "description": "Operator CLI for agent.press",
+  "description": "Operator CLI for swarm.press",
   "bin": {
-    "agentpress": "./dist/index.js"
+    "swarmpress": "./dist/index.js"
   },
   "scripts": {
     "dev": "tsx src/index.ts",
@@ -15,8 +15,8 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@agent-press/shared": "workspace:*",
-    "@agent-press/backend": "workspace:*",
+    "@swarm-press/shared": "workspace:*",
+    "@swarm-press/backend": "workspace:*",
     "commander": "^11.1.0",
     "dotenv": "^16.3.1",
     "chalk": "^5.3.0",

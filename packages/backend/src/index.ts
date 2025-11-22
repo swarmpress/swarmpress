@@ -1,13 +1,13 @@
 /**
- * @agent-press/backend
- * API and database layer for agent.press
+ * @swarm-press/backend
+ * API and database layer for swarm.press
  */
 
-import { getEnv } from '@agent-press/shared'
+import { getEnv } from '@swarm-press/shared'
 import { db } from './db'
 
 async function main() {
-  console.log('🚀 Starting agent.press backend...')
+  console.log('🚀 Starting swarm.press backend...')
 
   // Validate environment
   const env = getEnv()

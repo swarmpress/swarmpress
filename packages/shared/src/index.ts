@@ -1,7 +1,7 @@
 /**
- * @agent-press/shared
+ * @swarm-press/shared
  *
- * Shared types, schemas, and utilities for agent.press
+ * Shared types, schemas, and utilities for swarm.press
  */
 
 // Configuration

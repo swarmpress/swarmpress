@@ -1,8 +1,8 @@
 {
-  "name": "@agent-press/backend",
+  "name": "@swarm-press/backend",
   "version": "0.1.0",
   "private": true,
-  "description": "API and database layer for agent.press",
+  "description": "API and database layer for swarm.press",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
@@ -16,8 +16,8 @@
     "migrate:down": "psql $DATABASE_URL -f migrations/001_initial_schema_down.sql"
   },
   "dependencies": {
-    "@agent-press/shared": "workspace:*",
-    "@agent-press/event-bus": "workspace:*",
+    "@swarm-press/shared": "workspace:*",
+    "@swarm-press/event-bus": "workspace:*",
     "@trpc/server": "^10.45.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",

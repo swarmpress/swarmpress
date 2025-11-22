@@ -98,7 +98,7 @@ async function mockAgentExecution(
 async function runTests() {
   const test = new E2ETest()
 
-  console.log('🚀 agent.press End-to-End Tests\n')
+  console.log('🚀 swarm.press End-to-End Tests\n')
   console.log('Testing complete content workflow...')
 
   // Test 1: Content Creation

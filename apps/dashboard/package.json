@@ -1,8 +1,8 @@
 {
-  "name": "@agent-press/dashboard",
+  "name": "@swarm-press/dashboard",
   "version": "0.1.0",
   "private": true,
-  "description": "CEO dashboard for agent.press",
+  "description": "CEO dashboard for swarm.press",
   "scripts": {
     "dev": "astro dev --port 3001",
     "build": "astro build",
@@ -12,7 +12,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@agent-press/shared": "workspace:*",
+    "@swarm-press/shared": "workspace:*",
     "astro": "^4.2.0",
     "dotenv": "^16.3.1"
   },

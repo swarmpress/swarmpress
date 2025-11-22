@@ -15,9 +15,9 @@ export async function subscribe<T = unknown>(
 ): Promise<void> {
   const js = eventBus.getJetStream()
 
-  const natsSubject = pattern.startsWith('agentpress.')
+  const natsSubject = pattern.startsWith('swarmpress.')
     ? pattern
-    : `agentpress.${pattern}`
+    : `swarmpress.${pattern}`
 
   console.log(`📥 Subscribing to: ${natsSubject}`)
 
@@ -49,7 +49,7 @@ export async function subscribe<T = unknown>(
  * Subscribe to all events (for monitoring/logging)
  */
 export async function subscribeAll(handler: EventHandler): Promise<void> {
-  await subscribe('agentpress.>', handler)
+  await subscribe('swarmpress.>', handler)
 }
 
 /**

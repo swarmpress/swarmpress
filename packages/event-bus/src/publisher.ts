@@ -15,7 +15,7 @@ export async function publishEvent<T = unknown>(params: {
 }): Promise<void> {
   const event = createCloudEvent(params)
 
-  const natsSubject = `agentpress.${event.type}`
+  const natsSubject = `swarmpress.${event.type}`
   const payload = codec.encode(JSON.stringify(event))
 
   const js = eventBus.getJetStream()

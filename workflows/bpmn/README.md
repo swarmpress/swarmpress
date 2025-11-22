@@ -1,6 +1,6 @@
 # BPMN 2.0 Workflow Definitions
 
-This directory contains BPMN 2.0 workflow definitions for agent.press core processes.
+This directory contains BPMN 2.0 workflow definitions for swarm.press core processes.
 
 ## Workflows
 

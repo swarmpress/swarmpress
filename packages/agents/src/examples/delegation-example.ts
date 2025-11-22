@@ -99,7 +99,7 @@ Agent delegation works as follows:
 5. Result is returned to Agent A
 6. Agent A continues with the response
 
-Example delegations in agent.press:
+Example delegations in swarm.press:
 - Writer → Editor: Submit content for review
 - Editor → CEO: Escalate high-risk content
 - Editor → Writer: Request revisions

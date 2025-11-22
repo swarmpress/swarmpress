@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://agent.press/schemas/ContentItem.schema.json",
+  "$id": "https://swarm.press/schemas/ContentItem.schema.json",
   "title": "ContentItem",
   "description": "The atomic unit of content (article, section, hero, etc.)",
   "type": "object",

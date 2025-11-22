@@ -49,7 +49,7 @@ export async function createContext({
     } else if (token === 'system') {
       user = {
         id: 'system',
-        email: 'system@agent-press.internal',
+        email: 'system@swarm-press.internal',
         role: 'system',
       }
     }

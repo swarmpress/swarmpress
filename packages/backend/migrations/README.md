@@ -1,6 +1,6 @@
 # Database Migrations
 
-This directory contains SQL migration files for the agent.press PostgreSQL database.
+This directory contains SQL migration files for the swarm.press PostgreSQL database.
 
 ## Structure
 
@@ -26,10 +26,10 @@ psql $DATABASE_URL -f migrations/001_initial_schema_down.sql
 
 ```bash
 # Run all migrations
-pnpm --filter @agent-press/backend run migrate
+pnpm --filter @swarm-press/backend run migrate
 
 # Rollback last migration
-pnpm --filter @agent-press/backend run migrate:down
+pnpm --filter @swarm-press/backend run migrate:down
 ```
 
 ## Available Migrations

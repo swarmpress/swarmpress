@@ -1,4 +1,4 @@
-# agent.press — Claude Development Guide
+# swarm.press — Claude Development Guide
 
 > **Last Updated:** 2025-11-22
 > **Status:** MVP Implementation Phase
@@ -6,9 +6,9 @@
 
 ---
 
-## 📖 What is agent.press?
+## 📖 What is swarm.press?
 
-**agent.press** is a fully autonomous virtual publishing house operated by intelligent agents with human oversight.
+**swarm.press** is a fully autonomous virtual publishing house operated by intelligent agents with human oversight.
 
 It is **not** a generic content generator. It is a **structured organization** with:
 - Departments (Editorial, Writers, SEO, Media, Engineering, Distribution, Governance)
@@ -155,7 +155,7 @@ await eventBus.publish('content.submittedForReview', { id: '123' })
 ## 📂 Monorepo Structure
 
 ```
-agent-press/
+swarm-press/
 ├── packages/
 │   ├── backend/          # API, PostgreSQL models, business logic
 │   ├── workflows/        # Temporal workflows + activities
@@ -163,7 +163,7 @@ agent-press/
 │   ├── shared/           # JSON schemas, types, state machines
 │   ├── site-builder/     # Astro website generation
 │   ├── event-bus/        # NATS/CloudEvents integration
-│   └── cli/              # Operator CLI (agentpress commands)
+│   └── cli/              # Operator CLI (swarmpress commands)
 ├── apps/
 │   └── dashboard/        # CEO web UI
 ├── scripts/
@@ -336,7 +336,7 @@ export async function contentProductionWorkflow(briefId: string) {
 ```json
 {
   "specversion": "1.0",
-  "type": "agentpress.content.submittedForReview",
+  "type": "swarmpress.content.submittedForReview",
   "source": "/agents/writer/writer-01",
   "subject": "content/abc123",
   "id": "evt-001",
@@ -354,12 +354,12 @@ export async function contentProductionWorkflow(briefId: string) {
 ```typescript
 // packages/event-bus/src/publisher.ts
 export async function publishEvent(event: CloudEvent) {
-  await nats.publish(`agentpress.${event.type}`, JSON.stringify(event))
+  await nats.publish(`swarmpress.${event.type}`, JSON.stringify(event))
 }
 
 // packages/event-bus/src/subscriber.ts
 export function subscribeToEvents(handler: (event: CloudEvent) => void) {
-  nats.subscribe('agentpress.>', (msg) => {
+  nats.subscribe('swarmpress.>', (msg) => {
     const event = JSON.parse(msg.data)
     handler(event)
   })
@@ -420,7 +420,7 @@ See full plan above. Key phases:
 - CloudEvents on NATS
 - Astro static site generation (output to local `/dist` folder)
 - CEO dashboard (QuestionTickets, approvals, activity log)
-- Operator CLI (`agentpress init`, `content:create`, etc.)
+- Operator CLI (`swarmpress init`, `content:create`, etc.)
 - Bootstrap script for initial setup
 - Stubbed SEO and Media agents (simple placeholders)
 
@@ -443,7 +443,7 @@ See full plan above. Key phases:
 ```bash
 # 1. Clone repo
 git clone <repo-url>
-cd agent-press
+cd swarm-press
 
 # 2. Install dependencies
 pnpm install
@@ -542,7 +542,7 @@ After validating the core system:
 
 ## 🤝 Contributing
 
-When working on agent.press:
+When working on swarm.press:
 
 1. **Read the spec first** — `specs/specs.md` is authoritative
 2. **Update schemas** — Keep JSON Schemas in sync with code
@@ -570,4 +570,4 @@ For questions about:
 
 ---
 
-**Remember:** agent.press is not just AI content generation. It's a fully structured, autonomous publishing organization with real workflows, real governance, and real accountability. Build it accordingly.
+**Remember:** swarm.press is not just AI content generation. It's a fully structured, autonomous publishing organization with real workflows, real governance, and real accountability. Build it accordingly.

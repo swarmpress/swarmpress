@@ -6,13 +6,13 @@
  * including Claude agents via the Claude Agent SDK
  */
 
-import { agentFactory, initializeAgents } from '@agent-press/agents'
+import { agentFactory, initializeAgents } from '@swarm-press/agents'
 import {
   contentRepository,
   taskRepository,
   questionTicketRepository,
-} from '@agent-press/backend'
-import { events } from '@agent-press/event-bus'
+} from '@swarm-press/backend'
+import { events } from '@swarm-press/event-bus'
 
 // Initialize agents on first import
 let agentsInitialized = false

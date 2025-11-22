@@ -1,6 +1,6 @@
 /**
- * @agent-press/agents
- * Claude agents for agent.press
+ * @swarm-press/agents
+ * Claude agents for swarm.press
  */
 
 // Export base infrastructure

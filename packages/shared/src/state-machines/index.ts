@@ -1,5 +1,5 @@
 /**
- * State Machine Definitions for agent.press
+ * State Machine Definitions for swarm.press
  * See: /domain/state-machines/STATE_MACHINES.md
  */
 

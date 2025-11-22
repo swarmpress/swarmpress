@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://agent.press/schemas/Department.schema.json",
+  "$id": "https://swarm.press/schemas/Department.schema.json",
   "title": "Department",
   "description": "Organizational unit (Editorial, Writers Room, SEO, Media, Engineering, Distribution, Governance)",
   "type": "object",

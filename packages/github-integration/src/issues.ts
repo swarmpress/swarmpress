@@ -4,7 +4,7 @@
  */
 
 import { getGitHub } from './client'
-import type { QuestionTicket, Task } from '@agent-press/shared'
+import type { QuestionTicket, Task } from '@swarm-press/shared'
 
 export interface CreateQuestionIssueParams {
   ticket: QuestionTicket

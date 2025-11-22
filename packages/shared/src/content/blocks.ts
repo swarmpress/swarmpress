@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 /**
- * JSON Block Model — Canonical content format for agent.press
+ * JSON Block Model — Canonical content format for swarm.press
  * See: /domain/content-model/JSON_BLOCK_MODEL.md
  */
 

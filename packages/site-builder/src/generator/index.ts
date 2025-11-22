@@ -14,7 +14,7 @@ export type { DeployOptions, DeployResult } from './deploy'
  */
 import { buildSite, validateContent, cleanBuildDir } from './build'
 import { deploySite } from './deploy'
-import { contentRepository } from '@agent-press/backend/db/repositories'
+import { contentRepository } from '@swarm-press/backend/db/repositories'
 import type { BuildOptions } from './build'
 import type { DeployOptions } from './deploy'
 

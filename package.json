@@ -1,5 +1,5 @@
 {
-  "name": "agent-press",
+  "name": "swarm-press",
   "version": "0.1.0",
   "private": true,
   "description": "A fully autonomous virtual publishing house operated by intelligent agents",
@@ -11,7 +11,7 @@
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "cli": "pnpm --filter @agent-press/cli run cli"
+    "cli": "pnpm --filter @swarm-press/cli run cli"
   },
   "workspaces": [
     "packages/*",

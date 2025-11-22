@@ -3,10 +3,10 @@
  * Bidirectional synchronization between GitHub and internal state
  */
 
-import { contentRepository, questionTicketRepository, taskRepository } from '@agent-press/backend/db/repositories'
+import { contentRepository, questionTicketRepository, taskRepository } from '@swarm-press/backend/db/repositories'
 import { createContentPR, approvePR, requestPRChanges, mergePR } from './pull-requests'
 import { createQuestionIssue, createTaskIssue, updateIssueLabels } from './issues'
-import type { ContentItem } from '@agent-press/shared'
+import type { ContentItem } from '@swarm-press/shared'
 
 /**
  * Map to track GitHub PR/Issue numbers for entities

@@ -1,5 +1,5 @@
 -- Migration 001: Initial Schema
--- Creates all core tables for agent.press
+-- Creates all core tables for swarm.press
 -- Run: psql $DATABASE_URL -f 001_initial_schema.sql
 
 BEGIN;

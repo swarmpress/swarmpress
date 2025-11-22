@@ -1,8 +1,8 @@
 {
-  "name": "@agent-press/workflows",
+  "name": "@swarm-press/workflows",
   "version": "0.1.0",
   "private": true,
-  "description": "Temporal workflows and activities for agent.press",
+  "description": "Temporal workflows and activities for swarm.press",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
@@ -14,8 +14,8 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@agent-press/shared": "workspace:*",
-    "@agent-press/agents": "workspace:*",
+    "@swarm-press/shared": "workspace:*",
+    "@swarm-press/agents": "workspace:*",
     "@temporalio/client": "^1.9.0",
     "@temporalio/worker": "^1.9.0",
     "@temporalio/workflow": "^1.9.0",

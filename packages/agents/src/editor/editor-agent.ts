@@ -9,8 +9,8 @@ import {
   transitionContent,
   createQuestionTicket,
 } from '../base/utilities'
-import type { Agent } from '@agent-press/shared'
-import { events } from '@agent-press/event-bus'
+import type { Agent } from '@swarm-press/shared'
+import { events } from '@swarm-press/event-bus'
 
 // ============================================================================
 // Editor Agent Tools
@@ -164,7 +164,7 @@ export class EditorAgent extends BaseAgent {
       department: agentData.department,
       capabilities: agentData.capabilities,
       tools: EDITOR_TOOLS,
-      systemPrompt: `You are ${agentData.name}, a professional editor at agent.press.
+      systemPrompt: `You are ${agentData.name}, a professional editor at swarm.press.
 
 Your role: ${agentData.role}
 Department: ${agentData.department}

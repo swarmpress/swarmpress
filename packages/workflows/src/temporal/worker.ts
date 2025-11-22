@@ -4,7 +4,7 @@
  */
 
 import { Worker, NativeConnection } from '@temporalio/worker'
-import { getEnv } from '@agent-press/shared'
+import { getEnv } from '@swarm-press/shared'
 import path from 'path'
 
 /**
@@ -61,7 +61,7 @@ class TemporalWorkerManager {
 export const workerManager = new TemporalWorkerManager()
 
 /**
- * Initialize default workers for agent.press
+ * Initialize default workers for swarm.press
  */
 export async function initializeWorkers(): Promise<void> {
   console.log('🚀 Initializing Temporal workers...')
@@ -71,22 +71,22 @@ export async function initializeWorkers(): Promise<void> {
 
   // Create workers for different task queues
   await workerManager.createWorker({
-    taskQueue: 'agentpress-default',
+    taskQueue: 'swarmpress-default',
     activities,
   })
 
   await workerManager.createWorker({
-    taskQueue: 'agentpress-content-production',
+    taskQueue: 'swarmpress-content-production',
     activities,
   })
 
   await workerManager.createWorker({
-    taskQueue: 'agentpress-editorial-review',
+    taskQueue: 'swarmpress-editorial-review',
     activities,
   })
 
   await workerManager.createWorker({
-    taskQueue: 'agentpress-publishing',
+    taskQueue: 'swarmpress-publishing',
     activities,
   })
 

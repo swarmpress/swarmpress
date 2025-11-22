@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { router, publicProcedure, protectedProcedure, ceoProcedure } from '../trpc'
 import { questionTicketRepository } from '../../db/repositories'
 import { TRPCError } from '@trpc/server'
-import { events } from '@agent-press/event-bus'
+import { events } from '@swarm-press/event-bus'
 
 export const ticketRouter = router({
   /**

@@ -4,7 +4,7 @@
  */
 
 import { Connection, Client, WorkflowClient } from '@temporalio/client'
-import { getEnv } from '@agent-press/shared'
+import { getEnv } from '@swarm-press/shared'
 
 /**
  * Temporal Client Manager (Singleton)
@@ -112,7 +112,7 @@ export async function startWorkflow<T = any>(
 
   const handle = await client.start(workflowType, {
     args,
-    taskQueue: options?.taskQueue || 'agentpress-default',
+    taskQueue: options?.taskQueue || 'swarmpress-default',
     workflowId: options?.workflowId || `${workflowType}-${Date.now()}`,
   })
 

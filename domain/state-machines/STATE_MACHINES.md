@@ -8,7 +8,7 @@
 
 ## Purpose
 
-State machines define the allowed states and transitions for core entities in agent.press. They ensure:
+State machines define the allowed states and transitions for core entities in swarm.press. They ensure:
 - Predictable entity lifecycles
 - Permission enforcement
 - Audit trails
@@ -257,4 +257,4 @@ closed (invalid)
 
 ---
 
-**These state machines are the canonical lifecycle definitions for agent.press.**
+**These state machines are the canonical lifecycle definitions for swarm.press.**

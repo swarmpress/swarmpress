@@ -1,10 +1,10 @@
 # Deployment Guide
 
-This guide covers deploying agent.press to production environments.
+This guide covers deploying swarm.press to production environments.
 
 ## Overview
 
-agent.press requires several infrastructure components:
+swarm.press requires several infrastructure components:
 - PostgreSQL database
 - NATS JetStream message broker
 - Temporal workflow engine
@@ -64,16 +64,16 @@ docker-compose -f docker-compose.prod.yml up -d
 ```bash
 # Create RDS PostgreSQL instance
 aws rds create-db-instance \
-  --db-instance-identifier agentpress-prod \
+  --db-instance-identifier swarmpress-prod \
   --db-instance-class db.t3.medium \
   --engine postgres \
   --engine-version 15.4 \
-  --master-username agentpress \
+  --master-username swarmpress \
   --master-user-password <secure-password> \
   --allocated-storage 100 \
   --storage-encrypted \
   --vpc-security-group-ids sg-xxxxx \
-  --db-subnet-group-name agentpress-subnet-group \
+  --db-subnet-group-name swarmpress-subnet-group \
   --backup-retention-period 7 \
   --multi-az \
   --publicly-accessible false
@@ -83,7 +83,7 @@ Wait for instance to be available, then run migrations:
 
 ```bash
 # Connect via bastion or VPN
-export DATABASE_URL="postgresql://agentpress:<password>@agentpress-prod.xxxxx.us-east-1.rds.amazonaws.com:5432/agentpress"
+export DATABASE_URL="postgresql://swarmpress:<password>@swarmpress-prod.xxxxx.us-east-1.rds.amazonaws.com:5432/swarmpress"
 
 # Run migrations
 psql $DATABASE_URL -f packages/backend/migrations/001_initial_schema.sql
@@ -113,21 +113,21 @@ aws ecr get-login-password --region us-east-1 | \
   docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
 
 # Create repositories
-aws ecr create-repository --repository-name agentpress/backend
-aws ecr create-repository --repository-name agentpress/workflows
+aws ecr create-repository --repository-name swarmpress/backend
+aws ecr create-repository --repository-name swarmpress/workflows
 
 # Build images
 pnpm build
 
 docker build -f packages/backend/Dockerfile \
-  -t <account-id>.dkr.ecr.us-east-1.amazonaws.com/agentpress/backend:latest .
+  -t <account-id>.dkr.ecr.us-east-1.amazonaws.com/swarmpress/backend:latest .
 
 docker build -f packages/workflows/Dockerfile \
-  -t <account-id>.dkr.ecr.us-east-1.amazonaws.com/agentpress/workflows:latest .
+  -t <account-id>.dkr.ecr.us-east-1.amazonaws.com/swarmpress/workflows:latest .
 
 # Push images
-docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/agentpress/backend:latest
-docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/agentpress/workflows:latest
+docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/swarmpress/backend:latest
+docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/swarmpress/workflows:latest
 ```
 
 ### 5. Deploy to ECS
@@ -137,7 +137,7 @@ Create task definitions:
 **Backend Task Definition** (`backend-task-def.json`):
 ```json
 {
-  "family": "agentpress-backend",
+  "family": "swarmpress-backend",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "1024",
@@ -145,7 +145,7 @@ Create task definitions:
   "containerDefinitions": [
     {
       "name": "backend",
-      "image": "<account-id>.dkr.ecr.us-east-1.amazonaws.com/agentpress/backend:latest",
+      "image": "<account-id>.dkr.ecr.us-east-1.amazonaws.com/swarmpress/backend:latest",
       "portMappings": [
         {
           "containerPort": 3000,
@@ -167,7 +167,7 @@ Create task definitions:
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/agentpress-backend",
+          "awslogs-group": "/ecs/swarmpress-backend",
           "awslogs-region": "us-east-1",
           "awslogs-stream-prefix": "ecs"
         }
@@ -188,18 +188,18 @@ aws ecs register-task-definition --cli-input-json file://workflows-task-def.json
 
 # Create services
 aws ecs create-service \
-  --cluster agentpress-prod \
+  --cluster swarmpress-prod \
   --service-name backend \
-  --task-definition agentpress-backend \
+  --task-definition swarmpress-backend \
   --desired-count 2 \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx]}" \
   --load-balancers "targetGroupArn=arn:aws:elasticloadbalancing:...,containerName=backend,containerPort=3000"
 
 aws ecs create-service \
-  --cluster agentpress-prod \
+  --cluster swarmpress-prod \
   --service-name workflows \
-  --task-definition agentpress-workflows \
+  --task-definition swarmpress-workflows \
   --desired-count 2 \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx]}"
@@ -210,13 +210,13 @@ aws ecs create-service \
 ```bash
 # Create Application Load Balancer
 aws elbv2 create-load-balancer \
-  --name agentpress-alb \
+  --name swarmpress-alb \
   --subnets subnet-xxx subnet-yyy \
   --security-groups sg-xxx
 
 # Create target group
 aws elbv2 create-target-group \
-  --name agentpress-backend-tg \
+  --name swarmpress-backend-tg \
   --protocol HTTP \
   --port 3000 \
   --vpc-id vpc-xxx \
@@ -259,7 +259,7 @@ aws route53 change-resource-record-sets \
 
 ```bash
 # Connect to production database via bastion
-ssh -L 5432:agentpress-prod.xxxxx.rds.amazonaws.com:5432 bastion-host
+ssh -L 5432:swarmpress-prod.xxxxx.rds.amazonaws.com:5432 bastion-host
 
 # In another terminal, seed data
 tsx scripts/seed.ts
@@ -272,10 +272,10 @@ tsx scripts/seed.ts
 curl https://api.yourdomain.com/health
 
 # Check ECS services
-aws ecs describe-services --cluster agentpress-prod --services backend workflows
+aws ecs describe-services --cluster swarmpress-prod --services backend workflows
 
 # Check logs
-aws logs tail /ecs/agentpress-backend --follow
+aws logs tail /ecs/swarmpress-backend --follow
 ```
 
 ## Step-by-Step: Fly.io Deployment
@@ -293,17 +293,17 @@ fly auth login
 
 ```bash
 # In packages/backend
-fly launch --name agentpress-backend --region sea
+fly launch --name swarmpress-backend --region sea
 
 # In packages/workflows
-fly launch --name agentpress-workflows --region sea
+fly launch --name swarmpress-workflows --region sea
 ```
 
 ### 3. Provision PostgreSQL
 
 ```bash
-fly postgres create --name agentpress-db --region sea
-fly postgres attach agentpress-db --app agentpress-backend
+fly postgres create --name swarmpress-db --region sea
+fly postgres attach swarmpress-db --app swarmpress-backend
 ```
 
 ### 4. Set Secrets
@@ -315,34 +315,34 @@ fly secrets set \
   TEMPORAL_URL=<temporal-url> \
   API_SECRET=<secret> \
   GITHUB_TOKEN=<token> \
-  --app agentpress-backend
+  --app swarmpress-backend
 
 fly secrets set \
   ANTHROPIC_API_KEY=<key> \
   DATABASE_URL=<db-url> \
   NATS_URL=<nats-url> \
   TEMPORAL_URL=<temporal-url> \
-  --app agentpress-workflows
+  --app swarmpress-workflows
 ```
 
 ### 5. Deploy
 
 ```bash
-fly deploy --app agentpress-backend
-fly deploy --app agentpress-workflows
+fly deploy --app swarmpress-backend
+fly deploy --app swarmpress-workflows
 ```
 
 ### 6. Scale
 
 ```bash
-fly scale count 2 --app agentpress-backend
-fly scale count 2 --app agentpress-workflows
+fly scale count 2 --app swarmpress-backend
+fly scale count 2 --app swarmpress-workflows
 ```
 
 ### 7. Custom Domain
 
 ```bash
-fly certs create api.yourdomain.com --app agentpress-backend
+fly certs create api.yourdomain.com --app swarmpress-backend
 ```
 
 ## Kubernetes Deployment
@@ -358,10 +358,10 @@ fly certs create api.yourdomain.com --app agentpress-backend
 ```bash
 helm repo add bitnami https://charts.bitnami.com/bitnami
 
-helm install agentpress-db bitnami/postgresql \
-  --set auth.username=agentpress \
+helm install swarmpress-db bitnami/postgresql \
+  --set auth.username=swarmpress \
   --set auth.password=<password> \
-  --set auth.database=agentpress \
+  --set auth.database=swarmpress \
   --set primary.persistence.size=100Gi \
   --set primary.resources.requests.cpu=1000m \
   --set primary.resources.requests.memory=2Gi
@@ -372,7 +372,7 @@ helm install agentpress-db bitnami/postgresql \
 ```bash
 helm repo add nats https://nats-io.github.io/k8s/helm/charts
 
-helm install agentpress-nats nats/nats \
+helm install swarmpress-nats nats/nats \
   --set nats.jetstream.enabled=true \
   --set nats.jetstream.memStorage.enabled=true \
   --set nats.jetstream.memStorage.size=1Gi \
@@ -402,30 +402,30 @@ Create Kubernetes manifests:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: agentpress-backend
+  name: swarmpress-backend
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: agentpress-backend
+      app: swarmpress-backend
   template:
     metadata:
       labels:
-        app: agentpress-backend
+        app: swarmpress-backend
     spec:
       containers:
       - name: backend
-        image: your-registry/agentpress-backend:latest
+        image: your-registry/swarmpress-backend:latest
         ports:
         - containerPort: 3000
         env:
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: agentpress-secrets
+              name: swarmpress-secrets
               key: database-url
         - name: NATS_URL
-          value: "nats://agentpress-nats:4222"
+          value: "nats://swarmpress-nats:4222"
         - name: TEMPORAL_URL
           value: "temporalio-frontend:7233"
         resources:
@@ -439,10 +439,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: agentpress-backend
+  name: swarmpress-backend
 spec:
   selector:
-    app: agentpress-backend
+    app: swarmpress-backend
   ports:
   - port: 80
     targetPort: 3000
@@ -488,7 +488,7 @@ kubectl apply -f workflows-deployment.yaml
 | `NODE_ENV` | Environment | `development` |
 | `LOG_LEVEL` | Logging level | `info` |
 | `CORS_ORIGIN` | Allowed origins | `*` |
-| `CEO_EMAIL` | CEO email | `ceo@agent.press` |
+| `CEO_EMAIL` | CEO email | `ceo@swarm.press` |
 | `CEO_PASSWORD` | CEO password | Random |
 
 ## Security Checklist
@@ -514,12 +514,12 @@ Production security requirements:
 
 ```bash
 # Create log groups
-aws logs create-log-group --log-group-name /ecs/agentpress-backend
-aws logs create-log-group --log-group-name /ecs/agentpress-workflows
+aws logs create-log-group --log-group-name /ecs/swarmpress-backend
+aws logs create-log-group --log-group-name /ecs/swarmpress-workflows
 
 # Create alarms
 aws cloudwatch put-metric-alarm \
-  --alarm-name agentpress-backend-errors \
+  --alarm-name swarmpress-backend-errors \
   --metric-name Errors \
   --namespace AWS/ECS \
   --statistic Sum \
@@ -552,12 +552,12 @@ import { eventBus } from './event-bus'
 import { Counter, Gauge } from 'prom-client'
 
 const contentStateGauge = new Gauge({
-  name: 'agentpress_content_by_state',
+  name: 'swarmpress_content_by_state',
   help: 'Content items by state',
   labelNames: ['state']
 })
 
-eventBus.subscribe('agentpress.content.state_changed', (event) => {
+eventBus.subscribe('swarmpress.content.state_changed', (event) => {
   // Update metrics
   contentStateGauge.inc({ state: event.data.to })
   contentStateGauge.dec({ state: event.data.from })
@@ -573,8 +573,8 @@ eventBus.subscribe('agentpress.content.state_changed', (event) => {
 # Automated backups enabled by default
 # Manual snapshot
 aws rds create-db-snapshot \
-  --db-instance-identifier agentpress-prod \
-  --db-snapshot-identifier agentpress-manual-backup-$(date +%Y%m%d)
+  --db-instance-identifier swarmpress-prod \
+  --db-snapshot-identifier swarmpress-manual-backup-$(date +%Y%m%d)
 ```
 
 **PostgreSQL**:
@@ -635,7 +635,7 @@ const pool = new Pool({
 
 ```bash
 # Check ECS tasks
-aws ecs describe-tasks --cluster agentpress-prod --tasks <task-arn>
+aws ecs describe-tasks --cluster swarmpress-prod --tasks <task-arn>
 
 # Check CloudWatch metrics
 aws cloudwatch get-metric-statistics \

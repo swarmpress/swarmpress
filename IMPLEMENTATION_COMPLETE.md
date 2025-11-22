@@ -1,4 +1,4 @@
-# agent.press - Implementation Complete
+# swarm.press - Implementation Complete
 
 **Status**: MVP Implementation Complete
 **Date**: January 2025
@@ -6,7 +6,7 @@
 
 ## Overview
 
-agent.press is a fully autonomous virtual publishing house operated by intelligent Claude agents. The complete system has been implemented following the 8-phase MVP plan.
+swarm.press is a fully autonomous virtual publishing house operated by intelligent Claude agents. The complete system has been implemented following the 8-phase MVP plan.
 
 ## What Was Built
 
@@ -156,7 +156,7 @@ agent.press is a fully autonomous virtual publishing house operated by intellige
 ## File Structure
 
 ```
-agentpress/
+swarmpress/
 ├── packages/
 │   ├── backend/              # 2,500+ lines
 │   │   ├── src/api/          # Express + tRPC
@@ -247,8 +247,8 @@ cp .env.example .env
 tsx scripts/bootstrap.ts
 
 # 4. Start services
-pnpm --filter @agent-press/backend dev
-pnpm --filter @agent-press/workflows dev
+pnpm --filter @swarm-press/backend dev
+pnpm --filter @swarm-press/workflows dev
 
 # 5. Access API
 curl http://localhost:3000/health

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://agent.press/schemas/Agent.schema.json",
+  "$id": "https://swarm.press/schemas/Agent.schema.json",
   "title": "Agent",
   "description": "A virtual employee performing work autonomously",
   "type": "object",

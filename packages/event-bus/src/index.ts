@@ -1,6 +1,6 @@
 /**
- * @agent-press/event-bus
- * NATS event bus with CloudEvents for agent.press
+ * @swarm-press/event-bus
+ * NATS event bus with CloudEvents for swarm.press
  */
 
 export { eventBus } from './connection'

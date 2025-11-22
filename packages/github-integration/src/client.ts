@@ -1,6 +1,6 @@
 /**
  * GitHub API Client
- * Wrapper around Octokit for agent.press operations
+ * Wrapper around Octokit for swarm.press operations
  */
 
 import { Octokit } from '@octokit/rest'
@@ -16,7 +16,7 @@ export interface GitHubConfig {
 }
 
 /**
- * GitHub client for agent.press
+ * GitHub client for swarm.press
  */
 export class GitHubClient {
   private octokit: Octokit

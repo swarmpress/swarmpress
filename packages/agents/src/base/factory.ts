@@ -4,8 +4,8 @@
  */
 
 import { BaseAgent } from './agent'
-import { agentRepository } from '@agent-press/backend'
-import type { Agent } from '@agent-press/shared'
+import { agentRepository } from '@swarm-press/backend'
+import type { Agent } from '@swarm-press/shared'
 
 // ============================================================================
 // Agent Registry

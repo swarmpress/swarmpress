@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://agent.press/schemas/Company.schema.json",
+  "$id": "https://swarm.press/schemas/Company.schema.json",
   "title": "Company",
   "description": "The overarching virtual organization within which all operations occur",
   "type": "object",

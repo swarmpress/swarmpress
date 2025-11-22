@@ -9,7 +9,7 @@ import {
   syncPRToInternal,
   syncPRReviewToInternal,
   syncIssueCommentToInternal,
-} from '@agent-press/github-integration'
+} from '@swarm-press/github-integration'
 
 const router = Router()
 

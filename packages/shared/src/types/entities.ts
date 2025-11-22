@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { ContentBlocksSchema } from '../content/blocks'
 
 /**
- * Domain entity schemas for agent.press
+ * Domain entity schemas for swarm.press
  * Generated from JSON Schema files in /domain/schemas/
  */
 

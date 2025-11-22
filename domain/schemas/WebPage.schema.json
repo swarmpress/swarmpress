@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://agent.press/schemas/WebPage.schema.json",
+  "$id": "https://swarm.press/schemas/WebPage.schema.json",
   "title": "WebPage",
   "description": "A route or page within a website",
   "type": "object",

@@ -1,6 +1,6 @@
 /**
  * Express + tRPC API Server
- * Main entry point for agent.press API
+ * Main entry point for swarm.press API
  */
 
 import express from 'express'
@@ -11,7 +11,7 @@ import { createContext } from './trpc'
 import { eventsRouter } from './events.router'
 import { webhooksRouter } from './webhooks.router'
 import { db } from '../db/connection'
-import { eventBus } from '@agent-press/event-bus'
+import { eventBus } from '@swarm-press/event-bus'
 
 /**
  * Create Express app with middleware

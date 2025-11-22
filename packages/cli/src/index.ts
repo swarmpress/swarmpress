@@ -11,14 +11,14 @@ import { eventsCommands } from './commands/events'
 const program = new Command()
 
 program
-  .name('agentpress')
-  .description('Operator CLI for agent.press - autonomous publishing platform')
+  .name('swarmpress')
+  .description('Operator CLI for swarm.press - autonomous publishing platform')
   .version('0.1.0')
 
 // Init command
 program
   .command('init')
-  .description('Initialize agent.press with default company, departments, roles, and agents')
+  .description('Initialize swarm.press with default company, departments, roles, and agents')
   .action(initCommand)
 
 // Content commands

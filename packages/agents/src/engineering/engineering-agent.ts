@@ -5,9 +5,9 @@
 
 import { BaseAgent, AgentConfig, AgentContext, Tool } from '../base/agent'
 import { getContentItem, transitionContent } from '../base/utilities'
-import type { Agent } from '@agent-press/shared'
-import { events } from '@agent-press/event-bus'
-import { publishWebsite, validateContent } from '@agent-press/site-builder/generator'
+import type { Agent } from '@swarm-press/shared'
+import { events } from '@swarm-press/event-bus'
+import { publishWebsite, validateContent } from '@swarm-press/site-builder/generator'
 
 // ============================================================================
 // Engineering Agent Tools
@@ -141,7 +141,7 @@ export class EngineeringAgent extends BaseAgent {
       department: agentData.department,
       capabilities: agentData.capabilities,
       tools: ENGINEERING_TOOLS,
-      systemPrompt: `You are ${agentData.name}, an engineering agent at agent.press.
+      systemPrompt: `You are ${agentData.name}, an engineering agent at swarm.press.
 
 Your role: ${agentData.role}
 Department: ${agentData.department}

@@ -1,8 +1,8 @@
 {
-  "name": "@agent-press/site-builder",
+  "name": "@swarm-press/site-builder",
   "version": "0.1.0",
   "private": true,
-  "description": "Astro-based static site builder for agent.press",
+  "description": "Astro-based static site builder for swarm.press",
   "type": "module",
   "scripts": {
     "dev": "astro dev",
@@ -12,8 +12,8 @@
     "typecheck": "astro check"
   },
   "dependencies": {
-    "@agent-press/shared": "workspace:*",
-    "@agent-press/backend": "workspace:*",
+    "@swarm-press/shared": "workspace:*",
+    "@swarm-press/backend": "workspace:*",
     "@astrojs/node": "^8.2.0",
     "astro": "^4.3.0",
     "sharp": "^0.33.0"

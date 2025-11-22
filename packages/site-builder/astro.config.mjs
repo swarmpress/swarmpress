@@ -24,7 +24,7 @@ export default defineConfig({
   // Vite configuration
   vite: {
     ssr: {
-      noExternal: ['@agent-press/shared', '@agent-press/backend'],
+      noExternal: ['@swarm-press/shared', '@swarm-press/backend'],
     },
   },
 })

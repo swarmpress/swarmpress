@@ -4,7 +4,7 @@
  */
 
 import { Router, Request, Response } from 'express'
-import { events } from '@agent-press/event-bus'
+import { events } from '@swarm-press/event-bus'
 
 const router = Router()
 

@@ -94,9 +94,9 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: agentpress
-          POSTGRES_PASSWORD: agentpress
-          POSTGRES_DB: agentpress_test
+          POSTGRES_USER: swarmpress
+          POSTGRES_PASSWORD: swarmpress
+          POSTGRES_DB: swarmpress_test
         ports:
           - 5432:5432
         options: >-
@@ -143,6 +143,6 @@ jobs:
       - name: Run tests
         run: pnpm test
         env:
-          DATABASE_URL: postgresql://agentpress:agentpress@localhost:5432/agentpress_test
+          DATABASE_URL: postgresql://swarmpress:swarmpress@localhost:5432/swarmpress_test
           NATS_URL: nats://localhost:4222
           NODE_ENV: test

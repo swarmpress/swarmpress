@@ -1,4 +1,4 @@
-import { Agent } from '@agent-press/shared'
+import { Agent } from '@swarm-press/shared'
 import { BaseRepository } from '../base-repository'
 
 /**

@@ -1,6 +1,6 @@
 # Logging and Error Tracking
 
-Structured logging system with correlation IDs for tracing requests across the agent.press platform.
+Structured logging system with correlation IDs for tracing requests across the swarm.press platform.
 
 ## Features
 
@@ -16,7 +16,7 @@ Structured logging system with correlation IDs for tracing requests across the a
 ### Basic Logging
 
 ```typescript
-import { logger } from '@agent-press/shared/logging'
+import { logger } from '@swarm-press/shared/logging'
 
 // Info log
 logger.info('Content created', { contentId: 'abc-123' })
@@ -33,7 +33,7 @@ logger.debug('Fetching from database', { query: 'SELECT * FROM content' })
 Create child loggers with fixed context:
 
 ```typescript
-import { logger } from '@agent-press/shared/logging'
+import { logger } from '@swarm-press/shared/logging'
 
 // Create logger for specific agent
 const agentLogger = logger.child({ agentId: 'writer-001' })
@@ -47,7 +47,7 @@ agentLogger.info('Task completed') // Automatically includes agentId
 Track requests across services:
 
 ```typescript
-import { runWithCorrelation, getCorrelationId } from '@agent-press/shared/logging'
+import { runWithCorrelation, getCorrelationId } from '@swarm-press/shared/logging'
 
 // Run function with correlation context
 runWithCorrelation('corr-123', () => {
@@ -65,7 +65,7 @@ Add correlation IDs to all requests:
 
 ```typescript
 import express from 'express'
-import { correlationMiddleware } from '@agent-press/shared/logging'
+import { correlationMiddleware } from '@swarm-press/shared/logging'
 
 const app = express()
 
@@ -89,7 +89,7 @@ The middleware:
 Track errors with full context:
 
 ```typescript
-import { errorTracker } from '@agent-press/shared/logging'
+import { errorTracker } from '@swarm-press/shared/logging'
 
 try {
   await doSomething()
@@ -104,7 +104,7 @@ try {
 Wrap functions for automatic error tracking:
 
 ```typescript
-import { withErrorTracking } from '@agent-press/shared/logging'
+import { withErrorTracking } from '@swarm-press/shared/logging'
 
 const safeFunction = withErrorTracking(async () => {
   // Your code here
@@ -121,7 +121,7 @@ await safeFunction()
 Add error tracking to Express:
 
 ```typescript
-import { errorMiddleware } from '@agent-press/shared/logging'
+import { errorMiddleware } from '@swarm-press/shared/logging'
 
 app.use(errorMiddleware())
 
@@ -136,12 +136,12 @@ app.use(errorMiddleware())
 Include correlation data in events:
 
 ```typescript
-import { getCloudEventsExtension } from '@agent-press/shared/logging'
-import { eventBus } from '@agent-press/event-bus'
+import { getCloudEventsExtension } from '@swarm-press/shared/logging'
+import { eventBus } from '@swarm-press/event-bus'
 
 await eventBus.publish({
   type: 'content.created',
-  source: 'agent-press/api',
+  source: 'swarm-press/api',
   data: { contentId: 'abc-123' },
   // Add correlation extension
   ...getCloudEventsExtension()
@@ -222,7 +222,7 @@ await errorTracker.track(error, {
 Get recent errors:
 
 ```typescript
-import { errorTracker } from '@agent-press/shared/logging'
+import { errorTracker } from '@swarm-press/shared/logging'
 
 // Get last 100 errors
 const errors = errorTracker.getRecentErrors(100)
@@ -239,7 +239,7 @@ const requestErrors = errorTracker.getErrorsByCorrelation('corr-123')
 Register global error handlers:
 
 ```typescript
-import { errorTracker } from '@agent-press/shared/logging'
+import { errorTracker } from '@swarm-press/shared/logging'
 
 // Send to external service (e.g., Sentry)
 errorTracker.registerHandler(async (report) => {
@@ -254,7 +254,7 @@ errorTracker.registerHandler(async (report) => {
 ### Temporal Workflows
 
 ```typescript
-import { logger, runWithCorrelation } from '@agent-press/shared/logging'
+import { logger, runWithCorrelation } from '@swarm-press/shared/logging'
 
 export async function contentProductionWorkflow(input: WorkflowInput) {
   const workflowLogger = logger.child({
@@ -277,7 +277,7 @@ export async function contentProductionWorkflow(input: WorkflowInput) {
 ### Agents
 
 ```typescript
-import { createLogger } from '@agent-press/shared/logging'
+import { createLogger } from '@swarm-press/shared/logging'
 
 export class WriterAgent {
   private logger = createLogger('info', { agentId: 'writer-001' })
@@ -300,7 +300,7 @@ export class WriterAgent {
 ### API Endpoints
 
 ```typescript
-import { logger, getCorrelationId } from '@agent-press/shared/logging'
+import { logger, getCorrelationId } from '@swarm-press/shared/logging'
 
 export const contentRouter = router({
   create: publicProcedure
@@ -351,7 +351,7 @@ fields @timestamp, level, message, context.contentId, error.message
 Forward logs with correlation IDs:
 
 ```typescript
-import { errorTracker } from '@agent-press/shared/logging'
+import { errorTracker } from '@swarm-press/shared/logging'
 
 errorTracker.registerHandler(async (report) => {
   // Send to Datadog
@@ -370,7 +370,7 @@ Integrate with Sentry:
 
 ```typescript
 import * as Sentry from '@sentry/node'
-import { errorTracker } from '@agent-press/shared/logging'
+import { errorTracker } from '@swarm-press/shared/logging'
 
 errorTracker.registerHandler(async (report) => {
   if (report.severity === 'critical' || report.severity === 'high') {
@@ -380,7 +380,7 @@ errorTracker.registerHandler(async (report) => {
         severity: report.severity
       },
       contexts: {
-        agentpress: report.context
+        swarmpress: report.context
       }
     })
   }
@@ -411,7 +411,7 @@ errorTracker.registerHandler(async (report) => {
 Mock logger in tests:
 
 ```typescript
-import { createLogger } from '@agent-press/shared/logging'
+import { createLogger } from '@swarm-press/shared/logging'
 
 const mockLogger = createLogger('error', { test: true })
 

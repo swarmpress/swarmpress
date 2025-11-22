@@ -1,6 +1,6 @@
-# GitHub Integration for agent.press
+# GitHub Integration for swarm.press
 
-This package provides GitHub-based collaboration and governance for agent.press, implementing the **Option B: Hybrid Sync Model**.
+This package provides GitHub-based collaboration and governance for swarm.press, implementing the **Option B: Hybrid Sync Model**.
 
 ## Architecture
 
@@ -57,7 +57,7 @@ Bidirectional state synchronization:
 Create a repository to store content and track collaboration:
 
 ```bash
-gh repo create myorg/agentpress-content --private
+gh repo create myorg/swarmpress-content --private
 ```
 
 ### 2. Authentication
@@ -67,7 +67,7 @@ gh repo create myorg/agentpress-content --private
 ```env
 GITHUB_TOKEN=ghp_your_token_here
 GITHUB_OWNER=myorg
-GITHUB_REPO=agentpress-content
+GITHUB_REPO=swarmpress-content
 ```
 
 **Option B: GitHub App (Production)**
@@ -77,7 +77,7 @@ GITHUB_APP_ID=123456
 GITHUB_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n..."
 GITHUB_INSTALLATION_ID=78910
 GITHUB_OWNER=myorg
-GITHUB_REPO=agentpress-content
+GITHUB_REPO=swarmpress-content
 ```
 
 ### 3. Webhooks
@@ -91,7 +91,7 @@ Configure webhook in GitHub repository settings:
 ### 4. Initialize Client
 
 ```typescript
-import { initializeGitHub } from '@agent-press/github-integration'
+import { initializeGitHub } from '@swarm-press/github-integration'
 
 initializeGitHub({
   token: process.env.GITHUB_TOKEN,
@@ -105,7 +105,7 @@ initializeGitHub({
 ### Content Review Workflow
 
 ```typescript
-import { syncContentToGitHub } from '@agent-press/github-integration'
+import { syncContentToGitHub } from '@swarm-press/github-integration'
 
 // When content transitions to in_editorial_review
 await syncContentToGitHub(contentId)
@@ -117,7 +117,7 @@ await syncContentToGitHub(contentId)
 ### Editorial Approval
 
 ```typescript
-import { syncApprovalToGitHub } from '@agent-press/github-integration'
+import { syncApprovalToGitHub } from '@swarm-press/github-integration'
 
 // When editor approves content
 await syncApprovalToGitHub(contentId, 'Content looks great!', 'editor-agent')
@@ -128,7 +128,7 @@ await syncApprovalToGitHub(contentId, 'Content looks great!', 'editor-agent')
 ### CEO Question
 
 ```typescript
-import { syncQuestionToGitHub } from '@agent-press/github-integration'
+import { syncQuestionToGitHub } from '@swarm-press/github-integration'
 
 // When high-risk content escalated
 await syncQuestionToGitHub(ticketId)
@@ -141,7 +141,7 @@ await syncQuestionToGitHub(ticketId)
 ### Publishing
 
 ```typescript
-import { syncPublishToGitHub } from '@agent-press/github-integration'
+import { syncPublishToGitHub } from '@swarm-press/github-integration'
 
 // When content is published
 await syncPublishToGitHub(contentId)
@@ -153,7 +153,7 @@ await syncPublishToGitHub(contentId)
 ## Repository Structure
 
 ```
-agentpress-content/
+swarmpress-content/
 ├── content/
 │   ├── website-1/
 │   │   ├── article-1.json

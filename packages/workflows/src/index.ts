@@ -1,6 +1,6 @@
 /**
- * @agent-press/workflows
- * Temporal workflows and activities for agent.press
+ * @swarm-press/workflows
+ * Temporal workflows and activities for swarm.press
  */
 
 // Export Temporal client and worker

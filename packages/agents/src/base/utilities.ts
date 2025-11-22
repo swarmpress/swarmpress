@@ -7,9 +7,9 @@ import {
   contentRepository,
   taskRepository,
   questionTicketRepository,
-} from '@agent-press/backend'
-import { events } from '@agent-press/event-bus'
-import type { ContentItem, Task, QuestionTicket } from '@agent-press/shared'
+} from '@swarm-press/backend'
+import { events } from '@swarm-press/event-bus'
+import type { ContentItem, Task, QuestionTicket } from '@swarm-press/shared'
 
 // ============================================================================
 // Content Utilities

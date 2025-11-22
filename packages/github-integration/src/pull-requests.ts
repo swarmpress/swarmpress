@@ -4,7 +4,7 @@
  */
 
 import { getGitHub } from './client'
-import type { ContentItem } from '@agent-press/shared'
+import type { ContentItem } from '@swarm-press/shared'
 
 export interface CreateContentPRParams {
   contentId: string

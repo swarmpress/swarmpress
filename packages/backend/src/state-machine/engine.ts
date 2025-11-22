@@ -4,13 +4,13 @@
  */
 
 import { db } from '../db/connection'
-import { publishEvent } from '@agent-press/event-bus'
+import { publishEvent } from '@swarm-press/event-bus'
 import {
   StateMachine,
   TransitionRequest,
   TransitionResult,
   canTransition,
-} from '@agent-press/shared/state-machines'
+} from '@swarm-press/shared/state-machines'
 import { v4 as uuidv4 } from 'uuid'
 
 // ============================================================================

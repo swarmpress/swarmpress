@@ -8,7 +8,7 @@
 
 ## Purpose
 
-The JSON Block Model is the canonical content format for agent.press. It provides a structured, LLM-friendly, component-based content representation that is:
+The JSON Block Model is the canonical content format for swarm.press. It provides a structured, LLM-friendly, component-based content representation that is:
 
 - **Flexible** — Supports rich layouts and components
 - **Parseable** — Easy for LLMs to generate and analyze
@@ -426,4 +426,4 @@ When generating content blocks, LLMs should:
 
 ---
 
-**This is the canonical content model for agent.press.**
+**This is the canonical content model for swarm.press.**

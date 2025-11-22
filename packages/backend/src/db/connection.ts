@@ -1,5 +1,5 @@
 import { Pool, PoolClient, QueryResult } from 'pg'
-import { getEnv } from '@agent-press/shared'
+import { getEnv } from '@swarm-press/shared'
 
 /**
  * PostgreSQL connection pool

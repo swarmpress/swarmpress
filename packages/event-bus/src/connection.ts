@@ -1,5 +1,5 @@
 import { connect, NatsConnection, JetStreamClient, JetStreamManager } from 'nats'
-import { getEnv } from '@agent-press/shared'
+import { getEnv } from '@swarm-press/shared'
 
 /**
  * NATS connection manager
@@ -32,7 +32,7 @@ class EventBus {
       const env = getEnv()
       this.connection = await connect({
         servers: env.NATS_URL,
-        name: 'agentpress-eventbus',
+        name: 'swarmpress-eventbus',
       })
 
       console.log(`✅ Connected to NATS at ${env.NATS_URL}`)
@@ -67,10 +67,10 @@ class EventBus {
     }
 
     try {
-      // Create agentpress stream if it doesn't exist
+      // Create swarmpress stream if it doesn't exist
       await this.jsm.streams.add({
         name: 'AGENTPRESS',
-        subjects: ['agentpress.>'],
+        subjects: ['swarmpress.>'],
         storage: 'file',
         retention: 'limits',
         max_age: 7 * 24 * 60 * 60 * 1000000000, // 7 days in nanoseconds

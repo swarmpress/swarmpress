@@ -1,6 +1,6 @@
 /**
- * @agent-press/github-integration
- * GitHub collaboration and governance layer for agent.press
+ * @swarm-press/github-integration
+ * GitHub collaboration and governance layer for swarm.press
  */
 
 export { GitHubClient, initializeGitHub, getGitHub } from './client'

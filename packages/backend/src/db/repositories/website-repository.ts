@@ -1,4 +1,4 @@
-import { Website } from '@agent-press/shared'
+import { Website } from '@swarm-press/shared'
 import { BaseRepository } from '../base-repository'
 
 /**

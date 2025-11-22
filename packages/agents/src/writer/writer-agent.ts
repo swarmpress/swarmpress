@@ -16,8 +16,8 @@ import {
   createQuoteBlock,
   validateContentBlocks,
 } from '../base/utilities'
-import type { Agent } from '@agent-press/shared'
-import { events } from '@agent-press/event-bus'
+import type { Agent } from '@swarm-press/shared'
+import { events } from '@swarm-press/event-bus'
 
 // ============================================================================
 // Writer Agent Tools
@@ -116,7 +116,7 @@ export class WriterAgent extends BaseAgent {
       department: agentData.department,
       capabilities: agentData.capabilities,
       tools: WRITER_TOOLS,
-      systemPrompt: `You are ${agentData.name}, a professional content writer at agent.press.
+      systemPrompt: `You are ${agentData.name}, a professional content writer at swarm.press.
 
 Your role: ${agentData.role}
 Department: ${agentData.department}

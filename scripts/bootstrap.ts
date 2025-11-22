@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * Bootstrap Script
- * Initializes agent.press system from scratch
+ * Initializes swarm.press system from scratch
  */
 
 import { execSync } from 'child_process'
@@ -209,7 +209,7 @@ function seedData(): void {
  * Main bootstrap function
  */
 async function bootstrap(config: BootstrapConfig = {}): Promise<void> {
-  console.log('🚀 agent.press Bootstrap\n')
+  console.log('🚀 swarm.press Bootstrap\n')
   console.log('=' .repeat(60))
 
   try {
@@ -244,8 +244,8 @@ async function bootstrap(config: BootstrapConfig = {}): Promise<void> {
     console.log('\n' + '='.repeat(60))
     console.log('✨ Bootstrap completed successfully!\n')
     console.log('Next steps:')
-    console.log('  1. Start the API server: pnpm --filter @agent-press/backend dev')
-    console.log('  2. Start Temporal worker: pnpm --filter @agent-press/workflows dev')
+    console.log('  1. Start the API server: pnpm --filter @swarm-press/backend dev')
+    console.log('  2. Start Temporal worker: pnpm --filter @swarm-press/workflows dev')
     console.log('  3. Access API: http://localhost:3000')
     console.log('  4. View health: http://localhost:3000/health')
     console.log('\n📚 Documentation: docs/README.md')

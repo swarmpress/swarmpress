@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://agent.press/schemas/Task.schema.json",
+  "$id": "https://swarm.press/schemas/Task.schema.json",
   "title": "Task",
   "description": "Assigned work for an agent",
   "type": "object",

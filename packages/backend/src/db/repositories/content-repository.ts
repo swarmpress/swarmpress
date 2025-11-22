@@ -1,4 +1,4 @@
-import { ContentItem, ContentItemStatus } from '@agent-press/shared'
+import { ContentItem, ContentItemStatus } from '@swarm-press/shared'
 import { BaseRepository } from '../base-repository'
 import { db } from '../connection'
 
@@ -55,7 +55,7 @@ export class ContentRepository extends BaseRepository<ContentItem> {
     }
 
     const { executeTransition } = await import('../../state-machine/engine')
-    const { contentItemStateMachine } = await import('@agent-press/shared/state-machines')
+    const { contentItemStateMachine } = await import('@swarm-press/shared/state-machines')
 
     const result = await executeTransition(contentItemStateMachine, {
       entityId: id,

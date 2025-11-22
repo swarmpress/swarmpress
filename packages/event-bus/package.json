@@ -1,8 +1,8 @@
 {
-  "name": "@agent-press/event-bus",
+  "name": "@swarm-press/event-bus",
   "version": "0.1.0",
   "private": true,
-  "description": "NATS event bus with CloudEvents for agent.press",
+  "description": "NATS event bus with CloudEvents for swarm.press",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
@@ -13,7 +13,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@agent-press/shared": "workspace:*",
+    "@swarm-press/shared": "workspace:*",
     "dotenv": "^16.3.1",
     "nats": "^2.19.0",
     "zod": "^3.22.4"

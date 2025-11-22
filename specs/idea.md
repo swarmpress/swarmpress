@@ -1,10 +1,10 @@
-# GitHub-Driven Collaboration & Governance Architecture for agent.press
+# GitHub-Driven Collaboration & Governance Architecture for swarm.press
 
 ## 17. GitHub-Driven Collaboration & Governance Architecture
 
 ## 17.1 Overview
 
-agent.press supports a dual interaction model for steering, reviewing, and supervising the autonomous publishing organization:
+swarm.press supports a dual interaction model for steering, reviewing, and supervising the autonomous publishing organization:
 
 1. **Internal orchestration layer** — Workflows, agents, Temporal, NATS, database, state machines.
 2. **External governance layer** — A transparent human-visible interface for operational oversight.
@@ -34,9 +34,9 @@ Using GitHub as a first-class governance interface offers:
 
 ## 17.3 GitHub as the Agent Collaboration Surface
 
-GitHub entities map directly to agent.press concepts:
+GitHub entities map directly to swarm.press concepts:
 
-| GitHub Concept | agent.press Concept |
+| GitHub Concept | swarm.press Concept |
 |----------------|---------------------|
 | Pull Request   | Content Review Workflow |
 | Comments       | Editorial feedback, CEO instructions |
@@ -140,7 +140,7 @@ GitHub state syncs with internal PostgreSQL state machines using:
 
 ## 17.13 Conclusion
 
-Using GitHub as the collaboration and governance surface transforms agent.press into:
+Using GitHub as the collaboration and governance surface transforms swarm.press into:
 
 > **A transparent, auditable, agent-driven publishing organization where all work is done through Pull Requests, Issues, and Comments.**
 

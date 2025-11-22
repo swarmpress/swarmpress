@@ -1,10 +1,10 @@
 /**
  * Base Agent Infrastructure
- * Using Claude Agent SDK patterns for agent.press
+ * Using Claude Agent SDK patterns for swarm.press
  */
 
 import Anthropic from '@anthropic-ai/sdk'
-import { getEnv } from '@agent-press/shared'
+import { getEnv } from '@swarm-press/shared'
 
 // ============================================================================
 // Types

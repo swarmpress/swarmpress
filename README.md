@@ -1,8 +1,8 @@
-# agent.press
+# swarm.press
 
 **A Fully Autonomous Virtual Publishing House**
 
-agent.press is a production-ready publishing platform operated entirely by intelligent Claude agents. The system handles content creation, editorial review, site generation, and deployment with human oversight through GitHub collaboration.
+swarm.press is a production-ready publishing platform operated entirely by intelligent Claude agents. The system handles content creation, editorial review, site generation, and deployment with human oversight through GitHub collaboration.
 
 ## Key Features
 
@@ -33,7 +33,7 @@ agent.press is a production-ready publishing platform operated entirely by intel
 ### Package Structure
 
 ```
-agentpress/
+swarmpress/
 ├── packages/
 │   ├── backend/              # API server, repositories, state machine
 │   ├── workflows/            # Temporal workflows and activities
@@ -73,7 +73,7 @@ agentpress/
 ```bash
 # 1. Clone repository
 git clone <your-repo>
-cd agentpress
+cd swarmpress
 
 # 2. Install dependencies
 pnpm install
@@ -97,10 +97,10 @@ The bootstrap script will:
 
 ```bash
 # Terminal 1: API Server
-pnpm --filter @agent-press/backend dev
+pnpm --filter @swarm-press/backend dev
 
 # Terminal 2: Temporal Worker
-pnpm --filter @agent-press/workflows dev
+pnpm --filter @swarm-press/workflows dev
 
 # Terminal 3: Monitor events (optional)
 curl -N http://localhost:3000/api/events/stream
@@ -151,7 +151,7 @@ All state transitions are:
 
 ### Why GitHub?
 
-Instead of building a custom dashboard, agent.press uses GitHub as the collaboration surface:
+Instead of building a custom dashboard, swarm.press uses GitHub as the collaboration surface:
 - **Zero custom UI development** - Use GitHub's polished interface
 - **Mobile access** - Via GitHub mobile app
 - **Familiar workflow** - PRs and Issues developers already know
@@ -219,7 +219,7 @@ Question from: EditorAgent
 
 ### Webhook Configuration
 
-Set up GitHub webhook to sync events back to agent.press:
+Set up GitHub webhook to sync events back to swarm.press:
 
 1. Go to repository Settings → Webhooks
 2. Add webhook:
@@ -254,7 +254,7 @@ Authorization: Bearer system
 
 Configure CEO credentials in `.env`:
 ```bash
-CEO_EMAIL=ceo@agent.press
+CEO_EMAIL=ceo@swarm.press
 CEO_PASSWORD=your-secure-password
 ```
 
@@ -372,7 +372,7 @@ Example event:
 {
   "specversion": "1.0",
   "type": "content.state_changed",
-  "source": "agent-press/state-machine",
+  "source": "swarm-press/state-machine",
   "id": "event-123",
   "time": "2025-01-15T10:30:00Z",
   "datacontenttype": "application/json",
@@ -647,8 +647,8 @@ tsx scripts/clear.ts && tsx scripts/seed.ts
 pnpm build
 
 # Build specific package
-pnpm --filter @agent-press/backend build
-pnpm --filter @agent-press/workflows build
+pnpm --filter @swarm-press/backend build
+pnpm --filter @swarm-press/workflows build
 ```
 
 ## Deployment
@@ -667,7 +667,7 @@ See `docs/DEPLOYMENT.md` for detailed deployment guides.
 
 ```bash
 # Database (use SSL in production)
-DATABASE_URL=postgresql://user:pass@prod-db.com:5432/agentpress?ssl=true
+DATABASE_URL=postgresql://user:pass@prod-db.com:5432/swarmpress?ssl=true
 
 # NATS (use TLS in production)
 NATS_URL=nats://prod-nats.com:4222
@@ -720,18 +720,18 @@ All significant events are published to NATS:
 
 ```bash
 # Subscribe to all events
-nats sub "agentpress.>"
+nats sub "swarmpress.>"
 
 # Subscribe to specific event type
-nats sub "agentpress.content.>"
+nats sub "swarmpress.content.>"
 ```
 
 Event subjects:
-- `agentpress.content.state_changed`
-- `agentpress.content.created`
-- `agentpress.task.status_changed`
-- `agentpress.ticket.created`
-- `agentpress.deploy.success`
+- `swarmpress.content.state_changed`
+- `swarmpress.content.created`
+- `swarmpress.task.status_changed`
+- `swarmpress.ticket.created`
+- `swarmpress.deploy.success`
 
 ### Logging
 
@@ -785,7 +785,7 @@ docker-compose ps temporal
 open http://localhost:8233
 
 # Check worker logs
-pnpm --filter @agent-press/workflows dev
+pnpm --filter @swarm-press/workflows dev
 ```
 
 ### Agent Execution Failed
@@ -798,7 +798,7 @@ echo $ANTHROPIC_API_KEY
 # Visit https://console.anthropic.com
 
 # Review agent logs
-pnpm --filter @agent-press/agents dev
+pnpm --filter @swarm-press/agents dev
 ```
 
 ### GitHub Webhook Not Working

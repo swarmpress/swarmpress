@@ -5,8 +5,8 @@
 
 import { BaseAgent, AgentConfig, AgentContext, Tool } from '../base/agent'
 import { getQuestionTicket, answerQuestionTicket } from '../base/utilities'
-import { questionTicketRepository, taskRepository } from '@agent-press/backend'
-import type { Agent } from '@agent-press/shared'
+import { questionTicketRepository, taskRepository } from '@swarm-press/backend'
+import type { Agent } from '@swarm-press/shared'
 
 // ============================================================================
 // CEO Assistant Agent Tools
@@ -101,7 +101,7 @@ export class CEOAssistantAgent extends BaseAgent {
       department: agentData.department,
       capabilities: agentData.capabilities,
       tools: CEO_ASSISTANT_TOOLS,
-      systemPrompt: `You are ${agentData.name}, the CEO Assistant at agent.press.
+      systemPrompt: `You are ${agentData.name}, the CEO Assistant at swarm.press.
 
 Your role: ${agentData.role}
 Department: ${agentData.department}

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://agent.press/schemas/QuestionTicket.schema.json",
+  "$id": "https://swarm.press/schemas/QuestionTicket.schema.json",
   "title": "QuestionTicket",
   "description": "Escalation mechanism for agents to ask questions or report issues",
   "type": "object",

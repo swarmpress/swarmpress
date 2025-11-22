@@ -1,4 +1,4 @@
-# agent.press — Full System Specification (v1.0)
+# swarm.press — Full System Specification (v1.0)
 ## Part 1 — Introduction, Vision & Philosophy, System Architecture Overview
 
 ---
@@ -6,7 +6,7 @@
 # 1. Introduction
 
 ## 1.1 Purpose of This Document
-This document defines **agent.press**, a fully autonomous virtual publishing house operated by intelligent agents. It outlines the organizational structure, domain model, workflows, permissions, event systems, and governance mechanisms required to run the company autonomously with human‑in‑the‑loop oversight.
+This document defines **swarm.press**, a fully autonomous virtual publishing house operated by intelligent agents. It outlines the organizational structure, domain model, workflows, permissions, event systems, and governance mechanisms required to run the company autonomously with human‑in‑the‑loop oversight.
 
 ## 1.2 Scope
 The specification covers:
@@ -20,8 +20,8 @@ The specification covers:
 - Governance rules
 - Implementation principles (spec‑driven development)
 
-## 1.3 What agent.press Is
-agent.press is a **virtual media company** composed of **autonomous agents** who collaborate to:
+## 1.3 What swarm.press Is
+swarm.press is a **virtual media company** composed of **autonomous agents** who collaborate to:
 - Research, write, and edit content
 - Generate media assets
 - Optimize for SEO
@@ -31,8 +31,8 @@ agent.press is a **virtual media company** composed of **autonomous agents** who
 
 A human CEO supervises high‑risk decisions and resolves escalations.
 
-## 1.4 What agent.press Is Not
-agent.press is **not** a generic content generator or chatbot.  
+## 1.4 What swarm.press Is Not
+swarm.press is **not** a generic content generator or chatbot.  
 It is a structured organization with:
 - Departments  
 - Roles  
@@ -43,7 +43,7 @@ It is a structured organization with:
 
 ## 1.5 Why This Matters
 Most AI-content systems fail due to lack of structure, coordination, editorial quality, and clear decision boundaries.  
-agent.press solves this by using:
+swarm.press solves this by using:
 - Formal organizational models  
 - Real-world workflow standards  
 - Event-driven communication  
@@ -176,20 +176,20 @@ The CEO is the final authority.
 
 **END OF PART 1**
 
-# agent.press — Full System Specification (v1.0)
+# swarm.press — Full System Specification (v1.0)
 ## Part 2 — Organizational Structure & Domain Model
 
 ---
 
 # 4. Organizational Structure
 
-agent.press operates like a real publishing company with clear departments, roles, responsibilities, and reporting lines. This structure ensures that autonomous agents can collaborate in predictable, coordinated ways.
+swarm.press operates like a real publishing company with clear departments, roles, responsibilities, and reporting lines. This structure ensures that autonomous agents can collaborate in predictable, coordinated ways.
 
 ---
 
 ## 4.1 Departments Overview
 
-agent.press contains seven primary departments, each modeled after real-world media organizations:
+swarm.press contains seven primary departments, each modeled after real-world media organizations:
 
 1. **Editorial (Redaktion)**
 2. **Writers Room**
@@ -286,7 +286,7 @@ Provide visual assets, illustrations, layouts, and aesthetic consistency.
 ### **4.2.5 Technical / Web Engineering**
 
 **Purpose:**  
-Maintain the technical infrastructure of websites produced by agent.press.
+Maintain the technical infrastructure of websites produced by swarm.press.
 
 **Responsibilities:**  
 - Generate webpages  
@@ -341,7 +341,7 @@ Provide oversight, resolve conflicts, and ensure agent decisions align with orga
 
 # 5. Domain Model
 
-The domain model defines the **structural backbone** of agent.press. It includes all persistent entities, their attributes, and relationships.
+The domain model defines the **structural backbone** of swarm.press. It includes all persistent entities, their attributes, and relationships.
 
 This model forms the foundation for:
 - Data storage  
@@ -355,7 +355,7 @@ This model forms the foundation for:
 
 ## 5.1 Domain Modeling Standards
 
-agent.press uses multiple complementary notations:
+swarm.press uses multiple complementary notations:
 
 - **Entity‑Relationship (ER) Model**  
   High‑level conceptual model for developers and architects.
@@ -438,7 +438,7 @@ Agents follow **role‑based constraints**.
 ---
 
 ### **5.3.5 Website**
-A digital publication managed by agent.press.
+A digital publication managed by swarm.press.
 
 **Key attributes:**  
 - id  
@@ -531,14 +531,14 @@ The JSON Schema for all entities is defined centrally for use by:
 
 # **END OF PART 2**
 
-# agent.press — Full System Specification (v1.0)
+# swarm.press — Full System Specification (v1.0)
 ## Part 3 — Data Entities (Full Definitions)
 
 ---
 
 # 6. Data Entities (Deep Specification)
 
-This section provides **complete, long‑form definitions** of every entity in the agent.press ecosystem.  
+This section provides **complete, long‑form definitions** of every entity in the swarm.press ecosystem.  
 Each definition includes:
 
 - **Purpose**  
@@ -549,7 +549,7 @@ Each definition includes:
 - **Example JSON instances**  
 - **Notes for agents and developers**  
 
-Because agent.press is a **spec‑driven system**, entity precision is critical.  
+Because swarm.press is a **spec‑driven system**, entity precision is critical.  
 Agents operate on these objects. Developers generate their data models from them.
 
 ---
@@ -565,7 +565,7 @@ All departments, agents, websites, workflows, and events exist *within* a Compan
 | Field | Type | Description |
 |-------|------|-------------|
 | id | string | Unique identifier, usually UUID |
-| name | string | Human‑readable company name (e.g. "agent.press") |
+| name | string | Human‑readable company name (e.g. "swarm.press") |
 | description | string | Optional metadata about mission, vision, etc. |
 
 ## Relationships
@@ -576,7 +576,7 @@ All departments, agents, websites, workflows, and events exist *within* a Compan
 ```json
 {
   "id": "company-001",
-  "name": "agent.press",
+  "name": "swarm.press",
   "description": "A fully autonomous virtual publishing organization run by agents."
 }
 ```
@@ -695,7 +695,7 @@ Agents are defined by:
   "role_id": "role-writer",
   "department_id": "dept-writers",
   "persona": "Creative, concise, research-driven",
-  "virtual_email": "writer01@agent.press",
+  "virtual_email": "writer01@swarm.press",
   "capabilities": ["write", "revise", "submit_for_review"]
 }
 ```
@@ -728,7 +728,7 @@ Websites may be multi-tenant and multi‑language.
   "id": "site-001",
   "domain": "worldtravel.press",
   "title": "World Travel Guide",
-  "description": "A global travel publication run by agent.press",
+  "description": "A global travel publication run by swarm.press",
   "tenant": "default"
 }
 ```
@@ -931,14 +931,14 @@ Typical use cases:
 
 # END OF PART 3
 
-# agent.press — Full System Specification (v1.0)
+# swarm.press — Full System Specification (v1.0)
 ## Part 4 — Workflows (BPMN 2.0)
 
 ---
 
 # 7. Workflows (BPMN 2.0)
 
-agent.press relies on **BPMN 2.0** to define all business processes that agents must follow.  
+swarm.press relies on **BPMN 2.0** to define all business processes that agents must follow.  
 Workflows enforce structure, quality, predictability, and auditability.
 
 This section describes, in long-form detail, each workflow:
@@ -965,7 +965,7 @@ Each workflow includes:
 
 ## Purpose
 Defines how a piece of content moves from *idea → published*.  
-This is the core editorial workflow of agent.press.
+This is the core editorial workflow of swarm.press.
 
 ## Participants (Swimlanes)
 - **Chief Editor**
@@ -979,7 +979,7 @@ This is the core editorial workflow of agent.press.
 ## Trigger
 `ContentItem.status = "planned"`  
 OR  
-an event: `com.agentpress.topic.accepted`
+an event: `com.swarmpress.topic.accepted`
 
 ---
 
@@ -1259,14 +1259,14 @@ E --> F[Close Ticket]
 
 # END OF PART 4
 
-# agent.press — Full System Specification (v1.0)
+# swarm.press — Full System Specification (v1.0)
 ## Part 5 — Lifecycles, Events, Permissions & Governance
 
 ---
 
 # 8. Lifecycles (State Machines)
 
-Lifecycles define the **allowed states and transitions** for every core entity in agent.press.  
+Lifecycles define the **allowed states and transitions** for every core entity in swarm.press.  
 They enforce predictability and prevent agents from performing invalid actions.
 
 All lifecycles are modeled using:
@@ -1385,7 +1385,7 @@ A review is complete only when the receiving agent processes the result.
 
 # 9. Events (CloudEvents Standard)
 
-agent.press uses **CloudEvents v1.0**, enabling:
+swarm.press uses **CloudEvents v1.0**, enabling:
 
 - loose coupling  
 - predictable triggers  
@@ -1433,7 +1433,7 @@ Every meaningful event in the system follows the CloudEvents envelope.
 ```json
 {
   "specversion": "1.0",
-  "type": "agentpress.content.submittedForReview",
+  "type": "swarmpress.content.submittedForReview",
   "source": "/agents/writer/writer-01",
   "subject": "content/abc123",
   "id": "evt-001",
@@ -1452,7 +1452,7 @@ Every meaningful event in the system follows the CloudEvents envelope.
 Permissions define what each agent may do.  
 Governance defines who is accountable.
 
-agent.press uses:
+swarm.press uses:
 
 - **RBAC** — Role-Based Access Control  
 - **RACI** — Responsible, Accountable, Consulted, Informed  
@@ -1586,14 +1586,14 @@ The governance model defines:
 
 # END OF PART 5
 
-# agent.press — Full System Specification (v1.0)
+# swarm.press — Full System Specification (v1.0)
 ## Part 6 — Agent Specifications (Roles, Personas, Capabilities)
 
 ---
 
 # 11. Agent Specifications
 
-agent.press models every operational function as an **autonomous agent**.  
+swarm.press models every operational function as an **autonomous agent**.  
 Each agent has:
 
 - A **role** (what function it fulfills)  
@@ -1939,14 +1939,14 @@ boundaries:
 
 # END OF PART 6
 
-# agent.press — Full System Specification (v1.0)
+# swarm.press — Full System Specification (v1.0)
 ## Part 7 — Operational Rules, Developer Guidelines, Extension Model, Glossary & Appendices
 
 ---
 
 # 12. Operational Rules & System-Wide Behaviors
 
-agent.press is governed by explicit operational rules that ensure consistency, safety, accountability, and high-quality outcomes. These rules apply to **all agents**, **all workflows**, and **all system components**.
+swarm.press is governed by explicit operational rules that ensure consistency, safety, accountability, and high-quality outcomes. These rules apply to **all agents**, **all workflows**, and **all system components**.
 
 ---
 
@@ -2059,7 +2059,7 @@ Unless:
 
 ---
 
-### **Rule 10 — agent.press is spec-driven**
+### **Rule 10 — swarm.press is spec-driven**
 If the specification changes:
 - Agents must update behavior  
 - Developers must regenerate types/tooling  
@@ -2070,7 +2070,7 @@ Implementation always follows the specification.
 
 # 13. Developer Guidelines (Spec-Driven Development)
 
-agent.press follows a **spec-first engineering methodology**, meaning the specification *drives* all implementation.
+swarm.press follows a **spec-first engineering methodology**, meaning the specification *drives* all implementation.
 
 Developers use:
 - JSON Schema → for data models  
@@ -2084,7 +2084,7 @@ Developers use:
 ## 13.1 Repo Structure (Recommended)
 
 ```
-agent.press/
+swarm.press/
   ├── SPEC.md
   ├── part1_introduction.md
   ├── part2_organization.md
@@ -2185,7 +2185,7 @@ A human-facing dashboard showing:
 
 # 14. Extension Model
 
-agent.press is designed for **infinite extensibility**.  
+swarm.press is designed for **infinite extensibility**.  
 Extensions fall into four categories:
 
 ---
@@ -2319,4 +2319,4 @@ flowchart TD
 ---
 
 # END OF PART 7  
-**This concludes the full multi-part agent.press specification.**
+**This concludes the full multi-part swarm.press specification.**

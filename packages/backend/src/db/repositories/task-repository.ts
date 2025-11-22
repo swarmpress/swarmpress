@@ -1,4 +1,4 @@
-import { Task, TaskStatus } from '@agent-press/shared'
+import { Task, TaskStatus } from '@swarm-press/shared'
 import { BaseRepository } from '../base-repository'
 
 /**
@@ -61,7 +61,7 @@ export class TaskRepository extends BaseRepository<Task> {
     }
 
     const { executeTransition } = await import('../../state-machine/engine')
-    const { taskStateMachine } = await import('@agent-press/shared/state-machines')
+    const { taskStateMachine } = await import('@swarm-press/shared/state-machines')
 
     const result = await executeTransition(taskStateMachine, {
       entityId: id,

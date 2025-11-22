@@ -25,7 +25,7 @@ const envSchema = z.object({
   API_SECRET: z.string().min(32).describe('Secret key for API authentication'),
 
   // CEO Authentication
-  CEO_EMAIL: z.string().email().default('ceo@agent.press'),
+  CEO_EMAIL: z.string().email().default('ceo@swarm.press'),
   CEO_PASSWORD: z.string().min(8).describe('CEO password for dashboard access'),
 })
 
