@@ -1,0 +1,53 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import { GanttView } from '../../components/editorial/GanttView'
+
+const websiteId = 'default-website' // TODO: Get from URL params or context
+---
+
+<Layout title="Editorial Gantt Timeline - swarm.press Admin">
+  <div class="h-screen flex flex-col">
+    <!-- Page Header -->
+    <div class="bg-white border-b border-gray-200 px-6 py-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold text-gray-900">Editorial Timeline</h1>
+          <p class="text-sm text-gray-600 mt-1">Gantt chart view of editorial tasks with phase breakdown</p>
+        </div>
+
+        <div class="flex gap-2">
+          <a
+            href="/editorial/kanban"
+            class="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            📋 Kanban
+          </a>
+          <a
+            href="/editorial/graph"
+            class="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            🕸️ Graph
+          </a>
+          <button
+            id="new-task-btn"
+            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            + New Task
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gantt View -->
+    <div class="flex-1 overflow-hidden">
+      <GanttView websiteId={websiteId} client:load />
+    </div>
+  </div>
+</Layout>
+
+<script>
+  // Handle new task button - redirect to Kanban view with new task modal
+  document.getElementById('new-task-btn')?.addEventListener('click', () => {
+    window.location.href = '/editorial/kanban?new=true'
+  })
+</script>

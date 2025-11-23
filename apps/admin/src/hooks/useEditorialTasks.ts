@@ -75,6 +75,14 @@ export interface EditorialTask {
   github_issue_url?: string
   current_phase?: TaskPhase
   phases_completed?: string[]
+  phases?: Record<TaskPhase, {
+    completed: boolean
+    in_progress: boolean
+    progress?: number
+    started_at?: string
+    completed_at?: string
+    assigned_agent_id?: string
+  }>
   metadata?: Record<string, any>
   yaml_file_path?: string
   yaml_last_synced_at?: string
@@ -144,7 +152,22 @@ export function useEditorialTasks(websiteId: string) {
         trpcClient.editorial.getTasks.query({ websiteId }),
         trpcClient.editorial.getStatistics.query({ websiteId }),
       ])
-      setTasks(tasksData as EditorialTask[])
+
+      // Fetch phases for each task
+      const tasksWithPhases = await Promise.all(
+        (tasksData as EditorialTask[]).map(async (task) => {
+          try {
+            const phases = await trpcClient.editorial.getTaskPhases.query({ taskId: task.id })
+            return { ...task, phases }
+          } catch (err) {
+            // If phases fetch fails, return task without phases
+            console.warn(`Failed to fetch phases for task ${task.id}:`, err)
+            return task
+          }
+        })
+      )
+
+      setTasks(tasksWithPhases)
       setStats(statsData as TaskStats)
     } catch (err) {
       console.error('Failed to fetch tasks:', err)

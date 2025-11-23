@@ -618,4 +618,52 @@ export const editorialRouter = router({
         updated: newStatus !== task.status,
       }
     }),
+
+  /**
+   * Get task phases
+   * Returns phase progress data for a specific task
+   */
+  getTaskPhases: publicProcedure
+    .input(z.object({
+      taskId: z.string(),
+    }))
+    .query(async ({ input }) => {
+      const { db } = await import('../../db/index.js')
+
+      const result = await db.query(`
+        SELECT
+          phase_name,
+          status,
+          progress_percentage,
+          started_at,
+          completed_at,
+          assigned_agent_id
+        FROM task_phases
+        WHERE task_id = $1
+        ORDER BY phase_order
+      `, [input.taskId])
+
+      // Convert to frontend-expected format
+      const phases: Record<string, {
+        completed: boolean
+        in_progress: boolean
+        progress?: number
+        started_at?: string
+        completed_at?: string
+        assigned_agent_id?: string
+      }> = {}
+
+      result.rows.forEach((row: any) => {
+        phases[row.phase_name] = {
+          completed: row.status === 'completed',
+          in_progress: row.status === 'in_progress',
+          progress: row.progress_percentage || 0,
+          started_at: row.started_at?.toISOString(),
+          completed_at: row.completed_at?.toISOString(),
+          assigned_agent_id: row.assigned_agent_id,
+        }
+      })
+
+      return phases
+    }),
 })

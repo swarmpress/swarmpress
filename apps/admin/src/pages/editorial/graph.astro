@@ -1,0 +1,53 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import { GraphView } from '../../components/editorial/GraphView'
+
+const websiteId = 'default-website' // TODO: Get from URL params or context
+---
+
+<Layout title="Editorial Graph View - swarm.press Admin">
+  <div class="h-screen flex flex-col">
+    <!-- Page Header -->
+    <div class="bg-white border-b border-gray-200 px-6 py-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold text-gray-900">Editorial Graph</h1>
+          <p class="text-sm text-gray-600 mt-1">Network visualization of task dependencies and relationships</p>
+        </div>
+
+        <div class="flex gap-2">
+          <a
+            href="/editorial/kanban"
+            class="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            📋 Kanban
+          </a>
+          <a
+            href="/editorial/gantt"
+            class="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            📊 Gantt
+          </a>
+          <button
+            id="new-task-btn"
+            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            + New Task
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Graph View -->
+    <div class="flex-1 overflow-hidden">
+      <GraphView websiteId={websiteId} client:load />
+    </div>
+  </div>
+</Layout>
+
+<script>
+  // Handle new task button - redirect to Kanban view with new task modal
+  document.getElementById('new-task-btn')?.addEventListener('click', () => {
+    window.location.href = '/editorial/kanban?new=true'
+  })
+</script>
