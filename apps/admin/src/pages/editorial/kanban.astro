@@ -6,8 +6,7 @@
  */
 
 import Layout from '../../layouts/Layout.astro'
-import { KanbanView } from '../../components/editorial/KanbanView'
-import { ToastProvider } from '../../components/Toast'
+import { KanbanWithToast } from '../../components/editorial/KanbanWithToast'
 import { requireSession } from '../../lib/session'
 
 // Require both tenant and product to be selected
@@ -77,9 +76,7 @@ const websiteId = session.productId
 
     <!-- Kanban View (React Component) -->
     <div class="flex-1 overflow-hidden" id="kanban-container">
-      <ToastProvider client:only="react">
-        <KanbanView client:load websiteId={websiteId} />
-      </ToastProvider>
+      <KanbanWithToast client:only="react" websiteId={websiteId} />
     </div>
   </div>
 </Layout>

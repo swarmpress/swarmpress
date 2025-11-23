@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react'
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   Controls,
   MiniMap,
@@ -463,7 +464,9 @@ function SitemapGraphInner() {
 export default function SitemapGraph() {
   return (
     <div className="w-full h-full">
-      <SitemapGraphInner />
+      <ReactFlowProvider>
+        <SitemapGraphInner />
+      </ReactFlowProvider>
     </div>
   )
 }

@@ -7,7 +7,7 @@ import { db } from '../connection'
  */
 export class BlueprintRepository extends BaseRepository<Blueprint> {
   constructor() {
-    super('blueprints')
+    super('content_blueprints')
   }
 
   /**

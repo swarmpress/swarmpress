@@ -1,8 +1,21 @@
 ---
 import Layout from '../../layouts/Layout.astro'
-import { GanttView } from '../../components/editorial/GanttView'
+import { GanttWithToast } from '../../components/editorial/GanttWithToast'
+import { requireSession } from '../../lib/session'
 
-const websiteId = 'default-website' // TODO: Get from URL params or context
+// Require both tenant and product to be selected
+let session
+try {
+  session = requireSession(Astro.cookies)
+} catch (error) {
+  const redirectMatch = error.message.match(/REDIRECT:(.+)/)
+  if (redirectMatch) {
+    return Astro.redirect(redirectMatch[1])
+  }
+  return Astro.redirect('/')
+}
+
+const websiteId = session.productId
 ---
 
 <Layout title="Editorial Gantt Timeline - swarm.press Admin">
@@ -40,7 +53,7 @@ const websiteId = 'default-website' // TODO: Get from URL params or context
 
     <!-- Gantt View -->
     <div class="flex-1 overflow-hidden">
-      <GanttView websiteId={websiteId} client:load />
+      <GanttWithToast client:only="react" websiteId={websiteId} />
     </div>
   </div>
 </Layout>

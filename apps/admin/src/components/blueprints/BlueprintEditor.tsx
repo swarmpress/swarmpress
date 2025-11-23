@@ -116,27 +116,25 @@ export default function BlueprintEditor({ blueprintId }: BlueprintEditorProps) {
 
     setIsSaving(true)
     try {
-      const endpoint = blueprintId === 'new' ? 'blueprint.create' : 'blueprint.update'
-      const payload = blueprintId === 'new'
-        ? blueprint
-        : { id: blueprintId, ...blueprint }
+      const url = blueprintId === 'new' ? '/api/blueprints' : `/api/blueprints/${blueprintId}`
+      const method = blueprintId === 'new' ? 'POST' : 'PUT'
 
-      const response = await fetch(`/api/trpc/${endpoint}`, {
-        method: 'POST',
+      const response = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(blueprint),
       })
 
       const data = await response.json()
 
-      if (response.ok && data.result?.data) {
+      if (response.ok && data) {
         alert('Blueprint saved successfully!')
         if (blueprintId === 'new') {
           // Redirect to edit page
-          window.location.href = `/blueprints/${data.result.data.id}`
+          window.location.href = `/blueprints/${data.id}`
         }
       } else {
-        throw new Error(data.error?.message || 'Failed to save blueprint')
+        throw new Error(data.message || 'Failed to save blueprint')
       }
     } catch (error) {
       console.error('Failed to save blueprint:', error)

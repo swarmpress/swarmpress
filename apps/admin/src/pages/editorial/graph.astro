@@ -1,8 +1,21 @@
 ---
 import Layout from '../../layouts/Layout.astro'
-import { GraphView } from '../../components/editorial/GraphView'
+import { GraphWithToast } from '../../components/editorial/GraphWithToast'
+import { requireSession } from '../../lib/session'
 
-const websiteId = 'default-website' // TODO: Get from URL params or context
+// Require both tenant and product to be selected
+let session
+try {
+  session = requireSession(Astro.cookies)
+} catch (error) {
+  const redirectMatch = error.message.match(/REDIRECT:(.+)/)
+  if (redirectMatch) {
+    return Astro.redirect(redirectMatch[1])
+  }
+  return Astro.redirect('/')
+}
+
+const websiteId = session.productId
 ---
 
 <Layout title="Editorial Graph View - swarm.press Admin">
@@ -40,7 +53,7 @@ const websiteId = 'default-website' // TODO: Get from URL params or context
 
     <!-- Graph View -->
     <div class="flex-1 overflow-hidden">
-      <GraphView websiteId={websiteId} client:load />
+      <GraphWithToast client:only="react" websiteId={websiteId} />
     </div>
   </div>
 </Layout>

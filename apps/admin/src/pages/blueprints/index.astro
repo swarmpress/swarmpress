@@ -79,9 +79,9 @@ const title = 'Page Blueprints'
     const emptyState = document.getElementById('empty-state')
 
     try {
-      const response = await fetch('/api/trpc/blueprint.listOrdered')
+      const response = await fetch('/api/blueprints')
       const data = await response.json()
-      const blueprints: Blueprint[] = data.result?.data?.items || []
+      const blueprints: Blueprint[] = data.items || []
 
       loadingState?.classList.add('hidden')
 
@@ -209,10 +209,8 @@ const title = 'Page Blueprints'
     if (!confirm('Are you sure you want to delete this blueprint?')) return
 
     try {
-      const response = await fetch('/api/trpc/blueprint.delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
+      const response = await fetch(`/api/blueprints/${id}`, {
+        method: 'DELETE',
       })
 
       if (response.ok) {

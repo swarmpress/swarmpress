@@ -80,10 +80,17 @@ export function GanttView({ websiteId }: GanttViewProps) {
     return tasks.filter(task => task.started_at || task.due_date)
   }, [tasks])
 
+  // Helper to convert string or Date to Date object
+  const toDate = (value: string | Date | null | undefined): Date | null => {
+    if (!value) return null
+    if (value instanceof Date) return value
+    return parseISO(value)
+  }
+
   // Calculate task bar position and width
   const getTaskBarStyles = (task: EditorialTask) => {
-    const startDate = task.started_at ? parseISO(task.started_at) : timeline.startDate
-    const endDate = task.due_date ? parseISO(task.due_date) : addDays(startDate, task.estimated_hours ? Math.ceil(task.estimated_hours / 8) : 7)
+    const startDate = toDate(task.started_at) || timeline.startDate
+    const endDate = toDate(task.due_date) || addDays(startDate, task.estimated_hours ? Math.ceil(task.estimated_hours / 8) : 7)
 
     const daysFromStart = differenceInDays(startDate, timeline.startDate)
     const duration = differenceInDays(endDate, startDate) + 1
