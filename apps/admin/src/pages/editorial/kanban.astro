@@ -2,10 +2,27 @@
 /**
  * Kanban Board Page
  * Editorial task management with drag-and-drop
+ * Requires: Tenant + Product selection
  */
 
 import Layout from '../../layouts/Layout.astro'
 import { KanbanView } from '../../components/editorial/KanbanView'
+import { ToastProvider } from '../../components/Toast'
+import { requireSession } from '../../lib/session'
+
+// Require both tenant and product to be selected
+let session
+try {
+  session = requireSession(Astro.cookies)
+} catch (error) {
+  const redirectMatch = error.message.match(/REDIRECT:(.+)/)
+  if (redirectMatch) {
+    return Astro.redirect(redirectMatch[1])
+  }
+  return Astro.redirect('/')
+}
+
+const websiteId = session.productId
 ---
 
 <Layout title="Editorial Kanban">
@@ -60,7 +77,9 @@ import { KanbanView } from '../../components/editorial/KanbanView'
 
     <!-- Kanban View (React Component) -->
     <div class="flex-1 overflow-hidden" id="kanban-container">
-      <KanbanView client:load websiteId="website-001" />
+      <ToastProvider client:only="react">
+        <KanbanView client:load websiteId={websiteId} />
+      </ToastProvider>
     </div>
   </div>
 </Layout>

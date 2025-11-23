@@ -1,6 +1,16 @@
 ---
+import { getSessionContext } from '../lib/session'
 import Layout from '../layouts/Layout.astro'
 
+// Check session state and redirect if needed
+const session = getSessionContext(Astro.cookies)
+
+if (!session.tenantId) {
+  // No tenant selected - redirect to tenant selection
+  return Astro.redirect('/setup/tenant')
+}
+
+// Tenant is selected - show dashboard (product selection happens in sidebar)
 const API_URL = 'http://localhost:3000'
 
 // Fetch summary stats

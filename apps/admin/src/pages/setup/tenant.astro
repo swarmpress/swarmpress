@@ -1,0 +1,118 @@
+---
+/**
+ * Tenant Selection Page
+ * First step: Select which media house (tenant) to work with
+ */
+
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+// Fetch available tenants
+let tenants: any[] = []
+let error: string | null = null
+
+try {
+  const result = await trpc.company.list.query()
+  tenants = result.items || []
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch tenants:', error)
+}
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Select Tenant - swarm.press Admin</title>
+  </head>
+  <body class="bg-gray-50">
+    <div class="min-h-screen flex items-center justify-center p-8">
+      <div class="max-w-2xl w-full">
+        <!-- Header -->
+        <div class="text-center mb-8">
+          <h1 class="text-4xl font-bold text-gray-900 mb-2">🐝 swarm.press</h1>
+          <p class="text-lg text-gray-600">Select a Media House to get started</p>
+        </div>
+
+        <!-- Tenant List -->
+        {error ? (
+          <div class="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+            <p class="text-red-800 font-medium">Error loading tenants</p>
+            <p class="text-red-600 text-sm mt-2">{error}</p>
+          </div>
+        ) : tenants.length === 0 ? (
+          <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-8 text-center">
+            <svg class="w-16 h-16 text-yellow-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+            <h2 class="text-xl font-semibold text-yellow-800 mb-2">No Media Houses Found</h2>
+            <p class="text-yellow-700 mb-4">You need to create a media house before you can continue.</p>
+            <a
+              href="/tenants/new"
+              class="inline-block bg-yellow-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-yellow-700 transition-colors"
+            >
+              Create Your First Media House
+            </a>
+          </div>
+        ) : (
+          <div class="space-y-4">
+            {tenants.map(tenant => (
+              <button
+                onclick={`selectTenant('${tenant.id}')`}
+                class="w-full bg-white border border-gray-200 rounded-lg p-6 hover:border-blue-500 hover:shadow-lg transition-all text-left group"
+              >
+                <div class="flex items-start justify-between">
+                  <div class="flex-1">
+                    <h3 class="text-xl font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                      {tenant.name}
+                    </h3>
+                    {tenant.description && (
+                      <p class="text-gray-600 mt-2">{tenant.description}</p>
+                    )}
+                    <div class="mt-3 flex items-center gap-2 text-sm text-gray-500">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                      </svg>
+                      <span>ID: {tenant.id.slice(0, 8)}...</span>
+                    </div>
+                  </div>
+                  <svg class="w-6 h-6 text-gray-400 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <!-- Footer -->
+        <div class="mt-8 text-center">
+          <a href="/tenants" class="text-sm text-gray-600 hover:text-gray-900 transition-colors">
+            Manage Media Houses →
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function selectTenant(tenantId: string) {
+        // Set tenant cookie
+        document.cookie = `swarmpress_tenant_id=${tenantId}; path=/; max-age=31536000`
+        // Clear any existing product
+        document.cookie = `swarmpress_product_id=; path=/; max-age=0`
+        // Redirect to product selection
+        window.location.href = '/setup/product'
+      }
+
+      // Make function globally available
+      ;(window as any).selectTenant = selectTenant
+    </script>
+
+    <style is:global>
+      @tailwind base;
+      @tailwind components;
+      @tailwind utilities;
+    </style>
+  </body>
+</html>

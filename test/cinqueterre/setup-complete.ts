@@ -7,7 +7,7 @@ import dotenv from 'dotenv'
 import { resolve } from 'path'
 dotenv.config({ path: resolve(__dirname, '.env') })
 
-import { db } from './packages/backend/src/db/connection'
+import { db } from '../../packages/backend/src/db/connection'
 import { v4 as uuidv4 } from 'uuid'
 
 async function setupComplete() {

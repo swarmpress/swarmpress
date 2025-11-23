@@ -3,7 +3,7 @@ import { ContentBlocksSchema } from '../content/blocks'
 
 /**
  * Domain entity schemas for swarm.press
- * Generated from JSON Schema files in /domain/schemas/
+ * Using Zod for runtime validation and TypeScript type generation
  */
 
 // ============================================================================

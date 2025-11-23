@@ -1,8 +1,9 @@
 # swarm.press — Claude Development Guide
 
-> **Last Updated:** 2025-11-22
+> **Last Updated:** 2025-11-23
 > **Status:** MVP Implementation Phase
 > **Spec Version:** 1.0
+> **Schema Version:** 1.0.0
 
 ---
 
@@ -29,7 +30,14 @@ It is **not** a generic content generator. It is a **structured organization** w
 - All changes must update the spec first
 - See: `specs/specs.md` (full 2,300+ line specification)
 
-### 2. **Agents Are Employees**
+### 2. **Schema is Sacred**
+- **MASTER SCHEMA:** `packages/backend/src/db/migrations/000_schema.sql`
+- This is the SINGLE SOURCE OF TRUTH for the database
+- Before adding new features, READ THIS FILE to understand the current schema
+- When adding features, UPDATE THIS FILE (not create new migrations)
+- The schema implements all specifications from `specs/` directory
+
+### 3. **Agents Are Employees**
 Each agent has:
 - A role (Writer, Editor, SEO Specialist, etc.)
 - Capabilities (what it can do)
@@ -37,20 +45,20 @@ Each agent has:
 - Escalation rules (when to ask for help)
 - Tools (functions it can call)
 
-### 3. **Workflows Are BPMN 2.0**
+### 4. **Workflows Are BPMN 2.0**
 All processes are explicit, auditable, and executable:
 - Content Production: idea → draft → review → publish
 - Editorial Review: submit → approve/reject → revise loop
 - Publishing: build → validate → deploy
 
-### 4. **No Silent Magic**
+### 5. **No Silent Magic**
 Every action produces:
 - A Task
 - An Event (CloudEvents)
 - A State Transition
 - A Review or QuestionTicket
 
-### 5. **CEO Has Final Authority**
+### 6. **CEO Has Final Authority**
 - Human oversight for high-risk decisions
 - Agents escalate via QuestionTickets
 - No agent can bypass governance

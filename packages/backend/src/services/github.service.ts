@@ -3,7 +3,7 @@
  * Handles GitHub API interactions for content sync
  */
 
-import { Octokit } from 'octokit'
+import { Octokit } from '@octokit/rest'
 
 export interface GitHubConfig {
   owner: string

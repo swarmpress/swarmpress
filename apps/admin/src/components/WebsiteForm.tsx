@@ -35,11 +35,13 @@ export default function WebsiteForm({ website, mode }: WebsiteFormProps) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Fetch companies for dropdown
-    fetch('/api/tenants')
+    // Fetch companies for dropdown via tRPC
+    fetch('http://localhost:3000/api/trpc/company.list')
       .then((res) => res.json())
       .then((data) => {
-        setCompanies(data.items || [])
+        // tRPC wraps response in result.data.json
+        const items = data.result?.data?.json?.items || []
+        setCompanies(items)
         setIsLoading(false)
       })
       .catch((err) => {
