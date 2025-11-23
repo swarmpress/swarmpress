@@ -1,0 +1,163 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import { Button } from '../../components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
+import { Badge } from '../../components/ui/badge'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+const { id } = Astro.params
+
+if (!id) {
+  return Astro.redirect('/content')
+}
+
+let content: any = null
+let error: string | null = null
+
+try {
+  content = await trpc.content.getById.query({ id })
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch content:', error)
+}
+
+if (!content) {
+  return Astro.redirect('/content')
+}
+
+// Helper to get status badge variant
+function getStatusVariant(status: string) {
+  switch (status) {
+    case 'published':
+      return 'default'
+    case 'approved':
+      return 'default'
+    case 'in_editorial_review':
+      return 'secondary'
+    case 'draft':
+      return 'outline'
+    case 'needs_changes':
+      return 'destructive'
+    default:
+      return 'outline'
+  }
+}
+---
+
+<Layout title="Content Details">
+  <div>
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-3xl font-bold">Content Details</h1>
+        <p class="text-muted-foreground mt-2">View content metadata and status</p>
+      </div>
+      <a href="/content">
+        <Button variant="outline">← Back to Content</Button>
+      </a>
+    </div>
+
+    {error ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Error Loading Content</CardTitle>
+          <CardDescription>{error}</CardDescription>
+        </CardHeader>
+      </Card>
+    ) : (
+      <div class="space-y-6">
+        <!-- Metadata Card -->
+        <Card>
+          <CardHeader>
+            <div class="flex items-start justify-between">
+              <div>
+                <CardTitle>{content.title || 'Untitled Content'}</CardTitle>
+                <CardDescription>
+                  {content.type} • Created {new Date(content.created_at).toLocaleDateString()}
+                </CardDescription>
+              </div>
+              <Badge variant={getStatusVariant(content.status)}>
+                {content.status.replace(/_/g, ' ')}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <dl class="grid grid-cols-2 gap-4">
+              <div>
+                <dt class="text-sm font-medium text-muted-foreground">ID</dt>
+                <dd class="text-sm mt-1">
+                  <code class="bg-muted px-2 py-1 rounded">{content.id}</code>
+                </dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-muted-foreground">Type</dt>
+                <dd class="text-sm mt-1">
+                  <Badge variant="outline">{content.type}</Badge>
+                </dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-muted-foreground">Author</dt>
+                <dd class="text-sm mt-1">{content.author?.name || 'Unknown'}</dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-muted-foreground">Website</dt>
+                <dd class="text-sm mt-1">{content.website?.domain || 'N/A'}</dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-muted-foreground">Created</dt>
+                <dd class="text-sm mt-1">{new Date(content.created_at).toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-muted-foreground">Updated</dt>
+                <dd class="text-sm mt-1">{new Date(content.updated_at).toLocaleString()}</dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
+
+        <!-- Content Body Card -->
+        <Card>
+          <CardHeader>
+            <CardTitle>Content Body</CardTitle>
+            <CardDescription>
+              {content.body?.length || 0} {content.body?.length === 1 ? 'block' : 'blocks'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {content.body && content.body.length > 0 ? (
+              <div class="space-y-4">
+                {content.body.map((block: any, index: number) => (
+                  <div key={index} class="border rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                      <Badge variant="outline">{block.type}</Badge>
+                      <span class="text-xs text-muted-foreground">Block {index + 1}</span>
+                    </div>
+                    <pre class="text-sm bg-muted p-3 rounded overflow-auto">
+                      {JSON.stringify(block, null, 2)}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p class="text-sm text-muted-foreground">No content body available</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <!-- Metadata Card (if available) -->
+        {content.metadata && Object.keys(content.metadata).length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Metadata</CardTitle>
+              <CardDescription>Additional content metadata</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <pre class="text-sm bg-muted p-4 rounded overflow-auto">
+                {JSON.stringify(content.metadata, null, 2)}
+              </pre>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    )}
+  </div>
+</Layout>

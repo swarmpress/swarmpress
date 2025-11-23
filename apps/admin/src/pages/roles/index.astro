@@ -1,0 +1,102 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import { Button } from '../../components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table'
+import { Badge } from '../../components/ui/badge'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+// Fetch roles server-side
+let roles: any[] = []
+let error: string | null = null
+
+try {
+  const result = await trpc.role.list.query()
+  roles = result.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch roles:', error)
+}
+---
+
+<Layout title="Roles">
+  <div>
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-3xl font-bold">Roles</h1>
+        <p class="text-muted-foreground mt-2">Manage organizational roles and their responsibilities</p>
+      </div>
+      <a href="/roles/new">
+        <Button>Create Role</Button>
+      </a>
+    </div>
+
+    {error ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Error Loading Roles</CardTitle>
+          <CardDescription>{error}</CardDescription>
+        </CardHeader>
+      </Card>
+    ) : roles.length === 0 ? (
+      <Card>
+        <CardHeader>
+          <CardTitle>No Roles Found</CardTitle>
+          <CardDescription>
+            Get started by creating your first role. Roles define job functions like Writer, Editor, SEO Specialist, etc.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <a href="/roles/new">
+            <Button>Create Your First Role</Button>
+          </a>
+        </CardContent>
+      </Card>
+    ) : (
+      <Card>
+        <CardHeader>
+          <CardTitle>All Roles</CardTitle>
+          <CardDescription>
+            {roles.length} {roles.length === 1 ? 'role' : 'roles'} configured
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Department</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {roles.map((role) => (
+                <TableRow key={role.id}>
+                  <TableCell className="font-medium">{role.name}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline">
+                      {role.department?.name || 'Unknown'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {role.description || 'No description'}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {new Date(role.created_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <a href={`/roles/${role.id}`}>
+                      <Button variant="outline" size="sm">Edit</Button>
+                    </a>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    )}
+  </div>
+</Layout>

@@ -1,0 +1,111 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import { Button } from '../../components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table'
+import { Badge } from '../../components/ui/badge'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+// Fetch websites server-side
+let websites: any[] = []
+let error: string | null = null
+
+try {
+  const result = await trpc.website.list.query()
+  websites = result.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch websites:', error)
+}
+---
+
+<Layout title="Websites">
+  <div>
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-3xl font-bold">Websites</h1>
+        <p class="text-muted-foreground mt-2">Manage publication websites and their properties</p>
+      </div>
+      <a href="/websites/new">
+        <Button>Create Website</Button>
+      </a>
+    </div>
+
+    {error ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Error Loading Websites</CardTitle>
+          <CardDescription>{error}</CardDescription>
+        </CardHeader>
+      </Card>
+    ) : websites.length === 0 ? (
+      <Card>
+        <CardHeader>
+          <CardTitle>No Websites Found</CardTitle>
+          <CardDescription>
+            Get started by creating your first website. Websites are publication surfaces managed by agents.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <a href="/websites/new">
+            <Button>Create Your First Website</Button>
+          </a>
+        </CardContent>
+      </Card>
+    ) : (
+      <Card>
+        <CardHeader>
+          <CardTitle>All Websites</CardTitle>
+          <CardDescription>
+            {websites.length} {websites.length === 1 ? 'website' : 'websites'} configured
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Title</TableHead>
+                <TableHead>Domain</TableHead>
+                <TableHead>Company</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {websites.map((website) => (
+                <TableRow key={website.id}>
+                  <TableCell className="font-medium">{website.title}</TableCell>
+                  <TableCell>
+                    <code className="text-sm bg-muted px-2 py-1 rounded">{website.domain}</code>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">
+                      {website.company?.name || 'Unknown'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={website.status === 'active' ? 'default' : 'secondary'}>
+                      {website.status || 'draft'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {new Date(website.created_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <a href={`/websites/${website.id}`}>
+                      <Button variant="outline" size="sm">Edit</Button>
+                    </a>
+                    <a href={`/content?website=${website.id}`}>
+                      <Button variant="ghost" size="sm">Content</Button>
+                    </a>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    )}
+  </div>
+</Layout>

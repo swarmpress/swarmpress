@@ -1,0 +1,15 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import WebsiteForm from '../../components/WebsiteForm'
+---
+
+<Layout title="Create Website">
+  <div>
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold">Create New Website</h1>
+      <p class="text-muted-foreground mt-2">Add a new publication website</p>
+    </div>
+
+    <WebsiteForm mode="create" client:load />
+  </div>
+</Layout>

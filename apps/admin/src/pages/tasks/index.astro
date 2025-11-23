@@ -1,0 +1,138 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import { Button } from '../../components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table'
+import { Badge } from '../../components/ui/badge'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+// Fetch tasks server-side
+let tasks: any[] = []
+let error: string | null = null
+
+try {
+  const result = await trpc.task.list.query()
+  tasks = result.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch tasks:', error)
+}
+
+// Helper to get status badge variant
+function getStatusVariant(status: string) {
+  switch (status) {
+    case 'completed':
+      return 'default'
+    case 'in_progress':
+      return 'secondary'
+    case 'planned':
+      return 'outline'
+    case 'failed':
+      return 'destructive'
+    default:
+      return 'outline'
+  }
+}
+
+// Helper to get type badge color
+function getTypeVariant(type: string) {
+  switch (type) {
+    case 'write_draft':
+    case 'revise_draft':
+      return 'default'
+    case 'review_content':
+      return 'secondary'
+    case 'publish_site':
+      return 'outline'
+    default:
+      return 'outline'
+  }
+}
+---
+
+<Layout title="Tasks">
+  <div>
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-3xl font-bold">Tasks</h1>
+        <p class="text-muted-foreground mt-2">Track work assigned to agents</p>
+      </div>
+    </div>
+
+    {error ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Error Loading Tasks</CardTitle>
+          <CardDescription>{error}</CardDescription>
+        </CardHeader>
+      </Card>
+    ) : tasks.length === 0 ? (
+      <Card>
+        <CardHeader>
+          <CardTitle>No Tasks Found</CardTitle>
+          <CardDescription>
+            Tasks are created automatically by workflows and assigned to agents.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p class="text-sm text-muted-foreground">
+            Tasks will appear here once workflows start creating work for agents.
+          </p>
+        </CardContent>
+      </Card>
+    ) : (
+      <Card>
+        <CardHeader>
+          <CardTitle>All Tasks</CardTitle>
+          <CardDescription>
+            {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} found
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Type</TableHead>
+                <TableHead>Agent</TableHead>
+                <TableHead>Content</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tasks.map((task) => (
+                <TableRow key={task.id}>
+                  <TableCell>
+                    <Badge variant={getTypeVariant(task.type)}>
+                      {task.type.replace(/_/g, ' ')}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="font-medium">
+                    {task.agent?.name || 'Unassigned'}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {task.content?.title || task.content_id || 'N/A'}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={getStatusVariant(task.status)}>
+                      {task.status.replace(/_/g, ' ')}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {new Date(task.created_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <a href={`/tasks/${task.id}`}>
+                      <Button variant="outline" size="sm">View</Button>
+                    </a>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    )}
+  </div>
+</Layout>

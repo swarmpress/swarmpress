@@ -25,8 +25,7 @@ async function main() {
 
   // Start Express + tRPC API server
   const { startServer } = await import('./api/server.js')
-  const port = parseInt(env.API_PORT || '3000', 10)
-  await startServer(port)
+  await startServer(3000)
 
   // Graceful shutdown
   process.on('SIGINT', async () => {
@@ -47,3 +46,6 @@ export * from './db'
 
 // Export state machine engine
 export * from './state-machine'
+
+// Export API router types for tRPC client
+export type { AppRouter } from './api/routers'

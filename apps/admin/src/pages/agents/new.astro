@@ -1,0 +1,45 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import AgentForm from '../../components/AgentForm'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+// Fetch departments and roles for form dropdowns
+let departments: any[] = []
+let roles: any[] = []
+let error: string | null = null
+
+try {
+  const [deptResult, roleResult] = await Promise.all([
+    trpc.department.list.query({}),
+    trpc.role.list.query({}),
+  ])
+  departments = deptResult.items
+  roles = roleResult.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch form data:', error)
+}
+---
+
+<Layout title="Create Agent">
+  <div>
+    <div class="mb-8">
+      <a href="/agents" class="text-muted-foreground hover:text-foreground transition">
+        ← Back to Agents
+      </a>
+    </div>
+
+    {error ? (
+      <div class="p-4 border border-destructive bg-destructive/10 rounded-md">
+        <p class="text-sm text-destructive">{error}</p>
+      </div>
+    ) : (
+      <AgentForm
+        client:load
+        mode="create"
+        departments={departments}
+        roles={roles}
+      />
+    )}
+  </div>
+</Layout>

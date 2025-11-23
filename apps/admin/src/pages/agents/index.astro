@@ -1,0 +1,109 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import { Button } from '../../components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table'
+import { Badge } from '../../components/ui/badge'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+// Fetch agents server-side
+let agents: any[] = []
+let error: string | null = null
+
+try {
+  const result = await trpc.agent.list.query({})
+  agents = result.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch agents:', error)
+}
+---
+
+<Layout title="AI Agents">
+  <div>
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-3xl font-bold">AI Agents</h1>
+        <p class="text-muted-foreground mt-2">Manage autonomous Claude agents for content creation</p>
+      </div>
+      <a href="/agents/new">
+        <Button>Create Agent</Button>
+      </a>
+    </div>
+
+    {error ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Error Loading Agents</CardTitle>
+          <CardDescription>{error}</CardDescription>
+        </CardHeader>
+      </Card>
+    ) : agents.length === 0 ? (
+      <Card>
+        <CardHeader>
+          <CardTitle>No Agents Found</CardTitle>
+          <CardDescription>
+            Get started by creating your first AI agent. Agents are autonomous Claude assistants with specific roles and capabilities.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <a href="/agents/new">
+            <Button>Create Your First Agent</Button>
+          </a>
+        </CardContent>
+      </Card>
+    ) : (
+      <Card>
+        <CardHeader>
+          <CardTitle>All Agents</CardTitle>
+          <CardDescription>
+            {agents.length} {agents.length === 1 ? 'agent' : 'agents'} configured
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Persona</TableHead>
+                <TableHead>Capabilities</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {agents.map((agent) => (
+                <TableRow key={agent.id}>
+                  <TableCell className="font-medium">{agent.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{agent.virtual_email}</TableCell>
+                  <TableCell className="text-sm max-w-md truncate">
+                    {agent.persona}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1 flex-wrap">
+                      {(agent.capabilities as string[]).slice(0, 3).map((cap) => (
+                        <Badge key={cap} variant="secondary" className="text-xs">
+                          {cap}
+                        </Badge>
+                      ))}
+                      {(agent.capabilities as string[]).length > 3 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{(agent.capabilities as string[]).length - 3}
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <a href={`/agents/${agent.id}`}>
+                      <Button variant="outline" size="sm">Edit</Button>
+                    </a>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    )}
+  </div>
+</Layout>

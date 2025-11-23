@@ -1,0 +1,64 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import DepartmentForm from '../../components/DepartmentForm'
+import { Card, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+const { id } = Astro.params
+
+if (!id) {
+  return Astro.redirect('/departments')
+}
+
+// Fetch department and companies
+let department: any = null
+let companies: any[] = []
+let error: string | null = null
+
+try {
+  const [deptData, companyResult] = await Promise.all([
+    trpc.department.getById.query({ id }),
+    trpc.company.list.query(),
+  ])
+  department = deptData
+  companies = companyResult.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch department:', error)
+}
+---
+
+<Layout title={department ? `Edit ${department.name}` : 'Edit Department'}>
+  <div>
+    <div class="mb-8">
+      <a href="/departments" class="text-muted-foreground hover:text-foreground transition">
+        ← Back to Departments
+      </a>
+    </div>
+
+    {error ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Error Loading Department</CardTitle>
+          <CardDescription>{error}</CardDescription>
+        </CardHeader>
+      </Card>
+    ) : department ? (
+      <DepartmentForm
+        client:load
+        mode="edit"
+        department={department}
+        companies={companies}
+      />
+    ) : (
+      <Card>
+        <CardHeader>
+          <CardTitle>Department Not Found</CardTitle>
+          <CardDescription>
+            The requested department could not be found.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    )}
+  </div>
+</Layout>

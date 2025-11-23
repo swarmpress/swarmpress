@@ -1,0 +1,35 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import DepartmentForm from '../../components/DepartmentForm'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+// Fetch companies for form dropdown
+let companies: any[] = []
+let error: string | null = null
+
+try {
+  const result = await trpc.company.list.query()
+  companies = result.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch companies:', error)
+}
+---
+
+<Layout title="Create Department">
+  <div>
+    <div class="mb-8">
+      <a href="/departments" class="text-muted-foreground hover:text-foreground transition">
+        ← Back to Departments
+      </a>
+    </div>
+
+    {error ? (
+      <div class="p-4 border border-destructive bg-destructive/10 rounded-md">
+        <p class="text-sm text-destructive">{error}</p>
+      </div>
+    ) : (
+      <DepartmentForm client:load mode="create" companies={companies} />
+    )}
+  </div>
+</Layout>

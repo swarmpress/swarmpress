@@ -1,0 +1,16 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import TenantForm from '../../components/TenantForm'
+---
+
+<Layout title="Create Media House">
+  <div>
+    <div class="mb-8">
+      <a href="/tenants" class="text-muted-foreground hover:text-foreground transition">
+        ← Back to Media Houses
+      </a>
+    </div>
+
+    <TenantForm client:load mode="create" />
+  </div>
+</Layout>

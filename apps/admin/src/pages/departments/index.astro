@@ -1,0 +1,106 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import { Button } from '../../components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+// Fetch departments and companies server-side
+let departments: any[] = []
+let companies: any[] = []
+let error: string | null = null
+
+try {
+  const [deptResult, companyResult] = await Promise.all([
+    trpc.department.list.query({}),
+    trpc.company.list.query(),
+  ])
+  departments = deptResult.items
+  companies = companyResult.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch departments:', error)
+}
+
+// Create a map for quick company lookup
+const companyMap = new Map(companies.map(c => [c.id, c.name]))
+---
+
+<Layout title="Departments">
+  <div>
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-3xl font-bold">Departments</h1>
+        <p class="text-muted-foreground mt-2">Manage organizational departments within media houses</p>
+      </div>
+      <a href="/departments/new">
+        <Button>Create Department</Button>
+      </a>
+    </div>
+
+    {error ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Error Loading Departments</CardTitle>
+          <CardDescription>{error}</CardDescription>
+        </CardHeader>
+      </Card>
+    ) : departments.length === 0 ? (
+      <Card>
+        <CardHeader>
+          <CardTitle>No Departments Found</CardTitle>
+          <CardDescription>
+            Create departments to organize your teams within each media house (e.g., Editorial, Engineering, Governance).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <a href="/departments/new">
+            <Button>Create Your First Department</Button>
+          </a>
+        </CardContent>
+      </Card>
+    ) : (
+      <Card>
+        <CardHeader>
+          <CardTitle>All Departments</CardTitle>
+          <CardDescription>
+            {departments.length} {departments.length === 1 ? 'department' : 'departments'} configured
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Media House</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {departments.map((dept) => (
+                <TableRow key={dept.id}>
+                  <TableCell className="font-medium">{dept.name}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {companyMap.get(dept.company_id) || 'Unknown'}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {dept.description || 'No description'}
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <a href={`/departments/${dept.id}`}>
+                      <Button variant="outline" size="sm">Edit</Button>
+                    </a>
+                    <a href={`/departments/${dept.id}/roles`}>
+                      <Button variant="ghost" size="sm">Roles</Button>
+                    </a>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    )}
+  </div>
+</Layout>

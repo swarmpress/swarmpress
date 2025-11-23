@@ -1,0 +1,36 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import WebsiteForm from '../../components/WebsiteForm'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+const { id } = Astro.params
+
+if (!id) {
+  return Astro.redirect('/websites')
+}
+
+let website: any = null
+let error: string | null = null
+
+try {
+  website = await trpc.website.getById.query({ id })
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch website:', error)
+}
+
+if (!website) {
+  return Astro.redirect('/websites')
+}
+---
+
+<Layout title="Edit Website">
+  <div>
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold">Edit Website</h1>
+      <p class="text-muted-foreground mt-2">Update website information</p>
+    </div>
+
+    <WebsiteForm website={website} mode="edit" client:load />
+  </div>
+</Layout>

@@ -1,0 +1,68 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import AgentForm from '../../components/AgentForm'
+import { Card, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+const { id } = Astro.params
+
+if (!id) {
+  return Astro.redirect('/agents')
+}
+
+// Fetch agent, departments, and roles
+let agent: any = null
+let departments: any[] = []
+let roles: any[] = []
+let error: string | null = null
+
+try {
+  const [agentData, deptResult, roleResult] = await Promise.all([
+    trpc.agent.getById.query({ id }),
+    trpc.department.list.query({}),
+    trpc.role.list.query({}),
+  ])
+  agent = agentData
+  departments = deptResult.items
+  roles = roleResult.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch agent:', error)
+}
+---
+
+<Layout title={agent ? `Edit ${agent.name}` : 'Edit Agent'}>
+  <div>
+    <div class="mb-8">
+      <a href="/agents" class="text-muted-foreground hover:text-foreground transition">
+        ← Back to Agents
+      </a>
+    </div>
+
+    {error ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Error Loading Agent</CardTitle>
+          <CardDescription>{error}</CardDescription>
+        </CardHeader>
+      </Card>
+    ) : agent ? (
+      <AgentForm
+        client:load
+        mode="edit"
+        agent={agent}
+        departments={departments}
+        roles={roles}
+      />
+    ) : (
+      <Card>
+        <CardHeader>
+          <CardTitle>Agent Not Found</CardTitle>
+          <CardDescription>
+            The requested agent could not be found.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    )}
+  </div>
+</Layout>

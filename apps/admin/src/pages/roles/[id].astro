@@ -1,0 +1,36 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import RoleForm from '../../components/RoleForm'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+const { id } = Astro.params
+
+if (!id) {
+  return Astro.redirect('/roles')
+}
+
+let role: any = null
+let error: string | null = null
+
+try {
+  role = await trpc.role.getById.query({ id })
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch role:', error)
+}
+
+if (!role) {
+  return Astro.redirect('/roles')
+}
+---
+
+<Layout title="Edit Role">
+  <div>
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold">Edit Role</h1>
+      <p class="text-muted-foreground mt-2">Update role information</p>
+    </div>
+
+    <RoleForm role={role} mode="edit" client:load />
+  </div>
+</Layout>

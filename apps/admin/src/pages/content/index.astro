@@ -1,0 +1,127 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import { Button } from '../../components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table'
+import { Badge } from '../../components/ui/badge'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+// Fetch content items server-side
+let contentItems: any[] = []
+let error: string | null = null
+
+try {
+  const result = await trpc.content.list.query()
+  contentItems = result.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch content:', error)
+}
+
+// Helper to get status badge variant
+function getStatusVariant(status: string) {
+  switch (status) {
+    case 'published':
+      return 'default'
+    case 'approved':
+      return 'default'
+    case 'in_editorial_review':
+      return 'secondary'
+    case 'draft':
+      return 'outline'
+    case 'needs_changes':
+      return 'destructive'
+    default:
+      return 'outline'
+  }
+}
+---
+
+<Layout title="Content">
+  <div>
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-3xl font-bold">Content Items</h1>
+        <p class="text-muted-foreground mt-2">Browse and manage all content across your websites</p>
+      </div>
+    </div>
+
+    {error ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Error Loading Content</CardTitle>
+          <CardDescription>{error}</CardDescription>
+        </CardHeader>
+      </Card>
+    ) : contentItems.length === 0 ? (
+      <Card>
+        <CardHeader>
+          <CardTitle>No Content Found</CardTitle>
+          <CardDescription>
+            Content items are created by agents through the publishing workflow.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p class="text-sm text-muted-foreground">
+            Content will appear here once agents start creating articles, briefs, and other content types.
+          </p>
+        </CardContent>
+      </Card>
+    ) : (
+      <Card>
+        <CardHeader>
+          <CardTitle>All Content</CardTitle>
+          <CardDescription>
+            {contentItems.length} {contentItems.length === 1 ? 'item' : 'items'} found
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Type</TableHead>
+                <TableHead>Title</TableHead>
+                <TableHead>Author</TableHead>
+                <TableHead>Website</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {contentItems.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell>
+                    <Badge variant="outline">{item.type}</Badge>
+                  </TableCell>
+                  <TableCell className="font-medium">
+                    {item.title || item.body?.[0]?.markdown?.substring(0, 50) || 'Untitled'}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {item.author?.name || 'Unknown'}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {item.website?.domain || 'N/A'}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={getStatusVariant(item.status)}>
+                      {item.status.replace(/_/g, ' ')}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {new Date(item.created_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <a href={`/content/${item.id}`}>
+                      <Button variant="outline" size="sm">View</Button>
+                    </a>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    )}
+  </div>
+</Layout>
