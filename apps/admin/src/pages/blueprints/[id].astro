@@ -1,0 +1,15 @@
+---
+/**
+ * Blueprint Editor Page
+ * Visual blueprint designer with drag-and-drop
+ */
+import Layout from '../../layouts/Layout.astro'
+import BlueprintEditor from '../../components/blueprints/BlueprintEditor'
+
+const { id } = Astro.params
+const title = id === 'new' ? 'New Blueprint' : 'Edit Blueprint'
+---
+
+<Layout title={title}>
+  <BlueprintEditor client:only="react" blueprintId={id} />
+</Layout>

@@ -1,0 +1,231 @@
+---
+/**
+ * Blueprints List Page
+ * Manage page blueprints/templates
+ */
+import Layout from '../../layouts/Layout.astro'
+
+const title = 'Page Blueprints'
+---
+
+<Layout title={title}>
+  <div class="mb-8">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Page Blueprints</h1>
+        <p class="text-gray-600 mt-2">
+          Define reusable page templates with component structures, linking rules, and SEO templates
+        </p>
+      </div>
+      <a
+        href="/blueprints/new"
+        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+      >
+        + New Blueprint
+      </a>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div id="loading-state" class="text-center py-12">
+    <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+    <p class="mt-3 text-gray-600">Loading blueprints...</p>
+  </div>
+
+  <!-- Blueprints Grid -->
+  <div id="blueprints-grid" class="hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <!-- Blueprints will be inserted here -->
+  </div>
+
+  <!-- Empty State -->
+  <div id="empty-state" class="hidden text-center py-12">
+    <div class="text-6xl mb-4">📐</div>
+    <h3 class="text-xl font-semibold text-gray-900 mb-2">No Blueprints Yet</h3>
+    <p class="text-gray-600 mb-6">
+      Create your first blueprint to define page templates for your website
+    </p>
+    <a
+      href="/blueprints/new"
+      class="inline-block px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+    >
+      Create First Blueprint
+    </a>
+  </div>
+</Layout>
+
+<script>
+  interface Blueprint {
+    id: string
+    page_type: string
+    name: string
+    description?: string
+    version: string
+    components: Array<{
+      type: string
+      order: number
+      required?: boolean
+    }>
+    global_linking_rules?: {
+      min_total_links?: number
+      max_total_links?: number
+    }
+    created_at: string
+    updated_at: string
+  }
+
+  async function loadBlueprints() {
+    const loadingState = document.getElementById('loading-state')
+    const blueprintsGrid = document.getElementById('blueprints-grid')
+    const emptyState = document.getElementById('empty-state')
+
+    try {
+      const response = await fetch('/api/trpc/blueprint.listOrdered')
+      const data = await response.json()
+      const blueprints: Blueprint[] = data.result?.data?.items || []
+
+      loadingState?.classList.add('hidden')
+
+      if (blueprints.length === 0) {
+        emptyState?.classList.remove('hidden')
+        return
+      }
+
+      blueprintsGrid?.classList.remove('hidden')
+
+      blueprints.forEach((blueprint) => {
+        const card = createBlueprintCard(blueprint)
+        blueprintsGrid?.appendChild(card)
+      })
+    } catch (error) {
+      console.error('Failed to load blueprints:', error)
+      loadingState?.classList.add('hidden')
+      if (blueprintsGrid) {
+        blueprintsGrid.innerHTML = `
+          <div class="col-span-full text-center py-12 text-red-600">
+            <p>Failed to load blueprints. Please try again.</p>
+          </div>
+        `
+        blueprintsGrid.classList.remove('hidden')
+      }
+    }
+  }
+
+  function createBlueprintCard(blueprint: Blueprint): HTMLElement {
+    const card = document.createElement('div')
+    card.className = 'bg-white rounded-lg border-2 border-gray-200 hover:border-blue-400 transition-colors p-6'
+
+    const componentCount = blueprint.components?.length || 0
+    const hasLinkingRules = blueprint.global_linking_rules &&
+      (blueprint.global_linking_rules.min_total_links || blueprint.global_linking_rules.max_total_links)
+
+    card.innerHTML = `
+      <div class="flex items-start justify-between mb-4">
+        <div class="flex-1">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">
+              ${blueprint.page_type}
+            </span>
+            <span class="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
+              v${blueprint.version || '1.0'}
+            </span>
+          </div>
+          <h3 class="text-lg font-semibold text-gray-900 mb-1">
+            ${blueprint.name}
+          </h3>
+          ${blueprint.description ? `
+            <p class="text-sm text-gray-600 line-clamp-2">
+              ${blueprint.description}
+            </p>
+          ` : ''}
+        </div>
+      </div>
+
+      <div class="space-y-2 mb-4">
+        <div class="flex items-center gap-2 text-sm text-gray-600">
+          <span>🧩</span>
+          <span>${componentCount} component${componentCount !== 1 ? 's' : ''}</span>
+        </div>
+        ${hasLinkingRules ? `
+          <div class="flex items-center gap-2 text-sm text-gray-600">
+            <span>🔗</span>
+            <span>Linking rules defined</span>
+          </div>
+        ` : ''}
+        <div class="flex items-center gap-2 text-sm text-gray-500">
+          <span>📅</span>
+          <span>Updated ${formatDate(blueprint.updated_at)}</span>
+        </div>
+      </div>
+
+      <div class="flex gap-2 pt-4 border-t">
+        <a
+          href="/blueprints/${blueprint.id}"
+          class="flex-1 px-3 py-2 text-center text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+        >
+          Edit Blueprint
+        </a>
+        <button
+          onclick="duplicateBlueprint('${blueprint.id}')"
+          class="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+          title="Duplicate"
+        >
+          📋
+        </button>
+        <button
+          onclick="deleteBlueprint('${blueprint.id}')"
+          class="px-3 py-2 text-sm bg-red-50 text-red-600 rounded-md hover:bg-red-100 transition-colors"
+          title="Delete"
+        >
+          🗑️
+        </button>
+      </div>
+    `
+
+    return card
+  }
+
+  function formatDate(dateString: string): string {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+    if (diffDays === 0) return 'today'
+    if (diffDays === 1) return 'yesterday'
+    if (diffDays < 7) return `${diffDays} days ago`
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`
+    return date.toLocaleDateString()
+  }
+
+  // Make functions available globally
+  ;(window as any).duplicateBlueprint = async function (id: string) {
+    console.log('Duplicate blueprint:', id)
+    // TODO: Implement duplication
+    alert('Duplication feature coming soon!')
+  }
+
+  ;(window as any).deleteBlueprint = async function (id: string) {
+    if (!confirm('Are you sure you want to delete this blueprint?')) return
+
+    try {
+      const response = await fetch('/api/trpc/blueprint.delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      })
+
+      if (response.ok) {
+        window.location.reload()
+      } else {
+        alert('Failed to delete blueprint')
+      }
+    } catch (error) {
+      console.error('Failed to delete blueprint:', error)
+      alert('Failed to delete blueprint')
+    }
+  }
+
+  // Load blueprints on page load
+  loadBlueprints()
+</script>

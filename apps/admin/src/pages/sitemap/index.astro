@@ -1,0 +1,202 @@
+---
+/**
+ * Sitemap Editor Page
+ * Visual graph-based sitemap editor with React Flow
+ */
+import Layout from '../../layouts/Layout.astro'
+import SitemapGraph from '../../components/SitemapGraph'
+import GitHubSyncPanel from '../../components/sitemap/GitHubSyncPanel'
+
+const title = 'Sitemap Editor'
+---
+
+<Layout title={title}>
+  <div class="flex flex-col h-screen">
+    <!-- Header -->
+    <div class="border-b bg-white px-6 py-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold text-gray-900">Sitemap Editor</h1>
+          <p class="text-sm text-gray-600 mt-1">
+            Visual graph editor for managing your website structure
+          </p>
+        </div>
+        <div class="flex gap-3">
+          <select
+            id="website-selector"
+            class="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+          >
+            <option value="">Select Website...</option>
+          </select>
+          <button
+            id="new-page-btn"
+            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            + New Page
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Graph Editor with Collaboration & GitHub Panels -->
+    <div class="flex-1 bg-gray-50 flex">
+      <div class="flex-1">
+        <SitemapGraph client:only="react" />
+      </div>
+      <!-- Right Sidebar with Tabs -->
+      <div class="w-96 border-l bg-white flex flex-col">
+        <!-- Tab Navigation -->
+        <div class="flex border-b">
+          <button
+            id="tab-collaboration"
+            class="flex-1 px-3 py-3 text-sm font-medium border-b-2 border-purple-600 text-purple-600 bg-white"
+          >
+            🤖 Agents
+          </button>
+          <button
+            id="tab-analytics"
+            class="flex-1 px-3 py-3 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+          >
+            📊 Analytics
+          </button>
+          <button
+            id="tab-github"
+            class="flex-1 px-3 py-3 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+          >
+            🐙 GitHub
+          </button>
+        </div>
+        <!-- Tab Content -->
+        <div id="collaboration-panel" class="flex-1 overflow-hidden"></div>
+        <div id="analytics-panel" class="hidden flex-1 overflow-hidden"></div>
+        <div id="github-sync-container" class="hidden flex-1 overflow-y-auto p-4"></div>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  // Tab switching
+  const tabCollaboration = document.getElementById('tab-collaboration')
+  const tabAnalytics = document.getElementById('tab-analytics')
+  const tabGitHub = document.getElementById('tab-github')
+  const collaborationPanel = document.getElementById('collaboration-panel')
+  const analyticsPanel = document.getElementById('analytics-panel')
+  const githubContainer = document.getElementById('github-sync-container')
+
+  function switchTab(tab: 'collaboration' | 'analytics' | 'github') {
+    // Reset all tabs
+    const tabs = [tabCollaboration, tabAnalytics, tabGitHub]
+    const panels = [collaborationPanel, analyticsPanel, githubContainer]
+
+    tabs.forEach((t) => {
+      t?.classList.remove('border-b-2', 'border-purple-600', 'text-purple-600', 'bg-white')
+      t?.classList.add('text-gray-600', 'hover:text-gray-900', 'hover:bg-gray-50')
+    })
+
+    panels.forEach((p) => p?.classList.add('hidden'))
+
+    // Activate selected tab
+    if (tab === 'collaboration') {
+      tabCollaboration?.classList.add('border-b-2', 'border-purple-600', 'text-purple-600', 'bg-white')
+      tabCollaboration?.classList.remove('text-gray-600', 'hover:text-gray-900', 'hover:bg-gray-50')
+      collaborationPanel?.classList.remove('hidden')
+    } else if (tab === 'analytics') {
+      tabAnalytics?.classList.add('border-b-2', 'border-purple-600', 'text-purple-600', 'bg-white')
+      tabAnalytics?.classList.remove('text-gray-600', 'hover:text-gray-900', 'hover:bg-gray-50')
+      analyticsPanel?.classList.remove('hidden')
+    } else {
+      tabGitHub?.classList.add('border-b-2', 'border-purple-600', 'text-purple-600', 'bg-white')
+      tabGitHub?.classList.remove('text-gray-600', 'hover:text-gray-900', 'hover:bg-gray-50')
+      githubContainer?.classList.remove('hidden')
+    }
+  }
+
+  tabCollaboration?.addEventListener('click', () => switchTab('collaboration'))
+  tabAnalytics?.addEventListener('click', () => switchTab('analytics'))
+  tabGitHub?.addEventListener('click', () => switchTab('github'))
+
+  // Load websites for selector
+  async function loadWebsites() {
+    try {
+      const response = await fetch('/api/websites')
+      const data = await response.json()
+      const select = document.getElementById('website-selector') as HTMLSelectElement
+
+      if (data.items && data.items.length > 0) {
+        data.items.forEach((website: any) => {
+          const option = document.createElement('option')
+          option.value = website.id
+          option.textContent = website.title || website.domain
+          select.appendChild(option)
+        })
+
+        // Auto-select first website
+        if (data.items[0]) {
+          select.value = data.items[0].id
+          // Trigger change event to load sitemap
+          select.dispatchEvent(new Event('change'))
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load websites:', error)
+    }
+  }
+
+  // Handle website selection
+  document.getElementById('website-selector')?.addEventListener('change', (e) => {
+    const websiteId = (e.target as HTMLSelectElement).value
+    if (websiteId) {
+      // Dispatch custom event for React component
+      window.dispatchEvent(new CustomEvent('website-selected', { detail: { websiteId } }))
+
+      // Load all panels
+      loadCollaborationPanel(websiteId)
+      loadAnalyticsPanel(websiteId)
+      loadGitHubSyncPanel(websiteId)
+    }
+  })
+
+  // Load collaboration panel
+  async function loadCollaborationPanel(websiteId: string) {
+    const container = document.getElementById('collaboration-panel')
+    if (!container) return
+
+    const { default: CollaborationPanel } = await import('../../components/sitemap/CollaborationPanel')
+    const { createRoot } = await import('react-dom/client')
+    const { createElement } = await import('react')
+
+    const root = createRoot(container)
+    root.render(createElement(CollaborationPanel, { websiteId }))
+  }
+
+  // Load analytics panel
+  async function loadAnalyticsPanel(websiteId: string) {
+    const container = document.getElementById('analytics-panel')
+    if (!container) return
+
+    const { default: AnalyticsPanel } = await import('../../components/sitemap/AnalyticsPanel')
+    const { createRoot } = await import('react-dom/client')
+    const { createElement } = await import('react')
+
+    const root = createRoot(container)
+    root.render(createElement(AnalyticsPanel, { websiteId }))
+  }
+
+  // Load GitHub sync panel
+  async function loadGitHubSyncPanel(websiteId: string) {
+    const container = document.getElementById('github-sync-container')
+    if (!container) return
+
+    // Dynamically import and render React component
+    const { default: GitHubSyncPanel } = await import('../../components/sitemap/GitHubSyncPanel')
+    const { createRoot } = await import('react-dom/client')
+    const { createElement } = await import('react')
+
+    const root = createRoot(container)
+    root.render(createElement(GitHubSyncPanel, { websiteId }))
+  }
+
+  // Initialize
+  loadWebsites()
+</script>

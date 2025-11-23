@@ -12,6 +12,15 @@ export * from './task-repository'
 export * from './question-ticket-repository'
 export * from './website-repository'
 
+// Agentic Sitemap repositories
+export * from './page-repository'
+export * from './blueprint-repository'
+export * from './content-model-repository'
+export * from './graph-position-repository'
+export * from './suggestion-repository'
+export * from './agent-activity-repository'
+export * from './sitemap-analytics-repository'
+
 // Re-export commonly used repositories
 export { companyRepository } from './company-repository'
 export { departmentRepository } from './department-repository'
@@ -21,3 +30,12 @@ export { agentRepository } from './agent-repository'
 export { taskRepository } from './task-repository'
 export { questionTicketRepository } from './question-ticket-repository'
 export { websiteRepository } from './website-repository'
+
+// Agentic Sitemap repository instances
+export { pageRepository } from './page-repository'
+export { blueprintRepository } from './blueprint-repository'
+export { contentModelRepository } from './content-model-repository'
+export { graphPositionRepository } from './graph-position-repository'
+export { suggestionRepository } from './suggestion-repository'
+export { agentActivityRepository } from './agent-activity-repository'
+export { sitemapAnalyticsRepository } from './sitemap-analytics-repository'

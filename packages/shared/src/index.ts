@@ -12,6 +12,7 @@ export * from './content/blocks'
 
 // Domain Entity Types & Schemas
 export * from './types/entities'
+export * from './types/sitemap'
 
 // State Machines
 export * from './state-machines'
