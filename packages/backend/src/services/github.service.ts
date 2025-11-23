@@ -271,6 +271,127 @@ export class GitHubService {
       throw error
     }
   }
+
+  /**
+   * Create a GitHub Issue
+   */
+  async createIssue(options: {
+    title: string
+    body: string
+    labels?: string[]
+    assignees?: string[]
+  }): Promise<{ number: number; url: string }> {
+    const response = await this.octokit.rest.issues.create({
+      owner: this.config.owner,
+      repo: this.config.repo,
+      title: options.title,
+      body: options.body,
+      labels: options.labels,
+      assignees: options.assignees,
+    })
+
+    return {
+      number: response.data.number,
+      url: response.data.html_url,
+    }
+  }
+
+  /**
+   * Update a GitHub Issue
+   */
+  async updateIssue(
+    issueNumber: number,
+    options: {
+      title?: string
+      body?: string
+      state?: 'open' | 'closed'
+      labels?: string[]
+    }
+  ): Promise<{ number: number; url: string }> {
+    const response = await this.octokit.rest.issues.update({
+      owner: this.config.owner,
+      repo: this.config.repo,
+      issue_number: issueNumber,
+      title: options.title,
+      body: options.body,
+      state: options.state,
+      labels: options.labels,
+    })
+
+    return {
+      number: response.data.number,
+      url: response.data.html_url,
+    }
+  }
+
+  /**
+   * Get GitHub Issue details
+   */
+  async getIssue(issueNumber: number) {
+    const response = await this.octokit.rest.issues.get({
+      owner: this.config.owner,
+      repo: this.config.repo,
+      issue_number: issueNumber,
+    })
+
+    return {
+      number: response.data.number,
+      title: response.data.title,
+      body: response.data.body,
+      state: response.data.state,
+      url: response.data.html_url,
+      labels: response.data.labels.map((label: any) =>
+        typeof label === 'string' ? label : label.name
+      ),
+      assignees: response.data.assignees?.map((a: any) => a.login) || [],
+      created_at: response.data.created_at,
+      updated_at: response.data.updated_at,
+      closed_at: response.data.closed_at,
+    }
+  }
+
+  /**
+   * Close a GitHub Issue
+   */
+  async closeIssue(issueNumber: number): Promise<void> {
+    await this.octokit.rest.issues.update({
+      owner: this.config.owner,
+      repo: this.config.repo,
+      issue_number: issueNumber,
+      state: 'closed',
+    })
+  }
+
+  /**
+   * List Issues
+   */
+  async listIssues(options?: {
+    state?: 'open' | 'closed' | 'all'
+    labels?: string[]
+  }): Promise<Array<{
+    number: number
+    title: string
+    state: string
+    url: string
+    labels: string[]
+  }>> {
+    const response = await this.octokit.rest.issues.listForRepo({
+      owner: this.config.owner,
+      repo: this.config.repo,
+      state: options?.state || 'open',
+      labels: options?.labels?.join(','),
+    })
+
+    return response.data.map((issue) => ({
+      number: issue.number,
+      title: issue.title,
+      state: issue.state,
+      url: issue.html_url,
+      labels: issue.labels.map((label: any) =>
+        typeof label === 'string' ? label : label.name
+      ),
+    }))
+  }
 }
 
 /**

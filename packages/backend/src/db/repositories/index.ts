@@ -21,6 +21,9 @@ export * from './suggestion-repository'
 export * from './agent-activity-repository'
 export * from './sitemap-analytics-repository'
 
+// Editorial Planning repositories
+export * from './editorial-task-repository'
+
 // Re-export commonly used repositories
 export { companyRepository } from './company-repository'
 export { departmentRepository } from './department-repository'
@@ -39,3 +42,6 @@ export { graphPositionRepository } from './graph-position-repository'
 export { suggestionRepository } from './suggestion-repository'
 export { agentActivityRepository } from './agent-activity-repository'
 export { sitemapAnalyticsRepository } from './sitemap-analytics-repository'
+
+// Editorial Planning repository instances
+export { editorialTaskRepository } from './editorial-task-repository'

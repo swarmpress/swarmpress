@@ -1,0 +1,66 @@
+---
+/**
+ * Kanban Board Page
+ * Editorial task management with drag-and-drop
+ */
+
+import Layout from '../../layouts/Layout.astro'
+import { KanbanView } from '../../components/editorial/KanbanView'
+---
+
+<Layout title="Editorial Kanban">
+  <div class="h-screen flex flex-col overflow-hidden">
+    <!-- Page Header -->
+    <div class="bg-white border-b border-gray-200 px-6 py-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold text-gray-900">Editorial Kanban</h1>
+          <p class="text-sm text-gray-600 mt-1">Manage content planning tasks</p>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <!-- Quick Actions -->
+          <button
+            id="new-task-btn"
+            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          >
+            + New Task
+          </button>
+
+          <button
+            id="sync-github-btn"
+            class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+          >
+            🔄 Sync GitHub
+          </button>
+
+          <a
+            href="/sitemap"
+            class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+          >
+            🗺️ Sitemap
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kanban View (React Component) -->
+    <div class="flex-1 overflow-hidden" id="kanban-container">
+      <KanbanView client:load websiteId="website-001" />
+    </div>
+  </div>
+</Layout>
+
+<script>
+  // New Task Modal
+  document.getElementById('new-task-btn')?.addEventListener('click', () => {
+    // Dispatch custom event that KanbanView will listen for
+    const event = new CustomEvent('kanban:new-task')
+    window.dispatchEvent(event)
+  })
+
+  // Sync GitHub (placeholder)
+  document.getElementById('sync-github-btn')?.addEventListener('click', () => {
+    alert('GitHub sync - to be implemented in Phase 6')
+  })
+</script>

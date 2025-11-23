@@ -29,6 +29,9 @@ import { agentActivityRouter } from './agent-activity.router'
 // Analytics
 import { analyticsRouter } from './analytics.router'
 
+// Editorial Planning
+import { editorialRouter } from './editorial.router'
+
 /**
  * Main application router
  * Combines all feature routers
@@ -54,6 +57,8 @@ export const appRouter = router({
   agentActivity: agentActivityRouter,
   // Analytics
   analytics: analyticsRouter,
+  // Editorial Planning
+  editorial: editorialRouter,
 })
 
 /**
