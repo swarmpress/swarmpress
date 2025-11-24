@@ -10,6 +10,9 @@ export { validateEnv, getEnv, type Env } from './config/env'
 // Content Model (JSON Blocks)
 export * from './content/blocks'
 
+// Collection Schemas
+export * from './content/collections'
+
 // Domain Entity Types & Schemas
 export * from './types/entities'
 export * from './types/sitemap'

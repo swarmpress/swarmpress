@@ -35,6 +35,10 @@ import { editorialRouter } from './editorial.router'
 // Prompt Management
 import { promptRouter } from './prompt.router'
 
+// Collections & Media
+import { collectionRouter } from './collection.router'
+import { mediaRouter } from './media.router'
+
 /**
  * Main application router
  * Combines all feature routers
@@ -64,6 +68,9 @@ export const appRouter = router({
   editorial: editorialRouter,
   // Prompt Management
   prompt: promptRouter,
+  // Collections & Media
+  collection: collectionRouter,
+  media: mediaRouter,
 })
 
 /**
