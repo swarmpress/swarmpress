@@ -11,13 +11,20 @@ interface AppLayoutProps {
   title: string
   tenantId: string | null
   productId: string | null
+  user?: {
+    github_login: string
+    display_name: string | null
+    email: string | null
+    avatar_url: string | null
+    role: string
+  }
   children: React.ReactNode
 }
 
-export function AppLayout({ title, tenantId, productId, children }: AppLayoutProps) {
+export function AppLayout({ title, tenantId, productId, user, children }: AppLayoutProps) {
   return (
     <SidebarProvider>
-      <AppSidebar tenantId={tenantId} productId={productId} />
+      <AppSidebar tenantId={tenantId} productId={productId} user={user} />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2">
           <div className="flex items-center gap-2 px-4">

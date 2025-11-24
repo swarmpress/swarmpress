@@ -230,6 +230,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.937.0
         version: 3.937.0
+      '@octokit/rest':
+        specifier: ^20.0.2
+        version: 20.1.2
       '@swarm-press/event-bus':
         specifier: workspace:*
         version: link:../event-bus

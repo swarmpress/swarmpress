@@ -7,6 +7,7 @@ import {
 import {
   Avatar,
   AvatarFallback,
+  AvatarImage,
 } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -22,16 +23,29 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 
-export function UserNav() {
-  const handleLogout = () => {
-    // Clear all session cookies
-    document.cookie = 'swarmpress_tenant_id=; path=/; max-age=0'
-    document.cookie = 'swarmpress_product_id=; path=/; max-age=0'
-    document.cookie = 'tenant_id=; path=/; max-age=0'
-    document.cookie = 'product_id=; path=/; max-age=0'
+interface UserNavProps {
+  user?: {
+    github_login: string
+    display_name: string | null
+    email: string | null
+    avatar_url: string | null
+    role: string
+  }
+}
 
-    // Redirect to tenant selection
-    window.location.href = '/setup/tenant'
+export function UserNav({ user }: UserNavProps) {
+  const displayName = user?.display_name || user?.github_login || 'User'
+  const email = user?.email || `@${user?.github_login}` || 'user@swarm.press'
+  const initials = displayName
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+
+  const handleLogout = () => {
+    // Redirect to logout page which will clear all cookies
+    window.location.href = '/logout'
   }
 
   return (
@@ -44,14 +58,17 @@ export function UserNav() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-lg">
+                {user?.avatar_url && (
+                  <AvatarImage src={user.avatar_url} alt={displayName} />
+                )}
                 <AvatarFallback className="rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  AD
+                  {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">Admin User</span>
+                <span className="truncate font-medium">{displayName}</span>
                 <span className="truncate text-xs text-sidebar-foreground/70">
-                  admin@swarm.press
+                  {email}
                 </span>
               </div>
               <ChevronsUpDown className="ml-auto size-4" />
@@ -66,12 +83,15 @@ export function UserNav() {
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarFallback className="rounded-lg">AD</AvatarFallback>
+                  {user?.avatar_url && (
+                    <AvatarImage src={user.avatar_url} alt={displayName} />
+                  )}
+                  <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">Admin User</span>
+                  <span className="truncate font-medium">{displayName}</span>
                   <span className="truncate text-xs text-muted-foreground">
-                    admin@swarm.press
+                    {email}
                   </span>
                 </div>
               </div>
@@ -88,7 +108,7 @@ export function UserNav() {
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
               <LogOut />
-              Logout & Change Tenant
+              Sign Out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

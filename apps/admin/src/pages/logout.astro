@@ -1,0 +1,14 @@
+---
+/**
+ * Logout Page
+ * Clears session and redirects to login
+ */
+
+import { clearAllSession } from '../lib/session'
+
+// Clear all session data
+clearAllSession(Astro.cookies)
+
+// Redirect to login
+return Astro.redirect('/login')
+---

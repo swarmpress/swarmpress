@@ -1,0 +1,73 @@
+---
+/**
+ * GitHub OAuth Callback Handler
+ * Processes the OAuth response and creates a session
+ */
+
+import { setAuthToken } from '../../../lib/session'
+
+// Get code and state from query params
+const code = Astro.url.searchParams.get('code')
+const state = Astro.url.searchParams.get('state')
+const error = Astro.url.searchParams.get('error')
+const errorDescription = Astro.url.searchParams.get('error_description')
+
+// Handle OAuth errors
+if (error) {
+  console.error('GitHub OAuth error:', error, errorDescription)
+  return Astro.redirect(`/login?error=${encodeURIComponent(error)}`)
+}
+
+// Validate code
+if (!code) {
+  console.error('No OAuth code received')
+  return Astro.redirect('/login?error=no_code')
+}
+
+// Exchange code for session token
+try {
+  const response = await fetch(`${import.meta.env.PUBLIC_API_URL || 'http://localhost:3000'}/api/trpc/auth.handleGitHubCallback`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      code,
+      state,
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Auth failed: ${response.status}`)
+  }
+
+  const data = await response.json()
+
+  if (data.result?.data?.success) {
+    const { session, returnTo } = data.result.data
+
+    // Set auth token cookie
+    setAuthToken(Astro.cookies, session.token)
+
+    // Redirect to return URL or home
+    return Astro.redirect(returnTo || '/')
+  } else {
+    throw new Error('Auth response invalid')
+  }
+} catch (error) {
+  console.error('Failed to complete GitHub OAuth:', error)
+  return Astro.redirect('/login?error=auth_failed')
+}
+---
+
+<!-- This page should always redirect, but just in case... -->
+<html>
+  <head>
+    <title>Authenticating...</title>
+    <meta http-equiv="refresh" content="0;url=/login" />
+  </head>
+  <body>
+    <p>Authenticating with GitHub...</p>
+    <p>If you are not redirected, <a href="/login">click here</a>.</p>
+  </body>
+</html>

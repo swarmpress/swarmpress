@@ -42,9 +42,16 @@ import { UserNav } from './UserNav'
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   tenantId: string | null
   productId: string | null
+  user?: {
+    github_login: string
+    display_name: string | null
+    email: string | null
+    avatar_url: string | null
+    role: string
+  }
 }
 
-export function AppSidebar({ tenantId, productId, ...props }: AppSidebarProps) {
+export function AppSidebar({ tenantId, productId, user, ...props }: AppSidebarProps) {
   const organizationItems = [
     {
       title: 'Media Houses',
@@ -218,7 +225,7 @@ export function AppSidebar({ tenantId, productId, ...props }: AppSidebarProps) {
       </SidebarContent>
 
       <SidebarFooter>
-        <UserNav />
+        <UserNav user={user} />
       </SidebarFooter>
     </Sidebar>
   )

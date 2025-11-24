@@ -39,6 +39,9 @@ import { promptRouter } from './prompt.router'
 import { collectionRouter } from './collection.router'
 import { mediaRouter } from './media.router'
 
+// Authentication
+import { authRouter } from './auth.router'
+
 /**
  * Main application router
  * Combines all feature routers
@@ -71,6 +74,8 @@ export const appRouter = router({
   // Collections & Media
   collection: collectionRouter,
   media: mediaRouter,
+  // Authentication
+  auth: authRouter,
 })
 
 /**

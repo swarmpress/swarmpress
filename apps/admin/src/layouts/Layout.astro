@@ -1,6 +1,6 @@
 ---
 import { AppLayout } from '../components/AppLayout'
-import { getSessionContext } from '../lib/session'
+import { getSessionContext, getAuthToken } from '../lib/session'
 
 interface Props {
   title: string
@@ -8,6 +8,31 @@ interface Props {
 
 const { title } = Astro.props
 const session = getSessionContext(Astro.cookies)
+
+// Get authenticated user
+let user = null
+const authToken = getAuthToken(Astro.cookies)
+
+if (authToken) {
+  try {
+    const apiUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000'
+    const response = await fetch(`${apiUrl}/api/trpc/auth.getCurrentUser?input=${encodeURIComponent(JSON.stringify({ token: authToken }))}`)
+
+    if (response.ok) {
+      const data = await response.json()
+      if (data.result?.data?.user) {
+        user = data.result.data.user
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch user:', error)
+  }
+}
+
+// If no user and not on login page, redirect to login
+if (!user && !Astro.url.pathname.startsWith('/login') && !Astro.url.pathname.startsWith('/auth/')) {
+  return Astro.redirect(`/login?returnTo=${encodeURIComponent(Astro.url.pathname)}`)
+}
 ---
 
 <!doctype html>
