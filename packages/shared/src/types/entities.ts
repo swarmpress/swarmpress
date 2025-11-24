@@ -99,7 +99,12 @@ export const WebsiteSchema = z
     domain: z.string().min(1), // hostname validation relaxed for MVP
     title: z.string().min(1),
     description: z.string().optional(),
+    // GitHub Integration
     github_repo_url: z.string().optional(),
+    github_owner: z.string().optional(),
+    github_repo: z.string().optional(),
+    github_installation_id: z.string().optional(),
+    github_connected_at: z.string().datetime().optional(),
   })
   .merge(TimestampsSchema)
 

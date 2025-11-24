@@ -89,6 +89,14 @@ CREATE TABLE websites (
   description TEXT,
   language VARCHAR(10) DEFAULT 'en',
   status VARCHAR(50) NOT NULL DEFAULT 'active',
+
+  -- GitHub Integration
+  github_repo_url TEXT,
+  github_owner TEXT,
+  github_repo TEXT,
+  github_installation_id TEXT,
+  github_connected_at TIMESTAMPTZ,
+
   metadata JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

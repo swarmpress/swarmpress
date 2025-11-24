@@ -5,6 +5,7 @@ import { Textarea } from './ui/textarea'
 import { Label } from './ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
+import { GitHubConnector, type GitHubConnection } from './GitHubConnector'
 
 interface WebsiteFormProps {
   website?: {
@@ -14,6 +15,10 @@ interface WebsiteFormProps {
     description: string | null
     company_id: string
     github_repo_url: string | null
+    github_owner?: string | null
+    github_repo?: string | null
+    github_installation_id?: string | null
+    github_connected_at?: string | null
   }
   mode: 'create' | 'edit'
 }
@@ -28,7 +33,13 @@ export default function WebsiteForm({ website, mode }: WebsiteFormProps) {
   const [domain, setDomain] = useState(website?.domain || '')
   const [description, setDescription] = useState(website?.description || '')
   const [companyId, setCompanyId] = useState(website?.company_id || '')
-  const [githubRepoUrl, setGithubRepoUrl] = useState(website?.github_repo_url || '')
+  const [githubConnection, setGithubConnection] = useState<GitHubConnection>({
+    github_repo_url: website?.github_repo_url || undefined,
+    github_owner: website?.github_owner || undefined,
+    github_repo: website?.github_repo || undefined,
+    github_installation_id: website?.github_installation_id || undefined,
+    github_connected_at: website?.github_connected_at || undefined,
+  })
   const [companies, setCompanies] = useState<Company[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -78,7 +89,11 @@ export default function WebsiteForm({ website, mode }: WebsiteFormProps) {
           domain,
           description,
           company_id: companyId,
-          github_repo_url: githubRepoUrl || null,
+          github_repo_url: githubConnection.github_repo_url || null,
+          github_owner: githubConnection.github_owner || null,
+          github_repo: githubConnection.github_repo || null,
+          github_installation_id: githubConnection.github_installation_id || null,
+          github_connected_at: githubConnection.github_connected_at || null,
         }),
       })
 
@@ -186,18 +201,21 @@ export default function WebsiteForm({ website, mode }: WebsiteFormProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="github_repo_url">GitHub Repository URL</Label>
-            <Input
-              id="github_repo_url"
-              type="url"
-              value={githubRepoUrl}
-              onChange={(e) => setGithubRepoUrl(e.target.value)}
-              placeholder="e.g., https://github.com/owner/repo"
+            <Label>GitHub Integration (Optional)</Label>
+            <GitHubConnector
+              connection={githubConnection}
+              onConnect={(connection) => setGithubConnection(connection)}
+              onDisconnect={() =>
+                setGithubConnection({
+                  github_repo_url: undefined,
+                  github_owner: undefined,
+                  github_repo: undefined,
+                  github_installation_id: undefined,
+                  github_connected_at: undefined,
+                })
+              }
               disabled={isSubmitting}
             />
-            <p className="text-sm text-muted-foreground">
-              Optional GitHub repository URL for content storage and version control.
-            </p>
           </div>
 
           {error && (
