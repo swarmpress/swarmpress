@@ -401,6 +401,185 @@ CREATE INDEX idx_suggestions_agent_id ON suggestions(suggested_by_agent_id);
 CREATE INDEX idx_suggestions_status ON suggestions(status);
 
 -- =============================================================================
+-- PROMPT ENGINEERING & MANAGEMENT
+-- =============================================================================
+
+-- Level 1: Company Prompt Templates (Baseline prompts for all websites)
+CREATE TABLE company_prompt_templates (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  role_name TEXT NOT NULL,  -- 'writer', 'editor', 'seo', 'ceo_assistant', etc.
+  capability TEXT NOT NULL,  -- 'write_draft', 'review_content', 'optimize_seo', etc.
+  version TEXT NOT NULL,  -- Semantic versioning: "1.0.0", "1.1.0", "2.0.0"
+
+  -- Prompt content (XML format)
+  template TEXT NOT NULL,
+
+  -- Examples for multishot prompting
+  examples JSONB DEFAULT '[]'::jsonb,
+
+  -- Default variables for this role/capability
+  default_variables JSONB DEFAULT '{}'::jsonb,
+
+  -- Metadata
+  description TEXT,
+  changelog TEXT,  -- What changed in this version
+  created_by_user_id UUID,  -- Human who created/approved this
+  approved_by_user_id UUID,  -- CEO/CTO approval
+  approved_at TIMESTAMPTZ,
+
+  -- Status
+  is_active BOOLEAN DEFAULT FALSE,  -- Must be explicitly activated
+  is_deprecated BOOLEAN DEFAULT FALSE,
+  deprecation_reason TEXT,
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE(company_id, role_name, capability, version)
+);
+
+CREATE INDEX idx_company_prompts_company ON company_prompt_templates(company_id);
+CREATE INDEX idx_company_prompts_role ON company_prompt_templates(role_name);
+CREATE INDEX idx_company_prompts_capability ON company_prompt_templates(capability);
+CREATE INDEX idx_company_prompts_active ON company_prompt_templates(company_id, is_active) WHERE is_active = TRUE;
+CREATE INDEX idx_company_prompts_lookup ON company_prompt_templates(company_id, role_name, capability, is_active);
+
+-- Level 2: Website Prompt Templates (Brand-specific overrides)
+CREATE TABLE website_prompt_templates (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  website_id UUID NOT NULL REFERENCES websites(id) ON DELETE CASCADE,
+  company_prompt_template_id UUID NOT NULL REFERENCES company_prompt_templates(id) ON DELETE RESTRICT,
+  version TEXT NOT NULL,  -- Website-specific versioning
+
+  -- Override options (NULL = inherit from company)
+  template_override TEXT,  -- Complete replacement (rarely used)
+  template_additions TEXT,  -- Appended to company template (common)
+
+  -- Override examples (merged with company examples)
+  examples_override JSONB DEFAULT '[]'::jsonb,
+
+  -- Override variables (merged with company defaults)
+  variables_override JSONB DEFAULT '{}'::jsonb,
+
+  -- Metadata
+  description TEXT,
+  changelog TEXT,
+  created_by_user_id UUID,
+  approved_by_user_id UUID,  -- Chief Editor for this website
+  approved_at TIMESTAMPTZ,
+
+  -- Status
+  is_active BOOLEAN DEFAULT FALSE,
+  is_deprecated BOOLEAN DEFAULT FALSE,
+  deprecation_reason TEXT,
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE(website_id, company_prompt_template_id, version)
+);
+
+CREATE INDEX idx_website_prompts_website ON website_prompt_templates(website_id);
+CREATE INDEX idx_website_prompts_company ON website_prompt_templates(company_prompt_template_id);
+CREATE INDEX idx_website_prompts_active ON website_prompt_templates(website_id, is_active) WHERE is_active = TRUE;
+
+-- Level 3: Agent Prompt Bindings (Individual agent assignments)
+CREATE TABLE agent_prompt_bindings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  capability TEXT NOT NULL,  -- Must match agent's capabilities array
+
+  -- Bind to EITHER company or website prompt (not both)
+  company_prompt_template_id UUID REFERENCES company_prompt_templates(id) ON DELETE RESTRICT,
+  website_prompt_template_id UUID REFERENCES website_prompt_templates(id) ON DELETE RESTRICT,
+
+  -- Agent-level variable customizations (lightweight)
+  custom_variables JSONB DEFAULT '{}'::jsonb,
+
+  -- A/B testing support
+  ab_test_group TEXT,  -- 'control', 'variant_a', 'variant_b', etc.
+  ab_test_weight DECIMAL(3,2) DEFAULT 1.0,  -- 0.0 to 1.0 (probability of selection)
+
+  -- Status
+  is_active BOOLEAN DEFAULT TRUE,
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE(agent_id, capability),
+
+  -- Must bind to exactly one prompt source
+  CONSTRAINT binding_source_check CHECK (
+    (company_prompt_template_id IS NOT NULL AND website_prompt_template_id IS NULL) OR
+    (company_prompt_template_id IS NULL AND website_prompt_template_id IS NOT NULL)
+  ),
+
+  -- A/B test weight must be valid
+  CONSTRAINT ab_test_weight_check CHECK (ab_test_weight >= 0.0 AND ab_test_weight <= 1.0)
+);
+
+CREATE INDEX idx_agent_bindings_agent ON agent_prompt_bindings(agent_id);
+CREATE INDEX idx_agent_bindings_capability ON agent_prompt_bindings(capability);
+CREATE INDEX idx_agent_bindings_company_prompt ON agent_prompt_bindings(company_prompt_template_id);
+CREATE INDEX idx_agent_bindings_website_prompt ON agent_prompt_bindings(website_prompt_template_id);
+CREATE INDEX idx_agent_bindings_lookup ON agent_prompt_bindings(agent_id, capability, is_active);
+
+-- Prompt Execution Logging (Performance tracking)
+CREATE TABLE prompt_executions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+  -- Context
+  agent_id UUID NOT NULL REFERENCES agents(id),
+  capability TEXT NOT NULL,
+  company_prompt_template_id UUID REFERENCES company_prompt_templates(id),
+  website_prompt_template_id UUID REFERENCES website_prompt_templates(id),
+
+  -- Input/Output
+  input_variables JSONB NOT NULL,
+  final_prompt_hash TEXT,  -- Hash of final rendered prompt (for cache/dedup)
+  output TEXT,
+
+  -- Performance metrics
+  tokens_used INTEGER,
+  latency_ms INTEGER,
+  claude_model TEXT,  -- 'claude-sonnet-4-5', etc.
+
+  -- Quality metrics (filled in later by human or automated review)
+  quality_score DECIMAL(3,2),  -- 0.0 to 5.0
+  quality_rated_by TEXT,  -- 'human', 'ai_review', 'editor_approval'
+  quality_rated_at TIMESTAMPTZ,
+  quality_feedback TEXT,
+
+  -- Content outcomes (filled in during workflow)
+  content_id UUID REFERENCES content_items(id),
+  content_status TEXT,  -- 'draft', 'approved', 'published', 'rejected'
+  revision_count INTEGER DEFAULT 0,  -- How many revisions needed
+
+  -- Error tracking
+  error_occurred BOOLEAN DEFAULT FALSE,
+  error_message TEXT,
+
+  -- A/B testing
+  ab_test_group TEXT,
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_prompt_executions_agent ON prompt_executions(agent_id);
+CREATE INDEX idx_prompt_executions_capability ON prompt_executions(capability);
+CREATE INDEX idx_prompt_executions_company_prompt ON prompt_executions(company_prompt_template_id);
+CREATE INDEX idx_prompt_executions_website_prompt ON prompt_executions(website_prompt_template_id);
+CREATE INDEX idx_prompt_executions_quality ON prompt_executions(quality_score) WHERE quality_score IS NOT NULL;
+CREATE INDEX idx_prompt_executions_date ON prompt_executions(created_at DESC);
+CREATE INDEX idx_prompt_executions_content ON prompt_executions(content_id);
+CREATE INDEX idx_prompt_executions_error ON prompt_executions(error_occurred) WHERE error_occurred = TRUE;
+
+-- =============================================================================
 -- AUDIT & STATE MANAGEMENT
 -- =============================================================================
 

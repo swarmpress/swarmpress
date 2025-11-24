@@ -32,6 +32,9 @@ import { analyticsRouter } from './analytics.router'
 // Editorial Planning
 import { editorialRouter } from './editorial.router'
 
+// Prompt Management
+import { promptRouter } from './prompt.router'
+
 /**
  * Main application router
  * Combines all feature routers
@@ -59,6 +62,8 @@ export const appRouter = router({
   analytics: analyticsRouter,
   // Editorial Planning
   editorial: editorialRouter,
+  // Prompt Management
+  prompt: promptRouter,
 })
 
 /**
