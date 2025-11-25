@@ -72,6 +72,7 @@ export class BaseAgent {
   /**
    * Execute a task with tool-use support
    * Implements a loop that continues until Claude finishes (end_turn)
+   * Supports both built-in tools and external tools (REST, GraphQL, MCP)
    */
   async execute(
     task: AgentTask,
@@ -100,8 +101,22 @@ export class BaseAgent {
         websiteId: context.websiteId || task.context?.websiteId,
       }
 
-      // Get tool definitions (if any registered)
-      const tools = this.toolRegistry.getDefinitions()
+      // Load external tools if websiteId is available
+      const websiteId = toolContext.websiteId
+      if (websiteId && !this.toolRegistry.hasExternalToolsLoaded()) {
+        try {
+          await this.toolRegistry.loadExternalTools(websiteId)
+        } catch (error) {
+          console.warn(
+            `[${this.config.name}] Failed to load external tools:`,
+            error instanceof Error ? error.message : error
+          )
+          // Continue without external tools
+        }
+      }
+
+      // Get tool definitions (built-in + external)
+      const tools = this.toolRegistry.getDefinitionsWithExternal()
       const hasTools = tools.length > 0
 
       console.log(
@@ -135,6 +150,10 @@ export class BaseAgent {
         if (response.stop_reason === 'end_turn') {
           // Done - extract final text response
           const content = this.extractTextContent(response.content)
+
+          // Clean up external tool connections
+          await this.toolRegistry.dispose()
+
           return {
             success: true,
             content,
@@ -157,13 +176,18 @@ export class BaseAgent {
             break
           }
 
-          // Execute all tool calls
+          // Execute all tool calls (supports both built-in and external)
           const toolResultBlocks: Anthropic.ToolResultBlockParam[] = []
 
           for (const toolUse of toolUseBlocks) {
             console.log(`[${this.config.name}] Calling tool: ${toolUse.name}`)
 
-            const result = await this.toolRegistry.execute(toolUse.name, toolUse.input, toolContext)
+            // Use executeWithExternal to handle both built-in and external tools
+            const result = await this.toolRegistry.executeWithExternal(
+              toolUse.name,
+              toolUse.input,
+              toolContext
+            )
 
             toolResults.push(result)
 
@@ -189,6 +213,10 @@ export class BaseAgent {
         if (response.stop_reason === 'max_tokens') {
           console.warn(`[${this.config.name}] Hit max tokens limit`)
           const content = this.extractTextContent(response.content)
+
+          // Clean up external tool connections
+          await this.toolRegistry.dispose()
+
           return {
             success: true,
             content,
@@ -205,7 +233,9 @@ export class BaseAgent {
         break
       }
 
-      // Exceeded max iterations
+      // Exceeded max iterations - clean up
+      await this.toolRegistry.dispose()
+
       console.error(`[${this.config.name}] Exceeded max iterations (${maxIterations})`)
       return {
         success: false,
@@ -213,6 +243,9 @@ export class BaseAgent {
         data: { iterations: iteration, toolResults },
       }
     } catch (error) {
+      // Clean up on error
+      await this.toolRegistry.dispose()
+
       console.error(`[${this.config.name}] Execution error:`, error)
       return {
         success: false,

@@ -24,6 +24,11 @@ export * from './sitemap-analytics-repository'
 // Editorial Planning repositories
 export * from './editorial-task-repository'
 
+// External Tool System repositories
+export * from './tool-config-repository'
+export * from './website-tool-repository'
+export * from './tool-secret-repository'
+
 // Re-export commonly used repositories
 export { companyRepository } from './company-repository'
 export { departmentRepository } from './department-repository'
@@ -45,3 +50,8 @@ export { sitemapAnalyticsRepository } from './sitemap-analytics-repository'
 
 // Editorial Planning repository instances
 export { editorialTaskRepository } from './editorial-task-repository'
+
+// External Tool System repository instances
+export { toolConfigRepository } from './tool-config-repository'
+export { websiteToolRepository } from './website-tool-repository'
+export { toolSecretRepository } from './tool-secret-repository'

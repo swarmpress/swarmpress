@@ -45,6 +45,9 @@ import { authRouter } from './auth.router'
 // Workflow Orchestration
 import { workflowRouter } from './workflow.router'
 
+// External Tool System
+import { toolsRouter } from './tools.router'
+
 /**
  * Main application router
  * Combines all feature routers
@@ -81,6 +84,8 @@ export const appRouter = router({
   auth: authRouter,
   // Workflow Orchestration
   workflow: workflowRouter,
+  // External Tool System
+  tools: toolsRouter,
 })
 
 /**

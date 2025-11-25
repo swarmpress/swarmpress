@@ -17,6 +17,7 @@ export * from './content/collections'
 export * from './types/entities'
 export * from './types/sitemap'
 export * from './types/prompts'
+export * from './types/tools'
 
 // State Machines
 export * from './state-machines'

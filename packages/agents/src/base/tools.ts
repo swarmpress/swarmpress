@@ -1,9 +1,12 @@
 /**
  * Tool Registry System
  * Provides Claude tool-use capabilities for swarm.press agents
+ * Supports both built-in tools and external tools (REST, GraphQL, MCP)
  */
 
 import Anthropic from '@anthropic-ai/sdk'
+import type { ToolConfig } from '@swarm-press/shared'
+import { createAdapter, type ExternalToolAdapter } from '../adapters'
 
 // ============================================================================
 // Types
@@ -159,6 +162,173 @@ export class ToolRegistry {
    */
   clear(): void {
     this.tools.clear()
+  }
+
+  // ==========================================================================
+  // External Tool Support
+  // ==========================================================================
+
+  private externalTools = new Map<string, {
+    config: ToolConfig
+    adapter: ExternalToolAdapter
+    customConfig?: Record<string, unknown>
+  }>()
+
+  private externalToolsLoaded = false
+
+  /**
+   * Load external tools for a specific website context
+   * Fetches tool configurations from database and initializes adapters
+   */
+  async loadExternalTools(websiteId: string): Promise<void> {
+    // Lazy import to avoid circular dependencies
+    const { websiteToolRepository, toolSecretRepository } = await import('@swarm-press/backend')
+
+    console.log(`[ToolRegistry] Loading external tools for website ${websiteId}`)
+
+    // Get all tools for this website (including global tools)
+    const websiteTools = await websiteToolRepository.findForWebsite(websiteId)
+
+    for (const wt of websiteTools) {
+      // Skip builtin tools (they use regular registration)
+      if (wt.tool_config.type === 'builtin') continue
+
+      // Skip already loaded tools
+      if (this.externalTools.has(wt.tool_config.name)) continue
+
+      try {
+        // Get secrets for this tool
+        const secrets = await toolSecretRepository.getSecretsForTool(
+          websiteId,
+          wt.tool_config.id
+        )
+
+        // Create and initialize the adapter
+        const adapter = createAdapter(wt.tool_config.type)
+        await adapter.initialize(wt.tool_config, secrets)
+
+        // Store the tool
+        this.externalTools.set(wt.tool_config.name, {
+          config: wt.tool_config,
+          adapter,
+          customConfig: wt.custom_config,
+        })
+
+        console.log(`[ToolRegistry] Loaded external tool: ${wt.tool_config.name} (${wt.tool_config.type})`)
+      } catch (error) {
+        console.error(
+          `[ToolRegistry] Failed to load external tool ${wt.tool_config.name}:`,
+          error instanceof Error ? error.message : error
+        )
+      }
+    }
+
+    this.externalToolsLoaded = true
+    console.log(`[ToolRegistry] Loaded ${this.externalTools.size} external tools`)
+  }
+
+  /**
+   * Get all tool definitions including external tools
+   */
+  getDefinitionsWithExternal(): Anthropic.Tool[] {
+    const builtinDefs = this.getDefinitions()
+
+    const externalDefs: Anthropic.Tool[] = Array.from(this.externalTools.values()).map(({ config }) => ({
+      name: config.name,
+      description: config.description || `External ${config.type} tool: ${config.display_name || config.name}`,
+      input_schema: (config.input_schema || {
+        type: 'object',
+        properties: {},
+        required: [],
+      }) as Anthropic.Tool.InputSchema,
+    }))
+
+    return [...builtinDefs, ...externalDefs]
+  }
+
+  /**
+   * Execute a tool (built-in or external)
+   */
+  async executeWithExternal(name: string, input: any, context: ToolContext): Promise<ToolResult> {
+    // Try built-in first
+    if (this.tools.has(name)) {
+      return this.execute(name, input, context)
+    }
+
+    // Try external
+    const external = this.externalTools.get(name)
+    if (external) {
+      try {
+        console.log(`[ToolRegistry] Executing external tool: ${name}`, { input, agentId: context.agentId })
+        const result = await external.adapter.execute(input)
+        console.log(`[ToolRegistry] External tool ${name} result:`, result.success ? 'success' : result.error)
+
+        return {
+          success: result.success,
+          data: result.data,
+          error: result.error,
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        console.error(`[ToolRegistry] External tool ${name} failed:`, errorMessage)
+        return {
+          success: false,
+          error: `External tool execution failed: ${errorMessage}`,
+        }
+      }
+    }
+
+    return {
+      success: false,
+      error: `Tool not found: ${name}`,
+    }
+  }
+
+  /**
+   * Check if external tools have been loaded
+   */
+  hasExternalToolsLoaded(): boolean {
+    return this.externalToolsLoaded
+  }
+
+  /**
+   * Get list of all tool names (built-in and external)
+   */
+  getAllToolNames(): string[] {
+    const builtinNames = this.getToolNames()
+    const externalNames = Array.from(this.externalTools.keys())
+    return [...builtinNames, ...externalNames]
+  }
+
+  /**
+   * Check if a tool exists (built-in or external)
+   */
+  hasAny(name: string): boolean {
+    return this.tools.has(name) || this.externalTools.has(name)
+  }
+
+  /**
+   * Dispose and cleanup all external tool connections
+   */
+  async dispose(): Promise<void> {
+    for (const [name, { adapter }] of this.externalTools) {
+      try {
+        await adapter.dispose()
+        console.log(`[ToolRegistry] Disposed external tool: ${name}`)
+      } catch (error) {
+        console.error(`[ToolRegistry] Failed to dispose ${name}:`, error)
+      }
+    }
+    this.externalTools.clear()
+    this.externalToolsLoaded = false
+  }
+
+  /**
+   * Clear all tools including external
+   */
+  async clearAll(): Promise<void> {
+    await this.dispose()
+    this.clear()
   }
 }
 

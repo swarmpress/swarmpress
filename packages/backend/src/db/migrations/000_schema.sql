@@ -708,6 +708,65 @@ CREATE TRIGGER phase_transition_handler
   EXECUTE FUNCTION handle_phase_transition();
 
 -- =============================================================================
+-- EXTENSIBLE TOOL SYSTEM
+-- =============================================================================
+
+-- Tool Configurations (REST, GraphQL, MCP endpoints)
+CREATE TABLE tool_configs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name VARCHAR(100) NOT NULL UNIQUE,
+  display_name VARCHAR(200),
+  description TEXT,
+  type VARCHAR(20) NOT NULL CHECK (type IN ('rest', 'graphql', 'mcp', 'builtin')),
+  endpoint_url TEXT,
+  config JSONB DEFAULT '{}'::jsonb,  -- headers, auth type, query templates, etc.
+  input_schema JSONB,                 -- JSON Schema for tool inputs
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_tool_configs_name ON tool_configs(name);
+CREATE INDEX idx_tool_configs_type ON tool_configs(type);
+
+-- Scope tools to websites (NULL website_id = global/all websites)
+CREATE TABLE website_tools (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  website_id UUID REFERENCES websites(id) ON DELETE CASCADE,
+  tool_config_id UUID NOT NULL REFERENCES tool_configs(id) ON DELETE CASCADE,
+  enabled BOOLEAN DEFAULT TRUE,
+  priority INTEGER DEFAULT 0,  -- Higher = preferred when conflicts
+  custom_config JSONB DEFAULT '{}'::jsonb,  -- Website-specific overrides
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(website_id, tool_config_id)
+);
+
+CREATE INDEX idx_website_tools_website ON website_tools(website_id);
+CREATE INDEX idx_website_tools_tool ON website_tools(tool_config_id);
+CREATE INDEX idx_website_tools_enabled ON website_tools(enabled) WHERE enabled = TRUE;
+
+-- Per-website secrets for tools (API keys, tokens, etc.)
+CREATE TABLE tool_secrets (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  website_id UUID NOT NULL REFERENCES websites(id) ON DELETE CASCADE,
+  tool_config_id UUID NOT NULL REFERENCES tool_configs(id) ON DELETE CASCADE,
+  secret_key VARCHAR(100) NOT NULL,
+  encrypted_value TEXT NOT NULL,  -- Encrypted with app secret
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(website_id, tool_config_id, secret_key)
+);
+
+CREATE INDEX idx_tool_secrets_lookup ON tool_secrets(website_id, tool_config_id);
+
+-- Triggers for updated_at
+CREATE TRIGGER update_tool_configs_updated_at BEFORE UPDATE ON tool_configs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_tool_secrets_updated_at BEFORE UPDATE ON tool_secrets FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON TABLE tool_configs IS 'External tool configurations (REST, GraphQL, MCP endpoints)';
+COMMENT ON TABLE website_tools IS 'Tool assignments to websites (NULL website_id = global)';
+COMMENT ON TABLE tool_secrets IS 'Per-website encrypted secrets for tools (API keys, tokens)';
+
+-- =============================================================================
 -- COMMENTS (Documentation)
 -- =============================================================================
 
