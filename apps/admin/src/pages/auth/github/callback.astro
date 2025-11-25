@@ -4,6 +4,7 @@
  * Processes the OAuth response and creates a session
  */
 
+import AuthLayout from '../../../layouts/AuthLayout.astro'
 import { setAuthToken } from '../../../lib/session'
 
 // Get code and state from query params
@@ -60,14 +61,13 @@ try {
 }
 ---
 
-<!-- This page should always redirect, but just in case... -->
-<html>
-  <head>
-    <title>Authenticating...</title>
-    <meta http-equiv="refresh" content="0;url=/login" />
-  </head>
-  <body>
-    <p>Authenticating with GitHub...</p>
-    <p>If you are not redirected, <a href="/login">click here</a>.</p>
-  </body>
-</html>
+<AuthLayout title="Authenticating">
+  <!-- This page should always redirect, but just in case... -->
+  <div class="min-h-screen flex items-center justify-center bg-gray-50">
+    <div class="text-center">
+      <div class="animate-spin inline-block w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full mb-4"></div>
+      <p class="text-lg text-gray-900">Authenticating with GitHub...</p>
+      <p class="text-sm text-gray-600 mt-2">If you are not redirected, <a href="/login" class="text-blue-600 hover:underline">click here</a>.</p>
+    </div>
+  </div>
+</AuthLayout>

@@ -200,23 +200,26 @@ export default function WebsiteForm({ website, mode }: WebsiteFormProps) {
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label>GitHub Integration (Optional)</Label>
-            <GitHubConnector
-              connection={githubConnection}
-              onConnect={(connection) => setGithubConnection(connection)}
-              onDisconnect={() =>
-                setGithubConnection({
-                  github_repo_url: undefined,
-                  github_owner: undefined,
-                  github_repo: undefined,
-                  github_installation_id: undefined,
-                  github_connected_at: undefined,
-                })
-              }
-              disabled={isSubmitting}
-            />
-          </div>
+          {mode === 'edit' && website?.id && (
+            <div className="space-y-2">
+              <Label>GitHub Integration (Optional)</Label>
+              <GitHubConnector
+                websiteId={website.id}
+                connection={githubConnection}
+                onConnect={(connection) => setGithubConnection(connection)}
+                onDisconnect={() =>
+                  setGithubConnection({
+                    github_repo_url: undefined,
+                    github_owner: undefined,
+                    github_repo: undefined,
+                    github_installation_id: undefined,
+                    github_connected_at: undefined,
+                  })
+                }
+                disabled={isSubmitting}
+              />
+            </div>
+          )}
 
           {error && (
             <div className="p-4 border border-destructive bg-destructive/10 rounded-md">

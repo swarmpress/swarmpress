@@ -4,7 +4,7 @@
  * GitHub OAuth authentication
  */
 
-import Layout from '../layouts/Layout.astro'
+import AuthLayout from '../layouts/AuthLayout.astro'
 import { isAuthenticated } from '../lib/session'
 
 // If already authenticated, redirect to home
@@ -16,7 +16,7 @@ if (isAuthenticated(Astro.cookies)) {
 const returnTo = Astro.url.searchParams.get('returnTo') || '/'
 ---
 
-<Layout title="Sign In - swarm.press">
+<AuthLayout title="Sign In - swarm.press">
   <div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
     <div class="max-w-md w-full space-y-8">
       <!-- Logo/Header -->
@@ -107,4 +107,4 @@ const returnTo = Astro.url.searchParams.get('returnTo') || '/'
       }
     })
   </script>
-</Layout>
+</AuthLayout>

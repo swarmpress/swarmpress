@@ -1,0 +1,330 @@
+---
+/**
+ * GitHub OAuth Callback for Repository Connection
+ * Handles the OAuth callback and shows repo selection UI
+ */
+
+import Layout from '../../../layouts/Layout.astro'
+
+// Get code and state from query params
+const code = Astro.url.searchParams.get('code')
+const state = Astro.url.searchParams.get('state')
+const error = Astro.url.searchParams.get('error')
+const errorDescription = Astro.url.searchParams.get('error_description')
+---
+
+<Layout title="Connect Repository">
+  <div class="min-h-screen flex items-center justify-center bg-gray-100 px-4 py-8">
+    <div class="max-w-xl w-full">
+      {error ? (
+        <div class="bg-white p-8 rounded-xl shadow-lg text-center">
+          <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
+            <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </div>
+          <h1 class="text-xl font-bold text-gray-900 mb-2">Connection Failed</h1>
+          <p class="text-gray-600 mb-6">{errorDescription || error}</p>
+          <button
+            onclick="window.close()"
+            class="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            Close Window
+          </button>
+        </div>
+      ) : !code ? (
+        <div class="bg-white p-8 rounded-xl shadow-lg text-center">
+          <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
+            <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+          </div>
+          <h1 class="text-xl font-bold text-gray-900 mb-2">Invalid Request</h1>
+          <p class="text-gray-600 mb-6">No authorization code received from GitHub.</p>
+          <button
+            onclick="window.close()"
+            class="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            Close Window
+          </button>
+        </div>
+      ) : (
+        <div id="main-container">
+          <!-- Loading State -->
+          <div id="loading-state" class="bg-white p-8 rounded-xl shadow-lg text-center">
+            <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+              <svg class="w-8 h-8 text-gray-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <h1 id="loading-title" class="text-xl font-bold text-gray-900 mb-2">Connecting to GitHub...</h1>
+            <p id="loading-subtitle" class="text-gray-600">Please wait while we fetch your repositories.</p>
+          </div>
+
+          <!-- Repository Selection (hidden initially) -->
+          <div id="repo-selection" class="hidden bg-white rounded-xl shadow-lg overflow-hidden">
+            <!-- Header -->
+            <div class="p-6 border-b border-gray-200">
+              <div class="flex items-center gap-4">
+                <img id="user-avatar" src="" alt="" class="w-12 h-12 rounded-full border-2 border-gray-200" />
+                <div class="flex-1">
+                  <h1 class="text-lg font-bold text-gray-900">Select a Repository</h1>
+                  <p class="text-sm text-gray-500">
+                    <span id="user-login"></span> · <span id="repo-count"></span> repositories
+                  </p>
+                </div>
+                <button
+                  onclick="window.close()"
+                  class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Cancel"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Search & Filter -->
+            <div class="p-4 border-b border-gray-200 bg-gray-50">
+              <div class="relative">
+                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+                <input
+                  type="text"
+                  id="repo-search"
+                  placeholder="Search repositories..."
+                  class="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                />
+              </div>
+              <!-- Owner filter tabs -->
+              <div id="owner-tabs" class="flex gap-2 mt-3 overflow-x-auto pb-1">
+                <!-- Tabs will be inserted here -->
+              </div>
+            </div>
+
+            <!-- Repository List -->
+            <div id="repo-list" class="max-h-80 overflow-y-auto">
+              <!-- Repos will be inserted here -->
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="hidden p-8 text-center">
+              <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <p class="text-gray-500">No repositories found</p>
+            </div>
+          </div>
+
+          <!-- Error State (hidden initially) -->
+          <div id="error-state" class="hidden bg-white p-8 rounded-xl shadow-lg text-center">
+            <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
+              <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </div>
+            <h1 class="text-xl font-bold text-gray-900 mb-2">Connection Failed</h1>
+            <p id="error-message" class="text-gray-600 mb-6"></p>
+            <button
+              onclick="window.close()"
+              class="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              Close Window
+            </button>
+          </div>
+
+          <!-- Success State (hidden initially) -->
+          <div id="success-state" class="hidden bg-white p-8 rounded-xl shadow-lg text-center">
+            <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+              <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+              </svg>
+            </div>
+            <h1 class="text-xl font-bold text-gray-900 mb-2">Repository Connected!</h1>
+            <p id="success-repo" class="text-gray-600 mb-2"></p>
+            <p class="text-sm text-gray-400">This window will close automatically...</p>
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      // Read code and state from URL
+      var urlParams = new URLSearchParams(window.location.search);
+      var code = urlParams.get('code');
+      var state = urlParams.get('state');
+      var allRepos = [];
+      var currentOwner = 'all';
+      var searchQuery = '';
+
+      function init() {
+        if (code && state) {
+          handleCallback();
+        } else {
+          document.getElementById('loading-state').classList.add('hidden');
+          document.getElementById('error-state').classList.remove('hidden');
+          document.getElementById('error-message').textContent = 'Missing authorization code or state from GitHub';
+        }
+      }
+
+      function handleCallback() {
+        fetch('http://localhost:3000/api/trpc/github.handleRepoCallback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ json: { code: code, state: state } })
+        })
+        .then(function(response) {
+          return response.json();
+        })
+        .then(function(data) {
+          if (data.error) {
+            var errorMsg = (data.error.json && data.error.json.message) || data.error.message || 'Failed to connect to GitHub';
+            throw new Error(errorMsg);
+          }
+
+          var result = (data.result && data.result.data && data.result.data.json) || (data.result && data.result.data);
+
+          if (!result || !result.success) {
+            throw new Error('Failed to get repositories');
+          }
+
+          window.githubData = {
+            websiteId: result.websiteId,
+            accessToken: result.accessToken
+          };
+          allRepos = result.repositories;
+
+          document.getElementById('loading-state').classList.add('hidden');
+          document.getElementById('repo-selection').classList.remove('hidden');
+
+          document.getElementById('user-avatar').src = result.user.avatar_url;
+          document.getElementById('user-login').textContent = '@' + result.user.login;
+          document.getElementById('repo-count').textContent = allRepos.length;
+
+          renderOwnerTabs(allRepos);
+          renderRepos(allRepos);
+
+          document.getElementById('repo-search').addEventListener('input', function(e) {
+            searchQuery = e.target.value.toLowerCase();
+            filterAndRender();
+          });
+        })
+        .catch(function(error) {
+          document.getElementById('loading-state').classList.add('hidden');
+          document.getElementById('error-state').classList.remove('hidden');
+          document.getElementById('error-message').textContent = error.message;
+        });
+      }
+
+      function renderOwnerTabs(repos) {
+        var owners = [];
+        repos.forEach(function(r) {
+          if (owners.indexOf(r.owner) === -1) owners.push(r.owner);
+        });
+        var tabsContainer = document.getElementById('owner-tabs');
+        tabsContainer.innerHTML = '';
+        tabsContainer.appendChild(createTab('All', 'all', repos.length));
+        owners.forEach(function(owner) {
+          var count = repos.filter(function(r) { return r.owner === owner; }).length;
+          tabsContainer.appendChild(createTab(owner, owner, count));
+        });
+      }
+
+      function createTab(label, value, count) {
+        var tab = document.createElement('button');
+        tab.className = currentOwner === value
+          ? 'px-3 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors bg-gray-900 text-white'
+          : 'px-3 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors bg-white text-gray-600 hover:bg-gray-100 border border-gray-200';
+        tab.innerHTML = label + ' <span class="ml-1 text-xs opacity-70">' + count + '</span>';
+        tab.onclick = function() {
+          currentOwner = value;
+          var buttons = document.querySelectorAll('#owner-tabs button');
+          for (var i = 0; i < buttons.length; i++) {
+            buttons[i].className = 'px-3 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors bg-white text-gray-600 hover:bg-gray-100 border border-gray-200';
+          }
+          tab.className = 'px-3 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors bg-gray-900 text-white';
+          filterAndRender();
+        };
+        return tab;
+      }
+
+      function filterAndRender() {
+        var filtered = allRepos;
+        if (currentOwner !== 'all') {
+          filtered = filtered.filter(function(r) { return r.owner === currentOwner; });
+        }
+        if (searchQuery) {
+          filtered = filtered.filter(function(r) {
+            return r.full_name.toLowerCase().indexOf(searchQuery) !== -1 || r.name.toLowerCase().indexOf(searchQuery) !== -1;
+          });
+        }
+        renderRepos(filtered);
+      }
+
+      function renderRepos(repos) {
+        var repoList = document.getElementById('repo-list');
+        var emptyState = document.getElementById('empty-state');
+        if (repos.length === 0) {
+          repoList.classList.add('hidden');
+          emptyState.classList.remove('hidden');
+          return;
+        }
+        repoList.classList.remove('hidden');
+        emptyState.classList.add('hidden');
+        repoList.innerHTML = repos.map(function(repo) {
+          return '<button onclick="selectRepo(\'' + repo.full_name + '\')" class="w-full px-4 py-3 text-left hover:bg-blue-50 flex items-center gap-3 border-b border-gray-100 last:border-0 transition-colors group"><div class="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 transition-colors"><svg class="w-5 h-5 text-gray-500 group-hover:text-blue-600" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg></div><div class="flex-1 min-w-0"><div class="font-medium text-gray-900 truncate">' + repo.name + '</div><div class="text-sm text-gray-500">' + repo.owner + ' · ' + (repo.private ? 'Private' : 'Public') + '</div></div><svg class="w-5 h-5 text-gray-300 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>';
+        }).join('');
+      }
+
+      window.selectRepo = function(repoFullName) {
+        document.getElementById('repo-selection').classList.add('hidden');
+        document.getElementById('loading-state').classList.remove('hidden');
+        document.getElementById('loading-title').textContent = 'Connecting Repository...';
+        document.getElementById('loading-subtitle').textContent = repoFullName;
+
+        fetch('http://localhost:3000/api/trpc/github.connectRepository', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            json: {
+              websiteId: window.githubData.websiteId,
+              repoFullName: repoFullName,
+              accessToken: window.githubData.accessToken
+            }
+          })
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+          if (data.error) {
+            throw new Error(data.error.message || 'Failed to connect repository');
+          }
+          var result = (data.result && data.result.data && data.result.data.json) || (data.result && data.result.data);
+          document.getElementById('loading-state').classList.add('hidden');
+          document.getElementById('success-state').classList.remove('hidden');
+          document.getElementById('success-repo').textContent = repoFullName;
+          if (window.opener) {
+            window.opener.postMessage({ type: 'github-repo-connected', repoFullName: repoFullName, repository: result && result.repository }, '*');
+          }
+          setTimeout(function() { window.close(); }, 1500);
+        })
+        .catch(function(error) {
+          document.getElementById('loading-state').classList.add('hidden');
+          document.getElementById('error-state').classList.remove('hidden');
+          document.getElementById('error-message').textContent = error.message;
+        });
+      };
+
+      // Run init when DOM is ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+</Layout>

@@ -95,6 +95,7 @@ CREATE TABLE websites (
   github_owner TEXT,
   github_repo TEXT,
   github_installation_id TEXT,
+  github_access_token TEXT, -- OAuth access token for this website's repo
   github_connected_at TIMESTAMPTZ,
 
   metadata JSONB DEFAULT '{}'::jsonb,

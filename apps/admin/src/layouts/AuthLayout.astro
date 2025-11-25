@@ -1,39 +1,15 @@
 ---
-import { AppLayout } from '../components/AppLayout'
-import { getSessionContext, getAuthToken } from '../lib/session'
+/**
+ * Auth Layout
+ * Minimal layout for authentication pages (login, callback, logout)
+ * Does not enforce authentication or session checks
+ */
 
 interface Props {
   title: string
 }
 
 const { title } = Astro.props
-const session = getSessionContext(Astro.cookies)
-
-// Get authenticated user (optional - for future use)
-let user = null
-const authToken = getAuthToken(Astro.cookies)
-
-if (authToken) {
-  try {
-    const apiUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000'
-    const response = await fetch(`${apiUrl}/api/trpc/auth.getCurrentUser?input=${encodeURIComponent(JSON.stringify({ token: authToken }))}`)
-
-    if (response.ok) {
-      const data = await response.json()
-      if (data.result?.data?.user) {
-        user = data.result.data.user
-      }
-    }
-  } catch (error) {
-    console.error('Failed to fetch user:', error)
-  }
-}
-
-// Note: Authentication is optional for now
-// To enable mandatory auth, uncomment the following:
-// if (!user && !Astro.url.pathname.startsWith('/login') && !Astro.url.pathname.startsWith('/auth/')) {
-//   return Astro.redirect(`/login?returnTo=${encodeURIComponent(Astro.url.pathname)}`)
-// }
 ---
 
 <!doctype html>
@@ -44,14 +20,7 @@ if (authToken) {
     <title>{title} - swarm.press Admin</title>
   </head>
   <body>
-    <AppLayout
-      client:only="react"
-      title={title}
-      tenantId={session.tenantId}
-      productId={session.productId}
-    >
-      <slot />
-    </AppLayout>
+    <slot />
   </body>
 </html>
 
@@ -82,15 +51,6 @@ if (authToken) {
       --input: 214.3 31.8% 91.4%;
       --ring: 222.2 84% 4.9%;
       --radius: 0.5rem;
-
-      --sidebar-background: 0 0% 98%;
-      --sidebar-foreground: 222.2 84% 4.9%;
-      --sidebar-primary: 222.2 47.4% 11.2%;
-      --sidebar-primary-foreground: 210 40% 98%;
-      --sidebar-accent: 210 40% 96.1%;
-      --sidebar-accent-foreground: 222.2 47.4% 11.2%;
-      --sidebar-border: 220 13% 91%;
-      --sidebar-ring: 222.2 84% 4.9%;
     }
 
     .dark {
@@ -113,15 +73,6 @@ if (authToken) {
       --border: 217.2 32.6% 17.5%;
       --input: 217.2 32.6% 17.5%;
       --ring: 212.7 26.8% 83.9%;
-
-      --sidebar-background: 222.2 84% 4.9%;
-      --sidebar-foreground: 210 40% 98%;
-      --sidebar-primary: 210 40% 98%;
-      --sidebar-primary-foreground: 222.2 47.4% 11.2%;
-      --sidebar-accent: 217.2 32.6% 17.5%;
-      --sidebar-accent-foreground: 210 40% 98%;
-      --sidebar-border: 217.2 32.6% 17.5%;
-      --sidebar-ring: 217.2 32.6% 17.5%;
     }
   }
 
@@ -134,15 +85,9 @@ if (authToken) {
       margin: 0;
       padding: 0;
       min-height: 100vh;
-      overflow-x: hidden;
     }
     html, body {
       height: 100%;
     }
-  }
-
-  /* Ensure sidebar layout works correctly */
-  [data-slot="sidebar-wrapper"] {
-    display: flex !important;
   }
 </style>
