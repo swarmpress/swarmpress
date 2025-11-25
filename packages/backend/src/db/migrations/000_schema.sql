@@ -98,6 +98,16 @@ CREATE TABLE websites (
   github_access_token TEXT, -- OAuth access token for this website's repo
   github_connected_at TIMESTAMPTZ,
 
+  -- GitHub Pages Deployment
+  github_pages_enabled BOOLEAN DEFAULT FALSE,
+  github_pages_url TEXT,                    -- e.g., https://owner.github.io/repo
+  github_pages_branch TEXT DEFAULT 'gh-pages',  -- 'gh-pages' or 'main'
+  github_pages_path TEXT DEFAULT '/',       -- '/' or '/docs'
+  github_pages_custom_domain TEXT,          -- Custom domain if configured
+  last_deployed_at TIMESTAMPTZ,
+  deployment_status TEXT DEFAULT 'never_deployed', -- 'never_deployed', 'deploying', 'deployed', 'failed'
+  deployment_error TEXT,                    -- Error message if deployment failed
+
   metadata JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

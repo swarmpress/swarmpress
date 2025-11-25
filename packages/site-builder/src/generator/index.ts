@@ -20,7 +20,7 @@ import type { DeployOptions } from './deploy'
 
 export interface PublishOptions {
   websiteId: string
-  deployTarget?: 'local' | 'netlify' | 's3'
+  deployTarget?: 'local' | 'netlify' | 's3' | 'github-pages'
   deployConfig?: Record<string, string>
   siteUrl?: string
   skipValidation?: boolean

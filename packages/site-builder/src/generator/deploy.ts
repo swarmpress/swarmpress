@@ -12,7 +12,7 @@ const execAsync = promisify(exec)
 export interface DeployOptions {
   websiteId: string
   buildDir: string
-  deployTarget: 'local' | 'netlify' | 's3'
+  deployTarget: 'local' | 'netlify' | 's3' | 'github-pages'
   config?: Record<string, string>
 }
 
@@ -45,6 +45,10 @@ export async function deploySite(options: DeployOptions): Promise<DeployResult> 
 
       case 's3':
         result = await deployS3(options)
+        break
+
+      case 'github-pages':
+        result = await deployGitHubPages(options)
         break
 
       default:
@@ -173,5 +177,80 @@ async function deployS3(options: DeployOptions): Promise<DeployResult> {
   return {
     success: true,
     url,
+  }
+}
+
+/**
+ * Deploy to GitHub Pages via API
+ * Uses the backend tRPC API to deploy files
+ */
+async function deployGitHubPages(options: DeployOptions): Promise<DeployResult> {
+  const distDir = join(options.buildDir, 'dist')
+  const apiUrl = options.config?.api_url || 'http://localhost:3000'
+
+  console.log(`[Deployer] Deploying to GitHub Pages for website ${options.websiteId}`)
+
+  try {
+    // Read all files from dist directory
+    const { readdir, readFile, stat } = await import('fs/promises')
+    const files: Array<{ path: string; content: string }> = []
+
+    async function collectFiles(dir: string, basePath: string = '') {
+      const entries = await readdir(dir, { withFileTypes: true })
+
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name)
+        const relativePath = basePath ? `${basePath}/${entry.name}` : entry.name
+
+        if (entry.isDirectory()) {
+          await collectFiles(fullPath, relativePath)
+        } else {
+          const content = await readFile(fullPath, 'utf-8')
+          files.push({ path: relativePath, content })
+        }
+      }
+    }
+
+    await collectFiles(distDir)
+
+    console.log(`[Deployer] Collected ${files.length} files for deployment`)
+
+    // Call backend API to deploy
+    const response = await fetch(`${apiUrl}/api/trpc/github.deployToPages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        json: {
+          websiteId: options.websiteId,
+          files,
+          commitMessage: `Deploy: ${new Date().toISOString()}`,
+        },
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok || data.error) {
+      const errorMsg = data.error?.json?.message || data.error?.message || 'Deployment failed'
+      return {
+        success: false,
+        error: errorMsg,
+      }
+    }
+
+    const result = data.result?.data?.json || data.result?.data
+
+    return {
+      success: true,
+      url: result?.pagesUrl,
+    }
+  } catch (error) {
+    console.error('[Deployer] GitHub Pages deployment failed:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
   }
 }

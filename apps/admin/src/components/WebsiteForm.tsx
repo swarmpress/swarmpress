@@ -6,6 +6,7 @@ import { Label } from './ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { GitHubConnector, type GitHubConnection } from './GitHubConnector'
+import { DeploymentPanel } from './DeploymentPanel'
 
 interface WebsiteFormProps {
   website?: {
@@ -216,6 +217,17 @@ export default function WebsiteForm({ website, mode }: WebsiteFormProps) {
                     github_connected_at: undefined,
                   })
                 }
+                disabled={isSubmitting}
+              />
+            </div>
+          )}
+
+          {mode === 'edit' && website?.id && (
+            <div className="space-y-2">
+              <Label>Deployment</Label>
+              <DeploymentPanel
+                websiteId={website.id}
+                isConnectedToGitHub={Boolean(githubConnection.github_repo_url)}
                 disabled={isSubmitting}
               />
             </div>

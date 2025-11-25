@@ -566,6 +566,440 @@ export const githubRouter = router({
       }
     }),
 
+  // ============================================================================
+  // GITHUB PAGES DEPLOYMENT
+  // ============================================================================
+
+  /**
+   * Enable GitHub Pages for a website's repository
+   */
+  enablePages: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        branch: z.enum(['gh-pages', 'main']).default('gh-pages'),
+        path: z.enum(['/', '/docs']).default('/'),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Website is not connected to a GitHub repository',
+        })
+      }
+
+      const { Octokit } = await import('@octokit/rest')
+      const octokit = new Octokit({ auth: website.github_access_token })
+
+      try {
+        // First, ensure the branch exists (for gh-pages)
+        if (input.branch === 'gh-pages') {
+          try {
+            await octokit.rest.repos.getBranch({
+              owner: website.github_owner,
+              repo: website.github_repo,
+              branch: 'gh-pages',
+            })
+          } catch (e: any) {
+            if (e.status === 404) {
+              // Create gh-pages branch from default branch
+              const { data: repo } = await octokit.rest.repos.get({
+                owner: website.github_owner,
+                repo: website.github_repo,
+              })
+
+              const { data: ref } = await octokit.rest.git.getRef({
+                owner: website.github_owner,
+                repo: website.github_repo,
+                ref: `heads/${repo.default_branch}`,
+              })
+
+              await octokit.rest.git.createRef({
+                owner: website.github_owner,
+                repo: website.github_repo,
+                ref: 'refs/heads/gh-pages',
+                sha: ref.object.sha,
+              })
+            } else {
+              throw e
+            }
+          }
+        }
+
+        // Enable GitHub Pages
+        await octokit.rest.repos.createPagesSite({
+          owner: website.github_owner,
+          repo: website.github_repo,
+          source: {
+            branch: input.branch,
+            path: input.path as '/' | '/docs',
+          },
+        })
+
+        // Get the Pages URL
+        const { data: pages } = await octokit.rest.repos.getPages({
+          owner: website.github_owner,
+          repo: website.github_repo,
+        })
+
+        // Update website with Pages config
+        await websiteRepository.update(input.websiteId, {
+          github_pages_enabled: true,
+          github_pages_url: pages.html_url,
+          github_pages_branch: input.branch,
+          github_pages_path: input.path,
+          deployment_status: 'never_deployed',
+        })
+
+        return {
+          success: true,
+          pagesUrl: pages.html_url,
+          branch: input.branch,
+          path: input.path,
+        }
+      } catch (error: any) {
+        // Pages might already be enabled
+        if (error.status === 409) {
+          const { data: pages } = await octokit.rest.repos.getPages({
+            owner: website.github_owner,
+            repo: website.github_repo,
+          })
+
+          await websiteRepository.update(input.websiteId, {
+            github_pages_enabled: true,
+            github_pages_url: pages.html_url,
+            github_pages_branch: input.branch,
+            github_pages_path: input.path,
+          })
+
+          return {
+            success: true,
+            pagesUrl: pages.html_url,
+            branch: input.branch,
+            path: input.path,
+            alreadyEnabled: true,
+          }
+        }
+
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error.message || 'Failed to enable GitHub Pages',
+        })
+      }
+    }),
+
+  /**
+   * Deploy files to GitHub Pages
+   * Creates a commit with the provided files and pushes to the Pages branch
+   */
+  deployToPages: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        files: z.array(
+          z.object({
+            path: z.string(),
+            content: z.string(),
+          })
+        ),
+        commitMessage: z.string().default('Deploy site'),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Website is not connected to a GitHub repository',
+        })
+      }
+
+      if (!website.github_pages_enabled) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'GitHub Pages is not enabled for this website',
+        })
+      }
+
+      // Update status to deploying
+      await websiteRepository.update(input.websiteId, {
+        deployment_status: 'deploying',
+        deployment_error: null,
+      })
+
+      const { Octokit } = await import('@octokit/rest')
+      const octokit = new Octokit({ auth: website.github_access_token })
+
+      const branch = website.github_pages_branch || 'gh-pages'
+      const basePath = website.github_pages_path === '/docs' ? 'docs/' : ''
+
+      try {
+        // Get the current commit SHA for the branch
+        const { data: ref } = await octokit.rest.git.getRef({
+          owner: website.github_owner,
+          repo: website.github_repo,
+          ref: `heads/${branch}`,
+        })
+
+        const latestCommitSha = ref.object.sha
+
+        // Get the tree SHA for the commit
+        const { data: commit } = await octokit.rest.git.getCommit({
+          owner: website.github_owner,
+          repo: website.github_repo,
+          commit_sha: latestCommitSha,
+        })
+
+        // Create blobs for each file
+        const blobs = await Promise.all(
+          input.files.map(async (file) => {
+            const { data: blob } = await octokit.rest.git.createBlob({
+              owner: website.github_owner!,
+              repo: website.github_repo!,
+              content: Buffer.from(file.content).toString('base64'),
+              encoding: 'base64',
+            })
+            return {
+              path: basePath + file.path,
+              mode: '100644' as const,
+              type: 'blob' as const,
+              sha: blob.sha,
+            }
+          })
+        )
+
+        // Create a new tree
+        const { data: tree } = await octokit.rest.git.createTree({
+          owner: website.github_owner,
+          repo: website.github_repo,
+          base_tree: commit.tree.sha,
+          tree: blobs,
+        })
+
+        // Create a new commit
+        const { data: newCommit } = await octokit.rest.git.createCommit({
+          owner: website.github_owner,
+          repo: website.github_repo,
+          message: input.commitMessage,
+          tree: tree.sha,
+          parents: [latestCommitSha],
+        })
+
+        // Update the branch reference
+        await octokit.rest.git.updateRef({
+          owner: website.github_owner,
+          repo: website.github_repo,
+          ref: `heads/${branch}`,
+          sha: newCommit.sha,
+        })
+
+        // Update website with deployment info
+        await websiteRepository.update(input.websiteId, {
+          deployment_status: 'deployed',
+          last_deployed_at: new Date().toISOString(),
+          deployment_error: null,
+        })
+
+        return {
+          success: true,
+          commitSha: newCommit.sha,
+          filesDeployed: input.files.length,
+          pagesUrl: website.github_pages_url,
+        }
+      } catch (error: any) {
+        // Update status to failed
+        await websiteRepository.update(input.websiteId, {
+          deployment_status: 'failed',
+          deployment_error: error.message || 'Deployment failed',
+        })
+
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error.message || 'Failed to deploy to GitHub Pages',
+        })
+      }
+    }),
+
+  /**
+   * Get deployment status for a website
+   */
+  getDeploymentStatus: publicProcedure
+    .input(z.object({ websiteId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      // Only try to get Pages status from GitHub if we have stored that Pages is enabled
+      // AND we have a valid access token
+      if (website.github_pages_enabled && website.github_access_token && website.github_owner && website.github_repo) {
+        try {
+          const { Octokit } = await import('@octokit/rest')
+          const octokit = new Octokit({ auth: website.github_access_token })
+
+          const { data: pages } = await octokit.rest.repos.getPages({
+            owner: website.github_owner,
+            repo: website.github_repo,
+          })
+
+          // Get latest build
+          let latestBuild = null
+          try {
+            const { data: builds } = await octokit.rest.repos.listPagesBuilds({
+              owner: website.github_owner,
+              repo: website.github_repo,
+              per_page: 1,
+            })
+            latestBuild = builds[0] || null
+          } catch {
+            // Builds may not exist yet
+          }
+
+          return {
+            configured: true,
+            pagesEnabled: true,
+            pagesUrl: pages.html_url,
+            customDomain: pages.cname,
+            status: website.deployment_status || 'never_deployed',
+            lastDeployedAt: website.last_deployed_at,
+            error: website.deployment_error,
+            latestBuild: latestBuild
+              ? {
+                  status: latestBuild.status,
+                  createdAt: latestBuild.created_at,
+                  duration: latestBuild.duration,
+                  error: latestBuild.error?.message,
+                }
+              : null,
+          }
+        } catch (error: any) {
+          // If Pages is not found (404), update database to reflect reality
+          if (error.status === 404) {
+            console.log('[GitHub] Pages not enabled on repo, updating database')
+            await websiteRepository.update(input.websiteId, {
+              github_pages_enabled: false,
+              github_pages_url: null,
+            })
+          }
+          // Fall back to database info below
+        }
+      }
+
+      // Return status from database (or defaults if not set)
+      return {
+        configured: !!(website.github_repo_url && website.github_owner && website.github_repo),
+        pagesEnabled: Boolean(website.github_pages_enabled),
+        pagesUrl: website.github_pages_url || null,
+        customDomain: website.github_pages_custom_domain || null,
+        status: website.deployment_status || 'never_deployed',
+        lastDeployedAt: website.last_deployed_at || null,
+        error: website.deployment_error || null,
+        latestBuild: null,
+      }
+    }),
+
+  /**
+   * Set custom domain for GitHub Pages
+   */
+  setCustomDomain: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        domain: z.string().nullable(), // null to remove custom domain
+      })
+    )
+    .mutation(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Website is not connected to a GitHub repository',
+        })
+      }
+
+      if (!website.github_pages_enabled) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'GitHub Pages is not enabled for this website',
+        })
+      }
+
+      const { Octokit } = await import('@octokit/rest')
+      const octokit = new Octokit({ auth: website.github_access_token })
+
+      try {
+        if (input.domain) {
+          // Set custom domain
+          await octokit.rest.repos.updateInformationAboutPagesSite({
+            owner: website.github_owner,
+            repo: website.github_repo,
+            cname: input.domain,
+          })
+        } else {
+          // Remove custom domain
+          await octokit.rest.repos.updateInformationAboutPagesSite({
+            owner: website.github_owner,
+            repo: website.github_repo,
+            cname: '',
+          })
+        }
+
+        // Update database
+        await websiteRepository.update(input.websiteId, {
+          github_pages_custom_domain: input.domain,
+        })
+
+        return {
+          success: true,
+          customDomain: input.domain,
+          dnsInstructions: input.domain
+            ? {
+                type: 'CNAME',
+                name: input.domain,
+                value: `${website.github_owner}.github.io`,
+                note: 'Add this DNS record to your domain provider',
+              }
+            : null,
+        }
+      } catch (error: any) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error.message || 'Failed to set custom domain',
+        })
+      }
+    }),
+
   /**
    * Sync blueprints to GitHub
    */
