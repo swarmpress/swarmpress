@@ -1,0 +1,1178 @@
+# swarm.press API Documentation
+
+> **Version:** 1.0.0
+> **Base URL:** `http://localhost:3000/api/trpc`
+> **Protocol:** tRPC over HTTP
+> **Transformer:** SuperJSON
+
+---
+
+## Table of Contents
+
+1. [Authentication](#authentication)
+2. [API Structure](#api-structure)
+3. [Core Routers](#core-routers)
+   - [Auth](#auth-router)
+   - [Company](#company-router)
+   - [Department](#department-router)
+   - [Role](#role-router)
+   - [Agent](#agent-router)
+   - [Website](#website-router)
+4. [Content Management](#content-management)
+   - [Content](#content-router)
+   - [Task](#task-router)
+   - [Ticket](#ticket-router)
+5. [Prompt System](#prompt-system)
+   - [Company Prompts](#company-prompts-level-1)
+   - [Website Prompts](#website-prompts-level-2)
+   - [Agent Bindings](#agent-bindings-level-3)
+   - [Resolution & Rendering](#resolution--rendering)
+   - [Execution Logging](#execution-logging)
+6. [External Tools](#external-tools)
+   - [Tool Configs](#tool-configs)
+   - [Website Assignments](#website-tool-assignments)
+   - [Secrets](#tool-secrets)
+   - [JavaScript Tools](#javascript-tools)
+7. [Workflow Orchestration](#workflow-orchestration)
+8. [Editorial Planning](#editorial-planning)
+9. [Sitemap & Blueprints](#sitemap--blueprints)
+10. [GitHub Integration](#github-integration)
+11. [Media & Collections](#media--collections)
+12. [Analytics](#analytics)
+13. [Error Handling](#error-handling)
+
+---
+
+## Authentication
+
+### Authentication Levels
+
+The API uses three authentication levels:
+
+| Level | Procedure | Description |
+|-------|-----------|-------------|
+| **Public** | `publicProcedure` | No authentication required |
+| **Protected** | `protectedProcedure` | Requires valid session token |
+| **CEO** | `ceoProcedure` | Requires CEO-level authorization |
+
+### GitHub OAuth Flow
+
+```typescript
+// 1. Get authorization URL
+const { url } = await trpc.auth.getGitHubAuthUrl.query({ returnTo: '/dashboard' })
+
+// 2. Redirect user to GitHub
+window.location.href = url
+
+// 3. Handle callback (after GitHub redirects back)
+const result = await trpc.auth.handleGitHubCallback.mutate({
+  code: 'oauth_code',
+  state: 'state_param'
+})
+// Returns: { user, sessionToken, expiresAt, returnTo }
+
+// 4. Use session token in subsequent requests
+headers: { 'Authorization': `Bearer ${sessionToken}` }
+```
+
+### Session Management
+
+```typescript
+// Get current user
+const user = await trpc.auth.getCurrentUser.query({ token })
+
+// Refresh session
+const { sessionToken, refreshToken } = await trpc.auth.refreshSession.mutate({
+  refreshToken
+})
+
+// Logout
+await trpc.auth.logout.mutate({ token })
+
+// Logout all sessions
+await trpc.auth.logoutAll.mutate({ token })
+```
+
+---
+
+## API Structure
+
+### Request Format (tRPC)
+
+```typescript
+// Query (GET-like operations)
+const result = await trpc.router.procedure.query(input)
+
+// Mutation (POST/PUT/DELETE-like operations)
+const result = await trpc.router.procedure.mutate(input)
+```
+
+### HTTP Endpoints
+
+tRPC endpoints are accessible via HTTP at:
+- **Queries:** `GET /api/trpc/{router}.{procedure}?input={encodedInput}`
+- **Mutations:** `POST /api/trpc/{router}.{procedure}` with JSON body
+
+### Pagination Pattern
+
+Most list endpoints follow this pattern:
+
+```typescript
+interface PaginatedInput {
+  limit?: number    // 1-100, default 50
+  offset?: number   // default 0
+}
+
+interface PaginatedResponse<T> {
+  items: T[]
+  total: number
+  limit: number
+  offset: number
+}
+```
+
+---
+
+## Core Routers
+
+### Auth Router
+
+**Path:** `trpc.auth.*`
+
+#### GitHub OAuth
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `getGitHubAuthUrl` | Query | Public | Get OAuth authorization URL |
+| `handleGitHubCallback` | Mutation | Public | Exchange code for session |
+
+```typescript
+// Get auth URL
+trpc.auth.getGitHubAuthUrl.query({
+  returnTo?: string  // URL to redirect after auth
+})
+// Returns: { url: string }
+
+// Handle callback
+trpc.auth.handleGitHubCallback.mutate({
+  code: string,      // OAuth code from GitHub
+  state?: string     // State parameter for verification
+})
+// Returns: { user, sessionToken, expiresAt, returnTo }
+```
+
+#### Session Management
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `getCurrentUser` | Query | Public | Get current user from token |
+| `refreshSession` | Mutation | Public | Refresh session token |
+| `logout` | Mutation | Public | End current session |
+| `logoutAll` | Mutation | Public | End all user sessions |
+
+#### User Management (Admin)
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `getUser` | Query | Public* | Get user by ID |
+| `listUsers` | Query | Public* | List all users |
+| `updateUserRole` | Mutation | Public* | Change user role |
+| `cleanupSessions` | Mutation | Public* | Remove expired sessions |
+
+*Requires admin role in token
+
+---
+
+### Company Router
+
+**Path:** `trpc.company.*`
+
+Manages tenant/organization entities.
+
+| Procedure | Type | Auth | Input | Description |
+|-----------|------|------|-------|-------------|
+| `list` | Query | Public | - | List all companies |
+| `getById` | Query | Public | `{ id: UUID }` | Get company by ID |
+| `create` | Mutation | CEO | `{ name, description? }` | Create company |
+| `update` | Mutation | CEO | `{ id, name?, description? }` | Update company |
+| `delete` | Mutation | CEO | `{ id }` | Delete company |
+
+```typescript
+// Create a company
+const company = await trpc.company.create.mutate({
+  name: 'My Media House',
+  description: 'A digital publishing company'
+})
+```
+
+---
+
+### Department Router
+
+**Path:** `trpc.department.*`
+
+| Procedure | Type | Auth | Input | Description |
+|-----------|------|------|-------|-------------|
+| `list` | Query | Public | `{ companyId? }` | List departments |
+| `getById` | Query | Public | `{ id }` | Get by ID |
+| `create` | Mutation | CEO | `{ name, companyId, description? }` | Create |
+| `update` | Mutation | CEO | `{ id, name?, description? }` | Update |
+| `delete` | Mutation | CEO | `{ id }` | Delete |
+
+---
+
+### Role Router
+
+**Path:** `trpc.role.*`
+
+| Procedure | Type | Auth | Input | Description |
+|-----------|------|------|-------|-------------|
+| `list` | Query | Public | `{ departmentId?, companyId? }` | List roles |
+| `getById` | Query | Public | `{ id }` | Get by ID |
+| `create` | Mutation | CEO | `{ name, departmentId, description? }` | Create |
+| `update` | Mutation | CEO | `{ id, name?, description? }` | Update |
+| `delete` | Mutation | CEO | `{ id }` | Delete |
+
+---
+
+### Agent Router
+
+**Path:** `trpc.agent.*`
+
+Manages AI agents.
+
+| Procedure | Type | Auth | Input | Description |
+|-----------|------|------|-------|-------------|
+| `list` | Query | Public | `{ roleId?, departmentId? }` | List agents |
+| `getById` | Query | Public | `{ id }` | Get by ID |
+| `getByEmail` | Query | Public | `{ email }` | Get by virtual email |
+| `create` | Mutation | CEO | See below | Create agent |
+| `update` | Mutation | CEO | See below | Update agent |
+| `delete` | Mutation | CEO | `{ id }` | Delete agent |
+
+```typescript
+// Create an agent
+const agent = await trpc.agent.create.mutate({
+  name: 'WriterAgent',
+  roleId: 'uuid',
+  departmentId: 'uuid',
+  persona: 'Creative, articulate writer specializing in tech content',
+  virtualEmail: 'writer@agents.swarm.press',
+  capabilities: ['write_draft', 'revise_draft', 'submit_for_review']
+})
+```
+
+---
+
+### Website Router
+
+**Path:** `trpc.website.*`
+
+| Procedure | Type | Auth | Input | Description |
+|-----------|------|------|-------|-------------|
+| `list` | Query | Public | `{ limit?, offset? }` | List websites |
+| `getById` | Query | Public | `{ id }` | Get by ID |
+| `create` | Mutation | CEO | `{ title, domain, description? }` | Create |
+| `update` | Mutation | CEO | `{ id, name?, domain?, config? }` | Update |
+| `delete` | Mutation | CEO | `{ id }` | Delete |
+| `getContent` | Query | Public | `{ id, status?, limit?, offset? }` | Get website content |
+
+```typescript
+// Create a website
+const website = await trpc.website.create.mutate({
+  title: 'Tech Blog',
+  domain: 'blog.example.com',
+  description: 'Our technology blog'
+})
+```
+
+---
+
+## Content Management
+
+### Content Router
+
+**Path:** `trpc.content.*`
+
+Manages content items with state machine transitions.
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `list` | Query | Public | List content items |
+| `getById` | Query | Public | Get content by ID |
+| `create` | Mutation | Protected | Create content item |
+| `update` | Mutation | Protected | Update content |
+| `transition` | Mutation | Protected | Transition state |
+| `getHistory` | Query | Public | Get state history |
+| `archive` | Mutation | CEO | Archive content |
+| `cancel` | Mutation | CEO | Cancel content |
+
+#### Content States
+
+```
+idea → planned → brief_created → draft → in_editorial_review
+  → needs_changes (loops back to draft)
+  → approved → scheduled → published → archived
+```
+
+```typescript
+// Create content
+const content = await trpc.content.create.mutate({
+  type: 'article',          // 'article' | 'section' | 'hero' | 'metadata' | 'component'
+  websiteId: 'uuid',
+  authorAgentId: 'uuid',
+  metadata: { title: 'My Article' }
+})
+
+// Transition state
+await trpc.content.transition.mutate({
+  id: content.id,
+  event: 'submit_for_review',
+  metadata: { submittedBy: 'agent-id' }
+})
+```
+
+---
+
+### Task Router
+
+**Path:** `trpc.task.*`
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `list` | Query | Public | List tasks |
+| `getById` | Query | Public | Get task by ID |
+| `create` | Mutation | Protected | Create task (emits event) |
+| `update` | Mutation | Protected | Update task |
+| `transition` | Mutation | Protected | Transition state |
+| `complete` | Mutation | Protected | Mark complete (emits event) |
+| `fail` | Mutation | Protected | Mark failed |
+| `getHistory` | Query | Public | Get state history |
+
+```typescript
+// Create a task
+const task = await trpc.task.create.mutate({
+  type: 'write_draft',
+  agentId: 'uuid',
+  contentId: 'uuid',
+  websiteId: 'uuid',
+  notes: 'Write initial draft based on brief'
+})
+
+// Complete the task
+await trpc.task.complete.mutate({
+  id: task.id,
+  result: { draftLength: 1500, keywordsUsed: ['AI', 'technology'] }
+})
+```
+
+---
+
+### Ticket Router
+
+**Path:** `trpc.ticket.*`
+
+Question tickets for escalation to CEO/Editor.
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `list` | Query | Public | List tickets |
+| `getById` | Query | Public | Get ticket |
+| `create` | Mutation | Protected | Create ticket (emits event) |
+| `answer` | Mutation | CEO | Answer ticket (emits event) |
+| `resolve` | Mutation | Protected | Mark resolved |
+| `getOpenForCEO` | Query | CEO | Get CEO's open tickets |
+| `getStats` | Query | Public | Get ticket statistics |
+
+```typescript
+// Create escalation ticket
+const ticket = await trpc.ticket.create.mutate({
+  subject: 'Unclear requirements for article tone',
+  body: 'The brief mentions "professional" but also "casual" - which should take priority?',
+  target: 'CEO',  // 'CEO' | 'ChiefEditor' | 'TechnicalLead'
+  createdByAgentId: 'writer-agent-uuid'
+})
+
+// CEO answers
+await trpc.ticket.answer.mutate({
+  id: ticket.id,
+  answer: 'Prioritize professional tone but keep it accessible. No jargon.'
+})
+```
+
+---
+
+## Prompt System
+
+### Overview
+
+The prompt system uses a three-level hierarchy:
+1. **Company Prompts (Level 1)** - Baseline templates
+2. **Website Prompts (Level 2)** - Brand-specific overrides
+3. **Agent Bindings (Level 3)** - Individual agent configurations
+
+**Path:** `trpc.prompt.*`
+
+---
+
+### Company Prompts (Level 1)
+
+**Path:** `trpc.prompt.company.*`
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `list` | Query | Public | List company prompts |
+| `get` | Query | Public | Get by ID |
+| `listVersions` | Query | Public | Get all versions of a prompt |
+| `create` | Mutation | CEO | Create new template |
+| `activate` | Mutation | CEO | Activate version (deactivates others) |
+| `deprecate` | Mutation | CEO | Deprecate version |
+
+```typescript
+// Create company prompt
+const prompt = await trpc.prompt.company.create.mutate({
+  company_id: 'uuid',
+  role_name: 'writer',
+  capability: 'write_draft',
+  version: '1.0.0',
+  template: `You are a professional writer for {{brand_name}}.
+
+Your task is to write a {{content_type}} about {{topic}}.
+
+Guidelines:
+- Target audience: {{audience}}
+- Tone: {{tone}}
+- Length: {{word_count}} words
+
+Input:
+{{input}}`,
+  default_variables: {
+    brand_name: 'Our Company',
+    tone: 'professional',
+    word_count: '1000'
+  },
+  examples: [
+    { input: 'Write about AI trends', output: '## AI Trends in 2025...' }
+  ],
+  description: 'Main article writing prompt for writers'
+})
+
+// Activate this version
+await trpc.prompt.company.activate.mutate({ id: prompt.id })
+```
+
+---
+
+### Website Prompts (Level 2)
+
+**Path:** `trpc.prompt.website.*`
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `list` | Query | Public | List website prompts |
+| `get` | Query | Public | Get by ID |
+| `create` | Mutation | CEO | Create override |
+| `activate` | Mutation | CEO | Activate version |
+
+```typescript
+// Create website override
+const websitePrompt = await trpc.prompt.website.create.mutate({
+  website_id: 'uuid',
+  company_prompt_template_id: 'uuid',
+  version: '1.0.0',
+  template_override: null,  // null = use company template
+  template_additions: `
+Additional guidelines for this website:
+- Use British English spelling
+- Include at least one relevant image suggestion
+- End with a call-to-action`,
+  variables_override: {
+    brand_name: 'Tech Insights Blog',
+    tone: 'conversational yet authoritative'
+  }
+})
+```
+
+---
+
+### Agent Bindings (Level 3)
+
+**Path:** `trpc.prompt.binding.*`
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `list` | Query | Public | List agent bindings |
+| `get` | Query | Public | Get specific binding |
+| `create` | Mutation | CEO | Create binding |
+| `update` | Mutation | CEO | Update binding |
+| `delete` | Mutation | CEO | Delete binding |
+
+```typescript
+// Create agent binding with A/B testing
+const binding = await trpc.prompt.binding.create.mutate({
+  agent_id: 'uuid',
+  capability: 'write_draft',
+  company_prompt_template_id: 'uuid',      // Optional: pin to specific version
+  website_prompt_template_id: 'uuid',       // Optional: use website override
+  custom_variables: {
+    style_preference: 'narrative'
+  },
+  ab_test_group: 'variant-a',              // A/B test group name
+  ab_test_weight: 0.5                       // 50% traffic
+})
+
+// Update to disable
+await trpc.prompt.binding.update.mutate({
+  agent_id: 'uuid',
+  capability: 'write_draft',
+  is_active: false
+})
+```
+
+---
+
+### Resolution & Rendering
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `resolve` | Query | Public | Resolve prompt (returns metadata) |
+| `render` | Query | Public | Resolve + substitute variables |
+
+```typescript
+// Resolve prompt for an agent
+const resolved = await trpc.prompt.resolve.query({
+  agent_id: 'uuid',
+  capability: 'write_draft',
+  runtime_variables: {
+    topic: 'Machine Learning Trends',
+    audience: 'developers'
+  }
+})
+// Returns: { template, examples, variables, resolution_path, ... }
+
+// Render final prompt
+const { prompt, metadata } = await trpc.prompt.render.query({
+  agent_id: 'uuid',
+  capability: 'write_draft',
+  runtime_variables: { topic: 'AI Ethics' }
+})
+// Returns: { prompt: "rendered string", metadata: {...} }
+```
+
+---
+
+### Execution Logging
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `logExecution` | Mutation | Protected | Log prompt execution |
+| `rateExecution` | Mutation | Protected | Rate execution quality |
+| `getExecutionHistory` | Query | Public | Get execution history |
+| `getPerformanceMetrics` | Query | Public | Get aggregate metrics |
+
+```typescript
+// Log execution
+const { id } = await trpc.prompt.logExecution.mutate({
+  agent_id: 'uuid',
+  capability: 'write_draft',
+  input_variables: { topic: 'AI' },
+  tokens_used: 1500,
+  latency_ms: 2300,
+  error_occurred: false
+})
+
+// Rate quality
+await trpc.prompt.rateExecution.mutate({
+  execution_id: id,
+  quality_score: 4.5,
+  rated_by: 'editor-agent',
+  feedback: 'Good structure, minor grammar issues'
+})
+
+// Get metrics
+const metrics = await trpc.prompt.getPerformanceMetrics.query({
+  company_prompt_id: 'uuid',
+  days: 30
+})
+// Returns: { total_executions, avg_quality_score, avg_latency_ms, ... }
+```
+
+---
+
+## External Tools
+
+### Tool Configs
+
+**Path:** `trpc.tools.*`
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `list` | Query | Public | List all tool configs |
+| `getById` | Query | Public | Get by ID |
+| `getByName` | Query | Public | Get by name |
+| `create` | Mutation | CEO | Create tool config |
+| `update` | Mutation | CEO | Update tool config |
+| `delete` | Mutation | CEO | Delete tool config |
+
+#### Tool Types
+
+- `rest` - REST API endpoint
+- `graphql` - GraphQL endpoint
+- `mcp` - Model Context Protocol
+- `builtin` - Built-in tool
+- `javascript` - Custom JavaScript (sandboxed)
+
+```typescript
+// Create REST tool
+const tool = await trpc.tools.create.mutate({
+  name: 'weather_api',
+  display_name: 'Weather API',
+  description: 'Get current weather data',
+  type: 'rest',
+  endpoint_url: 'https://api.weather.com/v1',
+  config: {
+    method: 'GET',
+    headers: { 'Accept': 'application/json' }
+  },
+  input_schema: {
+    type: 'object',
+    properties: {
+      city: { type: 'string', description: 'City name' }
+    },
+    required: ['city']
+  }
+})
+```
+
+---
+
+### Website Tool Assignments
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `getForWebsite` | Query | Public | Get tools for website |
+| `getGlobal` | Query | Public | Get global tools |
+| `addToWebsite` | Mutation | CEO | Assign tool to website |
+| `removeFromWebsite` | Mutation | CEO | Remove assignment |
+| `getAssignmentsForTool` | Query | Public | Get all assignments for a tool |
+| `setEnabled` | Mutation | CEO | Enable/disable tool |
+
+```typescript
+// Assign tool to website
+await trpc.tools.addToWebsite.mutate({
+  websiteId: 'uuid',        // null for global
+  toolConfigId: 'uuid',
+  enabled: true,
+  priority: 10,
+  customConfig: { region: 'us-east-1' }
+})
+
+// Get tools for website (includes global tools)
+const { items } = await trpc.tools.getForWebsite.query({
+  websiteId: 'uuid'
+})
+```
+
+---
+
+### Tool Secrets
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `listSecrets` | Query | Public | List secret keys (no values) |
+| `setSecret` | Mutation | CEO | Set/update secret |
+| `deleteSecret` | Mutation | CEO | Delete secret |
+
+```typescript
+// Set a secret
+await trpc.tools.setSecret.mutate({
+  websiteId: 'uuid',
+  toolConfigId: 'uuid',
+  secretKey: 'API_KEY',
+  value: 'sk-...'
+})
+
+// List secrets (returns keys only)
+const { items } = await trpc.tools.listSecrets.query({
+  websiteId: 'uuid',
+  toolConfigId: 'uuid'
+})
+// Returns: [{ key: 'API_KEY', created_at: '...' }]
+```
+
+---
+
+### JavaScript Tools
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `createJavaScriptTool` | Mutation | CEO | Create JS tool |
+| `updateJavaScriptTool` | Mutation | CEO | Update JS tool |
+| `testJavaScriptTool` | Mutation | CEO | Test JS tool |
+| `listJavaScriptTools` | Query | Public | List JS tools |
+
+```typescript
+// Create JavaScript tool
+const jsTool = await trpc.tools.createJavaScriptTool.mutate({
+  name: 'slug_generator',
+  display_name: 'Slug Generator',
+  description: 'Generate URL-friendly slugs',
+  code: `
+    const text = input.text;
+    const slug = text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    return { slug };
+  `,
+  manifest: {
+    input: {
+      text: { type: 'string', description: 'Text to convert', required: true }
+    },
+    output: {
+      slug: { type: 'string', description: 'URL-friendly slug' }
+    }
+  },
+  timeout: 5000,
+  website_id: 'uuid'  // null for global
+})
+
+// Test the tool
+const result = await trpc.tools.testJavaScriptTool.mutate({
+  tool_id: jsTool.id,
+  website_id: 'uuid',
+  test_input: { text: 'Hello World!' }
+})
+// Returns: { success: true, result: { slug: 'hello-world' }, logs: [] }
+```
+
+#### Sandbox API
+
+JavaScript tools have access to a whitelisted API:
+
+```javascript
+// HTTP requests
+const response = await api.rest({
+  url: 'https://api.example.com/data',
+  method: 'GET',
+  headers: { 'Authorization': `Bearer ${api.secret('API_KEY')}` }
+})
+
+// GraphQL queries
+const data = await api.graphql({
+  url: 'https://api.example.com/graphql',
+  query: `query { users { id name } }`,
+  variables: {}
+})
+
+// Utilities
+api.log('Debug message')           // Captured in result.logs
+const timestamp = api.date()       // ISO timestamp
+const secret = api.secret('KEY')   // Get secret value
+await api.sleep(1000)              // Delay (max 10s)
+const id = api.uuid()              // Generate UUID
+```
+
+---
+
+## Workflow Orchestration
+
+**Path:** `trpc.workflow.*`
+
+Temporal-based workflow orchestration.
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `startContentProduction` | Mutation | Protected | Start content production workflow |
+| `startEditorialReview` | Mutation | Protected | Start editorial review |
+| `startPublishing` | Mutation | Protected | Start publishing workflow |
+| `signalCEOApproval` | Mutation | CEO | Signal CEO approval/rejection |
+| `getResult` | Query | Public | Get workflow result |
+| `startFullPipeline` | Mutation | Protected | Start complete pipeline |
+| `status` | Query | Public | Check Temporal connection |
+
+```typescript
+// Start full content pipeline
+const { workflowId, runId } = await trpc.workflow.startFullPipeline.mutate({
+  contentId: 'uuid',
+  websiteId: 'uuid',
+  writerAgentId: 'uuid',
+  editorAgentId: 'uuid',
+  seoAgentId: 'uuid',
+  engineeringAgentId: 'uuid',
+  brief: 'Write an article about AI trends in 2025'
+})
+
+// CEO approves content
+await trpc.workflow.signalCEOApproval.mutate({
+  workflowId,
+  approved: true,
+  feedback: 'Excellent work, proceed with publishing'
+})
+
+// Get final result
+const result = await trpc.workflow.getResult.query({ workflowId })
+```
+
+---
+
+## Editorial Planning
+
+**Path:** `trpc.editorial.*`
+
+Kanban/Gantt-style task management.
+
+### Task Queries
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `getTasks` | Query | Public | Get all tasks for website |
+| `getFilteredTasks` | Query | Public | Get filtered tasks |
+| `getTask` | Query | Public | Get task by ID |
+| `getTaskWithPhases` | Query | Public | Get task with phase data |
+| `getTaskWithDependencies` | Query | Public | Get task with dependencies |
+| `getTasksBySitemapPage` | Query | Public | Get tasks for a page |
+| `getStatistics` | Query | Public | Get task statistics |
+| `getTaskPhases` | Query | Public | Get phase progress |
+
+### Task Mutations
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `createTask` | Mutation | Public | Create editorial task |
+| `updateTask` | Mutation | Public | Update task |
+| `deleteTask` | Mutation | Public | Delete task |
+| `bulkUpdateStatus` | Mutation | Public | Bulk status update |
+| `bulkUpdatePriority` | Mutation | Public | Bulk priority update |
+| `reassignTasks` | Mutation | Public | Reassign tasks to agent |
+
+```typescript
+// Create editorial task
+const task = await trpc.editorial.createTask.mutate({
+  id: 'uuid',
+  websiteId: 'uuid',
+  title: 'Write Q1 Review Article',
+  description: 'Comprehensive review of Q1 performance',
+  taskType: 'content_creation',
+  status: 'todo',
+  priority: 'high',
+  assignedAgentId: 'writer-uuid',
+  dueDate: '2025-02-01',
+  sitemapTargets: ['page-uuid-1', 'page-uuid-2'],
+  seoPrimaryKeyword: 'quarterly review',
+  tags: ['review', 'quarterly', 'important']
+})
+
+// Get filtered tasks
+const tasks = await trpc.editorial.getFilteredTasks.query({
+  websiteId: 'uuid',
+  status: ['in_progress', 'review'],
+  priority: ['high', 'urgent'],
+  overdue: true
+})
+```
+
+### YAML Import/Export
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `exportToYAML` | Query | Public | Export tasks to YAML |
+| `importFromYAML` | Mutation | Public | Import tasks from YAML |
+| `validateYAML` | Query | Public | Validate YAML format |
+| `generateSampleYAML` | Query | Public | Generate sample YAML |
+
+### GitHub Integration
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `createGitHubIssue` | Mutation | Public | Create GitHub issue for task |
+| `createGitHubPR` | Mutation | Public | Create PR for task |
+| `syncFromGitHubPR` | Mutation | Public | Sync task from PR status |
+
+---
+
+## Sitemap & Blueprints
+
+### Sitemap Router
+
+**Path:** `trpc.sitemap.*`
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `listByWebsite` | Query | Public | List pages for website |
+| `getById` | Query | Public | Get page by ID |
+| `getBySlug` | Query | Public | Get page by slug |
+| `listByStatus` | Query | Public | List pages by status |
+| `listByPageType` | Query | Public | List pages by type |
+
+### Blueprint Router
+
+**Path:** `trpc.blueprint.*`
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `list` | Query | Public | List all blueprints |
+| `listOrdered` | Query | Public | List ordered by name |
+| `getById` | Query | Public | Get by ID |
+| `getByPageType` | Query | Public | Get by page type |
+| `create` | Mutation | Public | Create blueprint |
+
+```typescript
+// Create a blueprint
+const blueprint = await trpc.blueprint.create.mutate({
+  page_type: 'blog_post',
+  name: 'Standard Blog Post',
+  description: 'Template for regular blog posts',
+  components: [
+    { type: 'hero', required: true },
+    { type: 'content_body', required: true },
+    { type: 'author_bio', required: false },
+    { type: 'related_posts', required: false }
+  ],
+  global_linking_rules: {
+    suggest_internal_links: true,
+    max_internal_links: 5
+  },
+  seo_template: {
+    title_pattern: '{{title}} | {{site_name}}',
+    description_length: { min: 120, max: 160 }
+  }
+})
+```
+
+---
+
+## GitHub Integration
+
+**Path:** `trpc.github.*`
+
+### Repository Connection
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `getRepoAuthUrl` | Query | Public | Get OAuth URL for repo access |
+| `handleRepoCallback` | Mutation | Public | Handle OAuth callback |
+| `connectRepository` | Mutation | Public | Connect repo to website |
+| `verifyAccess` | Mutation | Public | Verify repo access |
+
+### Sitemap Sync
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `syncSitemap` | Mutation | Public | Sync sitemap to GitHub |
+| `importSitemap` | Mutation | Public | Import sitemap from GitHub |
+| `getSyncStatus` | Query | Public | Get sync status |
+| `createContentPR` | Mutation | Public | Create PR for content changes |
+
+### GitHub Pages
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `enablePages` | Mutation | Public | Enable GitHub Pages |
+| `deployToPages` | Mutation | Public | Deploy files to Pages |
+| `getDeploymentStatus` | Query | Public | Get deployment status |
+| `setCustomDomain` | Mutation | Public | Set custom domain |
+
+```typescript
+// Enable GitHub Pages
+const { pagesUrl } = await trpc.github.enablePages.mutate({
+  websiteId: 'uuid',
+  branch: 'gh-pages',
+  path: '/'
+})
+
+// Deploy to Pages
+await trpc.github.deployToPages.mutate({
+  websiteId: 'uuid',
+  files: [
+    { path: 'index.html', content: '<html>...</html>' },
+    { path: 'styles.css', content: '...' }
+  ],
+  commitMessage: 'Deploy latest changes'
+})
+
+// Set custom domain
+await trpc.github.setCustomDomain.mutate({
+  websiteId: 'uuid',
+  domain: 'blog.example.com'
+})
+// Returns DNS instructions for CNAME setup
+```
+
+### Repository Setup
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `setupRepository` | Mutation | Public | Complete repo setup |
+
+```typescript
+// Full repository setup
+const result = await trpc.github.setupRepository.mutate({
+  websiteId: 'uuid',
+  enablePages: true,
+  createLabels: true,
+  createTemplates: true
+})
+// Creates labels, issue templates, PR templates, enables Pages
+```
+
+---
+
+## Media & Collections
+
+### Media Router
+
+**Path:** `trpc.media.*`
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `generateUploadUrl` | Mutation | Public | Get presigned upload URL |
+| `completeUpload` | Mutation | Public | Register uploaded file |
+
+```typescript
+// Get upload URL
+const { url, key } = await trpc.media.generateUploadUrl.mutate({
+  websiteId: 'uuid',
+  filename: 'hero-image.jpg',
+  mimeType: 'image/jpeg',
+  expiresIn: 3600
+})
+
+// Upload file to URL (direct to S3)
+await fetch(url, { method: 'PUT', body: file })
+
+// Complete upload
+const media = await trpc.media.completeUpload.mutate({
+  websiteId: 'uuid',
+  storageKey: key,
+  filename: 'hero-image.jpg',
+  mimeType: 'image/jpeg',
+  sizeBytes: 1024000,
+  altText: 'Hero image for article',
+  tags: ['hero', 'featured']
+})
+```
+
+### Collection Router
+
+**Path:** `trpc.collection.*`
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `listTypes` | Query | Public | List available collection types |
+| `getType` | Query | Public | Get collection type info |
+| `getSchema` | Query | Public | Get collection schema |
+| `enable` | Mutation | Public | Enable collection for website |
+
+---
+
+## Analytics
+
+### Analytics Router
+
+**Path:** `trpc.analytics.*`
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `getAnalytics` | Query | Public | Get sitemap analytics |
+| `recomputeAnalytics` | Mutation | Public | Force recompute |
+| `clearCache` | Mutation | Public | Clear analytics cache |
+
+### Suggestion Router
+
+**Path:** `trpc.suggestion.*`
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `create` | Mutation | Public | Create AI suggestion |
+| `getByPage` | Query | Public | Get suggestions for page |
+| `getByWebsite` | Query | Public | Get all for website |
+| `getPendingByWebsite` | Query | Public | Get pending suggestions |
+| `getByAgent` | Query | Public | Get suggestions by agent |
+
+```typescript
+// Create suggestion
+await trpc.suggestion.create.mutate({
+  pageId: 'uuid',
+  agentId: 'seo-agent-uuid',
+  suggestionType: 'improve_content',
+  reason: 'Content is thin, needs more depth on key topics',
+  estimatedValue: 'high',
+  keywords: ['machine learning', 'neural networks']
+})
+```
+
+### Agent Activity Router
+
+**Path:** `trpc.agentActivity.*`
+
+Tracks real-time agent activity on the sitemap.
+
+---
+
+## Error Handling
+
+### Error Response Format
+
+```typescript
+interface TRPCError {
+  code: string       // 'NOT_FOUND' | 'BAD_REQUEST' | 'CONFLICT' | 'INTERNAL_SERVER_ERROR' | etc.
+  message: string    // Human-readable error message
+}
+```
+
+### Common Error Codes
+
+| Code | HTTP Status | Description |
+|------|-------------|-------------|
+| `NOT_FOUND` | 404 | Resource not found |
+| `BAD_REQUEST` | 400 | Invalid input |
+| `CONFLICT` | 409 | Resource conflict (e.g., duplicate) |
+| `UNAUTHORIZED` | 401 | Not authenticated |
+| `FORBIDDEN` | 403 | Not authorized |
+| `INTERNAL_SERVER_ERROR` | 500 | Server error |
+
+### Error Handling Example
+
+```typescript
+try {
+  const result = await trpc.company.getById.query({ id: 'invalid-uuid' })
+} catch (error) {
+  if (error.code === 'NOT_FOUND') {
+    console.log('Company not found')
+  } else if (error.code === 'BAD_REQUEST') {
+    console.log('Invalid input:', error.message)
+  } else {
+    console.log('Unexpected error:', error.message)
+  }
+}
+```
+
+---
+
+## Rate Limiting
+
+Currently, no rate limiting is implemented. For production:
+- Consider implementing per-IP or per-user rate limits
+- Use the `Authorization` header for user identification
+- Implement exponential backoff in clients
+
+---
+
+## Versioning
+
+The API does not currently implement versioning. Future versions may be accessed via:
+- URL path: `/api/v2/trpc`
+- Header: `X-API-Version: 2`
+
+---
+
+## Changelog
+
+### v1.0.0 (Current)
+- Initial API release
+- 20 routers, 150+ procedures
+- Three-level prompt hierarchy
+- GitHub integration with Pages deployment
+- JavaScript tool sandbox
+- Temporal workflow orchestration
