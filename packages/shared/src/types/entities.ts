@@ -97,8 +97,10 @@ export const WebsiteSchema = z
   .object({
     id: z.string().uuid(),
     domain: z.string().min(1), // hostname validation relaxed for MVP
-    title: z.string().min(1),
+    name: z.string().min(1), // Display name for the website
+    title: z.string().min(1), // HTML title
     description: z.string().optional(),
+    settings: z.record(z.any()).optional(), // Website configuration settings
     // GitHub Integration
     github_repo_url: z.string().optional(),
     github_owner: z.string().optional(),
@@ -164,6 +166,11 @@ export const ContentItemMetadataSchema = z.object({
   category: z.string().optional(),
   reading_time: z.string().optional(),
   seo_keywords: z.array(z.string()).optional(),
+  // Editorial review tracking
+  reviews: z.array(z.any()).optional(),
+  revisions: z.array(z.any()).optional(),
+  escalations: z.array(z.any()).optional(),
+  pending_ceo_approval: z.boolean().optional(),
 })
 
 export const ContentItemSchema = z
@@ -172,6 +179,9 @@ export const ContentItemSchema = z
     website_id: z.string().uuid(),
     page_id: z.string().uuid().nullable().optional(),
     type: ContentItemTypeSchema,
+    title: z.string().min(1), // Content title
+    brief: z.string().optional(), // Content brief/summary
+    slug: z.string().optional(), // URL slug
     body: ContentBlocksSchema, // Array of JSON blocks
     metadata: ContentItemMetadataSchema.optional(),
     author_agent_id: z.string().uuid(),
@@ -258,6 +268,7 @@ export const QuestionTicketSchema = z
     subject: z.string().min(1),
     body: z.string().min(1),
     status: QuestionTicketStatusSchema,
+    content_id: z.string().uuid().nullable().optional(), // Related content item
     answer_agent_id: z.string().uuid().nullable().optional(),
     answer_body: z.string().nullable().optional(),
   })

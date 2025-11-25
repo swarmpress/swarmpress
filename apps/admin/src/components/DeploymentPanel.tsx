@@ -25,6 +25,16 @@ interface DeploymentStatus {
   }
 }
 
+interface SetupResults {
+  labelsCreated: number
+  labelsSkipped: number
+  templatesCreated: number
+  templatesSkipped: number
+  pagesEnabled: boolean
+  pagesUrl?: string
+  cnameCreated: boolean
+}
+
 interface DeploymentPanelProps {
   websiteId: string
   isConnectedToGitHub: boolean
@@ -36,6 +46,8 @@ export function DeploymentPanel({ websiteId, isConnectedToGitHub, disabled }: De
   const [isLoading, setIsLoading] = useState(true)
   const [isEnabling, setIsEnabling] = useState(false)
   const [isDeploying, setIsDeploying] = useState(false)
+  const [isSettingUp, setIsSettingUp] = useState(false)
+  const [setupResults, setSetupResults] = useState<SetupResults | null>(null)
   const [customDomain, setCustomDomain] = useState('')
   const [isSettingDomain, setIsSettingDomain] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -195,6 +207,52 @@ export function DeploymentPanel({ websiteId, isConnectedToGitHub, disabled }: De
     }
   }
 
+  // Setup repository for swarm.press
+  const handleSetupRepository = async () => {
+    setIsSettingUp(true)
+    setError(null)
+    setSetupResults(null)
+
+    try {
+      const response = await fetch('http://localhost:3000/api/trpc/github.setupRepository', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          json: {
+            websiteId,
+            enablePages: true,
+            createLabels: true,
+            createTemplates: true,
+          },
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error?.json?.message || data.error?.message || 'Setup failed')
+      }
+
+      const result = data.result?.data?.json || data.result?.data
+
+      setSetupResults(result?.summary)
+
+      // If Pages was enabled, update status
+      if (result?.summary?.pagesEnabled) {
+        setStatus((prev) => ({
+          ...prev!,
+          pagesEnabled: true,
+          pagesUrl: result.summary.pagesUrl,
+          status: 'never_deployed',
+        }))
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Setup failed')
+    } finally {
+      setIsSettingUp(false)
+    }
+  }
+
   // Set custom domain
   const handleSetCustomDomain = async () => {
     if (!customDomain.trim()) return
@@ -251,32 +309,97 @@ export function DeploymentPanel({ websiteId, isConnectedToGitHub, disabled }: De
     )
   }
 
-  // Pages not enabled yet
+  // Pages not enabled yet - show setup option
   if (!status?.pagesEnabled) {
     return (
       <Card className="p-6">
-        <div className="space-y-4">
-          <div>
-            <h3 className="font-semibold text-gray-900 mb-1">GitHub Pages Deployment</h3>
-            <p className="text-sm text-gray-600">
-              Enable GitHub Pages to deploy your website automatically when content is published.
-            </p>
+        <div className="space-y-6">
+          {/* Repository Setup Section */}
+          <div className="space-y-3">
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-1">Setup Repository for swarm.press</h3>
+              <p className="text-sm text-gray-600">
+                Configure your GitHub repository with workflow labels, issue templates, PR templates,
+                and enable GitHub Pages deployment.
+              </p>
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+                {error}
+              </div>
+            )}
+
+            {setupResults && (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg space-y-2">
+                <p className="font-medium text-green-800">Setup Complete!</p>
+                <ul className="text-sm text-green-700 space-y-1">
+                  <li>Labels: {setupResults.labelsCreated} created, {setupResults.labelsSkipped} already existed</li>
+                  <li>Templates: {setupResults.templatesCreated} created, {setupResults.templatesSkipped} already existed</li>
+                  <li>GitHub Pages: {setupResults.pagesEnabled ? 'Enabled' : 'Not enabled'}</li>
+                  {setupResults.cnameCreated && <li>CNAME file created for custom domain</li>}
+                  {setupResults.pagesUrl && (
+                    <li>
+                      Site URL:{' '}
+                      <a href={setupResults.pagesUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                        {setupResults.pagesUrl}
+                      </a>
+                    </li>
+                  )}
+                </ul>
+              </div>
+            )}
+
+            <Button
+              type="button"
+              onClick={handleSetupRepository}
+              disabled={disabled || isSettingUp}
+              className="w-full"
+            >
+              {isSettingUp ? 'Setting up repository...' : 'Setup Repository'}
+            </Button>
+
+            <div className="text-xs text-gray-500 space-y-1">
+              <p>This will create:</p>
+              <ul className="list-disc list-inside pl-2">
+                <li>21 workflow labels (content states, tasks, agents)</li>
+                <li>Issue templates (Question Ticket, Task, Content Idea)</li>
+                <li>PR template for content review</li>
+                <li>GitHub Pages on gh-pages branch</li>
+                <li>CNAME file for custom domain (if configured)</li>
+              </ul>
+            </div>
           </div>
 
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-              {error}
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
             </div>
-          )}
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-gray-500">or</span>
+            </div>
+          </div>
 
-          <Button
-            type="button"
-            onClick={handleEnablePages}
-            disabled={disabled || isEnabling}
-            className="w-full"
-          >
-            {isEnabling ? 'Enabling...' : 'Enable GitHub Pages'}
-          </Button>
+          {/* Simple Enable Pages Option */}
+          <div className="space-y-3">
+            <div>
+              <h4 className="font-medium text-gray-900 mb-1">Just Enable GitHub Pages</h4>
+              <p className="text-sm text-gray-600">
+                Enable Pages without the full swarm.press setup.
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleEnablePages}
+              disabled={disabled || isEnabling}
+              className="w-full"
+            >
+              {isEnabling ? 'Enabling...' : 'Enable GitHub Pages Only'}
+            </Button>
+          </div>
         </div>
       </Card>
     )

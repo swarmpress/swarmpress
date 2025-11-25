@@ -4,6 +4,11 @@
   "private": true,
   "description": "Astro-based static site builder for swarm.press",
   "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./generator": "./src/generator/index.ts"
+  },
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",

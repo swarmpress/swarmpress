@@ -42,6 +42,9 @@ import { mediaRouter } from './media.router'
 // Authentication
 import { authRouter } from './auth.router'
 
+// Workflow Orchestration
+import { workflowRouter } from './workflow.router'
+
 /**
  * Main application router
  * Combines all feature routers
@@ -76,6 +79,8 @@ export const appRouter = router({
   media: mediaRouter,
   // Authentication
   auth: authRouter,
+  // Workflow Orchestration
+  workflow: workflowRouter,
 })
 
 /**

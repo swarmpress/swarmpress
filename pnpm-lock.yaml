@@ -208,6 +208,9 @@ importers:
       '@swarm-press/shared':
         specifier: workspace:*
         version: link:../shared
+      '@swarm-press/site-builder':
+        specifier: workspace:*
+        version: link:../site-builder
       dotenv:
         specifier: ^16.3.1
         version: 16.6.1

@@ -752,6 +752,24 @@ export const githubRouter = router({
       const basePath = website.github_pages_path === '/docs' ? 'docs/' : ''
 
       try {
+        // Prepare files to deploy, including CNAME for custom domain
+        const filesToDeploy = [...input.files]
+
+        // Add CNAME file for custom domain (required for GitHub Pages custom domains)
+        const customDomain = website.github_pages_custom_domain || website.domain
+        if (customDomain && !customDomain.includes('github.io')) {
+          // Remove any existing CNAME file from input to avoid duplicates
+          const cnameIndex = filesToDeploy.findIndex(f => f.path === 'CNAME')
+          if (cnameIndex !== -1) {
+            filesToDeploy.splice(cnameIndex, 1)
+          }
+          filesToDeploy.push({
+            path: 'CNAME',
+            content: customDomain,
+          })
+          console.log(`[GitHub Pages] Adding CNAME file for custom domain: ${customDomain}`)
+        }
+
         // Get the current commit SHA for the branch
         const { data: ref } = await octokit.rest.git.getRef({
           owner: website.github_owner,
@@ -770,7 +788,7 @@ export const githubRouter = router({
 
         // Create blobs for each file
         const blobs = await Promise.all(
-          input.files.map(async (file) => {
+          filesToDeploy.map(async (file) => {
             const { data: blob } = await octokit.rest.git.createBlob({
               owner: website.github_owner!,
               repo: website.github_repo!,
@@ -821,7 +839,7 @@ export const githubRouter = router({
         return {
           success: true,
           commitSha: newCommit.sha,
-          filesDeployed: input.files.length,
+          filesDeployed: filesToDeploy.length,
           pagesUrl: website.github_pages_url,
         }
       } catch (error: any) {
@@ -1058,6 +1076,495 @@ export const githubRouter = router({
           code: 'INTERNAL_SERVER_ERROR',
           message: error instanceof Error ? error.message : 'Failed to sync blueprints',
         })
+      }
+    }),
+
+  // ============================================================================
+  // REPOSITORY SETUP FOR SWARM.PRESS WEBSITES
+  // ============================================================================
+
+  /**
+   * Setup a GitHub repository for swarm.press website
+   * Creates labels, issue templates, PR templates, enables Pages, and adds CNAME
+   */
+  setupRepository: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        enablePages: z.boolean().default(true),
+        createLabels: z.boolean().default(true),
+        createTemplates: z.boolean().default(true),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Website is not connected to a GitHub repository',
+        })
+      }
+
+      const { Octokit } = await import('@octokit/rest')
+      const octokit = new Octokit({ auth: website.github_access_token })
+
+      const results: {
+        labels: { created: string[]; skipped: string[] }
+        templates: { created: string[]; skipped: string[] }
+        pages: { enabled: boolean; url?: string }
+        cname: { created: boolean }
+      } = {
+        labels: { created: [], skipped: [] },
+        templates: { created: [], skipped: [] },
+        pages: { enabled: false },
+        cname: { created: false },
+      }
+
+      // ========================================
+      // 1. CREATE WORKFLOW LABELS
+      // ========================================
+      if (input.createLabels) {
+        const labels = [
+          // Content workflow states
+          { name: 'content:idea', color: 'e6e6e6', description: 'Content idea - not yet planned' },
+          { name: 'content:planned', color: 'fbca04', description: 'Content planned for production' },
+          { name: 'content:draft', color: 'fef2c0', description: 'Content in draft state' },
+          { name: 'content:in-review', color: 'f9a825', description: 'Content under editorial review' },
+          { name: 'content:needs-changes', color: 'e65100', description: 'Content requires revisions' },
+          { name: 'content:approved', color: '2e7d32', description: 'Content approved by editor' },
+          { name: 'content:scheduled', color: '1565c0', description: 'Content scheduled for publishing' },
+          { name: 'content:published', color: '0d47a1', description: 'Content is live' },
+          // Task types
+          { name: 'task', color: 'bdbdbd', description: 'Work assignment for an agent' },
+          { name: 'task:write', color: '90caf9', description: 'Writing task' },
+          { name: 'task:review', color: 'ce93d8', description: 'Review task' },
+          { name: 'task:seo', color: 'a5d6a7', description: 'SEO optimization task' },
+          { name: 'task:media', color: 'ffcc80', description: 'Media/image task' },
+          { name: 'task:publish', color: '80deea', description: 'Publishing task' },
+          // Escalations
+          { name: 'question-ticket', color: '7b1fa2', description: 'Escalation to CEO or Editor' },
+          { name: 'high-risk', color: 'd32f2f', description: 'High-risk content requiring CEO approval' },
+          { name: 'blocked', color: 'b71c1c', description: 'Workflow blocked - needs attention' },
+          // Agents
+          { name: 'agent:writer', color: '4fc3f7', description: 'Assigned to WriterAgent' },
+          { name: 'agent:editor', color: 'ba68c8', description: 'Assigned to EditorAgent' },
+          { name: 'agent:seo', color: '81c784', description: 'Assigned to SEO Agent' },
+          { name: 'agent:engineering', color: '90a4ae', description: 'Assigned to EngineeringAgent' },
+          { name: 'agent:ceo', color: 'ffb74d', description: 'Requires CEO attention' },
+        ]
+
+        for (const label of labels) {
+          try {
+            await octokit.rest.issues.createLabel({
+              owner: website.github_owner,
+              repo: website.github_repo,
+              name: label.name,
+              color: label.color,
+              description: label.description,
+            })
+            results.labels.created.push(label.name)
+          } catch (error: any) {
+            if (error.status === 422) {
+              // Label already exists
+              results.labels.skipped.push(label.name)
+            } else {
+              console.error(`Failed to create label ${label.name}:`, error.message)
+            }
+          }
+        }
+      }
+
+      // ========================================
+      // 2. CREATE ISSUE TEMPLATES
+      // ========================================
+      if (input.createTemplates) {
+        const templates = [
+          {
+            path: '.github/ISSUE_TEMPLATE/question-ticket.md',
+            content: `---
+name: Question Ticket (Escalation)
+about: Escalate a question or decision to the CEO or Chief Editor
+title: '[QUESTION] '
+labels: question-ticket
+assignees: ''
+---
+
+## 🎫 Question Ticket
+
+**Created by Agent:** <!-- agent name -->
+**Target:** <!-- CEO / Chief Editor -->
+**Priority:** <!-- low / medium / high / critical -->
+
+---
+
+### Context
+<!-- Describe the situation that led to this escalation -->
+
+### Question
+<!-- What specific question or decision needs to be made? -->
+
+### Options Considered
+<!-- List any options you've considered -->
+1.
+2.
+3.
+
+### Recommendation
+<!-- Your recommended course of action, if any -->
+
+### Related Content
+<!-- Link to related PRs, issues, or content items -->
+
+---
+*This ticket was created by a swarm.press agent following the escalation workflow.*
+`,
+          },
+          {
+            path: '.github/ISSUE_TEMPLATE/task.md',
+            content: `---
+name: Task
+about: Create a task for an agent
+title: '[TASK] '
+labels: task
+assignees: ''
+---
+
+## 📋 Task
+
+**Type:** <!-- write / review / seo / media / publish -->
+**Assigned Agent:** <!-- WriterAgent / EditorAgent / etc. -->
+**Priority:** <!-- low / medium / high -->
+**Due:** <!-- optional deadline -->
+
+---
+
+### Description
+<!-- What needs to be done? -->
+
+### Acceptance Criteria
+- [ ]
+- [ ]
+- [ ]
+
+### Related Content
+<!-- Link to related PRs, issues, or content items -->
+
+### Notes
+<!-- Any additional context -->
+
+---
+*This task is part of the swarm.press workflow system.*
+`,
+          },
+          {
+            path: '.github/ISSUE_TEMPLATE/content-idea.md',
+            content: `---
+name: Content Idea
+about: Propose a new content piece
+title: '[IDEA] '
+labels: content:idea
+assignees: ''
+---
+
+## 💡 Content Idea
+
+**Proposed by:** <!-- agent or human -->
+**Content Type:** <!-- article / guide / review / etc. -->
+**Target Audience:** <!-- who is this for? -->
+
+---
+
+### Topic
+<!-- What is this content about? -->
+
+### Why This Matters
+<!-- Why should we create this content? -->
+
+### Key Points to Cover
+1.
+2.
+3.
+
+### SEO Considerations
+- **Target Keywords:**
+- **Search Intent:**
+
+### Resources / References
+<!-- Any research or sources to consider -->
+
+---
+*Content ideas are reviewed by the Editorial team before production.*
+`,
+          },
+          {
+            path: '.github/ISSUE_TEMPLATE/config.yml',
+            content: `blank_issues_enabled: true
+contact_links:
+  - name: swarm.press Documentation
+    url: https://github.com/your-org/swarm-press
+    about: Learn more about the swarm.press publishing system
+`,
+          },
+        ]
+
+        // Get the default branch
+        const { data: repo } = await octokit.rest.repos.get({
+          owner: website.github_owner,
+          repo: website.github_repo,
+        })
+        const defaultBranch = repo.default_branch
+
+        for (const template of templates) {
+          try {
+            // Check if file exists
+            let sha: string | undefined
+            try {
+              const existing = await octokit.rest.repos.getContent({
+                owner: website.github_owner,
+                repo: website.github_repo,
+                path: template.path,
+                ref: defaultBranch,
+              })
+              if ('sha' in existing.data) {
+                sha = existing.data.sha
+                results.templates.skipped.push(template.path)
+                continue // Skip if exists
+              }
+            } catch (e: any) {
+              if (e.status !== 404) throw e
+            }
+
+            // Create file
+            await octokit.rest.repos.createOrUpdateFileContents({
+              owner: website.github_owner,
+              repo: website.github_repo,
+              path: template.path,
+              message: `chore: add ${template.path.split('/').pop()} template`,
+              content: Buffer.from(template.content).toString('base64'),
+              branch: defaultBranch,
+            })
+            results.templates.created.push(template.path)
+          } catch (error: any) {
+            console.error(`Failed to create template ${template.path}:`, error.message)
+          }
+        }
+
+        // Create PR template
+        const prTemplate = {
+          path: '.github/PULL_REQUEST_TEMPLATE.md',
+          content: `## 📝 Content Change
+
+**Content Type:** <!-- article / page / media / template -->
+**Author Agent:** <!-- WriterAgent / etc. -->
+**Status:** <!-- draft / ready-for-review -->
+
+---
+
+### Summary
+<!-- Brief description of the changes -->
+
+### Content Checklist
+
+#### Writer
+- [ ] Content follows editorial guidelines
+- [ ] Factual accuracy verified
+- [ ] Links are valid
+- [ ] Images have alt text
+
+#### Editor Review
+- [ ] Tone and style consistent
+- [ ] Structure is clear
+- [ ] No grammatical errors
+- [ ] SEO metadata complete
+
+#### Technical
+- [ ] Valid JSON block structure
+- [ ] No broken references
+- [ ] Renders correctly
+
+---
+
+### Related Issues
+<!-- Link any related issues or tasks -->
+Closes #
+
+### Screenshots
+<!-- If applicable, add screenshots -->
+
+---
+*This PR was created as part of the swarm.press content workflow.*
+`,
+        }
+
+        try {
+          let prTemplateExists = false
+          try {
+            await octokit.rest.repos.getContent({
+              owner: website.github_owner,
+              repo: website.github_repo,
+              path: prTemplate.path,
+              ref: defaultBranch,
+            })
+            prTemplateExists = true
+            results.templates.skipped.push(prTemplate.path)
+          } catch (e: any) {
+            if (e.status !== 404) throw e
+          }
+
+          if (!prTemplateExists) {
+            await octokit.rest.repos.createOrUpdateFileContents({
+              owner: website.github_owner,
+              repo: website.github_repo,
+              path: prTemplate.path,
+              message: 'chore: add pull request template',
+              content: Buffer.from(prTemplate.content).toString('base64'),
+              branch: defaultBranch,
+            })
+            results.templates.created.push(prTemplate.path)
+          }
+        } catch (error: any) {
+          console.error('Failed to create PR template:', error.message)
+        }
+      }
+
+      // ========================================
+      // 3. ENABLE GITHUB PAGES
+      // ========================================
+      if (input.enablePages) {
+        try {
+          // First, ensure gh-pages branch exists
+          try {
+            await octokit.rest.repos.getBranch({
+              owner: website.github_owner,
+              repo: website.github_repo,
+              branch: 'gh-pages',
+            })
+          } catch (e: any) {
+            if (e.status === 404) {
+              // Create gh-pages branch
+              const { data: repo } = await octokit.rest.repos.get({
+                owner: website.github_owner,
+                repo: website.github_repo,
+              })
+
+              const { data: ref } = await octokit.rest.git.getRef({
+                owner: website.github_owner,
+                repo: website.github_repo,
+                ref: `heads/${repo.default_branch}`,
+              })
+
+              await octokit.rest.git.createRef({
+                owner: website.github_owner,
+                repo: website.github_repo,
+                ref: 'refs/heads/gh-pages',
+                sha: ref.object.sha,
+              })
+            }
+          }
+
+          // Enable GitHub Pages
+          try {
+            await octokit.rest.repos.createPagesSite({
+              owner: website.github_owner,
+              repo: website.github_repo,
+              source: {
+                branch: 'gh-pages',
+                path: '/',
+              },
+            })
+          } catch (e: any) {
+            // Pages might already be enabled (409 conflict)
+            if (e.status !== 409) throw e
+          }
+
+          // Get Pages URL
+          const { data: pages } = await octokit.rest.repos.getPages({
+            owner: website.github_owner,
+            repo: website.github_repo,
+          })
+
+          results.pages.enabled = true
+          results.pages.url = pages.html_url
+
+          // Update website record
+          await websiteRepository.update(input.websiteId, {
+            github_pages_enabled: true,
+            github_pages_url: pages.html_url,
+            github_pages_branch: 'gh-pages',
+            github_pages_path: '/',
+          })
+
+          // ========================================
+          // 4. CREATE CNAME FILE FOR CUSTOM DOMAIN
+          // ========================================
+          if (website.domain && !website.domain.includes('github.io')) {
+            try {
+              // Check if CNAME exists on gh-pages
+              let cnameExists = false
+              try {
+                await octokit.rest.repos.getContent({
+                  owner: website.github_owner,
+                  repo: website.github_repo,
+                  path: 'CNAME',
+                  ref: 'gh-pages',
+                })
+                cnameExists = true
+              } catch (e: any) {
+                if (e.status !== 404) throw e
+              }
+
+              if (!cnameExists) {
+                await octokit.rest.repos.createOrUpdateFileContents({
+                  owner: website.github_owner,
+                  repo: website.github_repo,
+                  path: 'CNAME',
+                  message: `chore: add CNAME for ${website.domain}`,
+                  content: Buffer.from(website.domain).toString('base64'),
+                  branch: 'gh-pages',
+                })
+                results.cname.created = true
+
+                // Also set custom domain via API
+                await octokit.rest.repos.updateInformationAboutPagesSite({
+                  owner: website.github_owner,
+                  repo: website.github_repo,
+                  cname: website.domain,
+                })
+
+                // Update website record
+                await websiteRepository.update(input.websiteId, {
+                  github_pages_custom_domain: website.domain,
+                })
+              }
+            } catch (error: any) {
+              console.error('Failed to create CNAME:', error.message)
+            }
+          }
+        } catch (error: any) {
+          console.error('Failed to enable GitHub Pages:', error.message)
+        }
+      }
+
+      return {
+        success: true,
+        results,
+        summary: {
+          labelsCreated: results.labels.created.length,
+          labelsSkipped: results.labels.skipped.length,
+          templatesCreated: results.templates.created.length,
+          templatesSkipped: results.templates.skipped.length,
+          pagesEnabled: results.pages.enabled,
+          pagesUrl: results.pages.url,
+          cnameCreated: results.cname.created,
+        },
       }
     }),
 })

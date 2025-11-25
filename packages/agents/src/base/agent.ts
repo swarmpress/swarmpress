@@ -5,6 +5,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { getEnv } from '@swarm-press/shared'
+import { ToolRegistry, ToolContext, ToolResult } from './tools'
 
 // ============================================================================
 // Types
@@ -18,11 +19,14 @@ export interface AgentConfig {
   systemPrompt: string
   model?: string
   maxTokens?: number
+  maxToolIterations?: number // Maximum tool-use loop iterations (default: 10)
 }
 
 export interface AgentContext {
   agentId: string
   taskId?: string
+  websiteId?: string
+  contentId?: string
   conversationHistory?: Anthropic.MessageParam[]
 }
 
@@ -47,9 +51,11 @@ export class BaseAgent {
   protected config: AgentConfig
   protected client: Anthropic
   protected conversationHistory: Anthropic.MessageParam[] = []
+  protected toolRegistry: ToolRegistry
 
   constructor(config: AgentConfig) {
     this.config = config
+    this.toolRegistry = new ToolRegistry()
 
     // Initialize Anthropic client
     const apiKey = getEnv().ANTHROPIC_API_KEY
@@ -57,12 +63,24 @@ export class BaseAgent {
   }
 
   /**
-   * Execute a task
+   * Get the tool registry for registering tools
+   */
+  getToolRegistry(): ToolRegistry {
+    return this.toolRegistry
+  }
+
+  /**
+   * Execute a task with tool-use support
+   * Implements a loop that continues until Claude finishes (end_turn)
    */
   async execute(
     task: AgentTask,
-    _context: AgentContext = { agentId: this.config.name }
+    context: AgentContext = { agentId: this.config.name }
   ): Promise<AgentResponse> {
+    const maxIterations = this.config.maxToolIterations || 10
+    let iteration = 0
+    const toolResults: ToolResult[] = []
+
     try {
       // Build the prompt
       const userMessage = this.buildPrompt(task)
@@ -73,37 +91,145 @@ export class BaseAgent {
         content: userMessage,
       })
 
-      // Call Claude Sonnet 4.5
-      const response = await this.client.messages.create({
-        model: this.config.model || 'claude-sonnet-4-5-20250929',
-        max_tokens: this.config.maxTokens || 8192,
-        system: this.config.systemPrompt,
-        messages: this.conversationHistory,
-      })
+      // Build tool context (prefer values from AgentContext, fallback to task.context)
+      const toolContext: ToolContext = {
+        agentId: context.agentId,
+        agentName: this.config.name,
+        taskId: context.taskId,
+        contentId: context.contentId || task.context?.contentId,
+        websiteId: context.websiteId || task.context?.websiteId,
+      }
 
-      // Extract response content
-      const content = response.content
-        .filter((block) => block.type === 'text')
-        .map((block) => ('text' in block ? block.text : ''))
-        .join('\n')
+      // Get tool definitions (if any registered)
+      const tools = this.toolRegistry.getDefinitions()
+      const hasTools = tools.length > 0
 
-      // Add response to history
-      this.conversationHistory.push({
-        role: 'assistant',
-        content: response.content,
-      })
+      console.log(
+        `[${this.config.name}] Executing task: ${task.taskType} (${hasTools ? tools.length + ' tools' : 'no tools'})`
+      )
 
+      // Tool-use loop
+      while (iteration < maxIterations) {
+        iteration++
+
+        // Call Claude
+        const response = await this.client.messages.create({
+          model: this.config.model || 'claude-sonnet-4-5-20250929',
+          max_tokens: this.config.maxTokens || 8192,
+          system: this.config.systemPrompt,
+          messages: this.conversationHistory,
+          ...(hasTools && { tools }),
+        })
+
+        console.log(
+          `[${this.config.name}] Iteration ${iteration}: stop_reason=${response.stop_reason}`
+        )
+
+        // Add assistant response to history
+        this.conversationHistory.push({
+          role: 'assistant',
+          content: response.content,
+        })
+
+        // Check stop reason
+        if (response.stop_reason === 'end_turn') {
+          // Done - extract final text response
+          const content = this.extractTextContent(response.content)
+          return {
+            success: true,
+            content,
+            data: {
+              iterations: iteration,
+              toolResults,
+              response,
+            },
+          }
+        }
+
+        if (response.stop_reason === 'tool_use') {
+          // Execute tool calls
+          const toolUseBlocks = response.content.filter(
+            (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
+          )
+
+          if (toolUseBlocks.length === 0) {
+            console.warn(`[${this.config.name}] tool_use stop reason but no tool_use blocks`)
+            break
+          }
+
+          // Execute all tool calls
+          const toolResultBlocks: Anthropic.ToolResultBlockParam[] = []
+
+          for (const toolUse of toolUseBlocks) {
+            console.log(`[${this.config.name}] Calling tool: ${toolUse.name}`)
+
+            const result = await this.toolRegistry.execute(toolUse.name, toolUse.input, toolContext)
+
+            toolResults.push(result)
+
+            toolResultBlocks.push({
+              type: 'tool_result',
+              tool_use_id: toolUse.id,
+              content: JSON.stringify(result),
+              is_error: !result.success,
+            })
+          }
+
+          // Add tool results to conversation
+          this.conversationHistory.push({
+            role: 'user',
+            content: toolResultBlocks,
+          })
+
+          // Continue loop - Claude will process tool results
+          continue
+        }
+
+        // Handle other stop reasons
+        if (response.stop_reason === 'max_tokens') {
+          console.warn(`[${this.config.name}] Hit max tokens limit`)
+          const content = this.extractTextContent(response.content)
+          return {
+            success: true,
+            content,
+            data: {
+              iterations: iteration,
+              toolResults,
+              truncated: true,
+            },
+          }
+        }
+
+        // Unknown stop reason - break to avoid infinite loop
+        console.warn(`[${this.config.name}] Unexpected stop reason: ${response.stop_reason}`)
+        break
+      }
+
+      // Exceeded max iterations
+      console.error(`[${this.config.name}] Exceeded max iterations (${maxIterations})`)
       return {
-        success: true,
-        content,
-        data: { response },
+        success: false,
+        error: `Agent exceeded maximum tool iterations (${maxIterations})`,
+        data: { iterations: iteration, toolResults },
       }
     } catch (error) {
+      console.error(`[${this.config.name}] Execution error:`, error)
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
+        data: { iterations: iteration, toolResults },
       }
     }
+  }
+
+  /**
+   * Extract text content from Claude response blocks
+   */
+  private extractTextContent(content: Anthropic.ContentBlock[]): string {
+    return content
+      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+      .map((block) => block.text)
+      .join('\n')
   }
 
   /**

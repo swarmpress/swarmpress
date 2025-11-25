@@ -7,7 +7,7 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { mkdir, writeFile, rm } from 'fs/promises'
 import { join } from 'path'
-import { contentRepository, websiteRepository } from '@swarm-press/backend/db/repositories'
+import { contentRepository, websiteRepository } from '@swarm-press/backend'
 import type { ContentItem, Website } from '@swarm-press/shared'
 
 const execAsync = promisify(exec)

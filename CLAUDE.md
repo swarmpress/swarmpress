@@ -1,7 +1,7 @@
 # swarm.press — Claude Development Guide
 
-> **Last Updated:** 2025-11-23
-> **Status:** MVP Implementation Phase
+> **Last Updated:** 2025-11-25
+> **Status:** MVP Complete - Active Development
 > **Spec Version:** 1.0
 > **Schema Version:** 1.0.0
 
@@ -75,10 +75,12 @@ Every action produces:
 | **Workflow Engine** | Temporal.io | Long-running, fault-tolerant orchestration |
 | **Event Bus** | NATS + JetStream | CloudEvents, simple, reliable |
 | **Database** | PostgreSQL | Relational model + JSONB for content |
-| **Content Storage** | PostgreSQL + S3/MinIO | Metadata in DB, media in object storage |
+| **Content Storage** | PostgreSQL + S3/Cloudflare R2 | Metadata in DB, media in object storage |
 | **Website Generator** | Astro | Static/hybrid sites, component-based |
-| **Monorepo** | Turborepo or Nx | Shared types, schemas, unified builds |
-| **CEO Dashboard** | Astro or Next.js | Web UI for human oversight |
+| **Monorepo** | Turborepo + pnpm | Shared types, schemas, unified builds |
+| **Admin Dashboard** | Astro + React + shadcn/ui | Web UI for content management |
+| **Collaboration** | GitHub | PRs, Issues, webhooks for content review |
+| **Authentication** | GitHub OAuth | User authentication via GitHub |
 
 ### Key Patterns
 
@@ -101,11 +103,6 @@ export async function contentProductionWorkflow(briefId: string) {
   await callAgentActivity('EngineeringAgent', 'publish_site', { draft })
 }
 ```
-
-**Why synchronous?**
-- Deterministic workflow execution
-- Built-in retries and error handling
-- Easy debugging and replay
 
 #### **Agents Are Stateless**
 ```typescript
@@ -160,66 +157,147 @@ await eventBus.publish('content.submittedForReview', { id: '123' })
 
 ---
 
-## 📂 Monorepo Structure
+## 📂 Current Implementation Structure
 
 ```
 swarm-press/
 ├── packages/
-│   ├── backend/          # API, PostgreSQL models, business logic
-│   ├── workflows/        # Temporal workflows + activities
-│   ├── agents/           # Claude Agent SDK implementations
-│   ├── shared/           # JSON schemas, types, state machines
-│   ├── site-builder/     # Astro website generation
-│   ├── event-bus/        # NATS/CloudEvents integration
-│   └── cli/              # Operator CLI (swarmpress commands)
+│   ├── backend/              # API server, PostgreSQL models, tRPC routers
+│   │   ├── src/api/          # Express + tRPC API server
+│   │   │   ├── routers/      # 15+ tRPC routers (content, task, ticket, etc.)
+│   │   │   ├── server.ts     # Express app
+│   │   │   └── webhooks.router.ts  # GitHub webhooks
+│   │   ├── src/db/           # PostgreSQL repositories
+│   │   │   ├── migrations/   # Schema (000_schema.sql)
+│   │   │   ├── repositories/ # 12+ repositories
+│   │   │   └── connection.ts # Database singleton
+│   │   ├── src/services/     # Business logic services
+│   │   │   ├── github.service.ts
+│   │   │   ├── github-sync.service.ts
+│   │   │   ├── media.service.ts
+│   │   │   ├── prompt-resolver.service.ts
+│   │   │   └── auth.service.ts
+│   │   └── src/state-machine/ # State machine engine
+│   ├── workflows/            # Temporal.io workflows
+│   │   ├── src/workflows/    # 3 workflows
+│   │   │   ├── content-production.workflow.ts
+│   │   │   ├── editorial-review.workflow.ts
+│   │   │   └── publishing.workflow.ts
+│   │   ├── src/activities/   # Agent invocation activities
+│   │   └── src/temporal/     # Temporal client & worker
+│   ├── agents/               # Claude Agent SDK implementations
+│   │   ├── src/writer/       # WriterAgent
+│   │   ├── src/editor/       # EditorAgent
+│   │   ├── src/engineering/  # EngineeringAgent
+│   │   ├── src/ceo-assistant/ # CEOAssistantAgent
+│   │   └── src/base/         # Agent factory & utilities
+│   ├── shared/               # Shared types, schemas, utilities
+│   │   ├── src/types/        # TypeScript types
+│   │   ├── src/content/      # Block types & collections
+│   │   │   ├── blocks.ts     # 10 block type definitions
+│   │   │   └── collections/  # Event, POI, FAQ, News schemas
+│   │   ├── src/state-machines/ # State machine definitions
+│   │   ├── src/logging/      # Structured logging, error tracking
+│   │   └── src/config/       # Environment config
+│   ├── site-builder/         # Astro website generation
+│   │   ├── src/components/   # 10 block components (.astro)
+│   │   │   └── blocks/       # Hero, Paragraph, FAQ, etc.
+│   │   ├── src/generator/    # Build & deploy functions
+│   │   └── src/layouts/      # Base layouts
+│   ├── event-bus/            # NATS/CloudEvents integration
+│   │   ├── src/publisher.ts  # Event publishing
+│   │   ├── src/subscriber.ts # Event subscription
+│   │   └── src/cloudevents.ts # CloudEvents helpers
+│   ├── github-integration/   # GitHub collaboration layer
+│   │   ├── src/client.ts     # GitHub API wrapper
+│   │   ├── src/pull-requests.ts # PR operations
+│   │   ├── src/issues.ts     # Issue operations
+│   │   ├── src/webhooks.ts   # Webhook processing
+│   │   └── src/sync.ts       # Bidirectional sync
+│   └── cli/                  # Operator CLI (placeholder)
 ├── apps/
-│   └── dashboard/        # CEO web UI
+│   ├── admin/                # Admin Dashboard (React + shadcn/ui)
+│   │   ├── src/components/
+│   │   │   ├── sitemap/      # Sitemap graph visualization
+│   │   │   ├── editorial/    # Kanban board, Gantt, tasks
+│   │   │   ├── blueprints/   # Blueprint editor
+│   │   │   └── ui/           # shadcn/ui components
+│   │   ├── src/pages/        # Astro pages
+│   │   │   └── api/          # API routes
+│   │   └── src/hooks/        # React hooks
+│   └── dashboard/            # CEO Dashboard (minimal)
 ├── scripts/
-│   └── bootstrap/        # Initial setup scripts
+│   ├── bootstrap.ts          # System initialization
+│   ├── seed.ts               # Sample data
+│   ├── clear.ts              # Reset database
+│   └── test-e2e.ts           # End-to-end tests
+├── specs/
+│   ├── specs.md              # Full specification (2,300+ lines)
+│   ├── idea.md               # GitHub integration design
+│   ├── sitemap-component.md  # Agentic sitemap features
+│   ├── agentic_editorial_planning_spec.md # Editorial workflow
+│   ├── prompting.md          # Prompt engineering
+│   └── collections_binaries.md # Collections & media management
 ├── domain/
-│   ├── schemas/          # JSON Schema files (to be created)
-│   └── workflows/bpmn/   # BPMN 2.0 files (to be created)
-├── docs/
-│   └── specs/
-│       └── specs.md      # Full specification (2,300+ lines)
-├── CLAUDE.md             # This file
-└── README.md             # User-facing documentation
+│   ├── schemas/              # JSON Schema files
+│   └── workflows/bpmn/       # BPMN workflow diagrams
+├── docker-compose.yml        # PostgreSQL, NATS, Temporal
+├── turbo.json                # Turborepo build config
+├── CLAUDE.md                 # This file
+└── README.md                 # User-facing documentation
 ```
 
 ---
 
-## 🗂️ Domain Model (Core Entities)
+## 🗂️ Database Schema (Current State)
 
-All entities defined in `specs/specs.md` Part 3.
+The master schema at `packages/backend/src/db/migrations/000_schema.sql` includes:
 
-### Primary Entities
+### Core Organizational Entities
+- **companies** - Top-level organizations
+- **departments** - Organizational units
+- **roles** - Functions with permissions (JSONB)
+- **agents** - AI employees with capabilities
 
-| Entity | Purpose | Key Fields |
-|--------|---------|------------|
-| **Company** | Top-level organization | id, name, description |
-| **Department** | Organizational unit | id, company_id, name |
-| **Role** | Function within department | id, department_id, name |
-| **Agent** | Virtual employee | id, role_id, name, persona, capabilities[] |
-| **Website** | Publication surface | id, domain, title |
-| **WebPage** | Route/page within site | id, website_id, slug, template |
-| **ContentItem** | Atomic content unit | id, type, body (JSON blocks), status, author_agent_id |
-| **Task** | Assigned work | id, type, status, agent_id, content_id |
-| **Review** | Editorial decision | id, content_id, reviewer_agent_id, result, comments |
-| **QuestionTicket** | Escalation to CEO/Editor | id, created_by_agent_id, target, subject, body, status |
+### Website & Content Structure
+- **websites** - Publication surfaces with GitHub integration
+  - GitHub repo connection (owner, repo, installation_id, access_token)
+  - GitHub Pages deployment (branch, path, custom domain, status)
+- **pages** - Sitemap structure with agentic features
+  - SEO profiles, internal links, suggestions, tasks (all JSONB)
+  - Hierarchical structure (parent_id)
+- **content_blueprints** - Page templates
+- **content_items** - Actual content with JSON body
 
-### ContentItem Lifecycle
+### Editorial Planning System
+- **editorial_tasks** - Content planning with SEO & linking metadata
+- **task_phases** - Detailed phase tracking (research, outline, draft, etc.)
 
-```
-idea → planned → brief_created → draft → in_editorial_review
-  → needs_changes (loops back to draft)
-  → approved → scheduled → published → archived
-```
+### Workflow & Collaboration
+- **tasks** - General workflow tasks
+- **reviews** - Editorial reviews
+- **question_tickets** - Escalations to humans
+
+### Agent Activities
+- **agent_activities** - Activity log
+- **suggestions** - AI-generated ideas
+
+### Prompt Management (3-Level System)
+- **company_prompt_templates** - Baseline prompts (Level 1)
+- **website_prompt_templates** - Brand-specific overrides (Level 2)
+- **agent_prompt_bindings** - Individual agent assignments (Level 3)
+- **prompt_executions** - Performance tracking with quality metrics
+
+### Analytics & Caching
+- **sitemap_analytics_cache** - Cached metrics
+- **graph_positions** - Visual editor positions
+- **state_audit_log** - State machine transitions
 
 ---
 
 ## 🤖 Agent Specifications
 
-### Core Agents (MVP)
+### Core Agents (Implemented)
 
 | Agent | Department | Capabilities |
 |-------|-----------|--------------|
@@ -228,106 +306,74 @@ idea → planned → brief_created → draft → in_editorial_review
 | **EngineeringAgent** | Engineering | prepare_build, validate_assets, publish_site |
 | **CEOAssistantAgent** | Governance | summarize_tickets, organize_escalations, notify_ceo |
 
-### Agent Tool Pattern
-
-```typescript
-// packages/agents/src/agents/writer-agent.ts
-export const writerAgent = {
-  name: 'WriterAgent',
-  role: 'writer',
-  persona: 'Creative, articulate, research-driven',
-
-  tools: {
-    async write_draft(brief: Brief): Promise<ContentItem> {
-      // 1. Call Claude to generate draft
-      const draftText = await callClaude({
-        system: "You are a professional writer...",
-        prompt: `Write an article based on: ${brief.description}`
-      })
-
-      // 2. Structure as JSON blocks
-      const body = parseIntoBlocks(draftText)
-
-      // 3. Save to database
-      const content = await db.contentItems.create({
-        type: 'article',
-        body,
-        status: 'draft',
-        author_agent_id: 'writer-01'
-      })
-
-      // 4. Emit event
-      await eventBus.publish('content.created', { id: content.id })
-
-      return content
-    },
-
-    async submit_for_review(contentId: string) {
-      await stateMachine.transition(contentId, 'draft', 'in_editorial_review')
-      await eventBus.publish('content.submittedForReview', { id: contentId })
-    }
-  }
-}
+### Agent Location
+```
+packages/agents/src/
+├── writer/
+│   ├── index.ts
+│   └── writer-agent.ts
+├── editor/
+│   ├── index.ts
+│   └── editor-agent.ts
+├── engineering/
+│   ├── index.ts
+│   └── engineering-agent.ts
+├── ceo-assistant/
+│   ├── index.ts
+│   └── ceo-assistant-agent.ts
+├── base/
+│   ├── agent.ts          # Base agent class
+│   ├── factory.ts        # Agent factory
+│   └── utilities.ts      # Shared utilities
+├── examples/
+│   └── delegation-example.ts
+└── index.ts
 ```
 
 ---
 
-## 🔄 Workflows (BPMN 2.0)
+## 🔄 Workflows (Implemented)
 
-### Content Production Workflow
+### 3 Temporal Workflows
 
 ```
-1. Chief Editor creates brief
+packages/workflows/src/workflows/
+├── content-production.workflow.ts  # Full content lifecycle
+├── editorial-review.workflow.ts    # Review & approval
+├── publishing.workflow.ts          # Build & deploy
+└── index.ts
+```
+
+### Content Production Workflow
+```
+1. CEO/Editor creates brief
 2. WriterAgent drafts content
 3. WriterAgent submits for review
 4. EditorAgent reviews
    - needs_changes → back to step 2
    - rejected → END
    - approved → continue
-5. SEO optimization (stubbed in MVP)
-6. Media assets (stubbed in MVP)
+5. SEO optimization (stubbed)
+6. Media assets (stubbed)
 7. EngineeringAgent prepares build
 8. (Optional) CEO approves if high-risk
 9. EngineeringAgent publishes
 10. CloudEvent: content.published
 ```
 
-**Temporal Implementation:**
-```typescript
-// packages/workflows/src/content-production.ts
-export async function contentProductionWorkflow(briefId: string) {
-  const brief = await getBrief(briefId)
-
-  // Step 1: Draft
-  const draft = await callAgent('WriterAgent', 'write_draft', brief)
-
-  // Step 2: Review
-  const review = await callAgent('EditorAgent', 'review_content', draft)
-
-  // Step 3: Handle review result
-  if (review.result === 'needs_changes') {
-    await callAgent('WriterAgent', 'revise_draft', {
-      contentId: draft.id,
-      feedback: review.comments
-    })
-    // Temporal will retry this workflow
-    return await contentProductionWorkflow(briefId)
-  }
-
-  if (review.result === 'rejected') {
-    return { status: 'rejected' }
-  }
-
-  // Step 4: Publish
-  await callAgent('EngineeringAgent', 'publish_site', { contentId: draft.id })
-
-  return { status: 'published', contentId: draft.id }
-}
-```
-
 ---
 
 ## 📡 Events (CloudEvents)
+
+### Event Bus Location
+```
+packages/event-bus/src/
+├── publisher.ts       # Event publishing
+├── subscriber.ts      # Event subscription
+├── cloudevents.ts     # CloudEvents helpers
+├── connection.ts      # NATS connection
+└── index.ts
+```
 
 ### Event Categories
 
@@ -339,180 +385,144 @@ export async function contentProductionWorkflow(briefId: string) {
 | **Tickets** | ticket.created, ticket.answered, ticket.closed |
 | **Publishing** | deploy.started, deploy.success, deploy.failed |
 
-### Event Structure
+---
 
-```json
-{
-  "specversion": "1.0",
-  "type": "swarmpress.content.submittedForReview",
-  "source": "/agents/writer/writer-01",
-  "subject": "content/abc123",
-  "id": "evt-001",
-  "time": "2025-11-22T12:00:00Z",
-  "data": {
-    "content_id": "abc123",
-    "submitted_by": "writer-01",
-    "website_id": "site-001"
-  }
-}
+## 🌐 GitHub Integration
+
+### Features
+- **Content Review via PRs** - All content goes through PR review
+- **Tasks as Issues** - Editorial tasks synced to GitHub Issues
+- **Question Tickets** - Escalations as Issues
+- **Webhook Sync** - Bidirectional GitHub ↔ Database sync
+- **OAuth Authentication** - Users authenticate via GitHub
+
+### Implementation
+```
+packages/github-integration/src/
+├── client.ts           # GitHub API wrapper (Octokit)
+├── pull-requests.ts    # PR operations (create, update, merge)
+├── issues.ts           # Issue operations
+├── webhooks.ts         # Webhook processing
+├── sync.ts             # Bidirectional sync logic
+└── index.ts
 ```
 
-### Publishing Events
+### Website GitHub Fields (in schema)
+```sql
+github_repo_url TEXT,
+github_owner TEXT,
+github_repo TEXT,
+github_installation_id TEXT,
+github_access_token TEXT,
+github_connected_at TIMESTAMPTZ,
 
-```typescript
-// packages/event-bus/src/publisher.ts
-export async function publishEvent(event: CloudEvent) {
-  await nats.publish(`swarmpress.${event.type}`, JSON.stringify(event))
-}
-
-// packages/event-bus/src/subscriber.ts
-export function subscribeToEvents(handler: (event: CloudEvent) => void) {
-  nats.subscribe('swarmpress.>', (msg) => {
-    const event = JSON.parse(msg.data)
-    handler(event)
-  })
-}
+-- GitHub Pages Deployment
+github_pages_enabled BOOLEAN,
+github_pages_url TEXT,
+github_pages_branch TEXT,
+github_pages_path TEXT,
+github_pages_custom_domain TEXT,
+last_deployed_at TIMESTAMPTZ,
+deployment_status TEXT,
+deployment_error TEXT
 ```
 
 ---
 
-## 🛡️ Permissions & Governance
+## 📚 Collections System
 
-### RBAC Rules
+### Implemented Collections
+```
+packages/shared/src/content/collections/
+├── event.ts      # EventSchema (Zod)
+├── poi.ts        # POISchema (Points of Interest)
+├── faq.ts        # FAQSchema
+├── news.ts       # NewsSchema
+├── registry.ts   # Collection registry
+└── index.ts
+```
 
-| Role | Can Do | Cannot Do |
-|------|--------|-----------|
-| **Writer** | Create drafts, submit for review | Approve content, publish |
-| **Editor** | Review, approve/reject | Publish, modify templates |
-| **SEO** | Update metadata, add structured data | Rewrite content body |
-| **Media** | Generate images, attach media | Modify article text |
-| **Engineering** | Build, validate, publish | Approve editorial content |
-| **CEO** | Override any decision, approve high-risk | N/A (ultimate authority) |
-
-### Escalation Rules
-
-Agents **must** create a QuestionTicket when:
-- Requirements are ambiguous
-- Conflicting feedback from multiple agents
-- High-risk content (legal, medical, political)
-- Workflow is blocked
-- Technical errors prevent progress
+### Database Tables (from spec, to be added)
+- **website_collections** - Per-website collection config
+- **collection_items** - Actual collection records
+- **collection_item_versions** - Version history
+- **media** - Binary asset registry
+- **media_processing_queue** - Image processing queue
 
 ---
 
-## 🚀 MVP Implementation Plan
+## 🎨 Site Builder (Astro)
 
-See full plan above. Key phases:
-
-1. **Phase 0:** Monorepo + CLI setup (1-2 days)
-2. **Phase 1:** Domain model + JSON schemas (2-3 days)
-3. **Phase 2:** Infrastructure (PostgreSQL, NATS, Temporal) (3-4 days)
-4. **Phase 3:** Agents (Writer, Editor, Engineering, CEO Assistant) (4-5 days)
-5. **Phase 4:** Workflows (Content Production, Review, Publishing) (4-5 days)
-6. **Phase 5:** API + Backend (3-4 days)
-7. **Phase 6:** Astro Site Builder (3-4 days)
-8. **Phase 7:** CEO Dashboard (3-4 days)
-9. **Phase 8:** Bootstrap + Testing (2-3 days)
-
-**Total:** ~5-7 weeks solo, ~3-4 weeks with a team
-
----
-
-## 🎯 MVP Scope (What's Included)
-
-✅ **Included in MVP:**
-- Single tenant (no multi-tenancy)
-- 4 core agents (Writer, Editor, Engineering, CEO Assistant)
-- 3 workflows (Content Production, Editorial Review, Publishing)
-- All core entities in PostgreSQL
-- CloudEvents on NATS
-- Astro static site generation (output to local `/dist` folder)
-- CEO dashboard (QuestionTickets, approvals, activity log)
-- Operator CLI (`swarmpress init`, `content:create`, etc.)
-- Bootstrap script for initial setup
-- Stubbed SEO and Media agents (simple placeholders)
-
-❌ **Deferred to Post-MVP:**
-- Multi-tenancy
-- Real SEO optimization (keyword analysis, etc.)
-- Real image generation (external API)
-- Distribution agent (social media, newsletters)
-- Advanced analytics
-- Real deployment (S3, CDN, etc.)
-- Multi-language support
-- Human collaboration features
-
----
-
-## 🧪 Development Workflow
-
-### Local Setup
-
-```bash
-# 1. Clone repo
-git clone <repo-url>
-cd swarm-press
-
-# 2. Install dependencies
-pnpm install
-
-# 3. Start infrastructure
-docker compose up -d  # PostgreSQL, NATS, Temporal
-
-# 4. Bootstrap initial data
-pnpm cli init
-
-# 5. Run development servers
-pnpm dev  # Starts all services in parallel
+### 10 Block Components
+```
+packages/site-builder/src/components/blocks/
+├── Hero.astro        # Large banner with title, CTA
+├── Paragraph.astro   # Plain text
+├── Heading.astro     # H1-H6
+├── Image.astro       # Single image
+├── Gallery.astro     # Image grid
+├── Quote.astro       # Blockquote
+├── List.astro        # Ordered/unordered
+├── FAQ.astro         # Q&A accordion
+├── Callout.astro     # Info/warning boxes
+└── Embed.astro       # YouTube/Vimeo
 ```
 
-### Testing an Agent
-
-```bash
-# Via CLI
-pnpm cli agent:invoke WriterAgent write_draft '{"briefId":"123"}'
-
-# Via API
-curl -X POST http://localhost:3000/api/agents/invoke \
-  -H "Content-Type: application/json" \
-  -d '{"agent":"WriterAgent","tool":"write_draft","payload":{"briefId":"123"}}'
+### Generator
 ```
-
-### Triggering a Workflow
-
-```bash
-# Via CLI
-pnpm cli workflow:start content-production --briefId=123
-
-# Via API
-curl -X POST http://localhost:3000/api/workflows/start \
-  -H "Content-Type: application/json" \
-  -d '{"workflow":"contentProductionWorkflow","args":{"briefId":"123"}}'
-```
-
-### Viewing Events
-
-```bash
-# CLI
-pnpm cli events:tail
-
-# Dashboard
-# Navigate to http://localhost:3001/activity
+packages/site-builder/src/generator/
+├── build.ts    # Astro build execution
+├── deploy.ts   # Deployment to platforms
+└── index.ts
 ```
 
 ---
 
-## 📚 Key References
+## 🖥️ Admin Dashboard
 
-| Resource | Location |
-|----------|----------|
-| **Full Specification** | `specs/specs.md` |
-| **JSON Schemas** | `domain/schemas/` (to be created) |
-| **BPMN Workflows** | `domain/workflows/bpmn/` (to be created) |
-| **Agent Definitions** | `packages/agents/src/agents/` |
-| **Temporal Workflows** | `packages/workflows/src/` |
-| **API Endpoints** | `packages/backend/src/api/` |
-| **CEO Dashboard** | `apps/dashboard/` |
+### Key Features
+- **Sitemap Graph** - Visual sitemap with drag-drop
+- **Editorial Kanban** - Task management with columns
+- **Gantt View** - Timeline visualization
+- **Blueprint Editor** - Page template designer
+- **GitHub Integration** - Repo connection, sync panel
+- **Analytics Overlays** - SEO metrics, suggestions
+- **User Management** - GitHub OAuth, team switching
+
+### Component Structure
+```
+apps/admin/src/components/
+├── sitemap/
+│   ├── PageNode.tsx           # Graph nodes
+│   ├── ClusterNode.tsx        # Node clusters
+│   ├── SitemapControls.tsx    # Toolbar
+│   ├── GitHubSyncPanel.tsx    # Sync status
+│   ├── AnalyticsOverlay.tsx   # Metrics
+│   └── SuggestionsOverlay.tsx # AI suggestions
+├── editorial/
+│   ├── KanbanBoard.tsx        # Main kanban
+│   ├── KanbanView.tsx         # View wrapper
+│   ├── TaskCard.tsx           # Task cards
+│   ├── TaskFormModal.tsx      # Create/edit
+│   ├── GanttView.tsx          # Timeline
+│   └── GraphView.tsx          # Dependency graph
+├── blueprints/
+│   ├── BlueprintEditor.tsx    # Template editor
+│   ├── BlueprintCanvas.tsx    # Visual canvas
+│   └── ComponentLibrary.tsx   # Block palette
+├── ui/                        # shadcn/ui components
+│   ├── button.tsx
+│   ├── card.tsx
+│   ├── dialog.tsx
+│   ├── kanban.tsx
+│   ├── gantt.tsx
+│   └── ... (20+ components)
+├── GitHubConnector.tsx        # OAuth flow
+├── DeploymentPanel.tsx        # GitHub Pages deploy
+├── AppSidebar.tsx             # Navigation
+├── AppLayout.tsx              # Main layout
+└── UserNav.tsx                # User menu
+```
 
 ---
 
@@ -531,20 +541,118 @@ pnpm cli events:tail
 
 ---
 
-## 🔮 Post-MVP Roadmap
+## 🧪 Development Workflow
 
-After validating the core system:
+### Local Setup
 
-1. **Multi-tenancy** — Support multiple websites/tenants
-2. **Real SEO Agent** — Keyword analysis, structured data, performance tracking
-3. **Real Media Agent** — Image generation via external APIs
-4. **Distribution Agent** — Social media posting, newsletters
-5. **Advanced Dashboard** — Analytics, performance metrics, workflow visualization
-6. **Multi-language** — Translations, localization
-7. **Human Collaboration** — Multiple editors, writers, reviewers
-8. **Workflow Customization** — Visual workflow editor for CEO
-9. **Advanced Observability** — Prometheus metrics, distributed tracing
-10. **Real Deployment** — S3, CDN, CI/CD pipelines
+```bash
+# 1. Clone repo
+git clone <repo-url>
+cd swarm-press
+
+# 2. Install dependencies
+pnpm install
+
+# 3. Configure environment
+cp .env.example .env
+# Edit .env with API keys
+
+# 4. Start infrastructure
+docker compose up -d  # PostgreSQL, NATS, Temporal
+
+# 5. Bootstrap
+tsx scripts/bootstrap.ts
+
+# 6. Run development servers
+pnpm dev  # Starts all services
+```
+
+### Key Commands
+
+```bash
+# Build all packages
+pnpm build
+
+# Run API server
+pnpm --filter @swarm-press/backend dev
+
+# Run Temporal worker
+pnpm --filter @swarm-press/workflows dev
+
+# Run admin dashboard
+pnpm --filter @swarm-press/admin dev
+
+# Run tests
+tsx scripts/test-e2e.ts
+
+# Reset database
+tsx scripts/clear.ts
+tsx scripts/seed.ts
+```
+
+### Accessing Services
+
+| Service | URL |
+|---------|-----|
+| **API Server** | http://localhost:3000 |
+| **Admin Dashboard** | http://localhost:4321 |
+| **Temporal UI** | http://localhost:8233 |
+| **NATS Monitoring** | http://localhost:8222 |
+
+---
+
+## 📚 Key References
+
+| Resource | Location |
+|----------|----------|
+| **Full Specification** | `specs/specs.md` |
+| **GitHub Integration Design** | `specs/idea.md` |
+| **Sitemap Spec** | `specs/sitemap-component.md` |
+| **Editorial Planning Spec** | `specs/agentic_editorial_planning_spec.md` |
+| **Collections Spec** | `specs/collections_binaries.md` |
+| **Database Schema** | `packages/backend/src/db/migrations/000_schema.sql` |
+| **Agent Definitions** | `packages/agents/src/` |
+| **Temporal Workflows** | `packages/workflows/src/workflows/` |
+| **API Routers** | `packages/backend/src/api/routers/` |
+| **Block Components** | `packages/site-builder/src/components/blocks/` |
+| **Collection Schemas** | `packages/shared/src/content/collections/` |
+
+---
+
+## 🚀 Implementation Status
+
+### Completed (MVP)
+- [x] Monorepo setup (Turborepo + pnpm)
+- [x] Database schema with all core entities
+- [x] 4 autonomous agents (Writer, Editor, Engineering, CEO Assistant)
+- [x] 3 Temporal workflows (content-production, editorial-review, publishing)
+- [x] State machine engine with audit log
+- [x] NATS event bus with CloudEvents
+- [x] tRPC API with 15+ routers
+- [x] 10 Astro block components
+- [x] GitHub integration (PRs, Issues, webhooks, sync)
+- [x] Admin dashboard (sitemap, kanban, blueprints)
+- [x] GitHub OAuth authentication
+- [x] Prompt management system (3-level)
+- [x] Collection schemas (Event, POI, FAQ, News)
+- [x] Bootstrap, seed, and test scripts
+- [x] Structured logging with correlation IDs
+
+### In Progress
+- [ ] GitHub Pages deployment integration
+- [ ] Media/binary asset management (S3/R2)
+- [ ] Collection CRUD API
+- [ ] Real SEO optimization agent
+- [ ] Real media generation agent
+
+### Post-MVP Roadmap
+- [ ] Multi-tenancy
+- [ ] Distribution agent (social media, newsletters)
+- [ ] Advanced analytics dashboard
+- [ ] Multi-language support
+- [ ] Human collaboration features
+- [ ] Visual workflow editor
+- [ ] Advanced observability (Prometheus, tracing)
 
 ---
 
@@ -553,28 +661,16 @@ After validating the core system:
 When working on swarm.press:
 
 1. **Read the spec first** — `specs/specs.md` is authoritative
-2. **Update schemas** — Keep JSON Schemas in sync with code
+2. **Update the schema** — `000_schema.sql` is the source of truth
 3. **Write tests** — Unit tests for agents, integration tests for workflows
 4. **Emit events** — Every state change should publish a CloudEvent
 5. **Document decisions** — Update this file when making architectural changes
-6. **Ask questions** — Use GitHub issues or QuestionTickets pattern
+6. **Follow patterns** — Look at existing code for examples
 
 ---
 
-## 📞 Support & Questions
-
-For questions about:
-- **Specification:** See `specs/specs.md`
-- **Architecture:** This file (CLAUDE.md)
-- **Implementation:** Check package READMEs
-- **Bugs:** GitHub Issues (when available)
-- **Design decisions:** Consult with project lead or CEO
-
----
-
-**Last Updated:** 2025-11-22
-**Spec Version:** 1.0
-**Implementation Status:** Planning Complete, Ready for Phase 0
+**Last Updated:** 2025-11-25
+**Implementation Status:** MVP Complete, Active Development
 
 ---
 

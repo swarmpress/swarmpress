@@ -83,21 +83,27 @@ export class AgentFactory {
       return agentRegistry.get('Writer') || null
     }
     if (name.includes('editor')) {
-      return agentRegistry.get('Editor') || null
+      return agentRegistry.get('Editor') || agentRegistry.get('ChiefEditor') || null
     }
     if (name.includes('engineering') || name.includes('engineer')) {
-      return agentRegistry.get('Engineering') || null
+      return agentRegistry.get('EngineeringAgent') || null
+    }
+    if (name.includes('seo')) {
+      return agentRegistry.get('SEOSpecialist') || agentRegistry.get('EngineeringAgent') || null
     }
     if (name.includes('ceo') || name.includes('assistant')) {
       return agentRegistry.get('CEOAssistant') || null
     }
 
     // Fallback: check capabilities
-    if (agentData.capabilities.includes('content_writing')) {
+    if (agentData.capabilities.includes('content_writing') || agentData.capabilities.includes('write_draft')) {
       return agentRegistry.get('Writer') || null
     }
-    if (agentData.capabilities.includes('editorial_review')) {
+    if (agentData.capabilities.includes('editorial_review') || agentData.capabilities.includes('review_content')) {
       return agentRegistry.get('Editor') || null
+    }
+    if (agentData.capabilities.includes('prepare_build') || agentData.capabilities.includes('publish_site')) {
+      return agentRegistry.get('EngineeringAgent') || null
     }
 
     return null

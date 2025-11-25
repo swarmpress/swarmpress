@@ -16,6 +16,7 @@
     "@swarm-press/shared": "workspace:*",
     "@swarm-press/backend": "workspace:*",
     "@swarm-press/event-bus": "workspace:*",
+    "@swarm-press/site-builder": "workspace:*",
     "@anthropic-ai/sdk": "^0.30.1",
     "dotenv": "^16.3.1",
     "zod": "^3.22.4"

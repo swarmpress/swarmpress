@@ -54,6 +54,7 @@ export async function invokeWriterAgent(params: {
       {
         agentId: params.agentId,
         taskId: params.taskId,
+        contentId: params.contentId, // Pass contentId for tool context
       }
     )
 
@@ -96,6 +97,7 @@ export async function invokeEditorAgent(params: {
       {
         agentId: params.agentId,
         taskId: params.taskId,
+        contentId: params.contentId, // Pass contentId for tool context
       }
     )
 
@@ -181,6 +183,7 @@ export async function invokeEngineeringAgent(params: {
       {
         agentId: params.agentId,
         taskId: params.taskId,
+        websiteId: params.websiteId, // Pass websiteId for tool context
       }
     )
 
