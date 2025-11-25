@@ -1,0 +1,116 @@
+---
+import Layout from '../../../layouts/Layout.astro'
+import WebsitePromptOverrides from '../../../components/WebsitePromptOverrides'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card'
+import { Button } from '../../../components/ui/button'
+import { Badge } from '../../../components/ui/badge'
+import { trpc, handleTRPCError } from '../../../lib/trpc'
+
+const { id } = Astro.params
+
+let website: any = null
+let companyPrompts: any[] = []
+let websitePrompts: any[] = []
+let error: string | null = null
+
+try {
+  // Get website
+  website = await trpc.website.getById.query({ id: id! })
+
+  // Get company prompts (to show what can be overridden)
+  const companies = await trpc.company.list.query({})
+  if (companies.items.length > 0) {
+    const promptsResult = await trpc.prompt.company.list.query({
+      company_id: companies.items[0].id,
+      is_active: true
+    })
+    companyPrompts = promptsResult.items
+  }
+
+  // Get website prompts
+  const websitePromptsResult = await trpc.prompt.website.list.query({
+    website_id: id!
+  })
+  websitePrompts = websitePromptsResult.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch website:', error)
+}
+---
+
+<Layout title={website ? `Prompts: ${website.title || website.domain}` : 'Website Not Found'}>
+  <div class="space-y-8">
+    {error || !website ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Website Not Found</CardTitle>
+          <CardDescription>{error || 'The requested website does not exist.'}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <a href="/prompts">
+            <Button variant="outline">Back to Prompts</Button>
+          </a>
+        </CardContent>
+      </Card>
+    ) : (
+      <>
+        {/* Header */}
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-3xl font-bold">{website.title || website.domain}</h1>
+            <p class="text-muted-foreground mt-2">
+              Website Prompt Overrides (Level 2)
+              <span class="mx-2">·</span>
+              <span class="text-sm">{website.domain}</span>
+            </p>
+          </div>
+          <a href="/prompts">
+            <Button variant="outline">Back to Prompts</Button>
+          </a>
+        </div>
+
+        {/* Stats */}
+        <div class="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Available</CardTitle>
+              <CardDescription>Company prompts to override</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div class="text-3xl font-bold">{companyPrompts.length}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Overridden</CardTitle>
+              <CardDescription>Custom for this website</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div class="text-3xl font-bold">{websitePrompts.length}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Using Defaults</CardTitle>
+              <CardDescription>Company prompts unchanged</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div class="text-3xl font-bold">{companyPrompts.length - websitePrompts.length}</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Override Manager */}
+        <WebsitePromptOverrides
+          client:load
+          websiteId={website.id}
+          websiteName={website.title || website.domain}
+          companyPrompts={companyPrompts}
+          websitePrompts={websitePrompts}
+        />
+      </>
+    )}
+  </div>
+</Layout>

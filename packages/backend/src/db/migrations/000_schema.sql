@@ -711,15 +711,15 @@ CREATE TRIGGER phase_transition_handler
 -- EXTENSIBLE TOOL SYSTEM
 -- =============================================================================
 
--- Tool Configurations (REST, GraphQL, MCP endpoints)
+-- Tool Configurations (REST, GraphQL, MCP, JavaScript endpoints)
 CREATE TABLE tool_configs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(100) NOT NULL UNIQUE,
   display_name VARCHAR(200),
   description TEXT,
-  type VARCHAR(20) NOT NULL CHECK (type IN ('rest', 'graphql', 'mcp', 'builtin')),
+  type VARCHAR(20) NOT NULL CHECK (type IN ('rest', 'graphql', 'mcp', 'builtin', 'javascript')),
   endpoint_url TEXT,
-  config JSONB DEFAULT '{}'::jsonb,  -- headers, auth type, query templates, etc.
+  config JSONB DEFAULT '{}'::jsonb,  -- headers, auth type, query templates, JS code+manifest, etc.
   input_schema JSONB,                 -- JSON Schema for tool inputs
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

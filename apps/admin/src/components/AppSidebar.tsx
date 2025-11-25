@@ -15,6 +15,8 @@ import {
   CheckSquare,
   ChevronRight,
   Command,
+  Wrench,
+  MessageSquareText,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -80,6 +82,16 @@ export function AppSidebar({ tenantId, productId, user, ...props }: AppSidebarPr
       title: 'Websites',
       url: '/websites',
       icon: Globe,
+    },
+    {
+      title: 'Tools',
+      url: '/tools',
+      icon: Wrench,
+    },
+    {
+      title: 'Prompts',
+      url: '/prompts',
+      icon: MessageSquareText,
     },
   ]
 

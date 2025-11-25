@@ -1,0 +1,251 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
+import { Button } from '../../components/ui/button'
+import { Badge } from '../../components/ui/badge'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+// Get company_id from cookie/session (for now, use first company)
+let companyPrompts: any[] = []
+let websites: any[] = []
+let agents: any[] = []
+let error: string | null = null
+let companyId: string | null = null
+
+try {
+  // Get company
+  const companies = await trpc.company.list.query({})
+  if (companies.items.length > 0) {
+    companyId = companies.items[0].id
+
+    // Get company prompts
+    const promptsResult = await trpc.prompt.company.list.query({
+      company_id: companyId,
+      is_active: true
+    })
+    companyPrompts = promptsResult.items
+
+    // Get websites for this company
+    const websitesResult = await trpc.website.list.query({})
+    websites = websitesResult.items
+
+    // Get agents
+    const agentsResult = await trpc.agent.list.query({})
+    agents = agentsResult.items
+  }
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch prompts:', error)
+}
+
+// Group prompts by role
+const promptsByRole = companyPrompts.reduce((acc: Record<string, any[]>, prompt: any) => {
+  if (!acc[prompt.role_name]) {
+    acc[prompt.role_name] = []
+  }
+  acc[prompt.role_name].push(prompt)
+  return acc
+}, {})
+
+const roleNames = Object.keys(promptsByRole).sort()
+---
+
+<Layout title="Prompt Management">
+  <div class="space-y-8">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold">Prompt Management</h1>
+        <p class="text-muted-foreground mt-2">
+          Manage prompts across the three-level hierarchy: Company → Website → Agent
+        </p>
+      </div>
+      <a href="/prompts/company/new">
+        <Button>Create Company Prompt</Button>
+      </a>
+    </div>
+
+    {error && (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Error</CardTitle>
+          <CardDescription>{error}</CardDescription>
+        </CardHeader>
+      </Card>
+    )}
+
+    {/* Hierarchy Overview */}
+    <div class="grid gap-4 md:grid-cols-3">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg">Level 1: Company</CardTitle>
+          <CardDescription>Baseline templates</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div class="text-3xl font-bold">{companyPrompts.length}</div>
+          <p class="text-sm text-muted-foreground">Active prompts</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg">Level 2: Website</CardTitle>
+          <CardDescription>Brand overrides</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div class="text-3xl font-bold">{websites.length}</div>
+          <p class="text-sm text-muted-foreground">Websites configured</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg">Level 3: Agent</CardTitle>
+          <CardDescription>Individual bindings</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div class="text-3xl font-bold">{agents.length}</div>
+          <p class="text-sm text-muted-foreground">Agents available</p>
+        </CardContent>
+      </Card>
+    </div>
+
+    {/* Company Prompts by Role */}
+    <Card>
+      <CardHeader>
+        <CardTitle>Company Prompts (Level 1)</CardTitle>
+        <CardDescription>
+          Baseline templates organized by role. These serve as defaults for all websites and agents.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {roleNames.length === 0 ? (
+          <div class="text-center py-8 text-muted-foreground">
+            <p>No company prompts configured yet.</p>
+            <a href="/prompts/company/new" class="text-primary hover:underline">
+              Create your first prompt template
+            </a>
+          </div>
+        ) : (
+          <div class="space-y-6">
+            {roleNames.map((roleName) => (
+              <div class="space-y-2">
+                <h3 class="font-semibold text-lg flex items-center gap-2">
+                  <Badge variant="outline">{roleName}</Badge>
+                  <span class="text-sm text-muted-foreground font-normal">
+                    {promptsByRole[roleName].length} capabilities
+                  </span>
+                </h3>
+                <div class="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                  {promptsByRole[roleName].map((prompt: any) => (
+                    <a
+                      href={`/prompts/company/${prompt.id}`}
+                      class="block p-3 rounded-lg border bg-card hover:bg-accent transition-colors"
+                    >
+                      <div class="flex items-center justify-between mb-1">
+                        <span class="font-medium">{prompt.capability}</span>
+                        <Badge variant={prompt.is_active ? "default" : "secondary"} className="text-xs">
+                          v{prompt.version}
+                        </Badge>
+                      </div>
+                      {prompt.description && (
+                        <p class="text-sm text-muted-foreground line-clamp-2">
+                          {prompt.description}
+                        </p>
+                      )}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+
+    {/* Website Overrides Quick View */}
+    <Card>
+      <CardHeader>
+        <div class="flex items-center justify-between">
+          <div>
+            <CardTitle>Website Overrides (Level 2)</CardTitle>
+            <CardDescription>
+              Brand-specific customizations that override company defaults.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {websites.length === 0 ? (
+          <div class="text-center py-8 text-muted-foreground">
+            <p>No websites configured yet.</p>
+            <a href="/websites/new" class="text-primary hover:underline">
+              Create a website first
+            </a>
+          </div>
+        ) : (
+          <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {websites.map((website: any) => (
+              <a
+                href={`/prompts/website/${website.id}`}
+                class="block p-4 rounded-lg border bg-card hover:bg-accent transition-colors"
+              >
+                <div class="font-medium">{website.title || website.domain}</div>
+                <div class="text-sm text-muted-foreground">{website.domain}</div>
+                <div class="mt-2 text-xs text-muted-foreground">
+                  Click to manage prompt overrides
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+
+    {/* Agent Bindings Quick View */}
+    <Card>
+      <CardHeader>
+        <CardTitle>Agent Bindings (Level 3)</CardTitle>
+        <CardDescription>
+          Individual agent configurations with A/B testing support.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {agents.length === 0 ? (
+          <div class="text-center py-8 text-muted-foreground">
+            <p>No agents configured yet.</p>
+            <a href="/agents/new" class="text-primary hover:underline">
+              Create an agent first
+            </a>
+          </div>
+        ) : (
+          <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {agents.slice(0, 6).map((agent: any) => (
+              <a
+                href={`/prompts/agent/${agent.id}`}
+                class="block p-4 rounded-lg border bg-card hover:bg-accent transition-colors"
+              >
+                <div class="font-medium">{agent.name}</div>
+                <Badge variant="outline" className="mt-1 text-xs">
+                  {agent.role_id ? 'Assigned' : 'Unassigned'}
+                </Badge>
+                <div class="mt-2 text-xs text-muted-foreground">
+                  Click to manage prompt bindings
+                </div>
+              </a>
+            ))}
+            {agents.length > 6 && (
+              <a
+                href="/agents"
+                class="flex items-center justify-center p-4 rounded-lg border border-dashed hover:bg-accent transition-colors"
+              >
+                <span class="text-muted-foreground">
+                  +{agents.length - 6} more agents
+                </span>
+              </a>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  </div>
+</Layout>

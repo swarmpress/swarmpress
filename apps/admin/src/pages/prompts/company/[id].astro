@@ -1,0 +1,215 @@
+---
+import Layout from '../../../layouts/Layout.astro'
+import CompanyPromptForm from '../../../components/CompanyPromptForm'
+import PromptVersionHistory from '../../../components/PromptVersionHistory'
+import PromptExecutionStats from '../../../components/PromptExecutionStats'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card'
+import { Button } from '../../../components/ui/button'
+import { Badge } from '../../../components/ui/badge'
+import { trpc, handleTRPCError } from '../../../lib/trpc'
+
+const { id } = Astro.params
+
+let prompt: any = null
+let versions: any[] = []
+let roles: any[] = []
+let error: string | null = null
+
+try {
+  // Get prompt
+  prompt = await trpc.prompt.company.get.query({ id: id! })
+
+  // Get all versions
+  const versionsResult = await trpc.prompt.company.listVersions.query({
+    company_id: prompt.company_id,
+    role_name: prompt.role_name,
+    capability: prompt.capability
+  })
+  versions = versionsResult.items
+
+  // Get roles
+  const rolesResult = await trpc.role.list.query({})
+  roles = rolesResult.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch prompt:', error)
+}
+---
+
+<Layout title={prompt ? `Edit: ${prompt.role_name}/${prompt.capability}` : 'Prompt Not Found'}>
+  <div class="space-y-8">
+    {error || !prompt ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Prompt Not Found</CardTitle>
+          <CardDescription>{error || 'The requested prompt does not exist.'}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <a href="/prompts">
+            <Button variant="outline">Back to Prompts</Button>
+          </a>
+        </CardContent>
+      </Card>
+    ) : (
+      <>
+        {/* Header */}
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="flex items-center gap-3">
+              <h1 class="text-3xl font-bold">{prompt.capability}</h1>
+              <Badge variant={prompt.is_active ? "default" : "secondary"}>
+                v{prompt.version}
+              </Badge>
+              {prompt.is_active && <Badge variant="outline" className="bg-green-100 text-green-800">Active</Badge>}
+              {prompt.is_deprecated && <Badge variant="destructive">Deprecated</Badge>}
+            </div>
+            <p class="text-muted-foreground mt-2">
+              <Badge variant="outline">{prompt.role_name}</Badge>
+              <span class="mx-2">·</span>
+              Company Prompt Template (Level 1)
+            </p>
+          </div>
+          <div class="flex gap-2">
+            <a href="/prompts">
+              <Button variant="outline">Back to Prompts</Button>
+            </a>
+            {!prompt.is_active && !prompt.is_deprecated && (
+              <Button id="activate-btn" data-prompt-id={prompt.id}>
+                Activate This Version
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Version History */}
+        {versions.length > 1 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Version History</CardTitle>
+              <CardDescription>
+                All versions of this prompt. Click to switch versions.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div class="flex flex-wrap gap-2">
+                {versions.map((v: any) => (
+                  <a href={`/prompts/company/${v.id}`}>
+                    <Badge
+                      variant={v.id === prompt.id ? "default" : v.is_active ? "outline" : "secondary"}
+                      className={`cursor-pointer ${v.is_active ? 'ring-2 ring-green-500' : ''} ${v.is_deprecated ? 'line-through opacity-50' : ''}`}
+                    >
+                      v{v.version}
+                      {v.is_active && ' (active)'}
+                    </Badge>
+                  </a>
+                ))}
+                <a href={`/prompts/company/new?from=${prompt.id}`}>
+                  <Badge variant="outline" className="cursor-pointer border-dashed">
+                    + New Version
+                  </Badge>
+                </a>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Execution Stats */}
+        <PromptExecutionStats
+          client:load
+          companyPromptId={prompt.id}
+        />
+
+        {/* Edit Form */}
+        <CompanyPromptForm
+          client:load
+          mode="edit"
+          companyId={prompt.company_id}
+          prompt={{
+            id: prompt.id,
+            role_name: prompt.role_name,
+            capability: prompt.capability,
+            version: prompt.version,
+            template: prompt.template,
+            description: prompt.description,
+            changelog: prompt.changelog,
+            examples: prompt.examples || [],
+            default_variables: prompt.default_variables || {},
+            is_active: prompt.is_active,
+          }}
+          roles={roles}
+        />
+
+        {/* Danger Zone */}
+        {!prompt.is_active && (
+          <Card className="border-destructive">
+            <CardHeader>
+              <CardTitle className="text-destructive">Danger Zone</CardTitle>
+              <CardDescription>Irreversible actions</CardDescription>
+            </CardHeader>
+            <CardContent class="flex gap-4">
+              {!prompt.is_deprecated && (
+                <Button
+                  variant="outline"
+                  id="deprecate-btn"
+                  data-prompt-id={prompt.id}
+                  className="border-destructive text-destructive hover:bg-destructive/10"
+                >
+                  Deprecate This Version
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </>
+    )}
+  </div>
+</Layout>
+
+<script>
+  const activateBtn = document.getElementById('activate-btn')
+  if (activateBtn) {
+    activateBtn.addEventListener('click', async () => {
+      const promptId = activateBtn.getAttribute('data-prompt-id')
+      if (confirm('Are you sure you want to activate this version? This will deactivate all other versions.')) {
+        try {
+          const response = await fetch(`/api/prompts/company/${promptId}/activate`, {
+            method: 'POST',
+          })
+          if (response.ok) {
+            window.location.reload()
+          } else {
+            const data = await response.json()
+            alert(data.message || 'Failed to activate')
+          }
+        } catch (error) {
+          alert('An error occurred')
+        }
+      }
+    })
+  }
+
+  const deprecateBtn = document.getElementById('deprecate-btn')
+  if (deprecateBtn) {
+    deprecateBtn.addEventListener('click', async () => {
+      const promptId = deprecateBtn.getAttribute('data-prompt-id')
+      const reason = prompt('Enter deprecation reason:')
+      if (reason) {
+        try {
+          const response = await fetch(`/api/prompts/company/${promptId}/deprecate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason }),
+          })
+          if (response.ok) {
+            window.location.reload()
+          } else {
+            const data = await response.json()
+            alert(data.message || 'Failed to deprecate')
+          }
+        } catch (error) {
+          alert('An error occurred')
+        }
+      }
+    })
+  }
+</script>

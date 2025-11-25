@@ -1,0 +1,37 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import ToolForm from '../../components/ToolForm'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+// Get the default type from URL params
+const url = new URL(Astro.request.url)
+const defaultType = (url.searchParams.get('type') as 'javascript' | 'rest' | 'graphql' | 'mcp') || 'javascript'
+
+// Fetch websites for assignment dropdown
+let websites: any[] = []
+let error: string | null = null
+
+try {
+  const result = await trpc.website.list.query({})
+  websites = result.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch websites:', error)
+}
+---
+
+<Layout title="Create Tool">
+  <div>
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold">Create Tool</h1>
+      <p class="text-muted-foreground mt-2">Add a new tool to extend agent capabilities</p>
+    </div>
+
+    <ToolForm
+      client:load
+      mode="create"
+      websites={websites}
+      defaultType={defaultType}
+    />
+  </div>
+</Layout>

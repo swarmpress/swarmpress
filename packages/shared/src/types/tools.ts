@@ -2,14 +2,14 @@ import { z } from 'zod'
 
 /**
  * Tool System Types
- * Types for the extensible tool system supporting REST, GraphQL, and MCP tools
+ * Types for the extensible tool system supporting REST, GraphQL, MCP, and JavaScript tools
  */
 
 // ============================================================================
 // Tool Types
 // ============================================================================
 
-export const ToolTypeSchema = z.enum(['rest', 'graphql', 'mcp', 'builtin'])
+export const ToolTypeSchema = z.enum(['rest', 'graphql', 'mcp', 'builtin', 'javascript'])
 export type ToolType = z.infer<typeof ToolTypeSchema>
 
 // ============================================================================
@@ -223,3 +223,77 @@ export const MCPToolParamsSchema = z.object({
 })
 
 export type MCPToolParams = z.infer<typeof MCPToolParamsSchema>
+
+// ============================================================================
+// JavaScript Tool Configuration
+// ============================================================================
+
+/**
+ * Manifest field definition for JavaScript tool inputs/outputs
+ */
+export const ManifestFieldSchema = z.object({
+  type: z.string(),
+  required: z.boolean().optional(),
+  description: z.string().optional(),
+})
+
+export type ManifestField = z.infer<typeof ManifestFieldSchema>
+
+/**
+ * JavaScript tool manifest (input/output schema)
+ */
+export const JavaScriptManifestSchema = z.object({
+  input: z.record(ManifestFieldSchema),
+  output: z.record(ManifestFieldSchema).optional(),
+})
+
+export type JavaScriptManifest = z.infer<typeof JavaScriptManifestSchema>
+
+/**
+ * JavaScript tool configuration stored in tool_configs.config
+ */
+export const JavaScriptToolConfigSchema = z.object({
+  code: z.string().min(1),
+  manifest: JavaScriptManifestSchema,
+  timeout: z.number().min(100).max(30000).default(5000),
+  allowAsync: z.boolean().default(true),
+})
+
+export type JavaScriptToolConfig = z.infer<typeof JavaScriptToolConfigSchema>
+
+/**
+ * Input for creating a JavaScript tool
+ */
+export const CreateJavaScriptToolSchema = z.object({
+  name: z.string().min(1).max(100),
+  display_name: z.string().max(200).optional(),
+  description: z.string().optional(),
+  code: z.string().min(1),
+  manifest: JavaScriptManifestSchema,
+  timeout: z.number().min(100).max(30000).optional(),
+  website_id: z.string().uuid().nullable().optional(), // null = global
+})
+
+export type CreateJavaScriptToolInput = z.infer<typeof CreateJavaScriptToolSchema>
+
+/**
+ * Input for updating a JavaScript tool
+ */
+export const UpdateJavaScriptToolSchema = z.object({
+  code: z.string().min(1).optional(),
+  manifest: JavaScriptManifestSchema.optional(),
+  timeout: z.number().min(100).max(30000).optional(),
+})
+
+export type UpdateJavaScriptToolInput = z.infer<typeof UpdateJavaScriptToolSchema>
+
+/**
+ * Input for testing a JavaScript tool
+ */
+export const TestJavaScriptToolSchema = z.object({
+  tool_id: z.string().uuid(),
+  test_input: z.record(z.unknown()),
+  website_id: z.string().uuid(), // For secrets
+})
+
+export type TestJavaScriptToolInput = z.infer<typeof TestJavaScriptToolSchema>

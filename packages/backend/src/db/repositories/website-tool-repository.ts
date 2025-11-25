@@ -240,6 +240,20 @@ export class WebsiteToolRepository {
         )
     return result.rows[0]!.exists
   }
+
+  /**
+   * Find all website assignments for a specific tool
+   */
+  async findForTool(toolConfigId: string): Promise<WebsiteTool[]> {
+    const result = await db.query<WebsiteToolRow>(
+      `SELECT id, website_id, tool_config_id, enabled, priority, custom_config, created_at
+       FROM website_tools
+       WHERE tool_config_id = $1
+       ORDER BY website_id NULLS FIRST`,
+      [toolConfigId]
+    )
+    return result.rows.map(rowToWebsiteTool)
+  }
 }
 
 /**

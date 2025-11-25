@@ -1,0 +1,136 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import ToolForm from '../../components/ToolForm'
+import ToolSecretsManager from '../../components/ToolSecretsManager'
+import ToolTester from '../../components/ToolTester'
+import ToolWebsiteAssignments from '../../components/ToolWebsiteAssignments'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
+import { Button } from '../../components/ui/button'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+const { id } = Astro.params
+
+// Fetch tool data
+let tool: any = null
+let websites: any[] = []
+let error: string | null = null
+
+try {
+  tool = await trpc.tools.getById.query({ id: id! })
+  const websitesResult = await trpc.website.list.query({})
+  websites = websitesResult.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch tool:', error)
+}
+---
+
+<Layout title={tool ? `Edit ${tool.display_name || tool.name}` : 'Tool Not Found'}>
+  <div>
+    {error || !tool ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Tool Not Found</CardTitle>
+          <CardDescription>{error || 'The requested tool does not exist.'}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <a href="/tools">
+            <Button variant="outline">Back to Tools</Button>
+          </a>
+        </CardContent>
+      </Card>
+    ) : (
+      <div class="space-y-8">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-3xl font-bold">{tool.display_name || tool.name}</h1>
+            <p class="text-muted-foreground mt-2">
+              {tool.type === 'javascript' ? 'Custom JavaScript Tool' : `${tool.type.toUpperCase()} Tool`}
+            </p>
+          </div>
+          <a href="/tools">
+            <Button variant="outline">Back to Tools</Button>
+          </a>
+        </div>
+
+        {/* Tool Configuration */}
+        <ToolForm
+          client:load
+          tool={tool}
+          websites={websites}
+          mode="edit"
+        />
+
+        {/* Website Assignments */}
+        <ToolWebsiteAssignments
+          client:load
+          toolId={tool.id}
+          toolName={tool.name}
+          websites={websites}
+        />
+
+        {/* Secrets Management */}
+        <ToolSecretsManager
+          client:load
+          toolId={tool.id}
+          toolName={tool.name}
+          websites={websites}
+        />
+
+        {/* Tool Tester (JavaScript tools only) */}
+        {tool.type === 'javascript' && (
+          <ToolTester
+            client:load
+            tool={tool}
+            websites={websites}
+          />
+        )}
+
+        {/* Danger Zone */}
+        <Card className="border-destructive">
+          <CardHeader>
+            <CardTitle className="text-destructive">Danger Zone</CardTitle>
+            <CardDescription>Irreversible actions</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              variant="destructive"
+              id="delete-tool-btn"
+              data-tool-id={tool.id}
+              data-tool-name={tool.name}
+            >
+              Delete Tool
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )}
+  </div>
+</Layout>
+
+<script>
+  const deleteBtn = document.getElementById('delete-tool-btn')
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', async () => {
+      const toolId = deleteBtn.getAttribute('data-tool-id')
+      const toolName = deleteBtn.getAttribute('data-tool-name')
+
+      if (confirm(`Are you sure you want to delete "${toolName}"? This action cannot be undone.`)) {
+        try {
+          const response = await fetch(`/api/tools/${toolId}`, {
+            method: 'DELETE',
+          })
+
+          if (response.ok) {
+            window.location.href = '/tools'
+          } else {
+            const data = await response.json()
+            alert(data.message || 'Failed to delete tool')
+          }
+        } catch (error) {
+          alert('An error occurred while deleting the tool')
+        }
+      }
+    })
+  }
+</script>

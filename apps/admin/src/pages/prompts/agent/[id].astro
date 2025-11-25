@@ -1,0 +1,131 @@
+---
+import Layout from '../../../layouts/Layout.astro'
+import AgentPromptBindings from '../../../components/AgentPromptBindings'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card'
+import { Button } from '../../../components/ui/button'
+import { Badge } from '../../../components/ui/badge'
+import { trpc, handleTRPCError } from '../../../lib/trpc'
+
+const { id } = Astro.params
+
+let agent: any = null
+let bindings: any[] = []
+let companyPrompts: any[] = []
+let websitePrompts: any[] = []
+let error: string | null = null
+
+try {
+  // Get agent
+  agent = await trpc.agent.getById.query({ id: id! })
+
+  // Get agent's prompt bindings
+  const bindingsResult = await trpc.prompt.binding.list.query({ agent_id: id! })
+  bindings = bindingsResult.items
+
+  // Get company prompts
+  const companies = await trpc.company.list.query({})
+  if (companies.items.length > 0) {
+    const promptsResult = await trpc.prompt.company.list.query({
+      company_id: companies.items[0].id,
+      is_active: true
+    })
+    companyPrompts = promptsResult.items
+  }
+
+  // Get website prompts if agent has a website
+  // For now, get all websites and their prompts
+  const websitesResult = await trpc.website.list.query({})
+  for (const website of websitesResult.items) {
+    const wpResult = await trpc.prompt.website.list.query({
+      website_id: website.id,
+      is_active: true
+    })
+    websitePrompts.push(...wpResult.items.map((p: any) => ({ ...p, website })))
+  }
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch agent:', error)
+}
+---
+
+<Layout title={agent ? `Prompts: ${agent.name}` : 'Agent Not Found'}>
+  <div class="space-y-8">
+    {error || !agent ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Agent Not Found</CardTitle>
+          <CardDescription>{error || 'The requested agent does not exist.'}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <a href="/prompts">
+            <Button variant="outline">Back to Prompts</Button>
+          </a>
+        </CardContent>
+      </Card>
+    ) : (
+      <>
+        {/* Header */}
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-3xl font-bold">{agent.name}</h1>
+            <p class="text-muted-foreground mt-2">
+              Agent Prompt Bindings (Level 3)
+              {agent.persona && (
+                <>
+                  <span class="mx-2">·</span>
+                  <span class="text-sm italic">{agent.persona}</span>
+                </>
+              )}
+            </p>
+          </div>
+          <a href="/prompts">
+            <Button variant="outline">Back to Prompts</Button>
+          </a>
+        </div>
+
+        {/* Stats */}
+        <div class="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Bindings</CardTitle>
+              <CardDescription>Active capability bindings</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div class="text-3xl font-bold">{bindings.length}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Available</CardTitle>
+              <CardDescription>Company prompts</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div class="text-3xl font-bold">{companyPrompts.length}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Website Overrides</CardTitle>
+              <CardDescription>Website-specific prompts</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div class="text-3xl font-bold">{websitePrompts.length}</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Bindings Manager */}
+        <AgentPromptBindings
+          client:load
+          agentId={agent.id}
+          agentName={agent.name}
+          bindings={bindings}
+          companyPrompts={companyPrompts}
+          websitePrompts={websitePrompts}
+        />
+      </>
+    )}
+  </div>
+</Layout>

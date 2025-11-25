@@ -1,0 +1,180 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import { Button } from '../../components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table'
+import { Badge } from '../../components/ui/badge'
+import { trpc, handleTRPCError } from '../../lib/trpc'
+
+// Fetch tools server-side
+let tools: any[] = []
+let error: string | null = null
+
+try {
+  const result = await trpc.tools.list.query({})
+  tools = result.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch tools:', error)
+}
+
+// Helper to get badge variant based on tool type
+function getTypeBadgeVariant(type: string): 'default' | 'secondary' | 'outline' | 'destructive' {
+  switch (type) {
+    case 'javascript':
+      return 'default'
+    case 'rest':
+      return 'secondary'
+    case 'graphql':
+      return 'outline'
+    case 'mcp':
+      return 'outline'
+    default:
+      return 'secondary'
+  }
+}
+---
+
+<Layout title="Tools">
+  <div>
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-3xl font-bold">Tools</h1>
+        <p class="text-muted-foreground mt-2">Manage external tools and custom JavaScript functions for agents</p>
+      </div>
+      <a href="/tools/new">
+        <Button>Create Tool</Button>
+      </a>
+    </div>
+
+    {error ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Error Loading Tools</CardTitle>
+          <CardDescription>{error}</CardDescription>
+        </CardHeader>
+      </Card>
+    ) : tools.length === 0 ? (
+      <Card>
+        <CardHeader>
+          <CardTitle>No Tools Found</CardTitle>
+          <CardDescription>
+            Get started by creating your first tool. Tools extend agent capabilities with external APIs, GraphQL endpoints, or custom JavaScript logic.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div class="flex gap-3">
+            <a href="/tools/new">
+              <Button>Create JavaScript Tool</Button>
+            </a>
+            <a href="/tools/new?type=rest">
+              <Button variant="outline">Create REST Tool</Button>
+            </a>
+          </div>
+        </CardContent>
+      </Card>
+    ) : (
+      <Card>
+        <CardHeader>
+          <CardTitle>All Tools</CardTitle>
+          <CardDescription>
+            {tools.length} {tools.length === 1 ? 'tool' : 'tools'} configured
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Endpoint</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tools.map((tool) => (
+                <TableRow key={tool.id}>
+                  <TableCell className="font-medium">
+                    <div>
+                      <span>{tool.display_name || tool.name}</span>
+                      {tool.display_name && (
+                        <span class="text-xs text-muted-foreground ml-2">({tool.name})</span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={getTypeBadgeVariant(tool.type)}>
+                      {tool.type}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm max-w-md truncate text-muted-foreground">
+                    {tool.description || '—'}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {tool.type === 'javascript' ? (
+                      <span class="italic">Custom code</span>
+                    ) : tool.endpoint_url ? (
+                      <span class="truncate max-w-[200px] block">{tool.endpoint_url}</span>
+                    ) : (
+                      '—'
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <a href={`/tools/${tool.id}`}>
+                      <Button variant="outline" size="sm">Edit</Button>
+                    </a>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    )}
+
+    <!-- Tool Types Info -->
+    <div class="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">JavaScript Tools</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p class="text-xs text-muted-foreground">
+            Custom logic executed in a secure sandbox. Access external APIs via whitelisted functions.
+          </p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">REST Tools</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p class="text-xs text-muted-foreground">
+            Connect to REST APIs. Configure endpoints, authentication, and request templates.
+          </p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">GraphQL Tools</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p class="text-xs text-muted-foreground">
+            Query GraphQL endpoints. Define queries, variables, and authentication.
+          </p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">MCP Tools</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p class="text-xs text-muted-foreground">
+            Model Context Protocol servers. Connect to external tool servers via stdio.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  </div>
+</Layout>

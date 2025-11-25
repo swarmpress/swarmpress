@@ -18,7 +18,9 @@
     "@swarm-press/event-bus": "workspace:*",
     "@swarm-press/site-builder": "workspace:*",
     "@anthropic-ai/sdk": "^0.30.1",
+    "ajv": "^8.17.1",
     "dotenv": "^16.3.1",
+    "vm2": "^3.9.19",
     "zod": "^3.22.4"
   },
   "devDependencies": {

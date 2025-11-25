@@ -1,0 +1,52 @@
+---
+import Layout from '../../../layouts/Layout.astro'
+import CompanyPromptForm from '../../../components/CompanyPromptForm'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card'
+import { trpc, handleTRPCError } from '../../../lib/trpc'
+
+let companyId: string | null = null
+let roles: any[] = []
+let error: string | null = null
+
+try {
+  // Get company
+  const companies = await trpc.company.list.query({})
+  if (companies.items.length > 0) {
+    companyId = companies.items[0].id
+  }
+
+  // Get roles
+  const rolesResult = await trpc.role.list.query({})
+  roles = rolesResult.items
+} catch (e) {
+  error = handleTRPCError(e)
+  console.error('Failed to fetch data:', error)
+}
+---
+
+<Layout title="Create Company Prompt">
+  <div class="space-y-6">
+    <div>
+      <h1 class="text-3xl font-bold">Create Company Prompt</h1>
+      <p class="text-muted-foreground mt-2">
+        Define a new baseline prompt template for your organization
+      </p>
+    </div>
+
+    {error || !companyId ? (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Error</CardTitle>
+          <CardDescription>{error || 'No company found. Please create a company first.'}</CardDescription>
+        </CardHeader>
+      </Card>
+    ) : (
+      <CompanyPromptForm
+        client:load
+        mode="create"
+        companyId={companyId}
+        roles={roles}
+      />
+    )}
+  </div>
+</Layout>
