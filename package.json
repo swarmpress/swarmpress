@@ -11,7 +11,13 @@
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "cli": "pnpm --filter @swarm-press/cli run cli"
+    "cli": "pnpm --filter @swarm-press/cli run cli",
+    "docs:dev": "pnpm --filter docs dev",
+    "docs:build": "pnpm run docs:generate && pnpm --filter docs build",
+    "docs:generate": "typedoc",
+    "docs:lint": "markdownlint-cli2 'docs/**/*.md' 'apps/docs/**/*.mdx'",
+    "docs:link-check": "find docs -name '*.md' | xargs markdown-link-check -q",
+    "docs:validate": "pnpm run docs:lint"
   },
   "workspaces": [
     "packages/*",
@@ -19,9 +25,13 @@
   ],
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "markdown-link-check": "^3.14.2",
+    "markdownlint-cli2": "^0.19.1",
     "prettier": "^3.1.0",
     "tsx": "^4.7.0",
     "turbo": "^1.11.0",
+    "typedoc": "^0.28.14",
+    "typedoc-plugin-markdown": "^4.9.0",
     "typescript": "^5.3.3"
   },
   "engines": {

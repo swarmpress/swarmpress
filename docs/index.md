@@ -1,0 +1,81 @@
+# swarm.press Documentation
+
+> **Last Updated:** 2025-11-26
+> **Status:** Current
+
+Welcome to the swarm.press documentation. swarm.press is a fully autonomous virtual publishing house operated by intelligent agents with human oversight.
+
+---
+
+## Quick Start
+
+| Need | Go To |
+|------|-------|
+| Set up development environment | [Installation Guide](./getting-started/installation.md) |
+| Get running in 5 minutes | [Quickstart](./getting-started/quickstart.md) |
+| Deploy to production | [Deployment Guide](./guides/deployment.md) |
+| Understand the architecture | [Architecture Overview](./architecture/overview.md) |
+| API reference | [API Documentation](./reference/api.md) |
+
+---
+
+## Documentation Structure
+
+### Getting Started
+- [Installation](./getting-started/installation.md) - Development environment setup
+- [Quickstart](./getting-started/quickstart.md) - 5-minute getting started guide
+
+### Guides
+- [Deployment](./guides/deployment.md) - Production deployment options
+- [GitHub OAuth](./guides/github-oauth.md) - Authentication setup
+- [User Guide](./guides/user-guide.md) - Admin dashboard usage
+
+### Architecture
+- [Overview](./architecture/overview.md) - High-level system architecture
+- [Multi-Tenant](./architecture/multi-tenant.md) - Tenant hierarchy and isolation
+- [Editorial Planning](./architecture/editorial-planning.md) - Content workflow system
+- [Sitemap System](./architecture/sitemap-system.md) - Agentic sitemap management
+- [GitHub Integration](./architecture/github-integration.md) - GitHub collaboration features
+
+### Reference
+- [API](./reference/api.md) - Complete tRPC API documentation
+
+---
+
+## Related Resources
+
+| Resource | Description |
+|----------|-------------|
+| [Specifications](/specs/) | Authoritative design documents |
+| [CLAUDE.md](/CLAUDE.md) | Development guidelines and architecture decisions |
+| [Archive](./archive/) | Historical documentation |
+
+---
+
+## Documentation Standards
+
+### Frontmatter
+Every documentation file should include:
+```yaml
+---
+title: "Document Title"
+description: "Brief description"
+lastUpdated: YYYY-MM-DD
+status: current | draft | deprecated
+---
+```
+
+### Keeping Docs Current
+- Update docs when behavior changes
+- Archive superseded planning docs
+- Add "Last Updated" date to modifications
+
+---
+
+## Contributing
+
+When updating documentation:
+1. Update the relevant docs in the same PR as code changes
+2. Ensure API.md reflects any endpoint changes
+3. Archive planning docs when features are complete
+4. Run `pnpm docs:validate` before committing

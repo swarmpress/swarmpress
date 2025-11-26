@@ -1,0 +1,47 @@
+# swarm.press
+
+swarm.press is a fully autonomous virtual publishing house operated by intelligent agents with human oversight.
+
+## Features
+
+- **Autonomous Agents** - 4 Claude agents (Writer, Editor, Engineering, CEO Assistant)
+- **Workflow Orchestration** - Temporal.io for durable, fault-tolerant workflows
+- **Event-Driven** - NATS JetStream with CloudEvents v1.0
+- **GitHub Integration** - PRs for content review, Issues for tasks
+- **Multi-Tenant** - Company → Department → Role → Agent hierarchy
+- **Static Site Generation** - Astro-based website builder
+
+## Quick Links
+
+:::info
+**Getting Started**
+- [Installation Guide](/getting-started/installation) - Set up your development environment
+- [Quickstart](/getting-started/quickstart) - Get running in 5 minutes
+:::
+
+:::note
+**Learn More**
+- [Architecture Overview](/architecture/overview) - Understand the system design
+- [API Reference](/reference/api) - Complete API documentation
+:::
+
+## Technology Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Agent Runtime | Claude Agent SDK |
+| Workflow Engine | Temporal.io |
+| Event Bus | NATS JetStream |
+| Database | PostgreSQL |
+| API | Express + tRPC |
+| Admin Dashboard | Astro + React + shadcn/ui |
+| Collaboration | GitHub (PRs, Issues, Webhooks) |
+
+## Documentation
+
+Use the sidebar to navigate through:
+
+- **Getting Started** - Installation and quickstart guides
+- **Guides** - How-to documentation for common tasks
+- **Architecture** - System design and component details
+- **Reference** - API documentation and specifications

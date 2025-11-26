@@ -603,6 +603,17 @@ tsx scripts/seed.ts
 
 ## 📚 Key References
 
+### Documentation
+| Resource | Location |
+|----------|----------|
+| **Documentation Index** | `docs/index.md` |
+| **Architecture Overview** | `docs/architecture/overview.md` |
+| **API Reference** | `docs/reference/api.md` |
+| **Quickstart Guide** | `docs/getting-started/quickstart.md` |
+| **Deployment Guide** | `docs/guides/deployment.md` |
+| **Vocs Doc Site** | `apps/docs/` (run with `pnpm docs:dev`) |
+
+### Specifications (Authoritative)
 | Resource | Location |
 |----------|----------|
 | **Full Specification** | `specs/specs.md` |
@@ -610,6 +621,10 @@ tsx scripts/seed.ts
 | **Sitemap Spec** | `specs/sitemap-component.md` |
 | **Editorial Planning Spec** | `specs/agentic_editorial_planning_spec.md` |
 | **Collections Spec** | `specs/collections_binaries.md` |
+
+### Source Code
+| Resource | Location |
+|----------|----------|
 | **Database Schema** | `packages/backend/src/db/migrations/000_schema.sql` |
 | **Agent Definitions** | `packages/agents/src/` |
 | **Temporal Workflows** | `packages/workflows/src/workflows/` |
@@ -637,6 +652,7 @@ tsx scripts/seed.ts
 - [x] Collection schemas (Event, POI, FAQ, News)
 - [x] Bootstrap, seed, and test scripts
 - [x] Structured logging with correlation IDs
+- [x] Documentation site (Vocs + TypeDoc + markdownlint)
 
 ### In Progress
 - [ ] GitHub Pages deployment integration

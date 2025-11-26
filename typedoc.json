@@ -1,0 +1,18 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "packages/backend/src/api/routers/index.ts",
+    "packages/shared/src/types/index.ts",
+    "packages/agents/src/index.ts"
+  ],
+  "entryPointStrategy": "expand",
+  "out": "apps/docs/docs/pages/reference/api-generated",
+  "plugin": ["typedoc-plugin-markdown"],
+  "outputFileStrategy": "modules",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "readme": "none",
+  "name": "swarm.press API",
+  "skipErrorChecking": true,
+  "tsconfig": "packages/shared/tsconfig.json"
+}
