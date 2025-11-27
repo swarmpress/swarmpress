@@ -1,112 +1,115 @@
 /**
  * Collection Registry System
- * Provides utilities for working with collections
+ * Provides utilities for working with base collections
+ *
+ * Note: Website-specific collections are loaded from the database.
+ * Use the collection repository for dynamic collection operations.
  */
 
-import { z } from 'zod';
+import { z } from 'zod'
 import {
-  COLLECTION_TYPES,
-  CollectionType,
-  isValidCollectionType,
-  getCollectionType,
-} from './index';
-import { EventSchema, CreateEventSchema, type Event } from './event';
-import { POISchema, CreatePOISchema, type POI } from './poi';
-import { FAQSchema, CreateFAQSchema, type FAQ } from './faq';
-import { NewsSchema, CreateNewsSchema, type News } from './news';
+  BASE_COLLECTION_TYPES,
+  BaseCollectionType,
+  isBaseCollectionType,
+  getBaseCollectionType,
+} from './index'
+import { EventSchema, CreateEventSchema, type Event } from './event'
+import { POISchema, CreatePOISchema, type POI } from './poi'
+import { FAQSchema, CreateFAQSchema, type FAQ } from './faq'
+import { NewsSchema, CreateNewsSchema, type News } from './news'
 
 // =============================================================================
-// COLLECTION DATA TYPES
+// COLLECTION DATA TYPES (Base collections only)
 // =============================================================================
 
 /**
- * Union type of all collection data types
+ * Union type of base collection data types
  */
-export type CollectionData = Event | POI | FAQ | News;
+export type BaseCollectionData = Event | POI | FAQ | News
 
 /**
- * Map collection type string to TypeScript type
+ * Map base collection type string to TypeScript type
  */
-export type CollectionDataType<T extends CollectionType> =
+export type BaseCollectionDataType<T extends BaseCollectionType> =
   T extends 'events' ? Event :
   T extends 'pois' ? POI :
   T extends 'faqs' ? FAQ :
   T extends 'news' ? News :
-  never;
+  never
 
 // =============================================================================
-// VALIDATION
+// VALIDATION (Base collections only)
 // =============================================================================
 
 /**
- * Validate collection data against its schema
+ * Validate base collection data against its schema
  */
-export function validateCollectionData<T extends CollectionType>(
+export function validateBaseCollectionData<T extends BaseCollectionType>(
   collectionType: T,
   data: unknown
-): { success: true; data: CollectionDataType<T> } | { success: false; error: z.ZodError } {
-  const collectionDef = getCollectionType(collectionType);
+): { success: true; data: BaseCollectionDataType<T> } | { success: false; error: z.ZodError } {
+  const collectionDef = getBaseCollectionType(collectionType)
 
-  const result = collectionDef.schema.safeParse(data);
+  const result = collectionDef.schema.safeParse(data)
 
   if (result.success) {
-    return { success: true, data: result.data as CollectionDataType<T> };
+    return { success: true, data: result.data as BaseCollectionDataType<T> }
   } else {
-    return { success: false, error: result.error };
+    return { success: false, error: result.error }
   }
 }
 
 /**
- * Validate collection data for creation (omits auto-generated fields)
+ * Validate base collection data for creation
  */
-export function validateCreateCollectionData<T extends CollectionType>(
+export function validateCreateBaseCollectionData<T extends BaseCollectionType>(
   collectionType: T,
   data: unknown
-): { success: true; data: any } | { success: false; error: z.ZodError } {
-  const collectionDef = getCollectionType(collectionType);
+): { success: true; data: unknown } | { success: false; error: z.ZodError } {
+  const collectionDef = getBaseCollectionType(collectionType)
 
-  const result = collectionDef.createSchema.safeParse(data);
+  const result = collectionDef.createSchema.safeParse(data)
 
   if (result.success) {
-    return { success: true, data: result.data };
+    return { success: true, data: result.data }
   } else {
-    return { success: false, error: result.error };
+    return { success: false, error: result.error }
   }
 }
 
 /**
- * Get the appropriate schema for a collection type
+ * Get the appropriate schema for a base collection type
  */
-export function getCollectionSchema(collectionType: CollectionType) {
+export function getBaseCollectionSchema(collectionType: BaseCollectionType) {
   switch (collectionType) {
     case 'events':
-      return EventSchema;
+      return EventSchema
     case 'pois':
-      return POISchema;
+      return POISchema
     case 'faqs':
-      return FAQSchema;
+      return FAQSchema
     case 'news':
-      return NewsSchema;
+      return NewsSchema
     default:
-      throw new Error(`Unknown collection type: ${collectionType}`);
+      throw new Error(`Unknown base collection type: ${collectionType}`)
   }
 }
 
 /**
- * Get the create schema for a collection type
+ * Get the create schema for a base collection type
  */
-export function getCreateCollectionSchema(collectionType: CollectionType) {
+export function getCreateBaseCollectionSchema(collectionType: BaseCollectionType) {
   switch (collectionType) {
     case 'events':
-      return CreateEventSchema;
+      return CreateEventSchema
     case 'pois':
-      return CreatePOISchema;
+      return CreatePOISchema
     case 'faqs':
-      return CreateFAQSchema;
+      return CreateFAQSchema
     case 'news':
-      return CreateNewsSchema;
+      return CreateNewsSchema
     default:
-      throw new Error(`Unknown collection type: ${collectionType}`);
+      throw new Error(`Unknown base collection type: ${collectionType}`)
   }
 }
 
@@ -115,22 +118,11 @@ export function getCreateCollectionSchema(collectionType: CollectionType) {
 // =============================================================================
 
 /**
- * Get field metadata for a collection type
+ * Get field metadata for a base collection type
  */
-export function getFieldMetadata(collectionType: CollectionType) {
-  const collectionDef = getCollectionType(collectionType);
-  return collectionDef.fieldMetadata;
-}
-
-/**
- * Get field metadata for a specific field
- */
-export function getFieldMetadataForField(
-  collectionType: CollectionType,
-  fieldPath: string
-) {
-  const metadata = getFieldMetadata(collectionType);
-  return (metadata as any)[fieldPath];
+export function getBaseFieldMetadata(collectionType: BaseCollectionType) {
+  const collectionDef = getBaseCollectionType(collectionType)
+  return collectionDef.fieldMetadata
 }
 
 // =============================================================================
@@ -138,10 +130,10 @@ export function getFieldMetadataForField(
 // =============================================================================
 
 /**
- * Get display information for a collection type
+ * Get display information for a base collection type
  */
-export function getCollectionInfo(collectionType: CollectionType) {
-  const collectionDef = getCollectionType(collectionType);
+export function getBaseCollectionInfo(collectionType: BaseCollectionType) {
+  const collectionDef = getBaseCollectionType(collectionType)
   return {
     type: collectionDef.type,
     displayName: collectionDef.displayName,
@@ -149,16 +141,16 @@ export function getCollectionInfo(collectionType: CollectionType) {
     icon: collectionDef.icon,
     color: collectionDef.color,
     description: collectionDef.description,
-  };
+  }
 }
 
 /**
- * Get all collection types with their info
+ * Get all base collection types with their info
  */
-export function getAllCollectionInfo() {
-  return Object.keys(COLLECTION_TYPES).map(type =>
-    getCollectionInfo(type as CollectionType)
-  );
+export function getAllBaseCollectionInfo() {
+  return Object.keys(BASE_COLLECTION_TYPES).map(type =>
+    getBaseCollectionInfo(type as BaseCollectionType)
+  )
 }
 
 // =============================================================================
@@ -175,14 +167,14 @@ export function generateSlug(title: string): string {
     .replace(/[^\w\s-]/g, '') // Remove non-word chars (except spaces and hyphens)
     .replace(/\s+/g, '-') // Replace spaces with hyphens
     .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
-    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+    .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
 }
 
 /**
  * Validate a slug format
  */
 export function isValidSlug(slug: string): boolean {
-  return /^[a-z0-9-]+$/.test(slug);
+  return /^[a-z0-9-]+$/.test(slug)
 }
 
 // =============================================================================
@@ -190,62 +182,43 @@ export function isValidSlug(slug: string): boolean {
 // =============================================================================
 
 /**
- * Extract required fields from a schema
+ * Extract required fields from a base schema
  */
-export function getRequiredFields(collectionType: CollectionType): string[] {
-  const schema = getCollectionSchema(collectionType);
-  const shape = schema._def.shape();
+export function getRequiredFields(collectionType: BaseCollectionType): string[] {
+  const schema = getBaseCollectionSchema(collectionType)
+  const shape = schema._def.shape()
 
-  const required: string[] = [];
+  const required: string[] = []
 
   for (const [key, value] of Object.entries(shape)) {
     if (value instanceof z.ZodType) {
       if (!value.isOptional()) {
-        required.push(key);
+        required.push(key)
       }
     }
   }
 
-  return required;
+  return required
 }
 
 /**
- * Extract optional fields from a schema
+ * Extract optional fields from a base schema
  */
-export function getOptionalFields(collectionType: CollectionType): string[] {
-  const schema = getCollectionSchema(collectionType);
-  const shape = schema._def.shape();
+export function getOptionalFields(collectionType: BaseCollectionType): string[] {
+  const schema = getBaseCollectionSchema(collectionType)
+  const shape = schema._def.shape()
 
-  const optional: string[] = [];
+  const optional: string[] = []
 
   for (const [key, value] of Object.entries(shape)) {
     if (value instanceof z.ZodType) {
       if (value.isOptional()) {
-        optional.push(key);
+        optional.push(key)
       }
     }
   }
 
-  return optional;
-}
-
-/**
- * Get default values for a collection type
- */
-export function getDefaultValues(collectionType: CollectionType): Partial<CollectionData> {
-  const schema = getCollectionSchema(collectionType);
-
-  try {
-    // Parse an empty object to get defaults
-    const result = schema.safeParse({});
-    if (result.success) {
-      return result.data;
-    }
-  } catch (error) {
-    // Ignore errors, return empty object
-  }
-
-  return {};
+  return optional
 }
 
 // =============================================================================
@@ -256,28 +229,28 @@ export function getDefaultValues(collectionType: CollectionType): Partial<Collec
  * Format validation errors for display
  */
 export function formatValidationErrors(error: z.ZodError): Record<string, string[]> {
-  const formatted: Record<string, string[]> = {};
+  const formatted: Record<string, string[]> = {}
 
   for (const issue of error.issues) {
-    const path = issue.path.join('.');
+    const path = issue.path.join('.')
     if (!formatted[path]) {
-      formatted[path] = [];
+      formatted[path] = []
     }
-    formatted[path].push(issue.message);
+    formatted[path].push(issue.message)
   }
 
-  return formatted;
+  return formatted
 }
 
 /**
  * Get a human-readable error message from validation errors
  */
 export function getValidationErrorMessage(error: z.ZodError): string {
-  const formatted = formatValidationErrors(error);
+  const formatted = formatValidationErrors(error)
   const messages = Object.entries(formatted).map(
     ([field, errors]) => `${field}: ${errors.join(', ')}`
-  );
-  return messages.join('; ');
+  )
+  return messages.join('; ')
 }
 
 // =============================================================================
@@ -285,8 +258,8 @@ export function getValidationErrorMessage(error: z.ZodError): string {
 // =============================================================================
 
 export {
-  COLLECTION_TYPES,
-  CollectionType,
-  isValidCollectionType,
-  getCollectionType,
-};
+  BASE_COLLECTION_TYPES,
+  BaseCollectionType,
+  isBaseCollectionType,
+  getBaseCollectionType,
+}

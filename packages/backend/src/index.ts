@@ -60,3 +60,21 @@ export {
   DEFAULT_MODEL_CONFIGS,
   type AgentRuntimeConfig,
 } from './services/agent-config.service'
+
+// Export collection schema service
+export { collectionSchemaService } from './services/collection-schema.service'
+export type {
+  CollectionSchemaDefinition,
+  ValidationResult,
+  CollectionItemWithMeta,
+} from './services/collection-schema.service'
+
+// Export collection repositories
+export {
+  websiteCollectionRepository,
+  collectionItemRepository,
+  collectionItemVersionRepository,
+  type WebsiteCollection,
+  type CollectionItem,
+  type CollectionItemVersion,
+} from './db/repositories'

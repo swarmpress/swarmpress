@@ -1,312 +1,314 @@
 /**
  * Collection Router
- * tRPC router for collection operations
+ * tRPC router for database-driven collection operations
+ * Collections are stored per-website with JSON Schema validation
  */
 
-import { z } from 'zod';
-import { router, publicProcedure } from '../trpc';
-import { TRPCError } from '@trpc/server';
+import { z } from 'zod'
+import { router, publicProcedure } from '../trpc'
+import { TRPCError } from '@trpc/server'
 import {
-  validateCollectionData,
-  validateCreateCollectionData,
-  getCollectionSchema,
-  getCreateCollectionSchema,
-  getAllCollectionInfo,
-  getCollectionInfo,
-  isValidCollectionType,
-  formatValidationErrors,
-  type CollectionType,
-} from '@swarm-press/shared';
+  websiteCollectionRepository,
+  collectionItemRepository,
+  collectionItemVersionRepository,
+} from '../../db/repositories'
+import { collectionSchemaService } from '../../services/collection-schema.service'
 
 /**
  * Collection Router
  */
 export const collectionRouter = router({
   // =============================================================================
-  // GET COLLECTION TYPES
+  // COLLECTION TYPES (Website-Specific Schemas)
   // =============================================================================
 
   /**
-   * List all available collection types
+   * List all collection types for a website
    */
-  listTypes: publicProcedure.query(async () => {
-    return getAllCollectionInfo();
-  }),
+  listTypes: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        enabledOnly: z.boolean().default(true),
+      })
+    )
+    .query(async ({ input }) => {
+      const collections = await websiteCollectionRepository.findByWebsite(
+        input.websiteId,
+        input.enabledOnly
+      )
+
+      return collections.map((c) => ({
+        id: c.id,
+        type: c.collection_type,
+        displayName: c.display_name,
+        singularName: c.singular_name,
+        description: c.description,
+        icon: c.icon,
+        color: c.color,
+        enabled: c.enabled,
+        titleField: c.title_field,
+        summaryField: c.summary_field,
+        imageField: c.image_field,
+        dateField: c.date_field,
+      }))
+    }),
 
   /**
-   * Get information about a specific collection type
+   * Get a specific collection type
    */
   getType: publicProcedure
     .input(
       z.object({
-        type: z.string(),
+        websiteId: z.string().uuid(),
+        collectionType: z.string(),
       })
     )
-    .query(async ({ input, ctx }) => {
-      if (!isValidCollectionType(input.type)) {
+    .query(async ({ input }) => {
+      const collection = await websiteCollectionRepository.findByType(
+        input.websiteId,
+        input.collectionType
+      )
+
+      if (!collection) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: `Collection type not found: ${input.type}`,
-        });
+          message: `Collection type '${input.collectionType}' not found for website`,
+        })
       }
 
-      return getCollectionInfo(input.type as CollectionType);
+      return {
+        id: collection.id,
+        type: collection.collection_type,
+        displayName: collection.display_name,
+        singularName: collection.singular_name,
+        description: collection.description,
+        icon: collection.icon,
+        color: collection.color,
+        enabled: collection.enabled,
+        titleField: collection.title_field,
+        summaryField: collection.summary_field,
+        imageField: collection.image_field,
+        dateField: collection.date_field,
+        fieldMetadata: collection.field_metadata,
+        enableSearch: collection.enable_search,
+        enableFiltering: collection.enable_filtering,
+        enableVersioning: collection.enable_versioning,
+        enableGithubSync: collection.enable_github_sync,
+      }
     }),
 
   /**
-   * Get schema for a collection type
+   * Get JSON Schema for a collection type
    */
   getSchema: publicProcedure
     .input(
       z.object({
-        type: z.string(),
+        websiteId: z.string().uuid(),
+        collectionType: z.string(),
       })
     )
     .query(async ({ input }) => {
-      if (!isValidCollectionType(input.type)) {
+      const collection = await websiteCollectionRepository.findByType(
+        input.websiteId,
+        input.collectionType
+      )
+
+      if (!collection) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: `Collection type not found: ${input.type}`,
-        });
+          message: `Collection type '${input.collectionType}' not found for website`,
+        })
       }
 
-      const schema = getCollectionSchema(input.type as CollectionType);
-      const createSchema = getCreateCollectionSchema(input.type as CollectionType);
-
-      // Return JSON Schema representation
       return {
-        schema: schema._def,
-        createSchema: createSchema._def,
-      };
+        jsonSchema: collection.json_schema,
+        createSchema: collection.create_schema,
+        fieldMetadata: collection.field_metadata,
+      }
     }),
 
-  // =============================================================================
-  // WEBSITE COLLECTIONS (CONFIGURATION)
-  // =============================================================================
-
   /**
-   * Enable a collection type for a website
+   * Create a new collection type for a website
    */
-  enable: publicProcedure
+  createType: publicProcedure
     .input(
       z.object({
         websiteId: z.string().uuid(),
-        collectionType: z.string(),
-        config: z
-          .object({
-            displayName: z.string().optional(),
-            icon: z.string().optional(),
-            color: z.string().optional(),
-            customFields: z.array(z.any()).optional(),
-            fieldOverrides: z.record(z.any()).optional(),
-            enableComments: z.boolean().optional(),
-            enableRatings: z.boolean().optional(),
-            enableBookmarks: z.boolean().optional(),
-            githubPath: z.string().optional(),
-            autoSync: z.boolean().optional(),
-          })
-          .optional(),
+        type: z.string().regex(/^[a-z][a-z0-9_]*$/, 'Type must be lowercase alphanumeric with underscores'),
+        displayName: z.string().min(1),
+        singularName: z.string().optional(),
+        description: z.string().optional(),
+        icon: z.string().optional(),
+        color: z.string().optional(),
+        jsonSchema: z.record(z.unknown()),
+        createSchema: z.record(z.unknown()).optional(),
+        fieldMetadata: z.record(z.unknown()).optional(),
+        titleField: z.string().optional(),
+        summaryField: z.string().optional(),
+        imageField: z.string().optional(),
+        dateField: z.string().optional(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
-      if (!isValidCollectionType(input.collectionType)) {
+    .mutation(async ({ input }) => {
+      // Check if collection type already exists
+      const existing = await websiteCollectionRepository.findByType(
+        input.websiteId,
+        input.type
+      )
+
+      if (existing) {
         throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: `Invalid collection type: ${input.collectionType}`,
-        });
+          code: 'CONFLICT',
+          message: `Collection type '${input.type}' already exists for this website`,
+        })
       }
 
-      const config = input.config || {};
+      const collection = await collectionSchemaService.createCollection(input.websiteId, {
+        type: input.type,
+        displayName: input.displayName,
+        singularName: input.singularName,
+        description: input.description,
+        icon: input.icon,
+        color: input.color,
+        jsonSchema: input.jsonSchema,
+        createSchema: input.createSchema,
+        fieldMetadata: input.fieldMetadata,
+        titleField: input.titleField,
+        summaryField: input.summaryField,
+        imageField: input.imageField,
+        dateField: input.dateField,
+      })
 
-      const result = await ctx.db.query(
-        `INSERT INTO website_collections (
-          website_id, collection_type, enabled,
-          display_name, icon, color,
-          custom_fields, field_overrides,
-          enable_comments, enable_ratings, enable_bookmarks,
-          github_path, auto_sync
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-        ON CONFLICT (website_id, collection_type)
-        DO UPDATE SET
-          enabled = EXCLUDED.enabled,
-          display_name = EXCLUDED.display_name,
-          icon = EXCLUDED.icon,
-          color = EXCLUDED.color,
-          custom_fields = EXCLUDED.custom_fields,
-          field_overrides = EXCLUDED.field_overrides,
-          enable_comments = EXCLUDED.enable_comments,
-          enable_ratings = EXCLUDED.enable_ratings,
-          enable_bookmarks = EXCLUDED.enable_bookmarks,
-          github_path = EXCLUDED.github_path,
-          auto_sync = EXCLUDED.auto_sync,
-          updated_at = NOW()
-        RETURNING *`,
-        [
-          input.websiteId,
-          input.collectionType,
-          true,
-          config.displayName || null,
-          config.icon || null,
-          config.color || null,
-          JSON.stringify(config.customFields || []),
-          JSON.stringify(config.fieldOverrides || {}),
-          config.enableComments ?? false,
-          config.enableRatings ?? false,
-          config.enableBookmarks ?? false,
-          config.githubPath || null,
-          config.autoSync ?? true,
-        ]
-      );
-
-      return result.rows[0];
+      return {
+        id: collection.id,
+        type: collection.collection_type,
+        displayName: collection.display_name,
+      }
     }),
 
   /**
-   * Disable a collection type for a website
+   * Update collection schema
    */
-  disable: publicProcedure
+  updateSchema: publicProcedure
     .input(
       z.object({
-        websiteId: z.string().uuid(),
-        collectionType: z.string(),
+        collectionId: z.string().uuid(),
+        jsonSchema: z.record(z.unknown()),
       })
     )
-    .mutation(async ({ input, ctx }) => {
-      await ctx.db.query(
-        `UPDATE website_collections
-         SET enabled = false, updated_at = NOW()
-         WHERE website_id = $1 AND collection_type = $2`,
-        [input.websiteId, input.collectionType]
-      );
+    .mutation(async ({ input }) => {
+      const collection = await collectionSchemaService.updateCollectionSchema(
+        input.collectionId,
+        input.jsonSchema
+      )
 
-      return { success: true };
+      if (!collection) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Collection not found',
+        })
+      }
+
+      return {
+        id: collection.id,
+        type: collection.collection_type,
+        displayName: collection.display_name,
+      }
     }),
 
   /**
-   * List enabled collections for a website
+   * Enable/disable a collection type
    */
-  listForWebsite: publicProcedure
+  setEnabled: publicProcedure
     .input(
       z.object({
-        websiteId: z.string().uuid(),
+        collectionId: z.string().uuid(),
+        enabled: z.boolean(),
       })
     )
-    .query(async ({ input, ctx }) => {
-      const result = await ctx.db.query(
-        `SELECT * FROM website_collections
-         WHERE website_id = $1 AND enabled = true
-         ORDER BY collection_type`,
-        [input.websiteId]
-      );
+    .mutation(async ({ input }) => {
+      const collection = await websiteCollectionRepository.setEnabled(
+        input.collectionId,
+        input.enabled
+      )
 
-      return result.rows;
+      if (!collection) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Collection not found',
+        })
+      }
+
+      return { success: true, enabled: collection.enabled }
     }),
 
   // =============================================================================
-  // COLLECTION ITEMS (CONTENT)
+  // COLLECTION ITEMS (Content)
   // =============================================================================
 
   /**
-   * Create a new collection item
+   * Create a new collection item with validation
    */
   create: publicProcedure
     .input(
       z.object({
         websiteId: z.string().uuid(),
         collectionType: z.string(),
-        slug: z.string(),
-        data: z.any(),
-        published: z.boolean().optional(),
-        featured: z.boolean().optional(),
+        slug: z.string().regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+        data: z.record(z.unknown()),
+        published: z.boolean().default(false),
+        featured: z.boolean().default(false),
         createdByAgentId: z.string().uuid().optional(),
         createdByUserId: z.string().uuid().optional(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
-      // Validate collection type
-      if (!isValidCollectionType(input.collectionType)) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: `Invalid collection type: ${input.collectionType}`,
-        });
-      }
+    .mutation(async ({ input }) => {
+      const result = await collectionSchemaService.createItem(
+        input.websiteId,
+        input.collectionType,
+        input.slug,
+        input.data,
+        {
+          published: input.published,
+          userId: input.createdByUserId,
+          agentId: input.createdByAgentId,
+        }
+      )
 
-      // Validate data against schema
-      const validation = validateCreateCollectionData(
-        input.collectionType as CollectionType,
-        input.data
-      );
-
-      if (!validation.success) {
+      if (result.errors) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'Validation failed',
-          cause: formatValidationErrors(validation.error),
-        });
+          cause: result.errors,
+        })
       }
 
-      // Get website collection ID
-      const websiteCollectionResult = await ctx.db.query(
-        `SELECT id FROM website_collections
-         WHERE website_id = $1 AND collection_type = $2 AND enabled = true`,
-        [input.websiteId, input.collectionType]
-      );
+      // Create initial version if versioning is enabled
+      const collection = await websiteCollectionRepository.findByType(
+        input.websiteId,
+        input.collectionType
+      )
 
-      if (websiteCollectionResult.rows.length === 0) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: `Collection type ${input.collectionType} is not enabled for this website`,
-        });
+      if (collection?.enable_versioning && result.item) {
+        await collectionItemVersionRepository.createVersion(result.item.id, input.data, {
+          userId: input.createdByUserId,
+          agentId: input.createdByAgentId,
+          changeSummary: 'Initial version',
+        })
       }
 
-      const websiteCollectionId = websiteCollectionResult.rows[0].id;
-
-      // Insert collection item
-      const result = await ctx.db.query(
-        `INSERT INTO collection_items (
-          website_collection_id, slug, data, published, featured,
-          created_by_agent_id, created_by_user_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING *`,
-        [
-          websiteCollectionId,
-          input.slug,
-          JSON.stringify(validation.data),
-          input.published ?? false,
-          input.featured ?? false,
-          input.createdByAgentId || null,
-          input.createdByUserId || null,
-        ]
-      );
-
-      // Create initial version
-      await ctx.db.query(
-        `INSERT INTO collection_item_versions (
-          item_id, version_number, data,
-          created_by_agent_id, created_by_user_id,
-          change_summary
-        ) VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          result.rows[0].id,
-          1,
-          JSON.stringify(validation.data),
-          input.createdByAgentId || null,
-          input.createdByUserId || null,
-          'Initial version',
-        ]
-      );
-
-      return result.rows[0];
+      return result.item
     }),
 
   /**
-   * Update a collection item
+   * Update a collection item with validation
    */
   update: publicProcedure
     .input(
       z.object({
         itemId: z.string().uuid(),
-        data: z.any().optional(),
+        data: z.record(z.unknown()).optional(),
         published: z.boolean().optional(),
         featured: z.boolean().optional(),
         updatedByAgentId: z.string().uuid().optional(),
@@ -314,119 +316,63 @@ export const collectionRouter = router({
         changeSummary: z.string().optional(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
-      // Get current item with collection info
-      const currentResult = await ctx.db.query(
-        `SELECT ci.*, wc.collection_type
-         FROM collection_items ci
-         JOIN website_collections wc ON ci.website_collection_id = wc.id
-         WHERE ci.id = $1`,
-        [input.itemId]
-      );
-
-      if (currentResult.rows.length === 0) {
+    .mutation(async ({ input }) => {
+      // Get current item
+      const currentItem = await collectionItemRepository.findById(input.itemId)
+      if (!currentItem) {
         throw new TRPCError({
           code: 'NOT_FOUND',
           message: 'Collection item not found',
-        });
+        })
       }
 
-      const currentItem = currentResult.rows[0];
-      const collectionType = currentItem.collection_type as CollectionType;
+      // Get collection for validation and versioning
+      const collection = await websiteCollectionRepository.findById(
+        currentItem.website_collection_id
+      )
+      if (!collection) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Collection not found',
+        })
+      }
 
-      // Validate data if provided
-      let validatedData = currentItem.data;
+      // Update data if provided
       if (input.data) {
-        const validation = validateCollectionData(collectionType, input.data);
+        const result = await collectionSchemaService.updateItem(input.itemId, input.data, {
+          userId: input.updatedByUserId,
+          agentId: input.updatedByAgentId,
+        })
 
-        if (!validation.success) {
+        if (result.errors) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
             message: 'Validation failed',
-            cause: formatValidationErrors(validation.error),
-          });
+            cause: result.errors,
+          })
         }
 
-        validatedData = validation.data;
+        // Create new version if versioning is enabled
+        if (collection.enable_versioning) {
+          await collectionItemVersionRepository.createVersion(input.itemId, input.data, {
+            userId: input.updatedByUserId,
+            agentId: input.updatedByAgentId,
+            changeSummary: input.changeSummary,
+          })
+        }
       }
 
-      // Build update query
-      const updates: string[] = [];
-      const values: any[] = [];
-      let paramIndex = 1;
-
-      if (input.data) {
-        updates.push(`data = $${paramIndex++}`);
-        values.push(JSON.stringify(validatedData));
-      }
-
+      // Update published/featured status
       if (input.published !== undefined) {
-        updates.push(`published = $${paramIndex++}`);
-        values.push(input.published);
-
-        if (input.published) {
-          updates.push(`published_at = NOW()`);
-        }
+        await collectionItemRepository.setPublished(input.itemId, input.published)
       }
 
       if (input.featured !== undefined) {
-        updates.push(`featured = $${paramIndex++}`);
-        values.push(input.featured);
+        await collectionItemRepository.update(input.itemId, { featured: input.featured })
       }
 
-      if (input.updatedByAgentId) {
-        updates.push(`updated_by_agent_id = $${paramIndex++}`);
-        values.push(input.updatedByAgentId);
-      }
-
-      if (input.updatedByUserId) {
-        updates.push(`updated_by_user_id = $${paramIndex++}`);
-        values.push(input.updatedByUserId);
-      }
-
-      updates.push(`updated_at = NOW()`);
-
-      values.push(input.itemId);
-
-      // Update item
-      const result = await ctx.db.query(
-        `UPDATE collection_items
-         SET ${updates.join(', ')}
-         WHERE id = $${paramIndex}
-         RETURNING *`,
-        values
-      );
-
-      // Create new version if data changed
-      if (input.data) {
-        // Get latest version number
-        const versionResult = await ctx.db.query(
-          `SELECT MAX(version_number) as max_version
-           FROM collection_item_versions
-           WHERE item_id = $1`,
-          [input.itemId]
-        );
-
-        const nextVersion = (versionResult.rows[0].max_version || 0) + 1;
-
-        await ctx.db.query(
-          `INSERT INTO collection_item_versions (
-            item_id, version_number, data,
-            created_by_agent_id, created_by_user_id,
-            change_summary
-          ) VALUES ($1, $2, $3, $4, $5, $6)`,
-          [
-            input.itemId,
-            nextVersion,
-            JSON.stringify(validatedData),
-            input.updatedByAgentId || null,
-            input.updatedByUserId || null,
-            input.changeSummary || `Version ${nextVersion}`,
-          ]
-        );
-      }
-
-      return result.rows[0];
+      // Return updated item
+      return collectionItemRepository.findById(input.itemId)
     }),
 
   /**
@@ -438,10 +384,17 @@ export const collectionRouter = router({
         itemId: z.string().uuid(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
-      await ctx.db.query('DELETE FROM collection_items WHERE id = $1', [input.itemId]);
+    .mutation(async ({ input }) => {
+      const item = await collectionItemRepository.findById(input.itemId)
+      if (!item) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Collection item not found',
+        })
+      }
 
-      return { success: true };
+      await collectionItemRepository.delete(input.itemId)
+      return { success: true }
     }),
 
   /**
@@ -453,23 +406,24 @@ export const collectionRouter = router({
         itemId: z.string().uuid(),
       })
     )
-    .query(async ({ input, ctx }) => {
-      const result = await ctx.db.query(
-        `SELECT ci.*, wc.collection_type, wc.website_id
-         FROM collection_items ci
-         JOIN website_collections wc ON ci.website_collection_id = wc.id
-         WHERE ci.id = $1`,
-        [input.itemId]
-      );
+    .query(async ({ input }) => {
+      const item = await collectionItemRepository.findById(input.itemId)
 
-      if (result.rows.length === 0) {
+      if (!item) {
         throw new TRPCError({
           code: 'NOT_FOUND',
           message: 'Collection item not found',
-        });
+        })
       }
 
-      return result.rows[0];
+      // Get collection info
+      const collection = await websiteCollectionRepository.findById(item.website_collection_id)
+
+      return {
+        ...item,
+        collectionType: collection?.collection_type,
+        websiteId: collection?.website_id,
+      }
     }),
 
   /**
@@ -483,92 +437,103 @@ export const collectionRouter = router({
         slug: z.string(),
       })
     )
-    .query(async ({ input, ctx }) => {
-      const result = await ctx.db.query(
-        `SELECT ci.*, wc.collection_type, wc.website_id
-         FROM collection_items ci
-         JOIN website_collections wc ON ci.website_collection_id = wc.id
-         WHERE wc.website_id = $1
-           AND wc.collection_type = $2
-           AND ci.slug = $3`,
-        [input.websiteId, input.collectionType, input.slug]
-      );
+    .query(async ({ input }) => {
+      const item = await collectionSchemaService.getItemBySlug(
+        input.websiteId,
+        input.collectionType,
+        input.slug
+      )
 
-      if (result.rows.length === 0) {
+      if (!item) {
         throw new TRPCError({
           code: 'NOT_FOUND',
           message: 'Collection item not found',
-        });
+        })
       }
 
-      return result.rows[0];
+      return item
     }),
 
   /**
-   * List collection items
+   * List collection items with pagination
    */
   list: publicProcedure
     .input(
       z.object({
         websiteId: z.string().uuid(),
-        collectionType: z.string().optional(),
-        published: z.boolean().optional(),
-        featured: z.boolean().optional(),
+        collectionType: z.string(),
+        publishedOnly: z.boolean().default(false),
+        search: z.string().optional(),
         limit: z.number().int().min(1).max(100).default(50),
         offset: z.number().int().min(0).default(0),
       })
     )
-    .query(async ({ input, ctx }) => {
-      const conditions: string[] = ['wc.website_id = $1'];
-      const params: any[] = [input.websiteId];
-      let paramIndex = 2;
+    .query(async ({ input }) => {
+      const items = await collectionSchemaService.getItems(input.websiteId, input.collectionType, {
+        publishedOnly: input.publishedOnly,
+        limit: input.limit,
+        offset: input.offset,
+        search: input.search,
+      })
 
-      if (input.collectionType) {
-        conditions.push(`wc.collection_type = $${paramIndex++}`);
-        params.push(input.collectionType);
-      }
+      // Get collection for count
+      const collection = await websiteCollectionRepository.findByType(
+        input.websiteId,
+        input.collectionType
+      )
 
-      if (input.published !== undefined) {
-        conditions.push(`ci.published = $${paramIndex++}`);
-        params.push(input.published);
-      }
-
-      if (input.featured !== undefined) {
-        conditions.push(`ci.featured = $${paramIndex++}`);
-        params.push(input.featured);
-      }
-
-      const whereClause = conditions.join(' AND ');
-
-      // Get total count
-      const countResult = await ctx.db.query(
-        `SELECT COUNT(*) as count
-         FROM collection_items ci
-         JOIN website_collections wc ON ci.website_collection_id = wc.id
-         WHERE ${whereClause}`,
-        params
-      );
-
-      const total = parseInt(countResult.rows[0].count);
-
-      // Get items
-      const itemsResult = await ctx.db.query(
-        `SELECT ci.*, wc.collection_type, wc.website_id
-         FROM collection_items ci
-         JOIN website_collections wc ON ci.website_collection_id = wc.id
-         WHERE ${whereClause}
-         ORDER BY ci.created_at DESC
-         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-        [...params, input.limit, input.offset]
-      );
+      const total = collection
+        ? await collectionItemRepository.countByCollection(collection.id, input.publishedOnly)
+        : 0
 
       return {
-        items: itemsResult.rows,
+        items,
         total,
         limit: input.limit,
         offset: input.offset,
-      };
+      }
     }),
+
+  /**
+   * Batch create collection items
+   */
+  batchCreate: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        collectionType: z.string(),
+        items: z.array(
+          z.object({
+            slug: z.string(),
+            data: z.record(z.unknown()),
+          })
+        ),
+        published: z.boolean().default(false),
+        createdByAgentId: z.string().uuid().optional(),
+        createdByUserId: z.string().uuid().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const result = await collectionSchemaService.batchCreateItems(
+        input.websiteId,
+        input.collectionType,
+        input.items,
+        {
+          published: input.published,
+          userId: input.createdByUserId,
+          agentId: input.createdByAgentId,
+        }
+      )
+
+      return {
+        created: result.created.length,
+        errors: result.errors,
+      }
+    }),
+
+  // =============================================================================
+  // VERSION HISTORY
+  // =============================================================================
 
   /**
    * Get version history for an item
@@ -579,14 +544,102 @@ export const collectionRouter = router({
         itemId: z.string().uuid(),
       })
     )
-    .query(async ({ input, ctx }) => {
-      const result = await ctx.db.query(
-        `SELECT * FROM collection_item_versions
-         WHERE item_id = $1
-         ORDER BY version_number DESC`,
-        [input.itemId]
-      );
-
-      return result.rows;
+    .query(async ({ input }) => {
+      return collectionItemVersionRepository.findByItem(input.itemId)
     }),
-});
+
+  /**
+   * Get a specific version
+   */
+  getVersion: publicProcedure
+    .input(
+      z.object({
+        itemId: z.string().uuid(),
+        versionNumber: z.number().int().min(1),
+      })
+    )
+    .query(async ({ input }) => {
+      const version = await collectionItemVersionRepository.getVersion(
+        input.itemId,
+        input.versionNumber
+      )
+
+      if (!version) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Version ${input.versionNumber} not found`,
+        })
+      }
+
+      return version
+    }),
+
+  /**
+   * Restore item to a specific version
+   */
+  restoreVersion: publicProcedure
+    .input(
+      z.object({
+        itemId: z.string().uuid(),
+        versionNumber: z.number().int().min(1),
+        restoredByAgentId: z.string().uuid().optional(),
+        restoredByUserId: z.string().uuid().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // Get the version to restore
+      const version = await collectionItemVersionRepository.getVersion(
+        input.itemId,
+        input.versionNumber
+      )
+
+      if (!version) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Version ${input.versionNumber} not found`,
+        })
+      }
+
+      // Update item with version data
+      const updatedItem = await collectionItemRepository.updateData(
+        input.itemId,
+        version.data,
+        input.restoredByUserId,
+        input.restoredByAgentId
+      )
+
+      // Create new version for the restore
+      await collectionItemVersionRepository.createVersion(input.itemId, version.data, {
+        userId: input.restoredByUserId,
+        agentId: input.restoredByAgentId,
+        changeSummary: `Restored from version ${input.versionNumber}`,
+      })
+
+      return updatedItem
+    }),
+
+  // =============================================================================
+  // VALIDATION
+  // =============================================================================
+
+  /**
+   * Validate data against a collection schema without creating
+   */
+  validate: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        collectionType: z.string(),
+        data: z.record(z.unknown()),
+      })
+    )
+    .query(async ({ input }) => {
+      const result = await collectionSchemaService.validateData(
+        input.websiteId,
+        input.collectionType,
+        input.data
+      )
+
+      return result
+    }),
+})

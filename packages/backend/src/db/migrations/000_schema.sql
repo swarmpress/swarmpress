@@ -788,6 +788,171 @@ COMMENT ON TABLE website_tools IS 'Tool assignments to websites (NULL website_id
 COMMENT ON TABLE tool_secrets IS 'Per-website encrypted secrets for tools (API keys, tokens)';
 
 -- =============================================================================
+-- WEBSITE COLLECTIONS SYSTEM (Database-driven schemas)
+-- =============================================================================
+
+-- Collection Definitions (Website-Level)
+-- Stores collection type configurations per website, including JSON Schema
+CREATE TABLE website_collections (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  website_id UUID NOT NULL REFERENCES websites(id) ON DELETE CASCADE,
+  collection_type TEXT NOT NULL, -- e.g., 'restaurants', 'hikes', 'events', 'cinqueterre_villages'
+
+  -- Schema Definition (JSON Schema format)
+  json_schema JSONB NOT NULL,    -- The complete JSON Schema for this collection type
+  create_schema JSONB,           -- Optional: Schema for creating items (subset of fields)
+
+  -- Display Configuration
+  display_name TEXT NOT NULL,    -- Human-readable name: "Restaurants"
+  singular_name TEXT,            -- Singular form: "Restaurant"
+  description TEXT,              -- Description of the collection
+  icon TEXT,                     -- Icon identifier (emoji or icon name)
+  color TEXT,                    -- Color for UI (hex code or name)
+
+  -- Field Metadata (for UI generation and search)
+  field_metadata JSONB DEFAULT '{}'::jsonb, -- Field display hints, search config, etc.
+  title_field TEXT DEFAULT 'name',          -- Which field to use as title
+  summary_field TEXT,                       -- Which field to use as summary
+  image_field TEXT,                         -- Which field contains main image
+  date_field TEXT,                          -- Which field contains date (for sorting)
+
+  -- Feature Flags
+  enable_search BOOLEAN DEFAULT TRUE,
+  enable_filtering BOOLEAN DEFAULT TRUE,
+  enable_versioning BOOLEAN DEFAULT TRUE,
+  enable_github_sync BOOLEAN DEFAULT TRUE,
+
+  -- Custom fields added by this website (extends base schema)
+  custom_fields JSONB DEFAULT '[]'::jsonb,
+  field_overrides JSONB DEFAULT '{}'::jsonb,
+
+  -- Status
+  enabled BOOLEAN DEFAULT TRUE,
+
+  -- Sync settings
+  github_path TEXT, -- Path in GitHub repo: '.content/restaurants/'
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE(website_id, collection_type)
+);
+
+CREATE INDEX idx_website_collections_website ON website_collections(website_id);
+CREATE INDEX idx_website_collections_type ON website_collections(collection_type);
+CREATE INDEX idx_website_collections_enabled ON website_collections(enabled) WHERE enabled = TRUE;
+
+-- Collection Items (Actual Content)
+CREATE TABLE collection_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  website_collection_id UUID NOT NULL REFERENCES website_collections(id) ON DELETE CASCADE,
+
+  -- Content
+  slug TEXT NOT NULL,
+  data JSONB NOT NULL, -- The actual content following collection schema
+
+  -- Metadata
+  published BOOLEAN DEFAULT FALSE,
+  published_at TIMESTAMPTZ,
+  featured BOOLEAN DEFAULT FALSE,
+
+  -- GitHub sync
+  github_path TEXT, -- Path in GitHub repo
+  github_sha TEXT, -- Git commit SHA
+  synced_at TIMESTAMPTZ,
+
+  -- Authorship
+  created_by_agent_id UUID REFERENCES agents(id),
+  created_by_user_id UUID,
+  updated_by_agent_id UUID REFERENCES agents(id),
+  updated_by_user_id UUID,
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE(website_collection_id, slug)
+);
+
+CREATE INDEX idx_collection_items_collection ON collection_items(website_collection_id);
+CREATE INDEX idx_collection_items_slug ON collection_items(slug);
+CREATE INDEX idx_collection_items_published ON collection_items(published) WHERE published = TRUE;
+CREATE INDEX idx_collection_items_data ON collection_items USING gin(data);
+CREATE INDEX idx_collection_items_github ON collection_items(github_path);
+
+-- Full-text search on collection item data
+CREATE INDEX idx_collection_items_search ON collection_items
+  USING gin(to_tsvector('english', data::text));
+
+-- Collection Item Versions (History)
+CREATE TABLE collection_item_versions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  item_id UUID NOT NULL REFERENCES collection_items(id) ON DELETE CASCADE,
+  version_number INTEGER NOT NULL,
+
+  -- Snapshot
+  data JSONB NOT NULL,
+
+  -- Version metadata
+  created_by_agent_id UUID REFERENCES agents(id),
+  created_by_user_id UUID,
+  change_summary TEXT,
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE(item_id, version_number)
+);
+
+CREATE INDEX idx_collection_versions_item ON collection_item_versions(item_id);
+
+-- Collection Research Configuration
+-- Stores research settings per collection (search prompts, extraction hints, etc.)
+CREATE TABLE collection_research_config (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  collection_id UUID NOT NULL REFERENCES website_collections(id) ON DELETE CASCADE,
+
+  -- Status
+  enabled BOOLEAN DEFAULT true,
+
+  -- Search Configuration
+  search_prompt TEXT,                    -- Custom prompt for enhancing web search queries
+  default_queries JSONB DEFAULT '[]',    -- Pre-built search queries for this collection
+  search_domains TEXT[],                 -- Whitelist domains for search results
+
+  -- Extraction Configuration
+  extraction_prompt TEXT,                -- Custom prompt for data extraction from search results
+  extraction_hints JSONB,                -- Field-specific extraction guidance
+
+  -- Validation Configuration
+  validation_rules JSONB,                -- Additional validation beyond JSON Schema
+  require_source_urls BOOLEAN DEFAULT true,
+  min_confidence_score REAL DEFAULT 0.7,
+
+  -- Storage Configuration
+  auto_publish BOOLEAN DEFAULT false,
+  dedup_strategy TEXT DEFAULT 'name',    -- 'name', 'location', 'composite'
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE(collection_id)
+);
+
+CREATE INDEX idx_collection_research_enabled ON collection_research_config(collection_id) WHERE enabled = true;
+
+-- Triggers for updated_at
+CREATE TRIGGER update_website_collections_updated_at BEFORE UPDATE ON website_collections FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_collection_items_updated_at BEFORE UPDATE ON collection_items FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_collection_research_config_updated_at BEFORE UPDATE ON collection_research_config FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON TABLE website_collections IS 'Collection type definitions per website with JSON Schema';
+COMMENT ON TABLE collection_items IS 'Collection items (records) following website collection schemas';
+COMMENT ON TABLE collection_item_versions IS 'Version history for collection items';
+COMMENT ON TABLE collection_research_config IS 'Research configuration per collection (search prompts, extraction hints)';
+
+-- =============================================================================
 -- COMMENTS (Documentation)
 -- =============================================================================
 

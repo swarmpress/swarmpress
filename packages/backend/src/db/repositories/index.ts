@@ -55,3 +55,16 @@ export { editorialTaskRepository } from './editorial-task-repository'
 export { toolConfigRepository } from './tool-config-repository'
 export { websiteToolRepository } from './website-tool-repository'
 export { toolSecretRepository } from './tool-secret-repository'
+
+// Website Collections System repositories
+export * from './collection-repository'
+export * from './collection-research-repository'
+
+// Website Collections System repository instances
+export {
+  websiteCollectionRepository,
+  collectionItemRepository,
+  collectionItemVersionRepository,
+} from './collection-repository'
+
+export { collectionResearchRepository } from './collection-research-repository'
