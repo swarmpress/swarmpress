@@ -1,6 +1,24 @@
 import type { APIRoute } from 'astro'
 import { trpc } from '../../lib/trpc'
 
+export const GET: APIRoute = async () => {
+  try {
+    const result = await trpc.tools.list.query({})
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  } catch (error) {
+    console.error('Error fetching tools:', error)
+    return new Response(
+      JSON.stringify({
+        message: error instanceof Error ? error.message : 'Failed to fetch tools',
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+}
+
 export const POST: APIRoute = async ({ request }) => {
   try {
     const body = await request.json()

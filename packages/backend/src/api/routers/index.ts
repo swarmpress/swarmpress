@@ -48,6 +48,9 @@ import { workflowRouter } from './workflow.router'
 // External Tool System
 import { toolsRouter } from './tools.router'
 
+// Content Generation
+import { contentGenerationRouter } from './content-generation.router'
+
 /**
  * Main application router
  * Combines all feature routers
@@ -86,6 +89,8 @@ export const appRouter = router({
   workflow: workflowRouter,
   // External Tool System
   tools: toolsRouter,
+  // Content Generation
+  contentGeneration: contentGenerationRouter,
 })
 
 /**

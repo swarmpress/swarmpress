@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro'
 import WebsiteForm from '../../components/WebsiteForm'
+import ContentGenerationPanel from '../../components/ContentGenerationPanel'
 import { trpc, handleTRPCError } from '../../lib/trpc'
 
 const { id } = Astro.params
@@ -24,13 +25,85 @@ if (!website) {
 }
 ---
 
-<Layout title="Edit Website">
-  <div>
+<Layout title={`${website.title || website.domain} - Website`}>
+  <div class="space-y-8">
     <div class="mb-8">
-      <h1 class="text-3xl font-bold">Edit Website</h1>
-      <p class="text-muted-foreground mt-2">Update website information</p>
+      <h1 class="text-3xl font-bold">{website.title || website.domain}</h1>
+      <p class="text-muted-foreground mt-2">Manage website settings and content generation</p>
     </div>
 
-    <WebsiteForm website={website} mode="edit" client:load />
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <!-- Content Generation Panel - Primary Action -->
+      <div class="lg:col-span-2">
+        <ContentGenerationPanel
+          websiteId={website.id}
+          websiteName={website.title || website.domain}
+          client:load
+        />
+      </div>
+
+      <!-- Website Info / Quick Actions -->
+      <div class="space-y-4">
+        <div class="p-4 rounded-lg border bg-card">
+          <h3 class="font-semibold mb-3">Website Info</h3>
+          <dl class="space-y-2 text-sm">
+            <div>
+              <dt class="text-muted-foreground">Domain</dt>
+              <dd class="font-medium">{website.domain}</dd>
+            </div>
+            {website.description && (
+              <div>
+                <dt class="text-muted-foreground">Description</dt>
+                <dd>{website.description}</dd>
+              </div>
+            )}
+            <div>
+              <dt class="text-muted-foreground">Created</dt>
+              <dd>{new Date(website.created_at).toLocaleDateString()}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div class="p-4 rounded-lg border bg-card">
+          <h3 class="font-semibold mb-3">Quick Links</h3>
+          <div class="space-y-2">
+            <a
+              href={`/sitemap?website=${id}`}
+              class="flex items-center gap-2 text-sm text-primary hover:underline"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              View Sitemap
+            </a>
+            <a
+              href={`/editorial/kanban?website=${id}`}
+              class="flex items-center gap-2 text-sm text-primary hover:underline"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+              Editorial Kanban
+            </a>
+            <a
+              href={`/tools`}
+              class="flex items-center gap-2 text-sm text-primary hover:underline"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+              Manage Tools
+            </a>
+            <a
+              href={`/content?website=${id}`}
+              class="flex items-center gap-2 text-sm text-primary hover:underline"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+              View Content
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Website Settings Form -->
+    <div class="pt-8 border-t">
+      <h2 class="text-xl font-semibold mb-4">Website Settings</h2>
+      <WebsiteForm website={website} mode="edit" client:load />
+    </div>
   </div>
 </Layout>
