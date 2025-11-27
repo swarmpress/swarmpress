@@ -66,11 +66,32 @@ CREATE TABLE agents (
   persona TEXT NOT NULL,
   virtual_email VARCHAR(255) NOT NULL UNIQUE,
   description TEXT,
+
+  -- Visual Identity
+  avatar_url TEXT,                    -- Small profile picture (thumbnail)
+  profile_image_url TEXT,             -- Large profile/hero image
+
+  -- Personality & Style (for content-creating agents)
+  hobbies TEXT[],                     -- List of interests/hobbies
+  writing_style JSONB,                -- Writing preferences: tone, vocabulary, sentence_length, etc.
+
+  -- Typed Capabilities (structured, not just strings)
   capabilities JSONB NOT NULL DEFAULT '[]'::jsonb,
+
+  -- Agent Configuration
+  model_config JSONB,                 -- LLM model preferences: model, temperature, max_tokens
+
   status VARCHAR(50) NOT NULL DEFAULT 'active',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+COMMENT ON COLUMN agents.avatar_url IS 'Small thumbnail image for agent (e.g., 100x100)';
+COMMENT ON COLUMN agents.profile_image_url IS 'Large profile/hero image for agent detail view';
+COMMENT ON COLUMN agents.hobbies IS 'Array of interests that shape the agent personality';
+COMMENT ON COLUMN agents.writing_style IS 'JSON: {tone, vocabulary_level, sentence_length, formality, humor, emoji_usage}';
+COMMENT ON COLUMN agents.capabilities IS 'Array of typed capabilities with metadata';
+COMMENT ON COLUMN agents.model_config IS 'JSON: {model, temperature, max_tokens, top_p}';
 
 CREATE INDEX idx_agents_department_id ON agents(department_id);
 CREATE INDEX idx_agents_role_id ON agents(role_id);

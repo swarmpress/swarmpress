@@ -26,7 +26,8 @@ export const roleRouter = router({
       } else if (input.companyId) {
         roles = await roleRepository.findByCompany(input.companyId)
       } else {
-        roles = await roleRepository.findAll()
+        // Include department info for list view
+        roles = await roleRepository.findAllWithDepartment()
       }
 
       return {

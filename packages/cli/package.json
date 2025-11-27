@@ -7,7 +7,7 @@
     "swarmpress": "./dist/index.js"
   },
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "tsc --watch",
     "build": "tsc",
     "cli": "tsx src/index.ts",
     "clean": "rm -rf dist",

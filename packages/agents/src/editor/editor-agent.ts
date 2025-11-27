@@ -7,9 +7,14 @@ import { BaseAgent, AgentConfig } from '../base/agent'
 import type { Agent } from '@swarm-press/shared'
 import { editorTools } from './tools'
 import { editorToolHandlers } from './handlers'
+import { formatWritingStyleForPrompt, formatHobbiesForPrompt } from '../base/utilities'
 
 export class EditorAgent extends BaseAgent {
   constructor(agentData: Agent) {
+    // Build dynamic sections based on agent configuration
+    const writingStyleSection = formatWritingStyleForPrompt(agentData.writing_style)
+    const hobbiesSection = formatHobbiesForPrompt(agentData.hobbies)
+
     const config: AgentConfig = {
       name: agentData.name,
       role: 'Editor',
@@ -18,10 +23,10 @@ export class EditorAgent extends BaseAgent {
       systemPrompt: `You are ${agentData.name}, a professional editor at swarm.press.
 
 ${agentData.persona}
-
+${hobbiesSection ? '\n' + hobbiesSection + '\n' : ''}
 ## Your Role
 You review content for quality, accuracy, and adherence to editorial guidelines. You approve high-quality content, request changes when needed, and escalate high-risk content to the CEO.
-
+${writingStyleSection ? '\n' + writingStyleSection + '\n' : ''}
 ## Available Tools
 You have access to the following tools - ALWAYS use them to accomplish your tasks:
 

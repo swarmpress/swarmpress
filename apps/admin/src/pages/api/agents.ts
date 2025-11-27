@@ -4,7 +4,20 @@ import { trpc } from '../../lib/trpc'
 export const POST: APIRoute = async ({ request }) => {
   try {
     const body = await request.json()
-    const { name, roleId, departmentId, persona, virtualEmail, capabilities } = body
+    const {
+      name,
+      roleId,
+      departmentId,
+      persona,
+      virtualEmail,
+      description,
+      avatarUrl,
+      profileImageUrl,
+      hobbies,
+      writingStyle,
+      capabilities,
+      modelConfig,
+    } = body
 
     if (!name || !roleId || !departmentId || !persona || !virtualEmail) {
       return new Response(
@@ -19,7 +32,13 @@ export const POST: APIRoute = async ({ request }) => {
       departmentId,
       persona,
       virtualEmail,
+      description,
+      avatarUrl,
+      profileImageUrl,
+      hobbies,
+      writingStyle,
       capabilities: capabilities || [],
+      modelConfig,
     })
 
     return new Response(JSON.stringify(agent), {

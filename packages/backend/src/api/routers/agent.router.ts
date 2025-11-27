@@ -8,6 +8,39 @@ import { router, publicProcedure, ceoProcedure } from '../trpc'
 import { agentRepository } from '../../db/repositories'
 import { TRPCError } from '@trpc/server'
 
+// Writing style schema for validation
+const WritingStyleInputSchema = z.object({
+  tone: z.enum([
+    'professional', 'casual', 'friendly', 'authoritative',
+    'conversational', 'enthusiastic', 'formal', 'playful'
+  ]).optional(),
+  vocabulary_level: z.enum(['simple', 'moderate', 'advanced', 'technical']).optional(),
+  sentence_length: z.enum(['short', 'medium', 'long', 'varied']).optional(),
+  formality: z.enum(['very_informal', 'informal', 'neutral', 'formal', 'very_formal']).optional(),
+  humor: z.enum(['none', 'subtle', 'moderate', 'frequent']).optional(),
+  emoji_usage: z.enum(['never', 'rarely', 'sometimes', 'often']).optional(),
+  perspective: z.enum(['first_person', 'second_person', 'third_person']).optional(),
+  descriptive_style: z.enum(['factual', 'evocative', 'poetic', 'practical']).optional(),
+}).optional()
+
+// Model config schema
+const ModelConfigInputSchema = z.object({
+  model: z.string().optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  max_tokens: z.number().positive().optional(),
+  top_p: z.number().min(0).max(1).optional(),
+}).optional()
+
+// Capability schema (supports both string and typed object)
+const CapabilityInputSchema = z.union([
+  z.string(),
+  z.object({
+    name: z.string(),
+    enabled: z.boolean().optional(),
+    config: z.record(z.any()).optional(),
+  })
+])
+
 export const agentRouter = router({
   /**
    * Get all agents, optionally filtered by role or department
@@ -82,7 +115,17 @@ export const agentRouter = router({
         departmentId: z.string().uuid(),
         persona: z.string(),
         virtualEmail: z.string().email(),
-        capabilities: z.array(z.string()).optional(),
+        description: z.string().optional(),
+        // Visual identity
+        avatarUrl: z.string().url().optional(),
+        profileImageUrl: z.string().url().optional(),
+        // Personality & style
+        hobbies: z.array(z.string()).optional(),
+        writingStyle: WritingStyleInputSchema,
+        // Capabilities
+        capabilities: z.array(CapabilityInputSchema).optional(),
+        // Model config
+        modelConfig: ModelConfigInputSchema,
       })
     )
     .mutation(async ({ input }) => {
@@ -101,7 +144,13 @@ export const agentRouter = router({
         department_id: input.departmentId,
         persona: input.persona,
         virtual_email: input.virtualEmail,
+        description: input.description,
+        avatar_url: input.avatarUrl,
+        profile_image_url: input.profileImageUrl,
+        hobbies: input.hobbies,
+        writing_style: input.writingStyle,
         capabilities: input.capabilities || [],
+        model_config: input.modelConfig,
       })
 
       console.log(`[AgentRouter] Agent created: ${agent.id} - ${agent.name}`)
@@ -121,11 +170,33 @@ export const agentRouter = router({
         departmentId: z.string().uuid().optional(),
         persona: z.string().optional(),
         virtualEmail: z.string().email().optional(),
-        capabilities: z.array(z.string()).optional(),
+        description: z.string().optional(),
+        // Visual identity
+        avatarUrl: z.string().url().optional().nullable(),
+        profileImageUrl: z.string().url().optional().nullable(),
+        // Personality & style
+        hobbies: z.array(z.string()).optional().nullable(),
+        writingStyle: WritingStyleInputSchema.nullable(),
+        // Capabilities
+        capabilities: z.array(CapabilityInputSchema).optional(),
+        // Model config
+        modelConfig: ModelConfigInputSchema.nullable(),
+        // Status
+        status: z.enum(['active', 'inactive', 'suspended']).optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { id, roleId, departmentId, virtualEmail, ...updates } = input
+      const {
+        id,
+        roleId,
+        departmentId,
+        virtualEmail,
+        avatarUrl,
+        profileImageUrl,
+        writingStyle,
+        modelConfig,
+        ...updates
+      } = input
 
       const existing = await agentRepository.findById(id)
       if (!existing) {
@@ -146,11 +217,15 @@ export const agentRouter = router({
         }
       }
 
-      const updateData = {
+      const updateData: Record<string, any> = {
         ...updates,
-        ...(roleId && { role_id: roleId }),
-        ...(departmentId && { department_id: departmentId }),
-        ...(virtualEmail && { virtual_email: virtualEmail }),
+        ...(roleId !== undefined && { role_id: roleId }),
+        ...(departmentId !== undefined && { department_id: departmentId }),
+        ...(virtualEmail !== undefined && { virtual_email: virtualEmail }),
+        ...(avatarUrl !== undefined && { avatar_url: avatarUrl }),
+        ...(profileImageUrl !== undefined && { profile_image_url: profileImageUrl }),
+        ...(writingStyle !== undefined && { writing_style: writingStyle }),
+        ...(modelConfig !== undefined && { model_config: modelConfig }),
       }
 
       const agent = await agentRepository.update(id, updateData)

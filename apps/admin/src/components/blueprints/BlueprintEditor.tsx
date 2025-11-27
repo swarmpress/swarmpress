@@ -86,13 +86,37 @@ export default function BlueprintEditor({ blueprintId }: BlueprintEditorProps) {
   async function loadBlueprint(id: string) {
     setIsLoading(true)
     try {
+      // tRPC with SuperJSON requires input wrapped in {json: {...}}
       const response = await fetch(
-        `/api/trpc/blueprint.getById?input=${encodeURIComponent(JSON.stringify({ id }))}`
+        `/api/trpc/blueprint.getById?input=${encodeURIComponent(JSON.stringify({ json: { id } }))}`
       )
       const data = await response.json()
-      const loadedBlueprint = data.result?.data
+      // SuperJSON wraps response in result.data.json
+      const rawBlueprint = data.result?.data?.json
 
-      if (loadedBlueprint) {
+      if (rawBlueprint) {
+        // Database stores schema as JSONB, extract components and other fields from it
+        const loadedBlueprint: Blueprint = {
+          id: rawBlueprint.id,
+          page_type: rawBlueprint.schema?.page_type || rawBlueprint.name?.toLowerCase().replace(/\s+/g, '_') || '',
+          name: rawBlueprint.name,
+          description: rawBlueprint.description,
+          version: rawBlueprint.schema?.version || '1.0',
+          layout: rawBlueprint.schema?.layout || 'default',
+          components: (rawBlueprint.schema?.components || []).map((c: any, i: number) => ({
+            id: c.id || `component-${i}`,
+            type: c.type,
+            variant: c.variant,
+            order: c.order ?? i,
+            required: c.required,
+            required_fields: c.required_fields,
+            optional_fields: c.optional_fields,
+            props: c.props,
+            ai_hints: c.ai_hints,
+          })),
+          global_linking_rules: rawBlueprint.schema?.global_linking_rules || {},
+          seo_template: rawBlueprint.schema?.seo_template || {},
+        }
         setBlueprint(loadedBlueprint)
       }
     } catch (error) {

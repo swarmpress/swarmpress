@@ -25,5 +25,8 @@ export * from './state-machines'
 // Logging and Error Tracking
 export * from './logging'
 
+// Metrics
+export * from './metrics'
+
 // Utilities
 // export * from './utils'

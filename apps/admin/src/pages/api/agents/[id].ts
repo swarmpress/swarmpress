@@ -13,7 +13,21 @@ export const PUT: APIRoute = async ({ params, request }) => {
     }
 
     const body = await request.json()
-    const { name, roleId, departmentId, persona, virtualEmail, capabilities } = body
+    const {
+      name,
+      roleId,
+      departmentId,
+      persona,
+      virtualEmail,
+      description,
+      avatarUrl,
+      profileImageUrl,
+      hobbies,
+      writingStyle,
+      capabilities,
+      modelConfig,
+      status,
+    } = body
 
     const agent = await trpc.agent.update.mutate({
       id,
@@ -22,7 +36,14 @@ export const PUT: APIRoute = async ({ params, request }) => {
       departmentId,
       persona,
       virtualEmail,
+      description,
+      avatarUrl,
+      profileImageUrl,
+      hobbies,
+      writingStyle,
       capabilities,
+      modelConfig,
+      status,
     })
 
     return new Response(JSON.stringify(agent), {

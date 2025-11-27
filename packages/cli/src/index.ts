@@ -68,14 +68,5 @@ program
   .option('-f, --filter <pattern>', 'Filter events by type pattern')
   .action(eventsCommands.tail)
 
-// Error handling
-program.exitOverride()
-
-try {
-  program.parse()
-} catch (error) {
-  if (error instanceof Error) {
-    console.error(chalk.red('Error:'), error.message)
-  }
-  process.exit(1)
-}
+// Parse command line arguments
+program.parse()

@@ -6,7 +6,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "dev": "tsx watch src/worker.ts",
+    "dev": "tsx watch src/temporal/worker.ts",
     "build": "tsc",
     "start": "node dist/worker.js",
     "clean": "rm -rf dist",

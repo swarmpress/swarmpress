@@ -10,6 +10,10 @@
       "cache": false,
       "persistent": true
     },
+    "@swarm-press/cli#dev": {
+      "cache": false,
+      "persistent": false
+    },
     "lint": {
       "dependsOn": ["^build"]
     },

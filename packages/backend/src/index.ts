@@ -49,3 +49,14 @@ export * from './state-machine'
 
 // Export API router types for tRPC client
 export type { AppRouter } from './api/routers'
+
+// Export agent configuration service
+export {
+  loadAgentConfig,
+  getSystemPromptForCapability,
+  invalidateAgentConfig,
+  invalidateAllConfigs,
+  agentConfigService,
+  DEFAULT_MODEL_CONFIGS,
+  type AgentRuntimeConfig,
+} from './services/agent-config.service'

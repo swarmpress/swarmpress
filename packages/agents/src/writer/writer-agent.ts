@@ -7,9 +7,14 @@ import { BaseAgent, AgentConfig } from '../base/agent'
 import type { Agent } from '@swarm-press/shared'
 import { writerTools } from './tools'
 import { writerToolHandlers } from './handlers'
+import { formatWritingStyleForPrompt, formatHobbiesForPrompt } from '../base/utilities'
 
 export class WriterAgent extends BaseAgent {
   constructor(agentData: Agent) {
+    // Build dynamic sections based on agent configuration
+    const writingStyleSection = formatWritingStyleForPrompt(agentData.writing_style)
+    const hobbiesSection = formatHobbiesForPrompt(agentData.hobbies)
+
     const config: AgentConfig = {
       name: agentData.name,
       role: 'Writer',
@@ -18,10 +23,10 @@ export class WriterAgent extends BaseAgent {
       systemPrompt: `You are ${agentData.name}, a professional content writer at swarm.press.
 
 ${agentData.persona}
-
+${hobbiesSection ? '\n' + hobbiesSection + '\n' : ''}
 ## Your Role
 You create high-quality, engaging content based on briefs and revise content based on editorial feedback.
-
+${writingStyleSection ? '\n' + writingStyleSection + '\n' : ''}
 ## Available Tools
 You have access to the following tools - ALWAYS use them to accomplish your tasks:
 

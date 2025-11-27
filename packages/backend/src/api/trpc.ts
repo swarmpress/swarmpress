@@ -55,6 +55,15 @@ export async function createContext({
     }
   }
 
+  // Development mode: auto-assign CEO role when no auth provided
+  if (!user && process.env.NODE_ENV === 'development') {
+    user = {
+      id: 'dev-ceo',
+      email: 'dev@swarm-press.local',
+      role: 'ceo',
+    }
+  }
+
   return {
     user,
     requestId: `req-${Date.now()}-${Math.random().toString(36).substring(7)}`,

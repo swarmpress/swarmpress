@@ -41,6 +41,21 @@ export class RoleRepository extends BaseRepository<Role> {
     const result = await db.query(query, [companyId])
     return result.rows
   }
+
+  /**
+   * Find all roles with department info included
+   */
+  async findAllWithDepartment(): Promise<(Role & { department: { id: string; name: string } | null })[]> {
+    const query = `
+      SELECT r.*,
+             json_build_object('id', d.id, 'name', d.name) as department
+      FROM roles r
+      LEFT JOIN departments d ON r.department_id = d.id
+      ORDER BY r.created_at DESC
+    `
+    const result = await db.query(query, [])
+    return result.rows
+  }
 }
 
 export const roleRepository = new RoleRepository()

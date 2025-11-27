@@ -1,6 +1,24 @@
 import type { APIRoute } from 'astro'
 import { trpc } from '../../lib/trpc'
 
+export const GET: APIRoute = async () => {
+  try {
+    const result = await trpc.department.list.query({})
+    return new Response(JSON.stringify({ items: result.items }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  } catch (error) {
+    console.error('Error fetching departments:', error)
+    return new Response(
+      JSON.stringify({
+        message: error instanceof Error ? error.message : 'Failed to fetch departments',
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+}
+
 export const POST: APIRoute = async ({ request }) => {
   try {
     const body = await request.json()

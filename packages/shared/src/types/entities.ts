@@ -74,6 +74,85 @@ export type Role = z.infer<typeof RoleSchema>
 // Agent
 // ============================================================================
 
+/**
+ * Typed capabilities that map to actual agent tools
+ * Each capability has a name and optional configuration
+ */
+export const AgentCapabilitySchema = z.object({
+  name: z.enum([
+    // Content Creation
+    'content_research',
+    'content_writing',
+    'content_revision',
+    'content_review',
+    // SEO & Analytics
+    'seo_optimization',
+    'keyword_research',
+    'analytics_analysis',
+    // Media & Design
+    'image_generation',
+    'image_editing',
+    'gallery_curation',
+    // Editorial
+    'editorial_review',
+    'fact_checking',
+    'style_enforcement',
+    // Engineering
+    'site_build',
+    'site_deploy',
+    'code_generation',
+    // Governance
+    'escalation_handling',
+    'ticket_management',
+    'ceo_briefing',
+    // Distribution
+    'social_posting',
+    'newsletter_creation',
+  ]),
+  enabled: z.boolean().default(true),
+  config: z.record(z.any()).optional(),
+})
+
+export type AgentCapability = z.infer<typeof AgentCapabilitySchema>
+
+/**
+ * Writing style configuration for content-creating agents
+ */
+export const WritingStyleSchema = z.object({
+  tone: z.enum([
+    'professional',
+    'casual',
+    'friendly',
+    'authoritative',
+    'conversational',
+    'enthusiastic',
+    'formal',
+    'playful',
+  ]).optional(),
+  vocabulary_level: z.enum(['simple', 'moderate', 'advanced', 'technical']).optional(),
+  sentence_length: z.enum(['short', 'medium', 'long', 'varied']).optional(),
+  formality: z.enum(['very_informal', 'informal', 'neutral', 'formal', 'very_formal']).optional(),
+  humor: z.enum(['none', 'subtle', 'moderate', 'frequent']).optional(),
+  emoji_usage: z.enum(['never', 'rarely', 'sometimes', 'often']).optional(),
+  perspective: z.enum(['first_person', 'second_person', 'third_person']).optional(),
+  // For travel content
+  descriptive_style: z.enum(['factual', 'evocative', 'poetic', 'practical']).optional(),
+})
+
+export type WritingStyle = z.infer<typeof WritingStyleSchema>
+
+/**
+ * Model configuration for the agent's LLM
+ */
+export const ModelConfigSchema = z.object({
+  model: z.string().optional(), // e.g., 'claude-3-5-sonnet-20241022'
+  temperature: z.number().min(0).max(2).optional(),
+  max_tokens: z.number().positive().optional(),
+  top_p: z.number().min(0).max(1).optional(),
+})
+
+export type ModelConfig = z.infer<typeof ModelConfigSchema>
+
 export const AgentSchema = z
   .object({
     id: z.string().uuid(),
@@ -83,7 +162,26 @@ export const AgentSchema = z
     persona: z.string(),
     virtual_email: z.string().email(),
     description: z.string().optional(),
-    capabilities: z.array(z.string()),
+
+    // Visual Identity
+    avatar_url: z.string().url().optional(),
+    profile_image_url: z.string().url().optional(),
+
+    // Personality
+    hobbies: z.array(z.string()).optional(),
+    writing_style: WritingStyleSchema.optional(),
+
+    // Capabilities (typed)
+    capabilities: z.array(z.union([
+      z.string(), // Backwards compatible: simple string
+      AgentCapabilitySchema, // New: typed capability object
+    ])),
+
+    // Model config
+    model_config: ModelConfigSchema.optional(),
+
+    // Status
+    status: z.enum(['active', 'inactive', 'suspended']).optional(),
   })
   .merge(TimestampsSchema)
 

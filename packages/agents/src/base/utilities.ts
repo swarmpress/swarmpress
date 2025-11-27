@@ -9,7 +9,146 @@ import {
   questionTicketRepository,
 } from '@swarm-press/backend'
 import { events } from '@swarm-press/event-bus'
-import type { ContentItem, Task, QuestionTicket } from '@swarm-press/shared'
+import type { ContentItem, Task, QuestionTicket, WritingStyle } from '@swarm-press/shared'
+
+// ============================================================================
+// Writing Style Utilities
+// ============================================================================
+
+/**
+ * Human-readable descriptions for writing style settings
+ */
+const STYLE_DESCRIPTIONS = {
+  tone: {
+    professional: 'Maintain a polished, business-appropriate voice with expertise and credibility',
+    casual: 'Write in a relaxed, everyday conversational manner',
+    friendly: 'Be warm, approachable, and engaging like talking to a friend',
+    authoritative: 'Project confidence and deep expertise on the subject',
+    conversational: 'Write as if having a direct dialogue with the reader',
+    enthusiastic: 'Convey excitement and passion about the topic',
+    formal: 'Use proper language structures and maintain professional distance',
+    playful: 'Incorporate wit, creativity, and a light-hearted approach',
+  },
+  vocabulary_level: {
+    simple: 'Use basic, everyday words accessible to all readers',
+    moderate: 'Balance common language with some specialized terms',
+    advanced: 'Include sophisticated vocabulary and nuanced language',
+    technical: 'Use industry-specific terminology and jargon where appropriate',
+  },
+  sentence_length: {
+    short: 'Keep sentences concise and punchy (under 15 words)',
+    medium: 'Use moderate sentence lengths (15-25 words)',
+    long: 'Craft detailed, flowing sentences with multiple clauses',
+    varied: 'Mix short and long sentences for rhythm and engagement',
+  },
+  formality: {
+    very_informal: 'Use slang, contractions, and very casual expressions',
+    informal: 'Write casually with contractions and relaxed grammar',
+    neutral: 'Balance between formal and informal registers',
+    formal: 'Use proper grammar, avoid contractions, maintain professionalism',
+    very_formal: 'Employ highly structured, traditional language conventions',
+  },
+  humor: {
+    none: 'Keep content serious and straightforward',
+    subtle: 'Include occasional light touches and gentle wit',
+    moderate: 'Regularly incorporate humor to engage readers',
+    frequent: 'Make humor a key element of the writing style',
+  },
+  emoji_usage: {
+    never: 'Do not use any emojis in the content',
+    rarely: 'Use emojis sparingly, only for strong emphasis',
+    sometimes: 'Include emojis occasionally to add visual interest',
+    often: 'Regularly use emojis to enhance expression and engagement',
+  },
+  perspective: {
+    first_person: 'Write from "I/we" perspective (personal, immersive)',
+    second_person: 'Address the reader directly with "you" (engaging, instructional)',
+    third_person: 'Use "he/she/they" for objective, journalistic style',
+  },
+  descriptive_style: {
+    factual: 'Focus on facts, data, and concrete information',
+    evocative: 'Paint vivid pictures with sensory details and atmosphere',
+    poetic: 'Use literary devices, metaphors, and lyrical language',
+    practical: 'Emphasize actionable information and utility',
+  },
+} as const
+
+/**
+ * Format an agent's writing_style configuration into a human-readable prompt section
+ * This is used to instruct the LLM on how to write content
+ */
+export function formatWritingStyleForPrompt(writingStyle?: WritingStyle): string {
+  if (!writingStyle) {
+    return ''
+  }
+
+  const sections: string[] = []
+
+  // Build writing instructions from configured style
+  if (writingStyle.tone) {
+    const desc = STYLE_DESCRIPTIONS.tone[writingStyle.tone]
+    sections.push(`- **Tone**: ${writingStyle.tone} - ${desc}`)
+  }
+
+  if (writingStyle.vocabulary_level) {
+    const desc = STYLE_DESCRIPTIONS.vocabulary_level[writingStyle.vocabulary_level]
+    sections.push(`- **Vocabulary**: ${writingStyle.vocabulary_level} - ${desc}`)
+  }
+
+  if (writingStyle.sentence_length) {
+    const desc = STYLE_DESCRIPTIONS.sentence_length[writingStyle.sentence_length]
+    sections.push(`- **Sentence Structure**: ${writingStyle.sentence_length} - ${desc}`)
+  }
+
+  if (writingStyle.formality) {
+    const desc = STYLE_DESCRIPTIONS.formality[writingStyle.formality]
+    sections.push(`- **Formality**: ${writingStyle.formality.replace('_', ' ')} - ${desc}`)
+  }
+
+  if (writingStyle.humor) {
+    const desc = STYLE_DESCRIPTIONS.humor[writingStyle.humor]
+    sections.push(`- **Humor**: ${writingStyle.humor} - ${desc}`)
+  }
+
+  if (writingStyle.emoji_usage) {
+    const desc = STYLE_DESCRIPTIONS.emoji_usage[writingStyle.emoji_usage]
+    sections.push(`- **Emoji Usage**: ${writingStyle.emoji_usage} - ${desc}`)
+  }
+
+  if (writingStyle.perspective) {
+    const desc = STYLE_DESCRIPTIONS.perspective[writingStyle.perspective]
+    sections.push(`- **Perspective**: ${writingStyle.perspective.replace('_', ' ')} - ${desc}`)
+  }
+
+  if (writingStyle.descriptive_style) {
+    const desc = STYLE_DESCRIPTIONS.descriptive_style[writingStyle.descriptive_style]
+    sections.push(`- **Descriptive Style**: ${writingStyle.descriptive_style} - ${desc}`)
+  }
+
+  if (sections.length === 0) {
+    return ''
+  }
+
+  return `## Writing Style Configuration
+Apply these specific style guidelines to all content you create:
+
+${sections.join('\n')}
+
+These settings define your unique voice. Ensure every piece of content consistently reflects these characteristics.`
+}
+
+/**
+ * Format hobbies/interests into a prompt section for personality context
+ */
+export function formatHobbiesForPrompt(hobbies?: string[]): string {
+  if (!hobbies || hobbies.length === 0) {
+    return ''
+  }
+
+  return `## Personal Interests
+Your hobbies and interests that influence your perspective: ${hobbies.join(', ')}.
+Let these interests subtly inform your writing style and the examples or analogies you use.`
+}
 
 // ============================================================================
 // Content Utilities

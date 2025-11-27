@@ -1,24 +1,37 @@
 /**
  * Base Agent Infrastructure
- * Simplified implementation for swarm.press
+ * Enhanced implementation with Anthropic SDK best practices
  */
 
 import Anthropic from '@anthropic-ai/sdk'
-import { getEnv } from '@swarm-press/shared'
+import { getEnv, type AgentCapability } from '@swarm-press/shared'
+import type { AgentRuntimeConfig } from '@swarm-press/backend'
 import { ToolRegistry, ToolContext, ToolResult } from './tools'
+import {
+  createMetrics,
+  finalizeMetrics,
+  recordMetricsError,
+  type APICallMetrics,
+} from './api-call'
 
 // ============================================================================
 // Types
 // ============================================================================
 
+/**
+ * Legacy agent config for backward compatibility
+ * New code should use AgentRuntimeConfig from backend
+ */
 export interface AgentConfig {
   name: string
   role: string
   department: string
-  capabilities: string[]
+  capabilities: (string | AgentCapability)[]
   systemPrompt: string
   model?: string
   maxTokens?: number
+  temperature?: number
+  topP?: number
   maxToolIterations?: number // Maximum tool-use loop iterations (default: 10)
 }
 
@@ -29,6 +42,9 @@ export interface AgentContext {
   contentId?: string
   conversationHistory?: Anthropic.MessageParam[]
 }
+
+// Re-export AgentRuntimeConfig for convenience
+export type { AgentRuntimeConfig }
 
 export interface AgentResponse {
   success: boolean
@@ -49,12 +65,15 @@ export interface AgentTask {
 
 export class BaseAgent {
   protected config: AgentConfig
+  protected runtimeConfig?: AgentRuntimeConfig
   protected client: Anthropic
   protected conversationHistory: Anthropic.MessageParam[] = []
   protected toolRegistry: ToolRegistry
+  protected lastMetrics?: APICallMetrics
 
-  constructor(config: AgentConfig) {
+  constructor(config: AgentConfig, runtimeConfig?: AgentRuntimeConfig) {
     this.config = config
+    this.runtimeConfig = runtimeConfig
     this.toolRegistry = new ToolRegistry()
 
     // Initialize Anthropic client
@@ -70,6 +89,47 @@ export class BaseAgent {
   }
 
   /**
+   * Get the last API call metrics
+   */
+  getLastMetrics(): APICallMetrics | undefined {
+    return this.lastMetrics
+  }
+
+  /**
+   * Get effective model configuration
+   * Prioritizes: runtimeConfig > config > defaults
+   */
+  protected getModelConfig() {
+    if (this.runtimeConfig) {
+      return {
+        model: this.runtimeConfig.modelConfig.model,
+        maxTokens: this.runtimeConfig.modelConfig.maxTokens,
+        temperature: this.runtimeConfig.modelConfig.temperature,
+        topP: this.runtimeConfig.modelConfig.topP,
+      }
+    }
+    return {
+      model: this.config.model || 'claude-sonnet-4-5-20250929',
+      maxTokens: this.config.maxTokens || 8192,
+      temperature: this.config.temperature,
+      topP: this.config.topP,
+    }
+  }
+
+  /**
+   * Get effective system prompt
+   * Uses runtimeConfig if available, otherwise falls back to config
+   */
+  protected getSystemPrompt(taskType?: string): string {
+    if (this.runtimeConfig && taskType) {
+      const prompt = this.runtimeConfig.systemPrompts.get(taskType)
+        || this.runtimeConfig.systemPrompts.get('system')
+      if (prompt) return prompt
+    }
+    return this.config.systemPrompt
+  }
+
+  /**
    * Execute a task with tool-use support
    * Implements a loop that continues until Claude finishes (end_turn)
    * Supports both built-in tools and external tools (REST, GraphQL, MCP)
@@ -81,6 +141,12 @@ export class BaseAgent {
     const maxIterations = this.config.maxToolIterations || 10
     let iteration = 0
     const toolResults: ToolResult[] = []
+
+    // Initialize metrics tracking if we have runtime config
+    let metrics: APICallMetrics | undefined
+    if (this.runtimeConfig) {
+      metrics = createMetrics(this.runtimeConfig, context, task.taskType)
+    }
 
     try {
       // Build the prompt
@@ -119,26 +185,70 @@ export class BaseAgent {
       const tools = this.toolRegistry.getDefinitionsWithExternal()
       const hasTools = tools.length > 0
 
+      // Get effective model config and system prompt
+      const modelConfig = this.getModelConfig()
+      const systemPrompt = this.getSystemPrompt(task.taskType)
+
       console.log(
-        `[${this.config.name}] Executing task: ${task.taskType} (${hasTools ? tools.length + ' tools' : 'no tools'})`
+        `[${this.config.name}] Executing task: ${task.taskType} ` +
+        `(model: ${modelConfig.model}, temp: ${modelConfig.temperature ?? 'default'}, ` +
+        `${hasTools ? tools.length + ' tools' : 'no tools'})`
       )
 
       // Tool-use loop
       while (iteration < maxIterations) {
         iteration++
 
-        // Call Claude
-        const response = await this.client.messages.create({
-          model: this.config.model || 'claude-sonnet-4-5-20250929',
-          max_tokens: this.config.maxTokens || 8192,
-          system: this.config.systemPrompt,
+        // Build API call params with full SDK utilization
+        const apiParams: Anthropic.MessageCreateParamsNonStreaming = {
+          model: modelConfig.model,
+          max_tokens: modelConfig.maxTokens,
+          system: systemPrompt,
           messages: this.conversationHistory,
-          ...(hasTools && { tools }),
-        })
+        }
+
+        // Add sampling controls if specified
+        if (modelConfig.temperature !== undefined) {
+          apiParams.temperature = modelConfig.temperature
+        }
+        if (modelConfig.topP !== undefined) {
+          apiParams.top_p = modelConfig.topP
+        }
+
+        // Add tools if available
+        if (hasTools) {
+          apiParams.tools = tools
+        }
+
+        // Add metadata if we have runtime config
+        if (this.runtimeConfig) {
+          apiParams.metadata = {
+            user_id: Buffer.from(
+              `${context.agentId}:${context.websiteId || 'global'}:${context.taskId || 'adhoc'}`
+            ).toString('base64').slice(0, 64),
+          }
+        }
+
+        // Call Claude
+        const response = await this.client.messages.create(apiParams)
 
         console.log(
-          `[${this.config.name}] Iteration ${iteration}: stop_reason=${response.stop_reason}`
+          `[${this.config.name}] Iteration ${iteration}: stop_reason=${response.stop_reason}, ` +
+          `tokens: ${response.usage.input_tokens}/${response.usage.output_tokens}`
         )
+
+        // Track tool usage in metrics
+        if (metrics) {
+          const toolUseBlocks = response.content.filter(
+            (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
+          )
+          for (const toolUse of toolUseBlocks) {
+            if (!metrics.toolsUsed) metrics.toolsUsed = []
+            if (!metrics.toolsUsed.includes(toolUse.name)) {
+              metrics.toolsUsed.push(toolUse.name)
+            }
+          }
+        }
 
         // Add assistant response to history
         this.conversationHistory.push({
@@ -151,6 +261,11 @@ export class BaseAgent {
           // Done - extract final text response
           const content = this.extractTextContent(response.content)
 
+          // Finalize metrics
+          if (metrics) {
+            this.lastMetrics = finalizeMetrics(metrics, response)
+          }
+
           // Clean up external tool connections
           await this.toolRegistry.dispose()
 
@@ -161,6 +276,7 @@ export class BaseAgent {
               iterations: iteration,
               toolResults,
               response,
+              metrics: this.lastMetrics,
             },
           }
         }
@@ -214,6 +330,11 @@ export class BaseAgent {
           console.warn(`[${this.config.name}] Hit max tokens limit`)
           const content = this.extractTextContent(response.content)
 
+          // Finalize metrics
+          if (metrics) {
+            this.lastMetrics = finalizeMetrics(metrics, response)
+          }
+
           // Clean up external tool connections
           await this.toolRegistry.dispose()
 
@@ -224,6 +345,7 @@ export class BaseAgent {
               iterations: iteration,
               toolResults,
               truncated: true,
+              metrics: this.lastMetrics,
             },
           }
         }
@@ -234,15 +356,25 @@ export class BaseAgent {
       }
 
       // Exceeded max iterations - clean up
+      if (metrics) {
+        recordMetricsError(metrics, `Exceeded max iterations (${maxIterations})`)
+        this.lastMetrics = metrics
+      }
       await this.toolRegistry.dispose()
 
       console.error(`[${this.config.name}] Exceeded max iterations (${maxIterations})`)
       return {
         success: false,
         error: `Agent exceeded maximum tool iterations (${maxIterations})`,
-        data: { iterations: iteration, toolResults },
+        data: { iterations: iteration, toolResults, metrics: this.lastMetrics },
       }
     } catch (error) {
+      // Record error in metrics
+      if (metrics) {
+        recordMetricsError(metrics, error instanceof Error ? error : String(error))
+        this.lastMetrics = metrics
+      }
+
       // Clean up on error
       await this.toolRegistry.dispose()
 
@@ -250,7 +382,7 @@ export class BaseAgent {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
-        data: { iterations: iteration, toolResults },
+        data: { iterations: iteration, toolResults, metrics: this.lastMetrics },
       }
     }
   }
