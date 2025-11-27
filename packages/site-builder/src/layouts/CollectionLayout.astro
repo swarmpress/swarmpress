@@ -1,0 +1,113 @@
+---
+/**
+ * Collection Layout
+ * Extended layout for collection pages with schema.org structured data
+ */
+import BaseLayout from './BaseLayout.astro'
+
+export interface Props {
+  title: string
+  description?: string
+  collectionType: string
+  image?: string
+  canonicalUrl?: string
+  // Schema.org structured data
+  itemType?: 'ItemList' | 'Article' | 'Event' | 'Place' | 'Product' | 'LocalBusiness'
+  breadcrumbs?: Array<{ name: string; url: string }>
+}
+
+const {
+  title,
+  description,
+  collectionType,
+  image,
+  canonicalUrl,
+  itemType = 'ItemList',
+  breadcrumbs = []
+} = Astro.props
+
+const siteUrl = Astro.site?.toString() || 'https://example.com'
+const fullUrl = canonicalUrl || `${siteUrl}/${collectionType}`
+
+// Build breadcrumb schema
+const breadcrumbSchema = breadcrumbs.length > 0 ? {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": breadcrumbs.map((crumb, index) => ({
+    "@type": "ListItem",
+    "position": index + 1,
+    "name": crumb.name,
+    "item": `${siteUrl}${crumb.url}`
+  }))
+} : null
+---
+
+<BaseLayout title={title} description={description} ogImage={image} canonicalUrl={fullUrl}>
+  <!-- Breadcrumb Schema -->
+  {breadcrumbSchema && (
+    <script type="application/ld+json" set:html={JSON.stringify(breadcrumbSchema)} />
+  )}
+
+  <!-- Breadcrumb Navigation -->
+  {breadcrumbs.length > 0 && (
+    <nav aria-label="Breadcrumb" class="collection-breadcrumb">
+      <ol>
+        <li><a href="/">Home</a></li>
+        {breadcrumbs.map((crumb, index) => (
+          <li>
+            {index < breadcrumbs.length - 1 ? (
+              <a href={crumb.url}>{crumb.name}</a>
+            ) : (
+              <span aria-current="page">{crumb.name}</span>
+            )}
+          </li>
+        ))}
+      </ol>
+    </nav>
+  )}
+
+  <slot />
+</BaseLayout>
+
+<style>
+  .collection-breadcrumb {
+    margin-bottom: 1.5rem;
+    font-size: 0.875rem;
+  }
+
+  .collection-breadcrumb ol {
+    display: flex;
+    flex-wrap: wrap;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    gap: 0.5rem;
+  }
+
+  .collection-breadcrumb li {
+    display: flex;
+    align-items: center;
+    margin: 0;
+  }
+
+  .collection-breadcrumb li:not(:last-child)::after {
+    content: '/';
+    margin-left: 0.5rem;
+    color: var(--color-text-light);
+  }
+
+  .collection-breadcrumb a {
+    color: var(--color-text-light);
+    text-decoration: none;
+  }
+
+  .collection-breadcrumb a:hover {
+    color: var(--color-primary);
+    text-decoration: underline;
+  }
+
+  .collection-breadcrumb span[aria-current] {
+    color: var(--color-text);
+    font-weight: 500;
+  }
+</style>

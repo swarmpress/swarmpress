@@ -1,0 +1,324 @@
+---
+/**
+ * Default Collection Detail Template
+ * Generic detail page for any collection item
+ */
+import CollectionLayout from '../../../layouts/CollectionLayout.astro'
+import CollectionCard from '../../../components/collections/CollectionCard.astro'
+
+export interface Props {
+  collection: {
+    type: string
+    displayName: string
+    singularName?: string
+    description?: string
+    icon?: string
+    color?: string
+    schema: Record<string, unknown>
+    fieldMetadata: Record<string, unknown>
+  }
+  item: {
+    id: string
+    slug: string
+    title: string
+    summary?: string
+    image?: string
+    date?: string
+    data: Record<string, unknown>
+    featured: boolean
+    createdAt: string
+    updatedAt: string
+  }
+  navigation: {
+    prevItem?: { slug: string; title: string; url: string }
+    nextItem?: { slug: string; title: string; url: string }
+    listingUrl: string
+  }
+  relatedItems: Array<{
+    slug: string
+    title: string
+    summary?: string
+    image?: string
+    url: string
+  }>
+}
+
+const { collection, item, navigation, relatedItems } = Astro.props
+
+const breadcrumbs = [
+  { name: collection.displayName, url: `/${collection.type}` },
+  { name: item.title, url: `/${collection.type}/${item.slug}` }
+]
+
+// Get display fields from item.data excluding internal fields
+const displayFields = Object.entries(item.data).filter(([key]) =>
+  !['id', '_id', 'slug', 'created_at', 'updated_at'].includes(key)
+)
+---
+
+<CollectionLayout
+  title={item.title}
+  description={item.summary}
+  collectionType={collection.type}
+  image={item.image}
+  breadcrumbs={breadcrumbs}
+  itemType="Article"
+>
+  <article class="collection-detail">
+    <!-- Hero Image -->
+    {item.image && (
+      <div class="detail-hero">
+        <img src={item.image} alt={item.title} />
+      </div>
+    )}
+
+    <!-- Header -->
+    <header class="detail-header">
+      {item.featured && <span class="featured-badge">Featured</span>}
+      <h1>{item.title}</h1>
+      {item.date && (
+        <time datetime={item.date} class="detail-date">
+          {new Date(item.date).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          })}
+        </time>
+      )}
+      {item.summary && (
+        <p class="detail-summary">{item.summary}</p>
+      )}
+    </header>
+
+    <!-- Content -->
+    <div class="detail-content">
+      {displayFields.map(([key, value]) => {
+        const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        return (
+          <div class="detail-field">
+            <dt>{label}</dt>
+            <dd>
+              {typeof value === 'object' && value !== null
+                ? <pre>{JSON.stringify(value, null, 2)}</pre>
+                : Array.isArray(value)
+                  ? value.join(', ')
+                  : String(value)}
+            </dd>
+          </div>
+        )
+      })}
+    </div>
+
+    <!-- Navigation -->
+    <nav class="detail-navigation">
+      <a href={navigation.listingUrl} class="back-link">
+        &larr; All {collection.displayName}
+      </a>
+      <div class="prev-next">
+        {navigation.prevItem && (
+          <a href={navigation.prevItem.url} class="nav-link prev">
+            <span class="nav-label">Previous</span>
+            <span class="nav-title">{navigation.prevItem.title}</span>
+          </a>
+        )}
+        {navigation.nextItem && (
+          <a href={navigation.nextItem.url} class="nav-link next">
+            <span class="nav-label">Next</span>
+            <span class="nav-title">{navigation.nextItem.title}</span>
+          </a>
+        )}
+      </div>
+    </nav>
+  </article>
+
+  <!-- Related Items -->
+  {relatedItems.length > 0 && (
+    <aside class="related-section">
+      <h2>Related {collection.displayName}</h2>
+      <div class="related-grid">
+        {relatedItems.map((related) => (
+          <CollectionCard
+            item={related}
+            collectionType={collection.type}
+          />
+        ))}
+      </div>
+    </aside>
+  )}
+</CollectionLayout>
+
+<style>
+  .collection-detail {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .detail-hero {
+    margin: -2rem -1rem 2rem;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  @media (min-width: 768px) {
+    .detail-hero {
+      margin: 0 0 2rem;
+    }
+  }
+
+  .detail-hero img {
+    width: 100%;
+    height: auto;
+    max-height: 500px;
+    object-fit: cover;
+  }
+
+  .detail-header {
+    margin-bottom: 2rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .featured-badge {
+    display: inline-block;
+    background-color: var(--color-accent);
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    margin-bottom: 1rem;
+  }
+
+  .detail-header h1 {
+    margin-bottom: 0.5rem;
+    font-size: 2.5rem;
+  }
+
+  .detail-date {
+    display: block;
+    color: var(--color-text-light);
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+  }
+
+  .detail-summary {
+    font-size: 1.25rem;
+    color: var(--color-text-light);
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  .detail-content {
+    margin-bottom: 3rem;
+  }
+
+  .detail-field {
+    margin-bottom: 1.5rem;
+  }
+
+  .detail-field dt {
+    font-weight: 600;
+    color: var(--color-text-light);
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+  }
+
+  .detail-field dd {
+    margin: 0;
+    font-size: 1rem;
+  }
+
+  .detail-field pre {
+    background-color: var(--color-bg-alt);
+    padding: 1rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    overflow-x: auto;
+  }
+
+  .detail-navigation {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--color-border);
+    margin-bottom: 3rem;
+  }
+
+  @media (min-width: 640px) {
+    .detail-navigation {
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+  }
+
+  .back-link {
+    color: var(--color-text-light);
+    font-size: 0.875rem;
+  }
+
+  .back-link:hover {
+    color: var(--color-primary);
+  }
+
+  .prev-next {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .prev-next {
+      flex-direction: row;
+      gap: 2rem;
+    }
+  }
+
+  .nav-link {
+    display: flex;
+    flex-direction: column;
+    padding: 0.75rem 1rem;
+    background-color: var(--color-bg-alt);
+    border-radius: 8px;
+    text-decoration: none;
+    transition: background-color 0.2s;
+  }
+
+  .nav-link:hover {
+    background-color: var(--color-border);
+    text-decoration: none;
+  }
+
+  .nav-label {
+    font-size: 0.75rem;
+    color: var(--color-text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .nav-title {
+    color: var(--color-text);
+    font-weight: 500;
+  }
+
+  .related-section {
+    border-top: 1px solid var(--color-border);
+    padding-top: 3rem;
+    margin-top: 2rem;
+  }
+
+  .related-section h2 {
+    margin-bottom: 1.5rem;
+  }
+
+  .related-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1.5rem;
+  }
+</style>

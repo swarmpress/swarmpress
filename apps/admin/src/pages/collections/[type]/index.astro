@@ -1,0 +1,325 @@
+---
+/**
+ * Collection Items List Page
+ * Lists all items for a specific collection type with pagination
+ */
+import Layout from '../../../layouts/Layout.astro'
+import { trpc, handleTRPCError } from '../../../lib/trpc'
+import { getSessionContext } from '../../../lib/session'
+
+const { type } = Astro.params
+
+// Get pagination from query params
+const page = parseInt(Astro.url.searchParams.get('page') || '1')
+const limit = 25
+const offset = (page - 1) * limit
+
+// Get session to check for selected website
+const session = getSessionContext(Astro.cookies)
+const websiteId = session.productId
+
+// Fetch collection info and items
+let collection: any = null
+let items: any[] = []
+let total = 0
+let error: string | null = null
+
+if (websiteId && type) {
+  try {
+    // Get collection type info
+    collection = await trpc.collection.getType.query({
+      websiteId,
+      collectionType: type,
+    })
+
+    // Get collection items
+    const result = await trpc.collection.list.query({
+      websiteId,
+      collectionType: type,
+      limit,
+      offset,
+      publishedOnly: false,
+    })
+    items = result.items
+    total = result.total
+  } catch (e) {
+    error = handleTRPCError(e)
+    console.error('Failed to fetch collection:', error)
+  }
+}
+
+// Pagination info
+const totalPages = Math.ceil(total / limit)
+const hasNextPage = page < totalPages
+const hasPrevPage = page > 1
+
+// Helper to get display value from item data
+function getDisplayValue(item: any, field: string | null | undefined): string {
+  if (!field || !item.data) return ''
+  const value = item.data[field]
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return String(value)
+  if (value === null || value === undefined) return ''
+  return JSON.stringify(value)
+}
+
+// Get title for an item
+function getItemTitle(item: any): string {
+  if (collection?.titleField) {
+    return getDisplayValue(item, collection.titleField) || item.slug
+  }
+  return item.slug
+}
+
+// Get summary for an item
+function getItemSummary(item: any): string {
+  if (collection?.summaryField) {
+    return getDisplayValue(item, collection.summaryField)
+  }
+  return ''
+}
+
+const title = collection ? `${collection.displayName} Items` : 'Collection Items'
+---
+
+<Layout title={title}>
+  <div class="mb-8">
+    <div class="flex items-center gap-2 text-sm text-gray-500 mb-4">
+      <a href="/collections" class="hover:text-gray-700">Collections</a>
+      <span>/</span>
+      <span class="text-gray-900">{collection?.displayName || type}</span>
+    </div>
+
+    <div class="flex items-center justify-between">
+      <div>
+        <div class="flex items-center gap-3">
+          {collection?.icon && (
+            <span class="text-3xl">{collection.icon}</span>
+          )}
+          <h1 class="text-3xl font-bold text-gray-900">{collection?.displayName || type}</h1>
+          {collection && !collection.enabled && (
+            <span class="text-xs font-medium text-gray-400 uppercase tracking-wide bg-gray-200 px-2 py-1 rounded">
+              Disabled
+            </span>
+          )}
+        </div>
+        {collection?.description && (
+          <p class="text-gray-600 mt-2">{collection.description}</p>
+        )}
+      </div>
+      {websiteId && collection && (
+        <div class="flex gap-2">
+          <a
+            href={`/collections/${type}/settings`}
+            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+          >
+            Settings
+          </a>
+          <a
+            href={`/collections/${type}/new`}
+            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            + Add {collection?.singularName || 'Item'}
+          </a>
+        </div>
+      )}
+    </div>
+  </div>
+
+  {!websiteId ? (
+    <div class="text-center py-12 bg-amber-50 border border-amber-200 rounded-lg">
+      <div class="text-4xl mb-4">🌐</div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">No Website Selected</h3>
+      <p class="text-gray-600 mb-6">
+        Please select a website from the sidebar to view collection items
+      </p>
+      <a
+        href="/websites"
+        class="inline-block px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+      >
+        View Websites
+      </a>
+    </div>
+  ) : error ? (
+    <div class="text-center py-12 text-red-600 bg-red-50 border border-red-200 rounded-lg">
+      <p>Failed to load collection: {error}</p>
+    </div>
+  ) : !collection ? (
+    <div class="text-center py-12 bg-gray-50 rounded-lg">
+      <div class="text-6xl mb-4">🔍</div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">Collection Not Found</h3>
+      <p class="text-gray-600 mb-6">
+        The collection type "{type}" does not exist for this website
+      </p>
+      <a
+        href="/collections"
+        class="inline-block px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+      >
+        Back to Collections
+      </a>
+    </div>
+  ) : items.length === 0 ? (
+    <div class="text-center py-12 bg-gray-50 rounded-lg">
+      <div class="text-6xl mb-4">📭</div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">No Items Yet</h3>
+      <p class="text-gray-600 mb-6">
+        This collection doesn't have any items. Add your first {collection.singularName?.toLowerCase() || 'item'}!
+      </p>
+      <a
+        href={`/collections/${type}/new`}
+        class="inline-block px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+      >
+        Add {collection.singularName || 'Item'}
+      </a>
+    </div>
+  ) : (
+    <div>
+      <!-- Stats bar -->
+      <div class="flex items-center justify-between mb-4 text-sm text-gray-600">
+        <div>
+          Showing {offset + 1}-{Math.min(offset + items.length, total)} of {total} items
+        </div>
+        <div class="flex gap-4">
+          <span class="flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-green-500"></span>
+            {items.filter(i => i.published).length} published
+          </span>
+          <span class="flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+            {items.filter(i => !i.published).length} draft
+          </span>
+        </div>
+      </div>
+
+      <!-- Items table -->
+      <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <table class="w-full">
+          <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Title</th>
+              <th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Slug</th>
+              <th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Status</th>
+              <th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Updated</th>
+              <th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200">
+            {items.map((item) => (
+              <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3">
+                  <div class="flex items-center gap-2">
+                    {item.featured && (
+                      <span class="text-amber-500" title="Featured">★</span>
+                    )}
+                    <span class="font-medium text-gray-900">{getItemTitle(item)}</span>
+                  </div>
+                  {getItemSummary(item) && (
+                    <p class="text-sm text-gray-500 mt-0.5 line-clamp-1">
+                      {getItemSummary(item)}
+                    </p>
+                  )}
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-600 font-mono">
+                  {item.slug}
+                </td>
+                <td class="px-4 py-3">
+                  {item.published ? (
+                    <span class="inline-flex items-center px-2 py-1 text-xs font-medium text-green-700 bg-green-100 rounded">
+                      Published
+                    </span>
+                  ) : (
+                    <span class="inline-flex items-center px-2 py-1 text-xs font-medium text-amber-700 bg-amber-100 rounded">
+                      Draft
+                    </span>
+                  )}
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-600">
+                  {new Date(item.updated_at).toLocaleDateString()}
+                </td>
+                <td class="px-4 py-3 text-right">
+                  <div class="flex items-center justify-end gap-2">
+                    <a
+                      href={`/collections/${type}/${item.slug}`}
+                      class="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
+                    >
+                      Edit
+                    </a>
+                    <button
+                      class="px-3 py-1 text-sm border border-red-300 text-red-600 rounded hover:bg-red-50 transition-colors"
+                      data-item-id={item.id}
+                      data-item-title={getItemTitle(item)}
+                      onclick="handleDelete(this)"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      {totalPages > 1 && (
+        <div class="flex items-center justify-between mt-6">
+          <div class="text-sm text-gray-600">
+            Page {page} of {totalPages}
+          </div>
+          <div class="flex gap-2">
+            {hasPrevPage && (
+              <a
+                href={`/collections/${type}?page=${page - 1}`}
+                class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+              >
+                Previous
+              </a>
+            )}
+            {hasNextPage && (
+              <a
+                href={`/collections/${type}?page=${page + 1}`}
+                class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+              >
+                Next
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )}
+</Layout>
+
+<script>
+  async function handleDelete(button: HTMLButtonElement) {
+    const itemId = button.dataset.itemId
+    const itemTitle = button.dataset.itemTitle
+
+    if (!confirm(`Are you sure you want to delete "${itemTitle}"? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch('/api/trpc/collection.delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ itemId }),
+      })
+
+      if (response.ok) {
+        // Reload the page to show updated list
+        window.location.reload()
+      } else {
+        alert('Failed to delete item. Please try again.')
+      }
+    } catch (error) {
+      console.error('Delete failed:', error)
+      alert('Failed to delete item. Please try again.')
+    }
+  }
+
+  // Make the function available globally
+  ;(window as any).handleDelete = handleDelete
+</script>

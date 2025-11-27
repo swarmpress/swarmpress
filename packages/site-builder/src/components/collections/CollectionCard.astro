@@ -1,0 +1,169 @@
+---
+/**
+ * Collection Card Component
+ * Displays a single collection item in a card format
+ */
+export interface Props {
+  item: {
+    slug: string
+    title: string
+    summary?: string
+    image?: string
+    date?: string
+    url: string
+    featured?: boolean
+  }
+  collectionType: string
+  showImage?: boolean
+  showSummary?: boolean
+  showDate?: boolean
+}
+
+const {
+  item,
+  collectionType,
+  showImage = true,
+  showSummary = true,
+  showDate = true
+} = Astro.props
+
+const url = item.url || `/${collectionType}/${item.slug}`
+---
+
+<article class:list={['collection-card', { 'has-image': item.image && showImage, featured: item.featured }]}>
+  <a href={url} class="card-link">
+    {item.image && showImage && (
+      <div class="card-image">
+        <img src={item.image} alt={item.title} loading="lazy" />
+      </div>
+    )}
+
+    <div class="card-content">
+      {item.featured && (
+        <span class="featured-badge">Featured</span>
+      )}
+
+      <h3 class="card-title">{item.title}</h3>
+
+      {item.date && showDate && (
+        <time datetime={item.date} class="card-date">
+          {new Date(item.date).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+          })}
+        </time>
+      )}
+
+      {item.summary && showSummary && (
+        <p class="card-summary">{item.summary}</p>
+      )}
+
+      <span class="card-cta">
+        Read more <span class="arrow">&rarr;</span>
+      </span>
+    </div>
+  </a>
+</article>
+
+<style>
+  .collection-card {
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: box-shadow 0.2s, transform 0.2s;
+  }
+
+  .collection-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+  }
+
+  .collection-card.featured {
+    border-color: var(--color-accent);
+    border-width: 2px;
+  }
+
+  .card-link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    height: 100%;
+  }
+
+  .card-image {
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background-color: var(--color-bg-alt);
+  }
+
+  .card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s;
+  }
+
+  .collection-card:hover .card-image img {
+    transform: scale(1.05);
+  }
+
+  .card-content {
+    padding: 1.25rem;
+  }
+
+  .featured-badge {
+    display: inline-block;
+    background-color: var(--color-accent);
+    color: white;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.2rem 0.5rem;
+    border-radius: 9999px;
+    margin-bottom: 0.5rem;
+  }
+
+  .card-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    line-height: 1.3;
+    margin: 0 0 0.5rem;
+    color: var(--color-text);
+  }
+
+  .card-date {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--color-text-light);
+    margin-bottom: 0.5rem;
+  }
+
+  .card-summary {
+    font-size: 0.875rem;
+    color: var(--color-text-light);
+    line-height: 1.5;
+    margin: 0 0 1rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .card-cta {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-primary);
+  }
+
+  .arrow {
+    display: inline-block;
+    transition: transform 0.2s;
+  }
+
+  .collection-card:hover .arrow {
+    transform: translateX(4px);
+  }
+</style>

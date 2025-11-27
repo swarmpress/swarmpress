@@ -34,6 +34,9 @@ const COMPONENT_CATEGORIES = {
     { type: 'pricing', icon: '💰', label: 'Pricing Table', description: 'Product pricing grid' },
     { type: 'timeline', icon: '⏱️', label: 'Timeline', description: 'Event timeline' },
   ],
+  'Collections': [
+    { type: 'collection-embed', icon: '📦', label: 'Collection Embed', description: 'Embed collection items' },
+  ],
   'SEO & Meta': [
     { type: 'breadcrumbs', icon: '🍞', label: 'Breadcrumbs', description: 'Navigation breadcrumbs' },
     { type: 'related-links', icon: '🔗', label: 'Related Links', description: 'Internal link suggestions' },

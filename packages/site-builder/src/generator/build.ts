@@ -9,6 +9,8 @@ import { mkdir, writeFile, rm } from 'fs/promises'
 import { join } from 'path'
 import { contentRepository, websiteRepository } from '@swarm-press/backend'
 import type { ContentItem, Website } from '@swarm-press/shared'
+import { generateCollectionPages } from './collection-pages'
+import { fetchEnabledCollections } from './collections'
 
 const execAsync = promisify(exec)
 
@@ -24,6 +26,7 @@ export interface BuildResult {
   url?: string
   error?: string
   buildTime?: number
+  collectionsGenerated?: number
 }
 
 /**
@@ -63,11 +66,35 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
     const buildDir = options.outputDir || join(process.cwd(), 'build', options.websiteId)
     await mkdir(buildDir, { recursive: true })
 
-    // Generate Astro pages
+    // Generate Astro pages (content items)
     await generatePages(website, content, buildDir)
 
-    // Run Astro build
+    // Generate collection pages
     const siteUrl = options.siteUrl || website.domain || 'https://example.com'
+    let collectionsGenerated = 0
+
+    try {
+      const collections = await fetchEnabledCollections(options.websiteId)
+      if (collections.length > 0) {
+        console.log(`[SiteBuilder] Found ${collections.length} enabled collections`)
+        const collectionResult = await generateCollectionPages(website, {
+          buildDir,
+          baseUrl: '',
+          itemsPerPage: 12,
+        })
+        collectionsGenerated = collectionResult.pagesGenerated
+        console.log(`[SiteBuilder] Generated ${collectionsGenerated} collection pages`)
+
+        if (collectionResult.errors.length > 0) {
+          console.warn('[SiteBuilder] Collection generation warnings:', collectionResult.errors)
+        }
+      }
+    } catch (collectionError) {
+      console.warn('[SiteBuilder] Warning: Failed to generate collection pages:', collectionError)
+      // Continue with build - collections are optional
+    }
+
+    // Run Astro build
     await runAstroBuild(buildDir, siteUrl)
 
     const buildTime = Date.now() - startTime
@@ -79,6 +106,7 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
       outputDir: join(buildDir, 'dist'),
       url: siteUrl,
       buildTime,
+      collectionsGenerated,
     }
   } catch (error) {
     console.error('[SiteBuilder] Build failed:', error)
@@ -190,7 +218,7 @@ const contentItems = ${JSON.stringify(content.map(c => ({
 /**
  * Generate content page
  */
-function generateContentPage(website: Website, content: ContentItem): string {
+function generateContentPage(_website: Website, content: ContentItem): string {
   return `---
 import BaseLayout from '../layouts/BaseLayout.astro'
 import ContentRenderer from '../components/ContentRenderer.astro'
@@ -327,6 +355,10 @@ export function validateContent(content: ContentItem[]): { valid: boolean; error
 
     for (let i = 0; i < item.body.length; i++) {
       const block = item.body[i]
+      if (!block) {
+        errors.push(`Content ${item.id}, Block ${i}: Block is undefined`)
+        continue
+      }
 
       if (!block.type) {
         errors.push(`Content ${item.id}, Block ${i}: Missing type`)
@@ -335,7 +367,7 @@ export function validateContent(content: ContentItem[]): { valid: boolean; error
       // Validate block-specific fields
       switch (block.type) {
         case 'image':
-          if (!block.url) errors.push(`Content ${item.id}, Block ${i}: Image missing url`)
+          if (!block.src) errors.push(`Content ${item.id}, Block ${i}: Image missing src`)
           if (!block.alt) errors.push(`Content ${item.id}, Block ${i}: Image missing alt text`)
           break
 
@@ -349,8 +381,8 @@ export function validateContent(content: ContentItem[]): { valid: boolean; error
           break
 
         case 'paragraph':
-          if (!block.text) {
-            errors.push(`Content ${item.id}, Block ${i}: Paragraph missing text`)
+          if (!block.markdown) {
+            errors.push(`Content ${item.id}, Block ${i}: Paragraph missing markdown`)
           }
           break
       }

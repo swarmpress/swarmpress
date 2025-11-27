@@ -17,6 +17,7 @@ import {
   Command,
   Wrench,
   MessageSquareText,
+  Database,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -120,6 +121,11 @@ export function AppSidebar({ tenantId, productId, user, ...props }: AppSidebarPr
       title: 'Blueprints',
       url: '/blueprints',
       icon: Layers,
+    },
+    {
+      title: 'Collections',
+      url: '/collections',
+      icon: Database,
     },
     {
       title: 'Content',

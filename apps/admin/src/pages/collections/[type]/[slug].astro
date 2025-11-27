@@ -1,0 +1,403 @@
+---
+/**
+ * Collection Item Edit Page
+ * Edit an existing collection item with dynamic form based on schema
+ */
+import Layout from '../../../layouts/Layout.astro'
+import { trpc, handleTRPCError } from '../../../lib/trpc'
+import { getSessionContext } from '../../../lib/session'
+
+const { type, slug } = Astro.params
+
+// Get session to check for selected website
+const session = getSessionContext(Astro.cookies)
+const websiteId = session.productId
+
+// Fetch collection info, schema, and item
+let collection: any = null
+let schema: any = null
+let item: any = null
+let error: string | null = null
+
+if (websiteId && type && slug) {
+  try {
+    // Get collection type info
+    collection = await trpc.collection.getType.query({
+      websiteId,
+      collectionType: type,
+    })
+
+    // Get schema
+    schema = await trpc.collection.getSchema.query({
+      websiteId,
+      collectionType: type,
+    })
+
+    // Get item
+    item = await trpc.collection.getBySlug.query({
+      websiteId,
+      collectionType: type,
+      slug,
+    })
+  } catch (e) {
+    error = handleTRPCError(e)
+    console.error('Failed to fetch item:', error)
+  }
+}
+
+const title = item ? `Edit ${collection?.singularName || 'Item'}` : 'Edit Item'
+
+// Helper to get field label
+function getFieldLabel(key: string, fieldSchema: any): string {
+  if (fieldSchema?.title) return fieldSchema.title
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+}
+
+// Get required fields from schema
+const requiredFields = schema?.jsonSchema?.required || []
+---
+
+<Layout title={title}>
+  <div class="mb-8">
+    <div class="flex items-center gap-2 text-sm text-gray-500 mb-4">
+      <a href="/collections" class="hover:text-gray-700">Collections</a>
+      <span>/</span>
+      <a href={`/collections/${type}`} class="hover:text-gray-700">{collection?.displayName || type}</a>
+      <span>/</span>
+      <span class="text-gray-900">{slug}</span>
+    </div>
+
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Edit {collection?.singularName || 'Item'}</h1>
+        <p class="text-gray-600 mt-2">
+          Modify the data for this {collection?.singularName?.toLowerCase() || 'item'}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {!websiteId ? (
+    <div class="text-center py-12 bg-amber-50 border border-amber-200 rounded-lg">
+      <div class="text-4xl mb-4">🌐</div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">No Website Selected</h3>
+      <p class="text-gray-600">Please select a website to view this item</p>
+    </div>
+  ) : error ? (
+    <div class="text-center py-12 text-red-600 bg-red-50 border border-red-200 rounded-lg">
+      <p>Failed to load item: {error}</p>
+    </div>
+  ) : !item ? (
+    <div class="text-center py-12 bg-gray-50 rounded-lg">
+      <div class="text-6xl mb-4">🔍</div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">Item Not Found</h3>
+      <p class="text-gray-600">The item "{slug}" does not exist in this collection</p>
+    </div>
+  ) : (
+    <div class="space-y-8" id="edit-container"
+      data-item-id={item.id}
+      data-website-id={websiteId}
+      data-collection-type={type}
+      data-slug={slug}
+      data-schema={JSON.stringify(schema?.jsonSchema || {})}
+      data-item-data={JSON.stringify(item.data || {})}
+    >
+      <!-- Status Card -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Status</h2>
+
+        <div class="flex items-center gap-6">
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="published"
+              checked={item.published}
+              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <span class="font-medium">Published</span>
+          </label>
+
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="featured"
+              checked={item.featured}
+              class="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+            />
+            <span class="font-medium">Featured</span>
+          </label>
+        </div>
+
+        <div class="mt-4 text-sm text-gray-500">
+          <span>Slug: </span>
+          <code class="bg-gray-100 px-1 rounded">{item.slug}</code>
+        </div>
+      </div>
+
+      <!-- Data Fields Card -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Data</h2>
+
+        <div class="space-y-4" id="fieldsContainer">
+          {schema?.jsonSchema?.properties && Object.entries(schema.jsonSchema.properties).map(([key, fieldSchema]: [string, any]) => (
+            <div class="field-group">
+              <label class="block text-sm font-medium text-gray-700 mb-1">
+                {getFieldLabel(key, fieldSchema)}
+                {requiredFields.includes(key) && <span class="text-red-500">*</span>}
+              </label>
+
+              {fieldSchema.type === 'string' && fieldSchema.format === 'date' ? (
+                <input
+                  type="date"
+                  name={key}
+                  data-field-type="date"
+                  value={item.data?.[key] || ''}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              ) : fieldSchema.type === 'string' && fieldSchema.format === 'uri' ? (
+                <input
+                  type="url"
+                  name={key}
+                  data-field-type="uri"
+                  value={item.data?.[key] || ''}
+                  placeholder="https://"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              ) : fieldSchema.type === 'string' && (key.includes('description') || key.includes('content') || key.includes('answer')) ? (
+                <textarea
+                  name={key}
+                  data-field-type="text"
+                  rows="4"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >{item.data?.[key] || ''}</textarea>
+              ) : fieldSchema.type === 'string' ? (
+                <input
+                  type="text"
+                  name={key}
+                  data-field-type="string"
+                  value={item.data?.[key] || ''}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              ) : fieldSchema.type === 'number' || fieldSchema.type === 'integer' ? (
+                <input
+                  type="number"
+                  name={key}
+                  data-field-type={fieldSchema.type}
+                  value={item.data?.[key] ?? ''}
+                  step={fieldSchema.type === 'integer' ? '1' : 'any'}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              ) : fieldSchema.type === 'boolean' ? (
+                <label class="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name={key}
+                    data-field-type="boolean"
+                    checked={item.data?.[key] === true}
+                    class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span class="text-sm text-gray-600">{fieldSchema.description || 'Enable'}</span>
+                </label>
+              ) : fieldSchema.type === 'array' ? (
+                <div>
+                  <textarea
+                    name={key}
+                    data-field-type="array"
+                    rows="3"
+                    placeholder="One item per line"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >{Array.isArray(item.data?.[key]) ? item.data[key].join('\n') : ''}</textarea>
+                  <p class="text-xs text-gray-500 mt-1">Enter one item per line</p>
+                </div>
+              ) : (
+                <textarea
+                  name={key}
+                  data-field-type="json"
+                  rows="3"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >{JSON.stringify(item.data?.[key] || null, null, 2)}</textarea>
+              )}
+
+              {fieldSchema.description && fieldSchema.type !== 'boolean' && (
+                <p class="text-xs text-gray-500 mt-1">{fieldSchema.description}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <!-- Source Info (if available) -->
+      {item.source_url && (
+        <div class="bg-white border border-gray-200 rounded-lg p-6">
+          <h2 class="text-lg font-semibold text-gray-900 mb-4">Source Information</h2>
+          <div class="text-sm">
+            <p class="text-gray-600">
+              <span class="font-medium">Source URL:</span>{' '}
+              <a href={item.source_url} target="_blank" class="text-blue-600 hover:underline">
+                {item.source_url}
+              </a>
+            </p>
+            {item.confidence_score !== null && (
+              <p class="text-gray-600 mt-2">
+                <span class="font-medium">Confidence Score:</span> {(item.confidence_score * 100).toFixed(0)}%
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      <!-- Actions -->
+      <div class="flex items-center justify-between pt-4 border-t">
+        <button
+          id="deleteBtn"
+          class="px-4 py-2 text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors"
+        >
+          Delete Item
+        </button>
+
+        <div class="flex gap-3">
+          <a
+            href={`/collections/${type}`}
+            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </a>
+          <button
+            id="saveBtn"
+            class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            Save Changes
+          </button>
+        </div>
+      </div>
+
+      <div id="validationError" class="hidden text-sm text-red-600 mt-2"></div>
+    </div>
+  )}
+</Layout>
+
+<script>
+  const container = document.getElementById('edit-container')
+  if (container) {
+    const itemId = container.dataset.itemId
+    const websiteId = container.dataset.websiteId
+    const collectionType = container.dataset.collectionType
+    const slug = container.dataset.slug
+    const schema = JSON.parse(container.dataset.schema || '{}')
+    const errorDiv = document.getElementById('validationError')
+
+    // Collect form data
+    function collectData(): Record<string, unknown> {
+      const data: Record<string, unknown> = {}
+      const fieldsContainer = document.getElementById('fieldsContainer')
+      if (!fieldsContainer) return data
+
+      fieldsContainer.querySelectorAll('[name]').forEach((el) => {
+        const name = el.getAttribute('name')!
+        const fieldType = el.getAttribute('data-field-type')
+
+        if (el instanceof HTMLInputElement) {
+          if (fieldType === 'boolean') {
+            data[name] = el.checked
+          } else if (fieldType === 'number' || fieldType === 'integer') {
+            if (el.value.trim() !== '') {
+              data[name] = fieldType === 'integer' ? parseInt(el.value) : parseFloat(el.value)
+            }
+          } else {
+            if (el.value.trim() !== '') {
+              data[name] = el.value.trim()
+            }
+          }
+        } else if (el instanceof HTMLTextAreaElement) {
+          if (fieldType === 'array') {
+            const items = el.value.split('\n').map(s => s.trim()).filter(s => s.length > 0)
+            if (items.length > 0) {
+              data[name] = items
+            }
+          } else if (fieldType === 'json') {
+            if (el.value.trim()) {
+              try {
+                data[name] = JSON.parse(el.value)
+              } catch (e) {
+                // Keep as string if not valid JSON
+                data[name] = el.value.trim()
+              }
+            }
+          } else {
+            if (el.value.trim() !== '') {
+              data[name] = el.value.trim()
+            }
+          }
+        }
+      })
+
+      return data
+    }
+
+    // Save button handler
+    const saveBtn = document.getElementById('saveBtn')
+    saveBtn?.addEventListener('click', async () => {
+      const data = collectData()
+      const published = (document.getElementById('published') as HTMLInputElement).checked
+      const featured = (document.getElementById('featured') as HTMLInputElement).checked
+
+      saveBtn.textContent = 'Saving...'
+      saveBtn.setAttribute('disabled', 'true')
+      errorDiv?.classList.add('hidden')
+
+      try {
+        const response = await fetch('/api/trpc/collection.update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            itemId,
+            data,
+            published,
+            featured,
+          }),
+        })
+
+        if (response.ok) {
+          window.location.href = `/collections/${collectionType}?saved=true`
+        } else {
+          const error = await response.json()
+          if (error.error?.cause) {
+            // Validation errors
+            errorDiv!.textContent = 'Validation failed: ' + JSON.stringify(error.error.cause)
+            errorDiv?.classList.remove('hidden')
+          } else {
+            alert('Failed to save: ' + (error.error?.message || 'Unknown error'))
+          }
+          saveBtn.textContent = 'Save Changes'
+          saveBtn.removeAttribute('disabled')
+        }
+      } catch (error) {
+        console.error('Save failed:', error)
+        alert('Failed to save item. Please try again.')
+        saveBtn.textContent = 'Save Changes'
+        saveBtn.removeAttribute('disabled')
+      }
+    })
+
+    // Delete button handler
+    const deleteBtn = document.getElementById('deleteBtn')
+    deleteBtn?.addEventListener('click', async () => {
+      if (!confirm(`Are you sure you want to delete this item? This action cannot be undone.`)) {
+        return
+      }
+
+      try {
+        await fetch('/api/trpc/collection.delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itemId }),
+        })
+
+        window.location.href = `/collections/${collectionType}?deleted=true`
+      } catch (error) {
+        console.error('Delete failed:', error)
+        alert('Failed to delete item. Please try again.')
+      }
+    })
+  }
+</script>

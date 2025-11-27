@@ -96,6 +96,7 @@ function SortableComponentCard({ component, onUpdate, onRemove }: SortableCompon
     breadcrumbs: '🍞',
     'related-links': '🔗',
     'author-bio': '👤',
+    'collection-embed': '📦',
   }
 
   return (
@@ -151,7 +152,231 @@ function SortableComponentCard({ component, onUpdate, onRemove }: SortableCompon
       {/* Expanded Details */}
       {isExpanded && (
         <div className="border-t border-gray-200 p-4 bg-gray-50 space-y-4">
-          {/* Variant */}
+          {/* Collection Embed Specific Fields */}
+          {component.type === 'collection-embed' && (
+            <div className="bg-blue-50 rounded-md border border-blue-200 p-4 space-y-4">
+              <h4 className="text-sm font-medium text-blue-900 mb-2">Collection Settings</h4>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Collection Type
+                </label>
+                <input
+                  type="text"
+                  value={component.props?.collectionType || ''}
+                  onChange={(e) =>
+                    onUpdate({ props: { ...component.props, collectionType: e.target.value } })
+                  }
+                  placeholder="e.g., events, pois, articles"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">The collection type identifier</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Heading
+                </label>
+                <input
+                  type="text"
+                  value={component.props?.heading || ''}
+                  onChange={(e) =>
+                    onUpdate({ props: { ...component.props, heading: e.target.value } })
+                  }
+                  placeholder="e.g., Upcoming Events, Featured Locations"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Layout
+                  </label>
+                  <select
+                    value={component.props?.display?.layout || 'grid'}
+                    onChange={(e) =>
+                      onUpdate({
+                        props: {
+                          ...component.props,
+                          display: { ...component.props?.display, layout: e.target.value },
+                        },
+                      })
+                    }
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="grid">Grid</option>
+                    <option value="list">List</option>
+                    <option value="carousel">Carousel</option>
+                    <option value="compact">Compact</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Columns
+                  </label>
+                  <select
+                    value={component.props?.display?.columns || 3}
+                    onChange={(e) =>
+                      onUpdate({
+                        props: {
+                          ...component.props,
+                          display: { ...component.props?.display, columns: parseInt(e.target.value) },
+                        },
+                      })
+                    }
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Max Items
+                  </label>
+                  <input
+                    type="number"
+                    value={component.props?.maxItems || ''}
+                    onChange={(e) =>
+                      onUpdate({
+                        props: { ...component.props, maxItems: parseInt(e.target.value) || undefined },
+                      })
+                    }
+                    placeholder="12"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Image Aspect
+                  </label>
+                  <select
+                    value={component.props?.display?.imageAspect || 'landscape'}
+                    onChange={(e) =>
+                      onUpdate({
+                        props: {
+                          ...component.props,
+                          display: { ...component.props?.display, imageAspect: e.target.value },
+                        },
+                      })
+                    }
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="landscape">Landscape (4:3)</option>
+                    <option value="video">Video (16:9)</option>
+                    <option value="square">Square (1:1)</option>
+                    <option value="portrait">Portrait (3:4)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={component.props?.display?.showImage !== false}
+                    onChange={(e) =>
+                      onUpdate({
+                        props: {
+                          ...component.props,
+                          display: { ...component.props?.display, showImage: e.target.checked },
+                        },
+                      })
+                    }
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>Show Images</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={component.props?.display?.showSummary !== false}
+                    onChange={(e) =>
+                      onUpdate({
+                        props: {
+                          ...component.props,
+                          display: { ...component.props?.display, showSummary: e.target.checked },
+                        },
+                      })
+                    }
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>Show Summary</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={component.props?.display?.showDate !== false}
+                    onChange={(e) =>
+                      onUpdate({
+                        props: {
+                          ...component.props,
+                          display: { ...component.props?.display, showDate: e.target.checked },
+                        },
+                      })
+                    }
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>Show Date</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={component.props?.showViewAll !== false}
+                    onChange={(e) =>
+                      onUpdate({
+                        props: { ...component.props, showViewAll: e.target.checked },
+                      })
+                    }
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>Show "View All" Link</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={component.props?.publishedOnly !== false}
+                    onChange={(e) =>
+                      onUpdate({
+                        props: { ...component.props, publishedOnly: e.target.checked },
+                      })
+                    }
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>Published Only</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={component.props?.featuredOnly === true}
+                    onChange={(e) =>
+                      onUpdate({
+                        props: { ...component.props, featuredOnly: e.target.checked },
+                      })
+                    }
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>Featured Only</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* Variant (for non-collection-embed) */}
+          {component.type !== 'collection-embed' && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Variant
@@ -164,6 +389,7 @@ function SortableComponentCard({ component, onUpdate, onRemove }: SortableCompon
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
             />
           </div>
+          )}
 
           {/* Required Fields */}
           <div>

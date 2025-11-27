@@ -91,6 +91,38 @@ export const EmbedBlockSchema = z.object({
   title: z.string().optional(),
 })
 
+const CollectionEmbedItemSchema = z.object({
+  slug: z.string(),
+  title: z.string(),
+  summary: z.string().optional(),
+  image: z.string().optional(),
+  date: z.string().optional(),
+  url: z.string().optional(),
+  data: z.record(z.unknown()),
+})
+
+const CollectionEmbedDisplaySchema = z.object({
+  layout: z.enum(['grid', 'list', 'carousel', 'compact']),
+  columns: z.number().int().min(1).max(6).optional(),
+  showImage: z.boolean().optional(),
+  showSummary: z.boolean().optional(),
+  showDate: z.boolean().optional(),
+  imageAspect: z.enum(['square', 'video', 'portrait', 'landscape']).optional(),
+})
+
+export const CollectionEmbedBlockSchema = z.object({
+  type: z.literal('collection-embed'),
+  collectionType: z.string(),
+  displayName: z.string().optional(),
+  singularName: z.string().optional(),
+  items: z.array(CollectionEmbedItemSchema),
+  display: CollectionEmbedDisplaySchema,
+  heading: z.string().optional(),
+  headingLevel: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]).optional(),
+  showViewAll: z.boolean().optional(),
+  viewAllUrl: z.string().optional(),
+})
+
 // ============================================================================
 // Union of All Blocks
 // ============================================================================
@@ -106,6 +138,7 @@ export const ContentBlockSchema = z.discriminatedUnion('type', [
   FAQBlockSchema,
   CalloutBlockSchema,
   EmbedBlockSchema,
+  CollectionEmbedBlockSchema,
 ])
 
 export const ContentBlocksSchema = z.array(ContentBlockSchema)
@@ -124,6 +157,7 @@ export type ListBlock = z.infer<typeof ListBlockSchema>
 export type FAQBlock = z.infer<typeof FAQBlockSchema>
 export type CalloutBlock = z.infer<typeof CalloutBlockSchema>
 export type EmbedBlock = z.infer<typeof EmbedBlockSchema>
+export type CollectionEmbedBlock = z.infer<typeof CollectionEmbedBlockSchema>
 
 export type ContentBlock = z.infer<typeof ContentBlockSchema>
 export type ContentBlocks = z.infer<typeof ContentBlocksSchema>

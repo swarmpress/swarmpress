@@ -1,0 +1,451 @@
+---
+/**
+ * Collection Settings Page
+ * Configure collection type metadata and schema
+ */
+import Layout from '../../../layouts/Layout.astro'
+import { trpc, handleTRPCError } from '../../../lib/trpc'
+import { getSessionContext } from '../../../lib/session'
+
+const { type } = Astro.params
+
+// Get session to check for selected website
+const session = getSessionContext(Astro.cookies)
+const websiteId = session.productId
+
+// Fetch collection info and schema
+let collection: any = null
+let schema: any = null
+let error: string | null = null
+
+if (websiteId && type) {
+  try {
+    // Get collection type info
+    collection = await trpc.collection.getType.query({
+      websiteId,
+      collectionType: type,
+    })
+
+    // Get schema
+    schema = await trpc.collection.getSchema.query({
+      websiteId,
+      collectionType: type,
+    })
+  } catch (e) {
+    error = handleTRPCError(e)
+    console.error('Failed to fetch collection:', error)
+  }
+}
+
+const title = collection ? `${collection.displayName} Settings` : 'Collection Settings'
+---
+
+<Layout title={title}>
+  <div class="mb-8">
+    <div class="flex items-center gap-2 text-sm text-gray-500 mb-4">
+      <a href="/collections" class="hover:text-gray-700">Collections</a>
+      <span>/</span>
+      <a href={`/collections/${type}`} class="hover:text-gray-700">{collection?.displayName || type}</a>
+      <span>/</span>
+      <span class="text-gray-900">Settings</span>
+    </div>
+
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Collection Settings</h1>
+        <p class="text-gray-600 mt-2">
+          Configure metadata and schema for the {collection?.displayName || type} collection
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {!websiteId ? (
+    <div class="text-center py-12 bg-amber-50 border border-amber-200 rounded-lg">
+      <div class="text-4xl mb-4">🌐</div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">No Website Selected</h3>
+      <p class="text-gray-600">Please select a website to view collection settings</p>
+    </div>
+  ) : error ? (
+    <div class="text-center py-12 text-red-600 bg-red-50 border border-red-200 rounded-lg">
+      <p>Failed to load collection: {error}</p>
+    </div>
+  ) : !collection ? (
+    <div class="text-center py-12 bg-gray-50 rounded-lg">
+      <div class="text-6xl mb-4">🔍</div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">Collection Not Found</h3>
+      <p class="text-gray-600">The collection type "{type}" does not exist</p>
+    </div>
+  ) : (
+    <div class="space-y-8" id="settings-container" data-collection-id={collection.id} data-website-id={websiteId} data-collection-type={type}>
+      <!-- Basic Info Card -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Basic Information</h2>
+
+        <div class="grid grid-cols-2 gap-6">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
+            <input
+              type="text"
+              id="displayName"
+              value={collection.displayName}
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Singular Name</label>
+            <input
+              type="text"
+              id="singularName"
+              value={collection.singularName || ''}
+              placeholder="e.g., Event, POI, Article"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              id="description"
+              rows="3"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >{collection.description || ''}</textarea>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Icon (emoji)</label>
+            <input
+              type="text"
+              id="icon"
+              value={collection.icon || ''}
+              placeholder="e.g., 📅"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Color</label>
+            <input
+              type="text"
+              id="color"
+              value={collection.color || ''}
+              placeholder="e.g., #3B82F6"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Field Mapping Card -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Field Mapping</h2>
+        <p class="text-sm text-gray-600 mb-4">
+          Map which data fields should be used for display purposes
+        </p>
+
+        <div class="grid grid-cols-2 gap-6">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Title Field</label>
+            <input
+              type="text"
+              id="titleField"
+              value={collection.titleField || ''}
+              placeholder="e.g., name, title"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p class="text-xs text-gray-500 mt-1">The field to use as the item title</p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Summary Field</label>
+            <input
+              type="text"
+              id="summaryField"
+              value={collection.summaryField || ''}
+              placeholder="e.g., description, brief"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p class="text-xs text-gray-500 mt-1">The field to use for item summaries</p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Image Field</label>
+            <input
+              type="text"
+              id="imageField"
+              value={collection.imageField || ''}
+              placeholder="e.g., image, thumbnail"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p class="text-xs text-gray-500 mt-1">The field containing the item image URL</p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Date Field</label>
+            <input
+              type="text"
+              id="dateField"
+              value={collection.dateField || ''}
+              placeholder="e.g., date, event_date"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p class="text-xs text-gray-500 mt-1">The field to use for date sorting</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Features Card -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Features</h2>
+
+        <div class="space-y-4">
+          <label class="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="enabled"
+              checked={collection.enabled}
+              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <div>
+              <span class="font-medium text-gray-900">Enabled</span>
+              <p class="text-sm text-gray-500">Show this collection on the website</p>
+            </div>
+          </label>
+
+          <label class="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="enableSearch"
+              checked={collection.enableSearch}
+              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <div>
+              <span class="font-medium text-gray-900">Enable Search</span>
+              <p class="text-sm text-gray-500">Allow searching within this collection</p>
+            </div>
+          </label>
+
+          <label class="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="enableFiltering"
+              checked={collection.enableFiltering}
+              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <div>
+              <span class="font-medium text-gray-900">Enable Filtering</span>
+              <p class="text-sm text-gray-500">Allow filtering items by field values</p>
+            </div>
+          </label>
+
+          <label class="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="enableVersioning"
+              checked={collection.enableVersioning}
+              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <div>
+              <span class="font-medium text-gray-900">Enable Versioning</span>
+              <p class="text-sm text-gray-500">Keep version history for items</p>
+            </div>
+          </label>
+
+          <label class="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="enableGithubSync"
+              checked={collection.enableGithubSync}
+              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <div>
+              <span class="font-medium text-gray-900">GitHub Sync</span>
+              <p class="text-sm text-gray-500">Sync collection items with GitHub</p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- JSON Schema Card -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900">JSON Schema</h2>
+            <p class="text-sm text-gray-600">Define the data structure for items in this collection</p>
+          </div>
+          <a
+            href="https://json-schema.org/understanding-json-schema/"
+            target="_blank"
+            class="text-sm text-blue-600 hover:underline"
+          >
+            JSON Schema Docs →
+          </a>
+        </div>
+
+        <textarea
+          id="jsonSchema"
+          rows="20"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >{JSON.stringify(schema?.jsonSchema || {}, null, 2)}</textarea>
+
+        <div id="schemaError" class="hidden mt-2 text-sm text-red-600"></div>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex items-center justify-between pt-4 border-t">
+        <button
+          id="deleteBtn"
+          class="px-4 py-2 text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors"
+        >
+          Delete Collection
+        </button>
+
+        <div class="flex gap-3">
+          <a
+            href={`/collections/${type}`}
+            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </a>
+          <button
+            id="saveBtn"
+            class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
+</Layout>
+
+<script>
+  const container = document.getElementById('settings-container')
+  if (container) {
+    const collectionId = container.dataset.collectionId
+    const websiteId = container.dataset.websiteId
+    const collectionType = container.dataset.collectionType
+
+    // Save button handler
+    const saveBtn = document.getElementById('saveBtn')
+    const schemaErrorDiv = document.getElementById('schemaError')
+
+    saveBtn?.addEventListener('click', async () => {
+      const displayName = (document.getElementById('displayName') as HTMLInputElement).value
+      const singularName = (document.getElementById('singularName') as HTMLInputElement).value
+      const description = (document.getElementById('description') as HTMLTextAreaElement).value
+      const icon = (document.getElementById('icon') as HTMLInputElement).value
+      const color = (document.getElementById('color') as HTMLInputElement).value
+      const titleField = (document.getElementById('titleField') as HTMLInputElement).value
+      const summaryField = (document.getElementById('summaryField') as HTMLInputElement).value
+      const imageField = (document.getElementById('imageField') as HTMLInputElement).value
+      const dateField = (document.getElementById('dateField') as HTMLInputElement).value
+      const enabled = (document.getElementById('enabled') as HTMLInputElement).checked
+      const enableSearch = (document.getElementById('enableSearch') as HTMLInputElement).checked
+      const enableFiltering = (document.getElementById('enableFiltering') as HTMLInputElement).checked
+      const enableVersioning = (document.getElementById('enableVersioning') as HTMLInputElement).checked
+      const enableGithubSync = (document.getElementById('enableGithubSync') as HTMLInputElement).checked
+      const jsonSchemaText = (document.getElementById('jsonSchema') as HTMLTextAreaElement).value
+
+      // Validate JSON schema
+      let jsonSchema
+      try {
+        jsonSchema = JSON.parse(jsonSchemaText)
+        schemaErrorDiv?.classList.add('hidden')
+      } catch (e) {
+        schemaErrorDiv!.textContent = 'Invalid JSON: ' + (e as Error).message
+        schemaErrorDiv?.classList.remove('hidden')
+        return
+      }
+
+      saveBtn.textContent = 'Saving...'
+      saveBtn.setAttribute('disabled', 'true')
+
+      try {
+        // Update metadata
+        await fetch('/api/trpc/collection.updateType', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            collectionId,
+            displayName,
+            singularName: singularName || undefined,
+            description: description || undefined,
+            icon: icon || undefined,
+            color: color || undefined,
+            titleField: titleField || undefined,
+            summaryField: summaryField || undefined,
+            imageField: imageField || undefined,
+            dateField: dateField || undefined,
+            enableSearch,
+            enableFiltering,
+            enableVersioning,
+            enableGithubSync,
+          }),
+        })
+
+        // Update enabled status separately
+        await fetch('/api/trpc/collection.setEnabled', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            collectionId,
+            enabled,
+          }),
+        })
+
+        // Update schema
+        await fetch('/api/trpc/collection.updateSchema', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            collectionId,
+            jsonSchema,
+          }),
+        })
+
+        // Show success and redirect
+        window.location.href = `/collections/${collectionType}?saved=true`
+      } catch (error) {
+        console.error('Save failed:', error)
+        alert('Failed to save settings. Please try again.')
+        saveBtn.textContent = 'Save Changes'
+        saveBtn.removeAttribute('disabled')
+      }
+    })
+
+    // Delete button handler
+    const deleteBtn = document.getElementById('deleteBtn')
+    deleteBtn?.addEventListener('click', async () => {
+      const displayName = (document.getElementById('displayName') as HTMLInputElement).value
+
+      if (!confirm(`Are you sure you want to delete the "${displayName}" collection? This will delete ALL items in this collection and cannot be undone.`)) {
+        return
+      }
+
+      if (!confirm(`This is your final warning. Type "DELETE" to confirm deletion.`)) {
+        return
+      }
+
+      const confirmText = prompt('Type DELETE to confirm:')
+      if (confirmText !== 'DELETE') {
+        alert('Deletion cancelled.')
+        return
+      }
+
+      try {
+        await fetch('/api/trpc/collection.deleteType', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ collectionId }),
+        })
+
+        window.location.href = '/collections?deleted=true'
+      } catch (error) {
+        console.error('Delete failed:', error)
+        alert('Failed to delete collection. Please try again.')
+      }
+    })
+  }
+</script>

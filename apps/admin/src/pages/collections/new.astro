@@ -1,0 +1,489 @@
+---
+/**
+ * New Collection Type Page
+ * Create a new collection type for the current website
+ */
+import Layout from '../../layouts/Layout.astro'
+import { getSessionContext } from '../../lib/session'
+
+const title = 'New Collection'
+
+// Get session to check for selected website
+const session = getSessionContext(Astro.cookies)
+const websiteId = session.productId
+
+// Default JSON schema
+const defaultSchema = {
+  type: 'object',
+  properties: {
+    name: {
+      type: 'string',
+      description: 'Item name',
+    },
+    description: {
+      type: 'string',
+      description: 'Item description',
+    },
+  },
+  required: ['name'],
+}
+---
+
+<Layout title={title}>
+  <div class="mb-8">
+    <div class="flex items-center gap-2 text-sm text-gray-500 mb-4">
+      <a href="/collections" class="hover:text-gray-700">Collections</a>
+      <span>/</span>
+      <span class="text-gray-900">New Collection</span>
+    </div>
+
+    <h1 class="text-3xl font-bold text-gray-900">Create Collection</h1>
+    <p class="text-gray-600 mt-2">
+      Define a new collection type to organize structured content
+    </p>
+  </div>
+
+  {!websiteId ? (
+    <div class="text-center py-12 bg-amber-50 border border-amber-200 rounded-lg">
+      <div class="text-4xl mb-4">🌐</div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">No Website Selected</h3>
+      <p class="text-gray-600 mb-6">
+        Please select a website from the sidebar to create a collection
+      </p>
+      <a
+        href="/websites"
+        class="inline-block px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+      >
+        View Websites
+      </a>
+    </div>
+  ) : (
+    <div class="space-y-8" id="form-container" data-website-id={websiteId}>
+      <!-- Basic Info Card -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Basic Information</h2>
+
+        <div class="grid grid-cols-2 gap-6">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Type ID <span class="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              id="type"
+              placeholder="e.g., events, pois, articles"
+              pattern="^[a-z][a-z0-9_]*$"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p class="text-xs text-gray-500 mt-1">Lowercase letters, numbers, underscores only. Used in URLs.</p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Display Name <span class="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              id="displayName"
+              placeholder="e.g., Events, Points of Interest"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Singular Name</label>
+            <input
+              type="text"
+              id="singularName"
+              placeholder="e.g., Event, POI, Article"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p class="text-xs text-gray-500 mt-1">Used for "Add [Singular Name]" buttons</p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Icon</label>
+            <input
+              type="text"
+              id="icon"
+              placeholder="e.g., 📅"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              id="description"
+              rows="3"
+              placeholder="Describe what this collection is for"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            ></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Field Mapping Card -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Field Mapping</h2>
+        <p class="text-sm text-gray-600 mb-4">
+          Map which fields from your schema should be used for display purposes
+        </p>
+
+        <div class="grid grid-cols-2 gap-6">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Title Field</label>
+            <input
+              type="text"
+              id="titleField"
+              placeholder="e.g., name, title"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Summary Field</label>
+            <input
+              type="text"
+              id="summaryField"
+              placeholder="e.g., description, brief"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Image Field</label>
+            <input
+              type="text"
+              id="imageField"
+              placeholder="e.g., image, thumbnail"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Date Field</label>
+            <input
+              type="text"
+              id="dateField"
+              placeholder="e.g., date, event_date"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- JSON Schema Card -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900">JSON Schema</h2>
+            <p class="text-sm text-gray-600">Define the data structure for items in this collection</p>
+          </div>
+          <div class="flex gap-2">
+            <button
+              id="loadTemplateBtn"
+              class="text-sm text-blue-600 hover:underline"
+            >
+              Load Template
+            </button>
+            <a
+              href="https://json-schema.org/understanding-json-schema/"
+              target="_blank"
+              class="text-sm text-blue-600 hover:underline"
+            >
+              JSON Schema Docs →
+            </a>
+          </div>
+        </div>
+
+        <textarea
+          id="jsonSchema"
+          rows="20"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >{JSON.stringify(defaultSchema, null, 2)}</textarea>
+
+        <div id="schemaError" class="hidden mt-2 text-sm text-red-600"></div>
+      </div>
+
+      <!-- Schema Templates Modal (hidden) -->
+      <div id="templateModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+          <h3 class="text-lg font-semibold mb-4">Schema Templates</h3>
+          <div class="space-y-3" id="templateList">
+            <button class="template-btn w-full text-left p-4 border rounded-lg hover:bg-gray-50" data-template="event">
+              <div class="font-medium">Event</div>
+              <div class="text-sm text-gray-500">Name, date, location, description, price</div>
+            </button>
+            <button class="template-btn w-full text-left p-4 border rounded-lg hover:bg-gray-50" data-template="poi">
+              <div class="font-medium">Point of Interest</div>
+              <div class="text-sm text-gray-500">Name, location, coordinates, description, category</div>
+            </button>
+            <button class="template-btn w-full text-left p-4 border rounded-lg hover:bg-gray-50" data-template="article">
+              <div class="font-medium">Article/Blog Post</div>
+              <div class="text-sm text-gray-500">Title, author, date, content, tags</div>
+            </button>
+            <button class="template-btn w-full text-left p-4 border rounded-lg hover:bg-gray-50" data-template="faq">
+              <div class="font-medium">FAQ</div>
+              <div class="text-sm text-gray-500">Question, answer, category</div>
+            </button>
+            <button class="template-btn w-full text-left p-4 border rounded-lg hover:bg-gray-50" data-template="product">
+              <div class="font-medium">Product</div>
+              <div class="text-sm text-gray-500">Name, price, description, image, category</div>
+            </button>
+          </div>
+          <button id="closeModalBtn" class="mt-4 w-full py-2 border border-gray-300 rounded-md hover:bg-gray-50">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex items-center justify-end gap-3 pt-4 border-t">
+        <a
+          href="/collections"
+          class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </a>
+        <button
+          id="createBtn"
+          class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+        >
+          Create Collection
+        </button>
+      </div>
+    </div>
+  )}
+</Layout>
+
+<script>
+  const container = document.getElementById('form-container')
+  if (container) {
+    const websiteId = container.dataset.websiteId
+    const schemaErrorDiv = document.getElementById('schemaError')
+
+    // Schema templates
+    const templates: Record<string, any> = {
+      event: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Event name' },
+          date: { type: 'string', format: 'date', description: 'Event date' },
+          end_date: { type: 'string', format: 'date', description: 'End date (for multi-day events)' },
+          time: { type: 'string', description: 'Event time' },
+          location: { type: 'string', description: 'Event location' },
+          description: { type: 'string', description: 'Event description' },
+          price: { type: 'string', description: 'Ticket price or free' },
+          image: { type: 'string', format: 'uri', description: 'Event image URL' },
+          link: { type: 'string', format: 'uri', description: 'Event website or ticket link' },
+          category: { type: 'string', description: 'Event category' },
+        },
+        required: ['name', 'date'],
+      },
+      poi: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Location name' },
+          description: { type: 'string', description: 'Location description' },
+          address: { type: 'string', description: 'Street address' },
+          latitude: { type: 'number', description: 'GPS latitude' },
+          longitude: { type: 'number', description: 'GPS longitude' },
+          category: { type: 'string', description: 'POI category' },
+          phone: { type: 'string', description: 'Contact phone' },
+          website: { type: 'string', format: 'uri', description: 'Website URL' },
+          hours: { type: 'string', description: 'Opening hours' },
+          image: { type: 'string', format: 'uri', description: 'Image URL' },
+        },
+        required: ['name'],
+      },
+      article: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Article title' },
+          author: { type: 'string', description: 'Author name' },
+          date: { type: 'string', format: 'date', description: 'Publication date' },
+          excerpt: { type: 'string', description: 'Brief summary' },
+          content: { type: 'string', description: 'Full article content (Markdown)' },
+          image: { type: 'string', format: 'uri', description: 'Featured image' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Article tags' },
+          category: { type: 'string', description: 'Article category' },
+        },
+        required: ['title'],
+      },
+      faq: {
+        type: 'object',
+        properties: {
+          question: { type: 'string', description: 'The question' },
+          answer: { type: 'string', description: 'The answer (Markdown supported)' },
+          category: { type: 'string', description: 'FAQ category' },
+          order: { type: 'integer', description: 'Display order' },
+        },
+        required: ['question', 'answer'],
+      },
+      product: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Product name' },
+          description: { type: 'string', description: 'Product description' },
+          price: { type: 'number', description: 'Price' },
+          currency: { type: 'string', description: 'Currency code (e.g., USD, EUR)' },
+          image: { type: 'string', format: 'uri', description: 'Product image' },
+          category: { type: 'string', description: 'Product category' },
+          sku: { type: 'string', description: 'SKU or product code' },
+          in_stock: { type: 'boolean', description: 'Availability' },
+          link: { type: 'string', format: 'uri', description: 'Purchase link' },
+        },
+        required: ['name'],
+      },
+    }
+
+    // Template modal
+    const templateModal = document.getElementById('templateModal')
+    const loadTemplateBtn = document.getElementById('loadTemplateBtn')
+    const closeModalBtn = document.getElementById('closeModalBtn')
+    const jsonSchemaTextarea = document.getElementById('jsonSchema') as HTMLTextAreaElement
+
+    loadTemplateBtn?.addEventListener('click', () => {
+      templateModal?.classList.remove('hidden')
+    })
+
+    closeModalBtn?.addEventListener('click', () => {
+      templateModal?.classList.add('hidden')
+    })
+
+    templateModal?.addEventListener('click', (e) => {
+      if (e.target === templateModal) {
+        templateModal.classList.add('hidden')
+      }
+    })
+
+    document.querySelectorAll('.template-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const templateName = (btn as HTMLElement).dataset.template
+        if (templateName && templates[templateName]) {
+          jsonSchemaTextarea.value = JSON.stringify(templates[templateName], null, 2)
+
+          // Auto-fill field mappings based on template
+          const titleField = document.getElementById('titleField') as HTMLInputElement
+          const summaryField = document.getElementById('summaryField') as HTMLInputElement
+          const imageField = document.getElementById('imageField') as HTMLInputElement
+          const dateField = document.getElementById('dateField') as HTMLInputElement
+
+          if (templateName === 'event') {
+            titleField.value = 'name'
+            summaryField.value = 'description'
+            imageField.value = 'image'
+            dateField.value = 'date'
+          } else if (templateName === 'poi') {
+            titleField.value = 'name'
+            summaryField.value = 'description'
+            imageField.value = 'image'
+          } else if (templateName === 'article') {
+            titleField.value = 'title'
+            summaryField.value = 'excerpt'
+            imageField.value = 'image'
+            dateField.value = 'date'
+          } else if (templateName === 'faq') {
+            titleField.value = 'question'
+            summaryField.value = 'answer'
+          } else if (templateName === 'product') {
+            titleField.value = 'name'
+            summaryField.value = 'description'
+            imageField.value = 'image'
+          }
+
+          templateModal?.classList.add('hidden')
+        }
+      })
+    })
+
+    // Create button handler
+    const createBtn = document.getElementById('createBtn')
+    createBtn?.addEventListener('click', async () => {
+      const typeInput = document.getElementById('type') as HTMLInputElement
+      const displayNameInput = document.getElementById('displayName') as HTMLInputElement
+      const singularNameInput = document.getElementById('singularName') as HTMLInputElement
+      const iconInput = document.getElementById('icon') as HTMLInputElement
+      const descriptionInput = document.getElementById('description') as HTMLTextAreaElement
+      const titleFieldInput = document.getElementById('titleField') as HTMLInputElement
+      const summaryFieldInput = document.getElementById('summaryField') as HTMLInputElement
+      const imageFieldInput = document.getElementById('imageField') as HTMLInputElement
+      const dateFieldInput = document.getElementById('dateField') as HTMLInputElement
+
+      const typeValue = typeInput.value.trim()
+      const displayName = displayNameInput.value.trim()
+
+      // Validation
+      if (!typeValue) {
+        alert('Type ID is required')
+        typeInput.focus()
+        return
+      }
+
+      if (!/^[a-z][a-z0-9_]*$/.test(typeValue)) {
+        alert('Type ID must start with a letter and contain only lowercase letters, numbers, and underscores')
+        typeInput.focus()
+        return
+      }
+
+      if (!displayName) {
+        alert('Display Name is required')
+        displayNameInput.focus()
+        return
+      }
+
+      // Validate JSON schema
+      let jsonSchema
+      try {
+        jsonSchema = JSON.parse(jsonSchemaTextarea.value)
+        schemaErrorDiv?.classList.add('hidden')
+      } catch (e) {
+        schemaErrorDiv!.textContent = 'Invalid JSON: ' + (e as Error).message
+        schemaErrorDiv?.classList.remove('hidden')
+        return
+      }
+
+      createBtn.textContent = 'Creating...'
+      createBtn.setAttribute('disabled', 'true')
+
+      try {
+        const response = await fetch('/api/trpc/collection.createType', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            websiteId,
+            type: typeValue,
+            displayName,
+            singularName: singularNameInput.value.trim() || undefined,
+            icon: iconInput.value.trim() || undefined,
+            description: descriptionInput.value.trim() || undefined,
+            jsonSchema,
+            titleField: titleFieldInput.value.trim() || undefined,
+            summaryField: summaryFieldInput.value.trim() || undefined,
+            imageField: imageFieldInput.value.trim() || undefined,
+            dateField: dateFieldInput.value.trim() || undefined,
+          }),
+        })
+
+        if (response.ok) {
+          window.location.href = `/collections/${typeValue}?created=true`
+        } else {
+          const error = await response.json()
+          if (error.error?.message?.includes('already exists')) {
+            alert(`A collection with type "${typeValue}" already exists for this website.`)
+          } else {
+            alert('Failed to create collection: ' + (error.error?.message || 'Unknown error'))
+          }
+          createBtn.textContent = 'Create Collection'
+          createBtn.removeAttribute('disabled')
+        }
+      } catch (error) {
+        console.error('Create failed:', error)
+        alert('Failed to create collection. Please try again.')
+        createBtn.textContent = 'Create Collection'
+        createBtn.removeAttribute('disabled')
+      }
+    })
+  }
+</script>

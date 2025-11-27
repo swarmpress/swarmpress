@@ -1,0 +1,146 @@
+---
+/**
+ * Default Collection Listing Template
+ * Generic listing page for any collection type
+ */
+import CollectionLayout from '../../../layouts/CollectionLayout.astro'
+import CollectionGrid from '../../../components/collections/CollectionGrid.astro'
+import CollectionPagination from '../../../components/collections/CollectionPagination.astro'
+
+export interface Props {
+  collection: {
+    type: string
+    displayName: string
+    singularName?: string
+    description?: string
+    icon?: string
+    color?: string
+  }
+  items: Array<{
+    id: string
+    slug: string
+    title: string
+    summary?: string
+    image?: string
+    date?: string
+    url: string
+    data: Record<string, unknown>
+    featured: boolean
+  }>
+  pagination: {
+    currentPage: number
+    totalPages: number
+    totalItems: number
+    itemsPerPage: number
+    hasNextPage: boolean
+    hasPrevPage: boolean
+    nextPageUrl?: string
+    prevPageUrl?: string
+  }
+  baseUrl: string
+}
+
+const { collection, items, pagination, baseUrl } = Astro.props
+
+const breadcrumbs = [
+  { name: collection.displayName, url: `/${collection.type}` }
+]
+
+// Add page number to breadcrumbs if not on first page
+if (pagination.currentPage > 1) {
+  breadcrumbs.push({
+    name: `Page ${pagination.currentPage}`,
+    url: `/${collection.type}/page/${pagination.currentPage}`
+  })
+}
+---
+
+<CollectionLayout
+  title={pagination.currentPage > 1
+    ? `${collection.displayName} - Page ${pagination.currentPage}`
+    : collection.displayName}
+  description={collection.description}
+  collectionType={collection.type}
+  breadcrumbs={breadcrumbs}
+>
+  <div class="collection-listing">
+    <header class="listing-header">
+      {collection.icon && <span class="listing-icon">{collection.icon}</span>}
+      <h1>{collection.displayName}</h1>
+      {collection.description && (
+        <p class="listing-description">{collection.description}</p>
+      )}
+      <p class="listing-count">
+        {pagination.totalItems} {pagination.totalItems === 1
+          ? (collection.singularName || 'item')
+          : collection.displayName.toLowerCase()}
+      </p>
+    </header>
+
+    {items.length > 0 ? (
+      <>
+        <CollectionGrid
+          items={items}
+          collectionType={collection.type}
+        />
+
+        {pagination.totalPages > 1 && (
+          <CollectionPagination
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            baseUrl={baseUrl}
+          />
+        )}
+      </>
+    ) : (
+      <div class="no-items">
+        <p>No {collection.displayName.toLowerCase()} found.</p>
+      </div>
+    )}
+  </div>
+</CollectionLayout>
+
+<style>
+  .collection-listing {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .listing-header {
+    text-align: center;
+    margin-bottom: 3rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .listing-icon {
+    font-size: 3rem;
+    display: block;
+    margin-bottom: 1rem;
+  }
+
+  .listing-header h1 {
+    margin-bottom: 0.5rem;
+  }
+
+  .listing-description {
+    color: var(--color-text-light);
+    font-size: 1.125rem;
+    max-width: 600px;
+    margin: 0 auto 1rem;
+    line-height: 1.6;
+  }
+
+  .listing-count {
+    color: var(--color-text-light);
+    font-size: 0.875rem;
+  }
+
+  .no-items {
+    text-align: center;
+    padding: 4rem 2rem;
+    background-color: var(--color-bg-alt);
+    border-radius: 8px;
+    color: var(--color-text-light);
+  }
+</style>

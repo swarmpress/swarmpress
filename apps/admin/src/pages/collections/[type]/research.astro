@@ -1,0 +1,372 @@
+---
+/**
+ * Collection Research Configuration Page
+ * Configure AI-powered research for auto-populating collection items
+ */
+import Layout from '../../../layouts/Layout.astro'
+import { trpc, handleTRPCError } from '../../../lib/trpc'
+import { getSessionContext } from '../../../lib/session'
+
+const { type } = Astro.params
+
+// Get session to check for selected website
+const session = getSessionContext(Astro.cookies)
+const websiteId = session.productId
+
+// Fetch collection info and research config
+let collection: any = null
+let researchConfig: any = null
+let error: string | null = null
+
+if (websiteId && type) {
+  try {
+    // Get collection type info
+    collection = await trpc.collection.getType.query({
+      websiteId,
+      collectionType: type,
+    })
+
+    // Get research config
+    researchConfig = await trpc.collection.getResearchConfig.query({
+      websiteId,
+      collectionType: type,
+    })
+  } catch (e) {
+    error = handleTRPCError(e)
+    console.error('Failed to fetch collection:', error)
+  }
+}
+
+const title = collection ? `${collection.displayName} Research Config` : 'Research Config'
+---
+
+<Layout title={title}>
+  <div class="mb-8">
+    <div class="flex items-center gap-2 text-sm text-gray-500 mb-4">
+      <a href="/collections" class="hover:text-gray-700">Collections</a>
+      <span>/</span>
+      <a href={`/collections/${type}`} class="hover:text-gray-700">{collection?.displayName || type}</a>
+      <span>/</span>
+      <span class="text-gray-900">Research</span>
+    </div>
+
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Research Configuration</h1>
+        <p class="text-gray-600 mt-2">
+          Configure AI-powered research to automatically discover and populate {collection?.displayName || type} items
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {!websiteId ? (
+    <div class="text-center py-12 bg-amber-50 border border-amber-200 rounded-lg">
+      <div class="text-4xl mb-4">🌐</div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">No Website Selected</h3>
+      <p class="text-gray-600">Please select a website to view research config</p>
+    </div>
+  ) : error ? (
+    <div class="text-center py-12 text-red-600 bg-red-50 border border-red-200 rounded-lg">
+      <p>Failed to load collection: {error}</p>
+    </div>
+  ) : !collection ? (
+    <div class="text-center py-12 bg-gray-50 rounded-lg">
+      <div class="text-6xl mb-4">🔍</div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">Collection Not Found</h3>
+      <p class="text-gray-600">The collection type "{type}" does not exist</p>
+    </div>
+  ) : (
+    <div class="space-y-8" id="research-container" data-website-id={websiteId} data-collection-type={type}>
+      <!-- Enable/Disable Card -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <label class="flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="enabled"
+            checked={researchConfig?.enabled ?? false}
+            class="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+          />
+          <div>
+            <span class="text-lg font-medium text-gray-900">Enable Research</span>
+            <p class="text-sm text-gray-500">Allow AI agents to research and populate this collection</p>
+          </div>
+        </label>
+      </div>
+
+      <!-- Search Configuration -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Search Configuration</h2>
+
+        <div class="space-y-6">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Search Prompt</label>
+            <textarea
+              id="searchPrompt"
+              rows="4"
+              placeholder="Instructions for generating search queries, e.g., 'Find upcoming local events in {region}'"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >{researchConfig?.searchPrompt || ''}</textarea>
+            <p class="text-xs text-gray-500 mt-1">Use {'{'}placeholders{'}'} for dynamic values</p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Default Search Queries</label>
+            <textarea
+              id="defaultQueries"
+              rows="4"
+              placeholder="One query per line, e.g.:&#10;upcoming events in Cinque Terre&#10;local festivals Italy 2024&#10;hiking activities Liguria"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >{(researchConfig?.defaultQueries || []).join('\n')}</textarea>
+            <p class="text-xs text-gray-500 mt-1">Pre-defined search queries to run</p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Search Domains (Allowlist)</label>
+            <textarea
+              id="searchDomains"
+              rows="3"
+              placeholder="One domain per line, e.g.:&#10;tripadvisor.com&#10;viator.com&#10;eventbrite.com"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >{(researchConfig?.searchDomains || []).join('\n')}</textarea>
+            <p class="text-xs text-gray-500 mt-1">Restrict searches to these domains (leave empty for all)</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Extraction Configuration -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Data Extraction</h2>
+
+        <div class="space-y-6">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Extraction Prompt</label>
+            <textarea
+              id="extractionPrompt"
+              rows="6"
+              placeholder="Instructions for extracting data from web pages, e.g., 'Extract event details including name, date, location, description, and ticket price from this page.'"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >{researchConfig?.extractionPrompt || ''}</textarea>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Extraction Hints</label>
+            <textarea
+              id="extractionHints"
+              rows="6"
+              placeholder='JSON object with hints for specific fields, e.g.:&#10;{&#10;  "price": "Look for ticket prices, entry fees",&#10;  "date": "Extract dates in ISO format"&#10;}'
+              class="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >{JSON.stringify(researchConfig?.extractionHints || {}, null, 2)}</textarea>
+            <p class="text-xs text-gray-500 mt-1">Additional context to help the AI extract specific fields</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Validation & Quality -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Validation & Quality</h2>
+
+        <div class="grid grid-cols-2 gap-6">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Minimum Confidence Score</label>
+            <input
+              type="number"
+              id="minConfidenceScore"
+              min="0"
+              max="1"
+              step="0.1"
+              value={researchConfig?.minConfidenceScore ?? 0.7}
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p class="text-xs text-gray-500 mt-1">0-1, lower = more permissive</p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Deduplication Strategy</label>
+            <select
+              id="dedupStrategy"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="name" selected={researchConfig?.dedupStrategy === 'name'}>By Name</option>
+              <option value="location" selected={researchConfig?.dedupStrategy === 'location'}>By Location</option>
+              <option value="composite" selected={researchConfig?.dedupStrategy === 'composite'}>Composite (Name + Location)</option>
+            </select>
+            <p class="text-xs text-gray-500 mt-1">How to detect duplicate items</p>
+          </div>
+        </div>
+
+        <div class="mt-6 space-y-4">
+          <label class="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="requireSourceUrls"
+              checked={researchConfig?.requireSourceUrls ?? true}
+              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <div>
+              <span class="font-medium text-gray-900">Require Source URLs</span>
+              <p class="text-sm text-gray-500">All items must have a source URL for attribution</p>
+            </div>
+          </label>
+
+          <label class="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="autoPublish"
+              checked={researchConfig?.autoPublish ?? false}
+              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <div>
+              <span class="font-medium text-gray-900">Auto-Publish</span>
+              <p class="text-sm text-gray-500">Automatically publish items that pass validation</p>
+            </div>
+          </label>
+        </div>
+
+        <div class="mt-6">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Validation Rules</label>
+          <textarea
+            id="validationRules"
+            rows="6"
+            placeholder='JSON object with validation rules, e.g.:&#10;{&#10;  "required_fields": ["name", "date"],&#10;  "date_must_be_future": true&#10;}'
+            class="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >{JSON.stringify(researchConfig?.validationRules || {}, null, 2)}</textarea>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex items-center justify-between pt-4 border-t">
+        <button
+          id="deleteConfigBtn"
+          class="px-4 py-2 text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors"
+          style={!researchConfig ? 'display: none;' : ''}
+        >
+          Delete Research Config
+        </button>
+
+        <div class="flex gap-3">
+          <a
+            href={`/collections/${type}`}
+            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </a>
+          <button
+            id="saveBtn"
+            class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            Save Configuration
+          </button>
+        </div>
+      </div>
+
+      <div id="jsonError" class="hidden text-sm text-red-600 mt-2"></div>
+    </div>
+  )}
+</Layout>
+
+<script>
+  const container = document.getElementById('research-container')
+  if (container) {
+    const websiteId = container.dataset.websiteId
+    const collectionType = container.dataset.collectionType
+    const jsonErrorDiv = document.getElementById('jsonError')
+
+    // Helper to parse JSON safely
+    function parseJSON(text: string, defaultValue: any = {}): any {
+      if (!text.trim()) return defaultValue
+      try {
+        return JSON.parse(text)
+      } catch (e) {
+        throw new Error('Invalid JSON: ' + (e as Error).message)
+      }
+    }
+
+    // Helper to parse newline-separated list
+    function parseLines(text: string): string[] {
+      return text.split('\n').map(s => s.trim()).filter(s => s.length > 0)
+    }
+
+    // Save button handler
+    const saveBtn = document.getElementById('saveBtn')
+    saveBtn?.addEventListener('click', async () => {
+      const enabled = (document.getElementById('enabled') as HTMLInputElement).checked
+      const searchPrompt = (document.getElementById('searchPrompt') as HTMLTextAreaElement).value
+      const defaultQueries = parseLines((document.getElementById('defaultQueries') as HTMLTextAreaElement).value)
+      const searchDomains = parseLines((document.getElementById('searchDomains') as HTMLTextAreaElement).value)
+      const extractionPrompt = (document.getElementById('extractionPrompt') as HTMLTextAreaElement).value
+      const minConfidenceScore = parseFloat((document.getElementById('minConfidenceScore') as HTMLInputElement).value)
+      const dedupStrategy = (document.getElementById('dedupStrategy') as HTMLSelectElement).value as 'name' | 'location' | 'composite'
+      const requireSourceUrls = (document.getElementById('requireSourceUrls') as HTMLInputElement).checked
+      const autoPublish = (document.getElementById('autoPublish') as HTMLInputElement).checked
+
+      // Parse JSON fields
+      let extractionHints, validationRules
+      try {
+        extractionHints = parseJSON((document.getElementById('extractionHints') as HTMLTextAreaElement).value)
+        validationRules = parseJSON((document.getElementById('validationRules') as HTMLTextAreaElement).value)
+        jsonErrorDiv?.classList.add('hidden')
+      } catch (e) {
+        jsonErrorDiv!.textContent = (e as Error).message
+        jsonErrorDiv?.classList.remove('hidden')
+        return
+      }
+
+      saveBtn.textContent = 'Saving...'
+      saveBtn.setAttribute('disabled', 'true')
+
+      try {
+        await fetch('/api/trpc/collection.upsertResearchConfig', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            websiteId,
+            collectionType,
+            enabled,
+            searchPrompt: searchPrompt || undefined,
+            defaultQueries: defaultQueries.length > 0 ? defaultQueries : undefined,
+            searchDomains: searchDomains.length > 0 ? searchDomains : undefined,
+            extractionPrompt: extractionPrompt || undefined,
+            extractionHints: Object.keys(extractionHints).length > 0 ? extractionHints : undefined,
+            validationRules: Object.keys(validationRules).length > 0 ? validationRules : undefined,
+            requireSourceUrls,
+            minConfidenceScore,
+            autoPublish,
+            dedupStrategy,
+          }),
+        })
+
+        window.location.href = `/collections/${collectionType}?research-saved=true`
+      } catch (error) {
+        console.error('Save failed:', error)
+        alert('Failed to save research configuration. Please try again.')
+        saveBtn.textContent = 'Save Configuration'
+        saveBtn.removeAttribute('disabled')
+      }
+    })
+
+    // Delete button handler
+    const deleteConfigBtn = document.getElementById('deleteConfigBtn')
+    deleteConfigBtn?.addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to delete this research configuration?')) {
+        return
+      }
+
+      try {
+        await fetch('/api/trpc/collection.deleteResearchConfig', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            websiteId,
+            collectionType,
+          }),
+        })
+
+        window.location.href = `/collections/${collectionType}?research-deleted=true`
+      } catch (error) {
+        console.error('Delete failed:', error)
+        alert('Failed to delete research configuration. Please try again.')
+      }
+    })
+  }
+</script>

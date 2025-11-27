@@ -9,10 +9,24 @@ export type { BuildOptions, BuildResult } from './build'
 export { deploySite } from './deploy'
 export type { DeployOptions, DeployResult } from './deploy'
 
+// Collection generation
+export { generateCollectionPages } from './collection-pages'
+export type { CollectionGenerationResult } from '../types/collection-types'
+
+export {
+  fetchEnabledCollections,
+  fetchAllCollections,
+  fetchCollectionByType,
+  fetchCollectionItems,
+  fetchCollectionsForBuild,
+  transformItemsForTemplate,
+  transformItemForDetail,
+} from './collections'
+
 /**
  * Complete build and deploy pipeline
  */
-import { buildSite, validateContent, cleanBuildDir } from './build'
+import { buildSite, validateContent } from './build'
 import { deploySite } from './deploy'
 import { contentRepository } from '@swarm-press/backend'
 import type { BuildOptions } from './build'

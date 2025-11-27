@@ -1,0 +1,385 @@
+---
+/**
+ * New Collection Item Page
+ * Create a new item in a collection with dynamic form based on schema
+ */
+import Layout from '../../../layouts/Layout.astro'
+import { trpc, handleTRPCError } from '../../../lib/trpc'
+import { getSessionContext } from '../../../lib/session'
+
+const { type } = Astro.params
+
+// Get session to check for selected website
+const session = getSessionContext(Astro.cookies)
+const websiteId = session.productId
+
+// Fetch collection info and schema
+let collection: any = null
+let schema: any = null
+let error: string | null = null
+
+if (websiteId && type) {
+  try {
+    // Get collection type info
+    collection = await trpc.collection.getType.query({
+      websiteId,
+      collectionType: type,
+    })
+
+    // Get schema
+    schema = await trpc.collection.getSchema.query({
+      websiteId,
+      collectionType: type,
+    })
+  } catch (e) {
+    error = handleTRPCError(e)
+    console.error('Failed to fetch collection:', error)
+  }
+}
+
+const title = collection ? `New ${collection.singularName || 'Item'}` : 'New Item'
+
+// Helper to get field label
+function getFieldLabel(key: string, fieldSchema: any): string {
+  if (fieldSchema?.title) return fieldSchema.title
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+}
+
+// Get required fields from schema
+const requiredFields = schema?.jsonSchema?.required || []
+---
+
+<Layout title={title}>
+  <div class="mb-8">
+    <div class="flex items-center gap-2 text-sm text-gray-500 mb-4">
+      <a href="/collections" class="hover:text-gray-700">Collections</a>
+      <span>/</span>
+      <a href={`/collections/${type}`} class="hover:text-gray-700">{collection?.displayName || type}</a>
+      <span>/</span>
+      <span class="text-gray-900">New</span>
+    </div>
+
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">
+          Add {collection?.singularName || 'Item'}
+        </h1>
+        <p class="text-gray-600 mt-2">
+          Create a new {collection?.singularName?.toLowerCase() || 'item'} in the {collection?.displayName || type} collection
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {!websiteId ? (
+    <div class="text-center py-12 bg-amber-50 border border-amber-200 rounded-lg">
+      <div class="text-4xl mb-4">🌐</div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">No Website Selected</h3>
+      <p class="text-gray-600">Please select a website to create an item</p>
+    </div>
+  ) : error ? (
+    <div class="text-center py-12 text-red-600 bg-red-50 border border-red-200 rounded-lg">
+      <p>Failed to load collection: {error}</p>
+    </div>
+  ) : !collection ? (
+    <div class="text-center py-12 bg-gray-50 rounded-lg">
+      <div class="text-6xl mb-4">🔍</div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">Collection Not Found</h3>
+      <p class="text-gray-600">The collection type "{type}" does not exist</p>
+    </div>
+  ) : (
+    <div class="space-y-8" id="create-container"
+      data-website-id={websiteId}
+      data-collection-type={type}
+      data-schema={JSON.stringify(schema?.jsonSchema || {})}
+      data-title-field={collection.titleField || ''}
+    >
+      <!-- Slug Card -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Identification</h2>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            Slug <span class="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            id="slug"
+            placeholder="my-item-slug"
+            pattern="^[a-z0-9-]+$"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <p class="text-xs text-gray-500 mt-1">
+            Unique identifier for this item. Lowercase letters, numbers, and hyphens only. Used in URLs.
+          </p>
+        </div>
+
+        <div class="mt-4 flex items-center gap-6">
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="published"
+              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <span class="font-medium">Published</span>
+          </label>
+
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="featured"
+              class="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+            />
+            <span class="font-medium">Featured</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Data Fields Card -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Data</h2>
+
+        <div class="space-y-4" id="fieldsContainer">
+          {schema?.jsonSchema?.properties && Object.entries(schema.jsonSchema.properties).map(([key, fieldSchema]: [string, any]) => (
+            <div class="field-group">
+              <label class="block text-sm font-medium text-gray-700 mb-1">
+                {getFieldLabel(key, fieldSchema)}
+                {requiredFields.includes(key) && <span class="text-red-500">*</span>}
+              </label>
+
+              {fieldSchema.type === 'string' && fieldSchema.format === 'date' ? (
+                <input
+                  type="date"
+                  name={key}
+                  data-field-type="date"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              ) : fieldSchema.type === 'string' && fieldSchema.format === 'uri' ? (
+                <input
+                  type="url"
+                  name={key}
+                  data-field-type="uri"
+                  placeholder="https://"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              ) : fieldSchema.type === 'string' && (key.includes('description') || key.includes('content') || key.includes('answer')) ? (
+                <textarea
+                  name={key}
+                  data-field-type="text"
+                  rows="4"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                ></textarea>
+              ) : fieldSchema.type === 'string' ? (
+                <input
+                  type="text"
+                  name={key}
+                  data-field-type="string"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              ) : fieldSchema.type === 'number' || fieldSchema.type === 'integer' ? (
+                <input
+                  type="number"
+                  name={key}
+                  data-field-type={fieldSchema.type}
+                  step={fieldSchema.type === 'integer' ? '1' : 'any'}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              ) : fieldSchema.type === 'boolean' ? (
+                <label class="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name={key}
+                    data-field-type="boolean"
+                    class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span class="text-sm text-gray-600">{fieldSchema.description || 'Enable'}</span>
+                </label>
+              ) : fieldSchema.type === 'array' ? (
+                <div>
+                  <textarea
+                    name={key}
+                    data-field-type="array"
+                    rows="3"
+                    placeholder="One item per line"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  ></textarea>
+                  <p class="text-xs text-gray-500 mt-1">Enter one item per line</p>
+                </div>
+              ) : (
+                <textarea
+                  name={key}
+                  data-field-type="json"
+                  rows="3"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                ></textarea>
+              )}
+
+              {fieldSchema.description && fieldSchema.type !== 'boolean' && (
+                <p class="text-xs text-gray-500 mt-1">{fieldSchema.description}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex items-center justify-end gap-3 pt-4 border-t">
+        <a
+          href={`/collections/${type}`}
+          class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </a>
+        <button
+          id="createBtn"
+          class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+        >
+          Create {collection?.singularName || 'Item'}
+        </button>
+      </div>
+
+      <div id="validationError" class="hidden text-sm text-red-600 mt-2"></div>
+    </div>
+  )}
+</Layout>
+
+<script>
+  const container = document.getElementById('create-container')
+  if (container) {
+    const websiteId = container.dataset.websiteId
+    const collectionType = container.dataset.collectionType
+    const titleField = container.dataset.titleField
+    const errorDiv = document.getElementById('validationError')
+
+    // Auto-generate slug from title field
+    const slugInput = document.getElementById('slug') as HTMLInputElement
+    let slugManuallyEdited = false
+
+    slugInput?.addEventListener('input', () => {
+      slugManuallyEdited = true
+    })
+
+    if (titleField) {
+      const titleInput = document.querySelector(`[name="${titleField}"]`) as HTMLInputElement | HTMLTextAreaElement
+      titleInput?.addEventListener('input', () => {
+        if (!slugManuallyEdited && titleInput.value) {
+          slugInput.value = titleInput.value
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '')
+        }
+      })
+    }
+
+    // Collect form data
+    function collectData(): Record<string, unknown> {
+      const data: Record<string, unknown> = {}
+      const fieldsContainer = document.getElementById('fieldsContainer')
+      if (!fieldsContainer) return data
+
+      fieldsContainer.querySelectorAll('[name]').forEach((el) => {
+        const name = el.getAttribute('name')!
+        const fieldType = el.getAttribute('data-field-type')
+
+        if (el instanceof HTMLInputElement) {
+          if (fieldType === 'boolean') {
+            data[name] = el.checked
+          } else if (fieldType === 'number' || fieldType === 'integer') {
+            if (el.value.trim() !== '') {
+              data[name] = fieldType === 'integer' ? parseInt(el.value) : parseFloat(el.value)
+            }
+          } else {
+            if (el.value.trim() !== '') {
+              data[name] = el.value.trim()
+            }
+          }
+        } else if (el instanceof HTMLTextAreaElement) {
+          if (fieldType === 'array') {
+            const items = el.value.split('\n').map(s => s.trim()).filter(s => s.length > 0)
+            if (items.length > 0) {
+              data[name] = items
+            }
+          } else if (fieldType === 'json') {
+            if (el.value.trim()) {
+              try {
+                data[name] = JSON.parse(el.value)
+              } catch (e) {
+                // Keep as string if not valid JSON
+                data[name] = el.value.trim()
+              }
+            }
+          } else {
+            if (el.value.trim() !== '') {
+              data[name] = el.value.trim()
+            }
+          }
+        }
+      })
+
+      return data
+    }
+
+    // Create button handler
+    const createBtn = document.getElementById('createBtn')
+    createBtn?.addEventListener('click', async () => {
+      const slug = slugInput.value.trim()
+      const published = (document.getElementById('published') as HTMLInputElement).checked
+      const featured = (document.getElementById('featured') as HTMLInputElement).checked
+      const data = collectData()
+
+      // Validation
+      if (!slug) {
+        alert('Slug is required')
+        slugInput.focus()
+        return
+      }
+
+      if (!/^[a-z0-9-]+$/.test(slug)) {
+        alert('Slug must contain only lowercase letters, numbers, and hyphens')
+        slugInput.focus()
+        return
+      }
+
+      createBtn.textContent = 'Creating...'
+      createBtn.setAttribute('disabled', 'true')
+      errorDiv?.classList.add('hidden')
+
+      try {
+        const response = await fetch('/api/trpc/collection.create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            websiteId,
+            collectionType,
+            slug,
+            data,
+            published,
+            featured,
+          }),
+        })
+
+        if (response.ok) {
+          window.location.href = `/collections/${collectionType}?created=true`
+        } else {
+          const error = await response.json()
+          if (error.error?.cause) {
+            // Validation errors
+            errorDiv!.textContent = 'Validation failed: ' + JSON.stringify(error.error.cause)
+            errorDiv?.classList.remove('hidden')
+          } else if (error.error?.message?.includes('duplicate')) {
+            alert(`An item with slug "${slug}" already exists in this collection.`)
+          } else {
+            alert('Failed to create: ' + (error.error?.message || 'Unknown error'))
+          }
+          createBtn.textContent = 'Create Item'
+          createBtn.removeAttribute('disabled')
+        }
+      } catch (error) {
+        console.error('Create failed:', error)
+        alert('Failed to create item. Please try again.')
+        createBtn.textContent = 'Create Item'
+        createBtn.removeAttribute('disabled')
+      }
+    })
+  }
+</script>

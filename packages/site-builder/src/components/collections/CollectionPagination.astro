@@ -1,0 +1,215 @@
+---
+/**
+ * Collection Pagination Component
+ * Displays pagination controls for collection listings
+ */
+export interface Props {
+  currentPage: number
+  totalPages: number
+  baseUrl: string
+  maxVisiblePages?: number
+}
+
+const {
+  currentPage,
+  totalPages,
+  baseUrl,
+  maxVisiblePages = 5
+} = Astro.props
+
+// Generate page URL
+function getPageUrl(page: number): string {
+  if (page === 1) {
+    return baseUrl
+  }
+  return `${baseUrl}/page/${page}`
+}
+
+// Calculate visible page range
+function getVisiblePages(): number[] {
+  const pages: number[] = []
+  const halfVisible = Math.floor(maxVisiblePages / 2)
+
+  let start = Math.max(1, currentPage - halfVisible)
+  let end = Math.min(totalPages, currentPage + halfVisible)
+
+  // Adjust if we're near the start
+  if (currentPage <= halfVisible) {
+    end = Math.min(totalPages, maxVisiblePages)
+  }
+
+  // Adjust if we're near the end
+  if (currentPage > totalPages - halfVisible) {
+    start = Math.max(1, totalPages - maxVisiblePages + 1)
+  }
+
+  for (let i = start; i <= end; i++) {
+    pages.push(i)
+  }
+
+  return pages
+}
+
+const visiblePages = getVisiblePages()
+const showStartEllipsis = visiblePages[0] > 2
+const showEndEllipsis = visiblePages[visiblePages.length - 1] < totalPages - 1
+---
+
+<nav aria-label="Pagination" class="collection-pagination">
+  {/* Previous Button */}
+  <a
+    href={currentPage > 1 ? getPageUrl(currentPage - 1) : undefined}
+    class:list={['pagination-button', 'prev', { disabled: currentPage === 1 }]}
+    aria-disabled={currentPage === 1}
+  >
+    <span class="arrow">&larr;</span>
+    <span class="label">Previous</span>
+  </a>
+
+  {/* Page Numbers */}
+  <div class="pagination-pages">
+    {/* First page */}
+    {visiblePages[0] > 1 && (
+      <a href={getPageUrl(1)} class="page-link">
+        1
+      </a>
+    )}
+
+    {/* Start ellipsis */}
+    {showStartEllipsis && (
+      <span class="ellipsis">&hellip;</span>
+    )}
+
+    {/* Visible pages */}
+    {visiblePages.map((page) => (
+      <a
+        href={getPageUrl(page)}
+        class:list={['page-link', { current: page === currentPage }]}
+        aria-current={page === currentPage ? 'page' : undefined}
+      >
+        {page}
+      </a>
+    ))}
+
+    {/* End ellipsis */}
+    {showEndEllipsis && (
+      <span class="ellipsis">&hellip;</span>
+    )}
+
+    {/* Last page */}
+    {visiblePages[visiblePages.length - 1] < totalPages && (
+      <a href={getPageUrl(totalPages)} class="page-link">
+        {totalPages}
+      </a>
+    )}
+  </div>
+
+  {/* Next Button */}
+  <a
+    href={currentPage < totalPages ? getPageUrl(currentPage + 1) : undefined}
+    class:list={['pagination-button', 'next', { disabled: currentPage === totalPages }]}
+    aria-disabled={currentPage === totalPages}
+  >
+    <span class="label">Next</span>
+    <span class="arrow">&rarr;</span>
+  </a>
+</nav>
+
+<style>
+  .collection-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .pagination-button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text);
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    text-decoration: none;
+    transition: background-color 0.2s, border-color 0.2s;
+  }
+
+  .pagination-button:hover:not(.disabled) {
+    background-color: var(--color-bg-alt);
+    border-color: var(--color-text-light);
+    text-decoration: none;
+  }
+
+  .pagination-button.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .pagination-button .label {
+    display: none;
+  }
+
+  @media (min-width: 640px) {
+    .pagination-button .label {
+      display: inline;
+    }
+  }
+
+  .pagination-pages {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .page-link {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-width: 2.5rem;
+    height: 2.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text);
+    text-decoration: none;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+  }
+
+  .page-link:hover {
+    background-color: var(--color-bg-alt);
+    text-decoration: none;
+  }
+
+  .page-link.current {
+    background-color: var(--color-primary);
+    color: white;
+  }
+
+  .page-link.current:hover {
+    background-color: var(--color-primary);
+  }
+
+  .ellipsis {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-width: 2.5rem;
+    height: 2.5rem;
+    color: var(--color-text-light);
+  }
+
+  /* Hide some pages on mobile */
+  @media (max-width: 480px) {
+    .pagination-pages {
+      display: none;
+    }
+  }
+</style>

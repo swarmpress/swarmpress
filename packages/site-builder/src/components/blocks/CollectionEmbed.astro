@@ -1,0 +1,445 @@
+---
+/**
+ * CollectionEmbed Block Component
+ * Embeds a filtered list of collection items within content
+ * Items are pre-fetched at build time and passed as props
+ */
+
+export interface CollectionItem {
+  slug: string
+  title: string
+  summary?: string
+  image?: string
+  date?: string
+  url?: string
+  data: Record<string, unknown>
+}
+
+export interface Props {
+  collectionType: string
+  displayName?: string
+  singularName?: string
+  items: CollectionItem[]
+  display: {
+    layout: 'grid' | 'list' | 'carousel' | 'compact'
+    columns?: number
+    showImage?: boolean
+    showSummary?: boolean
+    showDate?: boolean
+    imageAspect?: 'square' | 'video' | 'portrait' | 'landscape'
+  }
+  heading?: string
+  headingLevel?: 1 | 2 | 3 | 4 | 5 | 6
+  showViewAll?: boolean
+  viewAllUrl?: string
+  className?: string
+}
+
+const {
+  collectionType,
+  displayName,
+  items,
+  display,
+  heading,
+  headingLevel = 2,
+  showViewAll = true,
+  viewAllUrl,
+  className = '',
+} = Astro.props
+
+const HeadingTag = `h${headingLevel}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
+const layout = display.layout || 'grid'
+const columns = display.columns || 3
+const showImage = display.showImage !== false
+const showSummary = display.showSummary !== false
+const showDate = display.showDate !== false
+const imageAspect = display.imageAspect || 'landscape'
+
+// Calculate the "View All" URL
+const allUrl = viewAllUrl || `/${collectionType}`
+
+// Aspect ratio classes
+const aspectClasses: Record<string, string> = {
+  square: 'aspect-square',
+  video: 'aspect-video',
+  portrait: 'aspect-[3/4]',
+  landscape: 'aspect-[4/3]',
+}
+---
+
+<section class={`block-collection-embed ${className}`}>
+  {(heading || showViewAll) && (
+    <div class="collection-header">
+      {heading && (
+        <HeadingTag class="collection-heading">{heading}</HeadingTag>
+      )}
+      {showViewAll && items.length > 0 && (
+        <a href={allUrl} class="view-all-link">
+          View all {displayName || collectionType} →
+        </a>
+      )}
+    </div>
+  )}
+
+  {items.length === 0 ? (
+    <div class="empty-state">
+      <p>No items found</p>
+    </div>
+  ) : layout === 'list' ? (
+    <div class="collection-list">
+      {items.map((item) => (
+        <article class="list-item">
+          {showImage && item.image && (
+            <a href={item.url} class="list-image">
+              <img src={item.image} alt={item.title} loading="lazy" />
+            </a>
+          )}
+          <div class="list-content">
+            <h3 class="list-title">
+              <a href={item.url}>{item.title}</a>
+            </h3>
+            {showDate && item.date && (
+              <time class="list-date" datetime={item.date}>
+                {new Date(item.date).toLocaleDateString()}
+              </time>
+            )}
+            {showSummary && item.summary && (
+              <p class="list-summary">{item.summary}</p>
+            )}
+          </div>
+        </article>
+      ))}
+    </div>
+  ) : layout === 'compact' ? (
+    <ul class="collection-compact">
+      {items.map((item) => (
+        <li>
+          <a href={item.url}>{item.title}</a>
+          {showDate && item.date && (
+            <time datetime={item.date}>
+              {new Date(item.date).toLocaleDateString()}
+            </time>
+          )}
+        </li>
+      ))}
+    </ul>
+  ) : layout === 'carousel' ? (
+    <div class="collection-carousel" data-columns={columns}>
+      <div class="carousel-track">
+        {items.map((item) => (
+          <article class="carousel-item">
+            {showImage && item.image && (
+              <a href={item.url} class={`card-image ${aspectClasses[imageAspect]}`}>
+                <img src={item.image} alt={item.title} loading="lazy" />
+              </a>
+            )}
+            <div class="card-content">
+              <h3 class="card-title">
+                <a href={item.url}>{item.title}</a>
+              </h3>
+              {showDate && item.date && (
+                <time class="card-date" datetime={item.date}>
+                  {new Date(item.date).toLocaleDateString()}
+                </time>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  ) : (
+    <div class={`collection-grid columns-${columns}`}>
+      {items.map((item) => (
+        <article class="grid-card">
+          {showImage && item.image && (
+            <a href={item.url} class={`card-image ${aspectClasses[imageAspect]}`}>
+              <img src={item.image} alt={item.title} loading="lazy" />
+            </a>
+          )}
+          <div class="card-content">
+            <h3 class="card-title">
+              <a href={item.url}>{item.title}</a>
+            </h3>
+            {showDate && item.date && (
+              <time class="card-date" datetime={item.date}>
+                {new Date(item.date).toLocaleDateString()}
+              </time>
+            )}
+            {showSummary && item.summary && (
+              <p class="card-summary">{item.summary}</p>
+            )}
+          </div>
+        </article>
+      ))}
+    </div>
+  )}
+</section>
+
+<style>
+  .block-collection-embed {
+    margin: 2rem 0;
+  }
+
+  .collection-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+  }
+
+  .collection-heading {
+    margin: 0;
+    font-size: 1.5rem;
+  }
+
+  .view-all-link {
+    color: var(--color-primary, #3b82f6);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.9rem;
+  }
+
+  .view-all-link:hover {
+    text-decoration: underline;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 3rem;
+    background: var(--color-bg-alt, #f3f4f6);
+    border-radius: 8px;
+    color: var(--color-text-light, #6b7280);
+  }
+
+  /* Grid Layout */
+  .collection-grid {
+    display: grid;
+    gap: 1.5rem;
+  }
+
+  .columns-1 { grid-template-columns: 1fr; }
+  .columns-2 { grid-template-columns: repeat(2, 1fr); }
+  .columns-3 { grid-template-columns: repeat(3, 1fr); }
+  .columns-4 { grid-template-columns: repeat(4, 1fr); }
+
+  .grid-card {
+    background: var(--color-bg, #fff);
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: box-shadow 0.2s;
+  }
+
+  .grid-card:hover {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+
+  .card-image {
+    display: block;
+    overflow: hidden;
+    background: var(--color-bg-alt, #f3f4f6);
+  }
+
+  .card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s;
+  }
+
+  .grid-card:hover .card-image img {
+    transform: scale(1.05);
+  }
+
+  .card-content {
+    padding: 1rem;
+  }
+
+  .card-title {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    line-height: 1.3;
+  }
+
+  .card-title a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .card-title a:hover {
+    color: var(--color-primary, #3b82f6);
+  }
+
+  .card-date {
+    font-size: 0.8rem;
+    color: var(--color-text-light, #6b7280);
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+
+  .card-summary {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--color-text-light, #6b7280);
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* List Layout */
+  .collection-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .list-item {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--color-bg, #fff);
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 8px;
+  }
+
+  .list-image {
+    flex-shrink: 0;
+    width: 120px;
+    height: 80px;
+    overflow: hidden;
+    border-radius: 4px;
+    background: var(--color-bg-alt, #f3f4f6);
+  }
+
+  .list-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .list-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .list-title {
+    margin: 0 0 0.25rem;
+    font-size: 1rem;
+  }
+
+  .list-title a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .list-title a:hover {
+    color: var(--color-primary, #3b82f6);
+  }
+
+  .list-date {
+    font-size: 0.8rem;
+    color: var(--color-text-light, #6b7280);
+    display: block;
+    margin-bottom: 0.25rem;
+  }
+
+  .list-summary {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--color-text-light, #6b7280);
+    line-height: 1.4;
+  }
+
+  /* Compact Layout */
+  .collection-compact {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .collection-compact li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: var(--color-bg, #fff);
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 4px;
+  }
+
+  .collection-compact a {
+    color: inherit;
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .collection-compact a:hover {
+    color: var(--color-primary, #3b82f6);
+  }
+
+  .collection-compact time {
+    font-size: 0.8rem;
+    color: var(--color-text-light, #6b7280);
+  }
+
+  /* Carousel Layout */
+  .collection-carousel {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding-bottom: 1rem;
+  }
+
+  .carousel-track {
+    display: flex;
+    gap: 1rem;
+  }
+
+  .carousel-item {
+    flex-shrink: 0;
+    width: calc(100% / var(--carousel-columns, 3) - 1rem);
+    min-width: 200px;
+    background: var(--color-bg, #fff);
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  /* Aspect Ratios */
+  .aspect-square { aspect-ratio: 1 / 1; }
+  .aspect-video { aspect-ratio: 16 / 9; }
+  .aspect-\[3\/4\] { aspect-ratio: 3 / 4; }
+  .aspect-\[4\/3\] { aspect-ratio: 4 / 3; }
+
+  /* Responsive */
+  @media (max-width: 1024px) {
+    .columns-4 { grid-template-columns: repeat(3, 1fr); }
+  }
+
+  @media (max-width: 768px) {
+    .columns-3,
+    .columns-4 { grid-template-columns: repeat(2, 1fr); }
+
+    .collection-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .columns-2,
+    .columns-3,
+    .columns-4 { grid-template-columns: 1fr; }
+
+    .list-image {
+      width: 80px;
+      height: 60px;
+    }
+  }
+</style>

@@ -13,6 +13,7 @@ import List from './blocks/List.astro'
 import FAQ from './blocks/FAQ.astro'
 import Callout from './blocks/Callout.astro'
 import Embed from './blocks/Embed.astro'
+import CollectionEmbed from './blocks/CollectionEmbed.astro'
 
 export interface Props {
   blocks: any[]
@@ -69,6 +70,21 @@ const { blocks } = Astro.props
 
       case 'embed':
         return <Embed url={block.url} type={block.embedType} caption={block.caption} />
+
+      case 'collection-embed':
+        return (
+          <CollectionEmbed
+            collectionType={block.collectionType}
+            displayName={block.displayName}
+            singularName={block.singularName}
+            items={block.items || []}
+            display={block.display || { layout: 'grid' }}
+            heading={block.heading}
+            headingLevel={block.headingLevel}
+            showViewAll={block.showViewAll}
+            viewAllUrl={block.viewAllUrl}
+          />
+        )
 
       default:
         console.warn(`Unknown block type: ${block.type}`)

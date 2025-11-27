@@ -192,7 +192,7 @@ async function deployGitHubPages(options: DeployOptions): Promise<DeployResult> 
 
   try {
     // Read all files from dist directory
-    const { readdir, readFile, stat } = await import('fs/promises')
+    const { readdir, readFile } = await import('fs/promises')
     const files: Array<{ path: string; content: string }> = []
 
     async function collectFiles(dir: string, basePath: string = '') {

@@ -1,0 +1,103 @@
+---
+/**
+ * Collection Grid Component
+ * Displays collection items in a responsive grid layout
+ */
+import CollectionCard from './CollectionCard.astro'
+
+export interface Props {
+  items: Array<{
+    id?: string
+    slug: string
+    title: string
+    summary?: string
+    image?: string
+    date?: string
+    url: string
+    featured?: boolean
+    data?: Record<string, unknown>
+  }>
+  collectionType: string
+  columns?: 2 | 3 | 4
+  showImages?: boolean
+  showSummaries?: boolean
+  showDates?: boolean
+  featuredFirst?: boolean
+}
+
+const {
+  items,
+  collectionType,
+  columns = 3,
+  showImages = true,
+  showSummaries = true,
+  showDates = true,
+  featuredFirst = true
+} = Astro.props
+
+// Sort items: featured first if enabled
+const sortedItems = featuredFirst
+  ? [...items].sort((a, b) => {
+      if (a.featured && !b.featured) return -1
+      if (!a.featured && b.featured) return 1
+      return 0
+    })
+  : items
+---
+
+<div class:list={['collection-grid', `columns-${columns}`]}>
+  {sortedItems.map((item) => (
+    <CollectionCard
+      item={item}
+      collectionType={collectionType}
+      showImage={showImages}
+      showSummary={showSummaries}
+      showDate={showDates}
+    />
+  ))}
+</div>
+
+<style>
+  .collection-grid {
+    display: grid;
+    gap: 1.5rem;
+  }
+
+  .collection-grid.columns-2 {
+    grid-template-columns: repeat(1, 1fr);
+  }
+
+  .collection-grid.columns-3 {
+    grid-template-columns: repeat(1, 1fr);
+  }
+
+  .collection-grid.columns-4 {
+    grid-template-columns: repeat(1, 1fr);
+  }
+
+  /* Tablet */
+  @media (min-width: 640px) {
+    .collection-grid.columns-2 {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .collection-grid.columns-3 {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .collection-grid.columns-4 {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  /* Desktop */
+  @media (min-width: 1024px) {
+    .collection-grid.columns-3 {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .collection-grid.columns-4 {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+</style>

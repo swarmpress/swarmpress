@@ -18,6 +18,7 @@ export * from './types/entities'
 export * from './types/sitemap'
 export * from './types/prompts'
 export * from './types/tools'
+export * from './types/blueprint-collections'
 
 // State Machines
 export * from './state-machines'
