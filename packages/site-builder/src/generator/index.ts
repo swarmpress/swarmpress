@@ -9,6 +9,10 @@ export type { BuildOptions, BuildResult } from './build'
 export { deploySite } from './deploy'
 export type { DeployOptions, DeployResult } from './deploy'
 
+// GitHub as source of truth
+export { buildFromGitHub, cleanGitHubBuildDir } from './github-build'
+export type { GitHubBuildOptions, GitHubBuildResult } from './github-build'
+
 // Collection generation
 export { generateCollectionPages } from './collection-pages'
 export type { CollectionGenerationResult } from '../types/collection-types'

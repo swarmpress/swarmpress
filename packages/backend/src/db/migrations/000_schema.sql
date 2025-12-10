@@ -954,6 +954,60 @@ COMMENT ON TABLE collection_item_versions IS 'Version history for collection ite
 COMMENT ON TABLE collection_research_config IS 'Research configuration per collection (search prompts, extraction hints)';
 
 -- =============================================================================
+-- BATCH PROCESSING
+-- =============================================================================
+-- Tracks Claude Message Batches API jobs for content generation
+-- Provides 50% cost savings over sequential API calls
+
+CREATE TABLE batch_jobs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+  -- Anthropic Batch Reference
+  batch_id TEXT NOT NULL UNIQUE,              -- Anthropic's batch ID (e.g., "msgbatch_...")
+
+  -- Job Configuration
+  job_type TEXT NOT NULL,                      -- 'content_generation', 'enrichment', 'research', etc.
+  collection_type TEXT,                        -- Target collection (e.g., 'cinqueterre_pois')
+  website_id UUID REFERENCES websites(id),     -- Optional website reference
+
+  -- Processing Status
+  status TEXT NOT NULL DEFAULT 'pending',      -- 'pending', 'processing', 'ended', 'completed', 'failed'
+
+  -- Request Counts (from Anthropic API)
+  items_count INTEGER NOT NULL DEFAULT 0,      -- Total requests in batch
+  items_succeeded INTEGER DEFAULT 0,
+  items_errored INTEGER DEFAULT 0,
+  items_canceled INTEGER DEFAULT 0,
+  items_expired INTEGER DEFAULT 0,
+
+  -- Results
+  results_url TEXT,                            -- URL to download .jsonl results
+  results_processed BOOLEAN DEFAULT false,     -- Whether we've imported results to DB
+
+  -- Error Tracking
+  error_message TEXT,                          -- For failed batches
+
+  -- Metadata
+  config JSONB,                                -- Pipeline configuration used
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  processing_started_at TIMESTAMPTZ,
+  ended_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ                     -- When results were fully processed
+);
+
+CREATE INDEX idx_batch_jobs_status ON batch_jobs(status);
+CREATE INDEX idx_batch_jobs_batch_id ON batch_jobs(batch_id);
+CREATE INDEX idx_batch_jobs_website ON batch_jobs(website_id) WHERE website_id IS NOT NULL;
+CREATE INDEX idx_batch_jobs_collection ON batch_jobs(collection_type) WHERE collection_type IS NOT NULL;
+
+COMMENT ON TABLE batch_jobs IS 'Claude Message Batches API job tracking (50% cost savings)';
+COMMENT ON COLUMN batch_jobs.batch_id IS 'Anthropic batch ID returned from /v1/messages/batches';
+COMMENT ON COLUMN batch_jobs.job_type IS 'Type of batch job: content_generation, enrichment, research';
+COMMENT ON COLUMN batch_jobs.status IS 'pending→processing→ended→completed (or failed)';
+
+-- =============================================================================
 -- COMMENTS (Documentation)
 -- =============================================================================
 

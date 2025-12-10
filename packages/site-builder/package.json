@@ -19,6 +19,7 @@
   "dependencies": {
     "@swarm-press/shared": "workspace:*",
     "@swarm-press/backend": "workspace:*",
+    "@swarm-press/github-integration": "workspace:*",
     "@astrojs/node": "^8.2.0",
     "astro": "^4.3.0",
     "sharp": "^0.33.0"

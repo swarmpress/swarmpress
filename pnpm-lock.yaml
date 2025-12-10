@@ -494,6 +494,9 @@ importers:
       '@swarm-press/backend':
         specifier: workspace:*
         version: link:../backend
+      '@swarm-press/github-integration':
+        specifier: workspace:*
+        version: link:../github-integration
       '@swarm-press/shared':
         specifier: workspace:*
         version: link:../shared
