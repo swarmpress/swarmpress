@@ -33,6 +33,19 @@ export interface AgentConfig {
   temperature?: number
   topP?: number
   maxToolIterations?: number // Maximum tool-use loop iterations (default: 10)
+  enableWebSearch?: boolean // Enable Claude's built-in web_search tool
+  webSearchConfig?: {
+    max_uses?: number
+    allowed_domains?: string[]
+    blocked_domains?: string[]
+    user_location?: {
+      type: 'approximate'
+      city?: string
+      region?: string
+      country?: string
+      timezone?: string
+    }
+  }
 }
 
 export interface AgentContext {
@@ -110,7 +123,7 @@ export class BaseAgent {
     }
     return {
       model: this.config.model || 'claude-sonnet-4-5-20250929',
-      maxTokens: this.config.maxTokens || 8192,
+      maxTokens: this.config.maxTokens || 16384,
       temperature: this.config.temperature,
       topP: this.config.topP,
     }
@@ -217,7 +230,52 @@ export class BaseAgent {
 
         // Add tools if available
         if (hasTools) {
-          apiParams.tools = tools
+          // Include Claude's built-in web_search tool if enabled
+          if (this.config.enableWebSearch) {
+            const webSearchTool: any = {
+              type: 'web_search_20250305',
+              name: 'web_search',
+            }
+            // Add optional configuration
+            if (this.config.webSearchConfig) {
+              if (this.config.webSearchConfig.max_uses) {
+                webSearchTool.max_uses = this.config.webSearchConfig.max_uses
+              }
+              if (this.config.webSearchConfig.allowed_domains) {
+                webSearchTool.allowed_domains = this.config.webSearchConfig.allowed_domains
+              }
+              if (this.config.webSearchConfig.blocked_domains) {
+                webSearchTool.blocked_domains = this.config.webSearchConfig.blocked_domains
+              }
+              if (this.config.webSearchConfig.user_location) {
+                webSearchTool.user_location = this.config.webSearchConfig.user_location
+              }
+            }
+            apiParams.tools = [...tools, webSearchTool]
+          } else {
+            apiParams.tools = tools
+          }
+        } else if (this.config.enableWebSearch) {
+          // Only web_search, no other tools
+          const webSearchTool: any = {
+            type: 'web_search_20250305',
+            name: 'web_search',
+          }
+          if (this.config.webSearchConfig) {
+            if (this.config.webSearchConfig.max_uses) {
+              webSearchTool.max_uses = this.config.webSearchConfig.max_uses
+            }
+            if (this.config.webSearchConfig.allowed_domains) {
+              webSearchTool.allowed_domains = this.config.webSearchConfig.allowed_domains
+            }
+            if (this.config.webSearchConfig.blocked_domains) {
+              webSearchTool.blocked_domains = this.config.webSearchConfig.blocked_domains
+            }
+            if (this.config.webSearchConfig.user_location) {
+              webSearchTool.user_location = this.config.webSearchConfig.user_location
+            }
+          }
+          apiParams.tools = [webSearchTool]
         }
 
         // Add metadata if we have runtime config

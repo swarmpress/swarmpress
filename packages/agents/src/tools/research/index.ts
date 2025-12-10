@@ -46,7 +46,7 @@ export {
   getToolDefinitions,
   // Types
   type ResearchTool,
-  type ToolHandler,
+  type ResearchToolHandler,
 } from './tool-registry'
 
 // ============================================================================
@@ -66,3 +66,14 @@ export {
   buildExtractionPrompt,
   buildValidationPrompt,
 } from './prompt-builder'
+
+// ============================================================================
+// Schema Transformer (for Claude Structured Outputs)
+// ============================================================================
+
+export {
+  transformToStructuredOutputSchema,
+  validateStructuredOutputSchema,
+  wrapSchemaForArrayOutput,
+  extractCoreSchema,
+} from './schema-transformer'

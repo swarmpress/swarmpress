@@ -12,6 +12,12 @@ export * from './editor'
 export * from './engineering'
 export * from './ceo-assistant'
 
+// Export research tools
+export * from './tools/research/tool-registry'
+
+// Export collection getters
+export * from './getters'
+
 // Register agents
 import { registerAgent } from './base/factory'
 import { WriterAgent } from './writer'

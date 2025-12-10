@@ -7,7 +7,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import Ajv from 'ajv'
 import { db } from '@swarm-press/backend'
 import { buildExtractionPrompt } from './prompt-builder'
-import { extractJSON } from './base'
+import { extractCoreSchema, simplifySchemaForExtraction } from './schema-transformer'
 import type { ResearchToolContext, ExtractDataResult, WebsiteCollectionInfo, ResearchConfigInfo } from './types'
 
 // ============================================================================
@@ -74,17 +74,44 @@ export async function extractDataHandler(
     // 2. Build extraction prompt from schema + config
     const extractionPrompt = buildExtractionPrompt(search_results, collection, config)
 
-    // 3. Call Claude to extract structured data
+    // 3. Prepare schema for structured outputs
+    // Extract core schema from definitions pattern (common with zodToJsonSchema)
+    const coreSchema = extractCoreSchema(collection.json_schema as Record<string, unknown>)
+    // Simplify schema if it exceeds structured outputs limits (24 optional params max)
+    const simplifiedSchema = simplifySchemaForExtraction(coreSchema)
+    // Wrap in array container for extraction
+    const outputSchema = {
+      type: 'object' as const,
+      properties: {
+        items: {
+          type: 'array' as const,
+          items: simplifiedSchema,
+          description: 'Array of extracted items'
+        }
+      },
+      required: ['items'] as string[],
+      additionalProperties: false as const
+    }
+
+    // 4. Call Claude with structured outputs for guaranteed schema compliance
     const client = new Anthropic()
 
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    console.log('[ExtractDataTool] Using structured outputs for extraction')
+
+    const message = await client.beta.messages.create({
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 32000,
       temperature: 0,
-      messages: [{ role: 'user', content: extractionPrompt }]
+      betas: ['structured-outputs-2025-11-13'],
+      messages: [{ role: 'user', content: extractionPrompt }],
+      // @ts-expect-error - output_format is part of structured outputs beta
+      output_format: {
+        type: 'json_schema',
+        schema: outputSchema
+      }
     })
 
-    // 4. Extract text content from response
+    // 5. Extract text content from response - guaranteed to be valid JSON
     let responseText = ''
     for (const block of message.content) {
       if (block.type === 'text') {
@@ -92,22 +119,26 @@ export async function extractDataHandler(
       }
     }
 
-    // 5. Parse JSON from response
-    const jsonData = extractJSON(responseText)
-    if (!jsonData) {
+    // 6. Parse JSON - structured outputs guarantees valid JSON matching schema
+    let jsonData: { items: unknown[] }
+    try {
+      jsonData = JSON.parse(responseText)
+    } catch (parseError) {
+      // This should never happen with structured outputs, but handle gracefully
+      console.error('[ExtractDataTool] JSON parse error (unexpected with structured outputs):', parseError)
       return {
         success: false,
-        error: 'No valid JSON found in extraction response',
+        error: 'Failed to parse structured output response',
         items: [],
-        validation_errors: [{ field: '_response', error: 'Failed to parse JSON' }],
+        validation_errors: [{ field: '_response', error: 'JSON parse failed' }],
         collection_type
       }
     }
 
-    // 6. Ensure we have an array
-    const items = Array.isArray(jsonData) ? jsonData : [jsonData]
+    // 7. Extract items array
+    const items = jsonData.items || []
 
-    // 7. Validate each item against schema
+    // 8. Validate each item against schema (backup validation - structured outputs should guarantee compliance)
     const { valid, errors } = validateItems(items, collection.json_schema, config)
 
     return {

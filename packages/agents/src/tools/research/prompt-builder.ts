@@ -43,7 +43,9 @@ Return comprehensive, accurate, and current information. Include:
 // ============================================================================
 
 /**
- * Build an extraction prompt from collection schema and research config
+ * Build an extraction prompt from collection schema and research config.
+ * Note: Schema enforcement is now handled by Claude's structured outputs API,
+ * so the prompt focuses on extraction quality rather than format instructions.
  */
 export function buildExtractionPrompt(
   searchResults: string,
@@ -60,38 +62,29 @@ export function buildExtractionPrompt(
       .replace('{{singular_name}}', collection.singular_name || 'item')
   }
 
-  // Generate prompt from schema
-  const schemaJson = JSON.stringify(simplifySchemaForPrompt(collection.json_schema), null, 2)
   const fieldHints = formatFieldHints(collection, config)
 
-  return `Extract structured data for "${collection.display_name}" from the search results below.
+  // Simplified prompt - structured outputs API handles schema compliance
+  return `Extract ${collection.display_name} from the search results below.
 
-## Output Format
-Return a JSON array of objects. Each object represents one ${collection.singular_name || 'item'}.
-
-## Schema Structure
-Each item should follow this structure:
-\`\`\`json
-${schemaJson}
-\`\`\`
+## Task
+Extract all ${collection.singular_name || 'items'} found in the search results. The output schema is enforced automatically - focus on finding accurate data.
 
 ## Field Guidance
-${fieldHints || 'Follow the schema property descriptions for guidance on each field.'}
+${fieldHints || 'Fill in all fields accurately based on the search results.'}
 
 ## Data Quality Requirements
 - Only include items with verifiable information from the search results
-- Include source URLs when available (store in a "source_url" field if not in schema)
-- Use null for unknown values, not empty strings
-- Ensure all required fields have valid values
-${config?.require_source_urls ? '- Every item MUST have a source URL to be included' : ''}
+- Include source_url for each item when the URL is available in the results
+- Use null for genuinely unknown values, not empty strings or placeholder text
+- Ensure accuracy - only extract data that is clearly stated in the results
+${config?.require_source_urls ? '- Every item MUST have a source_url to be included' : ''}
 ${config?.min_confidence_score ? `- Only include items where you are at least ${Math.round(config.min_confidence_score * 100)}% confident in the data accuracy` : ''}
 
 ## Search Results
 ${searchResults}
 
-## Output
-Return ONLY a valid JSON array. No markdown code blocks, no explanatory text - just the JSON array.
-If no valid items can be extracted, return an empty array: []`
+Extract all valid ${collection.singular_name || 'items'} now.`
 }
 
 // ============================================================================
@@ -125,83 +118,6 @@ export function formatFieldHints(
   }
 
   return hints.length > 0 ? hints.join('\n') : 'Use schema property descriptions as guidance.'
-}
-
-/**
- * Simplify JSON Schema for inclusion in prompts
- * Removes verbose metadata and focuses on structure
- */
-function simplifySchemaForPrompt(schema: Record<string, unknown>): Record<string, unknown> {
-  // Handle definitions-style schema
-  if (schema.definitions) {
-    const defs = schema.definitions as Record<string, unknown>
-    const mainDef = Object.values(defs)[0] as Record<string, unknown>
-    if (mainDef?.properties) {
-      return simplifyProperties(mainDef.properties as Record<string, unknown>)
-    }
-  }
-
-  // Handle direct properties
-  if (schema.properties) {
-    return simplifyProperties(schema.properties as Record<string, unknown>)
-  }
-
-  // Handle array schema
-  if (schema.items) {
-    const items = schema.items as Record<string, unknown>
-    if (items.properties) {
-      return simplifyProperties(items.properties as Record<string, unknown>)
-    }
-  }
-
-  return schema
-}
-
-/**
- * Simplify properties object for prompt
- */
-function simplifyProperties(properties: Record<string, unknown>): Record<string, unknown> {
-  const simplified: Record<string, unknown> = {}
-
-  for (const [key, value] of Object.entries(properties)) {
-    const prop = value as Record<string, unknown>
-
-    if (prop.type === 'object' && prop.properties) {
-      simplified[key] = simplifyProperties(prop.properties as Record<string, unknown>)
-    } else if (prop.type === 'array' && prop.items) {
-      const items = prop.items as Record<string, unknown>
-      if (items.properties) {
-        simplified[key] = [simplifyProperties(items.properties as Record<string, unknown>)]
-      } else {
-        simplified[key] = [getTypeExample(items.type as string)]
-      }
-    } else {
-      simplified[key] = getTypeExample(prop.type as string, prop.description as string)
-    }
-  }
-
-  return simplified
-}
-
-/**
- * Get example value for a type
- */
-function getTypeExample(type: string | undefined, description?: string): string {
-  switch (type) {
-    case 'string':
-      return description ? `"${description.substring(0, 30)}..."` : '"string"'
-    case 'number':
-    case 'integer':
-      return '0'
-    case 'boolean':
-      return 'true/false'
-    case 'array':
-      return '[]'
-    case 'object':
-      return '{}'
-    default:
-      return '"value"'
-  }
 }
 
 /**

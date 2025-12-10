@@ -6,6 +6,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Badge } from '../../components/ui/badge'
 import { trpc, handleTRPCError } from '../../lib/trpc'
 
+// Helper to extract enabled capability names
+type Capability = { name: string; enabled: boolean }
+function getEnabledCapabilities(capabilities: Capability[]): string[] {
+  return capabilities.filter(c => c.enabled).map(c => c.name.replace(/_/g, ' '))
+}
+
 // Fetch agents server-side
 let agents: any[] = []
 let error: string | null = null
@@ -80,18 +86,23 @@ try {
                     {agent.persona}
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-1 flex-wrap">
-                      {(agent.capabilities as string[]).slice(0, 3).map((cap) => (
-                        <Badge key={cap} variant="secondary" className="text-xs">
-                          {cap}
-                        </Badge>
-                      ))}
-                      {(agent.capabilities as string[]).length > 3 && (
-                        <Badge variant="outline" className="text-xs">
-                          +{(agent.capabilities as string[]).length - 3}
-                        </Badge>
-                      )}
-                    </div>
+                    {(() => {
+                      const caps = getEnabledCapabilities(agent.capabilities)
+                      return (
+                        <div className="flex gap-1 flex-wrap">
+                          {caps.slice(0, 3).map((cap) => (
+                            <Badge key={cap} variant="secondary" className="text-xs">
+                              {cap}
+                            </Badge>
+                          ))}
+                          {caps.length > 3 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{caps.length - 3}
+                            </Badge>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </TableCell>
                   <TableCell className="text-right space-x-2">
                     <a href={`/agents/${agent.id}`}>

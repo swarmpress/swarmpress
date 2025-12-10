@@ -116,19 +116,32 @@ export function extractJSON(text: string): unknown | null {
     // Continue to extraction methods
   }
 
+  // Strip markdown code blocks
+  let cleaned = text
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .trim();
+
+  // Try to parse cleaned text
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // Continue to extraction methods
+  }
+
   // Try to find JSON object in the text
-  const jsonStart = text.indexOf('{');
-  const jsonEnd = text.lastIndexOf('}');
+  const jsonStart = cleaned.indexOf('{');
+  const jsonEnd = cleaned.lastIndexOf('}');
 
   if (jsonStart !== -1 && jsonEnd > jsonStart) {
-    const jsonStr = text.substring(jsonStart, jsonEnd + 1);
+    const jsonStr = cleaned.substring(jsonStart, jsonEnd + 1);
     try {
       return JSON.parse(jsonStr);
     } catch {
       // Try cleaning up the JSON
-      const cleaned = cleanJSON(jsonStr);
+      const furtherCleaned = cleanJSON(jsonStr);
       try {
-        return JSON.parse(cleaned);
+        return JSON.parse(furtherCleaned);
       } catch {
         return null;
       }
@@ -136,11 +149,11 @@ export function extractJSON(text: string): unknown | null {
   }
 
   // Try to find JSON array
-  const arrayStart = text.indexOf('[');
-  const arrayEnd = text.lastIndexOf(']');
+  const arrayStart = cleaned.indexOf('[');
+  const arrayEnd = cleaned.lastIndexOf(']');
 
   if (arrayStart !== -1 && arrayEnd > arrayStart) {
-    const jsonStr = text.substring(arrayStart, arrayEnd + 1);
+    const jsonStr = cleaned.substring(arrayStart, arrayEnd + 1);
     try {
       return JSON.parse(jsonStr);
     } catch {

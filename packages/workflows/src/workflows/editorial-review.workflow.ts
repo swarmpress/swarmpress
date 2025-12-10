@@ -1,6 +1,9 @@
 /**
  * Editorial Review Workflow
  * Orchestrates the editorial review process with CEO escalation
+ *
+ * GitHub Integration: All review activities are logged to the content's PR,
+ * and approvals/rejections are synced as GitHub PR reviews.
  */
 
 import { proxyActivities, condition, defineSignal, setHandler } from '@temporalio/workflow'
@@ -11,6 +14,10 @@ const {
   getContentItem,
   transitionContentState,
   publishContentEvent,
+  syncApprovalToGitHubActivity,
+  syncRejectionToGitHubActivity,
+  syncQuestionToGitHubActivity,
+  logAgentActivityToGitHub,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '15 minutes',
   retry: {
@@ -75,6 +82,16 @@ export async function editorialReviewWorkflow(
     // Step 2: Editor reviews content
     console.log(`[EditorialReview] Invoking editor for review`)
 
+    // Log review start to GitHub
+    await logAgentActivityToGitHub({
+      contentId,
+      agentId: editorAgentId,
+      agentName: 'EditorAgent',
+      activity: 'Starting editorial review',
+      details: 'Analyzing content quality, grammar, style, and accuracy...',
+      result: 'pending',
+    })
+
     const reviewTask = `Review content ${contentId} for quality and editorial standards.
 
 Use your review_content tool to:
@@ -89,6 +106,18 @@ Then use detect_high_risk_content to check for sensitive content.`
       agentId: editorAgentId,
       task: reviewTask,
       contentId,
+    })
+
+    // Log review result to GitHub
+    await logAgentActivityToGitHub({
+      contentId,
+      agentId: editorAgentId,
+      agentName: 'EditorAgent',
+      activity: 'Content review completed',
+      details: editorResult.success
+        ? `Quality analysis complete. Score: ${editorResult.result?.quality_score || 'pending'}`
+        : `Error: ${editorResult.error}`,
+      result: editorResult.success ? 'success' : 'failure',
     })
 
     if (!editorResult.success) {
@@ -121,6 +150,16 @@ Return the risk assessment.`
     if (isHighRisk) {
       console.log(`[EditorialReview] Escalating to CEO`)
 
+      // Log high-risk detection to GitHub
+      await logAgentActivityToGitHub({
+        contentId,
+        agentId: editorAgentId,
+        agentName: 'EditorAgent',
+        activity: '⚠️ High-risk content detected - Escalating to CEO',
+        details: `**Risk factors detected:**\n${JSON.stringify(riskResult.result?.risk_factors || [], null, 2)}\n\nThis content requires CEO approval before proceeding.`,
+        result: 'pending',
+      })
+
       const escalateTask = `Use your escalate_to_ceo tool to create a question ticket for content ${contentId}.
 
 Reason: High-risk content detected
@@ -141,6 +180,9 @@ This requires CEO approval before proceeding.`
       // Extract ticket ID (simplified - in real impl would parse from result)
       const ticketId = 'ticket-' + Date.now()
 
+      // Sync question ticket to GitHub as an Issue
+      await syncQuestionToGitHubActivity({ ticketId })
+
       console.log(`[EditorialReview] Question ticket ${ticketId} created, waiting for CEO...`)
 
       // Wait for CEO approval signal (with 24 hour timeout)
@@ -148,6 +190,23 @@ This requires CEO approval before proceeding.`
 
       if (!ceoDecided || ceoApproved === false) {
         console.log(`[EditorialReview] CEO rejected or timeout`)
+
+        // Log CEO rejection to GitHub
+        await logAgentActivityToGitHub({
+          contentId,
+          agentId: 'ceo-001',
+          agentName: 'CEO',
+          activity: '❌ CEO rejected high-risk content',
+          details: ceoFeedback || 'Content rejected due to high-risk concerns.',
+          result: 'failure',
+        })
+
+        // Sync rejection to GitHub PR
+        await syncRejectionToGitHubActivity({
+          contentId,
+          feedback: ceoFeedback || 'CEO rejected high-risk content',
+          agentId: 'ceo-001',
+        })
 
         // Reject content
         await transitionContentState({
@@ -175,6 +234,16 @@ This requires CEO approval before proceeding.`
           feedback: ceoFeedback || 'CEO rejected',
         }
       }
+
+      // Log CEO approval to GitHub
+      await logAgentActivityToGitHub({
+        contentId,
+        agentId: 'ceo-001',
+        agentName: 'CEO',
+        activity: '✅ CEO approved high-risk content',
+        details: 'CEO has reviewed and approved this high-risk content to proceed.',
+        result: 'success',
+      })
 
       console.log(`[EditorialReview] CEO approved high-risk content`)
       // Continue with normal review process
@@ -204,6 +273,24 @@ Approval notes: Content meets editorial standards.`
       if (!approveResult.success) {
         throw new Error(`Approval failed: ${approveResult.error}`)
       }
+
+      // Sync approval to GitHub PR (creates PR review with APPROVE)
+      const approvalMessage = `Content approved by EditorAgent.\n\n**Quality Score:** ${qualityScore}/10\n\nContent meets all editorial standards and is ready for publishing.`
+      await syncApprovalToGitHubActivity({
+        contentId,
+        approvalMessage,
+        agentId: editorAgentId,
+      })
+
+      // Log approval to GitHub
+      await logAgentActivityToGitHub({
+        contentId,
+        agentId: editorAgentId,
+        agentName: 'EditorAgent',
+        activity: '✅ Content approved',
+        details: `**Quality Score:** ${qualityScore}/10\n\nContent meets editorial standards and is ready for publishing.`,
+        result: 'success',
+      })
 
       // Transition handled by agent's approve_content tool
       // Publish event
@@ -246,6 +333,23 @@ Required changes: Improve quality to meet editorial standards (score 7+)`
       if (!rejectResult.success) {
         throw new Error(`Rejection failed: ${rejectResult.error}`)
       }
+
+      // Sync rejection to GitHub PR (creates PR review with REQUEST_CHANGES)
+      await syncRejectionToGitHubActivity({
+        contentId,
+        feedback,
+        agentId: editorAgentId,
+      })
+
+      // Log rejection to GitHub
+      await logAgentActivityToGitHub({
+        contentId,
+        agentId: editorAgentId,
+        agentName: 'EditorAgent',
+        activity: '❌ Changes requested',
+        details: `**Quality Score:** ${qualityScore}/10\n\n**Feedback:**\n${feedback}`,
+        result: 'failure',
+      })
 
       // Transition handled by agent's reject_content tool
       // Publish event

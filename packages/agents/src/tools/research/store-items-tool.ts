@@ -12,14 +12,14 @@ import type { ResearchToolContext, StoreItemsResult, WebsiteCollectionInfo, Rese
 
 export const storeItemsTool = {
   name: 'research_store_items',
-  description: 'Store extracted items in a collection. Use after research_extract_data.',
+  description: 'Store items in a collection. Pass an array of items formatted according to the collection schema.',
   input_schema: {
     type: 'object' as const,
     properties: {
       items: {
         type: 'array',
         items: { type: 'object' },
-        description: 'Validated items to store from research_extract_data'
+        description: 'Items to store, formatted according to the collection JSON schema'
       },
       collection_type: {
         type: 'string',

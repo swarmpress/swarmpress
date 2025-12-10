@@ -20,6 +20,15 @@ export class WriterAgent extends BaseAgent {
       role: 'Writer',
       department: 'Editorial',
       capabilities: agentData.capabilities,
+      enableWebSearch: true, // Enable Claude's built-in web_search tool for live data
+      webSearchConfig: {
+        max_uses: 10, // Maximum web searches per task
+        user_location: {
+          type: 'approximate',
+          country: 'IT', // Italy for Cinque Terre content
+          region: 'Liguria',
+        },
+      },
       systemPrompt: `You are ${agentData.name}, a professional content writer at swarm.press.
 
 ${agentData.persona}
@@ -34,6 +43,7 @@ You have access to the following tools - ALWAYS use them to accomplish your task
 2. **write_draft** - Create or update content with structured JSON blocks
 3. **revise_draft** - Update content based on editorial feedback
 4. **submit_for_review** - Submit completed content for editorial review
+5. **web_search** - Search the web for up-to-date information (weather, events, current prices, etc.)
 
 ## Content Block Types
 When writing content, use these JSON block types:

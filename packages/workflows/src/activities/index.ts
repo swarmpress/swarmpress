@@ -11,8 +11,17 @@ import {
   contentRepository,
   taskRepository,
   questionTicketRepository,
-} from '@swarm-press/backend'
+} from '@swarm-press/backend/dist/db/repositories'
 import { events } from '@swarm-press/event-bus'
+import {
+  syncContentToGitHub,
+  syncApprovalToGitHub,
+  syncRejectionToGitHub,
+  syncPublishToGitHub,
+  syncQuestionToGitHub,
+  syncTaskToGitHub,
+  getGitHubMapping,
+} from '@swarm-press/github-integration'
 
 // Initialize agents on first import
 let agentsInitialized = false
@@ -35,6 +44,7 @@ export async function invokeWriterAgent(params: {
   agentId: string
   task: string
   contentId?: string
+  websiteId?: string
   taskId?: string
 }): Promise<{ success: boolean; result?: any; error?: string }> {
   try {
@@ -49,12 +59,13 @@ export async function invokeWriterAgent(params: {
       {
         taskType: 'write_content',
         description: params.task,
-        context: { contentId: params.contentId },
+        context: { contentId: params.contentId, websiteId: params.websiteId },
       },
       {
         agentId: params.agentId,
         taskId: params.taskId,
         contentId: params.contentId, // Pass contentId for tool context
+        websiteId: params.websiteId, // Pass websiteId for external tools
       }
     )
 
@@ -344,3 +355,194 @@ export async function publishDeployEvent(params: {
     await events.deployFailed(params.contentId, params.data.error)
   }
 }
+
+// ============================================================================
+// GitHub Sync Activities
+// ============================================================================
+
+/**
+ * Sync content to GitHub - creates a PR for editorial review
+ * Called when content transitions to in_editorial_review
+ */
+export async function syncContentToGitHubActivity(params: {
+  contentId: string
+}): Promise<{ success: boolean; prNumber?: number; prUrl?: string; error?: string }> {
+  try {
+    await syncContentToGitHub(params.contentId)
+    const mapping = getGitHubMapping('content', params.contentId)
+    return {
+      success: true,
+      prNumber: mapping?.github_number,
+      prUrl: mapping?.github_url,
+    }
+  } catch (error) {
+    console.error(`[GitHub] Failed to sync content ${params.contentId}:`, error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to sync to GitHub',
+    }
+  }
+}
+
+/**
+ * Sync approval to GitHub - approves the PR
+ * Called when editor approves content
+ */
+export async function syncApprovalToGitHubActivity(params: {
+  contentId: string
+  approvalMessage: string
+  agentId: string
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    await syncApprovalToGitHub(params.contentId, params.approvalMessage, params.agentId)
+    return { success: true }
+  } catch (error) {
+    console.error(`[GitHub] Failed to sync approval for ${params.contentId}:`, error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to sync approval',
+    }
+  }
+}
+
+/**
+ * Sync rejection/changes request to GitHub
+ * Called when editor requests changes
+ */
+export async function syncRejectionToGitHubActivity(params: {
+  contentId: string
+  feedback: string
+  agentId: string
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    await syncRejectionToGitHub(params.contentId, params.feedback, params.agentId)
+    return { success: true }
+  } catch (error) {
+    console.error(`[GitHub] Failed to sync rejection for ${params.contentId}:`, error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to sync rejection',
+    }
+  }
+}
+
+/**
+ * Sync publish to GitHub - merges the PR
+ * Called when content is published
+ */
+export async function syncPublishToGitHubActivity(params: {
+  contentId: string
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    await syncPublishToGitHub(params.contentId)
+    return { success: true }
+  } catch (error) {
+    console.error(`[GitHub] Failed to sync publish for ${params.contentId}:`, error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to sync publish',
+    }
+  }
+}
+
+/**
+ * Sync question ticket to GitHub - creates an issue
+ * Called when an agent escalates to CEO
+ */
+export async function syncQuestionToGitHubActivity(params: {
+  ticketId: string
+}): Promise<{ success: boolean; issueNumber?: number; issueUrl?: string; error?: string }> {
+  try {
+    await syncQuestionToGitHub(params.ticketId)
+    const mapping = getGitHubMapping('ticket', params.ticketId)
+    return {
+      success: true,
+      issueNumber: mapping?.github_number,
+      issueUrl: mapping?.github_url,
+    }
+  } catch (error) {
+    console.error(`[GitHub] Failed to sync question ${params.ticketId}:`, error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to sync question',
+    }
+  }
+}
+
+/**
+ * Sync task to GitHub - creates an issue for the task
+ * Called when a task is created for an agent
+ */
+export async function syncTaskToGitHubActivity(params: {
+  taskId: string
+}): Promise<{ success: boolean; issueNumber?: number; issueUrl?: string; error?: string }> {
+  try {
+    await syncTaskToGitHub(params.taskId)
+    const mapping = getGitHubMapping('task', params.taskId)
+    return {
+      success: true,
+      issueNumber: mapping?.github_number,
+      issueUrl: mapping?.github_url,
+    }
+  } catch (error) {
+    console.error(`[GitHub] Failed to sync task ${params.taskId}:`, error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to sync task',
+    }
+  }
+}
+
+/**
+ * Log agent activity to GitHub PR as a comment
+ * Tracks each agent step in the workflow chain
+ */
+export async function logAgentActivityToGitHub(params: {
+  contentId: string
+  agentId: string
+  agentName: string
+  activity: string
+  details?: string
+  result?: 'success' | 'failure' | 'pending'
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const mapping = getGitHubMapping('content', params.contentId)
+    if (!mapping) {
+      // No PR exists yet, skip logging
+      console.log(`[GitHub] No PR mapping for content ${params.contentId}, skipping activity log`)
+      return { success: true }
+    }
+
+    // Import addPRComment from github-integration
+    const { addPRComment } = await import('@swarm-press/github-integration')
+
+    const resultEmoji = params.result === 'success' ? '✅' : params.result === 'failure' ? '❌' : '⏳'
+    const timestamp = new Date().toISOString()
+
+    const comment = `## ${resultEmoji} Agent Activity: ${params.agentName}
+
+**Activity:** ${params.activity}
+**Agent ID:** \`${params.agentId}\`
+**Timestamp:** ${timestamp}
+${params.details ? `\n### Details\n${params.details}` : ''}
+${params.result ? `\n**Result:** ${params.result}` : ''}`
+
+    await addPRComment(mapping.github_number, comment)
+
+    return { success: true }
+  } catch (error) {
+    console.error(`[GitHub] Failed to log activity for ${params.contentId}:`, error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to log activity',
+    }
+  }
+}
+
+// ============================================================================
+// Re-export from separate activity files
+// ============================================================================
+
+export * from './research'
+export * from './brief-generator'
+export * from './page-content-linker'

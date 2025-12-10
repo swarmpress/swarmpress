@@ -119,3 +119,6 @@ process.on('SIGTERM', async () => {
   await workerManager.shutdownAll()
   process.exit(0)
 })
+
+// Auto-start workers when this file is run directly
+startWorkers().catch(console.error)

@@ -204,6 +204,7 @@ export const WebsiteSchema = z
     github_owner: z.string().optional(),
     github_repo: z.string().optional(),
     github_installation_id: z.string().optional(),
+    github_access_token: z.string().optional(), // OAuth access token for this website's repo
     github_connected_at: z.string().datetime().optional(),
   })
   .merge(TimestampsSchema)

@@ -5,9 +5,13 @@
 
 import { db } from '@swarm-press/backend'
 import { webSearchTool, webSearchHandler } from './web-search-tool'
-import { extractDataTool, extractDataHandler } from './extract-data-tool'
 import { storeItemsTool, storeItemsHandler } from './store-items-tool'
 import type { ResearchToolContext, ToolResult, ListCollectionsResult } from './types'
+
+// Note: extractDataTool was removed because:
+// 1. It uses structured outputs which has a 24 optional parameter limit
+// 2. The schema has 157 optional parameters, exceeding the limit
+// 3. The agent should directly extract and store items using store_items
 
 // ============================================================================
 // Types
@@ -19,7 +23,7 @@ export interface ResearchTool {
   input_schema: Record<string, unknown>
 }
 
-export interface ToolHandler {
+export interface ResearchToolHandler {
   (input: Record<string, unknown>, context: ResearchToolContext): Promise<ToolResult>
 }
 
@@ -84,10 +88,10 @@ async function listResearchableCollectionsHandler(
  */
 export async function getResearchToolsForWebsite(websiteId: string): Promise<ResearchTool[]> {
   // Base composable tools - always available
+  // Note: extractDataTool removed - agent should directly populate store_items
   const tools: ResearchTool[] = [
     listResearchableCollectionsTool,
     webSearchTool,
-    extractDataTool,
     storeItemsTool
   ]
 
@@ -129,11 +133,7 @@ export async function handleResearchToolCall(
         context
       )
 
-    case 'research_extract_data':
-      return extractDataHandler(
-        input as { search_results: string; collection_type: string },
-        context
-      )
+    // Note: research_extract_data handler removed - agent should directly use store_items
 
     case 'research_store_items':
       return storeItemsHandler(
@@ -156,7 +156,6 @@ export function isResearchTool(toolName: string): boolean {
   return [
     'list_researchable_collections',
     'research_web_search',
-    'research_extract_data',
     'research_store_items'
   ].includes(toolName)
 }
@@ -168,7 +167,6 @@ export function getToolDefinitions(): ResearchTool[] {
   return [
     listResearchableCollectionsTool,
     webSearchTool,
-    extractDataTool,
     storeItemsTool
   ]
 }

@@ -56,12 +56,11 @@ export class AgentFactory {
       return null
     }
 
-    // Note: Agent entity has role_id (UUID), not role name
-    // For now, we'll look up by agent name/capabilities to determine agent class
-    // TODO: Improve agent class resolution (perhaps use role lookup table)
+    // Determine agent class from capabilities
     const AgentClass = this.getAgentClassFromData(agentData)
     if (!AgentClass) {
       console.error(`Unable to determine agent class for agent: ${agentData.name}`)
+      console.error(`  Capabilities: ${JSON.stringify(agentData.capabilities)}`)
       return null
     }
 
@@ -73,39 +72,98 @@ export class AgentFactory {
   }
 
   /**
-   * Determine agent class from agent data
-   * This is a temporary solution - ideally we'd use role lookup
+   * Create a fresh agent instance by ID (not cached)
+   * Use this for concurrent/isolated workflows to avoid conversation history collisions
+   */
+  async getFreshAgent(agentId: string): Promise<BaseAgent | null> {
+    // Load from database
+    const agentData = await agentRepository.findById(agentId)
+    if (!agentData) {
+      console.error(`Agent not found: ${agentId}`)
+      return null
+    }
+
+    // Determine agent class from capabilities
+    const AgentClass = this.getAgentClassFromData(agentData)
+    if (!AgentClass) {
+      console.error(`Unable to determine agent class for agent: ${agentData.name}`)
+      console.error(`  Capabilities: ${JSON.stringify(agentData.capabilities)}`)
+      return null
+    }
+
+    // Create instance (NOT cached - fresh for this invocation)
+    const agent = new AgentClass(agentData)
+    return agent
+  }
+
+  /**
+   * Determine agent class from agent capabilities
    */
   private getAgentClassFromData(agentData: Agent): AgentConstructor | null {
-    // Try to find by name pattern
-    const name = agentData.name.toLowerCase()
-    if (name.includes('writer')) {
-      return agentRegistry.get('Writer') || null
-    }
-    if (name.includes('editor')) {
-      return agentRegistry.get('Editor') || agentRegistry.get('ChiefEditor') || null
-    }
-    if (name.includes('engineering') || name.includes('engineer')) {
-      return agentRegistry.get('EngineeringAgent') || null
-    }
-    if (name.includes('seo')) {
-      return agentRegistry.get('SEOSpecialist') || agentRegistry.get('EngineeringAgent') || null
-    }
-    if (name.includes('ceo') || name.includes('assistant')) {
-      return agentRegistry.get('CEOAssistant') || null
+    // Check capabilities - can be strings OR objects with {name, enabled, config}
+    const hasCapability = (cap: string) => {
+      if (!agentData.capabilities || !Array.isArray(agentData.capabilities)) {
+        console.log(`[Factory] Agent ${agentData.name} capabilities not array:`, typeof agentData.capabilities, agentData.capabilities)
+        return false
+      }
+      const found = agentData.capabilities.some((c: any) => {
+        if (typeof c === 'string') return c === cap
+        if (typeof c === 'object' && c !== null && c.name) return c.name === cap
+        return false
+      })
+      console.log(`[Factory] Agent ${agentData.name} hasCapability(${cap}): ${found}`)
+      return found
     }
 
-    // Fallback: check capabilities
-    if (agentData.capabilities.includes('content_writing') || agentData.capabilities.includes('write_draft')) {
-      return agentRegistry.get('Writer') || null
-    }
-    if (agentData.capabilities.includes('editorial_review') || agentData.capabilities.includes('review_content')) {
-      return agentRegistry.get('Editor') || null
-    }
-    if (agentData.capabilities.includes('prepare_build') || agentData.capabilities.includes('publish_site')) {
-      return agentRegistry.get('EngineeringAgent') || null
+    console.log(`[Factory] Resolving agent ${agentData.name}, capabilities:`, JSON.stringify(agentData.capabilities))
+
+    // Writer capabilities
+    if (hasCapability('content_writing') || hasCapability('write_draft')) {
+      const AgentClass = agentRegistry.get('Writer')
+      if (AgentClass) {
+        console.log(`Resolved agent ${agentData.name} to Writer class via capability`)
+        return AgentClass
+      }
     }
 
+    // Editor capabilities
+    if (hasCapability('editorial_review') || hasCapability('review_content')) {
+      const AgentClass = agentRegistry.get('Editor') || agentRegistry.get('ChiefEditor')
+      if (AgentClass) {
+        console.log(`Resolved agent ${agentData.name} to Editor class via capability`)
+        return AgentClass
+      }
+    }
+
+    // Engineering capabilities
+    if (hasCapability('prepare_build') || hasCapability('publish_site')) {
+      const AgentClass = agentRegistry.get('EngineeringAgent')
+      if (AgentClass) {
+        console.log(`Resolved agent ${agentData.name} to EngineeringAgent class via capability`)
+        return AgentClass
+      }
+    }
+
+    // SEO capabilities
+    if (hasCapability('seo_optimization') || hasCapability('keyword_research')) {
+      const AgentClass = agentRegistry.get('SEOSpecialist') || agentRegistry.get('EngineeringAgent')
+      if (AgentClass) {
+        console.log(`Resolved agent ${agentData.name} to SEO class via capability`)
+        return AgentClass
+      }
+    }
+
+    // CEO Assistant capabilities
+    if (hasCapability('ceo_support') || hasCapability('summarize_tickets')) {
+      const AgentClass = agentRegistry.get('CEOAssistant')
+      if (AgentClass) {
+        console.log(`Resolved agent ${agentData.name} to CEOAssistant class via capability`)
+        return AgentClass
+      }
+    }
+
+    // No matching class found
+    console.warn(`No matching agent class for capabilities: ${JSON.stringify(agentData.capabilities)}`)
     return null
   }
 

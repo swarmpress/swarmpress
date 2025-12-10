@@ -1,6 +1,9 @@
 /**
  * Content Production Workflow
  * Orchestrates the content creation process from idea to draft
+ *
+ * GitHub Integration: Each agent step is logged to the content's PR
+ * for full visibility into the workflow chain.
  */
 
 import { proxyActivities, sleep } from '@temporalio/workflow'
@@ -11,6 +14,8 @@ const {
   getContentItem,
   transitionContentState,
   publishContentEvent,
+  syncContentToGitHubActivity,
+  logAgentActivityToGitHub,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '15 minutes',
   retry: {
@@ -31,6 +36,7 @@ export interface ContentProductionResult {
   status: string
   finalState?: string
   revisionsCount?: number
+  githubPrUrl?: string
   error?: string
 }
 
@@ -64,6 +70,16 @@ export async function contentProductionWorkflow(
     // Step 2: Writer creates draft
     console.log(`[ContentProduction] Invoking writer agent to create draft`)
 
+    // Log workflow start to GitHub (if PR exists)
+    await logAgentActivityToGitHub({
+      contentId,
+      agentId: writerAgentId,
+      agentName: 'WriterAgent',
+      activity: 'Starting content production workflow',
+      details: `**Brief:**\n${brief.substring(0, 500)}${brief.length > 500 ? '...' : ''}`,
+      result: 'pending',
+    })
+
     const writerTask = `Create a content draft for content ID ${contentId}.
 
 Brief:
@@ -77,6 +93,19 @@ Ensure all blocks are properly structured and validated.`
       agentId: writerAgentId,
       task: writerTask,
       contentId,
+      websiteId: content.website_id, // Pass websiteId for external tools
+    })
+
+    // Log writer result to GitHub
+    await logAgentActivityToGitHub({
+      contentId,
+      agentId: writerAgentId,
+      agentName: 'WriterAgent',
+      activity: 'Draft creation',
+      details: writerResult.success
+        ? 'Draft created successfully with content blocks'
+        : `Error: ${writerResult.error}`,
+      result: writerResult.success ? 'success' : 'failure',
     })
 
     if (!writerResult.success) {
@@ -116,6 +145,15 @@ Ensure all blocks are properly structured and validated.`
     while (needsRevision && revisionsCount < maxRevisions) {
       console.log(`[ContentProduction] Applying revision ${revisionsCount + 1}`)
 
+      // Log revision start to GitHub
+      await logAgentActivityToGitHub({
+        contentId,
+        agentId: writerAgentId,
+        agentName: 'WriterAgent',
+        activity: `Starting revision ${revisionsCount + 1}/${maxRevisions}`,
+        result: 'pending',
+      })
+
       const revisionTask = `Revise the content for ${contentId}.
 Review the current draft and make improvements where needed.
 Use your revise_draft tool to update the content.`
@@ -124,6 +162,19 @@ Use your revise_draft tool to update the content.`
         agentId: writerAgentId,
         task: revisionTask,
         contentId,
+        websiteId: content.website_id,
+      })
+
+      // Log revision result to GitHub
+      await logAgentActivityToGitHub({
+        contentId,
+        agentId: writerAgentId,
+        agentName: 'WriterAgent',
+        activity: `Revision ${revisionsCount + 1} complete`,
+        details: revisionResult.success
+          ? 'Content revised successfully'
+          : `Error: ${revisionResult.error}`,
+        result: revisionResult.success ? 'success' : 'failure',
       })
 
       if (!revisionResult.success) {
@@ -150,19 +201,48 @@ Use your submit_for_review tool to transition the content to in_editorial_review
       agentId: writerAgentId,
       task: submitTask,
       contentId,
+      websiteId: content.website_id,
     })
 
     if (!submitResult.success) {
+      // Log failure to GitHub
+      await logAgentActivityToGitHub({
+        contentId,
+        agentId: writerAgentId,
+        agentName: 'WriterAgent',
+        activity: 'Submit for review',
+        details: `Error: ${submitResult.error}`,
+        result: 'failure',
+      })
       throw new Error(`Failed to submit for review: ${submitResult.error}`)
     }
 
-    // Step 7: Publish submission event
+    // Step 7: Create GitHub PR for editorial review
+    console.log(`[ContentProduction] Creating GitHub PR for editorial review`)
+    const prResult = await syncContentToGitHubActivity({ contentId })
+
+    if (prResult.success && prResult.prUrl) {
+      console.log(`[ContentProduction] Created PR: ${prResult.prUrl}`)
+    }
+
+    // Log submission to GitHub (now PR exists)
+    await logAgentActivityToGitHub({
+      contentId,
+      agentId: writerAgentId,
+      agentName: 'WriterAgent',
+      activity: 'Submitted for editorial review',
+      details: `Content submitted successfully. Ready for EditorAgent review.\n\n**Revisions made:** ${revisionsCount}`,
+      result: 'success',
+    })
+
+    // Step 8: Publish submission event
     await publishContentEvent({
       type: 'content.submittedForReview',
       contentId,
       data: {
         content_id: contentId,
         submitted_by: writerAgentId,
+        github_pr_url: prResult.prUrl,
       },
     })
 
@@ -174,6 +254,7 @@ Use your submit_for_review tool to transition the content to in_editorial_review
       status: 'submitted_for_review',
       finalState: 'in_editorial_review',
       revisionsCount,
+      githubPrUrl: prResult.prUrl,
     }
   } catch (error) {
     console.error(`[ContentProduction] Workflow failed:`, error)

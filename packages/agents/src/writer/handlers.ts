@@ -8,11 +8,12 @@ import { validateContentBlocks } from '../base/utilities'
 
 // ============================================================================
 // Repository Access
-// We import these dynamically to avoid circular dependencies
+// Import directly from source to pick up latest changes
 // ============================================================================
 
 async function getContentRepository() {
-  const { contentRepository } = await import('@swarm-press/backend')
+  // Import from source to avoid stale dist issues during development
+  const { contentRepository } = await import('@swarm-press/backend/src/db/repositories/content-repository')
   return contentRepository
 }
 
@@ -61,6 +62,15 @@ export const writeDraftHandler: ToolHandler<{
   body: any[]
 }> = async (input, context): Promise<ToolResult> => {
   try {
+    console.log(`[WriterHandler] write_draft called:`, {
+      content_id: input.content_id,
+      title: input.title,
+      bodyType: typeof input.body,
+      bodyIsArray: Array.isArray(input.body),
+      bodyLength: Array.isArray(input.body) ? input.body.length : 'N/A',
+      firstBlock: Array.isArray(input.body) && input.body[0] ? JSON.stringify(input.body[0]).substring(0, 200) : 'N/A',
+    })
+
     // Validate body is an array of blocks
     if (!Array.isArray(input.body)) {
       return toolError('Body must be an array of content blocks')
@@ -106,8 +116,8 @@ export const writeDraftHandler: ToolHandler<{
     if (existing.status === 'brief_created') {
       const transitionResult = await contentRepository.transition(
         input.content_id,
-        'start_draft',
-        'WriterAgent',
+        'writer.started',  // Matches state machine event name
+        'Writer',  // Matches state machine allowedActors
         context.agentId
       )
       if (!transitionResult.success) {
@@ -188,8 +198,8 @@ export const reviseDraftHandler: ToolHandler<{
     if (existing.status === 'needs_changes') {
       const transitionResult = await contentRepository.transition(
         input.content_id,
-        'start_draft',
-        'WriterAgent',
+        'revisions_applied',  // Matches state machine event name
+        'Writer',  // Matches state machine allowedActors
         context.agentId
       )
       if (transitionResult.success) {
@@ -235,7 +245,7 @@ export const submitForReviewHandler: ToolHandler<{ content_id: string }> = async
     const result = await contentRepository.transition(
       input.content_id,
       'submit_for_review',
-      'WriterAgent',
+      'Writer',  // Matches state machine allowedActors
       context.agentId
     )
 

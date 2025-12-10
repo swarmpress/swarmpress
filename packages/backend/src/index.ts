@@ -35,11 +35,19 @@ async function main() {
   })
 }
 
-// Start the application
-main().catch((error) => {
-  console.error('Fatal error:', error)
-  process.exit(1)
-})
+// Only start the application if this module is run directly
+// Check if this is the main module (not imported)
+const isMainModule = require.main === module || process.argv[1]?.includes('backend/src/index')
+
+if (isMainModule) {
+  main().catch((error) => {
+    console.error('Fatal error:', error)
+    process.exit(1)
+  })
+}
+
+// Export main for bootstrap.ts
+export { main }
 
 // Export database for use in other packages
 export * from './db'

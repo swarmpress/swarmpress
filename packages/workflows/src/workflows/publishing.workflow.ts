@@ -1,6 +1,9 @@
 /**
  * Publishing Workflow
  * Orchestrates the content publishing process
+ *
+ * GitHub Integration: Each agent step is logged to the content's PR,
+ * and the PR is merged when content is successfully published.
  */
 
 import { proxyActivities } from '@temporalio/workflow'
@@ -13,6 +16,8 @@ const {
   transitionContentState,
   publishContentEvent,
   publishDeployEvent,
+  syncPublishToGitHubActivity,
+  logAgentActivityToGitHub,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '20 minutes',
   retry: {
@@ -69,6 +74,16 @@ export async function publishingWorkflow(
     // Step 2: SEO optimization
     console.log(`[Publishing] Invoking SEO agent for optimization`)
 
+    // Log SEO start to GitHub
+    await logAgentActivityToGitHub({
+      contentId,
+      agentId: seoAgentId,
+      agentName: 'SEOAgent',
+      activity: 'Starting SEO optimization',
+      details: 'Optimizing page title, meta description, keywords, URL structure, and links...',
+      result: 'pending',
+    })
+
     const seoTask = `Optimize SEO metadata for content ${contentId}.
 
 Review and optimize:
@@ -84,6 +99,18 @@ Ensure all SEO best practices are followed.`
       agentId: seoAgentId,
       task: seoTask,
       contentId,
+    })
+
+    // Log SEO result to GitHub
+    await logAgentActivityToGitHub({
+      contentId,
+      agentId: seoAgentId,
+      agentName: 'SEOAgent',
+      activity: 'SEO optimization completed',
+      details: seoResult.success
+        ? 'SEO metadata optimized successfully'
+        : `Warning: ${seoResult.error}`,
+      result: seoResult.success ? 'success' : 'failure',
     })
 
     if (!seoResult.success) {
@@ -114,6 +141,16 @@ Ensure all SEO best practices are followed.`
     // Step 4: Engineering validation
     console.log(`[Publishing] Invoking engineering agent for validation`)
 
+    // Log validation start to GitHub
+    await logAgentActivityToGitHub({
+      contentId,
+      agentId: engineeringAgentId,
+      agentName: 'EngineeringAgent',
+      activity: 'Starting content validation',
+      details: 'Validating JSON block structure and verifying all assets...',
+      result: 'pending',
+    })
+
     const validateTask = `Validate content ${contentId} for publication.
 
 Use your tools to:
@@ -130,19 +167,57 @@ Report any validation errors.`
     })
 
     if (!validationResult.success) {
+      // Log validation failure to GitHub
+      await logAgentActivityToGitHub({
+        contentId,
+        agentId: engineeringAgentId,
+        agentName: 'EngineeringAgent',
+        activity: 'Validation failed',
+        details: `Error: ${validationResult.error}`,
+        result: 'failure',
+      })
       throw new Error(`Validation failed: ${validationResult.error}`)
     }
 
     // Check validation results
     if (validationResult.result?.valid === false) {
       const errors = validationResult.result?.errors || []
+      // Log validation errors to GitHub
+      await logAgentActivityToGitHub({
+        contentId,
+        agentId: engineeringAgentId,
+        agentName: 'EngineeringAgent',
+        activity: 'Validation failed - content errors',
+        details: `**Validation errors:**\n${errors.map((e: string) => `- ${e}`).join('\n')}`,
+        result: 'failure',
+      })
       throw new Error(`Content validation failed: ${errors.join(', ')}`)
     }
+
+    // Log validation success to GitHub
+    await logAgentActivityToGitHub({
+      contentId,
+      agentId: engineeringAgentId,
+      agentName: 'EngineeringAgent',
+      activity: 'Validation passed',
+      details: 'Content structure and all assets validated successfully.',
+      result: 'success',
+    })
 
     console.log(`[Publishing] Validation passed`)
 
     // Step 5: Build and deploy
     console.log(`[Publishing] Invoking engineering agent for build and deployment`)
+
+    // Log build start to GitHub
+    await logAgentActivityToGitHub({
+      contentId,
+      agentId: engineeringAgentId,
+      agentName: 'EngineeringAgent',
+      activity: 'Starting build and deployment',
+      details: `Building static site with Astro and deploying to production...\n\n**Website ID:** ${websiteId}`,
+      result: 'pending',
+    })
 
     const publishTask = `Publish content ${contentId} to website ${websiteId}.
 
@@ -162,6 +237,16 @@ This is a complete end-to-end publishing workflow.`
     })
 
     if (!publishResult.success) {
+      // Log deployment failure to GitHub
+      await logAgentActivityToGitHub({
+        contentId,
+        agentId: engineeringAgentId,
+        agentName: 'EngineeringAgent',
+        activity: '❌ Deployment failed',
+        details: `**Error:** ${publishResult.error || 'Build/deployment failed'}`,
+        result: 'failure',
+      })
+
       // Publish failure event
       await publishDeployEvent({
         type: 'deploy.failed',
@@ -176,7 +261,30 @@ This is a complete end-to-end publishing workflow.`
 
     console.log(`[Publishing] Build and deployment successful`)
 
-    // Step 6: Transition to published state
+    // Step 6: Extract published URL
+    const publishedUrl =
+      publishResult.result?.url ||
+      publishResult.result?.publishedUrl ||
+      `https://www.example.com/content/${contentId}`
+
+    // Log deployment success to GitHub
+    await logAgentActivityToGitHub({
+      contentId,
+      agentId: engineeringAgentId,
+      agentName: 'EngineeringAgent',
+      activity: '🚀 Deployment successful',
+      details: `Content has been published successfully!\n\n**Published URL:** ${publishedUrl}`,
+      result: 'success',
+    })
+
+    // Step 7: Merge GitHub PR (content is now live)
+    console.log(`[Publishing] Merging GitHub PR`)
+    const mergeResult = await syncPublishToGitHubActivity({ contentId })
+    if (mergeResult.success) {
+      console.log(`[Publishing] GitHub PR merged successfully`)
+    }
+
+    // Step 8: Transition to published state
     await transitionContentState({
       contentId,
       event: 'deploy_success',
@@ -184,13 +292,7 @@ This is a complete end-to-end publishing workflow.`
       actorId: engineeringAgentId,
     })
 
-    // Step 7: Extract published URL
-    const publishedUrl =
-      publishResult.result?.url ||
-      publishResult.result?.publishedUrl ||
-      `https://www.example.com/content/${contentId}`
-
-    // Step 8: Publish success event
+    // Step 9: Publish success event
     await publishDeployEvent({
       type: 'deploy.success',
       contentId,

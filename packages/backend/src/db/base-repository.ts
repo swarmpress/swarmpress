@@ -63,10 +63,17 @@ export abstract class BaseRepository<T extends QueryResultRow> {
 
   /**
    * Create a new record
+   * JSONB fields must be stringified for pg driver
    */
   async create(data: Partial<T>): Promise<T> {
     const fields = Object.keys(data)
-    const values = Object.values(data)
+    // IMPORTANT: pg driver requires JSON.stringify for JSONB columns
+    const values = Object.values(data).map(value => {
+      if (value !== null && typeof value === 'object') {
+        return JSON.stringify(value)
+      }
+      return value
+    })
     const placeholders = fields.map((_, i) => `$${i + 1}`).join(', ')
 
     const result = await db.query<T>(
@@ -81,10 +88,20 @@ export abstract class BaseRepository<T extends QueryResultRow> {
 
   /**
    * Update a record by ID
+   * JSONB fields (body, metadata, etc.) must be explicitly stringified
+   * because the pg driver does NOT auto-serialize objects for JSONB
    */
   async update(id: string, data: Partial<T>): Promise<T | null> {
     const fields = Object.keys(data)
-    const values = Object.values(data)
+    // IMPORTANT: pg driver requires JSON.stringify for JSONB columns
+    // Passing objects directly fails with "invalid input syntax for type json"
+    const values = Object.values(data).map(value => {
+      if (value !== null && typeof value === 'object') {
+        // Stringify objects for JSONB columns
+        return JSON.stringify(value)
+      }
+      return value
+    })
     const setClause = fields.map((field, i) => `${field} = $${i + 2}`).join(', ')
 
     const result = await db.query<T>(

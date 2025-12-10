@@ -12,7 +12,12 @@ dotenv.config({ path: resolve(__dirname, '../../../.env') })
 console.log('✅ Environment variables loaded')
 
 // Now load and start the main application
-import('./index.js').catch((error) => {
+import('./index.js').then(({ main }) => {
+  main().catch((error) => {
+    console.error('Fatal error:', error)
+    process.exit(1)
+  })
+}).catch((error) => {
   console.error('Fatal error during bootstrap:', error)
   process.exit(1)
 })

@@ -11,7 +11,7 @@
  * - Runtime validation of tool inputs
  */
 
-import { z, type ZodType, type ZodTypeAny } from 'zod'
+import { z, type ZodTypeAny } from 'zod'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import type Anthropic from '@anthropic-ai/sdk'
 import type { ToolContext, ToolResult, ToolHandler } from './tools'

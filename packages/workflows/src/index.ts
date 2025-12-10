@@ -11,3 +11,6 @@ export * from './workflows'
 
 // Export activities
 export * as activities from './activities'
+
+// Export services (workflow registry, webhook handlers)
+export * from './services'

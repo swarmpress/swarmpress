@@ -214,6 +214,7 @@ CREATE TABLE content_items (
   website_id UUID NOT NULL REFERENCES websites(id) ON DELETE CASCADE,
   page_id UUID REFERENCES pages(id) ON DELETE SET NULL,
   title VARCHAR(500) NOT NULL,
+  slug VARCHAR(500),  -- URL-friendly slug (optional)
   body JSONB NOT NULL,  -- Structured content blocks
   status VARCHAR(50) NOT NULL DEFAULT 'draft',
   author_agent_id UUID REFERENCES agents(id) ON DELETE SET NULL,

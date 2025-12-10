@@ -12,6 +12,7 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "cli": "pnpm --filter @swarm-press/cli run cli",
+    "webhook-proxy": "npx smee-client --url https://smee.io/DGG7mVlrWR2zB1M4 --target http://localhost:3000/webhooks/github",
     "docs:dev": "pnpm --filter docs dev",
     "docs:build": "pnpm run docs:generate && pnpm --filter docs build",
     "docs:generate": "typedoc",

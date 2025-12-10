@@ -18,6 +18,7 @@
     "@swarm-press/agents": "workspace:*",
     "@swarm-press/backend": "workspace:*",
     "@swarm-press/event-bus": "workspace:*",
+    "@swarm-press/github-integration": "workspace:*",
     "@temporalio/client": "^1.9.0",
     "@temporalio/worker": "^1.9.0",
     "@temporalio/workflow": "^1.9.0",

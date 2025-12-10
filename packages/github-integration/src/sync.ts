@@ -3,10 +3,40 @@
  * Bidirectional synchronization between GitHub and internal state
  */
 
-import { contentRepository, questionTicketRepository, taskRepository } from '@swarm-press/backend'
+import { contentRepository, questionTicketRepository, taskRepository, websiteRepository } from '@swarm-press/backend'
 import { createContentPR, approvePR, requestPRChanges, mergePR } from './pull-requests'
 import { createQuestionIssue, createTaskIssue } from './issues'
-import type { ContentItem } from '@swarm-press/shared'
+import { initializeGitHub } from './client'
+import type { ContentItem, Website } from '@swarm-press/shared'
+
+/**
+ * Initialize GitHub client for a website
+ * Uses the website's stored OAuth credentials
+ */
+async function initializeGitHubForWebsite(websiteId: string): Promise<void> {
+  const website = await websiteRepository.findById(websiteId) as Website | null
+  if (!website) {
+    throw new Error(`Website ${websiteId} not found`)
+  }
+
+  if (!website.github_owner || !website.github_repo) {
+    throw new Error(`Website ${websiteId} is not connected to GitHub`)
+  }
+
+  // Use website's OAuth token if available, fall back to env var
+  const token = (website as any).github_access_token || process.env.GITHUB_TOKEN
+  if (!token) {
+    throw new Error(`No GitHub token available for website ${websiteId}`)
+  }
+
+  initializeGitHub({
+    token,
+    owner: website.github_owner,
+    repo: website.github_repo,
+  })
+
+  console.log(`[Sync] GitHub client initialized for ${website.github_owner}/${website.github_repo}`)
+}
 
 /**
  * Map to track GitHub PR/Issue numbers for entities
@@ -47,6 +77,12 @@ export async function syncContentToGitHub(contentId: string): Promise<void> {
   if (!content) {
     throw new Error(`Content ${contentId} not found`)
   }
+
+  // Initialize GitHub client for this content's website
+  if (!content.website_id) {
+    throw new Error(`Content ${contentId} has no website_id`)
+  }
+  await initializeGitHubForWebsite(content.website_id)
 
   // Check if PR already exists
   const existing = getGitHubMapping('content', contentId)
@@ -92,6 +128,12 @@ export async function syncApprovalToGitHub(
     return
   }
 
+  // Initialize GitHub client for this content's website
+  const content = await contentRepository.findById(contentId)
+  if (content?.website_id) {
+    await initializeGitHubForWebsite(content.website_id)
+  }
+
   await approvePR(mapping.github_number, approvalMessage, agentId)
   console.log(`[Sync] Approved PR #${mapping.github_number} for content ${contentId}`)
 }
@@ -110,6 +152,12 @@ export async function syncRejectionToGitHub(
     return
   }
 
+  // Initialize GitHub client for this content's website
+  const content = await contentRepository.findById(contentId)
+  if (content?.website_id) {
+    await initializeGitHubForWebsite(content.website_id)
+  }
+
   await requestPRChanges(mapping.github_number, feedback, agentId)
   console.log(`[Sync] Requested changes on PR #${mapping.github_number} for content ${contentId}`)
 }
@@ -122,6 +170,12 @@ export async function syncPublishToGitHub(contentId: string): Promise<void> {
   if (!mapping) {
     console.warn(`[Sync] No GitHub mapping found for content ${contentId}`)
     return
+  }
+
+  // Initialize GitHub client for this content's website
+  const content = await contentRepository.findById(contentId)
+  if (content?.website_id) {
+    await initializeGitHubForWebsite(content.website_id)
   }
 
   await mergePR(

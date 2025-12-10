@@ -123,11 +123,5 @@ City-Specific Blog (filtered):
 
 ## 5. Data Source Integration Overview
 
--   Google Places → POIs, restaurants, hotels
--   Overpass → trails, paths
--   OpenElevation / Mapbox Terrain → elevation profiles
--   OpenWeather → weather blocks and climate data
--   Wikidata/Wikipedia → history & culture
--   Eventbrite → events
--   Train/Ferry APIs → mobility insights
+-   Claude Agent SDK & Websearch
 -   Pexels/Unsplash → images & videos
