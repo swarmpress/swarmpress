@@ -10,6 +10,12 @@ export { validateEnv, getEnv, type Env } from './config/env'
 // Content Model (JSON Blocks)
 export * from './content/blocks'
 
+// Agent-Page Mapping
+export * from './content/agent-page-mapping'
+
+// Collection Loader
+export * from './content/collection-loader'
+
 // Collection Schemas
 export * from './content/collections'
 

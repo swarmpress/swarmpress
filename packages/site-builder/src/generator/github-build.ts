@@ -506,25 +506,359 @@ function renderBlocks(blocks: Array<Record<string, unknown>>): string {
     const type = block.type as string
     switch (type) {
       case 'paragraph':
-        return `<p>${escapeHtml(String(block.markdown || block.text || ''))}</p>`
+        return `<p class="text-slate-700 leading-relaxed">${escapeHtml(String(block.markdown || block.text || ''))}</p>`
+
       case 'heading':
         const level = block.level || 2
-        return `<h${level}>${escapeHtml(String(block.text || ''))}</h${level}>`
+        const headingClasses: Record<number, string> = {
+          2: 'text-2xl font-bold text-slate-900 mt-8 mb-4',
+          3: 'text-xl font-semibold text-slate-800 mt-6 mb-3',
+          4: 'text-lg font-medium text-slate-700 mt-4 mb-2',
+        }
+        return `<h${level} class="${headingClasses[level as number] || headingClasses[2]}">${escapeHtml(String(block.text || ''))}</h${level}>`
+
+      case 'hero':
+        return renderHeroBlock(block)
+
       case 'image':
-        return `<figure>
-          <img src="${escapeHtml(String(block.src || ''))}" alt="${escapeHtml(String(block.alt || ''))}">
-          ${block.caption ? `<figcaption>${escapeHtml(String(block.caption))}</figcaption>` : ''}
+        return `<figure class="my-8">
+          <img src="${escapeHtml(String(block.src || ''))}" alt="${escapeHtml(String(block.alt || ''))}" class="w-full rounded-xl shadow-lg">
+          ${block.caption ? `<figcaption class="mt-2 text-sm text-slate-500 text-center">${escapeHtml(String(block.caption))}</figcaption>` : ''}
         </figure>`
+
+      case 'gallery':
+        return renderGalleryBlock(block)
+
       case 'list':
         const items = (block.items as string[]) || []
         const tag = block.ordered ? 'ol' : 'ul'
-        return `<${tag}>${items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</${tag}>`
+        const listClass = block.ordered ? 'list-decimal' : 'list-disc'
+        return `<${tag} class="${listClass} list-inside space-y-2 text-slate-700 my-4">${items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</${tag}>`
+
       case 'quote':
-        return `<blockquote>${escapeHtml(String(block.text || ''))}</blockquote>`
+        return `<blockquote class="my-8 pl-6 border-l-4 border-ocean-500 italic text-slate-700">
+          <p class="text-lg">${escapeHtml(String(block.text || ''))}</p>
+          ${block.attribution ? `<footer class="mt-2 text-sm text-slate-500 not-italic">— ${escapeHtml(String(block.attribution))}</footer>` : ''}
+        </blockquote>`
+
+      case 'faq':
+        return renderFAQBlock(block)
+
+      case 'callout':
+        return renderCalloutBlock(block)
+
+      case 'embed':
+        return renderEmbedBlock(block)
+
+      case 'collection-embed':
+        return renderCollectionEmbedBlock(block)
+
       default:
         return ''
     }
   }).join('\n')
+}
+
+/**
+ * Render Hero block with Tailwind styling
+ */
+function renderHeroBlock(block: Record<string, unknown>): string {
+  const title = String(block.title || '')
+  const subtitle = block.subtitle ? String(block.subtitle) : null
+  const backgroundImage = block.backgroundImage ? String(block.backgroundImage) : null
+
+  if (backgroundImage) {
+    return `
+      <div class="relative -mx-4 sm:-mx-6 lg:-mx-8 mb-12 overflow-hidden rounded-xl">
+        <div class="absolute inset-0">
+          <img src="${escapeHtml(backgroundImage)}" alt="" class="h-full w-full object-cover">
+          <div class="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/50 to-transparent"></div>
+        </div>
+        <div class="relative px-6 py-24 sm:py-32 text-center">
+          <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl">${escapeHtml(title)}</h1>
+          ${subtitle ? `<p class="mt-4 text-xl text-slate-200">${escapeHtml(subtitle)}</p>` : ''}
+        </div>
+      </div>
+    `
+  }
+
+  return `
+    <div class="mb-12 text-center">
+      <h1 class="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">${escapeHtml(title)}</h1>
+      ${subtitle ? `<p class="mt-4 text-xl text-slate-600">${escapeHtml(subtitle)}</p>` : ''}
+    </div>
+  `
+}
+
+/**
+ * Render Gallery block with Tailwind grid
+ */
+function renderGalleryBlock(block: Record<string, unknown>): string {
+  const images = (block.images as Array<{ src: string; alt: string; caption?: string }>) || []
+  const layout = String(block.layout || 'grid')
+
+  if (images.length === 0) return ''
+
+  const columns = layout === 'masonry' ? 'columns-2 md:columns-3 gap-4' : 'grid gap-4 grid-cols-2 md:grid-cols-3'
+
+  return `
+    <div class="my-8 ${columns}">
+      ${images.map(img => `
+        <figure class="${layout === 'masonry' ? 'break-inside-avoid mb-4' : ''}">
+          <img src="${escapeHtml(img.src)}" alt="${escapeHtml(img.alt)}" class="w-full rounded-lg shadow-md hover:shadow-lg transition">
+          ${img.caption ? `<figcaption class="mt-1 text-xs text-slate-500">${escapeHtml(img.caption)}</figcaption>` : ''}
+        </figure>
+      `).join('')}
+    </div>
+  `
+}
+
+/**
+ * Render FAQ block with expandable sections
+ */
+function renderFAQBlock(block: Record<string, unknown>): string {
+  const items = (block.items as Array<{ question: string; answer: string }>) || []
+
+  if (items.length === 0) return ''
+
+  return `
+    <div class="my-8 space-y-4">
+      ${items.map((item, i) => `
+        <details class="group rounded-lg border border-slate-200 bg-white">
+          <summary class="flex cursor-pointer items-center justify-between p-4 font-medium text-slate-900 hover:bg-slate-50">
+            <span>${escapeHtml(item.question)}</span>
+            <svg class="h-5 w-5 text-slate-500 transition group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+            </svg>
+          </summary>
+          <div class="border-t border-slate-200 p-4 text-slate-700">
+            ${escapeHtml(item.answer)}
+          </div>
+        </details>
+      `).join('')}
+    </div>
+  `
+}
+
+/**
+ * Render Callout block with style variants
+ */
+function renderCalloutBlock(block: Record<string, unknown>): string {
+  const style = String(block.style || 'info')
+  const title = block.title ? String(block.title) : null
+  const content = String(block.content || '')
+
+  const styles: Record<string, { bg: string; border: string; icon: string; iconColor: string }> = {
+    info: {
+      bg: 'bg-ocean-50',
+      border: 'border-ocean-200',
+      iconColor: 'text-ocean-600',
+      icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />`,
+    },
+    warning: {
+      bg: 'bg-amber-50',
+      border: 'border-amber-200',
+      iconColor: 'text-amber-600',
+      icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />`,
+    },
+    success: {
+      bg: 'bg-green-50',
+      border: 'border-green-200',
+      iconColor: 'text-green-600',
+      icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />`,
+    },
+    error: {
+      bg: 'bg-red-50',
+      border: 'border-red-200',
+      iconColor: 'text-red-600',
+      icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />`,
+    },
+  }
+
+  const s = styles[style] || styles.info
+
+  return `
+    <div class="my-6 rounded-lg border ${s.border} ${s.bg} p-4">
+      <div class="flex">
+        <svg class="h-6 w-6 ${s.iconColor} flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          ${s.icon}
+        </svg>
+        <div class="ml-3">
+          ${title ? `<h4 class="font-medium text-slate-900">${escapeHtml(title)}</h4>` : ''}
+          <p class="${title ? 'mt-1 ' : ''}text-sm text-slate-700">${escapeHtml(content)}</p>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+/**
+ * Render Embed block (YouTube, Vimeo, Maps)
+ */
+function renderEmbedBlock(block: Record<string, unknown>): string {
+  const provider = String(block.provider || 'custom')
+  const url = String(block.url || '')
+  const title = block.title ? String(block.title) : null
+
+  let embedHtml = ''
+
+  if (provider === 'youtube') {
+    // Extract YouTube video ID
+    const videoId = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/)?.[1]
+    if (videoId) {
+      embedHtml = `<iframe src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen class="w-full aspect-video rounded-lg"></iframe>`
+    }
+  } else if (provider === 'vimeo') {
+    const videoId = url.match(/vimeo\.com\/(\d+)/)?.[1]
+    if (videoId) {
+      embedHtml = `<iframe src="https://player.vimeo.com/video/${videoId}" frameborder="0" allowfullscreen class="w-full aspect-video rounded-lg"></iframe>`
+    }
+  } else if (provider === 'maps') {
+    embedHtml = `<iframe src="${escapeHtml(url)}" frameborder="0" class="w-full h-96 rounded-lg"></iframe>`
+  } else {
+    embedHtml = `<iframe src="${escapeHtml(url)}" frameborder="0" class="w-full aspect-video rounded-lg"></iframe>`
+  }
+
+  return `
+    <div class="my-8">
+      ${title ? `<p class="mb-2 text-sm font-medium text-slate-700">${escapeHtml(title)}</p>` : ''}
+      ${embedHtml}
+    </div>
+  `
+}
+
+/**
+ * Render Collection Embed block with Tailwind grid layout
+ */
+function renderCollectionEmbedBlock(block: Record<string, unknown>): string {
+  const collectionType = String(block.collectionType || '')
+  const displayName = block.displayName ? String(block.displayName) : collectionType
+  const items = (block.items as Array<{
+    slug: string
+    title: string
+    summary?: string
+    image?: string
+    date?: string
+    url?: string
+    data?: Record<string, unknown>
+  }>) || []
+  const display = (block.display as {
+    layout?: string
+    columns?: number
+    showImage?: boolean
+    showSummary?: boolean
+    showDate?: boolean
+    imageAspect?: string
+  }) || { layout: 'grid', columns: 3 }
+  const heading = block.heading ? String(block.heading) : null
+  const headingLevel = (block.headingLevel as number) || 2
+  const showViewAll = block.showViewAll as boolean
+  const viewAllUrl = block.viewAllUrl ? String(block.viewAllUrl) : `/${collectionType}/`
+
+  if (items.length === 0) return ''
+
+  const layout = display.layout || 'grid'
+  const columns = display.columns || 3
+  const showImage = display.showImage !== false
+  const showSummary = display.showSummary !== false
+  const showDate = display.showDate === true
+  const imageAspect = display.imageAspect || 'video'
+
+  const aspectClasses: Record<string, string> = {
+    square: 'aspect-square',
+    video: 'aspect-video',
+    portrait: 'aspect-[3/4]',
+    landscape: 'aspect-[4/3]',
+  }
+
+  let html = ''
+
+  // Heading
+  if (heading) {
+    html += `<h${headingLevel} class="text-2xl font-bold text-slate-900 mb-6">${escapeHtml(heading)}</h${headingLevel}>`
+  }
+
+  // Grid layout
+  if (layout === 'grid' || layout === 'carousel') {
+    const gridCols = columns === 2 ? 'lg:grid-cols-2' : columns === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'
+    html += `<div class="grid gap-6 sm:grid-cols-2 ${gridCols}">`
+
+    for (const item of items) {
+      const itemUrl = item.url || `/${collectionType}/${item.slug}/`
+      html += `
+        <a href="${escapeHtml(itemUrl)}" class="group flex flex-col rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm transition hover:shadow-md hover:border-ocean-200">
+          ${showImage && item.image ? `
+            <div class="${aspectClasses[imageAspect]} overflow-hidden bg-slate-100">
+              <img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.title)}" class="h-full w-full object-cover transition group-hover:scale-105">
+            </div>
+          ` : ''}
+          <div class="flex-1 p-5">
+            <h3 class="font-semibold text-slate-900 group-hover:text-ocean-600">${escapeHtml(item.title)}</h3>
+            ${showSummary && item.summary ? `<p class="mt-2 text-sm text-slate-600 line-clamp-2">${escapeHtml(item.summary)}</p>` : ''}
+            ${showDate && item.date ? `<time class="mt-3 block text-xs text-slate-500">${escapeHtml(item.date)}</time>` : ''}
+          </div>
+        </a>
+      `
+    }
+
+    html += '</div>'
+  }
+
+  // List layout
+  else if (layout === 'list') {
+    html += '<div class="space-y-4">'
+
+    for (const item of items) {
+      const itemUrl = item.url || `/${collectionType}/${item.slug}/`
+      html += `
+        <a href="${escapeHtml(itemUrl)}" class="group flex items-center gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md hover:border-ocean-200">
+          ${showImage && item.image ? `
+            <div class="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-slate-100">
+              <img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.title)}" class="h-full w-full object-cover">
+            </div>
+          ` : ''}
+          <div class="flex-1 min-w-0">
+            <h3 class="font-semibold text-slate-900 group-hover:text-ocean-600 truncate">${escapeHtml(item.title)}</h3>
+            ${showSummary && item.summary ? `<p class="mt-1 text-sm text-slate-600 truncate">${escapeHtml(item.summary)}</p>` : ''}
+          </div>
+        </a>
+      `
+    }
+
+    html += '</div>'
+  }
+
+  // Compact layout
+  else if (layout === 'compact') {
+    html += '<div class="flex flex-wrap gap-2">'
+
+    for (const item of items) {
+      const itemUrl = item.url || `/${collectionType}/${item.slug}/`
+      html += `
+        <a href="${escapeHtml(itemUrl)}" class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-ocean-100 hover:text-ocean-700 transition">
+          ${escapeHtml(item.title)}
+        </a>
+      `
+    }
+
+    html += '</div>'
+  }
+
+  // View All link
+  if (showViewAll) {
+    html += `
+      <div class="mt-6 text-center">
+        <a href="${escapeHtml(viewAllUrl)}" class="inline-flex items-center gap-1 text-ocean-600 font-medium hover:text-ocean-700 transition">
+          View all ${escapeHtml(displayName)}
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z" clip-rule="evenodd" />
+          </svg>
+        </a>
+      </div>
+    `
+  }
+
+  return `<section class="my-12">${html}</section>`
 }
 
 // =============================================================================

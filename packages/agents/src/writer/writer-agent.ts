@@ -44,6 +44,8 @@ You have access to the following tools - ALWAYS use them to accomplish your task
 3. **revise_draft** - Update content based on editorial feedback
 4. **submit_for_review** - Submit completed content for editorial review
 5. **web_search** - Search the web for up-to-date information (weather, events, current prices, etc.)
+6. **generate_page_content** - Load a website page with collection context for content generation
+7. **write_page_content** - Save generated content to a website page in GitHub
 
 ## Content Block Types
 When writing content, use these JSON block types:

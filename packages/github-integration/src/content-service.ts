@@ -12,6 +12,7 @@ export interface GitHubContentConfig {
   token: string
   branch?: string // default: 'main'
   contentPath?: string // default: 'content'
+  pagesPath?: string // default: 'content/pages' - separate path for pages if different from contentPath
 }
 
 export interface WebsiteConfigFile {
@@ -90,6 +91,7 @@ export class GitHubContentService {
   private client: GitHubClient
   private branch: string
   private contentPath: string
+  private pagesPath: string
 
   constructor(config: GitHubContentConfig) {
     this.client = new GitHubClient({
@@ -99,6 +101,8 @@ export class GitHubContentService {
     })
     this.branch = config.branch || 'main'
     this.contentPath = config.contentPath || 'content'
+    // Pages path defaults to content/pages if not specified
+    this.pagesPath = config.pagesPath || 'content/pages'
   }
 
   // ============================================================
@@ -156,26 +160,34 @@ export class GitHubContentService {
   }
 
   /**
-   * List all pages
+   * List all pages (recursively searches nested directories)
    */
   async listPages(): Promise<ContentFile<PageFile>[]> {
-    const pagesPath = `${this.contentPath}/pages`
-    const tree = await this.getTree(pagesPath)
-
+    const pagesDir = this.pagesPath
     const pages: ContentFile<PageFile>[] = []
-    for (const entry of tree) {
-      if (entry.type === 'file' && entry.path.endsWith('.json')) {
-        const result = await this.client.getFileContent(entry.path, this.branch)
-        if (result) {
-          pages.push({
-            path: entry.path,
-            content: JSON.parse(result.content) as PageFile,
-            sha: result.sha,
-          })
+
+    // Recursively collect all JSON files from pages directory
+    const collectPages = async (dirPath: string): Promise<void> => {
+      const tree = await this.getTree(dirPath)
+
+      for (const entry of tree) {
+        if (entry.type === 'dir') {
+          // Recurse into subdirectories
+          await collectPages(entry.path)
+        } else if (entry.type === 'file' && entry.path.endsWith('.json')) {
+          const result = await this.client.getFileContent(entry.path, this.branch)
+          if (result) {
+            pages.push({
+              path: entry.path,
+              content: JSON.parse(result.content) as PageFile,
+              sha: result.sha,
+            })
+          }
         }
       }
     }
 
+    await collectPages(pagesDir)
     return pages
   }
 
@@ -212,6 +224,39 @@ export class GitHubContentService {
       message: message || `Delete page: ${slug}`,
       branch: this.branch,
       sha: existing.sha,
+    })
+  }
+
+  /**
+   * Get a page by file path (for direct path access)
+   */
+  async getPageByPath(filePath: string): Promise<ContentFile<PageFile> | null> {
+    const result = await this.client.getFileContent(filePath, this.branch)
+    if (!result) return null
+
+    return {
+      path: filePath,
+      content: JSON.parse(result.content) as PageFile,
+      sha: result.sha,
+    }
+  }
+
+  /**
+   * Save a page by file path
+   */
+  async savePageByPath(
+    filePath: string,
+    page: PageFile,
+    message?: string
+  ): Promise<{ sha: string; commit: string }> {
+    const existing = await this.client.getFileContent(filePath, this.branch)
+
+    return this.client.createOrUpdateFile({
+      path: filePath,
+      content: JSON.stringify(page, null, 2),
+      message: message || `Update page: ${filePath}`,
+      branch: this.branch,
+      sha: existing?.sha,
     })
   }
 
