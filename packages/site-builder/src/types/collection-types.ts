@@ -4,7 +4,7 @@
  */
 
 // Re-export shared types for convenience
-export {
+export type {
   CollectionEmbedConfig,
   CollectionDisplayConfig,
   CollectionDisplayLayout,

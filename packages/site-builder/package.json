@@ -1,6 +1,6 @@
 {
   "name": "@swarm-press/site-builder",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Astro-based static site builder for swarm.press",
   "type": "module",
@@ -20,9 +20,13 @@
     "@swarm-press/shared": "workspace:*",
     "@swarm-press/backend": "workspace:*",
     "@swarm-press/github-integration": "workspace:*",
-    "@astrojs/node": "^8.2.0",
-    "astro": "^4.3.0",
-    "sharp": "^0.33.0"
+    "@astrojs/tailwind": "^5.1.0",
+    "@tailwindcss/aspect-ratio": "^0.4.2",
+    "@tailwindcss/forms": "^0.5.9",
+    "@tailwindcss/typography": "^0.5.15",
+    "astro": "^5.0.0",
+    "sharp": "^0.33.0",
+    "tailwindcss": "^3.4.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

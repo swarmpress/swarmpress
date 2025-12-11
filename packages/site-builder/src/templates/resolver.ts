@@ -4,17 +4,22 @@
  */
 
 import { access } from 'fs/promises'
-import { join } from 'path'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
 import type { TemplateResolution, CollectionTemplates } from '../types/collection-types'
 
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
 
+// ESM-compatible __dirname
+const __filename = fileURLToPath(import.meta.url)
+const __dirnameESM = dirname(__filename)
+
 /**
  * Base paths for template resolution
  */
-const TEMPLATES_DIR = join(__dirname, '..', 'templates', 'collections')
+const TEMPLATES_DIR = join(__dirnameESM, '..', 'templates', 'collections')
 const DEFAULT_TEMPLATE_DIR = '_default'
 
 // =============================================================================

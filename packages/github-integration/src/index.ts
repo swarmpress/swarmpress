@@ -45,16 +45,17 @@ export type { CreateQuestionIssueParams, CreateTaskIssueParams, IssueResult } fr
 export { GitHubWebhooks } from './webhooks'
 export type { WebhookConfig, WebhookHandlers } from './webhooks'
 
-export {
-  syncContentToGitHub,
-  syncApprovalToGitHub,
-  syncRejectionToGitHub,
-  syncPublishToGitHub,
-  syncQuestionToGitHub,
-  syncTaskToGitHub,
-  syncPRToInternal,
-  syncPRReviewToInternal,
-  syncIssueCommentToInternal,
-  getGitHubMapping,
-  storeGitHubMapping,
-} from './sync'
+// Sync exports temporarily disabled - need to fix backend exports first
+// export {
+//   syncContentToGitHub,
+//   syncApprovalToGitHub,
+//   syncRejectionToGitHub,
+//   syncPublishToGitHub,
+//   syncQuestionToGitHub,
+//   syncTaskToGitHub,
+//   syncPRToInternal,
+//   syncPRReviewToInternal,
+//   syncIssueCommentToInternal,
+//   getGitHubMapping,
+//   storeGitHubMapping,
+// } from './sync'

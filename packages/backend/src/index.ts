@@ -103,3 +103,11 @@ export {
   type BatchJobStatus,
   type BatchJobType,
 } from './db/repositories'
+
+// Export additional repositories needed by github-integration
+export {
+  contentRepository,
+  questionTicketRepository,
+  taskRepository,
+  websiteRepository,
+} from './db/repositories'

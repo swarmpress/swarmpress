@@ -27,8 +27,8 @@ export function createApp(): express.Application {
     })
   )
 
-  // JSON body parser
-  app.use(express.json())
+  // JSON body parser with increased limit for large deployments
+  app.use(express.json({ limit: '50mb' }))
 
   // Health check endpoint
   app.get('/health', async (_req, res) => {
