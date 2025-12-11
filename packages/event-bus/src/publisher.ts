@@ -151,4 +151,60 @@ export const events = {
       data: { content_id: contentId, error },
     })
   },
+
+  // Batch processing events
+  async batchSubmitted(batchId: string, jobType: string, websiteId?: string) {
+    await publishEvent({
+      type: 'batch.submitted',
+      source: '/system/batch',
+      subject: `batch/${batchId}`,
+      data: { batch_id: batchId, job_type: jobType, website_id: websiteId },
+    })
+  },
+
+  async batchProcessing(batchId: string, progress: { succeeded: number; total: number }) {
+    await publishEvent({
+      type: 'batch.processing',
+      source: '/system/batch',
+      subject: `batch/${batchId}`,
+      data: { batch_id: batchId, ...progress },
+    })
+  },
+
+  async batchCompleted(batchId: string, itemsGenerated: number, websiteId?: string) {
+    await publishEvent({
+      type: 'batch.completed',
+      source: '/system/batch',
+      subject: `batch/${batchId}`,
+      data: { batch_id: batchId, items_generated: itemsGenerated, website_id: websiteId },
+    })
+  },
+
+  async batchFailed(batchId: string, error: string) {
+    await publishEvent({
+      type: 'batch.failed',
+      source: '/system/batch',
+      subject: `batch/${batchId}`,
+      data: { batch_id: batchId, error },
+    })
+  },
+
+  // GitHub/Collection export events
+  async collectionExported(collectionType: string, websiteId: string, itemCount: number) {
+    await publishEvent({
+      type: 'collection.exported',
+      source: '/github/export',
+      subject: `collection/${collectionType}`,
+      data: { collection_type: collectionType, website_id: websiteId, item_count: itemCount },
+    })
+  },
+
+  async collectionImported(collectionType: string, websiteId: string, itemCount: number) {
+    await publishEvent({
+      type: 'collection.imported',
+      source: '/github/import',
+      subject: `collection/${collectionType}`,
+      data: { collection_type: collectionType, website_id: websiteId, item_count: itemCount },
+    })
+  },
 }

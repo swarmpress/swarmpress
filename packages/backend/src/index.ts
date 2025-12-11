@@ -86,3 +86,20 @@ export {
   type CollectionItem,
   type CollectionItemVersion,
 } from './db/repositories'
+
+// Export batch processing service
+export { getBatchProcessingService } from './services/batch-processing.service'
+export type {
+  BatchRequest,
+  BatchJob as BatchServiceJob,
+  BatchResult,
+  PipelineConfig,
+} from './services/batch-processing.service'
+
+// Export batch repository
+export {
+  batchRepository,
+  type BatchJob,
+  type BatchJobStatus,
+  type BatchJobType,
+} from './db/repositories'

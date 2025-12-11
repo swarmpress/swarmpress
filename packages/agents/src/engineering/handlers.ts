@@ -19,6 +19,16 @@ async function getWebsiteRepository() {
   return websiteRepository
 }
 
+async function getBatchRepository() {
+  const { batchRepository } = await import('@swarm-press/backend')
+  return batchRepository
+}
+
+async function getBatchProcessingService() {
+  const { getBatchProcessingService } = await import('@swarm-press/backend')
+  return getBatchProcessingService()
+}
+
 // ============================================================================
 // Site Builder Access
 // ============================================================================
@@ -238,6 +248,307 @@ export const getWebsiteInfoHandler: ToolHandler<{ website_id: string }> = async 
 }
 
 // ============================================================================
+// Batch Processing Handlers
+// ============================================================================
+
+/**
+ * Submit a batch job for bulk content generation
+ */
+export const submitBatchJobHandler: ToolHandler<{
+  website_id: string
+  collection_type: string
+  villages: string[]
+  items_per_village?: number
+}> = async (input, _context): Promise<ToolResult> => {
+  try {
+    const batchService = await getBatchProcessingService()
+    const batchRepository = await getBatchRepository()
+    const { events } = await import('@swarm-press/event-bus')
+
+    console.log(`[EngineeringAgent] Submitting batch job for ${input.collection_type} with ${input.villages.length} villages`)
+
+    // Create batch requests for each village
+    const itemsPerVillage = input.items_per_village || 20
+    const requests = input.villages.map((village) => ({
+      customId: `${input.collection_type}-${village}`,
+      village,
+      collectionType: input.collection_type,
+      itemsPerVillage,
+    }))
+
+    // Submit batch to Anthropic
+    const batchId = await batchService.submitBatch(requests)
+
+    // Record in database
+    const job = await batchRepository.create({
+      batch_id: batchId,
+      job_type: 'content_generation',
+      collection_type: input.collection_type,
+      website_id: input.website_id,
+      status: 'processing',
+      items_count: input.villages.length,
+      items_processed: 0,
+      results_processed: false,
+      metadata: { villages: input.villages, items_per_village: itemsPerVillage },
+    })
+
+    // Emit event
+    await events.batchSubmitted(batchId, 'content_generation', input.website_id)
+
+    return toolSuccess({
+      batch_id: batchId,
+      job_id: job.id,
+      website_id: input.website_id,
+      collection_type: input.collection_type,
+      villages: input.villages,
+      items_per_village: itemsPerVillage,
+      total_requests: input.villages.length,
+      status: 'processing',
+      message: `Batch job submitted successfully. Job ID: ${job.id}, Batch ID: ${batchId}. Use check_batch_status to monitor progress.`,
+    })
+  } catch (error) {
+    return toolError(error instanceof Error ? error.message : 'Failed to submit batch job')
+  }
+}
+
+/**
+ * Check the status of a batch job
+ */
+export const checkBatchStatusHandler: ToolHandler<{
+  job_id: string
+}> = async (input, _context): Promise<ToolResult> => {
+  try {
+    const batchService = await getBatchProcessingService()
+    const batchRepository = await getBatchRepository()
+    const { events } = await import('@swarm-press/event-bus')
+
+    // Get job from database
+    const job = await batchRepository.findById(input.job_id)
+    if (!job) {
+      return toolError(`Batch job not found: ${input.job_id}`)
+    }
+
+    // Get status from Anthropic
+    const status = await batchService.getBatchStatus(job.batch_id)
+
+    const progress = {
+      succeeded: status.request_counts?.succeeded || 0,
+      errored: status.request_counts?.errored || 0,
+      expired: status.request_counts?.expired || 0,
+      canceled: status.request_counts?.canceled || 0,
+      processing: status.request_counts?.processing || 0,
+      total: job.items_count,
+    }
+
+    // Update database
+    await batchRepository.updateStatus(job.id, status.processing_status, {
+      items_processed: progress.succeeded,
+      results_url: status.results_url,
+    })
+
+    // Emit progress event
+    await events.batchProcessing(job.batch_id, { succeeded: progress.succeeded, total: progress.total })
+
+    const isComplete = status.processing_status === 'ended'
+
+    return toolSuccess({
+      job_id: job.id,
+      batch_id: job.batch_id,
+      status: status.processing_status,
+      progress,
+      results_url: status.results_url,
+      completed: isComplete,
+      collection_type: job.collection_type,
+      website_id: job.website_id,
+      created_at: job.created_at,
+      message: isComplete
+        ? `Batch completed! ${progress.succeeded} succeeded, ${progress.errored} errors. Use process_batch_results to import.`
+        : `Batch ${status.processing_status}: ${progress.succeeded}/${progress.total} completed`,
+    })
+  } catch (error) {
+    return toolError(error instanceof Error ? error.message : 'Failed to check batch status')
+  }
+}
+
+/**
+ * List batch jobs for a website
+ */
+export const listBatchJobsHandler: ToolHandler<{
+  website_id: string
+  status?: string
+  collection_type?: string
+  limit?: number
+}> = async (input, _context): Promise<ToolResult> => {
+  try {
+    const batchRepository = await getBatchRepository()
+
+    const jobs = await batchRepository.findByWebsite(input.website_id, {
+      status: input.status as any,
+      collection_type: input.collection_type,
+      limit: input.limit || 20,
+    })
+
+    return toolSuccess({
+      website_id: input.website_id,
+      jobs: jobs.map((job) => ({
+        id: job.id,
+        batch_id: job.batch_id,
+        collection_type: job.collection_type,
+        status: job.status,
+        items_count: job.items_count,
+        items_processed: job.items_processed,
+        results_processed: job.results_processed,
+        created_at: job.created_at,
+        completed_at: job.completed_at,
+      })),
+      count: jobs.length,
+      message: `Found ${jobs.length} batch jobs for website ${input.website_id}`,
+    })
+  } catch (error) {
+    return toolError(error instanceof Error ? error.message : 'Failed to list batch jobs')
+  }
+}
+
+// ============================================================================
+// GitHub Export/Import Handlers
+// ============================================================================
+
+/**
+ * Export collection items from database to GitHub
+ */
+export const exportToGitHubHandler: ToolHandler<{
+  website_id: string
+  collection_type: string
+  published_only?: boolean
+}> = async (input, _context): Promise<ToolResult> => {
+  try {
+    const { exportCollectionToGitHubActivity } = await import('@swarm-press/workflows/dist/activities')
+
+    console.log(`[EngineeringAgent] Exporting ${input.collection_type} to GitHub for website ${input.website_id}`)
+
+    const result = await exportCollectionToGitHubActivity({
+      websiteId: input.website_id,
+      collectionType: input.collection_type,
+      publishedOnly: input.published_only ?? true,
+    })
+
+    if (result.errors.length > 0) {
+      return toolSuccess({
+        website_id: input.website_id,
+        collection_type: input.collection_type,
+        items_exported: result.itemsExported,
+        errors: result.errors,
+        partial_success: true,
+        message: `Exported ${result.itemsExported} items with ${result.errors.length} errors`,
+      })
+    }
+
+    return toolSuccess({
+      website_id: input.website_id,
+      collection_type: input.collection_type,
+      items_exported: result.itemsExported,
+      message: `Successfully exported ${result.itemsExported} ${input.collection_type} items to GitHub`,
+    })
+  } catch (error) {
+    return toolError(error instanceof Error ? error.message : 'Failed to export to GitHub')
+  }
+}
+
+/**
+ * Import collection items from GitHub to database
+ */
+export const importFromGitHubHandler: ToolHandler<{
+  website_id: string
+  collection_type: string
+  overwrite?: boolean
+}> = async (input, _context): Promise<ToolResult> => {
+  try {
+    const { importCollectionFromGitHubActivity } = await import('@swarm-press/workflows/dist/activities')
+
+    console.log(`[EngineeringAgent] Importing ${input.collection_type} from GitHub for website ${input.website_id}`)
+
+    const result = await importCollectionFromGitHubActivity({
+      websiteId: input.website_id,
+      collectionType: input.collection_type,
+      overwrite: input.overwrite ?? false,
+    })
+
+    if (result.errors.length > 0) {
+      return toolSuccess({
+        website_id: input.website_id,
+        collection_type: input.collection_type,
+        items_imported: result.itemsImported,
+        items_skipped: result.itemsSkipped,
+        errors: result.errors,
+        partial_success: true,
+        message: `Imported ${result.itemsImported} items (${result.itemsSkipped} skipped) with ${result.errors.length} errors`,
+      })
+    }
+
+    return toolSuccess({
+      website_id: input.website_id,
+      collection_type: input.collection_type,
+      items_imported: result.itemsImported,
+      items_skipped: result.itemsSkipped,
+      message: `Successfully imported ${result.itemsImported} ${input.collection_type} items from GitHub (${result.itemsSkipped} skipped)`,
+    })
+  } catch (error) {
+    return toolError(error instanceof Error ? error.message : 'Failed to import from GitHub')
+  }
+}
+
+/**
+ * Build static site from GitHub repository content
+ */
+export const buildFromGitHubHandler: ToolHandler<{
+  website_id: string
+  site_url?: string
+}> = async (input, _context): Promise<ToolResult> => {
+  try {
+    const siteBuilder = await getSiteBuilder()
+    const websiteRepository = await getWebsiteRepository()
+
+    // Get website with GitHub config
+    const website = await websiteRepository.findById(input.website_id)
+    if (!website) {
+      return toolError(`Website not found: ${input.website_id}`)
+    }
+
+    if (!website.github_owner || !website.github_repo) {
+      return toolError('Website is not connected to GitHub. Connect a GitHub repository first.')
+    }
+
+    console.log(`[EngineeringAgent] Building from GitHub for ${website.github_owner}/${website.github_repo}`)
+
+    const result = await siteBuilder.buildFromGitHub({
+      github: {
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: website.github_pages_branch || 'main',
+      },
+      siteUrl: input.site_url || website.github_pages_url || website.domain,
+    })
+
+    if (!result.success) {
+      return toolError(`GitHub build failed: ${result.error}`)
+    }
+
+    return toolSuccess({
+      website_id: input.website_id,
+      success: true,
+      output_dir: result.outputDir,
+      build_time_ms: result.buildTime,
+      pages_built: result.pagesBuilt,
+      collections_built: result.collectionsBuilt,
+      message: `Site built from GitHub successfully in ${result.buildTime}ms. Pages: ${result.pagesBuilt}, Collections: ${result.collectionsBuilt}`,
+    })
+  } catch (error) {
+    return toolError(error instanceof Error ? error.message : 'Failed to build from GitHub')
+  }
+}
+
+// ============================================================================
 // Export Handler Map
 // ============================================================================
 
@@ -247,4 +558,12 @@ export const engineeringToolHandlers: Record<string, ToolHandler> = {
   deploy_site: deploySiteHandler,
   publish_website: publishWebsiteHandler,
   get_website_info: getWebsiteInfoHandler,
+  // Batch Processing
+  submit_batch_job: submitBatchJobHandler,
+  check_batch_status: checkBatchStatusHandler,
+  list_batch_jobs: listBatchJobsHandler,
+  // GitHub Export/Import
+  export_collection_to_github: exportToGitHubHandler,
+  import_collection_from_github: importFromGitHubHandler,
+  build_from_github: buildFromGitHubHandler,
 }

@@ -68,3 +68,7 @@ export {
 } from './collection-repository'
 
 export { collectionResearchRepository } from './collection-research-repository'
+
+// Batch Processing System repositories
+export * from './batch-repository'
+export { batchRepository } from './batch-repository'

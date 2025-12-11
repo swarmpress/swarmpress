@@ -546,3 +546,12 @@ ${params.result ? `\n**Result:** ${params.result}` : ''}`
 export * from './research'
 export * from './brief-generator'
 export * from './page-content-linker'
+
+// Batch Processing Activities
+export * from './batch'
+
+// GitHub Export/Import Activities
+export * from './github-export'
+
+// Site Build Activities
+export * from './site-build'

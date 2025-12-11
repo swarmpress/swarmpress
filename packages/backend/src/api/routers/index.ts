@@ -51,6 +51,9 @@ import { toolsRouter } from './tools.router'
 // Content Generation
 import { contentGenerationRouter } from './content-generation.router'
 
+// Batch Processing
+import { batchRouter } from './batch.router'
+
 /**
  * Main application router
  * Combines all feature routers
@@ -91,6 +94,8 @@ export const appRouter = router({
   tools: toolsRouter,
   // Content Generation
   contentGeneration: contentGenerationRouter,
+  // Batch Processing
+  batch: batchRouter,
 })
 
 /**

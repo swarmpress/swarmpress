@@ -18,6 +18,8 @@ const {
   publishDeployEvent,
   syncPublishToGitHubActivity,
   logAgentActivityToGitHub,
+  buildFromGitHubActivity,
+  getWebsiteBuildConfigActivity,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '20 minutes',
   retry: {
@@ -30,6 +32,10 @@ export interface PublishingInput {
   websiteId: string
   seoAgentId: string
   engineeringAgentId: string
+  /** If true, build from GitHub repository instead of database */
+  buildFromGitHub?: boolean
+  /** Site URL for production builds */
+  siteUrl?: string
 }
 
 export interface PublishingResult {
@@ -57,8 +63,16 @@ export interface PublishingResult {
 export async function publishingWorkflow(
   input: PublishingInput
 ): Promise<PublishingResult> {
-  const { contentId, websiteId, seoAgentId, engineeringAgentId } = input
+  const { contentId, websiteId, seoAgentId, engineeringAgentId, siteUrl } = input
   const startTime = Date.now()
+
+  // Determine if we should build from GitHub (explicit override or website setting)
+  let buildFromGitHub = input.buildFromGitHub
+  if (buildFromGitHub === undefined) {
+    // Check website settings
+    const buildConfig = await getWebsiteBuildConfigActivity({ websiteId })
+    buildFromGitHub = buildConfig.buildFromGitHub
+  }
 
   try {
     console.log(`[Publishing] Starting workflow for ${contentId}`)
@@ -208,18 +222,103 @@ Report any validation errors.`
 
     // Step 5: Build and deploy
     console.log(`[Publishing] Invoking engineering agent for build and deployment`)
+    console.log(`[Publishing] Build source: ${buildFromGitHub ? 'GitHub' : 'Database'}`)
 
-    // Log build start to GitHub
-    await logAgentActivityToGitHub({
-      contentId,
-      agentId: engineeringAgentId,
-      agentName: 'EngineeringAgent',
-      activity: 'Starting build and deployment',
-      details: `Building static site with Astro and deploying to production...\n\n**Website ID:** ${websiteId}`,
-      result: 'pending',
-    })
+    let publishedUrl: string
 
-    const publishTask = `Publish content ${contentId} to website ${websiteId}.
+    if (buildFromGitHub) {
+      // Build from GitHub as source of truth
+      await logAgentActivityToGitHub({
+        contentId,
+        agentId: engineeringAgentId,
+        agentName: 'EngineeringAgent',
+        activity: 'Starting GitHub-based build',
+        details: `Building static site from GitHub repository...\n\n**Website ID:** ${websiteId}\n**Build Source:** GitHub`,
+        result: 'pending',
+      })
+
+      const buildResult = await buildFromGitHubActivity({
+        websiteId,
+        siteUrl,
+      })
+
+      if (!buildResult.success) {
+        // Log build failure to GitHub
+        await logAgentActivityToGitHub({
+          contentId,
+          agentId: engineeringAgentId,
+          agentName: 'EngineeringAgent',
+          activity: '❌ GitHub build failed',
+          details: `**Error:** ${buildResult.error || 'Build from GitHub failed'}`,
+          result: 'failure',
+        })
+
+        // Publish failure event
+        await publishDeployEvent({
+          type: 'deploy.failed',
+          contentId,
+          data: {
+            error: buildResult.error || 'Build from GitHub failed',
+          },
+        })
+
+        throw new Error(`GitHub build failed: ${buildResult.error}`)
+      }
+
+      console.log(`[Publishing] GitHub build successful`)
+
+      // Deploy the built site using the engineering agent
+      const deployTask = `Deploy the built site for website ${websiteId}.
+
+The site has been built from GitHub at: ${buildResult.outputDir}
+
+Use your deploy_site tool to deploy to production hosting and return the published URL.`
+
+      const deployResult = await invokeEngineeringAgent({
+        agentId: engineeringAgentId,
+        task: deployTask,
+        contentId,
+        websiteId,
+      })
+
+      if (!deployResult.success) {
+        await logAgentActivityToGitHub({
+          contentId,
+          agentId: engineeringAgentId,
+          agentName: 'EngineeringAgent',
+          activity: '❌ Deployment failed',
+          details: `**Error:** ${deployResult.error || 'Deployment failed'}`,
+          result: 'failure',
+        })
+
+        await publishDeployEvent({
+          type: 'deploy.failed',
+          contentId,
+          data: {
+            error: deployResult.error || 'Deployment failed',
+          },
+        })
+
+        throw new Error(`Deployment failed: ${deployResult.error}`)
+      }
+
+      publishedUrl =
+        deployResult.result?.url ||
+        deployResult.result?.publishedUrl ||
+        `https://www.example.com/content/${contentId}`
+
+    } else {
+      // Build from database (original flow)
+      await logAgentActivityToGitHub({
+        contentId,
+        agentId: engineeringAgentId,
+        agentName: 'EngineeringAgent',
+        activity: 'Starting build and deployment',
+        details: `Building static site with Astro and deploying to production...\n\n**Website ID:** ${websiteId}\n**Build Source:** Database`,
+        result: 'pending',
+      })
+
+      const publishTask = `Publish content ${contentId} to website ${websiteId}.
 
 Use your publish_site tool to:
 1. Validate content structure and assets
@@ -229,43 +328,43 @@ Use your publish_site tool to:
 
 This is a complete end-to-end publishing workflow.`
 
-    const publishResult = await invokeEngineeringAgent({
-      agentId: engineeringAgentId,
-      task: publishTask,
-      contentId,
-      websiteId,
-    })
-
-    if (!publishResult.success) {
-      // Log deployment failure to GitHub
-      await logAgentActivityToGitHub({
-        contentId,
+      const publishResult = await invokeEngineeringAgent({
         agentId: engineeringAgentId,
-        agentName: 'EngineeringAgent',
-        activity: '❌ Deployment failed',
-        details: `**Error:** ${publishResult.error || 'Build/deployment failed'}`,
-        result: 'failure',
-      })
-
-      // Publish failure event
-      await publishDeployEvent({
-        type: 'deploy.failed',
+        task: publishTask,
         contentId,
-        data: {
-          error: publishResult.error || 'Build/deployment failed',
-        },
+        websiteId,
       })
 
-      throw new Error(`Publishing failed: ${publishResult.error}`)
+      if (!publishResult.success) {
+        // Log deployment failure to GitHub
+        await logAgentActivityToGitHub({
+          contentId,
+          agentId: engineeringAgentId,
+          agentName: 'EngineeringAgent',
+          activity: '❌ Deployment failed',
+          details: `**Error:** ${publishResult.error || 'Build/deployment failed'}`,
+          result: 'failure',
+        })
+
+        // Publish failure event
+        await publishDeployEvent({
+          type: 'deploy.failed',
+          contentId,
+          data: {
+            error: publishResult.error || 'Build/deployment failed',
+          },
+        })
+
+        throw new Error(`Publishing failed: ${publishResult.error}`)
+      }
+
+      publishedUrl =
+        publishResult.result?.url ||
+        publishResult.result?.publishedUrl ||
+        `https://www.example.com/content/${contentId}`
     }
 
     console.log(`[Publishing] Build and deployment successful`)
-
-    // Step 6: Extract published URL
-    const publishedUrl =
-      publishResult.result?.url ||
-      publishResult.result?.publishedUrl ||
-      `https://www.example.com/content/${contentId}`
 
     // Log deployment success to GitHub
     await logAgentActivityToGitHub({
