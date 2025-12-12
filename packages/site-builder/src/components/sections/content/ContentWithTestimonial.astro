@@ -1,0 +1,110 @@
+---
+/**
+ * Content Section - With Testimonial
+ * Content with sidebar testimonial and feature list
+ * Based on: tailwindcss-plus-components/marketing/sections/content-sections/with_testimonial.html
+ */
+
+export interface FeatureItem {
+  title: string
+  description: string
+  icon?: 'cloud' | 'lock' | 'server'
+}
+
+export interface Testimonial {
+  quote: string
+  author: string
+  handle: string
+  image?: string
+}
+
+export interface Props {
+  eyebrow?: string
+  title?: string
+  subtitle?: string
+  content?: string
+  features?: FeatureItem[]
+  additionalContent?: string
+  secondaryTitle?: string
+  secondaryContent?: string
+  testimonial?: Testimonial
+}
+
+const {
+  eyebrow = 'Deploy faster',
+  title = 'A better workflow',
+  subtitle = 'Aliquet nec orci mattis amet quisque ullamcorper neque, nibh sem. At arcu, sit dui mi, nibh dui, diam eget aliquam. Quisque id at vitae feugiat egestas ac. Diam nulla orci at in viverra scelerisque eget. Eleifend egestas fringilla sapien.',
+  content = 'Faucibus commodo massa rhoncus, volutpat. Dignissim sed eget risus enim. Mattis mauris semper sed amet vitae sed turpis id.',
+  features = [
+    { title: 'Push to deploy', description: 'Lorem ipsum, dolor sit amet consectetur adipisicing elit. Maiores impedit perferendis suscipit eaque, iste dolor cupiditate blanditiis ratione.', icon: 'cloud' },
+    { title: 'SSL certificates', description: 'Anim aute id magna aliqua ad ad non deserunt sunt. Qui irure qui lorem cupidatat commodo.', icon: 'lock' },
+    { title: 'Database backups', description: 'Ac tincidunt sapien vehicula erat auctor pellentesque rhoncus. Et magna sit morbi lobortis.', icon: 'server' },
+  ],
+  additionalContent = 'Et vitae blandit facilisi magna lacus commodo. Vitae sapien duis odio id et.',
+  secondaryTitle = 'No server? No problem.',
+  secondaryContent = 'Id orci tellus laoreet id ac. Dolor, aenean leo, ac etiam consequat in. Convallis arcu ipsum urna nibh.',
+  testimonial = {
+    quote: 'Vel ultricies morbi odio facilisi ultrices accumsan donec lacus purus. Lectus nibh ullamcorper ac dictum justo in euismod. Risus aenean ut elit massa. In amet aliquet eget cras. Sem volutpat enim tristique.',
+    author: 'Brenna Goyette',
+    handle: '@brenna',
+    image: 'https://images.unsplash.com/photo-1502685104226-ee32379fefbe?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+  },
+} = Astro.props
+
+const icons = {
+  cloud: 'M5.5 17a4.5 4.5 0 0 1-1.44-8.765 4.5 4.5 0 0 1 8.302-3.046 3.5 3.5 0 0 1 4.504 4.272A4 4 0 0 1 15 17H5.5Zm3.75-2.75a.75.75 0 0 0 1.5 0V9.66l1.95 2.1a.75.75 0 1 0 1.1-1.02l-3.25-3.5a.75.75 0 0 0-1.1 0l-3.25 3.5a.75.75 0 1 0 1.1 1.02l1.95-2.1v4.59Z',
+  lock: 'M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A4.5 4.5 0 0 0 10 1Zm3 8V5.5a3 3 0 1 0-6 0V9h6Z',
+  server: 'M4.632 3.533A2 2 0 0 1 6.577 2h6.846a2 2 0 0 1 1.945 1.533l1.976 8.234A3.489 3.489 0 0 0 16 11.5H4c-.476 0-.93.095-1.344.267l1.976-8.234Z',
+}
+---
+
+<div class="relative isolate overflow-hidden bg-white py-24 sm:py-32 dark:bg-gray-900">
+  <div aria-hidden="true" class="absolute -top-80 left-[max(6rem,33%)] -z-10 transform-gpu blur-3xl sm:left-1/2 md:top-20 lg:ml-20 xl:top-3 xl:ml-56">
+    <div style="clip-path: polygon(63.1% 29.6%, 100% 17.2%, 76.7% 3.1%, 48.4% 0.1%, 44.6% 4.8%, 54.5% 25.4%, 59.8% 49.1%, 55.3% 57.9%, 44.5% 57.3%, 27.8% 48%, 35.1% 81.6%, 0% 97.8%, 39.3% 100%, 35.3% 81.5%, 97.2% 52.8%, 63.1% 29.6%)" class="aspect-801/1036 w-200.25 bg-linear-to-tr from-[#ff80b5] to-[#9089fc] opacity-30 dark:opacity-20"></div>
+  </div>
+  <div class="mx-auto max-w-7xl px-6 lg:px-8">
+    <div class="mx-auto max-w-2xl lg:mx-0">
+      <p class="text-base/7 font-semibold text-indigo-600 dark:text-indigo-400">{eyebrow}</p>
+      <h1 class="mt-2 text-4xl font-semibold tracking-tight text-pretty text-gray-900 sm:text-5xl dark:text-white">{title}</h1>
+      <p class="mt-6 text-xl/8 text-gray-700 dark:text-gray-300">{subtitle}</p>
+    </div>
+    <div class="mx-auto mt-16 grid max-w-2xl grid-cols-1 gap-x-8 gap-y-16 lg:mx-0 lg:mt-10 lg:max-w-none lg:grid-cols-12">
+      <div class="relative lg:order-last lg:col-span-5">
+        <figure class="border-l border-indigo-600 pl-8 dark:border-indigo-400">
+          <blockquote class="text-xl/8 font-semibold tracking-tight text-gray-900 dark:text-white">
+            <p>"{testimonial.quote}"</p>
+          </blockquote>
+          <figcaption class="mt-8 flex gap-x-4">
+            {testimonial.image && <img src={testimonial.image} alt="" class="mt-1 size-10 flex-none rounded-full bg-gray-50 dark:bg-gray-800" />}
+            <div class="text-sm/6">
+              <div class="font-semibold text-gray-900 dark:text-white">{testimonial.author}</div>
+              <div class="text-gray-600 dark:text-gray-400">{testimonial.handle}</div>
+            </div>
+          </figcaption>
+        </figure>
+      </div>
+      <div class="max-w-xl text-base/7 text-gray-600 lg:col-span-7 dark:text-gray-400">
+        <p>{content}</p>
+        {features.length > 0 && (
+          <ul role="list" class="mt-8 max-w-xl space-y-8 text-gray-600 dark:text-gray-400">
+            {features.map((feature) => (
+              <li class="flex gap-x-3">
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="mt-1 size-5 flex-none text-indigo-600 dark:text-indigo-400">
+                  <path d={icons[feature.icon || 'cloud']} clip-rule="evenodd" fill-rule="evenodd" />
+                </svg>
+                <span><strong class="font-semibold text-gray-900 dark:text-white">{feature.title}.</strong> {feature.description}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p class="mt-8">{additionalContent}</p>
+        {secondaryTitle && (
+          <>
+            <h2 class="mt-16 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">{secondaryTitle}</h2>
+            <p class="mt-6">{secondaryContent}</p>
+          </>
+        )}
+      </div>
+    </div>
+  </div>
+</div>

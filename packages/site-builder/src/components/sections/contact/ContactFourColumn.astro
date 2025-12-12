@@ -1,0 +1,45 @@
+---
+/**
+ * Contact Section - Four Column (Offices)
+ * Office addresses in a 4-column grid layout
+ * Based on: tailwindcss-plus-components/marketing/sections/contact-sections/simple_four_column.html
+ */
+
+export interface Office {
+  city: string
+  address1: string
+  address2: string
+}
+
+export interface Props {
+  heading?: string
+  description?: string
+  offices: Office[]
+}
+
+const {
+  heading = 'Our offices',
+  description = 'Varius facilisi mauris sed sit. Non sed et duis dui leo, vulputate id malesuada non. Cras aliquet purus dui laoreet diam sed lacus, fames.',
+  offices = [],
+} = Astro.props
+---
+
+<div class="bg-white py-24 sm:py-32 dark:bg-gray-900">
+  <div class="mx-auto max-w-7xl px-6 lg:px-8">
+    <div class="mx-auto max-w-2xl lg:mx-0">
+      <h2 class="text-4xl font-semibold tracking-tight text-pretty text-gray-900 sm:text-5xl dark:text-white">{heading}</h2>
+      <p class="mt-6 text-lg/8 text-gray-600 dark:text-gray-400">{description}</p>
+    </div>
+    <div class="mx-auto mt-16 grid max-w-2xl grid-cols-1 gap-8 text-base/7 sm:grid-cols-2 sm:gap-y-16 lg:mx-0 lg:max-w-none lg:grid-cols-4">
+      {offices.map((office) => (
+        <div>
+          <h3 class="border-l border-indigo-600 pl-6 font-semibold text-gray-900 dark:border-indigo-500 dark:text-white">{office.city}</h3>
+          <address class="border-l border-gray-200 pt-2 pl-6 text-gray-600 not-italic dark:border-white/10 dark:text-gray-400">
+            <p>{office.address1}</p>
+            <p>{office.address2}</p>
+          </address>
+        </div>
+      ))}
+    </div>
+  </div>
+</div>

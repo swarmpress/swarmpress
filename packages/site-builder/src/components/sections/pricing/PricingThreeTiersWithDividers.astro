@@ -1,0 +1,83 @@
+---
+/**
+ * Pricing Section - Three Tiers with Dividers
+ * A 3-tier pricing layout with vertical dividers
+ * Based on: tailwindcss-plus-components/marketing/sections/pricing/three_tiers_with_dividers.html
+ */
+
+export interface PricingFeature {
+  text: string
+}
+
+export interface PricingTier {
+  name: string
+  id: string
+  description: string
+  price: string
+  frequency: string
+  features: PricingFeature[]
+  ctaText?: string
+  ctaUrl?: string
+}
+
+export interface Props {
+  eyebrow?: string
+  title: string
+  description?: string
+  tiers: PricingTier[]
+}
+
+const {
+  eyebrow = 'Pricing',
+  title,
+  description,
+  tiers = [],
+} = Astro.props
+
+const checkIcon = '<path d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" fill-rule="evenodd" />'
+---
+
+<div class="bg-white py-24 sm:py-32 dark:bg-gray-900">
+  <div class="mx-auto max-w-7xl px-6 lg:px-8">
+    <div class="mx-auto max-w-4xl text-center">
+      <h2 class="text-base/7 font-semibold text-indigo-600 dark:text-indigo-400">{eyebrow}</h2>
+      <p class="mt-2 text-5xl font-semibold tracking-tight text-balance text-gray-900 sm:text-6xl dark:text-white">{title}</p>
+    </div>
+    {description && (
+      <p class="mx-auto mt-6 max-w-2xl text-center text-lg font-medium text-pretty text-gray-600 sm:text-xl/8 dark:text-gray-400">{description}</p>
+    )}
+    <div class="isolate mx-auto mt-16 grid max-w-md grid-cols-1 sm:mt-20 lg:mx-0 lg:max-w-none lg:grid-cols-3 lg:divide-x lg:divide-gray-100 dark:lg:divide-gray-800">
+      {tiers.map((tier) => (
+        <div class="flex flex-col justify-between p-8 xl:p-10">
+          <div>
+            <h3 id={tier.id} class="text-lg/8 font-semibold text-gray-900 dark:text-white">
+              {tier.name}
+            </h3>
+            <p class="mt-4 text-sm/6 text-gray-600 dark:text-gray-300">{tier.description}</p>
+            <p class="mt-6 flex items-baseline gap-x-1">
+              <span class="text-4xl font-semibold tracking-tight text-gray-900 dark:text-white">{tier.price}</span>
+              <span class="text-sm/6 font-semibold text-gray-600 dark:text-gray-400">{tier.frequency}</span>
+            </p>
+            <ul role="list" class="mt-8 space-y-3 text-sm/6 text-gray-600 dark:text-gray-300">
+              {tier.features.map((feature) => (
+                <li class="flex gap-x-3">
+                  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-6 w-5 flex-none text-indigo-600 dark:text-indigo-400">
+                    <Fragment set:html={checkIcon} />
+                  </svg>
+                  {feature.text}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <a
+            href={tier.ctaUrl || '#'}
+            aria-describedby={tier.id}
+            class="mt-8 block rounded-md bg-indigo-600 px-3 py-2 text-center text-sm/6 font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:bg-indigo-500 dark:shadow-none dark:hover:bg-indigo-400 dark:focus-visible:outline-indigo-500"
+          >
+            {tier.ctaText || 'Buy plan'}
+          </a>
+        </div>
+      ))}
+    </div>
+  </div>
+</div>

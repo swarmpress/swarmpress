@@ -1,0 +1,197 @@
+---
+/**
+ * ConfigLayout
+ * Configuration-driven layout that uses variant-based header and footer components.
+ *
+ * This layout accepts site configuration and renders the appropriate
+ * header/footer variants based on the config.
+ */
+
+import type { SiteConfig, NavigationConfig } from '../schemas'
+import HeaderSimple from '../components/layout/header/HeaderSimple.astro'
+import FooterFourColumn from '../components/layout/footer/FooterFourColumn.astro'
+
+export interface Props {
+  /** Page title (shown in browser tab) */
+  title: string
+  /** Page description for SEO */
+  description?: string
+  /** OG image URL */
+  ogImage?: string
+  /** Canonical URL for the page */
+  canonicalUrl?: string
+  /** Site configuration (from site.json) */
+  siteConfig: SiteConfig
+  /** Navigation configuration (from navigation.json) */
+  navConfig: NavigationConfig
+  /** Current language code */
+  lang?: string
+}
+
+const {
+  title,
+  description = '',
+  ogImage,
+  canonicalUrl,
+  siteConfig,
+  navConfig,
+  lang = siteConfig.site.default_language || 'en',
+} = Astro.props
+
+const { site: siteInfo, layout, theme } = siteConfig
+const fullTitle = `${title} | ${siteInfo.name}`
+const siteUrl = siteInfo.base_url
+
+// Header props
+const headerProps = {
+  siteName: siteInfo.name,
+  logo: siteInfo.logo,
+  baseUrl: siteUrl,
+  navItems: navConfig.main_nav,
+  ctaButton: navConfig.cta_button,
+  sticky: layout?.header?.sticky ?? false,
+  transparentOnHero: layout?.header?.transparent_on_hero ?? false,
+  lang,
+}
+
+// Footer props
+const footerProps = {
+  siteName: siteInfo.name,
+  logo: siteInfo.logo,
+  footerNav: navConfig.footer_nav,
+  socialLinks: navConfig.social_links,
+  legalLinks: navConfig.legal_links,
+  showNewsletter: layout?.footer?.show_newsletter ?? false,
+  lang,
+}
+
+// Container classes based on config
+const containerMaxWidth = layout?.container?.max_width || '7xl'
+const containerPadding = layout?.container?.padding || '4'
+---
+
+<!DOCTYPE html>
+<html lang={lang}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="generator" content={Astro.generator} />
+
+    <title>{fullTitle}</title>
+    {description && <meta name="description" content={description} />}
+
+    <!-- Open Graph -->
+    <meta property="og:title" content={title} />
+    {description && <meta property="og:description" content={description} />}
+    {ogImage && <meta property="og:image" content={ogImage} />}
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={siteInfo.name} />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    {description && <meta name="twitter:description" content={description} />}
+    {ogImage && <meta name="twitter:image" content={ogImage} />}
+
+    <!-- Canonical URL -->
+    {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
+    {!canonicalUrl && <link rel="canonical" href={siteUrl} />}
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Theme CSS Variables (generated from config) -->
+    <link rel="stylesheet" href="/styles/theme.css" />
+
+    <!-- Dynamic theme colors (fallback if theme.css not loaded) -->
+    <style define:vars={{
+      'color-primary-50': theme.colors.primary?.['50'] || '#eff6ff',
+      'color-primary-100': theme.colors.primary?.['100'] || '#dbeafe',
+      'color-primary-200': theme.colors.primary?.['200'] || '#bfdbfe',
+      'color-primary-300': theme.colors.primary?.['300'] || '#93c5fd',
+      'color-primary-400': theme.colors.primary?.['400'] || '#60a5fa',
+      'color-primary-500': theme.colors.primary?.['500'] || '#3b82f6',
+      'color-primary-600': theme.colors.primary?.['600'] || '#2563eb',
+      'color-primary-700': theme.colors.primary?.['700'] || '#1d4ed8',
+      'color-primary-800': theme.colors.primary?.['800'] || '#1e40af',
+      'color-primary-900': theme.colors.primary?.['900'] || '#1e3a8a',
+      'color-secondary-50': theme.colors.secondary?.['50'] || '#f5f3ff',
+      'color-secondary-500': theme.colors.secondary?.['500'] || '#8b5cf6',
+      'color-secondary-600': theme.colors.secondary?.['600'] || '#7c3aed',
+      'color-accent': theme.colors.accent || '#ec4899',
+      'font-sans': theme.fonts?.sans || 'Inter, system-ui, sans-serif',
+      'font-serif': theme.fonts?.serif || 'Georgia, serif',
+      'font-mono': theme.fonts?.mono || 'ui-monospace, monospace',
+      'font-display': theme.fonts?.display || 'Inter, system-ui, sans-serif',
+      'border-radius': theme.borderRadius || '0.5rem',
+    }}>
+      :root {
+        /* Primary colors */
+        --color-primary-50: var(--color-primary-50);
+        --color-primary-100: var(--color-primary-100);
+        --color-primary-200: var(--color-primary-200);
+        --color-primary-300: var(--color-primary-300);
+        --color-primary-400: var(--color-primary-400);
+        --color-primary-500: var(--color-primary-500);
+        --color-primary-600: var(--color-primary-600);
+        --color-primary-700: var(--color-primary-700);
+        --color-primary-800: var(--color-primary-800);
+        --color-primary-900: var(--color-primary-900);
+
+        /* Secondary colors */
+        --color-secondary-50: var(--color-secondary-50);
+        --color-secondary-500: var(--color-secondary-500);
+        --color-secondary-600: var(--color-secondary-600);
+
+        /* Accent */
+        --color-accent: var(--color-accent);
+
+        /* Fonts */
+        --font-sans: var(--font-sans);
+        --font-serif: var(--font-serif);
+        --font-mono: var(--font-mono);
+        --font-display: var(--font-display);
+
+        /* Other */
+        --border-radius: var(--border-radius);
+      }
+
+      /* Base styles */
+      html {
+        font-family: var(--font-sans);
+        scroll-behavior: smooth;
+      }
+
+      body {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      main {
+        flex: 1;
+      }
+    </style>
+  </head>
+
+  <body class="bg-white antialiased">
+    <!-- Header (variant-based) -->
+    {layout?.header?.variant === 'simple' || !layout?.header?.variant ? (
+      <HeaderSimple {...headerProps} />
+    ) : (
+      <HeaderSimple {...headerProps} />
+    )}
+
+    <!-- Main Content -->
+    <main>
+      <slot />
+    </main>
+
+    <!-- Footer (variant-based) -->
+    {layout?.footer?.variant === 'four-column' || !layout?.footer?.variant ? (
+      <FooterFourColumn {...footerProps} />
+    ) : (
+      <FooterFourColumn {...footerProps} />
+    )}
+  </body>
+</html>

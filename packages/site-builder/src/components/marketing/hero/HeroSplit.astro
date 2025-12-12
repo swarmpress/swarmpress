@@ -1,0 +1,167 @@
+---
+/**
+ * HeroSplit Component
+ * A split hero with text on one side and image on the other.
+ *
+ * CUSTOMIZATION: Replace the HTML below with your preferred Tailwind Plus hero.
+ * Keep the props interface and data bindings intact.
+ */
+
+export interface HeroButton {
+  text: string
+  url: string
+  variant: 'primary' | 'secondary' | 'outline' | 'ghost'
+  external?: boolean
+}
+
+export interface Props {
+  /** Main headline */
+  title: string
+  /** Subtitle/description text */
+  subtitle?: string
+  /** Optional eyebrow text above the title */
+  eyebrow?: string
+  /** CTA buttons */
+  buttons?: HeroButton[]
+  /** Hero image URL */
+  image?: string
+  /** Image alt text */
+  imageAlt?: string
+  /** Image position: 'left' or 'right' */
+  imagePosition?: 'left' | 'right'
+  /** Minimum height (e.g., '80vh', '600px') */
+  minHeight?: string
+  /** Whether this is the page hero (affects spacing) */
+  isPageHero?: boolean
+  /** Text alignment on the content side */
+  textAlign?: 'left' | 'center'
+}
+
+const {
+  title,
+  subtitle,
+  eyebrow,
+  buttons = [],
+  image,
+  imageAlt = '',
+  imagePosition = 'right',
+  minHeight = 'auto',
+  isPageHero = true,
+  textAlign = 'left',
+} = Astro.props
+
+const isImageRight = imagePosition === 'right'
+---
+
+<!--
+  ============================================================================
+  HERO SPLIT COMPONENT
+  ============================================================================
+
+  This is a scaffolded component. You can replace the HTML below with any
+  Tailwind Plus split hero component. Keep the data bindings.
+
+  Tailwind Plus heroes: https://tailwindcss.com/plus/ui-blocks/marketing/heroes
+  ============================================================================
+-->
+
+<div
+  class="relative isolate overflow-hidden bg-white"
+  style={minHeight !== 'auto' ? `min-height: ${minHeight};` : ''}
+>
+  <!-- Background gradient -->
+  <div
+    class="absolute inset-x-0 -top-40 -z-10 transform-gpu overflow-hidden blur-3xl sm:-top-80"
+    aria-hidden="true"
+  >
+    <div
+      class="relative left-[calc(50%-11rem)] aspect-[1155/678] w-[36.125rem] -translate-x-1/2 rotate-[30deg] bg-gradient-to-tr from-primary-200 to-primary-400 opacity-20 sm:left-[calc(50%-30rem)] sm:w-[72.1875rem]"
+      style="clip-path: polygon(74.1% 44.1%, 100% 61.6%, 97.5% 26.9%, 85.5% 0.1%, 80.7% 2%, 72.5% 32.5%, 60.2% 62.4%, 52.4% 68.1%, 47.5% 58.3%, 45.2% 34.5%, 27.5% 76.7%, 0.1% 64.9%, 17.9% 100%, 27.6% 76.8%, 76.1% 97.7%, 74.1% 44.1%)"
+    />
+  </div>
+
+  <div class="mx-auto max-w-7xl px-6 py-24 sm:py-32 lg:flex lg:items-center lg:gap-x-10 lg:px-8 lg:py-40">
+    <!-- Content -->
+    <div
+      class:list={[
+        'mx-auto max-w-2xl lg:mx-0 lg:flex-auto',
+        { 'lg:order-2': !isImageRight },
+        textAlign === 'center' ? 'text-center lg:text-left' : 'text-left',
+      ]}
+    >
+      <!-- Eyebrow -->
+      {eyebrow && (
+        <div class:list={['mb-6', textAlign === 'center' && 'flex justify-center lg:justify-start']}>
+          <div class="relative rounded-full px-3 py-1 text-sm leading-6 text-gray-600 ring-1 ring-gray-900/10 hover:ring-gray-900/20">
+            {eyebrow}
+          </div>
+        </div>
+      )}
+
+      <!-- Title -->
+      <h1 class="text-4xl font-bold tracking-tight text-gray-900 sm:text-6xl">
+        {title}
+      </h1>
+
+      <!-- Subtitle -->
+      {subtitle && (
+        <p class="mt-6 text-lg leading-8 text-gray-600">
+          {subtitle}
+        </p>
+      )}
+
+      <!-- CTA Buttons -->
+      {buttons.length > 0 && (
+        <div
+          class:list={[
+            'mt-10 flex items-center gap-x-6',
+            textAlign === 'center' && 'justify-center lg:justify-start',
+          ]}
+        >
+          {buttons.map((button) => (
+            <a
+              href={button.url}
+              target={button.external ? '_blank' : undefined}
+              rel={button.external ? 'noopener noreferrer' : undefined}
+              class:list={[
+                'rounded-md px-3.5 py-2.5 text-sm font-semibold shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2',
+                button.variant === 'primary' && 'bg-primary-600 text-white hover:bg-primary-500 focus-visible:outline-primary-600',
+                button.variant === 'secondary' && 'bg-secondary-600 text-white hover:bg-secondary-500 focus-visible:outline-secondary-600',
+                button.variant === 'outline' && 'ring-1 ring-inset ring-gray-300 text-gray-900 hover:bg-gray-50',
+                button.variant === 'ghost' && 'text-gray-900 hover:text-gray-600',
+              ]}
+            >
+              {button.text}
+              {button.variant === 'ghost' && (
+                <span aria-hidden="true" class="ml-1">&rarr;</span>
+              )}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+
+    <!-- Image -->
+    <div
+      class:list={[
+        'mt-16 sm:mt-24 lg:mt-0 lg:flex-shrink-0 lg:flex-grow',
+        { 'lg:order-1': !isImageRight },
+      ]}
+    >
+      {image ? (
+        <div class="relative mx-auto w-[22.875rem] max-w-full lg:w-full">
+          <img
+            src={image}
+            alt={imageAlt}
+            class="w-full rounded-2xl object-cover shadow-xl ring-1 ring-gray-400/10"
+          />
+        </div>
+      ) : (
+        <!-- Placeholder when no image -->
+        <div class="relative mx-auto w-[22.875rem] max-w-full lg:w-full">
+          <div class="aspect-[4/3] rounded-2xl bg-gray-100 ring-1 ring-gray-400/10" />
+        </div>
+      )}
+    </div>
+  </div>
+</div>

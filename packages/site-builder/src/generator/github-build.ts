@@ -19,6 +19,15 @@ import {
   getCollectionListingUrl,
   getCollectionDetailUrl,
 } from '../types/collection-types'
+import {
+  loadSitemapFromGitHub,
+  parseSitemap,
+  generateSitemapXml,
+  getLocalizedTitle,
+  getLocalizedBreadcrumb,
+  type ParsedSitemap,
+  type SitemapNode,
+} from './sitemap-parser'
 
 const execAsync = promisify(exec)
 
@@ -86,6 +95,48 @@ interface InternalCollectionItem {
 }
 
 // =============================================================================
+// NAVIGATION CONTEXT (from sitemap.json)
+// =============================================================================
+
+/**
+ * Navigation context passed to page templates
+ * Contains all information needed to render navigation elements
+ */
+interface NavigationContext {
+  /** Site configuration from sitemap */
+  site: {
+    name: string
+    tagline?: string
+    logo?: string
+    defaultLanguage: string
+    siteUrl: string
+  }
+  /** Main navigation items (top-level pages with in_nav: true) */
+  mainNav: Array<{
+    title: string
+    path: string
+    isActive: boolean
+  }>
+  /** Breadcrumb trail from root to current page */
+  breadcrumbs: Array<{
+    title: string
+    path: string
+    isLast: boolean
+  }>
+  /** Previous page in sequence (null if first) */
+  prevPage: { title: string; path: string } | null
+  /** Next page in sequence (null if last) */
+  nextPage: { title: string; path: string } | null
+  /** Footer navigation sections */
+  footerNav: Array<{
+    title: string
+    links: Array<{ title: string; path: string }>
+  }>
+  /** Current language code */
+  language: string
+}
+
+// =============================================================================
 // MAIN BUILD FUNCTION
 // =============================================================================
 
@@ -112,6 +163,15 @@ export async function buildFromGitHub(options: GitHubBuildOptions): Promise<GitH
 
     console.log(`[GitHubBuild] Found website config: ${config.title}`)
 
+    // Try to load sitemap.json for navigation
+    let sitemap: ParsedSitemap | null = null
+    try {
+      sitemap = await loadSitemapFromGitHub(contentService)
+      console.log(`[GitHubBuild] Loaded sitemap.json with ${sitemap.pages.length} pages`)
+    } catch (e) {
+      console.log(`[GitHubBuild] No sitemap.json found, using legacy navigation`)
+    }
+
     // Fetch all pages from GitHub
     const pageFiles = await contentService.listPages()
     console.log(`[GitHubBuild] Found ${pageFiles.length} pages`)
@@ -124,13 +184,18 @@ export async function buildFromGitHub(options: GitHubBuildOptions): Promise<GitH
     const buildDir = options.outputDir || join(process.cwd(), 'build', `${options.github.owner}-${options.github.repo}`)
     await mkdir(buildDir, { recursive: true })
 
-    // Generate Astro pages from GitHub content
+    const siteUrl = options.siteUrl || config.domain || 'https://example.com'
+
+    // Generate pages with sitemap navigation if available
     const pages = pageFiles.map(pf => convertPageFile(pf.content))
-    await generatePages(config, pages, buildDir)
+    if (sitemap) {
+      await generatePagesWithSitemap(config, pages, buildDir, sitemap, siteUrl)
+    } else {
+      await generatePages(config, pages, buildDir)
+    }
 
     // Generate collection pages
     let collectionsGenerated = 0
-    const siteUrl = options.siteUrl || config.domain || 'https://example.com'
 
     for (const [collectionType, { schema, items }] of collections) {
       const collection = convertCollectionSchema(collectionType, schema)
@@ -145,13 +210,21 @@ export async function buildFromGitHub(options: GitHubBuildOptions): Promise<GitH
           collectionItems,
           buildDir,
           '',
-          options.itemsPerPage || 12
+          options.itemsPerPage || 12,
+          sitemap || undefined
         )
         collectionsGenerated += count
       }
     }
 
-    // No additional build step needed - HTML is already generated directly to dist/
+    // Generate sitemap.xml if sitemap.json exists
+    if (sitemap) {
+      const sitemapXml = generateSitemapXml(sitemap)
+      const distDir = join(buildDir, 'dist')
+      await mkdir(distDir, { recursive: true })
+      await writeFile(join(distDir, 'sitemap.xml'), sitemapXml)
+      console.log(`[GitHubBuild] Generated sitemap.xml`)
+    }
 
     const buildTime = Date.now() - startTime
 
@@ -380,6 +453,154 @@ async function generatePages(
   }
 
   console.log(`[GitHubBuild] Generated ${pages.length + 1} pages`)
+}
+
+/**
+ * Generate pages with sitemap-driven navigation
+ */
+async function generatePagesWithSitemap(
+  config: { title: string; description?: string; collections?: Array<{ type: string; displayName: string }> },
+  pages: InternalPage[],
+  buildDir: string,
+  sitemap: ParsedSitemap,
+  siteUrl: string
+): Promise<void> {
+  const distDir = join(buildDir, 'dist')
+  await mkdir(distDir, { recursive: true })
+
+  const language = sitemap.site.default_language
+
+  // Generate index HTML with sitemap navigation
+  const indexNav = buildNavigationContext(sitemap, '/', language)
+  const indexHtml = generateIndexHtmlWithNav(config, pages, indexNav)
+  await writeFile(join(distDir, 'index.html'), indexHtml)
+
+  // Generate individual page HTML files with navigation context
+  for (const page of pages) {
+    const pagePath = `/${page.slug}/`
+    const pageNav = buildNavigationContext(sitemap, pagePath, language)
+    const pageDir = join(distDir, page.slug)
+    await mkdir(pageDir, { recursive: true })
+    const pageHtml = generatePageHtmlWithNav(page, pageNav)
+    await writeFile(join(pageDir, 'index.html'), pageHtml)
+  }
+
+  console.log(`[GitHubBuild] Generated ${pages.length + 1} pages with sitemap navigation`)
+}
+
+/**
+ * Generate index page HTML with sitemap navigation
+ */
+function generateIndexHtmlWithNav(
+  config: { title: string; description?: string; collections?: Array<{ type: string; displayName: string }> },
+  pages: InternalPage[],
+  nav: NavigationContext
+): string {
+  const publishedPages = pages.filter(p => p.status === 'published')
+  const collections = config.collections || []
+
+  // Collection icons mapping
+  const collectionIcons: Record<string, string> = {
+    villages: `<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>`,
+    restaurants: `<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8.25v-1.5m0 1.5c-1.355 0-2.697.056-4.024.166C6.845 8.51 6 9.473 6 10.608v2.513m6-4.87c1.355 0 2.697.055 4.024.165C17.155 8.51 18 9.473 18 10.608v2.513m-3-4.87v-1.5m-6 1.5v-1.5m12 9.75l-1.5.75a3.354 3.354 0 01-3 0 3.354 3.354 0 00-3 0 3.354 3.354 0 01-3 0 3.354 3.354 0 00-3 0 3.354 3.354 0 01-3 0L3 16.5m15-3.38a48.474 48.474 0 00-6-.37c-2.032 0-4.034.125-6 .37m12 0c.39.049.777.102 1.163.16 1.07.16 1.837 1.094 1.837 2.175v5.17c0 .62-.504 1.124-1.125 1.124H4.125A1.125 1.125 0 013 20.625v-5.17c0-1.08.768-2.014 1.837-2.174A47.78 47.78 0 016 13.12M12.265 3.11a.375.375 0 11-.53 0L12 2.845l.265.265zm-3 0a.375.375 0 11-.53 0L9 2.845l.265.265zm6 0a.375.375 0 11-.53 0L15 2.845l.265.265z" /></svg>`,
+    hikes: `<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z" /></svg>`,
+    accommodations: `<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 21v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21m0 0h4.5V3.545M12.75 21h7.5V10.75M2.25 21h1.5m18 0h-18M2.25 9l4.5-1.636M18.75 3l-1.5.545m0 6.205l3 1m1.5.5l-1.5-.5M6.75 7.364V3h-3v18m3-13.636l10.5-3.819" /></svg>`,
+    pois: `<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>`,
+    events: `<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>`,
+    weather: `<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z" /></svg>`,
+    transportation: `<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" /></svg>`,
+    region: `<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" /></svg>`,
+  }
+
+  // Build collections grid with cards
+  const collectionsHtml = collections.map(c => {
+    const icon = collectionIcons[c.type] || collectionIcons['pois']
+    return `
+    <a href="/${escapeHtml(c.type)}/" class="group relative flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-ocean-200">
+      <div class="mb-4 text-ocean-500 group-hover:text-ocean-600">
+        ${icon}
+      </div>
+      <h3 class="text-lg font-semibold text-slate-900 group-hover:text-ocean-700">${escapeHtml(c.displayName)}</h3>
+      <p class="mt-1 text-sm text-slate-500">Discover ${escapeHtml(c.displayName.toLowerCase())}</p>
+      <div class="mt-4 flex items-center text-sm font-medium text-ocean-600">
+        <span>Browse all</span>
+        <svg class="ml-1 h-4 w-4 transition group-hover:translate-x-1" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z" clip-rule="evenodd" />
+        </svg>
+      </div>
+    </a>`
+  }).join('')
+
+  // Build page list HTML
+  const pagesListHtml = publishedPages.map(p => `
+    <a href="/${escapeHtml(p.slug)}/" class="group rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md">
+      <h3 class="font-semibold text-slate-900 group-hover:text-ocean-600">${escapeHtml(p.title)}</h3>
+      ${p.description ? `<p class="mt-1 text-sm text-slate-500">${escapeHtml(p.description)}</p>` : ''}
+    </a>
+  `).join('')
+
+  const contentHtml = `
+    <!-- Hero Section -->
+    <div class="relative isolate overflow-hidden">
+      <div class="mx-auto max-w-4xl text-center">
+        <h1 class="text-4xl font-bold tracking-tight text-slate-900 sm:text-6xl">
+          ${escapeHtml(nav.site.tagline || config.title)}
+        </h1>
+        <p class="mt-6 text-lg leading-8 text-slate-600">
+          ${escapeHtml(config.description || 'Discover amazing content curated by our team.')}
+        </p>
+      </div>
+    </div>
+
+    ${collections.length > 0 ? `
+    <!-- Collections Grid -->
+    <section class="mt-16">
+      <h2 class="text-2xl font-bold text-slate-900 mb-8">Explore</h2>
+      <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        ${collectionsHtml}
+      </div>
+    </section>
+    ` : ''}
+
+    ${publishedPages.length > 0 ? `
+    <!-- Pages Section -->
+    <section class="mt-16">
+      <h2 class="text-2xl font-bold text-slate-900 mb-6">More Information</h2>
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        ${pagesListHtml}
+      </div>
+    </section>
+    ` : ''}`
+
+  return wrapInHtmlDocumentWithNav(
+    nav.site.name,
+    config.description || '',
+    contentHtml,
+    nav
+  )
+}
+
+/**
+ * Generate individual page HTML with sitemap navigation
+ */
+function generatePageHtmlWithNav(page: InternalPage, nav: NavigationContext): string {
+  // Convert blocks to HTML
+  const contentHtml = renderBlocks(page.body)
+
+  return wrapInHtmlDocumentWithNav(
+    page.title,
+    page.description || '',
+    `
+    <article>
+      <h1 class="text-3xl font-bold text-slate-900 mb-4">${escapeHtml(page.title)}</h1>
+      ${page.description ? `<p class="text-lg text-slate-600 mb-8">${escapeHtml(page.description)}</p>` : ''}
+      <div class="prose-cinqueterre">
+        ${contentHtml}
+      </div>
+    </article>
+    `,
+    nav
+  )
 }
 
 /**
@@ -873,7 +1094,8 @@ async function generateCollectionPagesFromGitHub(
   items: InternalCollectionItem[],
   buildDir: string,
   baseUrl: string,
-  itemsPerPage: number
+  itemsPerPage: number,
+  sitemap?: ParsedSitemap
 ): Promise<number> {
   let pagesGenerated = 0
 
@@ -883,7 +1105,8 @@ async function generateCollectionPagesFromGitHub(
     items,
     buildDir,
     baseUrl,
-    itemsPerPage
+    itemsPerPage,
+    sitemap
   )
   pagesGenerated += listingCount
 
@@ -892,7 +1115,8 @@ async function generateCollectionPagesFromGitHub(
     collection,
     items,
     buildDir,
-    baseUrl
+    baseUrl,
+    sitemap
   )
   pagesGenerated += detailCount
 
@@ -911,7 +1135,8 @@ async function generateListingPagesInternal(
   items: InternalCollectionItem[],
   buildDir: string,
   _baseUrl: string,
-  itemsPerPage: number
+  itemsPerPage: number,
+  sitemap?: ParsedSitemap
 ): Promise<number> {
   let pagesGenerated = 0
   const totalItems = items.length
@@ -979,19 +1204,7 @@ async function generateListingPagesInternal(
       ? collection.display_name
       : `${collection.display_name} - Page ${page}`
 
-    const html = wrapInHtmlDocument(
-      pageTitle,
-      collection.description || `Browse all ${collection.display_name.toLowerCase()}`,
-      `
-      <!-- Breadcrumb -->
-      <nav class="flex mb-6" aria-label="Breadcrumb">
-        <ol class="inline-flex items-center space-x-1 text-sm text-slate-500">
-          <li><a href="/" class="hover:text-ocean-600">Home</a></li>
-          <li><span class="mx-2">/</span></li>
-          <li class="text-slate-900 font-medium">${escapeHtml(collection.display_name)}</li>
-        </ol>
-      </nav>
-
+    const contentHtml = `
       <!-- Header -->
       <div class="mb-8">
         <h1 class="text-3xl font-bold text-slate-900">${escapeHtml(collection.display_name)}</h1>
@@ -1005,9 +1218,44 @@ async function generateListingPagesInternal(
       </div>
 
       ${paginationHtml}
-      `,
-      'https://cinqueterre.travel'
-    )
+      `
+
+    let html: string
+    if (sitemap) {
+      const collectionPath = `/${collection.collection_type}/`
+      const nav = buildNavigationContext(sitemap, collectionPath, sitemap.site.default_language)
+      // Add collection to breadcrumbs if not already present
+      if (!nav.breadcrumbs.find(b => b.path === collectionPath)) {
+        nav.breadcrumbs.push({
+          title: collection.display_name,
+          path: collectionPath,
+          isLast: true,
+        })
+      }
+      html = wrapInHtmlDocumentWithNav(
+        pageTitle,
+        collection.description || `Browse all ${collection.display_name.toLowerCase()}`,
+        contentHtml,
+        nav
+      )
+    } else {
+      html = wrapInHtmlDocument(
+        pageTitle,
+        collection.description || `Browse all ${collection.display_name.toLowerCase()}`,
+        `
+        <!-- Breadcrumb -->
+        <nav class="flex mb-6" aria-label="Breadcrumb">
+          <ol class="inline-flex items-center space-x-1 text-sm text-slate-500">
+            <li><a href="/" class="hover:text-ocean-600">Home</a></li>
+            <li><span class="mx-2">/</span></li>
+            <li class="text-slate-900 font-medium">${escapeHtml(collection.display_name)}</li>
+          </ol>
+        </nav>
+        ${contentHtml}
+        `,
+        'https://cinqueterre.travel'
+      )
+    }
 
     // Write to appropriate path
     let outputPath: string
@@ -1032,7 +1280,8 @@ async function generateDetailPagesInternal(
   collection: InternalCollection,
   items: InternalCollectionItem[],
   buildDir: string,
-  _baseUrl: string
+  _baseUrl: string,
+  sitemap?: ParsedSitemap
 ): Promise<number> {
   let pagesGenerated = 0
   const distDir = join(buildDir, 'dist')
@@ -1094,21 +1343,7 @@ async function generateDetailPagesInternal(
     const dataHtml = renderDisplayData(displayData)
 
     // Generate page HTML with Tailwind
-    const html = wrapInHtmlDocument(
-      `${title} | ${collection.display_name}`,
-      summary || '',
-      `
-      <!-- Breadcrumb -->
-      <nav class="flex mb-6" aria-label="Breadcrumb">
-        <ol class="inline-flex items-center space-x-1 text-sm text-slate-500">
-          <li><a href="/" class="hover:text-ocean-600">Home</a></li>
-          <li><span class="mx-2">/</span></li>
-          <li><a href="/${collection.collection_type}/" class="hover:text-ocean-600">${escapeHtml(collection.display_name)}</a></li>
-          <li><span class="mx-2">/</span></li>
-          <li class="text-slate-900 font-medium truncate max-w-[200px]">${escapeHtml(title)}</li>
-        </ol>
-      </nav>
-
+    const contentHtml = `
       <article class="max-w-4xl">
         ${image ? `
           <div class="mb-8 rounded-xl overflow-hidden shadow-lg">
@@ -1129,9 +1364,44 @@ async function generateDetailPagesInternal(
 
         ${navHtml}
       </article>
-      `,
-      'https://cinqueterre.travel'
-    )
+      `
+
+    let html: string
+    if (sitemap) {
+      const itemPath = `/${collection.collection_type}/${item.slug}/`
+      const nav = buildNavigationContext(sitemap, itemPath, sitemap.site.default_language)
+      // Build custom breadcrumbs for collection item
+      nav.breadcrumbs = [
+        { title: 'Home', path: '/', isLast: false },
+        { title: collection.display_name, path: `/${collection.collection_type}/`, isLast: false },
+        { title: title, path: itemPath, isLast: true },
+      ]
+      html = wrapInHtmlDocumentWithNav(
+        `${title} | ${collection.display_name}`,
+        summary || '',
+        contentHtml,
+        nav
+      )
+    } else {
+      html = wrapInHtmlDocument(
+        `${title} | ${collection.display_name}`,
+        summary || '',
+        `
+        <!-- Breadcrumb -->
+        <nav class="flex mb-6" aria-label="Breadcrumb">
+          <ol class="inline-flex items-center space-x-1 text-sm text-slate-500">
+            <li><a href="/" class="hover:text-ocean-600">Home</a></li>
+            <li><span class="mx-2">/</span></li>
+            <li><a href="/${collection.collection_type}/" class="hover:text-ocean-600">${escapeHtml(collection.display_name)}</a></li>
+            <li><span class="mx-2">/</span></li>
+            <li class="text-slate-900 font-medium truncate max-w-[200px]">${escapeHtml(title)}</li>
+          </ol>
+        </nav>
+        ${contentHtml}
+        `,
+        'https://cinqueterre.travel'
+      )
+    }
 
     // Write to appropriate path
     const outputPath = join(distDir, collection.collection_type, item.slug, 'index.html')
@@ -1402,11 +1672,314 @@ function isMultilingualField(value: unknown): boolean {
 }
 
 // =============================================================================
+// NAVIGATION BUILDING FUNCTIONS
+// =============================================================================
+
+/**
+ * Build navigation context from sitemap for a specific page
+ */
+function buildNavigationContext(
+  sitemap: ParsedSitemap,
+  currentPath: string,
+  language: string = 'en'
+): NavigationContext {
+  // Find current node
+  const currentNode = sitemap.pageMap.get(currentPath)
+
+  // Build main navigation from top-level pages with in_nav: true
+  const mainNav = sitemap.pages
+    .filter(page => page.in_nav !== false)
+    .map(page => ({
+      title: getLocalizedTitle(page, language),
+      path: page.path,
+      isActive: currentPath === page.path || currentPath.startsWith(page.path + '/'),
+    }))
+
+  // Build breadcrumbs
+  const breadcrumbs: Array<{ title: string; path: string; isLast: boolean }> = []
+  if (currentNode) {
+    // Add home
+    breadcrumbs.push({
+      title: 'Home',
+      path: '/',
+      isLast: false,
+    })
+    // Add ancestors
+    for (const ancestor of currentNode.ancestors) {
+      breadcrumbs.push({
+        title: getLocalizedBreadcrumb(ancestor, language) || getLocalizedTitle(ancestor, language),
+        path: ancestor.path,
+        isLast: false,
+      })
+    }
+    // Add current (if not home)
+    if (currentPath !== '/') {
+      breadcrumbs.push({
+        title: getLocalizedBreadcrumb(currentNode, language) || getLocalizedTitle(currentNode, language),
+        path: currentNode.path,
+        isLast: true,
+      })
+    } else {
+      // Mark home as last if it's the current page
+      breadcrumbs[0].isLast = true
+    }
+  }
+
+  // Build prev/next navigation
+  let prevPage: { title: string; path: string } | null = null
+  let nextPage: { title: string; path: string } | null = null
+
+  if (currentNode) {
+    const siblings = currentNode.siblings
+    const currentIndex = siblings.findIndex(s => s.path === currentPath)
+
+    if (currentIndex > 0) {
+      const prev = siblings[currentIndex - 1]
+      prevPage = {
+        title: getLocalizedTitle(prev, language),
+        path: prev.path,
+      }
+    }
+    if (currentIndex < siblings.length - 1) {
+      const next = siblings[currentIndex + 1]
+      nextPage = {
+        title: getLocalizedTitle(next, language),
+        path: next.path,
+      }
+    }
+  }
+
+  // Build footer navigation from sitemap footer_nav
+  const footerNav: Array<{ title: string; links: Array<{ title: string; path: string }> }> = []
+  if (sitemap.footerNav) {
+    for (const section of sitemap.footerNav) {
+      footerNav.push({
+        title: section.title,
+        links: section.links.map(link => ({
+          title: link.title,
+          path: link.url,
+        })),
+      })
+    }
+  }
+
+  return {
+    site: {
+      name: sitemap.site.name,
+      tagline: sitemap.site.tagline,
+      logo: sitemap.site.logo,
+      defaultLanguage: sitemap.site.default_language,
+      siteUrl: sitemap.site.base_url,
+    },
+    mainNav,
+    breadcrumbs,
+    prevPage,
+    nextPage,
+    footerNav,
+    language,
+  }
+}
+
+/**
+ * Render main navigation as HTML
+ */
+function renderMainNav(nav: NavigationContext): string {
+  const navItems = nav.mainNav.map(item => {
+    const activeClass = item.isActive ? 'text-ocean-600 font-semibold' : 'text-slate-600'
+    return `<a href="${item.path}" class="text-sm font-medium ${activeClass} hover:text-ocean-600">${escapeHtml(item.title)}</a>`
+  }).join('\n            ')
+
+  return navItems
+}
+
+/**
+ * Render breadcrumbs as HTML
+ */
+function renderBreadcrumbs(nav: NavigationContext): string {
+  if (nav.breadcrumbs.length <= 1) return '' // Don't show breadcrumbs for home page
+
+  const items = nav.breadcrumbs.map((crumb, index) => {
+    const separator = index > 0 ? `<span class="mx-2 text-slate-400">/</span>` : ''
+    const link = crumb.isLast
+      ? `<span class="text-slate-900">${escapeHtml(crumb.title)}</span>`
+      : `<a href="${crumb.path}" class="text-ocean-600 hover:text-ocean-700">${escapeHtml(crumb.title)}</a>`
+    return `${separator}${link}`
+  }).join('')
+
+  return `
+    <nav class="text-sm mb-6" aria-label="Breadcrumb">
+      <div class="flex items-center">
+        ${items}
+      </div>
+    </nav>`
+}
+
+/**
+ * Render prev/next navigation as HTML
+ */
+function renderPrevNextNav(nav: NavigationContext): string {
+  if (!nav.prevPage && !nav.nextPage) return ''
+
+  const prevLink = nav.prevPage
+    ? `<a href="${nav.prevPage.path}" class="flex items-center gap-2 text-ocean-600 hover:text-ocean-700">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+        <span>${escapeHtml(nav.prevPage.title)}</span>
+      </a>`
+    : '<span></span>'
+
+  const nextLink = nav.nextPage
+    ? `<a href="${nav.nextPage.path}" class="flex items-center gap-2 text-ocean-600 hover:text-ocean-700">
+        <span>${escapeHtml(nav.nextPage.title)}</span>
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+      </a>`
+    : '<span></span>'
+
+  return `
+    <nav class="flex justify-between items-center mt-12 pt-6 border-t border-slate-200">
+      ${prevLink}
+      ${nextLink}
+    </nav>`
+}
+
+/**
+ * Render footer navigation as HTML
+ */
+function renderFooterNav(nav: NavigationContext): string {
+  if (nav.footerNav.length === 0) {
+    // Default footer if no footer_nav in sitemap
+    return `
+          <div>
+            <h3 class="text-sm font-semibold text-slate-900">About</h3>
+            <ul class="mt-4 space-y-2 text-sm text-slate-600">
+              <li><a href="/" class="hover:text-ocean-600">Home</a></li>
+            </ul>
+          </div>`
+  }
+
+  return nav.footerNav.map(section => `
+          <div>
+            <h3 class="text-sm font-semibold text-slate-900">${escapeHtml(section.title)}</h3>
+            <ul class="mt-4 space-y-2 text-sm text-slate-600">
+              ${section.links.map(link =>
+                `<li><a href="${link.path}" class="hover:text-ocean-600">${escapeHtml(link.title)}</a></li>`
+              ).join('\n              ')}
+            </ul>
+          </div>`
+  ).join('\n')
+}
+
+// =============================================================================
 // HTML DOCUMENT WRAPPER
 // =============================================================================
 
 /**
+ * Wrap content in a complete HTML document with sitemap-driven navigation
+ */
+function wrapInHtmlDocumentWithNav(
+  title: string,
+  description: string,
+  content: string,
+  nav: NavigationContext
+): string {
+  const breadcrumbsHtml = renderBreadcrumbs(nav)
+  const mainNavHtml = renderMainNav(nav)
+  const footerNavHtml = renderFooterNav(nav)
+  const prevNextHtml = renderPrevNextNav(nav)
+
+  return `<!DOCTYPE html>
+<html lang="${nav.language}" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(String(title))} | ${escapeHtml(nav.site.name)}</title>
+  <meta name="description" content="${escapeHtml(String(description))}">
+  <meta property="og:title" content="${escapeHtml(String(title))}">
+  <meta property="og:description" content="${escapeHtml(String(description))}">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="${nav.site.siteUrl}">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="canonical" href="${nav.site.siteUrl}">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ocean: {
+              50: '#f0fdfa', 100: '#ccfbf1', 200: '#99f6e4', 300: '#5eead4',
+              400: '#2dd4bf', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e',
+              800: '#115e59', 900: '#134e4a',
+            },
+            terracotta: {
+              50: '#fdf4f3', 100: '#fce7e4', 200: '#fbd3cd', 300: '#f7b4a8',
+              400: '#f08a76', 500: '#e4664c', 600: '#d14a2e', 700: '#af3b23',
+              800: '#913421', 900: '#793121',
+            },
+          }
+        }
+      }
+    }
+  </script>
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .prose-cinqueterre { @apply prose prose-slate max-w-none prose-headings:text-slate-900 prose-a:text-ocean-600 hover:prose-a:text-ocean-700; }
+    }
+  </style>
+</head>
+<body class="h-full bg-white">
+  <div class="min-h-full flex flex-col">
+    <!-- Navigation -->
+    <nav class="bg-white border-b border-slate-200">
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="flex h-16 items-center justify-between">
+          <a href="/" class="flex items-center gap-2 font-semibold text-slate-900 hover:text-ocean-600">
+            ${nav.site.logo
+              ? `<img src="${nav.site.logo}" alt="${escapeHtml(nav.site.name)}" class="h-8 w-8">`
+              : `<svg class="h-8 w-8 text-ocean-500" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+            </svg>`}
+            <span>${escapeHtml(nav.site.name)}</span>
+          </a>
+          <div class="flex items-center gap-4">
+            ${mainNavHtml}
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-1">
+      <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+${breadcrumbsHtml}
+${content}
+${prevNextHtml}
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-slate-50 border-t border-slate-200">
+      <div class="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
+${footerNavHtml}
+        </div>
+        <div class="mt-8 pt-8 border-t border-slate-200 text-center text-sm text-slate-500">
+          <p>Powered by swarm.press - Autonomous Publishing Platform</p>
+          <p class="mt-1">Built on ${new Date().toISOString().split('T')[0]}</p>
+        </div>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>`
+}
+
+/**
  * Wrap content in a complete HTML document with Tailwind CSS
+ * @deprecated Use wrapInHtmlDocumentWithNav for sitemap-driven navigation
  */
 function wrapInHtmlDocument(title: string, description: string, content: string, siteUrl: string): string {
   return `<!DOCTYPE html>

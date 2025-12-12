@@ -1,0 +1,88 @@
+---
+/**
+ * Contact Section - Side by Side Grid
+ * Contact information and locations in card grid layout
+ * Based on: tailwindcss-plus-components/marketing/sections/contact-sections/side_by_side_grid.html
+ */
+
+export interface ContactCard {
+  title: string
+  email?: string
+  phone?: string
+}
+
+export interface LocationCard {
+  city: string
+  address1: string
+  address2: string
+}
+
+export interface Props {
+  contactHeading?: string
+  contactDescription?: string
+  contactCards: ContactCard[]
+  locationsHeading?: string
+  locationsDescription?: string
+  locations: LocationCard[]
+}
+
+const {
+  contactHeading = 'Get in touch',
+  contactDescription = 'Quam nunc nunc eu sed. Sed rhoncus quis ultricies ac pellentesque.',
+  contactCards = [],
+  locationsHeading = 'Locations',
+  locationsDescription = 'Consequat sunt cillum cillum elit sint. Qui occaecat nisi in ipsum commodo.',
+  locations = [],
+} = Astro.props
+---
+
+<div class="bg-white py-8 sm:py-16 dark:bg-gray-900">
+  <div class="mx-auto max-w-7xl px-6 lg:px-8">
+    <div class="mx-auto max-w-2xl divide-y divide-gray-100 lg:mx-0 lg:max-w-none dark:divide-white/10">
+      <div class="grid grid-cols-1 gap-10 py-16 lg:grid-cols-3">
+        <div>
+          <h2 class="text-4xl font-semibold tracking-tight text-pretty text-gray-900 dark:text-white">{contactHeading}</h2>
+          <p class="mt-4 text-base/7 text-gray-600 dark:text-gray-400">{contactDescription}</p>
+        </div>
+        <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:col-span-2 lg:gap-8">
+          {contactCards.map((card) => (
+            <div class="rounded-2xl bg-gray-50 p-10 dark:bg-gray-800/50">
+              <h3 class="text-base/7 font-semibold text-gray-900 dark:text-white">{card.title}</h3>
+              <dl class="mt-3 space-y-1 text-sm/6 text-gray-600 dark:text-gray-400">
+                {card.email && (
+                  <div>
+                    <dt class="sr-only">Email</dt>
+                    <dd><a href={`mailto:${card.email}`} class="font-semibold text-indigo-600 dark:text-indigo-400">{card.email}</a></dd>
+                  </div>
+                )}
+                {card.phone && (
+                  <div class="mt-1">
+                    <dt class="sr-only">Phone number</dt>
+                    <dd>{card.phone}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div class="grid grid-cols-1 gap-10 py-16 lg:grid-cols-3">
+        <div>
+          <h2 class="text-4xl font-semibold tracking-tight text-pretty text-gray-900 dark:text-white">{locationsHeading}</h2>
+          <p class="mt-4 text-base/7 text-gray-600 dark:text-gray-400">{locationsDescription}</p>
+        </div>
+        <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:col-span-2 lg:gap-8">
+          {locations.map((location) => (
+            <div class="rounded-2xl bg-gray-50 p-10 dark:bg-gray-800/50">
+              <h3 class="text-base/7 font-semibold text-gray-900 dark:text-white">{location.city}</h3>
+              <address class="mt-3 space-y-1 text-sm/6 text-gray-600 not-italic dark:text-gray-400">
+                <p>{location.address1}</p>
+                <p>{location.address2}</p>
+              </address>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

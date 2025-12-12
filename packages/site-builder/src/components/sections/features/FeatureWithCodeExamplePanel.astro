@@ -1,0 +1,83 @@
+---
+/**
+ * Feature Section - With Code Example Panel
+ * A split layout with feature list and code example panel
+ * Based on: tailwindcss-plus-components/marketing/sections/feature-sections/with_code_example_panel.html
+ */
+
+export interface Feature {
+  title: string
+  description: string
+  icon?: string
+}
+
+export interface Props {
+  eyebrow?: string
+  title: string
+  description?: string
+  features: Feature[]
+  codeExample?: string
+  codeLanguage?: string
+}
+
+const {
+  eyebrow,
+  title,
+  description,
+  features = [],
+  codeExample,
+  codeLanguage = 'javascript',
+} = Astro.props
+
+// Default icon
+const defaultIcon = '<path d="M5.5 17a4.5 4.5 0 0 1-1.44-8.765 4.5 4.5 0 0 1 8.302-3.046 3.5 3.5 0 0 1 4.504 4.272A4 4 0 0 1 15 17H5.5Zm3.75-2.75a.75.75 0 0 0 1.5 0V9.66l1.95 2.1a.75.75 0 1 0 1.1-1.02l-3.25-3.5a.75.75 0 0 0-1.1 0l-3.25 3.5a.75.75 0 1 0 1.1 1.02l1.95-2.1v4.59Z" clip-rule="evenodd" fill-rule="evenodd" />'
+---
+
+<div class="overflow-hidden bg-white py-24 sm:py-32 dark:bg-gray-900">
+  <div class="mx-auto max-w-7xl px-6 lg:px-8">
+    <div class="mx-auto grid max-w-2xl grid-cols-1 gap-x-8 gap-y-16 sm:gap-y-20 lg:mx-0 lg:max-w-none lg:grid-cols-2">
+      <div class="lg:pt-4 lg:pr-8">
+        <div class="lg:max-w-lg">
+          {eyebrow && (
+            <h2 class="text-base/7 font-semibold text-indigo-600 dark:text-indigo-400">{eyebrow}</h2>
+          )}
+          <p class="mt-2 text-4xl font-semibold tracking-tight text-pretty text-gray-900 sm:text-5xl dark:text-white">
+            {title}
+          </p>
+          {description && (
+            <p class="mt-6 text-lg/8 text-gray-700 dark:text-gray-300">{description}</p>
+          )}
+          <dl class="mt-10 max-w-xl space-y-8 text-base/7 text-gray-600 lg:max-w-none dark:text-gray-400">
+            {features.map((feature) => (
+              <div class="relative pl-9">
+                <dt class="inline font-semibold text-gray-900 dark:text-white">
+                  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="absolute top-1 left-1 size-5 text-indigo-600 dark:text-indigo-400">
+                    <Fragment set:html={feature.icon || defaultIcon} />
+                  </svg>
+                  {feature.title}
+                </dt>
+                <dd class="inline">{feature.description}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </div>
+
+      {codeExample && (
+        <div class="lg:pt-4">
+          <div class="overflow-hidden rounded-xl bg-gray-900 shadow-xl ring-1 ring-gray-400/10 dark:bg-gray-800 dark:ring-white/10">
+            <div class="flex items-center gap-x-4 border-b border-gray-700 bg-gray-800/40 px-6 py-3">
+              <div class="flex gap-x-1.5">
+                <div class="size-3 rounded-full bg-red-500"></div>
+                <div class="size-3 rounded-full bg-yellow-500"></div>
+                <div class="size-3 rounded-full bg-green-500"></div>
+              </div>
+              <span class="text-xs text-gray-400">{codeLanguage}</span>
+            </div>
+            <pre class="overflow-x-auto p-6 text-sm text-gray-300"><code>{codeExample}</code></pre>
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+</div>

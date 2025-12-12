@@ -1,0 +1,53 @@
+---
+/**
+ * Testimonial Section - Side by Side
+ * Two testimonials displayed side by side
+ * Based on: tailwindcss-plus-components/marketing/sections/testimonials/side_by_side.html
+ */
+
+export interface Testimonial {
+  quote: string
+  authorName: string
+  authorRole?: string
+  authorImage?: string
+  companyLogo?: string
+  companyLogoDark?: string
+}
+
+export interface Props {
+  testimonials: Testimonial[]
+}
+
+const { testimonials = [] } = Astro.props
+---
+
+<section class="bg-white py-24 sm:py-32 dark:bg-gray-900">
+  <div class="mx-auto max-w-7xl px-6 lg:px-8">
+    <div class="mx-auto grid max-w-2xl grid-cols-1 lg:mx-0 lg:max-w-none lg:grid-cols-2">
+      {testimonials.map((testimonial, idx) => (
+        <div class={`flex flex-col ${idx === 0 ? 'pb-10 sm:pb-16 lg:pr-8 lg:pb-0 xl:pr-20' : 'border-t border-gray-900/10 pt-10 sm:pt-16 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8 xl:pl-20 dark:border-white/10'}`}>
+          {testimonial.companyLogo && (
+            <>
+              <img src={testimonial.companyLogo} alt="" class="h-12 self-start dark:hidden" />
+              {testimonial.companyLogoDark && <img src={testimonial.companyLogoDark} alt="" class="h-12 self-start not-dark:hidden" />}
+            </>
+          )}
+          <figure class="mt-10 flex flex-auto flex-col justify-between">
+            <blockquote class="text-lg/8 text-gray-900 dark:text-gray-100">
+              <p>"{testimonial.quote}"</p>
+            </blockquote>
+            <figcaption class="mt-10 flex items-center gap-x-6">
+              {testimonial.authorImage && (
+                <img src={testimonial.authorImage} alt="" class="size-14 rounded-full bg-gray-50 dark:bg-gray-800" />
+              )}
+              <div class="text-base">
+                <div class="font-semibold text-gray-900 dark:text-white">{testimonial.authorName}</div>
+                {testimonial.authorRole && <div class="mt-1 text-gray-500 dark:text-gray-400">{testimonial.authorRole}</div>}
+              </div>
+            </figcaption>
+          </figure>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

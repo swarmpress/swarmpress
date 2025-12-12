@@ -1,0 +1,74 @@
+---
+/**
+ * Feature Section - Three Column with Small Icons
+ * A centered 3-column layout with small inline icons and learn more links
+ * Based on: tailwindcss-plus-components/marketing/sections/feature-sections/simple_three_column_with_small_icons.html
+ */
+
+export interface Feature {
+  title: string
+  description: string
+  icon?: string
+  link?: {
+    text: string
+    url: string
+  }
+}
+
+export interface Props {
+  eyebrow?: string
+  title: string
+  description?: string
+  features: Feature[]
+}
+
+const {
+  eyebrow,
+  title,
+  description,
+  features = [],
+} = Astro.props
+
+// Default icon
+const defaultIcon = '<path d="M5.5 17a4.5 4.5 0 0 1-1.44-8.765 4.5 4.5 0 0 1 8.302-3.046 3.5 3.5 0 0 1 4.504 4.272A4 4 0 0 1 15 17H5.5Zm3.75-2.75a.75.75 0 0 0 1.5 0V9.66l1.95 2.1a.75.75 0 1 0 1.1-1.02l-3.25-3.5a.75.75 0 0 0-1.1 0l-3.25 3.5a.75.75 0 1 0 1.1 1.02l1.95-2.1v4.59Z" clip-rule="evenodd" fill-rule="evenodd" />'
+---
+
+<div class="bg-white py-24 sm:py-32 dark:bg-gray-900">
+  <div class="mx-auto max-w-7xl px-6 lg:px-8">
+    <div class="mx-auto max-w-2xl lg:text-center">
+      {eyebrow && (
+        <h2 class="text-base/7 font-semibold text-indigo-600 dark:text-indigo-400">{eyebrow}</h2>
+      )}
+      <p class="mt-2 text-4xl font-semibold tracking-tight text-pretty text-gray-900 sm:text-5xl lg:text-balance dark:text-white">
+        {title}
+      </p>
+      {description && (
+        <p class="mt-6 text-lg/8 text-gray-600 dark:text-gray-300">{description}</p>
+      )}
+    </div>
+    <div class="mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-none">
+      <dl class="grid max-w-xl grid-cols-1 gap-x-8 gap-y-16 lg:max-w-none lg:grid-cols-3">
+        {features.map((feature) => (
+          <div class="flex flex-col">
+            <dt class="flex items-center gap-x-3 text-base/7 font-semibold text-gray-900 dark:text-white">
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5 flex-none text-indigo-600 dark:text-indigo-400">
+                <Fragment set:html={feature.icon || defaultIcon} />
+              </svg>
+              {feature.title}
+            </dt>
+            <dd class="mt-4 flex flex-auto flex-col text-base/7 text-gray-600 dark:text-gray-400">
+              <p class="flex-auto">{feature.description}</p>
+              {feature.link && (
+                <p class="mt-6">
+                  <a href={feature.link.url} class="text-sm/6 font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
+                    {feature.link.text} <span aria-hidden="true">→</span>
+                  </a>
+                </p>
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  </div>
+</div>

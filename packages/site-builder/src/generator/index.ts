@@ -13,6 +13,35 @@ export type { DeployOptions, DeployResult } from './deploy'
 export { buildFromGitHub, cleanGitHubBuildDir } from './github-build'
 export type { GitHubBuildOptions, GitHubBuildResult } from './github-build'
 
+// Configuration-driven build (new architecture)
+export { buildFromConfig } from './config-build'
+export type { ConfigBuildOptions, ConfigBuildResult } from './config-build'
+
+// Config loaders and generators
+export { loadSiteConfiguration, ConfigLoader } from './config-loader'
+export type { LoadedSiteConfiguration, ConfigLoaderOptions } from './config-loader'
+
+export { generateThemeFiles, generateTailwindConfig, generateCSSVariables, THEME_PRESETS } from './theme-generator'
+export type { ThemeGeneratorOptions, GeneratedTheme } from './theme-generator'
+
+// Component resolution
+export {
+  resolveHeaderComponent,
+  resolveFooterComponent,
+  resolveHeroComponent,
+  resolveComponent,
+  buildHeaderProps,
+  buildFooterProps,
+  HEADER_COMPONENTS,
+  FOOTER_COMPONENTS,
+  HERO_COMPONENTS,
+} from './component-resolver'
+export type { ComponentCategory, ResolvedComponent } from './component-resolver'
+
+// Sitemap parser
+export { parseSitemap, loadSitemapFromGitHub } from './sitemap-parser'
+export type { ParsedSitemap, SitemapNode, SiteConfig as SitemapSiteConfig } from './sitemap-parser'
+
 // Collection generation
 export { generateCollectionPages } from './collection-pages'
 export type { CollectionGenerationResult } from '../types/collection-types'

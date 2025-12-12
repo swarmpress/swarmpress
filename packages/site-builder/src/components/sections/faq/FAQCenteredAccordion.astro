@@ -1,0 +1,99 @@
+---
+/**
+ * FAQ Section - Centered Accordion
+ * Centered FAQ with expandable accordion items
+ * Based on: tailwindcss-plus-components/marketing/sections/faq-sections/centered_accordion.html
+ */
+
+export interface FAQItem {
+  question: string
+  answer: string
+}
+
+export interface Props {
+  heading?: string
+  items?: FAQItem[]
+}
+
+const {
+  heading = 'Frequently asked questions',
+  items = [
+    {
+      question: "What's the best thing about Switzerland?",
+      answer: "I don't know, but the flag is a big plus. Lorem ipsum dolor sit amet consectetur adipisicing elit. Quas cupiditate laboriosam fugiat.",
+    },
+    {
+      question: 'How do you make holy water?',
+      answer: 'You boil the hell out of it. Lorem ipsum dolor sit amet consectetur adipisicing elit. Magnam aut tempora vitae odio inventore fuga aliquam nostrum quod porro. Delectus quia facere id sequi expedita natus.',
+    },
+    {
+      question: 'What do you call someone with no body and no nose?',
+      answer: 'Nobody knows. Lorem ipsum dolor sit amet consectetur adipisicing elit. Culpa, voluptas ipsa quia excepturi, quibusdam natus exercitationem sapiente tempore labore voluptatem.',
+    },
+    {
+      question: 'Why do you never see elephants hiding in trees?',
+      answer: "Because they're so good at it. Lorem ipsum dolor sit amet consectetur adipisicing elit. Quas cupiditate laboriosam fugiat.",
+    },
+    {
+      question: "Why can't you hear a pterodactyl go to the bathroom?",
+      answer: 'Because the pee is silent. Lorem ipsum dolor sit amet, consectetur adipisicing elit. Ipsam, quas voluptatibus ex culpa ipsum, aspernatur blanditiis fugiat ullam magnam suscipit deserunt illum natus facilis atque vero consequatur! Quisquam, debitis error.',
+    },
+    {
+      question: 'Why did the invisible man turn down the job offer?',
+      answer: "He couldn't see himself doing it. Lorem ipsum dolor sit, amet consectetur adipisicing elit. Eveniet perspiciatis officiis corrupti tenetur. Temporibus ut voluptatibus, perferendis sed unde rerum deserunt eius.",
+    },
+  ],
+} = Astro.props
+---
+
+<div class="bg-white dark:bg-gray-900">
+  <div class="mx-auto max-w-7xl px-6 py-24 sm:py-32 lg:px-8 lg:py-40">
+    <div class="mx-auto max-w-4xl">
+      <h2 class="text-4xl font-semibold tracking-tight text-gray-900 sm:text-5xl dark:text-white">{heading}</h2>
+      <dl class="mt-16 divide-y divide-gray-900/10 dark:divide-white/10">
+        {items.map((item, index) => (
+          <div class="faq-item py-6 first:pt-0 last:pb-0">
+            <dt>
+              <button
+                type="button"
+                class="faq-toggle flex w-full items-start justify-between text-left text-gray-900 dark:text-white"
+                aria-expanded="false"
+                data-faq-index={index}
+              >
+                <span class="text-base/7 font-semibold">{item.question}</span>
+                <span class="ml-6 flex h-7 items-center">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" class="faq-icon-plus size-6">
+                    <path d="M12 6v12m6-6H6" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" class="faq-icon-minus size-6 hidden">
+                    <path d="M18 12H6" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </span>
+              </button>
+            </dt>
+            <dd class="faq-content mt-2 pr-12 hidden">
+              <p class="text-base/7 text-gray-600 dark:text-gray-400">{item.answer}</p>
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.faq-toggle').forEach((button) => {
+    button.addEventListener('click', () => {
+      const item = button.closest('.faq-item')
+      const content = item?.querySelector('.faq-content')
+      const iconPlus = item?.querySelector('.faq-icon-plus')
+      const iconMinus = item?.querySelector('.faq-icon-minus')
+      const isExpanded = button.getAttribute('aria-expanded') === 'true'
+
+      button.setAttribute('aria-expanded', String(!isExpanded))
+      content?.classList.toggle('hidden', isExpanded)
+      iconPlus?.classList.toggle('hidden', !isExpanded)
+      iconMinus?.classList.toggle('hidden', isExpanded)
+    })
+  })
+</script>

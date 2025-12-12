@@ -3,6 +3,8 @@
  * Content Renderer
  * Dynamically renders JSON content blocks
  */
+
+// Original content blocks
 import Paragraph from './blocks/Paragraph.astro'
 import Heading from './blocks/Heading.astro'
 import Hero from './blocks/Hero.astro'
@@ -14,6 +16,356 @@ import FAQ from './blocks/FAQ.astro'
 import Callout from './blocks/Callout.astro'
 import Embed from './blocks/Embed.astro'
 import CollectionEmbed from './blocks/CollectionEmbed.astro'
+
+// Marketing section blocks - Hero variants
+import HeroSimpleCentered from './sections/hero/HeroSimpleCentered.astro'
+import HeroSimpleCenteredWithBackground from './sections/hero/HeroSimpleCenteredWithBackground.astro'
+import HeroSplitWithImage from './sections/hero/HeroSplitWithImage.astro'
+import HeroWithAppScreenshot from './sections/hero/HeroWithAppScreenshot.astro'
+import HeroWithPhoneMockup from './sections/hero/HeroWithPhoneMockup.astro'
+import HeroWithImageTiles from './sections/hero/HeroWithImageTiles.astro'
+import HeroWithOffsetImage from './sections/hero/HeroWithOffsetImage.astro'
+import HeroWithAngledImage from './sections/hero/HeroWithAngledImage.astro'
+
+// Marketing section blocks - Footer variants
+import FooterFourColumnSimple from './sections/footer/FooterFourColumnSimple.astro'
+import FooterFourColumnWithNewsletter from './sections/footer/FooterFourColumnWithNewsletter.astro'
+import FooterFourColumnWithMission from './sections/footer/FooterFourColumnWithMission.astro'
+import FooterFourColumnWithCTA from './sections/footer/FooterFourColumnWithCTA.astro'
+import FooterFourColumnWithNewsletterBelow from './sections/footer/FooterFourColumnWithNewsletterBelow.astro'
+import FooterSimpleCentered from './sections/footer/FooterSimpleCentered.astro'
+import FooterSimpleWithSocialLinks from './sections/footer/FooterSimpleWithSocialLinks.astro'
+
+// Marketing section blocks - Feature variants
+import FeatureSimple from './sections/features/FeatureSimple.astro'
+import FeatureSimple3x2Grid from './sections/features/FeatureSimple3x2Grid.astro'
+import FeatureCentered2x2Grid from './sections/features/FeatureCentered2x2Grid.astro'
+import FeatureOffset2x2Grid from './sections/features/FeatureOffset2x2Grid.astro'
+import FeatureOffsetWithFeatureList from './sections/features/FeatureOffsetWithFeatureList.astro'
+import FeatureThreeColumnWithLargeIcons from './sections/features/FeatureThreeColumnWithLargeIcons.astro'
+import FeatureThreeColumnWithSmallIcons from './sections/features/FeatureThreeColumnWithSmallIcons.astro'
+import FeatureWithProductScreenshot from './sections/features/FeatureWithProductScreenshot.astro'
+import FeatureWithProductScreenshotOnLeft from './sections/features/FeatureWithProductScreenshotOnLeft.astro'
+import FeatureWithProductScreenshotPanel from './sections/features/FeatureWithProductScreenshotPanel.astro'
+import FeatureWithLargeScreenshot from './sections/features/FeatureWithLargeScreenshot.astro'
+import FeatureWithLargeBorderedScreenshot from './sections/features/FeatureWithLargeBorderedScreenshot.astro'
+import FeatureWithCodeExamplePanel from './sections/features/FeatureWithCodeExamplePanel.astro'
+import FeatureContainedInPanel from './sections/features/FeatureContainedInPanel.astro'
+import FeatureWithTestimonial from './sections/features/FeatureWithTestimonial.astro'
+
+// Marketing section blocks - Pricing variants
+import PricingThreeTiers from './sections/pricing/PricingThreeTiers.astro'
+import PricingThreeTiersWithToggle from './sections/pricing/PricingThreeTiersWithToggle.astro'
+import PricingThreeTiersWithDividers from './sections/pricing/PricingThreeTiersWithDividers.astro'
+import PricingThreeTiersEmphasized from './sections/pricing/PricingThreeTiersEmphasized.astro'
+import PricingThreeTiersWithComparison from './sections/pricing/PricingThreeTiersWithComparison.astro'
+import PricingTwoTiers from './sections/pricing/PricingTwoTiers.astro'
+import PricingTwoTiersWithExtra from './sections/pricing/PricingTwoTiersWithExtra.astro'
+import PricingSinglePrice from './sections/pricing/PricingSinglePrice.astro'
+import PricingFourTiersWithToggle from './sections/pricing/PricingFourTiersWithToggle.astro'
+import PricingWithComparisonTable from './sections/pricing/PricingWithComparisonTable.astro'
+
+// Marketing section blocks - CTA variants
+import CTASimpleCentered from './sections/cta/CTASimpleCentered.astro'
+import CTASimpleStacked from './sections/cta/CTASimpleStacked.astro'
+import CTASimpleJustified from './sections/cta/CTASimpleJustified.astro'
+import CTACenteredOnDarkPanel from './sections/cta/CTACenteredOnDarkPanel.astro'
+import CTASimpleCenteredOnBrand from './sections/cta/CTASimpleCenteredOnBrand.astro'
+import CTASimpleCenteredWithGradient from './sections/cta/CTASimpleCenteredWithGradient.astro'
+import CTASimpleJustifiedOnSubtleBrand from './sections/cta/CTASimpleJustifiedOnSubtleBrand.astro'
+import CTASplitWithImage from './sections/cta/CTASplitWithImage.astro'
+import CTADarkPanelWithAppScreenshot from './sections/cta/CTADarkPanelWithAppScreenshot.astro'
+import CTATwoColumnsWithPhoto from './sections/cta/CTATwoColumnsWithPhoto.astro'
+import CTAWithImageTiles from './sections/cta/CTAWithImageTiles.astro'
+
+// Marketing section blocks - Testimonial variants
+import TestimonialSimpleCentered from './sections/testimonials/TestimonialSimpleCentered.astro'
+import TestimonialWithLargeAvatar from './sections/testimonials/TestimonialWithLargeAvatar.astro'
+import TestimonialWithStarRating from './sections/testimonials/TestimonialWithStarRating.astro'
+import TestimonialSideBySide from './sections/testimonials/TestimonialSideBySide.astro'
+import TestimonialGrid from './sections/testimonials/TestimonialGrid.astro'
+import TestimonialSubtleGrid from './sections/testimonials/TestimonialSubtleGrid.astro'
+import TestimonialWithBackgroundImage from './sections/testimonials/TestimonialWithBackgroundImage.astro'
+import TestimonialWithOverlappingImage from './sections/testimonials/TestimonialWithOverlappingImage.astro'
+
+// Marketing section blocks - Blog variants
+import BlogSingleColumn from './sections/blog/BlogSingleColumn.astro'
+import BlogSingleColumnWithImages from './sections/blog/BlogSingleColumnWithImages.astro'
+import BlogThreeColumn from './sections/blog/BlogThreeColumn.astro'
+import BlogThreeColumnWithImages from './sections/blog/BlogThreeColumnWithImages.astro'
+import BlogThreeColumnWithBackgroundImages from './sections/blog/BlogThreeColumnWithBackgroundImages.astro'
+import BlogWithFeaturedPost from './sections/blog/BlogWithFeaturedPost.astro'
+import BlogWithPhotoAndList from './sections/blog/BlogWithPhotoAndList.astro'
+
+// Marketing section blocks - Newsletter variants
+import NewsletterSimpleStacked from './sections/newsletter/NewsletterSimpleStacked.astro'
+import NewsletterSimpleSideBySide from './sections/newsletter/NewsletterSimpleSideBySide.astro'
+import NewsletterSimpleSideBySideOnBrand from './sections/newsletter/NewsletterSimpleSideBySideOnBrand.astro'
+import NewsletterCenteredCard from './sections/newsletter/NewsletterCenteredCard.astro'
+import NewsletterSideBySideOnCard from './sections/newsletter/NewsletterSideBySideOnCard.astro'
+import NewsletterSideBySideWithDetails from './sections/newsletter/NewsletterSideBySideWithDetails.astro'
+
+// Marketing section blocks - Stats variants
+import StatsSimple from './sections/stats/StatsSimple.astro'
+import StatsSimpleGrid from './sections/stats/StatsSimpleGrid.astro'
+import StatsWithDescription from './sections/stats/StatsWithDescription.astro'
+import StatsSplitWithImage from './sections/stats/StatsSplitWithImage.astro'
+import StatsStepped from './sections/stats/StatsStepped.astro'
+import StatsTimeline from './sections/stats/StatsTimeline.astro'
+import StatsWithBackgroundImage from './sections/stats/StatsWithBackgroundImage.astro'
+import StatsWithTwoColumnDescription from './sections/stats/StatsWithTwoColumnDescription.astro'
+
+// Marketing section blocks - Team variants
+import TeamWithSmallImages from './sections/team/TeamWithSmallImages.astro'
+import TeamWithMediumImages from './sections/team/TeamWithMediumImages.astro'
+import TeamWithLargeImages from './sections/team/TeamWithLargeImages.astro'
+import TeamWithVerticalImages from './sections/team/TeamWithVerticalImages.astro'
+import TeamFullWidthVerticalImages from './sections/team/TeamFullWidthVerticalImages.astro'
+import TeamGridRoundImages from './sections/team/TeamGridRoundImages.astro'
+import TeamGridLargeRoundImages from './sections/team/TeamGridLargeRoundImages.astro'
+import TeamLargeGridWithCards from './sections/team/TeamLargeGridWithCards.astro'
+import TeamWithImageAndParagraph from './sections/team/TeamWithImageAndParagraph.astro'
+
+// Marketing section blocks - Contact variants
+import ContactSimpleCentered from './sections/contact/ContactSimpleCentered.astro'
+import ContactFourColumn from './sections/contact/ContactFourColumn.astro'
+import ContactCentered from './sections/contact/ContactCentered.astro'
+import ContactSideBySideGrid from './sections/contact/ContactSideBySideGrid.astro'
+import ContactSplitWithImage from './sections/contact/ContactSplitWithImage.astro'
+import ContactSplitWithPattern from './sections/contact/ContactSplitWithPattern.astro'
+import ContactWithTestimonial from './sections/contact/ContactWithTestimonial.astro'
+
+// Marketing section blocks - FAQ variants
+import FAQCenteredAccordion from './sections/faq/FAQCenteredAccordion.astro'
+import FAQOffsetWithSupportingText from './sections/faq/FAQOffsetWithSupportingText.astro'
+import FAQSideBySide from './sections/faq/FAQSideBySide.astro'
+import FAQThreeColumnsWithCenteredIntro from './sections/faq/FAQThreeColumnsWithCenteredIntro.astro'
+import FAQThreeColumns from './sections/faq/FAQThreeColumns.astro'
+import FAQTwoColumnsWithCenteredIntro from './sections/faq/FAQTwoColumnsWithCenteredIntro.astro'
+import FAQTwoColumns from './sections/faq/FAQTwoColumns.astro'
+
+// Marketing section blocks - Logo Cloud variants
+import LogoCloudSimple from './sections/logo-cloud/LogoCloudSimple.astro'
+import LogoCloudSimpleLeftAligned from './sections/logo-cloud/LogoCloudSimpleLeftAligned.astro'
+import LogoCloudSimpleWithHeading from './sections/logo-cloud/LogoCloudSimpleWithHeading.astro'
+import LogoCloudSimpleWithCTA from './sections/logo-cloud/LogoCloudSimpleWithCTA.astro'
+import LogoCloudGrid from './sections/logo-cloud/LogoCloudGrid.astro'
+import LogoCloudSplitWithLogosOnRight from './sections/logo-cloud/LogoCloudSplitWithLogosOnRight.astro'
+
+// Marketing section blocks - Bento Grid variants
+import BentoGridThreeColumn from './sections/bento-grid/BentoGridThreeColumn.astro'
+import BentoGridTwoRow from './sections/bento-grid/BentoGridTwoRow.astro'
+import BentoGridTwoRowThreeColumnSecondRow from './sections/bento-grid/BentoGridTwoRowThreeColumnSecondRow.astro'
+
+// Marketing section blocks - Content variants
+import ContentCentered from './sections/content/ContentCentered.astro'
+import ContentSplitWithImage from './sections/content/ContentSplitWithImage.astro'
+import ContentTwoColumnsWithScreenshot from './sections/content/ContentTwoColumnsWithScreenshot.astro'
+import ContentWithImageTiles from './sections/content/ContentWithImageTiles.astro'
+import ContentWithStickyProductScreenshot from './sections/content/ContentWithStickyProductScreenshot.astro'
+import ContentWithTestimonialAndStats from './sections/content/ContentWithTestimonialAndStats.astro'
+import ContentWithTestimonial from './sections/content/ContentWithTestimonial.astro'
+
+// Marketing section blocks - Header variants
+import HeaderCentered from './sections/header/HeaderCentered.astro'
+import HeaderCenteredWithEyebrow from './sections/header/HeaderCenteredWithEyebrow.astro'
+import HeaderCenteredWithBackgroundImage from './sections/header/HeaderCenteredWithBackgroundImage.astro'
+import HeaderSimple from './sections/header/HeaderSimple.astro'
+import HeaderSimpleWithEyebrow from './sections/header/HeaderSimpleWithEyebrow.astro'
+import HeaderSimpleWithBackgroundImage from './sections/header/HeaderSimpleWithBackgroundImage.astro'
+import HeaderWithCards from './sections/header/HeaderWithCards.astro'
+import HeaderWithStats from './sections/header/HeaderWithStats.astro'
+
+// Hero section variant mapping
+const HERO_SECTION_COMPONENTS: Record<string, any> = {
+  'simple-centered': HeroSimpleCentered,
+  'simple-centered-with-background': HeroSimpleCenteredWithBackground,
+  'split-with-image': HeroSplitWithImage,
+  'with-app-screenshot': HeroWithAppScreenshot,
+  'with-phone-mockup': HeroWithPhoneMockup,
+  'with-image-tiles': HeroWithImageTiles,
+  'with-offset-image': HeroWithOffsetImage,
+  'with-angled-image': HeroWithAngledImage,
+}
+
+// Footer section variant mapping
+const FOOTER_SECTION_COMPONENTS: Record<string, any> = {
+  '4-column-simple': FooterFourColumnSimple,
+  '4-column-with-newsletter': FooterFourColumnWithNewsletter,
+  '4-column-with-mission': FooterFourColumnWithMission,
+  '4-column-with-cta': FooterFourColumnWithCTA,
+  '4-column-with-newsletter-below': FooterFourColumnWithNewsletterBelow,
+  'simple-centered': FooterSimpleCentered,
+  'simple-with-social-links': FooterSimpleWithSocialLinks,
+}
+
+// Feature section variant mapping
+const FEATURE_SECTION_COMPONENTS: Record<string, any> = {
+  'simple': FeatureSimple,
+  'simple-3x2-grid': FeatureSimple3x2Grid,
+  'centered-2x2-grid': FeatureCentered2x2Grid,
+  'offset-2x2-grid': FeatureOffset2x2Grid,
+  'offset-with-feature-list': FeatureOffsetWithFeatureList,
+  'three-column-with-large-icons': FeatureThreeColumnWithLargeIcons,
+  'three-column-with-small-icons': FeatureThreeColumnWithSmallIcons,
+  'with-product-screenshot': FeatureWithProductScreenshot,
+  'with-product-screenshot-on-left': FeatureWithProductScreenshotOnLeft,
+  'with-product-screenshot-panel': FeatureWithProductScreenshotPanel,
+  'with-large-screenshot': FeatureWithLargeScreenshot,
+  'with-large-bordered-screenshot': FeatureWithLargeBorderedScreenshot,
+  'with-code-example-panel': FeatureWithCodeExamplePanel,
+  'contained-in-panel': FeatureContainedInPanel,
+  'with-testimonial': FeatureWithTestimonial,
+}
+
+// Pricing section variant mapping
+const PRICING_SECTION_COMPONENTS: Record<string, any> = {
+  'three-tiers': PricingThreeTiers,
+  'three-tiers-with-toggle': PricingThreeTiersWithToggle,
+  'three-tiers-with-dividers': PricingThreeTiersWithDividers,
+  'three-tiers-emphasized': PricingThreeTiersEmphasized,
+  'three-tiers-with-comparison': PricingThreeTiersWithComparison,
+  'two-tiers': PricingTwoTiers,
+  'two-tiers-with-extra': PricingTwoTiersWithExtra,
+  'single-price': PricingSinglePrice,
+  'four-tiers-with-toggle': PricingFourTiersWithToggle,
+  'with-comparison-table': PricingWithComparisonTable,
+}
+
+// CTA section variant mapping
+const CTA_SECTION_COMPONENTS: Record<string, any> = {
+  'simple-centered': CTASimpleCentered,
+  'simple-stacked': CTASimpleStacked,
+  'simple-justified': CTASimpleJustified,
+  'centered-on-dark-panel': CTACenteredOnDarkPanel,
+  'simple-centered-on-brand': CTASimpleCenteredOnBrand,
+  'simple-centered-with-gradient': CTASimpleCenteredWithGradient,
+  'simple-justified-on-subtle-brand': CTASimpleJustifiedOnSubtleBrand,
+  'split-with-image': CTASplitWithImage,
+  'dark-panel-with-app-screenshot': CTADarkPanelWithAppScreenshot,
+  'two-columns-with-photo': CTATwoColumnsWithPhoto,
+  'with-image-tiles': CTAWithImageTiles,
+}
+
+// Testimonial section variant mapping
+const TESTIMONIAL_SECTION_COMPONENTS: Record<string, any> = {
+  'simple-centered': TestimonialSimpleCentered,
+  'with-large-avatar': TestimonialWithLargeAvatar,
+  'with-star-rating': TestimonialWithStarRating,
+  'side-by-side': TestimonialSideBySide,
+  'grid': TestimonialGrid,
+  'subtle-grid': TestimonialSubtleGrid,
+  'with-background-image': TestimonialWithBackgroundImage,
+  'with-overlapping-image': TestimonialWithOverlappingImage,
+}
+
+// Blog section variant mapping
+const BLOG_SECTION_COMPONENTS: Record<string, any> = {
+  'single-column': BlogSingleColumn,
+  'single-column-with-images': BlogSingleColumnWithImages,
+  'three-column': BlogThreeColumn,
+  'three-column-with-images': BlogThreeColumnWithImages,
+  'three-column-with-background-images': BlogThreeColumnWithBackgroundImages,
+  'with-featured-post': BlogWithFeaturedPost,
+  'with-photo-and-list': BlogWithPhotoAndList,
+}
+
+// Newsletter section variant mapping
+const NEWSLETTER_SECTION_COMPONENTS: Record<string, any> = {
+  'simple-stacked': NewsletterSimpleStacked,
+  'simple-side-by-side': NewsletterSimpleSideBySide,
+  'simple-side-by-side-on-brand': NewsletterSimpleSideBySideOnBrand,
+  'centered-card': NewsletterCenteredCard,
+  'side-by-side-on-card': NewsletterSideBySideOnCard,
+  'side-by-side-with-details': NewsletterSideBySideWithDetails,
+}
+
+// Stats section variant mapping
+const STATS_SECTION_COMPONENTS: Record<string, any> = {
+  'simple': StatsSimple,
+  'simple-grid': StatsSimpleGrid,
+  'with-description': StatsWithDescription,
+  'split-with-image': StatsSplitWithImage,
+  'stepped': StatsStepped,
+  'timeline': StatsTimeline,
+  'with-background-image': StatsWithBackgroundImage,
+  'with-two-column-description': StatsWithTwoColumnDescription,
+}
+
+// Team section variant mapping
+const TEAM_SECTION_COMPONENTS: Record<string, any> = {
+  'with-small-images': TeamWithSmallImages,
+  'with-medium-images': TeamWithMediumImages,
+  'with-large-images': TeamWithLargeImages,
+  'with-vertical-images': TeamWithVerticalImages,
+  'full-width-vertical-images': TeamFullWidthVerticalImages,
+  'grid-round-images': TeamGridRoundImages,
+  'grid-large-round-images': TeamGridLargeRoundImages,
+  'large-grid-with-cards': TeamLargeGridWithCards,
+  'with-image-and-paragraph': TeamWithImageAndParagraph,
+}
+
+// Contact section variant mapping
+const CONTACT_SECTION_COMPONENTS: Record<string, any> = {
+  'simple-centered': ContactSimpleCentered,
+  'four-column': ContactFourColumn,
+  'centered': ContactCentered,
+  'side-by-side-grid': ContactSideBySideGrid,
+  'split-with-image': ContactSplitWithImage,
+  'split-with-pattern': ContactSplitWithPattern,
+  'with-testimonial': ContactWithTestimonial,
+}
+
+// FAQ section variant mapping
+const FAQ_SECTION_COMPONENTS: Record<string, any> = {
+  'centered-accordion': FAQCenteredAccordion,
+  'offset-with-supporting-text': FAQOffsetWithSupportingText,
+  'side-by-side': FAQSideBySide,
+  'three-columns-with-centered-intro': FAQThreeColumnsWithCenteredIntro,
+  'three-columns': FAQThreeColumns,
+  'two-columns-with-centered-intro': FAQTwoColumnsWithCenteredIntro,
+  'two-columns': FAQTwoColumns,
+}
+
+// Logo Cloud section variant mapping
+const LOGO_CLOUD_SECTION_COMPONENTS: Record<string, any> = {
+  'simple': LogoCloudSimple,
+  'simple-left-aligned': LogoCloudSimpleLeftAligned,
+  'simple-with-heading': LogoCloudSimpleWithHeading,
+  'simple-with-cta': LogoCloudSimpleWithCTA,
+  'grid': LogoCloudGrid,
+  'split-with-logos-on-right': LogoCloudSplitWithLogosOnRight,
+}
+
+// Bento Grid section variant mapping
+const BENTO_GRID_SECTION_COMPONENTS: Record<string, any> = {
+  'three-column': BentoGridThreeColumn,
+  'two-row': BentoGridTwoRow,
+  'two-row-three-column-second-row': BentoGridTwoRowThreeColumnSecondRow,
+}
+
+// Content section variant mapping
+const CONTENT_SECTION_COMPONENTS: Record<string, any> = {
+  'centered': ContentCentered,
+  'split-with-image': ContentSplitWithImage,
+  'two-columns-with-screenshot': ContentTwoColumnsWithScreenshot,
+  'with-image-tiles': ContentWithImageTiles,
+  'with-sticky-product-screenshot': ContentWithStickyProductScreenshot,
+  'with-testimonial-and-stats': ContentWithTestimonialAndStats,
+  'with-testimonial': ContentWithTestimonial,
+}
+
+// Header section variant mapping
+const HEADER_SECTION_COMPONENTS: Record<string, any> = {
+  'centered': HeaderCentered,
+  'centered-with-eyebrow': HeaderCenteredWithEyebrow,
+  'centered-with-background-image': HeaderCenteredWithBackgroundImage,
+  'simple': HeaderSimple,
+  'simple-with-eyebrow': HeaderSimpleWithEyebrow,
+  'simple-with-background-image': HeaderSimpleWithBackgroundImage,
+  'with-cards': HeaderWithCards,
+  'with-stats': HeaderWithStats,
+}
 
 export interface Props {
   blocks: any[]
@@ -85,6 +437,103 @@ const { blocks } = Astro.props
             viewAllUrl={block.viewAllUrl}
           />
         )
+
+      // Marketing section blocks
+      case 'hero-section': {
+        const variant = block.variant || 'simple-centered'
+        const HeroComponent = HERO_SECTION_COMPONENTS[variant] || HeroSimpleCentered
+        return <HeroComponent {...block} />
+      }
+
+      case 'footer-section': {
+        const variant = block.variant || 'simple-centered'
+        const FooterComponent = FOOTER_SECTION_COMPONENTS[variant] || FooterSimpleCentered
+        return <FooterComponent {...block} />
+      }
+
+      case 'feature-section': {
+        const variant = block.variant || 'simple-3x2-grid'
+        const FeatureComponent = FEATURE_SECTION_COMPONENTS[variant] || FeatureSimple3x2Grid
+        return <FeatureComponent {...block} />
+      }
+
+      case 'pricing-section': {
+        const variant = block.variant || 'three-tiers'
+        const PricingComponent = PRICING_SECTION_COMPONENTS[variant] || PricingThreeTiers
+        return <PricingComponent {...block} />
+      }
+
+      case 'cta-section': {
+        const variant = block.variant || 'simple-centered'
+        const CTAComponent = CTA_SECTION_COMPONENTS[variant] || CTASimpleCentered
+        return <CTAComponent {...block} />
+      }
+
+      case 'testimonial-section': {
+        const variant = block.variant || 'simple-centered'
+        const TestimonialComponent = TESTIMONIAL_SECTION_COMPONENTS[variant] || TestimonialSimpleCentered
+        return <TestimonialComponent {...block} />
+      }
+
+      case 'blog-section': {
+        const variant = block.variant || 'three-column'
+        const BlogComponent = BLOG_SECTION_COMPONENTS[variant] || BlogThreeColumn
+        return <BlogComponent {...block} />
+      }
+
+      case 'newsletter-section': {
+        const variant = block.variant || 'simple-stacked'
+        const NewsletterComponent = NEWSLETTER_SECTION_COMPONENTS[variant] || NewsletterSimpleStacked
+        return <NewsletterComponent {...block} />
+      }
+
+      case 'stats-section': {
+        const variant = block.variant || 'simple'
+        const StatsComponent = STATS_SECTION_COMPONENTS[variant] || StatsSimple
+        return <StatsComponent {...block} />
+      }
+
+      case 'team-section': {
+        const variant = block.variant || 'with-small-images'
+        const TeamComponent = TEAM_SECTION_COMPONENTS[variant] || TeamWithSmallImages
+        return <TeamComponent {...block} />
+      }
+
+      case 'contact-section': {
+        const variant = block.variant || 'centered'
+        const ContactComponent = CONTACT_SECTION_COMPONENTS[variant] || ContactCentered
+        return <ContactComponent {...block} />
+      }
+
+      case 'faq-section': {
+        const variant = block.variant || 'two-columns'
+        const FAQComponent = FAQ_SECTION_COMPONENTS[variant] || FAQTwoColumns
+        return <FAQComponent {...block} />
+      }
+
+      case 'logo-cloud-section': {
+        const variant = block.variant || 'simple'
+        const LogoCloudComponent = LOGO_CLOUD_SECTION_COMPONENTS[variant] || LogoCloudSimple
+        return <LogoCloudComponent {...block} />
+      }
+
+      case 'bento-grid-section': {
+        const variant = block.variant || 'two-row'
+        const BentoGridComponent = BENTO_GRID_SECTION_COMPONENTS[variant] || BentoGridTwoRow
+        return <BentoGridComponent {...block} />
+      }
+
+      case 'content-section': {
+        const variant = block.variant || 'centered'
+        const ContentComponent = CONTENT_SECTION_COMPONENTS[variant] || ContentCentered
+        return <ContentComponent {...block} />
+      }
+
+      case 'header-section': {
+        const variant = block.variant || 'simple'
+        const HeaderComponent = HEADER_SECTION_COMPONENTS[variant] || HeaderSimple
+        return <HeaderComponent {...block} />
+      }
 
       default:
         console.warn(`Unknown block type: ${block.type}`)

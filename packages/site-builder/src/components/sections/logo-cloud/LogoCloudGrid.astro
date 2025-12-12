@@ -1,0 +1,96 @@
+---
+/**
+ * Logo Cloud Section - Grid
+ * Logo grid with card backgrounds
+ * Based on: tailwindcss-plus-components/marketing/sections/logo-clouds/grid.html
+ */
+
+export interface Logo {
+  name: string
+  src: string
+  srcDark?: string
+  width?: number
+  height?: number
+}
+
+export interface Props {
+  logos?: Logo[]
+}
+
+const {
+  logos = [
+    {
+      name: 'Transistor',
+      src: 'https://tailwindcss.com/plus-assets/img/logos/158x48/transistor-logo-gray-900.svg',
+      srcDark: 'https://tailwindcss.com/plus-assets/img/logos/158x48/transistor-logo-white.svg',
+      width: 158,
+      height: 48,
+    },
+    {
+      name: 'Reform',
+      src: 'https://tailwindcss.com/plus-assets/img/logos/158x48/reform-logo-gray-900.svg',
+      srcDark: 'https://tailwindcss.com/plus-assets/img/logos/158x48/reform-logo-white.svg',
+      width: 158,
+      height: 48,
+    },
+    {
+      name: 'Tuple',
+      src: 'https://tailwindcss.com/plus-assets/img/logos/158x48/tuple-logo-gray-900.svg',
+      srcDark: 'https://tailwindcss.com/plus-assets/img/logos/158x48/tuple-logo-white.svg',
+      width: 158,
+      height: 48,
+    },
+    {
+      name: 'Laravel',
+      src: 'https://tailwindcss.com/plus-assets/img/logos/158x48/laravel-logo-gray-900.svg',
+      srcDark: 'https://tailwindcss.com/plus-assets/img/logos/158x48/laravel-logo-white.svg',
+      width: 158,
+      height: 48,
+    },
+    {
+      name: 'SavvyCal',
+      src: 'https://tailwindcss.com/plus-assets/img/logos/158x48/savvycal-logo-gray-900.svg',
+      srcDark: 'https://tailwindcss.com/plus-assets/img/logos/158x48/savvycal-logo-white.svg',
+      width: 158,
+      height: 48,
+    },
+    {
+      name: 'Statamic',
+      src: 'https://tailwindcss.com/plus-assets/img/logos/158x48/statamic-logo-gray-900.svg',
+      srcDark: 'https://tailwindcss.com/plus-assets/img/logos/158x48/statamic-logo-white.svg',
+      width: 158,
+      height: 48,
+    },
+  ],
+} = Astro.props
+---
+
+<div class="bg-white py-24 sm:py-32 dark:bg-gray-900">
+  <div class="mx-auto max-w-7xl px-6 lg:px-8">
+    <div class="-mx-6 grid grid-cols-2 gap-0.5 overflow-hidden sm:mx-0 sm:rounded-2xl md:grid-cols-3">
+      {logos.map((logo, index) => (
+        <div class:list={[
+          'bg-gray-400/5 p-6 sm:p-10 dark:bg-white/5',
+          index === 0 && 'p-8',
+        ]}>
+          <img
+            width={logo.width || 158}
+            height={logo.height || 48}
+            src={logo.src}
+            alt={logo.name}
+            class="max-h-12 w-full object-contain dark:hidden"
+          />
+          {logo.srcDark && (
+            <img
+              width={logo.width || 158}
+              height={logo.height || 48}
+              src={logo.srcDark}
+              alt={logo.name}
+              class="max-h-12 w-full object-contain not-dark:hidden"
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  </div>
+</div>

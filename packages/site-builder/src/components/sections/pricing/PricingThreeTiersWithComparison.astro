@@ -1,0 +1,207 @@
+---
+/**
+ * Pricing Section - Three Tiers with Feature Comparison
+ * 3 pricing tiers with a feature comparison table below
+ * Based on: tailwindcss-plus-components/marketing/sections/pricing/three_tiers_with_feature_comparison.html
+ */
+
+export interface PricingFeature {
+  text: string
+}
+
+export interface PricingTier {
+  name: string
+  id: string
+  description: string
+  price: string
+  frequency: string
+  features: PricingFeature[]
+  ctaText?: string
+  ctaUrl?: string
+  featured?: boolean
+  badge?: string
+}
+
+export interface ComparisonFeature {
+  name: string
+  tiers: Record<string, boolean | string>
+}
+
+export interface ComparisonCategory {
+  name: string
+  features: ComparisonFeature[]
+}
+
+export interface Props {
+  eyebrow?: string
+  title: string
+  description?: string
+  tiers: PricingTier[]
+  comparisonCategories?: ComparisonCategory[]
+}
+
+const {
+  eyebrow = 'Pricing',
+  title,
+  description,
+  tiers = [],
+  comparisonCategories = [],
+} = Astro.props
+
+const checkIcon = '<path d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" fill-rule="evenodd" />'
+const minusIcon = '<path d="M4 10a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H4.75A.75.75 0 0 1 4 10Z" clip-rule="evenodd" fill-rule="evenodd" />'
+---
+
+<div class="bg-white py-24 sm:py-32 dark:bg-gray-900">
+  <div class="mx-auto max-w-7xl px-6 lg:px-8">
+    <div class="mx-auto max-w-4xl text-center">
+      <h2 class="text-base/7 font-semibold text-indigo-600 dark:text-indigo-400">{eyebrow}</h2>
+      <p class="mt-2 text-5xl font-semibold tracking-tight text-balance text-gray-900 sm:text-6xl dark:text-white">{title}</p>
+    </div>
+    {description && (
+      <p class="mx-auto mt-6 max-w-2xl text-center text-lg font-medium text-pretty text-gray-600 sm:text-xl/8 dark:text-gray-400">{description}</p>
+    )}
+
+    <!-- Tier cards -->
+    <div class="isolate mx-auto mt-16 grid max-w-md grid-cols-1 gap-8 sm:mt-20 lg:mx-0 lg:max-w-none lg:grid-cols-3">
+      {tiers.map((tier) => (
+        <div class={`rounded-3xl p-8 ring-1 xl:p-10 ${tier.featured ? 'ring-2 ring-indigo-600 dark:ring-indigo-400' : 'ring-gray-200 dark:ring-white/15'} dark:bg-gray-800/50`}>
+          <div class="flex items-center justify-between gap-x-4">
+            <h3 id={tier.id} class={`text-lg/8 font-semibold ${tier.featured ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-900 dark:text-white'}`}>
+              {tier.name}
+            </h3>
+            {tier.badge && (
+              <p class="rounded-full bg-indigo-600/10 px-2.5 py-1 text-xs/5 font-semibold text-indigo-600 dark:bg-indigo-500 dark:text-white">{tier.badge}</p>
+            )}
+          </div>
+          <p class="mt-4 text-sm/6 text-gray-600 dark:text-gray-300">{tier.description}</p>
+          <p class="mt-6 flex items-baseline gap-x-1">
+            <span class="text-4xl font-semibold tracking-tight text-gray-900 dark:text-white">{tier.price}</span>
+            <span class="text-sm/6 font-semibold text-gray-600 dark:text-gray-400">{tier.frequency}</span>
+          </p>
+          <a
+            href={tier.ctaUrl || '#'}
+            aria-describedby={tier.id}
+            class={`mt-6 block w-full rounded-md px-3 py-2 text-center text-sm/6 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 ${
+              tier.featured
+                ? 'bg-indigo-600 text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-indigo-600 dark:bg-indigo-500 dark:shadow-none dark:hover:bg-indigo-400 dark:focus-visible:outline-indigo-500'
+                : 'text-indigo-600 inset-ring-1 inset-ring-indigo-200 hover:inset-ring-indigo-300 focus-visible:outline-indigo-600 dark:bg-white/10 dark:text-white dark:inset-ring dark:inset-ring-white/5 dark:hover:bg-white/20 dark:hover:inset-ring-white/5 dark:focus-visible:outline-indigo-500 dark:focus-visible:outline-white/75'
+            }`}
+          >
+            {tier.ctaText || 'Buy plan'}
+          </a>
+          <ul role="list" class="mt-8 space-y-3 text-sm/6 text-gray-600 xl:mt-10 dark:text-gray-300">
+            {tier.features.map((feature) => (
+              <li class="flex gap-x-3">
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-6 w-5 flex-none text-indigo-600 dark:text-indigo-400">
+                  <Fragment set:html={checkIcon} />
+                </svg>
+                {feature.text}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+
+    <!-- Comparison table -->
+    {comparisonCategories.length > 0 && (
+      <div class="mt-24">
+        <h3 class="text-2xl font-semibold text-gray-900 dark:text-white text-center mb-12">Compare plans</h3>
+        <div class="isolate hidden lg:block">
+          <div class="relative -mx-8">
+            <table class="w-full table-fixed border-separate border-spacing-x-8 text-left">
+              <caption class="sr-only">Feature comparison</caption>
+              <colgroup>
+                <col class="w-1/4" />
+                {tiers.map(() => (
+                  <col class="w-1/4" />
+                ))}
+              </colgroup>
+              <thead>
+                <tr>
+                  <td></td>
+                  {tiers.map((tier) => (
+                    <th scope="col" class="px-6 pt-6 xl:px-8 xl:pt-8">
+                      <div class="text-sm/7 font-semibold text-gray-900 dark:text-white">{tier.name}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonCategories.map((category, catIdx) => (
+                  <>
+                    <tr>
+                      <th scope="colgroup" colspan={tiers.length + 1} class={`${catIdx === 0 ? 'pt-8' : 'pt-16'} pb-4 text-sm/6 font-semibold text-gray-900 dark:text-white`}>
+                        {category.name}
+                        <div class="absolute inset-x-8 mt-4 h-px bg-gray-900/10 dark:bg-white/10"></div>
+                      </th>
+                    </tr>
+                    {category.features.map((feature) => (
+                      <tr>
+                        <th scope="row" class="py-4 text-sm/6 font-normal text-gray-900 dark:text-gray-200">
+                          {feature.name}
+                          <div class="absolute inset-x-8 mt-4 h-px bg-gray-900/5 dark:bg-white/5"></div>
+                        </th>
+                        {tiers.map((tier) => (
+                          <td class="px-6 py-4 xl:px-8">
+                            {typeof feature.tiers[tier.id] === 'boolean' ? (
+                              feature.tiers[tier.id] ? (
+                                <>
+                                  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="mx-auto size-5 text-indigo-600 dark:text-indigo-400">
+                                    <Fragment set:html={checkIcon} />
+                                  </svg>
+                                  <span class="sr-only">Included in {tier.name}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="mx-auto size-5 text-gray-400 dark:text-gray-500">
+                                    <Fragment set:html={minusIcon} />
+                                  </svg>
+                                  <span class="sr-only">Not included in {tier.name}</span>
+                                </>
+                              )
+                            ) : (
+                              <div class="text-center text-sm/6 text-gray-500 dark:text-gray-400">{feature.tiers[tier.id]}</div>
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Mobile comparison -->
+        <div class="lg:hidden space-y-8">
+          {tiers.map((tier) => (
+            <div class="rounded-xl bg-gray-50 p-6 dark:bg-gray-800/50">
+              <h4 class="font-semibold text-gray-900 dark:text-white mb-4">{tier.name}</h4>
+              {comparisonCategories.map((category) => (
+                <div class="mb-4">
+                  <h5 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">{category.name}</h5>
+                  <ul class="space-y-2">
+                    {category.features.filter(f => f.tiers[tier.id]).map((feature) => (
+                      <li class="flex items-center gap-2 text-sm text-gray-900 dark:text-gray-200">
+                        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-5 w-5 flex-none text-indigo-600 dark:text-indigo-400">
+                          <Fragment set:html={checkIcon} />
+                        </svg>
+                        {feature.name}
+                        {typeof feature.tiers[tier.id] === 'string' && (
+                          <span class="text-gray-500 dark:text-gray-400">({feature.tiers[tier.id]})</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+</div>

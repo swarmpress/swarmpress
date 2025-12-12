@@ -1,0 +1,151 @@
+---
+/**
+ * Testimonial Section - Grid
+ * A grid layout with a featured testimonial and multiple smaller ones
+ * Based on: tailwindcss-plus-components/marketing/sections/testimonials/grid.html
+ */
+
+export interface Testimonial {
+  quote: string
+  authorName: string
+  authorHandle?: string
+  authorImage?: string
+  companyLogo?: string
+  companyLogoDark?: string
+  featured?: boolean
+}
+
+export interface Props {
+  eyebrow?: string
+  heading?: string
+  testimonials: Testimonial[]
+}
+
+const {
+  eyebrow = 'Testimonials',
+  heading = 'We have worked with thousands of amazing people',
+  testimonials = [],
+} = Astro.props
+
+// Separate featured and regular testimonials
+const featured = testimonials.find(t => t.featured)
+const leftColumn1 = testimonials.filter(t => !t.featured).slice(0, 3)
+const leftColumn2 = testimonials.filter(t => !t.featured).slice(3, 5)
+const rightColumn1 = testimonials.filter(t => !t.featured).slice(5, 7)
+const rightColumn2 = testimonials.filter(t => !t.featured).slice(7, 10)
+---
+
+<div class="relative isolate bg-white pt-24 pb-32 sm:pt-32 dark:bg-gray-900">
+  <div aria-hidden="true" class="absolute inset-x-0 top-1/2 -z-10 -translate-y-1/2 transform-gpu overflow-hidden opacity-30 blur-3xl">
+    <div style="clip-path: polygon(74.1% 44.1%, 100% 61.6%, 97.5% 26.9%, 85.5% 0.1%, 80.7% 2%, 72.5% 32.5%, 60.2% 62.4%, 52.4% 68.1%, 47.5% 58.3%, 45.2% 34.5%, 27.5% 76.7%, 0.1% 64.9%, 17.9% 100%, 27.6% 76.8%, 76.1% 97.7%, 74.1% 44.1%)" class="ml-[max(50%,38rem)] aspect-[1313/771] w-[82.0625rem] bg-gradient-to-tr from-[#ff80b5] to-[#9089fc]"></div>
+  </div>
+  <div aria-hidden="true" class="absolute inset-x-0 top-0 -z-10 flex transform-gpu overflow-hidden pt-32 opacity-25 blur-3xl sm:pt-40 xl:justify-end">
+    <div style="clip-path: polygon(74.1% 44.1%, 100% 61.6%, 97.5% 26.9%, 85.5% 0.1%, 80.7% 2%, 72.5% 32.5%, 60.2% 62.4%, 52.4% 68.1%, 47.5% 58.3%, 45.2% 34.5%, 27.5% 76.7%, 0.1% 64.9%, 17.9% 100%, 27.6% 76.8%, 76.1% 97.7%, 74.1% 44.1%)" class="-ml-[22rem] aspect-[1313/771] w-[82.0625rem] flex-none origin-top-right rotate-[30deg] bg-gradient-to-tr from-[#ff80b5] to-[#9089fc] xl:mr-[calc(50%-12rem)] xl:ml-0"></div>
+  </div>
+  <div class="mx-auto max-w-7xl px-6 lg:px-8">
+    <div class="mx-auto max-w-2xl text-center">
+      <h2 class="text-base/7 font-semibold text-indigo-600 dark:text-indigo-400">{eyebrow}</h2>
+      <p class="mt-2 text-4xl font-semibold tracking-tight text-balance text-gray-900 sm:text-5xl dark:text-white">{heading}</p>
+    </div>
+    <div class="mx-auto mt-16 grid max-w-2xl grid-cols-1 grid-rows-1 gap-8 text-sm/6 text-gray-900 sm:mt-20 sm:grid-cols-2 xl:mx-0 xl:max-w-none xl:grid-flow-col xl:grid-cols-4 dark:text-gray-100">
+      {featured && (
+        <figure class="rounded-2xl bg-white shadow-lg ring-1 ring-gray-900/5 sm:col-span-2 xl:col-start-2 xl:row-end-1 dark:bg-gray-800/75 dark:shadow-none dark:ring-white/10">
+          <blockquote class="p-6 text-lg font-semibold tracking-tight text-gray-900 sm:p-12 sm:text-xl/8 dark:text-white">
+            <p>"{featured.quote}"</p>
+          </blockquote>
+          <figcaption class="flex flex-wrap items-center gap-x-4 gap-y-4 border-t border-gray-900/10 px-6 py-4 sm:flex-nowrap dark:border-white/10">
+            {featured.authorImage && (
+              <img src={featured.authorImage} alt="" class="size-10 flex-none rounded-full bg-gray-50 dark:bg-gray-700" />
+            )}
+            <div class="flex-auto">
+              <div class="font-semibold text-gray-900 dark:text-white">{featured.authorName}</div>
+              {featured.authorHandle && <div class="text-gray-600 dark:text-gray-400">{featured.authorHandle}</div>}
+            </div>
+            {featured.companyLogo && (
+              <>
+                <img src={featured.companyLogo} alt="" class="h-10 w-auto flex-none dark:hidden" />
+                {featured.companyLogoDark && <img src={featured.companyLogoDark} alt="" class="h-10 w-auto flex-none not-dark:hidden" />}
+              </>
+            )}
+          </figcaption>
+        </figure>
+      )}
+      <div class="space-y-8 xl:contents xl:space-y-0">
+        <div class="space-y-8 xl:row-span-2">
+          {leftColumn1.map((testimonial) => (
+            <figure class="rounded-2xl bg-white p-6 shadow-lg ring-1 ring-gray-900/5 dark:bg-gray-800/75 dark:shadow-none dark:ring-white/10">
+              <blockquote class="text-gray-900 dark:text-white">
+                <p>"{testimonial.quote}"</p>
+              </blockquote>
+              <figcaption class="mt-6 flex items-center gap-x-4">
+                {testimonial.authorImage && (
+                  <img src={testimonial.authorImage} alt="" class="size-10 rounded-full bg-gray-50 dark:bg-gray-700" />
+                )}
+                <div>
+                  <div class="font-semibold text-gray-900 dark:text-white">{testimonial.authorName}</div>
+                  {testimonial.authorHandle && <div class="text-gray-600 dark:text-gray-400">{testimonial.authorHandle}</div>}
+                </div>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+        <div class="space-y-8 xl:row-start-1">
+          {leftColumn2.map((testimonial) => (
+            <figure class="rounded-2xl bg-white p-6 shadow-lg ring-1 ring-gray-900/5 dark:bg-gray-800/75 dark:shadow-none dark:ring-white/10">
+              <blockquote class="text-gray-900 dark:text-white">
+                <p>"{testimonial.quote}"</p>
+              </blockquote>
+              <figcaption class="mt-6 flex items-center gap-x-4">
+                {testimonial.authorImage && (
+                  <img src={testimonial.authorImage} alt="" class="size-10 rounded-full bg-gray-50 dark:bg-gray-700" />
+                )}
+                <div>
+                  <div class="font-semibold text-gray-900 dark:text-white">{testimonial.authorName}</div>
+                  {testimonial.authorHandle && <div class="text-gray-600 dark:text-gray-400">{testimonial.authorHandle}</div>}
+                </div>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+      <div class="space-y-8 xl:contents xl:space-y-0">
+        <div class="space-y-8 xl:row-start-1">
+          {rightColumn1.map((testimonial) => (
+            <figure class="rounded-2xl bg-white p-6 shadow-lg ring-1 ring-gray-900/5 dark:bg-gray-800/75 dark:shadow-none dark:ring-white/10">
+              <blockquote class="text-gray-900 dark:text-white">
+                <p>"{testimonial.quote}"</p>
+              </blockquote>
+              <figcaption class="mt-6 flex items-center gap-x-4">
+                {testimonial.authorImage && (
+                  <img src={testimonial.authorImage} alt="" class="size-10 rounded-full bg-gray-50 dark:bg-gray-700" />
+                )}
+                <div>
+                  <div class="font-semibold text-gray-900 dark:text-white">{testimonial.authorName}</div>
+                  {testimonial.authorHandle && <div class="text-gray-600 dark:text-gray-400">{testimonial.authorHandle}</div>}
+                </div>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+        <div class="space-y-8 xl:row-span-2">
+          {rightColumn2.map((testimonial) => (
+            <figure class="rounded-2xl bg-white p-6 shadow-lg ring-1 ring-gray-900/5 dark:bg-gray-800/75 dark:shadow-none dark:ring-white/10">
+              <blockquote class="text-gray-900 dark:text-white">
+                <p>"{testimonial.quote}"</p>
+              </blockquote>
+              <figcaption class="mt-6 flex items-center gap-x-4">
+                {testimonial.authorImage && (
+                  <img src={testimonial.authorImage} alt="" class="size-10 rounded-full bg-gray-50 dark:bg-gray-700" />
+                )}
+                <div>
+                  <div class="font-semibold text-gray-900 dark:text-white">{testimonial.authorName}</div>
+                  {testimonial.authorHandle && <div class="text-gray-600 dark:text-gray-400">{testimonial.authorHandle}</div>}
+                </div>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -17,16 +17,18 @@
     "typecheck": "astro check"
   },
   "dependencies": {
-    "@swarm-press/shared": "workspace:*",
+    "@astrojs/tailwind": "^5.1.0",
     "@swarm-press/backend": "workspace:*",
     "@swarm-press/github-integration": "workspace:*",
-    "@astrojs/tailwind": "^5.1.0",
+    "@swarm-press/shared": "workspace:*",
     "@tailwindcss/aspect-ratio": "^0.4.2",
     "@tailwindcss/forms": "^0.5.9",
     "@tailwindcss/typography": "^0.5.15",
     "astro": "^5.0.0",
     "sharp": "^0.33.0",
-    "tailwindcss": "^3.4.0"
+    "tailwindcss": "^3.4.0",
+    "yaml": "^2.8.2",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

@@ -1,0 +1,57 @@
+---
+/**
+ * Testimonial Section - Subtle Grid
+ * A masonry-style column layout with subtle styling
+ * Based on: tailwindcss-plus-components/marketing/sections/testimonials/subtle_grid.html
+ */
+
+export interface Testimonial {
+  quote: string
+  authorName: string
+  authorHandle?: string
+  authorImage?: string
+}
+
+export interface Props {
+  eyebrow?: string
+  heading?: string
+  testimonials: Testimonial[]
+}
+
+const {
+  eyebrow = 'Testimonials',
+  heading = 'We have worked with thousands of amazing people',
+  testimonials = [],
+} = Astro.props
+---
+
+<div class="bg-white py-24 sm:py-32 dark:bg-gray-900">
+  <div class="mx-auto max-w-7xl px-6 lg:px-8">
+    <div class="mx-auto max-w-2xl text-center">
+      <h2 class="text-base/7 font-semibold text-indigo-600 dark:text-indigo-400">{eyebrow}</h2>
+      <p class="mt-2 text-4xl font-semibold tracking-tight text-balance text-gray-900 sm:text-5xl dark:text-white">{heading}</p>
+    </div>
+    <div class="mx-auto mt-16 flow-root max-w-2xl sm:mt-20 lg:mx-0 lg:max-w-none">
+      <div class="-mt-8 sm:-mx-4 sm:columns-2 sm:text-[0] lg:columns-3">
+        {testimonials.map((testimonial) => (
+          <div class="pt-8 sm:inline-block sm:w-full sm:px-4">
+            <figure class="rounded-2xl bg-gray-50 p-8 text-sm/6 dark:bg-white/[0.025]">
+              <blockquote class="text-gray-900 dark:text-gray-100">
+                <p>"{testimonial.quote}"</p>
+              </blockquote>
+              <figcaption class="mt-6 flex items-center gap-x-4">
+                {testimonial.authorImage && (
+                  <img src={testimonial.authorImage} alt="" class="size-10 rounded-full bg-gray-50 dark:bg-gray-800" />
+                )}
+                <div>
+                  <div class="font-semibold text-gray-900 dark:text-white">{testimonial.authorName}</div>
+                  {testimonial.authorHandle && <div class="text-gray-600 dark:text-gray-400">{testimonial.authorHandle}</div>}
+                </div>
+              </figcaption>
+            </figure>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+</div>

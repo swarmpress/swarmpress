@@ -1,0 +1,97 @@
+---
+/**
+ * Bento Grid Section - Two Row
+ * Two-row bento grid with 4:2 and 2:4 layout
+ * Based on: tailwindcss-plus-components/marketing/sections/bento-grids/two_row_bento_grid.html
+ */
+
+export interface BentoItem {
+  eyebrow: string
+  title: string
+  description: string
+  image?: string
+  imageDark?: string
+  colSpan?: number
+}
+
+export interface Props {
+  eyebrow?: string
+  heading?: string
+  items?: BentoItem[]
+}
+
+const {
+  eyebrow = 'Deploy faster',
+  heading = 'Everything you need to deploy your app',
+  items = [
+    {
+      eyebrow: 'Releases',
+      title: 'Push to deploy',
+      description: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. In gravida justo et nulla efficitur, maximus egestas sem pellentesque.',
+      image: 'https://tailwindcss.com/plus-assets/img/component-images/bento-02-releases.png',
+      imageDark: 'https://tailwindcss.com/plus-assets/img/component-images/dark-bento-02-releases.png',
+      colSpan: 4,
+    },
+    {
+      eyebrow: 'Integrations',
+      title: 'Connect your favorite tools',
+      description: 'Curabitur auctor, ex quis auctor venenatis, eros arcu rhoncus massa.',
+      image: 'https://tailwindcss.com/plus-assets/img/component-images/bento-02-integrations.png',
+      imageDark: 'https://tailwindcss.com/plus-assets/img/component-images/dark-bento-02-integrations.png',
+      colSpan: 2,
+    },
+    {
+      eyebrow: 'Security',
+      title: 'Advanced access control',
+      description: 'Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia.',
+      image: 'https://tailwindcss.com/plus-assets/img/component-images/bento-02-security.png',
+      imageDark: 'https://tailwindcss.com/plus-assets/img/component-images/dark-bento-02-security.png',
+      colSpan: 2,
+    },
+    {
+      eyebrow: 'Performance',
+      title: 'Lightning-fast builds',
+      description: 'Sed congue eros non finibus molestie. Vestibulum euismod augue vel commodo vulputate. Maecenas at augue sed elit dictum vulputate.',
+      image: 'https://tailwindcss.com/plus-assets/img/component-images/bento-02-performance.png',
+      imageDark: 'https://tailwindcss.com/plus-assets/img/component-images/dark-bento-02-performance.png',
+      colSpan: 4,
+    },
+  ],
+} = Astro.props
+
+const cornerClasses = [
+  'max-lg:rounded-t-4xl lg:rounded-tl-4xl',
+  'lg:rounded-tr-4xl',
+  'lg:rounded-bl-4xl',
+  'max-lg:rounded-b-4xl lg:rounded-br-4xl',
+]
+---
+
+<div class="bg-gray-50 py-24 sm:py-32 dark:bg-gray-900">
+  <div class="mx-auto max-w-2xl px-6 lg:max-w-7xl lg:px-8">
+    <h2 class="text-base/7 font-semibold text-indigo-600 dark:text-indigo-400">{eyebrow}</h2>
+    <p class="mt-2 max-w-lg text-4xl font-semibold tracking-tight text-pretty text-gray-900 sm:text-5xl dark:text-white">{heading}</p>
+    <div class="mt-10 grid grid-cols-1 gap-4 sm:mt-16 lg:grid-cols-6 lg:grid-rows-2">
+      {items.map((item, index) => (
+        <div class:list={['flex p-px', item.colSpan === 4 ? 'lg:col-span-4' : 'lg:col-span-2']}>
+          <div class:list={[
+            'w-full overflow-hidden rounded-lg bg-white shadow-sm outline outline-black/5 dark:bg-gray-800 dark:shadow-none dark:outline-white/15',
+            cornerClasses[index] || '',
+          ]}>
+            {item.image && (
+              <>
+                <img src={item.image} alt="" class="h-80 object-cover object-left dark:hidden" />
+                {item.imageDark && <img src={item.imageDark} alt="" class="h-80 object-cover object-left not-dark:hidden" />}
+              </>
+            )}
+            <div class="p-10">
+              <h3 class="text-sm/4 font-semibold text-gray-500 dark:text-gray-400">{item.eyebrow}</h3>
+              <p class="mt-2 text-lg font-medium tracking-tight text-gray-900 dark:text-white">{item.title}</p>
+              <p class="mt-2 max-w-lg text-sm/6 text-gray-600 dark:text-gray-400">{item.description}</p>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</div>

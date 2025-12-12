@@ -106,6 +106,34 @@ export class GitHubContentService {
   }
 
   // ============================================================
+  // Raw File Operations
+  // ============================================================
+
+  /**
+   * Get raw file content from repository
+   * Useful for loading non-JSON files like sitemap.json at arbitrary paths
+   */
+  async getFileContent(path: string): Promise<string | null> {
+    const result = await this.client.getFileContent(path, this.branch)
+    if (!result) return null
+    return result.content
+  }
+
+  /**
+   * Get the configured branch
+   */
+  getBranch(): string {
+    return this.branch
+  }
+
+  /**
+   * Get the configured content path
+   */
+  getContentPath(): string {
+    return this.contentPath
+  }
+
+  // ============================================================
   // Website Config Operations
   // ============================================================
 
