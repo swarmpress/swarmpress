@@ -78,6 +78,23 @@ function SortableComponentCard({ component, onUpdate, onRemove }: SortableCompon
 
   const componentIcons: Record<string, string> = {
     hero: '🎯',
+    header: '📋',
+    features: '🧩',
+    content: '📝',
+    cta: '📣',
+    stats: '📊',
+    testimonials: '💬',
+    faq: '❓',
+    team: '👥',
+    contact: '📧',
+    pricing: '💰',
+    newsletter: '📰',
+    blog: '📰',
+    'logo-cloud': '🏢',
+    'bento-grid': '🧱',
+    footer: '🔚',
+    collection: '📦',
+    // Legacy types
     paragraph: '📝',
     heading: '📌',
     list: '📋',
@@ -85,13 +102,10 @@ function SortableComponentCard({ component, onUpdate, onRemove }: SortableCompon
     image: '🖼️',
     gallery: '🎨',
     video: '🎬',
-    cta: '🎯',
     form: '📝',
     accordion: '📁',
     tabs: '📑',
-    faq: '❓',
     table: '📊',
-    pricing: '💰',
     timeline: '⏱️',
     breadcrumbs: '🍞',
     'related-links': '🔗',
@@ -119,8 +133,13 @@ function SortableComponentCard({ component, onUpdate, onRemove }: SortableCompon
 
         <div className="flex-1">
           <div className="font-medium text-gray-900 capitalize">
-            {component.type.replace('-', ' ')}
+            {component.type.replace(/-/g, ' ')}
           </div>
+          {component.variant && (
+            <div className="text-xs text-blue-600 capitalize">
+              {component.variant.replace(/-/g, ' ')}
+            </div>
+          )}
           <div className="text-xs text-gray-500">Order: {component.order + 1}</div>
         </div>
 

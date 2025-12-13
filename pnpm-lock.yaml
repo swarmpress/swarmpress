@@ -294,6 +294,9 @@ importers:
       '@swarm-press/event-bus':
         specifier: workspace:*
         version: link:../event-bus
+      '@swarm-press/github-integration':
+        specifier: workspace:*
+        version: link:../github-integration
       '@swarm-press/shared':
         specifier: workspace:*
         version: link:../shared

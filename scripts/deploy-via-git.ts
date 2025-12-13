@@ -47,7 +47,11 @@ async function deployViaGit() {
     // Import buildFromGitHub
     const { buildFromGitHub } = await import('../packages/site-builder/src/generator/github-build')
 
-    console.log('\n🏗️  Building site...\n')
+    // Path to local i18n pages
+    const i18nPagesPath = resolve(__dirname, '../cinqueterre.travel/content/pages')
+
+    console.log('\n🏗️  Building site with i18n pages...\n')
+    console.log(`   i18n pages: ${i18nPagesPath}`)
 
     const buildResult = await buildFromGitHub({
       github: {
@@ -59,6 +63,7 @@ async function deployViaGit() {
       },
       siteUrl: 'https://cinqueterre.travel',
       itemsPerPage: 12,
+      i18nPagesPath,  // Use local i18n pages instead of GitHub pages
     })
 
     if (!buildResult.success) {

@@ -189,10 +189,11 @@ export default function BlueprintEditor({ blueprintId }: BlueprintEditorProps) {
     })
   }
 
-  function addComponent(type: string) {
+  function addComponent(type: string, variant?: string) {
     const newComponent: BlueprintComponent = {
       id: `component-${Date.now()}`,
       type,
+      variant,
       order: blueprint.components.length,
       required: false,
       props: {},

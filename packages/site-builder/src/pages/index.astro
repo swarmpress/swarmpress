@@ -8,33 +8,25 @@ import FAQ from '../components/blocks/FAQ.astro'
 <BaseLayout title="Site Builder Preview" description="swarm.press site builder component preview">
   <main class="container mx-auto px-4 py-8">
     <Hero
-      block={{
-        type: 'hero',
-        title: 'swarm.press Site Builder',
-        subtitle: 'Component Preview',
-        cta: { text: 'View Admin', url: 'http://localhost:3002' }
-      }}
+      title="swarm.press Site Builder"
+      subtitle="Component Preview"
+      ctaText="View Admin"
+      ctaUrl="http://localhost:3002"
     />
 
     <section class="my-12">
       <h2 class="text-2xl font-bold mb-6">Block Components</h2>
 
       <Paragraph
-        block={{
-          type: 'paragraph',
-          markdown: 'This is a **preview page** for the site-builder components. In production, pages are generated dynamically from database content by the EngineeringAgent.'
-        }}
+        text="This is a <strong>preview page</strong> for the site-builder components. In production, pages are generated dynamically from database content by the EngineeringAgent."
       />
 
       <FAQ
-        block={{
-          type: 'faq',
-          items: [
-            { q: 'What is the site-builder?', a: 'A library of Astro components that render JSON content blocks into static HTML pages.' },
-            { q: 'How are pages generated?', a: 'The EngineeringAgent fetches content from the database and uses these components to build static sites.' },
-            { q: 'Where is the content stored?', a: 'Content is stored in PostgreSQL as JSON block arrays, not Markdown files.' }
-          ]
-        }}
+        items={[
+          { question: 'What is the site-builder?', answer: 'A library of Astro components that render JSON content blocks into static HTML pages.' },
+          { question: 'How are pages generated?', answer: 'The EngineeringAgent fetches content from the database and uses these components to build static sites.' },
+          { question: 'Where is the content stored?', answer: 'Content is stored in PostgreSQL as JSON block arrays, not Markdown files.' }
+        ]}
       />
     </section>
 

@@ -17,6 +17,15 @@ interface SitemapControlsProps {
   canRedo: boolean
   nodeCount: number
   selectedCount: number
+  onAddPage?: (page: NewPageData) => void
+  websiteId?: string
+}
+
+interface NewPageData {
+  title: string
+  slug: string
+  page_type: string
+  parent_id?: string
 }
 
 export default function SitemapControls({
@@ -31,11 +40,17 @@ export default function SitemapControls({
   canRedo,
   nodeCount,
   selectedCount,
+  onAddPage,
+  websiteId,
 }: SitemapControlsProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [showClusters, setShowClusters] = useState(true)
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null)
   const [selectedPageType, setSelectedPageType] = useState<string | null>(null)
+  const [showNewPageModal, setShowNewPageModal] = useState(false)
+  const [newPageTitle, setNewPageTitle] = useState('')
+  const [newPageType, setNewPageType] = useState('article')
+  const [creating, setCreating] = useState(false)
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value
@@ -59,8 +74,140 @@ export default function SitemapControls({
     onToggleClusters(newValue)
   }
 
+  const generateSlug = (title: string) => {
+    return title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .trim()
+  }
+
+  const handleCreatePage = async () => {
+    if (!newPageTitle || !websiteId) return
+
+    setCreating(true)
+    try {
+      const slug = generateSlug(newPageTitle)
+      const response = await fetch('/api/trpc/sitemap.create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          json: {
+            website_id: websiteId,
+            title: newPageTitle,
+            slug,
+            page_type: newPageType,
+            status: 'draft',
+          },
+        }),
+      })
+
+      const data = await response.json()
+      if (data.result?.data?.json) {
+        const newPage = data.result.data.json
+        if (onAddPage) {
+          onAddPage({
+            title: newPage.title,
+            slug: newPage.slug,
+            page_type: newPage.page_type,
+          })
+        }
+        // Navigate to page editor
+        window.location.href = `/pages/${newPage.id}`
+      }
+    } catch (error) {
+      console.error('Failed to create page:', error)
+    } finally {
+      setCreating(false)
+      setShowNewPageModal(false)
+      setNewPageTitle('')
+      setNewPageType('article')
+    }
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-lg p-4 space-y-4">
+      {/* New Page Button */}
+      <button
+        onClick={() => setShowNewPageModal(true)}
+        className="w-full px-4 py-3 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors flex items-center justify-center gap-2"
+      >
+        <span>+</span>
+        <span>New Page</span>
+      </button>
+
+      {/* New Page Modal */}
+      {showNewPageModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New Page</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Page Title
+                </label>
+                <input
+                  type="text"
+                  value={newPageTitle}
+                  onChange={(e) => setNewPageTitle(e.target.value)}
+                  placeholder="Enter page title"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  autoFocus
+                />
+                {newPageTitle && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Slug: /{generateSlug(newPageTitle)}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Page Type
+                </label>
+                <select
+                  value={newPageType}
+                  onChange={(e) => setNewPageType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="homepage">Homepage</option>
+                  <option value="category">Category</option>
+                  <option value="article">Article</option>
+                  <option value="landing">Landing</option>
+                  <option value="village">Village</option>
+                  <option value="overview">Overview</option>
+                  <option value="detail">Detail</option>
+                  <option value="list">List</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowNewPageModal(false)
+                  setNewPageTitle('')
+                  setNewPageType('article')
+                }}
+                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                disabled={creating}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreatePage}
+                disabled={!newPageTitle || creating}
+                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {creating ? 'Creating...' : 'Create Page'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Search Bar */}
       <div className="relative">
         <input

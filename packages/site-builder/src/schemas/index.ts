@@ -55,3 +55,70 @@ export {
   type SocialPlatform,
   type CtaButton,
 } from './navigation-config'
+
+// Page schema (i18n pages with inline translations)
+export {
+  // Core schemas
+  PageSchema,
+  LocalizedSlugSchema,
+  LocalizedSeoSchema,
+  LocalizedButtonSchema,
+  PageMetadataSchema,
+  // Section schemas
+  SectionBlockSchema,
+  HeroSectionSchema,
+  StatsSectionSchema,
+  FeatureSectionSchema,
+  CtaSectionSchema,
+  FaqSectionSchema,
+  ContentSectionSchema,
+  GallerySectionSchema,
+  TestimonialSectionSchema,
+  PricingSectionSchema,
+  FooterSectionSchema,
+  HeaderSectionSchema,
+  // Types
+  type Page,
+  type LocalizedSlug,
+  type LocalizedSeo,
+  type LocalizedButton,
+  type PageMetadata,
+  type SectionBlock,
+  type HeroSection,
+  type StatsSection,
+  type FeatureSection,
+  type CtaSection,
+  type FaqSection,
+  type ContentSection,
+  type GallerySection,
+  type TestimonialSection,
+  type PricingSection,
+  type FooterSection,
+  type HeaderSection,
+} from './page-schema'
+
+// Blueprint schema (page templates for content generation)
+export {
+  // Schemas
+  BlueprintSchema,
+  BlueprintComponentSchema,
+  AIHintsSchema,
+  CollectionSourceSchema,
+  LinkingRulesSchema,
+  SEOTemplateSchema,
+  DisplayPropsSchema,
+  ComponentPropsSchema,
+  // Types
+  type Blueprint,
+  type BlueprintComponent,
+  type AIHints,
+  type CollectionSource,
+  type LinkingRules,
+  type SEOTemplate,
+  type ComponentProps,
+  // Helpers
+  validateBlueprint,
+  validateBlueprintComponent,
+  getDefaultAIHints,
+  getComponentFileName,
+} from './blueprint-schema'

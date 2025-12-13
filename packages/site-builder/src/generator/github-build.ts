@@ -28,6 +28,10 @@ import {
   type ParsedSitemap,
   type SitemapNode,
 } from './sitemap-parser'
+import {
+  loadAndExpandI18nPages,
+  type FlatPage,
+} from './i18n-processor'
 
 const execAsync = promisify(exec)
 
@@ -44,6 +48,8 @@ export interface GitHubBuildOptions {
   siteUrl?: string
   /** Items per page for collection pagination */
   itemsPerPage?: number
+  /** Path to local i18n pages directory (if set, uses local i18n pages instead of GitHub pages) */
+  i18nPagesPath?: string
 }
 
 export interface GitHubBuildResult {
@@ -172,9 +178,21 @@ export async function buildFromGitHub(options: GitHubBuildOptions): Promise<GitH
       console.log(`[GitHubBuild] No sitemap.json found, using legacy navigation`)
     }
 
-    // Fetch all pages from GitHub
-    const pageFiles = await contentService.listPages()
-    console.log(`[GitHubBuild] Found ${pageFiles.length} pages`)
+    // Fetch pages - either from local i18n files or GitHub
+    let pages: InternalPage[]
+
+    if (options.i18nPagesPath) {
+      // Load and expand i18n pages from local path
+      console.log(`[GitHubBuild] Loading i18n pages from: ${options.i18nPagesPath}`)
+      const flatPages = await loadAndExpandI18nPages(options.i18nPagesPath)
+      pages = flatPages.map(fp => convertFlatPage(fp))
+      console.log(`[GitHubBuild] Expanded to ${pages.length} pages across all languages`)
+    } else {
+      // Fetch from GitHub (legacy mode)
+      const pageFiles = await contentService.listPages()
+      pages = pageFiles.map(pf => convertPageFile(pf.content))
+      console.log(`[GitHubBuild] Found ${pages.length} pages from GitHub`)
+    }
 
     // Fetch all collections with items - handling both individual and grouped formats
     const collections = await loadCollectionsWithGroupedItems(contentService)
@@ -187,7 +205,6 @@ export async function buildFromGitHub(options: GitHubBuildOptions): Promise<GitH
     const siteUrl = options.siteUrl || config.domain || 'https://example.com'
 
     // Generate pages with sitemap navigation if available
-    const pages = pageFiles.map(pf => convertPageFile(pf.content))
     if (sitemap) {
       await generatePagesWithSitemap(config, pages, buildDir, sitemap, siteUrl)
     } else {
@@ -387,6 +404,22 @@ function convertPageFile(file: PageFile): InternalPage {
     description: file.description,
     body: file.body,
     status: file.status,
+  }
+}
+
+/**
+ * Convert flattened i18n page to internal page format
+ */
+function convertFlatPage(page: FlatPage): InternalPage {
+  // Remove leading slash from slug for consistency
+  const slug = page.slug.startsWith('/') ? page.slug.slice(1) : page.slug
+  return {
+    id: page.id,
+    slug,
+    title: page.title,
+    description: page.seo?.description,
+    body: page.body,
+    status: page.status,
   }
 }
 

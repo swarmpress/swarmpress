@@ -6,8 +6,13 @@
 import Layout from '../../layouts/Layout.astro'
 import SitemapGraph from '../../components/SitemapGraph'
 import GitHubSyncPanel from '../../components/sitemap/GitHubSyncPanel'
+import { getSessionContext } from '../../lib/session'
 
 const title = 'Sitemap Editor'
+
+// Get the selected product (website) from session
+const session = getSessionContext(Astro.cookies)
+const websiteId = session.productId
 ---
 
 <Layout title={title}>
@@ -22,12 +27,6 @@ const title = 'Sitemap Editor'
           </p>
         </div>
         <div class="flex gap-3">
-          <select
-            id="website-selector"
-            class="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-          >
-            <option value="">Select Website...</option>
-          </select>
           <button
             id="new-page-btn"
             class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
@@ -38,11 +37,29 @@ const title = 'Sitemap Editor'
       </div>
     </div>
 
-    <!-- Graph Editor with Collaboration & GitHub Panels -->
-    <div class="flex-1 bg-gray-50 flex">
-      <div class="flex-1">
-        <SitemapGraph client:only="react" />
+    <!-- Hidden input to pass websiteId to client-side JS -->
+    <input type="hidden" id="selected-website-id" value={websiteId || ''} />
+
+    {!websiteId ? (
+      <!-- No product selected -->
+      <div class="flex-1 flex items-center justify-center bg-gray-50">
+        <div class="text-center py-12 px-6 max-w-md">
+          <div class="text-6xl mb-4">🌐</div>
+          <h3 class="text-xl font-semibold text-gray-900 mb-2">No Website Selected</h3>
+          <p class="text-gray-600 mb-6">
+            Please select a product (website) from the sidebar to view and edit its sitemap.
+          </p>
+          <p class="text-sm text-gray-500">
+            Use the team switcher in the sidebar header to select your media house and product.
+          </p>
+        </div>
       </div>
+    ) : (
+      <!-- Graph Editor with Collaboration & GitHub Panels -->
+      <div class="flex-1 bg-gray-50 flex">
+        <div class="flex-1">
+          <SitemapGraph client:only="react" />
+        </div>
       <!-- Right Sidebar with Tabs -->
       <div class="w-96 border-l bg-white flex flex-col">
         <!-- Tab Navigation -->
@@ -71,7 +88,8 @@ const title = 'Sitemap Editor'
         <div id="analytics-panel" class="hidden flex-1 overflow-hidden"></div>
         <div id="github-sync-container" class="hidden flex-1 overflow-y-auto p-4"></div>
       </div>
-    </div>
+      </div>
+    )}
   </div>
 </Layout>
 
@@ -116,46 +134,9 @@ const title = 'Sitemap Editor'
   tabAnalytics?.addEventListener('click', () => switchTab('analytics'))
   tabGitHub?.addEventListener('click', () => switchTab('github'))
 
-  // Load websites for selector
-  async function loadWebsites() {
-    try {
-      const response = await fetch('/api/websites')
-      const data = await response.json()
-      const select = document.getElementById('website-selector') as HTMLSelectElement
-
-      if (data.items && data.items.length > 0) {
-        data.items.forEach((website: any) => {
-          const option = document.createElement('option')
-          option.value = website.id
-          option.textContent = website.title || website.domain
-          select.appendChild(option)
-        })
-
-        // Auto-select first website
-        if (data.items[0]) {
-          select.value = data.items[0].id
-          // Trigger change event to load sitemap
-          select.dispatchEvent(new Event('change'))
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load websites:', error)
-    }
-  }
-
-  // Handle website selection
-  document.getElementById('website-selector')?.addEventListener('change', (e) => {
-    const websiteId = (e.target as HTMLSelectElement).value
-    if (websiteId) {
-      // Dispatch custom event for React component
-      window.dispatchEvent(new CustomEvent('website-selected', { detail: { websiteId } }))
-
-      // Load all panels
-      loadCollaborationPanel(websiteId)
-      loadAnalyticsPanel(websiteId)
-      loadGitHubSyncPanel(websiteId)
-    }
-  })
+  // Get websiteId from session (passed via hidden input)
+  const websiteIdInput = document.getElementById('selected-website-id') as HTMLInputElement
+  const websiteId = websiteIdInput?.value
 
   // Load collaboration panel
   async function loadCollaborationPanel(websiteId: string) {
@@ -197,6 +178,14 @@ const title = 'Sitemap Editor'
     root.render(createElement(GitHubSyncPanel, { websiteId }))
   }
 
-  // Initialize
-  loadWebsites()
+  // Initialize with selected website from session
+  if (websiteId) {
+    // Dispatch event for React components (SitemapGraph)
+    window.dispatchEvent(new CustomEvent('website-selected', { detail: { websiteId } }))
+
+    // Load sidebar panels
+    loadCollaborationPanel(websiteId)
+    loadAnalyticsPanel(websiteId)
+    loadGitHubSyncPanel(websiteId)
+  }
 </script>

@@ -393,6 +393,8 @@ function SitemapGraphInner() {
             canRedo={historyIndex < history.length - 1}
             nodeCount={nodes.filter((n) => n.type === 'page').length}
             selectedCount={selectedCount}
+            websiteId={websiteId || undefined}
+            onAddPage={() => websiteId && loadSitemap(websiteId)}
           />
         </Panel>
 

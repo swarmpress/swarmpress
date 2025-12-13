@@ -42,6 +42,63 @@ export type { ComponentCategory, ResolvedComponent } from './component-resolver'
 export { parseSitemap, loadSitemapFromGitHub } from './sitemap-parser'
 export type { ParsedSitemap, SitemapNode, SiteConfig as SitemapSiteConfig } from './sitemap-parser'
 
+// Blueprint to page generation
+export {
+  generatePageFromBlueprint,
+  batchGeneratePages,
+} from './blueprint-to-page'
+export type {
+  PageContext,
+  GeneratedPage,
+  GeneratedPageSection,
+} from './blueprint-to-page'
+
+// Blueprint brief generation (for AI agents)
+export {
+  generateBriefFromBlueprint,
+  briefToMarkdown,
+  briefToJSON,
+  extractSectionPrompts,
+} from './blueprint-brief'
+export type {
+  GeneratedBrief,
+  SectionBrief,
+  FieldBrief,
+  AIGuidance,
+  LinkingGuidance,
+  SEOGuidance,
+} from './blueprint-brief'
+
+// Content sync (auto-Git)
+export {
+  saveAndSync,
+  batchSaveAndSync,
+  isGitRepo,
+  getGitRoot,
+  getGitStatus,
+  savePageAndSync,
+  saveCollectionItemAndSync,
+} from './content-sync'
+export type {
+  SyncOptions,
+  SyncResult,
+  GitStatus,
+} from './content-sync'
+
+// i18n page processing
+export {
+  getLocalizedValue,
+  getLocalizedArray,
+  flattenLocalizedObject,
+  flattenI18nPage,
+  getAvailableLanguages,
+  expandI18nPage,
+  expandI18nPages,
+  loadI18nPages,
+  loadAndExpandI18nPages,
+} from './i18n-processor'
+export type { I18nPage, FlatPage, LocalizedString, LocalizedStringArray } from './i18n-processor'
+
 // Collection generation
 export { generateCollectionPages } from './collection-pages'
 export type { CollectionGenerationResult } from '../types/collection-types'

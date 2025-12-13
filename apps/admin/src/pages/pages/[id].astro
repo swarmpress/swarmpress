@@ -1,0 +1,16 @@
+---
+/**
+ * Page Editor
+ * Edit page properties, assign blueprints, configure collections, trigger content generation
+ */
+import Layout from '../../layouts/Layout.astro'
+import PageEditor from '../../components/pages/PageEditor'
+
+const { id } = Astro.params
+const isNew = id === 'new-page'
+const title = isNew ? 'New Page' : 'Edit Page'
+---
+
+<Layout title={title}>
+  <PageEditor client:only="react" pageId={isNew ? undefined : id} />
+</Layout>

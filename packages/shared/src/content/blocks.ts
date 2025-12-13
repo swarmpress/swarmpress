@@ -210,15 +210,11 @@ const HeroSectionVariantSchema = z.enum([
   'simple-centered',
   'simple-centered-with-background',
   'split-with-image',
-  'split-with-screenshot',
-  'split-with-bordered-screenshot',
-  'split-with-code',
   'with-app-screenshot',
-  'with-bordered-app-screenshot',
   'with-phone-mockup',
   'with-image-tiles',
-  'with-angled-image',
   'with-offset-image',
+  'with-angled-image',
 ])
 
 export const HeroSectionBlockSchema = z.object({
@@ -243,21 +239,21 @@ export const HeroSectionBlockSchema = z.object({
 
 // Feature Section Variants
 const FeatureSectionVariantSchema = z.enum([
+  'simple',
   'simple-3x2-grid',
   'centered-2x2-grid',
   'offset-2x2-grid',
-  'with-screenshot',
-  'with-screenshot-left',
-  'with-code-panel',
-  'contained-panel',
-  'offset-feature-list',
-  'three-column-small-icons',
-  'three-column-large-icons',
-  'with-testimonial',
+  'offset-with-feature-list',
+  'three-column-with-large-icons',
+  'three-column-with-small-icons',
   'with-product-screenshot',
-  'simple-three-column',
-  'with-large-icons',
-  'with-background',
+  'with-product-screenshot-on-left',
+  'with-product-screenshot-panel',
+  'with-large-screenshot',
+  'with-large-bordered-screenshot',
+  'with-code-example-panel',
+  'contained-in-panel',
+  'with-testimonial',
 ])
 
 export const FeatureSectionBlockSchema = z.object({
@@ -279,16 +275,14 @@ export const FeatureSectionBlockSchema = z.object({
 const PricingSectionVariantSchema = z.enum([
   'three-tiers',
   'three-tiers-with-toggle',
-  'three-tiers-highlighted',
+  'three-tiers-with-dividers',
+  'three-tiers-emphasized',
+  'three-tiers-with-comparison',
   'two-tiers',
   'two-tiers-with-extra',
   'single-price',
-  'single-price-with-details',
-  'with-comparison',
-  'with-feature-comparison',
-  'four-tiers',
-  'simple-cards',
-  'with-free-tier',
+  'four-tiers-with-toggle',
+  'with-comparison-table',
 ])
 
 export const PricingSectionBlockSchema = z.object({
@@ -311,12 +305,12 @@ export const PricingSectionBlockSchema = z.object({
 const TestimonialSectionVariantSchema = z.enum([
   'simple-centered',
   'with-large-avatar',
+  'with-star-rating',
   'side-by-side',
-  'with-background-image',
   'grid',
-  'carousel',
-  'with-rating',
-  'quote-only',
+  'subtle-grid',
+  'with-background-image',
+  'with-overlapping-image',
 ])
 
 export const TestimonialSectionBlockSchema = z.object({
@@ -335,14 +329,14 @@ const CtaSectionVariantSchema = z.enum([
   'simple-centered',
   'simple-stacked',
   'simple-justified',
+  'centered-on-dark-panel',
+  'simple-centered-on-brand',
+  'simple-centered-with-gradient',
+  'simple-justified-on-subtle-brand',
   'split-with-image',
-  'with-background-image',
-  'with-app-screenshot',
-  'brand-panel',
-  'dark-panel',
-  'with-input',
-  'two-columns',
-  'simple-dark',
+  'dark-panel-with-app-screenshot',
+  'two-columns-with-photo',
+  'with-image-tiles',
 ])
 
 export const CtaSectionBlockSchema = z.object({
@@ -362,18 +356,18 @@ export const CtaSectionBlockSchema = z.object({
 
 // Blog Section Variants
 const BlogSectionVariantSchema = z.enum([
-  'three-column-cards',
-  'three-column-with-background',
   'single-column',
-  'two-column-with-images',
+  'single-column-with-images',
+  'three-column',
+  'three-column-with-images',
+  'three-column-with-background-images',
   'with-featured-post',
-  'simple-list',
-  'card-grid',
+  'with-photo-and-list',
 ])
 
 export const BlogSectionBlockSchema = z.object({
   type: z.literal('blog-section'),
-  variant: BlogSectionVariantSchema.default('three-column-cards'),
+  variant: BlogSectionVariantSchema.default('three-column'),
   // Content
   eyebrow: z.string().optional(),
   title: z.string(),
@@ -386,14 +380,14 @@ export const BlogSectionBlockSchema = z.object({
 
 // Stats Section Variants
 const StatsSectionVariantSchema = z.enum([
+  'simple',
   'simple-grid',
-  'simple-on-dark',
-  'split-with-image',
   'with-description',
-  'timeline-style',
-  'with-background',
-  'card-grid',
-  'simple-centered',
+  'split-with-image',
+  'stepped',
+  'timeline',
+  'with-background-image',
+  'with-two-column-description',
 ])
 
 export const StatsSectionBlockSchema = z.object({
@@ -410,20 +404,20 @@ export const StatsSectionBlockSchema = z.object({
 
 // Team Section Variants
 const TeamSectionVariantSchema = z.enum([
-  'simple-grid',
-  'with-large-images',
   'with-small-images',
-  'grid-with-large-round-images',
+  'with-medium-images',
+  'with-large-images',
   'with-vertical-images',
-  'with-bio',
-  'dark-background',
-  'with-social-links',
-  'card-grid',
+  'full-width-vertical-images',
+  'grid-round-images',
+  'grid-large-round-images',
+  'large-grid-with-cards',
+  'with-image-and-paragraph',
 ])
 
 export const TeamSectionBlockSchema = z.object({
   type: z.literal('team-section'),
-  variant: TeamSectionVariantSchema.default('simple-grid'),
+  variant: TeamSectionVariantSchema.default('with-small-images'),
   // Content
   eyebrow: z.string().optional(),
   title: z.string(),
@@ -435,17 +429,17 @@ export const TeamSectionBlockSchema = z.object({
 
 // Newsletter Section Variants
 const NewsletterSectionVariantSchema = z.enum([
-  'simple-centered',
   'simple-stacked',
-  'side-by-side',
-  'with-background',
-  'card-style',
-  'with-benefits',
+  'simple-side-by-side',
+  'simple-side-by-side-on-brand',
+  'centered-card',
+  'side-by-side-on-card',
+  'side-by-side-with-details',
 ])
 
 export const NewsletterSectionBlockSchema = z.object({
   type: z.literal('newsletter-section'),
-  variant: NewsletterSectionVariantSchema.default('simple-centered'),
+  variant: NewsletterSectionVariantSchema.default('simple-stacked'),
   // Content
   title: z.string(),
   subtitle: z.string().optional(),
@@ -459,12 +453,12 @@ export const NewsletterSectionBlockSchema = z.object({
 // Contact Section Variants
 const ContactSectionVariantSchema = z.enum([
   'simple-centered',
+  'four-column',
+  'centered',
+  'side-by-side-grid',
+  'split-with-image',
   'split-with-pattern',
-  'split-two-tone',
-  'side-by-side',
-  'with-card',
-  'offices-grid',
-  'simple-four-column',
+  'with-testimonial',
 ])
 
 export const ContactSectionBlockSchema = z.object({
@@ -499,12 +493,12 @@ export const ContactSectionBlockSchema = z.object({
 // FAQ Section Variants (Marketing-style, different from simple FAQ block)
 const FaqSectionVariantSchema = z.enum([
   'centered-accordion',
+  'offset-with-supporting-text',
   'side-by-side',
-  'three-column',
-  'with-supporting-text',
-  'two-column-grid',
-  'offset-with-supporting',
-  'simple-centered',
+  'three-columns-with-centered-intro',
+  'three-columns',
+  'two-columns-with-centered-intro',
+  'two-columns',
 ])
 
 export const FaqSectionBlockSchema = z.object({
@@ -525,17 +519,17 @@ export const FaqSectionBlockSchema = z.object({
 
 // Logo Cloud Section Variants
 const LogoCloudSectionVariantSchema = z.enum([
-  'simple-grid',
+  'simple',
+  'simple-left-aligned',
   'simple-with-heading',
-  'split-with-grid',
-  'simple-with-heading-on-dark',
-  'off-white-grid',
-  'simple-on-dark',
+  'simple-with-cta',
+  'grid',
+  'split-with-logos-on-right',
 ])
 
 export const LogoCloudSectionBlockSchema = z.object({
   type: z.literal('logo-cloud-section'),
-  variant: LogoCloudSectionVariantSchema.default('simple-grid'),
+  variant: LogoCloudSectionVariantSchema.default('simple'),
   // Content
   title: z.string().optional(),
   subtitle: z.string().optional(),
@@ -544,19 +538,14 @@ export const LogoCloudSectionBlockSchema = z.object({
 
 // Bento Grid Section Variants
 const BentoGridSectionVariantSchema = z.enum([
-  'two-row-layout',
-  'three-row-asymmetric',
-  'three-row-with-image',
-  'two-row-with-images',
-  'four-panel-layout',
-  'two-column-layout',
-  'three-column-with-feature',
-  'asymmetric-grid',
+  'three-column',
+  'two-row',
+  'two-row-three-column-second-row',
 ])
 
 export const BentoGridSectionBlockSchema = z.object({
   type: z.literal('bento-grid-section'),
-  variant: BentoGridSectionVariantSchema.default('two-row-layout'),
+  variant: BentoGridSectionVariantSchema.default('two-row'),
   // Content
   eyebrow: z.string().optional(),
   title: z.string(),
@@ -603,13 +592,13 @@ export const BannerBlockSchema = z.object({
 
 // Footer Section Variants
 const FooterSectionVariantSchema = z.enum([
-  'simple-centered',
   '4-column-simple',
-  '4-column-with-company-mission',
   '4-column-with-newsletter',
-  '4-column-with-call-to-action',
-  'social-links-only',
-  'with-sitemap',
+  '4-column-with-mission',
+  '4-column-with-cta',
+  '4-column-with-newsletter-below',
+  'simple-centered',
+  'simple-with-social-links',
 ])
 
 export const FooterSectionBlockSchema = z.object({
@@ -637,48 +626,52 @@ export const FooterSectionBlockSchema = z.object({
   newsletterSubtitle: z.string().optional(),
 })
 
-// Header Section Variants (for standalone marketing headers)
+// Header Section Variants (for standalone page headers/intros)
 const HeaderSectionVariantSchema = z.enum([
-  'simple-with-menu',
-  'with-centered-logo',
-  'with-full-width-flyout',
-  'with-icons-flyout',
-  'with-stacked-flyout',
+  'centered',
+  'centered-with-eyebrow',
+  'centered-with-background-image',
+  'simple',
+  'simple-with-eyebrow',
+  'simple-with-background-image',
+  'with-cards',
+  'with-stats',
 ])
 
 export const HeaderSectionBlockSchema = z.object({
   type: z.literal('header-section'),
-  variant: HeaderSectionVariantSchema.default('simple-with-menu'),
-  // Branding
-  companyName: z.string(),
-  logo: z.string().optional(),
-  logoDark: z.string().optional(),
-  // Navigation
-  navItems: z.array(z.object({
-    label: z.string(),
-    url: z.string().optional(),
-    children: z.array(NavItemSchema).optional(),
-  })),
-  // CTA
-  ctaButton: ButtonSchema.optional(),
-  showLogin: z.boolean().default(true),
+  variant: HeaderSectionVariantSchema.default('simple'),
+  // Content
+  eyebrow: z.string().optional(),
+  title: z.string(),
+  description: z.string().optional(),
+  // Media (for background variants)
+  backgroundImage: z.string().optional(),
+  // Cards (for with-cards variant)
+  cards: z.array(z.object({
+    title: z.string(),
+    description: z.string(),
+    icon: z.enum(['phone', 'support', 'media']).optional(),
+  })).optional(),
+  // Links and Stats (for with-stats variant)
+  links: z.array(NavItemSchema).optional(),
+  stats: z.array(StatItemSchema).optional(),
 })
 
 // Content Section Variants (generic content layouts)
 const ContentSectionVariantSchema = z.enum([
-  'centered-with-text',
-  'two-column',
-  'two-column-with-image',
+  'centered',
+  'split-with-image',
+  'two-columns-with-screenshot',
+  'with-image-tiles',
+  'with-sticky-product-screenshot',
+  'with-testimonial-and-stats',
   'with-testimonial',
-  'offset-with-image',
-  'with-image-grid',
-  'narrow-with-features',
-  'simple-three-column',
 ])
 
 export const ContentSectionBlockSchema = z.object({
   type: z.literal('content-section'),
-  variant: ContentSectionVariantSchema.default('centered-with-text'),
+  variant: ContentSectionVariantSchema.default('centered'),
   // Content
   eyebrow: z.string().optional(),
   title: z.string(),

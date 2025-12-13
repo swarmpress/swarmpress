@@ -12,6 +12,54 @@ import {
 } from '@swarm-press/backend/dist/db/repositories'
 import { randomUUID } from 'crypto'
 
+// Blueprint types (from site-builder)
+interface PageContext {
+  defaultLang: string
+  languages: string[]
+  village?: string
+  region?: string
+  pageType: string
+  variables?: Record<string, any>
+}
+
+interface BlueprintData {
+  id?: string
+  page_type: string
+  name: string
+  description?: string
+  version?: string
+  layout?: string
+  components: Array<{
+    id: string
+    type: string
+    variant?: string
+    order: number
+    required?: boolean
+    ai_hints?: {
+      purpose?: string
+      tone?: string
+      min_words?: number
+      max_words?: number
+    }
+  }>
+  global_linking_rules?: {
+    min_links?: number
+    max_links?: number
+    min_total_links?: number
+    max_total_links?: number
+    must_link_to_page_type?: string[]
+    forbidden_slugs?: string[]
+  }
+  seo_template?: {
+    title_pattern?: string
+    meta_description_pattern?: string
+    required_keywords?: string[]
+    keyword_density?: number
+    min_word_count?: number
+    max_word_count?: number
+  }
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -319,6 +367,137 @@ function getRelevantCollections(page: PageForContent): string[] {
 }
 
 function buildBriefText(page: PageForContent, blueprint: any | null, collectionContext: any | null): string {
+  // Try to use new blueprint-based brief if blueprint has components
+  if (blueprint?.schema?.components?.length > 0) {
+    try {
+      const blueprintData: BlueprintData = {
+        id: blueprint.id,
+        page_type: blueprint.schema.page_type || blueprint.name?.toLowerCase().replace(/\s+/g, '_') || page.pageType || 'general',
+        name: blueprint.name,
+        description: blueprint.description,
+        version: blueprint.schema.version || '1.0',
+        layout: blueprint.schema.layout || 'default',
+        components: blueprint.schema.components,
+        global_linking_rules: blueprint.schema.global_linking_rules,
+        seo_template: blueprint.schema.seo_template,
+      }
+
+      // Build context from page data
+      const context: PageContext = {
+        defaultLang: page.language || 'en',
+        languages: ['en', 'de', 'fr', 'it'],
+        village: (page.metadata?.city as string) || undefined,
+        region: (page.metadata?.region as string) || 'Cinque Terre',
+        pageType: page.pageType || 'general',
+        variables: {
+          title: page.title,
+        },
+      }
+
+      // Build brief from blueprint structure
+      return buildBlueprintBriefText(page, blueprintData, context, collectionContext)
+    } catch (error) {
+      console.warn('[BriefGenerator] Could not use blueprint brief, falling back to legacy:', error)
+    }
+  }
+
+  // Fallback to legacy brief generation
+  return buildLegacyBriefText(page, blueprint, collectionContext)
+}
+
+/**
+ * Build brief text from a valid blueprint structure
+ */
+function buildBlueprintBriefText(
+  page: PageForContent,
+  blueprint: BlueprintData,
+  context: PageContext,
+  collectionContext: any | null
+): string {
+  const lang = LANGUAGE_CONFIG[page.language] ?? LANGUAGE_CONFIG['en']!
+
+  let brief = `# Content Brief: ${blueprint.name}
+
+## Page Overview
+- **Page Type**: ${blueprint.page_type}
+- **Title**: ${page.title}
+- **URL**: ${page.slug}
+- **Language**: ${lang.name} (${lang.locale})
+- **Languages**: ${context.languages.join(', ')}
+`
+
+  if (context.village) {
+    brief += `- **Village**: ${context.village}\n`
+  }
+
+  brief += `\n## Language Instructions\n${lang.instructions}\n`
+
+  if (blueprint.description) {
+    brief += `\n## Purpose\n${blueprint.description}\n`
+  }
+
+  // Section instructions
+  brief += `\n## Sections to Write\n`
+
+  for (const component of blueprint.components.sort((a, b) => a.order - b.order)) {
+    const requiredLabel = component.required ? ' (Required)' : ' (Optional)'
+    const typeName = component.type.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+
+    brief += `\n### ${component.order + 1}. ${typeName}${requiredLabel}\n`
+
+    if (component.variant) {
+      brief += `**Variant**: ${component.variant}\n`
+    }
+
+    if (component.ai_hints?.purpose) {
+      brief += `**Purpose**: ${component.ai_hints.purpose}\n`
+    }
+    if (component.ai_hints?.tone) {
+      brief += `**Tone**: ${component.ai_hints.tone}\n`
+    }
+    if (component.ai_hints?.min_words || component.ai_hints?.max_words) {
+      brief += `**Word count**: ${component.ai_hints.min_words || 50}-${component.ai_hints.max_words || 200} words\n`
+    }
+  }
+
+  // SEO guidance
+  if (blueprint.seo_template) {
+    brief += `\n## SEO Requirements\n`
+    if (blueprint.seo_template.required_keywords?.length) {
+      brief += `- Include keywords: ${blueprint.seo_template.required_keywords.join(', ')}\n`
+    }
+    if (blueprint.seo_template.keyword_density) {
+      brief += `- Target keyword density: ${blueprint.seo_template.keyword_density}%\n`
+    }
+  }
+
+  // Linking guidance
+  if (blueprint.global_linking_rules) {
+    const rules = blueprint.global_linking_rules
+    brief += `\n## Internal Linking\n`
+    if (rules.min_total_links) {
+      brief += `- Include at least ${rules.min_total_links} internal links\n`
+    }
+    if (rules.max_total_links) {
+      brief += `- No more than ${rules.max_total_links} internal links\n`
+    }
+    if (rules.must_link_to_page_type?.length) {
+      brief += `- Must link to: ${rules.must_link_to_page_type.join(', ')} pages\n`
+    }
+  }
+
+  // Add collection context if present
+  if (collectionContext) {
+    brief += `\n## Available Data\nThe following collection data is available and should be referenced:\n${collectionContext.summary}\n\nUse this data to enrich your content with specific examples, names, and details.\n`
+  }
+
+  return brief
+}
+
+/**
+ * Legacy brief text builder (for pages without valid blueprints)
+ */
+function buildLegacyBriefText(page: PageForContent, blueprint: any | null, collectionContext: any | null): string {
   const lang = LANGUAGE_CONFIG[page.language] ?? LANGUAGE_CONFIG['en']!
 
   let brief = `# Content Brief: ${page.title}

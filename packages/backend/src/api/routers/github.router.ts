@@ -8,6 +8,7 @@ import { router, publicProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
 import { GitHubService, parseGitHubUrl } from '../../services/github.service'
 import { GitHubSyncService } from '../../services/github-sync.service'
+import { GitHubContentService } from '@swarm-press/github-integration'
 import { websiteRepository } from '../../db/repositories'
 import { randomBytes } from 'crypto'
 
@@ -1565,6 +1566,238 @@ Closes #
           pagesUrl: results.pages.url,
           cnameCreated: results.cname.created,
         },
+      }
+    }),
+
+  // ============================================================================
+  // COLLECTION OPERATIONS (GitHub as Source of Truth)
+  // ============================================================================
+
+  /**
+   * List all collection types from GitHub repository
+   * Discovers collections by finding _schema.json files in content/collections/
+   */
+  listCollectionTypes: publicProcedure
+    .input(z.object({ websiteId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Website is not connected to a GitHub repository',
+        })
+      }
+
+      const contentService = new GitHubContentService({
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: website.github_pages_branch || 'main',
+        contentPath: 'content/collections',
+      })
+
+      const types = await contentService.listCollectionTypes()
+      return { types }
+    }),
+
+  /**
+   * Get collection schema from GitHub
+   */
+  getCollectionSchema: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        collectionType: z.string(),
+      })
+    )
+    .query(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Website is not connected to a GitHub repository',
+        })
+      }
+
+      const contentService = new GitHubContentService({
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: website.github_pages_branch || 'main',
+        contentPath: 'content/collections',
+      })
+
+      const schema = await contentService.getCollectionSchema(input.collectionType)
+
+      if (!schema) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Collection schema not found for type: ${input.collectionType}`,
+        })
+      }
+
+      return {
+        type: input.collectionType,
+        ...schema.content,
+      }
+    }),
+
+  /**
+   * Get all collection schemas from GitHub (bulk operation)
+   */
+  getAllCollectionSchemas: publicProcedure
+    .input(z.object({ websiteId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Website is not connected to a GitHub repository',
+        })
+      }
+
+      const contentService = new GitHubContentService({
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: website.github_pages_branch || 'main',
+        contentPath: 'content/collections',
+      })
+
+      // Get all collection types first
+      const types = await contentService.listCollectionTypes()
+
+      // Fetch all schemas in parallel
+      const schemas = await Promise.all(
+        types.map(async (type) => {
+          const schema = await contentService.getCollectionSchema(type)
+          if (schema) {
+            return {
+              type,
+              ...schema.content,
+            }
+          }
+          return null
+        })
+      )
+
+      return {
+        collections: schemas.filter((s) => s !== null),
+      }
+    }),
+
+  /**
+   * List collection items from GitHub
+   * Handles both individual and grouped item formats
+   */
+  listCollectionItems: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        collectionType: z.string(),
+      })
+    )
+    .query(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Website is not connected to a GitHub repository',
+        })
+      }
+
+      const contentService = new GitHubContentService({
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: website.github_pages_branch || 'main',
+        contentPath: 'content/collections',
+      })
+
+      const rawItems = await contentService.listCollectionItems(input.collectionType)
+
+      // Process items - handle grouped format (items[] array) and individual format
+      const items: Array<{
+        slug: string
+        data: Record<string, unknown>
+        published?: boolean
+        featured?: boolean
+        village?: string
+        sourceFile: string
+      }> = []
+
+      for (const file of rawItems) {
+        const content = file.content as Record<string, unknown>
+
+        // Check if this is a grouped file (has items[] array)
+        if (Array.isArray(content.items)) {
+          const village = content.village as string | undefined
+          for (const item of content.items as Array<Record<string, unknown>>) {
+            items.push({
+              slug: item.slug as string,
+              data: item,
+              published: (item.published as boolean) ?? true,
+              featured: item.featured as boolean | undefined,
+              village,
+              sourceFile: file.path,
+            })
+          }
+        } else if (content.slug && content.data) {
+          // Individual item format
+          items.push({
+            slug: content.slug as string,
+            data: content.data as Record<string, unknown>,
+            published: content.published as boolean | undefined,
+            featured: content.featured as boolean | undefined,
+            sourceFile: file.path,
+          })
+        } else {
+          // File is the item data itself
+          const slug = file.path.split('/').pop()?.replace('.json', '') || 'unknown'
+          items.push({
+            slug,
+            data: content,
+            published: true,
+            sourceFile: file.path,
+          })
+        }
+      }
+
+      return {
+        items,
+        total: items.length,
       }
     }),
 })

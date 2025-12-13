@@ -106,10 +106,25 @@ export function TeamSwitcher() {
     window.location.reload()
   }
 
-  if (!currentTenant && !isLoading) {
-    return null
+  // Show loading state
+  if (isLoading) {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton size="lg" disabled>
+            <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary/50 text-sidebar-primary-foreground">
+              <Building2 className="size-4 animate-pulse" />
+            </div>
+            <div className="grid flex-1 text-left text-sm leading-tight">
+              <span className="truncate font-medium text-muted-foreground">Loading...</span>
+            </div>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    )
   }
 
+  // Show even when no tenant is selected (so user can select one)
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -123,20 +138,22 @@ export function TeamSwitcher() {
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                 {currentProduct ? (
                   <Globe className="size-4" />
-                ) : (
+                ) : currentTenant ? (
                   <Building2 className="size-4" />
+                ) : (
+                  <Building2 className="size-4 opacity-50" />
                 )}
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">
-                  {currentProduct?.domain || currentTenant?.name || 'Select...'}
+                  {currentProduct?.domain || currentTenant?.name || 'Select Media House'}
                 </span>
                 <span className="truncate text-xs text-sidebar-foreground/70">
                   {currentProduct
                     ? currentProduct.title || 'Website'
                     : currentTenant
                       ? 'Media House'
-                      : ''}
+                      : 'Click to select'}
                 </span>
               </div>
               <ChevronsUpDown className="ml-auto" />
@@ -154,20 +171,22 @@ export function TeamSwitcher() {
                 <div className="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   {currentProduct ? (
                     <Globe className="size-4" />
-                  ) : (
+                  ) : currentTenant ? (
                     <Building2 className="size-4" />
+                  ) : (
+                    <Building2 className="size-4 opacity-50" />
                   )}
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">
-                    {currentProduct?.domain || currentTenant?.name || 'Select...'}
+                    {currentProduct?.domain || currentTenant?.name || 'No Selection'}
                   </span>
                   <span className="truncate text-xs text-muted-foreground">
                     {currentProduct
                       ? currentProduct.title || 'Website'
                       : currentTenant
                         ? 'Media House'
-                        : ''}
+                        : 'Select a media house below'}
                   </span>
                 </div>
               </div>

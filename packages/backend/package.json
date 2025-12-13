@@ -20,6 +20,7 @@
     "@aws-sdk/s3-request-presigner": "^3.937.0",
     "@octokit/rest": "^20.0.2",
     "@swarm-press/event-bus": "workspace:*",
+    "@swarm-press/github-integration": "workspace:*",
     "@swarm-press/shared": "workspace:*",
     "@trpc/server": "^10.45.0",
     "@types/handlebars": "^4.1.0",
