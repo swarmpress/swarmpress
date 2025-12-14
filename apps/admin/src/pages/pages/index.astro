@@ -2,6 +2,7 @@
 /**
  * Pages List View
  * View and manage all pages for the current website
+ * Data comes from GitHub (source of truth)
  */
 import Layout from '../../layouts/Layout.astro'
 import { trpc, handleTRPCError } from '../../lib/trpc'
@@ -14,30 +15,42 @@ const session = getSessionContext(Astro.cookies)
 const websiteId = session.productId
 
 let pages: any[] = []
-let blueprints: any[] = []
 let error: string | null = null
 
 if (websiteId) {
   try {
-    const [pagesResult, blueprintsResult] = await Promise.all([
-      trpc.sitemap.listByWebsite.query({ websiteId }),
-      trpc.blueprint.list.query({})
-    ])
+    // Fetch pages from GitHub (source of truth)
+    const pagesResult = await trpc.github.listPages.query({ websiteId })
     pages = pagesResult.items || []
-    blueprints = blueprintsResult.items || []
   } catch (e) {
     error = handleTRPCError(e)
-    console.error('Failed to fetch pages:', error)
+    console.error('Failed to fetch pages from GitHub:', error)
   }
 }
 
-// Group pages by page_type
-const pagesByType = pages.reduce((acc: Record<string, any[]>, page: any) => {
-  const type = page.page_type || 'uncategorized'
-  if (!acc[type]) acc[type] = []
-  acc[type].push(page)
+// Group pages by directory structure
+const pagesBySection = pages.reduce((acc: Record<string, any[]>, page: any) => {
+  // Extract section from sourceFile path: content/pages/{section}/...
+  const relativePath = page.sourceFile.replace('content/pages/', '')
+  const parts = relativePath.split('/')
+  // If it's a root file (e.g., cinque-terre.json), use 'root'
+  // If it's in a subfolder, use the first folder name as section
+  const section = parts.length > 1 ? parts[0] : 'root'
+  if (!acc[section]) acc[section] = []
+  acc[section].push(page)
   return acc
 }, {})
+
+// Sort sections: root first, then locales (en, de, fr, it), then others alphabetically
+const sectionOrder = ['root', 'en', 'de', 'fr', 'it']
+const sortedSections = Object.keys(pagesBySection).sort((a, b) => {
+  const aIndex = sectionOrder.indexOf(a)
+  const bIndex = sectionOrder.indexOf(b)
+  if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
+  if (aIndex !== -1) return -1
+  if (bIndex !== -1) return 1
+  return a.localeCompare(b)
+})
 
 const statusColors: Record<string, string> = {
   published: 'bg-green-100 text-green-800',
@@ -52,18 +65,17 @@ const statusColors: Record<string, string> = {
   <div class="mb-8">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-3xl font-bold text-gray-900">Pages</h1>
+        <div class="flex items-center gap-3">
+          <h1 class="text-3xl font-bold text-gray-900">Pages</h1>
+          <span class="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md text-xs text-gray-500">
+            <span>🐙</span>
+            <span>GitHub</span>
+          </span>
+        </div>
         <p class="text-gray-600 mt-2">
-          Manage sitemap pages, assign blueprints, and trigger content generation
+          Website pages from GitHub repository
         </p>
       </div>
-      <a
-        href="/pages/new"
-        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2"
-      >
-        <span>+</span>
-        <span>New Page</span>
-      </a>
     </div>
   </div>
 
@@ -90,22 +102,8 @@ const statusColors: Record<string, string> = {
       <div class="text-6xl mb-4">📄</div>
       <h3 class="text-xl font-semibold text-gray-900 mb-2">No Pages Yet</h3>
       <p class="text-gray-600 mb-6">
-        Create your first page or import from sitemap
+        No pages found in the GitHub repository. Add JSON files to content/pages/.
       </p>
-      <div class="flex items-center justify-center gap-4">
-        <a
-          href="/pages/new"
-          class="inline-block px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-        >
-          Create First Page
-        </a>
-        <a
-          href="/sitemap"
-          class="inline-block px-6 py-3 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
-        >
-          View Sitemap
-        </a>
-      </div>
     </div>
   ) : (
     <div class="space-y-8">
@@ -129,68 +127,84 @@ const statusColors: Record<string, string> = {
         </div>
         <div class="bg-white rounded-lg border p-4">
           <div class="text-2xl font-bold text-blue-600">
-            {Object.keys(pagesByType).length}
+            {sortedSections.length}
           </div>
-          <div class="text-sm text-gray-500">Page Types</div>
+          <div class="text-sm text-gray-500">Sections</div>
         </div>
       </div>
 
-      {/* Pages by Type */}
-      {Object.entries(pagesByType).map(([type, typePages]: [string, any[]]) => (
-        <div class="bg-white rounded-lg border">
-          <div class="px-6 py-4 border-b bg-gray-50 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <span class="text-lg">📁</span>
-              <h2 class="text-lg font-semibold text-gray-900 capitalize">
-                {type.replace(/_/g, ' ')}
-              </h2>
-              <span class="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs rounded-full">
-                {typePages.length}
-              </span>
+      {/* Pages by Section */}
+      {sortedSections.map((section) => {
+        const sectionPages = pagesBySection[section] || []
+        const sectionNames = {
+          root: 'Root Pages',
+          en: 'English (EN)',
+          de: 'German (DE)',
+          it: 'Italian (IT)',
+          fr: 'French (FR)',
+        }
+        const sectionIcons = {
+          root: '📄',
+          en: '🇬🇧',
+          de: '🇩🇪',
+          it: '🇮🇹',
+          fr: '🇫🇷',
+        }
+        return (
+          <div class="bg-white rounded-lg border">
+            <div class="px-6 py-4 border-b bg-gray-50 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <span class="text-lg">{sectionIcons[section] || '📁'}</span>
+                <h2 class="text-lg font-semibold text-gray-900">
+                  {sectionNames[section] || section}
+                </h2>
+                <span class="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs rounded-full">
+                  {sectionPages.length}
+                </span>
+              </div>
+            </div>
+            <div class="divide-y">
+              {sectionPages.map((page: any) => {
+                // Get slug - it might be an object with localized values
+                const slugDisplay = typeof page.slug === 'object'
+                  ? (page.slug.en || Object.values(page.slug)[0] || '')
+                  : page.slug
+                return (
+                  <div class="block px-6 py-4 hover:bg-gray-50 transition-colors">
+                    <div class="flex items-center justify-between">
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-3">
+                          <h3 class="text-sm font-medium text-gray-900 truncate">
+                            {page.title}
+                          </h3>
+                          <span class={`px-2 py-0.5 text-xs rounded-full ${statusColors[page.status] || 'bg-gray-100 text-gray-600'}`}>
+                            {page.status}
+                          </span>
+                          {page.template && (
+                            <span class="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">
+                              {page.template}
+                            </span>
+                          )}
+                        </div>
+                        <div class="mt-1 flex items-center gap-4 text-sm text-gray-500">
+                          <span class="flex items-center gap-1">
+                            <span>🔗</span>
+                            <span class="truncate max-w-xs font-mono text-xs">{slugDisplay}</span>
+                          </span>
+                          <span class="flex items-center gap-1">
+                            <span>📄</span>
+                            <span class="truncate max-w-xs font-mono text-xs">{page.sourceFile.replace('content/pages/', '')}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
-          <div class="divide-y">
-            {typePages.map((page: any) => (
-              <a
-                href={`/pages/${page.id}`}
-                class="block px-6 py-4 hover:bg-gray-50 transition-colors"
-              >
-                <div class="flex items-center justify-between">
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-3">
-                      <h3 class="text-sm font-medium text-gray-900 truncate">
-                        {page.title}
-                      </h3>
-                      <span class={`px-2 py-0.5 text-xs rounded-full ${statusColors[page.status] || 'bg-gray-100 text-gray-600'}`}>
-                        {page.status}
-                      </span>
-                      {page.blueprint_id && (
-                        <span class="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full flex items-center gap-1">
-                          <span>📐</span>
-                          <span>Blueprint</span>
-                        </span>
-                      )}
-                    </div>
-                    <div class="mt-1 flex items-center gap-4 text-sm text-gray-500">
-                      <span class="flex items-center gap-1">
-                        <span>🔗</span>
-                        <span class="truncate max-w-xs">/{page.slug}</span>
-                      </span>
-                      <span class="flex items-center gap-1">
-                        <span>📅</span>
-                        <span>{new Date(page.updated_at).toLocaleDateString()}</span>
-                      </span>
-                    </div>
-                  </div>
-                  <div class="ml-4 flex items-center gap-2">
-                    <span class="text-gray-400">→</span>
-                  </div>
-                </div>
-              </a>
-            ))}
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )}
 </Layout>

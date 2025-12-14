@@ -1,0 +1,212 @@
+---
+/**
+ * Collection Schema Page
+ * Read-only view of the collection schema from GitHub
+ */
+import Layout from '../../../layouts/Layout.astro'
+import { trpc, handleTRPCError } from '../../../lib/trpc'
+import { getSessionContext } from '../../../lib/session'
+
+const { type } = Astro.params
+
+// Get session to check for selected website
+const session = getSessionContext(Astro.cookies)
+const websiteId = session.productId
+
+// Fetch collection schema from GitHub
+let schema: any = null
+let error: string | null = null
+
+if (websiteId && type) {
+  try {
+    schema = await trpc.github.getCollectionSchema.query({
+      websiteId,
+      collectionType: type,
+    })
+  } catch (e) {
+    error = handleTRPCError(e)
+    console.error('Failed to fetch schema from GitHub:', error)
+  }
+}
+
+const title = schema ? `${schema.display_name} Schema` : 'Collection Schema'
+---
+
+<Layout title={title}>
+  <div class="mb-8">
+    <div class="flex items-center gap-2 text-sm text-gray-500 mb-4">
+      <a href="/collections" class="hover:text-gray-700">Collections</a>
+      <span>/</span>
+      <a href={`/collections/${type}`} class="hover:text-gray-700">{schema?.display_name || type}</a>
+      <span>/</span>
+      <span class="text-gray-900">Schema</span>
+    </div>
+
+    <div class="flex items-center justify-between">
+      <div>
+        <div class="flex items-center gap-3">
+          {schema?.icon && (
+            <span class="text-3xl">{schema.icon}</span>
+          )}
+          <h1 class="text-3xl font-bold text-gray-900">{schema?.display_name || type} Schema</h1>
+          <span class="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md text-xs text-gray-500">
+            <span>🐙</span>
+            <span>GitHub</span>
+          </span>
+        </div>
+        {schema?.description && (
+          <p class="text-gray-600 mt-2">{schema.description}</p>
+        )}
+      </div>
+      <a
+        href={`/collections/${type}`}
+        class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+      >
+        Back to Items
+      </a>
+    </div>
+  </div>
+
+  {!websiteId ? (
+    <div class="text-center py-12 bg-amber-50 border border-amber-200 rounded-lg">
+      <div class="text-4xl mb-4">🌐</div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">No Website Selected</h3>
+      <p class="text-gray-600 mb-6">
+        Please select a website from the sidebar to view collection schema
+      </p>
+      <a
+        href="/websites"
+        class="inline-block px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+      >
+        View Websites
+      </a>
+    </div>
+  ) : error ? (
+    <div class="text-center py-12 text-red-600 bg-red-50 border border-red-200 rounded-lg">
+      <p>Failed to load schema: {error}</p>
+    </div>
+  ) : !schema ? (
+    <div class="text-center py-12 bg-gray-50 rounded-lg">
+      <div class="text-6xl mb-4">🔍</div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">Schema Not Found</h3>
+      <p class="text-gray-600 mb-6">
+        The schema for collection type "{type}" was not found in the GitHub repository
+      </p>
+      <a
+        href="/collections"
+        class="inline-block px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+      >
+        Back to Collections
+      </a>
+    </div>
+  ) : (
+    <div class="space-y-6">
+      <!-- Schema Metadata -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Metadata</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <dt class="text-sm font-medium text-gray-500">Type</dt>
+            <dd class="text-sm text-gray-900 font-mono">{type}</dd>
+          </div>
+          {schema.schema_type && schema.schema_type !== type && (
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Schema Type</dt>
+              <dd class="text-sm text-gray-900 font-mono">{schema.schema_type}</dd>
+            </div>
+          )}
+          <div>
+            <dt class="text-sm font-medium text-gray-500">Display Name</dt>
+            <dd class="text-sm text-gray-900">{schema.display_name}</dd>
+          </div>
+          {schema.singular_name && (
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Singular Name</dt>
+              <dd class="text-sm text-gray-900">{schema.singular_name}</dd>
+            </div>
+          )}
+          {schema.title_field && (
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Title Field</dt>
+              <dd class="text-sm text-gray-900 font-mono">{schema.title_field}</dd>
+            </div>
+          )}
+          {schema.summary_field && (
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Summary Field</dt>
+              <dd class="text-sm text-gray-900 font-mono">{schema.summary_field}</dd>
+            </div>
+          )}
+          {schema.color && (
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Color</dt>
+              <dd class="flex items-center gap-2">
+                <span
+                  class="w-4 h-4 rounded border border-gray-200"
+                  style={`background-color: ${schema.color}`}
+                ></span>
+                <span class="text-sm text-gray-900 font-mono">{schema.color}</span>
+              </dd>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <!-- JSON Schema -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold text-gray-900">JSON Schema</h2>
+          <a
+            href="https://json-schema.org/understanding-json-schema/"
+            target="_blank"
+            class="text-sm text-blue-600 hover:underline"
+          >
+            JSON Schema Docs →
+          </a>
+        </div>
+        {schema.json_schema ? (
+          <pre class="bg-gray-50 border border-gray-200 rounded-md p-4 overflow-auto text-sm font-mono max-h-[600px]">{JSON.stringify(schema.json_schema, null, 2)}</pre>
+        ) : (
+          <div class="text-gray-500 text-sm italic">No JSON schema defined</div>
+        )}
+      </div>
+
+      <!-- Raw Schema File -->
+      <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold text-gray-900">Full Schema (_schema.json)</h2>
+          <button
+            id="copyBtn"
+            class="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+          >
+            Copy JSON
+          </button>
+        </div>
+        <pre id="fullSchema" class="bg-gray-50 border border-gray-200 rounded-md p-4 overflow-auto text-sm font-mono max-h-[400px]">{JSON.stringify(schema, null, 2)}</pre>
+      </div>
+
+      <div class="text-sm text-gray-500 text-center py-4">
+        <p>Schema is read from GitHub repository. To modify, edit the <code class="bg-gray-100 px-1 rounded">_schema.json</code> file in <code class="bg-gray-100 px-1 rounded">content/collections/{type}/</code>.</p>
+      </div>
+    </div>
+  )}
+</Layout>
+
+<script>
+  const copyBtn = document.getElementById('copyBtn')
+  const fullSchema = document.getElementById('fullSchema')
+
+  copyBtn?.addEventListener('click', async () => {
+    if (fullSchema) {
+      try {
+        await navigator.clipboard.writeText(fullSchema.textContent || '')
+        copyBtn.textContent = 'Copied!'
+        setTimeout(() => {
+          copyBtn.textContent = 'Copy JSON'
+        }, 2000)
+      } catch (e) {
+        console.error('Failed to copy:', e)
+      }
+    }
+  })
+</script>

@@ -1,0 +1,50 @@
+---
+/**
+ * Site Editor Page
+ * ReactFlow-based unified site structure editor
+ * Combines sitemap, collections, and blueprints into one visual interface
+ */
+import Layout from '../layouts/Layout.astro'
+import { getSessionContext } from '../lib/session'
+import SiteEditorWrapper from '../components/site-editor/SiteEditorWrapper'
+import '@xyflow/react/dist/style.css'
+
+const title = 'Site Editor'
+
+// Get the selected product (website) from session
+const session = getSessionContext(Astro.cookies)
+const websiteId = session.productId
+---
+
+<Layout title={title}>
+  <div class="flex flex-col h-screen">
+    <!-- Hidden input to pass websiteId to client-side JS -->
+    <input type="hidden" id="selected-website-id" value={websiteId || ''} />
+
+    <!-- Site Editor Container -->
+    <div id="site-editor-container" class="flex-1">
+      <SiteEditorWrapper client:only="react" websiteId={websiteId} />
+    </div>
+  </div>
+</Layout>
+
+<style>
+  /* Ensure ReactFlow fills the container */
+  #site-editor-container {
+    height: calc(100vh - 64px); /* Subtract header height */
+  }
+
+  :global(.react-flow) {
+    background-color: #f8fafc;
+  }
+
+  :global(.react-flow__minimap) {
+    background-color: #f1f5f9;
+    border-radius: 8px;
+  }
+
+  :global(.react-flow__controls) {
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+</style>

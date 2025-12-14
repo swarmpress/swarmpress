@@ -1596,11 +1596,12 @@ Closes #
         })
       }
 
+      // Note: Content is on 'main' branch, not gh-pages (which is for built output)
       const contentService = new GitHubContentService({
         owner: website.github_owner,
         repo: website.github_repo,
         token: website.github_access_token,
-        branch: website.github_pages_branch || 'main',
+        branch: 'main',
         contentPath: 'content/collections',
       })
 
@@ -1635,11 +1636,12 @@ Closes #
         })
       }
 
+      // Note: Content is on 'main' branch, not gh-pages (which is for built output)
       const contentService = new GitHubContentService({
         owner: website.github_owner,
         repo: website.github_repo,
         token: website.github_access_token,
-        branch: website.github_pages_branch || 'main',
+        branch: 'main',
         contentPath: 'content/collections',
       })
 
@@ -1652,9 +1654,14 @@ Closes #
         })
       }
 
+      // Destructure to separate schema type from other fields
+      const { type: schemaType, ...schemaRest } = schema.content
       return {
+        // Use folder name as the identifier for API calls
         type: input.collectionType,
-        ...schema.content,
+        // Keep schema type for reference
+        schema_type: schemaType,
+        ...schemaRest,
       }
     }),
 
@@ -1680,25 +1687,31 @@ Closes #
         })
       }
 
+      // Note: Content is on 'main' branch, not gh-pages (which is for built output)
       const contentService = new GitHubContentService({
         owner: website.github_owner,
         repo: website.github_repo,
         token: website.github_access_token,
-        branch: website.github_pages_branch || 'main',
+        branch: 'main',
         contentPath: 'content/collections',
       })
 
-      // Get all collection types first
-      const types = await contentService.listCollectionTypes()
+      // Get all collection types (folder names)
+      const folders = await contentService.listCollectionTypes()
 
       // Fetch all schemas in parallel
       const schemas = await Promise.all(
-        types.map(async (type) => {
-          const schema = await contentService.getCollectionSchema(type)
+        folders.map(async (folder) => {
+          const schema = await contentService.getCollectionSchema(folder)
           if (schema) {
+            // Destructure to separate type from other fields
+            const { type: schemaType, ...schemaRest } = schema.content
             return {
-              type,
-              ...schema.content,
+              // Use folder name as the identifier for API calls
+              type: folder,
+              // Keep schema type for display purposes
+              schema_type: schemaType,
+              ...schemaRest,
             }
           }
           return null
@@ -1738,11 +1751,12 @@ Closes #
         })
       }
 
+      // Note: Content is on 'main' branch, not gh-pages (which is for built output)
       const contentService = new GitHubContentService({
         owner: website.github_owner,
         repo: website.github_repo,
         token: website.github_access_token,
-        branch: website.github_pages_branch || 'main',
+        branch: 'main',
         contentPath: 'content/collections',
       })
 
@@ -1800,4 +1814,761 @@ Closes #
         total: items.length,
       }
     }),
+
+  // ============================================================================
+  // PAGE OPERATIONS (GitHub as Source of Truth)
+  // ============================================================================
+
+  /**
+   * List all pages from GitHub repository
+   * Recursively searches nested directories in content/pages/
+   */
+  listPages: publicProcedure
+    .input(z.object({ websiteId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Website is not connected to a GitHub repository',
+        })
+      }
+
+      // Note: Content is on 'main' branch, not gh-pages (which is for built output)
+      const contentService = new GitHubContentService({
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: 'main',
+        pagesPath: 'content/pages',
+      })
+
+      const pageFiles = await contentService.listPages()
+
+      // Transform page files into a consistent format
+      const pages = pageFiles.map((file) => {
+        const content = file.content as Record<string, unknown>
+        // Extract path relative to content/pages for display
+        const relativePath = file.path.replace('content/pages/', '').replace('.json', '')
+        // Determine page type from directory structure (e.g., 'en', 'de', 'en/manarola')
+        const pathParts = relativePath.split('/')
+        const locale = pathParts[0] // First part is usually locale
+        const pageType = pathParts.length > 2 ? pathParts[1] : 'page' // Second part might be village/category
+
+        return {
+          id: file.sha, // Use SHA as ID for now
+          slug: content.slug as string || relativePath,
+          title: extractLocalizedValue(content.title) || relativePath,
+          description: extractLocalizedValue(content.description),
+          page_type: content.page_type as string || pageType,
+          template: content.template as string,
+          status: content.status as string || 'published',
+          locale,
+          seo: content.seo as Record<string, unknown> | undefined,
+          body: content.body as Array<Record<string, unknown>> | undefined,
+          sourceFile: file.path,
+          updated_at: content.updated_at as string || new Date().toISOString(),
+          created_at: content.created_at as string || new Date().toISOString(),
+        }
+      })
+
+      return {
+        items: pages,
+        total: pages.length,
+      }
+    }),
+
+  /**
+   * Get a single page from GitHub by path
+   */
+  getPage: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        path: z.string(), // Relative path like 'en/manarola/index' or full path
+      })
+    )
+    .query(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Website is not connected to a GitHub repository',
+        })
+      }
+
+      const contentService = new GitHubContentService({
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: 'main',
+        pagesPath: 'content/pages',
+      })
+
+      // Normalize path - add content/pages prefix if not present
+      let fullPath = input.path
+      if (!fullPath.startsWith('content/pages/')) {
+        fullPath = `content/pages/${fullPath}`
+      }
+      if (!fullPath.endsWith('.json')) {
+        fullPath = `${fullPath}.json`
+      }
+
+      const pageFile = await contentService.getPageByPath(fullPath)
+
+      if (!pageFile) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Page not found: ${input.path}`,
+        })
+      }
+
+      return {
+        ...pageFile.content,
+        sourceFile: pageFile.path,
+        sha: pageFile.sha,
+      }
+    }),
+
+  // ============================================================
+  // Site Definition (ReactFlow-based site editor)
+  // ============================================================
+
+  /**
+   * Get site definition from GitHub
+   * This contains the sitemap structure, content types, and agent config
+   */
+  getSiteDefinition: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+      })
+    )
+    .query(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Website not connected to GitHub',
+        })
+      }
+
+      const contentService = new GitHubContentService({
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: 'main',
+      })
+
+      const siteDefinition = await contentService.getSiteDefinition()
+
+      if (!siteDefinition) {
+        // Return null - client should show option to create one
+        return null
+      }
+
+      return {
+        ...siteDefinition.content,
+        sha: siteDefinition.sha,
+      }
+    }),
+
+  /**
+   * Save site definition to GitHub
+   */
+  saveSiteDefinition: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        siteDefinition: z.any(), // Use SiteDefinitionSchema for validation
+        message: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Website not connected to GitHub',
+        })
+      }
+
+      const contentService = new GitHubContentService({
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: 'main',
+      })
+
+      const result = await contentService.saveSiteDefinition(
+        input.siteDefinition,
+        input.message || 'Update site definition'
+      )
+
+      return {
+        success: true,
+        sha: result.sha,
+        commit: result.commit,
+      }
+    }),
+
+  /**
+   * Check if site definition exists
+   */
+  hasSiteDefinition: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+      })
+    )
+    .query(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        return { exists: false, reason: 'not_connected' }
+      }
+
+      const contentService = new GitHubContentService({
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: 'main',
+      })
+
+      const exists = await contentService.hasSiteDefinition()
+
+      return { exists }
+    }),
+
+  // ============================================================
+  // Page Sections (Page Editor)
+  // ============================================================
+
+  /**
+   * Get page sections from a page JSON file
+   * Returns the body array (sections) and metadata
+   */
+  getPageSections: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        pagePath: z.string(), // e.g., 'content/pages/en/index.json' or 'en/index'
+      })
+    )
+    .query(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Website not connected to GitHub',
+        })
+      }
+
+      const contentService = new GitHubContentService({
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: 'main',
+        pagesPath: 'content/pages',
+      })
+
+      // Normalize path
+      let fullPath = input.pagePath
+      if (!fullPath.startsWith('content/pages/')) {
+        fullPath = `content/pages/${fullPath}`
+      }
+      if (!fullPath.endsWith('.json')) {
+        fullPath = `${fullPath}.json`
+      }
+
+      const pageFile = await contentService.getPageByPath(fullPath)
+      if (!pageFile) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Page not found: ${input.pagePath}`,
+        })
+      }
+
+      // Extract sections from body array
+      const sections = (pageFile.content.body || []).map((block: any, index: number) => ({
+        id: block.id || `section-${index}`,
+        type: block.type || 'unknown',
+        variant: block.variant,
+        order: index,
+        content: block,
+        prompts: block.prompts,
+        ai_hints: block.ai_hints,
+        collectionSource: block.collectionSource,
+        locked: block.locked,
+        notes: block.notes,
+      }))
+
+      return {
+        pageId: pageFile.content.id,
+        title: extractLocalizedValue(pageFile.content.title) || pageFile.content.slug,
+        slug: pageFile.content.slug,
+        sections,
+        sha: pageFile.sha,
+        sourcePath: fullPath,
+      }
+    }),
+
+  /**
+   * Save page sections to a page JSON file
+   * Updates the body array with the provided sections
+   */
+  savePageSections: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        pagePath: z.string(),
+        sections: z.array(z.object({
+          id: z.string(),
+          type: z.string(),
+          variant: z.string().optional(),
+          order: z.number(),
+          content: z.record(z.unknown()).optional(),
+          prompts: z.any().optional(),
+          ai_hints: z.any().optional(),
+          collectionSource: z.any().optional(),
+          locked: z.boolean().optional(),
+          notes: z.string().optional(),
+        })),
+        message: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Website not connected to GitHub',
+        })
+      }
+
+      const contentService = new GitHubContentService({
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: 'main',
+        pagesPath: 'content/pages',
+      })
+
+      // Normalize path
+      let fullPath = input.pagePath
+      if (!fullPath.startsWith('content/pages/')) {
+        fullPath = `content/pages/${fullPath}`
+      }
+      if (!fullPath.endsWith('.json')) {
+        fullPath = `${fullPath}.json`
+      }
+
+      // Get existing page
+      const pageFile = await contentService.getPageByPath(fullPath)
+      if (!pageFile) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Page not found: ${input.pagePath}`,
+        })
+      }
+
+      // Sort sections by order and convert to body format
+      const sortedSections = [...input.sections].sort((a, b) => a.order - b.order)
+      const body = sortedSections.map((section) => {
+        const block: Record<string, unknown> = {
+          ...section.content,
+          id: section.id,
+          type: section.type,
+        }
+        if (section.variant) block.variant = section.variant
+        if (section.prompts) block.prompts = section.prompts
+        if (section.ai_hints) block.ai_hints = section.ai_hints
+        if (section.collectionSource) block.collectionSource = section.collectionSource
+        if (section.locked) block.locked = section.locked
+        if (section.notes) block.notes = section.notes
+        return block
+      })
+
+      // Update page with new body
+      const updatedPage = {
+        ...pageFile.content,
+        body,
+        updated_at: new Date().toISOString(),
+      }
+
+      const result = await contentService.savePageByPath(
+        fullPath,
+        updatedPage,
+        input.message || `Update page sections: ${fullPath}`
+      )
+
+      return {
+        success: true,
+        sha: result.sha,
+        commit: result.commit,
+      }
+    }),
+
+  // ============================================================================
+  // Template Collection Endpoints
+  // ============================================================================
+
+  /**
+   * Get resolved pages for a collection instance
+   * Uses the Template + Override pattern to determine which pages exist for an instance
+   */
+  getInstancePages: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        collectionType: z.string(), // e.g., 'villages'
+        instanceId: z.string(),
+      })
+    )
+    .query(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Website not connected to GitHub',
+        })
+      }
+
+      const contentService = new GitHubContentService({
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: 'main',
+        pagesPath: 'content/pages',
+      })
+
+      // Load site definition
+      const siteDefinition = await contentService.getSiteDefinition()
+      if (!siteDefinition) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Site definition not found',
+        })
+      }
+
+      // Find the collection type
+      const collectionTypeDef = siteDefinition.types.collections?.[input.collectionType]
+      if (!collectionTypeDef) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Collection type not found: ${input.collectionType}`,
+        })
+      }
+
+      // Check if this collection has a page structure (is a template collection)
+      if (!collectionTypeDef.pageStructure?.pages?.length) {
+        return {
+          pages: [],
+          isTemplateCollection: false,
+        }
+      }
+
+      // Find the sitemap node for this collection to get instance overrides
+      const collectionNode = siteDefinition.sitemap.nodes.find(
+        (n: any) => n.type === `collection:${input.collectionType}`
+      )
+
+      const instanceOverride = collectionNode?.data?.instanceOverrides?.find(
+        (o: any) => o.instanceId === input.instanceId
+      )
+
+      // Resolve pages for this instance
+      const templatePages = collectionTypeDef.pageStructure.pages
+      const skipPages = new Set(instanceOverride?.skipPages || [])
+
+      const resolvedPages = templatePages
+        .filter((page: any) => !skipPages.has(page.slug))
+        .map((page: any) => {
+          const pageOverride = instanceOverride?.pageOverrides?.[page.slug]
+          return {
+            slug: page.slug,
+            pageType: page.pageType,
+            title: page.title,
+            required: page.required ?? true,
+            sections: pageOverride?.sections || page.sections,
+            prompts: pageOverride?.prompts || page.prompts,
+            ai_hints: pageOverride?.ai_hints || page.ai_hints,
+            collectionBinding: page.collectionBinding,
+            isFromTemplate: true,
+            isOverridden: !!pageOverride,
+          }
+        })
+
+      // Add any additional pages from the instance override
+      const additionalPages = (instanceOverride?.additionalPages || []).map((page: any) => ({
+        ...page,
+        isFromTemplate: false,
+        isOverridden: false,
+      }))
+
+      return {
+        pages: [...resolvedPages, ...additionalPages],
+        isTemplateCollection: true,
+        instanceOverride,
+        urlPattern: collectionTypeDef.pageStructure.urlPattern,
+      }
+    }),
+
+  /**
+   * Get template page structure for a collection type
+   * Returns the pageStructure definition from the content type
+   */
+  getTemplatePageStructure: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        collectionType: z.string(),
+      })
+    )
+    .query(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Website not connected to GitHub',
+        })
+      }
+
+      const contentService = new GitHubContentService({
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: 'main',
+        pagesPath: 'content/pages',
+      })
+
+      // Load site definition
+      const siteDefinition = await contentService.getSiteDefinition()
+      if (!siteDefinition) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Site definition not found',
+        })
+      }
+
+      // Find the collection type
+      const collectionTypeDef = siteDefinition.types.collections?.[input.collectionType]
+      if (!collectionTypeDef) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Collection type not found: ${input.collectionType}`,
+        })
+      }
+
+      return {
+        pageStructure: collectionTypeDef.pageStructure,
+        contentType: collectionTypeDef,
+      }
+    }),
+
+  /**
+   * Save instance override for a collection instance
+   * Updates the site definition with the new override configuration
+   */
+  saveInstanceOverride: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string().uuid(),
+        collectionType: z.string(),
+        override: z.object({
+          instanceId: z.string(),
+          skipPages: z.array(z.string()).optional(),
+          additionalPages: z.array(z.any()).optional(),
+          pageOverrides: z.record(z.any()).optional(),
+        }),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const website = await websiteRepository.findById(input.websiteId)
+      if (!website) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Website not found',
+        })
+      }
+
+      if (!website.github_owner || !website.github_repo || !website.github_access_token) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Website not connected to GitHub',
+        })
+      }
+
+      const contentService = new GitHubContentService({
+        owner: website.github_owner,
+        repo: website.github_repo,
+        token: website.github_access_token,
+        branch: 'main',
+        pagesPath: 'content/pages',
+      })
+
+      // Load current site definition
+      const siteDefinition = await contentService.getSiteDefinition()
+      if (!siteDefinition) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Site definition not found',
+        })
+      }
+
+      // Find the sitemap node for this collection
+      const nodeIndex = siteDefinition.sitemap.nodes.findIndex(
+        (n: any) => n.type === `collection:${input.collectionType}`
+      )
+
+      if (nodeIndex === -1) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Collection node not found: collection:${input.collectionType}`,
+        })
+      }
+
+      const node = siteDefinition.sitemap.nodes[nodeIndex]
+      const currentOverrides = (node.data?.instanceOverrides || []) as Array<{
+        instanceId: string
+        skipPages?: string[]
+        additionalPages?: unknown[]
+        pageOverrides?: Record<string, unknown>
+      }>
+
+      // Check if override has any actual content
+      const hasContent = input.override.skipPages?.length ||
+                        input.override.additionalPages?.length ||
+                        (input.override.pageOverrides && Object.keys(input.override.pageOverrides).length)
+
+      let newOverrides: typeof currentOverrides
+      const existingIndex = currentOverrides.findIndex(
+        o => o.instanceId === input.override.instanceId
+      )
+
+      if (hasContent) {
+        if (existingIndex >= 0) {
+          // Update existing
+          newOverrides = currentOverrides.map((o, i) =>
+            i === existingIndex ? input.override : o
+          )
+        } else {
+          // Add new
+          newOverrides = [...currentOverrides, input.override]
+        }
+      } else {
+        // Remove if no content
+        newOverrides = currentOverrides.filter(
+          o => o.instanceId !== input.override.instanceId
+        )
+      }
+
+      // Update the site definition
+      const updatedSiteDefinition = {
+        ...siteDefinition,
+        sitemap: {
+          ...siteDefinition.sitemap,
+          nodes: siteDefinition.sitemap.nodes.map((n: any, i: number) =>
+            i === nodeIndex
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    instanceOverrides: newOverrides.length > 0 ? newOverrides : undefined,
+                  },
+                }
+              : n
+          ),
+        },
+        updatedAt: new Date().toISOString(),
+      }
+
+      // Save back to GitHub
+      const result = await contentService.saveSiteDefinition(
+        updatedSiteDefinition,
+        `Update instance override for ${input.override.instanceId} in ${input.collectionType}`
+      )
+
+      return {
+        success: true,
+        sha: result.sha,
+        override: input.override,
+      }
+    }),
 })
+
+// Helper to extract value from potentially localized fields
+function extractLocalizedValue(value: unknown): string | undefined {
+  if (!value) return undefined
+  if (typeof value === 'string') return value
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as Record<string, string>
+    // Try common locales
+    return obj.en || obj.de || obj.it || obj.fr || Object.values(obj)[0]
+  }
+  return undefined
+}

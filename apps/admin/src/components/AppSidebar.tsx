@@ -19,6 +19,7 @@ import {
   MessageSquareText,
   Database,
   File,
+  PenTool,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -99,6 +100,11 @@ export function AppSidebar({ tenantId, productId, user, ...props }: AppSidebarPr
 
   const editorialItems = [
     {
+      title: 'Site Editor',
+      url: '/site-editor',
+      icon: PenTool,
+    },
+    {
       title: 'Kanban',
       url: '/editorial/kanban',
       icon: Kanban,
@@ -114,26 +120,6 @@ export function AppSidebar({ tenantId, productId, user, ...props }: AppSidebarPr
       icon: Network,
     },
     {
-      title: 'Sitemap',
-      url: '/sitemap',
-      icon: Map,
-    },
-    {
-      title: 'Pages',
-      url: '/pages',
-      icon: File,
-    },
-    {
-      title: 'Blueprints',
-      url: '/blueprints',
-      icon: Layers,
-    },
-    {
-      title: 'Collections',
-      url: '/collections',
-      icon: Database,
-    },
-    {
       title: 'Content',
       url: '/content',
       icon: FileText,
@@ -142,6 +128,27 @@ export function AppSidebar({ tenantId, productId, user, ...props }: AppSidebarPr
       title: 'Tasks',
       url: '/tasks',
       icon: CheckSquare,
+    },
+    // Legacy routes (to be removed in Phase 6)
+    {
+      title: 'Sitemap (Legacy)',
+      url: '/sitemap',
+      icon: Map,
+    },
+    {
+      title: 'Pages (Legacy)',
+      url: '/pages',
+      icon: File,
+    },
+    {
+      title: 'Collections (Legacy)',
+      url: '/collections',
+      icon: Database,
+    },
+    {
+      title: 'Blueprints (Legacy)',
+      url: '/blueprints',
+      icon: Layers,
     },
   ]
 

@@ -5,6 +5,7 @@
  */
 
 import { GitHubClient } from './client'
+import type { SiteDefinition } from '@swarm-press/shared'
 
 export interface GitHubContentConfig {
   owner: string
@@ -166,6 +167,59 @@ export class GitHubContentService {
       branch: this.branch,
       sha: existing?.sha,
     })
+  }
+
+  // ============================================================
+  // Site Definition Operations (ReactFlow-based)
+  // ============================================================
+
+  /**
+   * Get site definition from site.json
+   * This is the main configuration file for the ReactFlow-based site editor
+   */
+  async getSiteDefinition(): Promise<ContentFile<SiteDefinition> | null> {
+    const path = `${this.contentPath}/site.json`
+    const result = await this.client.getFileContent(path, this.branch)
+    if (!result) return null
+
+    return {
+      path,
+      content: JSON.parse(result.content) as SiteDefinition,
+      sha: result.sha,
+    }
+  }
+
+  /**
+   * Save site definition
+   */
+  async saveSiteDefinition(
+    siteDefinition: SiteDefinition,
+    message = 'Update site definition'
+  ): Promise<{ sha: string; commit: string }> {
+    const path = `${this.contentPath}/site.json`
+    const existing = await this.client.getFileContent(path, this.branch)
+
+    // Update timestamp
+    const updatedDefinition = {
+      ...siteDefinition,
+      updatedAt: new Date().toISOString(),
+    }
+
+    return this.client.createOrUpdateFile({
+      path,
+      content: JSON.stringify(updatedDefinition, null, 2),
+      message,
+      branch: this.branch,
+      sha: existing?.sha,
+    })
+  }
+
+  /**
+   * Check if site definition exists
+   */
+  async hasSiteDefinition(): Promise<boolean> {
+    const definition = await this.getSiteDefinition()
+    return definition !== null
   }
 
   // ============================================================

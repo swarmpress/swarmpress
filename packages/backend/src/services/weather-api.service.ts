@@ -123,7 +123,29 @@ export async function getCurrentWeatherAndForecast(): Promise<WeatherResponse> {
     throw new Error(`Weather API error: ${response.status} ${response.statusText}`)
   }
 
-  const data = await response.json()
+  const data = await response.json() as {
+    current: {
+      temperature_2m: number
+      relative_humidity_2m: number
+      apparent_temperature: number
+      is_day: number
+      weather_code: number
+      wind_speed_10m: number
+      wind_direction_10m: number
+    }
+    daily: {
+      time: string[]
+      weather_code: number[]
+      temperature_2m_max: number[]
+      temperature_2m_min: number[]
+      precipitation_sum: number[]
+      precipitation_probability_max: number[]
+      uv_index_max: number[]
+      sunrise: string[]
+      sunset: string[]
+      wind_speed_10m_max: number[]
+    }
+  }
 
   // Parse current weather
   const currentCode = data.current.weather_code
@@ -145,25 +167,25 @@ export async function getCurrentWeatherAndForecast(): Promise<WeatherResponse> {
 
   // Parse daily forecast (7 days)
   const forecast: DailyForecast[] = data.daily.time.slice(0, 8).map((date: string, i: number) => {
-    const code = data.daily.weather_code[i]
+    const code = data.daily.weather_code[i]!
     const weatherInfo = WEATHER_CODES[code] || { description: 'Unknown', icon: 'unknown' }
 
     return {
       date,
       day_of_week: getDayOfWeek(date),
-      temperature_max_c: Math.round(data.daily.temperature_2m_max[i] * 10) / 10,
-      temperature_max_f: celsiusToFahrenheit(data.daily.temperature_2m_max[i]),
-      temperature_min_c: Math.round(data.daily.temperature_2m_min[i] * 10) / 10,
-      temperature_min_f: celsiusToFahrenheit(data.daily.temperature_2m_min[i]),
+      temperature_max_c: Math.round(data.daily.temperature_2m_max[i]! * 10) / 10,
+      temperature_max_f: celsiusToFahrenheit(data.daily.temperature_2m_max[i]!),
+      temperature_min_c: Math.round(data.daily.temperature_2m_min[i]! * 10) / 10,
+      temperature_min_f: celsiusToFahrenheit(data.daily.temperature_2m_min[i]!),
       weather_code: code,
       weather_description: weatherInfo.description,
       icon: weatherInfo.icon,
-      precipitation_probability_percent: data.daily.precipitation_probability_max[i] || 0,
-      precipitation_mm: Math.round(data.daily.precipitation_sum[i] * 10) / 10,
-      uv_index_max: data.daily.uv_index_max[i],
-      sunrise: data.daily.sunrise[i].split('T')[1],
-      sunset: data.daily.sunset[i].split('T')[1],
-      wind_speed_max_kmh: Math.round(data.daily.wind_speed_10m_max[i] * 10) / 10
+      precipitation_probability_percent: data.daily.precipitation_probability_max[i] ?? 0,
+      precipitation_mm: Math.round(data.daily.precipitation_sum[i]! * 10) / 10,
+      uv_index_max: data.daily.uv_index_max[i]!,
+      sunrise: data.daily.sunrise[i]!.split('T')[1],
+      sunset: data.daily.sunset[i]!.split('T')[1],
+      wind_speed_max_kmh: Math.round(data.daily.wind_speed_10m_max[i]! * 10) / 10
     }
   })
 

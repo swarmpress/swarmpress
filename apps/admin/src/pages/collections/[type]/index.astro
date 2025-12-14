@@ -1,7 +1,8 @@
 ---
 /**
  * Collection Items List Page
- * Lists all items for a specific collection type with pagination
+ * Lists all items for a specific collection type
+ * Data comes from GitHub (source of truth)
  */
 import Layout from '../../../layouts/Layout.astro'
 import { trpc, handleTRPCError } from '../../../lib/trpc'
@@ -9,54 +10,56 @@ import { getSessionContext } from '../../../lib/session'
 
 const { type } = Astro.params
 
-// Get pagination from query params
-const page = parseInt(Astro.url.searchParams.get('page') || '1')
-const limit = 25
-const offset = (page - 1) * limit
-
 // Get session to check for selected website
 const session = getSessionContext(Astro.cookies)
 const websiteId = session.productId
 
-// Fetch collection info and items
+// Fetch collection info and items from GitHub
 let collection: any = null
 let items: any[] = []
-let total = 0
 let error: string | null = null
 
 if (websiteId && type) {
   try {
-    // Get collection type info
-    collection = await trpc.collection.getType.query({
+    // Get collection schema from GitHub
+    collection = await trpc.github.getCollectionSchema.query({
       websiteId,
       collectionType: type,
     })
 
-    // Get collection items
-    const result = await trpc.collection.list.query({
+    // Get collection items from GitHub
+    const result = await trpc.github.listCollectionItems.query({
       websiteId,
       collectionType: type,
-      limit,
-      offset,
-      publishedOnly: false,
     })
-    items = result.items
-    total = result.total
+    items = result.items || []
   } catch (e) {
     error = handleTRPCError(e)
-    console.error('Failed to fetch collection:', error)
+    console.error('Failed to fetch collection from GitHub:', error)
   }
 }
 
-// Pagination info
+// Client-side pagination (since GitHub returns all items)
+const page = parseInt(Astro.url.searchParams.get('page') || '1')
+const limit = 25
+const offset = (page - 1) * limit
+const total = items.length
+const paginatedItems = items.slice(offset, offset + limit)
 const totalPages = Math.ceil(total / limit)
 const hasNextPage = page < totalPages
 const hasPrevPage = page > 1
 
 // Helper to get display value from item data
 function getDisplayValue(item: any, field: string | null | undefined): string {
-  if (!field || !item.data) return ''
-  const value = item.data[field]
+  if (!field) return ''
+  // Check in data object first
+  const data = item.data || item
+  const value = data[field]
+  // Handle multilingual fields (e.g., { en: "...", de: "..." })
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    // Return English version or first available
+    return value.en || value.de || value.it || value.fr || Object.values(value)[0] || ''
+  }
   if (typeof value === 'string') return value
   if (typeof value === 'number') return String(value)
   if (value === null || value === undefined) return ''
@@ -65,21 +68,19 @@ function getDisplayValue(item: any, field: string | null | undefined): string {
 
 // Get title for an item
 function getItemTitle(item: any): string {
-  if (collection?.titleField) {
-    return getDisplayValue(item, collection.titleField) || item.slug
-  }
-  return item.slug
+  const titleField = collection?.title_field || 'name'
+  return getDisplayValue(item, titleField) || item.slug
 }
 
 // Get summary for an item
 function getItemSummary(item: any): string {
-  if (collection?.summaryField) {
-    return getDisplayValue(item, collection.summaryField)
+  if (collection?.summary_field) {
+    return getDisplayValue(item, collection.summary_field)
   }
   return ''
 }
 
-const title = collection ? `${collection.displayName} Items` : 'Collection Items'
+const title = collection ? `${collection.display_name} Items` : 'Collection Items'
 ---
 
 <Layout title={title}>
@@ -87,7 +88,7 @@ const title = collection ? `${collection.displayName} Items` : 'Collection Items
     <div class="flex items-center gap-2 text-sm text-gray-500 mb-4">
       <a href="/collections" class="hover:text-gray-700">Collections</a>
       <span>/</span>
-      <span class="text-gray-900">{collection?.displayName || type}</span>
+      <span class="text-gray-900">{collection?.display_name || type}</span>
     </div>
 
     <div class="flex items-center justify-between">
@@ -96,12 +97,11 @@ const title = collection ? `${collection.displayName} Items` : 'Collection Items
           {collection?.icon && (
             <span class="text-3xl">{collection.icon}</span>
           )}
-          <h1 class="text-3xl font-bold text-gray-900">{collection?.displayName || type}</h1>
-          {collection && !collection.enabled && (
-            <span class="text-xs font-medium text-gray-400 uppercase tracking-wide bg-gray-200 px-2 py-1 rounded">
-              Disabled
-            </span>
-          )}
+          <h1 class="text-3xl font-bold text-gray-900">{collection?.display_name || type}</h1>
+          <span class="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md text-xs text-gray-500">
+            <span>🐙</span>
+            <span>GitHub</span>
+          </span>
         </div>
         {collection?.description && (
           <p class="text-gray-600 mt-2">{collection.description}</p>
@@ -110,16 +110,10 @@ const title = collection ? `${collection.displayName} Items` : 'Collection Items
       {websiteId && collection && (
         <div class="flex gap-2">
           <a
-            href={`/collections/${type}/settings`}
+            href={`/collections/${type}/schema`}
             class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
           >
-            Settings
-          </a>
-          <a
-            href={`/collections/${type}/new`}
-            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-          >
-            + Add {collection?.singularName || 'Item'}
+            View Schema
           </a>
         </div>
       )}
@@ -163,32 +157,25 @@ const title = collection ? `${collection.displayName} Items` : 'Collection Items
       <div class="text-6xl mb-4">📭</div>
       <h3 class="text-xl font-semibold text-gray-900 mb-2">No Items Yet</h3>
       <p class="text-gray-600 mb-6">
-        This collection doesn't have any items. Add your first {collection.singularName?.toLowerCase() || 'item'}!
+        This collection doesn't have any items in the GitHub repository.
       </p>
-      <a
-        href={`/collections/${type}/new`}
-        class="inline-block px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-      >
-        Add {collection.singularName || 'Item'}
-      </a>
     </div>
   ) : (
     <div>
       <!-- Stats bar -->
       <div class="flex items-center justify-between mb-4 text-sm text-gray-600">
         <div>
-          Showing {offset + 1}-{Math.min(offset + items.length, total)} of {total} items
+          Showing {offset + 1}-{Math.min(offset + paginatedItems.length, total)} of {total} items
         </div>
-        <div class="flex gap-4">
-          <span class="flex items-center gap-1">
-            <span class="w-2 h-2 rounded-full bg-green-500"></span>
-            {items.filter(i => i.published).length} published
-          </span>
-          <span class="flex items-center gap-1">
-            <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-            {items.filter(i => !i.published).length} draft
-          </span>
-        </div>
+        {items.some(i => i.village) && (
+          <div class="flex gap-2">
+            {[...new Set(items.map(i => i.village).filter(Boolean))].map((village) => (
+              <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
+                {village}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <!-- Items table -->
@@ -198,13 +185,14 @@ const title = collection ? `${collection.displayName} Items` : 'Collection Items
             <tr>
               <th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Title</th>
               <th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Slug</th>
-              <th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Status</th>
-              <th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Updated</th>
-              <th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Actions</th>
+              {items.some(i => i.village) && (
+                <th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Village</th>
+              )}
+              <th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Source</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-200">
-            {items.map((item) => (
+            {paginatedItems.map((item) => (
               <tr class="hover:bg-gray-50">
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
@@ -222,37 +210,13 @@ const title = collection ? `${collection.displayName} Items` : 'Collection Items
                 <td class="px-4 py-3 text-sm text-gray-600 font-mono">
                   {item.slug}
                 </td>
-                <td class="px-4 py-3">
-                  {item.published ? (
-                    <span class="inline-flex items-center px-2 py-1 text-xs font-medium text-green-700 bg-green-100 rounded">
-                      Published
-                    </span>
-                  ) : (
-                    <span class="inline-flex items-center px-2 py-1 text-xs font-medium text-amber-700 bg-amber-100 rounded">
-                      Draft
-                    </span>
-                  )}
-                </td>
-                <td class="px-4 py-3 text-sm text-gray-600">
-                  {new Date(item.updated_at).toLocaleDateString()}
-                </td>
-                <td class="px-4 py-3 text-right">
-                  <div class="flex items-center justify-end gap-2">
-                    <a
-                      href={`/collections/${type}/${item.slug}`}
-                      class="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
-                    >
-                      Edit
-                    </a>
-                    <button
-                      class="px-3 py-1 text-sm border border-red-300 text-red-600 rounded hover:bg-red-50 transition-colors"
-                      data-item-id={item.id}
-                      data-item-title={getItemTitle(item)}
-                      onclick="handleDelete(this)"
-                    >
-                      Delete
-                    </button>
-                  </div>
+                {items.some(i => i.village) && (
+                  <td class="px-4 py-3 text-sm text-gray-600">
+                    {item.village || '-'}
+                  </td>
+                )}
+                <td class="px-4 py-3 text-sm text-gray-500">
+                  <span class="font-mono text-xs">{item.sourceFile?.split('/').pop()}</span>
                 </td>
               </tr>
             ))}
@@ -290,36 +254,3 @@ const title = collection ? `${collection.displayName} Items` : 'Collection Items
   )}
 </Layout>
 
-<script>
-  async function handleDelete(button: HTMLButtonElement) {
-    const itemId = button.dataset.itemId
-    const itemTitle = button.dataset.itemTitle
-
-    if (!confirm(`Are you sure you want to delete "${itemTitle}"? This action cannot be undone.`)) {
-      return
-    }
-
-    try {
-      const response = await fetch('/api/trpc/collection.delete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ itemId }),
-      })
-
-      if (response.ok) {
-        // Reload the page to show updated list
-        window.location.reload()
-      } else {
-        alert('Failed to delete item. Please try again.')
-      }
-    } catch (error) {
-      console.error('Delete failed:', error)
-      alert('Failed to delete item. Please try again.')
-    }
-  }
-
-  // Make the function available globally
-  ;(window as any).handleDelete = handleDelete
-</script>

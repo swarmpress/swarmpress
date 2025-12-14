@@ -25,6 +25,15 @@ export * from './types/sitemap'
 export * from './types/prompts'
 export * from './types/tools'
 export * from './types/blueprint-collections'
+export * from './types/inline-prompts'
+export * from './types/site-definition'
+export * from './types/page-section'
+
+// Section Registry
+export * from './content/section-registry'
+
+// Template Resolver (for collection page templates)
+export * from './content/template-resolver'
 
 // State Machines
 export * from './state-machines'
