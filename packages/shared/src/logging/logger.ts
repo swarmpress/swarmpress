@@ -171,7 +171,7 @@ export function createLogger(
   level?: LogLevel,
   context?: LogContext
 ): Logger {
-  const logLevel = (level || process.env.LOG_LEVEL || 'info') as LogLevel
+  const logLevel = (level || (typeof process !== 'undefined' ? process.env?.LOG_LEVEL : undefined) || 'info') as LogLevel
   return new Logger(logLevel, context)
 }
 

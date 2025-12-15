@@ -997,6 +997,70 @@ export const AlertBlockSchema = z.object({
 })
 
 // ============================================================================
+// Map Block Schema (Interactive Maps with Leaflet)
+// ============================================================================
+
+const MapMarkerSchema = z.object({
+  lat: z.number(),
+  lng: z.number(),
+  title: z.string(),
+  description: z.string().optional(),
+  icon: z.string().optional(),
+  url: z.string().optional(),
+  category: z.string().optional(),
+})
+
+const TrailWaypointSchema = z.object({
+  lat: z.number(),
+  lng: z.number(),
+  name: z.string().optional(),
+  elevation: z.number().optional(),
+})
+
+export const MapBlockSchema = z.object({
+  type: z.literal('map'),
+  variant: z.enum([
+    'single-location',      // Single marker with popup
+    'multi-marker',         // Multiple POIs with clustering
+    'village-overview',     // All 5 villages overview map
+    'hiking-trail',         // Trail route with waypoints
+    'category-filtered',    // POIs with category filters
+  ]).default('multi-marker'),
+  // Map settings
+  center: z.object({
+    lat: z.number(),
+    lng: z.number(),
+  }).optional(), // If not provided, auto-fit to markers
+  zoom: z.number().min(1).max(22).default(14),
+  minZoom: z.number().min(1).max(22).default(10),
+  maxZoom: z.number().min(1).max(22).default(18),
+  height: z.string().default('400px'),
+  // Data source - load markers from collections
+  collectionTypes: z.array(z.string()).optional(), // e.g., ['pois', 'restaurants', 'accommodations']
+  collectionFilter: z.object({
+    village: z.string().optional(),
+    category: z.string().optional(),
+  }).optional(),
+  lang: z.string().optional(), // Language for localized content
+  // Custom markers (not from collections)
+  markers: z.array(MapMarkerSchema).optional(),
+  // Trail-specific (for hiking maps)
+  trail: z.object({
+    waypoints: z.array(TrailWaypointSchema),
+    color: z.string().default('#3b82f6'),
+    weight: z.number().default(4),
+  }).optional(),
+  // UI options
+  showControls: z.boolean().default(true),
+  showClustering: z.boolean().default(true),
+  showFilters: z.boolean().default(false),
+  filterCategories: z.array(z.string()).optional(),
+  // Heading
+  heading: z.string().optional(),
+  headingLevel: z.union([z.literal(2), z.literal(3), z.literal(4)]).optional(),
+})
+
+// ============================================================================
 // Union of All Blocks
 // ============================================================================
 
@@ -1013,6 +1077,7 @@ export const ContentBlockSchema = z.discriminatedUnion('type', [
   CalloutBlockSchema,
   EmbedBlockSchema,
   CollectionEmbedBlockSchema,
+  MapBlockSchema,
   // Marketing section blocks
   HeroSectionBlockSchema,
   FeatureSectionBlockSchema,
@@ -1063,6 +1128,7 @@ export type FAQBlock = z.infer<typeof FAQBlockSchema>
 export type CalloutBlock = z.infer<typeof CalloutBlockSchema>
 export type EmbedBlock = z.infer<typeof EmbedBlockSchema>
 export type CollectionEmbedBlock = z.infer<typeof CollectionEmbedBlockSchema>
+export type MapBlock = z.infer<typeof MapBlockSchema>
 
 // Marketing section block types
 export type HeroSectionBlock = z.infer<typeof HeroSectionBlockSchema>

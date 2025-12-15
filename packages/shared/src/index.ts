@@ -19,6 +19,9 @@ export * from './content/collection-loader'
 // Collection Schemas
 export * from './content/collections'
 
+// Quality Checker
+export * from './content/quality-checker'
+
 // Domain Entity Types & Schemas
 export * from './types/entities'
 export * from './types/sitemap'

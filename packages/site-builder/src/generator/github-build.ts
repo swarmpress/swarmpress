@@ -1936,7 +1936,7 @@ function wrapInHtmlDocumentWithNav(
   <meta property="og:url" content="${nav.site.siteUrl}">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="canonical" href="${nav.site.siteUrl}">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -2028,7 +2028,7 @@ function wrapInHtmlDocument(title: string, description: string, content: string,
   <meta property="og:url" content="${siteUrl}">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="canonical" href="${siteUrl}">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
   <script>
     tailwind.config = {
       theme: {

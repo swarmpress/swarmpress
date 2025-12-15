@@ -293,22 +293,200 @@ export function parseSitemap(jsonContent: string): ParsedSitemap {
 }
 
 /**
- * Load sitemap.json from GitHub repository
+ * Convert site.json SiteDefinition format to SitemapJson format
+ * This makes site.json the single source of truth for the sitemap
+ */
+export function convertSiteDefinitionToSitemap(siteDefinition: {
+  id: string
+  name: string
+  description?: string
+  locales: string[]
+  defaultLocale: string
+  sitemap: {
+    nodes: Array<{
+      id: string
+      type: string
+      position?: { x: number; y: number }
+      data?: {
+        slug?: string
+        title?: string | Record<string, string>
+        status?: string
+        prompts?: unknown
+        filter?: Record<string, unknown>
+      }
+    }>
+    edges?: Array<{
+      id: string
+      source: string
+      target: string
+      type: string
+    }>
+  }
+  navigation?: {
+    main?: Array<{
+      title: string | Record<string, string>
+      url?: string
+      children?: Array<{
+        title: string | Record<string, string>
+        url: string
+        description?: string | Record<string, string>
+      }>
+    }>
+    footer?: Record<string, Array<{
+      title: string | Record<string, string>
+      url: string
+    }>>
+  }
+}): SitemapJson {
+  const { sitemap, navigation } = siteDefinition
+  const nodes = sitemap.nodes
+  const edges = sitemap.edges || []
+
+  // Build parent-child relationships from edges
+  const childrenMap = new Map<string, string[]>()
+  const parentMap = new Map<string, string>()
+
+  for (const edge of edges) {
+    if (edge.type === 'parent-child') {
+      if (!childrenMap.has(edge.source)) {
+        childrenMap.set(edge.source, [])
+      }
+      childrenMap.get(edge.source)!.push(edge.target)
+      parentMap.set(edge.target, edge.source)
+    }
+  }
+
+  // Find root nodes (nodes with no parent)
+  const rootNodeIds = nodes
+    .filter(n => !parentMap.has(n.id) && !n.type.startsWith('collection:'))
+    .map(n => n.id)
+
+  // Helper to get localized title
+  const getTitle = (title: string | Record<string, string> | undefined, fallback: string): string => {
+    if (!title) return fallback
+    if (typeof title === 'string') return title
+    return title['en'] || title[siteDefinition.defaultLocale] || Object.values(title)[0] || fallback
+  }
+
+  // Helper to get all titles
+  const getTitles = (title: string | Record<string, string> | undefined, fallback: string): Record<string, string> => {
+    if (!title) return { [siteDefinition.defaultLocale]: fallback }
+    if (typeof title === 'string') return { [siteDefinition.defaultLocale]: title }
+    return title as Record<string, string>
+  }
+
+  // Convert node to SitemapNodeRaw recursively
+  const convertNode = (nodeId: string, navOrder: number): SitemapNodeRaw | null => {
+    const node = nodes.find(n => n.id === nodeId)
+    if (!node) return null
+
+    // Skip collection nodes - they're handled separately
+    if (node.type.startsWith('collection:')) return null
+
+    const childIds = childrenMap.get(nodeId) || []
+    const children: SitemapNodeRaw[] = []
+
+    let childNavOrder = 1
+    for (const childId of childIds) {
+      const childNode = convertNode(childId, childNavOrder)
+      if (childNode) {
+        children.push(childNode)
+        childNavOrder++
+      }
+    }
+
+    // Determine slug from data or id
+    const slug = node.data?.slug?.replace(/^\//, '').replace(/\/$/, '') || node.id
+
+    // Generate page_file from slug
+    const pageFile = slug === '' || slug === '/' ? 'index.json' : `${slug.replace(/\//g, '-')}.json`
+
+    return {
+      slug,
+      title: getTitle(node.data?.title, node.id),
+      titles: getTitles(node.data?.title, node.id),
+      page_file: pageFile,
+      in_nav: true,
+      nav_order: navOrder,
+      children: children.length > 0 ? children : undefined,
+    }
+  }
+
+  // Build pages array from root nodes
+  const pages: SitemapNodeRaw[] = []
+  let navOrder = 1
+  for (const rootId of rootNodeIds) {
+    const page = convertNode(rootId, navOrder)
+    if (page) {
+      pages.push(page)
+      navOrder++
+    }
+  }
+
+  // Build footer nav from navigation config or sitemap
+  const footerNav: FooterNavItem[] = []
+  if (navigation?.footer) {
+    for (const [sectionKey, links] of Object.entries(navigation.footer)) {
+      footerNav.push({
+        title: sectionKey.charAt(0).toUpperCase() + sectionKey.slice(1).replace(/([A-Z])/g, ' $1'),
+        links: links.map(link => ({
+          title: getTitle(link.title, ''),
+          url: link.url,
+          titles: getTitles(link.title, ''),
+        })),
+      })
+    }
+  }
+
+  // Build site config
+  const site: SiteConfig = {
+    name: siteDefinition.name,
+    title: siteDefinition.name,
+    tagline: siteDefinition.description,
+    base_url: 'https://cinqueterre.travel', // TODO: Get from site definition
+    default_language: siteDefinition.defaultLocale,
+    languages: siteDefinition.locales,
+  }
+
+  return {
+    site,
+    pages,
+    footer_nav: footerNav,
+  }
+}
+
+/**
+ * Load sitemap from site.json (SiteDefinition format)
+ * site.json is the single source of truth - edited via Site Editor
  */
 export async function loadSitemapFromGitHub(
   contentService: GitHubContentService
 ): Promise<ParsedSitemap> {
-  const sitemapPath = 'content/sitemap.json'
+  const siteJsonPath = 'content/site.json'
 
   try {
+    // First try to load site.json (single source of truth)
+    const siteContent = await contentService.getFileContent(siteJsonPath)
+    if (siteContent) {
+      console.log('[SitemapParser] Loading sitemap from site.json (single source of truth)')
+      const siteDefinition = JSON.parse(siteContent)
+
+      // Convert SiteDefinition format to SitemapJson format
+      const sitemapJson = convertSiteDefinitionToSitemap(siteDefinition)
+      return parseSitemap(JSON.stringify(sitemapJson))
+    }
+
+    // Fallback to legacy sitemap.json for backward compatibility
+    console.log('[SitemapParser] site.json not found, falling back to sitemap.json')
+    const sitemapPath = 'content/sitemap.json'
     const content = await contentService.getFileContent(sitemapPath)
     if (!content) {
-      throw new Error(`sitemap.json not found at ${sitemapPath}`)
+      throw new Error(`Neither site.json nor sitemap.json found`)
     }
     return parseSitemap(content)
   } catch (error) {
-    console.warn(`[SitemapParser] Could not load sitemap.json: ${error}`)
-    throw new Error(`Failed to load sitemap.json from GitHub: ${error}`)
+    console.warn(`[SitemapParser] Could not load sitemap: ${error}`)
+    throw new Error(`Failed to load sitemap from GitHub: ${error}`)
   }
 }
 

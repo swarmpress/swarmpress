@@ -1,10 +1,10 @@
 /**
  * Correlation ID Management
  * Tracks requests across services and workflows
+ * Browser-compatible with fallback for environments without AsyncLocalStorage
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import { AsyncLocalStorage } from 'async_hooks'
 
 interface CorrelationContext {
   correlationId: string
@@ -12,10 +12,59 @@ interface CorrelationContext {
   metadata?: Record<string, unknown>
 }
 
-/**
- * Async context for correlation IDs
- */
-const asyncStorage = new AsyncLocalStorage<CorrelationContext>()
+interface AsyncStorageInterface {
+  getStore: () => CorrelationContext | undefined
+  run: <T>(context: CorrelationContext, fn: () => T) => T
+}
+
+// Check if running in browser
+const isBrowser = typeof globalThis !== 'undefined' && typeof (globalThis as any).window !== 'undefined'
+
+// Simple synchronous context storage for browser environments
+let currentContext: CorrelationContext | undefined
+
+const browserStorage: AsyncStorageInterface = {
+  getStore: () => currentContext,
+  run: <T>(context: CorrelationContext, fn: () => T): T => {
+    const prevContext = currentContext
+    currentContext = context
+    try {
+      return fn()
+    } finally {
+      currentContext = prevContext
+    }
+  },
+}
+
+// Use browser storage by default, Node.js storage will be set up lazily
+let asyncStorage: AsyncStorageInterface = browserStorage
+let nodeStorageInitialized = false
+
+function getAsyncStorage(): AsyncStorageInterface {
+  // In browser, always use browser storage
+  if (isBrowser) {
+    return browserStorage
+  }
+
+  // In Node.js, lazily initialize AsyncLocalStorage
+  if (!nodeStorageInitialized) {
+    nodeStorageInitialized = true
+    try {
+      // Use eval to hide require from bundlers
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
+      const dynamicRequire = new Function('moduleName', 'return require(moduleName)')
+      const asyncHooks = dynamicRequire('async_hooks')
+      if (asyncHooks?.AsyncLocalStorage) {
+        const storage = new asyncHooks.AsyncLocalStorage()
+        asyncStorage = storage as AsyncStorageInterface
+      }
+    } catch {
+      // Keep using browser storage as fallback
+    }
+  }
+
+  return asyncStorage
+}
 
 /**
  * Generate new correlation ID
@@ -28,7 +77,7 @@ export function generateCorrelationId(): string {
  * Get current correlation ID from context
  */
 export function getCorrelationId(): string | undefined {
-  const context = asyncStorage.getStore()
+  const context = getAsyncStorage().getStore()
   return context?.correlationId
 }
 
@@ -36,7 +85,7 @@ export function getCorrelationId(): string | undefined {
  * Get parent correlation ID
  */
 export function getParentCorrelationId(): string | undefined {
-  const context = asyncStorage.getStore()
+  const context = getAsyncStorage().getStore()
   return context?.parentId
 }
 
@@ -44,7 +93,7 @@ export function getParentCorrelationId(): string | undefined {
  * Get correlation metadata
  */
 export function getCorrelationMetadata(): Record<string, unknown> | undefined {
-  const context = asyncStorage.getStore()
+  const context = getAsyncStorage().getStore()
   return context?.metadata
 }
 
@@ -63,7 +112,7 @@ export function runWithCorrelation<T>(
     metadata,
   }
 
-  return asyncStorage.run(context, fn)
+  return getAsyncStorage().run(context, fn)
 }
 
 /**

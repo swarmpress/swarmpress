@@ -1,0 +1,564 @@
+---
+/**
+ * Map Block Component
+ * Interactive maps using Leaflet.js with OpenStreetMap tiles
+ *
+ * Variants:
+ * - single-location: Single marker with popup
+ * - multi-marker: Multiple POIs with clustering
+ * - village-overview: All 5 Cinque Terre villages
+ * - hiking-trail: Trail route with waypoints
+ * - category-filtered: POIs with category filters
+ *
+ * Collection Loading:
+ * - collectionTypes: Array of collection types to load (e.g., ['pois', 'restaurants'])
+ * - collectionFilter: Filter by village name
+ */
+
+import fs from 'node:fs'
+import path from 'node:path'
+
+export interface MapMarker {
+  lat: number
+  lng: number
+  title: string
+  description?: string
+  icon?: string
+  url?: string
+  category?: string
+}
+
+export interface TrailWaypoint {
+  lat: number
+  lng: number
+  name?: string
+  elevation?: number
+}
+
+export interface Trail {
+  waypoints: TrailWaypoint[]
+  color?: string
+  weight?: number
+}
+
+export interface CollectionFilter {
+  village?: string
+  category?: string
+}
+
+export interface Props {
+  variant?: 'single-location' | 'multi-marker' | 'village-overview' | 'hiking-trail' | 'category-filtered'
+  center?: { lat: number; lng: number }
+  zoom?: number
+  minZoom?: number
+  maxZoom?: number
+  height?: string
+  markers?: MapMarker[]
+  trail?: Trail
+  showControls?: boolean
+  showClustering?: boolean
+  showFilters?: boolean
+  filterCategories?: string[]
+  heading?: string
+  headingLevel?: 2 | 3 | 4
+  className?: string
+  id?: string
+  // Collection loading
+  collectionTypes?: string[]
+  collectionFilter?: CollectionFilter
+  lang?: string
+}
+
+const {
+  variant = 'multi-marker',
+  center,
+  zoom = 14,
+  minZoom = 10,
+  maxZoom = 18,
+  height = '400px',
+  markers = [],
+  trail,
+  showControls = true,
+  showClustering = true,
+  showFilters = false,
+  filterCategories = [],
+  heading,
+  headingLevel = 2,
+  className = '',
+  id = `map-${Math.random().toString(36).substring(2, 9)}`,
+  collectionTypes = [],
+  collectionFilter = {},
+  lang = 'en'
+} = Astro.props
+
+// Default center for Cinque Terre if not provided
+const defaultCenter = { lat: 44.1275, lng: 9.7150 }
+const mapCenter = center || defaultCenter
+
+// Cinque Terre villages for village-overview variant
+const villageMarkers: MapMarker[] = [
+  { lat: 44.1456, lng: 9.6537, title: 'Monterosso al Mare', description: 'The beach village', category: 'village', url: '/monterosso' },
+  { lat: 44.1352, lng: 9.6840, title: 'Vernazza', description: 'The jewel of Cinque Terre', category: 'village', url: '/vernazza' },
+  { lat: 44.1201, lng: 9.7105, title: 'Corniglia', description: 'The hilltop village', category: 'village', url: '/corniglia' },
+  { lat: 44.1066, lng: 9.7276, title: 'Manarola', description: 'The wine village', category: 'village', url: '/manarola' },
+  { lat: 44.0994, lng: 9.7387, title: 'Riomaggiore', description: 'The colorful gateway', category: 'village', url: '/riomaggiore' },
+]
+
+// Helper to extract localized text
+function getLocalizedText(value: unknown, defaultLang = 'en'): string {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as Record<string, string>
+    return obj[lang] || obj[defaultLang] || obj['en'] || Object.values(obj)[0] || ''
+  }
+  return ''
+}
+
+// Load markers from collections if collectionTypes specified
+let collectionMarkers: MapMarker[] = []
+
+if (collectionTypes.length > 0) {
+  // Try to find the content directory
+  const possiblePaths = [
+    // Relative to site-builder
+    path.join(process.cwd(), '..', '..', 'cinqueterre.travel', 'content', 'collections'),
+    // Relative to cinqueterre.travel
+    path.join(process.cwd(), 'content', 'collections'),
+    // Absolute paths for different project structures
+    '/Users/drietsch/agentpress/cinqueterre.travel/content/collections',
+  ]
+
+  let collectionsDir = ''
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      collectionsDir = p
+      break
+    }
+  }
+
+  if (collectionsDir) {
+    for (const collectionType of collectionTypes) {
+      const collectionPath = path.join(collectionsDir, collectionType)
+
+      if (fs.existsSync(collectionPath)) {
+        // Find the right file based on filter
+        const village = collectionFilter?.village
+        const files = fs.readdirSync(collectionPath).filter(f => f.endsWith('.json') && !f.startsWith('_'))
+
+        for (const file of files) {
+          // Skip schema files
+          if (file === '_schema.json') continue
+
+          // If filtering by village, only load that village's file
+          if (village && !file.includes(village)) continue
+
+          try {
+            const filePath = path.join(collectionPath, file)
+            const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+
+            if (content.items && Array.isArray(content.items)) {
+              for (const item of content.items) {
+                // Extract coordinates
+                const coords = item.location?.coordinates || item.coordinates
+                if (!coords || !coords.lat || !coords.lng) continue
+
+                // Extract name (localized)
+                const title = getLocalizedText(item.name) || item.name_local || item.slug
+
+                // Extract description (localized)
+                const description = getLocalizedText(item.details?.teaser) ||
+                                   getLocalizedText(item.details?.description) ||
+                                   getLocalizedText(item.description) || ''
+
+                // Determine category based on collection type
+                let category = item.category || collectionType
+                if (collectionType === 'restaurants') category = 'restaurant'
+                if (collectionType === 'accommodations') category = 'hotel'
+                if (collectionType === 'pois' && item.category) category = item.category
+
+                // Build URL
+                const url = item.slug ? `/${lang}/${collectionFilter?.village || item.village}/${collectionType}/${item.slug}` : undefined
+
+                collectionMarkers.push({
+                  lat: coords.lat,
+                  lng: coords.lng,
+                  title,
+                  description,
+                  category,
+                  url,
+                })
+              }
+            }
+          } catch (e) {
+            console.warn(`Failed to load collection file: ${file}`, e)
+          }
+        }
+      }
+    }
+  }
+}
+
+// Combine markers: explicit markers take precedence, then collection markers
+let allMarkers: MapMarker[] = []
+if (variant === 'village-overview') {
+  allMarkers = villageMarkers
+} else if (markers.length > 0) {
+  allMarkers = markers
+} else if (collectionMarkers.length > 0) {
+  allMarkers = collectionMarkers
+}
+
+// Get unique categories for filter UI
+const uniqueCategories = filterCategories.length > 0
+  ? filterCategories
+  : [...new Set(allMarkers.map(m => m.category).filter(Boolean))]
+
+// Heading tag
+const HeadingTag = `h${headingLevel}` as keyof HTMLElementTagNameMap
+
+// Serialize data for client-side use
+const mapConfig = JSON.stringify({
+  id,
+  variant,
+  center: mapCenter,
+  zoom: variant === 'village-overview' ? 12 : zoom,
+  minZoom,
+  maxZoom,
+  markers: allMarkers,
+  trail,
+  showControls,
+  showClustering,
+  showFilters,
+  filterCategories: uniqueCategories,
+})
+---
+
+<div class={`block-map ${className}`} data-map-config={mapConfig}>
+  {heading && (
+    <HeadingTag class="map-heading">{heading}</HeadingTag>
+  )}
+
+  {showFilters && uniqueCategories.length > 0 && (
+    <div class="map-filters" id={`${id}-filters`}>
+      <span class="filter-label">Filter:</span>
+      {uniqueCategories.map((category) => (
+        <label class="filter-checkbox">
+          <input type="checkbox" value={category} checked />
+          <span>{category}</span>
+        </label>
+      ))}
+    </div>
+  )}
+
+  <div
+    id={id}
+    class="map-container"
+    style={`height: ${height}; width: 100%;`}
+  >
+    <div class="map-loading">Loading map...</div>
+  </div>
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+
+<script is:inline src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script is:inline src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+
+<script>
+  // Initialize all maps on the page
+  function initializeMaps() {
+    document.querySelectorAll('[data-map-config]').forEach((mapElement) => {
+      const configStr = mapElement.getAttribute('data-map-config')
+      if (!configStr) return
+
+      const config = JSON.parse(configStr)
+      const container = document.getElementById(config.id)
+      if (!container || container.querySelector('.leaflet-container')) return
+
+      // Remove loading message
+      const loading = container.querySelector('.map-loading')
+      if (loading) loading.remove()
+
+      // Initialize map
+      const map = L.map(config.id, {
+        center: [config.center.lat, config.center.lng],
+        zoom: config.zoom,
+        minZoom: config.minZoom,
+        maxZoom: config.maxZoom,
+        zoomControl: config.showControls,
+      })
+
+      // Add OpenStreetMap tiles
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(map)
+
+      // Category icons with colors
+      const categoryColors = {
+        village: '#e4664c',      // Terracotta
+        restaurant: '#f97316',   // Orange
+        hotel: '#ec4899',        // Pink
+        beach: '#0ea5e9',        // Blue
+        viewpoint: '#22c55e',    // Green
+        church: '#8b5cf6',       // Purple
+        hike: '#10b981',         // Emerald
+        default: '#3b82f6',      // Blue
+      }
+
+      function getMarkerColor(category) {
+        return categoryColors[category] || categoryColors.default
+      }
+
+      function createCustomIcon(category) {
+        const color = getMarkerColor(category)
+        return L.divIcon({
+          className: 'custom-marker',
+          html: `<div style="background-color: ${color}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        })
+      }
+
+      // Create marker cluster group if clustering is enabled
+      const markerGroup = config.showClustering && typeof L.markerClusterGroup !== 'undefined'
+        ? L.markerClusterGroup({
+            maxClusterRadius: 50,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+          })
+        : L.layerGroup()
+
+      // Add markers
+      const markers = []
+      config.markers.forEach((m) => {
+        const icon = createCustomIcon(m.category)
+        const marker = L.marker([m.lat, m.lng], { icon })
+
+        // Build popup content
+        let popupContent = `<div class="map-popup">`
+        if (m.url) {
+          popupContent += `<a href="${m.url}" class="popup-title"><strong>${m.title}</strong></a>`
+        } else {
+          popupContent += `<strong class="popup-title">${m.title}</strong>`
+        }
+        if (m.description) {
+          popupContent += `<p class="popup-description">${m.description}</p>`
+        }
+        if (m.category) {
+          popupContent += `<span class="popup-category" style="background-color: ${getMarkerColor(m.category)}20; color: ${getMarkerColor(m.category)};">${m.category}</span>`
+        }
+        popupContent += `</div>`
+
+        marker.bindPopup(popupContent)
+        marker._category = m.category
+        markers.push(marker)
+        markerGroup.addLayer(marker)
+      })
+
+      markerGroup.addTo(map)
+
+      // Draw trail if present
+      if (config.trail && config.trail.waypoints && config.trail.waypoints.length > 1) {
+        const trailCoords = config.trail.waypoints.map(wp => [wp.lat, wp.lng])
+        const polyline = L.polyline(trailCoords, {
+          color: config.trail.color || '#3b82f6',
+          weight: config.trail.weight || 4,
+          opacity: 0.8,
+        }).addTo(map)
+
+        // Add start and end markers
+        const startIcon = L.divIcon({
+          className: 'trail-marker',
+          html: '<div style="background-color: #22c55e; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>',
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
+        })
+        const endIcon = L.divIcon({
+          className: 'trail-marker',
+          html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>',
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
+        })
+
+        const startWp = config.trail.waypoints[0]
+        const endWp = config.trail.waypoints[config.trail.waypoints.length - 1]
+        L.marker([startWp.lat, startWp.lng], { icon: startIcon })
+          .bindPopup(`<strong>Start:</strong> ${startWp.name || 'Trailhead'}`)
+          .addTo(map)
+        L.marker([endWp.lat, endWp.lng], { icon: endIcon })
+          .bindPopup(`<strong>End:</strong> ${endWp.name || 'Destination'}`)
+          .addTo(map)
+
+        // Fit map to trail bounds
+        map.fitBounds(polyline.getBounds(), { padding: [50, 50] })
+      } else if (markers.length > 1) {
+        // Fit to marker bounds
+        const group = L.featureGroup(markers)
+        map.fitBounds(group.getBounds(), { padding: [50, 50] })
+      }
+
+      // Setup filter checkboxes
+      if (config.showFilters) {
+        const filtersContainer = document.getElementById(`${config.id}-filters`)
+        if (filtersContainer) {
+          filtersContainer.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+            checkbox.addEventListener('change', () => {
+              const checkedCategories = Array.from(
+                filtersContainer.querySelectorAll('input[type="checkbox"]:checked')
+              ).map((cb) => cb.value)
+
+              markers.forEach((marker) => {
+                if (!marker._category || checkedCategories.includes(marker._category)) {
+                  markerGroup.addLayer(marker)
+                } else {
+                  markerGroup.removeLayer(marker)
+                }
+              })
+            })
+          })
+        }
+      }
+    })
+  }
+
+  // Initialize on DOM ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeMaps)
+  } else {
+    initializeMaps()
+  }
+
+  // Re-initialize on Astro navigation
+  document.addEventListener('astro:page-load', initializeMaps)
+</script>
+
+<style>
+  .block-map {
+    margin: 2rem 0;
+  }
+
+  .map-heading {
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--color-text, #1c1917);
+  }
+
+  .map-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    background: #f5f5f4;
+    border-radius: 0.5rem;
+  }
+
+  .filter-label {
+    font-weight: 500;
+    color: #57534e;
+    margin-right: 0.5rem;
+  }
+
+  .filter-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: #44403c;
+  }
+
+  .filter-checkbox input {
+    cursor: pointer;
+  }
+
+  .map-container {
+    border-radius: 0.75rem;
+    overflow: hidden;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    position: relative;
+    background-color: #e7e5e4;
+  }
+
+  .map-loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #78716c;
+    font-size: 0.875rem;
+  }
+
+  /* Leaflet popup styling */
+  :global(.map-popup) {
+    min-width: 150px;
+    max-width: 250px;
+  }
+
+  :global(.map-popup .popup-title) {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: #1c1917;
+    text-decoration: none;
+  }
+
+  :global(.map-popup a.popup-title:hover) {
+    color: #0ea5e9;
+  }
+
+  :global(.map-popup .popup-description) {
+    margin: 0.25rem 0 0.5rem;
+    font-size: 0.875rem;
+    color: #57534e;
+  }
+
+  :global(.map-popup .popup-category) {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: capitalize;
+  }
+
+  /* Custom marker styling */
+  :global(.custom-marker) {
+    background: transparent;
+    border: none;
+  }
+
+  :global(.trail-marker) {
+    background: transparent;
+    border: none;
+  }
+
+  /* Override Leaflet cluster styling */
+  :global(.marker-cluster-small) {
+    background-color: rgba(14, 165, 233, 0.6) !important;
+  }
+
+  :global(.marker-cluster-small div) {
+    background-color: rgba(14, 165, 233, 0.8) !important;
+  }
+
+  :global(.marker-cluster-medium) {
+    background-color: rgba(228, 102, 76, 0.6) !important;
+  }
+
+  :global(.marker-cluster-medium div) {
+    background-color: rgba(228, 102, 76, 0.8) !important;
+  }
+
+  :global(.marker-cluster-large) {
+    background-color: rgba(139, 92, 246, 0.6) !important;
+  }
+
+  :global(.marker-cluster-large div) {
+    background-color: rgba(139, 92, 246, 0.8) !important;
+  }
+</style>

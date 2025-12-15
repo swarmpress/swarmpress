@@ -13,6 +13,7 @@ import {
   type ContentServiceInterface,
   type LoadedCollectionItem,
 } from '@swarm-press/shared'
+import { getLanguageGuidelines, isSupportedLanguage, type SupportedLanguage } from './language-guidelines'
 
 // ============================================================================
 // Repository Access
@@ -359,6 +360,10 @@ export const generatePageContentHandler: ToolHandler<{
       }
     }
 
+    // Get language-specific guidelines
+    const langCode = isSupportedLanguage(language) ? language : 'en'
+    const languageGuidelinesText = getLanguageGuidelines(langCode as SupportedLanguage)
+
     // Build the brief for the agent
     const brief = {
       page: {
@@ -381,12 +386,15 @@ export const generatePageContentHandler: ToolHandler<{
       instructions: `
 ## Your Task
 Create engaging, emotional content for the "${page.title}" page in ${village}.
+**IMPORTANT: Write ALL content in ${language.toUpperCase()} language.**
 
 ## Page Context
 - Village: ${village}
 - Page Type: ${pageType}
-- Language: ${language}
+- Target Language: ${language.toUpperCase()}
 - Suggested Writer: ${suggestedAgent} (${agentExpertise})
+
+${languageGuidelinesText}
 
 ## Available Collections
 ${collectionContext.length > 0 ? collectionContext.join('\n') : 'No collection items available for this village.'}
@@ -397,6 +405,7 @@ ${collectionContext.length > 0 ? collectionContext.join('\n') : 'No collection i
 3. Use collection-embed blocks to showcase curated items
 4. Include practical tips, local insights, and personal touches
 5. Make readers feel the essence of ${village}
+6. **Write everything in ${language.toUpperCase()} - do not use other languages**
 
 ## Block Types to Use
 - hero: For the page header with an evocative title and subtitle
