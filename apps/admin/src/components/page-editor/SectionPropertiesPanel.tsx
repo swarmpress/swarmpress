@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '../ui/select'
 import { PromptsEditor } from './PromptsEditor'
+import type { AssignedAgentInfo } from './PromptsEditor'
 import { CollectionEditor } from './CollectionEditor'
 import {
   Settings,
@@ -29,6 +30,10 @@ interface SectionPropertiesPanelProps {
   onUpdateSection: (updates: Partial<PageSection>) => void
   onUpdatePrompts: (prompts: InlinePrompt | undefined) => void
   onUpdateCollectionSource: (source: CollectionSource | undefined) => void
+  /** Assigned agents for the current page */
+  assignedAgents?: AssignedAgentInfo[]
+  /** Inherited perspective from page/parent */
+  inheritedPerspective?: 'first_person' | 'second_person' | 'third_person'
 }
 
 export function SectionPropertiesPanel({
@@ -36,6 +41,8 @@ export function SectionPropertiesPanel({
   onUpdateSection,
   onUpdatePrompts,
   onUpdateCollectionSource,
+  assignedAgents,
+  inheritedPerspective = 'third_person',
 }: SectionPropertiesPanelProps) {
   const [activeTab, setActiveTab] = useState('general')
 
@@ -189,6 +196,9 @@ export function SectionPropertiesPanel({
                   onUpdateSection({ ai_hints: aiHints })
                 }
               }}
+              assignedAgents={assignedAgents}
+              inheritedPerspective={inheritedPerspective}
+              sectionType={section.type}
             />
           </TabsContent>
 

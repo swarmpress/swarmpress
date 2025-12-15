@@ -191,6 +191,34 @@ export type Agent = z.infer<typeof AgentSchema>
 // Website
 // ============================================================================
 
+/**
+ * AI Context for websites - provides context for content generation and optimization
+ * Stored in the website's metadata JSONB field in the database
+ *
+ * Note: Tone and writing style are defined at the agent level, not website level
+ */
+export const WebsiteAIContextSchema = z.object({
+  // Target audience
+  target_audience: z.string().optional(), // "Travelers planning a trip to Cinque Terre, Italy"
+  audience_demographics: z.array(z.string()).optional(), // ["25-45 year olds", "Travel enthusiasts", "First-time visitors"]
+
+  // Website purpose
+  purpose: z.string().optional(), // "Comprehensive travel guide for Cinque Terre region"
+  primary_goals: z.array(z.string()).optional(), // ["Inform visitors about best attractions", "Provide practical travel tips"]
+  unique_value_proposition: z.string().optional(), // "The most comprehensive Cinque Terre guide by locals"
+
+  // Languages
+  primary_language: z.string().optional(), // "en"
+  supported_languages: z.array(z.string()).optional(), // ["en", "it", "de", "fr"]
+
+  // Content guidelines
+  content_guidelines: z.string().optional(), // "Focus on practical information, include local perspectives"
+  keywords: z.array(z.string()).optional(), // ["Cinque Terre", "Italy travel", "hiking trails"]
+  topics_to_avoid: z.array(z.string()).optional(), // ["Negative reviews", "Political content"]
+})
+
+export type WebsiteAIContext = z.infer<typeof WebsiteAIContextSchema>
+
 export const WebsiteSchema = z
   .object({
     id: z.string().uuid(),
@@ -198,7 +226,11 @@ export const WebsiteSchema = z
     name: z.string().min(1), // Display name for the website
     title: z.string().min(1), // HTML title
     description: z.string().optional(),
+    language: z.string().optional(), // Primary language code (e.g., 'en', 'it')
     settings: z.record(z.any()).optional(), // Website configuration settings
+    metadata: z.object({
+      ai_context: WebsiteAIContextSchema.optional(),
+    }).passthrough().optional(), // Metadata including AI context
     // GitHub Integration
     github_repo_url: z.string().optional(),
     github_owner: z.string().optional(),

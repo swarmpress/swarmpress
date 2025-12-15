@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { router, publicProcedure, ceoProcedure } from '../trpc'
 import { websiteRepository } from '../../db/repositories'
 import { TRPCError } from '@trpc/server'
+import { WebsiteAIContextSchema } from '@swarm-press/shared'
 
 export const websiteRouter = router({
   /**
@@ -87,13 +88,18 @@ export const websiteRouter = router({
       z.object({
         id: z.string(),
         name: z.string().optional(),
+        title: z.string().optional(),
         domain: z.string().optional(),
         description: z.string().optional(),
+        language: z.string().optional(),
         config: z.record(z.unknown()).optional(),
+        metadata: z.object({
+          ai_context: WebsiteAIContextSchema.optional(),
+        }).passthrough().optional(),
       })
     )
     .mutation(async ({ input, ctx: _ctx }) => {
-      const { id, ...updates } = input
+      const { id, config: _config, ...updates } = input
 
       const existing = await websiteRepository.findById(id)
       if (!existing) {
@@ -103,7 +109,19 @@ export const websiteRouter = router({
         })
       }
 
-      const updated = await websiteRepository.update(id, updates)
+      // Merge existing metadata with new metadata to preserve other fields
+      const mergedMetadata = updates.metadata
+        ? {
+            ...((existing as any).metadata || {}),
+            ...updates.metadata,
+          }
+        : undefined
+
+      const finalUpdates = mergedMetadata
+        ? { ...updates, metadata: mergedMetadata }
+        : updates
+
+      const updated = await websiteRepository.update(id, finalUpdates)
 
       console.log(`[WebsiteRouter] Website updated: ${id} by CEO`)
 

@@ -46,6 +46,9 @@ You have access to the following tools - ALWAYS use them to accomplish your task
 5. **web_search** - Search the web for up-to-date information (weather, events, current prices, etc.)
 6. **generate_page_content** - Load a website page with collection context for content generation
 7. **write_page_content** - Save generated content to a website page in GitHub
+8. **generate_page_sections** - Generate recommended section structure for a page based on questionnaire
+9. **optimize_section** - Generate or improve content for a single page section
+10. **optimize_all_sections** - Generate content for all sections on a page at once
 
 ## Content Block Types
 When writing content, use these JSON block types:

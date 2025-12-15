@@ -50,6 +50,22 @@ export const CollectionSourceSchema = z.object({
 export type CollectionSource = z.infer<typeof CollectionSourceSchema>
 
 // ============================================================================
+// Section Version (for tracking content history)
+// ============================================================================
+
+export const SectionVersionSchema = z.object({
+  id: z.string(), // Version ID (UUID or timestamp-based)
+  content: z.record(z.unknown()), // Snapshot of the content at this version
+  timestamp: z.string(), // ISO timestamp when version was created
+  source: z.enum(['human', 'ai']), // Who created this version
+  agentId: z.string().optional(), // If AI, which agent created it
+  agentName: z.string().optional(), // Agent's display name
+  message: z.string().optional(), // Optional description of changes
+})
+
+export type SectionVersion = z.infer<typeof SectionVersionSchema>
+
+// ============================================================================
 // Page Section
 // ============================================================================
 
@@ -70,9 +86,13 @@ export const PageSectionSchema = z.object({
   // Collection Binding (for dynamic data sections)
   collectionSource: CollectionSourceSchema.optional(),
 
+  // Version History (for tracking changes over time)
+  versions: z.array(SectionVersionSchema).optional(), // Array of previous versions
+  currentVersionId: z.string().optional(), // ID of the current active version
+
   // Metadata
-  locked: z.boolean().optional(), // Prevent accidental edits
-  notes: z.string().optional(), // Internal notes for editors
+  locked: z.boolean().nullish(), // Prevent accidental edits
+  notes: z.string().nullish(), // Internal notes for editors
 })
 
 export type PageSection = z.infer<typeof PageSectionSchema>
@@ -133,4 +153,98 @@ export function reorderSections(
     ...section,
     order: index,
   }))
+}
+
+// ============================================================================
+// Version Management Helpers
+// ============================================================================
+
+/**
+ * Generate a unique version ID
+ */
+export function generateVersionId(): string {
+  return `v_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+}
+
+/**
+ * Create a new version snapshot from current content
+ */
+export function createVersion(
+  content: Record<string, unknown>,
+  source: 'human' | 'ai',
+  options?: {
+    agentId?: string
+    agentName?: string
+    message?: string
+  }
+): SectionVersion {
+  return {
+    id: generateVersionId(),
+    content,
+    timestamp: new Date().toISOString(),
+    source,
+    agentId: options?.agentId,
+    agentName: options?.agentName,
+    message: options?.message,
+  }
+}
+
+/**
+ * Add a version to a section's history
+ * Returns a new section with the version added
+ */
+export function addVersionToSection(
+  section: PageSection,
+  version: SectionVersion
+): PageSection {
+  const versions = section.versions || []
+  return {
+    ...section,
+    versions: [...versions, version],
+    currentVersionId: version.id,
+  }
+}
+
+/**
+ * Get a specific version from a section's history
+ */
+export function getVersion(
+  section: PageSection,
+  versionId: string
+): SectionVersion | undefined {
+  return section.versions?.find((v) => v.id === versionId)
+}
+
+/**
+ * Restore a section to a specific version
+ * Returns a new section with the content from that version
+ */
+export function restoreVersion(
+  section: PageSection,
+  versionId: string
+): PageSection | null {
+  const version = getVersion(section, versionId)
+  if (!version) return null
+
+  return {
+    ...section,
+    content: version.content,
+    currentVersionId: versionId,
+  }
+}
+
+/**
+ * Get the version history of a section (sorted by timestamp, newest first)
+ */
+export function getVersionHistory(section: PageSection): SectionVersion[] {
+  return [...(section.versions || [])].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  )
+}
+
+/**
+ * Check if section has version history
+ */
+export function hasVersionHistory(section: PageSection): boolean {
+  return !!(section.versions && section.versions.length > 0)
 }

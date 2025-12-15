@@ -25,6 +25,8 @@ interface SectionListProps {
   onReorder: (fromIndex: number, toIndex: number) => void
   onDelete: (id: string) => void
   onDuplicate: (id: string) => void
+  onOptimize?: (id: string) => void
+  optimizingId?: string | null
 }
 
 export function SectionList({
@@ -34,6 +36,8 @@ export function SectionList({
   onReorder,
   onDelete,
   onDuplicate,
+  onOptimize,
+  optimizingId,
 }: SectionListProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -90,6 +94,8 @@ export function SectionList({
               onClick={() => onSelect(section.id)}
               onDelete={() => onDelete(section.id)}
               onDuplicate={() => onDuplicate(section.id)}
+              onOptimize={onOptimize ? () => onOptimize(section.id) : undefined}
+              isOptimizing={optimizingId === section.id}
             />
           ))}
         </div>

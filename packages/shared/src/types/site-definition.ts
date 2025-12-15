@@ -222,6 +222,21 @@ export const NodePositionSchema = z.object({
 export type NodePosition = z.infer<typeof NodePositionSchema>
 
 // ============================================================================
+// Agent Assignment (per-department agent assignments for pages)
+// ============================================================================
+
+/**
+ * Per-department agent assignment for a sitemap node.
+ * When agentId is null, the assignment is inherited from the parent node.
+ */
+export const AgentAssignmentSchema = z.object({
+  departmentId: z.string(),           // UUID of department
+  agentId: z.string().nullable(),     // UUID of agent, null = inherited from parent
+})
+
+export type AgentAssignment = z.infer<typeof AgentAssignmentSchema>
+
+// ============================================================================
 // Sitemap Node (matches site.json format)
 // ============================================================================
 
@@ -239,6 +254,9 @@ export const SitemapNodeSchema = z.object({
     // Template collection fields
     isTemplate: z.boolean().optional(), // true = collection has pageStructure
     instanceOverrides: z.array(InstanceOverrideSchema).optional(), // Per-instance customization
+
+    // Per-department agent assignments (inherited down the tree)
+    agentAssignments: z.array(AgentAssignmentSchema).optional(),
   }).optional(),
 })
 
@@ -436,4 +454,123 @@ export function resolveFilterTemplate(
     console.error('Failed to parse filter template:', filterTemplate)
     return {}
   }
+}
+
+// ============================================================================
+// Agent Assignment Helper Functions
+// ============================================================================
+
+/**
+ * Find the parent node ID for a given node by looking at edges
+ */
+export function getParentNodeId(
+  nodeId: string,
+  edges: SitemapEdge[]
+): string | null {
+  const parentEdge = edges.find(
+    (e) => e.target === nodeId && e.type === 'parent-child'
+  )
+  return parentEdge?.source ?? null
+}
+
+/**
+ * Resolve agent for a department by walking up the node tree.
+ * Returns the first non-null agentId found, or null if no assignment exists.
+ */
+export function resolveAgentForDepartment(
+  node: SitemapNode,
+  departmentId: string,
+  getNodeById: (nodeId: string) => SitemapNode | undefined,
+  edges: SitemapEdge[]
+): { agentId: string | null; fromNodeId: string | null } {
+  // Check current node first
+  const assignment = node.data?.agentAssignments?.find(
+    (a) => a.departmentId === departmentId
+  )
+
+  // If we have an explicit assignment (even null means "use inherited")
+  if (assignment && assignment.agentId !== null) {
+    return { agentId: assignment.agentId, fromNodeId: node.id }
+  }
+
+  // Find parent via edges
+  const parentId = getParentNodeId(node.id, edges)
+  if (!parentId) {
+    return { agentId: null, fromNodeId: null } // No parent, no agent
+  }
+
+  const parentNode = getNodeById(parentId)
+  if (!parentNode) {
+    return { agentId: null, fromNodeId: null }
+  }
+
+  // Recurse to parent
+  return resolveAgentForDepartment(parentNode, departmentId, getNodeById, edges)
+}
+
+/**
+ * Resolved agent assignment with inheritance information
+ */
+export interface ResolvedAgentAssignment {
+  departmentId: string
+  departmentName: string
+  agentId: string | null
+  agentName?: string
+  inherited: boolean
+  fromNodeId?: string
+  fromNodeTitle?: string
+}
+
+/**
+ * Get all resolved agent assignments for a node (including inherited).
+ * Returns one entry per department with the resolved agent and inheritance info.
+ */
+export function getResolvedAgentAssignments(
+  node: SitemapNode,
+  departments: Array<{ id: string; name: string }>,
+  agents: Array<{ id: string; name: string; departmentId: string }>,
+  getNodeById: (nodeId: string) => SitemapNode | undefined,
+  edges: SitemapEdge[]
+): ResolvedAgentAssignment[] {
+  return departments.map((dept) => {
+    // Check if this node has a direct (non-null) assignment for this department
+    const directAssignment = node.data?.agentAssignments?.find(
+      (a) => a.departmentId === dept.id
+    )
+
+    if (directAssignment && directAssignment.agentId !== null) {
+      const agent = agents.find((a) => a.id === directAssignment.agentId)
+      return {
+        departmentId: dept.id,
+        departmentName: dept.name,
+        agentId: directAssignment.agentId,
+        agentName: agent?.name,
+        inherited: false,
+      }
+    }
+
+    // Resolve from parent
+    const resolved = resolveAgentForDepartment(node, dept.id, getNodeById, edges)
+
+    if (resolved.agentId && resolved.fromNodeId) {
+      const agent = agents.find((a) => a.id === resolved.agentId)
+      const fromNode = getNodeById(resolved.fromNodeId)
+      return {
+        departmentId: dept.id,
+        departmentName: dept.name,
+        agentId: resolved.agentId,
+        agentName: agent?.name,
+        inherited: true,
+        fromNodeId: resolved.fromNodeId,
+        fromNodeTitle: getLocalizedValue(fromNode?.data?.title) || fromNode?.data?.slug,
+      }
+    }
+
+    return {
+      departmentId: dept.id,
+      departmentName: dept.name,
+      agentId: null,
+      inherited: true,
+    }
+  })
 }

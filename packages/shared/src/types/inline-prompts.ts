@@ -29,6 +29,62 @@ export const SiteAIHintsSchema = z.object({
 export type SiteAIHints = z.infer<typeof SiteAIHintsSchema>
 
 // ============================================================================
+// Per-Field Hints (for granular control over text and media generation)
+// ============================================================================
+
+/**
+ * Text field hint - routed to Writer Agent
+ */
+export const TextFieldHintSchema = z.object({
+  prompt: z.string().optional(), // Specific instructions for this field
+  tone: z.string().optional(), // Override section tone for this field
+  maxLength: z.number().optional(), // Character/word limit
+  examples: z.array(z.string()).optional(), // Example content
+})
+
+export type TextFieldHint = z.infer<typeof TextFieldHintSchema>
+
+/**
+ * Media field hint - routed to Media Production Agent
+ */
+export const MediaFieldHintSchema = z.object({
+  prompt: z.string().optional(), // Description of desired image/video
+  style: z.enum([
+    'photographic',
+    'illustration',
+    'icon',
+    '3d-render',
+    'artistic',
+    'minimal',
+    'stock-photo',
+  ]).optional(),
+  mood: z.string().optional(), // e.g., "warm, inviting", "professional, clean"
+  aspectRatio: z.enum(['1:1', '4:3', '16:9', '3:2', '2:3', '9:16', 'auto']).optional(),
+  subjects: z.array(z.string()).optional(), // What should be in the image
+  colorPalette: z.array(z.string()).optional(), // Preferred colors
+  avoid: z.array(z.string()).optional(), // What to avoid in the image
+})
+
+export type MediaFieldHint = z.infer<typeof MediaFieldHintSchema>
+
+/**
+ * Union of text and media field hints
+ */
+export const FieldHintSchema = z.union([
+  TextFieldHintSchema.extend({ _type: z.literal('text').optional() }),
+  MediaFieldHintSchema.extend({ _type: z.literal('media').optional() }),
+])
+
+export type FieldHint = z.infer<typeof FieldHintSchema>
+
+/**
+ * Map of field name to hint
+ */
+export const FieldHintsMapSchema = z.record(z.string(), FieldHintSchema)
+
+export type FieldHintsMap = z.infer<typeof FieldHintsMapSchema>
+
+// ============================================================================
 // Inline Prompt (for quick configuration in site definition)
 // ============================================================================
 
@@ -58,6 +114,12 @@ export const InlinePromptSchema = z.object({
 
   // Variables (placeholders that get replaced at runtime)
   variables: z.record(z.string()).optional(), // e.g., { "city": "Monterosso", "region": "Cinque Terre" }
+
+  // Per-field hints (for granular control over individual content fields)
+  // Keys are field names from the section's contentFields
+  // Text fields: { prompt, tone, maxLength, examples }
+  // Media fields: { prompt, style, mood, aspectRatio, subjects, colorPalette, avoid }
+  fieldHints: FieldHintsMapSchema.optional(),
 })
 
 export type InlinePrompt = z.infer<typeof InlinePromptSchema>

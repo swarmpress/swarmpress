@@ -518,6 +518,224 @@ function extractPageTypeFromPath(path: string): string {
 }
 
 // ============================================================================
+// Section Generation & Optimization Handlers
+// ============================================================================
+
+/**
+ * Generate page sections - return recommended section structure
+ * The agent generates the sections based on the context and questionnaire
+ */
+export const generatePageSectionsHandler: ToolHandler<{
+  page_context: {
+    pageType?: string
+    pageTitle?: string
+    pageId?: string
+    siteName?: string
+    siteDescription?: string
+  }
+  questionnaire: {
+    purpose: string
+    audience: string
+    keySections: string[]
+    tone?: string
+  }
+}> = async (input, _context): Promise<ToolResult> => {
+  try {
+    console.log(`[WriterHandler] generate_page_sections called:`, {
+      pageType: input.page_context.pageType,
+      pageTitle: input.page_context.pageTitle,
+      purpose: input.questionnaire.purpose,
+      keySections: input.questionnaire.keySections,
+    })
+
+    // This handler provides the context for the agent to generate sections
+    // The agent will use its knowledge to recommend appropriate sections
+    const sectionGuide = {
+      availableSectionTypes: [
+        { type: 'hero-section', description: 'Large banner section with title, subtitle, and optional CTA' },
+        { type: 'header-section', description: 'Simple header with title and optional description' },
+        { type: 'content-section', description: 'Rich text content area for narrative copy' },
+        { type: 'feature-section', description: 'Grid or list of features/benefits with icons' },
+        { type: 'stats-section', description: 'Key statistics or metrics display' },
+        { type: 'cta-section', description: 'Call-to-action section with buttons' },
+        { type: 'faq-section', description: 'Frequently asked questions accordion' },
+        { type: 'testimonial-section', description: 'Customer quotes and testimonials' },
+        { type: 'pricing-section', description: 'Pricing plans or packages' },
+        { type: 'team-section', description: 'Team member profiles' },
+        { type: 'contact-section', description: 'Contact form or information' },
+        { type: 'logo-cloud-section', description: 'Partner or client logos' },
+        { type: 'newsletter-section', description: 'Email signup form' },
+      ],
+      context: input.page_context,
+      userRequirements: input.questionnaire,
+      instructions: `Based on the page context and user requirements, recommend a set of sections.
+For each section, provide:
+- type: one of the available section types
+- variant: the recommended variant (e.g., "centered", "split-with-image")
+- order: position in the page (0-indexed)
+- prompts: { purpose: "what this section should accomplish" }
+- ai_hints: { tone: "${input.questionnaire.tone || 'professional'}" }
+
+The user requested these key sections: ${input.questionnaire.keySections.join(', ')}
+Page purpose: ${input.questionnaire.purpose}
+Target audience: ${input.questionnaire.audience}`,
+    }
+
+    return toolSuccess(sectionGuide)
+  } catch (error) {
+    return toolError(error instanceof Error ? error.message : 'Failed to generate page sections')
+  }
+}
+
+/**
+ * Optimize section content - generate content for a single section
+ */
+export const optimizeSectionHandler: ToolHandler<{
+  section: {
+    id: string
+    type: string
+    variant?: string
+    content?: Record<string, unknown>
+    prompts?: Record<string, unknown>
+    ai_hints?: Record<string, unknown>
+  }
+  page_context: {
+    pageTitle?: string
+    pageId?: string
+    pagePurpose?: string
+    siteName?: string
+  }
+}> = async (input, _context): Promise<ToolResult> => {
+  try {
+    console.log(`[WriterHandler] optimize_section called:`, {
+      sectionId: input.section.id,
+      sectionType: input.section.type,
+      variant: input.section.variant,
+      hasExistingContent: !!input.section.content && Object.keys(input.section.content).length > 0,
+    })
+
+    // Build content generation instructions based on section type
+    const sectionContentSchemas: Record<string, object> = {
+      'hero-section': {
+        title: 'string - compelling headline',
+        subtitle: 'string - supporting text',
+        cta: { text: 'string - button text', url: 'string - button URL' },
+        backgroundImage: 'string - image URL or leave empty',
+      },
+      'header-section': {
+        title: 'string - section title',
+        description: 'string - optional description',
+      },
+      'content-section': {
+        heading: 'string - section heading',
+        content: 'string - markdown formatted content',
+      },
+      'feature-section': {
+        heading: 'string - section heading',
+        subheading: 'string - optional subheading',
+        features: [{ title: 'string', description: 'string', icon: 'string - icon name' }],
+      },
+      'stats-section': {
+        heading: 'string - section heading',
+        stats: [{ value: 'string - the number/metric', label: 'string - what it represents', description: 'string - optional detail' }],
+      },
+      'cta-section': {
+        heading: 'string - compelling headline',
+        description: 'string - supporting text',
+        primaryCta: { text: 'string', url: 'string' },
+        secondaryCta: { text: 'string', url: 'string' },
+      },
+      'faq-section': {
+        heading: 'string - section heading',
+        items: [{ question: 'string', answer: 'string' }],
+      },
+      'testimonial-section': {
+        heading: 'string - section heading',
+        testimonials: [{ quote: 'string', author: 'string', role: 'string', company: 'string' }],
+      },
+    }
+
+    const contentSchema = sectionContentSchemas[input.section.type] || { content: 'object - section-specific content' }
+
+    const optimizationContext = {
+      section: input.section,
+      pageContext: input.page_context,
+      contentSchema,
+      instructions: `Generate optimized content for this ${input.section.type} section.
+
+Page: "${input.page_context.pageTitle}" - ${input.page_context.pagePurpose || 'No specific purpose defined'}
+
+Section prompts/hints:
+${JSON.stringify(input.section.prompts || {}, null, 2)}
+${JSON.stringify(input.section.ai_hints || {}, null, 2)}
+
+${input.section.content && Object.keys(input.section.content).length > 0
+  ? `Current content to improve:\n${JSON.stringify(input.section.content, null, 2)}`
+  : 'No existing content - generate fresh content.'}
+
+Generate content matching this schema:
+${JSON.stringify(contentSchema, null, 2)}
+
+Return ONLY the content object, properly structured.`,
+    }
+
+    return toolSuccess(optimizationContext)
+  } catch (error) {
+    return toolError(error instanceof Error ? error.message : 'Failed to optimize section')
+  }
+}
+
+/**
+ * Optimize all sections - generate content for all sections on a page
+ */
+export const optimizeAllSectionsHandler: ToolHandler<{
+  sections: Array<{
+    id: string
+    type: string
+    variant?: string
+    content?: Record<string, unknown>
+    prompts?: Record<string, unknown>
+    ai_hints?: Record<string, unknown>
+  }>
+  page_context: {
+    pageTitle?: string
+    pageId?: string
+    pagePurpose?: string
+    siteName?: string
+  }
+}> = async (input, _context): Promise<ToolResult> => {
+  try {
+    console.log(`[WriterHandler] optimize_all_sections called:`, {
+      sectionCount: input.sections.length,
+      sectionTypes: input.sections.map(s => s.type),
+      pageTitle: input.page_context.pageTitle,
+    })
+
+    const optimizationContext = {
+      sections: input.sections,
+      pageContext: input.page_context,
+      instructions: `Generate optimized content for ALL ${input.sections.length} sections on this page.
+
+Page: "${input.page_context.pageTitle}" - ${input.page_context.pagePurpose || 'No specific purpose defined'}
+
+Ensure consistency across all sections:
+- Maintain consistent tone and style
+- Create a logical narrative flow
+- Avoid repetition between sections
+- Each section should complement the others
+
+For each section, generate appropriate content based on its type and configured prompts/hints.
+
+Return an array of objects with structure: { sectionId: string, content: object }`,
+    }
+
+    return toolSuccess(optimizationContext)
+  } catch (error) {
+    return toolError(error instanceof Error ? error.message : 'Failed to optimize sections')
+  }
+}
+
+// ============================================================================
 // Export Handler Map
 // ============================================================================
 
@@ -528,4 +746,7 @@ export const writerToolHandlers: Record<string, ToolHandler> = {
   submit_for_review: submitForReviewHandler,
   generate_page_content: generatePageContentHandler,
   write_page_content: writePageContentHandler,
+  generate_page_sections: generatePageSectionsHandler,
+  optimize_section: optimizeSectionHandler,
+  optimize_all_sections: optimizeAllSectionsHandler,
 }

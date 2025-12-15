@@ -114,8 +114,54 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
   const [editingPage, setEditingPage] = useState<EditingPageState | null>(null)
   const [isLoadingSections, setIsLoadingSections] = useState(false)
 
+  // Agents and departments for page editor prompts
+  const [agents, setAgents] = useState<Array<{ id: string; name: string; departmentId: string; avatarUrl?: string }>>([])
+  const [departments, setDepartments] = useState<Array<{ id: string; name: string }>>([])
+
   // Page sections hook
   const { loadSections, saveSections } = usePageSections(websiteId)
+
+  // Fetch agents and departments on mount
+  useEffect(() => {
+    const API_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000'
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ceo:admin@swarm.press',
+    }
+
+    async function fetchAgentsAndDepartments() {
+      try {
+        const [agentsRes, deptsRes] = await Promise.all([
+          fetch(`${API_URL}/api/trpc/agent.list?input=${encodeURIComponent(JSON.stringify({ json: {} }))}`, { headers }),
+          fetch(`${API_URL}/api/trpc/department.list?input=${encodeURIComponent(JSON.stringify({ json: {} }))}`, { headers }),
+        ])
+
+        if (agentsRes.ok) {
+          const agentsData = await agentsRes.json()
+          const agentItems = agentsData.result?.data?.json?.items || []
+          setAgents(agentItems.map((a: any) => ({
+            id: a.id,
+            name: a.name,
+            departmentId: a.department_id,
+            avatarUrl: a.avatar_url,
+          })))
+        }
+
+        if (deptsRes.ok) {
+          const deptsData = await deptsRes.json()
+          const deptItems = deptsData.result?.data?.json?.items || []
+          setDepartments(deptItems.map((d: any) => ({
+            id: d.id,
+            name: d.name,
+          })))
+        }
+      } catch (error) {
+        console.error('Failed to fetch agents/departments:', error)
+      }
+    }
+
+    fetchAgentsAndDepartments()
+  }, [])
 
   // Get flattened types map
   const typesMap = siteDefinition ? getAllTypes(siteDefinition) : {}
@@ -568,14 +614,22 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
 
   // Render Page Editor when in page-editor mode
   if (editorMode === 'page-editor' && editingPage) {
+    // Find the page node in siteDefinition for agent assignment resolution
+    const pageNode = siteDefinition?.sitemap.nodes.find((n) => n.id === editingPage.nodeId)
+
     return (
       <PageEditor
         pageId={editingPage.nodeId}
         pageTitle={editingPage.pageTitle}
+        pagePath={editingPage.pagePath}
         websiteId={websiteId}
         initialSections={editingPage.sections}
         onBack={handleExitPageEditor}
         onSave={handleSavePageSections}
+        siteDefinition={siteDefinition ?? undefined}
+        pageNode={pageNode}
+        agents={agents}
+        departments={departments}
       />
     )
   }

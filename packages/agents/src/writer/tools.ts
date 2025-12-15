@@ -178,6 +178,95 @@ For collection-embed blocks, the items should be pre-filtered by village and con
   },
 }
 
+/**
+ * Generate page sections - recommend and create section structure for a page
+ */
+export const generatePageSectionsTool: ToolDefinition = {
+  name: 'generate_page_sections',
+  description: `Generate a recommended set of sections for a website page based on the page context and questionnaire answers.
+
+This tool analyzes:
+1. The page type (landing page, article, service page, etc.)
+2. The user's answers about purpose, audience, and desired sections
+3. Best practices for the content type
+
+Returns an array of section definitions with:
+- type: The section type (e.g., "hero-section", "feature-section")
+- variant: The recommended variant
+- order: The section order
+- prompts: AI hints for content generation
+
+Use this when the user wants to start with a blank page and get AI-recommended sections.`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      page_context: objectProp('Context about the page including type, title, and site information'),
+      questionnaire: objectProp(`User's answers to the generation questionnaire: { purpose: string, audience: string, keySections: string[], tone: string }`),
+    },
+    required: ['page_context', 'questionnaire'],
+  },
+}
+
+/**
+ * Optimize section content - generate or improve content for a single section
+ */
+export const optimizeSectionTool: ToolDefinition = {
+  name: 'optimize_section',
+  description: `Generate or optimize content for a single page section.
+
+This tool:
+1. Analyzes the section type, variant, and configured prompts/hints
+2. Uses the page context and any existing content
+3. Generates structured content appropriate for the section type
+
+The content structure depends on the section type:
+- hero-section: { title, subtitle, cta: { text, url }, backgroundImage }
+- feature-section: { heading, subheading, features: [{ title, description, icon }] }
+- content-section: { heading, content (markdown) }
+- stats-section: { heading, stats: [{ value, label, description }] }
+- cta-section: { heading, description, primaryCta: { text, url }, secondaryCta: { text, url } }
+- faq-section: { heading, items: [{ question, answer }] }
+- testimonial-section: { heading, testimonials: [{ quote, author, role, avatar }] }
+
+Returns the optimized content object for the section.`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      section: objectProp('The section to optimize including type, variant, current content, prompts, and ai_hints'),
+      page_context: objectProp('Context about the page including title, purpose, and site information'),
+    },
+    required: ['section', 'page_context'],
+  },
+}
+
+/**
+ * Optimize all sections - generate content for all sections on a page
+ */
+export const optimizeAllSectionsTool: ToolDefinition = {
+  name: 'optimize_all_sections',
+  description: `Generate or optimize content for all sections on a page in a single operation.
+
+This tool:
+1. Analyzes each section's type, variant, and configured prompts/hints
+2. Ensures consistency across all sections (tone, style, narrative flow)
+3. Generates appropriate content for each section type
+
+Returns an array of section updates with their optimized content.
+
+Use this when the user wants to populate all sections at once with AI-generated content.`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      sections: arrayProp(
+        'Array of sections to optimize, each with type, variant, current content, prompts, and ai_hints',
+        objectProp('A section object')
+      ),
+      page_context: objectProp('Context about the page including title, purpose, and site information'),
+    },
+    required: ['sections', 'page_context'],
+  },
+}
+
 // ============================================================================
 // Export All Tools
 // ============================================================================
@@ -189,4 +278,7 @@ export const writerTools = [
   submitForReviewTool,
   generatePageContentTool,
   writePageContentTool,
+  generatePageSectionsTool,
+  optimizeSectionTool,
+  optimizeAllSectionsTool,
 ]

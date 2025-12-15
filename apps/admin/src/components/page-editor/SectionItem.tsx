@@ -39,6 +39,8 @@ import {
   BarChart3,
   Heading,
   SquareBottomDashedScissors,
+  Wand2,
+  Loader2,
 } from 'lucide-react'
 
 // Map icon names to Lucide components
@@ -67,6 +69,8 @@ interface SectionItemProps {
   onClick: () => void
   onDelete: () => void
   onDuplicate: () => void
+  onOptimize?: () => void
+  isOptimizing?: boolean
 }
 
 export function SectionItem({
@@ -75,6 +79,8 @@ export function SectionItem({
   onClick,
   onDelete,
   onDuplicate,
+  onOptimize,
+  isOptimizing = false,
 }: SectionItemProps) {
   const {
     attributes,
@@ -164,32 +170,47 @@ export function SectionItem({
       </div>
 
       {/* Actions Menu */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={onDuplicate}>
-            <Copy className="h-4 w-4 mr-2" />
-            Duplicate
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={onDelete}
-            className="text-destructive focus:text-destructive"
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {isOptimizing ? (
+        <div className="flex-shrink-0 p-1">
+          <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
+        </div>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {onOptimize && (
+              <>
+                <DropdownMenuItem onClick={onOptimize}>
+                  <Wand2 className="h-4 w-4 mr-2 text-purple-500" />
+                  Optimize with AI
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            <DropdownMenuItem onClick={onDuplicate}>
+              <Copy className="h-4 w-4 mr-2" />
+              Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={onDelete}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   )
 }

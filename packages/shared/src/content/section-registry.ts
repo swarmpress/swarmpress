@@ -15,6 +15,38 @@ export interface SectionVariant {
   description?: string
 }
 
+/**
+ * Content field types for agent routing
+ * - text: Routed to Writer Agent
+ * - image: Routed to Media Production Agent
+ * - video: Routed to Media Production Agent
+ * - array-text: Array of text items (Writer)
+ * - array-image: Array of images (Media)
+ * - object: Complex nested object (may contain both)
+ */
+export type ContentFieldType =
+  | 'text'
+  | 'image'
+  | 'video'
+  | 'array-text'
+  | 'array-image'
+  | 'object'
+
+/**
+ * Field definition for content schema
+ */
+export interface SectionFieldDefinition {
+  name: string
+  label: string
+  type: ContentFieldType
+  required?: boolean
+  description?: string
+  /** For object types, nested field definitions */
+  fields?: SectionFieldDefinition[]
+  /** For array types, the item field type */
+  itemType?: ContentFieldType
+}
+
 // Note: Named SectionTypeDefinition to avoid conflict with SectionDefinition in site-definition.ts
 export interface SectionTypeDefinition {
   type: string
@@ -26,6 +58,8 @@ export interface SectionTypeDefinition {
   supportsCollections: boolean
   collectionTypes?: string[] // Which collections this section can bind to
   defaultVariant: string
+  /** Content fields for this section type - used for agent routing and per-field hints */
+  contentFields?: SectionFieldDefinition[]
 }
 
 export type SectionCategory =
@@ -62,6 +96,15 @@ export const SECTION_REGISTRY: SectionTypeDefinition[] = [
       { id: 'with-offset-image', label: 'With Offset Image' },
       { id: 'with-angled-image', label: 'With Angled Image' },
     ],
+    contentFields: [
+      { name: 'title', label: 'Title', type: 'text', required: true, description: 'Main headline' },
+      { name: 'subtitle', label: 'Subtitle', type: 'text', description: 'Supporting text below title' },
+      { name: 'eyebrow', label: 'Eyebrow', type: 'text', description: 'Small text above title' },
+      { name: 'backgroundImage', label: 'Background Image', type: 'image', description: 'Full-width background' },
+      { name: 'image', label: 'Hero Image', type: 'image', description: 'Primary hero image' },
+      { name: 'screenshot', label: 'Screenshot', type: 'image', description: 'App or product screenshot' },
+      { name: 'images', label: 'Image Gallery', type: 'array-image', description: 'Multiple images for tile layouts' },
+    ],
   },
   {
     type: 'header-section',
@@ -80,6 +123,12 @@ export const SECTION_REGISTRY: SectionTypeDefinition[] = [
       { id: 'simple-with-background-image', label: 'Simple with Background Image' },
       { id: 'with-cards', label: 'With Cards' },
       { id: 'with-stats', label: 'With Stats' },
+    ],
+    contentFields: [
+      { name: 'eyebrow', label: 'Eyebrow', type: 'text', description: 'Small text above title' },
+      { name: 'title', label: 'Title', type: 'text', required: true, description: 'Main page title' },
+      { name: 'description', label: 'Description', type: 'text', description: 'Page intro text' },
+      { name: 'backgroundImage', label: 'Background Image', type: 'image', description: 'Background for header' },
     ],
   },
   {
@@ -121,6 +170,14 @@ export const SECTION_REGISTRY: SectionTypeDefinition[] = [
       { id: 'with-testimonial-and-stats', label: 'With Testimonial and Stats' },
       { id: 'with-testimonial', label: 'With Testimonial' },
     ],
+    contentFields: [
+      { name: 'eyebrow', label: 'Eyebrow', type: 'text', description: 'Small text above title' },
+      { name: 'title', label: 'Title', type: 'text', required: true, description: 'Section heading' },
+      { name: 'subtitle', label: 'Subtitle', type: 'text', description: 'Supporting text' },
+      { name: 'content', label: 'Content', type: 'text', required: true, description: 'Main content (markdown)' },
+      { name: 'image', label: 'Image', type: 'image', description: 'Featured image' },
+      { name: 'images', label: 'Image Gallery', type: 'array-image', description: 'Multiple images' },
+    ],
   },
   {
     type: 'feature-section',
@@ -147,6 +204,13 @@ export const SECTION_REGISTRY: SectionTypeDefinition[] = [
       { id: 'contained-in-panel', label: 'Contained in Panel' },
       { id: 'with-testimonial', label: 'With Testimonial' },
     ],
+    contentFields: [
+      { name: 'eyebrow', label: 'Eyebrow', type: 'text', description: 'Small text above title' },
+      { name: 'title', label: 'Title', type: 'text', required: true, description: 'Section heading' },
+      { name: 'subtitle', label: 'Subtitle', type: 'text', description: 'Supporting text' },
+      { name: 'features', label: 'Features', type: 'array-text', description: 'List of feature items (title + description)' },
+      { name: 'screenshot', label: 'Screenshot', type: 'image', description: 'Product screenshot' },
+    ],
   },
   {
     type: 'stats-section',
@@ -165,6 +229,13 @@ export const SECTION_REGISTRY: SectionTypeDefinition[] = [
       { id: 'timeline', label: 'Timeline' },
       { id: 'with-background-image', label: 'With Background Image' },
       { id: 'with-two-column-description', label: 'With Two Column Description' },
+    ],
+    contentFields: [
+      { name: 'eyebrow', label: 'Eyebrow', type: 'text', description: 'Small text above title' },
+      { name: 'title', label: 'Title', type: 'text', description: 'Section heading' },
+      { name: 'subtitle', label: 'Subtitle', type: 'text', description: 'Supporting text' },
+      { name: 'stats', label: 'Statistics', type: 'array-text', description: 'Stat items (value + label)' },
+      { name: 'image', label: 'Image', type: 'image', description: 'Featured image' },
     ],
   },
 
@@ -254,6 +325,12 @@ export const SECTION_REGISTRY: SectionTypeDefinition[] = [
       { id: 'dark-panel-with-app-screenshot', label: 'Dark Panel with App Screenshot' },
       { id: 'two-columns-with-photo', label: 'Two Columns with Photo' },
       { id: 'with-image-tiles', label: 'With Image Tiles' },
+    ],
+    contentFields: [
+      { name: 'title', label: 'Title', type: 'text', required: true, description: 'Main call to action heading' },
+      { name: 'subtitle', label: 'Subtitle', type: 'text', description: 'Supporting text' },
+      { name: 'backgroundImage', label: 'Background Image', type: 'image', description: 'Background visual' },
+      { name: 'image', label: 'Image', type: 'image', description: 'Featured image' },
     ],
   },
   {
@@ -463,4 +540,51 @@ export function getCategoryLabel(category: SectionCategory): string {
     visual: 'Visual',
   }
   return labels[category]
+}
+
+// ============================================================================
+// Field Type Helpers (for agent routing)
+// ============================================================================
+
+const TEXT_FIELD_TYPES: ContentFieldType[] = ['text', 'array-text']
+const MEDIA_FIELD_TYPES: ContentFieldType[] = ['image', 'video', 'array-image']
+
+/**
+ * Check if a field type is a text type (routed to Writer Agent)
+ */
+export function isTextFieldType(type: ContentFieldType): boolean {
+  return TEXT_FIELD_TYPES.includes(type)
+}
+
+/**
+ * Check if a field type is a media type (routed to Media Production Agent)
+ */
+export function isMediaFieldType(type: ContentFieldType): boolean {
+  return MEDIA_FIELD_TYPES.includes(type)
+}
+
+/**
+ * Get text fields for a section type (for Writer Agent)
+ */
+export function getTextFields(sectionType: string): SectionFieldDefinition[] {
+  const section = getSectionDefinition(sectionType)
+  if (!section?.contentFields) return []
+  return section.contentFields.filter((f) => isTextFieldType(f.type))
+}
+
+/**
+ * Get media fields for a section type (for Media Production Agent)
+ */
+export function getMediaFields(sectionType: string): SectionFieldDefinition[] {
+  const section = getSectionDefinition(sectionType)
+  if (!section?.contentFields) return []
+  return section.contentFields.filter((f) => isMediaFieldType(f.type))
+}
+
+/**
+ * Get all content fields for a section type
+ */
+export function getContentFields(sectionType: string): SectionFieldDefinition[] {
+  const section = getSectionDefinition(sectionType)
+  return section?.contentFields || []
 }

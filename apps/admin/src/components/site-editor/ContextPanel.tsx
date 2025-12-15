@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import type { SiteDefinition, SitemapNode, ContentType, PromptTemplate, InlinePrompt } from '@swarm-press/shared'
+import type { SiteDefinition, SitemapNode, ContentType, PromptTemplate, InlinePrompt, AgentAssignment } from '@swarm-press/shared'
 import { TemplateCollectionPanel } from './panels/TemplateCollectionPanel'
+import { AgentAssignmentsPanel } from './panels/AgentAssignmentsPanel'
 
 // Helper to check if collection has pageStructure
 function hasPageStructure(contentType: ContentType | undefined): boolean {
@@ -59,6 +60,7 @@ import {
   Eye,
   Link2,
   X,
+  Users,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
@@ -336,8 +338,12 @@ function PageNodePanel({
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="agents">
+            <Users className="h-3 w-3 mr-1" />
+            Agents
+          </TabsTrigger>
           <TabsTrigger value="prompts">
             <Sparkles className="h-3 w-3 mr-1" />
             AI
@@ -345,6 +351,20 @@ function PageNodePanel({
         </TabsList>
 
         <TabsContent value="general" className="space-y-4 mt-4">
+          {/* Page ID - readonly */}
+          <div>
+            <Label htmlFor="page-id" className="text-xs">Page ID</Label>
+            <Input
+              id="page-id"
+              value={node.id}
+              className="h-8 text-sm font-mono"
+              disabled
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Unique identifier for this page
+            </p>
+          </div>
+
           <div>
             <Label htmlFor="page-slug">Slug</Label>
             <Input
@@ -404,6 +424,14 @@ function PageNodePanel({
               </SelectContent>
             </Select>
           </div>
+        </TabsContent>
+
+        <TabsContent value="agents" className="mt-4">
+          <AgentAssignmentsPanel
+            node={node}
+            siteDefinition={siteDefinition}
+            onUpdate={(agentAssignments) => updateData({ agentAssignments })}
+          />
         </TabsContent>
 
         <TabsContent value="prompts" className="mt-4">

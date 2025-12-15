@@ -2174,8 +2174,8 @@ Closes #
           prompts: z.any().optional(),
           ai_hints: z.any().optional(),
           collectionSource: z.any().optional(),
-          locked: z.boolean().optional(),
-          notes: z.string().optional(),
+          locked: z.boolean().nullish(),
+          notes: z.string().nullish(),
         })),
         message: z.string().optional(),
       })
