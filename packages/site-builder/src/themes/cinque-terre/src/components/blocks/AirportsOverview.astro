@@ -1,0 +1,61 @@
+---
+/**
+ * AirportsOverview Block
+ *
+ * Airport distance matrix for transportation pages
+ */
+import { Plane } from 'lucide-react';
+
+interface Airport {
+  name: string;
+  code?: string;
+  distance: string;
+  time: string;
+}
+
+interface Props {
+  title?: string;
+  subtitle?: string;
+  airports: Airport[];
+}
+
+const {
+  title = 'Geographical Orientation',
+  subtitle = 'Riomaggiore is the easternmost of the five villages, situated on the Ligurian coast in northern Italy, between the port city of La Spezia and the historic city of Genoa.',
+  airports
+} = Astro.props;
+---
+
+<section class="py-20 bg-secondary/20 border-y border-border/40">
+  <div class="container mx-auto px-4">
+    <div class="max-w-4xl mx-auto text-center mb-16">
+      <h2 class="font-serif text-4xl md:text-5xl font-bold text-foreground mb-6">
+        {title}
+      </h2>
+      <p class="text-xl text-muted-foreground font-light leading-relaxed">
+        {subtitle}
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+      {airports.map(airport => (
+        <div class="bg-white p-8 rounded-2xl shadow-sm border border-border/50 group hover:border-primary/30 transition-colors">
+          <div class="w-12 h-12 rounded-full bg-primary/5 flex items-center justify-center mb-6 group-hover:bg-primary/10 transition-colors">
+            <Plane className="w-6 h-6 text-primary" />
+          </div>
+          <h3 class="font-serif text-xl font-bold mb-2">{airport.name}</h3>
+          <div class="space-y-1 text-sm text-muted-foreground">
+            <p>Distance: {airport.distance}</p>
+            <p>Travel Time: ~{airport.time}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .font-serif {
+    letter-spacing: -0.02em;
+  }
+</style>

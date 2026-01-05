@@ -1,0 +1,36 @@
+---
+import { Input } from './ui/input';
+import { Button } from './ui/button';
+---
+
+<section class="py-24 relative overflow-hidden">
+    <div class="absolute inset-0 bg-primary z-0"></div>
+    <div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1555979863-69fb96e63359?q=80&w=2670&auto=format&fit=crop')] bg-cover bg-center opacity-20 mix-blend-overlay z-0"></div>
+    
+    <div class="container mx-auto px-4 relative z-10 text-center text-primary-foreground">
+        <h2 class="font-serif text-3xl md:text-5xl font-bold mb-4">Get the Cinque Terre Dispatch</h2>
+        <p class="text-lg md:text-xl mb-8 max-w-xl mx-auto opacity-90">
+            Weekly tips, hidden gems, and travel inspiration delivered straight to your inbox. No spam, ever.
+        </p>
+        
+        <form class="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
+            <Input 
+                type="email" 
+                placeholder="Enter your email" 
+                className="h-12 bg-background text-foreground border-none"
+            />
+            <Button size="lg" variant="secondary" className="h-12 px-8 font-bold">Subscribe</Button>
+        </form>
+        <p class="text-sm mt-4 opacity-70">Join 10,000+ travelers.</p>
+    </div>
+</section>
+
+<script>
+    const form = document.querySelector('form');
+    if (form) {
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            alert('Thanks for subscribing!');
+        });
+    }
+</script>

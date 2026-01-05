@@ -1,0 +1,137 @@
+---
+/**
+ * ItineraryDays Block
+ *
+ * Day-by-day itinerary content with moments, perspective, and movement
+ */
+import { MapPin, Navigation, Heart } from 'lucide-react';
+
+interface Day {
+  number: number;
+  title: string;
+  village: string;
+  rhythm?: string;
+  perspective: string;
+  movement?: string;
+  moments: string[];
+  image?: string;
+}
+
+interface Props {
+  days: Day[];
+  showOverview?: boolean;
+}
+
+const { days, showOverview = true } = Astro.props;
+
+// Default images for days if not provided
+const defaultImages = [
+  'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&q=80&w=2000',
+  'https://images.unsplash.com/photo-1499678329028-101435549a4e?auto=format&fit=crop&q=80&w=2000',
+  'https://images.unsplash.com/photo-1516483638261-f4dbaf036963?auto=format&fit=crop&q=80&w=2000',
+  'https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?auto=format&fit=crop&q=80&w=2000',
+];
+---
+
+<!-- At-a-Glance Overview -->
+{showOverview && (
+  <section class="py-24 bg-secondary/30 border-y border-border/40">
+    <div class="container mx-auto px-4">
+      <div class="max-w-5xl mx-auto">
+        <div class="text-center mb-16 space-y-4">
+          <p class="text-[10px] font-bold uppercase tracking-[0.3em] text-primary">Orientation</p>
+          <h3 class="font-serif text-4xl font-bold text-foreground">The Rhythm of the Days</h3>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+          {days.map((day) => (
+            <div class="bg-white p-8 rounded-2xl shadow-sm border border-border/40 space-y-6 group hover:border-primary/20 transition-all">
+              <div class="flex items-center justify-between">
+                <span class="text-4xl font-serif font-bold text-primary/10 group-hover:text-primary/20 transition-colors">0{day.number}</span>
+                <div class="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
+                  <MapPin className="w-4 h-4 text-primary" />
+                </div>
+              </div>
+              <div>
+                <h4 class="font-bold text-foreground mb-1">{day.village}</h4>
+                {day.rhythm && (
+                  <p class="text-xs text-muted-foreground uppercase tracking-widest font-bold">{day.rhythm}</p>
+                )}
+              </div>
+              <p class="text-sm text-muted-foreground leading-relaxed italic font-serif">
+                {day.title}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </section>
+)}
+
+<!-- The Journey (Day by Day) -->
+<section class="py-24 bg-white">
+  <div class="container mx-auto px-4">
+    <div class="max-w-5xl mx-auto space-y-48">
+      {days.map((day, index) => (
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-16 items-start">
+          <!-- Day Number & Title -->
+          <div class="lg:col-span-4 lg:sticky lg:top-32 space-y-8">
+            <div class="space-y-4">
+              <p class="text-[10px] font-bold uppercase tracking-[0.5em] text-primary">Day 0{day.number}</p>
+              <h3 class="font-serif text-5xl font-bold text-foreground leading-tight">{day.title}</h3>
+            </div>
+
+            <div class="p-6 rounded-2xl bg-secondary/50 border border-border/40 space-y-4">
+              <div class="flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-foreground">
+                <MapPin className="w-4 h-4 text-primary" /> {day.village}
+              </div>
+              {day.movement && (
+                <div class="flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-foreground">
+                  <Navigation className="w-4 h-4 text-primary" /> {day.movement}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <!-- Day Narrative -->
+          <div class="lg:col-span-8 space-y-16">
+            <div class="prose prose-2xl max-w-none font-serif italic text-foreground/80 leading-relaxed">
+              "{day.perspective}"
+            </div>
+
+            <div class="space-y-8">
+              <p class="text-[10px] font-bold uppercase tracking-[0.4em] text-primary">The Moments That Matter</p>
+              <div class="grid grid-cols-1 md:grid-cols-1 gap-6">
+                {day.moments.map((moment) => (
+                  <div class="flex items-start gap-6 group">
+                    <div class="w-12 h-12 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
+                      <Heart className="w-5 h-5 text-primary" />
+                    </div>
+                    <p class="text-xl font-serif italic text-muted-foreground pt-2 leading-relaxed">
+                      {moment}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div class="aspect-[16/9] rounded-3xl overflow-hidden shadow-xl">
+              <img
+                src={day.image || defaultImages[index % defaultImages.length]}
+                alt={day.title}
+                class="w-full h-full object-cover"
+              />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .font-serif {
+    letter-spacing: -0.02em;
+  }
+</style>

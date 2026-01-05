@@ -1,0 +1,113 @@
+---
+const trendingStories = [
+    {
+        id: 1,
+        title: "Why Manarola is the Most Photogenic Village",
+        category: "Photography",
+        image: "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
+        date: "Oct 12",
+        readTime: "5 min read",
+        isLead: true,
+        author: "Elena Moretti"
+    },
+    {
+        id: 2,
+        title: "The Ultimate Guide to Cinque Terre Wines",
+        category: "Food & Drink",
+        image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2632&auto=format&fit=crop",
+        date: "Oct 10",
+        readTime: "4 min read",
+        author: "Marco Bianchi"
+    },
+    {
+        id: 3,
+        title: "Hidden Gems: Corniglia's Quiet Streets",
+        category: "Villages",
+        image: "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop",
+        date: "Oct 08",
+        readTime: "3 min read",
+        author: "Sofia Neri"
+    },
+    {
+        id: 4,
+        title: "Packing List: What to Bring for a Fall Trip",
+        category: "Tips",
+        image: "https://images.unsplash.com/photo-1515444744559-7be63e1600de?q=80&w=2670&auto=format&fit=crop",
+        date: "Oct 05",
+        readTime: "6 min read",
+        author: "Giulia Rossi"
+    },
+    {
+        id: 5,
+        title: "Ferry Schedules Updated for 2025",
+        category: "News",
+        image: "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
+        date: "Oct 01",
+        readTime: "2 min read",
+        author: "Luca Verdi"
+    }
+];
+
+const leadStory = trendingStories[0];
+const secondaryStories = trendingStories.slice(1);
+---
+
+<section class="py-16 container mx-auto px-4">
+    <h2 class="font-serif text-3xl md:text-4xl font-bold mb-8">Trending Now</h2>
+    
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Lead Story */}
+        <div class="lg:col-span-2 group cursor-pointer">
+            <div class="relative aspect-[16/9] overflow-hidden rounded-xl mb-4">
+                <img src={leadStory.image} alt={leadStory.title} class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" />
+                <span class="absolute top-4 left-4 bg-white/90 text-black px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide shadow-sm">
+                    {leadStory.category}
+                </span>
+            </div>
+            <h3 class="font-serif text-2xl md:text-3xl font-bold mb-3 group-hover:text-primary transition-colors leading-tight">
+                {leadStory.title}
+            </h3>
+            <div class="flex items-center justify-between mt-4">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-full bg-secondary overflow-hidden">
+                        <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${leadStory.author}`} alt={leadStory.author} />
+                    </div>
+                    <span class="text-sm font-medium text-foreground">{leadStory.author}</span>
+                </div>
+                <div class="flex items-center text-sm text-muted-foreground gap-3">
+                    <span>{leadStory.date}</span>
+                    <span class="w-1 h-1 bg-muted-foreground rounded-full"></span>
+                    <span>{leadStory.readTime}</span>
+                </div>
+            </div>
+        </div>
+
+        {/* Secondary Stories */}
+        <div class="flex flex-col gap-6">
+            {secondaryStories.map(story => (
+                <div class="flex gap-4 group cursor-pointer items-start">
+                    <div class="relative w-24 h-24 flex-shrink-0 overflow-hidden rounded-lg">
+                        <img src={story.image} alt={story.title} class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" />
+                    </div>
+                    <div class="flex flex-col justify-center flex-1">
+                        <span class="text-xs font-semibold text-primary mb-1 uppercase tracking-wide">{story.category}</span>
+                        <h4 class="font-serif text-lg font-bold mb-1 group-hover:text-primary transition-colors leading-snug line-clamp-2">
+                            {story.title}
+                        </h4>
+                        <div class="flex items-center justify-between mt-1">
+                            <div class="flex items-center gap-2">
+                                <div class="w-5 h-5 rounded-full bg-secondary overflow-hidden">
+                                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${story.author}`} alt={story.author} />
+                                </div>
+                                <span class="text-xs font-medium text-muted-foreground">{story.author}</span>
+                            </div>
+                            <div class="flex items-center text-xs text-muted-foreground gap-2">
+                                <span>{story.date}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ))}
+        </div>
+    </div>
+</section>

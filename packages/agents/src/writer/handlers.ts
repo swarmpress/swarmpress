@@ -736,10 +736,19 @@ Return an array of objects with structure: { sectionId: string, content: object 
 }
 
 // ============================================================================
+// Import Media Handlers
+// ============================================================================
+
+import { mediaHandlers } from './media-handlers'
+
+// ============================================================================
 // Export Handler Map
 // ============================================================================
 
-export const writerToolHandlers: Record<string, ToolHandler> = {
+/**
+ * Core writer tool handlers
+ */
+export const coreWriterToolHandlers: Record<string, ToolHandler> = {
   get_content: getContentHandler,
   write_draft: writeDraftHandler,
   revise_draft: reviseDraftHandler,
@@ -749,4 +758,12 @@ export const writerToolHandlers: Record<string, ToolHandler> = {
   generate_page_sections: generatePageSectionsHandler,
   optimize_section: optimizeSectionHandler,
   optimize_all_sections: optimizeAllSectionsHandler,
+}
+
+/**
+ * All writer tool handlers including media capabilities
+ */
+export const writerToolHandlers: Record<string, ToolHandler> = {
+  ...coreWriterToolHandlers,
+  ...mediaHandlers,
 }

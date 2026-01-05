@@ -1,0 +1,17 @@
+---
+/**
+ * Homepage - Cinque Terre Theme Demo
+ * Renders the homepage content using ContentRenderer
+ */
+import Layout from '../layouts/Layout.astro';
+import ContentRenderer from '../ContentRenderer.astro';
+
+// Load homepage content
+import homepageContent from '../content/homepage.json';
+
+const { title, description, body, locale = 'en' } = homepageContent;
+---
+
+<Layout title={title} description={description} locale={locale}>
+    <ContentRenderer blocks={body} locale={locale} />
+</Layout>

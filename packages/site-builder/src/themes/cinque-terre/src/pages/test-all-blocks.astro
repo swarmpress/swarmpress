@@ -1,0 +1,342 @@
+---
+/**
+ * Test page for ALL Cinque Terre theme blocks
+ * This page demonstrates all block types can be rendered via ContentRenderer
+ */
+import Layout from '../layouts/Layout.astro';
+import ContentRenderer from '../ContentRenderer.astro';
+
+const testBlocks = [
+  // ============================================================================
+  // Cinque Terre Theme Blocks
+  // ============================================================================
+
+  // Village Selector
+  {
+    type: 'village-selector',
+    title: 'The Five Villages',
+    subtitle: 'Discover the unique character of each village.',
+    villages: [
+      {
+        name: 'Riomaggiore',
+        slug: '/villages/riomaggiore',
+        description: 'The southernmost village with dramatic cliffs.',
+        image: 'https://images.unsplash.com/photo-1516483638261-f4dbaf036963?w=800',
+        tags: ['Romantic', 'Sunset Views'],
+      },
+      {
+        name: 'Manarola',
+        slug: '/villages/manarola',
+        description: 'Famous for its wine and colorful houses.',
+        image: 'https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?w=800',
+        tags: ['Photography', 'Wine'],
+      },
+      {
+        name: 'Corniglia',
+        slug: '/villages/corniglia',
+        description: 'The quietest village, perched on a cliff.',
+        image: 'https://images.unsplash.com/photo-1534445867742-43195f401b6c?w=800',
+        tags: ['Hiking', 'Peaceful'],
+      },
+      {
+        name: 'Vernazza',
+        slug: '/villages/vernazza',
+        description: 'The most iconic harbor and castle.',
+        image: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800',
+        tags: ['Harbor', 'Historic'],
+      },
+      {
+        name: 'Monterosso',
+        slug: '/villages/monterosso',
+        description: 'The largest village with sandy beaches.',
+        image: 'https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?w=800',
+        tags: ['Beach', 'Restaurants'],
+      },
+    ],
+  },
+
+  // Places to Stay
+  {
+    type: 'places-to-stay',
+    title: 'Where to Stay',
+    eyebrow: 'Accommodations',
+    stays: [
+      {
+        name: 'Hotel Porto Roca',
+        village: 'Monterosso',
+        special: 'Cliffside luxury with sea views',
+        price: '€250/night',
+        image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800',
+        url: '/accommodations/hotel-porto-roca',
+      },
+      {
+        name: 'Ca\' d\'Andrean',
+        village: 'Manarola',
+        special: 'Family-run guesthouse in the heart',
+        price: '€120/night',
+        image: 'https://images.unsplash.com/photo-1515444744559-7be63e1600de?w=800',
+        url: '/accommodations/ca-d-andrean',
+      },
+    ],
+    viewAllUrl: '/accommodations',
+  },
+
+  // Featured Carousel
+  {
+    type: 'featured-carousel',
+    title: "Editors' Picks",
+    stories: [
+      {
+        id: 1,
+        title: 'The Best Sunset Spots in Cinque Terre',
+        category: 'Photography',
+        dek: 'Capture the golden hour like a pro.',
+        image: 'https://images.unsplash.com/photo-1516483638261-f4dbaf036963?w=800',
+        author: 'Elena Moretti',
+        url: '/stories/sunset-spots',
+      },
+      {
+        id: 2,
+        title: 'Hidden Beaches Worth the Hike',
+        category: 'Adventure',
+        dek: 'Escape the crowds at these secret coves.',
+        image: 'https://images.unsplash.com/photo-1534445867742-43195f401b6c?w=800',
+        author: 'Marco Bianchi',
+        url: '/stories/hidden-beaches',
+      },
+    ],
+    viewAllUrl: '/stories',
+  },
+
+  // Village Intro
+  {
+    type: 'village-intro',
+    village: 'Manarola',
+    leadStory: {
+      id: 1,
+      title: 'Why Manarola is the Most Photogenic Village',
+      category: 'Photography',
+      excerpt: 'From sunrise to sunset, discover the best angles.',
+      image: 'https://images.unsplash.com/photo-1516483638261-f4dbaf036963?w=800',
+      author: 'Elena Moretti',
+      date: 'October 15, 2024',
+      readTime: '8 min read',
+    },
+    essentials: {
+      weather: '22°C, Sunny',
+      seaTemp: '19°C',
+      crowdRhythm: 'Moderate - best before 10am',
+      sunset: '6:45 PM',
+      foodWine: 'Sciacchetrà wine, focaccia',
+      rememberedFor: 'The famous Christmas nativity',
+    },
+  },
+
+  // Trending Now
+  {
+    type: 'trending-now',
+    title: 'Trending Now',
+    stories: [
+      {
+        id: 1,
+        title: 'Blue Trail Reopens After Restoration',
+        category: 'News',
+        image: 'https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?w=800',
+        author: 'Giulia Rossi',
+        date: 'Oct 12',
+        readTime: '3 min read',
+        isLead: true,
+      },
+      {
+        id: 2,
+        title: 'New Ferry Schedule for 2025',
+        category: 'Transport',
+        image: 'https://images.unsplash.com/photo-1534445867742-43195f401b6c?w=800',
+        author: 'Marco Bianchi',
+        date: 'Oct 10',
+        readTime: '2 min read',
+      },
+    ],
+  },
+
+  // About Section
+  {
+    type: 'about',
+    title: 'Your Guide to Cinque Terre',
+    eyebrow: 'About Us',
+    description: [
+      'We are a team of locals and travel experts dedicated to sharing the authentic Cinque Terre experience.',
+      'Our mission is to help you discover hidden gems beyond the typical tourist paths.',
+    ],
+    image: 'https://images.unsplash.com/photo-1592345279419-959d784e8aad?w=800',
+    editor: {
+      name: 'Elena Rossi',
+      role: 'Editor-in-Chief',
+    },
+  },
+
+  // Curated Escapes
+  {
+    type: 'curated-escapes',
+    title: 'Curated Escapes',
+    eyebrow: 'Collections',
+    escapes: [
+      {
+        name: 'The Romantic Getaway',
+        image: 'https://images.unsplash.com/photo-1516483638261-f4dbaf036963?w=800',
+        url: '/collections/romantic',
+      },
+      {
+        name: 'Adventure Seekers',
+        image: 'https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?w=800',
+        url: '/collections/adventure',
+      },
+    ],
+  },
+
+  // Latest Stories
+  {
+    type: 'latest-stories',
+    title: 'Latest Stories',
+    stories: [
+      {
+        id: 1,
+        title: 'A Day in Vernazza',
+        excerpt: 'Experience the charm of this harbor village.',
+        category: 'Guides',
+        image: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800',
+        author: 'Sofia Neri',
+        date: 'Oct 8, 2024',
+        readTime: '6 min read',
+        isLead: true,
+      },
+    ],
+    filters: ['All', 'Guides', 'Food', 'Adventure'],
+    showFilters: true,
+  },
+
+  // Eat & Drink
+  {
+    type: 'eat-drink',
+    title: 'Where to Eat',
+    eyebrow: 'Food & Drink',
+    places: [
+      {
+        name: 'Nessun Dorma',
+        type: 'Aperitivo',
+        village: 'Manarola',
+        blurb: 'Famous for its sunset views and bruschetta.',
+        image: 'https://images.unsplash.com/photo-1515444744559-7be63e1600de?w=800',
+        url: '/restaurants/nessun-dorma',
+      },
+    ],
+    viewAllUrl: '/restaurants',
+  },
+
+  // Highlights
+  {
+    type: 'highlights',
+    title: 'Highlights',
+    eyebrow: 'Must-Do',
+    highlights: [
+      {
+        name: 'Coastal Hikes',
+        icon: 'mountain',
+        desc: 'Walk the famous Blue Trail.',
+        url: '/activities/hiking',
+      },
+      {
+        name: 'Boat Tours',
+        icon: 'ship',
+        desc: 'See the villages from the sea.',
+        url: '/activities/boats',
+      },
+      {
+        name: 'Photo Spots',
+        icon: 'camera',
+        desc: 'Capture the perfect shot.',
+        url: '/activities/photography',
+      },
+    ],
+  },
+
+  // Audio Guides
+  {
+    type: 'audio-guides',
+    title: 'Audio Stories',
+    guides: [
+      {
+        title: 'Walking the Via dell\'Amore',
+        description: 'A guided tour of the famous Lover\'s Lane.',
+        duration: '12 min',
+        image: 'https://images.unsplash.com/photo-1516483638261-f4dbaf036963?w=800',
+        url: '/audio/via-dell-amore',
+      },
+    ],
+    viewAllUrl: '/audio',
+  },
+
+  // Practical Advice
+  {
+    type: 'practical-advice',
+    advice: [
+      { name: 'Getting There', icon: 'train', desc: 'Train from La Spezia.' },
+      { name: 'Getting Around', icon: 'map', desc: 'Buy the Cinque Terre Card.' },
+      { name: 'Best Time', icon: 'weather', desc: 'April-May or Sept-Oct.' },
+    ],
+  },
+
+  // ============================================================================
+  // Editorial Blocks
+  // ============================================================================
+
+  {
+    type: 'editorial-hero',
+    title: 'The Soul of the Coast',
+    subtitle: 'A journey through five villages frozen in time.',
+    badge: 'Editorial Feature',
+    image: 'https://images.unsplash.com/photo-1516483638261-f4dbaf036963?w=1600',
+    height: '60vh',
+  },
+
+  {
+    type: 'editorial-intro',
+    badge: 'A Quiet Philosophy',
+    quote: 'To truly know a place, you must first learn to see it through the eyes of those who call it home.',
+    leftContent: '<p>The villages of the Cinque Terre are not merely destinations. They are living archives of human resilience.</p>',
+    rightContent: '<p>We invite you to slow down and savor every moment of your journey through these ancient paths.</p>',
+  },
+
+  {
+    type: 'editorial-interlude',
+    badge: 'A Moment of Reflection',
+    title: 'The Weight of Presence',
+    quote: 'In a world that moves too fast, the greatest luxury is the permission to stand still.',
+    interludeType: 'primary',
+    align: 'left',
+  },
+
+  {
+    type: 'editor-note',
+    quote: 'I have watched tourists rush through these streets for decades. But those who pause—they are the ones who truly understand.',
+    author: 'Giulia Rossi',
+    role: 'Local Expert',
+    image: '/giulia_rossi.png',
+  },
+
+  {
+    type: 'closing-note',
+    badge: 'A Final Reflection',
+    title: 'Travel Slowly. Feel Deeply.',
+    content: '<p>The best journeys are not measured in miles. They are measured in moments of genuine connection.</p>',
+    actions: [
+      { label: 'Plan Your Journey', href: '/itinerary', variant: 'primary' },
+      { label: 'Explore Villages', href: '/villages', variant: 'secondary' },
+    ],
+  },
+];
+---
+
+<Layout title="All Blocks Test | Cinque Terre Theme">
+  <ContentRenderer blocks={testBlocks} locale="en" />
+</Layout>

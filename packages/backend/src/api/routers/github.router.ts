@@ -11,8 +11,46 @@ import { GitHubSyncService } from '../../services/github-sync.service'
 import { GitHubContentService } from '@swarm-press/github-integration'
 import { websiteRepository } from '../../db/repositories'
 import { randomBytes } from 'crypto'
+import * as fs from 'fs'
+import * as path from 'path'
 
 import { createHmac } from 'crypto'
+
+// Local content path mapping for development
+const LOCAL_CONTENT_PATHS: Record<string, string> = {
+  '42b7e20d-7f6c-48aa-9e16-f610a84b79a6': '/Users/drietsch/agentpress/cinqueterre.travel/content/pages',
+}
+
+/**
+ * Try to load page content from local file system (development mode)
+ */
+function tryLoadLocalPage(websiteId: string, pagePath: string): Record<string, unknown> | null {
+  const localBasePath = LOCAL_CONTENT_PATHS[websiteId]
+  if (!localBasePath) return null
+
+  // Normalize path
+  let normalizedPath = pagePath
+  if (normalizedPath.startsWith('content/pages/')) {
+    normalizedPath = normalizedPath.replace('content/pages/', '')
+  }
+  if (!normalizedPath.endsWith('.json')) {
+    normalizedPath = normalizedPath + '.json'
+  }
+
+  const fullPath = path.join(localBasePath, normalizedPath)
+
+  try {
+    if (fs.existsSync(fullPath)) {
+      console.log(`[GitHub Router] Loading page from local file: ${fullPath}`)
+      const content = fs.readFileSync(fullPath, 'utf-8')
+      return JSON.parse(content)
+    }
+  } catch (err) {
+    console.error(`[GitHub Router] Error loading local file: ${fullPath}`, err)
+  }
+
+  return null
+}
 
 // Store pending OAuth states (in production, use Redis or database)
 const pendingOAuthStates = new Map<string, { websiteId: string; expiresAt: number }>()
@@ -2100,6 +2138,46 @@ Closes #
         })
       }
 
+      // Try local file first (development mode)
+      const localContent = tryLoadLocalPage(input.websiteId, input.pagePath)
+      if (localContent) {
+        console.log(`[getPageSections] Using local file for page: ${input.pagePath}`)
+
+        // Extract sections from body array
+        const body = (localContent.body as any[]) || []
+        const sections = body.map((block: any, index: number) => ({
+          id: block.id || `section-${index}`,
+          type: block.type || 'unknown',
+          variant: block.variant,
+          order: index,
+          content: block,
+          prompts: block.prompts,
+          ai_hints: block.ai_hints,
+          collectionSource: block.collectionSource,
+          locked: block.locked,
+          notes: block.notes,
+        }))
+
+        // Normalize path for response
+        let fullPath = input.pagePath
+        if (!fullPath.startsWith('content/pages/')) {
+          fullPath = `content/pages/${fullPath}`
+        }
+        if (!fullPath.endsWith('.json')) {
+          fullPath = `${fullPath}.json`
+        }
+
+        return {
+          pageId: localContent.id as string,
+          title: extractLocalizedValue(localContent.title as any) || (localContent.slug as string),
+          slug: localContent.slug as Record<string, string>,
+          sections,
+          sha: 'local', // No SHA for local files
+          sourcePath: fullPath,
+        }
+      }
+
+      // Fall back to GitHub
       if (!website.github_owner || !website.github_repo || !website.github_access_token) {
         throw new TRPCError({
           code: 'PRECONDITION_FAILED',

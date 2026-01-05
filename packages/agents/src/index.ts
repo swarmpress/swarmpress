@@ -11,6 +11,7 @@ export * from './writer'
 export * from './editor'
 export * from './engineering'
 export * from './ceo-assistant'
+export * from './media'
 
 // Export research tools
 export * from './tools/research/tool-registry'
@@ -24,6 +25,7 @@ import { WriterAgent } from './writer'
 import { EditorAgent } from './editor'
 import { EngineeringAgent } from './engineering'
 import { CEOAssistantAgent } from './ceo-assistant'
+import { MediaAgent } from './media'
 
 /**
  * Initialize agent registry
@@ -36,6 +38,8 @@ export function initializeAgents() {
   registerAgent('EngineeringAgent', EngineeringAgent)
   registerAgent('SEOSpecialist', EngineeringAgent) // Can share engineering tools
   registerAgent('CEOAssistant', CEOAssistantAgent)
+  registerAgent('MediaCoordinator', MediaAgent)
+  registerAgent('Media', MediaAgent) // Alias for convenience
 
   console.log('✅ All agent types registered')
 }

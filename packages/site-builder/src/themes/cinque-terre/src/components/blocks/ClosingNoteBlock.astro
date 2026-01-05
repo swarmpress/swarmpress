@@ -1,0 +1,67 @@
+---
+/**
+ * Closing Note Block - JSON-compatible wrapper
+ * Renders ClosingNote with content and actions from props instead of slots
+ */
+interface Action {
+  label: string;
+  href: string;
+  variant?: 'primary' | 'secondary';
+}
+
+interface Props {
+  badge?: string;
+  title: string;
+  content: string;
+  actions?: Action[];
+  backgroundIcon?: string;
+}
+
+const {
+  badge = "A Final Reflection",
+  title,
+  content,
+  actions = [],
+  backgroundIcon
+} = Astro.props;
+---
+
+<section class="py-32 bg-foreground text-background overflow-hidden relative">
+    {backgroundIcon && (
+        <div class="absolute top-0 right-0 w-1/2 h-full opacity-[0.05] pointer-events-none">
+            <!-- Background icon would be rendered here if provided -->
+        </div>
+    )}
+    <div class="container mx-auto px-4 relative">
+        <div class="max-w-3xl mx-auto text-center space-y-10">
+            <div class="inline-flex items-center gap-4">
+                <div class="h-px w-8 bg-background/30"></div>
+                <span class="text-[10px] font-bold uppercase tracking-[0.4em] text-primary">{badge}</span>
+                <div class="h-px w-8 bg-background/30"></div>
+            </div>
+
+            <h2 class="font-serif text-4xl md:text-6xl font-bold leading-tight">
+                {title}
+            </h2>
+
+            <div class="space-y-6 text-xl text-background/70 font-light leading-relaxed" set:html={content} />
+
+            {actions && actions.length > 0 && (
+                <div class="pt-12 flex flex-wrap justify-center gap-6">
+                    {actions.map((action) => (
+                        <a
+                            href={action.href}
+                            class={`px-8 py-4 rounded-full font-bold text-sm uppercase tracking-widest transition-colors ${
+                                action.variant === 'secondary'
+                                    ? 'bg-white/10 backdrop-blur-sm text-white hover:bg-white/20'
+                                    : 'bg-primary text-white hover:bg-primary/90'
+                            }`}
+                        >
+                            {action.label}
+                        </a>
+                    ))}
+                </div>
+            )}
+        </div>
+    </div>
+</section>

@@ -1,0 +1,45 @@
+---
+import WeatherWidget from './WeatherWidget';
+
+const heroImage = "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop";
+---
+
+<section class="relative w-full h-[55vh] md:h-[70vh] flex items-center justify-center overflow-hidden">
+    <div class="absolute inset-0 z-0">
+        <img src={heroImage} alt="Cinque Terre Coastline" class="w-full h-full object-cover" />
+        <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
+    </div>
+
+    <div class="relative z-10 text-center text-white px-4 max-w-4xl mx-auto mt-10 animate-fade-in-up">
+        <span class="inline-block py-1 px-3 rounded-full bg-white/20 backdrop-blur-sm text-xs font-medium tracking-wider mb-4 uppercase border border-white/30">Travel Guide</span>
+        <h1 class="font-serif text-5xl md:text-7xl font-bold mb-6 leading-tight drop-shadow-lg">Cinque Terre</h1>
+        <p class="text-lg md:text-xl mb-8 max-w-2xl mx-auto text-white/90 drop-shadow-md font-light">
+            A journey through the five colorful villages suspended between sea and sky. Discover the Italian Riviera's most romantic destination.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <a href="#villages" class="inline-flex items-center justify-center h-12 rounded-full px-8 text-sm font-medium bg-white text-black hover:bg-white/90 transition-colors shadow-lg">
+                Explore the Villages
+            </a>
+            <a href="#plan" class="inline-flex items-center justify-center h-12 rounded-full px-8 text-sm font-medium bg-white/10 backdrop-blur-sm border border-white text-white hover:bg-white/20 transition-colors shadow-lg">
+                Plan a 3-Day Trip
+            </a>
+        </div>
+    </div>
+
+    <WeatherWidget client:idle />
+</section>
+
+<style>
+    .animate-fade-in-up {
+        animation: fadeInUp 1s ease-out forwards;
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    @keyframes fadeInUp {
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>

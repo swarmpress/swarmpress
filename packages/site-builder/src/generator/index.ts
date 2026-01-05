@@ -21,7 +21,15 @@ export type { ConfigBuildOptions, ConfigBuildResult } from './config-build'
 export { loadSiteConfiguration, ConfigLoader } from './config-loader'
 export type { LoadedSiteConfiguration, ConfigLoaderOptions } from './config-loader'
 
-export { generateThemeFiles, generateTailwindConfig, generateCSSVariables, THEME_PRESETS } from './theme-generator'
+export {
+  generateThemeFiles,
+  generateTailwindConfig,
+  generateCSSVariables,
+  generateSemanticTokensCSS,
+  generateSemanticTokensFile,
+  getThemePreset,
+  THEME_PRESETS
+} from './theme-generator'
 export type { ThemeGeneratorOptions, GeneratedTheme } from './theme-generator'
 
 // Component resolution

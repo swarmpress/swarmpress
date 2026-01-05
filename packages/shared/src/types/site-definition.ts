@@ -303,6 +303,56 @@ export const AgentConfigSchema = z.object({
 export type AgentConfig = z.infer<typeof AgentConfigSchema>
 
 // ============================================================================
+// Page Templates (for reusable page structures)
+// ============================================================================
+
+/**
+ * Template section definition - defines a pre-configured section within a template
+ */
+export const TemplateSectionSchema = z.object({
+  id: z.string(),
+  type: z.string(),                           // Section type (e.g., "hero-section", "feature-section")
+  variant: z.string().optional(),             // Section variant if applicable
+  required: z.boolean().default(true),        // Whether this section is required
+  label: z.string().optional(),               // Display label for the section
+  ai_hints: SiteAIHintsSchema.optional(),     // AI hints for content generation
+  defaultContent: z.record(z.any()).optional(), // Default content values
+})
+
+export type TemplateSection = z.infer<typeof TemplateSectionSchema>
+
+/**
+ * Page Template Schema
+ * Defines a reusable page structure with pre-configured sections
+ * Used for creating pages with consistent layouts (e.g., Black Tomato-style templates)
+ */
+export const PageTemplateSchema = z.object({
+  id: z.string(),
+  name: z.string(),                           // Display name (e.g., "Travel Homepage")
+  description: z.string().optional(),         // Template description
+  icon: z.string().optional(),                // Icon name for palette
+  pageType: z.string(),                       // Base page type this template uses
+
+  // Design configuration
+  design: z.object({
+    theme: z.enum(['light', 'dark', 'auto']).optional(), // Preferred theme mode
+    imageIntensity: z.enum(['minimal', 'moderate', 'heavy']).optional(), // Image usage level
+    style: z.string().optional(),             // Style description (e.g., "luxury", "minimal")
+  }).optional(),
+
+  // Pre-configured sections
+  sections: z.array(TemplateSectionSchema),
+
+  // Tags for filtering/categorization
+  tags: z.array(z.string()).optional(),       // e.g., ["homepage", "travel", "luxury"]
+
+  // Preview image for palette display
+  previewImage: z.string().optional(),
+})
+
+export type PageTemplate = z.infer<typeof PageTemplateSchema>
+
+// ============================================================================
 // Site Definition (Main Schema - matches site.json format)
 // ============================================================================
 
@@ -321,6 +371,7 @@ export const SiteDefinitionSchema = z.object({
   types: z.object({
     pages: z.record(ContentTypeSchema).optional(),
     collections: z.record(ContentTypeSchema).optional(),
+    pageTemplates: z.record(PageTemplateSchema).optional(), // Reusable page templates
   }),
 
   // Sitemap Structure

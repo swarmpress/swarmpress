@@ -1,0 +1,73 @@
+---
+/**
+ * Content Section Component
+ * Renders markdown-style content blocks with rich text
+ * Handles both array of strings and single string with newline separators
+ */
+interface Props {
+    content?: string[] | string;
+    title?: string;
+    subtitle?: string;
+    image?: string;
+    id?: string;
+    locale?: string;
+}
+
+const { content = [], title, subtitle, image, id, locale = 'en' } = Astro.props;
+
+// Normalize content to array of paragraphs
+function normalizeContent(c: string[] | string): string[] {
+    if (Array.isArray(c)) {
+        return c;
+    }
+    if (typeof c === 'string') {
+        return c.split('\n\n').filter(p => p.trim());
+    }
+    return [];
+}
+
+const paragraphs = normalizeContent(content);
+
+// Simple markdown-like processing for bold text
+function processText(text: string): string {
+    return text
+        .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>');
+}
+---
+
+<section class="py-16 md:py-24 bg-white" id={id}>
+    <div class="container mx-auto px-4">
+        <div class={`${image ? 'grid md:grid-cols-2 gap-12 items-center max-w-6xl' : 'max-w-4xl'} mx-auto`}>
+            {image && (
+                <div class="order-2 md:order-1">
+                    <img
+                        src={image}
+                        alt={title || 'Content image'}
+                        class="rounded-lg shadow-lg w-full h-auto object-cover"
+                    />
+                </div>
+            )}
+            <div class={image ? 'order-1 md:order-2' : ''}>
+                {title && (
+                    <h2 class={`text-3xl md:text-4xl font-serif text-gray-900 mb-4 ${!image ? 'text-center' : ''}`}>
+                        {title}
+                    </h2>
+                )}
+                {subtitle && (
+                    <p class={`text-lg text-gray-600 mb-8 ${!image ? 'text-center max-w-2xl mx-auto' : ''}`}>
+                        {subtitle}
+                    </p>
+                )}
+                <div class="prose prose-lg prose-gray max-w-none">
+                    {paragraphs.map((paragraph) => (
+                        <p
+                            class="text-gray-700 leading-relaxed mb-6"
+                            set:html={processText(paragraph)}
+                        />
+                    ))}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>

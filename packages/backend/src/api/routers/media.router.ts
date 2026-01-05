@@ -1,506 +1,450 @@
 /**
  * Media Router
- * tRPC router for media operations
+ * Simplified tRPC router for media operations - NO DATABASE
+ *
+ * This router uses direct storage and API services:
+ * - StorageService for R2/S3 uploads
+ * - ImageGenerationService for DALL-E
+ * - StockPhotoService for Unsplash/Pexels
+ *
+ * Media URLs are stored directly in content JSON files, not in PostgreSQL.
  */
 
-import { z } from 'zod';
-import { router, publicProcedure } from '../trpc';
-import { TRPCError } from '@trpc/server';
-import { createMediaService } from '../../services/media.service';
+import { z } from 'zod'
+import { router, publicProcedure } from '../trpc'
+import { TRPCError } from '@trpc/server'
+import {
+  getStorageService,
+  isStorageConfigured,
+} from '../../services/storage.service'
+import {
+  getImageGenerationService,
+  isImageGenerationConfigured,
+} from '../../services/image-generation.service'
+import {
+  getStockPhotoService,
+  isStockPhotoConfigured,
+} from '../../services/stock-photo.service'
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
 
 /**
- * Media Router
+ * Slugify text for filenames
  */
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50)
+}
+
+/**
+ * Get folder path for uploads
+ */
+function getFolderPath(websiteId: string, subfolder?: string): string {
+  const year = new Date().getFullYear()
+  const month = String(new Date().getMonth() + 1).padStart(2, '0')
+
+  if (subfolder) {
+    return `${websiteId}/images/${subfolder}`
+  }
+
+  return `${websiteId}/images/${year}/${month}`
+}
+
+// =============================================================================
+// Media Router
+// =============================================================================
+
 export const mediaRouter = router({
-  // =============================================================================
+  // ===========================================================================
+  // STATUS
+  // ===========================================================================
+
+  /**
+   * Check which media services are configured
+   */
+  getStatus: publicProcedure.query(async () => {
+    return {
+      storage: isStorageConfigured(),
+      imageGeneration: isImageGenerationConfigured(),
+      stockPhotos: isStockPhotoConfigured(),
+      stockPhotoSources: isStockPhotoConfigured()
+        ? getStockPhotoService().getAvailableSources()
+        : [],
+    }
+  }),
+
+  // ===========================================================================
   // UPLOAD
-  // =============================================================================
+  // ===========================================================================
 
   /**
-   * Generate presigned upload URL for direct browser upload
+   * Get presigned URL for direct browser upload
+   * Client uploads directly to R2/S3, bypassing the server
    */
-  generateUploadUrl: publicProcedure
+  getUploadUrl: publicProcedure
     .input(
       z.object({
-        websiteId: z.string().uuid(),
+        websiteId: z.string(),
         filename: z.string(),
         mimeType: z.string(),
-        expiresIn: z.number().int().min(60).max(3600).optional(),
+        folder: z.string().optional(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
-      const mediaService = createMediaService(ctx.db);
-
-      const { url, key } = await mediaService.generatePresignedUploadUrl(
-        input.websiteId,
-        input.filename,
-        input.mimeType,
-        input.expiresIn
-      );
-
-      return { url, key };
-    }),
-
-  /**
-   * Complete upload and create media record
-   * Called after the browser has uploaded the file to S3
-   */
-  completeUpload: publicProcedure
-    .input(
-      z.object({
-        websiteId: z.string().uuid(),
-        storageKey: z.string(),
-        filename: z.string(),
-        mimeType: z.string(),
-        sizeBytes: z.number().int().min(0),
-        altText: z.string().optional(),
-        caption: z.string().optional(),
-        title: z.string().optional(),
-        tags: z.array(z.string()).optional(),
-        category: z.string().optional(),
-        uploadedByAgentId: z.string().uuid().optional(),
-        uploadedByUserId: z.string().uuid().optional(),
-        uploadSource: z.string().optional(),
-      })
-    )
-    .mutation(async ({ input, ctx }) => {
-      // Insert media record
-      const result = await ctx.db.query(
-        `INSERT INTO media (
-          website_id, filename, original_filename, mime_type, size_bytes,
-          storage_provider, storage_bucket, storage_path,
-          url, alt_text, caption, title, seo_filename, tags, category,
-          uploaded_by_agent_id, uploaded_by_user_id, upload_source,
-          processing_status, variants_generated
-        ) VALUES (
-          $1, $2, $3, $4, $5,
-          $6, $7, $8,
-          $9, $10, $11, $12, $13, $14, $15,
-          $16, $17, $18,
-          $19, $20
-        ) RETURNING *`,
-        [
-          input.websiteId,
-          input.storageKey.split('/').pop(),
-          input.filename,
-          input.mimeType,
-          input.sizeBytes,
-          process.env.MEDIA_STORAGE_PROVIDER || 'r2',
-          process.env.MEDIA_STORAGE_BUCKET || '',
-          input.storageKey,
-          `${process.env.MEDIA_CDN_URL || ''}/${input.storageKey}`,
-          input.altText || null,
-          input.caption || null,
-          input.title || null,
-          input.filename
-            .toLowerCase()
-            .replace(/[^a-z0-9-]/g, '-')
-            .replace(/-+/g, '-'),
-          input.tags || [],
-          input.category || null,
-          input.uploadedByAgentId || null,
-          input.uploadedByUserId || null,
-          input.uploadSource || 'user_uploaded',
-          input.mimeType.startsWith('image/') ? 'pending' : 'completed',
-          false,
-        ]
-      );
-
-      const media = result.rows[0];
-
-      // Queue variant generation for images
-      if (input.mimeType.startsWith('image/')) {
-        await ctx.db.query(
-          `INSERT INTO media_processing_queue (media_id, task_type, priority)
-           VALUES ($1, $2, $3)`,
-          [media.id, 'generate_variants', 5]
-        );
-      }
-
-      return media;
-    }),
-
-  // =============================================================================
-  // RETRIEVE
-  // =============================================================================
-
-  /**
-   * Get media by ID
-   */
-  get: publicProcedure
-    .input(
-      z.object({
-        mediaId: z.string().uuid(),
-      })
-    )
-    .query(async ({ input, ctx }) => {
-      const result = await ctx.db.query('SELECT * FROM media WHERE id = $1', [
-        input.mediaId,
-      ]);
-
-      if (result.rows.length === 0) {
+    .mutation(async ({ input }) => {
+      if (!isStorageConfigured()) {
         throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Media not found',
-        });
+          code: 'PRECONDITION_FAILED',
+          message: 'Storage not configured. Set R2 environment variables.',
+        })
       }
 
-      return result.rows[0];
-    }),
+      const storageService = getStorageService()
+      const folder = input.folder || getFolderPath(input.websiteId)
 
-  /**
-   * List media for a website
-   */
-  list: publicProcedure
-    .input(
-      z.object({
-        websiteId: z.string().uuid(),
-        category: z.string().optional(),
-        tags: z.array(z.string()).optional(),
-        mimeType: z.string().optional(),
-        limit: z.number().int().min(1).max(100).default(50),
-        offset: z.number().int().min(0).default(0),
-      })
-    )
-    .query(async ({ input, ctx }) => {
-      const mediaService = createMediaService(ctx.db);
-
-      return await mediaService.listMedia(input.websiteId, {
-        category: input.category,
-        tags: input.tags,
+      const result = await storageService.getPresignedUploadUrl({
+        filename: input.filename,
         mimeType: input.mimeType,
-        limit: input.limit,
-        offset: input.offset,
-      });
-    }),
-
-  /**
-   * Search media
-   */
-  search: publicProcedure
-    .input(
-      z.object({
-        websiteId: z.string().uuid(),
-        query: z.string(),
-        limit: z.number().int().min(1).max(100).default(50),
-        offset: z.number().int().min(0).default(0),
+        folder,
       })
-    )
-    .query(async ({ input, ctx }) => {
-      // Full-text search on media metadata
-      const result = await ctx.db.query(
-        `SELECT *,
-          ts_rank(
-            to_tsvector('english',
-              coalesce(alt_text, '') || ' ' ||
-              coalesce(caption, '') || ' ' ||
-              coalesce(title, '') || ' ' ||
-              coalesce(filename, '')
-            ),
-            plainto_tsquery('english', $2)
-          ) as rank
-         FROM media
-         WHERE website_id = $1
-           AND to_tsvector('english',
-                coalesce(alt_text, '') || ' ' ||
-                coalesce(caption, '') || ' ' ||
-                coalesce(title, '') || ' ' ||
-                coalesce(filename, '')
-              ) @@ plainto_tsquery('english', $2)
-         ORDER BY rank DESC
-         LIMIT $3 OFFSET $4`,
-        [input.websiteId, input.query, input.limit, input.offset]
-      );
-
-      // Get total count
-      const countResult = await ctx.db.query(
-        `SELECT COUNT(*) as count
-         FROM media
-         WHERE website_id = $1
-           AND to_tsvector('english',
-                coalesce(alt_text, '') || ' ' ||
-                coalesce(caption, '') || ' ' ||
-                coalesce(title, '') || ' ' ||
-                coalesce(filename, '')
-              ) @@ plainto_tsquery('english', $2)`,
-        [input.websiteId, input.query]
-      );
 
       return {
-        items: result.rows,
-        total: parseInt(countResult.rows[0].count),
-        limit: input.limit,
-        offset: input.offset,
-      };
+        uploadUrl: result.uploadUrl,
+        key: result.key,
+        publicUrl: result.publicUrl,
+      }
     }),
 
-  // =============================================================================
-  // UPDATE
-  // =============================================================================
-
   /**
-   * Update media metadata
+   * Upload an image from an external URL to our CDN
    */
-  update: publicProcedure
+  uploadFromUrl: publicProcedure
     .input(
       z.object({
-        mediaId: z.string().uuid(),
-        altText: z.string().optional(),
-        caption: z.string().optional(),
-        title: z.string().optional(),
-        tags: z.array(z.string()).optional(),
-        category: z.string().optional(),
+        websiteId: z.string(),
+        sourceUrl: z.string().url(),
+        filename: z.string(),
+        folder: z.string().optional(),
+        convertToWebp: z.boolean().default(true),
       })
     )
-    .mutation(async ({ input, ctx }) => {
-      const mediaService = createMediaService(ctx.db);
+    .mutation(async ({ input }) => {
+      if (!isStorageConfigured()) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Storage not configured. Set R2 environment variables.',
+        })
+      }
 
-      return await mediaService.updateMedia(input.mediaId, {
-        altText: input.altText,
-        caption: input.caption,
-        title: input.title,
-        tags: input.tags,
-        category: input.category,
-      });
+      const storageService = getStorageService()
+      const folder = input.folder || getFolderPath(input.websiteId, 'imported')
+
+      const result = await storageService.uploadFromUrl({
+        sourceUrl: input.sourceUrl,
+        filename: input.filename,
+        folder,
+        convertToWebp: input.convertToWebp,
+      })
+
+      return {
+        url: result.url,
+        key: result.key,
+        size: result.size,
+        mimeType: result.mimeType,
+      }
     }),
 
-  // =============================================================================
-  // DELETE
-  // =============================================================================
+  // ===========================================================================
+  // AI IMAGE GENERATION
+  // ===========================================================================
 
   /**
-   * Delete media
+   * Generate an AI image using Google Gemini/Imagen
+   */
+  generateImage: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string(),
+        prompt: z.string().min(10).max(4000),
+        aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:3', '3:4']).default('16:9'),
+        numberOfImages: z.number().int().min(1).max(4).default(1),
+      })
+    )
+    .mutation(async ({ input }) => {
+      if (!isImageGenerationConfigured()) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Image generation not configured. Set GOOGLE_API_KEY.',
+        })
+      }
+
+      if (!isStorageConfigured()) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Storage not configured. Set R2 environment variables.',
+        })
+      }
+
+      const imageGenService = getImageGenerationService()
+      const storageService = getStorageService()
+
+      // Generate image with Gemini/Imagen
+      const result = await imageGenService.generate({
+        prompt: input.prompt,
+        aspectRatio: input.aspectRatio,
+        numberOfImages: input.numberOfImages,
+      })
+
+      if (!result.success || !result.images || result.images.length === 0) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: result.error || 'Failed to generate image',
+        })
+      }
+
+      // Upload all generated images to our CDN
+      const uploadedImages = await Promise.all(
+        result.images.map(async (image, index) => {
+          const suffix = result.images!.length > 1 ? `-${index + 1}` : ''
+          const filename = `${slugify(input.prompt.slice(0, 40))}${suffix}.png`
+          const folder = getFolderPath(input.websiteId, 'ai-generated')
+
+          const uploaded = await storageService.upload({
+            buffer: image.buffer,
+            filename,
+            mimeType: image.mimeType,
+            folder,
+          })
+
+          return {
+            url: uploaded.url,
+            key: uploaded.key,
+            size: uploaded.size,
+          }
+        })
+      )
+
+      return {
+        images: uploadedImages,
+        originalPrompt: input.prompt,
+        aspectRatio: input.aspectRatio,
+      }
+    }),
+
+  // ===========================================================================
+  // STOCK PHOTOS
+  // ===========================================================================
+
+  /**
+   * Search stock photos from Unsplash/Pexels
+   */
+  searchStock: publicProcedure
+    .input(
+      z.object({
+        query: z.string().min(2),
+        orientation: z.enum(['landscape', 'portrait', 'square']).optional(),
+        source: z.enum(['unsplash', 'pexels', 'all']).default('all'),
+        count: z.number().int().min(1).max(30).default(10),
+      })
+    )
+    .query(async ({ input }) => {
+      if (!isStockPhotoConfigured()) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Stock photo APIs not configured. Set UNSPLASH_ACCESS_KEY or PEXELS_API_KEY.',
+        })
+      }
+
+      const stockService = getStockPhotoService()
+
+      // Search based on source preference
+      if (input.source === 'unsplash') {
+        return stockService.searchUnsplash({
+          query: input.query,
+          orientation: input.orientation,
+          count: input.count,
+        })
+      } else if (input.source === 'pexels') {
+        return stockService.searchPexels({
+          query: input.query,
+          orientation: input.orientation,
+          count: input.count,
+        })
+      } else {
+        return stockService.search({
+          query: input.query,
+          orientation: input.orientation,
+          count: input.count,
+        })
+      }
+    }),
+
+  /**
+   * Search for travel-specific photos
+   */
+  searchTravelPhotos: publicProcedure
+    .input(
+      z.object({
+        location: z.string(),
+        type: z.enum(['landscape', 'landmark', 'food', 'culture', 'people', 'hotel', 'beach']).optional(),
+        orientation: z.enum(['landscape', 'portrait', 'square']).optional(),
+        count: z.number().int().min(1).max(30).default(10),
+      })
+    )
+    .query(async ({ input }) => {
+      if (!isStockPhotoConfigured()) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Stock photo APIs not configured.',
+        })
+      }
+
+      const stockService = getStockPhotoService()
+
+      return stockService.searchTravel(input.location, {
+        type: input.type,
+        orientation: input.orientation,
+        count: input.count,
+      })
+    }),
+
+  /**
+   * Select and upload a stock photo to our CDN
+   */
+  selectStockPhoto: publicProcedure
+    .input(
+      z.object({
+        websiteId: z.string(),
+        photoId: z.string(),
+        source: z.enum(['unsplash', 'pexels']),
+        altText: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      if (!isStockPhotoConfigured()) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Stock photo APIs not configured.',
+        })
+      }
+
+      if (!isStorageConfigured()) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Storage not configured.',
+        })
+      }
+
+      const stockService = getStockPhotoService()
+      const storageService = getStorageService()
+
+      // Download the photo (triggers attribution tracking)
+      const downloadResult = await stockService.download(input.photoId, input.source)
+
+      if (!downloadResult.success || !downloadResult.buffer) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: downloadResult.error || 'Failed to download photo',
+        })
+      }
+
+      // Upload to our CDN
+      const filename = `${input.photoId}.webp`
+      const folder = getFolderPath(input.websiteId, `stock/${input.source}`)
+
+      const uploaded = await storageService.upload({
+        buffer: downloadResult.buffer,
+        filename,
+        mimeType: 'image/webp',
+        folder,
+      })
+
+      return {
+        url: uploaded.url,
+        key: uploaded.key,
+        size: uploaded.size,
+        attribution: downloadResult.attribution,
+        altText: input.altText,
+        source: input.source,
+      }
+    }),
+
+  // ===========================================================================
+  // DELETE
+  // ===========================================================================
+
+  /**
+   * Delete a file from storage
    */
   delete: publicProcedure
     .input(
       z.object({
-        mediaId: z.string().uuid(),
+        key: z.string(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
-      const mediaService = createMediaService(ctx.db);
-
-      await mediaService.deleteMedia(input.mediaId);
-
-      return { success: true };
-    }),
-
-  // =============================================================================
-  // PROCESSING
-  // =============================================================================
-
-  /**
-   * Get processing status
-   */
-  getProcessingStatus: publicProcedure
-    .input(
-      z.object({
-        mediaId: z.string().uuid(),
-      })
-    )
-    .query(async ({ input, ctx }) => {
-      const result = await ctx.db.query(
-        `SELECT processing_status, processing_error, variants_generated
-         FROM media
-         WHERE id = $1`,
-        [input.mediaId]
-      );
-
-      if (result.rows.length === 0) {
+    .mutation(async ({ input }) => {
+      if (!isStorageConfigured()) {
         throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Media not found',
-        });
+          code: 'PRECONDITION_FAILED',
+          message: 'Storage not configured.',
+        })
       }
 
-      return result.rows[0];
+      const storageService = getStorageService()
+      await storageService.delete(input.key)
+
+      return { success: true }
     }),
 
+  // ===========================================================================
+  // VARIANTS (optional image processing)
+  // ===========================================================================
+
   /**
-   * Regenerate variants for an image
+   * Generate image variants (different sizes) for responsive images
    */
-  regenerateVariants: publicProcedure
+  generateVariants: publicProcedure
     .input(
       z.object({
-        mediaId: z.string().uuid(),
+        websiteId: z.string(),
+        sourceUrl: z.string().url(),
+        baseFilename: z.string(),
+        folder: z.string().optional(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
-      // Check if media exists and is an image
-      const result = await ctx.db.query(
-        'SELECT mime_type FROM media WHERE id = $1',
-        [input.mediaId]
-      );
-
-      if (result.rows.length === 0) {
+    .mutation(async ({ input }) => {
+      if (!isStorageConfigured()) {
         throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Media not found',
-        });
+          code: 'PRECONDITION_FAILED',
+          message: 'Storage not configured.',
+        })
       }
 
-      if (!result.rows[0].mime_type.startsWith('image/')) {
+      const storageService = getStorageService()
+
+      // Download the source image
+      const response = await fetch(input.sourceUrl)
+      if (!response.ok) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Media is not an image',
-        });
+          message: 'Failed to download source image',
+        })
       }
 
-      // Reset processing status
-      await ctx.db.query(
-        `UPDATE media
-         SET processing_status = 'pending',
-             processing_error = NULL,
-             variants_generated = false,
-             updated_at = NOW()
-         WHERE id = $1`,
-        [input.mediaId]
-      );
+      const sourceBuffer = Buffer.from(await response.arrayBuffer())
+      const folder = input.folder || getFolderPath(input.websiteId, 'variants')
 
-      // Queue variant generation
-      await ctx.db.query(
-        `INSERT INTO media_processing_queue (media_id, task_type, priority)
-         VALUES ($1, $2, $3)`,
-        [input.mediaId, 'generate_variants', 8]
-      );
-
-      return { success: true };
-    }),
-
-  /**
-   * Process pending media queue item (for background workers)
-   */
-  processQueue: publicProcedure.mutation(async ({ ctx }) => {
-    // Get next pending item
-    const result = await ctx.db.query(
-      `SELECT * FROM media_processing_queue
-       WHERE status = 'pending'
-         AND attempts < max_attempts
-       ORDER BY priority DESC, created_at ASC
-       LIMIT 1
-       FOR UPDATE SKIP LOCKED`
-    );
-
-    if (result.rows.length === 0) {
-      return { processed: false, message: 'No pending items' };
-    }
-
-    const queueItem = result.rows[0];
-
-    // Update status to processing
-    await ctx.db.query(
-      `UPDATE media_processing_queue
-       SET status = 'processing',
-           attempts = attempts + 1,
-           started_at = NOW()
-       WHERE id = $1`,
-      [queueItem.id]
-    );
-
-    try {
-      // Process the task
-      const mediaService = createMediaService(ctx.db);
-
-      if (queueItem.task_type === 'generate_variants') {
-        await mediaService.generateVariants(queueItem.media_id);
-      }
-
-      // Mark as completed
-      await ctx.db.query(
-        `UPDATE media_processing_queue
-         SET status = 'completed',
-             completed_at = NOW()
-         WHERE id = $1`,
-        [queueItem.id]
-      );
-
-      return {
-        processed: true,
-        queueItemId: queueItem.id,
-        mediaId: queueItem.media_id,
-        taskType: queueItem.task_type,
-      };
-    } catch (error) {
-      // Mark as failed
-      await ctx.db.query(
-        `UPDATE media_processing_queue
-         SET status = 'failed',
-             error = $1,
-             completed_at = NOW()
-         WHERE id = $2`,
-        [error instanceof Error ? error.message : 'Unknown error', queueItem.id]
-      );
-
-      throw error;
-    }
-  }),
-
-  // =============================================================================
-  // DOWNLOAD
-  // =============================================================================
-
-  /**
-   * Generate presigned download URL
-   */
-  generateDownloadUrl: publicProcedure
-    .input(
-      z.object({
-        mediaId: z.string().uuid(),
-        expiresIn: z.number().int().min(60).max(3600).optional(),
+      const variants = await storageService.generateVariants({
+        sourceBuffer,
+        baseFilename: input.baseFilename,
+        folder,
       })
-    )
-    .query(async ({ input, ctx }) => {
-      const result = await ctx.db.query(
-        'SELECT storage_path FROM media WHERE id = $1',
-        [input.mediaId]
-      );
 
-      if (result.rows.length === 0) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Media not found',
-        });
-      }
-
-      const mediaService = createMediaService(ctx.db);
-
-      const url = await mediaService.generatePresignedDownloadUrl(
-        result.rows[0].storage_path,
-        input.expiresIn
-      );
-
-      return { url };
+      return variants
     }),
-
-  // =============================================================================
-  // STATISTICS
-  // =============================================================================
-
-  /**
-   * Get media statistics for a website
-   */
-  getStats: publicProcedure
-    .input(
-      z.object({
-        websiteId: z.string().uuid(),
-      })
-    )
-    .query(async ({ input, ctx }) => {
-      const result = await ctx.db.query(
-        `SELECT
-          COUNT(*) as total_count,
-          SUM(size_bytes) as total_size,
-          COUNT(*) FILTER (WHERE mime_type LIKE 'image/%') as image_count,
-          COUNT(*) FILTER (WHERE mime_type LIKE 'video/%') as video_count,
-          COUNT(*) FILTER (WHERE mime_type LIKE 'audio/%') as audio_count,
-          COUNT(*) FILTER (WHERE processing_status = 'pending') as pending_count,
-          COUNT(*) FILTER (WHERE processing_status = 'processing') as processing_count,
-          COUNT(*) FILTER (WHERE processing_status = 'failed') as failed_count
-         FROM media
-         WHERE website_id = $1`,
-        [input.websiteId]
-      );
-
-      return result.rows[0];
-    }),
-});
+})

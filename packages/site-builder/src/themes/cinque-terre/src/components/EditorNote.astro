@@ -1,0 +1,55 @@
+---
+interface Props {
+  quote: string;
+  author?: string;
+  role?: string;
+  image?: string;
+}
+
+const { 
+  quote, 
+  author = "Giulia Rossi", 
+  role = "Riomaggiore Expert", 
+  image = "/giulia_rossi.png" 
+} = Astro.props;
+---
+
+<div class="relative py-8 group/note">
+    <div class="absolute top-0 right-0 p-4 opacity-[0.05] group-hover/note:opacity-[0.1] transition-opacity">
+        <svg class="w-24 h-24 text-primary fill-current" viewBox="0 0 24 24">
+            <path d="M14.017 21L14.017 18C14.017 16.8954 14.9124 16 16.017 16H19.017C19.5693 16 20.017 15.5523 20.017 15V9C20.017 8.44772 19.5693 8 19.017 8H16.017C15.4647 8 15.017 8.44772 15.017 9V12C15.017 12.5523 14.5693 13 14.017 13H13.017C12.4647 13 12.017 12.5523 12.017 12V9C12.017 6.79086 13.8079 5 16.017 5H19.017C21.2261 5 23.017 6.79086 23.017 9V15C23.017 18.866 19.883 22 16.017 22H14.017V21ZM2.01698 21L2.01698 18C2.01698 16.8954 2.91241 16 4.01698 16H7.01698C7.56927 16 8.01698 15.5523 8.01698 15V9C8.01698 8.44772 7.56927 8 7.01698 8H4.01698C3.4647 8 3.01698 8.44772 3.01698 9V12C3.01698 12.5523 2.56927 13 2.01698 13H1.01698C0.4647 13 0.0169824 12.5523 0.0169824 12V9C0.0169824 6.79086 1.80784 5 4.01698 5H7.01698C9.22612 5 11.017 6.79086 11.017 9V15C11.017 18.866 7.88298 22 4.01698 22H2.01698V21Z" />
+        </svg>
+    </div>
+    <div class="relative flex flex-col md:flex-row items-start gap-6">
+        <div class="relative flex-shrink-0">
+            <div class="w-16 h-16 rounded-full bg-primary/10 p-1 ring-2 ring-primary/20">
+                <div class="w-full h-full rounded-full overflow-hidden bg-secondary">
+                    <img 
+                        src={image} 
+                        alt={author}
+                        class="w-full h-full object-cover"
+                    />
+                </div>
+            </div>
+            <div class="absolute -bottom-1 -right-1 bg-primary text-white p-1 rounded-full shadow-lg">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+        </div>
+        <div class="flex-1 space-y-4">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-[0.2em]">
+                Local Perspective
+            </div>
+            <blockquote class="font-serif text-xl text-foreground/90 leading-relaxed italic">
+                "{quote}"
+            </blockquote>
+            <div class="flex items-center gap-3 pt-2">
+                <div class="h-px w-8 bg-primary/30"></div>
+                <p class="text-sm font-medium text-foreground">
+                    {author} <span class="text-muted-foreground font-normal ml-1">— {role}</span>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>

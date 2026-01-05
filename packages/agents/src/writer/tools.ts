@@ -51,6 +51,27 @@ Supported block types:
 - gallery: { type: "gallery", images: [{ url: "...", alt: "...", caption: "..." }, ...], columns: 2-4 }
 - embed: { type: "embed", provider: "youtube"|"vimeo", url: "...", title: "..." }
 
+Cinque Terre Theme blocks:
+- village-selector: { type: "village-selector", title: "...", subtitle: "...", villages: [{ name, slug, description, image, tags: [...] }, ...] }
+- places-to-stay: { type: "places-to-stay", title: "...", eyebrow: "...", stays: [{ name, village, special, price, image, url }, ...], viewAllUrl: "..." }
+- featured-carousel: { type: "featured-carousel", title: "...", stories: [{ id, title, category, dek, image, author, url }, ...], viewAllUrl: "..." }
+- village-intro: { type: "village-intro", village: "...", leadStory: {...}, essentials: { weather, seaTemp, crowdRhythm, ... }, stories: [...] }
+- trending-now: { type: "trending-now", title: "...", stories: [{ id, title, category, image, author, date, readTime, isLead }, ...] }
+- about: { type: "about", title: "...", eyebrow: "...", description: ["paragraph1", "paragraph2"], image: "...", editor: { name, role, avatar } }
+- curated-escapes: { type: "curated-escapes", title: "...", eyebrow: "...", escapes: [{ name, image, url }, ...] }
+- latest-stories: { type: "latest-stories", title: "...", stories: [...], filters: ["All", "Guides", "Food"], showFilters: true }
+- eat-drink: { type: "eat-drink", title: "...", eyebrow: "...", places: [{ name, type, village, blurb, image, url }, ...], viewAllUrl: "..." }
+- highlights: { type: "highlights", title: "...", eyebrow: "...", highlights: [{ name, icon: "mountain"|"ship"|"camera"|..., desc, url }, ...] }
+- audio-guides: { type: "audio-guides", title: "...", guides: [{ title, description, duration, image, url }, ...], viewAllUrl: "..." }
+- practical-advice: { type: "practical-advice", advice: [{ name, icon: "train"|"map"|"users"|..., desc, url }, ...] }
+
+Editorial blocks (for rich magazine-style content):
+- editorial-hero: { type: "editorial-hero", title: "...", subtitle: "...", badge: "...", image: "url", height: "70vh" }
+- editorial-intro: { type: "editorial-intro", badge: "...", quote: "...", leftContent: "<p>...</p>", rightContent: "<p>...</p>" }
+- editorial-interlude: { type: "editorial-interlude", badge: "...", title: "...", quote: "...", interludeType: "primary"|"secondary", align: "left"|"right" }
+- editor-note: { type: "editor-note", quote: "...", author: "Giulia Rossi", role: "Local Expert", image: "/giulia_rossi.png" }
+- closing-note: { type: "closing-note", badge: "...", title: "...", content: "<p>...</p>", actions: [{ label: "...", href: "...", variant: "primary"|"secondary" }] }
+
 After writing, the content will be in "draft" status.`,
   input_schema: {
     type: 'object',
@@ -155,6 +176,27 @@ Supported block types:
 - embed: { type: "embed", provider: "youtube"|"vimeo", url: "...", title: "..." }
 - collection-embed: { type: "collection-embed", collectionType: "restaurants", heading: "...", items: [...], display: { layout: "grid"|"list"|"carousel"|"compact", columns: 2-4 } }
 
+Cinque Terre Theme blocks:
+- village-selector: { type: "village-selector", title: "...", subtitle: "...", villages: [{ name, slug, description, image, tags: [...] }, ...] }
+- places-to-stay: { type: "places-to-stay", title: "...", eyebrow: "...", stays: [{ name, village, special, price, image, url }, ...], viewAllUrl: "..." }
+- featured-carousel: { type: "featured-carousel", title: "...", stories: [{ id, title, category, dek, image, author, url }, ...], viewAllUrl: "..." }
+- village-intro: { type: "village-intro", village: "...", leadStory: {...}, essentials: { weather, seaTemp, crowdRhythm, ... }, stories: [...] }
+- trending-now: { type: "trending-now", title: "...", stories: [{ id, title, category, image, author, date, readTime, isLead }, ...] }
+- about: { type: "about", title: "...", eyebrow: "...", description: ["paragraph1", "paragraph2"], image: "...", editor: { name, role, avatar } }
+- curated-escapes: { type: "curated-escapes", title: "...", eyebrow: "...", escapes: [{ name, image, url }, ...] }
+- latest-stories: { type: "latest-stories", title: "...", stories: [...], filters: ["All", "Guides", "Food"], showFilters: true }
+- eat-drink: { type: "eat-drink", title: "...", eyebrow: "...", places: [{ name, type, village, blurb, image, url }, ...], viewAllUrl: "..." }
+- highlights: { type: "highlights", title: "...", eyebrow: "...", highlights: [{ name, icon: "mountain"|"ship"|"camera"|..., desc, url }, ...] }
+- audio-guides: { type: "audio-guides", title: "...", guides: [{ title, description, duration, image, url }, ...], viewAllUrl: "..." }
+- practical-advice: { type: "practical-advice", advice: [{ name, icon: "train"|"map"|"users"|..., desc, url }, ...] }
+
+Editorial blocks (for rich magazine-style content):
+- editorial-hero: { type: "editorial-hero", title: "...", subtitle: "...", badge: "...", image: "url", height: "70vh" }
+- editorial-intro: { type: "editorial-intro", badge: "...", quote: "...", leftContent: "<p>...</p>", rightContent: "<p>...</p>" }
+- editorial-interlude: { type: "editorial-interlude", badge: "...", title: "...", quote: "...", interludeType: "primary"|"secondary", align: "left"|"right" }
+- editor-note: { type: "editor-note", quote: "...", author: "Giulia Rossi", role: "Local Expert", image: "/giulia_rossi.png" }
+- closing-note: { type: "closing-note", badge: "...", title: "...", content: "<p>...</p>", actions: [{ label: "...", href: "...", variant: "primary"|"secondary" }] }
+
 For collection-embed blocks, the items should be pre-filtered by village and contain:
 - slug: URL-friendly identifier
 - title: Display name
@@ -228,6 +270,27 @@ The content structure depends on the section type:
 - faq-section: { heading, items: [{ question, answer }] }
 - testimonial-section: { heading, testimonials: [{ quote, author, role, avatar }] }
 
+Cinque Terre Theme sections:
+- village-selector: { title, subtitle, villages: [{ name, slug, description, image, tags }] }
+- places-to-stay: { title, eyebrow, stays: [{ name, village, special, price, image, url }], viewAllUrl }
+- featured-carousel: { title, stories: [{ id, title, category, dek, image, author, url }], viewAllUrl }
+- village-intro: { village, leadStory, essentials: { weather, seaTemp, crowdRhythm, ... }, stories }
+- trending-now: { title, stories: [{ id, title, category, image, author, date, readTime, isLead }] }
+- about: { title, eyebrow, description: [...], image, editor: { name, role, avatar } }
+- curated-escapes: { title, eyebrow, escapes: [{ name, image, url }] }
+- latest-stories: { title, stories, filters, showFilters }
+- eat-drink: { title, eyebrow, places: [{ name, type, village, blurb, image, url }], viewAllUrl }
+- highlights: { title, eyebrow, highlights: [{ name, icon, desc, url }] }
+- audio-guides: { title, guides: [{ title, description, duration, image, url }], viewAllUrl }
+- practical-advice: { advice: [{ name, icon, desc, url }] }
+
+Editorial sections (for rich magazine-style content):
+- editorial-hero: { title, subtitle, badge, image, height }
+- editorial-intro: { badge, quote, leftContent, rightContent }
+- editorial-interlude: { badge, title, quote, interludeType, align }
+- editor-note: { quote, author, role, image }
+- closing-note: { badge, title, content, actions: [{ label, href, variant }] }
+
 Returns the optimized content object for the section.`,
   input_schema: {
     type: 'object',
@@ -268,10 +331,19 @@ Use this when the user wants to populate all sections at once with AI-generated 
 }
 
 // ============================================================================
+// Import Media Tools
+// ============================================================================
+
+import { mediaTools } from './media-tools'
+
+// ============================================================================
 // Export All Tools
 // ============================================================================
 
-export const writerTools = [
+/**
+ * Core writer tools for content creation and management
+ */
+export const coreWriterTools = [
   getContentTool,
   writeDraftTool,
   reviseDraftTool,
@@ -281,4 +353,12 @@ export const writerTools = [
   generatePageSectionsTool,
   optimizeSectionTool,
   optimizeAllSectionsTool,
+]
+
+/**
+ * All writer tools including media capabilities
+ */
+export const writerTools = [
+  ...coreWriterTools,
+  ...mediaTools,
 ]

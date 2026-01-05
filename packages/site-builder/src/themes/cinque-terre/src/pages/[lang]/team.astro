@@ -1,0 +1,59 @@
+---
+/**
+ * Team page - The Voices of the Dispatch
+ * Loads content from cinqueterre.travel/content/pages/team.json
+ */
+import Layout from '../../layouts/Layout.astro';
+import ContentRenderer from '../../ContentRenderer.astro';
+import Footer from '../../components/Footer';
+import fs from 'fs';
+import path from 'path';
+
+export async function getStaticPaths() {
+  const CONTENT_DIR = process.env.CONTENT_DIR || '/Users/drietsch/agentpress/cinqueterre.travel/content/pages';
+  const SUPPORTED_LANGS = ['en', 'de', 'fr', 'it'];
+
+  const filePath = path.join(CONTENT_DIR, 'team.json');
+
+  if (!fs.existsSync(filePath)) {
+    return SUPPORTED_LANGS.map(lang => ({
+      params: { lang },
+      props: { pageData: null }
+    }));
+  }
+
+  const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+
+  return SUPPORTED_LANGS.map(lang => ({
+    params: { lang },
+    props: {
+      pageData: {
+        ...content,
+        currentLang: lang,
+        title: content.title?.[lang] || content.title?.en || content.title,
+        seo: {
+          title: content.seo?.title?.[lang] || content.seo?.title?.en,
+          description: content.seo?.description?.[lang] || content.seo?.description?.en,
+        }
+      }
+    }
+  }));
+}
+
+const { lang } = Astro.params;
+const { pageData } = Astro.props;
+
+if (!pageData) {
+  return Astro.redirect('/');
+}
+
+const title = pageData.seo?.title || pageData.title || 'The Editors | Cinque Terre Dispatch';
+const description = pageData.seo?.description || '';
+const body = pageData.body || [];
+const locale = lang || 'en';
+---
+
+<Layout title={title} description={description} locale={locale}>
+  <ContentRenderer blocks={body} locale={locale} />
+  <Footer />
+</Layout>

@@ -1,0 +1,46 @@
+---
+interface Props {
+  badge: string;
+  quote: string;
+}
+
+const { badge, quote } = Astro.props;
+---
+
+<section class="py-24 bg-white overflow-hidden relative border-y border-border/40">
+    <div class="container mx-auto px-4 relative">
+        <div class="max-w-4xl mx-auto">
+            <div class="space-y-12">
+                <div class="flex justify-center">
+                    <div class="inline-flex items-center gap-4">
+                        <div class="h-px w-8 bg-primary/30"></div>
+                        <span class="text-[10px] font-bold uppercase tracking-[0.4em] text-primary">{badge}</span>
+                        <div class="h-px w-8 bg-primary/30"></div>
+                    </div>
+                </div>
+
+                <div class="prose prose-xl prose-serif max-w-none text-center">
+                    <p class="font-serif text-3xl md:text-4xl text-foreground leading-[1.4] italic font-light mb-12">
+                        {quote}
+                    </p>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-12 text-lg text-muted-foreground leading-relaxed font-light text-left">
+                        <slot />
+                    </div>
+                </div>
+
+                <div class="flex justify-center pt-12">
+                    <div class="w-24 h-px bg-border"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+    .prose-serif {
+        --tw-prose-body: var(--foreground);
+        --tw-prose-headings: var(--foreground);
+        --tw-prose-italic: var(--primary);
+    }
+</style>

@@ -55,6 +55,7 @@ const DEFAULT_SITE_CONFIG: SiteConfig = {
     languages: ['en'],
   },
   theme: {
+    mode: 'light',
     colors: {
       primary: {
         '50': '#eff6ff',

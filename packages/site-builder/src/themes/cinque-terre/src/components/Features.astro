@@ -1,0 +1,41 @@
+---
+/**
+ * Features Section Component
+ * Display features in a grid with icons
+ */
+import type { FeatureProps, Feature } from '../types';
+
+interface Props extends FeatureProps {
+  locale?: string;
+}
+
+const {
+  title,
+  subtitle,
+  features = [],
+  locale: _locale = 'en'
+} = Astro.props;
+---
+
+<section class="py-16">
+    <div class="container mx-auto px-4">
+        {(title || subtitle) && (
+            <div class="text-center mb-12">
+                {title && <h2 class="font-serif text-3xl md:text-4xl font-bold">{title}</h2>}
+                {subtitle && <p class="text-muted-foreground mt-4 max-w-2xl mx-auto">{subtitle}</p>}
+            </div>
+        )}
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {features.map((feature: Feature) => (
+                <div class="p-6 rounded-xl bg-card border border-border hover:shadow-md transition-shadow">
+                    {feature.icon && (
+                        <div class="text-3xl mb-4">{feature.icon}</div>
+                    )}
+                    <h3 class="font-serif text-xl font-bold mb-2">{feature.title}</h3>
+                    <p class="text-muted-foreground">{feature.description}</p>
+                </div>
+            ))}
+        </div>
+    </div>
+</section>

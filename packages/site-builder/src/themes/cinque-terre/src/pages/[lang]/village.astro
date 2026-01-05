@@ -1,0 +1,65 @@
+---
+/**
+ * Village page - Riomaggiore
+ * Loads content from cinqueterre.travel/content/pages/village.json
+ */
+import Layout from '../../layouts/Layout.astro';
+import ContentRenderer from '../../ContentRenderer.astro';
+import Footer from '../../components/Footer';
+import VillageSEO from '../../components/VillageSEO.astro';
+import fs from 'fs';
+import path from 'path';
+
+export async function getStaticPaths() {
+  // Content directory path - use environment variable or fallback to absolute path
+  const CONTENT_DIR = process.env.CONTENT_DIR || '/Users/drietsch/agentpress/cinqueterre.travel/content/pages';
+
+  // Supported languages
+  const SUPPORTED_LANGS = ['en', 'de', 'fr', 'it'];
+
+  const villagePath = path.join(CONTENT_DIR, 'village.json');
+
+  if (!fs.existsSync(villagePath)) {
+    return SUPPORTED_LANGS.map(lang => ({
+      params: { lang },
+      props: { pageData: null }
+    }));
+  }
+
+  const content = JSON.parse(fs.readFileSync(villagePath, 'utf-8'));
+
+  return SUPPORTED_LANGS.map(lang => ({
+    params: { lang },
+    props: {
+      pageData: {
+        ...content,
+        currentLang: lang,
+        title: content.title?.[lang] || content.title?.en || content.title,
+        seo: {
+          title: content.seo?.title?.[lang] || content.seo?.title?.en,
+          description: content.seo?.description?.[lang] || content.seo?.description?.en,
+        }
+      }
+    }
+  }));
+}
+
+const { lang } = Astro.params;
+const { pageData } = Astro.props;
+
+// Fallback if no page data
+if (!pageData) {
+  return Astro.redirect('/');
+}
+
+const title = pageData.seo?.title || pageData.title || 'Riomaggiore | Cinque Terre Dispatch';
+const description = pageData.seo?.description || '';
+const body = pageData.body || [];
+const locale = lang || 'en';
+---
+
+<Layout title={title} description={description} locale={locale}>
+  <ContentRenderer blocks={body} locale={locale} />
+  <VillageSEO />
+  <Footer />
+</Layout>

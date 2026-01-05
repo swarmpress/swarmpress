@@ -19,6 +19,7 @@
     "@anthropic-ai/sdk": "^0.30.1",
     "@aws-sdk/client-s3": "^3.937.0",
     "@aws-sdk/s3-request-presigner": "^3.937.0",
+    "@google/genai": "^1.33.0",
     "@octokit/rest": "^20.0.2",
     "@swarm-press/event-bus": "workspace:*",
     "@swarm-press/github-integration": "workspace:*",

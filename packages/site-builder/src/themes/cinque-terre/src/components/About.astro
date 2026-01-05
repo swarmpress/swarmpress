@@ -1,0 +1,35 @@
+---
+const aboutImage = "https://images.unsplash.com/photo-1592345279419-959d784e8aad?q=80&w=2670&auto=format&fit=crop";
+---
+
+<section class="py-24 container mx-auto px-4">
+    <div class="flex flex-col md:flex-row items-center gap-12 lg:gap-24">
+        <div class="w-full md:w-1/2 relative">
+            <div class="aspect-[4/5] rounded-2xl overflow-hidden shadow-2xl">
+                <img src={aboutImage} alt="Cinque Terre View" class="w-full h-full object-cover" />
+            </div>
+            <div class="absolute -bottom-6 -right-6 w-2/3 aspect-square bg-secondary rounded-2xl -z-10"></div>
+        </div>
+        
+        <div class="w-full md:w-1/2">
+            <span class="text-sm font-semibold text-primary uppercase tracking-wider">About Us</span>
+            <h2 class="font-serif text-4xl md:text-5xl font-bold mt-4 mb-6 leading-tight">We help you discover the real Cinque Terre.</h2>
+            <p class="text-lg text-muted-foreground mb-6">
+                Cinque Terre Dispatch is your premium guide to the Italian Riviera's most iconic coastline. We go beyond the postcards to bring you authentic stories, hidden gems, and practical advice from locals and experts.
+            </p>
+            <p class="text-lg text-muted-foreground mb-8">
+                Whether you're planning a romantic getaway, a hiking adventure, or a culinary tour, we're here to ensure your trip is unforgettable.
+            </p>
+            
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-full bg-gray-200 overflow-hidden">
+                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Editor" alt="Editor" />
+                </div>
+                <div>
+                    <p class="font-bold text-foreground">Elena Rossi</p>
+                    <p class="text-sm text-muted-foreground">Editor-in-Chief</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>

@@ -1,0 +1,252 @@
+---
+import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { Badge } from './ui/badge';
+import { Sun, Footprints, History, Star } from 'lucide-react';
+const stories = [
+    {
+        id: 1,
+        title: "Riomaggiore, Where the Sea Meets the Soul",
+        excerpt: "Riomaggiore welcomes you like an old friend, instantly familiar and endlessly charming. Colorful, sun-washed streets cling to the cliffs, guiding you down toward the water. Below, the endless blue of the Ligurian Sea unfolds, setting the rhythm for life in this timeless coastal village.",
+        author: "Giulia Rossi",
+        date: "Oct 15, 2023",
+        readTime: "8 min read",
+        category: "Guides",
+        image: "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
+        isLead: true
+    },
+    {
+        id: 2,
+        title: "5 Hidden Gelaterias You Need to Try",
+        excerpt: "Skip the tourist traps and find the real deal.",
+        author: "Marco Bianchi",
+        date: "Oct 14, 2023",
+        readTime: "4 min read",
+        category: "Food",
+        image: "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop"
+    },
+    {
+        id: 3,
+        title: "A Photographer's Guide to Manarola at Sunset",
+        excerpt: "Best angles and times for that perfect shot.",
+        author: "Elena Moretti",
+        date: "Oct 12, 2023",
+        readTime: "6 min read",
+        category: "Photography",
+        image: "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop"
+    },
+    {
+        id: 4,
+        title: "Hiking the Blue Trail: What to Expect",
+        excerpt: "Difficulty levels, closures, and scenic stops.",
+        author: "Luca Verdi",
+        date: "Oct 10, 2023",
+        readTime: "10 min read",
+        category: "Guides",
+        image: "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?q=80&w=2670&auto=format&fit=crop"
+    },
+    {
+        id: 5,
+        title: "Where to Stay: Hotel vs. Airbnb",
+        excerpt: "Pros and cons for every type of traveler.",
+        author: "Sofia Neri",
+        date: "Oct 08, 2023",
+        readTime: "5 min read",
+        category: "Hotels",
+        image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=2670&auto=format&fit=crop"
+    },
+    {
+        id: 6,
+        title: "Day Trip to Portovenere",
+        excerpt: "Why you should visit the 'sixth village'.",
+        author: "Giulia Rossi",
+        date: "Oct 05, 2023",
+        readTime: "7 min read",
+        category: "Guides",
+        image: "https://images.unsplash.com/photo-1555979863-69fb96e63359?q=80&w=2670&auto=format&fit=crop"
+    },
+    {
+        id: 7,
+        title: "Local Festivals in November",
+        excerpt: "What's happening in the off-season.",
+        author: "Marco Bianchi",
+        date: "Oct 01, 2023",
+        readTime: "3 min read",
+        category: "News",
+        image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2632&auto=format&fit=crop"
+    }
+];
+
+const leadStory = stories[0];
+const otherStories = stories.slice(1);
+const filters = ["All", "Guides", "Food", "Hotels", "News & Advice"];
+---
+
+<section class="py-16 container mx-auto px-4">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Lead Story */}
+        <div class="lg:col-span-3 grid grid-cols-1 md:grid-cols-1 gap-8 mb-8 group cursor-pointer">
+
+             <div class="flex flex-col justify-center">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="bg-primary/10 text-primary text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wide">
+                        {leadStory.category}
+                    </span>
+                    <span class="text-sm text-muted-foreground">{leadStory.readTime}</span>
+                </div>
+                <h3 class="font-serif text-3xl md:text-4xl font-bold mb-4 group-hover:text-primary transition-colors leading-tight">
+                    {leadStory.title}
+                </h3>
+                <p class="text-muted-foreground text-lg mb-6 line-clamp-3">
+                    {leadStory.excerpt}
+                </p>
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-secondary overflow-hidden">
+                        <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${leadStory.author}`} alt={leadStory.author} />
+                    </div>
+                    <div class="text-sm">
+                        <p class="font-medium text-foreground">{leadStory.author} – the voice of Riomaggioree</p>
+                        <p class="text-muted-foreground">{leadStory.date}</p>
+                    </div>
+                </div>
+             </div>
+        </div>
+
+        <div class="lg:col-span-3 mb-16">
+            <Card className="bg-white/80 dark:bg-card/80 backdrop-blur-md border-primary/10 shadow-xl overflow-hidden relative">
+                <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/40 via-primary to-primary/40"></div>
+                <CardHeader className="pb-8 pt-8 text-center space-y-2">
+                    <div class="mx-auto w-fit px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-widest mb-2">
+                        Giulia's Traveler Intelligence
+                    </div>
+                    <CardTitle className="font-serif text-3xl md:text-4xl text-foreground">Riomaggiore Essentials 2026</CardTitle>
+                    <p class="text-muted-foreground font-serif italic text-lg">Today’s atmosphere and real-time details, grounded in Riomaggiore’s timeless character</p>
+                </CardHeader>
+                
+                <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 relative p-8">
+                    {/* Vertical Dividers for Desktop */}
+                    <div class="hidden md:block absolute top-8 bottom-8 left-1/3 w-px bg-border/50"></div>
+                    <div class="hidden md:block absolute top-8 bottom-8 right-1/3 w-px bg-border/50"></div>
+
+                    {/* Column 1 */}
+                    <div class="space-y-6 relative z-10 px-4 flex flex-col items-center text-center">
+                        <div class="flex flex-col items-center gap-3 mb-4">
+                            <div class="p-2 rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                                <Sun className="w-5 h-5" />
+                            </div>
+                            <h4 class="font-bold text-sm uppercase tracking-wider text-foreground">Today & Conditions</h4>
+                        </div>
+                        
+                        <ul class="space-y-4 text-sm w-full">
+                            <li class="group flex flex-col items-center">
+                                <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Weather</span>
+                                <div class="font-medium text-base">☀️ 23°C, light breeze</div>
+                            </li>
+                            <li class="group flex flex-col items-center">
+                                <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Sea Temperature</span>
+                                <div class="font-medium text-base">🌊 21°C</div>
+                            </li>
+                            <li class="group flex flex-col items-center">
+                                <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Sea Conditions</span>
+                                <div class="font-medium text-base">Calm to moderate</div>
+                            </li>
+                             <li class="group flex flex-col items-center">
+                                <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Sunset</span>
+                                <div class="font-medium text-base">20:47</div>
+                            </li>
+                        </ul>
+                    </div>
+
+                    {/* Column 2 */}
+                    <div class="space-y-6 relative z-10 px-4 flex flex-col items-center text-center">
+                         <div class="flex flex-col items-center gap-3 mb-4">
+                            <div class="p-2 rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                                <Footprints className="w-5 h-5" />
+                            </div>
+                            <h4 class="font-bold text-sm uppercase tracking-wider text-foreground">Travel Experience</h4>
+                        </div>
+                        <ul class="space-y-4 text-sm w-full">
+                             <li class="group flex flex-col items-center">
+                                <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Crowd Rhythm</span>
+                                <div class="font-medium text-base">Lively day, quiet eve</div>
+                            </li>
+                            <li class="group flex flex-col items-center">
+                                <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Best Felt</span>
+                                <div class="font-medium text-base">Slowly, on foot</div>
+                            </li>
+                            <li class="group flex flex-col items-center">
+                                <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Village Shape</span>
+                                <div class="font-medium text-base">Rising to the sky</div>
+                            </li>
+                            <li class="group flex flex-col items-center">
+                                <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Food & Wine</span>
+                                <div class="font-medium text-base">Simple, honest flavors</div>
+                            </li>
+                        </ul>
+                    </div>
+
+                    {/* Column 3 */}
+                    <div class="space-y-6 relative z-10 px-4 flex flex-col items-center text-center">
+                         <div class="flex flex-col items-center gap-3 mb-4">
+                            <div class="p-2 rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
+                                <History className="w-5 h-5" />
+                            </div>
+                            <h4 class="font-bold text-sm uppercase tracking-wider text-foreground">Character</h4>
+                        </div>
+                        <ul class="space-y-4 text-sm w-full">
+                            <li class="group flex flex-col items-center">
+                                <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Origins</span>
+                                <div class="font-medium text-base">Born in 8th Century</div>
+                            </li>
+                            <li class="group flex flex-col items-center">
+                                <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Shaped By</span>
+                                <div class="font-medium text-base">Sea, stone, patience</div>
+                            </li>
+                             <li class="group flex flex-col items-center">
+                                <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Traveler Rating</span>
+                                <div class="font-medium text-base flex items-center gap-1">
+                                    4.6/5 <Star className="w-3 h-3 fill-current" /> on Google
+                                </div>
+                            </li>
+                            <li class="group flex flex-col items-center">
+                                <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Remembered For</span>
+                                <div class="font-medium text-base italic">"Views that linger"</div>
+                            </li>
+                        </ul>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+
+        {/* Other Stories */}
+        {otherStories.map(story => (
+            <div class="group cursor-pointer flex flex-col h-full">
+                <div class="relative aspect-[3/2] overflow-hidden rounded-xl mb-4">
+                    <img src={story.image} alt={story.title} class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" />
+                    <span class="absolute top-3 left-3 bg-white/90 text-black px-2 py-0.5 rounded-md text-xs font-bold uppercase tracking-wide shadow-sm">
+                        {story.category}
+                    </span>
+                </div>
+                <h3 class="font-serif text-xl font-bold mb-2 group-hover:text-primary transition-colors leading-snug flex-grow">
+                    {story.title}
+                </h3>
+                <p class="text-sm text-muted-foreground mb-4 line-clamp-2">
+                    {story.excerpt}
+                </p>
+                <div class="flex items-center gap-2 mt-auto">
+                    <div class="w-6 h-6 rounded-full bg-secondary overflow-hidden">
+                        <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${story.author}`} alt={story.author} />
+                    </div>
+                    <div class="text-xs text-muted-foreground">
+                        <span class="font-medium text-foreground">{story.author}</span> • {story.date}
+                    </div>
+                </div>
+            </div>
+        ))}
+    </div>
+    
+    <div class="mt-12 text-center">
+        <button class="px-8 py-3 rounded-full border border-border hover:bg-secondary transition-colors font-medium">
+            Load More Stories
+        </button>
+    </div>
+</section>

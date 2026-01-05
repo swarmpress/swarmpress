@@ -44,15 +44,46 @@ export const ThemeFontsSchema = z.object({
 })
 
 // =============================================================================
+// SEMANTIC COLORS SCHEMA (for theming support)
+// =============================================================================
+
+/**
+ * Semantic color tokens for consistent theming
+ * These map to CSS custom properties for easy switching between themes
+ */
+export const SemanticColorsSchema = z.object({
+  background: z.string(),           // Main background color
+  backgroundAlt: z.string().optional(), // Alternative/secondary background
+  surface: z.string(),              // Card/panel surfaces
+  foreground: z.string(),           // Main text color
+  foregroundMuted: z.string().optional(), // Secondary/muted text
+  border: z.string(),               // Border color
+  brand: z.string(),                // Primary brand color
+  brandForeground: z.string(),      // Text on brand color
+  accent: z.string().optional(),    // Accent/highlight color
+  accentForeground: z.string().optional(), // Text on accent color
+})
+
+// =============================================================================
 // THEME SCHEMA
 // =============================================================================
 
 export const ThemeConfigSchema = z.object({
   extends: z.string().optional(),  // Base theme to extend (e.g., "default", "dark")
+  name: z.string().optional(),      // Theme name for presets
+  mode: z.enum(['light', 'dark', 'auto']).default('light'), // Theme mode
   colors: ThemeColorsSchema,
   fonts: ThemeFontsSchema.optional(),
   borderRadius: z.string().default('0.5rem'),
   shadows: z.enum(['none', 'sm', 'default', 'lg']).default('default'),
+  // Semantic color tokens
+  semanticColors: SemanticColorsSchema.optional(),
+  // Dark mode overrides (applied when mode is 'dark' or 'auto' in dark context)
+  darkMode: SemanticColorsSchema.partial().optional(),
+  // Gradient definitions for heroes, cards, overlays
+  gradients: z.record(z.string()).optional(),
+  // Overlay definitions for image treatments
+  overlays: z.record(z.string()).optional(),
 })
 
 // =============================================================================
@@ -166,6 +197,7 @@ export const SiteConfigSchema = z.object({
 export type ColorScale = z.infer<typeof ColorScaleSchema>
 export type ThemeColors = z.infer<typeof ThemeColorsSchema>
 export type ThemeFonts = z.infer<typeof ThemeFontsSchema>
+export type SemanticColors = z.infer<typeof SemanticColorsSchema>
 export type ThemeConfig = z.infer<typeof ThemeConfigSchema>
 export type HeaderLayout = z.infer<typeof HeaderLayoutSchema>
 export type FooterLayout = z.infer<typeof FooterLayoutSchema>

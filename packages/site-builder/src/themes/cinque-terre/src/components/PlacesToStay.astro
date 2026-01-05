@@ -1,0 +1,90 @@
+---
+const stays = [
+    {
+        name: "La Torretta Lodge",
+        village: "Manarola",
+        special: "Luxury tower suite with 360° views.",
+        price: "$$$",
+        image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=2670&auto=format&fit=crop"
+    },
+    {
+        name: "Porto Roca",
+        village: "Monterosso",
+        special: "Infinity pool overlooking the sea.",
+        price: "$$$",
+        image: "https://images.unsplash.com/photo-1582719508461-905c673771fd?q=80&w=2525&auto=format&fit=crop"
+    },
+    {
+        name: "Mada Charm",
+        village: "Vernazza",
+        special: "Boutique rooms right on the harbor.",
+        price: "$$",
+        image: "https://images.unsplash.com/photo-1590490360182-c33d57733427?q=80&w=2574&auto=format&fit=crop"
+    },
+    {
+        name: "Il Sogno di Manarola",
+        village: "Manarola",
+        special: "Private terraces for sunset aperitivo.",
+        price: "$$",
+        image: "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?q=80&w=2670&auto=format&fit=crop"
+    },
+    {
+        name: "Affittacamere Le Terrazze",
+        village: "Corniglia",
+        special: "Quiet escape with vineyard views.",
+        price: "$",
+        image: "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?q=80&w=2670&auto=format&fit=crop"
+    },
+    {
+        name: "Cinque Terre Residence",
+        village: "Riomaggiore",
+        special: "Modern comfort with a hot tub.",
+        price: "$$",
+        image: "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?q=80&w=2670&auto=format&fit=crop"
+    }
+];
+---
+
+<section class="py-16 container mx-auto px-4">
+    <div class="flex items-end justify-between mb-12">
+        <div>
+            <span class="text-sm font-semibold text-primary uppercase tracking-wider">Where to Sleep</span>
+            <h2 class="font-serif text-3xl md:text-4xl font-bold mt-2">Places to Stay Spotlight</h2>
+        </div>
+        <a href="#" class="hidden md:inline-flex items-center text-sm font-medium hover:text-primary transition-colors">
+            See all stays <span class="ml-1">→</span>
+        </a>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {stays.map(stay => (
+            <div class="group cursor-pointer">
+                <div class="relative aspect-[4/3] overflow-hidden rounded-xl mb-4 shadow-sm">
+                    <img src={stay.image} alt={stay.name} class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" />
+                    <div class="absolute top-3 left-3">
+                        <span class="bg-white/90 text-black text-xs font-bold px-2.5 py-1 rounded-md shadow-sm uppercase tracking-wide">
+                            {stay.village}
+                        </span>
+                    </div>
+                    <div class="absolute top-3 right-3">
+                        <span class="bg-black/60 backdrop-blur-md text-white text-xs font-bold px-2 py-1 rounded-md border border-white/10">
+                            {stay.price}
+                        </span>
+                    </div>
+                </div>
+                <h3 class="font-serif text-xl font-bold mb-1 group-hover:text-primary transition-colors">
+                    {stay.name}
+                </h3>
+                <p class="text-muted-foreground text-sm">
+                    {stay.special}
+                </p>
+            </div>
+        ))}
+    </div>
+    
+    <div class="mt-8 text-center md:hidden">
+        <a href="#" class="inline-flex items-center text-sm font-medium hover:text-primary transition-colors">
+            See all stays <span class="ml-1">→</span>
+        </a>
+    </div>
+</section>

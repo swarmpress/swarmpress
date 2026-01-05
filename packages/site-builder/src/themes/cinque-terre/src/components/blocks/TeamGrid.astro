@@ -1,0 +1,124 @@
+---
+/**
+ * TeamGrid Block
+ *
+ * Editor/team member profiles with alternating layout
+ */
+import { Compass, Heart } from 'lucide-react';
+
+interface Editor {
+  name: string;
+  role: string;
+  bio: string;
+  image: string;
+  persona?: string;
+  love?: string;
+  hobbies?: string[];
+  accent?: string;
+}
+
+interface Props {
+  editors: Editor[];
+}
+
+const { editors } = Astro.props;
+---
+
+<section class="py-24 container mx-auto px-4">
+  <div class="grid grid-cols-1 gap-32">
+    {editors.map((editor, index) => (
+      <article class={`flex flex-col ${index % 2 === 1 ? 'lg:flex-row-reverse' : 'lg:flex-row'} gap-12 lg:gap-24 items-center`}>
+        <!-- Portrait -->
+        <div class="w-full lg:w-1/2">
+          <div class={`relative aspect-[4/5] rounded-2xl overflow-hidden border-8 ${editor.accent || 'border-primary/20'} shadow-2xl group`}>
+            <img
+              src={editor.image}
+              alt={editor.name}
+              class="object-cover w-full h-full transition-transform duration-700 group-hover:scale-105"
+            />
+            <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+          </div>
+        </div>
+
+        <!-- Content -->
+        <div class="w-full lg:w-1/2 space-y-10">
+          <div class="space-y-4">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-[0.2em]">
+              {editor.role}
+            </div>
+            <h2 class="font-serif text-5xl md:text-6xl font-bold text-foreground">
+              {editor.name}
+            </h2>
+          </div>
+
+          <div class="prose prose-lg max-w-none">
+            <p class="text-foreground/80 text-xl leading-relaxed italic font-serif">
+              {editor.bio}
+            </p>
+          </div>
+
+          {(editor.persona || editor.love) && (
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-10 pt-4">
+              {editor.persona && (
+                <div class="space-y-4">
+                  <h3 class="text-[10px] font-bold uppercase tracking-[0.2em] text-primary flex items-center gap-2">
+                    <Compass className="w-3 h-3" /> How they move
+                  </h3>
+                  <p class="text-muted-foreground leading-relaxed">
+                    {editor.persona}
+                  </p>
+                </div>
+              )}
+              {editor.love && (
+                <div class="space-y-4">
+                  <h3 class="text-[10px] font-bold uppercase tracking-[0.2em] text-primary flex items-center gap-2">
+                    <Heart className="w-3 h-3" /> What they love
+                  </h3>
+                  <p class="text-muted-foreground leading-relaxed">
+                    {editor.love}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {editor.hobbies && editor.hobbies.length > 0 && (
+            <div class="pt-6 border-t border-border">
+              <h3 class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-4">
+                Grounded Practices
+              </h3>
+              <div class="flex flex-wrap gap-3">
+                {editor.hobbies.map(hobby => (
+                  <span class="px-4 py-2 rounded-full bg-secondary text-sm font-medium text-foreground/70 border border-border/50">
+                    {hobby}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </article>
+    ))}
+  </div>
+</section>
+
+<style>
+  .font-serif {
+    letter-spacing: -0.02em;
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  article {
+    animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+</style>

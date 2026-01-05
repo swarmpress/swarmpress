@@ -1,0 +1,157 @@
+---
+const stories = [
+    {
+        id: 1,
+        title: "The Ultimate Guide to Cinque Terre's Best Beaches",
+        excerpt: "From sandy shores to rocky coves, here's where to swim.",
+        author: "Giulia Rossi",
+        date: "Oct 15, 2023",
+        readTime: "8 min read",
+        category: "Guides",
+        image: "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
+        isLead: true
+    },
+    {
+        id: 2,
+        title: "5 Hidden Gelaterias You Need to Try",
+        excerpt: "Skip the tourist traps and find the real deal.",
+        author: "Marco Bianchi",
+        date: "Oct 14, 2023",
+        readTime: "4 min read",
+        category: "Food",
+        image: "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop"
+    },
+    {
+        id: 3,
+        title: "A Photographer's Guide to Manarola at Sunset",
+        excerpt: "Best angles and times for that perfect shot.",
+        author: "Elena Moretti",
+        date: "Oct 12, 2023",
+        readTime: "6 min read",
+        category: "Photography",
+        image: "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop"
+    },
+    {
+        id: 4,
+        title: "Hiking the Blue Trail: What to Expect",
+        excerpt: "Difficulty levels, closures, and scenic stops.",
+        author: "Luca Verdi",
+        date: "Oct 10, 2023",
+        readTime: "10 min read",
+        category: "Guides",
+        image: "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?q=80&w=2670&auto=format&fit=crop"
+    },
+    {
+        id: 5,
+        title: "Where to Stay: Hotel vs. Airbnb",
+        excerpt: "Pros and cons for every type of traveler.",
+        author: "Sofia Neri",
+        date: "Oct 08, 2023",
+        readTime: "5 min read",
+        category: "Hotels",
+        image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=2670&auto=format&fit=crop"
+    },
+    {
+        id: 6,
+        title: "Day Trip to Portovenere",
+        excerpt: "Why you should visit the 'sixth village'.",
+        author: "Giulia Rossi",
+        date: "Oct 05, 2023",
+        readTime: "7 min read",
+        category: "Guides",
+        image: "https://images.unsplash.com/photo-1555979863-69fb96e63359?q=80&w=2670&auto=format&fit=crop"
+    },
+    {
+        id: 7,
+        title: "Local Festivals in November",
+        excerpt: "What's happening in the off-season.",
+        author: "Marco Bianchi",
+        date: "Oct 01, 2023",
+        readTime: "3 min read",
+        category: "News",
+        image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2632&auto=format&fit=crop"
+    }
+];
+
+const leadStory = stories[0];
+const otherStories = stories.slice(1);
+const filters = ["All", "Guides", "Food", "Hotels", "News & Advice"];
+---
+
+<section class="py-16 container mx-auto px-4">
+    <div class="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6">
+        <h2 class="font-serif text-3xl md:text-4xl font-bold">Latest Stories</h2>
+        
+        <div class="flex flex-wrap gap-2">
+            {filters.map((filter, index) => (
+                <button class={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${index === 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
+                    {filter}
+                </button>
+            ))}
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Lead Story */}
+        <div class="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 group cursor-pointer">
+             <div class="relative aspect-[16/9] md:aspect-auto md:h-full overflow-hidden rounded-xl">
+                <img src={leadStory.image} alt={leadStory.title} class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" />
+             </div>
+             <div class="flex flex-col justify-center">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="bg-primary/10 text-primary text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wide">
+                        {leadStory.category}
+                    </span>
+                    <span class="text-sm text-muted-foreground">{leadStory.readTime}</span>
+                </div>
+                <h3 class="font-serif text-3xl md:text-4xl font-bold mb-4 group-hover:text-primary transition-colors leading-tight">
+                    {leadStory.title}
+                </h3>
+                <p class="text-muted-foreground text-lg mb-6 line-clamp-3">
+                    {leadStory.excerpt}
+                </p>
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-secondary overflow-hidden">
+                        <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${leadStory.author}`} alt={leadStory.author} />
+                    </div>
+                    <div class="text-sm">
+                        <p class="font-medium text-foreground">{leadStory.author}</p>
+                        <p class="text-muted-foreground">{leadStory.date}</p>
+                    </div>
+                </div>
+             </div>
+        </div>
+
+        {/* Other Stories */}
+        {otherStories.map(story => (
+            <div class="group cursor-pointer flex flex-col h-full">
+                <div class="relative aspect-[3/2] overflow-hidden rounded-xl mb-4">
+                    <img src={story.image} alt={story.title} class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" />
+                    <span class="absolute top-3 left-3 bg-white/90 text-black px-2 py-0.5 rounded-md text-xs font-bold uppercase tracking-wide shadow-sm">
+                        {story.category}
+                    </span>
+                </div>
+                <h3 class="font-serif text-xl font-bold mb-2 group-hover:text-primary transition-colors leading-snug flex-grow">
+                    {story.title}
+                </h3>
+                <p class="text-sm text-muted-foreground mb-4 line-clamp-2">
+                    {story.excerpt}
+                </p>
+                <div class="flex items-center gap-2 mt-auto">
+                    <div class="w-6 h-6 rounded-full bg-secondary overflow-hidden">
+                        <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${story.author}`} alt={story.author} />
+                    </div>
+                    <div class="text-xs text-muted-foreground">
+                        <span class="font-medium text-foreground">{story.author}</span> • {story.date}
+                    </div>
+                </div>
+            </div>
+        ))}
+    </div>
+    
+    <div class="mt-12 text-center">
+        <button class="px-8 py-3 rounded-full border border-border hover:bg-secondary transition-colors font-medium">
+            Load More Stories
+        </button>
+    </div>
+</section>

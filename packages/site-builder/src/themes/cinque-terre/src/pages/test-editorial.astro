@@ -1,0 +1,63 @@
+---
+/**
+ * Test page for editorial blocks
+ * This page demonstrates all editorial block types rendered via ContentRenderer
+ */
+import Layout from '../layouts/Layout.astro';
+import ContentRenderer from '../ContentRenderer.astro';
+
+const testBlocks = [
+  {
+    type: 'editorial-hero',
+    title: 'The Art of<br/>Slow Travel',
+    subtitle: 'Discover the hidden rhythms of coastal life, where every moment unfolds at its own pace.',
+    badge: 'Editorial Test',
+    image: 'https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2572&auto=format&fit=crop',
+    height: '70vh',
+  },
+  {
+    type: 'editorial-intro',
+    badge: 'A Quiet Philosophy',
+    quote: 'To truly know a place, you must first learn to see it through the eyes of those who call it home.',
+    leftContent: '<p>The villages of the Cinque Terre are not merely destinations. They are living archives of human resilience, carved into cliffs that resist the sea. Each stone tells a story of generations who chose beauty over convenience.</p>',
+    rightContent: '<p>We invite you to slow down. To linger over a glass of local wine. To watch the sunset paint the harbor in colors that no photograph can capture. This is not a race to see everything—it is an invitation to feel something.</p>',
+  },
+  {
+    type: 'editorial-interlude',
+    badge: 'Editorial Interlude',
+    title: 'The Weight of Presence',
+    quote: 'In a world that moves too fast, the greatest luxury is the permission to stand still. Riomaggiore offers this gift freely, if only you choose to accept it.',
+    interludeType: 'primary',
+    align: 'left',
+  },
+  {
+    type: 'editor-note',
+    quote: 'I have watched tourists rush through these streets for decades, cameras clicking, feet never stopping. But those who pause—who sit on the harbor wall and let the salt air settle into their skin—they are the ones who truly understand what we have built here.',
+    author: 'Giulia Rossi',
+    role: 'Local Expert',
+    image: '/giulia_rossi.png',
+  },
+  {
+    type: 'editorial-interlude',
+    badge: 'A Different Perspective',
+    title: 'The Vertical Life',
+    quote: 'We do not live on the coast. We live against it, with it, sometimes despite it. Every step upward is a conversation with gravity, and every view is earned.',
+    interludeType: 'secondary',
+    align: 'right',
+  },
+  {
+    type: 'closing-note',
+    badge: 'A Final Reflection',
+    title: 'Travel Slowly. Feel Deeply.',
+    content: '<p>The best journeys are not measured in miles or photographs. They are measured in moments of genuine connection—with a place, with its people, with yourself.</p><p>May your time in Cinque Terre be filled with such moments.</p>',
+    actions: [
+      { label: 'Plan Your Journey', href: '/itinerary', variant: 'primary' },
+      { label: 'Where to Rest', href: '/accommodations', variant: 'secondary' },
+    ],
+  },
+];
+---
+
+<Layout title="Editorial Blocks Test | Cinque Terre Dispatch">
+  <ContentRenderer blocks={testBlocks} locale="en" />
+</Layout>

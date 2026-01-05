@@ -1,0 +1,35 @@
+---
+interface Props {
+  badge?: string;
+  title: string;
+}
+
+const { badge = "A Final Reflection", title } = Astro.props;
+---
+
+<section class="py-32 bg-foreground text-background overflow-hidden relative">
+    <div class="absolute top-0 right-0 w-1/2 h-full opacity-[0.05] pointer-events-none">
+        <slot name="background" />
+    </div>
+    <div class="container mx-auto px-4 relative">
+        <div class="max-w-3xl mx-auto text-center space-y-10">
+            <div class="inline-flex items-center gap-4">
+                <div class="h-px w-8 bg-background/30"></div>
+                <span class="text-[10px] font-bold uppercase tracking-[0.4em] text-primary">{badge}</span>
+                <div class="h-px w-8 bg-background/30"></div>
+            </div>
+            
+            <h2 class="font-serif text-4xl md:text-6xl font-bold leading-tight">
+                {title}
+            </h2>
+            
+            <div class="space-y-6 text-xl text-background/70 font-light leading-relaxed">
+                <slot />
+            </div>
+
+            <div class="pt-12 flex flex-wrap justify-center gap-6">
+                <slot name="actions" />
+            </div>
+        </div>
+    </div>
+</section>

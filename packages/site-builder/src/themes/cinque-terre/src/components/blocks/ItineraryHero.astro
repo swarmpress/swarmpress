@@ -1,0 +1,76 @@
+---
+/**
+ * ItineraryHero Block
+ *
+ * Large hero section for itineraries with journey metadata
+ * (duration, pace, effort, best season)
+ */
+interface Props {
+  name: string;
+  subtitle?: string;
+  duration: string;
+  pace: string;
+  effort: string;
+  bestSeason: string;
+  image: string;
+  badge?: string;
+}
+
+const { name, subtitle, duration, pace, effort, bestSeason, image, badge = 'Signature Itinerary' } = Astro.props;
+---
+
+<section class="relative h-[90vh] flex items-center overflow-hidden bg-black">
+  <div class="absolute inset-0">
+    <img
+      src={image}
+      alt={name}
+      class="w-full h-full object-cover opacity-60 transition-transform duration-[20s] scale-110 hover:scale-100"
+    />
+    <div class="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/80"></div>
+  </div>
+
+  <div class="container mx-auto px-4 relative z-10">
+    <div class="max-w-4xl">
+      <div class="inline-flex items-center gap-3 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white text-[10px] font-bold uppercase tracking-[0.4em] mb-8">
+        {badge}
+      </div>
+      <h1 class="font-serif text-6xl md:text-9xl font-bold text-white mb-8 leading-[0.85] tracking-tighter">
+        {name}
+      </h1>
+      {subtitle && (
+        <p class="text-white/90 text-xl md:text-3xl font-light leading-relaxed max-w-2xl font-serif italic mb-16">
+          "{subtitle}"
+        </p>
+      )}
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-8 pt-12 border-t border-white/10">
+        <div class="space-y-2">
+          <p class="text-[10px] font-bold uppercase tracking-widest text-white/40">Duration</p>
+          <p class="text-white font-serif text-xl">{duration}</p>
+        </div>
+        <div class="space-y-2">
+          <p class="text-[10px] font-bold uppercase tracking-widest text-white/40">Pace</p>
+          <p class="text-white font-serif text-xl">{pace}</p>
+        </div>
+        <div class="space-y-2">
+          <p class="text-[10px] font-bold uppercase tracking-widest text-white/40">Effort</p>
+          <p class="text-white font-serif text-xl">{effort}</p>
+        </div>
+        <div class="space-y-2">
+          <p class="text-[10px] font-bold uppercase tracking-widest text-white/40">Best Season</p>
+          <p class="text-white font-serif text-xl">{bestSeason}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="absolute bottom-12 left-1/2 -translate-x-1/2 animate-bounce hidden md:block">
+    <div class="w-px h-12 bg-gradient-to-b from-white/0 to-white/60"></div>
+  </div>
+</section>
+
+<style>
+  .font-serif {
+    letter-spacing: -0.02em;
+  }
+</style>

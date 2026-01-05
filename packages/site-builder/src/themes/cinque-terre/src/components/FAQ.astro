@@ -1,0 +1,54 @@
+---
+/**
+ * FAQ Section Component
+ * Renders frequently asked questions in an accordion-style layout
+ */
+interface FAQItem {
+    question: string;
+    answer: string;
+}
+
+interface Props {
+    title?: string;
+    subtitle?: string;
+    faqs?: FAQItem[];
+    locale?: string;
+}
+
+const { title = 'Frequently Asked Questions', subtitle, faqs = [], locale = 'en' } = Astro.props;
+---
+
+<section class="py-16 md:py-24 bg-gray-50">
+    <div class="container mx-auto px-4 max-w-4xl">
+        <div class="text-center mb-12">
+            <h2 class="text-3xl md:text-4xl font-serif text-gray-900 mb-4">
+                {title}
+            </h2>
+            {subtitle && (
+                <p class="text-lg text-gray-600 max-w-2xl mx-auto">
+                    {subtitle}
+                </p>
+            )}
+        </div>
+
+        <div class="space-y-4">
+            {faqs.map((faq, index) => (
+                <details class="group bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                    <summary class="flex items-center justify-between cursor-pointer p-6 hover:bg-gray-50 transition-colors">
+                        <h3 class="text-lg font-medium text-gray-900 pr-4">
+                            {faq.question}
+                        </h3>
+                        <span class="flex-shrink-0 ml-2 text-gray-500 group-open:rotate-180 transition-transform duration-200">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </span>
+                    </summary>
+                    <div class="px-6 pb-6 pt-2 text-gray-600 leading-relaxed">
+                        {faq.answer}
+                    </div>
+                </details>
+            ))}
+        </div>
+    </div>
+</section>

@@ -39,6 +39,7 @@ ${writingStyleSection ? '\n' + writingStyleSection + '\n' : ''}
 ## Available Tools
 You have access to the following tools - ALWAYS use them to accomplish your tasks:
 
+### Content Tools
 1. **get_content** - Fetch a content item to see its brief, current state, and body
 2. **write_draft** - Create or update content with structured JSON blocks
 3. **revise_draft** - Update content based on editorial feedback
@@ -49,6 +50,33 @@ You have access to the following tools - ALWAYS use them to accomplish your task
 8. **generate_page_sections** - Generate recommended section structure for a page based on questionnaire
 9. **optimize_section** - Generate or improve content for a single page section
 10. **optimize_all_sections** - Generate content for all sections on a page at once
+
+### Media Tools (for images)
+11. **generate_image** - Create AI-generated images using Google Imagen
+    - Use for: hero backgrounds, illustrations, custom visuals
+    - Provide detailed prompts with subject, style, lighting, mood
+    - Example: generate_image({ prompt: "Sunset over Vernazza harbor with colorful fishing boats, golden hour, photorealistic", purpose: "hero", aspectRatio: "landscape" })
+
+12. **search_stock_photos** - Search Unsplash for professional stock photos
+    - Use for: real photography, landmarks, food, people
+    - Returns multiple options to choose from
+    - Example: search_stock_photos({ query: "Cinque Terre hiking trail", orientation: "landscape", count: 5 })
+
+13. **select_stock_photo** - Download and use a stock photo from search results
+    - Always provide descriptive alt text for accessibility
+    - Example: select_stock_photo({ photoId: "abc123", source: "unsplash", altText: "Hikers on the Cinque Terre coastal trail" })
+
+14. **upload_image_from_url** - Import an external image to our CDN
+    - Use when you have a specific image URL to use
+
+## When to Use Media Tools
+- **Hero sections**: Use generate_image or search_stock_photos to find compelling hero backgrounds
+- **Gallery blocks**: Search for multiple related stock photos
+- **Illustrations**: Use generate_image for custom visuals that don't exist as photos
+- **Location photos**: Search stock photos for real places (Vernazza, Manarola, etc.)
+- **Food/restaurant content**: Search stock photos for authentic Italian cuisine
+
+IMPORTANT: When adding images to content, FIRST use the media tools to get a CDN URL, THEN include that URL in your content blocks.
 
 ## Content Block Types
 When writing content, use these JSON block types:

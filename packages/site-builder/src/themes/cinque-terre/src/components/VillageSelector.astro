@@ -1,0 +1,78 @@
+---
+const villages = [
+    {
+        name: "Monterosso al Mare",
+        description: "The only one with a proper sandy beach and resort vibe.",
+        image: "https://images.unsplash.com/photo-1682687220742-aba13b6e50ba?q=80&w=2670&auto=format&fit=crop",
+        tags: ["Beaches", "Resort"]
+    },
+    {
+        name: "Vernazza",
+        description: "The crown jewel with a stunning harbor and castle ruins.",
+        image: "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop",
+        tags: ["Views", "Harbor"]
+    },
+    {
+        name: "Corniglia",
+        description: "Perched high on the cliffs, quiet and authentic.",
+        image: "https://images.unsplash.com/photo-1555979863-69fb96e63359?q=80&w=2670&auto=format&fit=crop",
+        tags: ["Hikes", "Quiet"]
+    },
+    {
+        name: "Manarola",
+        description: "Famous for its colorful houses tumbling down to the sea.",
+        image: "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
+        tags: ["Photography", "Sunsets"]
+    },
+    {
+        name: "Riomaggiore",
+        description: "The first stop from La Spezia, vibrant and dramatic.",
+        image: "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
+        tags: ["Nightlife", "History"]
+    }
+];
+---
+
+<section id="villages" class="py-24 bg-secondary/20">
+    <div class="container mx-auto px-4">
+        <div class="text-center mb-16">
+            <span class="text-sm font-semibold text-primary uppercase tracking-wider">Destinations</span>
+            <h2 class="font-serif text-4xl md:text-5xl font-bold mt-2">The Five Villages</h2>
+            <p class="text-muted-foreground mt-4 max-w-2xl mx-auto text-lg">Each village has its own unique personality. Find the one that speaks to you.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+            {villages.map((village, index) => (
+                <div class={`group relative overflow-hidden rounded-xl aspect-[3/4] cursor-pointer village-card-${index}`}> 
+                    <img src={village.image} alt={village.name} class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-80 group-hover:opacity-90 transition-opacity"></div>
+                    
+                    <div class="absolute bottom-0 left-0 right-0 p-6 text-white transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+                        <div class="flex gap-2 mb-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-100">
+                            {village.tags.map(tag => (
+                                <span class="text-[10px] font-bold uppercase tracking-wider bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full border border-white/10">{tag}</span>
+                            ))}
+                        </div>
+                        <h3 class="font-serif text-2xl font-bold mb-2">{village.name}</h3>
+                        <p class="text-sm text-white/90 line-clamp-2 mb-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-75">{village.description}</p>
+                        <span class="inline-flex items-center text-sm font-medium border-b border-white pb-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-150 hover:text-primary hover:border-primary transition-colors">
+                            Explore Village
+                        </span>
+                    </div>
+                </div>
+            ))}
+        </div>
+    </div>
+</section>
+
+<style>
+    /* Desktop Grid Layout: 3 top, 2 bottom */
+    @media (min-width: 1024px) {
+        .village-card-0, .village-card-1, .village-card-2 {
+            grid-column: span 2;
+        }
+        .village-card-3, .village-card-4 {
+            grid-column: span 3;
+        }
+    }
+</style>

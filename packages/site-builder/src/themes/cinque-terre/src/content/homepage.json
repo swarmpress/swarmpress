@@ -1,0 +1,462 @@
+{
+  "id": "homepage",
+  "title": "Cinque Terre Dispatch | Luxury Travel Guide",
+  "description": "A luxury editorial travel magazine for Cinque Terre.",
+  "locale": "en",
+  "body": [
+    {
+      "type": "hero-section",
+      "image": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
+      "eyebrow": "Travel Guide",
+      "title": "Cinque Terre",
+      "subtitle": "A journey through the five colorful villages suspended between sea and sky. Discover the Italian Riviera's most romantic destination.",
+      "buttons": [
+        { "text": "Explore the Villages", "url": "#villages", "variant": "primary" },
+        { "text": "Plan a 3-Day Trip", "url": "#plan", "variant": "secondary" }
+      ]
+    },
+    {
+      "type": "featured-carousel",
+      "title": "Editors' Picks",
+      "viewAllUrl": "/stories",
+      "stories": [
+        {
+          "id": 1,
+          "title": "The Perfect First-Timer Itinerary",
+          "category": "Itinerary",
+          "dek": "How to see the best of the five villages in just 3 days.",
+          "image": "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop",
+          "author": "Giulia Rossi"
+        },
+        {
+          "id": 2,
+          "title": "Best Time to Visit (and When to Skip)",
+          "category": "Planning",
+          "dek": "Avoid the crowds and find the perfect weather.",
+          "image": "https://images.unsplash.com/photo-1555979863-69fb96e63359?q=80&w=2670&auto=format&fit=crop",
+          "author": "Marco Bianchi"
+        },
+        {
+          "id": 3,
+          "title": "How to Hike the Sentiero Azzurro",
+          "category": "Hiking",
+          "dek": "Everything you need to know about the Blue Trail.",
+          "image": "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?q=80&w=2670&auto=format&fit=crop",
+          "author": "Luca Verdi"
+        },
+        {
+          "id": 4,
+          "title": "Most Scenic Viewpoints",
+          "category": "Photography",
+          "dek": "Where to capture the iconic postcard shots.",
+          "image": "https://images.unsplash.com/photo-1592345279419-959d784e8aad?q=80&w=2670&auto=format&fit=crop",
+          "author": "Elena Moretti"
+        },
+        {
+          "id": 5,
+          "title": "Beaches Worth the Detour",
+          "category": "Beaches",
+          "dek": "Secret coves and sandy spots away from the main towns.",
+          "image": "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
+          "author": "Sofia Neri"
+        },
+        {
+          "id": 6,
+          "title": "Local Train & Ferry Cheatsheet",
+          "category": "Transport",
+          "dek": "Master the logistics of moving between villages.",
+          "image": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
+          "author": "Giulia Rossi"
+        },
+        {
+          "id": 7,
+          "title": "A Food Lover's Weekend",
+          "category": "Food & Drink",
+          "dek": "From pesto to seafood, here's what to eat.",
+          "image": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2632&auto=format&fit=crop",
+          "author": "Marco Bianchi"
+        },
+        {
+          "id": 8,
+          "title": "Rainy-Day Plans",
+          "category": "Activities",
+          "dek": "What to do when the weather doesn't cooperate.",
+          "image": "https://images.unsplash.com/photo-1515444744559-7be63e1600de?q=80&w=2670&auto=format&fit=crop",
+          "author": "Elena Moretti"
+        }
+      ]
+    },
+    {
+      "type": "trending-now",
+      "title": "Trending Now",
+      "stories": [
+        {
+          "id": 1,
+          "title": "Why Manarola is the Most Photogenic Village",
+          "category": "Photography",
+          "image": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
+          "date": "Oct 12",
+          "readTime": "5 min read",
+          "isLead": true,
+          "author": "Elena Moretti"
+        },
+        {
+          "id": 2,
+          "title": "The Ultimate Guide to Cinque Terre Wines",
+          "category": "Food & Drink",
+          "image": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2632&auto=format&fit=crop",
+          "date": "Oct 10",
+          "readTime": "4 min read",
+          "author": "Marco Bianchi"
+        },
+        {
+          "id": 3,
+          "title": "Hidden Gems: Corniglia's Quiet Streets",
+          "category": "Villages",
+          "image": "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop",
+          "date": "Oct 08",
+          "readTime": "3 min read",
+          "author": "Sofia Neri"
+        },
+        {
+          "id": 4,
+          "title": "Packing List: What to Bring for a Fall Trip",
+          "category": "Tips",
+          "image": "https://images.unsplash.com/photo-1515444744559-7be63e1600de?q=80&w=2670&auto=format&fit=crop",
+          "date": "Oct 05",
+          "readTime": "6 min read",
+          "author": "Giulia Rossi"
+        },
+        {
+          "id": 5,
+          "title": "Ferry Schedules Updated for 2025",
+          "category": "News",
+          "image": "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
+          "date": "Oct 01",
+          "readTime": "2 min read",
+          "author": "Luca Verdi"
+        }
+      ]
+    },
+    {
+      "type": "village-selector",
+      "title": "The Five Villages",
+      "subtitle": "Each village has its own unique personality. Find the one that speaks to you.",
+      "villages": [
+        {
+          "name": "Monterosso al Mare",
+          "description": "The only one with a proper sandy beach and resort vibe.",
+          "image": "https://images.unsplash.com/photo-1682687220742-aba13b6e50ba?q=80&w=2670&auto=format&fit=crop",
+          "tags": ["Beaches", "Resort"],
+          "slug": "/monterosso"
+        },
+        {
+          "name": "Vernazza",
+          "description": "The crown jewel with a stunning harbor and castle ruins.",
+          "image": "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop",
+          "tags": ["Views", "Harbor"],
+          "slug": "/vernazza"
+        },
+        {
+          "name": "Corniglia",
+          "description": "Perched high on the cliffs, quiet and authentic.",
+          "image": "https://images.unsplash.com/photo-1555979863-69fb96e63359?q=80&w=2670&auto=format&fit=crop",
+          "tags": ["Hikes", "Quiet"],
+          "slug": "/corniglia"
+        },
+        {
+          "name": "Manarola",
+          "description": "Famous for its colorful houses tumbling down to the sea.",
+          "image": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
+          "tags": ["Photography", "Sunsets"],
+          "slug": "/manarola"
+        },
+        {
+          "name": "Riomaggiore",
+          "description": "The first stop from La Spezia, vibrant and dramatic.",
+          "image": "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
+          "tags": ["Nightlife", "History"],
+          "slug": "/riomaggiore"
+        }
+      ]
+    },
+    {
+      "type": "places-to-stay",
+      "title": "Places to Stay Spotlight",
+      "eyebrow": "Where to Sleep",
+      "viewAllUrl": "/accommodations",
+      "stays": [
+        {
+          "name": "La Torretta Lodge",
+          "village": "Manarola",
+          "special": "Luxury tower suite with 360° views.",
+          "price": "$$$",
+          "image": "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "name": "Porto Roca",
+          "village": "Monterosso",
+          "special": "Infinity pool overlooking the sea.",
+          "price": "$$$",
+          "image": "https://images.unsplash.com/photo-1582719508461-905c673771fd?q=80&w=2525&auto=format&fit=crop"
+        },
+        {
+          "name": "Mada Charm",
+          "village": "Vernazza",
+          "special": "Boutique rooms right on the harbor.",
+          "price": "$$",
+          "image": "https://images.unsplash.com/photo-1590490360182-c33d57733427?q=80&w=2574&auto=format&fit=crop"
+        },
+        {
+          "name": "Il Sogno di Manarola",
+          "village": "Manarola",
+          "special": "Private terraces for sunset aperitivo.",
+          "price": "$$",
+          "image": "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "name": "Affittacamere Le Terrazze",
+          "village": "Corniglia",
+          "special": "Quiet escape with vineyard views.",
+          "price": "$",
+          "image": "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "name": "Cinque Terre Residence",
+          "village": "Riomaggiore",
+          "special": "Modern comfort with a hot tub.",
+          "price": "$$",
+          "image": "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?q=80&w=2670&auto=format&fit=crop"
+        }
+      ]
+    },
+    {
+      "type": "eat-drink",
+      "title": "Editors' Picks",
+      "eyebrow": "Food & Drink",
+      "viewAllUrl": "/restaurants",
+      "places": [
+        {
+          "name": "Nessun Dorma",
+          "type": "Aperitivo",
+          "village": "Manarola",
+          "blurb": "The most famous view in Cinque Terre. Bruschetta & wine.",
+          "image": "https://images.unsplash.com/photo-1515444744559-7be63e1600de?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "name": "Ristorante Miky",
+          "type": "Seafood",
+          "village": "Monterosso",
+          "blurb": "Upscale dining famous for its anchovies and pasta.",
+          "image": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2632&auto=format&fit=crop"
+        },
+        {
+          "name": "Belforte",
+          "type": "Seafood",
+          "village": "Vernazza",
+          "blurb": "Dining inside a medieval tower overlooking the sea.",
+          "image": "https://images.unsplash.com/photo-1590490360182-c33d57733427?q=80&w=2574&auto=format&fit=crop"
+        },
+        {
+          "name": "A Pie' de Ma'",
+          "type": "Wine Bar",
+          "village": "Riomaggiore",
+          "blurb": "Cliffside terrace perfect for sunset drinks.",
+          "image": "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "name": "Gelateria Vernazza",
+          "type": "Gelato",
+          "village": "Vernazza",
+          "blurb": "Artisanal gelato using local lemons and honey.",
+          "image": "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "name": "Il Pirata",
+          "type": "Breakfast",
+          "village": "Vernazza",
+          "blurb": "Famous for their Sicilian cannoli and pastries.",
+          "image": "https://images.unsplash.com/photo-1555979863-69fb96e63359?q=80&w=2670&auto=format&fit=crop"
+        }
+      ]
+    },
+    {
+      "type": "highlights",
+      "title": "Cinque Terre Highlights",
+      "eyebrow": "Experiences",
+      "highlights": [
+        { "name": "Coastal Hikes", "icon": "mountain", "desc": "Walk the famous Blue Trail." },
+        { "name": "Boat Tours", "icon": "ship", "desc": "See the villages from the sea." },
+        { "name": "Beaches", "icon": "umbrella", "desc": "Relax on Monterosso's sands." },
+        { "name": "Photo Spots", "icon": "camera", "desc": "Capture the perfect shot." },
+        { "name": "Sunset Aperitivo", "icon": "sunset", "desc": "Drinks with a view." },
+        { "name": "Day Trip: Portovenere", "icon": "map", "desc": "The 'sixth village' nearby." },
+        { "name": "Local Festivals", "icon": "calendar", "desc": "Experience local culture." },
+        { "name": "Crowd Avoidance", "icon": "users", "desc": "Tips for a quieter trip." }
+      ]
+    },
+    {
+      "type": "curated-escapes",
+      "title": "Curated Escapes",
+      "eyebrow": "Collections",
+      "escapes": [
+        {
+          "name": "The Romantic Escape",
+          "image": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
+          "url": "/collections/romantic"
+        },
+        {
+          "name": "Family-Friendly Weekend",
+          "image": "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
+          "url": "/collections/family"
+        },
+        {
+          "name": "Hikers' Edition",
+          "image": "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?q=80&w=2670&auto=format&fit=crop",
+          "url": "/collections/hiking"
+        },
+        {
+          "name": "Food & Wine Weekend",
+          "image": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2632&auto=format&fit=crop",
+          "url": "/collections/food-wine"
+        }
+      ]
+    },
+    {
+      "type": "latest-stories",
+      "title": "Latest Stories",
+      "filters": ["All", "Guides", "Food", "Hotels", "News & Advice"],
+      "stories": [
+        {
+          "id": 1,
+          "title": "The Ultimate Guide to Cinque Terre's Best Beaches",
+          "excerpt": "From sandy shores to rocky coves, here's where to swim.",
+          "author": "Giulia Rossi",
+          "date": "Oct 15, 2023",
+          "readTime": "8 min read",
+          "category": "Guides",
+          "image": "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
+          "isLead": true
+        },
+        {
+          "id": 2,
+          "title": "5 Hidden Gelaterias You Need to Try",
+          "excerpt": "Skip the tourist traps and find the real deal.",
+          "author": "Marco Bianchi",
+          "date": "Oct 14, 2023",
+          "readTime": "4 min read",
+          "category": "Food",
+          "image": "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 3,
+          "title": "A Photographer's Guide to Manarola at Sunset",
+          "excerpt": "Best angles and times for that perfect shot.",
+          "author": "Elena Moretti",
+          "date": "Oct 12, 2023",
+          "readTime": "6 min read",
+          "category": "Photography",
+          "image": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop"
+        },
+        {
+          "id": 4,
+          "title": "Hiking the Blue Trail: What to Expect",
+          "excerpt": "Difficulty levels, closures, and scenic stops.",
+          "author": "Luca Verdi",
+          "date": "Oct 10, 2023",
+          "readTime": "10 min read",
+          "category": "Guides",
+          "image": "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 5,
+          "title": "Where to Stay: Hotel vs. Airbnb",
+          "excerpt": "Pros and cons for every type of traveler.",
+          "author": "Sofia Neri",
+          "date": "Oct 08, 2023",
+          "readTime": "5 min read",
+          "category": "Hotels",
+          "image": "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 6,
+          "title": "Day Trip to Portovenere",
+          "excerpt": "Why you should visit the 'sixth village'.",
+          "author": "Giulia Rossi",
+          "date": "Oct 05, 2023",
+          "readTime": "7 min read",
+          "category": "Guides",
+          "image": "https://images.unsplash.com/photo-1555979863-69fb96e63359?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 7,
+          "title": "Local Festivals in November",
+          "excerpt": "What's happening in the off-season.",
+          "author": "Marco Bianchi",
+          "date": "Oct 01, 2023",
+          "readTime": "3 min read",
+          "category": "News",
+          "image": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2632&auto=format&fit=crop"
+        }
+      ]
+    },
+    {
+      "type": "audio-guides",
+      "title": "Listen: Cinque Terre Stories",
+      "viewAllUrl": "/podcasts",
+      "guides": [
+        {
+          "title": "Walking the Via dell'Amore",
+          "description": "A guided audio tour of the famous Lover's Lane.",
+          "duration": "12 min",
+          "image": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop"
+        },
+        {
+          "title": "Sounds of the Sea",
+          "description": "Relaxing ambient sounds from Monterosso beach.",
+          "duration": "30 min",
+          "image": "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "title": "History of Vernazza",
+          "description": "Learn about the pirate attacks and castle defense.",
+          "duration": "18 min",
+          "image": "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop"
+        }
+      ]
+    },
+    {
+      "type": "practical-advice",
+      "advice": [
+        { "name": "Getting There", "icon": "train", "desc": "Trains are your best friend." },
+        { "name": "Getting Around", "icon": "map", "desc": "Cinque Terre Card explained." },
+        { "name": "Crowd Strategy", "icon": "users", "desc": "Avoid peak hours." },
+        { "name": "What to Pack", "icon": "briefcase", "desc": "Leave the heels at home." },
+        { "name": "Weather & Safety", "icon": "cloudsun", "desc": "Check trail status." }
+      ]
+    },
+    {
+      "type": "about",
+      "title": "We help you discover the real Cinque Terre.",
+      "eyebrow": "About Us",
+      "description": [
+        "Cinque Terre Dispatch is your premium guide to the Italian Riviera's most iconic coastline. We go beyond the postcards to bring you authentic stories, hidden gems, and practical advice from locals and experts.",
+        "Whether you're planning a romantic getaway, a hiking adventure, or a culinary tour, we're here to ensure your trip is unforgettable."
+      ],
+      "image": "https://images.unsplash.com/photo-1592345279419-959d784e8aad?q=80&w=2670&auto=format&fit=crop",
+      "editor": {
+        "name": "Elena Rossi",
+        "role": "Editor-in-Chief"
+      }
+    },
+    {
+      "type": "newsletter",
+      "title": "Get the Cinque Terre Dispatch",
+      "subtitle": "Weekly tips, hidden gems, and travel inspiration delivered straight to your inbox. No spam, ever.",
+      "placeholder": "Enter your email",
+      "buttonText": "Subscribe",
+      "disclaimer": "Join 10,000+ travelers.",
+      "backgroundImage": "https://images.unsplash.com/photo-1555979863-69fb96e63359?q=80&w=2670&auto=format&fit=crop"
+    }
+  ]
+}

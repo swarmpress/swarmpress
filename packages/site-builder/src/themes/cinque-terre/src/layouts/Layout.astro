@@ -1,0 +1,70 @@
+---
+/**
+ * Cinque Terre Theme Layout
+ * Main layout wrapper with header and theme styles
+ * Matches: https://github.com/drietsch/cinque-terre-template
+ */
+import '../styles/theme.css';
+import '@fontsource/inter';
+import '@fontsource/playfair-display';
+import Header from '../components/Header';
+import Footer from '../components/Footer';
+import type { HeaderProps, FooterProps } from '../types';
+
+interface Props {
+    title?: string;
+    description?: string;
+    locale?: string;
+    header?: HeaderProps;
+    footer?: FooterProps;
+    showHeader?: boolean;
+    showFooter?: boolean;
+}
+
+const {
+    title = "Cinque Terre Dispatch",
+    description = "A luxury editorial travel magazine for Cinque Terre.",
+    locale = 'en',
+    header,
+    footer,
+    showHeader = true,
+    showFooter = false  // Template pages add Footer explicitly
+} = Astro.props;
+
+const headerProps = {
+    siteName: 'Cinque Terre Dispatch',
+    navigation: header?.navigation || [],
+    ctaButton: header?.ctaButton,
+    locale,
+    ...header
+};
+
+const footerProps = {
+    siteName: title.split('|')[0]?.trim() || 'Cinque Terre Dispatch',
+    description: 'A luxury editorial travel magazine for Cinque Terre.',
+    locale,
+    ...footer
+};
+---
+
+<!doctype html>
+<html lang={locale}>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <meta name="generator" content={Astro.generator} />
+        <meta name="description" content={description} />
+        <title>{title}</title>
+
+        <!-- Tailwind Plus Elements (for popovers) -->
+        <script is:inline src="https://cdn.jsdelivr.net/npm/@tailwindplus/elements@1" type="module"></script>
+    </head>
+    <body class="font-sans antialiased bg-background text-foreground min-h-screen flex flex-col">
+        {showHeader && <Header client:load {...headerProps} />}
+        <main class="flex-1">
+            <slot />
+        </main>
+        {showFooter && <Footer client:visible {...footerProps} />}
+    </body>
+</html>

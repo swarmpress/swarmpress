@@ -1,0 +1,18 @@
+---
+interface Props {
+  label: string;
+  value: string;
+}
+
+const { label, value } = Astro.props;
+---
+
+<div class="flex gap-4 group/info">
+    <div class="w-10 h-10 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 group-hover/info:bg-primary/10 transition-colors">
+        <slot name="icon" />
+    </div>
+    <div class="flex-1 min-w-0">
+        <div class="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">{label}</div>
+        <div class="text-sm font-medium text-foreground leading-relaxed">{value}</div>
+    </div>
+</div>

@@ -35,9 +35,12 @@ import {
   Monitor,
   RefreshCw,
   ExternalLink,
+  Sun,
+  Moon,
 } from 'lucide-react'
 
 type PreviewMode = 'wireframe' | 'rendered'
+type PreviewTheme = 'dark' | 'light'
 
 interface PageEditorProps {
   pageId: string
@@ -77,6 +80,13 @@ export function PageEditor({
   const [showPreview, setShowPreview] = useState(true)
   const [previewMode, setPreviewMode] = useState<PreviewMode>('wireframe')
   const [previewKey, setPreviewKey] = useState(0)
+  const [previewTheme, setPreviewTheme] = useState<PreviewTheme>(() => {
+    // Default to dark for luxury theme, persist in localStorage
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('preview-theme') as PreviewTheme) || 'dark'
+    }
+    return 'dark'
+  })
   const [isPaletteOpen, setIsPaletteOpen] = useState(false)
   const [isGenerateDialogOpen, setIsGenerateDialogOpen] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -92,6 +102,19 @@ export function PageEditor({
   useEffect(() => {
     setSections(initialSections)
   }, [initialSections])
+
+  // Handle theme toggle and persist to localStorage
+  const handleThemeToggle = useCallback(() => {
+    setPreviewTheme((prev) => {
+      const newTheme = prev === 'dark' ? 'light' : 'dark'
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('preview-theme', newTheme)
+      }
+      // Force refresh the preview iframe
+      setPreviewKey((k) => k + 1)
+      return newTheme
+    })
+  }, [])
 
   // Compute assigned agents for this page
   const assignedAgents: AssignedAgentInfo[] = (() => {
@@ -648,6 +671,20 @@ export function PageEditor({
 
           {previewMode === 'rendered' && (
             <>
+              {/* Theme Toggle */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleThemeToggle}
+                title={`Switch to ${previewTheme === 'dark' ? 'light' : 'dark'} theme`}
+                className="h-8 w-8 p-0"
+              >
+                {previewTheme === 'dark' ? (
+                  <Sun className="h-4 w-4 text-amber-500" />
+                ) : (
+                  <Moon className="h-4 w-4 text-slate-600" />
+                )}
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -660,7 +697,7 @@ export function PageEditor({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => window.open(`/api/preview/${pagePath}`, '_blank')}
+                onClick={() => window.open(`/api/preview/${pagePath}?theme=${previewTheme}`, '_blank')}
                 title="Open preview in new tab"
                 className="h-8 w-8 p-0"
               >
@@ -780,7 +817,7 @@ export function PageEditor({
                     <div className="h-full bg-slate-100 dark:bg-slate-900">
                       <iframe
                         key={previewKey}
-                        src={`/api/preview/${pagePath}`}
+                        src={`/api/preview/${pagePath}?theme=${previewTheme}`}
                         className="w-full h-full border-0 bg-white"
                         title={`Preview: ${pageTitle}`}
                         sandbox="allow-scripts allow-same-origin"

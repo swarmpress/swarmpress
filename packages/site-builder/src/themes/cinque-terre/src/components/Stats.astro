@@ -1,0 +1,43 @@
+---
+/**
+ * Stats Section Component
+ * Display key statistics in a grid layout
+ */
+import type { StatsProps, Stat } from '../types';
+
+interface Props extends StatsProps {
+  locale?: string;
+}
+
+const {
+  title,
+  subtitle,
+  stats = [],
+  locale: _locale = 'en'
+} = Astro.props;
+---
+
+<section class="py-16 bg-secondary/10">
+    <div class="container mx-auto px-4">
+        {(title || subtitle) && (
+            <div class="text-center mb-12">
+                {title && <h2 class="font-serif text-3xl md:text-4xl font-bold">{title}</h2>}
+                {subtitle && <p class="text-muted-foreground mt-4 max-w-2xl mx-auto">{subtitle}</p>}
+            </div>
+        )}
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
+            {stats.map((stat: Stat) => (
+                <div class="text-center">
+                    <div class="font-serif text-4xl md:text-5xl font-bold text-primary mb-2">
+                        {stat.number}
+                    </div>
+                    <div class="font-semibold text-foreground mb-1">{stat.label}</div>
+                    {stat.description && (
+                        <div class="text-sm text-muted-foreground">{stat.description}</div>
+                    )}
+                </div>
+            ))}
+        </div>
+    </div>
+</section>

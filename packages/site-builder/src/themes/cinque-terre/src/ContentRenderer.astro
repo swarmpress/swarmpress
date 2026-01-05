@@ -1,0 +1,185 @@
+---
+/**
+ * Cinque Terre Theme Content Renderer
+ * Maps JSON blocks to theme components
+ */
+import Hero from './components/Hero.astro';
+import Stats from './components/Stats.astro';
+import Features from './components/Features.astro';
+import VillageSelector from './components/VillageSelector.astro';
+import PlacesToStay from './components/PlacesToStay.astro';
+import VillageIntro from './components/VillageIntro.astro';
+import Newsletter from './components/Newsletter.astro';
+import SectionHeader from './components/SectionHeader.astro';
+import TrendingNow from './components/TrendingNow.astro';
+import About from './components/About.astro';
+import CuratedEscapes from './components/CuratedEscapes.astro';
+import LatestStories from './components/LatestStories.astro';
+import ContentSection from './components/ContentSection.astro';
+import FAQ from './components/FAQ.astro';
+import CTA from './components/CTA.astro';
+
+// Editorial components (Cinque Terre Theme)
+import EditorialHero from './components/EditorialHero.astro';
+import EditorialIntroBlock from './components/blocks/EditorialIntroBlock.astro';
+import EditorialInterludeBlock from './components/blocks/EditorialInterludeBlock.astro';
+import EditorNote from './components/EditorNote.astro';
+import ClosingNoteBlock from './components/blocks/ClosingNoteBlock.astro';
+
+// Template page blocks (Cinque Terre Theme)
+import ItineraryHero from './components/blocks/ItineraryHero.astro';
+import ItineraryDays from './components/blocks/ItineraryDays.astro';
+import TeamGrid from './components/blocks/TeamGrid.astro';
+import AirportsOverview from './components/blocks/AirportsOverview.astro';
+import WeatherLive from './components/blocks/WeatherLive.astro';
+import WeatherJournal from './components/blocks/WeatherJournal.astro';
+import BlogArticle from './components/blocks/BlogArticle.astro';
+import BlogIndex from './components/blocks/BlogIndex.astro';
+import CollectionWithInterludes from './components/blocks/CollectionWithInterludes.astro';
+
+// React components with client directives
+import FeaturedCarousel from './components/FeaturedCarousel';
+import EatDrink from './components/EatDrink';
+import Highlights from './components/Highlights';
+import AudioGuides from './components/AudioGuides';
+import PracticalAdvice from './components/PracticalAdvice';
+
+interface Block {
+    type: string;
+    [key: string]: unknown;
+}
+
+interface Props {
+    blocks: Block[];
+    locale?: string;
+}
+
+const { blocks = [], locale = 'en' } = Astro.props;
+---
+
+{blocks.map((block: Block) => {
+    const { type, ...props } = block;
+    // Type assertion for component props - the JSON structure is validated at content level
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const componentProps = props as any;
+
+    switch (type) {
+        case 'hero-section':
+            return <Hero {...componentProps} locale={locale} />;
+
+        case 'stats-section':
+            return <Stats {...componentProps} locale={locale} />;
+
+        case 'feature-section':
+            return <Features {...componentProps} locale={locale} />;
+
+        case 'village-selector':
+            return <VillageSelector {...componentProps} locale={locale} />;
+
+        case 'places-to-stay':
+            return <PlacesToStay {...componentProps} locale={locale} />;
+
+        case 'featured-carousel':
+            return <FeaturedCarousel client:visible {...componentProps} locale={locale} />;
+
+        case 'village-intro':
+            return <VillageIntro {...componentProps} locale={locale} />;
+
+        case 'newsletter':
+            return <Newsletter {...componentProps} locale={locale} />;
+
+        case 'section-header':
+            return <SectionHeader {...componentProps} locale={locale} />;
+
+        case 'trending-now':
+            return <TrendingNow {...componentProps} locale={locale} />;
+
+        case 'about':
+            return <About {...componentProps} locale={locale} />;
+
+        case 'curated-escapes':
+            return <CuratedEscapes {...componentProps} locale={locale} />;
+
+        case 'latest-stories':
+            return <LatestStories {...componentProps} locale={locale} />;
+
+        case 'eat-drink':
+            return <EatDrink client:visible {...componentProps} locale={locale} />;
+
+        case 'highlights':
+            return <Highlights client:visible {...componentProps} locale={locale} />;
+
+        case 'audio-guides':
+            return <AudioGuides client:visible {...componentProps} locale={locale} />;
+
+        case 'practical-advice':
+            return <PracticalAdvice client:visible {...componentProps} locale={locale} />;
+
+        case 'content-section':
+            return <ContentSection {...componentProps} locale={locale} />;
+
+        case 'faq-section':
+            return <FAQ {...componentProps} locale={locale} />;
+
+        case 'cta-section':
+            return <CTA {...componentProps} locale={locale} />;
+
+        // Editorial blocks (Cinque Terre Theme)
+        case 'editorial-hero':
+            return <EditorialHero {...componentProps} />;
+
+        case 'editorial-intro':
+            return <EditorialIntroBlock {...componentProps} />;
+
+        case 'editorial-interlude':
+            return <EditorialInterludeBlock {...componentProps} />;
+
+        case 'editor-note':
+            return <EditorNote {...componentProps} />;
+
+        case 'closing-note':
+            return <ClosingNoteBlock {...componentProps} />;
+
+        // Template page blocks (Cinque Terre Theme)
+        case 'itinerary-hero':
+            return <ItineraryHero {...componentProps} />;
+
+        case 'itinerary-days':
+            return <ItineraryDays {...componentProps} />;
+
+        case 'team-grid':
+            return <TeamGrid {...componentProps} />;
+
+        case 'airports-overview':
+            return <AirportsOverview {...componentProps} />;
+
+        case 'weather-live':
+            return <WeatherLive {...componentProps} />;
+
+        case 'weather-journal':
+            return <WeatherJournal {...componentProps} />;
+
+        case 'blog-article':
+            return <BlogArticle {...componentProps} />;
+
+        case 'blog-index':
+            return <BlogIndex {...componentProps} />;
+
+        case 'collection-with-interludes':
+            return <CollectionWithInterludes {...componentProps} />;
+
+        default:
+            // Log unknown block type for debugging
+            console.warn(`Unknown block type: ${type}`);
+            return (
+                <div class="py-8 px-4 bg-yellow-50 border border-yellow-200 rounded-lg my-4 container mx-auto">
+                    <p class="text-yellow-800 text-sm">
+                        Unknown block type: <code class="font-mono bg-yellow-100 px-1 rounded">{type}</code>
+                    </p>
+                    <pre class="mt-2 text-xs text-yellow-700 overflow-auto max-h-40">
+                        {JSON.stringify(componentProps, null, 2)}
+                    </pre>
+                </div>
+            );
+    }
+})}

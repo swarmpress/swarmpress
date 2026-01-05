@@ -1,0 +1,91 @@
+---
+/**
+ * Dynamic catch-all route for all pages with language support
+ * Loads content from cinqueterre.travel/content/pages
+ */
+import Layout from '../../layouts/Layout.astro';
+import ContentRenderer from '../../ContentRenderer.astro';
+import fs from 'fs';
+import path from 'path';
+
+export async function getStaticPaths() {
+  // Content directory path - use environment variable or fallback to absolute path
+  const CONTENT_DIR = process.env.CONTENT_DIR || '/Users/drietsch/agentpress/cinqueterre.travel/content/pages';
+
+  // Supported languages
+  const SUPPORTED_LANGS = ['en', 'de', 'fr', 'it'];
+
+  const paths: Array<{ params: { lang: string; slug: string | undefined }; props: { pageData: any } }> = [];
+
+  // Helper to recursively find all JSON files
+  function findJsonFiles(dir: string, basePath: string = ''): string[] {
+    const files: string[] = [];
+    if (!fs.existsSync(dir)) return files;
+
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        files.push(...findJsonFiles(fullPath, path.join(basePath, entry.name)));
+      } else if (entry.name.endsWith('.json')) {
+        files.push(path.join(basePath, entry.name));
+      }
+    }
+    return files;
+  }
+
+  // Get all page JSON files
+  const jsonFiles = findJsonFiles(CONTENT_DIR);
+
+  for (const jsonFile of jsonFiles) {
+    const filePath = path.join(CONTENT_DIR, jsonFile);
+    const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+
+    // Skip if no slug defined
+    if (!content.slug) continue;
+
+    // Generate paths for each language
+    for (const lang of SUPPORTED_LANGS) {
+      const langSlug = content.slug[lang];
+      if (!langSlug) continue;
+
+      // Parse the slug (remove leading /lang/)
+      const slugParts = langSlug.split('/').filter(Boolean);
+      // First part is language, rest is the slug
+      if (slugParts[0] !== lang) continue;
+
+      const slug = slugParts.slice(1).join('/') || undefined;
+
+      paths.push({
+        params: { lang, slug },
+        props: {
+          pageData: {
+            ...content,
+            currentLang: lang,
+            // Get localized content
+            title: content.title?.[lang] || content.title?.en || content.title,
+            seo: {
+              title: content.seo?.title?.[lang] || content.seo?.title?.en,
+              description: content.seo?.description?.[lang] || content.seo?.description?.en,
+            }
+          }
+        }
+      });
+    }
+  }
+
+  return paths;
+}
+
+const { lang, slug } = Astro.params;
+const { pageData } = Astro.props;
+
+const title = pageData.seo?.title || pageData.title || 'Cinque Terre';
+const description = pageData.seo?.description || '';
+const body = pageData.body || [];
+const locale = lang || 'en';
+---
+
+<Layout title={title} description={description} locale={locale}>
+  <ContentRenderer blocks={body} locale={locale} />
+</Layout>

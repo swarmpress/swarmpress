@@ -1,0 +1,69 @@
+---
+/**
+ * CTA (Call to Action) Section Component
+ * Renders a prominent call-to-action section with buttons
+ */
+interface Button {
+    text: string;
+    url: string;
+    variant?: 'primary' | 'secondary';
+}
+
+interface Props {
+    variant?: 'centered' | 'split' | 'simple';
+    eyebrow?: string;
+    title?: string;
+    subtitle?: string;
+    buttons?: Button[];
+    image?: string;
+    locale?: string;
+}
+
+const {
+    variant = 'centered',
+    eyebrow,
+    title,
+    subtitle,
+    buttons = [],
+    image,
+    locale = 'en'
+} = Astro.props;
+---
+
+<section class="py-16 md:py-24 bg-gray-900 text-white">
+    <div class="container mx-auto px-4">
+        <div class={`max-w-4xl mx-auto ${variant === 'centered' ? 'text-center' : ''}`}>
+            {eyebrow && (
+                <p class="text-teal-400 text-sm font-medium uppercase tracking-wider mb-4">
+                    {eyebrow}
+                </p>
+            )}
+            {title && (
+                <h2 class="text-3xl md:text-4xl lg:text-5xl font-serif mb-6">
+                    {title}
+                </h2>
+            )}
+            {subtitle && (
+                <p class="text-lg md:text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+                    {subtitle}
+                </p>
+            )}
+            {buttons.length > 0 && (
+                <div class={`flex flex-wrap gap-4 ${variant === 'centered' ? 'justify-center' : ''}`}>
+                    {buttons.map((button, index) => (
+                        <a
+                            href={button.url}
+                            class={`inline-flex items-center justify-center px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+                                button.variant === 'secondary' || index > 0
+                                    ? 'bg-transparent border-2 border-white text-white hover:bg-white hover:text-gray-900'
+                                    : 'bg-teal-500 text-white hover:bg-teal-600 shadow-lg hover:shadow-xl'
+                            }`}
+                        >
+                            {button.text}
+                        </a>
+                    ))}
+                </div>
+            )}
+        </div>
+    </div>
+</section>
