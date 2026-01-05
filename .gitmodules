@@ -1,0 +1,3 @@
+[submodule "cinque-terre-template"]
+	path = cinque-terre-template
+	url = https://github.com/drietsch/cinque-terre-template.git
