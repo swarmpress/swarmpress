@@ -3,52 +3,71 @@ import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from './ui/sheet';
 import { Menu, Search, ChevronDown, MapPin, Utensils, Newspaper, Compass } from 'lucide-react';
 
-const destinations = [
-    { name: 'The Salt & Stone Path', href: '/itinerary', description: 'A curated 4-day journey through the coast' },
-    { name: 'The Art of Presence', href: '/things-to-do', description: 'Ways of engaging with the village rhythm' },
-    { name: 'Where to Wake Up', href: '/accommodations', description: 'Curated accommodations in Riomaggiore' },
-    { name: 'Riomaggiore', href: '/village', description: 'The easternmost village with colorful cliffside houses' },
+// Helper to get current language from URL
+const getCurrentLang = () => {
+    if (typeof window === 'undefined') return 'en';
+    const path = window.location.pathname;
+    const match = path.match(/^\/(en|de|fr|it)\//);
+    return match ? match[1] : 'en';
+};
+
+// Helper to prefix URLs with language
+const l = (href: string, lang: string) => {
+    if (href === '#' || href.startsWith('http')) return href;
+    return `/${lang}${href}`;
+};
+
+const getDestinations = (lang: string) => [
+    { name: 'The Salt & Stone Path', href: l('/itinerary', lang), description: 'A curated 4-day journey through the coast' },
+    { name: 'The Art of Presence', href: l('/things-to-do', lang), description: 'Ways of engaging with the village rhythm' },
+    { name: 'Where to Wake Up', href: l('/accommodations', lang), description: 'Curated accommodations in Riomaggiore' },
+    { name: 'Riomaggiore', href: l('/village', lang), description: 'The easternmost village with colorful cliffside houses' },
     { name: 'Manarola', href: '#', description: 'Famous for its wine and stunning harbor views' },
     { name: 'Corniglia', href: '#', description: 'The only village not directly on the sea' },
     { name: 'Vernazza', href: '#', description: 'One of Italy\'s most beautiful villages' },
     { name: 'Monterosso', href: '#', description: 'The largest village with sandy beaches' },
 ];
 
-const foodDrink = [
-    { name: 'The Culinary Story', href: '/culinary', description: 'Riomaggiore\'s relationship with food and place' },
-    { name: 'Village Rhythms', href: '/events', description: 'Traditional events and seasonal celebrations' },
-    { name: 'Restaurants', href: '/culinary', description: 'A curated collection of local dining' },
+const getFoodDrink = (lang: string) => [
+    { name: 'The Culinary Story', href: l('/culinary', lang), description: 'Riomaggiore\'s relationship with food and place' },
+    { name: 'Village Rhythms', href: l('/events', lang), description: 'Traditional events and seasonal celebrations' },
+    { name: 'Restaurants', href: l('/culinary', lang), description: 'A curated collection of local dining' },
     { name: 'Wine Bars', href: '#', description: 'Local wines and aperitivo culture' },
     { name: 'Cafés & Bakeries', href: '#', description: 'Morning coffee and fresh focaccia' },
 ];
 
-const newsAdvice = [
-    { name: 'Arrival & Orientation', href: '/transportation', description: 'How to reach the village with calm and clarity' },
-    { name: 'The Dispatch (Blog)', href: '/blog', description: 'Stories and insights from the coast' },
-    { name: 'The Team', href: '/team', description: 'Meet the voices behind the perspective' },
-    { name: 'Travel Tips', href: '/blog', description: 'Essential advice for your visit' },
-    { name: 'Latest News', href: '/blog', description: 'Updates from the Cinque Terre' },
-    { name: 'Weather & Conditions', href: '/weather', description: 'Live atmosphere and forecasts' },
+const getNewsAdvice = (lang: string) => [
+    { name: 'Arrival & Orientation', href: l('/transportation', lang), description: 'How to reach the village with calm and clarity' },
+    { name: 'The Dispatch (Blog)', href: l('/blog', lang), description: 'Stories and insights from the coast' },
+    { name: 'The Team', href: l('/team', lang), description: 'Meet the voices behind the perspective' },
+    { name: 'Travel Tips', href: l('/blog', lang), description: 'Essential advice for your visit' },
+    { name: 'Latest News', href: l('/blog', lang), description: 'Updates from the Cinque Terre' },
+    { name: 'Weather & Conditions', href: l('/weather', lang), description: 'Live atmosphere and forecasts' },
 ];
 
-const navItems = [
-    { name: 'Destinations', href: '/village', flyout: destinations, icon: MapPin },
-    { name: 'Itinerary', href: '/itinerary', icon: Compass },
-    { name: 'Sights', href: '/sights', icon: MapPin },
-    { name: 'Food & Drink', href: '#', flyout: foodDrink, icon: Utensils },
-    { name: 'News & Advice', href: '/blog', flyout: newsAdvice, icon: Newspaper },
+const getNavItems = (lang: string) => [
+    { name: 'Destinations', href: l('/village', lang), flyout: getDestinations(lang), icon: MapPin },
+    { name: 'Itinerary', href: l('/itinerary', lang), icon: Compass },
+    { name: 'Sights', href: l('/sights', lang), icon: MapPin },
+    { name: 'Food & Drink', href: '#', flyout: getFoodDrink(lang), icon: Utensils },
+    { name: 'News & Advice', href: l('/blog', lang), flyout: getNewsAdvice(lang), icon: Newspaper },
 ];
 
 export default function Header() {
     const [isScrolled, setIsScrolled] = useState(false);
+    const [lang, setLang] = useState('en');
 
     useEffect(() => {
+        setLang(getCurrentLang());
+
         const handleScroll = () => {
             setIsScrolled(window.scrollY > 10);
         };
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
+
+    const navItems = getNavItems(lang);
 
     return (
         <header
@@ -142,7 +161,7 @@ export default function Header() {
                     </div>
 
                     {/* Center: Logo */}
-                    <a href="/" className="-m-1.5 p-1.5">
+                    <a href={l('/', lang)} className="-m-1.5 p-1.5">
                         <span className="sr-only">Cinque Terre Dispatch</span>
                         <span className="font-serif text-2xl font-bold tracking-tight">
                             Cinque Terre Dispatch

@@ -52,9 +52,10 @@ interface Block {
 interface Props {
     blocks: Block[];
     locale?: string;
+    village?: string; // Village context for village-specific pages
 }
 
-const { blocks = [], locale = 'en' } = Astro.props;
+const { blocks = [], locale = 'en', village } = Astro.props;
 ---
 
 {blocks.map((block: Block) => {
@@ -65,55 +66,57 @@ const { blocks = [], locale = 'en' } = Astro.props;
 
     switch (type) {
         case 'hero-section':
-            return <Hero {...componentProps} locale={locale} />;
+            return <Hero {...componentProps} locale={locale} village={village} />;
 
         case 'stats-section':
-            return <Stats {...componentProps} locale={locale} />;
+            return <Stats {...componentProps} locale={locale} village={village} />;
 
         case 'feature-section':
-            return <Features {...componentProps} locale={locale} />;
+            return <Features {...componentProps} locale={locale} village={village} />;
 
         case 'village-selector':
+            // Skip village-selector when viewing a specific village page
+            if (village) return null;
             return <VillageSelector {...componentProps} locale={locale} />;
 
         case 'places-to-stay':
-            return <PlacesToStay {...componentProps} locale={locale} />;
+            return <PlacesToStay {...componentProps} locale={locale} village={village} />;
 
         case 'featured-carousel':
-            return <FeaturedCarousel client:visible {...componentProps} locale={locale} />;
+            return <FeaturedCarousel client:visible {...componentProps} locale={locale} village={village} />;
 
         case 'village-intro':
-            return <VillageIntro {...componentProps} locale={locale} />;
+            return <VillageIntro {...componentProps} locale={locale} village={village} />;
 
         case 'newsletter':
-            return <Newsletter {...componentProps} locale={locale} />;
+            return <Newsletter {...componentProps} locale={locale} village={village} />;
 
         case 'section-header':
-            return <SectionHeader {...componentProps} locale={locale} />;
+            return <SectionHeader {...componentProps} locale={locale} village={village} />;
 
         case 'trending-now':
-            return <TrendingNow {...componentProps} locale={locale} />;
+            return <TrendingNow {...componentProps} locale={locale} village={village} />;
 
         case 'about':
-            return <About {...componentProps} locale={locale} />;
+            return <About {...componentProps} locale={locale} village={village} />;
 
         case 'curated-escapes':
-            return <CuratedEscapes {...componentProps} locale={locale} />;
+            return <CuratedEscapes {...componentProps} locale={locale} village={village} />;
 
         case 'latest-stories':
-            return <LatestStories {...componentProps} locale={locale} />;
+            return <LatestStories {...componentProps} locale={locale} village={village} />;
 
         case 'eat-drink':
-            return <EatDrink client:visible {...componentProps} locale={locale} />;
+            return <EatDrink client:visible {...componentProps} locale={locale} village={village} />;
 
         case 'highlights':
-            return <Highlights client:visible {...componentProps} locale={locale} />;
+            return <Highlights client:visible {...componentProps} locale={locale} village={village} />;
 
         case 'audio-guides':
-            return <AudioGuides client:visible {...componentProps} locale={locale} />;
+            return <AudioGuides client:visible {...componentProps} locale={locale} village={village} />;
 
         case 'practical-advice':
-            return <PracticalAdvice client:visible {...componentProps} locale={locale} />;
+            return <PracticalAdvice client:visible {...componentProps} locale={locale} village={village} />;
 
         case 'content-section':
             return <ContentSection {...componentProps} locale={locale} />;
@@ -163,7 +166,7 @@ const { blocks = [], locale = 'en' } = Astro.props;
             return <BlogArticle {...componentProps} />;
 
         case 'blog-index':
-            return <BlogIndex {...componentProps} />;
+            return <BlogIndex {...componentProps} locale={locale} />;
 
         case 'collection-with-interludes':
             return <CollectionWithInterludes {...componentProps} />;

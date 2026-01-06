@@ -2,7 +2,22 @@
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { Sun, Footprints, History, Star } from 'lucide-react';
-const stories = [
+import { getVillageContent } from '../config/village-content.config';
+import type { SupportedLanguage } from '../types/navigation.types';
+
+interface Props {
+    locale?: string;
+    village?: string;
+}
+
+const { locale = 'en', village } = Astro.props;
+const lang = locale as SupportedLanguage;
+
+// Get village-specific content if a village is specified
+const villageContent = village ? getVillageContent(village) : null;
+
+// Default stories for the general Cinque Terre page
+const defaultStories = [
     {
         id: 1,
         title: "Riomaggiore, Where the Sea Meets the Soul",
@@ -76,9 +91,52 @@ const stories = [
     }
 ];
 
-const leadStory = stories[0];
-const otherStories = stories.slice(1);
+// Use village-specific lead story if available
+const villageLeadStory = villageContent?.intro.leadStory;
+const leadStory = villageLeadStory ? {
+    id: 1,
+    title: villageLeadStory.title[lang],
+    excerpt: villageLeadStory.excerpt[lang],
+    author: villageLeadStory.author,
+    date: villageLeadStory.date,
+    readTime: villageLeadStory.readTime,
+    category: villageLeadStory.category,
+    image: villageLeadStory.image,
+    isLead: true,
+} : defaultStories[0];
+
+const otherStories = defaultStories.slice(1);
 const filters = ["All", "Guides", "Food", "Hotels", "News & Advice"];
+
+// Village essentials content
+const villageEssentials = villageContent?.intro.essentials;
+const essentialsTitle = villageEssentials?.title[lang] || "Riomaggiore Essentials 2026";
+const essentialsSubtitle = villageEssentials?.subtitle[lang] || "Today's atmosphere and real-time details, grounded in Riomaggiore's timeless character";
+const villageName = villageContent?.slug ? villageContent.slug.charAt(0).toUpperCase() + villageContent.slug.slice(1) : "Riomaggiore";
+
+// Today & Conditions
+const today = villageEssentials?.today || {
+    weather: '☀️ 23°C, light breeze',
+    seaTemp: '🌊 21°C',
+    seaConditions: 'Calm to moderate',
+    sunset: '20:47',
+};
+
+// Travel Experience
+const experience = villageEssentials?.experience || {
+    crowdRhythm: 'Lively day, quiet eve',
+    bestFelt: 'Slowly, on foot',
+    villageShape: 'Rising to the sky',
+    foodWine: 'Simple, honest flavors',
+};
+
+// Character
+const character = villageEssentials?.character || {
+    origins: 'Born in 8th Century',
+    shapedBy: 'Sea, stone, patience',
+    rating: '4.6/5',
+    rememberedFor: '"Views that linger"',
+};
 ---
 
 <section class="py-16 container mx-auto px-4">
@@ -104,7 +162,7 @@ const filters = ["All", "Guides", "Food", "Hotels", "News & Advice"];
                         <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${leadStory.author}`} alt={leadStory.author} />
                     </div>
                     <div class="text-sm">
-                        <p class="font-medium text-foreground">{leadStory.author} – the voice of Riomaggioree</p>
+                        <p class="font-medium text-foreground">{leadStory.author} – the voice of {villageName}</p>
                         <p class="text-muted-foreground">{leadStory.date}</p>
                     </div>
                 </div>
@@ -118,8 +176,8 @@ const filters = ["All", "Guides", "Food", "Hotels", "News & Advice"];
                     <div class="mx-auto w-fit px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-widest mb-2">
                         Giulia's Traveler Intelligence
                     </div>
-                    <CardTitle className="font-serif text-3xl md:text-4xl text-foreground">Riomaggiore Essentials 2026</CardTitle>
-                    <p class="text-muted-foreground font-serif italic text-lg">Today’s atmosphere and real-time details, grounded in Riomaggiore’s timeless character</p>
+                    <CardTitle className="font-serif text-3xl md:text-4xl text-foreground">{essentialsTitle}</CardTitle>
+                    <p class="text-muted-foreground font-serif italic text-lg">{essentialsSubtitle}</p>
                 </CardHeader>
                 
                 <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 relative p-8">
@@ -139,19 +197,19 @@ const filters = ["All", "Guides", "Food", "Hotels", "News & Advice"];
                         <ul class="space-y-4 text-sm w-full">
                             <li class="group flex flex-col items-center">
                                 <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Weather</span>
-                                <div class="font-medium text-base">☀️ 23°C, light breeze</div>
+                                <div class="font-medium text-base">{today.weather}</div>
                             </li>
                             <li class="group flex flex-col items-center">
                                 <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Sea Temperature</span>
-                                <div class="font-medium text-base">🌊 21°C</div>
+                                <div class="font-medium text-base">{today.seaTemp}</div>
                             </li>
                             <li class="group flex flex-col items-center">
                                 <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Sea Conditions</span>
-                                <div class="font-medium text-base">Calm to moderate</div>
+                                <div class="font-medium text-base">{today.seaConditions}</div>
                             </li>
                              <li class="group flex flex-col items-center">
                                 <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Sunset</span>
-                                <div class="font-medium text-base">20:47</div>
+                                <div class="font-medium text-base">{today.sunset}</div>
                             </li>
                         </ul>
                     </div>
@@ -167,19 +225,19 @@ const filters = ["All", "Guides", "Food", "Hotels", "News & Advice"];
                         <ul class="space-y-4 text-sm w-full">
                              <li class="group flex flex-col items-center">
                                 <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Crowd Rhythm</span>
-                                <div class="font-medium text-base">Lively day, quiet eve</div>
+                                <div class="font-medium text-base">{experience.crowdRhythm}</div>
                             </li>
                             <li class="group flex flex-col items-center">
                                 <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Best Felt</span>
-                                <div class="font-medium text-base">Slowly, on foot</div>
+                                <div class="font-medium text-base">{experience.bestFelt}</div>
                             </li>
                             <li class="group flex flex-col items-center">
                                 <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Village Shape</span>
-                                <div class="font-medium text-base">Rising to the sky</div>
+                                <div class="font-medium text-base">{experience.villageShape}</div>
                             </li>
                             <li class="group flex flex-col items-center">
                                 <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Food & Wine</span>
-                                <div class="font-medium text-base">Simple, honest flavors</div>
+                                <div class="font-medium text-base">{experience.foodWine}</div>
                             </li>
                         </ul>
                     </div>
@@ -195,21 +253,21 @@ const filters = ["All", "Guides", "Food", "Hotels", "News & Advice"];
                         <ul class="space-y-4 text-sm w-full">
                             <li class="group flex flex-col items-center">
                                 <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Origins</span>
-                                <div class="font-medium text-base">Born in 8th Century</div>
+                                <div class="font-medium text-base">{character.origins}</div>
                             </li>
                             <li class="group flex flex-col items-center">
                                 <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Shaped By</span>
-                                <div class="font-medium text-base">Sea, stone, patience</div>
+                                <div class="font-medium text-base">{character.shapedBy}</div>
                             </li>
                              <li class="group flex flex-col items-center">
                                 <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Traveler Rating</span>
                                 <div class="font-medium text-base flex items-center gap-1">
-                                    4.6/5 <Star className="w-3 h-3 fill-current" /> on Google
+                                    {character.rating} <Star className="w-3 h-3 fill-current" /> on Google
                                 </div>
                             </li>
                             <li class="group flex flex-col items-center">
                                 <span class="text-muted-foreground mb-1 uppercase tracking-wider text-xs">Remembered For</span>
-                                <div class="font-medium text-base italic">"Views that linger"</div>
+                                <div class="font-medium text-base italic">{character.rememberedFor}</div>
                             </li>
                         </ul>
                     </div>

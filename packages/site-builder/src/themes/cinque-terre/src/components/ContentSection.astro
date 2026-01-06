@@ -16,9 +16,14 @@ interface Props {
 const { content = [], title, subtitle, image, id, locale = 'en' } = Astro.props;
 
 // Normalize content to array of paragraphs
-function normalizeContent(c: string[] | string): string[] {
+function normalizeContent(c: string[] | string | Array<{type?: string; text?: string}>): string[] {
     if (Array.isArray(c)) {
-        return c;
+        // Handle array of objects with text property (e.g., {type: "paragraph", text: "..."})
+        if (c.length > 0 && typeof c[0] === 'object' && c[0] !== null && 'text' in c[0]) {
+            return c.map(item => typeof item === 'object' && item !== null && 'text' in item ? String(item.text || '') : String(item)).filter(p => p.trim());
+        }
+        // Handle array of strings
+        return c.map(item => String(item)).filter(p => p.trim());
     }
     if (typeof c === 'string') {
         return c.split('\n\n').filter(p => p.trim());

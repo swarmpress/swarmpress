@@ -21,6 +21,7 @@ interface Props {
   introSubtitle?: string;
   newsletterTitle?: string;
   newsletterSubtitle?: string;
+  locale?: string;
 }
 
 const {
@@ -29,7 +30,8 @@ const {
   introTitle = "Slow Journalism for a Fast-Moving Coastline.",
   introSubtitle = "We don't just list places; we tell their stories. From the salt-crusted traditions of the local fishermen to the quietest corners of the high trails, welcome to our curated chronicle of life in the five villages.",
   newsletterTitle = "Get the Dispatch in Your Inbox.",
-  newsletterSubtitle = "Join 15,000+ lovers of the Italian Riviera. No spam, just curated stories, local secrets, and seasonal guides delivered once a month."
+  newsletterSubtitle = "Join 15,000+ lovers of the Italian Riviera. No spam, just curated stories, local secrets, and seasonal guides delivered once a month.",
+  locale = 'en'
 } = Astro.props;
 
 const leadStory = stories.find(s => s.isLead) || stories[0];
@@ -60,7 +62,7 @@ const otherStories = stories.filter(s => s !== leadStory);
         "{leadStory?.excerpt}"
       </p>
       <div class="flex flex-wrap items-center gap-8">
-        <a href={`/blog/${leadStory?.slug}`} class="group inline-flex items-center gap-3 bg-white text-black px-8 py-4 rounded-full font-bold text-sm uppercase tracking-widest hover:bg-primary hover:text-white transition-all duration-300">
+        <a href={`/${locale}/blog/${leadStory?.slug}`} class="group inline-flex items-center gap-3 bg-white text-black px-8 py-4 rounded-full font-bold text-sm uppercase tracking-widest hover:bg-primary hover:text-white transition-all duration-300">
           Read the Story
           <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
         </a>
@@ -126,7 +128,7 @@ const otherStories = stories.filter(s => s !== leadStory);
   <div class="container mx-auto px-4">
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-24">
       {otherStories.map((story) => (
-        <a href={`/blog/${story.slug}`} class="group block space-y-8">
+        <a href={`/${locale}/blog/${story.slug}`} class="group block space-y-8">
           <div class="relative aspect-[4/5] overflow-hidden rounded-2xl shadow-2xl shadow-black/5">
             <img
               src={story.image}

@@ -31,11 +31,15 @@ const {
     showFooter = false  // Template pages add Footer explicitly
 } = Astro.props;
 
+// Get current path for navigation state
+const currentPath = Astro.url.pathname;
+
 const headerProps = {
     siteName: 'Cinque Terre Dispatch',
     navigation: header?.navigation || [],
     ctaButton: header?.ctaButton,
     locale,
+    currentPath,  // Pass current path for Coastal Spine navigation
     ...header
 };
 

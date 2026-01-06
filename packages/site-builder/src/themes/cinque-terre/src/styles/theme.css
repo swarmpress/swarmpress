@@ -48,6 +48,13 @@
 
 :root {
   --radius: 0.625rem;
+
+  /* Village Colors - Coastal Spine Navigation */
+  --color-riomaggiore: #C67B5C;
+  --color-manarola: #8B4B6D;
+  --color-corniglia: #7A9E7E;
+  --color-vernazza: #5B8BA0;
+  --color-monterosso: #C4A35A;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);

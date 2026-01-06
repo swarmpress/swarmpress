@@ -30,8 +30,34 @@ interface Author {
   image?: string;
 }
 
+// Alternative content format (editorial style)
+interface EditorialContent {
+  intro?: string;
+  sections?: Array<{
+    title: string;
+    text: string;
+  }>;
+  quote?: {
+    text: string;
+    author?: string;
+  };
+}
+
+// Blog post metadata
+interface PostMeta {
+  title?: string;
+  subtitle?: string;
+  author?: string;
+  authorBio?: string;
+  date?: string;
+  readTime?: string;
+  category?: string;
+  image?: string;
+  tags?: string[];
+}
+
 interface Props {
-  title: string;
+  title?: string;
   subtitle?: string;
   author?: string | Author;
   authorImage?: string;
@@ -40,28 +66,45 @@ interface Props {
   category?: string;
   image?: string;
   heroImage?: string;
-  content: ContentBlock[];
+  content?: ContentBlock[] | EditorialContent;
   sidebar?: SidebarContent;
+  // Alternative structure from JSON
+  post?: PostMeta;
 }
 
 const {
-  title,
-  subtitle,
+  title: titleProp,
+  subtitle: subtitleProp,
   author: authorProp,
   authorImage: authorImageProp,
-  date,
-  readTime,
-  category,
-  image,
+  date: dateProp,
+  readTime: readTimeProp,
+  category: categoryProp,
+  image: imageProp,
   heroImage,
   content,
-  sidebar
+  sidebar,
+  post
 } = Astro.props;
 
+// Use post metadata if available, otherwise fall back to direct props
+const title = post?.title || titleProp;
+const subtitle = post?.subtitle || subtitleProp;
+const date = post?.date || dateProp;
+const readTime = post?.readTime || readTimeProp;
+const category = post?.category || categoryProp;
+const image = post?.image || imageProp;
+
 // Normalize author - can be string or object
-const author = typeof authorProp === 'object' && authorProp !== null ? authorProp.name : (authorProp || 'Giulia Rossi');
-const authorImage = typeof authorProp === 'object' && authorProp !== null ? authorProp.image : authorImageProp;
-const authorBio = typeof authorProp === 'object' && authorProp !== null ? authorProp.bio : undefined;
+const authorSource = post?.author || authorProp;
+const author = typeof authorSource === 'object' && authorSource !== null ? (authorSource as Author).name : (authorSource || 'Giulia Rossi');
+const authorImage = typeof authorSource === 'object' && authorSource !== null ? (authorSource as Author).image : authorImageProp;
+const authorBio = post?.authorBio || (typeof authorSource === 'object' && authorSource !== null ? (authorSource as Author).bio : undefined);
+
+// Check if content is editorial format (object with intro/sections) or ContentBlock array
+const isEditorialContent = content && !Array.isArray(content);
+const editorialContent = isEditorialContent ? content as EditorialContent : null;
+const blockContent = !isEditorialContent && Array.isArray(content) ? content as ContentBlock[] : null;
 ---
 
 <article class="py-16">
@@ -113,7 +156,33 @@ const authorBio = typeof authorProp === 'object' && authorProp !== null ? author
       <!-- Main Content -->
       <div class="lg:col-span-3">
         <div class="prose prose-lg prose-slate max-w-none">
-          {content.map((block) => {
+          {/* Editorial format with intro/sections/quote */}
+          {editorialContent && (
+            <>
+              {editorialContent.intro && (
+                <p class="text-foreground/80 leading-relaxed mb-6 text-lg font-serif italic">
+                  {editorialContent.intro}
+                </p>
+              )}
+              {editorialContent.sections?.map((section) => (
+                <>
+                  <h2 class="font-serif text-3xl font-bold text-foreground mt-12 mb-6">{section.title}</h2>
+                  <p class="text-foreground/80 leading-relaxed mb-6">{section.text}</p>
+                </>
+              ))}
+              {editorialContent.quote && (
+                <blockquote class="border-l-4 border-primary pl-6 my-12 italic">
+                  <p class="font-serif text-xl text-foreground/80 mb-4">"{editorialContent.quote.text}"</p>
+                  {editorialContent.quote.author && (
+                    <cite class="text-sm text-muted-foreground not-italic">— {editorialContent.quote.author}</cite>
+                  )}
+                </blockquote>
+              )}
+            </>
+          )}
+
+          {/* ContentBlock array format */}
+          {blockContent && blockContent.map((block) => {
             switch (block.type) {
               case 'paragraph':
                 return <p class="text-foreground/80 leading-relaxed mb-6">{block.text}</p>;

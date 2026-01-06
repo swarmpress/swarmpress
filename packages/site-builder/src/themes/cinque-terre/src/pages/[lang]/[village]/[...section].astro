@@ -1,0 +1,91 @@
+---
+/**
+ * Village Section Page
+ *
+ * Route: /{lang}/{village}/{section}
+ * Examples: /en/riomaggiore/restaurants, /de/manarola/things-to-do
+ *
+ * Loads content from hub page JSON files and renders with the same
+ * editorial design. Shows content in the context of the selected village.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import ContentRenderer from '../../../ContentRenderer.astro';
+import Footer from '../../../components/Footer';
+import fs from 'fs';
+import path from 'path';
+import {
+  VILLAGES,
+  SECTIONS,
+  getSection,
+} from '../../../config/navigation.config';
+import type { SupportedLanguage } from '../../../types/navigation.types';
+
+export async function getStaticPaths() {
+  const CONTENT_DIR = process.env.CONTENT_DIR || '/Users/drietsch/agentpress/cinqueterre.travel/content/pages';
+  const SUPPORTED_LANGS: SupportedLanguage[] = ['en', 'de', 'fr', 'it'];
+  const paths = [];
+
+  for (const lang of SUPPORTED_LANGS) {
+    for (const village of VILLAGES) {
+      for (const section of SECTIONS) {
+        // Try to load section content from hub page JSON
+        // Uses hubPath if defined, otherwise section slug
+        const hubPath = section.hubPath || section.slug;
+        const filePath = path.join(CONTENT_DIR, `${hubPath}.json`);
+        let pageData = null;
+
+        if (fs.existsSync(filePath)) {
+          const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+          pageData = {
+            ...content,
+            currentLang: lang,
+            title: content.title?.[lang] || content.title?.en || content.title,
+            seo: {
+              title: content.seo?.title?.[lang] || content.seo?.title?.en,
+              description: content.seo?.description?.[lang] || content.seo?.description?.en,
+            }
+          };
+        }
+
+        paths.push({
+          params: {
+            lang,
+            village: village.slug,
+            section: section.slug,
+          },
+          props: {
+            pageData,
+            villageData: village,
+            sectionData: section,
+            locale: lang,
+          },
+        });
+      }
+    }
+  }
+
+  return paths;
+}
+
+const { lang, village, section } = Astro.params;
+const { pageData, villageData, sectionData, locale } = Astro.props;
+
+// If no content, redirect to hub page or homepage
+if (!pageData) {
+  const hubPath = sectionData?.hubPath || section;
+  return Astro.redirect(`/${lang}/${hubPath}`);
+}
+
+// Get localized names for title
+const villageName = villageData.name[locale] || villageData.name.en;
+const sectionName = sectionData.name[locale] || sectionData.name.en;
+
+const title = pageData.seo?.title || `${sectionName} in ${villageName} | Cinque Terre Dispatch`;
+const description = pageData.seo?.description || '';
+const body = pageData.body || [];
+---
+
+<Layout title={title} description={description} locale={locale}>
+  <ContentRenderer blocks={body} locale={locale} />
+  <Footer client:visible />
+</Layout>
