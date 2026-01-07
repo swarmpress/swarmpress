@@ -25,16 +25,23 @@ import {
   Map,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import type { SectionNavProps, Section, SupportedLanguage } from '../../types/navigation.types';
+import type { SectionNavProps, Section, SupportedLanguage, VillageSlug } from '../../types/navigation.types';
 
 /**
- * Build URL for a section - uses hubPath for existing editorial pages
+ * Build URL for a section
+ * - When village is provided, creates village-scoped URL: /en/riomaggiore/restaurants
+ * - When no village, uses hubPath for hub pages: /en/culinary
  */
 function buildSectionUrl(
   locale: SupportedLanguage,
+  village: VillageSlug | null,
   section: Section
 ): string {
-  // Use hubPath if defined, otherwise fall back to section slug
+  // If we're in a village context, use village-scoped URLs
+  if (village) {
+    return `/${locale}/${village}/${section.slug}`;
+  }
+  // Otherwise use hubPath for hub pages
   const path = section.hubPath || section.slug;
   return `/${locale}/${path}`;
 }
@@ -96,7 +103,7 @@ export function SectionNav({
         <ul className="space-y-0.5" role="menu" aria-label={`Sections in ${village}`}>
           {sections.map((section) => {
             const IconComponent = ICON_MAP[section.icon];
-            const sectionUrl = buildSectionUrl(locale, section);
+            const sectionUrl = buildSectionUrl(locale, village, section);
             const isActive = activeSection === section.slug;
 
             return (

@@ -24,20 +24,21 @@ import {
   useNavigationState,
   buildLanguageSwitchUrl,
 } from './useNavigationState';
-import type { Section, SupportedLanguage } from '../../types/navigation.types';
+import type { Section, SupportedLanguage, MobileNavProps, VillageSlug } from '../../types/navigation.types';
 
 /**
- * Build URL for a section - uses hubPath for existing editorial pages
+ * Build URL for a section
+ * - When village is provided, creates village-scoped URL: /en/riomaggiore/restaurants
+ * - When no village, uses hubPath for hub pages: /en/culinary
  */
 function buildSectionUrl(
   locale: SupportedLanguage,
+  village: VillageSlug,
   section: Section
 ): string {
-  // Use hubPath if defined, otherwise fall back to section slug
-  const path = section.hubPath || section.slug;
-  return `/${locale}/${path}`;
+  // Always use village-scoped URLs in mobile nav since we expand by village
+  return `/${locale}/${village}/${section.slug}`;
 }
-import type { MobileNavProps, VillageSlug } from '../../types/navigation.types';
 
 
 export function MobileNav({ currentPath, locale }: MobileNavProps) {
@@ -133,7 +134,7 @@ export function MobileNav({ currentPath, locale }: MobileNavProps) {
                     {isExpanded && (
                       <ul className="ml-5 pl-3 border-l border-border/50 py-2 space-y-0.5">
                         {sections.map((section) => {
-                          const url = buildSectionUrl(locale, section);
+                          const url = buildSectionUrl(locale, village.slug, section);
                           const isActiveSection =
                             isActive &&
                             navState.activeSection === section.slug;
