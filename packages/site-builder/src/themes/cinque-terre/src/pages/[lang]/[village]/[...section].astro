@@ -28,14 +28,13 @@ export async function getStaticPaths() {
   for (const lang of SUPPORTED_LANGS) {
     for (const village of VILLAGES) {
       for (const section of SECTIONS) {
-        // Try to load section content from hub page JSON
-        // Uses hubPath if defined, otherwise section slug
-        const hubPath = section.hubPath || section.slug;
-        const filePath = path.join(CONTENT_DIR, `${hubPath}.json`);
+        // Try to load village-specific section content first
+        // e.g., /manarola/restaurants.json
+        const villageFilePath = path.join(CONTENT_DIR, village.slug, `${section.slug}.json`);
         let pageData = null;
 
-        if (fs.existsSync(filePath)) {
-          const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        if (fs.existsSync(villageFilePath)) {
+          const content = JSON.parse(fs.readFileSync(villageFilePath, 'utf-8'));
           pageData = {
             ...content,
             currentLang: lang,
@@ -45,6 +44,24 @@ export async function getStaticPaths() {
               description: content.seo?.description?.[lang] || content.seo?.description?.en,
             }
           };
+        } else {
+          // Fall back to hub page JSON if no village-specific content
+          // Uses hubPath if defined, otherwise section slug
+          const hubPath = section.hubPath || section.slug;
+          const filePath = path.join(CONTENT_DIR, `${hubPath}.json`);
+
+          if (fs.existsSync(filePath)) {
+            const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            pageData = {
+              ...content,
+              currentLang: lang,
+              title: content.title?.[lang] || content.title?.en || content.title,
+              seo: {
+                title: content.seo?.title?.[lang] || content.seo?.title?.en,
+                description: content.seo?.description?.[lang] || content.seo?.description?.en,
+              }
+            };
+          }
         }
 
         paths.push({

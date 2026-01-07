@@ -24,17 +24,37 @@ export async function getStaticPaths() {
   const SUPPORTED_LANGS: SupportedLanguage[] = ['en', 'de', 'fr', 'it'];
   const paths = [];
 
-  // Load the village.json template (used for all village pages)
-  const templatePath = path.join(CONTENT_DIR, 'village.json');
-  let templateData = null;
-
-  if (fs.existsSync(templatePath)) {
-    templateData = JSON.parse(fs.readFileSync(templatePath, 'utf-8'));
-  }
-
   for (const lang of SUPPORTED_LANGS) {
     for (const village of VILLAGES) {
-      // Get village-specific content for SEO
+      // Try to load village-specific overview content first
+      // e.g., /riomaggiore/overview.json
+      const villageOverviewPath = path.join(CONTENT_DIR, village.slug, 'overview.json');
+      let pageData = null;
+
+      if (fs.existsSync(villageOverviewPath)) {
+        const content = JSON.parse(fs.readFileSync(villageOverviewPath, 'utf-8'));
+        pageData = {
+          ...content,
+          currentLang: lang,
+          title: content.title?.[lang] || content.title?.en || content.title,
+          seo: {
+            title: content.seo?.title?.[lang] || content.seo?.title?.en,
+            description: content.seo?.description?.[lang] || content.seo?.description?.en,
+          }
+        };
+      } else {
+        // Fall back to village.json template if no village-specific content
+        const templatePath = path.join(CONTENT_DIR, 'village.json');
+        if (fs.existsSync(templatePath)) {
+          const content = JSON.parse(fs.readFileSync(templatePath, 'utf-8'));
+          pageData = {
+            ...content,
+            currentLang: lang,
+          };
+        }
+      }
+
+      // Get village-specific content for SEO fallback
       const villageContent = getVillageContent(village.slug);
 
       paths.push({
@@ -43,7 +63,7 @@ export async function getStaticPaths() {
           village: village.slug,
         },
         props: {
-          templateData,
+          pageData,
           villageData: village,
           villageContent,
           locale: lang,
@@ -56,19 +76,19 @@ export async function getStaticPaths() {
 }
 
 const { lang, village } = Astro.params;
-const { templateData, villageData, villageContent, locale } = Astro.props;
+const { pageData, villageData, villageContent, locale } = Astro.props;
 
-// If no template, redirect to homepage
-if (!templateData) {
+// If no page data, redirect to homepage
+if (!pageData) {
   return Astro.redirect(`/${lang}`);
 }
 
-// Use village-specific SEO content
-const title = villageContent?.seo?.title?.[locale] || `${villageData.name[locale]} | Cinque Terre Dispatch`;
-const description = villageContent?.seo?.description?.[locale] || '';
+// Use page-specific SEO content, or fall back to village content
+const title = pageData.seo?.title || villageContent?.seo?.title?.[locale] || `${villageData.name[locale]} | Cinque Terre Dispatch`;
+const description = pageData.seo?.description || villageContent?.seo?.description?.[locale] || '';
 
-// Use the template body (same blocks for all villages)
-const body = templateData.body || [];
+// Use the page body
+const body = pageData.body || [];
 ---
 
 <Layout title={title} description={description} locale={locale}>
