@@ -56,6 +56,27 @@ export const blockRegistry: Record<BlockType, {
         component: 'SectionHeader',
         isReact: false,
     },
+    // Editorial blocks
+    'editorial-hero': {
+        component: 'EditorialHero',
+        isReact: false,
+    },
+    'editorial-intro': {
+        component: 'EditorialIntroBlock',
+        isReact: false,
+    },
+    'editorial-interlude': {
+        component: 'EditorialInterludeBlock',
+        isReact: false,
+    },
+    'editor-note': {
+        component: 'EditorNote',
+        isReact: false,
+    },
+    'closing-note': {
+        component: 'ClosingNoteBlock',
+        isReact: false,
+    },
 };
 
 /**

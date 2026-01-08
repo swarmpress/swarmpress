@@ -48,7 +48,7 @@ const { googleRating, tripadvisorRating, label = "Traveler Reviews" } = Astro.pr
             <div class="flex items-center gap-2">
                 <div class="flex items-center gap-0.5">
                     {[...Array(5)].map((_, i) => (
-                        <svg className={`w-3 h-3 ${i < Math.floor(tripadvisorRating) ? 'fill-[#34e0a1]' : 'fill-gray-200'}`} viewBox="0 0 24 24">
+                        <svg class={`w-3 h-3 ${i < Math.floor(tripadvisorRating) ? 'fill-[#34e0a1]' : 'fill-gray-200'}`} viewBox="0 0 24 24">
                             <circle cx="12" cy="12" r="10" fill="currentColor"/>
                         </svg>
                     ))}

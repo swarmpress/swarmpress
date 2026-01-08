@@ -89,6 +89,7 @@ export default function Header() {
                                         <ChevronDown className="h-4 w-4" />
                                     </button>
 
+                                    {/* @ts-expect-error el-popover is a custom element from Tailwind Plus */}
                                     <el-popover
                                         id={`menu-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
                                         anchor="bottom"
@@ -116,6 +117,7 @@ export default function Header() {
                                                 ))}
                                             </div>
                                         </div>
+                                    {/* @ts-expect-error el-popover closing tag */}
                                     </el-popover>
                                 </div>
                             ))}

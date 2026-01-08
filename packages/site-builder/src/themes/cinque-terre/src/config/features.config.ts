@@ -17,18 +17,18 @@ import type { FeatureFlags } from '../types/navigation.types';
  */
 export const FEATURES: FeatureFlags = {
   // Toggle between legacy Header and new CoastalSpine navigation
-  // When false: uses the current category-based dropdown navigation
-  // When true: uses the new geographic coastal spine navigation
+  // Default: TRUE (Coastal Spine enabled)
+  // Set PUBLIC_USE_COASTAL_SPINE=false to use legacy navigation
   useCoastalSpineNav:
-    typeof import.meta !== 'undefined' &&
-    import.meta.env?.PUBLIC_USE_COASTAL_SPINE === 'true',
+    typeof import.meta === 'undefined' ||
+    import.meta.env?.PUBLIC_USE_COASTAL_SPINE !== 'false',
 
   // Enable the new /{lang}/{village}/{section} URL structure
-  // When false: only existing routes work
-  // When true: new village-scoped routes are active
+  // Default: TRUE (village-scoped URLs enabled)
+  // Set PUBLIC_USE_VILLAGE_URLS=false to disable
   useVillageScopedUrls:
-    typeof import.meta !== 'undefined' &&
-    import.meta.env?.PUBLIC_USE_VILLAGE_URLS === 'true',
+    typeof import.meta === 'undefined' ||
+    import.meta.env?.PUBLIC_USE_VILLAGE_URLS !== 'false',
 
   // Show the language switcher in the navigation
   // Generally always true, but can be disabled for testing
@@ -60,6 +60,6 @@ export function setFeatureFlag(
   value: boolean
 ): void {
   if (import.meta.env?.DEV) {
-    (FEATURES as Record<string, boolean>)[feature] = value;
+    (FEATURES as unknown as Record<string, boolean>)[feature] = value;
   }
 }

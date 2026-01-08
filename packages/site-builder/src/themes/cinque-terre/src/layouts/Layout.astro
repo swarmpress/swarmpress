@@ -10,6 +10,7 @@ import '@fontsource/playfair-display';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import type { HeaderProps, FooterProps } from '../types';
+import type { SupportedLanguage } from '../types/navigation.types';
 
 interface Props {
     title?: string;
@@ -38,7 +39,7 @@ const headerProps = {
     siteName: 'Cinque Terre Dispatch',
     navigation: header?.navigation || [],
     ctaButton: header?.ctaButton,
-    locale,
+    locale: locale as SupportedLanguage,
     currentPath,  // Pass current path for Coastal Spine navigation
     ...header
 };
