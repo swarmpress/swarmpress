@@ -10,6 +10,7 @@ import {
 } from '@swarm-press/backend'
 import { events } from '@swarm-press/event-bus'
 import type { ContentItem, Task, QuestionTicket, WritingStyle } from '@swarm-press/shared'
+import { safeValidateContentBlocks as zodValidateBlocks } from '@swarm-press/shared'
 
 // ============================================================================
 // Writing Style Utilities
@@ -352,21 +353,40 @@ export function createFAQBlock(items: Array<{ question: string; answer: string }
 // Validation Utilities
 // ============================================================================
 
+/**
+ * Validate content blocks using Zod schemas from shared package.
+ * Supports all standard blocks plus Cinque Terre theme blocks:
+ * - Village blocks: village-selector, village-intro, places-to-stay, etc.
+ * - Editorial blocks: editorial-hero, editorial-intro, editor-note, etc.
+ * - Template blocks: itinerary-hero, blog-article, collection-with-interludes, etc.
+ */
 export function validateContentBlocks(blocks: any[]): { valid: boolean; errors: string[] } {
-  const errors: string[] = []
-
   if (!Array.isArray(blocks)) {
     return { valid: false, errors: ['Content body must be an array'] }
   }
 
-  blocks.forEach((block, index) => {
-    if (!block.type) {
-      errors.push(`Block ${index}: Missing 'type' field`)
-    }
+  // Use Zod schema validation from shared package
+  const result = zodValidateBlocks(blocks)
+
+  if (result.success) {
+    return { valid: true, errors: [] }
+  }
+
+  // Extract readable error messages from Zod errors
+  const errors = result.error.errors.map((err) => {
+    const path = err.path.join('.')
+    return path ? `${path}: ${err.message}` : err.message
   })
 
   return {
-    valid: errors.length === 0,
+    valid: false,
     errors,
   }
+}
+
+/**
+ * Validate a single content block
+ */
+export function validateSingleBlock(block: any): { valid: boolean; errors: string[] } {
+  return validateContentBlocks([block])
 }

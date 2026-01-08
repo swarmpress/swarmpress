@@ -1,9 +1,9 @@
 # swarm.press — Claude Development Guide
 
-> **Last Updated:** 2025-11-25
-> **Status:** MVP Complete - Active Development
+> **Last Updated:** 2026-01-08
+> **Status:** MVP Complete - Cinque Terre Reference Implementation
 > **Spec Version:** 1.0
-> **Schema Version:** 1.0.0
+> **Schema Version:** 1.1.0 (60+ block types)
 
 ---
 
@@ -157,6 +157,107 @@ await eventBus.publish('content.submittedForReview', { id: '123' })
 
 ---
 
+## 📦 Content Architecture Pattern
+
+swarm.press separates **operational metadata** from **content**:
+
+### Storage Separation
+| Type | Location | Purpose |
+|------|----------|---------|
+| **Metadata** | PostgreSQL | Agents, workflows, state, tasks, reviews |
+| **Content** | Git Submodule (JSON) | Pages, collections, configurations |
+| **Media** | S3/Cloudflare R2 | Images, videos, binary assets |
+
+### Why Separate?
+- **Version Control**: Content changes tracked in Git with full history
+- **Agent Collaboration**: Agents write JSON, humans review PRs
+- **Theme Decoupling**: Same content, different presentations
+- **Multi-language**: Localized content in structured JSON format
+
+### Content Repository Structure
+```
+{site}.travel/content/
+├── config/                      # Agent configuration files
+│   ├── agent-schemas.json       # Block type documentation for agents
+│   ├── writer-prompt.json       # WriterAgent editorial voice override
+│   ├── collection-research.json # Research workflow configuration
+│   ├── blog-workflow.json       # Blog publishing workflow
+│   ├── media-guidelines.json    # MediaAgent imagery guidelines
+│   └── villages/                # Village-specific JSON configs
+│       └── {village}.json       # Per-village localized content
+├── pages/                       # Page content (JSON blocks)
+│   ├── index.json               # Homepage
+│   ├── {village}.json           # Village overviews
+│   └── {village}/               # Village-specific sections
+└── collections/                 # Collection data
+    ├── restaurants/             # Per-village restaurants
+    ├── accommodations/          # Per-village hotels
+    └── hikes/                   # Hiking trails
+```
+
+### Agent Workflow with Content
+```
+┌─────────────────────────────────────────────────────────────┐
+│  AGENT WORKFLOW                                             │
+├─────────────────────────────────────────────────────────────┤
+│  1. WriterAgent receives task from Temporal workflow        │
+│  2. Agent generates JSON blocks using block schemas         │
+│  3. JSON committed to content submodule                     │
+│  4. Pull Request created for human review                   │
+│  5. EditorAgent or human reviews and approves               │
+│  6. PR merged → triggers build → site deployed              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🏝️ Cinque Terre Reference Implementation
+
+The Cinque Terre travel website serves as the **reference implementation** for the agentic content system.
+
+### Key Components
+| Component | Location |
+|-----------|----------|
+| **Theme** | `packages/site-builder/src/themes/cinque-terre/` |
+| **Content Submodule** | `cinqueterre.travel/` |
+| **Agent Configs** | `cinqueterre.travel/content/config/` |
+| **Village Data** | `cinqueterre.travel/content/config/villages/` |
+
+### Multi-Language Support (LocalizedString)
+```typescript
+// All user-facing content uses this pattern
+type LocalizedString = {
+  en: string  // English (required)
+  de?: string // German
+  fr?: string // French
+  it?: string // Italian
+}
+
+// Example usage in village JSON
+{
+  "title": {
+    "en": "Riomaggiore",
+    "de": "Riomaggiore",
+    "fr": "Riomaggiore",
+    "it": "Riomaggiore"
+  },
+  "subtitle": {
+    "en": "The easternmost jewel of Cinque Terre...",
+    "de": "Das östlichste Juwel der Cinque Terre...",
+    "fr": "Le joyau le plus oriental des Cinque Terre...",
+    "it": "Il gioiello più orientale delle Cinque Terre..."
+  }
+}
+```
+
+### Theme Features
+- **Coastal Spine Navigation**: Village-centric geographic navigation
+- **5 Villages**: Riomaggiore, Manarola, Corniglia, Vernazza, Monterosso
+- **35+ Astro Components**: Editorial blocks, village content, collections
+- **Dynamic Village Config**: JSON-based village data (weather, character, essentials)
+
+---
+
 ## 📂 Current Implementation Structure
 
 ```
@@ -194,16 +295,18 @@ swarm-press/
 │   ├── shared/               # Shared types, schemas, utilities
 │   │   ├── src/types/        # TypeScript types
 │   │   ├── src/content/      # Block types & collections
-│   │   │   ├── blocks.ts     # 10 block type definitions
+│   │   │   ├── blocks.ts     # 60+ block types with Zod validation
 │   │   │   └── collections/  # Event, POI, FAQ, News schemas
 │   │   ├── src/state-machines/ # State machine definitions
 │   │   ├── src/logging/      # Structured logging, error tracking
 │   │   └── src/config/       # Environment config
 │   ├── site-builder/         # Astro website generation
-│   │   ├── src/components/   # 10 block components (.astro)
+│   │   ├── src/components/   # Core block components (.astro)
 │   │   │   └── blocks/       # Hero, Paragraph, FAQ, etc.
 │   │   ├── src/generator/    # Build & deploy functions
-│   │   └── src/layouts/      # Base layouts
+│   │   ├── src/layouts/      # Base layouts
+│   │   └── src/themes/       # Site-specific themes
+│   │       └── cinque-terre/ # Reference implementation (35+ components)
 │   ├── event-bus/            # NATS/CloudEvents integration
 │   │   ├── src/publisher.ts  # Event publishing
 │   │   ├── src/subscriber.ts # Event subscription
@@ -451,21 +554,120 @@ packages/shared/src/content/collections/
 
 ---
 
+## ⚙️ Agent Configuration Files
+
+Site-specific agent configurations live in the content submodule under `content/config/`:
+
+### Configuration Types
+
+| File | Purpose | Used By |
+|------|---------|---------|
+| `agent-schemas.json` | Block type documentation for LLMs | All agents |
+| `writer-prompt.json` | Editorial voice override | WriterAgent |
+| `collection-research.json` | Research workflow configuration | CollectionResearchWorkflow |
+| `blog-workflow.json` | Blog publishing workflow | WriterAgent, EditorAgent |
+| `media-guidelines.json` | Imagery search queries and guidelines | MediaAgent |
+| `villages/*.json` | Village-specific localized content | All agents |
+
+### Writer Prompt Override Example
+```json
+{
+  "website_prompt_template": {
+    "name": "Cinque Terre Writer Prompt",
+    "capability": "write_draft",
+    "template_additions": "## Editorial Voice\nYou are writing as Giulia Rossi...",
+    "variables_override": {
+      "brand_name": "Cinque Terre Dispatch",
+      "editor_name": "Giulia Rossi",
+      "editorial_tone": "warm, knowledgeable, personal"
+    },
+    "examples_override": [
+      {
+        "type": "editorial-hero",
+        "example": { "title": "...", "subtitle": "...", "badge": "Local Secrets" }
+      }
+    ]
+  }
+}
+```
+
+### Collection Research Config Example
+```json
+{
+  "collections": {
+    "restaurants": {
+      "research_prompt": "Find authentic local restaurants in {village}...",
+      "search_queries": ["best restaurants {village} Cinque Terre", "local trattoria {village}"],
+      "extraction_hints": ["rating", "price_range", "cuisine_type", "local_favorite"],
+      "max_results": 10
+    }
+  },
+  "research_schedule": {
+    "restaurants": "quarterly",
+    "hikes": "weekly",
+    "events": "daily"
+  }
+}
+```
+
+### Village JSON Config Example
+```json
+{
+  "slug": "riomaggiore",
+  "seo": {
+    "title": { "en": "Riomaggiore | Cinque Terre Dispatch", "de": "...", "fr": "...", "it": "..." },
+    "description": { "en": "Discover Riomaggiore, the easternmost village...", ... }
+  },
+  "hero": {
+    "image": "https://images.unsplash.com/...",
+    "title": { "en": "Riomaggiore", ... },
+    "subtitle": { "en": "The easternmost jewel of Cinque Terre...", ... }
+  },
+  "intro": {
+    "essentials": {
+      "today": { "weather": "23°C, sunny", "seaTemp": "21°C", "sunset": "20:47" },
+      "character": { "origins": "Born in 8th Century", "rating": "4.6/5" }
+    }
+  }
+}
+```
+
+---
+
 ## 🎨 Site Builder (Astro)
 
-### 10 Block Components
+### 60+ Block Types (with Zod Validation)
+
+Block types are defined in `packages/shared/src/content/blocks.ts`:
+
+| Category | Count | Examples |
+|----------|-------|----------|
+| **Core** | 10 | paragraph, heading, hero, image, gallery, quote, list, faq, callout, embed |
+| **Marketing** | 20 | hero-section, feature-section, pricing-section, testimonial-section, cta-section |
+| **E-commerce** | 4 | product-list, product-overview, shopping-cart, promo-section |
+| **Application UI** | 5 | card, data-table, form-layout, modal, alert |
+| **Cinque Terre Theme** | 15 | village-selector, places-to-stay, eat-drink, featured-carousel, highlights |
+| **Editorial** | 5 | editorial-hero, editorial-intro, editorial-interlude, editor-note, closing-note |
+| **Template** | 9 | itinerary-hero, itinerary-days, blog-article, weather-live, collection-with-interludes |
+
+### Theme Architecture
 ```
-packages/site-builder/src/components/blocks/
-├── Hero.astro        # Large banner with title, CTA
-├── Paragraph.astro   # Plain text
-├── Heading.astro     # H1-H6
-├── Image.astro       # Single image
-├── Gallery.astro     # Image grid
-├── Quote.astro       # Blockquote
-├── List.astro        # Ordered/unordered
-├── FAQ.astro         # Q&A accordion
-├── Callout.astro     # Info/warning boxes
-└── Embed.astro       # YouTube/Vimeo
+packages/site-builder/src/themes/
+└── cinque-terre/              # Reference implementation
+    ├── src/
+    │   ├── components/        # 35+ Astro components
+    │   │   ├── blocks/        # Block renderers
+    │   │   ├── ui/            # shadcn/ui components
+    │   │   └── ...            # Navigation, Footer, etc.
+    │   ├── config/            # Theme configuration
+    │   │   ├── navigation.config.ts  # Coastal Spine navigation
+    │   │   └── village-content.config.ts  # Loads from JSON
+    │   ├── pages/             # Dynamic routes
+    │   │   └── [lang]/        # Multi-language routing
+    │   │       └── [village]/ # Village-scoped pages
+    │   ├── layouts/           # Layout templates
+    │   └── ContentRenderer.astro  # Block rendering engine
+    └── astro.config.mjs       # Astro configuration
 ```
 
 ### Generator
@@ -636,7 +838,7 @@ tsx scripts/seed.ts
 
 ## 🚀 Implementation Status
 
-### Completed (MVP)
+### Completed (MVP + Cinque Terre Integration)
 - [x] Monorepo setup (Turborepo + pnpm)
 - [x] Database schema with all core entities
 - [x] 4 autonomous agents (Writer, Editor, Engineering, CEO Assistant)
@@ -644,7 +846,6 @@ tsx scripts/seed.ts
 - [x] State machine engine with audit log
 - [x] NATS event bus with CloudEvents
 - [x] tRPC API with 15+ routers
-- [x] 10 Astro block components
 - [x] GitHub integration (PRs, Issues, webhooks, sync)
 - [x] Admin dashboard (sitemap, kanban, blueprints)
 - [x] GitHub OAuth authentication
@@ -654,20 +855,31 @@ tsx scripts/seed.ts
 - [x] Structured logging with correlation IDs
 - [x] Documentation site (Vocs + TypeDoc + markdownlint)
 
+**Cinque Terre Integration (Phases 1-3):**
+- [x] 60+ block types with Zod validation in shared package
+- [x] Cinque Terre theme (35+ Astro components)
+- [x] Multi-language support (LocalizedString pattern: EN/DE/FR/IT)
+- [x] Agent configuration file format (5 config types)
+- [x] Village JSON configuration (dynamic loading)
+- [x] Content submodule architecture
+- [x] Blog publishing workflow documentation
+- [x] Collection research workflow configuration
+- [x] Media guidelines for agents
+
 ### In Progress
+- [ ] Full agent integration with content submodules
+- [ ] Automated collection research workflows
+- [ ] Media generation pipeline (S3/R2)
 - [ ] GitHub Pages deployment integration
-- [ ] Media/binary asset management (S3/R2)
-- [ ] Collection CRUD API
-- [ ] Real SEO optimization agent
-- [ ] Real media generation agent
 
 ### Post-MVP Roadmap
 - [ ] Multi-tenancy
 - [ ] Distribution agent (social media, newsletters)
 - [ ] Advanced analytics dashboard
-- [ ] Multi-language support
 - [ ] Human collaboration features
 - [ ] Visual workflow editor
+- [ ] CEO dashboard for content oversight
+- [ ] Scheduled content updates (weather, events)
 - [ ] Advanced observability (Prometheus, tracing)
 
 ---
@@ -685,8 +897,8 @@ When working on swarm.press:
 
 ---
 
-**Last Updated:** 2025-11-25
-**Implementation Status:** MVP Complete, Active Development
+**Last Updated:** 2026-01-08
+**Implementation Status:** MVP Complete, Cinque Terre Reference Implementation
 
 ---
 

@@ -1,9 +1,11 @@
 # swarm.press Documentation
 
-> **Last Updated:** 2025-11-26
-> **Status:** Current
+> **Last Updated:** 2026-01-08
+> **Status:** Current - Cinque Terre Reference Implementation
 
 Welcome to the swarm.press documentation. swarm.press is a fully autonomous virtual publishing house operated by intelligent agents with human oversight.
+
+**New in 2026:** The Cinque Terre travel website serves as the reference implementation, demonstrating the full content architecture with 60+ block types, multi-language support, and agent configuration files.
 
 ---
 
@@ -29,9 +31,11 @@ Welcome to the swarm.press documentation. swarm.press is a fully autonomous virt
 - [Deployment](./guides/deployment.md) - Production deployment options
 - [GitHub OAuth](./guides/github-oauth.md) - Authentication setup
 - [User Guide](./guides/user-guide.md) - Admin dashboard usage
+- [Theme Development](./guides/theme-development.md) - Creating themes with content submodules
 
 ### Architecture
 - [Overview](./architecture/overview.md) - High-level system architecture
+- [Content Architecture](./architecture/content-architecture.md) - Metadata vs content separation, JSON blocks
 - [Multi-Tenant](./architecture/multi-tenant.md) - Tenant hierarchy and isolation
 - [Editorial Planning](./architecture/editorial-planning.md) - Content workflow system
 - [Sitemap System](./architecture/sitemap-system.md) - Agentic sitemap management
@@ -48,6 +52,8 @@ Welcome to the swarm.press documentation. swarm.press is a fully autonomous virt
 |----------|-------------|
 | [Specifications](/specs/) | Authoritative design documents |
 | [CLAUDE.md](/CLAUDE.md) | Development guidelines and architecture decisions |
+| [Cinque Terre Theme](https://github.com/...) | Reference implementation theme |
+| [Content Submodule](../cinqueterre.travel/) | Example content repository structure |
 | [Archive](./archive/) | Historical documentation |
 
 ---

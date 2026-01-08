@@ -11,9 +11,12 @@ swarm.press is a production-ready publishing platform operated entirely by intel
 - **GitHub Collaboration**: All content review happens through Pull Requests
 - **Event-Driven**: NATS JetStream with CloudEvents v1.0
 - **Type-Safe API**: tRPC endpoints with full type safety
-- **Static Site Generation**: Astro with 10 JSON block component types
+- **Static Site Generation**: Astro with 60+ JSON block types (Zod validated)
 - **State Machine Validation**: All entity transitions validated and audited
 - **Real-Time Updates**: Server-Sent Events for live monitoring
+- **Content Submodule Architecture**: Metadata in DB, content in Git-versioned JSON
+- **Multi-Language Support**: LocalizedString pattern for EN/DE/FR/IT
+- **Reference Implementation**: Cinque Terre travel site with 35+ themed components
 
 ## Architecture
 
@@ -38,11 +41,22 @@ swarmpress/
 │   ├── backend/              # API server, repositories, state machine
 │   ├── workflows/            # Temporal workflows and activities
 │   ├── agents/               # Claude agents (4 agents)
-│   ├── shared/               # Types, schemas, utilities
+│   ├── shared/               # Types, 60+ block Zod schemas, utilities
 │   ├── site-builder/         # Astro site generator
+│   │   └── src/themes/       # Site-specific themes
+│   │       └── cinque-terre/ # Reference implementation (35+ components)
 │   ├── event-bus/            # NATS event publishing
 │   ├── github-integration/   # GitHub collaboration layer
 │   └── cli/                  # Operator CLI (future)
+├── cinqueterre.travel/       # Content submodule (Git)
+│   └── content/
+│       ├── config/           # Agent configuration files
+│       │   ├── agent-schemas.json    # Block documentation for agents
+│       │   ├── writer-prompt.json    # Editorial voice override
+│       │   ├── collection-research.json # Research workflow config
+│       │   └── villages/     # Village-specific JSON configs
+│       ├── pages/            # Page content (JSON blocks)
+│       └── collections/      # Collection data (restaurants, hikes, etc.)
 ├── scripts/
 │   ├── bootstrap.ts          # System initialization
 │   ├── seed.ts               # Sample data
@@ -57,6 +71,18 @@ swarmpress/
 ├── docker-compose.yml        # PostgreSQL, NATS, Temporal
 └── turbo.json                # Monorepo build config
 ```
+
+### Content Architecture
+
+swarm.press separates **operational metadata** from **content**:
+
+| Storage | Purpose | Examples |
+|---------|---------|----------|
+| **PostgreSQL** | Metadata, workflows, state | Agents, tasks, reviews, audit log |
+| **Git Submodule** | Content (JSON) | Pages, collections, agent configs |
+| **S3/R2** | Media | Images, videos, binaries |
+
+This enables Git-based version control, PR-based review, and theme decoupling.
 
 ## Quick Start
 
