@@ -2,15 +2,54 @@
 /**
  * Editorial Intro Block - JSON-compatible wrapper
  * Renders EditorialIntro with content from props instead of slots
+ * Supports both string and multi-language object formats
  */
+import { marked } from 'marked';
+
+type LocalizedText = string | { en?: string; de?: string; fr?: string; it?: string };
+type LocalizedArray = string[] | { en?: string[]; de?: string[]; fr?: string[]; it?: string[] };
+
 interface Props {
-  badge: string;
-  quote: string;
-  leftContent: string;
-  rightContent: string;
+  badge: LocalizedText;
+  quote: LocalizedText;
+  content?: LocalizedArray;
+  leftContent?: LocalizedText;
+  rightContent?: LocalizedText;
+  locale?: string;
 }
 
-const { badge, quote, leftContent, rightContent } = Astro.props;
+const { badge: badgeProp, quote: quoteProp, content: contentProp, leftContent: leftProp, rightContent: rightProp, locale = 'en' } = Astro.props;
+
+// Helper to get localized text
+function getText(value: LocalizedText | undefined, lang: string): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return value[lang as keyof typeof value] || value.en || Object.values(value)[0] || '';
+}
+
+// Helper to get localized array
+function getArray(value: LocalizedArray | undefined, lang: string): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  return value[lang as keyof typeof value] || value.en || Object.values(value)[0] || [];
+}
+
+const badge = getText(badgeProp, locale);
+const quote = getText(quoteProp, locale);
+
+// Handle content array format (splits into left/right columns)
+const contentArray = getArray(contentProp, locale);
+let leftContent = getText(leftProp, locale);
+let rightContent = getText(rightProp, locale);
+
+// If content array provided, split into two columns
+if (contentArray.length > 0 && !leftContent && !rightContent) {
+  const mid = Math.ceil(contentArray.length / 2);
+  const leftItems = contentArray.slice(0, mid);
+  const rightItems = contentArray.slice(mid);
+  leftContent = leftItems.map(item => marked.parse(item)).join('');
+  rightContent = rightItems.map(item => marked.parse(item)).join('');
+}
 ---
 
 <section class="py-24 bg-white overflow-hidden relative border-y border-border/40">

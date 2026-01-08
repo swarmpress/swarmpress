@@ -4,21 +4,24 @@
  *
  * Collection of items (accommodations, restaurants, etc.) with
  * editorial interludes inserted at specific positions
+ * Supports multi-language content
  */
 import { MapPin, Heart, Star, Home, Info } from 'lucide-react';
 
+type LocalizedText = string | { en?: string; de?: string; fr?: string; it?: string };
+
 interface CollectionItem {
   id: number | string;
-  name: string;
-  category?: string;
-  village?: string;
+  name: LocalizedText;
+  category?: LocalizedText;
+  village?: LocalizedText;
   image: string;
-  intro?: string;
-  description?: string;
-  giuliaComment?: string;
-  signature?: string;
+  intro?: LocalizedText;
+  description?: LocalizedText;
+  giuliaComment?: LocalizedText;
+  signature?: LocalizedText;
   priceRange?: string;
-  practicalInfo?: string;
+  practicalInfo?: LocalizedText;
   googleRating?: number;
   tripadvisorRating?: number;
 }
@@ -26,9 +29,9 @@ interface CollectionItem {
 interface Interlude {
   afterIndex: number;
   type?: 'primary' | 'secondary';
-  badge?: string;
-  title: string;
-  quote: string;
+  badge?: LocalizedText;
+  title: LocalizedText;
+  quote: LocalizedText;
   icon?: string;
   align?: 'left' | 'right';
 }
@@ -37,12 +40,41 @@ interface Props {
   items: CollectionItem[];
   interludes?: Interlude[];
   itemType?: 'accommodation' | 'restaurant' | 'attraction' | 'generic';
+  locale?: string;
 }
 
-const { items, interludes = [], itemType = 'generic' } = Astro.props;
+const { items: rawItems, interludes: rawInterludes = [], itemType = 'generic', locale = 'en' } = Astro.props;
+
+// Helper to get localized text
+function getText(value: LocalizedText | undefined, lang: string): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return value[lang as keyof typeof value] || value.en || Object.values(value)[0] || '';
+}
+
+// Localize items
+const items = rawItems.map(item => ({
+  ...item,
+  name: getText(item.name, locale),
+  category: getText(item.category, locale),
+  village: getText(item.village, locale),
+  intro: getText(item.intro, locale),
+  description: getText(item.description, locale),
+  giuliaComment: getText(item.giuliaComment, locale),
+  signature: getText(item.signature, locale),
+  practicalInfo: getText(item.practicalInfo, locale),
+}));
+
+// Localize interludes
+const interludes = rawInterludes.map(interlude => ({
+  ...interlude,
+  badge: getText(interlude.badge, locale),
+  title: getText(interlude.title, locale),
+  quote: getText(interlude.quote, locale),
+}));
 
 // Create a map of interlude positions
-const interludeMap = new Map<number, Interlude>();
+const interludeMap = new Map<number, typeof interludes[0]>();
 interludes.forEach(interlude => {
   interludeMap.set(interlude.afterIndex, interlude);
 });

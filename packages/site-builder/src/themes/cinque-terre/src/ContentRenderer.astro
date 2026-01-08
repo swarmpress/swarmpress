@@ -129,19 +129,19 @@ const { blocks = [], locale = 'en', village } = Astro.props;
 
         // Editorial blocks (Cinque Terre Theme)
         case 'editorial-hero':
-            return <EditorialHero {...componentProps} />;
+            return <EditorialHero {...componentProps} locale={locale} />;
 
         case 'editorial-intro':
-            return <EditorialIntroBlock {...componentProps} />;
+            return <EditorialIntroBlock {...componentProps} locale={locale} />;
 
         case 'editorial-interlude':
-            return <EditorialInterludeBlock {...componentProps} />;
+            return <EditorialInterludeBlock {...componentProps} locale={locale} />;
 
         case 'editor-note':
-            return <EditorNote {...componentProps} />;
+            return <EditorNote {...componentProps} locale={locale} />;
 
         case 'closing-note':
-            return <ClosingNoteBlock {...componentProps} />;
+            return <ClosingNoteBlock {...componentProps} locale={locale} />;
 
         // Template page blocks (Cinque Terre Theme)
         case 'itinerary-hero':
@@ -169,7 +169,7 @@ const { blocks = [], locale = 'en', village } = Astro.props;
             return <BlogIndex {...componentProps} locale={locale} />;
 
         case 'collection-with-interludes':
-            return <CollectionWithInterludes {...componentProps} />;
+            return <CollectionWithInterludes {...componentProps} locale={locale} />;
 
         default:
             // Log unknown block type for debugging

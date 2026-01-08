@@ -2,28 +2,84 @@
 /**
  * Closing Note Block - JSON-compatible wrapper
  * Renders ClosingNote with content and actions from props instead of slots
+ * Supports both string and multi-language object formats
  */
+import { marked } from 'marked';
+
+type LocalizedText = string | { en?: string; de?: string; fr?: string; it?: string };
+type LocalizedArray = string[] | { en?: string[]; de?: string[]; fr?: string[]; it?: string[] };
+
 interface Action {
-  label: string;
-  href: string;
+  label?: LocalizedText;
+  text?: LocalizedText;
+  href?: string;
+  url?: string;
   variant?: 'primary' | 'secondary';
 }
 
 interface Props {
-  badge?: string;
-  title: string;
-  content: string;
+  badge?: LocalizedText;
+  title: LocalizedText;
+  content: LocalizedText | LocalizedArray;
   actions?: Action[];
+  buttons?: Action[];
   backgroundIcon?: string;
+  locale?: string;
 }
 
 const {
-  badge = "A Final Reflection",
-  title,
-  content,
-  actions = [],
-  backgroundIcon
+  badge: badgeProp = "A Final Reflection",
+  title: titleProp,
+  content: contentProp,
+  actions: actionsProp = [],
+  buttons: buttonsProp = [],
+  backgroundIcon,
+  locale = 'en'
 } = Astro.props;
+
+// Helper to get localized text
+function getText(value: LocalizedText | undefined, lang: string): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return value[lang as keyof typeof value] || value.en || Object.values(value)[0] || '';
+}
+
+// Helper to get localized array
+function getArray(value: LocalizedArray | undefined, lang: string): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  return value[lang as keyof typeof value] || value.en || Object.values(value)[0] || [];
+}
+
+const badge = getText(badgeProp, locale);
+const title = getText(titleProp, locale);
+
+// Handle content - can be string, array, or localized versions
+let content: string;
+if (typeof contentProp === 'string') {
+  content = contentProp;
+} else if (Array.isArray(contentProp)) {
+  content = contentProp.map(p => `<p>${marked.parseInline(p)}</p>`).join('');
+} else if (contentProp && typeof contentProp === 'object') {
+  const localized = contentProp[locale as keyof typeof contentProp] || contentProp.en;
+  if (Array.isArray(localized)) {
+    content = localized.map(p => `<p>${marked.parseInline(p)}</p>`).join('');
+  } else if (typeof localized === 'string') {
+    content = localized;
+  } else {
+    content = '';
+  }
+} else {
+  content = '';
+}
+
+// Handle actions/buttons - support both naming conventions
+const rawActions = actionsProp.length > 0 ? actionsProp : buttonsProp;
+const actions = rawActions.map(action => ({
+  label: getText(action.label || action.text, locale),
+  href: action.href || action.url || '#',
+  variant: action.variant
+}));
 ---
 
 <section class="py-32 bg-foreground text-background overflow-hidden relative">

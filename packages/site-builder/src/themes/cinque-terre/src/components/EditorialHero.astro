@@ -1,13 +1,27 @@
 ---
+type LocalizedText = string | { en?: string; de?: string; fr?: string; it?: string };
+
 interface Props {
-  title: string;
-  subtitle?: string;
-  badge?: string;
+  title: LocalizedText;
+  subtitle?: LocalizedText;
+  badge?: LocalizedText;
   image: string;
   height?: string;
+  locale?: string;
 }
 
-const { title, subtitle, badge, image, height = "80vh" } = Astro.props;
+const { title: titleProp, subtitle: subtitleProp, badge: badgeProp, image, height = "80vh", locale = 'en' } = Astro.props;
+
+// Helper to get localized text - handles both string and object formats
+function getText(value: LocalizedText | undefined, lang: string): string | undefined {
+  if (!value) return undefined;
+  if (typeof value === 'string') return value;
+  return value[lang as keyof typeof value] || value.en || Object.values(value)[0];
+}
+
+const title = getText(titleProp, locale) || '';
+const subtitle = getText(subtitleProp, locale);
+const badge = getText(badgeProp, locale);
 ---
 
 <section class={`relative overflow-hidden bg-black`} style={`height: ${height}; min-height: 600px;`}>
