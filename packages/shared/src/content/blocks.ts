@@ -1443,11 +1443,20 @@ const CollectionInterludeSchema = z.object({
 })
 
 // Collection With Interludes - Items + editorial interludes at specific positions
+// Supports two formats:
+// 1. NEW: { collectionType, slugs } - references items by slug from collection files
+// 2. LEGACY: { items, itemType } - inline item data (backward compatibility)
 export const CollectionWithInterludesBlockSchema = z.object({
   type: z.literal('collection-with-interludes'),
-  items: z.array(CollectionItemSchema),
+  // NEW format (slug-based references)
+  collectionType: z.string().optional(),
+  village: z.string().optional(),
+  slugs: z.array(z.string()).optional(),
+  // LEGACY format (inline data) - kept for backward compatibility
+  items: z.array(CollectionItemSchema).optional(),
+  itemType: z.enum(['accommodation', 'restaurant', 'attraction', 'generic', 'sight', 'experience']).optional(),
+  // Common
   interludes: z.array(CollectionInterludeSchema).optional(),
-  itemType: z.enum(['accommodation', 'restaurant', 'attraction', 'generic', 'sight', 'experience']).default('generic'),
 })
 
 // Blog Index Block (Cinque Terre Theme)

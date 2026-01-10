@@ -21,38 +21,7 @@ import {
 // import '@xyflow/react/dist/style.css'
 
 import type { SiteDefinition, SitemapNode as SitemapNodeType, ContentType } from '@swarm-press/shared'
-
-// Helper functions inlined to avoid pulling in server-side code from @swarm-press/shared
-function getAllTypes(siteDefinition: SiteDefinition): Record<string, ContentType> {
-  const result: Record<string, ContentType> = {}
-  if (siteDefinition.types.pages) {
-    Object.entries(siteDefinition.types.pages).forEach(([id, type]) => {
-      result[id] = type
-    })
-  }
-  if (siteDefinition.types.collections) {
-    Object.entries(siteDefinition.types.collections).forEach(([id, type]) => {
-      result[`collection:${id}`] = type
-    })
-  }
-  return result
-}
-
-function isCollectionNode(nodeType: string): boolean {
-  return nodeType.startsWith('collection:')
-}
-
-type LocalizedString = string | Record<string, string>
-
-function getLocalizedValue(value: LocalizedString | undefined, locale: string = 'en'): string {
-  if (!value) return ''
-  if (typeof value === 'string') return value
-  return value[locale] || value['en'] || Object.values(value)[0] || ''
-}
-
-function hasPageStructure(contentType: ContentType | undefined): boolean {
-  return !!(contentType?.pageStructure?.pages && contentType.pageStructure.pages.length > 0)
-}
+import { getLocalizedValue, getAllTypes, isCollectionNode, hasPageStructure } from '@swarm-press/shared'
 import { PageNode } from './nodes/PageNode'
 import { CollectionNode } from './nodes/CollectionNode'
 import { TemplateCollectionNode } from './nodes/TemplateCollectionNode'
@@ -70,6 +39,83 @@ const nodeTypes = {
   page: PageNode,
   collection: CollectionNode,
   templateCollection: TemplateCollectionNode,
+}
+
+// Tree layout configuration
+const TREE_LAYOUT = {
+  nodeWidth: 280,
+  nodeHeight: 120,
+  horizontalSpacing: 60,
+  verticalSpacing: 100,
+  rootX: 100,
+  rootY: 50,
+}
+
+/**
+ * Calculate tree layout positions for sitemap nodes
+ * Uses parentId from node data to build hierarchy
+ */
+function calculateTreeLayout(nodes: SitemapNodeType[]): Map<string, { x: number; y: number }> {
+  const positions = new Map<string, { x: number; y: number }>()
+
+  // Build parent-child map
+  const childrenMap = new Map<string | null, SitemapNodeType[]>()
+  nodes.forEach(node => {
+    const parentId = (node.data as any)?.parentId ?? null
+    if (!childrenMap.has(parentId)) {
+      childrenMap.set(parentId, [])
+    }
+    childrenMap.get(parentId)!.push(node)
+  })
+
+  // Find root nodes (no parent)
+  const roots = childrenMap.get(null) || []
+
+  // Calculate subtree width for a node
+  function getSubtreeWidth(nodeId: string): number {
+    const children = childrenMap.get(nodeId) || []
+    if (children.length === 0) {
+      return TREE_LAYOUT.nodeWidth
+    }
+    const childrenWidth = children.reduce((sum, child) => sum + getSubtreeWidth(child.id), 0)
+    const gaps = (children.length - 1) * TREE_LAYOUT.horizontalSpacing
+    return Math.max(TREE_LAYOUT.nodeWidth, childrenWidth + gaps)
+  }
+
+  // Position nodes recursively
+  function positionNode(node: SitemapNodeType, x: number, y: number) {
+    positions.set(node.id, { x, y })
+
+    const children = childrenMap.get(node.id) || []
+    if (children.length === 0) return
+
+    const childY = y + TREE_LAYOUT.nodeHeight + TREE_LAYOUT.verticalSpacing
+    let currentX = x
+
+    // Calculate total width of all children
+    const totalWidth = children.reduce((sum, child) => sum + getSubtreeWidth(child.id), 0)
+      + (children.length - 1) * TREE_LAYOUT.horizontalSpacing
+
+    // Center children under parent
+    currentX = x + (TREE_LAYOUT.nodeWidth - totalWidth) / 2
+
+    children.forEach(child => {
+      const childWidth = getSubtreeWidth(child.id)
+      const childX = currentX + (childWidth - TREE_LAYOUT.nodeWidth) / 2
+      positionNode(child, childX, childY)
+      currentX += childWidth + TREE_LAYOUT.horizontalSpacing
+    })
+  }
+
+  // Position root nodes horizontally
+  let rootX = TREE_LAYOUT.rootX
+  roots.forEach(root => {
+    const width = getSubtreeWidth(root.id)
+    positionNode(root, rootX + (width - TREE_LAYOUT.nodeWidth) / 2, TREE_LAYOUT.rootY)
+    rootX += width + TREE_LAYOUT.horizontalSpacing * 2
+  })
+
+  return positions
 }
 
 interface SiteEditorProps {
@@ -174,11 +220,13 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
     const newEdges: Edge[] = []
     const types = getAllTypes(siteDefinition)
 
+    // Calculate tree layout positions based on parentId relationships
+    const treePositions = calculateTreeLayout(siteDefinition.sitemap.nodes)
+
     // Add sitemap nodes
-    siteDefinition.sitemap.nodes.forEach((node, index) => {
+    siteDefinition.sitemap.nodes.forEach((node) => {
       const isCollection = isCollectionNode(node.type)
       const contentType = types[node.type]
-      const title = getLocalizedValue(node.data?.title, siteDefinition.defaultLocale)
 
       // Determine the node component type:
       // - Collections with pageStructure use templateCollection
@@ -188,18 +236,25 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
         ? (hasPageStructure(contentType) ? 'templateCollection' : 'collection')
         : 'page'
 
+      const slug = getLocalizedValue(node.data?.slug, siteDefinition.defaultLocale)
+
+      // Use tree layout position, or fallback to saved position
+      const treePos = treePositions.get(node.id)
+      const position = treePos ?? node.position ?? { x: 100, y: 100 }
+
       newNodes.push({
         id: node.id,
         type: nodeComponentType,
-        position: node.position ?? { x: 200 + (index % 5) * 250, y: 100 + Math.floor(index / 5) * 200 },
+        position,
         data: {
           id: node.id,
           nodeType: node.type,
-          slug: node.data?.slug || '',
-          title: title || node.id,
+          slug: slug || '',
+          title: node.data?.title, // Pass raw LocalizedString for translation status
           status: node.data?.status || 'draft',
           contentType,
           locale: siteDefinition.defaultLocale,
+          locales: siteDefinition.locales, // Pass all locales for translation indicators
           prompts: node.data?.prompts,
           filter: node.data?.filter,
           // Template collection specific data
@@ -207,10 +262,25 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
           instanceOverrides: node.data?.instanceOverrides,
         },
       })
+
+      // Generate edge from parentId if present
+      const parentId = (node.data as any)?.parentId
+      if (parentId) {
+        newEdges.push({
+          id: `${parentId}-${node.id}`,
+          source: parentId,
+          target: node.id,
+          type: 'smoothstep',
+          style: { stroke: '#94a3b8', strokeWidth: 2 },
+        })
+      }
     })
 
-    // Add edges
+    // Add explicit edges from sitemap (collection links, etc.)
     siteDefinition.sitemap.edges?.forEach((edge) => {
+      // Skip if we already added this edge from parentId
+      if (newEdges.some(e => e.source === edge.source && e.target === edge.target)) return
+
       const isCollectionLink = edge.type === 'collection-link'
       newEdges.push({
         id: edge.id,

@@ -3,6 +3,11 @@
  * Executes workflows and activities
  */
 
+// Load environment variables FIRST
+import dotenv from 'dotenv'
+import { resolve } from 'path'
+dotenv.config({ path: resolve(__dirname, '../../../../.env') })
+
 import { Worker, NativeConnection } from '@temporalio/worker'
 import { getEnv } from '@swarm-press/shared'
 import path from 'path'

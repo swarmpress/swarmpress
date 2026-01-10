@@ -1,29 +1,19 @@
 'use client'
 
 import { useState } from 'react'
-import type { SiteDefinition, SitemapNode, ContentType, PromptTemplate, InlinePrompt, AgentAssignment } from '@swarm-press/shared'
+import type { SiteDefinition, SitemapNode, ContentType, PromptTemplate, InlinePrompt, AgentAssignment, LocalizedString } from '@swarm-press/shared'
+import { getLocalizedValue, hasPageStructure } from '@swarm-press/shared'
 import { TemplateCollectionPanel } from './panels/TemplateCollectionPanel'
 import { AgentAssignmentsPanel } from './panels/AgentAssignmentsPanel'
+import { LocalizedStringEditor } from './LocalizedStringEditor'
 
-// Helper to check if collection has pageStructure
-function hasPageStructure(contentType: ContentType | undefined): boolean {
-  return !!(contentType?.pageStructure?.pages && contentType.pageStructure.pages.length > 0)
-}
-
-// Helper to get localized string value
-function getLocalizedValue(value: string | Record<string, string> | undefined, locale = 'en'): string {
-  if (!value) return ''
-  if (typeof value === 'string') return value
-  return value[locale] || ''
-}
-
-// Helper to set localized string value
+// Helper to set localized string value (preserves other locales)
 function setLocalizedValue(
-  current: string | Record<string, string> | undefined,
+  current: LocalizedString | undefined,
   newValue: string,
   locale = 'en'
 ): Record<string, string> {
-  if (typeof current === 'string') {
+  if (!current || typeof current === 'string') {
     return { [locale]: newValue }
   }
   return { ...current, [locale]: newValue }
@@ -79,6 +69,22 @@ interface ContextPanelProps {
   onUpdateSite: (updates: Partial<SiteDefinition>) => void
 }
 
+// Language display names
+const LOCALE_NAMES: Record<string, string> = {
+  en: 'English',
+  de: 'Deutsch',
+  fr: 'Français',
+  it: 'Italiano',
+  es: 'Español',
+  pt: 'Português',
+  nl: 'Nederlands',
+  pl: 'Polski',
+  ru: 'Русский',
+  zh: '中文',
+  ja: '日本語',
+  ko: '한국어',
+}
+
 export function ContextPanel({
   selection,
   siteDefinition,
@@ -86,6 +92,9 @@ export function ContextPanel({
   onUpdateType,
   onUpdateSite,
 }: ContextPanelProps) {
+  // Track current editing locale
+  const [editingLocale, setEditingLocale] = useState(siteDefinition.defaultLocale)
+
   if (!selection || selection.type === 'none') {
     return (
       <div className="w-80 border-l bg-background p-4">
@@ -100,6 +109,25 @@ export function ContextPanel({
 
   return (
     <div className="w-80 border-l bg-background flex flex-col h-full">
+      {/* Locale Selector Header */}
+      {selection.type !== 'site' && siteDefinition.locales.length > 1 && (
+        <div className="px-4 py-2 border-b bg-muted/30 flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground">Editing Locale</span>
+          <Select value={editingLocale} onValueChange={setEditingLocale}>
+            <SelectTrigger className="w-24 h-7 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {siteDefinition.locales.map((locale) => (
+                <SelectItem key={locale} value={locale}>
+                  {locale.toUpperCase()} {locale === siteDefinition.defaultLocale && '(default)'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       <ScrollArea className="flex-1">
         {selection.type === 'site' && (
           <SiteSettingsPanel
@@ -112,6 +140,7 @@ export function ContextPanel({
             node={selection.data}
             contentType={selection.contentType}
             siteDefinition={siteDefinition}
+            editingLocale={editingLocale}
             onUpdate={(updates) => onUpdatePage(selection.data.id, updates)}
           />
         )}
@@ -206,13 +235,55 @@ function SiteSettingsPanel({
 
           <div>
             <Label>Locales</Label>
-            <div className="flex flex-wrap gap-1 mt-1">
+            <div className="flex flex-wrap gap-1 mt-2">
               {site.locales.map((locale) => (
-                <Badge key={locale} variant="secondary">
-                  {locale}
+                <Badge
+                  key={locale}
+                  variant={locale === site.defaultLocale ? 'default' : 'secondary'}
+                  className="gap-1 pr-1"
+                >
+                  {locale.toUpperCase()}
+                  {locale === site.defaultLocale && <span className="text-[9px] opacity-70">*</span>}
+                  {locale !== site.defaultLocale && site.locales.length > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-4 w-4 ml-1 hover:bg-destructive/20"
+                      onClick={() => {
+                        const newLocales = site.locales.filter((l) => l !== locale)
+                        onUpdate({ locales: newLocales })
+                      }}
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </Button>
+                  )}
                 </Badge>
               ))}
             </div>
+            {/* Add locale */}
+            <Select
+              onValueChange={(value) => {
+                if (!site.locales.includes(value)) {
+                  onUpdate({ locales: [...site.locales, value] })
+                }
+              }}
+            >
+              <SelectTrigger className="h-7 text-xs mt-2">
+                <span className="text-muted-foreground">+ Add locale...</span>
+              </SelectTrigger>
+              <SelectContent>
+                {['en', 'de', 'fr', 'it', 'es', 'pt', 'nl', 'pl', 'ru', 'zh', 'ja', 'ko']
+                  .filter((l) => !site.locales.includes(l))
+                  .map((locale) => (
+                    <SelectItem key={locale} value={locale}>
+                      {locale.toUpperCase()} - {LOCALE_NAMES[locale] || locale}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              * Default locale (required)
+            </p>
           </div>
         </div>
       </div>
@@ -312,11 +383,13 @@ function PageNodePanel({
   node,
   contentType,
   siteDefinition,
+  editingLocale,
   onUpdate,
 }: {
   node: SitemapNode
   contentType?: ContentType
   siteDefinition: SiteDefinition
+  editingLocale: string
   onUpdate: (updates: Partial<SitemapNode>) => void
 }) {
   const [activeTab, setActiveTab] = useState('general')
@@ -374,16 +447,16 @@ function PageNodePanel({
             />
           </div>
 
-          <div>
-            <Label htmlFor="page-title">Title (EN)</Label>
-            <Input
-              id="page-title"
-              value={getLocalizedValue(node.data?.title)}
-              onChange={(e) =>
-                updateData({ title: setLocalizedValue(node.data?.title, e.target.value) })
-              }
-            />
-          </div>
+          <LocalizedStringEditor
+            value={node.data?.title}
+            onChange={(newValue) => updateData({ title: newValue })}
+            locales={siteDefinition.locales}
+            defaultLocale={siteDefinition.defaultLocale}
+            label="Title"
+            compact
+            currentLocale={editingLocale}
+            placeholder="Page title..."
+          />
 
           <div>
             <Label>Status</Label>

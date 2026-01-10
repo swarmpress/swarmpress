@@ -5,17 +5,24 @@
  * Collection of items (accommodations, restaurants, etc.) with
  * editorial interludes inserted at specific positions
  * Supports multi-language content
+ *
+ * Supports two formats:
+ * 1. NEW: { collectionType, slugs, interludes } - fetches from collection files
+ * 2. LEGACY: { items, interludes } - uses inline item data
  */
 import { MapPin, Heart, Star, Home, Info } from 'lucide-react';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 type LocalizedText = string | { en?: string; de?: string; fr?: string; it?: string };
 
 interface CollectionItem {
-  id: number | string;
+  id?: number | string;
+  slug?: string;
   name: LocalizedText;
   category?: LocalizedText;
   village?: LocalizedText;
-  image: string;
+  image?: string;
   intro?: LocalizedText;
   description?: LocalizedText;
   giuliaComment?: LocalizedText;
@@ -24,6 +31,24 @@ interface CollectionItem {
   practicalInfo?: LocalizedText;
   googleRating?: number;
   tripadvisorRating?: number;
+  // Collection schema fields
+  details?: {
+    teaser?: LocalizedText;
+    atmosphere?: LocalizedText;
+    description?: LocalizedText;
+    price_range?: { level?: string };
+  };
+  ratings?: {
+    average?: number;
+    count?: number;
+  };
+  editorial?: {
+    giuliaComment?: LocalizedText;
+    signature?: LocalizedText;
+    intro?: LocalizedText;
+    practicalInfo?: LocalizedText;
+  };
+  images?: Array<{ url: string; alt_text?: string }>;
 }
 
 interface Interlude {
@@ -37,13 +62,104 @@ interface Interlude {
 }
 
 interface Props {
-  items: CollectionItem[];
-  interludes?: Interlude[];
+  // Legacy format
+  items?: CollectionItem[];
   itemType?: 'accommodation' | 'restaurant' | 'attraction' | 'generic';
+  // New format
+  collectionType?: string;
+  slugs?: string[];
+  village?: string;
+  // Common
+  interludes?: Interlude[];
   locale?: string;
 }
 
-const { items: rawItems, interludes: rawInterludes = [], itemType = 'generic', locale = 'en' } = Astro.props;
+const {
+  items: rawItems,
+  interludes: rawInterludes = [],
+  itemType = 'generic',
+  collectionType,
+  slugs,
+  village,
+  locale = 'en'
+} = Astro.props;
+
+// Load collection items by slugs if new format is used
+async function loadCollectionItems(type: string, slugList: string[], villageFilter?: string): Promise<CollectionItem[]> {
+  const items: CollectionItem[] = [];
+
+  // Try to find the content directory - it should be in the submodule
+  // When running from cinque-terre theme: /Users/drietsch/agentpress/packages/site-builder/src/themes/cinque-terre/
+  // Collections are at: /Users/drietsch/agentpress/cinqueterre.travel/content/collections/
+  const cwd = process.cwd();
+  const possiblePaths = [
+    // From theme directory (5 levels up to agentpress root)
+    path.join(cwd, '..', '..', '..', '..', '..', 'cinqueterre.travel', 'content', 'collections', type),
+    // From site-builder directory
+    path.join(cwd, '..', '..', '..', 'cinqueterre.travel', 'content', 'collections', type),
+    // From agentpress root
+    path.join(cwd, 'cinqueterre.travel', 'content', 'collections', type),
+    // Legacy paths
+    path.join(cwd, '..', '..', 'cinqueterre.travel', 'content', 'collections', type),
+    path.join(cwd, 'content', 'collections', type),
+  ];
+
+  let collectionDir = '';
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      collectionDir = p;
+      break;
+    }
+  }
+
+  if (!collectionDir) {
+    console.error(`Collection directory not found for type: ${type}. Tried paths:`, possiblePaths.map(p => p.replace(cwd, '.')));
+    return items;
+  }
+
+  // Create a map of slug -> item
+  const slugToItem = new Map<string, CollectionItem>();
+
+  // Read collection files (village JSON files)
+  const files = fs.readdirSync(collectionDir).filter(f => f.endsWith('.json') && !f.startsWith('_'));
+
+  for (const file of files) {
+    const filePath = path.join(collectionDir, file);
+    try {
+      const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      const itemsArray = Array.isArray(content) ? content : (content.items || [content]);
+
+      for (const item of itemsArray) {
+        if (item.slug && slugList.includes(item.slug)) {
+          slugToItem.set(item.slug, item);
+        }
+      }
+    } catch (e) {
+      console.error(`Error loading ${filePath}:`, e);
+    }
+  }
+
+  // Return items in the order of slugList
+  for (const slug of slugList) {
+    const item = slugToItem.get(slug);
+    if (item) {
+      items.push(item);
+    }
+  }
+
+  return items;
+}
+
+// Determine which items to use
+let resolvedItems: CollectionItem[] = [];
+
+if (collectionType && slugs && slugs.length > 0) {
+  // New format: fetch from collections
+  resolvedItems = await loadCollectionItems(collectionType, slugs, village);
+} else if (rawItems) {
+  // Legacy format: use inline items
+  resolvedItems = rawItems;
+}
 
 // Helper to get localized text
 function getText(value: LocalizedText | undefined, lang: string): string {
@@ -52,18 +168,43 @@ function getText(value: LocalizedText | undefined, lang: string): string {
   return value[lang as keyof typeof value] || value.en || Object.values(value)[0] || '';
 }
 
-// Localize items
-const items = rawItems.map(item => ({
-  ...item,
-  name: getText(item.name, locale),
-  category: getText(item.category, locale),
-  village: getText(item.village, locale),
-  intro: getText(item.intro, locale),
-  description: getText(item.description, locale),
-  giuliaComment: getText(item.giuliaComment, locale),
-  signature: getText(item.signature, locale),
-  practicalInfo: getText(item.practicalInfo, locale),
-}));
+// Normalize and localize items (handles both legacy and collection schema formats)
+const items = resolvedItems.map(item => {
+  // Extract editorial fields (from editorial object or top-level for legacy)
+  const editorial = item.editorial || {};
+  const giuliaComment = editorial.giuliaComment || item.giuliaComment;
+  const signature = editorial.signature || item.signature;
+  const editorialIntro = editorial.intro || item.intro;
+  const practicalInfo = editorial.practicalInfo || item.practicalInfo;
+
+  // Extract description and intro from details or top-level
+  const description = item.details?.description || item.description;
+  const intro = editorialIntro || item.details?.teaser;
+
+  // Get image from images array or direct image field
+  const image = item.image || (item.images?.[0]?.url) || '';
+
+  // Get price range from details or direct field
+  const priceRange = item.priceRange || item.details?.price_range?.level || '';
+
+  // Get rating (use average from ratings object or direct fields)
+  const googleRating = item.googleRating || item.ratings?.average;
+
+  return {
+    ...item,
+    name: getText(item.name, locale),
+    category: getText(item.category, locale),
+    village: getText(item.village, locale),
+    intro: getText(intro, locale),
+    description: getText(description, locale),
+    giuliaComment: getText(giuliaComment, locale),
+    signature: getText(signature, locale),
+    practicalInfo: getText(practicalInfo, locale),
+    image,
+    priceRange,
+    googleRating,
+  };
+});
 
 // Localize interludes
 const interludes = rawInterludes.map(interlude => ({

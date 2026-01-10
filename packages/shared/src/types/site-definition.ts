@@ -432,6 +432,7 @@ export function getCollectionId(nodeType: string): string | null {
 
 /**
  * Get localized value from a LocalizedString
+ * Handles both normal {en: "string"} and nested {en: {en: "string"}} structures
  */
 export function getLocalizedValue(
   value: LocalizedString | undefined,
@@ -439,7 +440,29 @@ export function getLocalizedValue(
 ): string {
   if (!value) return ''
   if (typeof value === 'string') return value
-  return value[locale] || value['en'] || Object.values(value)[0] || ''
+
+  // Try to get value for requested locale
+  let result: unknown = value[locale] || value['en']
+
+  // Handle nested structures like {en: {en: "..."}}
+  while (result && typeof result === 'object') {
+    const record = result as Record<string, unknown>
+    result = record[locale] || record['en'] || Object.values(record)[0]
+  }
+
+  // If we got a string, return it
+  if (typeof result === 'string') return result
+
+  // Otherwise try first string value recursively
+  for (const v of Object.values(value)) {
+    if (typeof v === 'string') return v
+    if (typeof v === 'object' && v !== null) {
+      const nested = getLocalizedValue(v as LocalizedString, locale)
+      if (nested) return nested
+    }
+  }
+
+  return ''
 }
 
 // ============================================================================

@@ -856,6 +856,7 @@ export function PageEditor({
               }}
               assignedAgents={assignedAgents}
               inheritedPerspective="third_person"
+              websiteId={websiteId}
             />
             </div>
           </div>

@@ -105,6 +105,11 @@ export function AppSidebar({ tenantId, productId, user, ...props }: AppSidebarPr
       icon: PenTool,
     },
     {
+      title: 'Collections',
+      url: '/collections',
+      icon: Database,
+    },
+    {
       title: 'Kanban',
       url: '/editorial/kanban',
       icon: Kanban,
@@ -139,11 +144,6 @@ export function AppSidebar({ tenantId, productId, user, ...props }: AppSidebarPr
       title: 'Pages (Legacy)',
       url: '/pages',
       icon: File,
-    },
-    {
-      title: 'Collections (Legacy)',
-      url: '/collections',
-      icon: Database,
     },
     {
       title: 'Blueprints (Legacy)',

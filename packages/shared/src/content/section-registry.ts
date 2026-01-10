@@ -450,6 +450,32 @@ export const SECTION_REGISTRY: SectionTypeDefinition[] = [
       { id: 'two-row-three-column-second-row', label: 'Two Row Three Column Second Row' },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // EDITORIAL SECTIONS (Cinque Terre Theme)
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    type: 'collection-with-interludes',
+    label: 'Collection with Interludes',
+    description: 'Display collection items with editorial interludes between them',
+    icon: 'layout-list',
+    category: 'content',
+    supportsCollections: true,
+    collectionTypes: ['restaurants', 'accommodations', 'hikes', 'events', 'pois'],
+    defaultVariant: 'restaurants',
+    variants: [
+      { id: 'restaurants', label: 'Restaurants' },
+      { id: 'accommodations', label: 'Accommodations' },
+      { id: 'hikes', label: 'Hikes' },
+      { id: 'events', label: 'Events' },
+      { id: 'pois', label: 'Points of Interest' },
+    ],
+    contentFields: [
+      { name: 'collectionType', label: 'Collection Type', type: 'text', required: true, description: 'Type of collection (restaurants, accommodations, etc.)' },
+      { name: 'slugs', label: 'Item Slugs', type: 'array-text', required: true, description: 'Ordered list of item slugs to display' },
+      { name: 'village', label: 'Village Filter', type: 'text', description: 'Optional village to filter items' },
+    ],
+  },
 ]
 
 // ============================================================================

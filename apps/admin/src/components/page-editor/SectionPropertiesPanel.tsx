@@ -17,6 +17,7 @@ import {
 import { PromptsEditor } from './PromptsEditor'
 import type { AssignedAgentInfo } from './PromptsEditor'
 import { CollectionEditor } from './CollectionEditor'
+import { SlugPicker } from './SlugPicker'
 import {
   Settings,
   Sparkles,
@@ -34,6 +35,8 @@ interface SectionPropertiesPanelProps {
   assignedAgents?: AssignedAgentInfo[]
   /** Inherited perspective from page/parent */
   inheritedPerspective?: 'first_person' | 'second_person' | 'third_person'
+  /** Website ID for API calls */
+  websiteId?: string
 }
 
 export function SectionPropertiesPanel({
@@ -43,6 +46,7 @@ export function SectionPropertiesPanel({
   onUpdateCollectionSource,
   assignedAgents,
   inheritedPerspective = 'third_person',
+  websiteId,
 }: SectionPropertiesPanelProps) {
   const [activeTab, setActiveTab] = useState('general')
 
@@ -205,11 +209,41 @@ export function SectionPropertiesPanel({
           {/* Collection Tab */}
           {supportsCollections && (
             <TabsContent value="collection" className="p-4 m-0">
-              <CollectionEditor
-                collectionSource={section.collectionSource}
-                availableCollections={definition?.collectionTypes || []}
-                onChange={onUpdateCollectionSource}
-              />
+              {section.type === 'collection-with-interludes' ? (
+                /* Special editor for collection-with-interludes */
+                <SlugPicker
+                  collectionType={(section.content as Record<string, unknown>)?.collectionType as string || ''}
+                  selectedSlugs={(section.content as Record<string, unknown>)?.slugs as string[] || []}
+                  village={(section.content as Record<string, unknown>)?.village as string | undefined}
+                  availableCollectionTypes={definition?.collectionTypes || []}
+                  websiteId={websiteId || ''}
+                  onCollectionTypeChange={(type) => {
+                    const content = section.content as Record<string, unknown> || {}
+                    onUpdateSection({
+                      content: { ...content, collectionType: type, type: 'collection-with-interludes' }
+                    })
+                  }}
+                  onVillageChange={(village) => {
+                    const content = section.content as Record<string, unknown> || {}
+                    onUpdateSection({
+                      content: { ...content, village, type: 'collection-with-interludes' }
+                    })
+                  }}
+                  onSlugsChange={(slugs) => {
+                    const content = section.content as Record<string, unknown> || {}
+                    onUpdateSection({
+                      content: { ...content, slugs, type: 'collection-with-interludes' }
+                    })
+                  }}
+                />
+              ) : (
+                /* Standard collection editor for other section types */
+                <CollectionEditor
+                  collectionSource={section.collectionSource}
+                  availableCollections={definition?.collectionTypes || []}
+                  onChange={onUpdateCollectionSource}
+                />
+              )}
             </TabsContent>
           )}
 
