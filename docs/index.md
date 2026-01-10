@@ -1,11 +1,16 @@
 # swarm.press Documentation
 
-> **Last Updated:** 2026-01-08
+> **Last Updated:** 2026-01-10
 > **Status:** Current - Cinque Terre Reference Implementation
 
 Welcome to the swarm.press documentation. swarm.press is a fully autonomous virtual publishing house operated by intelligent agents with human oversight.
 
 **New in 2026:** The Cinque Terre travel website serves as the reference implementation, demonstrating the full content architecture with 60+ block types, multi-language support, and agent configuration files.
+
+**Latest Updates (January 2026):**
+- **Collections Browser** - Browse and manage collection items from the admin dashboard
+- **Page Editor Enhancements** - SlugPicker for curating collection items with reordering
+- **Site Editor Enhancements** - LocalizedStringEditor with translation status indicators
 
 ---
 

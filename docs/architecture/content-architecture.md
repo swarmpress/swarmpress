@@ -1,6 +1,6 @@
 # Content Architecture
 
-> **Last Updated:** 2026-01-08
+> **Last Updated:** 2026-01-10
 > **Status:** Current
 
 This document explains the swarm.press content architecture pattern, which separates operational metadata from content storage.

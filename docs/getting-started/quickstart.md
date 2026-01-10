@@ -1,6 +1,6 @@
 # Quickstart
 
-> **Last Updated:** 2025-11-26
+> **Last Updated:** 2026-01-10
 > **Status:** Current
 
 Get swarm.press running locally in 5 minutes.

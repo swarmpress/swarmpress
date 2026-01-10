@@ -1,6 +1,6 @@
 # swarm.press — Claude Development Guide
 
-> **Last Updated:** 2026-01-08
+> **Last Updated:** 2026-01-10
 > **Status:** MVP Complete - Cinque Terre Reference Implementation
 > **Spec Version:** 1.0
 > **Schema Version:** 1.1.0 (60+ block types)
@@ -687,6 +687,9 @@ packages/site-builder/src/generator/
 - **Editorial Kanban** - Task management with columns
 - **Gantt View** - Timeline visualization
 - **Blueprint Editor** - Page template designer
+- **Page Editor** - Visual page content editing with SlugPicker for collections
+- **Site Editor** - Site-wide configuration with LocalizedStringEditor
+- **Collections Browser** - Browse and manage collection items
 - **GitHub Integration** - Repo connection, sync panel
 - **Analytics Overlays** - SEO metrics, suggestions
 - **User Management** - GitHub OAuth, team switching
@@ -701,6 +704,21 @@ apps/admin/src/components/
 │   ├── GitHubSyncPanel.tsx    # Sync status
 │   ├── AnalyticsOverlay.tsx   # Metrics
 │   └── SuggestionsOverlay.tsx # AI suggestions
+├── page-editor/
+│   ├── PageEditor.tsx         # Main page editor
+│   ├── SectionPropertiesPanel.tsx # Section editing
+│   └── SlugPicker.tsx         # Collection item picker with search/reorder
+├── site-editor/
+│   ├── SiteEditor.tsx         # Site configuration editor
+│   ├── ContextPanel.tsx       # Context-aware settings
+│   ├── LocalizedStringEditor.tsx # Multi-language string editor
+│   └── nodes/PageNode.tsx     # Page tree nodes
+├── collections/
+│   ├── CollectionBrowser.tsx  # Main collection browser
+│   ├── CollectionTypeList.tsx # Collection type navigation
+│   ├── CollectionItemsGrid.tsx # Grid display of items
+│   ├── CollectionItemCard.tsx # Item card component
+│   └── CollectionItemDetail.tsx # Item detail view
 ├── editorial/
 │   ├── KanbanBoard.tsx        # Main kanban
 │   ├── KanbanView.tsx         # View wrapper
@@ -866,6 +884,12 @@ tsx scripts/seed.ts
 - [x] Collection research workflow configuration
 - [x] Media guidelines for agents
 
+**Admin Dashboard Enhancements:**
+- [x] Collections browser UI (browse, search, view collection items)
+- [x] Page editor with SlugPicker (select/reorder collection items)
+- [x] Site editor with LocalizedStringEditor (multi-language content editing)
+- [x] Translation status indicators and copy-from-default feature
+
 ### In Progress
 - [ ] Full agent integration with content submodules
 - [ ] Automated collection research workflows
@@ -897,7 +921,7 @@ When working on swarm.press:
 
 ---
 
-**Last Updated:** 2026-01-08
+**Last Updated:** 2026-01-10
 **Implementation Status:** MVP Complete, Cinque Terre Reference Implementation
 
 ---

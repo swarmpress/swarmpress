@@ -1,18 +1,21 @@
 # Swarm.press User Guide
 
-> **Version:** 1.0
-> **Last Updated:** 2025-11-23
+> **Version:** 1.1
+> **Last Updated:** 2026-01-10
 
 ## Table of Contents
 
 1. [Introduction](#introduction)
 2. [Getting Started](#getting-started)
 3. [Sitemap Editor](#sitemap-editor)
-4. [Blueprint Editor](#blueprint-editor)
-5. [Agent Collaboration](#agent-collaboration)
-6. [Analytics Dashboard](#analytics-dashboard)
-7. [GitHub Integration](#github-integration)
-8. [Tips & Best Practices](#tips--best-practices)
+4. [Page Editor](#page-editor)
+5. [Site Editor](#site-editor)
+6. [Collections Browser](#collections-browser)
+7. [Blueprint Editor](#blueprint-editor)
+8. [Agent Collaboration](#agent-collaboration)
+9. [Analytics Dashboard](#analytics-dashboard)
+10. [GitHub Integration](#github-integration)
+11. [Tips & Best Practices](#tips--best-practices)
 
 ---
 
@@ -107,6 +110,115 @@ Each node displays:
 
 ---
 
+## Page Editor
+
+The page editor allows you to visually edit page content using JSON blocks.
+
+### Sections and Blocks
+
+Pages are composed of **sections**, each containing **blocks**:
+- **Sections**: Logical groupings of content (header, body, footer, etc.)
+- **Blocks**: Individual content units (hero, paragraph, image, etc.)
+
+### Section Properties Panel
+
+When you select a section, the properties panel shows:
+- **Section Settings**: Name, ID, visibility
+- **Block Properties**: Type-specific settings
+- **Collection Binding**: For collection-based sections
+
+### SlugPicker
+
+For sections that display collection items (restaurants, hotels, hikes), use the **SlugPicker**:
+
+1. **Select Collection Type**: Choose from available collections (restaurants, accommodations, hikes, etc.)
+2. **Filter by Village**: Optionally narrow results to a specific village
+3. **Search**: Find items by name or slug
+4. **Select Items**: Check boxes to include items
+5. **Reorder**: Use up/down arrows to set display order
+6. **Remove**: Click X to remove an item
+
+The SlugPicker automatically loads items from the content submodule and allows you to curate which items appear and in what order.
+
+---
+
+## Site Editor
+
+The site editor manages site-wide configuration and settings.
+
+### LocalizedStringEditor
+
+For multi-language content, use the **LocalizedStringEditor**:
+
+**Full Mode (Tabs)**:
+- Tabbed interface for each language (EN, DE, FR, IT)
+- Translation status badge shows missing translations
+- Red indicators highlight incomplete translations
+- "Copy from EN" button for quick translation starts
+
+**Compact Mode (Collapsible)**:
+- Single language input with current locale
+- Expandable section for all translations
+- Ideal for space-constrained panels
+
+**Features**:
+- **Status Indicators**: Shows filled/total translations
+- **Missing Alerts**: Amber badges for incomplete translations
+- **Copy Feature**: One-click copy from default locale
+- **Multiline Support**: Textarea for longer content
+
+### Context Panel
+
+The context panel shows page-specific settings:
+- **SEO Configuration**: Title, description templates
+- **Navigation Settings**: Menu visibility, order
+- **Village Context**: For village-scoped pages
+
+---
+
+## Collections Browser
+
+Browse and manage collection items from the content submodule.
+
+### Accessing Collections
+
+Navigate to **Collections** in the sidebar to open the browser.
+
+### Collection Types
+
+View available collection types:
+- **restaurants**: Dining venues by village
+- **accommodations**: Hotels and lodging
+- **hikes**: Hiking trails and routes
+- **events**: Local events and festivals
+- **faqs**: Frequently asked questions
+
+### Collection Items Grid
+
+For each collection type:
+- **Grid View**: Card-based display of items
+- **Search**: Filter by name or slug
+- **Village Filter**: Show items from specific villages
+- **Sort Options**: Alphabetical, by village, by date
+
+### Collection Item Cards
+
+Each card displays:
+- **Name/Title**: Primary identifier
+- **Village Badge**: Location context
+- **Preview Image**: If available
+- **Key Attributes**: Rating, price range, etc.
+
+### Collection Item Detail
+
+Click an item to see:
+- **All Localized Content**: EN, DE, FR, IT versions
+- **Metadata**: Slug, village, dates
+- **Media References**: Associated images
+- **Edit Actions**: Open in page editor (if applicable)
+
+---
+
 ## Blueprint Editor
 
 Blueprints define the structure and components of your pages.
@@ -120,13 +232,19 @@ Blueprints define the structure and components of your pages.
 
 ### Component Library
 
-**5 Categories**:
+**60+ Block Types in 7 Categories**:
 
-1. **Content Blocks**: Hero, Paragraph, Heading, CTA, Quote
-2. **Media**: Image, Video, Gallery
-3. **Interactive**: Accordion, Tabs, Form, Modal
-4. **Structured Data**: FAQ, How-To, Table, Timeline
-5. **SEO & Meta**: Breadcrumbs, Schema, Social Share
+| Category | Count | Examples |
+|----------|-------|----------|
+| **Core** | 10 | paragraph, heading, hero, image, gallery, quote, list, faq, callout, embed |
+| **Marketing** | 20 | hero-section, feature-section, pricing-section, testimonial-section, cta-section |
+| **E-commerce** | 4 | product-list, product-overview, shopping-cart, promo-section |
+| **Application UI** | 5 | card, data-table, form-layout, modal, alert |
+| **Cinque Terre Theme** | 15 | village-selector, places-to-stay, eat-drink, featured-carousel, highlights |
+| **Editorial** | 5 | editorial-hero, editorial-intro, editorial-interlude, editor-note, closing-note |
+| **Template** | 9 | itinerary-hero, itinerary-days, blog-article, weather-live, collection-with-interludes |
+
+All blocks are validated with Zod schemas in `packages/shared/src/content/blocks.ts`.
 
 ### Component Configuration
 

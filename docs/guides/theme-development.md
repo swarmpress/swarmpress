@@ -1,6 +1,6 @@
 # Theme Development Guide
 
-> **Last Updated:** 2026-01-08
+> **Last Updated:** 2026-01-10
 > **Status:** Current
 
 This guide explains how to create themes for swarm.press sites, using the Cinque Terre theme as a reference implementation.

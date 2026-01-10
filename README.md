@@ -17,6 +17,7 @@ swarm.press is a production-ready publishing platform operated entirely by intel
 - **Content Submodule Architecture**: Metadata in DB, content in Git-versioned JSON
 - **Multi-Language Support**: LocalizedString pattern for EN/DE/FR/IT
 - **Reference Implementation**: Cinque Terre travel site with 35+ themed components
+- **Admin Dashboard**: Collections browser, page editor, site editor with i18n support
 
 ## Architecture
 
@@ -417,18 +418,21 @@ Example event:
 
 Content is structured as JSON blocks for LLM-friendliness and flexibility.
 
-### 10 Block Types
+### 60+ Block Types
 
-1. **Paragraph** - Plain text with optional formatting
-2. **Heading** - H1-H6 with optional anchor ID
-3. **Hero** - Large banner with title, subtitle, CTA, background
-4. **Image** - Single image with alt text, caption
-5. **Gallery** - Multiple images in grid layout
-6. **Quote** - Blockquote with author attribution
-7. **List** - Ordered or unordered lists
-8. **FAQ** - Question/answer pairs with accordion UI
-9. **Callout** - Info/warning/success highlighted boxes
-10. **Embed** - YouTube/Vimeo/CodePen embeds
+Blocks are organized into categories:
+
+| Category | Count | Examples |
+|----------|-------|----------|
+| **Core** | 10 | paragraph, heading, hero, image, gallery, quote, list, faq, callout, embed |
+| **Marketing** | 20 | hero-section, feature-section, pricing-section, testimonial-section, cta-section |
+| **E-commerce** | 4 | product-list, product-overview, shopping-cart, promo-section |
+| **Application UI** | 5 | card, data-table, form-layout, modal, alert |
+| **Cinque Terre Theme** | 15 | village-selector, places-to-stay, eat-drink, featured-carousel, highlights |
+| **Editorial** | 5 | editorial-hero, editorial-intro, editorial-interlude, editor-note, closing-note |
+| **Template** | 9 | itinerary-hero, itinerary-days, blog-article, weather-live, collection-with-interludes |
+
+All block types include Zod validation schemas in `packages/shared/src/content/blocks.ts`.
 
 ### Example Content
 
@@ -484,7 +488,7 @@ Content is structured as JSON blocks for LLM-friendliness and flexibility.
 }
 ```
 
-See `packages/shared/src/types/content.ts` for complete schema definitions.
+See `packages/shared/src/content/blocks.ts` for complete schema definitions.
 
 ## State Machines
 

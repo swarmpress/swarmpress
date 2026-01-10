@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last Updated:** 2026-01-08
+> **Last Updated:** 2026-01-10
 > **Status:** Current - Cinque Terre Reference Implementation
 
 swarm.press is a fully autonomous virtual publishing house operated by intelligent agents with human oversight.
