@@ -1,122 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import {
-  ReactFlow,
-  Controls,
-  Background,
-  BackgroundVariant,
-  MiniMap,
-  useNodesState,
-  useEdgesState,
-  addEdge,
-  type Connection,
-  type Node,
-  type Edge,
-  Panel,
-  useReactFlow,
-  ReactFlowProvider,
-} from '@xyflow/react'
-// CSS is imported in the Astro page to avoid dynamic import issues
-// import '@xyflow/react/dist/style.css'
-
+import { useCallback, useEffect, useState, useMemo } from 'react'
 import type { SiteDefinition, SitemapNode as SitemapNodeType, ContentType } from '@swarm-press/shared'
-import { getLocalizedValue, getAllTypes, isCollectionNode, hasPageStructure } from '@swarm-press/shared'
-import { PageNode } from './nodes/PageNode'
-import { CollectionNode } from './nodes/CollectionNode'
-import { TemplateCollectionNode } from './nodes/TemplateCollectionNode'
-import { NodePalette } from './NodePalette'
+import { getLocalizedValue, getAllTypes, isCollectionNode } from '@swarm-press/shared'
+import { PageTreePanel } from './PageTreePanel'
+import { CollectionsPanel } from './CollectionsPanel'
 import { ContextPanel } from './ContextPanel'
 import { PageEditor } from '../page-editor'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
-import { Loader2, Save, Check, AlertCircle, Plus } from 'lucide-react'
+import { Loader2, Save, Check, AlertCircle, Plus, Map } from 'lucide-react'
 import type { PageSection } from '@swarm-press/shared'
 import { usePageSections } from '../../hooks/usePageSections'
-
-// Node types for ReactFlow
-const nodeTypes = {
-  page: PageNode,
-  collection: CollectionNode,
-  templateCollection: TemplateCollectionNode,
-}
-
-// Tree layout configuration
-const TREE_LAYOUT = {
-  nodeWidth: 280,
-  nodeHeight: 120,
-  horizontalSpacing: 60,
-  verticalSpacing: 100,
-  rootX: 100,
-  rootY: 50,
-}
-
-/**
- * Calculate tree layout positions for sitemap nodes
- * Uses parentId from node data to build hierarchy
- */
-function calculateTreeLayout(nodes: SitemapNodeType[]): Map<string, { x: number; y: number }> {
-  const positions = new Map<string, { x: number; y: number }>()
-
-  // Build parent-child map
-  const childrenMap = new Map<string | null, SitemapNodeType[]>()
-  nodes.forEach(node => {
-    const parentId = (node.data as any)?.parentId ?? null
-    if (!childrenMap.has(parentId)) {
-      childrenMap.set(parentId, [])
-    }
-    childrenMap.get(parentId)!.push(node)
-  })
-
-  // Find root nodes (no parent)
-  const roots = childrenMap.get(null) || []
-
-  // Calculate subtree width for a node
-  function getSubtreeWidth(nodeId: string): number {
-    const children = childrenMap.get(nodeId) || []
-    if (children.length === 0) {
-      return TREE_LAYOUT.nodeWidth
-    }
-    const childrenWidth = children.reduce((sum, child) => sum + getSubtreeWidth(child.id), 0)
-    const gaps = (children.length - 1) * TREE_LAYOUT.horizontalSpacing
-    return Math.max(TREE_LAYOUT.nodeWidth, childrenWidth + gaps)
-  }
-
-  // Position nodes recursively
-  function positionNode(node: SitemapNodeType, x: number, y: number) {
-    positions.set(node.id, { x, y })
-
-    const children = childrenMap.get(node.id) || []
-    if (children.length === 0) return
-
-    const childY = y + TREE_LAYOUT.nodeHeight + TREE_LAYOUT.verticalSpacing
-    let currentX = x
-
-    // Calculate total width of all children
-    const totalWidth = children.reduce((sum, child) => sum + getSubtreeWidth(child.id), 0)
-      + (children.length - 1) * TREE_LAYOUT.horizontalSpacing
-
-    // Center children under parent
-    currentX = x + (TREE_LAYOUT.nodeWidth - totalWidth) / 2
-
-    children.forEach(child => {
-      const childWidth = getSubtreeWidth(child.id)
-      const childX = currentX + (childWidth - TREE_LAYOUT.nodeWidth) / 2
-      positionNode(child, childX, childY)
-      currentX += childWidth + TREE_LAYOUT.horizontalSpacing
-    })
-  }
-
-  // Position root nodes horizontally
-  let rootX = TREE_LAYOUT.rootX
-  roots.forEach(root => {
-    const width = getSubtreeWidth(root.id)
-    positionNode(root, rootX + (width - TREE_LAYOUT.nodeWidth) / 2, TREE_LAYOUT.rootY)
-    rootX += width + TREE_LAYOUT.horizontalSpacing * 2
-  })
-
-  return positions
-}
 
 interface SiteEditorProps {
   websiteId: string
@@ -142,16 +37,12 @@ interface EditingPageState {
   sections: PageSection[]
 }
 
-function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEditorProps) {
-  const { fitView, getNodes, getEdges } = useReactFlow()
-
+export function SiteEditor({ websiteId, initialSiteDefinition, onSave }: SiteEditorProps) {
   const [siteDefinition, setSiteDefinition] = useState<SiteDefinition | null>(
     initialSiteDefinition ?? null
   )
   const [sha, setSha] = useState<string | undefined>(initialSiteDefinition?.sha)
-  const [nodes, setNodesState, onNodesChange] = useNodesState<Node>([])
-  const [edges, setEdgesState, onEdgesChange] = useEdgesState<Edge>([])
-  const [selection, setSelection] = useState<SelectionType>({ type: 'none' })
+  const [selection, setSelection] = useState<SelectionType>({ type: 'site' })
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
@@ -210,132 +101,36 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
   }, [])
 
   // Get flattened types map
-  const typesMap = siteDefinition ? getAllTypes(siteDefinition) : {}
+  const typesMap = useMemo(() => siteDefinition ? getAllTypes(siteDefinition) : {}, [siteDefinition])
 
-  // Convert site definition to ReactFlow nodes/edges
-  useEffect(() => {
+  // Handle node selection
+  const handleSelectNode = useCallback((nodeId: string) => {
     if (!siteDefinition) return
 
-    const newNodes: Node[] = []
-    const newEdges: Edge[] = []
-    const types = getAllTypes(siteDefinition)
+    const node = siteDefinition.sitemap.nodes.find(n => n.id === nodeId)
+    if (!node) return
 
-    // Calculate tree layout positions based on parentId relationships
-    const treePositions = calculateTreeLayout(siteDefinition.sitemap.nodes)
-
-    // Add sitemap nodes
-    siteDefinition.sitemap.nodes.forEach((node) => {
-      const isCollection = isCollectionNode(node.type)
-      const contentType = types[node.type]
-
-      // Determine the node component type:
-      // - Collections with pageStructure use templateCollection
-      // - Regular collections use collection
-      // - Pages use page
-      const nodeComponentType = isCollection
-        ? (hasPageStructure(contentType) ? 'templateCollection' : 'collection')
-        : 'page'
-
-      const slug = getLocalizedValue(node.data?.slug, siteDefinition.defaultLocale)
-
-      // Use tree layout position, or fallback to saved position
-      const treePos = treePositions.get(node.id)
-      const position = treePos ?? node.position ?? { x: 100, y: 100 }
-
-      newNodes.push({
-        id: node.id,
-        type: nodeComponentType,
-        position,
-        data: {
-          id: node.id,
-          nodeType: node.type,
-          slug: slug || '',
-          title: node.data?.title, // Pass raw LocalizedString for translation status
-          status: node.data?.status || 'draft',
-          contentType,
-          locale: siteDefinition.defaultLocale,
-          locales: siteDefinition.locales, // Pass all locales for translation indicators
-          prompts: node.data?.prompts,
-          filter: node.data?.filter,
-          // Template collection specific data
-          isTemplate: node.data?.isTemplate,
-          instanceOverrides: node.data?.instanceOverrides,
-        },
-      })
-
-      // Generate edge from parentId if present
-      const parentId = (node.data as any)?.parentId
-      if (parentId) {
-        newEdges.push({
-          id: `${parentId}-${node.id}`,
-          source: parentId,
-          target: node.id,
-          type: 'smoothstep',
-          style: { stroke: '#94a3b8', strokeWidth: 2 },
-        })
-      }
-    })
-
-    // Add explicit edges from sitemap (collection links, etc.)
-    siteDefinition.sitemap.edges?.forEach((edge) => {
-      // Skip if we already added this edge from parentId
-      if (newEdges.some(e => e.source === edge.source && e.target === edge.target)) return
-
-      const isCollectionLink = edge.type === 'collection-link'
-      newEdges.push({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        type: 'smoothstep',
-        animated: isCollectionLink,
-        style: isCollectionLink
-          ? { stroke: '#f97316', strokeWidth: 1, strokeDasharray: '5 5' }
-          : { stroke: '#94a3b8', strokeWidth: 2 },
-      })
-    })
-
-    setNodesState(newNodes)
-    setEdgesState(newEdges)
-  }, [siteDefinition, setNodesState, setEdgesState])
-
-  // Handle connection between nodes
-  const onConnect = useCallback(
-    (params: Connection) => {
-      const newEdge: Edge = {
-        id: `${params.source}-${params.target}`,
-        source: params.source!,
-        target: params.target!,
-        type: 'smoothstep',
-        style: { stroke: '#94a3b8', strokeWidth: 2 },
-      }
-      setEdgesState((eds) => addEdge(newEdge, eds))
-      setHasUnsavedChanges(true)
-    },
-    [setEdgesState]
-  )
-
-  // Handle node click for selection
-  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    const nodeData = node.data as { nodeType?: string }
-    if (nodeData.nodeType && isCollectionNode(nodeData.nodeType)) {
-      setSelection({ type: 'collection', nodeId: node.id })
+    if (isCollectionNode(node.type)) {
+      setSelection({ type: 'collection', nodeId })
     } else {
-      setSelection({ type: 'page', nodeId: node.id })
+      setSelection({ type: 'page', nodeId })
     }
-  }, [])
+  }, [siteDefinition])
 
-  // Handle node double-click to enter page editor
-  const onNodeDoubleClick = useCallback(async (_: React.MouseEvent, node: Node) => {
-    const nodeData = node.data as { nodeType?: string; title?: string; slug?: string }
+  // Handle double-click to enter page editor
+  const handleDoubleClickNode = useCallback(async (nodeId: string) => {
+    if (!siteDefinition) return
+
+    const node = siteDefinition.sitemap.nodes.find(n => n.id === nodeId)
+    if (!node) return
 
     // Only enter page editor for page nodes, not collections
-    if (nodeData.nodeType && !isCollectionNode(nodeData.nodeType)) {
-      const sitemapNode = siteDefinition?.sitemap.nodes.find((n) => n.id === node.id)
-      const title = getLocalizedValue(sitemapNode?.data?.title, siteDefinition?.defaultLocale) || node.id
-      const slug = sitemapNode?.data?.slug || node.id
+    if (!isCollectionNode(node.type)) {
+      const title = getLocalizedValue(node.data?.title, siteDefinition.defaultLocale) || nodeId
+      const slug = node.data?.slug || nodeId
 
       // Build page path from slug
-      const pagePath = slug === '/' ? 'index' : slug.replace(/^\//, '')
+      const pagePath = slug === '/' ? 'index' : String(slug).replace(/^\//, '')
 
       setIsLoadingSections(true)
       try {
@@ -343,7 +138,7 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
         const sections = await loadSections(pagePath)
 
         setEditingPage({
-          nodeId: node.id,
+          nodeId,
           pageTitle: title,
           pagePath,
           sections,
@@ -353,7 +148,7 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
         console.error('Failed to load page sections:', err)
         // Still enter editor with empty sections on error
         setEditingPage({
-          nodeId: node.id,
+          nodeId,
           pageTitle: title,
           pagePath,
           sections: [],
@@ -386,67 +181,15 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
     setEditingPage((prev) => prev ? { ...prev, sections } : null)
   }, [editingPage, saveSections])
 
-  // Handle pane click to deselect or show site settings
-  const onPaneClick = useCallback(() => {
-    setSelection({ type: 'site' })
-  }, [])
-
-  // Handle node position change
-  const onNodeDragStop = useCallback((_: React.MouseEvent, node: Node) => {
-    if (!siteDefinition) return
-
-    setHasUnsavedChanges(true)
-    setSiteDefinition((prev) => {
-      if (!prev) return prev
-
-      // Update position in sitemap nodes
-      const updatedNodes = prev.sitemap.nodes.map((n) =>
-        n.id === node.id ? { ...n, position: node.position } : n
-      )
-
-      return {
-        ...prev,
-        sitemap: {
-          ...prev.sitemap,
-          nodes: updatedNodes,
-        },
-      }
-    })
-  }, [siteDefinition])
-
   // Build site definition from current state
   const buildSiteDefinitionFromState = useCallback((): SiteDefinition | null => {
     if (!siteDefinition) return null
 
-    const currentNodes = getNodes()
-    const currentEdges = getEdges()
-
-    // Update node positions from ReactFlow state
-    const updatedSitemapNodes = siteDefinition.sitemap.nodes.map((node) => {
-      const reactFlowNode = currentNodes.find((n) => n.id === node.id)
-      return reactFlowNode
-        ? { ...node, position: reactFlowNode.position }
-        : node
-    })
-
-    // Convert edges back to sitemap format
-    const updatedEdges = currentEdges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      type: (edge.animated ? 'collection-link' : 'parent-child') as 'parent-child' | 'collection-link',
-    }))
-
     return {
       ...siteDefinition,
-      sitemap: {
-        ...siteDefinition.sitemap,
-        nodes: updatedSitemapNodes,
-        edges: updatedEdges,
-      },
       updatedAt: new Date().toISOString(),
     }
-  }, [siteDefinition, getNodes, getEdges])
+  }, [siteDefinition])
 
   // Save handler
   const handleSave = useCallback(async () => {
@@ -528,7 +271,7 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
     setHasUnsavedChanges(true)
   }, [])
 
-  // Get selected item data
+  // Get selected item data for ContextPanel
   const getSelectedItem = useCallback(() => {
     if (!siteDefinition) return null
 
@@ -557,19 +300,32 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
   }, [siteDefinition, selection, typesMap])
 
   // Add a new page node
-  const addPageNode = useCallback((typeId: string, position?: { x: number; y: number }) => {
+  const addPageNode = useCallback((parentId: string | null) => {
     if (!siteDefinition) return
 
     const newId = `page-${Date.now()}`
+
+    // Get first available page type
+    const pageTypes = Object.keys(siteDefinition.types.pages || {})
+    const typeId = pageTypes[0] || 'page'
+
     const newNode: SitemapNodeType = {
       id: newId,
       type: typeId,
-      position: position ?? { x: 400, y: 300 },
       data: {
         slug: `new-page-${Date.now()}`,
+        title: { en: 'New Page' },
         status: 'draft',
       },
     }
+
+    // Create edge if parent specified
+    const newEdge = parentId ? {
+      id: `${parentId}-${newId}`,
+      source: parentId,
+      target: newId,
+      type: 'parent-child' as const,
+    } : null
 
     setSiteDefinition((prev) => {
       if (!prev) return prev
@@ -578,6 +334,9 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
         sitemap: {
           ...prev.sitemap,
           nodes: [...prev.sitemap.nodes, newNode],
+          edges: newEdge
+            ? [...(prev.sitemap.edges || []), newEdge]
+            : prev.sitemap.edges,
         },
       }
     })
@@ -633,10 +392,9 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
           {
             id: 'home',
             type: 'landing-page',
-            position: { x: 400, y: 100 },
             data: {
               slug: '/',
-              title: 'Home',
+              title: { en: 'Home' },
               status: 'draft',
             },
           },
@@ -661,6 +419,7 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
     setSelection({ type: 'site' })
   }, [websiteId])
 
+  // No site definition state
   if (!siteDefinition) {
     return (
       <div className="flex items-center justify-center h-full bg-slate-50">
@@ -684,8 +443,7 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
 
   // Render Page Editor when in page-editor mode
   if (editorMode === 'page-editor' && editingPage) {
-    // Find the page node in siteDefinition for agent assignment resolution
-    const pageNode = siteDefinition?.sitemap.nodes.find((n) => n.id === editingPage.nodeId)
+    const pageNode = siteDefinition.sitemap.nodes.find((n) => n.id === editingPage.nodeId)
 
     return (
       <PageEditor
@@ -696,7 +454,7 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
         initialSections={editingPage.sections}
         onBack={handleExitPageEditor}
         onSave={handleSavePageSections}
-        siteDefinition={siteDefinition ?? undefined}
+        siteDefinition={siteDefinition}
         pageNode={pageNode}
         agents={agents}
         departments={departments}
@@ -704,95 +462,84 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
     )
   }
 
+  // Get selected node ID for tree/collections panels
+  const selectedNodeId = selection.type === 'page' || selection.type === 'collection'
+    ? selection.nodeId
+    : null
+
   return (
     <div className="flex h-full">
-      {/* Left: Node Palette */}
-      <NodePalette
-        types={typesMap}
-        onAddPage={addPageNode}
-        onSelectType={(typeId) => setSelection({ type: 'contentType', typeId })}
-      />
+      {/* Left: Page Tree + Collections */}
+      <div className="w-72 border-r flex flex-col bg-background">
+        <PageTreePanel
+          siteDefinition={siteDefinition}
+          selectedNodeId={selectedNodeId}
+          onSelectNode={handleSelectNode}
+          onDoubleClickNode={handleDoubleClickNode}
+          onAddPage={addPageNode}
+        />
+        <CollectionsPanel
+          siteDefinition={siteDefinition}
+          selectedNodeId={selectedNodeId}
+          onSelectNode={handleSelectNode}
+        />
+      </div>
 
-      {/* Center: ReactFlow Canvas */}
-      <div className="flex-1 h-full relative">
-        {/* Loading overlay when loading sections */}
-        {isLoadingSections && (
-          <div className="absolute inset-0 bg-white/80 dark:bg-slate-900/80 z-50 flex items-center justify-center">
+      {/* Center: Empty state with site info */}
+      <div className="flex-1 flex flex-col bg-slate-50">
+        {/* Top bar with save button */}
+        <div className="flex items-center justify-end gap-2 p-3 border-b bg-background">
+          {hasUnsavedChanges && (
+            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+              Unsaved changes
+            </Badge>
+          )}
+          <Button
+            size="sm"
+            variant={hasUnsavedChanges ? 'default' : 'outline'}
+            onClick={handleSave}
+            disabled={saveStatus === 'saving' || !hasUnsavedChanges}
+          >
+            {saveStatus === 'saving' ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : saveStatus === 'saved' ? (
+              <>
+                <Check className="h-4 w-4 mr-2" />
+                Saved
+              </>
+            ) : saveStatus === 'error' ? (
+              <>
+                <AlertCircle className="h-4 w-4 mr-2" />
+                Error
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save
+              </>
+            )}
+          </Button>
+        </div>
+
+        {/* Main content area */}
+        <div className="flex-1 flex items-center justify-center">
+          {/* Loading overlay when loading sections */}
+          {isLoadingSections ? (
             <div className="flex flex-col items-center gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <span className="text-sm text-muted-foreground">Loading page sections...</span>
             </div>
-          </div>
-        )}
-
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onNodeClick={onNodeClick}
-          onNodeDoubleClick={onNodeDoubleClick}
-          onPaneClick={onPaneClick}
-          onNodeDragStop={onNodeDragStop}
-          nodeTypes={nodeTypes}
-          fitView
-          minZoom={0.1}
-          maxZoom={2}
-          className="bg-slate-50 dark:bg-slate-900"
-        >
-          <Controls />
-          <MiniMap
-            nodeColor={(node) => {
-              const data = node.data as { nodeType?: string; contentType?: ContentType }
-              if (data.nodeType && isCollectionNode(data.nodeType)) {
-                // Template collections (with pageStructure) show as purple
-                if (hasPageStructure(data.contentType)) return '#9333ea'
-                // Regular collections show as orange
-                return '#f97316'
-              }
-              return '#3b82f6'
-            }}
-          />
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
-
-          {/* Top Panel: Save Status */}
-          <Panel position="top-right" className="flex items-center gap-2">
-            {hasUnsavedChanges && (
-              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-                Unsaved changes
-              </Badge>
-            )}
-            <Button
-              size="sm"
-              variant={hasUnsavedChanges ? 'default' : 'outline'}
-              onClick={handleSave}
-              disabled={saveStatus === 'saving' || !hasUnsavedChanges}
-            >
-              {saveStatus === 'saving' ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : saveStatus === 'saved' ? (
-                <>
-                  <Check className="h-4 w-4 mr-2" />
-                  Saved
-                </>
-              ) : saveStatus === 'error' ? (
-                <>
-                  <AlertCircle className="h-4 w-4 mr-2" />
-                  Error
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save
-                </>
-              )}
-            </Button>
-          </Panel>
-        </ReactFlow>
+          ) : (
+            <div className="text-center text-muted-foreground">
+              <Map className="h-16 w-16 mx-auto mb-4 opacity-30" />
+              <p className="text-lg font-medium">Select a page to edit</p>
+              <p className="text-sm mt-1">Double-click a page to open the editor</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Right: Context Panel */}
@@ -804,13 +551,5 @@ function SiteEditorInner({ websiteId, initialSiteDefinition, onSave }: SiteEdito
         onUpdateSite={updateSiteSettings}
       />
     </div>
-  )
-}
-
-export function SiteEditor(props: SiteEditorProps) {
-  return (
-    <ReactFlowProvider>
-      <SiteEditorInner {...props} />
-    </ReactFlowProvider>
   )
 }
