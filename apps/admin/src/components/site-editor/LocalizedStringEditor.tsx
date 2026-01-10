@@ -79,37 +79,61 @@ export function LocalizedStringEditor({
   const [copiedLocale, setCopiedLocale] = useState<string | null>(null)
 
   // Convert value to object if string
-  const normalizedValue: Record<string, string> =
+  const normalizedValue: Record<string, unknown> =
     typeof value === 'string'
       ? { [defaultLocale]: value }
       : value || {}
 
+  // Helper to safely get string value, unwrapping nested structures like { en: { en: "..." } }
+  const getStringValue = (val: unknown, locale: string = defaultLocale): string => {
+    if (typeof val === 'string') return val
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+      const record = val as Record<string, unknown>
+      // Try the requested locale, then 'en', then first value
+      const nested = record[locale] ?? record['en'] ?? Object.values(record)[0]
+      return getStringValue(nested, locale) // Recursive unwrap
+    }
+    return ''
+  }
+
+  // Helper to safely check if a value is a non-empty string (unwrapping nested structures)
+  const isNonEmptyString = (val: unknown, locale: string = defaultLocale): boolean => {
+    const str = getStringValue(val, locale)
+    return str.trim() !== ''
+  }
+
   // Get translation status
   const getTranslationStatus = () => {
     const filledLocales = locales.filter(
-      (locale) => normalizedValue[locale] && normalizedValue[locale].trim() !== ''
+      (locale) => isNonEmptyString(normalizedValue[locale], locale)
     )
     return {
       filled: filledLocales.length,
       total: locales.length,
       missing: locales.filter(
-        (locale) => !normalizedValue[locale] || normalizedValue[locale].trim() === ''
+        (locale) => !isNonEmptyString(normalizedValue[locale], locale)
       ),
     }
   }
 
   const status = getTranslationStatus()
-  const hasDefaultValue = normalizedValue[defaultLocale]?.trim()
+  const hasDefaultValue = isNonEmptyString(normalizedValue[defaultLocale], defaultLocale)
 
   // Update a single locale value
   const updateLocale = (locale: string, newValue: string) => {
-    onChange({ ...normalizedValue, [locale]: newValue })
+    // Convert normalizedValue to Record<string, string> for onChange
+    const stringValues: Record<string, string> = {}
+    for (const key of Object.keys(normalizedValue)) {
+      stringValues[key] = getStringValue(normalizedValue[key], key)
+    }
+    stringValues[locale] = newValue
+    onChange(stringValues)
   }
 
   // Copy from default locale to another locale
   const copyFromDefault = (targetLocale: string) => {
     if (hasDefaultValue) {
-      updateLocale(targetLocale, normalizedValue[defaultLocale])
+      updateLocale(targetLocale, getStringValue(normalizedValue[defaultLocale], defaultLocale))
       setCopiedLocale(targetLocale)
       setTimeout(() => setCopiedLocale(null), 1500)
     }
@@ -130,7 +154,7 @@ export function LocalizedStringEditor({
           )}
         </div>
         <InputComponent
-          value={normalizedValue[currentLocale] || ''}
+          value={getStringValue(normalizedValue[currentLocale], currentLocale)}
           onChange={(e) => updateLocale(currentLocale, e.target.value)}
           placeholder={placeholder}
           rows={multiline ? rows : undefined}
@@ -154,10 +178,10 @@ export function LocalizedStringEditor({
                 <div key={locale} className="flex gap-2 items-start">
                   <div className="w-8 pt-2">
                     <Badge
-                      variant={normalizedValue[locale]?.trim() ? 'secondary' : 'outline'}
+                      variant={isNonEmptyString(normalizedValue[locale], locale) ? 'secondary' : 'outline'}
                       className={cn(
                         'text-[10px] w-full justify-center',
-                        !normalizedValue[locale]?.trim() && 'text-amber-600 border-amber-300'
+                        !isNonEmptyString(normalizedValue[locale], locale) && 'text-amber-600 border-amber-300'
                       )}
                     >
                       {locale.toUpperCase()}
@@ -165,14 +189,14 @@ export function LocalizedStringEditor({
                   </div>
                   <div className="flex-1">
                     <InputComponent
-                      value={normalizedValue[locale] || ''}
+                      value={getStringValue(normalizedValue[locale], locale)}
                       onChange={(e) => updateLocale(locale, e.target.value)}
                       placeholder={placeholder || `${LOCALE_NAMES[locale] || locale} translation...`}
                       rows={multiline ? Math.max(2, rows - 1) : undefined}
                       className="text-sm"
                     />
                   </div>
-                  {hasDefaultValue && !normalizedValue[locale]?.trim() && (
+                  {hasDefaultValue && !isNonEmptyString(normalizedValue[locale], locale) && (
                     <Button
                       variant="ghost"
                       size="icon"
@@ -217,12 +241,12 @@ export function LocalizedStringEditor({
               value={locale}
               className={cn(
                 'flex-1 text-xs gap-1',
-                !normalizedValue[locale]?.trim() && locale !== defaultLocale && 'text-amber-600'
+                !isNonEmptyString(normalizedValue[locale], locale) && locale !== defaultLocale && 'text-amber-600'
               )}
             >
               {locale.toUpperCase()}
               {locale === defaultLocale && <span className="text-[9px] opacity-50">*</span>}
-              {!normalizedValue[locale]?.trim() && locale !== defaultLocale && (
+              {!isNonEmptyString(normalizedValue[locale], locale) && locale !== defaultLocale && (
                 <AlertCircle className="h-2.5 w-2.5" />
               )}
             </TabsTrigger>
@@ -233,12 +257,12 @@ export function LocalizedStringEditor({
           <TabsContent key={locale} value={locale} className="mt-2">
             <div className="space-y-2">
               <InputComponent
-                value={normalizedValue[locale] || ''}
+                value={getStringValue(normalizedValue[locale], locale)}
                 onChange={(e) => updateLocale(locale, e.target.value)}
                 placeholder={placeholder || `Enter ${LOCALE_NAMES[locale] || locale} text...`}
                 rows={multiline ? rows : undefined}
               />
-              {locale !== defaultLocale && hasDefaultValue && !normalizedValue[locale]?.trim() && (
+              {locale !== defaultLocale && hasDefaultValue && !isNonEmptyString(normalizedValue[locale], locale) && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -275,13 +299,25 @@ export function LocalizedStringEditor({
  */
 export function getTranslationCompleteness(
   value: LocalizedString | undefined,
-  locales: string[]
+  locales: string[],
+  defaultLocale: string = 'en'
 ): { filled: number; total: number; percentage: number } {
-  const normalizedValue: Record<string, string> =
-    typeof value === 'string' ? { en: value } : value || {}
+  const normalizedValue: Record<string, unknown> =
+    typeof value === 'string' ? { [defaultLocale]: value } : value || {}
+
+  // Recursive unwrap function for nested structures like { en: { en: "..." } }
+  const getStr = (val: unknown, locale: string): string => {
+    if (typeof val === 'string') return val
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+      const record = val as Record<string, unknown>
+      const nested = record[locale] ?? record['en'] ?? Object.values(record)[0]
+      return getStr(nested, locale)
+    }
+    return ''
+  }
 
   const filled = locales.filter(
-    (locale) => normalizedValue[locale] && normalizedValue[locale].trim() !== ''
+    (locale) => getStr(normalizedValue[locale], locale).trim() !== ''
   ).length
 
   return {

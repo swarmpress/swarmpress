@@ -5,12 +5,12 @@
  */
 import Layout from '../../layouts/Layout.astro';
 import ContentRenderer from '../../ContentRenderer.astro';
+import { CONTENT_DIR } from '../../config/content-paths';
 import fs from 'fs';
 import path from 'path';
 
 export async function getStaticPaths() {
-  // Content directory path - use environment variable or fallback to absolute path
-  const CONTENT_DIR = process.env.CONTENT_DIR || '/Users/drietsch/agentpress/cinqueterre.travel/content/pages';
+  // Content directory path - resolved from environment or relative paths
 
   // Supported languages
   const SUPPORTED_LANGS = ['en', 'de', 'fr', 'it'];

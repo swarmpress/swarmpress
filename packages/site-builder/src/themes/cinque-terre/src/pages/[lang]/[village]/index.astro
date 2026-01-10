@@ -13,6 +13,7 @@
 import Layout from '../../../layouts/Layout.astro';
 import ContentRenderer from '../../../ContentRenderer.astro';
 import Footer from '../../../components/Footer';
+import { CONTENT_DIR } from '../../../config/content-paths';
 import fs from 'fs';
 import path from 'path';
 import { VILLAGES } from '../../../config/navigation.config';
@@ -20,7 +21,7 @@ import { getVillageContent } from '../../../config/village-content.config';
 import type { SupportedLanguage } from '../../../types/navigation.types';
 
 export async function getStaticPaths() {
-  const CONTENT_DIR = process.env.CONTENT_DIR || '/Users/drietsch/agentpress/cinqueterre.travel/content/pages';
+  // Content directory resolved from environment or relative paths
   const SUPPORTED_LANGS: SupportedLanguage[] = ['en', 'de', 'fr', 'it'];
   const paths = [];
 

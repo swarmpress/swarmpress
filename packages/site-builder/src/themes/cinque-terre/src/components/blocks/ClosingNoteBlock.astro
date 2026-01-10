@@ -23,6 +23,9 @@ interface Props {
   content: LocalizedText | LocalizedArray;
   actions?: Action[];
   buttons?: Action[];
+  // Support individual button props (alternative to actions array)
+  primaryButton?: Action;
+  secondaryButton?: Action;
   backgroundIcon?: string;
   locale?: string;
 }
@@ -33,6 +36,8 @@ const {
   content: contentProp,
   actions: actionsProp = [],
   buttons: buttonsProp = [],
+  primaryButton,
+  secondaryButton,
   backgroundIcon,
   locale = 'en'
 } = Astro.props;
@@ -89,8 +94,23 @@ if (typeof contentProp === 'string') {
   content = '';
 }
 
-// Handle actions/buttons - support both naming conventions
-const rawActions = actionsProp.length > 0 ? actionsProp : buttonsProp;
+// Handle actions/buttons - support multiple naming conventions
+// Priority: actions array > buttons array > individual primaryButton/secondaryButton props
+let rawActions: Action[] = [];
+if (actionsProp.length > 0) {
+  rawActions = actionsProp;
+} else if (buttonsProp.length > 0) {
+  rawActions = buttonsProp;
+} else {
+  // Build from individual button props
+  if (primaryButton) {
+    rawActions.push({ ...primaryButton, variant: 'primary' });
+  }
+  if (secondaryButton) {
+    rawActions.push({ ...secondaryButton, variant: 'secondary' });
+  }
+}
+
 const actions = rawActions.map(action => ({
   label: getText(action.label || action.text, locale),
   href: action.href || action.url || '#',

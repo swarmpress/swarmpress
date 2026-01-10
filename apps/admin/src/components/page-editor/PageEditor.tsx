@@ -42,6 +42,50 @@ import {
 type PreviewMode = 'wireframe' | 'rendered'
 type PreviewTheme = 'dark' | 'light'
 
+// Preview URL configuration - points to Astro dev server for true preview
+const PREVIEW_BASE_URL = import.meta.env.PUBLIC_PREVIEW_URL || 'http://localhost:4322'
+
+/**
+ * Generate preview URL for the Astro dev server
+ * Maps page editor paths to Astro routes
+ */
+function getPreviewUrl(pagePath: string, locale: string = 'en'): string {
+  // Remove .json extension if present
+  const cleanPath = pagePath.replace(/\.json$/, '')
+
+  // Map common page paths to Astro routes
+  const routeMap: Record<string, string> = {
+    'index': '',
+    'village': 'village',
+    'blog-index': 'blog',
+    'itinerary': 'itinerary',
+    'weather': 'weather',
+    'team': 'team',
+    'culinary': 'culinary',
+    'accommodations': 'accommodations',
+    'events': 'events',
+    'sights': 'sights',
+    'things-to-do': 'things-to-do',
+    'transportation': 'transportation',
+  }
+
+  // Check for direct mapping
+  if (routeMap[cleanPath] !== undefined) {
+    const route = routeMap[cleanPath]
+    return route ? `${PREVIEW_BASE_URL}/${locale}/${route}` : `${PREVIEW_BASE_URL}/${locale}/`
+  }
+
+  // Handle village subpages: riomaggiore/overview -> /en/riomaggiore
+  // The overview.json maps to the village index
+  if (cleanPath.endsWith('/overview')) {
+    const village = cleanPath.replace('/overview', '')
+    return `${PREVIEW_BASE_URL}/${locale}/${village}`
+  }
+
+  // Default: use the path as-is
+  return `${PREVIEW_BASE_URL}/${locale}/${cleanPath}`
+}
+
 interface PageEditorProps {
   pageId: string
   pageTitle: string
@@ -697,7 +741,7 @@ export function PageEditor({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => window.open(`/api/preview/${pagePath}?theme=${previewTheme}`, '_blank')}
+                onClick={() => window.open(getPreviewUrl(pagePath), '_blank')}
                 title="Open preview in new tab"
                 className="h-8 w-8 p-0"
               >
@@ -817,7 +861,7 @@ export function PageEditor({
                     <div className="h-full bg-slate-100 dark:bg-slate-900">
                       <iframe
                         key={previewKey}
-                        src={`/api/preview/${pagePath}?theme=${previewTheme}`}
+                        src={getPreviewUrl(pagePath)}
                         className="w-full h-full border-0 bg-white"
                         title={`Preview: ${pageTitle}`}
                         sandbox="allow-scripts allow-same-origin"

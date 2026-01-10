@@ -73,7 +73,31 @@ export interface VillageContentData {
 }
 
 // Path to village config JSON files in the content submodule
-const VILLAGE_CONFIG_DIR = process.env.VILLAGE_CONFIG_DIR || '/Users/drietsch/agentpress/cinqueterre.travel/content/config/villages';
+// Try environment variable first, then fall back to relative paths from project root
+function resolveVillageConfigDir(): string {
+  if (process.env.VILLAGE_CONFIG_DIR) {
+    return process.env.VILLAGE_CONFIG_DIR;
+  }
+
+  // Try common relative paths from the project root
+  const possiblePaths = [
+    path.join(process.cwd(), 'cinqueterre.travel', 'content', 'config', 'villages'),
+    path.join(process.cwd(), '..', 'cinqueterre.travel', 'content', 'config', 'villages'),
+    path.join(process.cwd(), '..', '..', 'cinqueterre.travel', 'content', 'config', 'villages'),
+    path.join(process.cwd(), '..', '..', '..', 'cinqueterre.travel', 'content', 'config', 'villages'),
+  ];
+
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      return p;
+    }
+  }
+
+  // Default fallback (for development)
+  return possiblePaths[0];
+}
+
+const VILLAGE_CONFIG_DIR = resolveVillageConfigDir();
 
 // Cache for loaded village content
 let villageContentCache: Record<VillageSlug, VillageContentData> | null = null;

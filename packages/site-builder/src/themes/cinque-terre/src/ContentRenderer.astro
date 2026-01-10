@@ -36,6 +36,7 @@ import WeatherJournal from './components/blocks/WeatherJournal.astro';
 import BlogArticle from './components/blocks/BlogArticle.astro';
 import BlogIndex from './components/blocks/BlogIndex.astro';
 import CollectionWithInterludes from './components/blocks/CollectionWithInterludes.astro';
+import CollectionEmbed from './components/blocks/CollectionEmbed.astro';
 
 // React components with client directives
 import FeaturedCarousel from './components/FeaturedCarousel';
@@ -201,6 +202,9 @@ const { blocks = [], locale = 'en', village } = Astro.props;
 
         case 'collection-with-interludes':
             return <CollectionWithInterludes {...componentProps} locale={locale} />;
+
+        case 'collection-embed':
+            return <CollectionEmbed {...componentProps} locale={locale} />;
 
         default:
             // Log unknown block type for debugging

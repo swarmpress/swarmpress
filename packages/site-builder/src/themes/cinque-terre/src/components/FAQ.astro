@@ -2,20 +2,33 @@
 /**
  * FAQ Section Component
  * Renders frequently asked questions in an accordion-style layout
+ * Supports LocalizedText for multi-language content
  */
+import { getText, type LocalizedText } from '../config/localization';
+
 interface FAQItem {
-    question: string;
-    answer: string;
+    question: string | LocalizedText;
+    answer: string | LocalizedText;
 }
 
 interface Props {
-    title?: string;
-    subtitle?: string;
+    title?: string | LocalizedText;
+    subtitle?: string | LocalizedText;
     faqs?: FAQItem[];
     locale?: string;
 }
 
-const { title = 'Frequently Asked Questions', subtitle, faqs = [], locale = 'en' } = Astro.props;
+const { title: titleProp = 'Frequently Asked Questions', subtitle: subtitleProp, faqs: faqsProp = [], locale = 'en' } = Astro.props;
+
+// Resolve localized strings
+const title = getText(titleProp, locale);
+const subtitle = getText(subtitleProp, locale);
+
+// Resolve localized FAQ items
+const faqs = faqsProp.map(faq => ({
+    question: getText(faq.question, locale),
+    answer: getText(faq.answer, locale),
+}));
 ---
 
 <section class="py-16 md:py-24 bg-gray-50">

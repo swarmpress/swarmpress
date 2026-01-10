@@ -38,6 +38,32 @@ import {
   Database,
   ChevronRight,
   ArrowLeft,
+  // Editorial icons
+  Image,
+  Text,
+  SeparatorHorizontal,
+  PenLine,
+  BadgeCheck,
+  // Theme icons
+  MapPin,
+  Home,
+  Bed,
+  Utensils,
+  Star,
+  GalleryHorizontal,
+  TrendingUp,
+  Info,
+  Compass,
+  BookOpen,
+  Headphones,
+  Lightbulb,
+  CloudSun,
+  CalendarDays,
+  // Template icons
+  Route,
+  CalendarRange,
+  Plane,
+  LayoutList,
 } from 'lucide-react'
 
 // Map icon names to Lucide components
@@ -58,6 +84,32 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   'credit-card': CreditCard,
   'newspaper': Newspaper,
   'layout-grid': LayoutGrid,
+  // Editorial icons
+  'image': Image,
+  'text': Text,
+  'separator-horizontal': SeparatorHorizontal,
+  'pen-line': PenLine,
+  'badge-check': BadgeCheck,
+  // Theme icons
+  'map-pin': MapPin,
+  'home': Home,
+  'bed': Bed,
+  'utensils': Utensils,
+  'star': Star,
+  'gallery-horizontal': GalleryHorizontal,
+  'trending-up': TrendingUp,
+  'info': Info,
+  'compass': Compass,
+  'book-open': BookOpen,
+  'headphones': Headphones,
+  'lightbulb': Lightbulb,
+  'cloud-sun': CloudSun,
+  'calendar-days': CalendarDays,
+  // Template icons
+  'route': Route,
+  'calendar-range': CalendarRange,
+  'plane': Plane,
+  'layout-list': LayoutList,
 }
 
 // Category icons
@@ -68,6 +120,9 @@ const categoryIcons: Record<SectionCategory, React.ComponentType<{ className?: s
   engagement: Pointer,
   information: HelpCircle,
   visual: LayoutGrid,
+  editorial: PenLine,
+  theme: MapPin,
+  template: LayoutList,
 }
 
 interface SectionPaletteProps {

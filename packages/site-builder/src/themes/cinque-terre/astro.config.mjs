@@ -8,4 +8,8 @@ export default defineConfig({
     vite: {
         plugins: [tailwindcss()],
     },
+    server: {
+        port: 4322,
+        host: true, // Allow connections from other hosts (for admin dashboard)
+    },
 });

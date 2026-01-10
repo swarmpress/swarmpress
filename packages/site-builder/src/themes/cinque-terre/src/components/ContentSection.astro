@@ -3,27 +3,53 @@
  * Content Section Component
  * Renders markdown-style content blocks with rich text
  * Handles both array of strings and single string with newline separators
+ * Supports LocalizedText/LocalizedArray for multi-language content
  */
+import { getText, getArray, resolveItem, type LocalizedText, type LocalizedArray } from '../config/localization';
+
 interface Props {
-    content?: string[] | string;
-    title?: string;
-    subtitle?: string;
+    content?: string[] | string | LocalizedText | LocalizedArray;
+    title?: string | LocalizedText;
+    subtitle?: string | LocalizedText;
     image?: string;
     id?: string;
     locale?: string;
 }
 
-const { content = [], title, subtitle, image, id, locale = 'en' } = Astro.props;
+const { content: contentProp = [], title: titleProp, subtitle: subtitleProp, image, id, locale = 'en' } = Astro.props;
 
-// Normalize content to array of paragraphs
-function normalizeContent(c: string[] | string | Array<{type?: string; text?: string}>): string[] {
+// Resolve localized strings
+const title = getText(titleProp as LocalizedText, locale);
+const subtitle = getText(subtitleProp as LocalizedText, locale);
+
+// Normalize content to array of paragraphs (with LocalizedText support)
+function normalizeContent(c: string[] | string | LocalizedText | LocalizedArray | Array<{type?: string; text?: string | LocalizedText}>): string[] {
+    // Handle LocalizedArray (object with locale keys pointing to arrays)
+    if (c && typeof c === 'object' && !Array.isArray(c)) {
+        // Check if it's a LocalizedArray (has locale keys with array values)
+        if ('en' in c || 'de' in c || 'fr' in c || 'it' in c) {
+            const localizedValue = (c as Record<string, unknown>)[locale] || (c as Record<string, unknown>).en;
+            if (Array.isArray(localizedValue)) {
+                return localizedValue.map(item => resolveItem(item, locale)).filter(p => p.trim());
+            }
+            // It's a LocalizedText (single string value)
+            const stringValue = getText(c as LocalizedText, locale);
+            return stringValue ? stringValue.split('\n\n').filter(p => p.trim()) : [];
+        }
+    }
+
     if (Array.isArray(c)) {
         // Handle array of objects with text property (e.g., {type: "paragraph", text: "..."})
         if (c.length > 0 && typeof c[0] === 'object' && c[0] !== null && 'text' in c[0]) {
-            return c.map(item => typeof item === 'object' && item !== null && 'text' in item ? String(item.text || '') : String(item)).filter(p => p.trim());
+            return c.map(item => {
+                if (typeof item === 'object' && item !== null && 'text' in item) {
+                    return getText(item.text as LocalizedText, locale);
+                }
+                return resolveItem(item as string | LocalizedText, locale);
+            }).filter(p => p.trim());
         }
-        // Handle array of strings
-        return c.map(item => String(item)).filter(p => p.trim());
+        // Handle array of strings or LocalizedText
+        return c.map(item => resolveItem(item as string | LocalizedText, locale)).filter(p => p.trim());
     }
     if (typeof c === 'string') {
         return c.split('\n\n').filter(p => p.trim());
@@ -31,7 +57,7 @@ function normalizeContent(c: string[] | string | Array<{type?: string; text?: st
     return [];
 }
 
-const paragraphs = normalizeContent(content);
+const paragraphs = normalizeContent(contentProp);
 
 // Simple markdown-like processing for bold text
 function processText(text: string): string {
