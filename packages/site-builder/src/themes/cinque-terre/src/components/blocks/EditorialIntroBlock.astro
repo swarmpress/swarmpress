@@ -30,7 +30,16 @@ function getText(value: LocalizedText | undefined, lang: string): string {
 // Helper to get localized array
 function getArray(value: LocalizedArray | undefined, lang: string): string[] {
   if (!value) return [];
-  if (Array.isArray(value)) return value;
+  if (Array.isArray(value)) {
+    // Each item in the array might be a LocalizedText object
+    return value.map(item => {
+      if (typeof item === 'string') return item;
+      if (typeof item === 'object' && item !== null) {
+        return (item as Record<string, string>)[lang] || (item as Record<string, string>).en || Object.values(item)[0] || '';
+      }
+      return '';
+    });
+  }
   return value[lang as keyof typeof value] || value.en || Object.values(value)[0] || [];
 }
 

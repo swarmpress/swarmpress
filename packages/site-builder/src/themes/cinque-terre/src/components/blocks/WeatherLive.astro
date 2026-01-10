@@ -39,8 +39,8 @@ interface Webcam {
 }
 
 interface Props {
-  current: CurrentWeather;
-  forecast: ForecastDay[];
+  current?: CurrentWeather;
+  forecast?: ForecastDay[];
   webcams?: Webcam[];
   heroImage?: string;
   title?: string;
@@ -48,8 +48,8 @@ interface Props {
 }
 
 const {
-  current,
-  forecast,
+  current = { temp: 0, condition: 'Unknown', icon: 'cloud' as const },
+  forecast = [],
   webcams = [],
   heroImage = 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&q=80&w=2000',
   title = 'Atmosphere &\nCoastal Rhythms',

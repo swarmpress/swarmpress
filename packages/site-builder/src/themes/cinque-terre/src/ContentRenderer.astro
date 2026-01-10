@@ -156,8 +156,39 @@ const { blocks = [], locale = 'en', village } = Astro.props;
         case 'airports-overview':
             return <AirportsOverview {...componentProps} />;
 
-        case 'weather-live':
-            return <WeatherLive {...componentProps} />;
+        case 'weather-live': {
+            // Map JSON structure to component props
+            const weather = componentProps.currentWeather || componentProps.current;
+            const weatherProps = {
+                current: weather ? {
+                    temp: weather.temp,
+                    condition: typeof weather.condition === 'object' ? weather.condition[locale] || weather.condition.en : weather.condition,
+                    icon: weather.icon,
+                    high: weather.high,
+                    low: weather.low,
+                    wind: weather.wind,
+                    humidity: weather.humidity,
+                    seaTemp: weather.seaTemp,
+                    uvIndex: typeof weather.uvIndex === 'object' ? weather.uvIndex[locale] || weather.uvIndex.en : weather.uvIndex,
+                    visibility: weather.visibility,
+                    sunrise: weather.sunrise,
+                    sunset: weather.sunset,
+                } : undefined,
+                forecast: (componentProps.forecast || []).map((day: any) => ({
+                    day: typeof day.day === 'object' ? day.day[locale] || day.day.en : day.day,
+                    date: typeof day.date === 'object' ? day.date[locale] || day.date.en : day.date,
+                    high: day.high,
+                    low: day.low,
+                    condition: typeof day.condition === 'object' ? day.condition[locale] || day.condition.en : day.condition,
+                    icon: day.icon,
+                })),
+                webcams: componentProps.webcams,
+                heroImage: componentProps.image,
+                title: typeof componentProps.title === 'object' ? componentProps.title[locale] || componentProps.title.en : componentProps.title,
+                subtitle: typeof componentProps.subtitle === 'object' ? componentProps.subtitle[locale] || componentProps.subtitle.en : componentProps.subtitle,
+            };
+            return <WeatherLive {...weatherProps} />;
+        }
 
         case 'weather-journal':
             return <WeatherJournal {...componentProps} />;

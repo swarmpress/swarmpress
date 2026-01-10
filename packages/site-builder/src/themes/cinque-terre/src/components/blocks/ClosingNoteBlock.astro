@@ -54,16 +54,32 @@ function getArray(value: LocalizedArray | undefined, lang: string): string[] {
 const badge = getText(badgeProp, locale);
 const title = getText(titleProp, locale);
 
+// Helper to resolve a single item which might be LocalizedText
+function resolveItem(item: string | LocalizedText, lang: string): string {
+  if (typeof item === 'string') return item;
+  if (typeof item === 'object' && item !== null) {
+    return (item as Record<string, string>)[lang] || (item as Record<string, string>).en || Object.values(item)[0] || '';
+  }
+  return '';
+}
+
 // Handle content - can be string, array, or localized versions
 let content: string;
 if (typeof contentProp === 'string') {
   content = contentProp;
 } else if (Array.isArray(contentProp)) {
-  content = contentProp.map(p => `<p>${marked.parseInline(p)}</p>`).join('');
+  // Array items might be LocalizedText objects
+  content = contentProp.map(p => {
+    const resolved = resolveItem(p, locale);
+    return `<p>${marked.parseInline(resolved)}</p>`;
+  }).join('');
 } else if (contentProp && typeof contentProp === 'object') {
   const localized = contentProp[locale as keyof typeof contentProp] || contentProp.en;
   if (Array.isArray(localized)) {
-    content = localized.map(p => `<p>${marked.parseInline(p)}</p>`).join('');
+    content = localized.map(p => {
+      const resolved = resolveItem(p, locale);
+      return `<p>${marked.parseInline(resolved)}</p>`;
+    }).join('');
   } else if (typeof localized === 'string') {
     content = localized;
   } else {
