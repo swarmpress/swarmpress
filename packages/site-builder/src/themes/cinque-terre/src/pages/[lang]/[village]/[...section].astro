@@ -103,6 +103,6 @@ const body = pageData.body || [];
 ---
 
 <Layout title={title} description={description} locale={locale}>
-  <ContentRenderer blocks={body} locale={locale} />
+  <ContentRenderer blocks={body} locale={locale} village={village} />
   <Footer client:visible />
 </Layout>
