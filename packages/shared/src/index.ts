@@ -10,6 +10,9 @@ export { validateEnv, getEnv, type Env } from './config/env'
 // Content Model (JSON Blocks)
 export * from './content/blocks'
 
+// Block Metadata (for agents)
+export * from './content/block-metadata'
+
 // Agent-Page Mapping
 export * from './content/agent-page-mapping'
 

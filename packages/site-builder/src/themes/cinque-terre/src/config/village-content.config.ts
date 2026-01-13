@@ -79,12 +79,14 @@ function resolveVillageConfigDir(): string {
     return process.env.VILLAGE_CONFIG_DIR;
   }
 
-  // Try common relative paths from the project root
+  // Try common relative paths from project root or theme directory
   const possiblePaths = [
     path.join(process.cwd(), 'cinqueterre.travel', 'content', 'config', 'villages'),
     path.join(process.cwd(), '..', 'cinqueterre.travel', 'content', 'config', 'villages'),
     path.join(process.cwd(), '..', '..', 'cinqueterre.travel', 'content', 'config', 'villages'),
     path.join(process.cwd(), '..', '..', '..', 'cinqueterre.travel', 'content', 'config', 'villages'),
+    path.join(process.cwd(), '..', '..', '..', '..', 'cinqueterre.travel', 'content', 'config', 'villages'),
+    path.join(process.cwd(), '..', '..', '..', '..', '..', 'cinqueterre.travel', 'content', 'config', 'villages'),
   ];
 
   for (const p of possiblePaths) {

@@ -79,6 +79,52 @@ async function createAgents() {
       status: 'active',
       config: {},
     },
+    // New agents for agentic website system
+    {
+      id: 'media-selector-001',
+      name: 'Marco',
+      role: 'MediaSelector',
+      department: 'Content',
+      capabilities: ['find_matching_images', 'validate_image_relevance', 'suggest_missing_media'],
+      status: 'active',
+      config: { enforce_entity_match: true },
+    },
+    {
+      id: 'qa-001',
+      name: 'Giulia',
+      role: 'QA',
+      department: 'Editorial',
+      capabilities: ['check_media_relevance', 'check_broken_links', 'check_editorial_coherence', 'run_full_qa'],
+      status: 'active',
+      config: { strict_mode: true },
+    },
+    {
+      id: 'linker-001',
+      name: 'Luca',
+      role: 'Linker',
+      department: 'Content',
+      capabilities: ['find_link_opportunities', 'insert_links', 'validate_links'],
+      status: 'active',
+      config: { use_sitemap_index: true },
+    },
+    {
+      id: 'page-orchestrator-001',
+      name: 'Sofia',
+      role: 'PageOrchestrator',
+      department: 'Editorial',
+      capabilities: ['create_page_brief', 'validate_page_flow', 'analyze_component_dependencies'],
+      status: 'active',
+      config: {},
+    },
+    {
+      id: 'page-polish-001',
+      name: 'Elena',
+      role: 'PagePolish',
+      department: 'Editorial',
+      capabilities: ['rewrite_transitions', 'remove_redundancy', 'unify_voice', 'polish_prose'],
+      status: 'active',
+      config: { voice: 'giulia_rossi' },
+    },
   ]
 
   for (const agent of agents) {
@@ -256,7 +302,7 @@ async function seed() {
     console.log('✨ Seeding completed successfully!\n')
     console.log('Sample data created:')
     console.log(`  Website: ${websiteId}`)
-    console.log(`  Agents: 4 (Writer, Editor, Engineering, CEO Assistant)`)
+    console.log(`  Agents: 9 (Writer, Editor, Engineering, CEO Assistant, MediaSelector, QA, Linker, PageOrchestrator, PagePolish)`)
     console.log(`  Content: ${contentId}`)
     console.log(`  Task: ${taskId}`)
     console.log('')

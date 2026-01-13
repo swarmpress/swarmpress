@@ -86,6 +86,25 @@ export const events = {
     })
   },
 
+  // QA Gate events
+  async qaGatePassed(contentId: string, qaAgentId: string, fixesApplied: { mediaFixes: number; linkFixes: number; editorialFixes: number }) {
+    await publishEvent({
+      type: 'content.qaGatePassed',
+      source: `/agents/qa/${qaAgentId}`,
+      subject: `content/${contentId}`,
+      data: { content_id: contentId, qa_agent_id: qaAgentId, fixes_applied: fixesApplied },
+    })
+  },
+
+  async qaGateFailed(contentId: string, qaAgentId: string, failedChecks: string[], issues: { media: string[]; links: string[]; editorial: string[] }) {
+    await publishEvent({
+      type: 'content.qaGateFailed',
+      source: `/agents/qa/${qaAgentId}`,
+      subject: `content/${contentId}`,
+      data: { content_id: contentId, qa_agent_id: qaAgentId, failed_checks: failedChecks, issues },
+    })
+  },
+
   // Task events
   async taskCreated(taskId: string, agentId: string, taskType: string) {
     await publishEvent({

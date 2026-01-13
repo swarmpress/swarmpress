@@ -111,3 +111,16 @@ export {
   taskRepository,
   websiteRepository,
 } from './db/repositories'
+
+// Export WKI builder service
+export { buildWKI, WKIBuilderService } from './services/wki-builder.service'
+export type { WKIBuildResult } from './services/wki-builder.service'
+
+// Export WKI refresh service
+export {
+  WKIRefreshService,
+  getWKIRefreshService,
+  triggerWKIRefresh,
+  triggerFullWKIRebuild,
+} from './services/wki-refresh.service'
+export type { WKIRefreshTrigger, WKIRefreshResult } from './services/wki-refresh.service'

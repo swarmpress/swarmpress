@@ -211,6 +211,232 @@ export async function invokeEngineeringAgent(params: {
   }
 }
 
+/**
+ * Invoke QA Agent
+ */
+export async function invokeQAAgent(params: {
+  agentId: string
+  task: string
+  contentId: string
+  websiteId?: string
+  taskId?: string
+}): Promise<{ success: boolean; result?: any; error?: string }> {
+  try {
+    await ensureAgentsInitialized()
+
+    const agent = await agentFactory.getAgent(params.agentId)
+    if (!agent) {
+      return { success: false, error: `Agent ${params.agentId} not found` }
+    }
+
+    const response = await agent.execute(
+      {
+        taskType: 'qa_validation',
+        description: params.task,
+        context: { contentId: params.contentId, websiteId: params.websiteId },
+      },
+      {
+        agentId: params.agentId,
+        taskId: params.taskId,
+        contentId: params.contentId,
+        websiteId: params.websiteId,
+      }
+    )
+
+    return {
+      success: response.success,
+      result: response.data || response.content,
+      error: response.error,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}
+
+/**
+ * Invoke Media Selector Agent
+ */
+export async function invokeMediaSelectorAgent(params: {
+  agentId: string
+  task: string
+  contentId: string
+  websiteId?: string
+  taskId?: string
+}): Promise<{ success: boolean; result?: any; error?: string }> {
+  try {
+    await ensureAgentsInitialized()
+
+    const agent = await agentFactory.getAgent(params.agentId)
+    if (!agent) {
+      return { success: false, error: `Agent ${params.agentId} not found` }
+    }
+
+    const response = await agent.execute(
+      {
+        taskType: 'media_selection',
+        description: params.task,
+        context: { contentId: params.contentId, websiteId: params.websiteId },
+      },
+      {
+        agentId: params.agentId,
+        taskId: params.taskId,
+        contentId: params.contentId,
+        websiteId: params.websiteId,
+      }
+    )
+
+    return {
+      success: response.success,
+      result: response.data || response.content,
+      error: response.error,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}
+
+/**
+ * Invoke Linker Agent
+ */
+export async function invokeLinkerAgent(params: {
+  agentId: string
+  task: string
+  contentId: string
+  websiteId?: string
+  taskId?: string
+}): Promise<{ success: boolean; result?: any; error?: string }> {
+  try {
+    await ensureAgentsInitialized()
+
+    const agent = await agentFactory.getAgent(params.agentId)
+    if (!agent) {
+      return { success: false, error: `Agent ${params.agentId} not found` }
+    }
+
+    const response = await agent.execute(
+      {
+        taskType: 'internal_linking',
+        description: params.task,
+        context: { contentId: params.contentId, websiteId: params.websiteId },
+      },
+      {
+        agentId: params.agentId,
+        taskId: params.taskId,
+        contentId: params.contentId,
+        websiteId: params.websiteId,
+      }
+    )
+
+    return {
+      success: response.success,
+      result: response.data || response.content,
+      error: response.error,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}
+
+/**
+ * Invoke Page Orchestrator Agent
+ */
+export async function invokePageOrchestratorAgent(params: {
+  agentId: string
+  task: string
+  contentId?: string
+  pageId?: string
+  websiteId?: string
+  taskId?: string
+}): Promise<{ success: boolean; result?: any; error?: string }> {
+  try {
+    await ensureAgentsInitialized()
+
+    const agent = await agentFactory.getAgent(params.agentId)
+    if (!agent) {
+      return { success: false, error: `Agent ${params.agentId} not found` }
+    }
+
+    const response = await agent.execute(
+      {
+        taskType: 'page_orchestration',
+        description: params.task,
+        context: { contentId: params.contentId, pageId: params.pageId, websiteId: params.websiteId },
+      },
+      {
+        agentId: params.agentId,
+        taskId: params.taskId,
+        contentId: params.contentId,
+        websiteId: params.websiteId,
+      }
+    )
+
+    return {
+      success: response.success,
+      result: response.data || response.content,
+      error: response.error,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}
+
+/**
+ * Invoke Page Polish Agent
+ */
+export async function invokePagePolishAgent(params: {
+  agentId: string
+  task: string
+  contentId: string
+  websiteId?: string
+  taskId?: string
+}): Promise<{ success: boolean; result?: any; error?: string }> {
+  try {
+    await ensureAgentsInitialized()
+
+    const agent = await agentFactory.getAgent(params.agentId)
+    if (!agent) {
+      return { success: false, error: `Agent ${params.agentId} not found` }
+    }
+
+    const response = await agent.execute(
+      {
+        taskType: 'content_polish',
+        description: params.task,
+        context: { contentId: params.contentId, websiteId: params.websiteId },
+      },
+      {
+        agentId: params.agentId,
+        taskId: params.taskId,
+        contentId: params.contentId,
+        websiteId: params.websiteId,
+      }
+    )
+
+    return {
+      success: response.success,
+      result: response.data || response.content,
+      error: response.error,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}
+
 // ============================================================================
 // Database Activities
 // ============================================================================
@@ -299,6 +525,24 @@ export async function createQuestionTicket(ticketData: {
   return { ticketId: ticket.id }
 }
 
+/**
+ * Get All Content Items for a Website
+ */
+export async function getAllContentItems(websiteId: string): Promise<any[]> {
+  const content = await contentRepository.findByWebsite(websiteId)
+  return content
+}
+
+/**
+ * Get All Pages for a Website
+ */
+export async function getAllPages(websiteId: string): Promise<any[]> {
+  // Import page repository dynamically
+  const { pageRepository } = await import('@swarm-press/backend/dist/db/repositories')
+  const pages = await pageRepository.findByWebsite(websiteId)
+  return pages
+}
+
 // ============================================================================
 // Event Publishing Activities
 // ============================================================================
@@ -318,6 +562,8 @@ export async function publishContentEvent(params: {
     'content.approved': events.contentApproved,
     'content.scheduled': events.contentScheduled,
     'content.published': events.contentPublished,
+    'content.qaGatePassed': events.qaGatePassed,
+    'content.qaGateFailed': events.qaGateFailed,
   }
 
   const eventFn = eventTypeMap[params.type]

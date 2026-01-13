@@ -4,10 +4,14 @@
  *
  * GitHub Integration: Each agent step is logged to the content's PR,
  * and the PR is merged when content is successfully published.
+ *
+ * QA Gate Integration: Runs QA validation before publishing to ensure
+ * media relevance, working links, and editorial coherence.
  */
 
 import { proxyActivities } from '@temporalio/workflow'
 import type * as activities from '../activities'
+import { qaGateWorkflow, type QAGateResult } from './qa-gate.workflow'
 
 const {
   invokeSEOAgent,
@@ -36,6 +40,21 @@ export interface PublishingInput {
   buildFromGitHub?: boolean
   /** Site URL for production builds */
   siteUrl?: string
+  /** QA Gate configuration */
+  qaGate?: {
+    /** If true, run QA gate before publishing (default: true) */
+    enabled?: boolean
+    /** QA Agent ID */
+    qaAgentId?: string
+    /** MediaSelector Agent ID for auto-fixing media issues */
+    mediaSelectorAgentId?: string
+    /** Linker Agent ID for auto-fixing link issues */
+    linkerAgentId?: string
+    /** PagePolish Agent ID for auto-fixing editorial issues */
+    pagePolishAgentId?: string
+    /** Maximum attempts to fix issues (default: 3) */
+    maxFixAttempts?: number
+  }
 }
 
 export interface PublishingResult {
@@ -44,6 +63,7 @@ export interface PublishingResult {
   websiteId: string
   publishedUrl?: string
   deploymentTime?: number
+  qaGateResult?: QAGateResult
   error?: string
 }
 
@@ -51,20 +71,22 @@ export interface PublishingResult {
  * Publishing Workflow
  *
  * Flow:
- * 1. SEO agent optimizes content
- * 2. Transition to scheduled state
- * 3. Engineering agent validates content structure
- * 4. Engineering agent validates assets
- * 5. Build static site
- * 6. Deploy to production
- * 7. Transition to published state
- * 8. Publish success/failure events
+ * 1. QA Gate validation (media relevance, links, editorial coherence)
+ * 2. SEO agent optimizes content
+ * 3. Transition to scheduled state
+ * 4. Engineering agent validates content structure
+ * 5. Engineering agent validates assets
+ * 6. Build static site
+ * 7. Deploy to production
+ * 8. Transition to published state
+ * 9. Publish success/failure events
  */
 export async function publishingWorkflow(
   input: PublishingInput
 ): Promise<PublishingResult> {
-  const { contentId, websiteId, seoAgentId, engineeringAgentId, siteUrl } = input
+  const { contentId, websiteId, seoAgentId, engineeringAgentId, siteUrl, qaGate } = input
   const startTime = Date.now()
+  let qaGateResult: QAGateResult | undefined
 
   // Determine if we should build from GitHub (explicit override or website setting)
   let buildFromGitHub = input.buildFromGitHub
@@ -84,6 +106,55 @@ export async function publishingWorkflow(
     }
 
     console.log(`[Publishing] Content status: ${content.status}`)
+
+    // Step 1.5: QA Gate (if enabled)
+    const qaGateEnabled = qaGate?.enabled !== false // Default to true
+    if (qaGateEnabled && qaGate?.qaAgentId) {
+      console.log(`[Publishing] Running QA Gate validation`)
+
+      qaGateResult = await qaGateWorkflow({
+        contentId,
+        websiteId,
+        qaAgentId: qaGate.qaAgentId,
+        mediaSelectorAgentId: qaGate.mediaSelectorAgentId,
+        linkerAgentId: qaGate.linkerAgentId,
+        pagePolishAgentId: qaGate.pagePolishAgentId,
+        maxFixAttempts: qaGate.maxFixAttempts || 3,
+      })
+
+      if (!qaGateResult.passed) {
+        console.log(`[Publishing] QA Gate FAILED - blocking publication`)
+
+        // Log QA failure to GitHub
+        await logAgentActivityToGitHub({
+          contentId,
+          agentId: qaGate.qaAgentId,
+          agentName: 'QAAgent',
+          activity: '🚫 Publishing blocked by QA Gate',
+          details: `Content failed quality checks and cannot be published.
+
+**Failed Checks:**
+${!qaGateResult.checks.mediaRelevance.passed ? '- Media Relevance: ❌ ' + (qaGateResult.checks.mediaRelevance.issues[0] || 'Failed') : '- Media Relevance: ✅'}
+${!qaGateResult.checks.brokenLinks.passed ? '- Broken Links: ❌ ' + (qaGateResult.checks.brokenLinks.issues[0] || 'Failed') : '- Broken Links: ✅'}
+${!qaGateResult.checks.editorialCoherence.passed ? '- Editorial Coherence: ❌ ' + (qaGateResult.checks.editorialCoherence.issues[0] || 'Failed') : '- Editorial Coherence: ✅'}
+
+Please fix these issues before attempting to publish again.`,
+          result: 'failure',
+        })
+
+        return {
+          success: false,
+          contentId,
+          websiteId,
+          qaGateResult,
+          error: 'QA Gate validation failed - content blocked from publishing',
+        }
+      }
+
+      console.log(`[Publishing] QA Gate PASSED - proceeding to SEO optimization`)
+    } else if (!qaGate?.qaAgentId) {
+      console.log(`[Publishing] QA Gate skipped (no qaAgentId provided)`)
+    }
 
     // Step 2: SEO optimization
     console.log(`[Publishing] Invoking SEO agent for optimization`)
@@ -422,6 +493,7 @@ This is a complete end-to-end publishing workflow.`
       websiteId,
       publishedUrl,
       deploymentTime,
+      qaGateResult,
     }
   } catch (error) {
     console.error(`[Publishing] Workflow failed:`, error)
@@ -443,6 +515,7 @@ This is a complete end-to-end publishing workflow.`
       success: false,
       contentId,
       websiteId,
+      qaGateResult,
       error: error instanceof Error ? error.message : 'Unknown error',
     }
   }
