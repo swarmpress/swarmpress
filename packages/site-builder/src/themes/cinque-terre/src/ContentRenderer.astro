@@ -149,7 +149,7 @@ const { blocks = [], locale = 'en', village } = Astro.props;
             return <ItineraryHero {...componentProps} />;
 
         case 'itinerary-days':
-            return <ItineraryDays {...componentProps} />;
+            return <ItineraryDays {...componentProps} locale={locale} />;
 
         case 'team-grid':
             return <TeamGrid {...componentProps} />;

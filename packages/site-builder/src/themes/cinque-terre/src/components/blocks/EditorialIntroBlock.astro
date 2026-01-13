@@ -40,7 +40,12 @@ function getArray(value: LocalizedArray | undefined, lang: string): string[] {
       return '';
     });
   }
-  return value[lang as keyof typeof value] || value.en || Object.values(value)[0] || [];
+  // Handle LocalizedArray object - ensure we return an array
+  const localized = value[lang as keyof typeof value] || value.en || Object.values(value)[0];
+  if (Array.isArray(localized)) return localized;
+  // If content is a string (not an array), wrap it in an array
+  if (typeof localized === 'string') return [localized];
+  return [];
 }
 
 const badge = getText(badgeProp, locale);

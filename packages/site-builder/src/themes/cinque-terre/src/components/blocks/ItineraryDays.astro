@@ -5,24 +5,26 @@
  * Day-by-day itinerary content with moments, perspective, and movement
  */
 import { MapPin, Navigation, Heart } from 'lucide-react';
+import { getText, getArray, type LocalizedText, type LocalizedArray } from '../../config/localization';
 
 interface Day {
   number: number;
-  title: string;
-  village: string;
-  rhythm?: string;
-  perspective: string;
-  movement?: string;
-  moments: string[];
+  title: string | LocalizedText;
+  village: string | LocalizedText;
+  rhythm?: string | LocalizedText;
+  perspective: string | LocalizedText;
+  movement?: string | LocalizedText;
+  moments: string[] | LocalizedArray;
   image?: string;
 }
 
 interface Props {
   days: Day[];
   showOverview?: boolean;
+  locale?: string;
 }
 
-const { days, showOverview = true } = Astro.props;
+const { days, showOverview = true, locale = 'en' } = Astro.props;
 
 // Default images for days if not provided
 const defaultImages = [
@@ -53,13 +55,13 @@ const defaultImages = [
                 </div>
               </div>
               <div>
-                <h4 class="font-bold text-foreground mb-1">{day.village}</h4>
+                <h4 class="font-bold text-foreground mb-1">{getText(day.village, locale)}</h4>
                 {day.rhythm && (
-                  <p class="text-xs text-muted-foreground uppercase tracking-widest font-bold">{day.rhythm}</p>
+                  <p class="text-xs text-muted-foreground uppercase tracking-widest font-bold">{getText(day.rhythm, locale)}</p>
                 )}
               </div>
               <p class="text-sm text-muted-foreground leading-relaxed italic font-serif">
-                {day.title}
+                {getText(day.title, locale)}
               </p>
             </div>
           ))}
@@ -79,16 +81,16 @@ const defaultImages = [
           <div class="lg:col-span-4 lg:sticky lg:top-32 space-y-8">
             <div class="space-y-4">
               <p class="text-[10px] font-bold uppercase tracking-[0.5em] text-primary">Day 0{day.number}</p>
-              <h3 class="font-serif text-5xl font-bold text-foreground leading-tight">{day.title}</h3>
+              <h3 class="font-serif text-5xl font-bold text-foreground leading-tight">{getText(day.title, locale)}</h3>
             </div>
 
             <div class="p-6 rounded-2xl bg-secondary/50 border border-border/40 space-y-4">
               <div class="flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-foreground">
-                <MapPin className="w-4 h-4 text-primary" /> {day.village}
+                <MapPin className="w-4 h-4 text-primary" /> {getText(day.village, locale)}
               </div>
               {day.movement && (
                 <div class="flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-foreground">
-                  <Navigation className="w-4 h-4 text-primary" /> {day.movement}
+                  <Navigation className="w-4 h-4 text-primary" /> {getText(day.movement, locale)}
                 </div>
               )}
             </div>
@@ -97,13 +99,13 @@ const defaultImages = [
           <!-- Day Narrative -->
           <div class="lg:col-span-8 space-y-16">
             <div class="prose prose-2xl max-w-none font-serif italic text-foreground/80 leading-relaxed">
-              "{day.perspective}"
+              "{getText(day.perspective, locale)}"
             </div>
 
             <div class="space-y-8">
               <p class="text-[10px] font-bold uppercase tracking-[0.4em] text-primary">The Moments That Matter</p>
               <div class="grid grid-cols-1 md:grid-cols-1 gap-6">
-                {day.moments.map((moment) => (
+                {getArray(day.moments, locale).map((moment) => (
                   <div class="flex items-start gap-6 group">
                     <div class="w-12 h-12 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
                       <Heart className="w-5 h-5 text-primary" />
@@ -119,7 +121,7 @@ const defaultImages = [
             <div class="aspect-[16/9] rounded-3xl overflow-hidden shadow-xl">
               <img
                 src={day.image || defaultImages[index % defaultImages.length]}
-                alt={day.title}
+                alt={getText(day.title, locale)}
                 class="w-full h-full object-cover"
               />
             </div>

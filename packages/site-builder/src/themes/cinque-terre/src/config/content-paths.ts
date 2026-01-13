@@ -2,62 +2,74 @@
  * Content Path Resolution Utilities
  *
  * Provides consistent path resolution for content directories across all Astro pages.
- * Uses environment variables when available, otherwise searches common relative paths.
+ * Uses environment variables when available, otherwise finds the monorepo root.
  */
 
 import fs from 'fs';
 import path from 'path';
 
 /**
+ * Find the monorepo root by looking for turbo.json or pnpm-workspace.yaml
+ * Walks up the directory tree from cwd until found
+ */
+function findMonorepoRoot(): string | null {
+  let current = process.cwd();
+  const root = path.parse(current).root;
+
+  while (current !== root) {
+    // Check for monorepo markers
+    if (
+      fs.existsSync(path.join(current, 'turbo.json')) ||
+      fs.existsSync(path.join(current, 'pnpm-workspace.yaml'))
+    ) {
+      return current;
+    }
+    current = path.dirname(current);
+  }
+
+  return null;
+}
+
+/**
  * Resolve the pages content directory
- * Tries environment variable first, then searches common relative paths
+ * Tries environment variable first, then uses monorepo root
  */
 export function resolveContentDir(): string {
   if (process.env.CONTENT_DIR) {
     return process.env.CONTENT_DIR;
   }
 
-  const possiblePaths = [
-    path.join(process.cwd(), 'cinqueterre.travel', 'content', 'pages'),
-    path.join(process.cwd(), '..', 'cinqueterre.travel', 'content', 'pages'),
-    path.join(process.cwd(), '..', '..', 'cinqueterre.travel', 'content', 'pages'),
-    path.join(process.cwd(), '..', '..', '..', 'cinqueterre.travel', 'content', 'pages'),
-    path.join(process.cwd(), '..', '..', '..', '..', 'cinqueterre.travel', 'content', 'pages'),
-  ];
-
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      return p;
+  const monorepoRoot = findMonorepoRoot();
+  if (monorepoRoot) {
+    const contentPath = path.join(monorepoRoot, 'cinqueterre.travel', 'content', 'pages');
+    if (fs.existsSync(contentPath)) {
+      return contentPath;
     }
   }
 
-  return possiblePaths[0];
+  // Fallback to cwd-relative path
+  return path.join(process.cwd(), 'cinqueterre.travel', 'content', 'pages');
 }
 
 /**
  * Resolve the root content directory (parent of pages, collections, config, blog)
- * Tries environment variable first, then searches common relative paths
+ * Tries environment variable first, then uses monorepo root
  */
 export function resolveContentRoot(): string {
   if (process.env.CONTENT_ROOT) {
     return process.env.CONTENT_ROOT;
   }
 
-  const possiblePaths = [
-    path.join(process.cwd(), 'cinqueterre.travel', 'content'),
-    path.join(process.cwd(), '..', 'cinqueterre.travel', 'content'),
-    path.join(process.cwd(), '..', '..', 'cinqueterre.travel', 'content'),
-    path.join(process.cwd(), '..', '..', '..', 'cinqueterre.travel', 'content'),
-    path.join(process.cwd(), '..', '..', '..', '..', 'cinqueterre.travel', 'content'),
-  ];
-
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      return p;
+  const monorepoRoot = findMonorepoRoot();
+  if (monorepoRoot) {
+    const contentPath = path.join(monorepoRoot, 'cinqueterre.travel', 'content');
+    if (fs.existsSync(contentPath)) {
+      return contentPath;
     }
   }
 
-  return possiblePaths[0];
+  // Fallback to cwd-relative path
+  return path.join(process.cwd(), 'cinqueterre.travel', 'content');
 }
 
 /**
