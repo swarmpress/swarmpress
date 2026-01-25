@@ -1,9 +1,9 @@
 # swarm.press — Claude Development Guide
 
-> **Last Updated:** 2026-01-10
-> **Status:** MVP Complete - Cinque Terre Reference Implementation
-> **Spec Version:** 1.0
-> **Schema Version:** 1.1.0 (60+ block types)
+> **Last Updated:** 2026-01-25
+> **Status:** Production Ready with Autonomous Scheduling
+> **Spec Version:** 1.1
+> **Schema Version:** 1.2.0 (67 block types, 11+ agents, 12 workflows)
 
 ---
 
@@ -856,54 +856,97 @@ tsx scripts/seed.ts
 
 ## 🚀 Implementation Status
 
-### Completed (MVP + Cinque Terre Integration)
+### Core Platform (Complete)
 - [x] Monorepo setup (Turborepo + pnpm)
 - [x] Database schema with all core entities
-- [x] 4 autonomous agents (Writer, Editor, Engineering, CEO Assistant)
-- [x] 3 Temporal workflows (content-production, editorial-review, publishing)
+- [x] 11+ autonomous agents (Writer, Editor, QA, Media, Linker, PageOrchestrator, etc.)
+- [x] 12 Temporal workflows (content, editorial, publishing, batch, scheduling, QA, etc.)
 - [x] State machine engine with audit log
 - [x] NATS event bus with CloudEvents
-- [x] tRPC API with 15+ routers
-- [x] GitHub integration (PRs, Issues, webhooks, sync)
-- [x] Admin dashboard (sitemap, kanban, blueprints)
-- [x] GitHub OAuth authentication
-- [x] Prompt management system (3-level)
-- [x] Collection schemas (Event, POI, FAQ, News)
-- [x] Bootstrap, seed, and test scripts
-- [x] Structured logging with correlation IDs
-- [x] Documentation site (Vocs + TypeDoc + markdownlint)
+- [x] tRPC API with 27 routers
+- [x] GitHub integration (PRs, Issues, webhooks, sync, OAuth)
+- [x] Admin dashboard (sitemap, kanban, blueprints, collections, scheduling)
+- [x] Prompt management system (3-level hierarchy)
+- [x] 50+ operational scripts
+- [x] Documentation site (Vocs)
 
-**Cinque Terre Integration (Phases 1-3):**
-- [x] 60+ block types with Zod validation in shared package
-- [x] Cinque Terre theme (35+ Astro components)
-- [x] Multi-language support (LocalizedString pattern: EN/DE/FR/IT)
-- [x] Agent configuration file format (5 config types)
-- [x] Village JSON configuration (dynamic loading)
+**Agent System:**
+- [x] WriterAgent with language guidelines and personas
+- [x] EditorAgent with editorial config loader
+- [x] QAAgent for quality assurance
+- [x] MediaAgent and MediaSelectorAgent for media
+- [x] LinkerAgent for internal linking
+- [x] PageOrchestratorAgent for page coordination
+- [x] PagePolishAgent for coherence
+- [x] AuditAgent for content auditing
+- [x] EngineeringAgent for builds
+- [x] CEOAssistantAgent for escalations
+- [x] Agent adapters (REST, GraphQL, MCP, JavaScript sandbox)
+
+**Workflow System:**
+- [x] Content Production workflow
+- [x] Editorial Review workflow
+- [x] Publishing workflow
+- [x] Batch Processing workflow
+- [x] Page Content Generation workflow
+- [x] Collection Research workflow
+- [x] QA Gate workflow
+- [x] Scheduled Content workflow
+- [x] Scheduled Maintenance workflow
+- [x] Content Integrity workflow
+- [x] Website Generation workflow
+
+**Autonomous Scheduling:**
+- [x] Temporal Schedules integration
+- [x] 4 schedule types (content, media, links, stale)
+- [x] Schedule management API
+- [x] Execution history tracking
+- [x] Calendar view in admin
+- [x] Manual trigger capability
+
+**Batch Processing:**
+- [x] Batch job management
+- [x] Progress tracking
+- [x] Error handling per item
+- [x] Resumable jobs
+
+**Collections System:**
+- [x] 8+ collection types (restaurants, accommodations, hikes, etc.)
+- [x] Collection research workflow
+- [x] Version history
+- [x] Collections browser UI
+- [x] SlugPicker for embedding
+
+**Cinque Terre Theme:**
+- [x] 67 block types with Zod validation
+- [x] 39 Astro components
+- [x] Multi-language support (EN/DE/FR/IT)
+- [x] Village JSON configuration
 - [x] Content submodule architecture
-- [x] Blog publishing workflow documentation
-- [x] Collection research workflow configuration
-- [x] Media guidelines for agents
+- [x] Weather integration
 
-**Admin Dashboard Enhancements:**
-- [x] Collections browser UI (browse, search, view collection items)
-- [x] Page editor with SlugPicker (select/reorder collection items)
-- [x] Site editor with LocalizedStringEditor (multi-language content editing)
-- [x] Translation status indicators and copy-from-default feature
+**Admin Dashboard:**
+- [x] Collections browser
+- [x] Page editor with SlugPicker
+- [x] Site editor with LocalizedStringEditor
+- [x] Schedule management panel
+- [x] Schedule calendar
+- [x] Execution history
 
-### In Progress
-- [ ] Full agent integration with content submodules
-- [ ] Automated collection research workflows
-- [ ] Media generation pipeline (S3/R2)
-- [ ] GitHub Pages deployment integration
+**Services:**
+- [x] Image generation service
+- [x] Stock photo service
+- [x] Weather API service
+- [x] WKI (Website Knowledge Index) builder
+- [x] Batch processing service
+- [x] Storage service (S3/R2)
 
 ### Post-MVP Roadmap
 - [ ] Multi-tenancy
 - [ ] Distribution agent (social media, newsletters)
 - [ ] Advanced analytics dashboard
-- [ ] Human collaboration features
 - [ ] Visual workflow editor
-- [ ] CEO dashboard for content oversight
-- [ ] Scheduled content updates (weather, events)
+- [ ] CEO oversight dashboard
 - [ ] Advanced observability (Prometheus, tracing)
 
 ---
@@ -921,8 +964,8 @@ When working on swarm.press:
 
 ---
 
-**Last Updated:** 2026-01-10
-**Implementation Status:** MVP Complete, Cinque Terre Reference Implementation
+**Last Updated:** 2026-01-25
+**Implementation Status:** Production Ready with Autonomous Scheduling
 
 ---
 

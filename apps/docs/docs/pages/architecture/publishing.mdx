@@ -1,0 +1,543 @@
+# Publishing & Deployment
+
+> **Last Updated:** 2026-01-25
+> **Status:** Current
+
+This document describes the complete publishing process from approved content to a live website deployed on GitHub Pages.
+
+---
+
+## Overview
+
+The publishing process is a multi-step workflow orchestrated by Temporal that:
+
+1. Validates content quality (QA Gate)
+2. Optimizes for SEO
+3. Builds a static Astro site
+4. Deploys to GitHub Pages
+5. Merges the content PR
+6. Emits success events
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                    Publishing Pipeline                          │
+├────────────────────────────────────────────────────────────────┤
+│  Content      QA        SEO       Build      Deploy    Publish │
+│  Approved  →  Gate  →  Optimize → Site   →   Pages  →  Live   │
+└────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Publishing Workflow
+
+The publishing workflow is managed by Temporal and consists of 9 steps.
+
+### Workflow Steps
+
+```
+┌─────────────┐
+│ 1. Fetch    │  Get content from database
+│    Content  │  Validate content exists
+└──────┬──────┘
+       ↓
+┌─────────────┐
+│ 2. QA Gate  │  Media relevance check
+│ (optional)  │  Link validation
+│             │  Editorial coherence
+└──────┬──────┘
+       ↓
+┌─────────────┐
+│ 3. SEO      │  Optimize title, meta
+│ Optimize    │  Keywords, alt text
+│             │  Log to GitHub PR
+└──────┬──────┘
+       ↓
+┌─────────────┐
+│ 4. State    │  Transition content
+│ Transition  │  to "scheduled" status
+└──────┬──────┘
+       ↓
+┌─────────────┐
+│ 5. Validate │  Check JSON block structure
+│ Engineering │  Validate images have URLs
+│             │  Log to GitHub PR
+└──────┬──────┘
+       ↓
+┌─────────────┐
+│ 6. Build    │  Generate Astro pages
+│ Static Site │  Process collections
+│             │  Run Astro build
+└──────┬──────┘
+       ↓
+┌─────────────┐
+│ 7. Deploy   │  Upload files to GitHub
+│ to Pages    │  Update gh-pages branch
+└──────┬──────┘
+       ↓
+┌─────────────┐
+│ 8. Merge PR │  Merge content GitHub PR
+│             │  Mark as deployed
+└──────┬──────┘
+       ↓
+┌─────────────┐
+│ 9. Finalize │  Transition to "published"
+│             │  Emit success events
+└─────────────┘
+```
+
+### Workflow Input
+
+```typescript
+interface PublishingWorkflowInput {
+  contentId: string           // Content item to publish
+  websiteId: string           // Target website
+  seoAgentId: string          // SEO optimization agent
+  engineeringAgentId: string  // Build/deploy agent
+  buildFromGitHub?: boolean   // Use GitHub as source (default: false)
+  qaGateConfig?: {            // QA validation options
+    enabled: boolean
+    mediaCheck: boolean
+    linkValidation: boolean
+    coherenceCheck: boolean
+  }
+}
+```
+
+### Workflow Output
+
+```typescript
+interface PublishingWorkflowResult {
+  success: boolean
+  publishedUrl: string        // Live URL
+  deploymentTime: number      // Duration in ms
+  qaGateResult?: {
+    passed: boolean
+    issues: string[]
+  }
+}
+```
+
+---
+
+## Build Process
+
+Two build modes are supported depending on where content is stored.
+
+### Build from Database (Default)
+
+When `buildFromGitHub = false`, content is fetched from PostgreSQL:
+
+```
+PostgreSQL
+    ↓
+┌─────────────────────────────────────────┐
+│ 1. Fetch website configuration          │
+│ 2. Fetch all published content items    │
+│ 3. Generate Astro page files:           │
+│    - src/pages/index.astro              │
+│    - src/pages/{slug}.astro             │
+│ 4. Generate collection pages            │
+│ 5. Copy layouts and components          │
+│ 6. Run: pnpm install && pnpm build      │
+└─────────────────────────────────────────┘
+    ↓
+dist/ directory
+```
+
+### Build from GitHub
+
+When `buildFromGitHub = true`, content is fetched from the GitHub repository:
+
+```
+GitHub Repository
+    ↓
+┌─────────────────────────────────────────┐
+│ 1. Clone content from repository        │
+│ 2. Load sitemap: content/sitemap.json   │
+│ 3. Load pages: content/pages/*.json     │
+│ 4. Load collections: content/collections│
+│ 5. Expand i18n (EN, DE, FR, IT)         │
+│ 6. Generate Astro pages dynamically     │
+│ 7. Support multi-language routing       │
+│ 8. Run Astro build                      │
+└─────────────────────────────────────────┘
+    ↓
+dist/ directory
+```
+
+### Content Structure (GitHub)
+
+```
+repository/
+├── content/
+│   ├── sitemap.json           # Site structure
+│   ├── pages/
+│   │   ├── index.json         # Homepage
+│   │   ├── about.json         # About page
+│   │   └── village/
+│   │       └── riomaggiore.json
+│   └── collections/
+│       ├── restaurants/
+│       │   └── riomaggiore.json
+│       └── accommodations/
+│           └── riomaggiore.json
+└── config/
+    ├── navigation.json
+    └── villages/
+        └── riomaggiore.json
+```
+
+---
+
+## GitHub Pages Deployment
+
+### Deployment API
+
+The backend provides a tRPC endpoint for deploying to GitHub Pages:
+
+```typescript
+// Endpoint: github.deployToPages
+await trpc.github.deployToPages.mutate({
+  websiteId: 'uuid',
+  files: [
+    { path: 'index.html', content: '<html>...</html>' },
+    { path: 'about/index.html', content: '...' },
+    { path: 'assets/style.css', content: '...' }
+  ],
+  commitMessage: 'Deploy: Update content'
+})
+```
+
+### Deployment Process
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  GitHub Pages Deployment                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  1. Collect files from dist/ directory                       │
+│     └─ index.html, assets/, images/, etc.                   │
+│                                                              │
+│  2. Create GitHub blobs for each file                        │
+│     └─ POST /repos/{owner}/{repo}/git/blobs                 │
+│     └─ Returns SHA for each blob                            │
+│                                                              │
+│  3. Create tree from blobs                                   │
+│     └─ POST /repos/{owner}/{repo}/git/trees                 │
+│     └─ Links all blobs into directory structure             │
+│                                                              │
+│  4. Create commit on tree                                    │
+│     └─ POST /repos/{owner}/{repo}/git/commits               │
+│     └─ References the tree and parent commit                │
+│                                                              │
+│  5. Update branch reference                                  │
+│     └─ PATCH /repos/{owner}/{repo}/git/refs/heads/gh-pages  │
+│     └─ Points branch to new commit                          │
+│                                                              │
+│  6. Add CNAME file (if custom domain)                        │
+│     └─ Contains custom domain for GitHub Pages              │
+│                                                              │
+│  7. Update website deployment status                         │
+│     └─ deployment_status = 'deployed'                       │
+│     └─ last_deployed_at = NOW()                             │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Deployment Targets
+
+| Target | Description | Configuration |
+|--------|-------------|---------------|
+| **github-pages** | GitHub Pages hosting | OAuth token + repo connection |
+| **netlify** | Netlify static hosting | Site ID + auth token |
+| **s3** | AWS S3 bucket | AWS credentials + bucket name |
+| **local** | Local directory | Path to output directory |
+
+---
+
+## Database Schema
+
+### Website Deployment Fields
+
+```sql
+-- GitHub Pages configuration
+github_pages_enabled BOOLEAN DEFAULT FALSE,
+github_pages_url TEXT,           -- e.g., 'https://user.github.io/repo'
+github_pages_branch TEXT DEFAULT 'gh-pages',
+github_pages_path TEXT DEFAULT '/',
+github_pages_custom_domain TEXT, -- e.g., 'cinqueterre.travel'
+
+-- Deployment tracking
+last_deployed_at TIMESTAMPTZ,
+deployment_status TEXT DEFAULT 'never_deployed',
+deployment_error TEXT
+```
+
+### Deployment Statuses
+
+| Status | Description |
+|--------|-------------|
+| `never_deployed` | No deployment has occurred |
+| `deploying` | Deployment in progress |
+| `deployed` | Successfully deployed |
+| `failed` | Deployment failed (see error) |
+
+---
+
+## Engineering Agent
+
+The **EngineeringAgent** handles build and deployment tasks.
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `get_website_info` | Get website config and stats |
+| `validate_content` | Check JSON blocks are valid |
+| `build_site` | Generate static site from database |
+| `build_from_github` | Generate static site from GitHub |
+| `deploy_site` | Deploy to hosting platform |
+| `publish_website` | Complete workflow (validate → build → deploy) |
+
+### Tool Example
+
+```typescript
+// EngineeringAgent builds and deploys
+await engineeringAgent.callTool('publish_website', {
+  website_id: 'uuid',
+  deploy_target: 'github-pages',
+  skip_validation: false
+})
+```
+
+---
+
+## QA Gate
+
+The optional QA Gate validates content before publishing.
+
+### Checks Performed
+
+| Check | Description | Agent |
+|-------|-------------|-------|
+| **Media Relevance** | Images match content context | MediaSelectorAgent |
+| **Link Validation** | No broken internal/external links | LinkerAgent |
+| **Editorial Coherence** | Content flows logically | PagePolishAgent |
+| **Completeness** | All required sections present | AuditAgent |
+
+### Auto-Fix Capability
+
+When issues are found, agents attempt automatic fixes:
+
+```
+Issue Found: Broken image link
+    ↓
+MediaSelectorAgent triggered
+    ↓
+Searches for replacement image
+    ↓
+Updates content with new image
+    ↓
+Re-validate
+```
+
+### QA Gate Result
+
+```typescript
+interface QAGateResult {
+  passed: boolean
+  issues: Array<{
+    type: 'media' | 'link' | 'coherence' | 'completeness'
+    severity: 'error' | 'warning'
+    message: string
+    autoFixed: boolean
+  }>
+}
+```
+
+---
+
+## GitHub PR Integration
+
+Throughout the publishing process, activity is logged to the content's GitHub PR.
+
+### PR Comments
+
+Each agent step adds a comment to the PR:
+
+```markdown
+## 🔍 SEO Optimization Complete
+
+**Agent:** SEOSpecialist
+**Time:** 2026-01-25 14:32:00
+
+### Changes Made
+- ✅ Updated meta title
+- ✅ Added 3 secondary keywords
+- ✅ Improved meta description
+
+### Recommendations
+- Consider adding alt text to hero image
+```
+
+### Status Indicators
+
+| Emoji | Status |
+|-------|--------|
+| ✅ | Success |
+| ❌ | Failure |
+| ⏳ | Pending |
+| ⚠️ | Warning |
+
+---
+
+## Complete Flow Example
+
+### Publishing a Blog Post
+
+```
+1. WriterAgent creates content
+   └─ Content stored in database (status: draft)
+   └─ GitHub PR created for review
+
+2. EditorAgent reviews and approves
+   └─ Content status → approved
+   └─ PR ready to merge
+
+3. Publishing workflow triggered
+   └─ Input: contentId, websiteId, buildFromGitHub=true
+
+4. Workflow executes:
+
+   a) Fetch content ✓
+
+   b) QA Gate
+      ├─ Check media → PASS
+      ├─ Check links → PASS
+      └─ Check coherence → PASS
+
+   c) SEO Optimize
+      ├─ Title optimized
+      ├─ Meta description updated
+      └─ Logged to PR
+
+   d) Validate structure ✓
+
+   e) Build from GitHub
+      ├─ Clone repository
+      ├─ Load content/pages/blog/my-post.json
+      ├─ Expand i18n (EN, DE, FR, IT)
+      ├─ Generate Astro pages
+      └─ Run Astro build → dist/
+
+   f) Deploy to GitHub Pages
+      ├─ Create blobs for 150 files
+      ├─ Create tree
+      ├─ Create commit
+      └─ Update gh-pages branch
+
+   g) Merge PR ✓
+
+   h) Status → published ✓
+
+   i) Emit events ✓
+
+5. Site live at https://cinqueterre.travel/blog/my-post/
+```
+
+---
+
+## API Reference
+
+### GitHub Router
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `github.enablePages` | Mutation | Enable GitHub Pages for website |
+| `github.deployToPages` | Mutation | Deploy files to Pages |
+| `github.getDeploymentStatus` | Query | Get current deployment status |
+| `github.setCustomDomain` | Mutation | Configure custom domain |
+
+### Workflow API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `workflow.startPublishing` | Mutation | Start publishing workflow |
+| `workflow.getResult` | Query | Get workflow result |
+
+---
+
+## Deployment Scripts
+
+### Manual Deployment
+
+For manual deployments outside the workflow:
+
+```bash
+# Deploy Cinque Terre site
+npx tsx scripts/deploy-cinqueterre.ts
+
+# Steps performed:
+# 1. Check prerequisites (directories, git status)
+# 2. Run Astro build
+# 3. Deploy dist/ to gh-pages branch
+# 4. Verify deployment
+```
+
+### Theme Deployment Script
+
+```bash
+# From theme directory
+./scripts/deploy-gh-pages.sh
+
+# Steps:
+# 1. Build Astro site
+# 2. Create CNAME for custom domain
+# 3. Add .nojekyll file
+# 4. Push to gh-pages branch
+```
+
+---
+
+## Troubleshooting
+
+### Deployment Failed
+
+1. Check deployment status in database:
+```sql
+SELECT deployment_status, deployment_error
+FROM websites WHERE id = 'uuid';
+```
+
+2. Verify GitHub token has required permissions:
+   - `repo` scope for full repository access
+   - Write access to repository
+
+3. Check gh-pages branch exists
+
+### Build Failed
+
+1. Validate content JSON structure:
+```bash
+npx tsx scripts/validate-content.ts --websiteId=uuid
+```
+
+2. Check for missing images or invalid URLs
+
+3. Review Astro build logs in Temporal UI
+
+### QA Gate Blocking
+
+1. Review QA Gate result for specific issues
+2. Fix identified problems
+3. Re-trigger publishing workflow
+
+---
+
+## Related Documentation
+
+- [Workflows](./workflows) - Temporal workflow details
+- [Agents](./agents) - Agent capabilities
+- [GitHub Integration](./github-integration) - GitHub setup
+- [API Reference](../reference/api) - Full API docs

@@ -1,0 +1,447 @@
+# Agent System
+
+> **Last Updated:** 2026-01-25
+> **Status:** Current
+
+The Agent System is the core of swarm.press, providing 11+ specialized AI agents that collaborate to manage content production autonomously.
+
+---
+
+## Overview
+
+Agents are stateless Claude-powered workers with specific roles, capabilities, and constraints. Each agent:
+
+- Has a defined **role** (Writer, Editor, QA, etc.)
+- Possesses specific **capabilities** (tools it can use)
+- Operates within **constraints** (what it cannot do)
+- Follows **escalation rules** (when to ask for help)
+- Uses **tools** (functions it can call)
+
+All agent state is persisted to PostgreSQL, making agents fully restartable and fault-tolerant.
+
+---
+
+## Agent Types
+
+### WriterAgent
+
+**Department:** Writers Room
+
+**Capabilities:**
+- `research_topic` - Research a topic using web search and knowledge base
+- `write_draft` - Create initial content drafts
+- `revise_draft` - Revise content based on feedback
+- `submit_for_review` - Submit completed drafts to editorial
+
+**Features:**
+- Language guidelines for multi-language content
+- Agent personas for consistent voice
+- Media tool integration for image suggestions
+
+### EditorAgent
+
+**Department:** Editorial
+
+**Capabilities:**
+- `review_content` - Review submitted drafts
+- `request_changes` - Request revisions with specific feedback
+- `approve_content` - Approve content for publishing
+- `reject_content` - Reject content with explanation
+- `escalate_to_ceo` - Escalate high-risk decisions
+
+**Features:**
+- Editorial config loader for style guidelines
+- Quality scoring integration
+
+### QAAgent
+
+**Department:** Quality Assurance
+
+**Capabilities:**
+- `audit_content` - Comprehensive content audit
+- `validate_links` - Check for broken links
+- `check_media` - Validate media assets
+- `verify_completeness` - Ensure all required sections present
+- `report_issues` - Generate audit reports
+
+**Features:**
+- Automated link checking
+- Content completeness validation
+- Quality scoring
+
+### MediaAgent
+
+**Department:** Media
+
+**Capabilities:**
+- `coordinate_media` - Orchestrate media operations
+- `generate_images` - Request AI image generation
+- `manage_assets` - Organize and tag media assets
+- `validate_assets` - Check media quality and relevance
+
+**Features:**
+- Stock photo service integration
+- Image generation service integration
+- Asset metadata management
+
+### MediaSelectorAgent
+
+**Department:** Media
+
+**Capabilities:**
+- `select_images` - Choose appropriate images for content
+- `curate_media` - Build curated image collections
+- `match_content` - Match images to content context
+
+**Features:**
+- Content-aware image selection
+- Style matching algorithms
+- Alt text generation
+
+### LinkerAgent
+
+**Department:** SEO
+
+**Capabilities:**
+- `analyze_links` - Analyze internal link structure
+- `suggest_internal_links` - Recommend link opportunities
+- `optimize_structure` - Improve site architecture
+- `detect_orphans` - Find pages with no incoming links
+
+**Features:**
+- Link graph analysis
+- SEO optimization suggestions
+- Anchor text recommendations
+
+### PageOrchestratorAgent
+
+**Department:** Editorial
+
+**Capabilities:**
+- `direct_page_content` - Coordinate page-level content creation
+- `coordinate_sections` - Manage multiple sections
+- `manage_flow` - Ensure logical content flow
+- `assign_tasks` - Delegate to specialized agents
+
+**Features:**
+- Multi-section coordination
+- Agent delegation
+- Progress tracking
+
+### PagePolishAgent
+
+**Department:** Editorial
+
+**Capabilities:**
+- `refine_coherence` - Improve content coherence
+- `improve_flow` - Enhance narrative flow
+- `final_polish` - Apply finishing touches
+- `ensure_consistency` - Maintain voice consistency
+
+**Features:**
+- Style consistency checking
+- Transition improvement
+- Final quality pass
+
+### AuditAgent
+
+**Department:** Quality Assurance
+
+**Capabilities:**
+- `audit_completeness` - Check content completeness
+- `check_standards` - Verify standards compliance
+- `report_issues` - Generate detailed audit reports
+- `track_quality` - Monitor quality metrics
+
+**Features:**
+- Comprehensive audit checklists
+- Quality scoring
+- Issue tracking
+
+### EngineeringAgent
+
+**Department:** Engineering
+
+**Capabilities:**
+- `prepare_build` - Prepare site for building
+- `validate_assets` - Validate all assets before build
+- `publish_site` - Execute publishing workflow
+- `deploy_changes` - Deploy to production
+
+**Features:**
+- Build system integration
+- Asset validation
+- Deployment automation
+
+### CEOAssistantAgent
+
+**Department:** Governance
+
+**Capabilities:**
+- `summarize_tickets` - Summarize open tickets for CEO
+- `organize_escalations` - Prioritize escalated items
+- `notify_ceo` - Send notifications to CEO
+- `prepare_briefings` - Create executive briefings
+
+**Features:**
+- Ticket aggregation
+- Priority scoring
+- Executive summaries
+
+---
+
+## Agent Architecture
+
+### Base Agent Class
+
+All agents extend a common base:
+
+```typescript
+class BaseAgent {
+  id: string
+  name: string
+  role: string
+  capabilities: string[]
+
+  async execute(task: Task): Promise<TaskResult>
+  async callTool(name: string, params: any): Promise<ToolResult>
+  async escalate(ticket: QuestionTicket): Promise<void>
+}
+```
+
+### Agent Factory
+
+Agents are instantiated via factory:
+
+```typescript
+const agent = AgentFactory.create('writer', {
+  websiteId: 'uuid',
+  companyId: 'uuid',
+  config: agentConfig
+})
+```
+
+### Agent Registration
+
+Agents are registered in the factory:
+
+```typescript
+// Registered agent types
+const AGENT_TYPES = {
+  Writer: WriterAgent,
+  Editor: EditorAgent,
+  ChiefEditor: EditorAgent,  // Alias
+  QA: QAAgent,
+  QAauditor: AuditAgent,     // Alias
+  Media: MediaAgent,
+  MediaCoordinator: MediaAgent,  // Alias
+  MediaSelector: MediaSelectorAgent,
+  Linker: LinkerAgent,
+  PageOrchestrator: PageOrchestratorAgent,
+  PagePolish: PagePolishAgent,
+  Audit: AuditAgent,
+  Engineering: EngineeringAgent,
+  SEOSpecialist: EngineeringAgent,  // Alias
+  CEOAssistant: CEOAssistantAgent,
+}
+```
+
+---
+
+## Agent Tools
+
+Each agent has access to tools specific to its role.
+
+### Tool Definition
+
+```typescript
+const writeDraftTool = {
+  name: 'write_draft',
+  description: 'Write a content draft based on a brief',
+  parameters: {
+    type: 'object',
+    properties: {
+      briefId: { type: 'string' },
+      targetLength: { type: 'number' },
+      tone: { type: 'string' }
+    },
+    required: ['briefId']
+  }
+}
+```
+
+### Tool Handlers
+
+```typescript
+const handlers = {
+  async write_draft({ briefId, targetLength, tone }) {
+    const brief = await db.briefs.get(briefId)
+    const draft = await claude.generate(buildPrompt(brief, tone))
+    return await db.drafts.create({ content: draft, briefId })
+  }
+}
+```
+
+---
+
+## Agent Adapters
+
+External integrations use adapters:
+
+### REST Adapter
+
+```typescript
+const restAdapter = new RESTAdapter({
+  baseUrl: 'https://api.example.com',
+  headers: { 'Authorization': 'Bearer {{API_KEY}}' }
+})
+```
+
+### GraphQL Adapter
+
+```typescript
+const graphqlAdapter = new GraphQLAdapter({
+  endpoint: 'https://api.example.com/graphql',
+  headers: { 'Authorization': 'Bearer {{API_KEY}}' }
+})
+```
+
+### MCP Adapter
+
+```typescript
+const mcpAdapter = new MCPAdapter({
+  serverUrl: 'mcp://localhost:8080',
+  capabilities: ['search', 'fetch']
+})
+```
+
+### JavaScript Adapter (Sandboxed)
+
+```typescript
+const jsAdapter = new JavaScriptAdapter({
+  code: `
+    const result = input.text.toUpperCase()
+    return { transformed: result }
+  `,
+  timeout: 5000
+})
+```
+
+---
+
+## Agent Configuration
+
+### Editorial Config
+
+Agents load editorial configuration from the content submodule:
+
+```json
+{
+  "writer_prompt_override": {
+    "voice": "warm, knowledgeable, personal",
+    "editor_persona": "Giulia Rossi",
+    "brand_name": "Cinque Terre Dispatch"
+  }
+}
+```
+
+### Language Guidelines
+
+Multi-language support with language-specific guidelines:
+
+```typescript
+const LANGUAGE_GUIDELINES = {
+  en: { tone: 'professional', formality: 'moderate' },
+  de: { tone: 'formal', formality: 'high' },
+  it: { tone: 'warm', formality: 'moderate' }
+}
+```
+
+### Agent Personas
+
+Consistent agent personalities:
+
+```typescript
+const AGENT_PERSONAS = {
+  giulia: {
+    name: 'Giulia Rossi',
+    background: 'Local editor with 20 years experience',
+    voice: 'Warm, knowledgeable, passionate about local culture'
+  }
+}
+```
+
+---
+
+## Agent Observability
+
+### Token Estimation
+
+Track token usage for cost management:
+
+```typescript
+const estimation = estimateTokens(prompt, response)
+// { inputTokens: 1500, outputTokens: 800, cost: 0.023 }
+```
+
+### Activity Logging
+
+All agent activities are logged:
+
+```sql
+INSERT INTO agent_activities
+  (agent_id, activity_type, target_id, details, created_at)
+VALUES
+  ($1, 'write_draft', $2, $3, NOW())
+```
+
+### Execution Tracking
+
+Track prompt executions for quality:
+
+```sql
+INSERT INTO prompt_executions
+  (agent_id, capability, tokens_used, latency_ms, quality_score)
+VALUES
+  ($1, 'write_draft', 2300, 4500, 4.2)
+```
+
+---
+
+## Agent Delegation
+
+Agents can delegate to other agents:
+
+```typescript
+// PageOrchestrator delegates to Writer
+const result = await pageOrchestrator.delegate({
+  toAgent: 'writer',
+  task: 'write_draft',
+  params: { briefId, section: 'introduction' }
+})
+```
+
+---
+
+## Collection Getters
+
+Specialized data getters for collection research:
+
+| Getter | Purpose |
+|--------|---------|
+| `RestaurantsGetter` | Fetch restaurant data |
+| `AccommodationsGetter` | Fetch hotel/lodging data |
+| `HikesGetter` | Fetch hiking trail data |
+| `VillagesGetter` | Fetch village information |
+| `POIsGetter` | Fetch points of interest |
+| `EventsGetter` | Fetch local events |
+| `TransportationGetter` | Fetch transport info |
+| `WeatherGetter` | Fetch weather data |
+
+---
+
+## Related Documentation
+
+- [Workflows](../guides/workflows) - How agents are orchestrated
+- [Scheduling](./scheduling) - Autonomous agent scheduling
+- [API Reference](../reference/api) - Agent API endpoints

@@ -1,0 +1,345 @@
+# Agent Scheduling Guide
+
+> **Last Updated:** 2026-01-25
+
+This guide explains how to configure and manage autonomous agent schedules in the swarm.press admin dashboard.
+
+---
+
+## Overview
+
+Agent schedules allow your AI agents to perform maintenance tasks automatically without human intervention. Four schedule types are available:
+
+| Schedule | Purpose | Default |
+|----------|---------|---------|
+| **Scheduled Content** | Publish content on scheduled dates | Daily 6 AM |
+| **Media Check** | Validate images and media assets | Daily 7 AM |
+| **Link Validation** | Find broken internal/external links | Weekly Monday 8 AM |
+| **Stale Content** | Identify outdated content | Monthly 1st 9 AM |
+
+---
+
+## Accessing Schedules
+
+1. Navigate to the **Admin Dashboard**
+2. Select a website from the dropdown
+3. Open the website detail page
+4. Find the **Agent Schedules** section
+
+---
+
+## Schedule Management Panel
+
+The Schedule Management panel shows all configured schedules:
+
+### Schedule Card Information
+
+Each schedule displays:
+- **Type** - The schedule category (e.g., "Scheduled Content")
+- **Status** - Active, Paused, or Running
+- **Frequency** - Daily, Weekly, or Monthly
+- **Cron Expression** - The exact timing (e.g., `0 6 * * *`)
+- **Last Run** - When it last executed
+- **Next Run** - When it will run next
+
+### Actions
+
+| Button | Action |
+|--------|--------|
+| **▶ / ⏸** | Toggle enable/disable |
+| **⟳ Run Now** | Trigger immediate execution |
+| **⚙ Edit** | Modify cron expression |
+
+---
+
+## Creating Schedules
+
+### Create Default Schedules
+
+To create all four standard schedules at once:
+
+1. Click **"Create Default Schedules"** button
+2. All schedules are created with default timing
+3. Schedules start in enabled state
+
+### Create Individual Schedule
+
+To create a specific schedule:
+
+1. Click **"+ Add Schedule"**
+2. Select schedule type from dropdown
+3. (Optional) Customize cron expression
+4. Click **"Create"**
+
+---
+
+## Managing Schedule State
+
+### Pause a Schedule
+
+To temporarily stop a schedule:
+
+1. Find the schedule in the list
+2. Click the **⏸ Pause** button
+3. Schedule status changes to "Paused"
+4. No executions will occur until resumed
+
+### Resume a Schedule
+
+To restart a paused schedule:
+
+1. Find the paused schedule
+2. Click the **▶ Resume** button
+3. Schedule resumes from next scheduled time
+
+### Delete a Schedule
+
+To permanently remove a schedule (CEO only):
+
+1. Click the **⋮** menu on the schedule
+2. Select **"Delete"**
+3. Confirm the deletion
+4. Schedule is removed from Temporal and database
+
+---
+
+## Manual Execution
+
+To run a schedule immediately:
+
+1. Find the schedule you want to run
+2. Click **"⟳ Run Now"**
+3. Execution starts immediately
+4. Status shows "Running" with progress
+5. Results appear in execution history
+
+Manual executions are logged with `trigger_type: 'manual'` and include the user who triggered them.
+
+---
+
+## Customizing Schedule Timing
+
+### Cron Expression Format
+
+Schedules use standard cron expressions:
+
+```
+┌───────────── minute (0 - 59)
+│ ┌───────────── hour (0 - 23)
+│ │ ┌───────────── day of month (1 - 31)
+│ │ │ ┌───────────── month (1 - 12)
+│ │ │ │ ┌───────────── day of week (0 - 6) (Sunday = 0)
+│ │ │ │ │
+│ │ │ │ │
+* * * * *
+```
+
+### Common Examples
+
+| Expression | Description |
+|------------|-------------|
+| `0 6 * * *` | Every day at 6:00 AM |
+| `0 8 * * 1` | Every Monday at 8:00 AM |
+| `0 9 1 * *` | 1st of every month at 9:00 AM |
+| `0 */4 * * *` | Every 4 hours |
+| `30 7 * * 1-5` | Weekdays at 7:30 AM |
+
+### Edit Cron Expression
+
+1. Click **⚙ Edit** on the schedule
+2. Enter new cron expression
+3. Preview shows next 5 run times
+4. Click **"Save"**
+
+---
+
+## Schedule Calendar
+
+The calendar view provides a visual overview of schedule activity.
+
+### Viewing the Calendar
+
+1. Click **"Calendar View"** tab
+2. Navigate months with ◀ ▶ arrows
+3. Click any day to see details
+
+### Calendar Indicators
+
+| Color | Meaning |
+|-------|---------|
+| 🟢 Green | Successful execution |
+| 🔴 Red | Failed execution |
+| 🔵 Blue | Currently running |
+| ⚪ Gray | Scheduled (upcoming) |
+
+### Execution Details
+
+Click any calendar event to see:
+- Start and end times
+- Duration
+- Trigger type (scheduled/manual)
+- Result summary
+- Error details (if failed)
+
+---
+
+## Execution History
+
+### Viewing History
+
+1. Click **"History"** tab
+2. See list of past executions
+3. Filter by schedule type, status, or date
+
+### History Entry Information
+
+Each entry shows:
+- **Schedule Type** - Which schedule ran
+- **Trigger** - Scheduled or Manual
+- **Status** - Completed, Failed, Running
+- **Started** - When execution began
+- **Duration** - How long it took
+- **Triggered By** - User (for manual) or "System"
+
+### Filtering History
+
+Filter options:
+- **Schedule Type** - Show only specific schedules
+- **Status** - completed, failed, running
+- **Trigger Type** - scheduled, manual
+- **Date Range** - Specific time period
+
+---
+
+## Understanding Results
+
+### Successful Execution
+
+A successful execution includes:
+```json
+{
+  "status": "completed",
+  "itemsProcessed": 15,
+  "issuesFound": 0,
+  "duration": "2m 34s"
+}
+```
+
+### Failed Execution
+
+A failed execution includes:
+```json
+{
+  "status": "failed",
+  "error": "Connection timeout to external service",
+  "itemsProcessed": 8,
+  "itemsFailed": 2
+}
+```
+
+---
+
+## Schedule Types in Detail
+
+### Scheduled Content
+
+**What it does:**
+- Finds content with `scheduled_for` date matching today
+- Transitions content from "scheduled" to "published"
+- Triggers site rebuild if needed
+
+**When to adjust:**
+- Change to earlier if you want content live before work hours
+- Change to later for different timezone audience
+
+### Media Check
+
+**What it does:**
+- Scans all pages for image references
+- Validates each image URL is accessible
+- Checks image dimensions and formats
+- Reports broken or slow-loading images
+
+**When to adjust:**
+- Run more frequently for image-heavy sites
+- Run after business hours to avoid load impact
+
+### Link Validation
+
+**What it does:**
+- Crawls all internal links
+- Checks external links (HTTP HEAD requests)
+- Identifies broken links and orphan pages
+- Creates tasks for fixes
+
+**When to adjust:**
+- Weekly is usually sufficient
+- Run more often during major content changes
+
+### Stale Content
+
+**What it does:**
+- Calculates freshness scores for all content
+- Identifies content below threshold (default 70%)
+- Creates editorial tasks for updates
+- Notifies editors of high-priority items
+
+**When to adjust:**
+- Monthly works for most sites
+- Run quarterly for stable content
+- Run weekly for rapidly changing topics
+
+---
+
+## Troubleshooting
+
+### Schedule Not Running
+
+1. Check if schedule is enabled (not paused)
+2. Verify Temporal server is running
+3. Check cron expression is valid
+4. Look for errors in execution history
+
+### Execution Failing
+
+1. Check error message in execution details
+2. Verify agents have required permissions
+3. Check external service connectivity
+4. Review workflow logs in Temporal UI
+
+### Missing Executions
+
+1. Check if schedule was paused during that time
+2. Verify Temporal was running
+3. Check database for execution records
+4. Review Temporal UI for schedule status
+
+---
+
+## Best Practices
+
+### Timing Recommendations
+
+- **Stagger schedules** - Don't run all at same time
+- **Off-peak hours** - Run intensive tasks when traffic is low
+- **Timezone awareness** - Consider your audience location
+
+### Monitoring
+
+- **Review history weekly** - Catch issues early
+- **Set up alerts** - For consecutive failures
+- **Track duration trends** - Identify performance issues
+
+### Maintenance
+
+- **Pause during updates** - Avoid conflicts with deployments
+- **Test changes** - Use manual trigger before changing cron
+- **Document custom timings** - Note why you changed defaults
+
+---
+
+## Related Documentation
+
+- [Scheduling Architecture](/architecture/scheduling) - Technical details
+- [Workflows Guide](/guides/workflows) - Workflow information
+- [User Guide](/guides/user-guide) - General admin guide

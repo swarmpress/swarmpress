@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last Updated:** 2025-11-26
+> **Last Updated:** 2026-01-25
 > **Status:** Current
 
 swarm.press is a fully autonomous virtual publishing house operated by intelligent agents with human oversight.
@@ -17,17 +17,17 @@ swarm.press is a fully autonomous virtual publishing house operated by intellige
                                 │
 ┌───────────────────────────────▼─────────────────────────────────┐
 │                      API Layer (tRPC)                           │
-│         Express Server │ 23+ Routers │ GitHub Webhooks          │
+│         Express Server │ 27 Routers │ GitHub Webhooks           │
 └───────────────────────────────┬─────────────────────────────────┘
                                 │
 ┌───────────────────────────────▼─────────────────────────────────┐
 │                    Orchestration Layer                          │
-│  Temporal Workflows │ State Machine │ Event Bus (NATS)          │
+│  Temporal Workflows │ Temporal Schedules │ State Machine │ NATS │
 └───────────────────────────────┬─────────────────────────────────┘
                                 │
 ┌───────────────────────────────▼─────────────────────────────────┐
-│                      Agent Layer                                │
-│    WriterAgent │ EditorAgent │ EngineeringAgent │ CEOAssistant  │
+│                      Agent Layer (11+ Agents)                   │
+│  Writer │ Editor │ QA │ Media │ Linker │ PageOrchestrator │ ... │
 └───────────────────────────────┬─────────────────────────────────┘
                                 │
 ┌───────────────────────────────▼─────────────────────────────────┐
@@ -41,36 +41,76 @@ swarm.press is a fully autonomous virtual publishing house operated by intellige
 ## Core Components
 
 ### 1. Agent System
-Four autonomous Claude agents with specific roles:
+
+Eleven autonomous Claude agents with specialized roles:
 
 | Agent | Department | Capabilities |
 |-------|-----------|--------------|
 | **WriterAgent** | Writers Room | research_topic, write_draft, revise_draft, submit_for_review |
 | **EditorAgent** | Editorial | review_content, request_changes, approve_content, reject_content |
+| **QAAgent** | Quality Assurance | audit_content, validate_links, check_media, verify_completeness |
+| **MediaAgent** | Media | coordinate_media, generate_images, manage_assets |
+| **MediaSelectorAgent** | Media | select_images, curate_media, match_content |
+| **LinkerAgent** | SEO | analyze_links, suggest_internal_links, optimize_structure |
+| **PageOrchestratorAgent** | Editorial | direct_page_content, coordinate_sections, manage_flow |
+| **PagePolishAgent** | Editorial | refine_coherence, improve_flow, final_polish |
+| **AuditAgent** | Quality Assurance | audit_completeness, check_standards, report_issues |
 | **EngineeringAgent** | Engineering | prepare_build, validate_assets, publish_site |
 | **CEOAssistantAgent** | Governance | summarize_tickets, organize_escalations, notify_ceo |
 
 Agents are **stateless** - all state lives in PostgreSQL.
 
 ### 2. Workflow Engine (Temporal.io)
-Three primary workflows orchestrate agent collaboration:
 
-- **Content Production** - idea → draft → review → publish
-- **Editorial Review** - submit → approve/reject → revise loop
-- **Publishing** - build → validate → deploy
+Twelve workflows orchestrate agent collaboration:
 
-### 3. Event Bus (NATS + CloudEvents)
+| Workflow | Purpose |
+|----------|---------|
+| **Content Production** | Full content lifecycle: idea → draft → review → publish |
+| **Editorial Review** | Review cycles: submit → approve/reject → revise loop |
+| **Publishing** | Build and deploy: build → validate → deploy |
+| **Batch Processing** | Large-scale operations with progress tracking |
+| **Page Content Generation** | AI-driven page creation with multi-agent coordination |
+| **Collection Research** | Automated data gathering for collections |
+| **QA Gate** | Quality validation checkpoint before publishing |
+| **Scheduled Content** | Time-based content publishing |
+| **Scheduled Maintenance** | Automated maintenance tasks |
+| **Content Integrity** | Link validation and media checking |
+| **Website Generation** | Full site builds and regeneration |
+
+### 3. Autonomous Scheduling System
+
+Temporal Schedules enable fully autonomous agent operation:
+
+| Schedule Type | Default | Purpose |
+|---------------|---------|---------|
+| `scheduled-content` | Daily 6 AM | Publish scheduled content |
+| `media-check` | Daily 7 AM | Validate media assets |
+| `link-validation` | Weekly Monday 8 AM | Check for broken links |
+| `stale-content` | Monthly 1st 9 AM | Identify outdated content |
+
+See [Scheduling System](/architecture/scheduling) for details.
+
+### 4. Event Bus (NATS + CloudEvents)
+
 Event-driven communication with CloudEvents v1.0:
-- `content.*` - content lifecycle events
-- `review.*` - editorial review events
-- `task.*` - workflow task events
-- `deploy.*` - publishing events
 
-### 4. State Machine
+| Category | Events |
+|----------|--------|
+| `content.*` | content.created, content.submittedForReview, content.approved, content.published |
+| `review.*` | review.completed, review.needsChanges |
+| `task.*` | task.created, task.completed |
+| `deploy.*` | deploy.started, deploy.success, deploy.failed |
+| `schedule.*` | schedule.triggered, schedule.completed |
+
+### 5. State Machine
+
 Enforces valid state transitions with audit logging:
-- ContentItem: idea → draft → in_review → approved → published
-- Task: pending → in_progress → completed
-- Review: pending → approved | rejected | needs_changes
+
+- **ContentItem**: idea → draft → in_review → approved → published
+- **Task**: pending → in_progress → completed
+- **Review**: pending → approved | rejected | needs_changes
+- **Schedule Execution**: scheduled → running → completed | failed
 
 ---
 
@@ -79,13 +119,14 @@ Enforces valid state transitions with audit logging:
 | Layer | Technology |
 |-------|-----------|
 | Agent Runtime | Claude Agent SDK |
-| Workflow Engine | Temporal.io |
+| Workflow Engine | Temporal.io + Schedules |
 | Event Bus | NATS JetStream |
 | Database | PostgreSQL |
-| API | Express + tRPC |
+| API | Express + tRPC (27 routers) |
 | Admin Dashboard | Astro + React + shadcn/ui |
-| Site Builder | Astro (static generation) |
-| Collaboration | GitHub (PRs, Issues, Webhooks) |
+| Site Builder | Astro (67 block types) |
+| Collaboration | GitHub (PRs, Issues, Webhooks, OAuth) |
+| Media Storage | S3 / Cloudflare R2 |
 
 ---
 
@@ -105,12 +146,21 @@ type Block =
   | { type: 'hero', title: string, subtitle?: string }
   | { type: 'image', src: string, caption: string }
   | { type: 'faq', items: Array<{ q: string, a: string }> }
+  | { type: 'collection-embed', collection: string, slugs: string[] }
+  // ... 67 block types total
 ```
 
 ### Three-Level Prompt System
 1. **Company Level** - Baseline prompts
 2. **Website Level** - Brand-specific overrides
 3. **Agent Level** - Individual agent assignments
+
+### Agent Adapters
+External tool integrations via adapters:
+- **REST Adapter** - REST API integrations
+- **GraphQL Adapter** - GraphQL endpoints
+- **MCP Adapter** - Model Context Protocol
+- **JavaScript Adapter** - Sandboxed custom code
 
 ---
 
@@ -119,25 +169,86 @@ type Block =
 ```
 swarm-press/
 ├── packages/
-│   ├── backend/          # API server, repositories, services
-│   ├── agents/           # Claude Agent SDK implementations
-│   ├── workflows/        # Temporal.io workflows
-│   ├── shared/           # Types, schemas, utilities
+│   ├── backend/          # API server, 26 repositories, 17 services
+│   ├── agents/           # 11+ Claude agents with tools and handlers
+│   ├── workflows/        # 12 Temporal workflows + schedule manager
+│   ├── shared/           # Types, 67 block schemas, validators
 │   ├── event-bus/        # NATS integration
-│   ├── site-builder/     # Astro generator
-│   └── github-integration/ # GitHub collaboration
+│   ├── site-builder/     # Astro generator with themes
+│   ├── github-integration/ # GitHub collaboration layer
+│   └── cli/              # CLI tools
 ├── apps/
 │   ├── admin/            # Admin dashboard (port 3002)
-│   └── dashboard/        # CEO dashboard (port 3001)
-└── specs/                # Authoritative specifications
+│   ├── dashboard/        # CEO dashboard (port 3001)
+│   └── docs/             # Documentation site (Vocs)
+├── scripts/              # 50+ operational scripts
+└── specs/                # 13 authoritative specifications
 ```
+
+---
+
+## Database Schema
+
+The PostgreSQL schema includes:
+
+### Core Entities
+- **companies, departments, roles, agents** - Organizational hierarchy
+- **websites, pages, content_items** - Content structure
+- **content_blueprints** - Page templates
+
+### Workflow & Collaboration
+- **tasks, reviews, question_tickets** - Workflow state
+- **editorial_tasks, task_phases** - Editorial planning
+- **suggestions** - AI-generated recommendations
+
+### Scheduling System
+- **website_schedules** - Schedule configuration per website
+- **schedule_executions** - Execution history and tracking
+- **batch_jobs** - Batch processing state
+
+### Prompt Management
+- **company_prompt_templates** - Level 1 prompts
+- **website_prompt_templates** - Level 2 overrides
+- **agent_prompt_bindings** - Level 3 bindings
+- **prompt_executions** - Performance tracking
+
+### Tools & Integrations
+- **tool_configs** - External tool definitions
+- **website_tools** - Tool assignments
+- **tool_secrets** - Encrypted credentials
+
+---
+
+## Services
+
+17 backend services handle business logic:
+
+| Service | Purpose |
+|---------|---------|
+| `auth.service` | GitHub OAuth authentication |
+| `github.service` | GitHub API interactions |
+| `github-sync.service` | Bidirectional sync |
+| `media.service` | Media asset management |
+| `storage.service` | S3/R2 storage operations |
+| `image-generation.service` | AI image generation |
+| `stock-photo.service` | Stock photo integration |
+| `weather-api.service` | Weather data for content |
+| `wki-builder.service` | Website Knowledge Index |
+| `wki-refresh.service` | WKI refresh automation |
+| `prompt-resolver.service` | Three-level prompt resolution |
+| `batch-processing.service` | Batch job orchestration |
+| `collection-schema.service` | Collection type management |
+| `agent-config.service` | Agent configuration |
+| `editorial-yaml.service` | YAML import/export |
+| `yaml.service` | YAML processing |
 
 ---
 
 ## Related Documentation
 
-- [Multi-Tenant Architecture](./multi-tenant.md) - Tenant hierarchy
-- [Editorial Planning](./editorial-planning.md) - Content workflow
-- [Sitemap System](./sitemap-system.md) - Page management
-- [GitHub Integration](./github-integration.md) - Collaboration features
-- [API Reference](../reference/api.md) - Complete API docs
+- [Scheduling System](./scheduling) - Autonomous agent scheduling
+- [Multi-Tenant Architecture](./multi-tenant) - Tenant hierarchy
+- [Editorial Planning](./editorial-planning) - Content workflow
+- [Sitemap System](./sitemap-system) - Page management
+- [GitHub Integration](./github-integration) - Collaboration features
+- [API Reference](../reference/api) - Complete API docs

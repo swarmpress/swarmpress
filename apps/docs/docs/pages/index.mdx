@@ -4,12 +4,16 @@ swarm.press is a fully autonomous virtual publishing house operated by intellige
 
 ## Features
 
-- **Autonomous Agents** - 4 Claude agents (Writer, Editor, Engineering, CEO Assistant)
-- **Workflow Orchestration** - Temporal.io for durable, fault-tolerant workflows
-- **Event-Driven** - NATS JetStream with CloudEvents v1.0
-- **GitHub Integration** - PRs for content review, Issues for tasks
+- **11+ Autonomous Agents** - Specialized Claude agents (Writer, Editor, QA, Media, Linker, and more)
+- **12 Temporal Workflows** - Content production, editorial review, publishing, batch processing, scheduling
+- **Autonomous Scheduling** - Scheduled content publishing, media checks, link validation, stale content detection
+- **Quality Assurance** - Automated content audits, link validation, media relevance checking
+- **Event-Driven Architecture** - NATS JetStream with CloudEvents v1.0
+- **GitHub Integration** - PRs for content review, Issues for tasks, OAuth authentication
 - **Multi-Tenant** - Company → Department → Role → Agent hierarchy
-- **Static Site Generation** - Astro-based website builder
+- **Static Site Generation** - Astro-based website builder with 67 block types
+- **Collections System** - Restaurants, accommodations, hikes, events, POIs, and more
+- **Batch Processing** - Large-scale content generation and updates
 
 ## Quick Links
 
@@ -22,6 +26,7 @@ swarm.press is a fully autonomous virtual publishing house operated by intellige
 :::note
 **Learn More**
 - [Architecture Overview](/architecture/overview) - Understand the system design
+- [Scheduling System](/architecture/scheduling) - Autonomous agent scheduling
 - [API Reference](/reference/api) - Complete API documentation
 :::
 
@@ -30,12 +35,46 @@ swarm.press is a fully autonomous virtual publishing house operated by intellige
 | Layer | Technology |
 |-------|-----------|
 | Agent Runtime | Claude Agent SDK |
-| Workflow Engine | Temporal.io |
+| Workflow Engine | Temporal.io + Schedules |
 | Event Bus | NATS JetStream |
 | Database | PostgreSQL |
-| API | Express + tRPC |
+| API | Express + tRPC (27 routers) |
 | Admin Dashboard | Astro + React + shadcn/ui |
-| Collaboration | GitHub (PRs, Issues, Webhooks) |
+| Site Builder | Astro (67 block types) |
+| Collaboration | GitHub (PRs, Issues, Webhooks, OAuth) |
+| Media Storage | S3 / Cloudflare R2 |
+
+## Agent Types
+
+| Agent | Purpose |
+|-------|---------|
+| **WriterAgent** | Research, draft creation, content revision |
+| **EditorAgent** | Content review, approval, rejection |
+| **QAAgent** | Quality assurance, content auditing |
+| **MediaAgent** | Media coordination, asset management |
+| **MediaSelectorAgent** | Image selection and curation |
+| **LinkerAgent** | Internal linking optimization |
+| **PageOrchestratorAgent** | Page-level content direction |
+| **PagePolishAgent** | Editorial flow and coherence |
+| **AuditAgent** | Content completeness auditing |
+| **EngineeringAgent** | Build preparation, publishing |
+| **CEOAssistantAgent** | Escalation handling, CEO briefings |
+
+## Workflows
+
+| Workflow | Description |
+|----------|-------------|
+| Content Production | Full content lifecycle from idea to draft |
+| Editorial Review | Review, approval, and revision cycles |
+| Publishing | Build, validate, and deploy |
+| Batch Processing | Large-scale content operations |
+| Page Content Generation | AI-driven page creation |
+| Collection Research | Automated data gathering |
+| QA Gate | Quality validation checkpoint |
+| Scheduled Content | Time-based publishing |
+| Scheduled Maintenance | Automated maintenance tasks |
+| Content Integrity | Link and media validation |
+| Website Generation | Full site builds |
 
 ## Documentation
 

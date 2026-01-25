@@ -1110,6 +1110,129 @@ Tracks real-time agent activity on the sitemap.
 
 ---
 
+## Scheduling
+
+### Schedule Router
+
+**Path:** `trpc.schedule.*`
+
+Manages autonomous agent schedules and execution history.
+
+#### Schedule Types
+
+| Type | Default Cron | Frequency | Description |
+|------|-------------|-----------|-------------|
+| `scheduled-content` | `0 6 * * *` | Daily | Publish scheduled content |
+| `media-check` | `0 7 * * *` | Daily | Validate media assets |
+| `link-validation` | `0 8 * * 1` | Weekly | Check for broken links |
+| `stale-content` | `0 9 1 * *` | Monthly | Identify outdated content |
+
+#### Schedule Management
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `listSchedules` | Query | Public | List all schedules for website |
+| `getSchedule` | Query | Public | Get schedule details |
+| `createSchedule` | Mutation | Protected | Create a schedule |
+| `createDefaultSchedules` | Mutation | Protected | Create all 4 default schedules |
+| `updateSchedule` | Mutation | Protected | Update cron expression |
+| `pauseSchedule` | Mutation | Protected | Pause a schedule |
+| `resumeSchedule` | Mutation | Protected | Resume a paused schedule |
+| `deleteSchedule` | Mutation | CEO | Delete a schedule |
+| `triggerSchedule` | Mutation | Protected | Trigger immediate execution |
+
+#### Execution History
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `getExecutionHistory` | Query | Public | Get execution history with filters |
+| `getCalendarExecutions` | Query | Public | Get executions for calendar view |
+| `getUpcomingRuns` | Query | Public | Get next scheduled runs |
+| `getStatistics` | Query | Public | Get execution statistics |
+| `updateExecution` | Mutation | Public | Update execution status |
+
+#### Metadata
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `getScheduleTypes` | Query | Public | Get schedule type definitions |
+
+```typescript
+// Create default schedules for a website
+await trpc.schedule.createDefaultSchedules.mutate({
+  websiteId: 'uuid'
+})
+// Returns: { created: ['scheduled-content', 'media-check', ...], skipped: [] }
+
+// List schedules
+const { schedules } = await trpc.schedule.listSchedules.query({
+  websiteId: 'uuid'
+})
+
+// Trigger manual execution
+const { executionId, workflowId } = await trpc.schedule.triggerSchedule.mutate({
+  websiteId: 'uuid',
+  scheduleType: 'link-validation'
+})
+
+// Pause a schedule
+await trpc.schedule.pauseSchedule.mutate({
+  websiteId: 'uuid',
+  scheduleType: 'media-check'
+})
+
+// Get execution history
+const { executions } = await trpc.schedule.getExecutionHistory.query({
+  websiteId: 'uuid',
+  scheduleType: 'link-validation',
+  status: 'completed',
+  limit: 20
+})
+```
+
+---
+
+## Batch Processing
+
+### Batch Router
+
+**Path:** `trpc.batch.*`
+
+Manages large-scale batch operations with progress tracking.
+
+| Procedure | Type | Auth | Description |
+|-----------|------|------|-------------|
+| `startJob` | Mutation | Protected | Start a new batch job |
+| `getJob` | Query | Public | Get job status and progress |
+| `listJobs` | Query | Public | List jobs for website |
+| `cancelJob` | Mutation | Protected | Cancel running job |
+| `retryJob` | Mutation | Protected | Retry failed job |
+| `getResults` | Query | Public | Get job results |
+
+```typescript
+// Start a batch content generation job
+const { jobId } = await trpc.batch.startJob.mutate({
+  websiteId: 'uuid',
+  jobType: 'content-generation',
+  config: {
+    pages: ['page-1', 'page-2', 'page-3'],
+    options: { generateImages: true }
+  }
+})
+
+// Monitor progress
+const job = await trpc.batch.getJob.query({ jobId })
+// { status: 'running', totalItems: 50, processedItems: 23, progress: 46.0 }
+
+// Cancel job
+await trpc.batch.cancelJob.mutate({ jobId })
+
+// Get results
+const { results } = await trpc.batch.getResults.query({ jobId })
+```
+
+---
+
 ## Error Handling
 
 ### Error Response Format
@@ -1169,7 +1292,14 @@ The API does not currently implement versioning. Future versions may be accessed
 
 ## Changelog
 
-### v1.0.0 (Current)
+### v1.1.0 (Current)
+- Added Schedule Router for autonomous agent scheduling
+- Added Batch Router for large-scale operations
+- 27 routers, 200+ procedures
+- Temporal Schedules integration
+- Execution history and statistics
+
+### v1.0.0
 - Initial API release
 - 20 routers, 150+ procedures
 - Three-level prompt hierarchy

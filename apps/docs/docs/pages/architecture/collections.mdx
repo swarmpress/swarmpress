@@ -1,0 +1,370 @@
+# Collections System
+
+> **Last Updated:** 2026-01-25
+> **Status:** Current
+
+The Collections System manages structured data like restaurants, accommodations, hikes, events, and points of interest that can be embedded in page content.
+
+---
+
+## Overview
+
+Collections are typed datasets that:
+
+- Follow defined **schemas** (Zod validation)
+- Support **versioning** for change tracking
+- Enable **embedding** in page content
+- Allow **automated research** via agents
+- Integrate with the **theme** for rendering
+
+---
+
+## Collection Types
+
+### Core Collections
+
+| Collection | Purpose | Schema |
+|------------|---------|--------|
+| **Restaurants** | Dining establishments | Name, cuisine, price range, rating, hours |
+| **Accommodations** | Hotels, B&Bs, rentals | Name, type, price, amenities, rating |
+| **Hikes** | Hiking trails | Name, difficulty, distance, duration, elevation |
+| **Events** | Local events | Title, date, location, description, category |
+| **POIs** | Points of interest | Name, type, location, description |
+| **Villages** | Village information | Name, population, geography, highlights |
+| **Transportation** | Transport options | Type, routes, schedules, prices |
+| **Weather** | Weather data | Temperature, conditions, forecast |
+
+### Schema Definition
+
+Each collection has a Zod schema:
+
+```typescript
+// Restaurant schema example
+export const RestaurantSchema = z.object({
+  id: z.string().uuid(),
+  slug: z.string(),
+  name: LocalizedStringSchema,
+  description: LocalizedStringSchema.optional(),
+  cuisine: z.array(z.string()),
+  priceRange: z.enum(['$', '$$', '$$$', '$$$$']),
+  rating: z.number().min(0).max(5).optional(),
+  address: z.string(),
+  village: z.string(),
+  coordinates: z.object({
+    lat: z.number(),
+    lng: z.number()
+  }).optional(),
+  hours: z.record(z.string()).optional(),
+  phone: z.string().optional(),
+  website: z.string().url().optional(),
+  images: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+  featured: z.boolean().default(false),
+  status: z.enum(['draft', 'published', 'archived']).default('published'),
+  updatedAt: z.string().datetime()
+})
+```
+
+### LocalizedString Pattern
+
+All user-facing text supports multi-language:
+
+```typescript
+const LocalizedStringSchema = z.object({
+  en: z.string(),        // English (required)
+  de: z.string().optional(),  // German
+  fr: z.string().optional(),  // French
+  it: z.string().optional()   // Italian
+})
+```
+
+---
+
+## Database Schema
+
+### website_collections
+
+Tracks which collections are enabled per website:
+
+```sql
+CREATE TABLE website_collections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  website_id UUID NOT NULL REFERENCES websites(id),
+  collection_type TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  description TEXT,
+  schema JSONB NOT NULL,
+  config JSONB DEFAULT '{}',
+  enabled BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(website_id, collection_type)
+);
+```
+
+### collection_items
+
+Stores individual collection entries:
+
+```sql
+CREATE TABLE collection_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  website_collection_id UUID NOT NULL REFERENCES website_collections(id),
+  slug TEXT NOT NULL,
+  data JSONB NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  published_at TIMESTAMPTZ,
+  UNIQUE(website_collection_id, slug)
+);
+```
+
+### collection_item_versions
+
+Tracks version history:
+
+```sql
+CREATE TABLE collection_item_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  collection_item_id UUID NOT NULL REFERENCES collection_items(id),
+  version INTEGER NOT NULL,
+  data JSONB NOT NULL,
+  changed_by TEXT,
+  change_reason TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+---
+
+## API Endpoints
+
+### Collection Router
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `collection.listTypes` | Query | List available collection types |
+| `collection.getType` | Query | Get collection type details |
+| `collection.getSchema` | Query | Get collection schema |
+| `collection.enable` | Mutation | Enable collection for website |
+| `collection.list` | Query | List items in collection |
+| `collection.get` | Query | Get collection item |
+| `collection.create` | Mutation | Create collection item |
+| `collection.update` | Mutation | Update collection item |
+| `collection.delete` | Mutation | Delete collection item |
+| `collection.getVersions` | Query | Get item version history |
+
+---
+
+## Usage Examples
+
+### Enable Collection
+
+```typescript
+await trpc.collection.enable.mutate({
+  websiteId: 'uuid',
+  collectionType: 'restaurants',
+  displayName: 'Restaurants',
+  config: {
+    defaultVillage: 'riomaggiore',
+    maxItems: 100
+  }
+})
+```
+
+### Create Item
+
+```typescript
+await trpc.collection.create.mutate({
+  websiteId: 'uuid',
+  collectionType: 'restaurants',
+  slug: 'trattoria-da-maria',
+  data: {
+    name: { en: 'Trattoria da Maria', it: 'Trattoria da Maria' },
+    description: { en: 'Traditional Ligurian cuisine', it: 'Cucina tradizionale ligure' },
+    cuisine: ['italian', 'seafood'],
+    priceRange: '$$',
+    rating: 4.5,
+    address: 'Via Colombo 12, Riomaggiore',
+    village: 'riomaggiore'
+  }
+})
+```
+
+### List Items
+
+```typescript
+const { items, total } = await trpc.collection.list.query({
+  websiteId: 'uuid',
+  collectionType: 'restaurants',
+  village: 'riomaggiore',  // Filter
+  status: 'published',
+  limit: 20,
+  offset: 0
+})
+```
+
+---
+
+## Embedding in Content
+
+Collections can be embedded in page content using block types:
+
+### Collection Embed Block
+
+```typescript
+{
+  type: 'collection-embed',
+  collection: 'restaurants',
+  slugs: ['trattoria-da-maria', 'ristorante-porto-roca'],
+  display: 'cards',  // 'cards' | 'list' | 'grid'
+  limit: 6
+}
+```
+
+### Collection with Interludes
+
+```typescript
+{
+  type: 'collection-with-interludes',
+  collection: 'restaurants',
+  slugs: ['trattoria-1', 'trattoria-2', 'trattoria-3'],
+  interludes: [
+    {
+      afterIndex: 1,
+      type: 'editorial-interlude',
+      content: "Don't miss the fresh pesto..."
+    }
+  ]
+}
+```
+
+### Slug Picker (Admin UI)
+
+The admin provides a visual SlugPicker component:
+
+1. Search/filter collection items
+2. Drag-drop to reorder
+3. Preview selected items
+4. Save to page content
+
+---
+
+## Collection Research
+
+Automated data gathering via agents.
+
+### Research Configuration
+
+```json
+{
+  "collections": {
+    "restaurants": {
+      "research_prompt": "Find authentic local restaurants in {village}...",
+      "search_queries": [
+        "best restaurants {village} Cinque Terre",
+        "local trattoria {village}"
+      ],
+      "extraction_hints": ["rating", "price_range", "cuisine_type"],
+      "max_results": 10
+    }
+  }
+}
+```
+
+### Research Workflow
+
+1. Load research configuration
+2. Execute web searches
+3. Extract structured data with LLM
+4. Validate against schema
+5. Create/update collection items
+6. Track version history
+
+### Collection Getters
+
+Specialized getters for each collection type:
+
+```typescript
+const getter = new RestaurantsGetter({
+  websiteId: 'uuid',
+  village: 'riomaggiore'
+})
+
+const restaurants = await getter.fetch({
+  maxResults: 20,
+  includeHours: true
+})
+```
+
+---
+
+## Admin Dashboard
+
+### Collections Browser
+
+The Collections Browser provides:
+
+- **Type List** - Navigate between collection types
+- **Items Grid** - Visual display of items
+- **Item Cards** - Preview with key information
+- **Detail View** - Full item data
+- **Create/Edit** - Form-based editing
+
+### Features
+
+- Search within collections
+- Filter by status, village, tags
+- Sort by name, rating, date
+- Bulk actions (publish, archive)
+- Version comparison
+
+---
+
+## Theme Integration
+
+Collections render through theme components:
+
+### Restaurant Card
+
+```astro
+---
+import type { Restaurant } from '@/types'
+const { restaurant, lang = 'en' } = Astro.props
+---
+
+<article class="restaurant-card">
+  <h3>{restaurant.name[lang]}</h3>
+  <p>{restaurant.description[lang]}</p>
+  <div class="meta">
+    <span class="cuisine">{restaurant.cuisine.join(', ')}</span>
+    <span class="price">{restaurant.priceRange}</span>
+    {restaurant.rating && <span class="rating">{restaurant.rating}/5</span>}
+  </div>
+</article>
+```
+
+### Collection Grid
+
+```astro
+---
+import RestaurantCard from './RestaurantCard.astro'
+const { items, lang } = Astro.props
+---
+
+<div class="collection-grid">
+  {items.map(item => (
+    <RestaurantCard restaurant={item} lang={lang} />
+  ))}
+</div>
+```
+
+---
+
+## Related Documentation
+
+- [Content Blocks](./blocks) - Block types for embedding
+- [Workflows](./workflows) - Research workflow
+- [Agents](./agents) - Collection getters
+- [API Reference](../reference/api) - Collection API

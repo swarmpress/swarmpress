@@ -1,7 +1,7 @@
 # Swarm.press User Guide
 
-> **Version:** 1.0
-> **Last Updated:** 2025-11-23
+> **Version:** 1.1
+> **Last Updated:** 2026-01-25
 
 ## Table of Contents
 
@@ -10,22 +10,26 @@
 3. [Sitemap Editor](#sitemap-editor)
 4. [Blueprint Editor](#blueprint-editor)
 5. [Agent Collaboration](#agent-collaboration)
-6. [Analytics Dashboard](#analytics-dashboard)
-7. [GitHub Integration](#github-integration)
-8. [Tips & Best Practices](#tips--best-practices)
+6. [Agent Scheduling](#agent-scheduling)
+7. [Collections Browser](#collections-browser)
+8. [Analytics Dashboard](#analytics-dashboard)
+9. [GitHub Integration](#github-integration)
+10. [Tips & Best Practices](#tips--best-practices)
 
 ---
 
 ## Introduction
 
-**Swarm.press** is an autonomous virtual publishing house where AI agents collaboratively manage your website's content structure, SEO optimization, and publishing workflows.
+**Swarm.press** is an autonomous virtual publishing house where 11+ AI agents collaboratively manage your website's content structure, SEO optimization, and publishing workflows.
 
 ### Key Concepts
 
 - **Pages**: Individual routes/URLs in your website
 - **Blueprints**: Templates that define page structure and components
 - **Content Models**: Data schemas for different content types
-- **Agents**: AI collaborators that suggest improvements and track activities
+- **Agents**: 11+ AI collaborators (Writer, Editor, QA, Media, Linker, etc.)
+- **Collections**: Structured data (restaurants, accommodations, events)
+- **Schedules**: Autonomous agent tasks (content publishing, link checking)
 - **Sitemap**: Visual graph representation of your site structure
 
 ---
@@ -196,6 +200,83 @@ When a page is selected:
 - See which agents are currently working on it
 - Countdown shows time remaining for activity
 - Color-coded by activity type
+
+---
+
+## Agent Scheduling
+
+Autonomous agent schedules enable agents to work without human intervention.
+
+### Schedule Types
+
+| Schedule | Purpose | Default |
+|----------|---------|---------|
+| **Scheduled Content** | Publish content on scheduled dates | Daily 6 AM |
+| **Media Check** | Validate images and media | Daily 7 AM |
+| **Link Validation** | Find broken links | Weekly Monday 8 AM |
+| **Stale Content** | Identify outdated content | Monthly 1st 9 AM |
+
+### Managing Schedules
+
+1. Navigate to website detail page
+2. Find "Agent Schedules" section
+3. View/manage all configured schedules
+
+**Actions:**
+- **Enable/Disable** - Toggle schedule state
+- **Run Now** - Trigger immediate execution
+- **Edit Cron** - Customize timing
+
+### Schedule Calendar
+
+Visual calendar showing:
+- Past executions (color-coded by status)
+- Upcoming scheduled runs
+- Click to view execution details
+
+### Execution History
+
+View past schedule runs:
+- Filter by type, status, trigger
+- See duration and results
+- Review error details for failures
+
+For detailed information, see [Agent Scheduling Guide](/guides/scheduling).
+
+---
+
+## Collections Browser
+
+Manage structured data collections like restaurants, accommodations, and events.
+
+### Accessing Collections
+
+1. Click "Collections" in the sidebar
+2. Select collection type (Restaurants, Hikes, etc.)
+3. Browse items in grid view
+
+### Collection Features
+
+- **Search** - Find items by name or content
+- **Filter** - By status, village, tags
+- **Sort** - By name, rating, date
+- **Create** - Add new items
+- **Edit** - Modify existing items
+
+### Item Management
+
+Each collection item shows:
+- **Card View** - Preview with key info
+- **Detail View** - Full data display
+- **Version History** - Track changes
+
+### Embedding in Pages
+
+Use SlugPicker in page editor to:
+1. Search collection items
+2. Select items to embed
+3. Drag to reorder
+4. Preview in context
 
 ---
 

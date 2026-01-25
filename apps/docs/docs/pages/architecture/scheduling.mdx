@@ -1,0 +1,372 @@
+# Scheduling System
+
+> **Last Updated:** 2026-01-25
+> **Status:** Current
+
+The Scheduling System enables fully autonomous agent operation through Temporal Schedules, allowing agents to perform maintenance tasks, content publishing, and quality checks without human intervention.
+
+---
+
+## Overview
+
+Temporal Schedules are durable, fault-tolerant timers that trigger workflows at specified intervals. Each website can have multiple schedules configured, each tied to a specific workflow type.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Temporal Server                               │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
+│  │ Schedule 1  │  │ Schedule 2  │  │ Schedule 3  │  ...        │
+│  │ (Content)   │  │ (Media)     │  │ (Links)     │             │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘             │
+└─────────┼────────────────┼────────────────┼─────────────────────┘
+          │                │                │
+          ▼                ▼                ▼
+     ┌─────────┐      ┌─────────┐      ┌─────────┐
+     │Workflow │      │Workflow │      │Workflow │
+     │Execution│      │Execution│      │Execution│
+     └────┬────┘      └────┬────┘      └────┬────┘
+          │                │                │
+          ▼                ▼                ▼
+     ┌─────────┐      ┌─────────┐      ┌─────────┐
+     │ Agent   │      │ Agent   │      │ Agent   │
+     │ Tasks   │      │ Tasks   │      │ Tasks   │
+     └─────────┘      └─────────┘      └─────────┘
+```
+
+---
+
+## Schedule Types
+
+Four schedule types are available, each with a default frequency:
+
+| Type | Default Cron | Frequency | Description |
+|------|-------------|-----------|-------------|
+| `scheduled-content` | `0 6 * * *` | Daily 6 AM | Publish content scheduled for today |
+| `media-check` | `0 7 * * *` | Daily 7 AM | Validate media assets, check for broken images |
+| `link-validation` | `0 8 * * 1` | Weekly Monday 8 AM | Scan for broken internal/external links |
+| `stale-content` | `0 9 1 * *` | Monthly 1st 9 AM | Identify content needing updates |
+
+### Scheduled Content
+
+Publishes content items that have a `scheduled_for` date matching the current date. The workflow:
+
+1. Queries for content with `status = 'scheduled'` and `scheduled_for <= today`
+2. Transitions each item to `published` status
+3. Triggers site rebuild if needed
+4. Records execution result
+
+### Media Check
+
+Validates all media assets used across the website:
+
+1. Scans all pages for image references
+2. Checks each URL for availability (HTTP HEAD request)
+3. Validates image dimensions and format
+4. Reports broken or problematic images
+5. Can trigger MediaAgent to find replacements
+
+### Link Validation
+
+Comprehensive link checking across the entire site:
+
+1. Extracts all internal and external links
+2. Validates internal links against sitemap
+3. Checks external links for availability
+4. Identifies orphan pages (no incoming links)
+5. Reports broken links and suggests fixes
+
+### Stale Content Check
+
+Identifies content that may need updating:
+
+1. Calculates freshness scores based on last update
+2. Flags content below freshness threshold
+3. Checks for outdated information patterns
+4. Creates editorial tasks for content refresh
+5. Notifies editors of high-priority updates
+
+---
+
+## Database Schema
+
+### website_schedules
+
+Stores schedule configuration per website:
+
+```sql
+CREATE TABLE website_schedules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  website_id UUID NOT NULL REFERENCES websites(id),
+  schedule_type TEXT NOT NULL,  -- 'scheduled-content', 'media-check', etc.
+  frequency TEXT NOT NULL,      -- 'daily', 'weekly', 'monthly'
+  cron_expression TEXT NOT NULL,
+  temporal_schedule_id TEXT,    -- Reference to Temporal schedule
+  enabled BOOLEAN DEFAULT true,
+  last_run_at TIMESTAMPTZ,
+  next_run_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(website_id, schedule_type)
+);
+```
+
+### schedule_executions
+
+Tracks each execution of a schedule:
+
+```sql
+CREATE TABLE schedule_executions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  website_id UUID NOT NULL REFERENCES websites(id),
+  schedule_id UUID REFERENCES website_schedules(id),
+  schedule_type TEXT NOT NULL,
+  workflow_type TEXT NOT NULL,
+  workflow_id TEXT,
+  trigger_type TEXT NOT NULL,   -- 'scheduled' or 'manual'
+  frequency TEXT NOT NULL,
+  status TEXT NOT NULL,         -- 'scheduled', 'running', 'completed', 'failed'
+  scheduled_at TIMESTAMPTZ NOT NULL,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  triggered_by TEXT,            -- User email for manual triggers
+  result JSONB,
+  error TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+---
+
+## API Endpoints
+
+The `schedule` router provides comprehensive schedule management:
+
+### Schedule Management
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `schedule.listSchedules` | Query | List all schedules for a website |
+| `schedule.getSchedule` | Query | Get schedule details |
+| `schedule.createSchedule` | Mutation | Create a new schedule |
+| `schedule.createDefaultSchedules` | Mutation | Create all default schedules |
+| `schedule.updateSchedule` | Mutation | Update cron expression |
+| `schedule.pauseSchedule` | Mutation | Pause a schedule |
+| `schedule.resumeSchedule` | Mutation | Resume a paused schedule |
+| `schedule.deleteSchedule` | Mutation | Delete a schedule (CEO only) |
+| `schedule.triggerSchedule` | Mutation | Trigger immediate execution |
+
+### Execution History
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `schedule.getExecutionHistory` | Query | Get execution history with filters |
+| `schedule.getCalendarExecutions` | Query | Get executions for date range |
+| `schedule.getUpcomingRuns` | Query | Get next scheduled runs |
+| `schedule.getStatistics` | Query | Get execution statistics |
+| `schedule.updateExecution` | Mutation | Update execution status |
+
+### Metadata
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `schedule.getScheduleTypes` | Query | Get all schedule type definitions |
+
+---
+
+## Usage Examples
+
+### Create Default Schedules
+
+```typescript
+// Create all 4 default schedules for a website
+await trpc.schedule.createDefaultSchedules.mutate({
+  websiteId: 'uuid'
+})
+// Returns: { created: ['scheduled-content', 'media-check', ...], skipped: [] }
+```
+
+### List Schedules
+
+```typescript
+const { schedules } = await trpc.schedule.listSchedules.query({
+  websiteId: 'uuid'
+})
+
+// Each schedule includes:
+// - schedule_type, frequency, cron_expression
+// - enabled, isPaused
+// - last_run_at, nextRunTime
+```
+
+### Pause/Resume Schedule
+
+```typescript
+// Pause a schedule
+await trpc.schedule.pauseSchedule.mutate({
+  websiteId: 'uuid',
+  scheduleType: 'media-check'
+})
+
+// Resume a schedule
+await trpc.schedule.resumeSchedule.mutate({
+  websiteId: 'uuid',
+  scheduleType: 'media-check'
+})
+```
+
+### Trigger Manual Execution
+
+```typescript
+const { executionId, workflowId } = await trpc.schedule.triggerSchedule.mutate({
+  websiteId: 'uuid',
+  scheduleType: 'link-validation'
+})
+// Immediately starts the workflow, records as 'manual' trigger
+```
+
+### Update Cron Expression
+
+```typescript
+// Change media check to run at 8 AM instead of 7 AM
+await trpc.schedule.updateSchedule.mutate({
+  websiteId: 'uuid',
+  scheduleType: 'media-check',
+  cronExpression: '0 8 * * *'
+})
+```
+
+### Get Execution History
+
+```typescript
+const { executions } = await trpc.schedule.getExecutionHistory.query({
+  websiteId: 'uuid',
+  scheduleType: 'link-validation',  // Optional filter
+  status: 'completed',               // Optional filter
+  limit: 20,
+  offset: 0
+})
+```
+
+### Get Calendar View Data
+
+```typescript
+const { executions, upcomingRuns } = await trpc.schedule.getCalendarExecutions.query({
+  websiteId: 'uuid',
+  startDate: '2026-01-01T00:00:00Z',
+  endDate: '2026-01-31T23:59:59Z'
+})
+```
+
+---
+
+## Bootstrap Script
+
+The `scripts/setup-schedules.ts` script initializes schedules for all websites:
+
+```bash
+npx tsx scripts/setup-schedules.ts
+```
+
+This script:
+1. Lists all active websites
+2. Creates default schedules for each website
+3. Registers schedules with Temporal
+4. Reports created/skipped schedules
+
+---
+
+## Admin Dashboard
+
+### Schedule Management Panel
+
+Located on the website detail page under "Agent Schedules":
+
+- **Schedule List** - View all schedules with status
+- **Enable/Disable** - Toggle schedule state
+- **Manual Trigger** - Run immediately with one click
+- **Edit Cron** - Customize schedule timing
+
+### Schedule Calendar
+
+Visual calendar showing:
+- Past executions (color-coded by status)
+- Upcoming scheduled runs
+- Click to view execution details
+
+### Status Indicators
+
+| Status | Icon | Color | Meaning |
+|--------|------|-------|---------|
+| Running | ⟳ | Blue | Currently executing |
+| Completed | ✓ | Green | Successfully finished |
+| Failed | ✕ | Red | Execution failed |
+| Paused | ⏸ | Yellow | Schedule is paused |
+| Scheduled | ○ | Gray | Upcoming run |
+
+---
+
+## Workflow Integration
+
+Schedules trigger specific workflows:
+
+```typescript
+// Schedule type → Workflow mapping
+const SCHEDULE_WORKFLOWS = {
+  'scheduled-content': scheduledContentWorkflow,
+  'media-check': scheduledMaintenanceWorkflow,
+  'link-validation': contentIntegrityWorkflow,
+  'stale-content': scheduledMaintenanceWorkflow,
+}
+```
+
+Each workflow receives:
+- `websiteId` - The website to operate on
+- `scheduleType` - The type of schedule that triggered it
+- `executionId` - For tracking and status updates
+
+---
+
+## Error Handling
+
+### Execution Failures
+
+When a scheduled workflow fails:
+1. Execution status set to `failed`
+2. Error message captured in `schedule_executions.error`
+3. Schedule continues to next scheduled time (no blocking)
+4. Admin notified via dashboard
+
+### Temporal Unavailable
+
+If Temporal is unavailable:
+1. Database operations continue independently
+2. Schedule state managed in PostgreSQL
+3. Schedules resume when Temporal reconnects
+4. No data loss due to durable storage
+
+---
+
+## Best Practices
+
+### Schedule Timing
+- Stagger schedules to avoid resource contention
+- Run intensive tasks during off-peak hours
+- Consider timezone for your audience
+
+### Monitoring
+- Review execution history weekly
+- Set up alerts for consecutive failures
+- Monitor execution duration trends
+
+### Maintenance
+- Pause schedules during major updates
+- Test cron expressions before deploying
+- Use manual triggers to verify workflows
+
+---
+
+## Related Documentation
+
+- [Architecture Overview](./overview) - System architecture
+- [Workflows](../guides/workflows) - Workflow details
+- [API Reference](../reference/api) - Full API docs

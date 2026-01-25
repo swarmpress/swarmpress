@@ -1,0 +1,371 @@
+# Workflows
+
+> **Last Updated:** 2026-01-25
+> **Status:** Current
+
+Workflows are the orchestration layer of swarm.press, coordinating agents, managing state, and ensuring fault-tolerant execution through Temporal.io.
+
+---
+
+## Overview
+
+Temporal workflows provide:
+
+- **Durability** - Workflows survive process crashes and restarts
+- **Fault Tolerance** - Automatic retries with configurable policies
+- **Visibility** - Full execution history and debugging
+- **Scalability** - Horizontal scaling of workflow workers
+
+---
+
+## Workflow Types
+
+### Content Production Workflow
+
+The primary workflow for creating content from scratch.
+
+```
+┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
+│  Brief  │───▶│  Draft  │───▶│ Review  │───▶│ Publish │
+│ Created │    │ Written │    │ Process │    │ Content │
+└─────────┘    └─────────┘    └─────────┘    └─────────┘
+                                  │
+                                  ▼
+                            ┌──────────┐
+                            │ Revisions│
+                            │  (loop)  │
+                            └──────────┘
+```
+
+**Stages:**
+1. Brief creation (human or AI)
+2. WriterAgent drafts content
+3. EditorAgent reviews
+4. Revision loop if needed
+5. SEO optimization
+6. Media asset selection
+7. Final approval
+8. Publishing
+
+**Triggers:**
+- Manual: Create content brief
+- Scheduled: Editorial calendar
+- AI-initiated: Content gaps identified
+
+### Editorial Review Workflow
+
+Handles the review and approval process.
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐
+│ Submitted│───▶│ Reviewed │───▶│ Decision │
+└──────────┘    └──────────┘    └────┬─────┘
+                                     │
+                    ┌────────────────┼────────────────┐
+                    ▼                ▼                ▼
+              ┌──────────┐    ┌──────────┐    ┌──────────┐
+              │ Approved │    │  Changes │    │ Rejected │
+              └──────────┘    │ Requested│    └──────────┘
+                              └────┬─────┘
+                                   │
+                                   ▼
+                              ┌──────────┐
+                              │ Revision │
+                              │   Loop   │
+                              └──────────┘
+```
+
+**Decision Points:**
+- Approve → Continue to publishing
+- Request Changes → Back to writer
+- Reject → End workflow
+- Escalate → CEO review
+
+### Publishing Workflow
+
+Handles the build and deploy process.
+
+```
+┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
+│ Prepare │───▶│Validate │───▶│  Build  │───▶│ Deploy  │
+│  Build  │    │ Assets  │    │  Site   │    │  Live   │
+└─────────┘    └─────────┘    └─────────┘    └─────────┘
+```
+
+**Steps:**
+1. Prepare content for build
+2. Validate all assets exist
+3. Run Astro build
+4. Deploy to GitHub Pages
+5. Verify deployment
+6. Emit success event
+
+### Batch Processing Workflow
+
+Handles large-scale operations with progress tracking.
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│Initialize│───▶│  Process │───▶│ Aggregate│───▶│ Complete │
+│  Batch   │    │  Items   │    │ Results  │    │   Job    │
+└──────────┘    └────┬─────┘    └──────────┘    └──────────┘
+                     │
+                     ▼
+               ┌──────────┐
+               │ Progress │
+               │ Tracking │
+               └──────────┘
+```
+
+**Features:**
+- Configurable batch sizes
+- Progress tracking (items processed/total)
+- Error handling per item
+- Resumable from failures
+- Parallel processing option
+
+**Use Cases:**
+- Regenerate all pages
+- Update all SEO metadata
+- Batch image processing
+- Content migration
+
+### Page Content Generation Workflow
+
+Multi-agent workflow for generating complete pages.
+
+```
+┌───────────────┐
+│ Page          │
+│ Orchestrator  │
+└───────┬───────┘
+        │
+        ├────────────────────────────────┐
+        │                                │
+        ▼                                ▼
+┌───────────────┐                ┌───────────────┐
+│    Writer     │                │    Media      │
+│   (content)   │                │  (images)     │
+└───────┬───────┘                └───────┬───────┘
+        │                                │
+        ▼                                ▼
+┌───────────────┐                ┌───────────────┐
+│    Linker     │                │   QA Agent    │
+│  (links)      │                │  (validate)   │
+└───────┬───────┘                └───────┬───────┘
+        │                                │
+        └────────────────┬───────────────┘
+                         │
+                         ▼
+                 ┌───────────────┐
+                 │  Page Polish  │
+                 │   (refine)    │
+                 └───────────────┘
+```
+
+**Coordination:**
+1. PageOrchestrator receives page brief
+2. Delegates content to WriterAgent
+3. Parallel: MediaSelector finds images
+4. LinkerAgent adds internal links
+5. QAAgent validates completeness
+6. PagePolishAgent refines coherence
+7. Submit for editorial review
+
+### Collection Research Workflow
+
+Automated data gathering for collections.
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│ Configure│───▶│ Research │───▶│ Extract  │───▶│  Store   │
+│  Search  │    │   Web    │    │   Data   │    │  Items   │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘
+```
+
+**Process:**
+1. Load collection research config
+2. Execute web searches
+3. Extract structured data
+4. Validate against schema
+5. Store in collection_items
+6. Create version history
+
+**Collections Supported:**
+- Restaurants
+- Accommodations
+- Hikes
+- Events
+- Points of Interest
+
+### QA Gate Workflow
+
+Quality checkpoint before publishing.
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐
+│  Input   │───▶│   QA     │───▶│ Decision │
+│ Content  │    │  Checks  │    │   Gate   │
+└──────────┘    └──────────┘    └────┬─────┘
+                                     │
+                    ┌────────────────┼────────────────┐
+                    ▼                ▼                ▼
+              ┌──────────┐    ┌──────────┐    ┌──────────┐
+              │   Pass   │    │   Warn   │    │   Fail   │
+              │  (100%)  │    │  (>80%)  │    │  (<80%)  │
+              └──────────┘    └──────────┘    └──────────┘
+```
+
+**Checks:**
+- Content completeness
+- Link validation
+- Image availability
+- SEO requirements
+- Schema validation
+- Spelling/grammar
+
+### Scheduled Content Workflow
+
+Time-based content publishing.
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐
+│  Timer   │───▶│  Query   │───▶│ Publish  │
+│ Trigger  │    │ Scheduled│    │  Each    │
+└──────────┘    └──────────┘    └──────────┘
+```
+
+**Process:**
+1. Triggered by Temporal Schedule
+2. Query content with `scheduled_for <= NOW()`
+3. Transition each to published
+4. Trigger site rebuild
+5. Record execution
+
+### Scheduled Maintenance Workflow
+
+Automated maintenance tasks.
+
+**Tasks:**
+- Media validation
+- Stale content detection
+- Link checking
+- Cache invalidation
+- Analytics refresh
+
+### Content Integrity Workflow
+
+Comprehensive content validation.
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│  Scan    │───▶│  Check   │───▶│  Check   │───▶│  Report  │
+│  Site    │    │  Links   │    │  Media   │    │  Issues  │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘
+```
+
+**Validations:**
+- Internal link integrity
+- External link availability
+- Image URL accessibility
+- Asset format compliance
+- Content freshness
+
+### Website Generation Workflow
+
+Full site regeneration.
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│  Load    │───▶│ Generate │───▶│  Build   │───▶│  Deploy  │
+│  Config  │    │  Pages   │    │   Site   │    │   Site   │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘
+```
+
+**Process:**
+1. Load website configuration
+2. Generate all pages from content
+3. Process collections
+4. Build static site
+5. Deploy to hosting
+
+---
+
+## Workflow Configuration
+
+### Retry Policies
+
+```typescript
+const retryPolicy = {
+  initialInterval: '1s',
+  backoffCoefficient: 2,
+  maximumInterval: '1m',
+  maximumAttempts: 5
+}
+```
+
+### Timeouts
+
+```typescript
+const timeouts = {
+  scheduleToCloseTimeout: '1h',   // Total workflow time
+  startToCloseTimeout: '10m',     // Per activity
+  heartbeatTimeout: '1m'          // Heartbeat interval
+}
+```
+
+### Signals
+
+Workflows can receive signals:
+
+```typescript
+// CEO approval signal
+workflow.signal('ceo-approval', {
+  approved: true,
+  feedback: 'Approved for publishing'
+})
+```
+
+---
+
+## Workflow Activities
+
+Activities are the atomic units of work:
+
+| Activity | Description |
+|----------|-------------|
+| `callAgent` | Invoke an agent with a task |
+| `saveContent` | Persist content to database |
+| `sendEvent` | Publish CloudEvent |
+| `buildSite` | Run Astro build |
+| `deployPages` | Deploy to GitHub Pages |
+| `validateLinks` | Check link validity |
+| `processImage` | Process/optimize image |
+
+---
+
+## Monitoring
+
+### Temporal UI
+
+Access at `http://localhost:8233`:
+- View running workflows
+- Inspect workflow history
+- Debug failed workflows
+- Cancel stuck workflows
+
+### Events
+
+Workflows emit CloudEvents:
+- `workflow.started`
+- `workflow.completed`
+- `workflow.failed`
+- `activity.completed`
+
+---
+
+## Related Documentation
+
+- [Scheduling System](./scheduling) - Automated workflow triggers
+- [Agents](./agents) - Agent details
+- [API Reference](../reference/api) - Workflow API endpoints

@@ -1,0 +1,404 @@
+# Batch Processing
+
+> **Last Updated:** 2026-01-25
+> **Status:** Current
+
+Batch Processing enables large-scale operations across content, media, and collections with progress tracking and error handling.
+
+---
+
+## Overview
+
+Batch processing is used for:
+
+- **Content Generation** - Generate multiple pages at once
+- **Media Operations** - Process images in bulk
+- **Collection Updates** - Update collection items
+- **Site Rebuilds** - Regenerate entire websites
+- **Migrations** - Move or transform content
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Batch Job Request                             │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐            │
+│  │ Items   │  │ Config  │  │ Options │  │ Filters │            │
+│  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘            │
+└───────┼────────────┼────────────┼────────────┼──────────────────┘
+        │            │            │            │
+        ▼            ▼            ▼            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  Batch Processing Workflow                       │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐                  │
+│  │Initialize│───▶│  Process │───▶│ Finalize │                  │
+│  │   Job    │    │  Items   │    │  Results │                  │
+│  └──────────┘    └────┬─────┘    └──────────┘                  │
+│                       │                                         │
+│              ┌────────┴────────┐                                │
+│              ▼                 ▼                                │
+│         ┌────────┐        ┌────────┐                           │
+│         │ Item 1 │        │ Item N │  (parallel/sequential)    │
+│         └────────┘        └────────┘                           │
+└─────────────────────────────────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Progress Tracking                             │
+│  Total: 100  │  Processed: 45  │  Failed: 2  │  Remaining: 53  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Database Schema
+
+### batch_jobs
+
+```sql
+CREATE TABLE batch_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  website_id UUID NOT NULL REFERENCES websites(id),
+  job_type TEXT NOT NULL,          -- 'content-generation', 'media-processing', etc.
+  status TEXT NOT NULL DEFAULT 'pending',  -- 'pending', 'running', 'completed', 'failed', 'cancelled'
+  config JSONB NOT NULL,           -- Job configuration
+  total_items INTEGER NOT NULL,
+  processed_items INTEGER DEFAULT 0,
+  failed_items INTEGER DEFAULT 0,
+  progress DECIMAL(5,2) DEFAULT 0,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  error TEXT,
+  results JSONB,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+---
+
+## Job Types
+
+### Content Generation
+
+Generate multiple pages from blueprints or briefs:
+
+```typescript
+await trpc.batch.startJob.mutate({
+  websiteId: 'uuid',
+  jobType: 'content-generation',
+  config: {
+    pages: ['village/riomaggiore', 'village/manarola', 'village/corniglia'],
+    blueprintId: 'uuid',
+    agentConfig: {
+      writer: 'WriterAgent',
+      persona: 'giulia'
+    }
+  }
+})
+```
+
+### Media Processing
+
+Process images in bulk:
+
+```typescript
+await trpc.batch.startJob.mutate({
+  websiteId: 'uuid',
+  jobType: 'media-processing',
+  config: {
+    operations: ['resize', 'optimize', 'generate-alt'],
+    targetWidth: 1200,
+    quality: 85,
+    filter: { status: 'unprocessed' }
+  }
+})
+```
+
+### Collection Enrichment
+
+Enrich collection items with additional data:
+
+```typescript
+await trpc.batch.startJob.mutate({
+  websiteId: 'uuid',
+  jobType: 'collection-enrichment',
+  config: {
+    collection: 'restaurants',
+    enrichments: ['hours', 'images', 'reviews'],
+    village: 'riomaggiore'
+  }
+})
+```
+
+### Site Rebuild
+
+Regenerate entire website:
+
+```typescript
+await trpc.batch.startJob.mutate({
+  websiteId: 'uuid',
+  jobType: 'site-rebuild',
+  config: {
+    fullRebuild: true,
+    clearCache: true,
+    deploy: true
+  }
+})
+```
+
+### Export to GitHub
+
+Export content to GitHub repository:
+
+```typescript
+await trpc.batch.startJob.mutate({
+  websiteId: 'uuid',
+  jobType: 'github-export',
+  config: {
+    branch: 'content-update',
+    createPR: true,
+    commitMessage: 'Batch content update'
+  }
+})
+```
+
+---
+
+## API Endpoints
+
+### Batch Router
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `batch.startJob` | Mutation | Start a new batch job |
+| `batch.getJob` | Query | Get job status and progress |
+| `batch.listJobs` | Query | List jobs for website |
+| `batch.cancelJob` | Mutation | Cancel running job |
+| `batch.retryJob` | Mutation | Retry failed job |
+| `batch.getResults` | Query | Get job results |
+
+---
+
+## Usage Examples
+
+### Start a Batch Job
+
+```typescript
+const { jobId } = await trpc.batch.startJob.mutate({
+  websiteId: 'uuid',
+  jobType: 'content-generation',
+  config: {
+    pages: pageIds,
+    options: { generateImages: true }
+  }
+})
+```
+
+### Monitor Progress
+
+```typescript
+const job = await trpc.batch.getJob.query({ jobId })
+// {
+//   status: 'running',
+//   totalItems: 50,
+//   processedItems: 23,
+//   failedItems: 1,
+//   progress: 46.0
+// }
+```
+
+### Cancel Job
+
+```typescript
+await trpc.batch.cancelJob.mutate({ jobId })
+```
+
+### Get Results
+
+```typescript
+const { results } = await trpc.batch.getResults.query({ jobId })
+// {
+//   successful: [{ pageId: '...', contentId: '...' }, ...],
+//   failed: [{ pageId: '...', error: '...' }, ...]
+// }
+```
+
+---
+
+## Processing Strategies
+
+### Sequential Processing
+
+Process items one at a time:
+
+```typescript
+config: {
+  strategy: 'sequential',
+  delayBetween: 1000  // 1 second between items
+}
+```
+
+**Use when:**
+- Rate-limited APIs
+- Order matters
+- Resource constraints
+
+### Parallel Processing
+
+Process multiple items concurrently:
+
+```typescript
+config: {
+  strategy: 'parallel',
+  concurrency: 5  // 5 items at a time
+}
+```
+
+**Use when:**
+- Independent items
+- High throughput needed
+- Sufficient resources
+
+### Batch Processing
+
+Process in batches:
+
+```typescript
+config: {
+  strategy: 'batched',
+  batchSize: 10,
+  delayBetweenBatches: 5000
+}
+```
+
+**Use when:**
+- Database transactions
+- API batch endpoints
+- Memory management
+
+---
+
+## Error Handling
+
+### Per-Item Errors
+
+Individual items can fail without stopping the job:
+
+```typescript
+// Job continues, failed items tracked
+{
+  status: 'running',
+  processedItems: 45,
+  failedItems: 2,  // 2 items failed
+  errors: [
+    { itemId: 'abc', error: 'Image not found' },
+    { itemId: 'def', error: 'Validation failed' }
+  ]
+}
+```
+
+### Job-Level Failures
+
+Critical errors stop the entire job:
+
+```typescript
+{
+  status: 'failed',
+  error: 'Database connection lost',
+  processedItems: 23,
+  totalItems: 50
+}
+```
+
+### Retry Logic
+
+```typescript
+// Retry failed items only
+await trpc.batch.retryJob.mutate({
+  jobId,
+  retryFailed: true  // Only retry failed items
+})
+```
+
+---
+
+## Admin Dashboard
+
+### Batch Jobs Panel
+
+The dashboard shows:
+- **Active Jobs** - Currently running jobs
+- **Job History** - Past jobs with results
+- **Progress Bar** - Visual progress indicator
+- **Error List** - Failed items with details
+
+### Actions
+
+| Action | Description |
+|--------|-------------|
+| **View Details** | Open job detail view |
+| **Cancel** | Stop running job |
+| **Retry** | Retry failed job |
+| **Download Results** | Export results as JSON |
+
+---
+
+## Scripts
+
+Several batch scripts are available:
+
+| Script | Purpose |
+|--------|---------|
+| `batch-generate-website.ts` | Generate full website |
+| `batch-collection-pipeline.ts` | Process collections |
+| `batch-fix-broken.ts` | Fix broken content |
+| `batch-daily-weather.ts` | Update weather data |
+| `export-batch-to-github.ts` | Export to GitHub |
+| `generate-page-content-batch.ts` | Generate page content |
+
+### Running Scripts
+
+```bash
+# Generate website content
+npx tsx scripts/batch-generate-website.ts --websiteId=<uuid>
+
+# Process collections
+npx tsx scripts/batch-collection-pipeline.ts --type=restaurants
+
+# Fix broken images
+npx tsx scripts/batch-fix-broken.ts --check-images
+```
+
+---
+
+## Best Practices
+
+### Planning
+
+- **Estimate Size** - Know how many items
+- **Test First** - Run on small subset
+- **Schedule Wisely** - Avoid peak hours
+
+### Monitoring
+
+- **Watch Progress** - Check regularly
+- **Review Errors** - Address failures
+- **Track Duration** - Monitor performance
+
+### Recovery
+
+- **Save Checkpoints** - For long jobs
+- **Handle Partial** - Plan for incomplete runs
+- **Document Failures** - For debugging
+
+---
+
+## Related Documentation
+
+- [Workflows](./workflows) - Batch processing workflow
+- [Scheduling](./scheduling) - Automated batch jobs
+- [API Reference](../reference/api) - Batch API endpoints

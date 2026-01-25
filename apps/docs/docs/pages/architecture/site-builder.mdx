@@ -1,0 +1,598 @@
+# Site Builder (Astro)
+
+> **Last Updated:** 2026-01-25
+> **Status:** Current
+
+The Site Builder transforms JSON content blocks into static HTML pages using Astro, a modern static site generator.
+
+---
+
+## Overview
+
+The site builder is responsible for:
+
+1. Converting JSON content blocks to Astro components
+2. Generating static HTML pages
+3. Processing collections (restaurants, hotels, etc.)
+4. Supporting multi-language content (i18n)
+5. Building optimized production assets
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Site Builder Pipeline                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│   JSON Content    →    Astro Pages    →    Static HTML      │
+│   (67 block types)     (Components)        (Optimized)      │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Architecture
+
+### Package Structure
+
+```
+packages/site-builder/
+├── src/
+│   ├── components/          # Core Astro components
+│   │   └── blocks/          # Block type renderers
+│   ├── generator/           # Build & deploy logic
+│   │   ├── build.ts         # Build from database
+│   │   ├── github-build.ts  # Build from GitHub
+│   │   ├── deploy.ts        # Deploy to platforms
+│   │   ├── collections.ts   # Collection page generation
+│   │   └── i18n-processor.ts # Multi-language support
+│   ├── layouts/             # Base page layouts
+│   └── themes/              # Site-specific themes
+│       └── cinque-terre/    # Reference implementation
+└── astro.config.mjs         # Astro configuration
+```
+
+### Theme Structure (Cinque Terre)
+
+```
+themes/cinque-terre/
+├── src/
+│   ├── components/          # 39 theme components
+│   │   ├── blocks/          # Block renderers
+│   │   │   ├── Hero.astro
+│   │   │   ├── Paragraph.astro
+│   │   │   └── ...
+│   │   ├── ui/              # shadcn/ui components
+│   │   ├── Header.astro
+│   │   ├── Footer.astro
+│   │   ├── Navigation.astro
+│   │   └── VillageSelector.astro
+│   ├── config/              # Theme configuration
+│   │   ├── navigation.config.ts
+│   │   └── village-content.config.ts
+│   ├── pages/               # Dynamic route templates
+│   │   └── [lang]/
+│   │       ├── index.astro
+│   │       └── [village]/
+│   │           └── [...slug].astro
+│   ├── layouts/
+│   │   └── BaseLayout.astro
+│   └── ContentRenderer.astro  # Block rendering engine
+├── content/                 # Content submodule
+│   ├── sitemap.json
+│   ├── pages/
+│   └── collections/
+└── astro.config.mjs
+```
+
+---
+
+## Content as JSON Blocks
+
+Content is stored as structured JSON blocks, not plain Markdown:
+
+### Block Structure
+
+```typescript
+interface Block {
+  type: string           // Block type identifier
+  [key: string]: any     // Type-specific properties
+}
+
+type ContentBody = Block[]
+```
+
+### Example Page Content
+
+```json
+{
+  "slug": "riomaggiore",
+  "title": { "en": "Riomaggiore", "de": "Riomaggiore" },
+  "blocks": [
+    {
+      "type": "hero",
+      "title": { "en": "Welcome to Riomaggiore" },
+      "subtitle": { "en": "The easternmost village" },
+      "image": "/images/riomaggiore-hero.jpg"
+    },
+    {
+      "type": "paragraph",
+      "markdown": { "en": "Riomaggiore is the first village..." }
+    },
+    {
+      "type": "collection-embed",
+      "collection": "restaurants",
+      "village": "riomaggiore",
+      "limit": 6
+    },
+    {
+      "type": "faq",
+      "items": [
+        {
+          "q": { "en": "How do I get there?" },
+          "a": { "en": "Take the train from La Spezia..." }
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## Block Types (67 Total)
+
+### Core Blocks
+
+| Block | Description | Properties |
+|-------|-------------|------------|
+| `paragraph` | Text content | `markdown` |
+| `heading` | Section heading | `level`, `text` |
+| `hero` | Page hero section | `title`, `subtitle`, `image`, `badge` |
+| `image` | Single image | `src`, `alt`, `caption` |
+| `gallery` | Image gallery | `images[]` |
+| `quote` | Blockquote | `text`, `author`, `source` |
+| `list` | Bullet/numbered list | `items[]`, `ordered` |
+| `faq` | FAQ section | `items[{q, a}]` |
+| `callout` | Info/warning box | `type`, `title`, `content` |
+| `embed` | External embed | `url`, `type` |
+
+### Marketing Blocks
+
+| Block | Description |
+|-------|-------------|
+| `hero-section` | Full marketing hero |
+| `feature-section` | Feature highlights |
+| `pricing-section` | Pricing tables |
+| `testimonial-section` | Customer quotes |
+| `cta-section` | Call-to-action |
+
+### Collection Blocks
+
+| Block | Description |
+|-------|-------------|
+| `collection-embed` | Embed collection items |
+| `collection-with-interludes` | Collection with editorial breaks |
+| `collection-grid` | Grid display of items |
+
+### Editorial Blocks
+
+| Block | Description |
+|-------|-------------|
+| `editorial-hero` | Editorial-style hero |
+| `editorial-intro` | Article introduction |
+| `editorial-interlude` | Mid-article break |
+| `editor-note` | Editor's note box |
+| `closing-note` | Article conclusion |
+
+### Cinque Terre Theme Blocks
+
+| Block | Description |
+|-------|-------------|
+| `village-selector` | Village navigation |
+| `places-to-stay` | Accommodation section |
+| `eat-drink` | Restaurant section |
+| `weather-live` | Live weather widget |
+| `featured-carousel` | Featured content slider |
+
+---
+
+## Content Rendering
+
+The `ContentRenderer.astro` component transforms blocks to HTML:
+
+### Rendering Process
+
+```
+JSON Block
+    ↓
+ContentRenderer.astro
+    ↓
+┌─────────────────────────────────────────┐
+│ 1. Parse block type                      │
+│ 2. Load corresponding component          │
+│ 3. Pass block properties as props        │
+│ 4. Render Astro component                │
+│ 5. Return HTML                           │
+└─────────────────────────────────────────┘
+    ↓
+HTML Output
+```
+
+### ContentRenderer Implementation
+
+```astro
+---
+// ContentRenderer.astro
+import Hero from './blocks/Hero.astro'
+import Paragraph from './blocks/Paragraph.astro'
+import FAQ from './blocks/FAQ.astro'
+import CollectionEmbed from './blocks/CollectionEmbed.astro'
+// ... import all block components
+
+const { blocks, lang = 'en' } = Astro.props
+
+const componentMap = {
+  'hero': Hero,
+  'paragraph': Paragraph,
+  'faq': FAQ,
+  'collection-embed': CollectionEmbed,
+  // ... map all block types
+}
+---
+
+{blocks.map((block) => {
+  const Component = componentMap[block.type]
+  if (!Component) {
+    console.warn(`Unknown block type: ${block.type}`)
+    return null
+  }
+  return <Component {...block} lang={lang} />
+})}
+```
+
+### Block Component Example
+
+```astro
+---
+// blocks/Hero.astro
+import type { LocalizedString } from '@/types'
+
+interface Props {
+  title: LocalizedString
+  subtitle?: LocalizedString
+  image?: string
+  badge?: LocalizedString
+  lang: string
+}
+
+const { title, subtitle, image, badge, lang } = Astro.props
+---
+
+<section class="hero">
+  {badge && <span class="badge">{badge[lang]}</span>}
+  <h1>{title[lang]}</h1>
+  {subtitle && <p class="subtitle">{subtitle[lang]}</p>}
+  {image && <img src={image} alt={title[lang]} />}
+</section>
+
+<style>
+  .hero {
+    min-height: 60vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+</style>
+```
+
+---
+
+## Multi-Language Support (i18n)
+
+### LocalizedString Pattern
+
+All user-facing text uses the LocalizedString pattern:
+
+```typescript
+interface LocalizedString {
+  en: string    // English (required)
+  de?: string   // German
+  fr?: string   // French
+  it?: string   // Italian
+}
+```
+
+### i18n Processing
+
+The `i18n-processor.ts` expands localized content:
+
+```
+Input: Single page with LocalizedStrings
+    ↓
+i18n-processor.ts
+    ↓
+Output: 4 pages (one per language)
+    - /en/riomaggiore/
+    - /de/riomaggiore/
+    - /fr/riomaggiore/
+    - /it/riomaggiore/
+```
+
+### Language Routing
+
+```
+pages/
+└── [lang]/
+    ├── index.astro           → /en/, /de/, /fr/, /it/
+    └── [village]/
+        └── [...slug].astro   → /en/riomaggiore/restaurants/
+```
+
+---
+
+## Build Process
+
+### Build from Database
+
+```typescript
+// build.ts
+async function buildSite(options: BuildOptions) {
+  const { websiteId, outputDir } = options
+
+  // 1. Fetch website configuration
+  const website = await db.websites.findById(websiteId)
+
+  // 2. Fetch all published content
+  const content = await db.contentItems.findPublished(websiteId)
+
+  // 3. Generate Astro pages
+  for (const item of content) {
+    await generateAstroPage(item, outputDir)
+  }
+
+  // 4. Generate collection pages
+  await generateCollectionPages(websiteId, outputDir)
+
+  // 5. Run Astro build
+  await exec('pnpm build', { cwd: outputDir })
+
+  return { distDir: `${outputDir}/dist` }
+}
+```
+
+### Build from GitHub
+
+```typescript
+// github-build.ts
+async function buildFromGitHub(options: GitHubBuildOptions) {
+  const { websiteId, repoUrl, outputDir } = options
+
+  // 1. Clone content from repository
+  const content = await gitHubContentService.clone(repoUrl)
+
+  // 2. Load sitemap
+  const sitemap = await loadSitemap(content.path)
+
+  // 3. Load pages with i18n expansion
+  const pages = await loadPages(content.path, sitemap)
+
+  // 4. Load collections
+  const collections = await loadCollections(content.path)
+
+  // 5. Generate Astro pages
+  for (const page of pages) {
+    for (const lang of ['en', 'de', 'fr', 'it']) {
+      await generateLocalizedPage(page, lang, outputDir)
+    }
+  }
+
+  // 6. Run Astro build
+  await exec('pnpm build', { cwd: outputDir })
+
+  return { distDir: `${outputDir}/dist` }
+}
+```
+
+---
+
+## Static File Generation
+
+### Astro Build Output
+
+```
+dist/
+├── index.html                 # Homepage
+├── en/
+│   ├── index.html
+│   ├── riomaggiore/
+│   │   ├── index.html
+│   │   ├── restaurants/
+│   │   │   └── index.html
+│   │   └── hikes/
+│   │       └── index.html
+│   └── ...
+├── de/
+│   └── ...
+├── _astro/                    # Optimized assets
+│   ├── index.abc123.css
+│   └── client.def456.js
+├── images/
+│   └── optimized images
+└── favicon.ico
+```
+
+### Astro Configuration
+
+```javascript
+// astro.config.mjs
+import { defineConfig } from 'astro/config'
+import react from '@astrojs/react'
+import tailwind from '@astrojs/tailwind'
+
+export default defineConfig({
+  integrations: [react(), tailwind()],
+  output: 'static',
+  build: {
+    assets: '_astro',
+    inlineStylesheets: 'auto'
+  },
+  image: {
+    service: { entrypoint: 'astro/assets/services/sharp' }
+  },
+  vite: {
+    build: {
+      cssMinify: true,
+      minify: 'terser'
+    }
+  }
+})
+```
+
+---
+
+## Collection Page Generation
+
+### Automatic Collection Pages
+
+The builder generates pages for each collection type:
+
+```typescript
+// collections.ts
+async function generateCollectionPages(websiteId: string, outputDir: string) {
+  const collections = await db.websiteCollections.findByWebsite(websiteId)
+
+  for (const collection of collections) {
+    const items = await db.collectionItems.findByCollection(collection.id)
+
+    // Generate listing page
+    await generateCollectionListing(collection, items, outputDir)
+
+    // Generate individual item pages
+    for (const item of items) {
+      await generateCollectionItemPage(collection, item, outputDir)
+    }
+  }
+}
+```
+
+### Generated URLs
+
+```
+/en/restaurants/                    # Listing
+/en/restaurants/trattoria-da-maria/ # Item detail
+/en/riomaggiore/restaurants/        # Village-filtered listing
+```
+
+---
+
+## Theme Customization
+
+### Creating a Theme
+
+1. Copy the `cinque-terre` theme as a starting point
+2. Modify components in `src/components/`
+3. Update configuration in `src/config/`
+4. Customize layouts in `src/layouts/`
+
+### Theme Configuration
+
+```typescript
+// config/navigation.config.ts
+export const navigation = {
+  mainNav: [
+    { label: 'Home', href: '/' },
+    { label: 'Villages', href: '/villages' },
+    { label: 'Blog', href: '/blog' }
+  ],
+  villages: ['riomaggiore', 'manarola', 'corniglia', 'vernazza', 'monterosso']
+}
+```
+
+### Component Styling
+
+Themes use Tailwind CSS with shadcn/ui components:
+
+```astro
+---
+// components/ui/Button.astro
+interface Props {
+  variant?: 'default' | 'outline' | 'ghost'
+  size?: 'sm' | 'md' | 'lg'
+}
+
+const { variant = 'default', size = 'md' } = Astro.props
+---
+
+<button class={`btn btn-${variant} btn-${size}`}>
+  <slot />
+</button>
+
+<style>
+  .btn {
+    @apply inline-flex items-center justify-center rounded-md font-medium;
+  }
+  .btn-default {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90;
+  }
+</style>
+```
+
+---
+
+## Deployment Integration
+
+After Astro builds the `dist/` directory, the deployment process uploads files to GitHub Pages:
+
+```
+Astro Build
+    ↓
+dist/ directory (static HTML, CSS, JS, images)
+    ↓
+github.deployToPages API
+    ↓
+┌─────────────────────────────────────────┐
+│ For each file in dist/:                  │
+│   1. Create GitHub blob                  │
+│   2. Add to tree                         │
+│ Create commit from tree                  │
+│ Update gh-pages branch                   │
+└─────────────────────────────────────────┘
+    ↓
+Live at https://cinqueterre.travel/
+```
+
+---
+
+## Performance Optimizations
+
+### Astro Optimizations
+
+- **Static Generation** - Pre-rendered HTML, no runtime JS needed
+- **Partial Hydration** - Only hydrate interactive components
+- **Asset Optimization** - CSS/JS minification, image optimization
+- **Code Splitting** - Automatic route-based splitting
+
+### Build Optimizations
+
+```javascript
+// astro.config.mjs
+{
+  build: {
+    inlineStylesheets: 'auto',  // Inline small stylesheets
+  },
+  compressHTML: true,           // Minify HTML
+  image: {
+    service: { entrypoint: 'astro/assets/services/sharp' }
+  }
+}
+```
+
+---
+
+## Related Documentation
+
+- [Publishing & Deployment](./publishing) - Full deployment workflow
+- [Collections](./collections) - Collection system details
+- [Block Types](../reference/blocks) - Complete block reference
