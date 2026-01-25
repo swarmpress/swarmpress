@@ -729,6 +729,45 @@ CREATE TRIGGER phase_transition_handler
   WHEN (OLD.status IS DISTINCT FROM NEW.status)
   EXECUTE FUNCTION handle_phase_transition();
 
+-- Function to initialize task phases based on task type
+CREATE OR REPLACE FUNCTION initialize_task_phases(p_task_id UUID, p_task_type TEXT)
+RETURNS VOID AS $$
+DECLARE
+  phases TEXT[];
+  v_phase_name TEXT;
+  v_phase_order INT := 1;
+BEGIN
+  -- Define phases based on task type
+  CASE p_task_type
+    WHEN 'article' THEN
+      phases := ARRAY['research', 'outline', 'draft', 'edit', 'review', 'publish'];
+    WHEN 'page' THEN
+      phases := ARRAY['research', 'outline', 'draft', 'review', 'publish'];
+    WHEN 'update' THEN
+      phases := ARRAY['research', 'draft', 'review', 'publish'];
+    WHEN 'fix' THEN
+      phases := ARRAY['research', 'draft', 'review'];
+    WHEN 'optimize' THEN
+      phases := ARRAY['research', 'draft', 'review', 'optimize'];
+    WHEN 'research' THEN
+      phases := ARRAY['research', 'review'];
+    ELSE
+      phases := ARRAY['research', 'draft', 'review', 'publish'];
+  END CASE;
+
+  -- Insert phases for this task
+  FOREACH v_phase_name IN ARRAY phases
+  LOOP
+    INSERT INTO task_phases (task_id, phase_name, phase_order, status)
+    VALUES (p_task_id, v_phase_name, v_phase_order, 'not_started')
+    ON CONFLICT (task_id, phase_name) DO NOTHING;
+    v_phase_order := v_phase_order + 1;
+  END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION initialize_task_phases IS 'Creates standard workflow phases for an editorial task based on its type';
+
 -- =============================================================================
 -- EXTENSIBLE TOOL SYSTEM
 -- =============================================================================
