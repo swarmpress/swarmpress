@@ -954,6 +954,67 @@ COMMENT ON TABLE collection_item_versions IS 'Version history for collection ite
 COMMENT ON TABLE collection_research_config IS 'Research configuration per collection (search prompts, extraction hints)';
 
 -- =============================================================================
+-- AUTONOMOUS SCHEDULING SYSTEM
+-- =============================================================================
+-- Enables autonomous agent execution via Temporal Schedules
+-- Each website can have independent schedule configurations
+
+-- Per-website schedule configuration
+CREATE TABLE website_schedules (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  website_id UUID NOT NULL REFERENCES websites(id) ON DELETE CASCADE,
+  schedule_type TEXT NOT NULL, -- scheduled-content, media-check, link-validation, stale-content
+  frequency TEXT NOT NULL, -- daily, weekly, monthly
+  temporal_schedule_id TEXT, -- Temporal schedule handle ID
+  cron_expression TEXT NOT NULL,
+  enabled BOOLEAN DEFAULT TRUE,
+  last_run_at TIMESTAMPTZ,
+  next_run_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(website_id, schedule_type)
+);
+
+CREATE INDEX idx_website_schedules_website ON website_schedules(website_id);
+CREATE INDEX idx_website_schedules_enabled ON website_schedules(enabled) WHERE enabled = TRUE;
+
+-- Execution history log (includes both scheduled and on-demand)
+CREATE TABLE schedule_executions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  website_id UUID NOT NULL REFERENCES websites(id) ON DELETE CASCADE,
+  schedule_id UUID REFERENCES website_schedules(id) ON DELETE SET NULL,
+  schedule_type TEXT NOT NULL,
+  workflow_type TEXT NOT NULL,
+  workflow_id TEXT, -- Temporal workflow ID
+  trigger_type TEXT NOT NULL, -- scheduled, manual
+  frequency TEXT, -- daily, weekly, monthly, null for manual
+  status TEXT NOT NULL, -- scheduled, running, completed, failed
+  scheduled_at TIMESTAMPTZ NOT NULL,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  triggered_by TEXT, -- user ID or 'system' for scheduled
+  result JSONB,
+  error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_schedule_executions_website ON schedule_executions(website_id);
+CREATE INDEX idx_schedule_executions_scheduled_at ON schedule_executions(scheduled_at);
+CREATE INDEX idx_schedule_executions_trigger_type ON schedule_executions(trigger_type);
+CREATE INDEX idx_schedule_executions_status ON schedule_executions(status);
+CREATE INDEX idx_schedule_executions_schedule ON schedule_executions(schedule_id) WHERE schedule_id IS NOT NULL;
+
+-- Triggers for updated_at
+CREATE TRIGGER update_website_schedules_updated_at BEFORE UPDATE ON website_schedules FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON TABLE website_schedules IS 'Per-website schedule configuration for autonomous agent execution';
+COMMENT ON TABLE schedule_executions IS 'Execution history for scheduled and manual workflow runs';
+COMMENT ON COLUMN website_schedules.schedule_type IS 'Type: scheduled-content, media-check, link-validation, stale-content';
+COMMENT ON COLUMN website_schedules.temporal_schedule_id IS 'ID of the Temporal schedule handle';
+COMMENT ON COLUMN schedule_executions.trigger_type IS 'How the execution was triggered: scheduled or manual';
+COMMENT ON COLUMN schedule_executions.frequency IS 'Frequency: daily, weekly, monthly (null for manual triggers)';
+
+-- =============================================================================
 -- BATCH PROCESSING
 -- =============================================================================
 -- Tracks Claude Message Batches API jobs for content generation

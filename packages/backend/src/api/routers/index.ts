@@ -57,6 +57,9 @@ import { batchRouter } from './batch.router'
 // Weather
 import { weatherRouter } from './weather.router'
 
+// Autonomous Scheduling
+import { scheduleRouter } from './schedule.router'
+
 /**
  * Main application router
  * Combines all feature routers
@@ -101,6 +104,8 @@ export const appRouter = router({
   batch: batchRouter,
   // Weather
   weather: weatherRouter,
+  // Autonomous Scheduling
+  schedule: scheduleRouter,
 })
 
 /**

@@ -13,6 +13,7 @@ interface BootstrapConfig {
   skipMigrations?: boolean
   skipSeeding?: boolean
   skipGitHub?: boolean
+  skipSchedules?: boolean
 }
 
 /**
@@ -175,6 +176,20 @@ function runMigrations(): void {
 }
 
 /**
+ * Setup autonomous agent schedules
+ */
+function setupSchedules(): void {
+  console.log('\n🕐 Setting up autonomous agent schedules...')
+
+  try {
+    exec('tsx scripts/setup-schedules.ts', 'Creating Temporal schedules for websites')
+  } catch (error) {
+    console.warn('⚠️  Schedule setup failed. Run manually: tsx scripts/setup-schedules.ts')
+    // Don't fail bootstrap if schedules fail - they can be set up later
+  }
+}
+
+/**
  * Initialize GitHub repository
  */
 function initializeGitHub(): void {
@@ -241,6 +256,11 @@ async function bootstrap(config: BootstrapConfig = {}): Promise<void> {
       initializeGitHub()
     }
 
+    // Autonomous agent schedules
+    if (!config.skipSchedules) {
+      setupSchedules()
+    }
+
     console.log('\n' + '='.repeat(60))
     console.log('✨ Bootstrap completed successfully!\n')
     console.log('Next steps:')
@@ -264,6 +284,7 @@ const config: BootstrapConfig = {
   skipMigrations: args.includes('--skip-migrations'),
   skipSeeding: args.includes('--skip-seeding'),
   skipGitHub: args.includes('--skip-github'),
+  skipSchedules: args.includes('--skip-schedules'),
 }
 
 // Run bootstrap

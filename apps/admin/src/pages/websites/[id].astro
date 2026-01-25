@@ -5,6 +5,8 @@ import ContentGenerationPanel from '../../components/ContentGenerationPanel'
 import WorkflowControlPanel from '../../components/workflows/WorkflowControlPanel'
 import WeatherDashboard from '../../components/weather/WeatherDashboard'
 import ContentCalendarView from '../../components/editorial/ContentCalendarView'
+import ScheduleManagement from '../../components/scheduling/ScheduleManagement'
+import ScheduleCalendar from '../../components/scheduling/ScheduleCalendar'
 import { trpc, handleTRPCError } from '../../lib/trpc'
 
 const { id } = Astro.params
@@ -118,6 +120,14 @@ if (!website) {
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
               View Content
             </a>
+            <a
+              href="#agent-schedules"
+              class="flex items-center gap-2 text-sm text-primary hover:underline"
+              onclick="document.querySelector('[data-section=\"schedules\"]')?.scrollIntoView({ behavior: 'smooth' })"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              Agent Schedules
+            </a>
           </div>
         </div>
       </div>
@@ -131,6 +141,24 @@ if (!website) {
         websiteName={website.title || website.domain}
         client:load
       />
+    </div>
+
+    <!-- Autonomous Agent Schedules Section -->
+    <div id="agent-schedules" data-section="schedules" class="pt-8 border-t">
+      <h2 class="text-xl font-semibold mb-4">Agent Schedules</h2>
+      <p class="text-muted-foreground mb-6">
+        Configure and monitor autonomous agent execution schedules for content maintenance tasks.
+      </p>
+      <div class="space-y-6">
+        <ScheduleManagement
+          websiteId={website.id}
+          client:load
+        />
+        <ScheduleCalendar
+          websiteId={website.id}
+          client:load
+        />
+      </div>
     </div>
 
     <!-- Full Weather Dashboard -->
