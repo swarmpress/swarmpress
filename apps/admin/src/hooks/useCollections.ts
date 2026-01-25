@@ -72,20 +72,21 @@ async function fetchTRPC<T>(procedure: string, input: Record<string, unknown>): 
     },
   })
 
+  const data = await response.json()
+
+  // Handle tRPC error response (may come with any HTTP status)
+  if (data.error) {
+    const errorMessage = data.error?.json?.message || data.error?.message || 'Unknown error'
+    throw new Error(errorMessage)
+  }
+
   if (!response.ok) {
     throw new Error(`Failed to fetch: ${response.statusText}`)
   }
 
-  const data = await response.json()
-
   // Handle tRPC response format
   if (data.result?.data?.json) {
     return data.result.data.json
-  }
-
-  // Handle error response
-  if (data.error) {
-    throw new Error(data.error.message || 'Unknown error')
   }
 
   return data

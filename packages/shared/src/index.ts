@@ -25,8 +25,9 @@ export * from './content/collections'
 // Quality Checker
 export * from './content/quality-checker'
 
-// Content Validators (for auditing)
-export * from './content/validators'
+// NOTE: Content Validators (./content/validators) are NOT exported from the main index
+// because they use Node.js-only modules (fs/promises) and cannot run in browsers.
+// Import directly from '@swarm-press/shared/content/validators' when needed server-side.
 
 // Domain Entity Types & Schemas
 export * from './types/entities'

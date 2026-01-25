@@ -74,10 +74,12 @@ if (!website) {
                 <dd>{website.description}</dd>
               </div>
             )}
-            <div>
-              <dt class="text-muted-foreground">Created</dt>
-              <dd>{new Date(website.created_at).toLocaleDateString()}</dd>
-            </div>
+            {website.created_at && (
+              <div>
+                <dt class="text-muted-foreground">Created</dt>
+                <dd>{new Date(website.created_at).toLocaleDateString()}</dd>
+              </div>
+            )}
           </dl>
         </div>
 
@@ -123,7 +125,6 @@ if (!website) {
             <a
               href="#agent-schedules"
               class="flex items-center gap-2 text-sm text-primary hover:underline"
-              onclick="document.querySelector('[data-section=\"schedules\"]')?.scrollIntoView({ behavior: 'smooth' })"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               Agent Schedules
