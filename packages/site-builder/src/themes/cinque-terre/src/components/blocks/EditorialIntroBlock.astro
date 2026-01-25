@@ -32,17 +32,17 @@ function getArray(value: LocalizedArray | undefined, lang: string): string[] {
   if (!value) return [];
   if (Array.isArray(value)) {
     // Each item in the array might be a LocalizedText object
-    return value.map(item => {
+    return (value as Array<string | Record<string, string>>).map((item): string => {
       if (typeof item === 'string') return item;
       if (typeof item === 'object' && item !== null) {
-        return (item as Record<string, string>)[lang] || (item as Record<string, string>).en || Object.values(item)[0] || '';
+        return item[lang] || item.en || Object.values(item)[0] || '';
       }
       return '';
     });
   }
   // Handle LocalizedArray object - ensure we return an array
   const localized = value[lang as keyof typeof value] || value.en || Object.values(value)[0];
-  if (Array.isArray(localized)) return localized;
+  if (Array.isArray(localized)) return localized as string[];
   // If content is a string (not an array), wrap it in an array
   if (typeof localized === 'string') return [localized];
   return [];

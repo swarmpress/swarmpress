@@ -303,4 +303,95 @@ export const workflowRouter = router({
       }
     }
   }),
+
+  /**
+   * Start scheduled content workflow
+   * Checks content calendar and generates due content
+   */
+  startScheduledContent: protectedProcedure
+    .input(
+      z.object({
+        websiteId: z.string().describe('UUID of the website'),
+        dryRun: z.boolean().default(false).describe('If true, only log what would be created'),
+      })
+    )
+    .mutation(async ({ input }) => {
+      try {
+        const { startWorkflow } = await getTemporalClient()
+
+        const workflowId = `scheduled-content-${input.websiteId}-${Date.now()}`
+
+        const handle = await startWorkflow('scheduledContentWorkflow', [
+          {
+            websiteId: input.websiteId,
+            dryRun: input.dryRun,
+          },
+        ], {
+          workflowId,
+          taskQueue: 'swarmpress-default',
+        })
+
+        console.log(`[WorkflowRouter] Started scheduled content workflow: ${workflowId}`)
+
+        return {
+          success: true,
+          workflowId: handle.workflowId,
+          runId: handle.runId,
+          dryRun: input.dryRun,
+          message: input.dryRun
+            ? 'Scheduled content check started (dry run - no content will be created)'
+            : 'Scheduled content check started',
+        }
+      } catch (error) {
+        console.error('[WorkflowRouter] Failed to start scheduled content:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to start workflow',
+        })
+      }
+    }),
+
+  /**
+   * Get current season info for content calendar
+   */
+  getSeasonInfo: publicProcedure.query(() => {
+    const now = new Date()
+    const month = now.getMonth() + 1
+    const day = now.getDate()
+    const mmdd = `${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
+
+    let currentSeason: string
+    let nextSeason: string
+    let seasonStart: string
+    let seasonEnd: string
+
+    if (mmdd >= '03-01' && mmdd <= '05-31') {
+      currentSeason = 'spring'
+      nextSeason = 'summer'
+      seasonStart = '03-01'
+      seasonEnd = '05-31'
+    } else if (mmdd >= '06-01' && mmdd <= '08-31') {
+      currentSeason = 'summer'
+      nextSeason = 'fall'
+      seasonStart = '06-01'
+      seasonEnd = '08-31'
+    } else if (mmdd >= '09-01' && mmdd <= '11-30') {
+      currentSeason = 'fall'
+      nextSeason = 'winter'
+      seasonStart = '09-01'
+      seasonEnd = '11-30'
+    } else {
+      currentSeason = 'winter'
+      nextSeason = 'spring'
+      seasonStart = '12-01'
+      seasonEnd = '02-28'
+    }
+
+    return {
+      currentDate: now.toISOString(),
+      currentSeason,
+      nextSeason,
+      seasonWindow: { start: seasonStart, end: seasonEnd },
+    }
+  }),
 })

@@ -786,6 +786,123 @@ ${params.result ? `\n**Result:** ${params.result}` : ''}`
 }
 
 // ============================================================================
+// Scheduled Content Activities
+// ============================================================================
+
+import * as fs from 'fs'
+import * as path from 'path'
+import { v4 as uuidv4 } from 'uuid'
+
+/**
+ * Get content calendar configuration for a website
+ */
+export async function getContentCalendar(websiteId: string): Promise<any> {
+  try {
+    // Import website repository to get the content submodule path
+    const { websiteRepository } = await import('@swarm-press/backend/dist/db/repositories')
+    const website = await websiteRepository.findById(websiteId)
+
+    if (!website) {
+      throw new Error(`Website ${websiteId} not found`)
+    }
+
+    // Default path for cinqueterre.travel - in production this would be dynamic
+    const contentCalendarPath = path.resolve(
+      process.cwd(),
+      'cinqueterre.travel/content/config/content-calendar.json'
+    )
+
+    if (!fs.existsSync(contentCalendarPath)) {
+      console.log(`[ScheduledContent] Content calendar not found at ${contentCalendarPath}`)
+      return null
+    }
+
+    const calendarContent = fs.readFileSync(contentCalendarPath, 'utf-8')
+    return JSON.parse(calendarContent)
+  } catch (error) {
+    console.error(`[ScheduledContent] Failed to load content calendar:`, error)
+    return null
+  }
+}
+
+/**
+ * Get existing content items by slugs
+ */
+export async function getExistingContentBySlugs(
+  websiteId: string,
+  slugs: string[]
+): Promise<Array<{ slug: string; status: string }>> {
+  try {
+    // Query content items with these slugs
+    const allContent = await contentRepository.findByWebsite(websiteId)
+    return allContent.filter((c: any) => slugs.includes(c.slug))
+  } catch (error) {
+    console.error(`[ScheduledContent] Failed to get existing content:`, error)
+    return []
+  }
+}
+
+/**
+ * Create a content brief for scheduled generation
+ */
+export async function createContentBrief(params: {
+  websiteId: string
+  title: string
+  slug: string
+  brief: string
+  contentType: string
+  metadata?: Record<string, any>
+}): Promise<string> {
+  const contentId = uuidv4()
+
+  await contentRepository.create({
+    id: contentId,
+    website_id: params.websiteId,
+    title: params.title,
+    slug: params.slug,
+    status: 'brief_created',
+    body: [], // Empty body, will be filled by writer agent
+    content_type: params.contentType,
+    metadata: {
+      ...params.metadata,
+      brief: params.brief,
+      created_by: 'scheduled-content-workflow',
+      created_at: new Date().toISOString(),
+    },
+    brief: params.brief,
+  })
+
+  console.log(`[ScheduledContent] Created content brief: ${contentId} - ${params.title}`)
+
+  // Emit event
+  await events.contentCreated(contentId, 'system')
+
+  return contentId
+}
+
+/**
+ * Log scheduled content activity
+ */
+export async function logScheduledContentActivity(params: {
+  websiteId: string
+  topicId: string
+  title: string
+  action: 'created' | 'skipped' | 'error'
+  contentId?: string
+  error?: string
+}): Promise<void> {
+  console.log(`[ScheduledContent] Activity: ${params.action} - ${params.title}`)
+  if (params.contentId) {
+    console.log(`[ScheduledContent]   Content ID: ${params.contentId}`)
+  }
+  if (params.error) {
+    console.log(`[ScheduledContent]   Error: ${params.error}`)
+  }
+
+  // Could also log to database activity table if needed
+}
+
+// ============================================================================
 // Re-export from separate activity files
 // ============================================================================
 

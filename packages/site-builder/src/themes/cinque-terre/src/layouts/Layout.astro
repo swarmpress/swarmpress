@@ -2,6 +2,7 @@
 /**
  * Cinque Terre Theme Layout
  * Main layout wrapper with header and theme styles
+ * Enhanced with comprehensive SEO support (OG, Twitter, JSON-LD)
  * Matches: https://github.com/drietsch/cinque-terre-template
  */
 import '../styles/theme.css';
@@ -20,6 +21,13 @@ interface Props {
     footer?: FooterProps;
     showHeader?: boolean;
     showFooter?: boolean;
+    // SEO enhancements
+    image?: string;
+    type?: 'website' | 'article';
+    author?: string;
+    publishedTime?: string;
+    modifiedTime?: string;
+    noindex?: boolean;
 }
 
 const {
@@ -29,11 +37,95 @@ const {
     header,
     footer,
     showHeader = true,
-    showFooter = false  // Template pages add Footer explicitly
+    showFooter = false,  // Template pages add Footer explicitly
+    image = 'https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=1200&auto=format&fit=crop',
+    type = 'website',
+    author,
+    publishedTime,
+    modifiedTime,
+    noindex = false
 } = Astro.props;
 
 // Get current path for navigation state
 const currentPath = Astro.url.pathname;
+
+// Site configuration
+const siteUrl = 'https://cinqueterre.travel';
+const siteName = 'Cinque Terre Dispatch';
+const twitterHandle = '@cinqueterretravel';
+
+// Build canonical URL
+const canonicalUrl = new URL(currentPath, siteUrl).href;
+
+// Supported languages for hreflang
+const supportedLanguages = ['en', 'de', 'fr', 'it'] as const;
+
+// Build hreflang URLs
+const hreflangUrls = supportedLanguages.map(lang => {
+    const langPath = currentPath.replace(/^\/(en|de|fr|it)\//, `/${lang}/`);
+    return { lang, url: new URL(langPath, siteUrl).href };
+});
+
+// JSON-LD structured data
+const organizationSchema = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": siteName,
+    "url": siteUrl,
+    "logo": `${siteUrl}/favicon.svg`,
+    "description": "A luxury editorial travel magazine for Cinque Terre, Italy's stunning coastal villages.",
+    "sameAs": [
+        "https://twitter.com/cinqueterretravel",
+        "https://instagram.com/cinqueterretravel"
+    ]
+};
+
+const websiteSchema = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": siteName,
+    "url": siteUrl,
+    "potentialAction": {
+        "@type": "SearchAction",
+        "target": `${siteUrl}/en/search?q={search_term_string}`,
+        "query-input": "required name=search_term_string"
+    }
+};
+
+const breadcrumbSchema = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": currentPath.split('/').filter(Boolean).map((segment, index, arr) => ({
+        "@type": "ListItem",
+        "position": index + 1,
+        "name": segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' '),
+        "item": new URL(arr.slice(0, index + 1).join('/'), siteUrl).href
+    }))
+};
+
+// Article schema for blog posts
+const articleSchema = type === 'article' && author ? {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": title,
+    "description": description,
+    "image": image,
+    "author": {
+        "@type": "Person",
+        "name": author
+    },
+    "publisher": {
+        "@type": "Organization",
+        "name": siteName,
+        "logo": {
+            "@type": "ImageObject",
+            "url": `${siteUrl}/favicon.svg`
+        }
+    },
+    "datePublished": publishedTime,
+    "dateModified": modifiedTime || publishedTime,
+    "mainEntityOfPage": canonicalUrl
+} : null;
 
 const headerProps = {
     siteName: 'Cinque Terre Dispatch',
@@ -59,8 +151,50 @@ const footerProps = {
         <meta name="viewport" content="width=device-width" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <meta name="generator" content={Astro.generator} />
-        <meta name="description" content={description} />
+
+        <!-- Primary Meta Tags -->
         <title>{title}</title>
+        <meta name="title" content={title} />
+        <meta name="description" content={description} />
+        {noindex && <meta name="robots" content="noindex, nofollow" />}
+        {author && <meta name="author" content={author} />}
+
+        <!-- Canonical & Alternate Languages -->
+        <link rel="canonical" href={canonicalUrl} />
+        {hreflangUrls.map(({ lang, url }) => (
+            <link rel="alternate" hreflang={lang} href={url} />
+        ))}
+        <link rel="alternate" hreflang="x-default" href={hreflangUrls.find(h => h.lang === 'en')?.url} />
+
+        <!-- Open Graph / Facebook -->
+        <meta property="og:type" content={type} />
+        <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={description} />
+        <meta property="og:image" content={image} />
+        <meta property="og:site_name" content={siteName} />
+        <meta property="og:locale" content={locale === 'en' ? 'en_US' : locale === 'de' ? 'de_DE' : locale === 'fr' ? 'fr_FR' : 'it_IT'} />
+        {type === 'article' && publishedTime && <meta property="article:published_time" content={publishedTime} />}
+        {type === 'article' && modifiedTime && <meta property="article:modified_time" content={modifiedTime} />}
+        {type === 'article' && author && <meta property="article:author" content={author} />}
+
+        <!-- Twitter -->
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:url" content={canonicalUrl} />
+        <meta property="twitter:title" content={title} />
+        <meta property="twitter:description" content={description} />
+        <meta property="twitter:image" content={image} />
+        <meta property="twitter:site" content={twitterHandle} />
+
+        <!-- JSON-LD Structured Data -->
+        <script type="application/ld+json" set:html={JSON.stringify(organizationSchema)} />
+        <script type="application/ld+json" set:html={JSON.stringify(websiteSchema)} />
+        {breadcrumbSchema.itemListElement.length > 0 && (
+            <script type="application/ld+json" set:html={JSON.stringify(breadcrumbSchema)} />
+        )}
+        {articleSchema && (
+            <script type="application/ld+json" set:html={JSON.stringify(articleSchema)} />
+        )}
 
         <!-- Tailwind Plus Elements (for popovers) -->
         <script is:inline src="https://cdn.jsdelivr.net/npm/@tailwindplus/elements@1" type="module"></script>

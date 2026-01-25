@@ -8,7 +8,7 @@ import {
 } from './ui/carousel';
 import { Badge } from './ui/badge';
 
-// Mock data
+// Featured stories with links to actual blog posts
 const featuredStories = [
     {
         id: 1,
@@ -16,39 +16,44 @@ const featuredStories = [
         category: "Itinerary",
         dek: "How to see the best of the five villages in just 3 days.",
         image: "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop",
-        author: "Giulia Rossi"
+        author: "Giulia Rossi",
+        slug: "/en/blog/the-perfect-first-timer-itinerary"
     },
     {
         id: 2,
         title: "Best Time to Visit (and When to Skip)",
         category: "Planning",
         dek: "Avoid the crowds and find the perfect weather.",
-        image: "https://images.unsplash.com/photo-1555979863-69fb96e63359?q=80&w=2670&auto=format&fit=crop",
-        author: "Marco Bianchi"
+        image: "https://images.unsplash.com/photo-1499678329028-101435549a4e?q=80&w=2670&auto=format&fit=crop",
+        author: "Marco Bianchi",
+        slug: "/en/blog/best-time-to-visit-and-when-to-skip"
     },
     {
         id: 3,
         title: "How to Hike the Sentiero Azzurro",
         category: "Hiking",
         dek: "Everything you need to know about the Blue Trail.",
-        image: "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?q=80&w=2670&auto=format&fit=crop",
-        author: "Luca Verdi"
+        image: "https://images.unsplash.com/photo-1538681105587-85640961bf8b?q=80&w=2670&auto=format&fit=crop",
+        author: "Luca Verdi",
+        slug: "/en/blog/hiking-the-blue-trail-what-to-expect"
     },
     {
         id: 4,
-        title: "Most Scenic Viewpoints",
+        title: "A Photographer's Guide to Manarola at Sunset",
         category: "Photography",
         dek: "Where to capture the iconic postcard shots.",
-        image: "https://images.unsplash.com/photo-1592345279419-959d784e8aad?q=80&w=2670&auto=format&fit=crop",
-        author: "Elena Moretti"
+        image: "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
+        author: "Elena Moretti",
+        slug: "/en/blog/a-photographers-guide-to-manarola-at-sunset"
     },
     {
         id: 5,
-        title: "Beaches Worth the Detour",
+        title: "The Ultimate Guide to Cinque Terre's Best Beaches",
         category: "Beaches",
-        dek: "Secret coves and sandy spots away from the main towns.",
+        dek: "From sandy shores to rocky coves, here's where to swim.",
         image: "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
-        author: "Sofia Neri"
+        author: "Giulia Rossi",
+        slug: "/en/blog/the-ultimate-guide-to-cinque-terres-best-beaches"
     },
     {
         id: 6,
@@ -56,23 +61,26 @@ const featuredStories = [
         category: "Transport",
         dek: "Master the logistics of moving between villages.",
         image: "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
-        author: "Giulia Rossi"
+        author: "Giulia Rossi",
+        slug: "/en/blog/local-train-and-ferry-cheatsheet"
     },
     {
         id: 7,
-        title: "A Food Lover’s Weekend",
+        title: "5 Hidden Gelaterias You Need to Try",
         category: "Food & Drink",
-        dek: "From pesto to seafood, here's what to eat.",
+        dek: "Skip the tourist traps and find the real deal.",
         image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2632&auto=format&fit=crop",
-        author: "Marco Bianchi"
+        author: "Marco Bianchi",
+        slug: "/en/blog/5-hidden-gelaterias-you-need-to-try"
     },
     {
         id: 8,
-        title: "Rainy-Day Plans",
-        category: "Activities",
-        dek: "What to do when the weather doesn't cooperate.",
+        title: "Where to Stay: Hotel vs. Airbnb",
+        category: "Accommodation",
+        dek: "Pros and cons for every type of traveler.",
         image: "https://images.unsplash.com/photo-1515444744559-7be63e1600de?q=80&w=2670&auto=format&fit=crop",
-        author: "Elena Moretti"
+        author: "Sofia Neri",
+        slug: "/en/blog/where-to-stay-hotel-vs-airbnb"
     }
 ];
 
@@ -95,7 +103,7 @@ export default function FeaturedCarousel() {
                     <CarouselContent className="-ml-4">
                         {featuredStories.map((story) => (
                             <CarouselItem key={story.id} className="pl-4 md:basis-1/2 lg:basis-1/3 xl:basis-1/4">
-                                <div className="group cursor-pointer">
+                                <a href={story.slug} className="group block">
                                     <div className="relative aspect-[4/3] overflow-hidden rounded-xl mb-4">
                                         <img
                                             src={story.image}
@@ -118,7 +126,7 @@ export default function FeaturedCarousel() {
                                         </div>
                                         <span className="text-xs font-medium text-muted-foreground">{story.author}</span>
                                     </div>
-                                </div>
+                                </a>
                             </CarouselItem>
                         ))}
                     </CarouselContent>

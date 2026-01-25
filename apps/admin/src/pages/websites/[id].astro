@@ -2,6 +2,9 @@
 import Layout from '../../layouts/Layout.astro'
 import WebsiteForm from '../../components/WebsiteForm'
 import ContentGenerationPanel from '../../components/ContentGenerationPanel'
+import WorkflowControlPanel from '../../components/workflows/WorkflowControlPanel'
+import WeatherDashboard from '../../components/weather/WeatherDashboard'
+import ContentCalendarView from '../../components/editorial/ContentCalendarView'
 import { trpc, handleTRPCError } from '../../lib/trpc'
 
 const { id } = Astro.params
@@ -29,21 +32,33 @@ if (!website) {
   <div class="space-y-8">
     <div class="mb-8">
       <h1 class="text-3xl font-bold">{website.title || website.domain}</h1>
-      <p class="text-muted-foreground mt-2">Manage website settings and content generation</p>
+      <p class="text-muted-foreground mt-2">Manage website settings, content generation, and workflows</p>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      <!-- Content Generation Panel - Primary Action -->
-      <div class="lg:col-span-2">
+      <!-- Main Content Area - Panels -->
+      <div class="lg:col-span-2 space-y-6">
+        <!-- Content Generation Panel -->
         <ContentGenerationPanel
+          websiteId={website.id}
+          websiteName={website.title || website.domain}
+          client:load
+        />
+
+        <!-- Workflow Control Panel -->
+        <WorkflowControlPanel
           websiteId={website.id}
           websiteName={website.title || website.domain}
           client:load
         />
       </div>
 
-      <!-- Website Info / Quick Actions -->
+      <!-- Sidebar - Info, Weather, Quick Actions -->
       <div class="space-y-4">
+        <!-- Weather Dashboard (Compact) -->
+        <WeatherDashboard compact={true} client:load />
+
+        <!-- Website Info -->
         <div class="p-4 rounded-lg border bg-card">
           <h3 class="font-semibold mb-3">Website Info</h3>
           <dl class="space-y-2 text-sm">
@@ -64,6 +79,7 @@ if (!website) {
           </dl>
         </div>
 
+        <!-- Quick Links -->
         <div class="p-4 rounded-lg border bg-card">
           <h3 class="font-semibold mb-3">Quick Links</h3>
           <div class="space-y-2">
@@ -82,6 +98,13 @@ if (!website) {
               Editorial Kanban
             </a>
             <a
+              href={`/collections`}
+              class="flex items-center gap-2 text-sm text-primary hover:underline"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
+              Collections
+            </a>
+            <a
               href={`/tools`}
               class="flex items-center gap-2 text-sm text-primary hover:underline"
             >
@@ -98,6 +121,22 @@ if (!website) {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Content Calendar Section -->
+    <div class="pt-8 border-t">
+      <h2 class="text-xl font-semibold mb-4">Content Calendar</h2>
+      <ContentCalendarView
+        websiteId={website.id}
+        websiteName={website.title || website.domain}
+        client:load
+      />
+    </div>
+
+    <!-- Full Weather Dashboard -->
+    <div class="pt-8 border-t">
+      <h2 class="text-xl font-semibold mb-4">Weather Overview</h2>
+      <WeatherDashboard compact={false} client:load />
     </div>
 
     <!-- Website Settings Form -->

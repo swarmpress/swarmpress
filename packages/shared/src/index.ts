@@ -25,6 +25,9 @@ export * from './content/collections'
 // Quality Checker
 export * from './content/quality-checker'
 
+// Content Validators (for auditing)
+export * from './content/validators'
+
 // Domain Entity Types & Schemas
 export * from './types/entities'
 export * from './types/sitemap'

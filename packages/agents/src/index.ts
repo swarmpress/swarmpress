@@ -17,6 +17,7 @@ export * from './qa'
 export * from './linker'
 export * from './page-orchestrator'
 export * from './page-polish'
+export * from './audit'
 
 // Export research tools
 export * from './tools/research/tool-registry'
@@ -37,6 +38,7 @@ import { QAAgent } from './qa'
 import { LinkerAgent } from './linker'
 import { PageOrchestratorAgent } from './page-orchestrator'
 import { PagePolishAgent } from './page-polish'
+import { AuditAgent } from './audit'
 
 /**
  * Initialize agent registry
@@ -60,6 +62,8 @@ export async function initializeAgents() {
   registerAgent('Linker', LinkerAgent)
   registerAgent('PageOrchestrator', PageOrchestratorAgent)
   registerAgent('PagePolish', PagePolishAgent)
+  registerAgent('Audit', AuditAgent)
+  registerAgent('QAauditor', AuditAgent) // Alias for audit role
 
   console.log('✅ All agent types registered')
 }

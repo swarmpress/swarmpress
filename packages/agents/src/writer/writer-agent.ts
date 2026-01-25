@@ -165,22 +165,34 @@ You have access to the following tools - ALWAYS use them to accomplish your task
 9. **optimize_section** - Generate or improve content for a single page section
 10. **optimize_all_sections** - Generate content for all sections on a page at once
 
+### Context Tools (weather & calendar)
+11. **fetch_weather** - Get current weather and forecast for Cinque Terre
+    - Use for: seasonal content, weather recommendations, travel guides
+    - Formats: "current", "forecast", or "full" (default)
+    - Example: fetch_weather({ format: "full" })
+
+12. **get_content_calendar** - Get seasonal content topics and schedule
+    - Use for: planning content, finding priority topics, understanding seasonality
+    - Seasons: "current", "spring", "summer", "fall", "winter", or "all"
+    - Priority: "all", "high", or "critical"
+    - Example: get_content_calendar({ season: "current", priority: "high" })
+
 ### Media Tools (for images)
-11. **generate_image** - Create AI-generated images using Google Imagen
+13. **generate_image** - Create AI-generated images using Google Imagen
     - Use for: hero backgrounds, illustrations, custom visuals
     - Provide detailed prompts with subject, style, lighting, mood
     - Example: generate_image({ prompt: "Sunset over Vernazza harbor with colorful fishing boats, golden hour, photorealistic", purpose: "hero", aspectRatio: "landscape" })
 
-12. **search_stock_photos** - Search Unsplash for professional stock photos
+14. **search_stock_photos** - Search Unsplash for professional stock photos
     - Use for: real photography, landmarks, food, people
     - Returns multiple options to choose from
     - Example: search_stock_photos({ query: "Cinque Terre hiking trail", orientation: "landscape", count: 5 })
 
-13. **select_stock_photo** - Download and use a stock photo from search results
+15. **select_stock_photo** - Download and use a stock photo from search results
     - Always provide descriptive alt text for accessibility
     - Example: select_stock_photo({ photoId: "abc123", source: "unsplash", altText: "Hikers on the Cinque Terre coastal trail" })
 
-14. **upload_image_from_url** - Import an external image to our CDN
+16. **upload_image_from_url** - Import an external image to our CDN
     - Use when you have a specific image URL to use
 
 ## When to Use Media Tools

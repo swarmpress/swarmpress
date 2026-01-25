@@ -331,6 +331,250 @@ Use this when the user wants to populate all sections at once with AI-generated 
 }
 
 // ============================================================================
+// Content Integrity Audit Tools
+// ============================================================================
+
+/**
+ * Audit links - check all links in content for issues
+ */
+export const auditLinksTool: ToolDefinition = {
+  name: 'audit_links',
+  description: `Scan content for broken or problematic links.
+
+Checks:
+- Internal links resolve to existing pages
+- External links are accessible (HTTP 200)
+- No dead anchors (#fragment)
+- Proper URL formatting
+
+Returns a report of issues found with suggested fixes.`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      content_path: stringProp('Path to the content directory or file to scan'),
+      sitemap_slugs: arrayProp(
+        'Valid page slugs for internal link validation',
+        { type: 'string', description: 'A valid page slug' }
+      ),
+      check_external: {
+        type: 'boolean',
+        description: 'Whether to check external links (slower)',
+      },
+    },
+    required: ['content_path'],
+  },
+}
+
+/**
+ * Find internal link opportunities - analyze content graph for missing connections
+ */
+export const findInternalLinkOpportunitiesTool: ToolDefinition = {
+  name: 'find_internal_link_opportunities',
+  description: `Analyze content to find opportunities for internal linking.
+
+Looks for:
+- Pages about the same village that should cross-link
+- Related topics that aren't connected
+- Orphan pages with no incoming links
+- Hub pages that should be linked more
+
+Returns suggested internal links to add for better SEO and navigation.`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      content_path: stringProp('Path to the content directory to analyze'),
+      sitemap_path: stringProp('Path to sitemap.json for page relationships'),
+      min_relevance: {
+        type: 'number',
+        description: 'Minimum relevance score for suggestions (0-1, default 0.5)',
+      },
+    },
+    required: ['content_path'],
+  },
+}
+
+/**
+ * Audit translations - check for missing translations in LocalizedString fields
+ */
+export const auditTranslationsTool: ToolDefinition = {
+  name: 'audit_translations',
+  description: `Scan content for missing translations in multi-language fields.
+
+Checks all LocalizedString fields (objects with en, de, fr, it keys) and identifies:
+- Fields with only English content
+- Partially translated fields
+- Empty translations
+
+Returns a report grouped by file and language with translation requirements.`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      content_path: stringProp('Path to the content directory to scan'),
+      required_languages: arrayProp(
+        'Languages that should be present (default: ["en", "de", "fr", "it"])',
+        { type: 'string', description: 'Language code (e.g., "en", "de")' }
+      ),
+    },
+    required: ['content_path'],
+  },
+}
+
+/**
+ * Generate translation - create missing language version of content
+ */
+export const generateTranslationTool: ToolDefinition = {
+  name: 'generate_translation',
+  description: `Generate a translation for missing language content.
+
+Takes an English source text and generates the translation for the specified language.
+Maintains the same tone, style, and formatting as the original.
+
+For Cinque Terre content, uses appropriate local terminology and cultural references.`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      source_text: stringProp('The English source text to translate'),
+      target_language: stringProp('Target language code', ['de', 'fr', 'it']),
+      context: stringProp('Context about the content (e.g., "village description for Vernazza")'),
+      content_path: stringProp('Optional: Path to content file to update'),
+      json_path: stringProp('Optional: JSON path to the field to update'),
+    },
+    required: ['source_text', 'target_language'],
+  },
+}
+
+/**
+ * Add internal link - insert an internal link into content
+ */
+export const addInternalLinkTool: ToolDefinition = {
+  name: 'add_internal_link',
+  description: `Add an internal link to content at an appropriate location.
+
+Finds a suitable place in the content to add the link naturally:
+- Within relevant paragraphs
+- In "Related" sections
+- As part of navigation elements
+
+Updates the content file and returns the location where the link was added.`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      content_path: stringProp('Path to the content file to modify'),
+      target_url: stringProp('URL of the page to link to'),
+      anchor_text: stringProp('Text to use for the link'),
+      context_hint: stringProp('Hint about where to place the link (e.g., "near mention of hiking")'),
+    },
+    required: ['content_path', 'target_url', 'anchor_text'],
+  },
+}
+
+/**
+ * Fix broken link - repair or remove a broken link
+ */
+export const fixBrokenLinkTool: ToolDefinition = {
+  name: 'fix_broken_link',
+  description: `Repair or remove a broken link from content.
+
+Options:
+1. Replace with a working alternative URL
+2. Remove the link but keep the text
+3. Remove the entire sentence/element containing the link
+
+Updates the content file and reports what was changed.`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      content_path: stringProp('Path to the content file'),
+      json_path: stringProp('JSON path to the broken link'),
+      broken_url: stringProp('The broken URL to fix'),
+      action: stringProp('Fix action', ['replace', 'remove_link', 'remove_element']),
+      replacement_url: stringProp('New URL if action is "replace"'),
+    },
+    required: ['content_path', 'json_path', 'broken_url', 'action'],
+  },
+}
+
+// ============================================================================
+// Context Tools (Weather & Calendar)
+// ============================================================================
+
+/**
+ * Fetch weather - get current weather and forecast for Cinque Terre
+ */
+export const fetchWeatherTool: ToolDefinition = {
+  name: 'fetch_weather',
+  description: `Get current weather conditions and forecast for Cinque Terre.
+
+Returns:
+- Current temperature, humidity, wind, and conditions
+- 7-day forecast with highs/lows and precipitation chances
+- Sunrise/sunset times for today
+
+Use this tool when:
+- Writing seasonal content that needs accurate weather context
+- Creating travel guides with weather recommendations
+- Adding weather information to village pages
+- Generating content that references current conditions
+
+Format options:
+- "current": Just current conditions
+- "forecast": 7-day forecast only
+- "full": Both current and forecast (default)`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      format: stringProp('What weather data to return', ['current', 'forecast', 'full']),
+    },
+    required: [],
+  },
+}
+
+/**
+ * Get content calendar - access seasonal content topics
+ */
+export const getContentCalendarTool: ToolDefinition = {
+  name: 'get_content_calendar',
+  description: `Get the content calendar with seasonal topics for Cinque Terre.
+
+Returns:
+- Current season and date information
+- List of seasonal content topics with priorities
+- Topics filtered by season and/or priority
+
+Use this tool when:
+- Planning what content to write next
+- Understanding seasonal relevance for content
+- Finding high-priority topics that need attention
+- Getting context for scheduled content workflows
+
+Season options:
+- "current": Topics for the current season (default)
+- "spring", "summer", "fall", "winter": Specific season
+- "all": All seasons
+
+Priority options:
+- "all": All priorities (default)
+- "high": High and critical priority only
+- "critical": Critical priority only`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      season: stringProp('Which season to get topics for', ['current', 'spring', 'summer', 'fall', 'winter', 'all']),
+      priority: stringProp('Filter by priority level', ['all', 'high', 'critical']),
+    },
+    required: [],
+  },
+}
+
+/**
+ * Context tools for weather and content calendar awareness
+ */
+export const contextTools = [
+  fetchWeatherTool,
+  getContentCalendarTool,
+]
+
+// ============================================================================
 // Import Media Tools
 // ============================================================================
 
@@ -356,9 +600,23 @@ export const coreWriterTools = [
 ]
 
 /**
- * All writer tools including media capabilities
+ * Content integrity audit tools
+ */
+export const auditTools = [
+  auditLinksTool,
+  findInternalLinkOpportunitiesTool,
+  auditTranslationsTool,
+  generateTranslationTool,
+  addInternalLinkTool,
+  fixBrokenLinkTool,
+]
+
+/**
+ * All writer tools including media, audit, and context capabilities
  */
 export const writerTools = [
   ...coreWriterTools,
   ...mediaTools,
+  ...auditTools,
+  ...contextTools,
 ]

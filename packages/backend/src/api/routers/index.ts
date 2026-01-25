@@ -54,6 +54,9 @@ import { contentGenerationRouter } from './content-generation.router'
 // Batch Processing
 import { batchRouter } from './batch.router'
 
+// Weather
+import { weatherRouter } from './weather.router'
+
 /**
  * Main application router
  * Combines all feature routers
@@ -96,6 +99,8 @@ export const appRouter = router({
   contentGeneration: contentGenerationRouter,
   // Batch Processing
   batch: batchRouter,
+  // Weather
+  weather: weatherRouter,
 })
 
 /**

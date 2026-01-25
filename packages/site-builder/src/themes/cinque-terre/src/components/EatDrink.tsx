@@ -43,7 +43,7 @@ const eats = [
         type: "Breakfast",
         village: "Vernazza",
         blurb: "Famous for their Sicilian cannoli and pastries.",
-        image: "https://images.unsplash.com/photo-1555979863-69fb96e63359?q=80&w=2670&auto=format&fit=crop"
+        image: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?q=80&w=2670&auto=format&fit=crop"
     }
 ];
 

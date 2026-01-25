@@ -57,9 +57,26 @@ const title = pageData.seo?.title || pageData.title || 'The Dispatch';
 const description = pageData.seo?.description || '';
 const body = pageData.body || [];
 const locale = lang || 'en';
+
+// Extract article metadata for SEO
+const blogArticle = body.find((b: any) => b.type === 'blog-article');
+const post = blogArticle?.post || {};
+const author = post.author || 'Cinque Terre Dispatch';
+const image = post.image || 'https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=1200&auto=format&fit=crop';
+const publishedTime = pageData.created_at || new Date().toISOString();
+const modifiedTime = pageData.updated_at;
 ---
 
-<Layout title={title} description={description} locale={locale}>
+<Layout
+  title={title}
+  description={description}
+  locale={locale}
+  type="article"
+  author={author}
+  image={image}
+  publishedTime={publishedTime}
+  modifiedTime={modifiedTime}
+>
   <ContentRenderer blocks={body} locale={locale} />
   <Footer />
 </Layout>

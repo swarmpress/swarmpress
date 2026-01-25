@@ -100,9 +100,10 @@ const enrichedItems = await Promise.all(
                  getText(collectionData?.name as LocalizedText, locale) ||
                  ref.slug;
 
+    const details = collectionData?.details as Record<string, unknown> | undefined;
     const summary = getText(ref.summary, locale) ||
-                    getText(collectionData?.details?.teaser as LocalizedText, locale) ||
-                    getText(collectionData?.intro as LocalizedText, locale) || '';
+                    getText(details?.teaser as LocalizedText | undefined, locale) ||
+                    getText(collectionData?.intro as LocalizedText | undefined, locale) || '';
 
     const image = ref.image ||
                   (collectionData?.images as Array<{ url: string }>)?.[0]?.url ||

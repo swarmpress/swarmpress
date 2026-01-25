@@ -175,6 +175,117 @@ Returns curated results focused on travel photography.`,
 }
 
 // ============================================================================
+// Content Integrity Audit Tools
+// ============================================================================
+
+/**
+ * Audit image URL - check if an image URL is accessible
+ */
+export const auditImageUrlTool: ToolDefinition = {
+  name: 'audit_image_url',
+  description: `Check if an image URL is accessible and valid.
+
+Performs an HTTP HEAD request to verify:
+- URL is reachable (not 404)
+- Returns an image content type
+- Response time is acceptable
+
+Use this to audit existing images in content before publishing.`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      url: stringProp('The image URL to check'),
+      timeout: numberProp('Timeout in milliseconds (default: 5000)'),
+    },
+    required: ['url'],
+  },
+}
+
+/**
+ * Validate image content - use vision to verify image matches expected context
+ */
+export const validateImageContentTool: ToolDefinition = {
+  name: 'validate_image_content',
+  description: `Use AI vision to verify an image matches its expected context.
+
+IMPORTANT: This tool detects images that don't belong, such as:
+- A photo of Santorini used for a Cinque Terre article
+- A London landmark in an Italian travel guide
+- A desert scene in coastal content
+
+Analyzes the image and compares it against:
+- Expected location (e.g., "Riomaggiore", "Cinque Terre")
+- Expected category (e.g., "hiking trail", "restaurant")
+- Expected subject matter
+
+Returns whether the image is correct and details any mismatches.`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      imageUrl: stringProp('URL of the image to validate'),
+      expectedContext: stringProp('What the image should show (e.g., "Cinque Terre village view")'),
+      villageContext: stringProp('Specific village if applicable (e.g., "Riomaggiore", "Vernazza")'),
+      categoryContext: stringProp('Content category (e.g., "beach", "hiking", "restaurant")'),
+    },
+    required: ['imageUrl', 'expectedContext'],
+  },
+}
+
+/**
+ * Fix broken image - find and replace a broken or wrong image
+ */
+export const fixBrokenImageTool: ToolDefinition = {
+  name: 'fix_broken_image',
+  description: `Find a replacement for a broken or incorrect image and update the content.
+
+This is a complete fix workflow that:
+1. Searches for a suitable replacement image
+2. Uploads the new image to the CDN
+3. Updates the content JSON with the new URL
+
+Use this after audit_image_url or validate_image_content identifies a problem.`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      contentPath: stringProp('Path to the content JSON file'),
+      jsonPath: stringProp('JSON path to the image field (e.g., "body[2].image")'),
+      currentUrl: stringProp('The current broken/wrong image URL'),
+      expectedContext: stringProp('What the replacement should show'),
+      villageContext: stringProp('Specific village if applicable'),
+      categoryContext: stringProp('Content category for search'),
+    },
+    required: ['contentPath', 'jsonPath', 'expectedContext'],
+  },
+}
+
+/**
+ * Audit content images - scan all images in a content file
+ */
+export const auditContentImagesTool: ToolDefinition = {
+  name: 'audit_content_images',
+  description: `Scan all images in a content JSON file and check for issues.
+
+Performs comprehensive audit:
+- Checks all image URLs are accessible
+- Validates images match their context (using vision)
+- Reports broken links, wrong images, missing alt text
+
+Returns a detailed audit report with issues and suggested fixes.`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      contentPath: stringProp('Path to the content directory or file'),
+      validateContent: {
+        type: 'boolean',
+        description: 'Whether to use vision API to validate image content (slower but more thorough)',
+      },
+      concurrency: numberProp('Number of concurrent checks (default: 5)'),
+    },
+    required: ['contentPath'],
+  },
+}
+
+// ============================================================================
 // Export All Media Agent Tools
 // ============================================================================
 
@@ -190,6 +301,11 @@ export const mediaAgentTools: ToolDefinition[] = [
   createThumbnailTool,
   batchGenerateImagesTool,
   searchTravelPhotosTool,
+  // Content integrity audit tools
+  auditImageUrlTool,
+  validateImageContentTool,
+  fixBrokenImageTool,
+  auditContentImagesTool,
 ]
 
 /**
@@ -205,4 +321,9 @@ export const mediaAgentToolMap: Record<string, ToolDefinition> = {
   create_thumbnail: createThumbnailTool,
   batch_generate_images: batchGenerateImagesTool,
   search_travel_photos: searchTravelPhotosTool,
+  // Audit tools
+  audit_image_url: auditImageUrlTool,
+  validate_image_content: validateImageContentTool,
+  fix_broken_image: fixBrokenImageTool,
+  audit_content_images: auditContentImagesTool,
 }
