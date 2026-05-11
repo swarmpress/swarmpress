@@ -1,10 +1,13 @@
 /**
  * Pull Request Operations
- * Create and manage PRs for content review
+ *
+ * Each export takes a `RepoClient` instance (provides per-website Octokit,
+ * owner, repo). This replaces the previous global `getGitHub()` singleton —
+ * see WS1 of the repo-canonical migration.
  */
 
-import { getGitHub } from './client'
 import type { ContentItem } from '@swarm-press/shared'
+import type { RepoClient } from './repo-client'
 
 export interface CreateContentPRParams {
   contentId: string
@@ -23,7 +26,7 @@ export interface PRResult {
  * Sanitize a string for use in a PR title — strips control characters /
  * newlines and clamps length so GitHub does not 422 us.
  */
-function sanitizePRTitle(raw: string, maxLength = 80): string {
+export function sanitizePRTitle(raw: string, maxLength = 80): string {
   const collapsed = raw
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/\s+/g, ' ')
@@ -35,7 +38,10 @@ function sanitizePRTitle(raw: string, maxLength = 80): string {
 /**
  * Create a Pull Request for content review
  */
-export async function createContentPR(params: CreateContentPRParams): Promise<PRResult> {
+export async function createContentPR(
+  repoClient: RepoClient,
+  params: CreateContentPRParams
+): Promise<PRResult> {
   const { contentId, content, branchName, agentId } = params
 
   // Fail fast on missing content — previously this produced a PR titled
@@ -44,14 +50,13 @@ export async function createContentPR(params: CreateContentPRParams): Promise<PR
     throw new Error(`createContentPR: content is required (contentId=${contentId})`)
   }
 
-  const github = getGitHub()
-  const { owner, repo } = github.getRepoInfo()
-  const octokit = github.getOctokit()
+  const { owner, repo } = repoClient.getRepoInfo()
+  const octokit = repoClient.getOctokit()
 
   // Create branch if it doesn't exist
-  const branchExists = await github.branchExists(branchName)
+  const branchExists = await repoClient.branchExists(branchName)
   if (!branchExists) {
-    await github.createBranch(branchName)
+    await repoClient.createBranch(branchName)
   }
 
   // Build a human-readable title. Prefer the content's own title, then slug,
@@ -78,7 +83,7 @@ export async function createContentPR(params: CreateContentPRParams): Promise<PR
     2
   )
 
-  await github.createOrUpdateFile({
+  await repoClient.createOrUpdateFile({
     path: filePath,
     content: fileContent,
     message: `feat: add content "${contentTitle}" [${contentId}]`,
@@ -141,10 +146,13 @@ ${content.metadata?.category ? `**Category:** ${content.metadata.category}\n` : 
 /**
  * Add review comment to PR
  */
-export async function addPRComment(prNumber: number, comment: string): Promise<void> {
-  const github = getGitHub()
-  const { owner, repo } = github.getRepoInfo()
-  const octokit = github.getOctokit()
+export async function addPRComment(
+  repoClient: RepoClient,
+  prNumber: number,
+  comment: string
+): Promise<void> {
+  const { owner, repo } = repoClient.getRepoInfo()
+  const octokit = repoClient.getOctokit()
 
   await octokit.issues.createComment({
     owner,
@@ -160,13 +168,13 @@ export async function addPRComment(prNumber: number, comment: string): Promise<v
  * Request changes on a PR
  */
 export async function requestPRChanges(
+  repoClient: RepoClient,
   prNumber: number,
   feedback: string,
   agentId: string
 ): Promise<void> {
-  const github = getGitHub()
-  const { owner, repo } = github.getRepoInfo()
-  const octokit = github.getOctokit()
+  const { owner, repo } = repoClient.getRepoInfo()
+  const octokit = repoClient.getOctokit()
 
   // Create review requesting changes
   await octokit.pulls.createReview({
@@ -197,13 +205,13 @@ ${feedback}
  * Approve a PR
  */
 export async function approvePR(
+  repoClient: RepoClient,
   prNumber: number,
   approvalMessage: string,
   agentId: string
 ): Promise<void> {
-  const github = getGitHub()
-  const { owner, repo } = github.getRepoInfo()
-  const octokit = github.getOctokit()
+  const { owner, repo } = repoClient.getRepoInfo()
+  const octokit = repoClient.getOctokit()
 
   // Create approval review
   await octokit.pulls.createReview({
@@ -234,12 +242,12 @@ ${approvalMessage}
  * Merge a PR (after approval)
  */
 export async function mergePR(
+  repoClient: RepoClient,
   prNumber: number,
   commitMessage?: string
 ): Promise<{ merged: boolean; sha: string }> {
-  const github = getGitHub()
-  const { owner, repo } = github.getRepoInfo()
-  const octokit = github.getOctokit()
+  const { owner, repo } = repoClient.getRepoInfo()
+  const octokit = repoClient.getOctokit()
 
   const { data: result } = await octokit.pulls.merge({
     owner,
@@ -266,9 +274,45 @@ export async function mergePR(
 }
 
 /**
+ * Close a PR without merging.
+ */
+export async function closePR(
+  repoClient: RepoClient,
+  prNumber: number,
+  closeComment?: string
+): Promise<void> {
+  const { owner, repo } = repoClient.getRepoInfo()
+  const octokit = repoClient.getOctokit()
+
+  if (closeComment) {
+    await addPRComment(repoClient, prNumber, closeComment)
+  }
+
+  await octokit.pulls.update({
+    owner,
+    repo,
+    pull_number: prNumber,
+    state: 'closed',
+  })
+
+  // Update labels
+  await octokit.issues.setLabels({
+    owner,
+    repo,
+    issue_number: prNumber,
+    labels: ['content-review', 'status:rejected'],
+  })
+
+  console.log(`[GitHub] Closed PR #${prNumber}`)
+}
+
+/**
  * Get PR details
  */
-export async function getPRDetails(prNumber: number): Promise<{
+export async function getPRDetails(
+  repoClient: RepoClient,
+  prNumber: number
+): Promise<{
   number: number
   title: string
   state: string
@@ -276,9 +320,8 @@ export async function getPRDetails(prNumber: number): Promise<{
   branch: string
   labels: string[]
 }> {
-  const github = getGitHub()
-  const { owner, repo } = github.getRepoInfo()
-  const octokit = github.getOctokit()
+  const { owner, repo } = repoClient.getRepoInfo()
+  const octokit = repoClient.getOctokit()
 
   const { data: pr } = await octokit.pulls.get({
     owner,
@@ -294,4 +337,40 @@ export async function getPRDetails(prNumber: number): Promise<{
     branch: pr.head.ref,
     labels: pr.labels.map((label) => label.name),
   }
+}
+
+/**
+ * List PRs (defaults to open).
+ */
+export async function listPRs(
+  repoClient: RepoClient,
+  options: { state?: 'open' | 'closed' | 'all'; perPage?: number } = {}
+): Promise<
+  Array<{
+    number: number
+    title: string
+    state: string
+    branch: string
+    labels: string[]
+    url: string
+  }>
+> {
+  const { owner, repo } = repoClient.getRepoInfo()
+  const octokit = repoClient.getOctokit()
+
+  const { data: prs } = await octokit.pulls.list({
+    owner,
+    repo,
+    state: options.state || 'open',
+    per_page: options.perPage || 30,
+  })
+
+  return prs.map((pr) => ({
+    number: pr.number,
+    title: pr.title,
+    state: pr.state,
+    branch: pr.head.ref,
+    labels: pr.labels.map((label: any) => label.name),
+    url: pr.html_url,
+  }))
 }

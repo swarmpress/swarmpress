@@ -16,6 +16,18 @@ export interface GitHubContentConfig {
   pagesPath?: string // default: 'content/pages' - separate path for pages if different from contentPath
 }
 
+/**
+ * Alternative constructor input: take a pre-built client and only the path
+ * configuration. Used by `RepoClient` so it does not have to know about
+ * Octokit credentials a second time.
+ */
+export interface GitHubContentClientConfig {
+  client: GitHubClient
+  branch?: string
+  contentPath?: string
+  pagesPath?: string
+}
+
 export interface WebsiteConfigFile {
   id: string
   domain: string
@@ -85,8 +97,26 @@ export interface ContentFile<T = unknown> {
 }
 
 /**
+ * Type guard: distinguish the legacy config-with-credentials shape from the
+ * new client-injection shape.
+ */
+function isClientConfig(
+  config: GitHubContentConfig | GitHubContentClientConfig
+): config is GitHubContentClientConfig {
+  return (config as GitHubContentClientConfig).client instanceof GitHubClient
+}
+
+/**
  * GitHub Content Service
- * Provides high-level content operations for GitHub-based storage
+ * Provides high-level content operations for GitHub-based storage.
+ *
+ * Constructor accepts either:
+ * - `GitHubContentConfig`: legacy shape with raw credentials (constructs an
+ *   internal `GitHubClient`). Kept for backward compatibility with existing
+ *   call sites in `packages/site-builder`, `packages/workflows`, scripts.
+ * - `GitHubContentClientConfig`: takes a pre-built `GitHubClient`. Used by
+ *   `RepoClient` so credential resolution happens in one place
+ *   (`getRepoClient(websiteId)`).
  */
 export class GitHubContentService {
   private client: GitHubClient
@@ -94,16 +124,23 @@ export class GitHubContentService {
   private contentPath: string
   private pagesPath: string
 
-  constructor(config: GitHubContentConfig) {
-    this.client = new GitHubClient({
-      owner: config.owner,
-      repo: config.repo,
-      token: config.token,
-    })
-    this.branch = config.branch || 'main'
-    this.contentPath = config.contentPath || 'content'
-    // Pages path defaults to content/pages if not specified
-    this.pagesPath = config.pagesPath || 'content/pages'
+  constructor(config: GitHubContentConfig | GitHubContentClientConfig) {
+    if (isClientConfig(config)) {
+      this.client = config.client
+      this.branch = config.branch || 'main'
+      this.contentPath = config.contentPath || 'content'
+      this.pagesPath = config.pagesPath || 'content/pages'
+    } else {
+      this.client = new GitHubClient({
+        owner: config.owner,
+        repo: config.repo,
+        token: config.token,
+      })
+      this.branch = config.branch || 'main'
+      this.contentPath = config.contentPath || 'content'
+      // Pages path defaults to content/pages if not specified
+      this.pagesPath = config.pagesPath || 'content/pages'
+    }
   }
 
   // ============================================================

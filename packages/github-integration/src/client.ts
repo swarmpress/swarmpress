@@ -1,6 +1,13 @@
 /**
  * GitHub API Client
- * Wrapper around Octokit for swarm.press operations
+ * Wrapper around Octokit for swarm.press operations.
+ *
+ * NOTE (repo-canonical migration, WS1):
+ *   The previous module-level singleton (`initializeGitHub` / `getGitHub`) has
+ *   been removed. The codebase is multi-site: each `websites` row has its own
+ *   GitHub credentials and target repo. Use `getRepoClient(websiteId)` from
+ *   `./repo-client` to obtain a per-website `RepoClient` instance, which wraps
+ *   a `GitHubClient` constructed from the website row.
  */
 
 import { Octokit } from '@octokit/rest'
@@ -186,19 +193,7 @@ export class GitHubClient {
   }
 }
 
-/**
- * Singleton instance
- */
-let githubClient: GitHubClient | null = null
-
-export function initializeGitHub(config: GitHubConfig): GitHubClient {
-  githubClient = new GitHubClient(config)
-  return githubClient
-}
-
-export function getGitHub(): GitHubClient {
-  if (!githubClient) {
-    throw new Error('GitHub client not initialized. Call initializeGitHub() first.')
-  }
-  return githubClient
-}
+// NOTE: The legacy `initializeGitHub` / `getGitHub` global singleton was
+// removed in the repo-canonical migration (WS1). swarm.press is multi-site;
+// every GitHub interaction must be scoped to a specific website. Obtain a
+// per-website client via `getRepoClient(websiteId)` from `./repo-client`.
