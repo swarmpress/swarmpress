@@ -31,7 +31,18 @@ async function getWebsiteRepository() {
   return websiteRepository
 }
 
-async function getGitHubContentService(websiteId: string) {
+/**
+ * Get a GitHubContentService scoped to a particular branch (default 'main').
+ *
+ * NOTE (WS2 of repo-canonical migration): WS1 will fold this into a
+ * `getRepoClient(websiteId)` factory in `@swarm-press/github-integration`
+ * that returns a `RepoClient` with the same method surface
+ * (`savePageByPath`, `getPageByPath`, plus a new `createPR`). For now we
+ * keep this thin local wrapper so WS2 can ship independently of WS1; the
+ * method names below were chosen to match what WS1 will expose so the
+ * swap is mechanical.
+ */
+async function getGitHubContentService(websiteId: string, branch: string = 'main') {
   // Dynamic import to avoid circular dependencies
   const githubIntegration = await import('@swarm-press/github-integration/src/content-service')
   const websiteRepository = await getWebsiteRepository()
@@ -45,10 +56,84 @@ async function getGitHubContentService(websiteId: string) {
     owner: website.github_owner || '',
     repo: website.github_repo,
     token: website.github_access_token || '',
-    branch: 'main',
+    branch,
     contentPath: 'content/collections',
     pagesPath: 'content/pages',
   })
+}
+
+/**
+ * Ensure a draft branch exists for this content item, creating it from
+ * the website's default branch (main) if necessary. Returns the branch
+ * name. The branch convention is `drafts/content-{contentId}` so the live
+ * site build (which only renders files outside `content/pages/drafts/`)
+ * is unaffected even if the branch is somehow merged accidentally.
+ */
+async function ensureDraftBranch(
+  websiteId: string,
+  contentId: string,
+  baseBranch: string = 'main'
+): Promise<string> {
+  const branchName = `drafts/content-${contentId}`
+  const contentService = await getGitHubContentService(websiteId, baseBranch)
+  const client = contentService.getClient()
+  const exists = await client.branchExists(branchName)
+  if (!exists) {
+    await client.createBranch(branchName, baseBranch)
+    console.log(`[WriterHandler] Created draft branch ${branchName}`)
+  }
+  return branchName
+}
+
+/**
+ * Build a repo-canonical PageFile JSON object for a draft. Title and
+ * slug are wrapped in LocalizedString (`{ en: ... }`) to match the
+ * shape the live site build expects (see CLAUDE.md "Page JSON shape").
+ *
+ * The `PageFile` interface in @swarm-press/github-integration currently
+ * types title/slug as `string`; the actual JSON in production uses
+ * LocalizedString. We cast through `unknown` until WS1 widens the type.
+ */
+function buildDraftPageFile(args: {
+  contentId: string
+  title: string
+  body: any[]
+  slug?: string
+  pageType?: string
+  seo?: Record<string, unknown>
+  status?: string
+  metadata?: Record<string, unknown>
+  createdAt?: string
+}) {
+  const now = new Date().toISOString()
+  const slugValue = args.slug || `/drafts/${args.contentId}`
+  // Returned object matches the live cinque-terre PageFile JSON shape
+  // (slug/title as LocalizedString). The TS type in
+  // @swarm-press/github-integration/src/content-service is narrower
+  // (string title/slug) so we type as `any` and let savePageByPath
+  // serialize as JSON.
+  return {
+    id: args.contentId,
+    slug: { en: slugValue },
+    title: { en: args.title },
+    page_type: args.pageType || 'draft',
+    seo: args.seo || {},
+    body: args.body,
+    metadata: args.metadata || {},
+    status: args.status || 'draft',
+    created_at: args.createdAt || now,
+    updated_at: now,
+  } as any
+}
+
+/**
+ * Path under which WriterAgent commits drafts. The live cinque-terre
+ * Astro build uses `CONTENT_DIR=content/pages` and renders everything
+ * under it EXCEPT `content/pages/drafts/`, so drafts are safe to commit
+ * here without leaking into the public site.
+ */
+function draftFilePath(contentId: string): string {
+  return `content/pages/drafts/${contentId}.json`
 }
 
 // ============================================================================
@@ -88,7 +173,13 @@ export const getContentHandler: ToolHandler<{ content_id: string }> = async (
 }
 
 /**
- * Write draft - create or update content body
+ * Write draft - commit a content draft to the website's GitHub content repo.
+ *
+ * REPO-CANONICAL (WS2 of repo-canonical migration): the body and title are
+ * NEVER written to Postgres `content_items.body`/`title` anymore. They are
+ * committed to a draft branch in the website's GitHub repo at
+ * `content/pages/drafts/{contentId}.json`. State transitions and
+ * operational metadata stay in Postgres.
  */
 export const writeDraftHandler: ToolHandler<{
   content_id: string
@@ -129,24 +220,46 @@ export const writeDraftHandler: ToolHandler<{
 
     const contentRepository = await getContentRepository()
 
-    // Check content exists
+    // Check content exists in Postgres (we still need it for website_id,
+    // brief, status — operational metadata stays in DB).
     const existing = await contentRepository.findById(input.content_id)
     if (!existing) {
       return toolError(`Content item not found: ${input.content_id}`)
     }
 
-    // Update content
-    const updated = await contentRepository.update(input.content_id, {
-      title: input.title,
-      body: input.body,
-      updated_at: new Date().toISOString(),
-    })
-
-    if (!updated) {
-      return toolError('Failed to update content')
+    if (!existing.website_id) {
+      return toolError(`Content item ${input.content_id} has no website_id; cannot route to repo`)
     }
 
-    // If content is in brief_created status, transition to draft
+    // Ensure draft branch exists, then commit page JSON to repo.
+    const branch = await ensureDraftBranch(existing.website_id, input.content_id)
+    const contentService = await getGitHubContentService(existing.website_id, branch)
+    const filePath = draftFilePath(input.content_id)
+
+    // Preserve any existing seo / metadata / created_at on the draft
+    // file across re-writes.
+    const existingFile = await contentService.getPageByPath(filePath)
+    const previousContent = existingFile?.content as any
+
+    const pageFile = buildDraftPageFile({
+      contentId: input.content_id,
+      title: input.title,
+      body: input.body,
+      slug: existing.slug,
+      pageType: previousContent?.page_type || 'draft',
+      seo: previousContent?.seo || {},
+      metadata: {
+        ...(previousContent?.metadata || {}),
+        content_item_id: input.content_id,
+        author_agent_id: context.agentId,
+      },
+      createdAt: previousContent?.created_at,
+    })
+
+    const commitMessage = `draft(content): ${input.title} [${input.content_id}] by ${context.agentName || context.agentId}`
+    const commit = await contentService.savePageByPath(filePath, pageFile, commitMessage)
+
+    // State transition stays in Postgres — state is operational metadata.
     if (existing.status === 'brief_created') {
       const transitionResult = await contentRepository.transition(
         input.content_id,
@@ -159,20 +272,34 @@ export const writeDraftHandler: ToolHandler<{
       }
     }
 
+    // Re-fetch to get the post-transition status. Note we DO NOT touch
+    // body/title on the row — those live in the repo now.
+    const refreshed = await contentRepository.findById(input.content_id)
+
     return toolSuccess({
-      content_id: updated.id,
-      title: updated.title,
-      status: updated.status,
+      content_id: input.content_id,
+      title: input.title,
+      status: refreshed?.status || existing.status,
       block_count: input.body.length,
-      message: 'Draft saved successfully',
+      commit: {
+        sha: commit.commit,
+        branch,
+        path: filePath,
+      },
+      message: 'Draft committed to GitHub draft branch',
     })
   } catch (error) {
+    console.error('[WriterHandler] write_draft failed:', error)
     return toolError(error instanceof Error ? error.message : 'Failed to write draft')
   }
 }
 
 /**
- * Revise draft - update content based on feedback
+ * Revise draft - commit a new revision of a content draft to its draft branch.
+ *
+ * REPO-CANONICAL (WS2 of repo-canonical migration): writes go to the same
+ * `drafts/content-{contentId}` branch as `write_draft`. Only the
+ * `metadata.revisions` log and state transitions stay in Postgres.
  */
 export const reviseDraftHandler: ToolHandler<{
   content_id: string
@@ -199,33 +326,58 @@ export const reviseDraftHandler: ToolHandler<{
       return toolError(`Content item not found: ${input.content_id}`)
     }
 
-    // Build update data
-    const updateData: Record<string, any> = {
+    if (!existing.website_id) {
+      return toolError(`Content item ${input.content_id} has no website_id; cannot route to repo`)
+    }
+
+    // Commit revision to the draft branch in the repo.
+    const branch = await ensureDraftBranch(existing.website_id, input.content_id)
+    const contentService = await getGitHubContentService(existing.website_id, branch)
+    const filePath = draftFilePath(input.content_id)
+    const existingFile = await contentService.getPageByPath(filePath)
+    const previousContent = existingFile?.content as any
+
+    // The new title falls back to whatever was on disk (or the DB title).
+    const effectiveTitle =
+      input.title ||
+      (typeof previousContent?.title === 'object' ? previousContent.title?.en : previousContent?.title) ||
+      existing.title
+
+    const pageFile = buildDraftPageFile({
+      contentId: input.content_id,
+      title: effectiveTitle,
       body: input.body,
-      updated_at: new Date().toISOString(),
-    }
+      slug: existing.slug,
+      pageType: previousContent?.page_type || 'draft',
+      seo: previousContent?.seo || {},
+      metadata: {
+        ...(previousContent?.metadata || {}),
+        content_item_id: input.content_id,
+        author_agent_id: context.agentId,
+        last_revision_notes: input.revision_notes || null,
+      },
+      createdAt: previousContent?.created_at,
+    })
 
-    if (input.title) {
-      updateData.title = input.title
-    }
+    const commitMessage = `revise(content): ${effectiveTitle} [${input.content_id}]${
+      input.revision_notes ? ` — ${input.revision_notes.slice(0, 60)}` : ''
+    }`
+    const commit = await contentService.savePageByPath(filePath, pageFile, commitMessage)
 
-    // Add revision notes to metadata
+    // Operational metadata (revisions log) stays in Postgres.
     if (input.revision_notes) {
-      const metadata = existing.metadata || {}
-      const revisions = metadata.revisions || []
+      const metadata = (existing.metadata || {}) as Record<string, any>
+      const revisions = Array.isArray(metadata.revisions) ? metadata.revisions : []
       revisions.push({
         date: new Date().toISOString(),
         agent_id: context.agentId,
         notes: input.revision_notes,
+        commit_sha: commit.commit,
+        branch,
       })
-      updateData.metadata = { ...metadata, revisions }
-    }
-
-    // Update content
-    const updated = await contentRepository.update(input.content_id, updateData)
-
-    if (!updated) {
-      return toolError('Failed to update content')
+      await contentRepository.update(input.content_id, {
+        metadata: { ...metadata, revisions },
+      } as any)
     }
 
     // If content is in needs_changes status, transition back to draft
@@ -241,21 +393,136 @@ export const reviseDraftHandler: ToolHandler<{
       }
     }
 
+    const refreshed = await contentRepository.findById(input.content_id)
+
     return toolSuccess({
-      content_id: updated.id,
-      title: updated.title,
-      status: updated.status,
+      content_id: input.content_id,
+      title: effectiveTitle,
+      status: refreshed?.status || existing.status,
       block_count: input.body.length,
       revision_notes: input.revision_notes,
-      message: 'Revision saved successfully',
+      commit: {
+        sha: commit.commit,
+        branch,
+        path: filePath,
+      },
+      message: 'Revision committed to GitHub draft branch',
     })
   } catch (error) {
+    console.error('[WriterHandler] revise_draft failed:', error)
     return toolError(error instanceof Error ? error.message : 'Failed to revise draft')
   }
 }
 
 /**
- * Submit for review - transition content to editorial review
+ * Sanitize a string for use in a PR title - strips control chars / newlines
+ * and clamps length so GitHub does not 422 us.
+ */
+function sanitizePRTitle(raw: string, maxLength = 80): string {
+  const collapsed = raw
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (collapsed.length <= maxLength) return collapsed
+  return collapsed.substring(0, maxLength - 1).trimEnd() + '…'
+}
+
+/**
+ * Open a PR from the draft branch to the website's default branch using
+ * the website-scoped GitHubClient (NOT the global `getGitHub()` singleton,
+ * which only knows about one repo). This is the WS2-local PR helper;
+ * once WS1 ships `RepoClient.createPR()` we can swap to that.
+ */
+async function openContentPR(args: {
+  websiteId: string
+  contentId: string
+  branch: string
+  baseBranch: string
+  title: string
+  brief?: string
+  agentId: string
+  agentName?: string
+  filePath: string
+}): Promise<{ prNumber: number; prUrl: string }> {
+  const contentService = await getGitHubContentService(args.websiteId, args.baseBranch)
+  const client = contentService.getClient()
+  const octokit = client.getOctokit()
+  const { owner, repo } = client.getRepoInfo()
+
+  const prTitle = sanitizePRTitle(`[content] ${args.title}`)
+  const briefSection = args.brief
+    ? `\n### Brief\n${args.brief.slice(0, 2000)}\n`
+    : ''
+  const body = `## Content draft for editorial review
+
+**Content ID:** \`${args.contentId}\`
+**Author:** ${args.agentName || args.agentId} (\`${args.agentId}\`)
+**Draft path:** \`${args.filePath}\`
+**Branch:** \`${args.branch}\` → \`${args.baseBranch}\`
+${briefSection}
+---
+
+This PR was opened by WriterAgent. EditorAgent will review next.
+
+Status transition: \`draft\` → \`in_editorial_review\`
+`
+
+  // If a PR already exists for this branch (re-submit after revisions),
+  // reuse it instead of erroring.
+  const { data: existingOpen } = await octokit.pulls.list({
+    owner,
+    repo,
+    state: 'open',
+    head: `${owner}:${args.branch}`,
+  })
+  if (existingOpen.length > 0) {
+    const pr = existingOpen[0]
+    if (pr) {
+      // Add a comment so reviewers see the resubmission.
+      await octokit.issues.createComment({
+        owner,
+        repo,
+        issue_number: pr.number,
+        body: `Resubmitted for review by ${args.agentName || args.agentId}.`,
+      })
+      console.log(`[WriterHandler] Reusing existing PR #${pr.number} for ${args.branch}`)
+      return { prNumber: pr.number, prUrl: pr.html_url }
+    }
+  }
+
+  const { data: pr } = await octokit.pulls.create({
+    owner,
+    repo,
+    title: prTitle,
+    head: args.branch,
+    base: args.baseBranch,
+    body,
+    draft: false,
+  })
+
+  // Best-effort labeling — don't fail submission if labels are missing.
+  try {
+    await octokit.issues.addLabels({
+      owner,
+      repo,
+      issue_number: pr.number,
+      labels: ['content-review', 'status:in-review'],
+    })
+  } catch (err) {
+    console.warn(`[WriterHandler] Could not add labels to PR #${pr.number}:`, err)
+  }
+
+  console.log(`[WriterHandler] Created PR #${pr.number} for content ${args.contentId}`)
+  return { prNumber: pr.number, prUrl: pr.html_url }
+}
+
+/**
+ * Submit for review - transition content to editorial review AND open
+ * a PR from the draft branch into the website's default branch.
+ *
+ * REPO-CANONICAL (WS2 of repo-canonical migration): the previous
+ * implementation only flipped the DB status. Now it also creates the
+ * PR that EditorAgent (WS3) will review against.
  */
 export const submitForReviewHandler: ToolHandler<{ content_id: string }> = async (
   input,
@@ -270,12 +537,29 @@ export const submitForReviewHandler: ToolHandler<{ content_id: string }> = async
       return toolError(`Content item not found: ${input.content_id}`)
     }
 
-    // Check content has a body
-    if (!content.body || !Array.isArray(content.body) || content.body.length === 0) {
-      return toolError('Cannot submit empty content for review. Please write a draft first.')
+    if (!content.website_id) {
+      return toolError(`Content item ${input.content_id} has no website_id; cannot route to repo`)
     }
 
-    // Transition to in_editorial_review
+    // Verify the draft file exists on the draft branch — body lives in
+    // the repo now, so we can't just check `content.body.length`.
+    const branch = `drafts/content-${input.content_id}`
+    const baseBranch = 'main'
+    const contentService = await getGitHubContentService(content.website_id, branch)
+    const filePath = draftFilePath(input.content_id)
+    const draftFile = await contentService.getPageByPath(filePath)
+    if (!draftFile) {
+      return toolError(
+        `No draft committed yet for content ${input.content_id}. ` +
+        `Run write_draft first to commit a draft to ${filePath} on ${branch}.`
+      )
+    }
+    const draftBody = (draftFile.content as any)?.body
+    if (!Array.isArray(draftBody) || draftBody.length === 0) {
+      return toolError('Cannot submit empty content for review. The draft on GitHub has no body blocks.')
+    }
+
+    // Transition state in Postgres.
     const result = await contentRepository.transition(
       input.content_id,
       'submit_for_review',
@@ -287,13 +571,49 @@ export const submitForReviewHandler: ToolHandler<{ content_id: string }> = async
       return toolError(`Failed to submit for review: ${result.error}`)
     }
 
+    // Open the PR. If this fails AFTER the state transition, surface it
+    // — workflow can decide whether to roll back.
+    let prInfo: { prNumber: number; prUrl: string }
+    try {
+      const draftTitle =
+        (typeof (draftFile.content as any)?.title === 'object'
+          ? (draftFile.content as any).title?.en
+          : (draftFile.content as any)?.title) ||
+        content.title
+      prInfo = await openContentPR({
+        websiteId: content.website_id,
+        contentId: input.content_id,
+        branch,
+        baseBranch,
+        title: draftTitle,
+        brief: content.brief,
+        agentId: context.agentId,
+        agentName: context.agentName,
+        filePath,
+      })
+    } catch (prErr) {
+      console.error('[WriterHandler] PR creation failed after state transition:', prErr)
+      return toolError(
+        `State transitioned to in_editorial_review, but PR creation failed: ${
+          prErr instanceof Error ? prErr.message : String(prErr)
+        }`
+      )
+    }
+
     return toolSuccess({
       content_id: input.content_id,
       previous_status: content.status,
       new_status: 'in_editorial_review',
-      message: 'Content submitted for editorial review',
+      pr: {
+        number: prInfo.prNumber,
+        url: prInfo.prUrl,
+        branch,
+        base: baseBranch,
+      },
+      message: 'Content submitted for editorial review (PR opened)',
     })
   } catch (error) {
+    console.error('[WriterHandler] submit_for_review failed:', error)
     return toolError(error instanceof Error ? error.message : 'Failed to submit for review')
   }
 }
