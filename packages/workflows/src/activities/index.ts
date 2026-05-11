@@ -126,48 +126,6 @@ export async function invokeEditorAgent(params: {
 }
 
 /**
- * Invoke SEO Agent
- */
-export async function invokeSEOAgent(params: {
-  agentId: string
-  task: string
-  contentId: string
-  taskId?: string
-}): Promise<{ success: boolean; result?: any; error?: string }> {
-  try {
-    await ensureAgentsInitialized()
-
-    const agent = await agentFactory.getAgent(params.agentId)
-    if (!agent) {
-      return { success: false, error: `Agent ${params.agentId} not found` }
-    }
-
-    const response = await agent.execute(
-      {
-        taskType: 'seo_optimization',
-        description: params.task,
-        context: { contentId: params.contentId },
-      },
-      {
-        agentId: params.agentId,
-        taskId: params.taskId,
-      }
-    )
-
-    return {
-      success: response.success,
-      result: response.data || response.content,
-      error: response.error,
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    }
-  }
-}
-
-/**
  * Invoke Engineering Agent
  */
 export async function invokeEngineeringAgent(params: {

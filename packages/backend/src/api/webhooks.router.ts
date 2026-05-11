@@ -188,10 +188,44 @@ async function handlePush(
 }
 
 /**
+ * Resolve the contentId that this deployment most plausibly corresponds to.
+ *
+ * The deployment_status payload does NOT carry a PR reference directly —
+ * GitHub Actions runs on the merge commit, and the `pr_content_mappings`
+ * table does not (yet) store the merge SHA. So we use a best-effort
+ * heuristic: the most-recently-merged mapping for this website that has
+ * not yet seen a 'deployed' audit-log row.
+ *
+ * This is sufficient for the realistic deploy cadence (deploys are
+ * serialized by the site repo's GitHub Actions and merges of multiple
+ * editorial PRs within the same Actions run window are rare). Returns
+ * null when there is no plausible recently-merged mapping — callers
+ * should log + skip the signal in that case.
+ */
+async function resolveContentIdForDeployment(
+  websiteId: string
+): Promise<string | null> {
+  const result = await db.query<{ content_id: string | null }>(
+    `SELECT content_id
+       FROM pr_content_mappings
+      WHERE website_id = $1
+        AND merged_at IS NOT NULL
+        AND content_id IS NOT NULL
+      ORDER BY merged_at DESC
+      LIMIT 1`,
+    [websiteId]
+  )
+  return result.rows[0]?.content_id ?? null
+}
+
+/**
  * Handle deployment_status events.
  * GitHub fires this when a deployment transitions through pending →
  * in_progress → success/failure/error. We mirror the terminal states
- * onto the websites row + record an audit-log entry on success.
+ * onto the websites row + record an audit-log entry on success AND fire
+ * the `deploymentStatus` Temporal signal at the publishingWorkflow that
+ * is waiting on this deploy (resolved by the deterministic workflow id
+ * `publishing-${contentId}`).
  */
 async function handleDeploymentStatus(
   payload: any
@@ -208,10 +242,52 @@ async function handleDeploymentStatus(
   const description: string =
     payload?.deployment_status?.description ?? payload?.deployment_status?.log_url ?? ''
   const environment: string = payload?.deployment?.environment ?? 'production'
+  const targetUrl: string | null = payload?.deployment_status?.target_url ?? null
+
+  // Best-effort: resolve the content_id this deployment corresponds to.
+  // Used for both (a) audit-log entity alignment so future "did this
+  // content deploy?" queries succeed, and (b) signal target resolution.
+  // If resolution fails the audit log + websites row still get written
+  // (the website-only fallback); only the signal is skipped.
+  const contentId = await resolveContentIdForDeployment(website.id).catch((err) => {
+    console.warn(
+      `[Webhooks] resolveContentIdForDeployment failed: ${err instanceof Error ? err.message : err}`
+    )
+    return null
+  })
 
   if (state === 'success') {
     // Audit-log the deploy + flip the website row to 'deployed'.
     await db.transaction(async (client) => {
+      if (contentId) {
+        // Augmented row when contentId is resolvable; carries entity_id
+        // = content_id so readers can find "did this content deploy?"
+        // via state_audit_log lookup keyed on the content.
+        await client.query(
+          `INSERT INTO state_audit_log
+             (entity_type, entity_id, from_state, to_state, actor_type, actor_id, metadata)
+           VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+          [
+            'content',
+            contentId,
+            null,
+            'deployed',
+            'github_webhook',
+            null,
+            JSON.stringify({
+              event: 'deployed',
+              environment,
+              description,
+              target_url: targetUrl,
+              website_id: website.id,
+            }),
+          ]
+        )
+      }
+      // Augmented row when contentId is resolvable; falls back to
+      // website-only for orphan deploys (no recently-merged PR mapped to
+      // a content_id — e.g. a hand-rolled deploy or a deploy that
+      // predates the PR-mapping table).
       await client.query(
         `INSERT INTO state_audit_log
            (entity_type, entity_id, from_state, to_state, actor_type, actor_id, metadata)
@@ -227,7 +303,8 @@ async function handleDeploymentStatus(
             event: 'deployed',
             environment,
             description,
-            target_url: payload?.deployment_status?.target_url ?? null,
+            target_url: targetUrl,
+            content_id: contentId,
           }),
         ]
       )
@@ -241,7 +318,20 @@ async function handleDeploymentStatus(
         [website.id]
       )
     })
-    return { handled: true, action: 'deployed' }
+
+    // Best-effort signal delivery to the publishingWorkflow waiting on
+    // this deploy. If Temporal rejects (workflow not found / already
+    // completed), we log and continue — DB writes already happened, so
+    // downstream readers still see the deploy.
+    if (contentId) {
+      await signalPublishingWorkflow(contentId, {
+        state: 'success',
+        deploymentUrl: targetUrl ?? undefined,
+        deployedAt: new Date().toISOString(),
+      })
+    }
+
+    return { handled: true, action: contentId ? 'deployed' : 'deployed_orphan' }
   }
 
   if (state === 'failure' || state === 'error') {
@@ -253,11 +343,58 @@ async function handleDeploymentStatus(
         WHERE id = $1`,
       [website.id, description || `deploy ${state}`]
     )
+
+    // Best-effort signal delivery on failure too — let the workflow
+    // surface the error instead of waiting out its timeout.
+    if (contentId) {
+      await signalPublishingWorkflow(contentId, {
+        state: state as 'failure' | 'error',
+        error: description || `deploy ${state}`,
+        deployedAt: new Date().toISOString(),
+      })
+    }
+
     return { handled: true, action: 'deploy_failed' }
   }
 
   // pending / in_progress / queued — no-op
   return { handled: true, action: `state:${state}` }
+}
+
+/**
+ * Fire the `deploymentStatus` Temporal signal at the publishingWorkflow
+ * for a content item. Best-effort: if the workflow can't be reached
+ * (not running / wrong id / Temporal unavailable), we log and continue
+ * rather than failing the webhook.
+ *
+ * The deterministic workflow id is `publishing-${contentId}` — mirrors
+ * the `content-production-${contentId}` convention used elsewhere.
+ */
+async function signalPublishingWorkflow(
+  contentId: string,
+  payload: {
+    state: 'success' | 'failure' | 'error'
+    deploymentUrl?: string
+    error?: string
+    deployedAt?: string
+  }
+): Promise<void> {
+  try {
+    // Dynamic import to avoid pulling workflows package into webhook
+    // handler's eager dependency graph (mirrors workflow.router.ts).
+    const { signalWorkflow } = await import('@swarm-press/workflows')
+    const workflowId = `publishing-${contentId}`
+    await signalWorkflow(workflowId, 'deploymentStatus', [payload])
+    console.log(
+      `[Webhooks] Fired deploymentStatus signal to ${workflowId} (state=${payload.state})`
+    )
+  } catch (err) {
+    // Workflow not found / already completed / Temporal unreachable.
+    // Log and continue — the DB writes already happened.
+    console.warn(
+      `[Webhooks] deploymentStatus signal not delivered for content ${contentId}: ${err instanceof Error ? err.message : err}`
+    )
+  }
 }
 
 /**
