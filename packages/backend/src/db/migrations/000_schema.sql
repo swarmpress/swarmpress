@@ -1451,3 +1451,25 @@ COMMIT;
 -- separate worktrees can merge without conflicting on the previous COMMIT.
 -- Anything appended here MUST manage its own BEGIN/COMMIT block.
 
+-- Transactional outbox (audit item 7) — backs at-least-once CloudEvent
+-- delivery. Event rows are inserted in the same transaction as the state
+-- update they describe, then drained by OutboxWorker.
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS event_outbox (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_type TEXT NOT NULL,
+  event_data JSONB NOT NULL,
+  source TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  published_at TIMESTAMPTZ,
+  publish_attempts INTEGER DEFAULT 0,
+  last_error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_outbox_unpublished
+  ON event_outbox (created_at) WHERE published_at IS NULL;
+
+COMMENT ON TABLE event_outbox IS 'Transactional outbox for CloudEvents — written in the same tx as state changes, drained by OutboxWorker';
+
+COMMIT;

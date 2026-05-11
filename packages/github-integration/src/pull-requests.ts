@@ -20,10 +20,30 @@ export interface PRResult {
 }
 
 /**
+ * Sanitize a string for use in a PR title — strips control characters /
+ * newlines and clamps length so GitHub does not 422 us.
+ */
+function sanitizePRTitle(raw: string, maxLength = 80): string {
+  const collapsed = raw
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (collapsed.length <= maxLength) return collapsed
+  return collapsed.substring(0, maxLength - 1).trimEnd() + '…'
+}
+
+/**
  * Create a Pull Request for content review
  */
 export async function createContentPR(params: CreateContentPRParams): Promise<PRResult> {
   const { contentId, content, branchName, agentId } = params
+
+  // Fail fast on missing content — previously this produced a PR titled
+  // "undefined-…" with broken metadata. (audit item 11)
+  if (!content) {
+    throw new Error(`createContentPR: content is required (contentId=${contentId})`)
+  }
+
   const github = getGitHub()
   const { owner, repo } = github.getRepoInfo()
   const octokit = github.getOctokit()
@@ -34,8 +54,12 @@ export async function createContentPR(params: CreateContentPRParams): Promise<PR
     await github.createBranch(branchName)
   }
 
-  // Create content file - use type and ID for naming
-  const contentTitle = `${content.type}-${contentId.substring(0, 8)}`
+  // Build a human-readable title. Prefer the content's own title, then slug,
+  // then a deterministic fallback. `content.type` was previously used here but
+  // does not always exist on the runtime payload, producing "undefined-…".
+  const rawTitle =
+    content.title || content.slug || `content-${contentId.substring(0, 8)}`
+  const contentTitle = sanitizePRTitle(rawTitle)
   const filePath = `content/${content.website_id}/${contentId}.json`
   const fileContent = JSON.stringify(
     {
