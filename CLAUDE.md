@@ -35,7 +35,9 @@ It is **not** a generic content generator. It is a **structured organization** w
 - This is the SINGLE SOURCE OF TRUTH for the database
 - Before adding new features, READ THIS FILE to understand the current schema
 - When adding features, UPDATE THIS FILE (not create new migrations)
-- The schema implements all specifications from `specs/` directory
+- All `CREATE TABLE` / `CREATE INDEX` use `IF NOT EXISTS`; triggers use `DROP TRIGGER IF EXISTS` then `CREATE TRIGGER` so the file is replayable
+- New objects from concurrent worktrees must be appended **after** the `-- AUDIT TRAILER` marker at the end of the file, each in its own `BEGIN/COMMIT` block, to avoid merge conflicts on the previous COMMIT
+- The schema is applied by `scripts/bootstrap.ts` via the `pg` library (no `psql` shell-out), reading every `*.sql` file in `packages/backend/src/db/migrations/` lexicographically
 
 ### 3. **Agents Are Employees**
 Each agent has:
@@ -109,11 +111,13 @@ export async function contentProductionWorkflow(briefId: string) {
 // ❌ BAD: Agent stores state internally
 class WriterAgent {
   private drafts = new Map() // NO!
+  private conversationHistory: Message[] = [] // NO! leaks across tasks
 }
 
-// ✅ GOOD: All state in PostgreSQL
+// ✅ GOOD: All state in PostgreSQL; conversation is per-call locals
 class WriterAgent {
   async writeDraft(brief: Brief) {
+    const conversationHistory: Message[] = [] // local to this call
     const draft = await callClaude(...)
     await db.contentItems.insert(draft) // State goes to DB
     await eventBus.publish('content.created', { id: draft.id })
@@ -121,6 +125,10 @@ class WriterAgent {
   }
 }
 ```
+
+`AgentFactory.getAgent()` always returns a **fresh instance** — there is no
+agent cache. The `BaseAgent` class holds no per-call state; conversation
+history is scoped to the `execute()` call.
 
 #### **Content as JSON Blocks**
 ```typescript
@@ -136,6 +144,12 @@ type Block =
 // Why? LLM-friendly, flexible, component-ready
 ```
 
+**Renderers must NOT parse Markdown at render time.** Inline emphasis
+(bold, italic) belongs in structured sub-blocks, not regex on paragraph
+text. A coverage test at `packages/site-builder/test/block-coverage.test.ts`
+asserts every Zod-registered block type has a corresponding renderer case
+(currently 46/46).
+
 #### **State Machines Enforce Transitions**
 ```typescript
 // Before transitioning ContentItem state:
@@ -150,10 +164,38 @@ if (!canTransition) {
   throw new Error('Invalid state transition')
 }
 
-// Update DB + emit event
-await db.contentItems.updateStatus('123', 'in_editorial_review')
-await eventBus.publish('content.submittedForReview', { id: '123' })
+// Update DB + write event to outbox — same transaction
+await stateMachineEngine.executeTransition({
+  entityType: 'content_item',
+  entityId: '123',
+  to: 'in_editorial_review',
+  expectedUpdatedAt: priorUpdatedAt, // optimistic lock
+})
+// OutboxWorker drains event_outbox to NATS asynchronously
 ```
+
+#### **Transactional Outbox for CloudEvents**
+The state-machine engine writes both the state change and the resulting
+CloudEvent inside a single Postgres transaction:
+- `state_audit_log` row + entity update + `event_outbox` insert all commit together
+- `OutboxWorker` (`packages/backend/src/services/outbox-worker.service.ts`)
+  polls `event_outbox` and publishes to NATS with at-least-once delivery
+- Optimistic concurrency: `executeTransition()` accepts `expectedUpdatedAt`
+  and throws `StateTransitionConflict` if the row was modified concurrently
+- The worker is NOT auto-started; bootstrap your application with
+  `import { outboxWorker } from '@swarm-press/backend'; outboxWorker.start()`
+
+#### **Temporal Workflow Determinism**
+Code under `packages/workflows/src/workflows/**` runs inside the Temporal
+replay sandbox and must be deterministic:
+- ❌ `Date.now()`, `Math.random()`, `crypto.randomUUID()`, direct `fetch()`
+- ✅ Use the activities in `packages/workflows/src/activities/determinism.ts`:
+  `generateId(prefix)`, `measureDuration(startMs)`, `getCurrentTimestamp()`
+- ✅ Activities (under `src/activities/`) ARE allowed to be non-deterministic
+- An ESLint `no-restricted-syntax` rule scoped to `src/workflows/**`
+  enforces this at lint time (see root `.eslintrc.json`)
+- All `proxyActivities` retry policies set `initialInterval`,
+  `backoffCoefficient: 2`, and `maximumInterval` — no instant retry storms
 
 ---
 
@@ -225,13 +267,17 @@ The Cinque Terre travel website serves as the **reference implementation** for t
 
 ### Multi-Language Support (LocalizedString)
 ```typescript
-// All user-facing content uses this pattern
+// All user-facing content uses this strict shape (Zod-validated):
 type LocalizedString = {
-  en: string  // English (required)
+  en: string  // English (REQUIRED — also the fallback locale)
   de?: string // German
   fr?: string // French
   it?: string // Italian
 }
+
+// Always read via the shared helper — never `value[locale] || value.en`:
+import { getLocalizedValue } from '@swarm-press/shared'
+const title = getLocalizedValue(page.title, locale)  // falls back to .en
 
 // Example usage in village JSON
 {
@@ -240,15 +286,13 @@ type LocalizedString = {
     "de": "Riomaggiore",
     "fr": "Riomaggiore",
     "it": "Riomaggiore"
-  },
-  "subtitle": {
-    "en": "The easternmost jewel of Cinque Terre...",
-    "de": "Das östlichste Juwel der Cinque Terre...",
-    "fr": "Le joyau le plus oriental des Cinque Terre...",
-    "it": "Il gioiello più orientale delle Cinque Terre..."
   }
 }
 ```
+
+The previous loose `string | Record<string, string>` shape silently broke
+consumers that assumed an object. The schema is now strict and `en` is
+required at the type level.
 
 ### Theme Features
 - **Coastal Spine Navigation**: Village-centric geographic navigation
@@ -757,15 +801,18 @@ apps/admin/src/components/
 ## ⚠️ Critical Rules (Never Break These)
 
 1. **Never skip workflows** — All content must go through the full BPMN process
-2. **Never bypass state machines** — All transitions must be validated
+2. **Never bypass state machines** — All transitions go through `executeTransition()`, which writes the audit row, the entity update, and the outbox event in one transaction
 3. **Never let agents act outside their role** — Enforce RBAC strictly
-4. **Always emit events** — Every significant action produces a CloudEvent
+4. **Always emit events via the outbox** — Direct `eventBus.publish()` from inside a state-changing path is forbidden; insert into `event_outbox` in the same tx and let `OutboxWorker` deliver
 5. **Always use QuestionTickets for escalation** — No informal CEO pings
-6. **Agents are stateless** — All state goes to PostgreSQL
-7. **Temporal calls agents synchronously** — Not event-driven
-8. **Content is JSON blocks** — Not plain Markdown, not MDX
-9. **Spec is the source of truth** — Implementation follows spec
-10. **CEO has final authority** — No agent can override CEO decisions
+6. **Agents are stateless** — No instance fields for conversation/cache; `AgentFactory` always returns fresh instances
+7. **Temporal workflow code must be deterministic** — No `Date.now()`, `Math.random()`, `crypto.randomUUID()`, or `fetch()` inside `packages/workflows/src/workflows/**`. Use the determinism activities. ESLint enforces this.
+8. **Temporal calls agents synchronously** — Not event-driven
+9. **Content is JSON blocks** — Not plain Markdown, not MDX. Renderers do not parse markdown at render time.
+10. **LocalizedString must always include `en`** — Read via `getLocalizedValue(value, locale)`, never `value[locale] || value.en`
+11. **Schema appends go after the AUDIT TRAILER marker** — In their own `BEGIN/COMMIT` block, so parallel worktrees can merge cleanly
+12. **Spec is the source of truth** — Implementation follows spec
+13. **CEO has final authority** — No agent can override CEO decisions
 
 ---
 
@@ -875,8 +922,12 @@ tsx scripts/seed.ts
 - [x] GitHub integration (PRs, Issues, webhooks, sync, OAuth)
 - [x] Admin dashboard (sitemap, kanban, blueprints, collections, scheduling)
 - [x] Prompt management system (3-level hierarchy)
-- [x] 50+ operational scripts
+- [x] 50+ operational scripts (indexed in `scripts/README.md`; shared env helpers in `scripts/utils/env.ts`)
 - [x] Documentation site (Vocs)
+- [x] Transactional outbox for at-least-once CloudEvent delivery (`event_outbox` + `OutboxWorker`)
+- [x] Optimistic concurrency on state transitions (`StateTransitionConflict`)
+- [x] Block-coverage test (`packages/site-builder/test/block-coverage.test.ts`)
+- [x] ESLint determinism rule for Temporal workflow code
 
 **Agent System:**
 - [x] WriterAgent with language guidelines and personas
