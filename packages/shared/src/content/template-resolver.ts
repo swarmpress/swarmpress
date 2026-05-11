@@ -22,8 +22,8 @@ import {
   getInstanceOverride,
   isPageSkipped,
   getPageOverride,
-  getLocalizedValue,
 } from '../types/site-definition'
+import { getLocalizedValue } from '../utils/localized-string'
 
 // ============================================================================
 // Types

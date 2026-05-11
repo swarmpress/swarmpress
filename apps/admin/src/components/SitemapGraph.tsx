@@ -63,55 +63,80 @@ function SitemapGraphInner() {
   const [filterPageType, setFilterPageType] = useState<string | null>(null)
 
   // Undo/redo state
+  // Audit item 23: history and historyIndex are mirrored into refs so the
+  // keyboard handler (and async callbacks) can read the current values without
+  // re-registering listeners on every history change. State is still used so
+  // React renders the toolbar's canUndo/canRedo flags correctly.
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
+  const historyRef = useRef<HistoryEntry[]>([])
+  const historyIndexRef = useRef(-1)
   const isApplyingHistory = useRef(false)
 
-  // Save to history
+  // Helper to update both state and ref in sync
+  const updateHistory = useCallback(
+    (next: HistoryEntry[], nextIndex: number) => {
+      historyRef.current = next
+      historyIndexRef.current = nextIndex
+      setHistory(next)
+      setHistoryIndex(nextIndex)
+    },
+    []
+  )
+
+  // Save to history (reads from refs so it doesn't need to re-bind on history changes)
   const saveToHistory = useCallback((nodes: Node[], edges: Edge[]) => {
     if (isApplyingHistory.current) return
 
-    setHistory((prev) => {
-      const newHistory = prev.slice(0, historyIndex + 1)
-      newHistory.push({ nodes: [...nodes], edges: [...edges] })
-      // Keep only last 50 entries
-      if (newHistory.length > 50) newHistory.shift()
-      return newHistory
-    })
-    setHistoryIndex((prev) => Math.min(prev + 1, 49))
-  }, [historyIndex])
+    const prev = historyRef.current
+    const idx = historyIndexRef.current
+    const newHistory = prev.slice(0, idx + 1)
+    newHistory.push({ nodes: [...nodes], edges: [...edges] })
+    // Keep only last 50 entries
+    if (newHistory.length > 50) newHistory.shift()
+    const newIndex = Math.min(idx + 1, 49)
+    updateHistory(newHistory, newIndex)
+  }, [updateHistory])
 
   // Undo
   const handleUndo = useCallback(() => {
-    if (historyIndex <= 0) return
+    const idx = historyIndexRef.current
+    const hist = historyRef.current
+    if (idx <= 0) return
 
     isApplyingHistory.current = true
-    const entry = history[historyIndex - 1]
+    const entry = hist[idx - 1]
     setNodes(entry.nodes)
     setEdges(entry.edges)
-    setHistoryIndex(historyIndex - 1)
+    historyIndexRef.current = idx - 1
+    setHistoryIndex(idx - 1)
 
     setTimeout(() => {
       isApplyingHistory.current = false
     }, 100)
-  }, [history, historyIndex])
+  }, [])
 
   // Redo
   const handleRedo = useCallback(() => {
-    if (historyIndex >= history.length - 1) return
+    const idx = historyIndexRef.current
+    const hist = historyRef.current
+    if (idx >= hist.length - 1) return
 
     isApplyingHistory.current = true
-    const entry = history[historyIndex + 1]
+    const entry = hist[idx + 1]
     setNodes(entry.nodes)
     setEdges(entry.edges)
-    setHistoryIndex(historyIndex + 1)
+    historyIndexRef.current = idx + 1
+    setHistoryIndex(idx + 1)
 
     setTimeout(() => {
       isApplyingHistory.current = false
     }, 100)
-  }, [history, historyIndex])
+  }, [])
 
   // Keyboard shortcuts
+  // handleUndo/handleRedo are stable (empty deps) now that they read from
+  // refs, so this listener is registered once per component mount.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Undo: Ctrl+Z or Cmd+Z
@@ -177,6 +202,11 @@ function SitemapGraphInner() {
   )
 
   // Handle new connections (creating links between pages)
+  // Audit item 24: link creation is not yet supported by the backend.
+  // We accept the visual edge in the local graph but no longer pretend to
+  // persist it via createInternalLink (which was a TODO no-op). The
+  // connection affordance stays available for layout previewing only.
+  // TODO: enable when backend supports link creation
   const onConnect = useCallback(
     (connection: Connection) => {
       setEdges((eds) => {
@@ -184,11 +214,6 @@ function SitemapGraphInner() {
         saveToHistory(nodes, newEdges)
         return newEdges
       })
-
-      // TODO: Save new link to backend
-      if (connection.source && connection.target) {
-        createInternalLink(connection.source, connection.target)
-      }
     },
     [nodes, saveToHistory]
   )
@@ -226,9 +251,8 @@ function SitemapGraphInner() {
       setNodes(graph.nodes)
       setEdges(graph.edges)
 
-      // Initialize history
-      setHistory([{ nodes: graph.nodes, edges: graph.edges }])
-      setHistoryIndex(0)
+      // Initialize history (sync ref + state — see audit item 23)
+      updateHistory([{ nodes: graph.nodes, edges: graph.edges }], 0)
     } catch (error) {
       console.error('Failed to load sitemap:', error)
     } finally {
@@ -266,10 +290,12 @@ function SitemapGraphInner() {
   }
 
   // Create internal link between pages
-  async function createInternalLink(sourceId: string, targetId: string) {
-    console.log('Creating link:', sourceId, '->', targetId)
-    // TODO: Implement link creation via tRPC
-  }
+  // Audit item 24: removed the previous console.log no-op so callers don't
+  // assume the link was persisted. Re-introduce when the backend supports it.
+  // TODO: enable when backend supports link creation
+  // async function createInternalLink(sourceId: string, targetId: string) {
+  //   await fetch('/api/trpc/internalLink.create', { ... })
+  // }
 
   // Apply layout algorithm
   const handleLayoutChange = useCallback(

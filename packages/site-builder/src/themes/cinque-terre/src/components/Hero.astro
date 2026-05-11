@@ -1,7 +1,7 @@
 ---
 import WeatherWidget from './WeatherWidget';
 import { getVillageContent } from '../config/village-content.config';
-import type { SupportedLanguage } from '../types/navigation.types';
+import { getText, type LocalizedText } from '../config/localization';
 
 interface Props {
     locale?: string;
@@ -9,7 +9,6 @@ interface Props {
 }
 
 const { locale = 'en', village } = Astro.props;
-const lang = locale as SupportedLanguage;
 
 // Get village-specific content if a village is specified
 const villageContent = village ? getVillageContent(village) : null;
@@ -25,15 +24,17 @@ const defaultContent = {
     secondaryCta: { label: 'Plan a 3-Day Trip', href: '#plan' },
 };
 
-// Use village content if available, otherwise use defaults
+// Use village content if available, otherwise use defaults.
+// Audit item 17: route LocalizedText reads through `getText()` so missing
+// translations have a single, predictable fallback chain.
 const heroImage = villageContent?.hero.image || defaultContent.image;
-const imageAlt = villageContent?.hero.imageAlt[lang] || defaultContent.imageAlt;
-const tagline = villageContent?.hero.tagline[lang] || defaultContent.tagline;
-const title = villageContent?.hero.title[lang] || defaultContent.title;
-const subtitle = villageContent?.hero.subtitle[lang] || defaultContent.subtitle;
-const primaryCtaLabel = villageContent?.hero.primaryCta.label[lang] || defaultContent.primaryCta.label;
+const imageAlt = getText(villageContent?.hero.imageAlt as LocalizedText, locale) || defaultContent.imageAlt;
+const tagline = getText(villageContent?.hero.tagline as LocalizedText, locale) || defaultContent.tagline;
+const title = getText(villageContent?.hero.title as LocalizedText, locale) || defaultContent.title;
+const subtitle = getText(villageContent?.hero.subtitle as LocalizedText, locale) || defaultContent.subtitle;
+const primaryCtaLabel = getText(villageContent?.hero.primaryCta.label as LocalizedText, locale) || defaultContent.primaryCta.label;
 const primaryCtaHref = villageContent?.hero.primaryCta.href || defaultContent.primaryCta.href;
-const secondaryCtaLabel = villageContent?.hero.secondaryCta.label[lang] || defaultContent.secondaryCta.label;
+const secondaryCtaLabel = getText(villageContent?.hero.secondaryCta.label as LocalizedText, locale) || defaultContent.secondaryCta.label;
 const secondaryCtaHref = villageContent?.hero.secondaryCta.href || defaultContent.secondaryCta.href;
 ---
 
