@@ -6,7 +6,7 @@
  * for full visibility into the workflow chain.
  */
 
-import { proxyActivities, sleep } from '@temporalio/workflow'
+import { proxyActivities } from '@temporalio/workflow'
 import type * as activities from '../activities'
 
 const {
@@ -56,8 +56,10 @@ export interface ContentProductionResult {
 export async function contentProductionWorkflow(
   input: ContentProductionInput
 ): Promise<ContentProductionResult> {
-  const { contentId, writerAgentId, brief, maxRevisions = 3 } = input
-  let revisionsCount = 0
+  // `maxRevisions` is currently unused — see deferred-revision comment
+  // below; it is retained on the input shape for forward-compat.
+  const { contentId, writerAgentId, brief } = input
+  const revisionsCount = 0
   // Track current stage for failure event reporting
   let currentStage: string = 'init'
 
@@ -142,62 +144,16 @@ Ensure all blocks are properly structured and validated.`
       },
     })
 
-    // Step 5: Check if revisions are needed (simplified - could be based on quality check)
-    // In a real scenario, this could involve review by another agent
-    // For now, we'll just proceed to submission
-
-    // Optional revision loop (if writer wants to make improvements)
-    let needsRevision = false // This could be determined by quality checks
-
-    while (needsRevision && revisionsCount < maxRevisions) {
-      currentStage = `revise_draft_${revisionsCount + 1}`
-      console.log(`[ContentProduction] Applying revision ${revisionsCount + 1}`)
-
-      // Log revision start to GitHub
-      await logAgentActivityToGitHub({
-        contentId,
-        agentId: writerAgentId,
-        agentName: 'WriterAgent',
-        activity: `Starting revision ${revisionsCount + 1}/${maxRevisions}`,
-        result: 'pending',
-      })
-
-      const revisionTask = `Revise the content for ${contentId}.
-Review the current draft and make improvements where needed.
-Use your revise_draft tool to update the content.`
-
-      const revisionResult = await invokeWriterAgent({
-        agentId: writerAgentId,
-        task: revisionTask,
-        contentId,
-        websiteId: content.website_id,
-      })
-
-      // Log revision result to GitHub
-      await logAgentActivityToGitHub({
-        contentId,
-        agentId: writerAgentId,
-        agentName: 'WriterAgent',
-        activity: `Revision ${revisionsCount + 1} complete`,
-        details: revisionResult.success
-          ? 'Content revised successfully'
-          : `Error: ${revisionResult.error}`,
-        result: revisionResult.success ? 'success' : 'failure',
-      })
-
-      if (!revisionResult.success) {
-        console.warn(`[ContentProduction] Revision failed: ${revisionResult.error}`)
-        break
-      }
-
-      revisionsCount++
-
-      // Small delay between revisions
-      await sleep('2 seconds')
-
-      // In real implementation, check if more revisions needed
-      needsRevision = false
-    }
+    // Quality-driven revisions are deferred to a future workflow.
+    // The post-QAGate feedback loop is the planned path: QAGate flags
+    // issues -> emits a needs-changes event -> triggers a revision
+    // workflow that loops back to the writer. See plan-doc /
+    // autonomy migration. Today, content goes straight from initial
+    // draft to submit-for-review.
+    //
+    // `maxRevisions` is retained on the input shape for forward-compat
+    // but is currently unused; `revisionsCount` will always be 0 in
+    // the result.
 
     // Step 6: Submit for review
     currentStage = 'submit_for_review'
