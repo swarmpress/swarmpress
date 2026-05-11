@@ -145,5 +145,25 @@ process.on('SIGTERM', async () => {
   process.exit(0)
 })
 
-// Auto-start workers when this file is run directly
-startWorkers().catch(console.error)
+// Auto-start workers only when this file is the process entry point.
+// Without this guard, any consumer that imports `@swarm-press/workflows`
+// (e.g. backend's EventTriggerService starting a workflow) would also
+// spin up workers in their own process — wrong topology + webpack bundler
+// surfaces in unexpected places.
+const isWorkerEntry = (() => {
+  try {
+    if (typeof require !== 'undefined' && require.main === module) return true
+  } catch {
+    // ESM context
+  }
+  const argv1 = process.argv[1] || ''
+  return (
+    argv1.endsWith('/temporal/worker.ts') ||
+    argv1.endsWith('/temporal/worker.js') ||
+    argv1.endsWith('/dist/temporal/worker.js')
+  )
+})()
+
+if (isWorkerEntry) {
+  startWorkers().catch(console.error)
+}

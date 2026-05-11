@@ -24,6 +24,7 @@
     "@swarm-press/event-bus": "workspace:*",
     "@swarm-press/github-integration": "workspace:*",
     "@swarm-press/shared": "workspace:*",
+    "@swarm-press/workflows": "workspace:*",
     "@trpc/server": "^10.45.0",
     "@types/glob": "^9.0.0",
     "@types/handlebars": "^4.1.0",

@@ -324,6 +324,9 @@ importers:
       '@swarm-press/shared':
         specifier: workspace:*
         version: link:../shared
+      '@swarm-press/workflows':
+        specifier: workspace:*
+        version: link:../workflows
       '@trpc/server':
         specifier: ^10.45.0
         version: 10.45.2
@@ -404,7 +407,29 @@ importers:
         specifier: ^5.3.3
         version: 5.9.3
 
-  packages/cli:
+  packages/event-bus:
+    dependencies:
+      '@swarm-press/shared':
+        specifier: workspace:*
+        version: link:../shared
+      dotenv:
+        specifier: ^16.3.1
+        version: 16.6.1
+      nats:
+        specifier: ^2.19.0
+        version: 2.29.3
+      zod:
+        specifier: ^3.22.4
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.10.0
+        version: 20.19.25
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+
+  packages/experimental-cli:
     dependencies:
       '@swarm-press/event-bus':
         specifier: workspace:*
@@ -434,28 +459,6 @@ importers:
       tsx:
         specifier: ^4.7.0
         version: 4.20.6
-      typescript:
-        specifier: ^5.3.3
-        version: 5.9.3
-
-  packages/event-bus:
-    dependencies:
-      '@swarm-press/shared':
-        specifier: workspace:*
-        version: link:../shared
-      dotenv:
-        specifier: ^16.3.1
-        version: 16.6.1
-      nats:
-        specifier: ^2.19.0
-        version: 2.29.3
-      zod:
-        specifier: ^3.22.4
-        version: 3.25.76
-    devDependencies:
-      '@types/node':
-        specifier: ^20.10.0
-        version: 20.19.25
       typescript:
         specifier: ^5.3.3
         version: 5.9.3
