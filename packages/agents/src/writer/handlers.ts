@@ -5,6 +5,69 @@
 
 import { ToolHandler, ToolResult, toolSuccess, toolError } from '../base/tools'
 import { validateContentBlocks } from '../base/utilities'
+
+// ============================================================================
+// Block Normalization (band-aid)
+// The WriterAgent's tool prompt (writer/tools.ts) teaches an older block
+// shape (e.g. `url` for image, `text` for paragraph, `variant` for callout)
+// that diverges from the canonical Zod schema in
+// @swarm-press/shared/content/blocks.ts (which expects `src`, `markdown`,
+// `style`). Normalize agent output to the canonical shape here so the
+// validator and downstream renderers accept it. Long-term fix is to align
+// the tool prompt + schema; this is a transition shim.
+// ============================================================================
+
+function normalizeBlocks(blocks: unknown[]): unknown[] {
+  if (!Array.isArray(blocks)) return blocks
+  return blocks.map((raw) => {
+    if (!raw || typeof raw !== 'object') return raw
+    const block = { ...(raw as Record<string, unknown>) }
+    switch (block.type) {
+      case 'paragraph':
+        if (block.markdown === undefined && typeof block.text === 'string') {
+          block.markdown = block.text
+          delete block.text
+        }
+        break
+      case 'image':
+        if (block.src === undefined && typeof block.url === 'string') {
+          block.src = block.url
+          delete block.url
+        }
+        break
+      case 'callout':
+        if (block.content === undefined && typeof block.text === 'string') {
+          block.content = block.text
+          delete block.text
+        }
+        if (block.style === undefined && typeof block.variant === 'string') {
+          block.style = block.variant
+          delete block.variant
+        }
+        break
+      case 'quote':
+        if (block.attribution === undefined && typeof block.author === 'string') {
+          block.attribution = block.author
+          delete block.author
+        }
+        break
+      case 'gallery':
+        if (Array.isArray(block.images)) {
+          block.images = block.images.map((img) => {
+            if (!img || typeof img !== 'object') return img
+            const obj = { ...(img as Record<string, unknown>) }
+            if (obj.src === undefined && typeof obj.url === 'string') {
+              obj.src = obj.url
+              delete obj.url
+            }
+            return obj
+          })
+        }
+        break
+    }
+    return block
+  })
+}
 import {
   getAgentForPageType,
   getCollectionsForPageType,
@@ -201,6 +264,9 @@ export const writeDraftHandler: ToolHandler<{
       return toolError('Body must be an array of content blocks')
     }
 
+    // Normalize agent-emitted block shape to canonical schema (see top of file).
+    input.body = normalizeBlocks(input.body) as typeof input.body
+
     // Validate each block has a type
     for (let i = 0; i < input.body.length; i++) {
       const block = input.body[i]
@@ -312,6 +378,9 @@ export const reviseDraftHandler: ToolHandler<{
     if (!Array.isArray(input.body)) {
       return toolError('Body must be an array of content blocks')
     }
+
+    // Normalize agent-emitted block shape to canonical schema (see top of file).
+    input.body = normalizeBlocks(input.body) as typeof input.body
 
     const validation = validateContentBlocks(input.body)
     if (!validation.valid) {
@@ -768,6 +837,9 @@ export const writePageContentHandler: ToolHandler<{
     if (!Array.isArray(input.body)) {
       return toolError('Body must be an array of content blocks')
     }
+
+    // Normalize agent-emitted block shape to canonical schema (see top of file).
+    input.body = normalizeBlocks(input.body) as typeof input.body
 
     // Validate each block has a type
     for (let i = 0; i < input.body.length; i++) {

@@ -94,3 +94,22 @@ export type { WebhookConfig, WebhookHandlers } from './webhooks'
 //   getGitHubMapping,
 //   storeGitHubMapping,
 // } from './sync'
+
+// ============================================================================
+// Deprecated shims (transition period)
+// ============================================================================
+
+/**
+ * @deprecated Used to return an in-memory PR↔entity mapping from sync.ts. After
+ * the repo-canonical migration this lives in the `pr_content_mappings` table
+ * (see packages/backend/src/db/repositories/pr-content-mapping-repository.ts).
+ * Returning null here makes legacy callers (e.g. `logAgentActivityToGitHub`
+ * activity) gracefully skip rather than crash. Update those callers to use
+ * the repository directly, then remove this shim.
+ */
+export function getGitHubMapping(
+  _kind: 'content' | 'ticket' | 'task',
+  _id: string
+): { github_number: number; github_url: string; github_type: string } | null {
+  return null
+}
