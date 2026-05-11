@@ -1,8 +1,8 @@
 {
-  "name": "@swarm-press/cli",
+  "name": "@swarm-press/experimental-cli",
   "version": "0.1.0",
   "private": true,
-  "description": "Operator CLI for swarm.press",
+  "description": "Experimental operator CLI for swarm.press (not integrated into main workflows — see plan-doc audit item 32)",
   "bin": {
     "swarmpress": "./dist/index.js"
   },

@@ -1,9 +1,9 @@
 # swarm.press — Claude Development Guide
 
-> **Last Updated:** 2026-01-25
+> **Last Updated:** 2026-05-11
 > **Status:** Production Ready with Autonomous Scheduling
 > **Spec Version:** 1.1
-> **Schema Version:** 1.2.0 (67 block types, 11+ agents, 12 workflows)
+> **Schema Version:** 1.2.0 (46 block types, 11 agents, 11 workflows)
 
 ---
 
@@ -317,7 +317,7 @@ swarm-press/
 │   │   ├── src/issues.ts     # Issue operations
 │   │   ├── src/webhooks.ts   # Webhook processing
 │   │   └── src/sync.ts       # Bidirectional sync
-│   └── cli/                  # Operator CLI (placeholder)
+│   └── experimental-cli/     # Operator CLI prototype (not integrated, see audit item 32)
 ├── apps/
 │   ├── admin/                # Admin Dashboard (React + shadcn/ui)
 │   │   ├── src/components/
@@ -333,7 +333,9 @@ swarm-press/
 │   ├── bootstrap.ts          # System initialization
 │   ├── seed.ts               # Sample data
 │   ├── clear.ts              # Reset database
-│   └── test-e2e.ts           # End-to-end tests
+│   ├── test-e2e.ts           # Real end-to-end test (Postgres + NATS + Temporal)
+│   ├── test-workflow-mock.ts # Mocked unit-style workflow walk-through
+│   └── README.md             # Index of all scripts
 ├── specs/
 │   ├── specs.md              # Full specification (2,300+ lines)
 │   ├── idea.md               # GitHub integration design
@@ -636,19 +638,25 @@ Site-specific agent configurations live in the content submodule under `content/
 
 ## 🎨 Site Builder (Astro)
 
-### 60+ Block Types (with Zod Validation)
+### 46 Block Types (with Zod Validation)
 
-Block types are defined in `packages/shared/src/content/blocks.ts`:
+Block types are defined in `packages/shared/src/content/blocks.ts`. Marketing,
+E-commerce and Application-UI block schemas were pruned per audit item 8 (no
+renderer existed and the cinque-terre theme did not use them); restore from
+git history if a future theme needs them.
 
 | Category | Count | Examples |
 |----------|-------|----------|
-| **Core** | 10 | paragraph, heading, hero, image, gallery, quote, list, faq, callout, embed |
-| **Marketing** | 20 | hero-section, feature-section, pricing-section, testimonial-section, cta-section |
-| **E-commerce** | 4 | product-list, product-overview, shopping-cart, promo-section |
-| **Application UI** | 5 | card, data-table, form-layout, modal, alert |
-| **Cinque Terre Theme** | 15 | village-selector, places-to-stay, eat-drink, featured-carousel, highlights |
+| **Core** | 12 | paragraph, heading, hero, image, gallery, quote, list, faq, callout, embed, collection-embed, map |
+| **Section (theme-adjacent)** | 8 | hero-section, feature-section, stats-section, cta-section, faq-section, content-section, newsletter, section-header |
+| **Cinque Terre Theme** | 12 | village-selector, places-to-stay, eat-drink, featured-carousel, highlights, audio-guides, practical-advice, etc. |
 | **Editorial** | 5 | editorial-hero, editorial-intro, editorial-interlude, editor-note, closing-note |
-| **Template** | 9 | itinerary-hero, itinerary-days, blog-article, weather-live, collection-with-interludes |
+| **Template** | 9 | itinerary-hero, itinerary-days, team-grid, airports-overview, weather-live, weather-journal, blog-article, collection-with-interludes, blog-index |
+
+A coverage test at `packages/site-builder/test/block-coverage.test.ts` asserts
+every block type has a matching `case` in
+`packages/site-builder/src/themes/cinque-terre/src/ContentRenderer.astro` and
+vice versa. Run with `tsx packages/site-builder/test/block-coverage.test.ts`.
 
 ### Theme Architecture
 ```
@@ -859,8 +867,8 @@ tsx scripts/seed.ts
 ### Core Platform (Complete)
 - [x] Monorepo setup (Turborepo + pnpm)
 - [x] Database schema with all core entities
-- [x] 11+ autonomous agents (Writer, Editor, QA, Media, Linker, PageOrchestrator, etc.)
-- [x] 12 Temporal workflows (content, editorial, publishing, batch, scheduling, QA, etc.)
+- [x] 11 autonomous agents (Writer, Editor, QA, Media, MediaSelector, Linker, PageOrchestrator, PagePolish, Audit, Engineering, CEOAssistant)
+- [x] 11 Temporal workflows (content, editorial, publishing, batch, scheduling, QA, etc.)
 - [x] State machine engine with audit log
 - [x] NATS event bus with CloudEvents
 - [x] tRPC API with 27 routers
@@ -918,7 +926,7 @@ tsx scripts/seed.ts
 - [x] SlugPicker for embedding
 
 **Cinque Terre Theme:**
-- [x] 67 block types with Zod validation
+- [x] 46 block types with Zod validation (down from 67 after audit item 8)
 - [x] 39 Astro components
 - [x] Multi-language support (EN/DE/FR/IT)
 - [x] Village JSON configuration
@@ -964,7 +972,7 @@ When working on swarm.press:
 
 ---
 
-**Last Updated:** 2026-01-25
+**Last Updated:** 2026-05-11
 **Implementation Status:** Production Ready with Autonomous Scheduling
 
 ---
