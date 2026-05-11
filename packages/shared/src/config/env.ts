@@ -20,6 +20,14 @@ const envSchema = z.object({
   // Claude API
   ANTHROPIC_API_KEY: z.string().min(1).describe('Anthropic API key for Claude'),
 
+  // Default Claude model for agents when no per-agent runtime config is provided.
+  // Override per environment to roll out new model versions without code changes.
+  AGENT_MODEL_DEFAULT: z
+    .string()
+    .min(1)
+    .default('claude-sonnet-4-5-20250929')
+    .describe('Default Claude model ID used by BaseAgent when no runtime/agent-config model is set'),
+
   // Backend API
   API_PORT: z.coerce.number().int().positive().default(3000),
   API_SECRET: z.string().min(32).describe('Secret key for API authentication'),

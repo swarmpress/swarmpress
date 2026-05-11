@@ -29,7 +29,6 @@ export function registerAgent(role: string, AgentClass: AgentConstructor) {
 
 export class AgentFactory {
   private static instance: AgentFactory
-  private agentInstances = new Map<string, BaseAgent>()
 
   private constructor() {}
 
@@ -41,14 +40,13 @@ export class AgentFactory {
   }
 
   /**
-   * Create or get an agent instance by ID
+   * Create a fresh agent instance by ID.
+   *
+   * Agents are STATELESS - we never cache instances. Caching previously caused
+   * conversation/tool state to leak across tasks (audit item 12). Every caller
+   * gets a freshly constructed agent backed by the latest agent record.
    */
   async getAgent(agentId: string): Promise<BaseAgent | null> {
-    // Check cache
-    if (this.agentInstances.has(agentId)) {
-      return this.agentInstances.get(agentId)!
-    }
-
     // Load from database
     const agentData = await agentRepository.findById(agentId)
     if (!agentData) {
@@ -64,36 +62,16 @@ export class AgentFactory {
       return null
     }
 
-    // Create instance
-    const agent = new AgentClass(agentData)
-    this.agentInstances.set(agentId, agent)
-
-    return agent
+    // Always construct a fresh instance - never cached
+    return new AgentClass(agentData)
   }
 
   /**
-   * Create a fresh agent instance by ID (not cached)
-   * Use this for concurrent/isolated workflows to avoid conversation history collisions
+   * @deprecated Use {@link getAgent}. Kept as an alias for backward compatibility -
+   * `getAgent` is now always fresh, so the two methods are equivalent.
    */
   async getFreshAgent(agentId: string): Promise<BaseAgent | null> {
-    // Load from database
-    const agentData = await agentRepository.findById(agentId)
-    if (!agentData) {
-      console.error(`Agent not found: ${agentId}`)
-      return null
-    }
-
-    // Determine agent class from capabilities
-    const AgentClass = this.getAgentClassFromData(agentData)
-    if (!AgentClass) {
-      console.error(`Unable to determine agent class for agent: ${agentData.name}`)
-      console.error(`  Capabilities: ${JSON.stringify(agentData.capabilities)}`)
-      return null
-    }
-
-    // Create instance (NOT cached - fresh for this invocation)
-    const agent = new AgentClass(agentData)
-    return agent
+    return this.getAgent(agentId)
   }
 
   /**
@@ -205,10 +183,11 @@ export class AgentFactory {
   }
 
   /**
-   * Clear agent cache (useful for testing)
+   * @deprecated No-op. Kept as a stub: agents are no longer cached, so there is
+   * nothing to clear. Will be removed in a future release.
    */
-  clearCache() {
-    this.agentInstances.clear()
+  clearCache(): void {
+    // intentionally empty - factory no longer holds instances
   }
 }
 
