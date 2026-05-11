@@ -562,6 +562,7 @@ export async function publishContentEvent(params: {
     'content.approved': events.contentApproved,
     'content.scheduled': events.contentScheduled,
     'content.published': events.contentPublished,
+    'content.productionFailed': events.contentProductionFailed,
     'content.qaGatePassed': events.qaGatePassed,
     'content.qaGateFailed': events.qaGateFailed,
   }
@@ -921,3 +922,6 @@ export * from './site-build'
 
 // Page Content Generation Activities
 export * from './page-content-generation'
+
+// Determinism helper activities (generateId, measureDuration, getCurrentTimestamp)
+export * from './determinism'

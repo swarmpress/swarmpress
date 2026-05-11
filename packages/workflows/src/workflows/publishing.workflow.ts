@@ -24,10 +24,15 @@ const {
   logAgentActivityToGitHub,
   buildFromGitHubActivity,
   getWebsiteBuildConfigActivity,
+  getCurrentTimestamp,
+  measureDuration,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '20 minutes',
   retry: {
     maximumAttempts: 3,
+    initialInterval: '1s',
+    backoffCoefficient: 2,
+    maximumInterval: '30s',
   },
 })
 
@@ -85,7 +90,7 @@ export async function publishingWorkflow(
   input: PublishingInput
 ): Promise<PublishingResult> {
   const { contentId, websiteId, seoAgentId, engineeringAgentId, siteUrl, qaGate } = input
-  const startTime = Date.now()
+  const startTime = await getCurrentTimestamp()
   let qaGateResult: QAGateResult | undefined
 
   // Determine if we should build from GitHub (explicit override or website setting)
@@ -480,7 +485,7 @@ This is a complete end-to-end publishing workflow.`
       },
     })
 
-    const deploymentTime = Date.now() - startTime
+    const deploymentTime = await measureDuration(startTime)
 
     console.log(
       `[Publishing] Workflow completed successfully in ${deploymentTime}ms`

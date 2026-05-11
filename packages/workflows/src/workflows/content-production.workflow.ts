@@ -20,6 +20,9 @@ const {
   startToCloseTimeout: '15 minutes',
   retry: {
     maximumAttempts: 3,
+    initialInterval: '1s',
+    backoffCoefficient: 2,
+    maximumInterval: '30s',
   },
 })
 
@@ -55,11 +58,14 @@ export async function contentProductionWorkflow(
 ): Promise<ContentProductionResult> {
   const { contentId, writerAgentId, brief, maxRevisions = 3 } = input
   let revisionsCount = 0
+  // Track current stage for failure event reporting
+  let currentStage: string = 'init'
 
   try {
     console.log(`[ContentProduction] Starting workflow for ${contentId}`)
 
     // Step 1: Get current content to check state
+    currentStage = 'load_content'
     const content = await getContentItem(contentId)
     if (!content) {
       throw new Error(`Content ${contentId} not found`)
@@ -68,6 +74,7 @@ export async function contentProductionWorkflow(
     console.log(`[ContentProduction] Current content state: ${content.status}`)
 
     // Step 2: Writer creates draft
+    currentStage = 'write_draft'
     console.log(`[ContentProduction] Invoking writer agent to create draft`)
 
     // Log workflow start to GitHub (if PR exists)
@@ -143,6 +150,7 @@ Ensure all blocks are properly structured and validated.`
     let needsRevision = false // This could be determined by quality checks
 
     while (needsRevision && revisionsCount < maxRevisions) {
+      currentStage = `revise_draft_${revisionsCount + 1}`
       console.log(`[ContentProduction] Applying revision ${revisionsCount + 1}`)
 
       // Log revision start to GitHub
@@ -192,6 +200,7 @@ Use your revise_draft tool to update the content.`
     }
 
     // Step 6: Submit for review
+    currentStage = 'submit_for_review'
     console.log(`[ContentProduction] Submitting for editorial review`)
 
     const submitTask = `Submit content ${contentId} for editorial review.
@@ -218,6 +227,7 @@ Use your submit_for_review tool to transition the content to in_editorial_review
     }
 
     // Step 7: Create GitHub PR for editorial review
+    currentStage = 'create_github_pr'
     console.log(`[ContentProduction] Creating GitHub PR for editorial review`)
     const prResult = await syncContentToGitHubActivity({ contentId })
 
@@ -257,12 +267,37 @@ Use your submit_for_review tool to transition the content to in_editorial_review
       githubPrUrl: prResult.prUrl,
     }
   } catch (error) {
-    console.error(`[ContentProduction] Workflow failed:`, error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error(`[ContentProduction] Workflow failed at stage "${currentStage}":`, error)
+
+    // Emit content.productionFailed CloudEvent so subscribers (admin dashboard,
+    // observability, escalation handlers) can react to the failure. Failure to
+    // publish the event must NOT mask the original failure.
+    try {
+      await publishContentEvent({
+        type: 'content.productionFailed',
+        contentId,
+        // Note: publishContentEvent uses Object.values(data) to spread args, so
+        // ORDER must match events.contentProductionFailed(contentId, error, stage, agentId).
+        data: {
+          content_id: contentId,
+          error: errorMessage,
+          stage: currentStage,
+          agent_id: writerAgentId,
+        },
+      })
+    } catch (eventError) {
+      console.error(
+        `[ContentProduction] Failed to publish content.productionFailed event:`,
+        eventError
+      )
+    }
+
     return {
       success: false,
       contentId,
       status: 'failed',
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMessage,
     }
   }
 }

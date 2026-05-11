@@ -19,10 +19,15 @@ const {
   processBatchResultsActivity,
   exportCollectionToGitHubActivity,
   createQuestionTicket,
+  getCurrentTimestamp,
+  measureDuration,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '24 hours', // Batches can take many hours
   retry: {
     maximumAttempts: 3,
+    initialInterval: '1s',
+    backoffCoefficient: 2,
+    maximumInterval: '30s',
   },
 })
 
@@ -65,7 +70,7 @@ export interface BatchProcessingResult {
 export async function batchProcessingWorkflow(
   input: BatchProcessingInput
 ): Promise<BatchProcessingResult> {
-  const startTime = Date.now()
+  const startTime = await getCurrentTimestamp()
   const pollInterval = input.pollIntervalSeconds || 30
 
   try {
@@ -171,7 +176,7 @@ Please approve this batch job to proceed.`,
       console.log(`[BatchWorkflow] Exported ${itemsExported} items to GitHub`)
     }
 
-    const totalDuration = Date.now() - startTime
+    const totalDuration = await measureDuration(startTime)
 
     console.log(
       `[BatchWorkflow] Workflow completed in ${Math.round(totalDuration / 1000)}s: ${itemsImported} imported, ${itemsExported} exported`
@@ -191,7 +196,7 @@ Please approve this batch job to proceed.`,
 
     return {
       success: false,
-      totalDuration: Date.now() - startTime,
+      totalDuration: await measureDuration(startTime),
       error: error instanceof Error ? error.message : 'Unknown error',
     }
   }

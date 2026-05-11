@@ -28,6 +28,9 @@ const {
   startToCloseTimeout: '15 minutes',
   retry: {
     maximumAttempts: 3,
+    initialInterval: '1s',
+    backoffCoefficient: 2,
+    maximumInterval: '30s',
   },
 })
 

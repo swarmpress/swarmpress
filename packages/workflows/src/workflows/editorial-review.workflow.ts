@@ -18,16 +18,27 @@ const {
   syncRejectionToGitHubActivity,
   syncQuestionToGitHubActivity,
   logAgentActivityToGitHub,
+  generateId,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '15 minutes',
   retry: {
     maximumAttempts: 3,
+    initialInterval: '1s',
+    backoffCoefficient: 2,
+    maximumInterval: '30s',
   },
 })
 
 export interface EditorialReviewInput {
   contentId: string
   editorAgentId: string
+  /**
+   * Agent ID representing the CEO (used for high-risk content escalation
+   * audit trail and state transitions). Callers must resolve this from the
+   * agents table — do not hardcode. See packages/workflows/src/temporal/client.ts
+   * and any caller in scripts/ for where this should be passed.
+   */
+  ceoAgentId: string
 }
 
 export interface EditorialReviewResult {
@@ -57,7 +68,7 @@ export const ceoApprovalSignal = defineSignal<[boolean, string?]>('ceoApproval')
 export async function editorialReviewWorkflow(
   input: EditorialReviewInput
 ): Promise<EditorialReviewResult> {
-  const { contentId, editorAgentId } = input
+  const { contentId, editorAgentId, ceoAgentId } = input
   let ceoApproved: boolean | null = null
   let ceoFeedback: string | undefined
 
@@ -178,7 +189,7 @@ This requires CEO approval before proceeding.`
       }
 
       // Extract ticket ID (simplified - in real impl would parse from result)
-      const ticketId = 'ticket-' + Date.now()
+      const ticketId = await generateId('ticket')
 
       // Sync question ticket to GitHub as an Issue
       await syncQuestionToGitHubActivity({ ticketId })
@@ -194,7 +205,7 @@ This requires CEO approval before proceeding.`
         // Log CEO rejection to GitHub
         await logAgentActivityToGitHub({
           contentId,
-          agentId: 'ceo-001',
+          agentId: ceoAgentId,
           agentName: 'CEO',
           activity: '❌ CEO rejected high-risk content',
           details: ceoFeedback || 'Content rejected due to high-risk concerns.',
@@ -205,7 +216,7 @@ This requires CEO approval before proceeding.`
         await syncRejectionToGitHubActivity({
           contentId,
           feedback: ceoFeedback || 'CEO rejected high-risk content',
-          agentId: 'ceo-001',
+          agentId: ceoAgentId,
         })
 
         // Reject content
@@ -213,7 +224,7 @@ This requires CEO approval before proceeding.`
           contentId,
           event: 'request_changes',
           actor: 'CEO',
-          actorId: 'ceo-001',
+          actorId: ceoAgentId,
           metadata: { ceo_rejected: true, feedback: ceoFeedback },
         })
 
@@ -238,7 +249,7 @@ This requires CEO approval before proceeding.`
       // Log CEO approval to GitHub
       await logAgentActivityToGitHub({
         contentId,
-        agentId: 'ceo-001',
+        agentId: ceoAgentId,
         agentName: 'CEO',
         activity: '✅ CEO approved high-risk content',
         details: 'CEO has reviewed and approved this high-risk content to proceed.',

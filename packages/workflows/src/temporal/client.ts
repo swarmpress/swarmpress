@@ -98,7 +98,14 @@ class TemporalClientManager {
 export const temporalClient = TemporalClientManager.getInstance()
 
 /**
- * Helper function to start a workflow
+ * Helper function to start a workflow.
+ *
+ * TODO(audit-item-16): The editorialReviewWorkflow input now requires a
+ * `ceoAgentId: string` field (added so the workflow no longer hardcodes
+ * 'ceo-001'). Callers that start `editorialReviewWorkflow` must resolve
+ * the active CEO agent id from the agents table (e.g.
+ * agentRepository.findByRole('CEO')) and pass it in the args object. See
+ * packages/backend/src/api/routers/workflow.router.ts for one such caller.
  */
 export async function startWorkflow(
   workflowType: string,
