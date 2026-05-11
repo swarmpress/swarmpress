@@ -5,8 +5,9 @@
  */
 import pg from 'pg'
 import { Octokit } from '@octokit/rest'
+import { getDatabaseUrl } from './utils/env'
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://swarmpress:swarmpress@localhost:5432/swarmpress'
+const DATABASE_URL = getDatabaseUrl()
 const CONTENT_ID = 'f1306648-23f7-4b75-a93e-d4f089ccab2e'
 const WEBSITE_ID = '42b7e20d-7f6c-48aa-9e16-f610a84b79a6'
 

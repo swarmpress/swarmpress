@@ -17,10 +17,11 @@
 import { v4 as uuidv4 } from 'uuid'
 import { Client, Connection } from '@temporalio/client'
 import pg from 'pg'
+import { getDatabaseUrl, getTemporalUrl } from './utils/env'
 
 // Environment configuration
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://swarmpress:swarmpress@localhost:5432/swarmpress'
-const TEMPORAL_URL = process.env.TEMPORAL_URL || 'localhost:7233'
+const DATABASE_URL = getDatabaseUrl()
+const TEMPORAL_URL = getTemporalUrl()
 
 // Predefined content briefs for Cinque Terre villages
 const CONTENT_PRESETS: Record<string, { title: string; brief: string; slug: string }> = {

@@ -20,8 +20,10 @@ services:
       retries: 5
 
   # NATS with JetStream
+  # Pinned to a specific patch release to keep environments reproducible.
+  # 2.10.29 is the latest 2.10.x stable as of 2026-05.
   nats:
-    image: nats:2.10-alpine
+    image: nats:2.10.29-alpine
     container_name: swarmpress-nats
     command: '-js -m 8222'
     ports:
@@ -59,6 +61,11 @@ services:
       start_period: 30s
 
   # Temporal UI
+  # =====================================================================
+  # Compatibility: this UI image is exercised against the temporal server
+  # pinned above. If you upgrade either side, bump the other in lock-step.
+  # Tested with temporalio/auto-setup:1.22.4
+  # =====================================================================
   temporal-ui:
     image: temporalio/ui:2.21.3
     container_name: swarmpress-temporal-ui

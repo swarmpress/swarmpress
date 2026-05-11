@@ -13,10 +13,11 @@
 
 import { v4 as uuidv4 } from 'uuid'
 import { Client, Connection } from '@temporalio/client'
+import { getDatabaseUrl, getTemporalUrl } from './utils/env'
 
 // Environment configuration
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://swarmpress:swarmpress@localhost:5432/swarmpress'
-const TEMPORAL_URL = process.env.TEMPORAL_URL || 'localhost:7233'
+const DATABASE_URL = getDatabaseUrl()
+const TEMPORAL_URL = getTemporalUrl()
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN
 const GITHUB_OWNER = process.env.GITHUB_OWNER
 const GITHUB_REPO = process.env.GITHUB_REPO

@@ -15,18 +15,19 @@
  */
 
 import pg from 'pg'
+import { getDatabaseUrl, getNatsUrl, getTemporalUrl } from './utils/env'
 
 // Configuration
 const config = {
   database: {
-    url: process.env.DATABASE_URL || 'postgresql://swarmpress:swarmpress@localhost:5432/swarmpress',
+    url: getDatabaseUrl(),
   },
   nats: {
-    url: process.env.NATS_URL || 'nats://localhost:4222',
+    url: getNatsUrl(),
     monitoringUrl: 'http://localhost:8222',
   },
   temporal: {
-    url: process.env.TEMPORAL_URL || 'localhost:7233',
+    url: getTemporalUrl(),
     uiUrl: 'http://localhost:8233',
   },
   api: {

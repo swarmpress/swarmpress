@@ -27,6 +27,7 @@ import * as path from 'path'
 import { Pool } from 'pg'
 import { getAgentForPageType, getAgentExpertise } from '../packages/shared/src/content/agent-page-mapping'
 import { getLanguageGuidelines, type SupportedLanguage } from '../packages/agents/src/writer/language-guidelines'
+import { getDatabaseUrl } from './utils/env'
 
 // ============================================================================
 // Types
@@ -632,7 +633,7 @@ async function main() {
   // Initialize clients
   const client = new Anthropic()
   const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || 'postgresql://swarmpress:swarmpress@localhost:5432/swarmpress'
+    connectionString: getDatabaseUrl()
   })
 
   try {

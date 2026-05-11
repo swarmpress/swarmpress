@@ -9,9 +9,10 @@ dotenv.config({ path: resolve(__dirname, '../.env') })
 
 import pg from 'pg'
 import { Client, Connection } from '@temporalio/client'
+import { getDatabaseUrl, getTemporalUrl } from './utils/env'
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://swarmpress:swarmpress@localhost:5432/swarmpress'
-const TEMPORAL_URL = process.env.TEMPORAL_URL || 'localhost:7233'
+const DATABASE_URL = getDatabaseUrl()
+const TEMPORAL_URL = getTemporalUrl()
 const WEBSITE_ID = '42b7e20d-7f6c-48aa-9e16-f610a84b79a6'
 
 // Collections to research (pass as CLI args or use defaults)

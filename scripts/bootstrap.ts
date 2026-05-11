@@ -1,12 +1,27 @@
 #!/usr/bin/env tsx
 /**
  * Bootstrap Script
- * Initializes swarm.press system from scratch
+ * Initializes swarm.press system from scratch.
+ *
+ * Designed to be idempotent - re-running should be a fast no-op when nothing
+ * has changed. Each step short-circuits if the work has already been done.
  */
 
 import { execSync } from 'child_process'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, readdirSync, statSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
+
+// NB: the backend `db` singleton is imported lazily inside runMigrations() so
+// that environment validation (which it triggers eagerly at module load) does
+// not run before checkEnv() has had a chance to surface a friendly error.
+type DbModule = typeof import('../packages/backend/src/db/connection')
+let dbModule: DbModule | null = null
+async function getDb(): Promise<DbModule['db']> {
+  if (!dbModule) {
+    dbModule = await import('../packages/backend/src/db/connection')
+  }
+  return dbModule.db
+}
 
 interface BootstrapConfig {
   skipDocker?: boolean
@@ -27,6 +42,17 @@ function exec(command: string, description: string): void {
   } catch (error) {
     console.error(`❌ ${description} failed`)
     throw error
+  }
+}
+
+/**
+ * Execute command and capture stdout (for idempotency checks)
+ */
+function execCapture(command: string): string {
+  try {
+    return execSync(command, { stdio: ['ignore', 'pipe', 'ignore'] }).toString()
+  } catch {
+    return ''
   }
 }
 
@@ -89,7 +115,6 @@ function checkTools(): void {
     { name: 'node', version: 'v18+' },
     { name: 'pnpm', version: '8+' },
     { name: 'docker', version: 'latest' },
-    { name: 'docker-compose', version: 'latest' },
   ]
 
   for (const tool of required) {
@@ -102,12 +127,12 @@ function checkTools(): void {
 }
 
 /**
- * Start Docker services
+ * Start Docker services (idempotent)
  */
 function startDocker(): void {
   console.log('\n🐳 Starting Docker services...')
 
-  // Check if Docker is running
+  // Check if Docker daemon is running
   try {
     execSync('docker info', { stdio: 'ignore' })
   } catch {
@@ -115,8 +140,21 @@ function startDocker(): void {
     process.exit(1)
   }
 
-  // Start services
-  exec('docker-compose up -d', 'Starting PostgreSQL, NATS, and Temporal')
+  // Idempotency: skip startup if all required services are already running
+  const required = ['postgres', 'nats', 'temporal']
+  const running = execCapture('docker compose ps --status running --services')
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const missing = required.filter((svc) => !running.includes(svc))
+  if (missing.length === 0) {
+    console.log('✅ Docker services already running (postgres, nats, temporal) - skipping')
+    return
+  }
+
+  console.log(`   Starting missing services: ${missing.join(', ')}`)
+  exec('docker compose up -d', 'Starting PostgreSQL, NATS, and Temporal')
 
   // Wait for services to be ready
   console.log('\n⏳ Waiting for services to be ready (15 seconds)...')
@@ -124,17 +162,49 @@ function startDocker(): void {
 
   // Check service health
   try {
-    exec('docker-compose ps', 'Checking service status')
+    exec('docker compose ps', 'Checking service status')
   } catch {
-    console.warn('⚠️  Some services may not be healthy. Check docker-compose ps')
+    console.warn('⚠️  Some services may not be healthy. Check docker compose ps')
   }
 }
 
 /**
- * Install dependencies
+ * Cache file used to short-circuit pnpm install when nothing has changed.
+ */
+const INSTALL_CACHE = join(process.cwd(), 'node_modules', '.swarmpress-install-cache')
+
+/**
+ * Install dependencies (idempotent: skip when node_modules exists and
+ * pnpm-lock.yaml hasn't changed since last install).
  */
 function installDependencies(): void {
+  const nodeModules = join(process.cwd(), 'node_modules')
+  const lockFile = join(process.cwd(), 'pnpm-lock.yaml')
+
+  if (existsSync(nodeModules) && existsSync(lockFile) && existsSync(INSTALL_CACHE)) {
+    try {
+      const lockMtime = statSync(lockFile).mtimeMs
+      const cacheMtime = parseFloat(readFileSync(INSTALL_CACHE, 'utf-8').trim())
+      if (!Number.isNaN(cacheMtime) && cacheMtime >= lockMtime) {
+        console.log('\n📦 Dependencies up to date (pnpm-lock.yaml unchanged) - skipping install')
+        return
+      }
+    } catch {
+      // fall through to install
+    }
+  }
+
   exec('pnpm install', 'Installing dependencies')
+
+  // Record the lockfile mtime so subsequent runs can short-circuit
+  try {
+    if (existsSync(lockFile)) {
+      mkdirSync(nodeModules, { recursive: true })
+      writeFileSync(INSTALL_CACHE, String(statSync(lockFile).mtimeMs))
+    }
+  } catch (error) {
+    console.warn(`⚠️  Could not write install cache: ${(error as Error).message}`)
+  }
 }
 
 /**
@@ -145,30 +215,58 @@ function buildPackages(): void {
 }
 
 /**
- * Run database migrations
+ * Run database migrations.
+ *
+ * Reads every *.sql file from packages/backend/src/db/migrations/ in
+ * lexicographic order and executes each via the existing pg connection pool.
+ * The master schema (000_schema.sql) is fully idempotent (CREATE ... IF NOT
+ * EXISTS, ALTER ... IF EXISTS, DROP TRIGGER ... IF EXISTS), so re-running
+ * bootstrap is safe.
  */
-function runMigrations(): void {
+async function runMigrations(): Promise<void> {
   console.log('\n🗄️  Running database migrations...')
 
-  const migrationsDir = join(process.cwd(), 'packages/backend/migrations')
+  const migrationsDir = join(process.cwd(), 'packages/backend/src/db/migrations')
   if (!existsSync(migrationsDir)) {
-    console.error('❌ Migrations directory not found')
+    console.error(`❌ Migrations directory not found: ${migrationsDir}`)
     process.exit(1)
   }
 
-  // Run migrations in order
-  const migrations = [
-    '001_initial_schema.sql',
-    '002_state_audit_log.sql',
-  ]
+  const files = readdirSync(migrationsDir)
+    .filter((f) => f.endsWith('.sql'))
+    .sort() // lexicographic order: 000_schema.sql comes first
 
-  for (const migration of migrations) {
-    const file = join(migrationsDir, migration)
-    if (existsSync(file)) {
-      exec(
-        `psql $DATABASE_URL -f ${file}`,
-        `Applying migration: ${migration}`
-      )
+  if (files.length === 0) {
+    console.warn('⚠️  No migration files found')
+    return
+  }
+
+  const db = await getDb()
+
+  for (const file of files) {
+    const fullPath = join(migrationsDir, file)
+    console.log(`   Applying ${file}...`)
+    let sql: string
+    try {
+      sql = readFileSync(fullPath, 'utf-8')
+    } catch (error) {
+      throw new Error(`Failed to read migration ${file}: ${(error as Error).message}`)
+    }
+
+    // psql meta-commands like \echo and \set are not understood by the pg
+    // protocol; strip lines starting with a backslash before submission.
+    const cleaned = sql
+      .split('\n')
+      .filter((line) => !/^\s*\\/.test(line))
+      .join('\n')
+
+    try {
+      await db.query(cleaned)
+      console.log(`   ✅ ${file}`)
+    } catch (error) {
+      const err = error as Error & { position?: string; detail?: string }
+      const detail = err.detail ? ` (${err.detail})` : ''
+      throw new Error(`Migration ${file} failed: ${err.message}${detail}`)
     }
   }
 
@@ -213,11 +311,23 @@ function initializeGitHub(): void {
 }
 
 /**
- * Seed initial data
+ * Seed initial data. Idempotent: re-running should be a no-op (or at worst a
+ * detected duplicate). The seed script is invoked with --upsert so it can
+ * decide to upsert rather than insert; we additionally swallow errors that
+ * indicate the seed has already been applied.
  */
 function seedData(): void {
   console.log('\n🌱 Seeding initial data...')
-  exec('tsx scripts/seed.ts', 'Running seed script')
+  try {
+    exec('tsx scripts/seed.ts --upsert', 'Running seed script')
+  } catch (error) {
+    const message = (error as Error).message || ''
+    if (/already seeded|duplicate key|unique constraint/i.test(message)) {
+      console.log('ℹ️  Seed data already present - continuing')
+      return
+    }
+    console.warn('⚠️  Seed script failed (continuing):', message)
+  }
 }
 
 /**
@@ -243,7 +353,7 @@ async function bootstrap(config: BootstrapConfig = {}): Promise<void> {
 
     // Database setup
     if (!config.skipMigrations) {
-      runMigrations()
+      await runMigrations()
     }
 
     // Seed data
@@ -273,7 +383,17 @@ async function bootstrap(config: BootstrapConfig = {}): Promise<void> {
     console.log('')
   } catch (error) {
     console.error('\n❌ Bootstrap failed:', error)
-    process.exit(1)
+    process.exitCode = 1
+  } finally {
+    // Always close the DB pool so the process exits cleanly (only if we
+    // actually constructed it during runMigrations).
+    if (dbModule) {
+      try {
+        await dbModule.db.close()
+      } catch {
+        // ignore
+      }
+    }
   }
 }
 
