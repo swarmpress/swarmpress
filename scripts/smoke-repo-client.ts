@@ -16,8 +16,10 @@
  *   tsx scripts/smoke-repo-client.ts [--website-id <uuid>]
  */
 
+import 'dotenv/config'
+
 import { db } from '../packages/backend/src/db/connection'
-import { getRepoClient } from '../packages/github-integration/src'
+import { RepoClient } from '../packages/github-integration/src'
 
 async function main() {
   const args = process.argv.slice(2)
@@ -25,26 +27,56 @@ async function main() {
   const websiteIdArg = flagIdx !== -1 ? args[flagIdx + 1] : null
 
   let websiteId = websiteIdArg
-  if (!websiteId) {
-    const result = await db.query<{ id: string; title: string }>(
-      `SELECT id, title FROM websites
+  // Pull credentials directly so the smoke test doesn't depend on RepoClient's
+  // dynamic import of @swarm-press/backend (which only resolves from inside the
+  // workflows package's node_modules, not from a top-level script).
+  let websiteRow:
+    | {
+        id: string
+        title: string
+        github_owner: string
+        github_repo: string
+        github_access_token: string
+        github_pages_branch: string | null
+      }
+    | undefined
+
+  if (websiteId) {
+    const result = await db.query<typeof websiteRow & { id: string }>(
+      `SELECT id, title, github_owner, github_repo, github_access_token, github_pages_branch
+         FROM websites WHERE id = $1`,
+      [websiteId]
+    )
+    websiteRow = result.rows[0]
+  } else {
+    const result = await db.query<typeof websiteRow & { id: string }>(
+      `SELECT id, title, github_owner, github_repo, github_access_token, github_pages_branch
+         FROM websites
         WHERE github_owner IS NOT NULL
           AND github_repo IS NOT NULL
           AND github_access_token IS NOT NULL
         ORDER BY created_at DESC
         LIMIT 1`
     )
-    if (!result.rows[0]) {
-      console.error('[smoke] No website with GitHub credentials in DB. Pass --website-id explicitly.')
-      process.exit(1)
-    }
-    websiteId = result.rows[0].id
-    console.log(`[smoke] Picked website ${websiteId} (${result.rows[0].title})`)
+    websiteRow = result.rows[0]
   }
 
+  if (!websiteRow) {
+    console.error('[smoke] No website with GitHub credentials in DB. Pass --website-id explicitly.')
+    process.exit(1)
+  }
+  websiteId = websiteRow.id
+  console.log(`[smoke] Picked website ${websiteId} (${websiteRow.title})`)
+
   try {
-    console.log('[smoke] getRepoClient...')
-    const repo = await getRepoClient(websiteId)
+    console.log('[smoke] new RepoClient...')
+    const repo = new RepoClient({
+      websiteId,
+      owner: websiteRow.github_owner,
+      repo: websiteRow.github_repo,
+      token: websiteRow.github_access_token,
+      branch: websiteRow.github_pages_branch || 'main',
+    })
 
     console.log('[smoke] getConfig (content/config.json)...')
     const config = await repo.getConfig()
