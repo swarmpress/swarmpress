@@ -1,10 +1,13 @@
 /**
  * GitHub Issues Operations
- * Create and manage issues for tasks and question tickets
+ *
+ * Each export takes a `RepoClient` instance (provides per-website Octokit,
+ * owner, repo). Replaces the previous global `getGitHub()` singleton — see
+ * WS1 of the repo-canonical migration.
  */
 
-import { getGitHub } from './client'
 import type { QuestionTicket, Task } from '@swarm-press/shared'
+import type { RepoClient } from './repo-client'
 
 export interface CreateQuestionIssueParams {
   ticket: QuestionTicket
@@ -24,12 +27,12 @@ export interface IssueResult {
  * Create a GitHub Issue for a QuestionTicket
  */
 export async function createQuestionIssue(
+  repoClient: RepoClient,
   params: CreateQuestionIssueParams
 ): Promise<IssueResult> {
   const { ticket, contentId } = params
-  const github = getGitHub()
-  const { owner, repo } = github.getRepoInfo()
-  const octokit = github.getOctokit()
+  const { owner, repo } = repoClient.getRepoInfo()
+  const octokit = repoClient.getOctokit()
 
   const issueTitle = `❓ ${ticket.subject.substring(0, 100)}${ticket.subject.length > 100 ? '...' : ''}`
 
@@ -79,14 +82,16 @@ Once answered, the agent will be notified and can proceed with their task.
 /**
  * Create a GitHub Issue for a Task
  */
-export async function createTaskIssue(params: CreateTaskIssueParams): Promise<IssueResult> {
+export async function createTaskIssue(
+  repoClient: RepoClient,
+  params: CreateTaskIssueParams
+): Promise<IssueResult> {
   const { task } = params
-  const github = getGitHub()
-  const { owner, repo } = github.getRepoInfo()
-  const octokit = github.getOctokit()
+  const { owner, repo } = repoClient.getRepoInfo()
+  const octokit = repoClient.getOctokit()
 
   // Task type emoji mapping
-  const typeEmoji = {
+  const typeEmoji: Record<string, string> = {
     create_brief: '📝',
     write_draft: '✍️',
     revise_draft: '📝',
@@ -132,10 +137,13 @@ ${task.notes ? `### Notes\n\n${task.notes}\n\n` : ''}---
 /**
  * Add comment to issue (e.g., CEO answering a question)
  */
-export async function addIssueComment(issueNumber: number, comment: string): Promise<void> {
-  const github = getGitHub()
-  const { owner, repo } = github.getRepoInfo()
-  const octokit = github.getOctokit()
+export async function addIssueComment(
+  repoClient: RepoClient,
+  issueNumber: number,
+  comment: string
+): Promise<void> {
+  const { owner, repo } = repoClient.getRepoInfo()
+  const octokit = repoClient.getOctokit()
 
   await octokit.issues.createComment({
     owner,
@@ -151,15 +159,15 @@ export async function addIssueComment(issueNumber: number, comment: string): Pro
  * Close an issue
  */
 export async function closeIssue(
+  repoClient: RepoClient,
   issueNumber: number,
   closeComment?: string
 ): Promise<void> {
-  const github = getGitHub()
-  const { owner, repo } = github.getRepoInfo()
-  const octokit = github.getOctokit()
+  const { owner, repo } = repoClient.getRepoInfo()
+  const octokit = repoClient.getOctokit()
 
   if (closeComment) {
-    await addIssueComment(issueNumber, closeComment)
+    await addIssueComment(repoClient, issueNumber, closeComment)
   }
 
   await octokit.issues.update({
@@ -176,12 +184,12 @@ export async function closeIssue(
  * Update issue labels
  */
 export async function updateIssueLabels(
+  repoClient: RepoClient,
   issueNumber: number,
   labels: string[]
 ): Promise<void> {
-  const github = getGitHub()
-  const { owner, repo } = github.getRepoInfo()
-  const octokit = github.getOctokit()
+  const { owner, repo } = repoClient.getRepoInfo()
+  const octokit = repoClient.getOctokit()
 
   await octokit.issues.setLabels({
     owner,
@@ -196,16 +204,18 @@ export async function updateIssueLabels(
 /**
  * Get issue details
  */
-export async function getIssueDetails(issueNumber: number): Promise<{
+export async function getIssueDetails(
+  repoClient: RepoClient,
+  issueNumber: number
+): Promise<{
   number: number
   title: string
   state: string
   labels: string[]
   comments: Array<{ body: string; user: string; created_at: string }>
 }> {
-  const github = getGitHub()
-  const { owner, repo } = github.getRepoInfo()
-  const octokit = github.getOctokit()
+  const { owner, repo } = repoClient.getRepoInfo()
+  const octokit = repoClient.getOctokit()
 
   const { data: issue } = await octokit.issues.get({
     owner,
