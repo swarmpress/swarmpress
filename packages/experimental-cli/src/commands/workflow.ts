@@ -26,6 +26,7 @@ export const workflowCommands = {
       contentId?: string
       writerAgentId?: string
       editorAgentId?: string
+      ceoAgentId?: string
       seoAgentId?: string
       engineeringAgentId?: string
       websiteId?: string
@@ -73,6 +74,7 @@ export const workflowCommands = {
       let contentId = options.contentId
       let writerAgentId = options.writerAgentId
       let editorAgentId = options.editorAgentId
+      let ceoAgentId = options.ceoAgentId
       let seoAgentId = options.seoAgentId
       let engineeringAgentId = options.engineeringAgentId
       let websiteId = options.websiteId
@@ -117,6 +119,14 @@ export const workflowCommands = {
             a.capabilities?.includes('review_content')
           )
           editorAgentId = editor?.id || agents[0].id
+        }
+
+        if (!ceoAgentId) {
+          const ceo = agents.find((a: { capabilities?: string[] }) =>
+            a.capabilities?.includes('approve_high_risk') ||
+            a.capabilities?.includes('escalate_to_ceo')
+          )
+          ceoAgentId = ceo?.id || agents[0].id
         }
 
         if (!engineeringAgentId) {
@@ -178,6 +188,7 @@ export const workflowCommands = {
           result = await api.workflow.startEditorialReview.mutate({
             contentId: contentId!,
             editorAgentId: editorAgentId!,
+            ceoAgentId: ceoAgentId!,
           })
           break
 

@@ -80,7 +80,7 @@ export function buildPageTree(
     const node = nodeMap.get(nodeId)
     if (!node) return null
 
-    const slug = getLocalizedValue(node.data?.slug as LocalizedString, locale) || ''
+    const slug = (node.data?.slug as string | undefined) || ''
     const url = computeUrl(slug, parentUrl)
     const parentId = parentMap.get(nodeId) ?? null
 
@@ -177,8 +177,8 @@ export function filterTree(
   const lowerQuery = query.toLowerCase().trim()
 
   function nodeMatches(node: TreeNode): boolean {
-    const title = getLocalizedValue(node.node.data?.title as LocalizedString, locale).toLowerCase()
-    const slug = getLocalizedValue(node.node.data?.slug as LocalizedString, locale).toLowerCase()
+    const title = getLocalizedValue(node.node.data?.title as LocalizedString | undefined, locale).toLowerCase()
+    const slug = ((node.node.data?.slug as string | undefined) || '').toLowerCase()
     return title.includes(lowerQuery) || slug.includes(lowerQuery) || node.url.toLowerCase().includes(lowerQuery)
   }
 

@@ -73,6 +73,7 @@ export const workflowRouter = router({
       z.object({
         contentId: z.string().describe('UUID of the content to review'),
         editorAgentId: z.string().describe('UUID of the editor agent to use'),
+        ceoAgentId: z.string().describe('UUID of the CEO agent for escalations'),
       })
     )
     .mutation(async ({ input }) => {
@@ -85,6 +86,7 @@ export const workflowRouter = router({
           {
             contentId: input.contentId,
             editorAgentId: input.editorAgentId,
+            ceoAgentId: input.ceoAgentId,
           },
         ], {
           workflowId,

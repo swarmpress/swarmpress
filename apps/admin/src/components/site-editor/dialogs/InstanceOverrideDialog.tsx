@@ -120,7 +120,7 @@ export function InstanceOverrideDialog({
     const newPage: TemplatePage = {
       slug: `custom-page-${Date.now()}`,
       pageType: 'page',
-      title: { [locale]: 'New Custom Page' },
+      title: { en: 'New Custom Page', [locale]: 'New Custom Page' },
       required: false,
     }
     setAdditionalPages((prev) => [...prev, newPage])
@@ -423,7 +423,7 @@ function AdditionalPageEditor({
               <Input
                 id={`title-${page.slug}`}
                 value={title}
-                onChange={(e) => onUpdate({ title: { ...page.title as Record<string, string>, [locale]: e.target.value } })}
+                onChange={(e) => onUpdate({ title: { en: page.title?.en ?? e.target.value, ...page.title, [locale]: e.target.value } })}
                 className="h-8 text-sm"
               />
             </div>

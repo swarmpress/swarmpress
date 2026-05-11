@@ -71,19 +71,21 @@ const mutationHandlers: Record<string, (body: unknown) => Promise<Response>> = {
   },
 
   'start-editorial-review': async (body: unknown) => {
-    const { contentId, editorAgentId } = body as {
+    const { contentId, editorAgentId, ceoAgentId } = body as {
       contentId: string
       editorAgentId: string
+      ceoAgentId: string
     }
 
-    if (!contentId || !editorAgentId) {
-      return errorResponse('contentId and editorAgentId are required', 400)
+    if (!contentId || !editorAgentId || !ceoAgentId) {
+      return errorResponse('contentId, editorAgentId, and ceoAgentId are required', 400)
     }
 
     try {
       const result = await trpc.workflow.startEditorialReview.mutate({
         contentId,
         editorAgentId,
+        ceoAgentId,
       })
       return jsonResponse(result)
     } catch (error) {
