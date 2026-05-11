@@ -1,10 +1,20 @@
 /**
  * State Machine Engine
  * Orchestrates state transitions with database transactions and event publishing
+ *
+ * Event delivery uses a transactional outbox: state update, audit log insert,
+ * and CloudEvent enqueue all happen in the SAME database transaction. The
+ * OutboxWorker drains the `event_outbox` table asynchronously and publishes to
+ * NATS. This guarantees at-least-once delivery — even if the process crashes
+ * between commit and publish, the event will be picked up on next worker tick.
+ *
+ * To deliver outbox events, start the OutboxWorker service from your application bootstrap
+ *   import { outboxWorker } from '../services/outbox-worker.service'
+ *   outboxWorker.start()
  */
 
 import { db } from '../db/connection'
-import { publishEvent } from '@swarm-press/event-bus'
+import { eventOutboxRepository } from '../db/repositories/event-outbox-repository'
 import {
   StateMachine,
   canTransition,
@@ -23,6 +33,15 @@ export interface StateTransitionContext<TState extends string, TEvent extends st
   actor: string
   actorId: string
   metadata?: Record<string, unknown>
+  /**
+   * Optional optimistic-lock token — pass the entity's `updated_at` value as
+   * read at the start of your operation. If the row has been touched since,
+   * the transition will fail with StateTransitionConflict instead of
+   * silently overwriting concurrent work. If omitted, the engine will fetch
+   * the current updated_at itself (one extra query, no concurrency guard
+   * across the gap between fetch and update).
+   */
+  expectedUpdatedAt?: Date | string
 }
 
 export interface StateTransitionResult<TState extends string> {
@@ -45,18 +64,68 @@ export interface StateAuditRecord {
   created_at: Date
 }
 
+/**
+ * Thrown when an optimistic-lock check fails — i.e. the entity row was
+ * modified between read and write. Callers may catch this and retry with a
+ * fresh read.
+ */
+export class StateTransitionConflict extends Error {
+  public readonly entityId: string
+  public readonly entityType: string
+  public readonly fromState: string
+  public readonly toState: string
+  public readonly event: string
+
+  constructor(params: {
+    entityId: string
+    entityType: string
+    fromState: string
+    toState: string
+    event: string
+  }) {
+    super(
+      `State transition conflict on ${params.entityType}/${params.entityId}: ` +
+        `${params.fromState} -> ${params.toState} (event: ${params.event}). ` +
+        `Row was modified concurrently — retry with fresh state.`
+    )
+    this.name = 'StateTransitionConflict'
+    this.entityId = params.entityId
+    this.entityType = params.entityType
+    this.fromState = params.fromState
+    this.toState = params.toState
+    this.event = params.event
+  }
+}
+
 // ============================================================================
 // State Machine Engine
 // ============================================================================
 
 /**
- * Execute a state transition with full transactional support
+ * Execute a state transition with full transactional support.
+ *
+ * Transactionality:
+ *   - Entity status update, audit log insert, and outbox event enqueue all
+ *     run in a single DB transaction.
+ *   - Update uses an optimistic-lock predicate on `updated_at`; concurrent
+ *     modifications produce StateTransitionConflict.
+ *   - CloudEvent publication happens out-of-band via OutboxWorker (see file
+ *     header).
  */
 export async function executeTransition<TState extends string, TEvent extends string>(
   machine: StateMachine<TState, TEvent>,
   context: StateTransitionContext<TState, TEvent>
 ): Promise<StateTransitionResult<TState>> {
-  const { entityId, entityType, currentState, event, actor, actorId, metadata } = context
+  const {
+    entityId,
+    entityType,
+    currentState,
+    event,
+    actor,
+    actorId,
+    metadata,
+    expectedUpdatedAt,
+  } = context
 
   // 1. Validate the transition
   const validation = canTransition<TState, TEvent>(machine, {
@@ -73,24 +142,59 @@ export async function executeTransition<TState extends string, TEvent extends st
   }
 
   const nextState = validation.nextState!
+  const tableName = getTableName(entityType)
 
   try {
-    // 2. Execute in database transaction
+    // 2. Execute in database transaction (state update + audit + outbox enqueue)
     const result = await db.transaction(async (client) => {
-      // Update entity state
-      const updateQuery = `
-        UPDATE ${getTableName(entityType)}
-        SET status = $1, updated_at = NOW()
-        WHERE id = $2
-        RETURNING *
-      `
-      const updateResult = await client.query(updateQuery, [nextState, entityId])
-
-      if (updateResult.rows.length === 0) {
-        throw new Error(`Entity ${entityId} not found`)
+      // 2a. Resolve optimistic-lock token. Prefer caller-supplied value; fall
+      //     back to a SELECT inside the same tx so we at least catch races
+      //     against rows changed before BEGIN.
+      let lockToken: Date | string | undefined = expectedUpdatedAt
+      if (lockToken === undefined) {
+        const lockRes = await client.query<{ updated_at: Date }>(
+          `SELECT updated_at FROM ${tableName} WHERE id = $1`,
+          [entityId]
+        )
+        const lockRow = lockRes.rows[0]
+        if (!lockRow) {
+          throw new Error(`Entity ${entityId} not found`)
+        }
+        lockToken = lockRow.updated_at
       }
 
-      // Create audit record
+      // 2b. Optimistic-locked state update
+      const updateQuery = `
+        UPDATE ${tableName}
+        SET status = $1, updated_at = NOW()
+        WHERE id = $2 AND updated_at = $3
+        RETURNING *
+      `
+      const updateResult = await client.query(updateQuery, [
+        nextState,
+        entityId,
+        lockToken,
+      ])
+
+      if (updateResult.rows.length === 0) {
+        // Distinguish "not found" from "stale" so we throw the right error.
+        const exists = await client.query<{ id: string }>(
+          `SELECT id FROM ${tableName} WHERE id = $1`,
+          [entityId]
+        )
+        if (exists.rows.length === 0) {
+          throw new Error(`Entity ${entityId} not found`)
+        }
+        throw new StateTransitionConflict({
+          entityId,
+          entityType,
+          fromState: currentState,
+          toState: nextState,
+          event,
+        })
+      }
+
+      // 2c. Create audit record
       const auditId = uuidv4()
       const auditQuery = `
         INSERT INTO state_audit_log (
@@ -110,28 +214,30 @@ export async function executeTransition<TState extends string, TEvent extends st
         JSON.stringify(metadata || {}),
       ])
 
+      // 2d. Enqueue CloudEvent in the SAME transaction (transactional outbox).
+      //     Drained asynchronously by OutboxWorker — see file header.
+      await eventOutboxRepository.insert(
+        `${entityType}.state_changed`,
+        {
+          entity_id: entityId,
+          entity_type: entityType,
+          from_state: currentState,
+          to_state: nextState,
+          event,
+          actor,
+          actor_id: actorId,
+          audit_id: auditId,
+          metadata,
+          subject: `${entityType}/${entityId}`,
+        },
+        `/state-machine/${machine.name}`,
+        client
+      )
+
       return {
         entity: updateResult.rows[0],
         audit: auditResult.rows[0] as StateAuditRecord,
       }
-    })
-
-    // 3. Emit CloudEvent (outside transaction to avoid blocking)
-    await publishEvent({
-      type: `${entityType}.state_changed`,
-      source: `/state-machine/${machine.name}`,
-      subject: `${entityType}/${entityId}`,
-      data: {
-        entity_id: entityId,
-        entity_type: entityType,
-        from_state: currentState,
-        to_state: nextState,
-        event,
-        actor,
-        actor_id: actorId,
-        audit_id: result.audit.id,
-        metadata,
-      },
     })
 
     return {
@@ -140,6 +246,11 @@ export async function executeTransition<TState extends string, TEvent extends st
       auditId: result.audit.id,
     }
   } catch (error) {
+    // Re-throw conflicts so callers can catch and retry — they signal a
+    // recoverable race, not a logic error.
+    if (error instanceof StateTransitionConflict) {
+      throw error
+    }
     console.error('State transition failed:', error)
     return {
       success: false,

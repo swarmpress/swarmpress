@@ -76,3 +76,7 @@ export { batchRepository } from './batch-repository'
 // Autonomous Scheduling System repositories
 export * from './schedule-repository'
 export { scheduleRepository } from './schedule-repository'
+
+// Event Outbox (transactional CloudEvents delivery)
+export * from './event-outbox-repository'
+export { eventOutboxRepository } from './event-outbox-repository'
