@@ -8,6 +8,111 @@ import { websiteRepository } from '@swarm-press/backend/dist/db/repositories'
 import { agentRepository } from '@swarm-press/backend/dist/db/repositories/agent-repository'
 import { getAgentForPageType } from '@swarm-press/shared'
 
+// ============================================================================
+// Chain agent resolution (WS-D autonomy migration)
+// ============================================================================
+
+/**
+ * Capability → role lookup table used by resolveChainAgentsActivity.
+ * The first capability listed is preferred; later ones are accepted as
+ * fallbacks. This matches the seeded capability names in scripts/seed.ts.
+ */
+const CHAIN_ROLE_CAPABILITIES: Record<
+  'orchestrator' | 'writer' | 'polish' | 'linker' | 'mediaSelector',
+  string[]
+> = {
+  orchestrator: ['create_page_brief', 'validate_page_flow', 'analyze_component_dependencies'],
+  writer: ['write_page_content', 'write_draft', 'content_writing'],
+  polish: ['polish_prose', 'rewrite_transitions', 'remove_redundancy', 'unify_voice'],
+  linker: ['insert_links', 'find_link_opportunities', 'validate_links'],
+  mediaSelector: ['validate_image_relevance', 'find_matching_images', 'suggest_missing_media'],
+}
+
+export interface ResolveChainAgentsInput {
+  websiteId: string
+  overrides?: {
+    orchestrator?: string
+    writer?: string
+    polish?: string
+    linker?: string
+    mediaSelector?: string
+  }
+}
+
+export interface ResolveChainAgentsResult {
+  orchestrator: string
+  writer: string
+  polish: string
+  linker: string
+  mediaSelector: string
+}
+
+/**
+ * Resolve the agent id for each chain role.
+ *
+ * Resolution rules (per role):
+ * 1. If `overrides.<role>` is provided, use it verbatim.
+ * 2. Otherwise, scan all agents and return the first one whose
+ *    capabilities array contains any of the role's preferred capabilities.
+ * 3. If neither path resolves an agent, return an empty string. The
+ *    caller is expected to log a warning and skip the chain step
+ *    (writer is the one role the workflow treats as required).
+ *
+ * Capabilities may be stored as either `string[]` or
+ * `Array<{ name: string; enabled?: boolean }>` — both shapes are
+ * supported (matching the factory's tolerant parsing).
+ */
+export async function resolveChainAgentsActivity(
+  input: ResolveChainAgentsInput
+): Promise<ResolveChainAgentsResult> {
+  const overrides = input.overrides ?? {}
+
+  // Load all agents once. The seed script gives us a small (~9 row)
+  // fixture so this is cheap; for production we could scope by website.
+  const agents = await agentRepository.findAll()
+
+  const hasCapability = (agent: any, cap: string): boolean => {
+    const caps = agent.capabilities
+    if (!Array.isArray(caps)) return false
+    return caps.some((c: any) => {
+      if (typeof c === 'string') return c === cap
+      if (c && typeof c === 'object' && typeof c.name === 'string') {
+        return c.name === cap && c.enabled !== false
+      }
+      return false
+    })
+  }
+
+  const findByRole = (role: keyof typeof CHAIN_ROLE_CAPABILITIES): string => {
+    const overrideId = overrides[role]
+    if (overrideId) return overrideId
+
+    const candidates = CHAIN_ROLE_CAPABILITIES[role]
+    for (const cap of candidates) {
+      const match = agents.find((a: any) => hasCapability(a, cap))
+      if (match) {
+        console.log(
+          `[ChainResolver] Resolved role=${role} → agent=${match.name} (${match.id}) via capability=${cap}`
+        )
+        return match.id
+      }
+    }
+
+    console.warn(
+      `[ChainResolver] No agent found for role=${role} (tried capabilities: ${candidates.join(', ')})`
+    )
+    return ''
+  }
+
+  return {
+    orchestrator: findByRole('orchestrator'),
+    writer: findByRole('writer'),
+    polish: findByRole('polish'),
+    linker: findByRole('linker'),
+    mediaSelector: findByRole('mediaSelector'),
+  }
+}
+
 // Initialize agents on first import
 let agentsInitialized = false
 
