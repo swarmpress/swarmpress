@@ -136,10 +136,15 @@ export async function getWebsiteBuildConfigActivity(params: {
  * `{ success: false, error: 'timeout' }` if no event is observed in
  * time — caller decides whether to escalate.
  *
- * NOTE (deferred): this is a polling stub; a future iteration should use
- * a Temporal signal driven by the webhook handler so the workflow
- * resumes immediately rather than polling. For now polling keeps the
- * dependency surface small (no signal plumbing required).
+ * @deprecated Replaced by `deploymentStatusSignal` in publishingWorkflow.
+ * The webhook handler (`webhooks.router.ts:handleDeploymentStatus`) now
+ * fires a Temporal signal directly on the active publishingWorkflow, so
+ * the workflow resumes immediately instead of polling. This activity is
+ * retained as a fallback should the signal path need re-validation (and
+ * because it had a latent bug — it queried `state_audit_log` by
+ * `entity_id: contentId`, but the webhook recorded rows with
+ * `entity_id` = website id, so the poll could never match). It is NOT
+ * called by the active workflow code path.
  */
 export async function waitForDeploymentActivity(params: {
   websiteId: string

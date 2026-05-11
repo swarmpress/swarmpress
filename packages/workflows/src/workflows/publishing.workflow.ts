@@ -8,12 +8,17 @@
  *
  *   1. Run the QA Gate (still platform-side: media relevance, links,
  *      editorial coherence) before declaring content ready for publish.
- *   2. Run SEO optimization (still platform-side).
- *   3. Merge the editorial PR — this is what actually triggers the site
+ *   2. Merge the editorial PR — this is what actually triggers the site
  *      repo's GitHub Actions deploy job.
- *   4. Wait for the GitHub `deployment_status.success` webhook (recorded by
- *      WS4's webhook handler into `state_audit_log`) and transition state
- *      to `published` once observed.
+ *   3. Wait for the GitHub `deployment_status` webhook, which fires the
+ *      `deploymentStatus` signal directly on this workflow (see
+ *      `webhooks.router.ts:handleDeploymentStatus`). Transition state to
+ *      `published` once observed.
+ *
+ * SEO optimization was previously a Step 2 here, but `invokeSEOAgent` was
+ * a silent no-op (no `SEOAgent` class exists in `packages/agents/src/seo/`,
+ * the factory threw, and the result was discarded). The call has been
+ * removed pending a real SEOAgent implementation.
  *
  * The legacy `EngineeringAgent.publish_site` / `deploy_site` /
  * `build_site` tools and the local Astro build path
@@ -29,19 +34,49 @@
  * media relevance, working links, and editorial coherence.
  */
 
-import { proxyActivities } from '@temporalio/workflow'
+import {
+  proxyActivities,
+  defineSignal,
+  setHandler,
+  condition,
+} from '@temporalio/workflow'
 import type * as activities from '../activities'
 import { qaGateWorkflow, type QAGateResult } from './qa-gate.workflow'
 
+/**
+ * Payload of the `deploymentStatus` signal fired by the GitHub
+ * `deployment_status` webhook (see
+ * `packages/backend/src/api/webhooks.router.ts:handleDeploymentStatus`).
+ *
+ * The webhook handler resolves the active publishingWorkflow by
+ * `publishing-${contentId}` deterministic id and signals it directly,
+ * replacing the legacy polling stub `waitForDeploymentActivity`.
+ */
+export interface DeploymentSignalPayload {
+  state: 'success' | 'failure' | 'error'
+  deploymentUrl?: string
+  error?: string
+  deployedAt?: string
+}
+
+/**
+ * Signal fired by the GitHub `deployment_status` webhook when the site
+ * repo's own GitHub Actions deploy job finishes (success/failure/error).
+ *
+ * Mirrors the pattern used by `ceoApprovalSignal` in
+ * `editorial-review.workflow.ts`. The handler is registered up-front so the
+ * signal is preserved across workflow replay.
+ */
+export const deploymentStatusSignal =
+  defineSignal<[DeploymentSignalPayload]>('deploymentStatus')
+
 const {
-  invokeSEOAgent,
   getContentItem,
   transitionContentState,
   publishContentEvent,
   publishDeployEvent,
   syncPublishToGitHubActivity,
   logAgentActivityToGitHub,
-  waitForDeploymentActivity,
   getCurrentTimestamp,
   measureDuration,
 } = proxyActivities<typeof activities>({
@@ -105,13 +140,14 @@ export interface PublishingResult {
  *
  * Flow (post-migration):
  * 1. QA Gate validation (media relevance, links, editorial coherence)
- * 2. SEO agent optimizes content
- * 3. Transition to scheduled state
- * 4. Merge editorial PR (this triggers site repo's GitHub Actions deploy)
- * 5. Wait for `deployment_status.success` webhook (recorded by WS4 in
- *    `state_audit_log`)
- * 6. Transition to published state
- * 7. Publish success/failure events
+ * 2. Transition to scheduled state
+ * 3. Merge editorial PR (this triggers site repo's GitHub Actions deploy)
+ * 4. Await `deploymentStatus` signal fired by the GitHub
+ *    `deployment_status` webhook (see `webhooks.router.ts`)
+ * 5. Transition to published state
+ * 6. Publish success/failure events
+ *
+ * (Step 2 used to be SEO optimization — removed; see header comment.)
  */
 export async function publishingWorkflow(
   input: PublishingInput
@@ -119,6 +155,16 @@ export async function publishingWorkflow(
   const { contentId, websiteId, seoAgentId, qaGate, deploymentTimeout } = input
   const startTime = await getCurrentTimestamp()
   let qaGateResult: QAGateResult | undefined
+
+  // Register the deployment signal handler BEFORE any awaits so it is
+  // available the moment the workflow begins (and across every replay).
+  // The webhook handler may fire the signal as soon as the merged PR
+  // triggers the site repo's GitHub Actions deploy job — possibly while
+  // we're still in earlier steps. Capturing it eagerly avoids a race.
+  let deploymentResult: DeploymentSignalPayload | null = null
+  setHandler(deploymentStatusSignal, (payload) => {
+    deploymentResult = payload
+  })
 
   try {
     console.log(`[Publishing] Starting workflow for ${contentId}`)
@@ -175,59 +221,18 @@ Please fix these issues before attempting to publish again.`,
         }
       }
 
-      console.log(`[Publishing] QA Gate PASSED - proceeding to SEO optimization`)
+      console.log(`[Publishing] QA Gate PASSED - proceeding to publish`)
     } else if (!qaGate?.qaAgentId) {
       console.log(`[Publishing] QA Gate skipped (no qaAgentId provided)`)
     }
 
-    // Step 2: SEO optimization
-    console.log(`[Publishing] Invoking SEO agent for optimization`)
-
-    // Log SEO start to GitHub
-    await logAgentActivityToGitHub({
-      contentId,
-      agentId: seoAgentId,
-      agentName: 'SEOAgent',
-      activity: 'Starting SEO optimization',
-      details: 'Optimizing page title, meta description, keywords, URL structure, and links...',
-      result: 'pending',
-    })
-
-    const seoTask = `Optimize SEO metadata for content ${contentId}.
-
-Review and optimize:
-- Page title and meta description
-- Keywords and tags
-- URL structure
-- Image alt text
-- Internal/external links
-
-Ensure all SEO best practices are followed.`
-
-    const seoResult = await invokeSEOAgent({
-      agentId: seoAgentId,
-      task: seoTask,
-      contentId,
-    })
-
-    // Log SEO result to GitHub
-    await logAgentActivityToGitHub({
-      contentId,
-      agentId: seoAgentId,
-      agentName: 'SEOAgent',
-      activity: 'SEO optimization completed',
-      details: seoResult.success
-        ? 'SEO metadata optimized successfully'
-        : `Warning: ${seoResult.error}`,
-      result: seoResult.success ? 'success' : 'failure',
-    })
-
-    if (!seoResult.success) {
-      console.warn(`[Publishing] SEO optimization failed: ${seoResult.error}`)
-      // Continue anyway - non-critical
-    } else {
-      console.log(`[Publishing] SEO optimization completed`)
-    }
+    // Step 2: SEO optimization is deferred. A future workflow will run a
+    // real SEOAgent once `packages/agents/src/seo/` is implemented. The
+    // previous `invokeSEOAgent` call has been removed because there is
+    // no SEOAgent class — the agent factory threw and the result was
+    // discarded, so the call was a silent no-op. See plan-doc
+    // /Users/drietsch/.claude/plans/check-all-the-sources-mossy-locket.md
+    // (autonomy migration WS-C).
 
     // Step 3: Transition to scheduled state
     await transitionContentState({
@@ -273,44 +278,75 @@ Ensure all SEO best practices are followed.`
     }
     console.log(`[Publishing] GitHub PR merged successfully`)
 
-    // Step 5: Wait for the GitHub `deployment_status.success` webhook to
-    // confirm the site repo's Actions workflow finished deploying.
-    // The webhook handler (WS4) records this in `state_audit_log`; the
-    // activity polls there. Implementation note: the activity body is a
-    // best-effort poll; if it times out, we surface that as a workflow
-    // failure rather than guessing the deploy succeeded.
-    console.log(`[Publishing] Waiting for deployment_status webhook`)
-    const deploymentResult = await waitForDeploymentActivity({
-      websiteId,
-      contentId,
-      timeout: deploymentTimeout || '30 minutes',
-    })
+    // Step 5: Wait for the GitHub `deployment_status` webhook to confirm
+    // the site repo's Actions workflow finished deploying. The webhook
+    // handler in `webhooks.router.ts:handleDeploymentStatus` fires the
+    // `deploymentStatus` signal directly on this workflow, so we resume
+    // immediately instead of polling. If the signal never arrives within
+    // the timeout, surface that as a workflow failure rather than
+    // guessing the deploy succeeded.
+    console.log(`[Publishing] Waiting for deploymentStatus signal`)
 
-    if (!deploymentResult.success) {
+    // `condition` accepts Temporal's `Duration` type, which is a union of
+    // `number` (milliseconds) and a template-literal string like
+    // `${number} minutes`. A widened `string` won't satisfy the literal
+    // member, so we cast — at runtime Temporal happily accepts any
+    // human-readable duration string.
+    const signalTimeout = deploymentTimeout || '30 minutes'
+    const fired = await condition(
+      () => deploymentResult !== null,
+      signalTimeout as `${number} minutes`
+    )
+
+    if (!fired) {
+      const timeoutMsg = `Timed out after ${signalTimeout} waiting for deploymentStatus signal`
+
       await logAgentActivityToGitHub({
         contentId,
         agentId: seoAgentId,
         agentName: 'PublishingWorkflow',
         activity: 'Deployment did not complete',
-        details: `**Error:** ${deploymentResult.error || 'Timed out waiting for deployment_status webhook'}`,
+        details: `**Error:** ${timeoutMsg}`,
         result: 'failure',
       })
 
       await publishDeployEvent({
         type: 'deploy.failed',
         contentId,
-        data: {
-          error: deploymentResult.error || 'Deployment did not complete',
-        },
+        data: { error: timeoutMsg },
       })
 
-      throw new Error(
-        `Deployment did not complete: ${deploymentResult.error || 'timeout'}`
-      )
+      throw new Error(`Deployment did not complete: ${timeoutMsg}`)
+    }
+
+    // After `fired === true` we know the handler set `deploymentResult`,
+    // but TS still considers it `DeploymentSignalPayload | null`. The
+    // non-null assertion is safe inside this branch.
+    const signal = deploymentResult as unknown as DeploymentSignalPayload
+
+    if (signal.state !== 'success') {
+      const failureMsg = signal.error || `Deployment ${signal.state}`
+
+      await logAgentActivityToGitHub({
+        contentId,
+        agentId: seoAgentId,
+        agentName: 'PublishingWorkflow',
+        activity: 'Deployment did not complete',
+        details: `**Error:** ${failureMsg}`,
+        result: 'failure',
+      })
+
+      await publishDeployEvent({
+        type: 'deploy.failed',
+        contentId,
+        data: { error: failureMsg },
+      })
+
+      throw new Error(`Deployment did not complete: ${failureMsg}`)
     }
 
     const publishedUrl =
-      deploymentResult.publishedUrl ||
+      signal.deploymentUrl ||
       input.siteUrl ||
       `https://www.example.com/content/${contentId}`
 
