@@ -30,6 +30,22 @@ async function main() {
   // Graceful shutdown
   process.on('SIGINT', async () => {
     console.log('\n🛑 Shutting down gracefully...')
+    try {
+      const { eventTriggerService } = await import(
+        './services/event-trigger.service.js'
+      )
+      await eventTriggerService.stop()
+    } catch (err) {
+      console.error('[shutdown] EventTriggerService.stop() failed:', err)
+    }
+    try {
+      const { outboxWorker } = await import(
+        './services/outbox-worker.service.js'
+      )
+      await outboxWorker.stop()
+    } catch (err) {
+      console.error('[shutdown] OutboxWorker.stop() failed:', err)
+    }
     await db.close()
     process.exit(0)
   })

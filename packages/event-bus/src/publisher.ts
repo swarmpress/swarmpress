@@ -41,6 +41,24 @@ export const events = {
     })
   },
 
+  /**
+   * A new brief has been created (typically by a scheduled-content workflow).
+   * Distinct from `content.created` so subscribers can trigger
+   * `contentProductionWorkflow` without looping on writer-emitted events.
+   */
+  async briefCreated(
+    contentId: string,
+    websiteId: string,
+    source: string = '/system/scheduled'
+  ) {
+    await publishEvent({
+      type: 'brief.created',
+      source,
+      subject: `content/${contentId}`,
+      data: { content_id: contentId, website_id: websiteId },
+    })
+  },
+
   async contentSubmittedForReview(contentId: string, writerAgentId: string) {
     await publishEvent({
       type: 'content.submittedForReview',

@@ -115,6 +115,20 @@ export async function startServer(port: number = 3000) {
   await eventBus.connect()
   console.log('[API] Event bus connected')
 
+  // Start OutboxWorker — drains event_outbox -> NATS for at-least-once delivery
+  const { outboxWorker } = await import('../services/outbox-worker.service')
+  await outboxWorker.start()
+  console.log('[server] OutboxWorker started')
+
+  // Start EventTriggerService — subscribes to `brief.created` and starts
+  // contentProductionWorkflow for each new brief. Closes the autonomous loop
+  // between scheduled-content and content-production.
+  const { eventTriggerService } = await import(
+    '../services/event-trigger.service'
+  )
+  await eventTriggerService.start()
+  console.log('[server] EventTriggerService started')
+
   // Start listening
   const server = app.listen(port, () => {
     console.log(`[API] Server listening on http://localhost:${port}`)

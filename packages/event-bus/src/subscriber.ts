@@ -60,6 +60,9 @@ export const subscriptions = {
   onContentApproved: (handler: EventHandler) => subscribe('content.approved', handler),
   onContentPublished: (handler: EventHandler) =>
     subscribe('content.published', handler),
+  onBriefCreated: (
+    handler: EventHandler<{ content_id: string; website_id: string }>
+  ) => subscribe('brief.created', handler),
 
   // Task events
   onTaskCreated: (handler: EventHandler) => subscribe('task.created', handler),

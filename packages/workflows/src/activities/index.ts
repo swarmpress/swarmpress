@@ -523,6 +523,7 @@ export async function publishContentEvent(params: {
     'content.productionFailed': events.contentProductionFailed,
     'content.qaGatePassed': events.qaGatePassed,
     'content.qaGateFailed': events.qaGateFailed,
+    'brief.created': events.briefCreated,
   }
 
   const eventFn = eventTypeMap[params.type]
@@ -842,8 +843,10 @@ export async function createContentBrief(params: {
 
   console.log(`[ScheduledContent] Created content brief: ${contentId} - ${params.title}`)
 
-  // Emit event
-  await events.contentCreated(contentId, 'system')
+  // Emit `brief.created` (NOT `content.created`) so the EventTriggerService
+  // can start contentProductionWorkflow without colliding with the
+  // writer-emitted `content.created` event inside that workflow.
+  await events.briefCreated(contentId, params.websiteId, '/system/scheduled')
 
   return contentId
 }
