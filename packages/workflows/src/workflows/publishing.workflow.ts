@@ -1,11 +1,31 @@
 /**
- * Publishing Workflow
- * Orchestrates the content publishing process
+ * Publishing Workflow (repo-canonical)
  *
- * GitHub Integration: Each agent step is logged to the content's PR,
- * and the PR is merged when content is successfully published.
+ * After the repo-canonical migration, build+deploy is owned by each site's
+ * own GitHub Actions workflow (`.github/workflows/deploy.yml` in the site
+ * repo). This workflow no longer triggers builds and no longer pushes to
+ * gh-pages. Its only responsibilities are:
  *
- * QA Gate Integration: Runs QA validation before publishing to ensure
+ *   1. Run the QA Gate (still platform-side: media relevance, links,
+ *      editorial coherence) before declaring content ready for publish.
+ *   2. Run SEO optimization (still platform-side).
+ *   3. Merge the editorial PR — this is what actually triggers the site
+ *      repo's GitHub Actions deploy job.
+ *   4. Wait for the GitHub `deployment_status.success` webhook (recorded by
+ *      WS4's webhook handler into `state_audit_log`) and transition state
+ *      to `published` once observed.
+ *
+ * The legacy `EngineeringAgent.publish_site` / `deploy_site` /
+ * `build_site` tools and the local Astro build path
+ * (`packages/site-builder/src/generator/{build,deploy}.ts`) are deprecated
+ * and no longer invoked from this workflow. See CLAUDE.md, section
+ * "Build & Deploy", for the current architecture.
+ *
+ * GitHub Integration: agent step logs continue to be appended as PR
+ * comments via `logAgentActivityToGitHub` so the editorial PR remains the
+ * single auditable surface for the content lifecycle.
+ *
+ * QA Gate Integration: Runs QA validation before merging to ensure
  * media relevance, working links, and editorial coherence.
  */
 
@@ -15,19 +35,17 @@ import { qaGateWorkflow, type QAGateResult } from './qa-gate.workflow'
 
 const {
   invokeSEOAgent,
-  invokeEngineeringAgent,
   getContentItem,
   transitionContentState,
   publishContentEvent,
   publishDeployEvent,
   syncPublishToGitHubActivity,
   logAgentActivityToGitHub,
-  buildFromGitHubActivity,
-  getWebsiteBuildConfigActivity,
+  waitForDeploymentActivity,
   getCurrentTimestamp,
   measureDuration,
 } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '20 minutes',
+  startToCloseTimeout: '30 minutes',
   retry: {
     maximumAttempts: 3,
     initialInterval: '1s',
@@ -40,11 +58,21 @@ export interface PublishingInput {
   contentId: string
   websiteId: string
   seoAgentId: string
-  engineeringAgentId: string
-  /** If true, build from GitHub repository instead of database */
+  /**
+   * @deprecated Retained for source-compat with existing callers. The
+   * EngineeringAgent is no longer invoked for build/deploy by this
+   * workflow; each site repo's GitHub Actions owns build+deploy.
+   */
+  engineeringAgentId?: string
+  /**
+   * @deprecated No longer used — content is always built from the site
+   * repo by GitHub Actions, never from the database by this workflow.
+   */
   buildFromGitHub?: boolean
-  /** Site URL for production builds */
+  /** Site URL (informational only — no longer used for local builds). */
   siteUrl?: string
+  /** Maximum time to wait for the GitHub deploy webhook to confirm success. */
+  deploymentTimeout?: string
   /** QA Gate configuration */
   qaGate?: {
     /** If true, run QA gate before publishing (default: true) */
@@ -73,33 +101,24 @@ export interface PublishingResult {
 }
 
 /**
- * Publishing Workflow
+ * Publishing Workflow (repo-canonical)
  *
- * Flow:
+ * Flow (post-migration):
  * 1. QA Gate validation (media relevance, links, editorial coherence)
  * 2. SEO agent optimizes content
  * 3. Transition to scheduled state
- * 4. Engineering agent validates content structure
- * 5. Engineering agent validates assets
- * 6. Build static site
- * 7. Deploy to production
- * 8. Transition to published state
- * 9. Publish success/failure events
+ * 4. Merge editorial PR (this triggers site repo's GitHub Actions deploy)
+ * 5. Wait for `deployment_status.success` webhook (recorded by WS4 in
+ *    `state_audit_log`)
+ * 6. Transition to published state
+ * 7. Publish success/failure events
  */
 export async function publishingWorkflow(
   input: PublishingInput
 ): Promise<PublishingResult> {
-  const { contentId, websiteId, seoAgentId, engineeringAgentId, siteUrl, qaGate } = input
+  const { contentId, websiteId, seoAgentId, qaGate, deploymentTimeout } = input
   const startTime = await getCurrentTimestamp()
   let qaGateResult: QAGateResult | undefined
-
-  // Determine if we should build from GitHub (explicit override or website setting)
-  let buildFromGitHub = input.buildFromGitHub
-  if (buildFromGitHub === undefined) {
-    // Check website settings
-    const buildConfig = await getWebsiteBuildConfigActivity({ websiteId })
-    buildFromGitHub = buildConfig.buildFromGitHub
-  }
 
   try {
     console.log(`[Publishing] Starting workflow for ${contentId}`)
@@ -135,13 +154,13 @@ export async function publishingWorkflow(
           contentId,
           agentId: qaGate.qaAgentId,
           agentName: 'QAAgent',
-          activity: '🚫 Publishing blocked by QA Gate',
+          activity: 'Publishing blocked by QA Gate',
           details: `Content failed quality checks and cannot be published.
 
 **Failed Checks:**
-${!qaGateResult.checks.mediaRelevance.passed ? '- Media Relevance: ❌ ' + (qaGateResult.checks.mediaRelevance.issues[0] || 'Failed') : '- Media Relevance: ✅'}
-${!qaGateResult.checks.brokenLinks.passed ? '- Broken Links: ❌ ' + (qaGateResult.checks.brokenLinks.issues[0] || 'Failed') : '- Broken Links: ✅'}
-${!qaGateResult.checks.editorialCoherence.passed ? '- Editorial Coherence: ❌ ' + (qaGateResult.checks.editorialCoherence.issues[0] || 'Failed') : '- Editorial Coherence: ✅'}
+${!qaGateResult.checks.mediaRelevance.passed ? '- Media Relevance: FAIL ' + (qaGateResult.checks.mediaRelevance.issues[0] || 'Failed') : '- Media Relevance: OK'}
+${!qaGateResult.checks.brokenLinks.passed ? '- Broken Links: FAIL ' + (qaGateResult.checks.brokenLinks.issues[0] || 'Failed') : '- Broken Links: OK'}
+${!qaGateResult.checks.editorialCoherence.passed ? '- Editorial Coherence: FAIL ' + (qaGateResult.checks.editorialCoherence.issues[0] || 'Failed') : '- Editorial Coherence: OK'}
 
 Please fix these issues before attempting to publish again.`,
           result: 'failure',
@@ -228,246 +247,94 @@ Ensure all SEO best practices are followed.`
 
     console.log(`[Publishing] Content transitioned to scheduled`)
 
-    // Step 4: Engineering validation
-    console.log(`[Publishing] Invoking engineering agent for validation`)
-
-    // Log validation start to GitHub
+    // Step 4: Merge the editorial PR — this triggers the site repo's
+    // own .github/workflows/deploy.yml to build + deploy via Actions.
+    console.log(`[Publishing] Merging GitHub PR (triggers site repo's deploy workflow)`)
     await logAgentActivityToGitHub({
       contentId,
-      agentId: engineeringAgentId,
-      agentName: 'EngineeringAgent',
-      activity: 'Starting content validation',
-      details: 'Validating JSON block structure and verifying all assets...',
+      agentId: seoAgentId,
+      agentName: 'PublishingWorkflow',
+      activity: 'Merging editorial PR',
+      details:
+        'Merging the editorial PR. The site repository\'s `.github/workflows/deploy.yml` will pick this up and own the build + deploy.',
       result: 'pending',
     })
 
-    const validateTask = `Validate content ${contentId} for publication.
+    const mergeResult = await syncPublishToGitHubActivity({ contentId })
+    if (!mergeResult.success) {
+      await publishDeployEvent({
+        type: 'deploy.failed',
+        contentId,
+        data: {
+          error: mergeResult.error || 'PR merge failed',
+        },
+      })
+      throw new Error(`PR merge failed: ${mergeResult.error || 'unknown error'}`)
+    }
+    console.log(`[Publishing] GitHub PR merged successfully`)
 
-Use your tools to:
-1. validate_content_structure: Check JSON block structure
-2. validate_assets: Verify all images have URLs and alt text
-
-Report any validation errors.`
-
-    const validationResult = await invokeEngineeringAgent({
-      agentId: engineeringAgentId,
-      task: validateTask,
-      contentId,
+    // Step 5: Wait for the GitHub `deployment_status.success` webhook to
+    // confirm the site repo's Actions workflow finished deploying.
+    // The webhook handler (WS4) records this in `state_audit_log`; the
+    // activity polls there. Implementation note: the activity body is a
+    // best-effort poll; if it times out, we surface that as a workflow
+    // failure rather than guessing the deploy succeeded.
+    console.log(`[Publishing] Waiting for deployment_status webhook`)
+    const deploymentResult = await waitForDeploymentActivity({
       websiteId,
-    })
-
-    if (!validationResult.success) {
-      // Log validation failure to GitHub
-      await logAgentActivityToGitHub({
-        contentId,
-        agentId: engineeringAgentId,
-        agentName: 'EngineeringAgent',
-        activity: 'Validation failed',
-        details: `Error: ${validationResult.error}`,
-        result: 'failure',
-      })
-      throw new Error(`Validation failed: ${validationResult.error}`)
-    }
-
-    // Check validation results
-    if (validationResult.result?.valid === false) {
-      const errors = validationResult.result?.errors || []
-      // Log validation errors to GitHub
-      await logAgentActivityToGitHub({
-        contentId,
-        agentId: engineeringAgentId,
-        agentName: 'EngineeringAgent',
-        activity: 'Validation failed - content errors',
-        details: `**Validation errors:**\n${errors.map((e: string) => `- ${e}`).join('\n')}`,
-        result: 'failure',
-      })
-      throw new Error(`Content validation failed: ${errors.join(', ')}`)
-    }
-
-    // Log validation success to GitHub
-    await logAgentActivityToGitHub({
       contentId,
-      agentId: engineeringAgentId,
-      agentName: 'EngineeringAgent',
-      activity: 'Validation passed',
-      details: 'Content structure and all assets validated successfully.',
-      result: 'success',
+      timeout: deploymentTimeout || '30 minutes',
     })
 
-    console.log(`[Publishing] Validation passed`)
-
-    // Step 5: Build and deploy
-    console.log(`[Publishing] Invoking engineering agent for build and deployment`)
-    console.log(`[Publishing] Build source: ${buildFromGitHub ? 'GitHub' : 'Database'}`)
-
-    let publishedUrl: string
-
-    if (buildFromGitHub) {
-      // Build from GitHub as source of truth
+    if (!deploymentResult.success) {
       await logAgentActivityToGitHub({
         contentId,
-        agentId: engineeringAgentId,
-        agentName: 'EngineeringAgent',
-        activity: 'Starting GitHub-based build',
-        details: `Building static site from GitHub repository...\n\n**Website ID:** ${websiteId}\n**Build Source:** GitHub`,
-        result: 'pending',
+        agentId: seoAgentId,
+        agentName: 'PublishingWorkflow',
+        activity: 'Deployment did not complete',
+        details: `**Error:** ${deploymentResult.error || 'Timed out waiting for deployment_status webhook'}`,
+        result: 'failure',
       })
 
-      const buildResult = await buildFromGitHubActivity({
-        websiteId,
-        siteUrl,
-      })
-
-      if (!buildResult.success) {
-        // Log build failure to GitHub
-        await logAgentActivityToGitHub({
-          contentId,
-          agentId: engineeringAgentId,
-          agentName: 'EngineeringAgent',
-          activity: '❌ GitHub build failed',
-          details: `**Error:** ${buildResult.error || 'Build from GitHub failed'}`,
-          result: 'failure',
-        })
-
-        // Publish failure event
-        await publishDeployEvent({
-          type: 'deploy.failed',
-          contentId,
-          data: {
-            error: buildResult.error || 'Build from GitHub failed',
-          },
-        })
-
-        throw new Error(`GitHub build failed: ${buildResult.error}`)
-      }
-
-      console.log(`[Publishing] GitHub build successful`)
-
-      // Deploy the built site using the engineering agent
-      const deployTask = `Deploy the built site for website ${websiteId}.
-
-The site has been built from GitHub at: ${buildResult.outputDir}
-
-Use your deploy_site tool to deploy to production hosting and return the published URL.`
-
-      const deployResult = await invokeEngineeringAgent({
-        agentId: engineeringAgentId,
-        task: deployTask,
+      await publishDeployEvent({
+        type: 'deploy.failed',
         contentId,
-        websiteId,
+        data: {
+          error: deploymentResult.error || 'Deployment did not complete',
+        },
       })
 
-      if (!deployResult.success) {
-        await logAgentActivityToGitHub({
-          contentId,
-          agentId: engineeringAgentId,
-          agentName: 'EngineeringAgent',
-          activity: '❌ Deployment failed',
-          details: `**Error:** ${deployResult.error || 'Deployment failed'}`,
-          result: 'failure',
-        })
-
-        await publishDeployEvent({
-          type: 'deploy.failed',
-          contentId,
-          data: {
-            error: deployResult.error || 'Deployment failed',
-          },
-        })
-
-        throw new Error(`Deployment failed: ${deployResult.error}`)
-      }
-
-      publishedUrl =
-        deployResult.result?.url ||
-        deployResult.result?.publishedUrl ||
-        `https://www.example.com/content/${contentId}`
-
-    } else {
-      // Build from database (original flow)
-      await logAgentActivityToGitHub({
-        contentId,
-        agentId: engineeringAgentId,
-        agentName: 'EngineeringAgent',
-        activity: 'Starting build and deployment',
-        details: `Building static site with Astro and deploying to production...\n\n**Website ID:** ${websiteId}\n**Build Source:** Database`,
-        result: 'pending',
-      })
-
-      const publishTask = `Publish content ${contentId} to website ${websiteId}.
-
-Use your publish_site tool to:
-1. Validate content structure and assets
-2. Build the static site with Astro
-3. Deploy to production hosting
-4. Return the published URL
-
-This is a complete end-to-end publishing workflow.`
-
-      const publishResult = await invokeEngineeringAgent({
-        agentId: engineeringAgentId,
-        task: publishTask,
-        contentId,
-        websiteId,
-      })
-
-      if (!publishResult.success) {
-        // Log deployment failure to GitHub
-        await logAgentActivityToGitHub({
-          contentId,
-          agentId: engineeringAgentId,
-          agentName: 'EngineeringAgent',
-          activity: '❌ Deployment failed',
-          details: `**Error:** ${publishResult.error || 'Build/deployment failed'}`,
-          result: 'failure',
-        })
-
-        // Publish failure event
-        await publishDeployEvent({
-          type: 'deploy.failed',
-          contentId,
-          data: {
-            error: publishResult.error || 'Build/deployment failed',
-          },
-        })
-
-        throw new Error(`Publishing failed: ${publishResult.error}`)
-      }
-
-      publishedUrl =
-        publishResult.result?.url ||
-        publishResult.result?.publishedUrl ||
-        `https://www.example.com/content/${contentId}`
+      throw new Error(
+        `Deployment did not complete: ${deploymentResult.error || 'timeout'}`
+      )
     }
 
-    console.log(`[Publishing] Build and deployment successful`)
+    const publishedUrl =
+      deploymentResult.publishedUrl ||
+      input.siteUrl ||
+      `https://www.example.com/content/${contentId}`
+
+    console.log(`[Publishing] Deployment confirmed: ${publishedUrl}`)
 
     // Log deployment success to GitHub
     await logAgentActivityToGitHub({
       contentId,
-      agentId: engineeringAgentId,
-      agentName: 'EngineeringAgent',
-      activity: '🚀 Deployment successful',
-      details: `Content has been published successfully!\n\n**Published URL:** ${publishedUrl}`,
+      agentId: seoAgentId,
+      agentName: 'PublishingWorkflow',
+      activity: 'Deployment confirmed',
+      details: `Site repo's GitHub Actions deploy completed.\n\n**Published URL:** ${publishedUrl}`,
       result: 'success',
     })
 
-    // Step 7: Merge GitHub PR (content is now live)
-    console.log(`[Publishing] Merging GitHub PR`)
-    const mergeResult = await syncPublishToGitHubActivity({ contentId })
-    if (mergeResult.success) {
-      console.log(`[Publishing] GitHub PR merged successfully`)
-    }
-
-    // Step 8: Transition to published state
+    // Step 6: Transition to published state
     await transitionContentState({
       contentId,
       event: 'deploy_success',
       actor: 'EngineeringAgent',
-      actorId: engineeringAgentId,
+      actorId: input.engineeringAgentId || seoAgentId,
     })
 
-    // Step 9: Publish success event
+    // Step 7: Publish success event
     await publishDeployEvent({
       type: 'deploy.success',
       contentId,

@@ -4,6 +4,8 @@
 > **Status:** Production Ready with Autonomous Scheduling
 > **Spec Version:** 1.1
 > **Schema Version:** 1.2.0 (46 block types, 11 agents, 11 workflows)
+> **Storage Contract:** repo-canonical — page/collection content lives in
+> the site's GitHub repo; Postgres holds only operational metadata.
 
 ---
 
@@ -38,6 +40,7 @@ It is **not** a generic content generator. It is a **structured organization** w
 - All `CREATE TABLE` / `CREATE INDEX` use `IF NOT EXISTS`; triggers use `DROP TRIGGER IF EXISTS` then `CREATE TRIGGER` so the file is replayable
 - New objects from concurrent worktrees must be appended **after** the `-- AUDIT TRAILER` marker at the end of the file, each in its own `BEGIN/COMMIT` block, to avoid merge conflicts on the previous COMMIT
 - The schema is applied by `scripts/bootstrap.ts` via the `pg` library (no `psql` shell-out), reading every `*.sql` file in `packages/backend/src/db/migrations/` lexicographically
+- **Content (page bodies, collection items) lives in the site's GitHub repo, NOT in Postgres.** Postgres only holds operational metadata (tasks, schedules, agent activity, audit log, outbox, prompt templates, registry rows). The columns `content_items.body` and `collection_items.data` are DEPRECATED — see the schema's repo-canonical migration block at the bottom of `000_schema.sql`.
 
 ### 3. **Agents Are Employees**
 Each agent has:
@@ -174,6 +177,27 @@ await stateMachineEngine.executeTransition({
 // OutboxWorker drains event_outbox to NATS asynchronously
 ```
 
+#### **Content I/O via RepoClient**
+All agent reads/writes of page or collection content go through `RepoClient`
+(`packages/github-integration/src/repo-client.ts`):
+
+```typescript
+import { getRepoClient } from '@swarm-press/github-integration'
+
+const repo = await getRepoClient(websiteId)
+const page = await repo.getPageByPath('content/pages/en/riomaggiore.json')
+await repo.savePageByPath('content/pages/en/riomaggiore.json', updatedPage, message)
+```
+
+`getRepoClient(websiteId)` reads
+`websites.{github_owner, github_repo, github_access_token}` from Postgres
+and returns a memoized client per (websiteId, branch) tuple. Agents
+NEVER touch Octokit directly. The Postgres columns
+`content_items.body`, `collection_items.data` (and the
+`collection_item_versions` table) are DEPRECATED and should not be read
+or written by new code — page/collection JSON in the site repo is the
+source of truth, with Git history as the version log.
+
 #### **Transactional Outbox for CloudEvents**
 The state-machine engine writes both the state change and the resulting
 CloudEvent inside a single Postgres transaction:
@@ -199,57 +223,102 @@ replay sandbox and must be deterministic:
 
 ---
 
-## 📦 Content Architecture Pattern
+## 📦 Content Architecture Pattern (repo-canonical)
 
-swarm.press separates **operational metadata** from **content**:
+After the repo-canonical migration, the **site's GitHub repository is the
+canonical store of record for content**. Postgres holds only operational
+metadata. Each website is one repo with its own GitHub Actions deploy
+workflow — multi-site is "more rows in `websites`," each with its own
+repo.
 
 ### Storage Separation
 | Type | Location | Purpose |
 |------|----------|---------|
-| **Metadata** | PostgreSQL | Agents, workflows, state, tasks, reviews |
-| **Content** | Git Submodule (JSON) | Pages, collections, configurations |
-| **Media** | S3/Cloudflare R2 | Images, videos, binary assets |
+| **Operational metadata** | PostgreSQL | Agents, workflows, state, tasks, reviews, schedules, audit log, outbox, prompt templates, registry rows |
+| **Content (canonical)** | Site GitHub repo (JSON) | Pages, collections, site config, agent overrides — **single source of truth** |
+| **Media** | S3 / Cloudflare R2 | Images, videos, binary assets |
 
-### Why Separate?
-- **Version Control**: Content changes tracked in Git with full history
-- **Agent Collaboration**: Agents write JSON, humans review PRs
-- **Theme Decoupling**: Same content, different presentations
-- **Multi-language**: Localized content in structured JSON format
+### Why repo-canonical?
+- **Version Control**: full Git history per change, native diff/blame/PR tooling.
+- **Agent Collaboration**: agents commit JSON; humans review PRs; same surface as human contributors.
+- **Theme Decoupling**: same JSON content, different theme renderers.
+- **Multi-language**: `LocalizedString` JSON shape, validated at write.
+- **Deploy isolation**: each site repo's `.github/workflows/deploy.yml`
+  owns its own build + deploy. Platform never builds or pushes to
+  gh-pages itself.
+- **No drift**: with one source of truth, the dual-write hazards we
+  fought during the audit cannot recur.
 
-### Content Repository Structure
+### Per-Site Repository Structure
 ```
-{site}.travel/content/
-├── config/                      # Agent configuration files
-│   ├── agent-schemas.json       # Block type documentation for agents
-│   ├── writer-prompt.json       # WriterAgent editorial voice override
-│   ├── collection-research.json # Research workflow configuration
-│   ├── blog-workflow.json       # Blog publishing workflow
-│   ├── media-guidelines.json    # MediaAgent imagery guidelines
-│   └── villages/                # Village-specific JSON configs
-│       └── {village}.json       # Per-village localized content
-├── pages/                       # Page content (JSON blocks)
-│   ├── index.json               # Homepage
-│   ├── {village}.json           # Village overviews
-│   └── {village}/               # Village-specific sections
-└── collections/                 # Collection data
-    ├── restaurants/             # Per-village restaurants
-    ├── accommodations/          # Per-village hotels
-    └── hikes/                   # Hiking trails
+{site}.travel/                     # one repo per website
+├── .github/
+│   └── workflows/
+│       └── deploy.yml             # CANONICAL build + deploy (Actions)
+├── content/
+│   ├── site.json                  # site-wide config (theme, etc.)
+│   ├── config/                    # agent overrides
+│   │   ├── agent-schemas.json
+│   │   ├── writer-prompt.json
+│   │   ├── collection-research.json
+│   │   ├── blog-workflow.json
+│   │   ├── media-guidelines.json
+│   │   └── villages/{village}.json
+│   ├── pages/                     # page content (JSON blocks)
+│   │   ├── {lang}/                # multi-language routing
+│   │   │   ├── index.json
+│   │   │   └── {village}.json
+│   └── collections/               # per-village arrays
+│       ├── restaurants/{village}.json
+│       ├── accommodations/{village}.json
+│       └── hikes/{village}.json
+└── (theme is consumed from the monorepo via the deploy workflow;
+   the repo itself does not vendor the theme)
 ```
+
+Page JSON shape (enforced live):
+`{ id, slug:LocalizedString, title:LocalizedString, page_type, seo, body[], status, timestamps }`.
+Collection items are stored as **per-village arrays**, NOT one file per
+item. `LocalizedString` requires `en` (already enforced post-audit).
 
 ### Agent Workflow with Content
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  AGENT WORKFLOW                                             │
+│  AGENT WORKFLOW (repo-canonical)                            │
 ├─────────────────────────────────────────────────────────────┤
 │  1. WriterAgent receives task from Temporal workflow        │
-│  2. Agent generates JSON blocks using block schemas         │
-│  3. JSON committed to content submodule                     │
-│  4. Pull Request created for human review                   │
-│  5. EditorAgent or human reviews and approves               │
-│  6. PR merged → triggers build → site deployed              │
+│  2. Agent reads brief + collections via RepoClient          │
+│  3. Agent commits page JSON to draft branch via RepoClient  │
+│  4. Agent opens PR on the site repo (drafts/ → main)        │
+│  5. EditorAgent reviews PR; approve = merge via RepoClient  │
+│  6. Site repo's .github/workflows/deploy.yml fires on merge │
+│  7. GitHub Actions builds Astro from monorepo theme         │
+│  8. actions/deploy-pages@v4 deploys to live URL             │
+│  9. deployment_status webhook → platform records 'deployed' │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### Build & Deploy
+The platform no longer performs local Astro builds or pushes to
+gh-pages. Build+deploy is owned by each site repo's own GitHub Actions
+workflow (`.github/workflows/deploy.yml`), which:
+
+1. Checks out the site repo (which holds the canonical content JSON).
+2. Pulls the Astro theme from the monorepo.
+3. Builds with `CONTENT_DIR=content/pages`.
+4. Deploys via `actions/deploy-pages@v4`.
+
+Once GitHub fires the `deployment_status.success` webhook, the platform
+records the transition in `state_audit_log` and the
+`publishingWorkflow` resumes its "wait for deploy" activity.
+
+The retired pieces (kept for backward compat as deprecated paths):
+- `EngineeringAgent.{validate_content, build_site, deploy_site, publish_website, build_from_github}` tools
+- `packages/site-builder/src/generator/{build,deploy}.ts` (local Astro
+  build + Octokit gh-pages push — the "parallel deploy nobody saw")
+- `github.deployToPages` tRPC mutation
+- `publishingWorkflow`'s former engineering-build / engineering-deploy
+  steps (replaced by `waitForDeploymentActivity`)
 
 ---
 
@@ -299,6 +368,10 @@ required at the type level.
 - **5 Villages**: Riomaggiore, Manarola, Corniglia, Vernazza, Monterosso
 - **35+ Astro Components**: Editorial blocks, village content, collections
 - **Dynamic Village Config**: JSON-based village data (weather, character, essentials)
+
+> Note: the submodule's `build-all-pages.js` (vanilla JS HTML generator) is a
+> legacy fallback; the live deploy uses the Astro theme via the submodule's
+> `.github/workflows/deploy.yml`.
 
 ---
 
@@ -412,11 +485,20 @@ The master schema at `packages/backend/src/db/migrations/000_schema.sql` include
 - **websites** - Publication surfaces with GitHub integration
   - GitHub repo connection (owner, repo, installation_id, access_token)
   - GitHub Pages deployment (branch, path, custom domain, status)
+  - `last_deployed_at` / `deployment_status` updated by the
+    `deployment_status` webhook handler (WS4), not by the platform's
+    own deploy code
 - **pages** - Sitemap structure with agentic features
   - SEO profiles, internal links, suggestions, tasks (all JSONB)
   - Hierarchical structure (parent_id)
+  - **Note:** there is no `pages.body` column; page block content lives
+    in the site repo at `content/pages/{lang}/{slug}.json`, not in
+    Postgres
 - **content_blueprints** - Page templates
-- **content_items** - Actual content with JSON body
+- **content_items** - Operational metadata for editorial tasks
+  - `content_items.body` is **DEPRECATED** (nullable, no new writes) —
+    page body JSON lives in the site repo. The row is now an ops handle
+    (status, author, timestamps, metadata) for the editorial workflow.
 
 ### Editorial Planning System
 - **editorial_tasks** - Content planning with SEO & linking metadata
@@ -452,7 +534,7 @@ The master schema at `packages/backend/src/db/migrations/000_schema.sql` include
 |-------|-----------|--------------|
 | **WriterAgent** | Writers Room | research_topic, write_draft, revise_draft, submit_for_review |
 | **EditorAgent** | Editorial | review_content, request_changes, approve_content, reject_content, escalate_to_ceo |
-| **EngineeringAgent** | Engineering | prepare_build, validate_assets, publish_site |
+| **EngineeringAgent** | Engineering | get_website_info, export_collection_to_github, import_collection_from_github, batch jobs (build/deploy tools DEPRECATED — see Build & Deploy section) |
 | **CEOAssistantAgent** | Governance | summarize_tickets, organize_escalations, notify_ceo |
 
 ### Agent Location
@@ -591,12 +673,17 @@ packages/shared/src/content/collections/
 └── index.ts
 ```
 
-### Database Tables (from spec, to be added)
-- **website_collections** - Per-website collection config
-- **collection_items** - Actual collection records
-- **collection_item_versions** - Version history
-- **media** - Binary asset registry
-- **media_processing_queue** - Image processing queue
+### Database Tables
+- **website_collections** - Per-website collection config (active)
+- **collection_items** - Operational handle for collection records;
+  `collection_items.data` is **DEPRECATED** (nullable, no new writes) —
+  item content lives in the site repo at
+  `content/collections/{type}/{village}.json` (per-village arrays)
+- **collection_item_versions** - **DEPRECATED**, replaced by Git history
+  on the site repo. Retained for backward compat; a follow-up cleanup
+  PR may DROP the table once a data audit confirms it is unused.
+- **media** - Binary asset registry (active)
+- **media_processing_queue** - Image processing queue (active)
 
 ---
 
@@ -803,16 +890,19 @@ apps/admin/src/components/
 1. **Never skip workflows** — All content must go through the full BPMN process
 2. **Never bypass state machines** — All transitions go through `executeTransition()`, which writes the audit row, the entity update, and the outbox event in one transaction
 3. **Never let agents act outside their role** — Enforce RBAC strictly
-4. **Always emit events via the outbox** — Direct `eventBus.publish()` from inside a state-changing path is forbidden; insert into `event_outbox` in the same tx and let `OutboxWorker` deliver
-5. **Always use QuestionTickets for escalation** — No informal CEO pings
-6. **Agents are stateless** — No instance fields for conversation/cache; `AgentFactory` always returns fresh instances
-7. **Temporal workflow code must be deterministic** — No `Date.now()`, `Math.random()`, `crypto.randomUUID()`, or `fetch()` inside `packages/workflows/src/workflows/**`. Use the determinism activities. ESLint enforces this.
-8. **Temporal calls agents synchronously** — Not event-driven
-9. **Content is JSON blocks** — Not plain Markdown, not MDX. Renderers do not parse markdown at render time.
-10. **LocalizedString must always include `en`** — Read via `getLocalizedValue(value, locale)`, never `value[locale] || value.en`
-11. **Schema appends go after the AUDIT TRAILER marker** — In their own `BEGIN/COMMIT` block, so parallel worktrees can merge cleanly
-12. **Spec is the source of truth** — Implementation follows spec
-13. **CEO has final authority** — No agent can override CEO decisions
+4. **All content I/O goes through `RepoClient`** — agents never touch Octokit directly. Import via `@swarm-press/github-integration`'s `getRepoClient(websiteId)`.
+5. **Content lives in the site repo, never in Postgres** — page bodies and collection items belong in `content/pages/` and `content/collections/` of the site's GitHub repo. The Postgres columns `content_items.body` and `collection_items.data` are DEPRECATED.
+6. **Build and deploy are owned by each site's own GitHub Actions workflow** — the platform never runs Astro locally and never pushes to gh-pages. Merging the editorial PR is what triggers deployment.
+7. **Always emit state-change events via the outbox** — direct `eventBus.publish()` from inside a state-changing transaction is forbidden; insert into `event_outbox` in the same tx and let `OutboxWorker` deliver. Build/deploy events are NOT outbox-driven; they are observed via the GitHub `deployment_status` webhook.
+8. **Always use QuestionTickets for escalation** — No informal CEO pings
+9. **Agents are stateless** — No instance fields for conversation/cache; `AgentFactory` always returns fresh instances
+10. **Temporal workflow code must be deterministic** — No `Date.now()`, `Math.random()`, `crypto.randomUUID()`, or `fetch()` inside `packages/workflows/src/workflows/**`. Use the determinism activities. ESLint enforces this.
+11. **Temporal calls agents synchronously** — Not event-driven
+12. **Content is JSON blocks** — Not plain Markdown, not MDX. Renderers do not parse markdown at render time.
+13. **LocalizedString must always include `en`** — Read via `getLocalizedValue(value, locale)`, never `value[locale] || value.en`
+14. **Schema appends go after the AUDIT TRAILER marker** — In their own `BEGIN/COMMIT` block, so parallel worktrees can merge cleanly
+15. **Spec is the source of truth** — Implementation follows spec
+16. **CEO has final authority** — No agent can override CEO decisions
 
 ---
 
@@ -938,14 +1028,19 @@ tsx scripts/seed.ts
 - [x] PageOrchestratorAgent for page coordination
 - [x] PagePolishAgent for coherence
 - [x] AuditAgent for content auditing
-- [x] EngineeringAgent for builds
+- [x] EngineeringAgent — DEPRECATED build/deploy tools (`build_site`, `deploy_site`, `publish_website`, `validate_content`, `build_from_github`); active tools are GitHub sync helpers and batch processing
 - [x] CEOAssistantAgent for escalations
 - [x] Agent adapters (REST, GraphQL, MCP, JavaScript sandbox)
+- [x] **RepoClient**: per-website GitHub abstraction
+      (`packages/github-integration/src/repo-client.ts`) — single content
+      I/O path; agents never touch Octokit directly
 
 **Workflow System:**
 - [x] Content Production workflow
 - [x] Editorial Review workflow
-- [x] Publishing workflow
+- [x] Publishing workflow — repo-canonical: merges editorial PR, then
+      waits for `deployment_status` webhook. No longer triggers local
+      Astro builds.
 - [x] Batch Processing workflow
 - [x] Page Content Generation workflow
 - [x] Collection Research workflow
@@ -954,6 +1049,19 @@ tsx scripts/seed.ts
 - [x] Scheduled Maintenance workflow
 - [x] Content Integrity workflow
 - [x] Website Generation workflow
+
+**Build & Deploy (DEPRECATED platform paths — owned by site repo Actions):**
+- [~] `EngineeringAgent.{build_site, deploy_site, publish_website, validate_content, build_from_github}` — handlers retained, NOT registered as Claude tools
+- [~] `packages/site-builder/src/generator/build.ts` — local Astro build, deprecated; do not add new callers
+- [~] `packages/site-builder/src/generator/deploy.ts` — Octokit gh-pages push, deprecated; do not add new callers
+- [~] `github.deployToPages` tRPC mutation — deprecated; logs warning, retained for backward compat
+- [~] Local Astro build on Temporal worker — replaced by GitHub Actions in each site repo
+
+**Webhook surface (WS4):**
+- [x] `pull_request.opened` handler — upserts `pr_content_mappings`
+- [x] `push` to main handler — emits `content.pushed` CloudEvent into outbox
+- [x] `deployment_status` handler — records deploy completion in `state_audit_log` and on the `websites` row
+- [x] `pr_content_mappings` table — PR ↔ content_item mapping for editor approval flow
 
 **Autonomous Scheduling:**
 - [x] Temporal Schedules integration

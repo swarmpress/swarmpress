@@ -127,7 +127,122 @@ export async function getWebsiteBuildConfigActivity(params: {
 }
 
 /**
+ * Wait for the GitHub `deployment_status.success` webhook to confirm
+ * that the site repo's own `.github/workflows/deploy.yml` has finished
+ * deploying after a content PR merge.
+ *
+ * Implementation: polls `state_audit_log` for a 'deployed' transition
+ * recorded by the WS4 webhook handler. Bounded by `timeout`. Returns
+ * `{ success: false, error: 'timeout' }` if no event is observed in
+ * time — caller decides whether to escalate.
+ *
+ * NOTE (deferred): this is a polling stub; a future iteration should use
+ * a Temporal signal driven by the webhook handler so the workflow
+ * resumes immediately rather than polling. For now polling keeps the
+ * dependency surface small (no signal plumbing required).
+ */
+export async function waitForDeploymentActivity(params: {
+  websiteId: string
+  contentId: string
+  /** ISO 8601 duration or a Temporal-style "30 minutes" string. */
+  timeout?: string
+}): Promise<{
+  success: boolean
+  publishedUrl?: string
+  deployedAt?: string
+  error?: string
+}> {
+  // Best-effort timeout parser: supports "<n> minutes" / "<n> seconds"
+  // / "<n>m" / "<n>s". Defaults to 30 minutes.
+  const parseTimeoutMs = (s: string): number => {
+    const m = s.match(/^(\d+)\s*(minutes?|seconds?|m|s)$/i)
+    if (!m) return 30 * 60 * 1000
+    const n = Number(m[1])
+    const unit = m[2]?.toLowerCase() ?? 'm'
+    return unit.startsWith('s') ? n * 1000 : n * 60 * 1000
+  }
+
+  const timeoutMs = parseTimeoutMs(params.timeout || '30 minutes')
+  const pollIntervalMs = 10_000
+  const deadline = Date.now() + timeoutMs
+
+  // Lazy import to avoid pulling backend into the workflow bundle.
+  // The repository name is the canonical state-audit log surface; if
+  // it's unavailable we fall back to a no-op success after a short
+  // grace period so the workflow doesn't hard-fail in environments
+  // where the audit log isn't wired up.
+  let stateAuditLogRepository: {
+    findRecent?: (filter: {
+      websiteId?: string
+      entityId?: string
+      to?: string
+      limit?: number
+    }) => Promise<Array<{ to: string; metadata?: Record<string, unknown>; created_at: string }>>
+  } = {}
+
+  try {
+    const backend = (await import('@swarm-press/backend')) as Record<string, unknown>
+    if (backend.stateAuditLogRepository) {
+      stateAuditLogRepository = backend.stateAuditLogRepository as typeof stateAuditLogRepository
+    }
+  } catch (err) {
+    console.warn(`[waitForDeployment] backend import failed: ${err instanceof Error ? err.message : err}`)
+  }
+
+  // If we have no way to observe deploy events, surface that — don't
+  // silently claim success.
+  if (!stateAuditLogRepository.findRecent) {
+    console.warn(
+      '[waitForDeployment] state_audit_log not available; cannot observe deployment_status webhook. ' +
+        'Returning success=false so the workflow surfaces the gap rather than guessing.'
+    )
+    return {
+      success: false,
+      error:
+        'Cannot observe deployment_status webhook: stateAuditLogRepository.findRecent not available. ' +
+        'Confirm WS4 webhook handler is wired and the audit log repo is exported from @swarm-press/backend.',
+    }
+  }
+
+  while (Date.now() < deadline) {
+    try {
+      const events = await stateAuditLogRepository.findRecent({
+        websiteId: params.websiteId,
+        entityId: params.contentId,
+        to: 'deployed',
+        limit: 1,
+      })
+
+      if (events && events.length > 0 && events[0]) {
+        const evt = events[0]
+        const url = (evt.metadata?.url as string | undefined) || undefined
+        return {
+          success: true,
+          publishedUrl: url,
+          deployedAt: evt.created_at,
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[waitForDeployment] poll failed: ${err instanceof Error ? err.message : err}`
+      )
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
+  }
+
+  return {
+    success: false,
+    error: `Timed out after ${params.timeout || '30 minutes'} waiting for deployment_status webhook`,
+  }
+}
+
+/**
  * Clean up build artifacts
+ *
+ * @deprecated Repo-canonical migration: build artifacts now live inside
+ * the site repo's GitHub Actions runner, not on the platform's
+ * filesystem. Retained for backward compat with existing callers.
  */
 export async function cleanBuildArtifactsActivity(params: {
   websiteId: string

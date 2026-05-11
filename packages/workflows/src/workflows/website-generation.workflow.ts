@@ -6,7 +6,10 @@
  * 1. Research - Populate collections with data from web research
  * 2. Content Generation - Create content for all pages
  * 3. Editorial Review - Review and approve content
- * 4. Publishing - Build and deploy the static site
+ * 4. Publishing - Merges editorial PRs; site repo's own GitHub Actions
+ *    workflow performs the actual build + deploy. The platform no longer
+ *    runs Astro locally or pushes to gh-pages — see CLAUDE.md
+ *    "Build & Deploy" section and `publishing.workflow.ts` header.
  */
 
 import {
@@ -315,6 +318,11 @@ export async function websiteGenerationWorkflow(
     // ========================================================================
     // Phase 4: Publishing
     // ========================================================================
+    // Repo-canonical: this phase no longer runs Astro locally or pushes to
+    // gh-pages. It merges the editorial PR; the site repo's own
+    // `.github/workflows/deploy.yml` performs the build + deploy.
+    // The `engineerAgentId` is passed through for backward compat but is
+    // not invoked for build/deploy by the publishing workflow.
     console.log(`[WebsiteGeneration] Phase 4: Publishing`)
     const publishStart = await getCurrentTimestamp()
 
@@ -324,8 +332,9 @@ export async function websiteGenerationWorkflow(
       const publishResult = await executeChild('publishingWorkflow', {
         args: [{
           websiteId,
-          engineerAgentId,
-          deployTarget: 'github-pages',
+          engineeringAgentId: engineerAgentId,
+          // deployTarget removed: each site repo owns its own deploy
+          // surface via its GitHub Actions workflow.
         }],
         workflowId: publishWorkflowId,
       })

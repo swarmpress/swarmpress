@@ -44,12 +44,21 @@ async function getSiteBuilder() {
 
 /**
  * Validate content structure before building
+ *
+ * @deprecated Repo-canonical migration: validation now happens inside the
+ * site repo's GitHub Actions workflow (which builds the same Astro theme
+ * the platform used to build locally). This handler is retained for
+ * backward compat but should not be invoked by new code. See CLAUDE.md
+ * "Build & Deploy" section.
  */
 export const validateContentHandler: ToolHandler<{ website_id: string }> = async (
   input,
   _context
 ): Promise<ToolResult> => {
   try {
+    console.warn(
+      '[deprecated] EngineeringAgent.validate_content called — see CLAUDE.md repo-canonical section'
+    )
     const contentRepository = await getContentRepository()
     const siteBuilder = await getSiteBuilder()
 
@@ -82,12 +91,19 @@ export const validateContentHandler: ToolHandler<{ website_id: string }> = async
 
 /**
  * Build static site from published content
+ *
+ * @deprecated Repo-canonical migration: build+deploy now owned by site
+ * repo's GitHub Actions. This handler is retained for backward compat but
+ * should not be invoked by new code. See CLAUDE.md "Build & Deploy".
  */
 export const buildSiteHandler: ToolHandler<{
   website_id: string
   site_url?: string
 }> = async (input, _context): Promise<ToolResult> => {
   try {
+    console.warn(
+      '[deprecated] EngineeringAgent.build_site called — see CLAUDE.md repo-canonical section'
+    )
     const siteBuilder = await getSiteBuilder()
 
     console.log(`[EngineeringAgent] Starting build for website ${input.website_id}`)
@@ -116,6 +132,10 @@ export const buildSiteHandler: ToolHandler<{
 
 /**
  * Deploy built site to hosting platform
+ *
+ * @deprecated Repo-canonical migration: build+deploy now owned by site
+ * repo's GitHub Actions. This handler is retained for backward compat but
+ * should not be invoked by new code. See CLAUDE.md "Build & Deploy".
  */
 export const deploySiteHandler: ToolHandler<{
   website_id: string
@@ -124,6 +144,9 @@ export const deploySiteHandler: ToolHandler<{
   config?: Record<string, string>
 }> = async (input, _context): Promise<ToolResult> => {
   try {
+    console.warn(
+      '[deprecated] EngineeringAgent.deploy_site called — see CLAUDE.md repo-canonical section'
+    )
     const siteBuilder = await getSiteBuilder()
 
     console.log(`[EngineeringAgent] Deploying to ${input.deploy_target} for website ${input.website_id}`)
@@ -154,6 +177,11 @@ export const deploySiteHandler: ToolHandler<{
 
 /**
  * Complete publish workflow: validate, build, deploy
+ *
+ * @deprecated Repo-canonical migration: build+deploy now owned by site
+ * repo's GitHub Actions, triggered when the editorial PR is merged. This
+ * handler is retained for backward compat but should not be invoked by
+ * new code. See CLAUDE.md "Build & Deploy".
  */
 export const publishWebsiteHandler: ToolHandler<{
   website_id: string
@@ -163,6 +191,9 @@ export const publishWebsiteHandler: ToolHandler<{
   deploy_config?: Record<string, string>
 }> = async (input, _context): Promise<ToolResult> => {
   try {
+    console.warn(
+      '[deprecated] EngineeringAgent.publish_website called — see CLAUDE.md repo-canonical section'
+    )
     const siteBuilder = await getSiteBuilder()
     const websiteRepository = await getWebsiteRepository()
 
@@ -499,12 +530,20 @@ export const importFromGitHubHandler: ToolHandler<{
 
 /**
  * Build static site from GitHub repository content
+ *
+ * @deprecated Repo-canonical migration: build+deploy now owned by site
+ * repo's GitHub Actions. The platform no longer pulls repo content and
+ * builds locally. This handler is retained for backward compat but
+ * should not be invoked by new code. See CLAUDE.md "Build & Deploy".
  */
 export const buildFromGitHubHandler: ToolHandler<{
   website_id: string
   site_url?: string
 }> = async (input, _context): Promise<ToolResult> => {
   try {
+    console.warn(
+      '[deprecated] EngineeringAgent.build_from_github called — see CLAUDE.md repo-canonical section'
+    )
     const siteBuilder = await getSiteBuilder()
     const websiteRepository = await getWebsiteRepository()
 

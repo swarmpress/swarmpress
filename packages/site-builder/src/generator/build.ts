@@ -1,6 +1,18 @@
 /**
  * Site Builder
- * Generates static sites from database content
+ * Generates static sites from database content.
+ *
+ * @deprecated AS OF REPO-CANONICAL MIGRATION (see plan:
+ * check-all-the-sources-mossy-locket.md and CLAUDE.md → "Build & Deploy"
+ * section).
+ *
+ * The platform no longer performs local Astro builds or pushes to
+ * gh-pages. Each site's own .github/workflows/deploy.yml is the source of
+ * truth for build+deploy.
+ *
+ * This file is retained temporarily so existing imports don't break the
+ * build, but it should be removed in a follow-up cleanup PR. Do not add
+ * new callers.
  */
 
 import { exec } from 'child_process'
