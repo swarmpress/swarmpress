@@ -113,3 +113,29 @@ export function getGitHubMapping(
 ): { github_number: number; github_url: string; github_type: string } | null {
   return null
 }
+
+/**
+ * @deprecated Used to live in sync.ts (now disabled). The repo-canonical
+ * migration moved content commits + PR creation inline into WriterAgent's
+ * write_draft / submit_for_review. These shims log + no-op so legacy
+ * activity wrappers don't crash with "is not a function". Migrate callers
+ * to use RepoClient directly, then remove.
+ */
+export async function syncContentToGitHub(contentId: string): Promise<void> {
+  console.warn(`[github-integration] syncContentToGitHub(${contentId}) is a no-op — migrate caller to RepoClient`)
+}
+export async function syncApprovalToGitHub(contentId: string, _message: string, _agentId: string): Promise<void> {
+  console.warn(`[github-integration] syncApprovalToGitHub(${contentId}) is a no-op — migrate caller to RepoClient`)
+}
+export async function syncRejectionToGitHub(contentId: string, _reason: string, _agentId: string): Promise<void> {
+  console.warn(`[github-integration] syncRejectionToGitHub(${contentId}) is a no-op — migrate caller to RepoClient`)
+}
+export async function syncPublishToGitHub(contentId: string): Promise<void> {
+  console.warn(`[github-integration] syncPublishToGitHub(${contentId}) is a no-op — migrate caller to RepoClient`)
+}
+export async function syncQuestionToGitHub(_ticketId: string): Promise<void> {
+  console.warn(`[github-integration] syncQuestionToGitHub is a no-op — migrate caller to RepoClient`)
+}
+export async function syncTaskToGitHub(_taskId: string): Promise<void> {
+  console.warn(`[github-integration] syncTaskToGitHub is a no-op — migrate caller to RepoClient`)
+}

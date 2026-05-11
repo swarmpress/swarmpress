@@ -208,9 +208,21 @@ function draftFilePath(contentId: string): string {
  */
 export const getContentHandler: ToolHandler<{ content_id: string }> = async (
   input,
-  _context
+  context
 ): Promise<ToolResult> => {
   try {
+    // Defend against agent contentId hallucination — see writeDraftHandler.
+    if (context.contentId && input.content_id !== context.contentId) {
+      console.error(
+        `[WriterHandler] get_content REJECTED: input.content_id=${input.content_id} ` +
+        `does not match workflow context contentId=${context.contentId}.`
+      )
+      return toolError(
+        `content_id mismatch: you passed "${input.content_id}" but this task is ` +
+        `for content_id "${context.contentId}". Use the contentId from your task ` +
+        `description / context block, not any other id.`
+      )
+    }
     const contentRepository = await getContentRepository()
     const content = await contentRepository.findById(input.content_id)
 
@@ -250,6 +262,24 @@ export const writeDraftHandler: ToolHandler<{
   body: any[]
 }> = async (input, context): Promise<ToolResult> => {
   try {
+    // Defend against agent contentId hallucination: the workflow context
+    // is authoritative. Observed in Phase-2 live runs that Claude sometimes
+    // passes a stale/hallucinated content_id even when the user message and
+    // tool-context both pin a different one. Refuse the call with a loud
+    // error so the agent retries with the right id rather than corrupting
+    // the wrong content's draft branch.
+    if (context.contentId && input.content_id !== context.contentId) {
+      console.error(
+        `[WriterHandler] write_draft REJECTED: input.content_id=${input.content_id} ` +
+        `does not match workflow context contentId=${context.contentId}.`
+      )
+      return toolError(
+        `content_id mismatch: you passed "${input.content_id}" but this task is ` +
+        `for content_id "${context.contentId}". Use the contentId from your task ` +
+        `description / context block, not any other id.`
+      )
+    }
+
     console.log(`[WriterHandler] write_draft called:`, {
       content_id: input.content_id,
       title: input.title,
@@ -326,15 +356,37 @@ export const writeDraftHandler: ToolHandler<{
     const commit = await contentService.savePageByPath(filePath, pageFile, commitMessage)
 
     // State transition stays in Postgres — state is operational metadata.
+    // Wrapped in try/catch + idempotent re-check because the engine throws
+    // StateTransitionConflict (optimistic-lock) when parallel attempts of this
+    // same activity race. If our attempt loses the race but the row has been
+    // advanced to a downstream state, treat as success — the workflow's intent
+    // (move past brief_created) was achieved.
     if (existing.status === 'brief_created') {
-      const transitionResult = await contentRepository.transition(
-        input.content_id,
-        'writer.started',  // Matches state machine event name
-        'Writer',  // Matches state machine allowedActors
-        context.agentId
-      )
-      if (!transitionResult.success) {
-        console.warn(`[WriterHandler] Could not transition to draft: ${transitionResult.error}`)
+      try {
+        const transitionResult = await contentRepository.transition(
+          input.content_id,
+          'writer.started',  // Matches state machine event name
+          'Writer',  // Matches state machine allowedActors
+          context.agentId
+        )
+        if (!transitionResult.success) {
+          console.warn(`[WriterHandler] Could not transition to draft: ${transitionResult.error}`)
+        }
+      } catch (transitionErr) {
+        const name = transitionErr instanceof Error ? transitionErr.name : ''
+        if (name === 'StateTransitionConflict') {
+          const fresh = await contentRepository.findById(input.content_id)
+          if (fresh && fresh.status !== 'brief_created') {
+            console.log(
+              `[WriterHandler] transition raced; row already at status="${fresh.status}" — treating as idempotent success`
+            )
+          } else {
+            // Truly stuck: nobody won. Surface the error.
+            throw transitionErr
+          }
+        } else {
+          throw transitionErr
+        }
       }
     }
 
@@ -374,6 +426,18 @@ export const reviseDraftHandler: ToolHandler<{
   revision_notes?: string
 }> = async (input, context): Promise<ToolResult> => {
   try {
+    // Defend against agent contentId hallucination — see writeDraftHandler.
+    if (context.contentId && input.content_id !== context.contentId) {
+      console.error(
+        `[WriterHandler] revise_draft REJECTED: input.content_id=${input.content_id} ` +
+        `does not match workflow context contentId=${context.contentId}.`
+      )
+      return toolError(
+        `content_id mismatch: you passed "${input.content_id}" but this task is ` +
+        `for content_id "${context.contentId}".`
+      )
+    }
+
     // Validate body
     if (!Array.isArray(input.body)) {
       return toolError('Body must be an array of content blocks')
@@ -598,6 +662,17 @@ export const submitForReviewHandler: ToolHandler<{ content_id: string }> = async
   context
 ): Promise<ToolResult> => {
   try {
+    // Defend against agent contentId hallucination — see writeDraftHandler.
+    if (context.contentId && input.content_id !== context.contentId) {
+      console.error(
+        `[WriterHandler] submit_for_review REJECTED: input.content_id=${input.content_id} ` +
+        `does not match workflow context contentId=${context.contentId}.`
+      )
+      return toolError(
+        `content_id mismatch: you passed "${input.content_id}" but this task is ` +
+        `for content_id "${context.contentId}".`
+      )
+    }
     const contentRepository = await getContentRepository()
 
     // Check content exists

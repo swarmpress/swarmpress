@@ -91,6 +91,16 @@ export const workerManager = new TemporalWorkerManager()
 export async function initializeWorkers(): Promise<void> {
   console.log('🚀 Initializing Temporal workers...')
 
+  // Connect to NATS / JetStream so activities like publishContentEvent
+  // (which call events.* → publishEvent → js.publish) don't throw
+  // "JetStream not initialized" the first time they fire. The backend
+  // has its own connection; this is for the worker process.
+  const { eventBus } = await import('@swarm-press/event-bus')
+  if (!eventBus.isConnected()) {
+    await eventBus.connect()
+    console.log('✅ Worker connected to NATS / JetStream')
+  }
+
   // Import activities (will be implemented in Phase 4)
   const activities = await import('../activities')
 

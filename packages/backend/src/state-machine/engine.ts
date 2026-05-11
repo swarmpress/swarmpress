@@ -147,59 +147,74 @@ export async function executeTransition<TState extends string, TEvent extends st
   try {
     // 2. Execute in database transaction (state update + audit + outbox enqueue)
     const result = await db.transaction(async (client) => {
-      // 2a. Resolve optimistic-lock token. Prefer caller-supplied value; fall
-      //     back to a SELECT inside the same tx so we at least catch races
-      //     against rows changed before BEGIN.
-      let lockToken: Date | string | undefined = expectedUpdatedAt
-      if (lockToken === undefined) {
-        const lockRes = await client.query<{ updated_at: Date }>(
-          `SELECT updated_at FROM ${tableName} WHERE id = $1`,
-          [entityId]
-        )
-        const lockRow = lockRes.rows[0]
-        if (!lockRow) {
-          throw new Error(`Entity ${entityId} not found`)
-        }
-        lockToken = lockRow.updated_at
-      }
-
-      // 2b. Optimistic-locked state update
-      const updateQuery = `
-        UPDATE ${tableName}
-        SET status = $1, updated_at = NOW()
-        WHERE id = $2 AND updated_at = $3
-        RETURNING *
-      `
-      const updateResult = await client.query(updateQuery, [
-        nextState,
-        entityId,
-        lockToken,
-      ])
-
-      if (updateResult.rows.length === 0) {
-        // Distinguish "not found" from "stale" so we throw the right error.
-        const exists = await client.query<{ id: string }>(
-          `SELECT id FROM ${tableName} WHERE id = $1`,
-          [entityId]
-        )
-        if (exists.rows.length === 0) {
-          throw new Error(`Entity ${entityId} not found`)
-        }
-        throw new StateTransitionConflict({
+      // 2a. Lock the row.
+      //   - If caller supplied `expectedUpdatedAt`, do an OPTIMISTIC check:
+      //     fail with StateTransitionConflict if the row was modified since
+      //     the caller read it.
+      //   - Otherwise, take a PESSIMISTIC `SELECT … FOR UPDATE` lock so
+      //     concurrent transitions serialise instead of racing.
+      //
+      //   Why pessimistic by default: TIMESTAMPTZ has microsecond precision
+      //   but JS Date is millisecond precision; round-tripping a fetched
+      //   updated_at and comparing back via `WHERE updated_at = $` can lose
+      //   sub-millisecond bits and report a phantom conflict even with no
+      //   concurrent writes. Row locking sidesteps the precision question
+      //   entirely. Callers that do their own read+write windows can still
+      //   get optimistic semantics by passing expectedUpdatedAt explicitly.
+      let updateResult: { rows: Array<Record<string, unknown>> }
+      if (expectedUpdatedAt !== undefined) {
+        const updateQuery = `
+          UPDATE ${tableName}
+          SET status = $1, updated_at = NOW()
+          WHERE id = $2 AND updated_at = $3
+          RETURNING *
+        `
+        updateResult = await client.query(updateQuery, [
+          nextState,
           entityId,
-          entityType,
-          fromState: currentState,
-          toState: nextState,
-          event,
-        })
+          expectedUpdatedAt,
+        ])
+        if (updateResult.rows.length === 0) {
+          const exists = await client.query<{ id: string }>(
+            `SELECT id FROM ${tableName} WHERE id = $1`,
+            [entityId]
+          )
+          if (exists.rows.length === 0) {
+            throw new Error(`Entity ${entityId} not found`)
+          }
+          throw new StateTransitionConflict({
+            entityId,
+            entityType,
+            fromState: currentState,
+            toState: nextState,
+            event,
+          })
+        }
+      } else {
+        // Pessimistic path
+        const lockRes = await client.query<{ id: string }>(
+          `SELECT id FROM ${tableName} WHERE id = $1 FOR UPDATE`,
+          [entityId]
+        )
+        if (lockRes.rows.length === 0) {
+          throw new Error(`Entity ${entityId} not found`)
+        }
+        updateResult = await client.query(
+          `UPDATE ${tableName} SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+          [nextState, entityId]
+        )
       }
 
       // 2c. Create audit record
+      // NOTE: state_audit_log schema uses (entity_type, entity_id, from_state,
+      // to_state, actor_type, actor_id, metadata). There is no `event` or
+      // `actor` column — `event` is folded into `metadata.event` and
+      // `actor_type` replaces `actor`. This matches 000_schema.sql.
       const auditId = uuidv4()
       const auditQuery = `
         INSERT INTO state_audit_log (
-          id, entity_type, entity_id, from_state, to_state, event, actor, actor_id, metadata
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          id, entity_type, entity_id, from_state, to_state, actor_type, actor_id, metadata
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *
       `
       const auditResult = await client.query(auditQuery, [
@@ -208,10 +223,9 @@ export async function executeTransition<TState extends string, TEvent extends st
         entityId,
         currentState,
         nextState,
-        event,
         actor,
         actorId,
-        JSON.stringify(metadata || {}),
+        JSON.stringify({ ...(metadata || {}), event }),
       ])
 
       // 2d. Enqueue CloudEvent in the SAME transaction (transactional outbox).
