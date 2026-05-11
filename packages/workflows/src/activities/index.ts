@@ -760,8 +760,17 @@ export async function logAgentActivityToGitHub(params: {
       return { success: true }
     }
 
-    // Import addPRComment from github-integration
-    const { addPRComment } = await import('@swarm-press/github-integration')
+    // Look up the website so we can build a per-website RepoClient
+    // (audit-item-WS1: addPRComment now requires a RepoClient, not the global singleton)
+    const { contentRepository } = await import('@swarm-press/backend')
+    const content = await contentRepository.findById(params.contentId)
+    if (!content?.website_id) {
+      console.log(`[GitHub] Content ${params.contentId} has no website_id; skipping activity log`)
+      return { success: true }
+    }
+
+    const { addPRComment, getRepoClient } = await import('@swarm-press/github-integration')
+    const repoClient = await getRepoClient(content.website_id)
 
     const resultEmoji = params.result === 'success' ? '✅' : params.result === 'failure' ? '❌' : '⏳'
     const timestamp = new Date().toISOString()
@@ -774,7 +783,7 @@ export async function logAgentActivityToGitHub(params: {
 ${params.details ? `\n### Details\n${params.details}` : ''}
 ${params.result ? `\n**Result:** ${params.result}` : ''}`
 
-    await addPRComment(mapping.github_number, comment)
+    await addPRComment(repoClient, mapping.github_number, comment)
 
     return { success: true }
   } catch (error) {

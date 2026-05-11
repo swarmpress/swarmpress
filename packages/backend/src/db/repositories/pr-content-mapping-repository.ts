@@ -125,6 +125,11 @@ export class PrContentMappingRepository {
     }
   }
 
+  /** Alias for {@link findActiveByContentId} — name used by EditorAgent (WS3). */
+  findOpenByContentId(contentId: string) {
+    return this.findActiveByContentId(contentId)
+  }
+
   /**
    * Find an open mapping by branch name (used for direct-push detection — i.e.
    * when something pushes to a `drafts/content-*` branch without a PR yet, or
