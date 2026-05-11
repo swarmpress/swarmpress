@@ -86,6 +86,25 @@ export const events = {
     })
   },
 
+  async contentProductionFailed(
+    contentId: string,
+    error: string,
+    stage: string,
+    agentId?: string
+  ) {
+    await publishEvent({
+      type: 'content.productionFailed',
+      source: agentId ? `/agents/${agentId}` : '/system',
+      subject: `content/${contentId}`,
+      data: {
+        content_id: contentId,
+        error,
+        stage,
+        agent_id: agentId,
+      },
+    })
+  },
+
   // QA Gate events
   async qaGatePassed(contentId: string, qaAgentId: string, fixesApplied: { mediaFixes: number; linkFixes: number; editorialFixes: number }) {
     await publishEvent({

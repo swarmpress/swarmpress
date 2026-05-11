@@ -18,6 +18,9 @@ const {
   startToCloseTimeout: '30 minutes',
   retry: {
     maximumAttempts: 3,
+    initialInterval: '1s',
+    backoffCoefficient: 2,
+    maximumInterval: '30s',
   },
 })
 
@@ -196,6 +199,12 @@ Return the full list of broken links with source page, target URL, and error.`
 
       const { invokeLinkerAgent } = proxyActivities<typeof activities>({
         startToCloseTimeout: '15 minutes',
+        retry: {
+          maximumAttempts: 3,
+          initialInterval: '1s',
+          backoffCoefficient: 2,
+          maximumInterval: '30s',
+        },
       })
 
       const fixTask = `Fix the following broken internal links for website ${websiteId}:

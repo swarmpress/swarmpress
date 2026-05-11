@@ -15,6 +15,7 @@ const {
     maximumAttempts: 3,
     initialInterval: '30 seconds',
     backoffCoefficient: 2.0,
+    maximumInterval: '5 minutes',
   },
 })
 

@@ -18,6 +18,9 @@ const {
   startToCloseTimeout: '30 minutes', // Longer timeout for large audits
   retry: {
     maximumAttempts: 3,
+    initialInterval: '1s',
+    backoffCoefficient: 2,
+    maximumInterval: '30s',
   },
 })
 

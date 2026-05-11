@@ -14,5 +14,27 @@
     "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
     "@typescript-eslint/no-explicit-any": "warn"
   },
+  "overrides": [
+    {
+      "files": ["packages/workflows/src/workflows/**/*.ts"],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "CallExpression[callee.object.name='Date'][callee.property.name='now']",
+            "message": "Date.now() breaks Temporal workflow determinism. Use the `getCurrentTimestamp` or `measureDuration` activity from packages/workflows/src/activities/determinism.ts instead."
+          },
+          {
+            "selector": "CallExpression[callee.object.name='Math'][callee.property.name='random']",
+            "message": "Math.random() breaks Temporal workflow determinism. For random IDs, use the `generateId` activity from packages/workflows/src/activities/determinism.ts; for other randomness, generate it inside an activity."
+          },
+          {
+            "selector": "CallExpression[callee.name='fetch']",
+            "message": "fetch() must not be called from workflow code (non-deterministic + sandbox-restricted). Wrap network calls in an activity."
+          }
+        ]
+      }
+    }
+  ],
   "ignorePatterns": ["dist", "build", "node_modules", ".turbo"]
 }

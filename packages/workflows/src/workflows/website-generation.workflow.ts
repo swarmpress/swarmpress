@@ -24,12 +24,16 @@ const {
   generateBriefForPage,
   getContentStatusCounts,
   getWebsiteDetails,
+  generateId,
+  getCurrentTimestamp,
+  measureDuration,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '30 minutes',
   retry: {
     maximumAttempts: 3,
     initialInterval: '10 seconds',
     backoffCoefficient: 2.0,
+    maximumInterval: '30s',
   },
 })
 
@@ -133,7 +137,7 @@ export async function websiteGenerationWorkflow(
     // ========================================================================
     if (!skipResearch) {
       console.log(`[WebsiteGeneration] Phase 1: Research`)
-      const researchStart = Date.now()
+      const researchStart = await getCurrentTimestamp()
 
       const collections = await getResearchableCollections(websiteId)
       console.log(`[WebsiteGeneration] Found ${collections.length} research-enabled collections`)
@@ -146,6 +150,9 @@ export async function websiteGenerationWorkflow(
 
         try {
           // Execute research via child workflow for isolation
+          const researchWorkflowId = await generateId(
+            `research-${websiteId}-${collection.collectionType}`
+          )
           const researchResult = await executeChild('collectionResearchWorkflow', {
             args: [{
               websiteId,
@@ -153,7 +160,7 @@ export async function websiteGenerationWorkflow(
               agentId: writerAgentId,
               maxResults: 50,
             }],
-            workflowId: `research-${websiteId}-${collection.collectionType}-${Date.now()}`,
+            workflowId: researchWorkflowId,
           })
 
           if (researchResult.success) {
@@ -174,7 +181,7 @@ export async function websiteGenerationWorkflow(
 
       result.phases.research = {
         success: researchErrors.length === 0,
-        duration: Date.now() - researchStart,
+        duration: await measureDuration(researchStart),
         stats: { collectionsPopulated, totalCollections: collections.length },
         errors: researchErrors,
       }
@@ -187,7 +194,7 @@ export async function websiteGenerationWorkflow(
     // ========================================================================
     if (!skipContentGeneration) {
       console.log(`[WebsiteGeneration] Phase 2: Content Generation`)
-      const contentStart = Date.now()
+      const contentStart = await getCurrentTimestamp()
 
       // Get pages that need content
       const languages = languagesToProcess || website.languages
@@ -248,7 +255,7 @@ export async function websiteGenerationWorkflow(
 
       result.phases.contentGeneration = {
         success: contentErrors.length < totalCreated,
-        duration: Date.now() - contentStart,
+        duration: await measureDuration(contentStart),
         stats: { created: totalCreated, errors: contentErrors.length },
         errors: contentErrors.slice(0, 10), // Limit error list
       }
@@ -261,7 +268,7 @@ export async function websiteGenerationWorkflow(
     // ========================================================================
     if (!skipEditorialReview) {
       console.log(`[WebsiteGeneration] Phase 3: Editorial Review`)
-      const reviewStart = Date.now()
+      const reviewStart = await getCurrentTimestamp()
 
       // Get content awaiting review
       const statusCounts = await getContentStatusCounts(websiteId)
@@ -275,13 +282,14 @@ export async function websiteGenerationWorkflow(
       // Process reviews in batches
       if (awaitingReview > 0 && !autoApproveContent) {
         // Execute editorial review workflow
+        const reviewWorkflowId = await generateId(`editorial-review-${websiteId}`)
         const reviewResult = await executeChild('editorialReviewBatchWorkflow', {
           args: [{
             websiteId,
             editorAgentId,
             batchSize: maxPagesPerBatch,
           }],
-          workflowId: `editorial-review-${websiteId}-${Date.now()}`,
+          workflowId: reviewWorkflowId,
         })
 
         approved = reviewResult.approved || 0
@@ -297,7 +305,7 @@ export async function websiteGenerationWorkflow(
 
       result.phases.editorialReview = {
         success: reviewErrors.length === 0,
-        duration: Date.now() - reviewStart,
+        duration: await measureDuration(reviewStart),
         stats: { reviewed: awaitingReview, approved },
         errors: reviewErrors,
       }
@@ -308,22 +316,23 @@ export async function websiteGenerationWorkflow(
     // Phase 4: Publishing
     // ========================================================================
     console.log(`[WebsiteGeneration] Phase 4: Publishing`)
-    const publishStart = Date.now()
+    const publishStart = await getCurrentTimestamp()
 
     try {
       // Execute publishing workflow
+      const publishWorkflowId = await generateId(`publish-${websiteId}`)
       const publishResult = await executeChild('publishingWorkflow', {
         args: [{
           websiteId,
           engineerAgentId,
           deployTarget: 'github-pages',
         }],
-        workflowId: `publish-${websiteId}-${Date.now()}`,
+        workflowId: publishWorkflowId,
       })
 
       result.phases.publishing = {
         success: publishResult.success,
-        duration: Date.now() - publishStart,
+        duration: await measureDuration(publishStart),
         stats: { published: publishResult.success ? 1 : 0 },
         errors: publishResult.error ? [publishResult.error] : [],
       }
@@ -335,7 +344,7 @@ export async function websiteGenerationWorkflow(
       const errMsg = error instanceof Error ? error.message : 'Unknown error'
       result.phases.publishing = {
         success: false,
-        duration: Date.now() - publishStart,
+        duration: await measureDuration(publishStart),
         errors: [errMsg],
       }
       result.summary.errors.push(`Publishing: ${errMsg}`)
