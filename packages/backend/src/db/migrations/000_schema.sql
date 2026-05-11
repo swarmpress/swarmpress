@@ -1473,3 +1473,41 @@ CREATE INDEX IF NOT EXISTS idx_event_outbox_unpublished
 COMMENT ON TABLE event_outbox IS 'Transactional outbox for CloudEvents — written in the same tx as state changes, drained by OutboxWorker';
 
 COMMIT;
+
+-- =============================================================================
+-- Repo-canonical migration (WS5): deprecate content storage columns
+-- =============================================================================
+-- Page bodies and collection item content now live in the site's GitHub
+-- repository (see CLAUDE.md → "Build & Deploy" / "Content Architecture
+-- Pattern"). Postgres only retains operational metadata: tasks,
+-- schedules, agent activity, audit log, outbox, prompt templates, and
+-- registry rows.
+--
+-- These columns are demoted to nullable and labeled DEPRECATED. Do not
+-- write or read them from new code. Any agent doing content I/O must go
+-- through `RepoClient` (`@swarm-press/github-integration`).
+--
+-- The `pages` table has no `body` column in this schema, so only
+-- `content_items.body` and `collection_items.data` are touched here.
+--
+-- `collection_item_versions` is conceptually replaced by Git history but
+-- is NOT dropped here: existing rows may still be referenced by
+-- application code paths we cannot prove unused at migration time.
+-- A follow-up cleanup PR can DROP TABLE once a data audit confirms the
+-- table is empty across all live deployments.
+BEGIN;
+
+ALTER TABLE IF EXISTS content_items
+  ALTER COLUMN body DROP NOT NULL;
+COMMENT ON COLUMN content_items.body IS
+  'DEPRECATED (repo-canonical migration) — page content lives in the site repo at content/pages/{lang}/{slug}.json. May be NULL for new rows. Read/write via RepoClient. See CLAUDE.md "Build & Deploy" section.';
+
+ALTER TABLE IF EXISTS collection_items
+  ALTER COLUMN data DROP NOT NULL;
+COMMENT ON COLUMN collection_items.data IS
+  'DEPRECATED (repo-canonical migration) — collection item content lives in the site repo at content/collections/{type}/{village}.json (per-village arrays). May be NULL for new rows. Read/write via RepoClient. See CLAUDE.md "Build & Deploy" section.';
+
+COMMENT ON TABLE collection_item_versions IS
+  'DEPRECATED (repo-canonical migration) — version history is now provided by Git on the site repo. Retained for backward compat; a follow-up cleanup PR may DROP this table once a data audit confirms it is unused.';
+
+COMMIT;

@@ -739,7 +739,14 @@ export const githubRouter = router({
 
   /**
    * Deploy files to GitHub Pages
-   * Creates a commit with the provided files and pushes to the Pages branch
+   * Creates a commit with the provided files and pushes to the Pages branch.
+   *
+   * @deprecated AS OF REPO-CANONICAL MIGRATION. Each site repo's own
+   * `.github/workflows/deploy.yml` now owns build+deploy via
+   * `actions/deploy-pages@v4`. This mutation is retained for backward
+   * compat with existing callers and still functions, but it should not
+   * be invoked by new code — merging the editorial PR is what triggers
+   * deployment now. See CLAUDE.md → "Build & Deploy" section.
    */
   deployToPages: publicProcedure
     .input(
@@ -755,6 +762,10 @@ export const githubRouter = router({
       })
     )
     .mutation(async ({ input }) => {
+      console.warn(
+        '[deprecated] github.deployToPages tRPC mutation called — see CLAUDE.md repo-canonical section. ' +
+          'Build+deploy is now owned by each site repo\'s GitHub Actions workflow.'
+      )
       const website = await websiteRepository.findById(input.websiteId)
 
       if (!website) {
