@@ -38,6 +38,26 @@ class TemporalWorkerManager {
       taskQueue: options.taskQueue,
       workflowsPath: options.workflowsPath || path.join(__dirname, '../workflows'),
       activities: options.activities || {},
+      bundlerOptions: {
+        // @swarm-press/shared exports validators that import fs/promises/path
+        // for filesystem audits. Workflow code only touches the type surface
+        // (via `import type * as activities`), but webpack still surfaces these
+        // as transitive deps. Ignore them at the bundler level — they are
+        // never invoked from workflow code at runtime.
+        ignoreModules: ['fs', 'fs/promises', 'path'],
+        // webpack 5 defaults assume a browser context: `output.publicPath: 'auto'`
+        // reads `document.currentScript`, and chunk loading reads `self`. Both
+        // throw inside Temporal's bare VM. Pin publicPath to '' and route global
+        // refs through `globalThis` so the bundle init survives.
+        webpackConfigHook: (config) => {
+          config.output = {
+            ...(config.output || {}),
+            publicPath: '',
+            globalObject: 'globalThis',
+          }
+          return config
+        },
+      },
     })
 
     this.workers.push(worker)

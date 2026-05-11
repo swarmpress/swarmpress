@@ -1,6 +1,6 @@
 import { eventBus } from './connection'
 import { CloudEvent, validateCloudEvent } from './cloudevents'
-import { StringCodec } from 'nats'
+import { StringCodec, AckPolicy } from 'nats'
 
 const codec = StringCodec()
 
@@ -14,14 +14,26 @@ export async function subscribe<T = unknown>(
   handler: EventHandler<T>
 ): Promise<void> {
   const js = eventBus.getJetStream()
+  const jsm = await js.jetstreamManager()
 
   const natsSubject = pattern.startsWith('swarmpress.')
     ? pattern
     : `swarmpress.${pattern}`
 
-  console.log(`📥 Subscribing to: ${natsSubject}`)
+  // Sanitise subject into a valid consumer name (no '.', '*', '>')
+  const consumerName = `c_${natsSubject.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}`
 
-  const consumer = await js.consumers.get('AGENTPRESS', `consumer-${Date.now()}`)
+  console.log(`📥 Subscribing to: ${natsSubject} (consumer=${consumerName})`)
+
+  // Create the durable consumer first — `consumers.get()` only fetches
+  // existing consumers; without `add()` first it throws "consumer not found".
+  await jsm.consumers.add('AGENTPRESS', {
+    durable_name: consumerName,
+    filter_subject: natsSubject,
+    ack_policy: AckPolicy.Explicit,
+  })
+
+  const consumer = await js.consumers.get('AGENTPRESS', consumerName)
 
   const messages = await consumer.consume()
 
