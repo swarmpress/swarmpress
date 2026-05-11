@@ -80,7 +80,6 @@ export class BaseAgent {
   protected config: AgentConfig
   protected runtimeConfig?: AgentRuntimeConfig
   protected client: Anthropic
-  protected conversationHistory: Anthropic.MessageParam[] = []
   protected toolRegistry: ToolRegistry
   protected lastMetrics?: APICallMetrics
 
@@ -122,7 +121,7 @@ export class BaseAgent {
       }
     }
     return {
-      model: this.config.model || 'claude-sonnet-4-5-20250929',
+      model: this.config.model || getEnv().AGENT_MODEL_DEFAULT,
       maxTokens: this.config.maxTokens || 16384,
       temperature: this.config.temperature,
       topP: this.config.topP,
@@ -161,12 +160,18 @@ export class BaseAgent {
       metrics = createMetrics(this.runtimeConfig, context, task.taskType)
     }
 
+    // Per-call conversation history (NOT instance state — agents are stateless)
+    // Seed from context if caller provided one (e.g. resuming), otherwise start empty
+    const conversationHistory: Anthropic.MessageParam[] = context.conversationHistory
+      ? [...context.conversationHistory]
+      : []
+
     try {
       // Build the prompt
       const userMessage = this.buildPrompt(task)
 
       // Add to conversation history
-      this.conversationHistory.push({
+      conversationHistory.push({
         role: 'user',
         content: userMessage,
       })
@@ -217,7 +222,7 @@ export class BaseAgent {
           model: modelConfig.model,
           max_tokens: modelConfig.maxTokens,
           system: systemPrompt,
-          messages: this.conversationHistory,
+          messages: conversationHistory,
         }
 
         // Add sampling controls if specified
@@ -309,7 +314,7 @@ export class BaseAgent {
         }
 
         // Add assistant response to history
-        this.conversationHistory.push({
+        conversationHistory.push({
           role: 'assistant',
           content: response.content,
         })
@@ -374,7 +379,7 @@ export class BaseAgent {
           }
 
           // Add tool results to conversation
-          this.conversationHistory.push({
+          conversationHistory.push({
             role: 'user',
             content: toolResultBlocks,
           })
@@ -467,13 +472,6 @@ export class BaseAgent {
     }
 
     return prompt
-  }
-
-  /**
-   * Clear conversation history
-   */
-  clearHistory(): void {
-    this.conversationHistory = []
   }
 
   /**

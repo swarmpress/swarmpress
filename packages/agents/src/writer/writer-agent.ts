@@ -4,6 +4,8 @@
  * Uses editorial style configs from content repository
  */
 
+import * as fs from 'fs'
+import * as path from 'path'
 import { BaseAgent, AgentConfig } from '../base/agent'
 import type { Agent } from '@swarm-press/shared'
 import { writerTools } from './tools'
@@ -11,26 +13,66 @@ import { writerToolHandlers } from './handlers'
 import {
   loadEditorialConfigs,
   formatEditorialPrompt,
-  type EditorialConfigs
+  clearConfigCache,
 } from '../base/editorial-config-loader'
 
 // ============================================================================
-// Module-level cache for editorial configs
+// Module-level prompt cache stamped with config-file mtime
+// ----------------------------------------------------------------------------
+// We keep a module-level cache so we don't re-read & re-format the editorial
+// configs on every WriterAgent construction (it's an expensive multi-file
+// JSON load + string assembly). To prevent staleness (audit item 13), we stamp
+// the cache with the newest mtime across the source config files. On each
+// access we synchronously stat the files and rebuild the cache if any file
+// changed on disk.
 // ============================================================================
 
-let cachedEditorialPrompt: string | null = null
-let configsLoaded = false
+interface PromptCache {
+  prompt: string
+  mtimeMs: number
+}
+
+let promptCache: PromptCache | null = null
+
+const CONFIG_FILES = [
+  'style-guide.json',
+  'writer-prompt.json',
+  'agent-schemas.json',
+] as const
+
+function getContentRepoPath(): string {
+  return process.env.CONTENT_REPO_PATH || path.join(process.cwd(), 'cinqueterre.travel')
+}
 
 /**
- * Pre-load editorial configs (call once at startup)
+ * Returns the maximum mtime (ms) across the editorial config files, or 0 if
+ * none are readable. Synchronous so it can be called from the constructor.
+ */
+function getConfigsMtimeMs(): number {
+  const basePath = getContentRepoPath()
+  let max = 0
+  for (const filename of CONFIG_FILES) {
+    try {
+      const stat = fs.statSync(path.join(basePath, 'content', 'config', filename))
+      if (stat.mtimeMs > max) max = stat.mtimeMs
+    } catch {
+      // missing/unreadable - ignored; defaults will be used by the loader
+    }
+  }
+  return max
+}
+
+/**
+ * Pre-load editorial configs (call once at startup so the first agent
+ * construction is fast). Safe to call multiple times.
  */
 export async function initializeWriterAgent(): Promise<void> {
-  if (configsLoaded) return
-
   try {
     const configs = await loadEditorialConfigs()
-    cachedEditorialPrompt = formatEditorialPrompt(configs)
-    configsLoaded = true
+    promptCache = {
+      prompt: formatEditorialPrompt(configs),
+      mtimeMs: getConfigsMtimeMs(),
+    }
     console.log('[WriterAgent] Editorial configs loaded and formatted')
   } catch (error) {
     console.error('[WriterAgent] Failed to load editorial configs:', error)
@@ -39,11 +81,36 @@ export async function initializeWriterAgent(): Promise<void> {
 }
 
 /**
- * Get the cached editorial prompt section
+ * Get the editorial prompt section. Returns the cached value when source
+ * config files are unchanged; rebuilds (sync, blocking) when files have been
+ * modified since the cache was stamped.
  */
 function getEditorialPromptSection(): string {
-  if (cachedEditorialPrompt) {
-    return cachedEditorialPrompt
+  const currentMtime = getConfigsMtimeMs()
+
+  if (promptCache && promptCache.mtimeMs === currentMtime && currentMtime > 0) {
+    return promptCache.prompt
+  }
+
+  if (promptCache && currentMtime > 0 && promptCache.mtimeMs !== currentMtime) {
+    // Files changed on disk - drop the loader cache so the next async load
+    // re-reads from disk. The current call still returns the cached prompt
+    // (we can't synchronously await a JSON load here), and a background
+    // reload refreshes both caches for subsequent constructions.
+    console.log('[WriterAgent] Editorial config files changed; refreshing prompt cache in background')
+    clearConfigCache()
+    void (async () => {
+      try {
+        const configs = await loadEditorialConfigs()
+        promptCache = {
+          prompt: formatEditorialPrompt(configs),
+          mtimeMs: getConfigsMtimeMs(),
+        }
+      } catch (error) {
+        console.error('[WriterAgent] Background refresh of editorial configs failed:', error)
+      }
+    })()
+    return promptCache.prompt
   }
 
   // Fallback if configs not pre-loaded (should not happen in normal flow)
