@@ -1473,3 +1473,31 @@ CREATE INDEX IF NOT EXISTS idx_event_outbox_unpublished
 COMMENT ON TABLE event_outbox IS 'Transactional outbox for CloudEvents — written in the same tx as state changes, drained by OutboxWorker';
 
 COMMIT;
+
+-- PR ↔ content mapping (audit item: repo-canonical migration WS4)
+-- Maps GitHub PRs to content_items so EditorAgent can find the right PR to merge.
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS pr_content_mappings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  website_id UUID NOT NULL REFERENCES websites(id),
+  content_id UUID REFERENCES content_items(id),
+  pr_number INTEGER NOT NULL,
+  pr_url TEXT NOT NULL,
+  branch_name TEXT NOT NULL,
+  created_by_agent_id UUID,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  merged_at TIMESTAMPTZ,
+  closed_at TIMESTAMPTZ,
+  UNIQUE (website_id, pr_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pr_content_mappings_content
+  ON pr_content_mappings (content_id) WHERE merged_at IS NULL AND closed_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_pr_content_mappings_branch
+  ON pr_content_mappings (website_id, branch_name) WHERE merged_at IS NULL AND closed_at IS NULL;
+
+COMMENT ON TABLE pr_content_mappings IS 'Maps GitHub PRs to content_items for repo-canonical content workflow';
+
+COMMIT;

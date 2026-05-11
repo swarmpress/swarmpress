@@ -80,3 +80,7 @@ export { scheduleRepository } from './schedule-repository'
 // Event Outbox (transactional CloudEvents delivery)
 export * from './event-outbox-repository'
 export { eventOutboxRepository } from './event-outbox-repository'
+
+// PR ↔ Content Mapping (repo-canonical migration WS4)
+export * from './pr-content-mapping-repository'
+export { prContentMappingRepository } from './pr-content-mapping-repository'
