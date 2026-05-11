@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CloudSun, Sun, CloudRain, Cloud, Snowflake, CloudLightning, Loader2, AlertCircle } from 'lucide-react';
 
 // Cinque Terre coordinates (Monterosso al Mare as center point)
@@ -60,11 +60,20 @@ export default function WeatherWidget() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Audit item 22: track mount state so async fetch resolutions cannot
+  // call setState after unmount (which logs a React warning and can leak
+  // memory). Cleared in the cleanup function returned from useEffect.
+  const isMountedRef = useRef(true);
+
   useEffect(() => {
+    isMountedRef.current = true;
+
     async function fetchWeather() {
       try {
-        setLoading(true);
-        setError(null);
+        if (isMountedRef.current) {
+          setLoading(true);
+          setError(null);
+        }
 
         const url = new URL('https://api.open-meteo.com/v1/forecast');
         url.searchParams.set('latitude', CINQUE_TERRE_COORDS.latitude.toString());
@@ -82,6 +91,9 @@ export default function WeatherWidget() {
 
         const data = await response.json();
 
+        // Bail out if we've unmounted while awaiting the network.
+        if (!isMountedRef.current) return;
+
         setWeather({
           current: {
             temperature: Math.round(data.current.temperature_2m),
@@ -95,10 +107,13 @@ export default function WeatherWidget() {
           })),
         });
       } catch (err) {
+        if (!isMountedRef.current) return;
         console.error('Weather fetch error:', err);
         setError('Unable to load weather');
       } finally {
-        setLoading(false);
+        if (isMountedRef.current) {
+          setLoading(false);
+        }
       }
     }
 
@@ -106,7 +121,10 @@ export default function WeatherWidget() {
 
     // Refresh every 15 minutes
     const interval = setInterval(fetchWeather, 15 * 60 * 1000);
-    return () => clearInterval(interval);
+    return () => {
+      isMountedRef.current = false;
+      clearInterval(interval);
+    };
   }, []);
 
   // Loading state

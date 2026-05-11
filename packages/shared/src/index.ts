@@ -55,4 +55,4 @@ export * from './logging'
 export * from './metrics'
 
 // Utilities
-// export * from './utils'
+export * from './utils'

@@ -8,7 +8,9 @@ import {
 } from './ui/carousel';
 import { Badge } from './ui/badge';
 
-// Featured stories with links to actual blog posts
+// Featured stories with links to actual blog posts.
+// Slugs are stored as path fragments (no locale prefix) and the locale prop
+// is prepended at render time — see audit item 18.
 const featuredStories = [
     {
         id: 1,
@@ -17,7 +19,7 @@ const featuredStories = [
         dek: "How to see the best of the five villages in just 3 days.",
         image: "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop",
         author: "Giulia Rossi",
-        slug: "/en/blog/the-perfect-first-timer-itinerary"
+        slug: "the-perfect-first-timer-itinerary"
     },
     {
         id: 2,
@@ -26,7 +28,7 @@ const featuredStories = [
         dek: "Avoid the crowds and find the perfect weather.",
         image: "https://images.unsplash.com/photo-1499678329028-101435549a4e?q=80&w=2670&auto=format&fit=crop",
         author: "Marco Bianchi",
-        slug: "/en/blog/best-time-to-visit-and-when-to-skip"
+        slug: "best-time-to-visit-and-when-to-skip"
     },
     {
         id: 3,
@@ -35,7 +37,7 @@ const featuredStories = [
         dek: "Everything you need to know about the Blue Trail.",
         image: "https://images.unsplash.com/photo-1538681105587-85640961bf8b?q=80&w=2670&auto=format&fit=crop",
         author: "Luca Verdi",
-        slug: "/en/blog/hiking-the-blue-trail-what-to-expect"
+        slug: "hiking-the-blue-trail-what-to-expect"
     },
     {
         id: 4,
@@ -44,7 +46,7 @@ const featuredStories = [
         dek: "Where to capture the iconic postcard shots.",
         image: "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
         author: "Elena Moretti",
-        slug: "/en/blog/a-photographers-guide-to-manarola-at-sunset"
+        slug: "a-photographers-guide-to-manarola-at-sunset"
     },
     {
         id: 5,
@@ -53,7 +55,7 @@ const featuredStories = [
         dek: "From sandy shores to rocky coves, here's where to swim.",
         image: "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
         author: "Giulia Rossi",
-        slug: "/en/blog/the-ultimate-guide-to-cinque-terres-best-beaches"
+        slug: "the-ultimate-guide-to-cinque-terres-best-beaches"
     },
     {
         id: 6,
@@ -62,7 +64,7 @@ const featuredStories = [
         dek: "Master the logistics of moving between villages.",
         image: "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
         author: "Giulia Rossi",
-        slug: "/en/blog/local-train-and-ferry-cheatsheet"
+        slug: "local-train-and-ferry-cheatsheet"
     },
     {
         id: 7,
@@ -71,7 +73,7 @@ const featuredStories = [
         dek: "Skip the tourist traps and find the real deal.",
         image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2632&auto=format&fit=crop",
         author: "Marco Bianchi",
-        slug: "/en/blog/5-hidden-gelaterias-you-need-to-try"
+        slug: "5-hidden-gelaterias-you-need-to-try"
     },
     {
         id: 8,
@@ -80,11 +82,15 @@ const featuredStories = [
         dek: "Pros and cons for every type of traveler.",
         image: "https://images.unsplash.com/photo-1515444744559-7be63e1600de?q=80&w=2670&auto=format&fit=crop",
         author: "Sofia Neri",
-        slug: "/en/blog/where-to-stay-hotel-vs-airbnb"
+        slug: "where-to-stay-hotel-vs-airbnb"
     }
 ];
 
-export default function FeaturedCarousel() {
+interface FeaturedCarouselProps {
+    locale?: string;
+}
+
+export default function FeaturedCarousel({ locale = 'en' }: FeaturedCarouselProps = {}) {
     return (
         <section className="py-16 bg-secondary/30">
             <div className="container mx-auto px-4">
@@ -103,7 +109,7 @@ export default function FeaturedCarousel() {
                     <CarouselContent className="-ml-4">
                         {featuredStories.map((story) => (
                             <CarouselItem key={story.id} className="pl-4 md:basis-1/2 lg:basis-1/3 xl:basis-1/4">
-                                <a href={story.slug} className="group block">
+                                <a href={`/${locale}/blog/${story.slug}`} className="group block">
                                     <div className="relative aspect-[4/3] overflow-hidden rounded-xl mb-4">
                                         <img
                                             src={story.image}

@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { Sun, Footprints, History, Star } from 'lucide-react';
 import { getVillageContent } from '../config/village-content.config';
-import type { SupportedLanguage } from '../types/navigation.types';
+import { getText, type LocalizedText } from '../config/localization';
 
 interface Props {
     locale?: string;
@@ -11,7 +11,6 @@ interface Props {
 }
 
 const { locale = 'en', village } = Astro.props;
-const lang = locale as SupportedLanguage;
 
 // Get village-specific content if a village is specified
 const villageContent = village ? getVillageContent(village) : null;
@@ -95,8 +94,8 @@ const defaultStories = [
 const villageLeadStory = villageContent?.intro.leadStory;
 const leadStory = villageLeadStory ? {
     id: 1,
-    title: villageLeadStory.title[lang],
-    excerpt: villageLeadStory.excerpt[lang],
+    title: getText(villageLeadStory.title as LocalizedText, locale),
+    excerpt: getText(villageLeadStory.excerpt as LocalizedText, locale),
     author: villageLeadStory.author,
     date: villageLeadStory.date,
     readTime: villageLeadStory.readTime,
@@ -110,8 +109,9 @@ const filters = ["All", "Guides", "Food", "Hotels", "News & Advice"];
 
 // Village essentials content
 const villageEssentials = villageContent?.intro.essentials;
-const essentialsTitle = villageEssentials?.title[lang] || "Riomaggiore Essentials 2026";
-const essentialsSubtitle = villageEssentials?.subtitle[lang] || "Today's atmosphere and real-time details, grounded in Riomaggiore's timeless character";
+// Audit item 17: route through getText() for consistent locale fallback handling.
+const essentialsTitle = getText(villageEssentials?.title as LocalizedText, locale) || "Riomaggiore Essentials 2026";
+const essentialsSubtitle = getText(villageEssentials?.subtitle as LocalizedText, locale) || "Today's atmosphere and real-time details, grounded in Riomaggiore's timeless character";
 const villageName = villageContent?.slug ? villageContent.slug.charAt(0).toUpperCase() + villageContent.slug.slice(1) : "Riomaggiore";
 
 // Today & Conditions

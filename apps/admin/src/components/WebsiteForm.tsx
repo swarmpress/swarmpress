@@ -115,14 +115,30 @@ export default function WebsiteForm({ website, mode }: WebsiteFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsSubmitting(true)
     setError(null)
+
+    // Audit item 35: validate required fields client-side before submitting.
+    // The HTML `required` attribute helps but doesn't catch whitespace-only
+    // input, and defending here avoids a noisy backend round-trip.
+    const trimmedTitle = title?.trim()
+    const trimmedDomain = domain?.trim()
+
+    if (!trimmedTitle) {
+      setError('Title is required')
+      return
+    }
+
+    if (!trimmedDomain) {
+      setError('Domain is required')
+      return
+    }
 
     if (!companyId) {
       setError('Please select a company')
-      setIsSubmitting(false)
       return
     }
+
+    setIsSubmitting(true)
 
     try {
       const url =
@@ -161,8 +177,8 @@ export default function WebsiteForm({ website, mode }: WebsiteFormProps) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          title,
-          domain,
+          title: trimmedTitle,
+          domain: trimmedDomain,
           description,
           language: primaryLanguage,
           company_id: companyId,
@@ -186,6 +202,9 @@ export default function WebsiteForm({ website, mode }: WebsiteFormProps) {
       window.location.href = '/websites'
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      // Audit item 35: ensure we always clear the submitting flag, even on
+      // success-with-throw or unexpected errors, so the user can retry.
       setIsSubmitting(false)
     }
   }

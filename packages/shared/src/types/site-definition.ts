@@ -20,6 +20,7 @@ import {
   InlinePromptSchema,
   PromptTemplateSchema,
 } from './inline-prompts'
+import { getLocalizedValue } from '../utils/localized-string'
 
 /**
  * Site Definition Schema
@@ -36,10 +37,21 @@ import {
 // Localized Strings
 // ============================================================================
 
-export const LocalizedStringSchema = z.union([
-  z.string(),
-  z.record(z.string()), // { "en": "...", "de": "..." }
-])
+/**
+ * LocalizedString — a strict object with `en` (required) plus optional locale variants.
+ *
+ * Tightened from the previous `string | Record<string, string>` union so consumers
+ * can rely on `value.en` always being present (audit item 17). Plain strings should
+ * be wrapped with `{ en: '...' }` at the boundary where data enters the system.
+ *
+ * Use `getLocalizedValue()` from `@swarm-press/shared` to read from this safely.
+ */
+export const LocalizedStringSchema = z.object({
+  en: z.string(),
+  de: z.string().optional(),
+  fr: z.string().optional(),
+  it: z.string().optional(),
+})
 
 export type LocalizedString = z.infer<typeof LocalizedStringSchema>
 
@@ -431,39 +443,13 @@ export function getCollectionId(nodeType: string): string | null {
 }
 
 /**
- * Get localized value from a LocalizedString
- * Handles both normal {en: "string"} and nested {en: {en: "string"}} structures
+ * Get localized value from a LocalizedString.
+ *
+ * The canonical implementation lives in `../utils/localized-string` and is
+ * exported from the package root via `./utils`. Use `getLocalizedValue(value, locale)`
+ * everywhere instead of ad-hoc patterns like `value[locale] || value.en`
+ * (audit item 17).
  */
-export function getLocalizedValue(
-  value: LocalizedString | undefined,
-  locale: string = 'en'
-): string {
-  if (!value) return ''
-  if (typeof value === 'string') return value
-
-  // Try to get value for requested locale
-  let result: unknown = value[locale] || value['en']
-
-  // Handle nested structures like {en: {en: "..."}}
-  while (result && typeof result === 'object') {
-    const record = result as Record<string, unknown>
-    result = record[locale] || record['en'] || Object.values(record)[0]
-  }
-
-  // If we got a string, return it
-  if (typeof result === 'string') return result
-
-  // Otherwise try first string value recursively
-  for (const v of Object.values(value)) {
-    if (typeof v === 'string') return v
-    if (typeof v === 'object' && v !== null) {
-      const nested = getLocalizedValue(v as LocalizedString, locale)
-      if (nested) return nested
-    }
-  }
-
-  return ''
-}
 
 // ============================================================================
 // Template Collection Helper Functions

@@ -28,9 +28,11 @@ function normalizeContent(c: string[] | string | LocalizedText | LocalizedArray 
     if (c && typeof c === 'object' && !Array.isArray(c)) {
         // Check if it's a LocalizedArray (has locale keys with array values)
         if ('en' in c || 'de' in c || 'fr' in c || 'it' in c) {
-            const localizedValue = (c as Record<string, unknown>)[locale] || (c as Record<string, unknown>).en;
-            if (Array.isArray(localizedValue)) {
-                return localizedValue.map(item => resolveItem(item, locale)).filter(p => p.trim());
+            // Audit item 17: prefer the centralized getArray() helper for the
+            // requested locale, falling back to English then the first available.
+            const localizedArray = getArray(c as LocalizedArray, locale);
+            if (localizedArray.length > 0) {
+                return localizedArray.map(item => resolveItem(item, locale)).filter(p => p.trim());
             }
             // It's a LocalizedText (single string value)
             const stringValue = getText(c as LocalizedText, locale);
@@ -59,12 +61,10 @@ function normalizeContent(c: string[] | string | LocalizedText | LocalizedArray 
 
 const paragraphs = normalizeContent(contentProp);
 
-// Simple markdown-like processing for bold text
-function processText(text: string): string {
-    return text
-        .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>');
-}
+// Inline emphasis must come from structured blocks, not markdown — see CLAUDE.md rule #8
+// Previously this component ran a regex over `**bold**` / `*italic*` and emitted
+// the result via `set:html`, which (a) violates the JSON-blocks contract and
+// (b) injected unescaped HTML. Text is now rendered as plain text.
 ---
 
 <section class="py-16 md:py-24 bg-white" id={id}>
@@ -92,10 +92,7 @@ function processText(text: string): string {
                 )}
                 <div class="prose prose-lg prose-gray max-w-none">
                     {paragraphs.map((paragraph) => (
-                        <p
-                            class="text-gray-700 leading-relaxed mb-6"
-                            set:html={processText(paragraph)}
-                        />
+                        <p class="text-gray-700 leading-relaxed mb-6">{paragraph}</p>
                     ))}
                 </div>
             </div>
