@@ -127,7 +127,11 @@ export const workflowRouter = router({
       try {
         const { startWorkflow } = await getTemporalClient()
 
-        const workflowId = `publishing-${input.contentId}-${Date.now()}`
+        // Deterministic workflowId so the deployment_status webhook handler can
+        // signal this workflow by content_id alone (see WS-C of autonomy migration).
+        // Temporal will reject duplicate-with-same-id starts; that's the desired
+        // idempotency. Drop Date.now() suffix.
+        const workflowId = `publishing-${input.contentId}`
 
         const handle = await startWorkflow('publishingWorkflow', [
           {
