@@ -206,6 +206,192 @@ const { blocks = [], locale = 'en', village } = Astro.props;
         case 'collection-embed':
             return <CollectionEmbed {...componentProps} locale={locale} />;
 
+        // Core content blocks (minimal inline renderers — no dedicated component file)
+        case 'paragraph':
+            return (
+                <div class="container mx-auto px-4 my-6 max-w-3xl">
+                    <p class="text-base leading-relaxed text-foreground">{componentProps.markdown ?? componentProps.text ?? ''}</p>
+                </div>
+            );
+
+        case 'heading': {
+            const level = componentProps.level ?? 2;
+            const text = componentProps.text ?? '';
+            const id = componentProps.id;
+            const classes = level === 2
+                ? 'font-serif text-3xl md:text-4xl font-bold mt-10 mb-4'
+                : level === 3
+                    ? 'font-serif text-2xl md:text-3xl font-semibold mt-8 mb-3'
+                    : 'font-serif text-xl md:text-2xl font-semibold mt-6 mb-2';
+            return (
+                <div class="container mx-auto px-4 max-w-3xl">
+                    {level === 2 && <h2 id={id} class={classes}>{text}</h2>}
+                    {level === 3 && <h3 id={id} class={classes}>{text}</h3>}
+                    {level === 4 && <h4 id={id} class={classes}>{text}</h4>}
+                </div>
+            );
+        }
+
+        case 'hero':
+            return (
+                <section
+                    class="relative w-full py-24 md:py-32 bg-cover bg-center text-white"
+                    style={componentProps.backgroundImage ? `background-image: linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.45)), url('${componentProps.backgroundImage}')` : undefined}
+                >
+                    <div class="container mx-auto px-4 text-center">
+                        <h1 class="font-serif text-4xl md:text-6xl font-bold mb-4">{componentProps.title}</h1>
+                        {componentProps.subtitle && (
+                            <p class="text-lg md:text-2xl opacity-90 max-w-2xl mx-auto">{componentProps.subtitle}</p>
+                        )}
+                    </div>
+                </section>
+            );
+
+        case 'image':
+            return (
+                <figure class="container mx-auto px-4 my-8 max-w-4xl">
+                    <img
+                        src={componentProps.src}
+                        alt={componentProps.alt ?? ''}
+                        width={componentProps.width}
+                        height={componentProps.height}
+                        loading="lazy"
+                        class="w-full h-auto rounded-lg shadow-sm"
+                    />
+                    {componentProps.caption && (
+                        <figcaption class="mt-2 text-sm text-muted-foreground text-center italic">{componentProps.caption}</figcaption>
+                    )}
+                </figure>
+            );
+
+        case 'gallery': {
+            const images = componentProps.images ?? [];
+            const layout = componentProps.layout ?? 'grid';
+            const gridCls = layout === 'masonry'
+                ? 'columns-2 md:columns-3 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid'
+                : layout === 'carousel'
+                    ? 'flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4'
+                    : 'grid grid-cols-2 md:grid-cols-3 gap-4';
+            return (
+                <div class="container mx-auto px-4 my-8 max-w-5xl">
+                    <div class={gridCls}>
+                        {images.map((img: any) => (
+                            <figure class={layout === 'carousel' ? 'snap-start shrink-0 w-72' : ''}>
+                                <img src={img.src} alt={img.alt ?? ''} loading="lazy" class="w-full h-auto rounded-md" />
+                                {img.caption && <figcaption class="mt-1 text-xs text-muted-foreground">{img.caption}</figcaption>}
+                            </figure>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        case 'quote':
+            return (
+                <blockquote class="container mx-auto px-4 my-10 max-w-3xl border-l-4 border-primary pl-6 italic text-lg text-foreground">
+                    <p>{componentProps.text}</p>
+                    {componentProps.attribution && (
+                        <cite class="block mt-2 text-sm not-italic text-muted-foreground">— {componentProps.attribution}</cite>
+                    )}
+                </blockquote>
+            );
+
+        case 'list': {
+            const items = componentProps.items ?? [];
+            const ordered = componentProps.ordered === true;
+            return (
+                <div class="container mx-auto px-4 my-6 max-w-3xl">
+                    {ordered ? (
+                        <ol class="list-decimal pl-6 space-y-2">{items.map((item: string) => <li>{item}</li>)}</ol>
+                    ) : (
+                        <ul class="list-disc pl-6 space-y-2">{items.map((item: string) => <li>{item}</li>)}</ul>
+                    )}
+                </div>
+            );
+        }
+
+        case 'faq': {
+            const items = componentProps.items ?? [];
+            return (
+                <div class="container mx-auto px-4 my-10 max-w-3xl">
+                    <dl class="space-y-6">
+                        {items.map((item: any) => (
+                            <div class="border-b border-border pb-4">
+                                <dt class="font-semibold text-lg mb-2">{item.question}</dt>
+                                <dd class="text-muted-foreground">{item.answer}</dd>
+                            </div>
+                        ))}
+                    </dl>
+                </div>
+            );
+        }
+
+        case 'callout': {
+            const styleMap: Record<string, string> = {
+                info: 'bg-blue-50 border-blue-200 text-blue-900',
+                warning: 'bg-yellow-50 border-yellow-200 text-yellow-900',
+                success: 'bg-green-50 border-green-200 text-green-900',
+                error: 'bg-red-50 border-red-200 text-red-900',
+            };
+            const cls = styleMap[componentProps.style as string] ?? styleMap.info;
+            return (
+                <aside class={`container mx-auto px-4 my-6 max-w-3xl`}>
+                    <div class={`border-l-4 rounded-r-md p-4 ${cls}`}>
+                        {componentProps.title && <p class="font-semibold mb-1">{componentProps.title}</p>}
+                        <p>{componentProps.content}</p>
+                    </div>
+                </aside>
+            );
+        }
+
+        case 'embed': {
+            const url: string = componentProps.url ?? '';
+            const provider: string = componentProps.provider ?? 'custom';
+            let embedSrc = url;
+            if (provider === 'youtube') {
+                const m = url.match(/(?:v=|youtu\.be\/)([\w-]+)/);
+                if (m) embedSrc = `https://www.youtube.com/embed/${m[1]}`;
+            } else if (provider === 'vimeo') {
+                const m = url.match(/vimeo\.com\/(\d+)/);
+                if (m) embedSrc = `https://player.vimeo.com/video/${m[1]}`;
+            }
+            return (
+                <div class="container mx-auto px-4 my-8 max-w-4xl">
+                    <div class="aspect-video w-full">
+                        <iframe
+                            src={embedSrc}
+                            title={componentProps.title ?? 'Embedded content'}
+                            class="w-full h-full rounded-md border-0"
+                            loading="lazy"
+                            allowfullscreen
+                        ></iframe>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'map': {
+            // Minimal renderer: surface coordinates and any markers as a stub.
+            // A real Leaflet renderer can replace this without changing the schema.
+            const center = componentProps.center;
+            const markers = componentProps.markers ?? [];
+            return (
+                <div class="container mx-auto px-4 my-8 max-w-4xl">
+                    {componentProps.heading && <h3 class="font-serif text-2xl mb-3">{componentProps.heading}</h3>}
+                    <div
+                        class="w-full bg-muted/30 border border-border rounded-md flex items-center justify-center text-muted-foreground text-sm"
+                        style={`height: ${componentProps.height ?? '400px'}`}
+                    >
+                        <div class="text-center p-4">
+                            <p class="font-medium">Map ({componentProps.variant ?? 'multi-marker'})</p>
+                            {center && <p class="mt-1">Center: {center.lat}, {center.lng}</p>}
+                            {markers.length > 0 && <p class="mt-1">{markers.length} marker{markers.length === 1 ? '' : 's'}</p>}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         default:
             // Log unknown block type for debugging
             console.warn(`Unknown block type: ${type}`);

@@ -1,270 +1,231 @@
 #!/usr/bin/env tsx
 /**
- * End-to-End Test
- * Tests complete workflow from content creation to publishing
+ * End-to-End Integration Test
+ *
+ * Drives a real run of contentProductionWorkflow against live infrastructure
+ * (PostgreSQL, NATS, Temporal). Use this to verify the system works after
+ * docker-compose / migrations / worker changes.
+ *
+ *   docker compose up -d
+ *   pnpm --filter @swarm-press/workflows dev   # in another terminal
+ *   tsx scripts/test-e2e.ts
+ *
+ * For the lightweight, mocked unit-style version that does not need
+ * docker, see scripts/test-workflow-mock.ts.
+ *
+ * Exit codes:
+ *   0 - all assertions passed
+ *   1 - any assertion failed (infra missing, workflow stuck, etc.)
  */
 
 import { v4 as uuidv4 } from 'uuid'
+import pg from 'pg'
+import { Client as TemporalClient, Connection as TemporalConnection } from '@temporalio/client'
+import { connect as natsConnect, type NatsConnection } from 'nats'
 
-// Mock implementations for testing without full infrastructure
-const mockDb = {
-  content: new Map(),
-  tasks: new Map(),
-  tickets: new Map(),
+const DATABASE_URL =
+  process.env.DATABASE_URL || 'postgresql://swarmpress:swarmpress@localhost:5432/swarmpress'
+const TEMPORAL_URL = process.env.TEMPORAL_URL || 'localhost:7233'
+const NATS_URL = process.env.NATS_URL || 'nats://localhost:4222'
+const TASK_QUEUE = process.env.TASK_QUEUE || 'swarmpress-content-production'
+const TIMEOUT_MS = Number(process.env.E2E_TIMEOUT_MS || 60_000)
+
+const REQUIRED_TABLES = [
+  'companies',
+  'departments',
+  'roles',
+  'agents',
+  'websites',
+  'content_items',
+  'tasks',
+  'state_audit_log',
+]
+
+function log(msg: string): void {
+  console.log(`[e2e] ${msg}`)
 }
 
-interface TestResult {
-  name: string
-  passed: boolean
-  duration: number
-  error?: string
+function fail(msg: string): never {
+  console.error(`[e2e] FAIL: ${msg}`)
+  process.exit(1)
 }
 
-/**
- * Test runner
- */
-class E2ETest {
-  private results: TestResult[] = []
-
-  async test(name: string, fn: () => Promise<void>): Promise<void> {
-    console.log(`\n🧪 Testing: ${name}`)
-    const start = Date.now()
-
-    try {
-      await fn()
-      const duration = Date.now() - start
-      this.results.push({ name, passed: true, duration })
-      console.log(`✅ Passed (${duration}ms)`)
-    } catch (error) {
-      const duration = Date.now() - start
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      this.results.push({ name, passed: false, duration, error: message })
-      console.log(`❌ Failed (${duration}ms): ${message}`)
-    }
+async function ensurePostgres(): Promise<pg.Client> {
+  const client = new pg.Client({ connectionString: DATABASE_URL, connectionTimeoutMillis: 3000 })
+  try {
+    await client.connect()
+  } catch (err) {
+    fail(
+      `cannot connect to PostgreSQL at ${DATABASE_URL}. ` +
+        `Is docker compose up? (${(err as Error).message})`
+    )
   }
 
-  summary(): void {
-    console.log('\n' + '='.repeat(60))
-    console.log('Test Summary\n')
-
-    const passed = this.results.filter((r) => r.passed).length
-    const failed = this.results.filter((r) => !r.passed).length
-    const total = this.results.length
-
-    console.log(`Total: ${total}`)
-    console.log(`Passed: ${passed} ✅`)
-    console.log(`Failed: ${failed} ❌`)
-    console.log('')
-
-    if (failed > 0) {
-      console.log('Failed tests:')
-      this.results
-        .filter((r) => !r.passed)
-        .forEach((r) => {
-          console.log(`  - ${r.name}: ${r.error}`)
-        })
-      console.log('')
-    }
-
-    const totalDuration = this.results.reduce((sum, r) => sum + r.duration, 0)
-    console.log(`Total duration: ${totalDuration}ms`)
-    console.log('='.repeat(60))
-
-    if (failed > 0) {
-      process.exit(1)
+  for (const table of REQUIRED_TABLES) {
+    const r = await client.query(
+      `SELECT to_regclass($1) IS NOT NULL AS exists`,
+      [`public.${table}`]
+    )
+    if (!r.rows[0]?.exists) {
+      await client.end().catch(() => undefined)
+      fail(`missing table "${table}". Did migrations run? (000_schema.sql)`)
     }
   }
+  log(`postgres ok (${REQUIRED_TABLES.length} core tables present)`)
+  return client
 }
 
-/**
- * Mock Agent Execution
- */
-async function mockAgentExecution(
-  agentType: string,
-  task: string
-): Promise<{ success: boolean; result?: any }> {
-  // Simulate agent processing
-  await new Promise((resolve) => setTimeout(resolve, 100))
-
-  return {
-    success: true,
-    result: { agent: agentType, task, completed: true },
+async function ensureNats(): Promise<NatsConnection> {
+  let nc: NatsConnection
+  try {
+    nc = await natsConnect({ servers: NATS_URL, timeout: 3000, name: 'swarmpress-e2e' })
+  } catch (err) {
+    fail(`cannot connect to NATS at ${NATS_URL} (${(err as Error).message})`)
   }
+  log(`nats ok (${NATS_URL})`)
+  return nc!
 }
 
-/**
- * Run E2E tests
- */
-async function runTests() {
-  const test = new E2ETest()
+async function ensureTemporal(): Promise<TemporalClient> {
+  let connection: TemporalConnection
+  try {
+    connection = await TemporalConnection.connect({ address: TEMPORAL_URL })
+  } catch (err) {
+    fail(`cannot connect to Temporal at ${TEMPORAL_URL} (${(err as Error).message})`)
+  }
+  // We can't trivially probe whether a worker is polling without starting a
+  // workflow, but we can list task queues' reachability via describe.
+  const client = new TemporalClient({ connection })
+  log(`temporal ok (${TEMPORAL_URL})`)
+  return client
+}
 
-  console.log('🚀 swarm.press End-to-End Tests\n')
-  console.log('Testing complete content workflow...')
+async function findSeed(pgClient: pg.Client): Promise<{ websiteId: string; writerAgentId: string }> {
+  const websiteRes = await pgClient.query(
+    `SELECT id FROM websites ORDER BY created_at ASC NULLS LAST LIMIT 1`
+  )
+  if (!websiteRes.rows[0]) {
+    fail('no website rows found. Run `tsx scripts/seed.ts` first.')
+  }
+  const agentRes = await pgClient.query(
+    `SELECT a.id FROM agents a
+     JOIN roles r ON a.role_id = r.id
+     WHERE r.name ILIKE '%writer%'
+     LIMIT 1`
+  )
+  if (!agentRes.rows[0]) {
+    fail('no writer agent found. Run `tsx scripts/seed.ts` first.')
+  }
+  return { websiteId: websiteRes.rows[0].id, writerAgentId: agentRes.rows[0].id }
+}
 
-  // Test 1: Content Creation
-  await test.test('Content creation workflow', async () => {
-    const contentId = uuidv4()
-    const content = {
-      id: contentId,
-      title: 'Test Article',
-      status: 'brief_created',
-      body: [],
-    }
-
-    mockDb.content.set(contentId, content)
-
-    if (!mockDb.content.has(contentId)) {
-      throw new Error('Content not created')
-    }
-  })
-
-  // Test 2: Writer creates draft
-  await test.test('Writer agent creates draft', async () => {
-    const contentId = Array.from(mockDb.content.keys())[0]
-    const result = await mockAgentExecution('WriterAgent', 'write_draft')
-
-    if (!result.success) {
-      throw new Error('Writer agent failed')
-    }
-
-    const content = mockDb.content.get(contentId)
-    content.status = 'draft'
-    content.body = [
-      { type: 'heading', level: 1, text: 'Test Article' },
-      { type: 'paragraph', text: 'This is a test article.' },
-    ]
-    mockDb.content.set(contentId, content)
-  })
-
-  // Test 3: Editor reviews content
-  await test.test('Editor agent reviews content', async () => {
-    const result = await mockAgentExecution('EditorAgent', 'review_content')
-
-    if (!result.success) {
-      throw new Error('Editor agent failed')
-    }
-
-    const contentId = Array.from(mockDb.content.keys())[0]
-    const content = mockDb.content.get(contentId)
-    content.status = 'in_editorial_review'
-    mockDb.content.set(contentId, content)
-  })
-
-  // Test 4: Content validation
-  await test.test('Content structure validation', async () => {
-    const contentId = Array.from(mockDb.content.keys())[0]
-    const content = mockDb.content.get(contentId)
-
-    if (!Array.isArray(content.body)) {
-      throw new Error('Content body must be array')
-    }
-
-    for (const block of content.body) {
-      if (!block.type) {
-        throw new Error('Block missing type')
-      }
-    }
-  })
-
-  // Test 5: Editor approves
-  await test.test('Editor approves content', async () => {
-    const result = await mockAgentExecution('EditorAgent', 'approve_content')
-
-    if (!result.success) {
-      throw new Error('Approval failed')
-    }
-
-    const contentId = Array.from(mockDb.content.keys())[0]
-    const content = mockDb.content.get(contentId)
-    content.status = 'approved'
-    mockDb.content.set(contentId, content)
-  })
-
-  // Test 6: Engineering builds site
-  await test.test('Engineering agent builds site', async () => {
-    const result = await mockAgentExecution('EngineeringAgent', 'build_site')
-
-    if (!result.success) {
-      throw new Error('Build failed')
-    }
-  })
-
-  // Test 7: Publishing
-  await test.test('Engineering agent publishes site', async () => {
-    const result = await mockAgentExecution('EngineeringAgent', 'publish_site')
-
-    if (!result.success) {
-      throw new Error('Publishing failed')
-    }
-
-    const contentId = Array.from(mockDb.content.keys())[0]
-    const content = mockDb.content.get(contentId)
-    content.status = 'published'
-    mockDb.content.set(contentId, content)
-  })
-
-  // Test 8: State transitions
-  await test.test('State machine transitions', async () => {
-    const contentId = Array.from(mockDb.content.keys())[0]
-    const content = mockDb.content.get(contentId)
-
-    const expectedStates = [
+async function insertBrief(
+  pgClient: pg.Client,
+  websiteId: string,
+  writerAgentId: string
+): Promise<string> {
+  const contentId = uuidv4()
+  await pgClient.query(
+    `INSERT INTO content_items
+       (id, title, slug, brief, body, status, website_id, author_agent_id, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
+      contentId,
+      'E2E test article',
+      `e2e-test-${contentId.slice(0, 8)}`,
+      'End-to-end test brief generated by scripts/test-e2e.ts',
+      JSON.stringify([]),
       'brief_created',
-      'draft',
-      'in_editorial_review',
-      'approved',
-      'published',
+      websiteId,
+      writerAgentId,
+      JSON.stringify({ e2e: true }),
     ]
-
-    if (content.status !== 'published') {
-      throw new Error(`Expected published, got ${content.status}`)
-    }
-  })
-
-  // Test 9: Question ticket creation
-  await test.test('Question ticket creation', async () => {
-    const ticketId = uuidv4()
-    const ticket = {
-      id: ticketId,
-      question: 'Is this content appropriate?',
-      status: 'open',
-      target: 'CEO',
-    }
-
-    mockDb.tickets.set(ticketId, ticket)
-
-    if (!mockDb.tickets.has(ticketId)) {
-      throw new Error('Ticket not created')
-    }
-  })
-
-  // Test 10: Task creation and completion
-  await test.test('Task lifecycle', async () => {
-    const taskId = uuidv4()
-    const task = {
-      id: taskId,
-      title: 'Review content',
-      status: 'planned',
-    }
-
-    mockDb.tasks.set(taskId, task)
-    task.status = 'in_progress'
-    mockDb.tasks.set(taskId, task)
-    task.status = 'completed'
-    mockDb.tasks.set(taskId, task)
-
-    const finalTask = mockDb.tasks.get(taskId)
-    if (finalTask.status !== 'completed') {
-      throw new Error('Task not completed')
-    }
-  })
-
-  // Show summary
-  test.summary()
+  )
+  log(`inserted brief content_items.id=${contentId}`)
+  return contentId
 }
 
-// Run tests
-runTests().catch((error) => {
-  console.error('Test runner failed:', error)
+async function pollTerminalState(
+  pgClient: pg.Client,
+  contentId: string
+): Promise<string> {
+  const TERMINAL = new Set(['published', 'rejected', 'archived', 'failed'])
+  const deadline = Date.now() + TIMEOUT_MS
+  let lastStatus = ''
+  while (Date.now() < deadline) {
+    const r = await pgClient.query(`SELECT status FROM content_items WHERE id = $1`, [contentId])
+    const status: string = r.rows[0]?.status ?? 'missing'
+    if (status !== lastStatus) {
+      log(`status -> ${status}`)
+      lastStatus = status
+    }
+    if (TERMINAL.has(status)) return status
+    await new Promise((res) => setTimeout(res, 1000))
+  }
+  fail(`workflow did not reach a terminal state in ${TIMEOUT_MS}ms (last: ${lastStatus})`)
+}
+
+async function main(): Promise<void> {
+  console.log('=== swarm.press end-to-end integration test ===')
+
+  const pgClient = await ensurePostgres()
+  const nats = await ensureNats()
+  const temporal = await ensureTemporal()
+
+  // Subscribe to all CloudEvents on the swarmpress.> wildcard
+  let eventCount = 0
+  const sub = nats.subscribe('swarmpress.>')
+  ;(async () => {
+    for await (const _msg of sub) eventCount++
+  })().catch(() => undefined)
+
+  const { websiteId, writerAgentId } = await findSeed(pgClient)
+  const contentId = await insertBrief(pgClient, websiteId, writerAgentId)
+
+  let terminalStatus = ''
+  try {
+    const workflowId = `e2e-content-production-${contentId}`
+    log(`starting workflow ${workflowId} on queue ${TASK_QUEUE}`)
+    const handle = await temporal.workflow.start('contentProductionWorkflow', {
+      args: [{ contentId, writerAgentId, brief: 'E2E test brief', maxRevisions: 1 }],
+      taskQueue: TASK_QUEUE,
+      workflowId,
+    })
+    log(`workflow run id ${handle.firstExecutionRunId}`)
+
+    terminalStatus = await pollTerminalState(pgClient, contentId)
+
+    // Audit-log assertion: the state machine should have written transitions.
+    const auditRes = await pgClient.query(
+      `SELECT count(*)::int AS n FROM state_audit_log WHERE entity_id = $1`,
+      [contentId]
+    )
+    const auditCount: number = auditRes.rows[0]?.n ?? 0
+    if (auditCount === 0) {
+      fail(`no state_audit_log rows for content ${contentId} (expected at least one)`)
+    }
+    log(`state_audit_log rows: ${auditCount}`)
+
+    // Allow events one final tick to flush before we assert.
+    await new Promise((res) => setTimeout(res, 500))
+    if (eventCount === 0) {
+      fail('expected at least one CloudEvent on swarmpress.> during the run')
+    }
+    log(`captured ${eventCount} cloudevents on swarmpress.>`)
+  } finally {
+    sub.unsubscribe()
+    await pgClient.query(`DELETE FROM content_items WHERE id = $1`, [contentId]).catch(() => undefined)
+    await pgClient.end().catch(() => undefined)
+    await nats.drain().catch(() => undefined)
+  }
+
+  if (terminalStatus !== 'published') {
+    fail(`workflow ended in non-success terminal state: ${terminalStatus}`)
+  }
+  log('all assertions passed')
+}
+
+main().catch((err) => {
+  console.error('[e2e] uncaught error:', err)
   process.exit(1)
 })
