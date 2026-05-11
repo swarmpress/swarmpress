@@ -7,9 +7,10 @@
 import { Client, Connection } from '@temporalio/client'
 import { v4 as uuidv4 } from 'uuid'
 import pg from 'pg'
+import { getDatabaseUrl, getTemporalUrl } from './utils/env'
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://swarmpress:swarmpress@localhost:5432/swarmpress'
-const TEMPORAL_URL = process.env.TEMPORAL_URL || 'localhost:7233'
+const DATABASE_URL = getDatabaseUrl()
+const TEMPORAL_URL = getTemporalUrl()
 
 async function main() {
   console.log('🧪 Testing Submit for Review + GitHub Sync\n')

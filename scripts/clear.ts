@@ -45,20 +45,28 @@ async function clearDatabase() {
 
     console.log('\nDeleting data...\n')
 
-    // Delete in reverse order of dependencies
-    const tables = [
-      'state_audit_log',
-      'question_tickets',
-      'tasks',
-      'content_items',
-      'pages',
-      'websites',
-      'agents',
-    ]
+    // Discover every public-schema table dynamically so we don't fall behind
+    // when new tables are added to the master schema. Excludes anything in
+    // the pg_* internal namespace.
+    const { rows: tableRows } = await db.query<{ tablename: string }>(
+      `SELECT tablename FROM pg_tables
+       WHERE schemaname = 'public'
+         AND tablename NOT LIKE 'pg_%'
+       ORDER BY tablename`
+    )
 
-    for (const table of tables) {
-      const result = await db.query(`DELETE FROM ${table}`)
-      console.log(`✅ Cleared ${table} (${result.rowCount} rows)`)
+    if (tableRows.length === 0) {
+      console.log('⚠️  No public-schema tables found - nothing to clear')
+    } else {
+      const tableList = tableRows.map((r) => `"${r.tablename}"`).join(', ')
+
+      // Single TRUNCATE handles every table in one shot; CASCADE follows FKs
+      // and RESTART IDENTITY resets sequences (item 27).
+      await db.query(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`)
+
+      for (const { tablename } of tableRows) {
+        console.log(`✅ Truncated ${tablename}`)
+      }
     }
 
     console.log('\n✨ Database cleared successfully!\n')
