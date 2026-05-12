@@ -1,15 +1,42 @@
 # Deployment Guide
 
-This guide covers deploying swarm.press to production environments.
+> **Last Updated:** 2026-05-12
+> **Status:** Aligned with the live cinqueterre.travel deploy
+
+This guide covers two distinct deployments:
+
+1. **The platform** — backend API, Temporal worker, Postgres, NATS,
+   admin dashboard. This is what you stand up on AWS / Fly / Kubernetes /
+   etc. It runs the agents and orchestration but **does not build or
+   serve any site**.
+2. **Per-site builds** — each site (e.g. `cinqueterre.travel`) ships
+   with its own `.github/workflows/deploy.yml`, which builds the Astro
+   theme against the site's `content/` and publishes via
+   `actions/deploy-pages`. The platform never runs `astro build`
+   locally and never pushes to a `gh-pages` branch.
+
+This separation is a core architectural property: the platform is the
+agent organization; the site repo is the deployable artifact. They
+communicate via `RepoClient` (Octokit calls into the site repo).
 
 ## Overview
 
-swarm.press requires several infrastructure components:
+The platform requires:
 - PostgreSQL database
 - NATS JetStream message broker
 - Temporal workflow engine
-- Node.js application servers (API + worker)
-- Static site hosting (for generated sites)
+- Node.js application servers (API + Temporal worker — auto-starts the
+  `OutboxWorker` and `EventTriggerService` services in `server.ts`)
+- A monorepo Personal Access Token stored as `MONOREPO_PAT` in each
+  site repo's Actions secrets (see "Per-site GitHub Pages deploy" below)
+
+Each site requires:
+- Its own GitHub repo
+- A `.github/workflows/deploy.yml` (copy from `cinqueterre.travel`)
+- GitHub Pages configured with `build_type=workflow` (not legacy
+  `gh-pages` branch source)
+- The `MONOREPO_PAT` secret so the workflow can clone the monorepo for
+  the Astro theme
 
 ## Deployment Options
 
@@ -49,6 +76,71 @@ docker-compose -f docker-compose.prod.yml up -d
 ```
 
 **Not recommended for production** due to single-point-of-failure.
+
+## Per-site GitHub Pages deploy
+
+Every site repo owns its own deploy. The platform's role is to merge
+the PR; everything from there is the site's GitHub Actions workflow.
+
+### Required workflow file (`<site-repo>/.github/workflows/deploy.yml`)
+
+Use `cinqueterre.travel/.github/workflows/deploy.yml` as the canonical
+template. The shape is:
+
+1. Trigger on `push: branches: [main]` (so a merged PR fires it).
+2. Check out the site repo.
+3. Check out the swarm-press monorepo (using `MONOREPO_PAT`) so the
+   Astro theme is available.
+4. `pnpm install` in the monorepo.
+5. `astro build` against the site's `content/`.
+6. `actions/upload-pages-artifact@v3` on the build output.
+7. `actions/deploy-pages@v4` in a separate `deploy` job with the right
+   `pages: write` and `id-token: write` permissions.
+
+### One-time setup per site
+
+```bash
+# 1) Add the MONOREPO_PAT secret on the site repo
+#    (PAT must have `repo` scope to read the swarm-press monorepo;
+#     if the monorepo is public, a fine-grained token still works.)
+gh secret set MONOREPO_PAT --repo <owner>/<site-repo> --body "$PAT"
+
+# 2) Switch GitHub Pages source to "GitHub Actions"
+#    (NOT the legacy gh-pages branch source — that disconnects the
+#     workflow from the actual deployment.)
+gh api -X POST "/repos/<owner>/<site-repo>/pages" \
+  -f build_type=workflow \
+  || gh api -X PUT "/repos/<owner>/<site-repo>/pages" \
+       -f build_type=workflow
+```
+
+### OAuth token vs. workflow scope
+
+If your platform's GitHub OAuth token (the one used by `RepoClient`) is
+missing the `workflow` scope, it cannot edit `.github/workflows/*` files
+on the site repo. Two options:
+
+- **Recommended:** keep the OAuth token narrow and use a separate PAT
+  with `workflow` scope when you need to update the deploy workflow
+  itself. Set this PAT as `MONOREPO_PAT` (the same secret the workflow
+  already uses) so site maintainers have one credential to rotate.
+- Re-issue the OAuth token with `workflow` scope. This widens what every
+  agent can do — only do this if you trust the agent layer fully.
+
+### Verifying a site is wired correctly
+
+After merging a PR to a site repo:
+
+1. The push should trigger an Actions run within ~10 seconds.
+2. The `build` job should succeed (Astro produces a `dist/`).
+3. The `deploy` job should report a deployment URL.
+4. `gh api repos/<owner>/<site-repo>/pages` should return
+   `"build_type": "workflow"`.
+5. Hit the live URL — the new content should be present.
+
+If the workflow runs but the live site doesn't update, check Pages
+config: a legacy `gh-pages` branch source silently overrides the
+`actions/deploy-pages` artifact.
 
 ## Step-by-Step: AWS Deployment
 
@@ -470,15 +562,25 @@ kubectl apply -f workflows-deployment.yaml
 
 ### GitHub Integration
 
+The platform uses **per-website credentials** stored in the
+`websites.github_*` columns (set via the admin "Connect GitHub" flow).
+`RepoClient` resolves them per call, so the platform itself does not
+need a global `GITHUB_TOKEN` for content I/O.
+
+The env vars below are only relevant for the legacy global-creds path
+or for the webhook receiver (which is shared across all sites):
+
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `GITHUB_TOKEN` | Personal access token | For PAT auth |
-| `GITHUB_OWNER` | Repository owner | For PAT auth |
-| `GITHUB_REPO` | Repository name | For PAT auth |
-| `GITHUB_APP_ID` | GitHub App ID | For App auth |
-| `GITHUB_PRIVATE_KEY` | GitHub App private key | For App auth |
-| `GITHUB_INSTALLATION_ID` | Installation ID | For App auth |
-| `GITHUB_WEBHOOK_SECRET` | Webhook secret | Always |
+| `GITHUB_WEBHOOK_SECRET` | Webhook secret used for HMAC verification of GitHub deliveries | Always |
+| `GITHUB_OAUTH_CLIENT_ID` | OAuth app client id (admin login) | For admin login |
+| `GITHUB_OAUTH_CLIENT_SECRET` | OAuth app secret | For admin login |
+| `GITHUB_TOKEN` | Fallback PAT — used only if a website has no per-site creds | Legacy |
+| `GITHUB_APP_ID` / `GITHUB_PRIVATE_KEY` / `GITHUB_INSTALLATION_ID` | GitHub App credentials | If using App auth |
+
+Each site repo additionally needs its own Actions secret
+**`MONOREPO_PAT`** (see "Per-site GitHub Pages deploy" above) — that
+lives on the site repo, not the platform.
 
 ### Optional
 

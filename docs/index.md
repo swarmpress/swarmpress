@@ -1,16 +1,27 @@
 # swarm.press Documentation
 
-> **Last Updated:** 2026-01-10
-> **Status:** Current - Cinque Terre Reference Implementation
+> **Last Updated:** 2026-05-12
+> **Status:** Autonomous chain proven end-to-end against the live cinqueterre.travel site
 
 Welcome to the swarm.press documentation. swarm.press is a fully autonomous virtual publishing house operated by intelligent agents with human oversight.
 
-**New in 2026:** The Cinque Terre travel website serves as the reference implementation, demonstrating the full content architecture with 60+ block types, multi-language support, and agent configuration files.
+**Live proof (2026-05-12):** A brief inserted into Postgres became
+[https://cinqueterre.travel/en/blog/last-light-on-sentiero-azzurro/](https://cinqueterre.travel/en/blog/last-light-on-sentiero-azzurro/) —
+WriterAgent (Isabella) drafted the editorial, EditorAgent (Marco) judged
+quality_score=7 and approved, RepoClient merged the PR, GitHub Actions
+deployed. The only human action was writing the brief. See the
+[Architecture Overview](./architecture/overview.md) for the full chain.
 
-**Latest Updates (January 2026):**
-- **Collections Browser** - Browse and manage collection items from the admin dashboard
-- **Page Editor Enhancements** - SlugPicker for curating collection items with reordering
-- **Site Editor Enhancements** - LocalizedStringEditor with translation status indicators
+**Recent architectural shifts:**
+- **Repo-canonical content storage** — page bodies and collection items
+  live in the site's GitHub repo, not in Postgres. Postgres holds
+  operational metadata (tasks, schedules, audit log, outbox).
+- **Routable draft path** — WriterAgent commits drafts at their real URL
+  path (`content/pages/blog/{slug}.json`); the PR branch
+  (`drafts/content-{id}`) is the staging mechanism, not a path prefix.
+- **Build & deploy owned by the site repo** — each site has its own
+  `.github/workflows/deploy.yml`; the platform never builds Astro locally
+  or pushes to gh-pages.
 
 ---
 

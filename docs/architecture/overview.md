@@ -1,7 +1,7 @@
 # Architecture Overview
 
-> **Last Updated:** 2026-01-10
-> **Status:** Current - Cinque Terre Reference Implementation
+> **Last Updated:** 2026-05-12
+> **Status:** Autonomous chain proven end-to-end (see "End-to-end live verification" below)
 
 swarm.press is a fully autonomous virtual publishing house operated by intelligent agents with human oversight.
 
@@ -23,18 +23,57 @@ swarm.press is a fully autonomous virtual publishing house operated by intellige
 ┌───────────────────────────────▼─────────────────────────────────┐
 │                    Orchestration Layer                          │
 │  Temporal Workflows │ State Machine │ Event Bus (NATS)          │
+│  ↑ OutboxWorker drains event_outbox → NATS → EventTriggerService│
 └───────────────────────────────┬─────────────────────────────────┘
                                 │
 ┌───────────────────────────────▼─────────────────────────────────┐
 │                      Agent Layer                                │
 │    WriterAgent │ EditorAgent │ EngineeringAgent │ CEOAssistant  │
+│         (all content I/O via RepoClient)                        │
 └───────────────────────────────┬─────────────────────────────────┘
                                 │
 ┌───────────────────────────────▼─────────────────────────────────┐
 │                     Storage Layer                               │
-│  PostgreSQL (Metadata) │ Git Submodule (Content) │ S3/R2 (Media)│
+│  PostgreSQL (ops metadata) │ Site GitHub repo (content)         │
+│                            │ S3/R2 (media binaries)             │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+┌───────────────────────────────▼─────────────────────────────────┐
+│                  Per-Site Build & Deploy                        │
+│  Site repo's .github/workflows/deploy.yml builds Astro from the │
+│  monorepo theme + repo content; actions/deploy-pages publishes. │
+│  Platform never runs Astro locally or pushes to gh-pages.       │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## End-to-end live verification (2026-05-12)
+
+A brief inserted into Postgres became
+[https://cinqueterre.travel/en/blog/last-light-on-sentiero-azzurro/](https://cinqueterre.travel/en/blog/last-light-on-sentiero-azzurro/)
+without any human in the loop except the brief author:
+
+```
+SQL: insert content_items + event_outbox row (brief.created)
+  → OutboxWorker drains outbox → NATS
+  → EventTriggerService starts contentProductionWorkflow
+  → WriterAgent (Isabella) drafts content
+    + commits to drafts/content-{id} branch
+    at content/pages/blog/{slug}.json
+  → submit_for_review opens PR on the site repo
+  → editorialReviewWorkflow
+  → EditorAgent (Marco) reads draft from repo, scores quality, approves
+  → RepoClient merges PR (squash) to main
+  → Site repo's GitHub Actions workflow fires on push
+  → Builds Astro from monorepo theme + content/pages/
+  → actions/deploy-pages publishes
+  → Page live at /{lang}/blog/{slug}/
+```
+
+The content is also reviewable as a normal PR — humans can intervene at any
+point, and the editor's decision (approve / request_changes / reject) maps
+to standard PR actions (merge / comment / close).
 
 ---
 

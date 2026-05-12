@@ -1,11 +1,14 @@
 # swarm.press — Claude Development Guide
 
-> **Last Updated:** 2026-05-11
-> **Status:** Production Ready with Autonomous Scheduling
+> **Last Updated:** 2026-05-12
+> **Status:** Autonomous chain verified end-to-end against the live cinqueterre.travel site
 > **Spec Version:** 1.1
 > **Schema Version:** 1.2.0 (46 block types, 11 agents, 11 workflows)
 > **Storage Contract:** repo-canonical — page/collection content lives in
 > the site's GitHub repo; Postgres holds only operational metadata.
+> **Live Proof:** https://cinqueterre.travel/en/blog/last-light-on-sentiero-azzurro/
+> — autonomously briefed, drafted by WriterAgent, approved by EditorAgent,
+> merged via RepoClient, deployed by GitHub Actions. Human only wrote the brief.
 
 ---
 
@@ -283,20 +286,45 @@ item. `LocalizedString` requires `en` (already enforced post-audit).
 
 ### Agent Workflow with Content
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  AGENT WORKFLOW (repo-canonical)                            │
-├─────────────────────────────────────────────────────────────┤
-│  1. WriterAgent receives task from Temporal workflow        │
-│  2. Agent reads brief + collections via RepoClient          │
-│  3. Agent commits page JSON to draft branch via RepoClient  │
-│  4. Agent opens PR on the site repo (drafts/ → main)        │
-│  5. EditorAgent reviews PR; approve = merge via RepoClient  │
-│  6. Site repo's .github/workflows/deploy.yml fires on merge │
-│  7. GitHub Actions builds Astro from monorepo theme         │
-│  8. actions/deploy-pages@v4 deploys to live URL             │
-│  9. deployment_status webhook → platform records 'deployed' │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  AGENT WORKFLOW (repo-canonical, end-to-end verified 2026-05-12)    │
+├──────────────────────────────────────────────────────────────────────┤
+│  1. Brief inserted in Postgres (manually, by schedule, or admin)    │
+│  2. createContentBrief activity emits brief.created → event_outbox  │
+│  3. OutboxWorker drains outbox → publishes to NATS                  │
+│  4. EventTriggerService starts contentProductionWorkflow            │
+│     (deterministic workflowId = content-production-{contentId})     │
+│  5. WriterAgent commits page JSON to drafts/content-{id} branch     │
+│     at content/pages/blog/{slug}.json (routable on the live site)   │
+│  6. submit_for_review opens PR on the site repo                     │
+│  7. editorialReviewWorkflow starts (manual or auto-chained)         │
+│  8. EditorAgent reads draft from repo, scores quality, decides:     │
+│      approve  → RepoClient.mergePR(squash)                          │
+│      reject   → state → 'rejected', PR closed                       │
+│      changes  → state → 'needs_changes', comment on PR              │
+│  9. Merge to main triggers site repo's .github/workflows/deploy.yml │
+│ 10. Action builds Astro (monorepo theme + repo content)             │
+│ 11. actions/deploy-pages@v4 publishes to GitHub Pages               │
+│ 12. Page is live at /{lang}/blog/{slug}/ on the site domain         │
+│ 13. (optional) deployment_status webhook → state_audit_log          │
+└──────────────────────────────────────────────────────────────────────┘
 ```
+
+### Path convention
+
+The PR branch (`drafts/content-{contentId}`) is what makes work-in-progress
+"draft" — there is no `drafts/` *path prefix* anymore. WriterAgent commits
+straight to the page's real path:
+
+- Default for blog posts: `content/pages/blog/{slug}.json`
+- Slug source: `content_items.slug` (must be set when the brief is inserted)
+- Language source: `websites.language` (defaults to `'en'`)
+- Slug field shape inside the JSON: `{ "en": "/en/blog/{slug}", … }`
+- `page_type`: `"blog-article"`
+
+When the PR merges, the page appears at `https://{site}/{lang}/blog/{slug}/`
+on the next deploy. Symmetry: a published page and a drafted-but-unmerged
+page share the same path; the only difference is which branch they live on.
 
 ### Build & Deploy
 The platform no longer performs local Astro builds or pushes to
@@ -304,13 +332,29 @@ gh-pages. Build+deploy is owned by each site repo's own GitHub Actions
 workflow (`.github/workflows/deploy.yml`), which:
 
 1. Checks out the site repo (which holds the canonical content JSON).
-2. Pulls the Astro theme from the monorepo.
-3. Builds with `CONTENT_DIR=content/pages`.
-4. Deploys via `actions/deploy-pages@v4`.
+2. Checks out the swarmpress monorepo for the Astro theme.
+3. `pnpm install` at the monorepo root (now also populates
+   `packages/site-builder/src/themes/*` because that glob was added to
+   `pnpm-workspace.yaml`).
+4. Builds the Astro theme with `CONTENT_DIR=content/pages`.
+5. Deploys via `actions/deploy-pages@v4`.
+
+GitHub Pages must be configured for **Workflow** source on the site repo
+(`gh api -X PUT /repos/{owner}/{repo}/pages -f build_type=workflow`) — the
+legacy gh-pages branch source is decoupled from `actions/deploy-pages` and
+will silently serve stale content if both are configured.
 
 Once GitHub fires the `deployment_status.success` webhook, the platform
-records the transition in `state_audit_log` and the
-`publishingWorkflow` resumes its "wait for deploy" activity.
+records the transition in `state_audit_log`. (The `publishingWorkflow`'s
+deploy-wait activity is currently a polling stub — see follow-ups below.)
+
+#### Operational requirements on the site repo
+- A `MONOREPO_PAT` secret (any token with `repo` or `public_repo` scope is
+  enough since `swarmpress/swarmpress` is public — actions/checkout still
+  errors when the `token:` field is set to an unset secret).
+- Pages source set to **Workflow** (not legacy branch).
+- The workflow `.github/workflows/deploy.yml` itself (template lives in
+  the cinqueterre.travel repo).
 
 The retired pieces (kept for backward compat as deprecated paths):
 - `EngineeringAgent.{validate_content, build_site, deploy_site, publish_website, build_from_github}` tools
@@ -901,8 +945,11 @@ apps/admin/src/components/
 12. **Content is JSON blocks** — Not plain Markdown, not MDX. Renderers do not parse markdown at render time.
 13. **LocalizedString must always include `en`** — Read via `getLocalizedValue(value, locale)`, never `value[locale] || value.en`
 14. **Schema appends go after the AUDIT TRAILER marker** — In their own `BEGIN/COMMIT` block, so parallel worktrees can merge cleanly
-15. **Spec is the source of truth** — Implementation follows spec
-16. **CEO has final authority** — No agent can override CEO decisions
+15. **Drafts are PR branches, not paths** — WriterAgent commits the page at its real routable path (e.g. `content/pages/blog/{slug}.json`) on the `drafts/content-{id}` branch. There is no `content/pages/drafts/` directory. The branch is the staging mechanism; the merge is the publish step.
+16. **State-machine actor names match the machine, not the agent class** — actors are `Writer`, `Editor`, `CEO`, `EngineeringAgent`, `SEOSpecialist`, `ChiefEditor` (see `packages/shared/src/state-machines/index.ts`). Don't pass class names like `EditorAgent` to `transition()`.
+17. **TypeScript generics inside `.astro` template returns must avoid `<` ambiguity** — Astro's parser can read `Record<string, string>` as JSX. Use `{ [k: string]: string }` instead.
+18. **Spec is the source of truth** — Implementation follows spec
+19. **CEO has final authority** — No agent can override CEO decisions
 
 ---
 
@@ -1108,13 +1155,56 @@ tsx scripts/seed.ts
 - [x] Batch processing service
 - [x] Storage service (S3/R2)
 
+### End-to-end live verification (2026-05-12)
+- [x] **Full autonomous chain proven against the live cinqueterre.travel site.**
+      A brief inserted into Postgres became
+      [/en/blog/last-light-on-sentiero-azzurro/](https://cinqueterre.travel/en/blog/last-light-on-sentiero-azzurro/)
+      with WriterAgent (Isabella) drafting, EditorAgent (Marco)
+      approving (quality_score=7), RepoClient merging PR #6, GitHub
+      Actions deploying. No human in the loop except the brief author.
+- [x] WriterAgent commits at routable blog path
+      (`content/pages/blog/{slug}.json`) — drafts/{id} subdirectory retired
+- [x] EditorAgent reads draft body from the repo (was reading null DB body)
+- [x] State machine has `reject` event + `rejected` terminal state
+- [x] Editor side-effects ordered: state transition first, PR action second
+- [x] `question_tickets.content_id` issue resolved (folded into metadata)
+- [x] Pessimistic SELECT…FOR UPDATE in state-transition engine
+      (Date-precision fix vs optimistic-lock)
+- [x] State-audit-log INSERT aligned with actual schema
+      (`actor_type` not `actor`, no `event` column)
+- [x] Worker process connects to NATS at startup so
+      `publishContentEvent` activities don't throw "JetStream not initialized"
+- [x] EventTriggerService routes `brief.created` → `contentProductionWorkflow`
+      with deterministic workflowId
+- [x] Block-shape normalizer (Writer's tool prompt vs canonical Zod schema)
+- [x] `pnpm-workspace.yaml` includes `packages/site-builder/src/themes/*`
+      so `pnpm install` populates the theme's node_modules for Actions builds
+- [x] `Record<string, string>` rewritten as `{ [k: string]: string }` in
+      `ContentRenderer.astro` (Astro template parser misreads `<` as JSX)
+
+### Known follow-ups (work but not yet polished)
+- [ ] `waitForDeploymentActivity` is still a polling stub; convert to a
+      Temporal signal driven by the `deployment_status` webhook
+- [ ] `EventTriggerService.stop()` only flips a flag; NATS subscriber
+      doesn't truly unsubscribe (relies on connection close at shutdown)
+- [ ] Writer agent resolution in `EventTriggerService` is global, not
+      per-website (no `findByWebsiteAndCapability` yet)
+- [ ] `pr_content_mappings` has no `merge_commit_sha` column; webhook
+      handler uses "most-recently-merged" heuristic to map deploy → content
+- [ ] Several deprecated shims in `@swarm-press/github-integration`
+      (`syncContentToGitHub`, `getGitHubMapping`) — port callers to
+      `RepoClient` and remove
+- [ ] Migrate the legacy `cinqueterre.travel/build-all-pages.js`
+      vanilla-JS generator out of the submodule
+
 ### Post-MVP Roadmap
-- [ ] Multi-tenancy
+- [ ] Multi-tenancy (multiple sites in one platform)
 - [ ] Distribution agent (social media, newsletters)
 - [ ] Advanced analytics dashboard
 - [ ] Visual workflow editor
 - [ ] CEO oversight dashboard
 - [ ] Advanced observability (Prometheus, tracing)
+- [ ] Theme route for non-blog autonomous pages (village pages, collections)
 
 ---
 
@@ -1131,8 +1221,8 @@ When working on swarm.press:
 
 ---
 
-**Last Updated:** 2026-05-11
-**Implementation Status:** Production Ready with Autonomous Scheduling
+**Last Updated:** 2026-05-12
+**Implementation Status:** Autonomous chain proven end-to-end against the live cinqueterre.travel site. See "End-to-end live verification" section above.
 
 ---
 
