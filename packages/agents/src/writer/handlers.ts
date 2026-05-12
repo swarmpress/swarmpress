@@ -161,7 +161,8 @@ function buildDraftPageFile(args: {
   contentId: string
   title: string
   body: any[]
-  slug?: string
+  slug: string
+  language: string
   pageType?: string
   seo?: Record<string, unknown>
   status?: string
@@ -169,17 +170,15 @@ function buildDraftPageFile(args: {
   createdAt?: string
 }) {
   const now = new Date().toISOString()
-  const slugValue = args.slug || `/drafts/${args.contentId}`
-  // Returned object matches the live cinque-terre PageFile JSON shape
-  // (slug/title as LocalizedString). The TS type in
-  // @swarm-press/github-integration/src/content-service is narrower
-  // (string title/slug) so we type as `any` and let savePageByPath
-  // serialize as JSON.
+  // Slug field follows the live convention: `/{lang}/blog/{slug}` (the
+  // theme reads this for canonical URLs / SEO). Keeping it primary-lang
+  // only for now — translations get added later.
+  const slugValue = `/${args.language}/blog/${args.slug}`
   return {
     id: args.contentId,
-    slug: { en: slugValue },
-    title: { en: args.title },
-    page_type: args.pageType || 'draft',
+    slug: { [args.language]: slugValue },
+    title: { [args.language]: args.title },
+    page_type: args.pageType || 'blog-article',
     seo: args.seo || {},
     body: args.body,
     metadata: args.metadata || {},
@@ -190,13 +189,28 @@ function buildDraftPageFile(args: {
 }
 
 /**
- * Path under which WriterAgent commits drafts. The live cinque-terre
- * Astro build uses `CONTENT_DIR=content/pages` and renders everything
- * under it EXCEPT `content/pages/drafts/`, so drafts are safe to commit
- * here without leaking into the public site.
+ * Path that WriterAgent commits to. Maps to a real route on the live site
+ * (`/{lang}/blog/{slug}/`). The PR branch (`drafts/content-{id}`) is what
+ * makes the page "draft" — once EditorAgent merges, the page appears at
+ * its real URL on the next deploy. Drafts no longer live in a `drafts/`
+ * subdirectory, because that path was unreachable by the theme's router
+ * and only existed as a parking-spot when nothing was actually deploying.
  */
-function draftFilePath(contentId: string): string {
-  return `content/pages/drafts/${contentId}.json`
+export function pageFilePathForContent(args: {
+  slug: string
+  pageType?: string // future: 'village' / 'collection' / etc.
+}): string {
+  return `content/pages/blog/${args.slug}.json`
+}
+
+/**
+ * Resolve the website's primary language for path construction. Defaults
+ * to 'en' if the column is unset.
+ */
+async function getWebsiteLanguage(websiteId: string): Promise<string> {
+  const websiteRepository = await getWebsiteRepository()
+  const website = await websiteRepository.findById(websiteId)
+  return (website as { language?: string } | null)?.language || 'en'
 }
 
 // ============================================================================
@@ -330,7 +344,11 @@ export const writeDraftHandler: ToolHandler<{
     // Ensure draft branch exists, then commit page JSON to repo.
     const branch = await ensureDraftBranch(existing.website_id, input.content_id)
     const contentService = await getGitHubContentService(existing.website_id, branch)
-    const filePath = draftFilePath(input.content_id)
+    const language = await getWebsiteLanguage(existing.website_id)
+    if (!existing.slug) {
+      return toolError(`Content item ${input.content_id} has no slug; cannot route to a page path`)
+    }
+    const filePath = pageFilePathForContent({ slug: existing.slug })
 
     // Preserve any existing seo / metadata / created_at on the draft
     // file across re-writes.
@@ -342,7 +360,8 @@ export const writeDraftHandler: ToolHandler<{
       title: input.title,
       body: input.body,
       slug: existing.slug,
-      pageType: previousContent?.page_type || 'draft',
+      language,
+      pageType: previousContent?.page_type || 'blog-article',
       seo: previousContent?.seo || {},
       metadata: {
         ...(previousContent?.metadata || {}),
@@ -466,14 +485,18 @@ export const reviseDraftHandler: ToolHandler<{
     // Commit revision to the draft branch in the repo.
     const branch = await ensureDraftBranch(existing.website_id, input.content_id)
     const contentService = await getGitHubContentService(existing.website_id, branch)
-    const filePath = draftFilePath(input.content_id)
+    const language = await getWebsiteLanguage(existing.website_id)
+    if (!existing.slug) {
+      return toolError(`Content item ${input.content_id} has no slug; cannot route to a page path`)
+    }
+    const filePath = pageFilePathForContent({ slug: existing.slug })
     const existingFile = await contentService.getPageByPath(filePath)
     const previousContent = existingFile?.content as any
 
     // The new title falls back to whatever was on disk (or the DB title).
     const effectiveTitle =
       input.title ||
-      (typeof previousContent?.title === 'object' ? previousContent.title?.en : previousContent?.title) ||
+      (typeof previousContent?.title === 'object' ? previousContent.title?.[language] || previousContent.title?.en : previousContent?.title) ||
       existing.title
 
     const pageFile = buildDraftPageFile({
@@ -481,7 +504,8 @@ export const reviseDraftHandler: ToolHandler<{
       title: effectiveTitle,
       body: input.body,
       slug: existing.slug,
-      pageType: previousContent?.page_type || 'draft',
+      language,
+      pageType: previousContent?.page_type || 'blog-article',
       seo: previousContent?.seo || {},
       metadata: {
         ...(previousContent?.metadata || {}),
@@ -690,7 +714,10 @@ export const submitForReviewHandler: ToolHandler<{ content_id: string }> = async
     const branch = `drafts/content-${input.content_id}`
     const baseBranch = 'main'
     const contentService = await getGitHubContentService(content.website_id, branch)
-    const filePath = draftFilePath(input.content_id)
+    if (!content.slug) {
+      return toolError(`Content item ${input.content_id} has no slug; cannot locate draft file`)
+    }
+    const filePath = pageFilePathForContent({ slug: content.slug })
     const draftFile = await contentService.getPageByPath(filePath)
     if (!draftFile) {
       return toolError(

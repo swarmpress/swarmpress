@@ -231,7 +231,13 @@ export const getContentForReviewHandler: ToolHandler<{ content_id: string }> = a
         const website = await websiteRepository.findById(content.website_id)
         if (website?.github_owner && website?.github_repo) {
           const draftBranch = `drafts/content-${input.content_id}`
-          const draftPath = `content/pages/drafts/${input.content_id}.json`
+          // Path matches WriterAgent's pageFilePathForContent — derived from
+          // content.slug, not the legacy `drafts/{id}` parking spot.
+          if (!content.slug) {
+            console.warn(`[EditorHandler] Content ${input.content_id} has no slug; cannot locate draft file`)
+            return toolError(`Content item ${input.content_id} has no slug; cannot route to draft`)
+          }
+          const draftPath = `content/pages/blog/${content.slug}.json`
           const contentService = new GitHubContentService({
             owner: website.github_owner,
             repo: website.github_repo,
