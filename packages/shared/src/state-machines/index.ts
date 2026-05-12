@@ -39,6 +39,7 @@ export type ContentItemEvent =
   | 'submit_for_review'
   | 'request_changes'
   | 'approve'
+  | 'reject'
   | 'revisions_applied'
   | 'ready_for_publish'
   | 'deploy_success'
@@ -55,11 +56,12 @@ export const contentItemStateMachine: StateMachine<ContentItemStatus, ContentIte
     'in_editorial_review',
     'needs_changes',
     'approved',
+    'rejected',
     'scheduled',
     'published',
     'archived',
   ],
-  terminalStates: ['archived'],
+  terminalStates: ['archived', 'rejected'],
   transitions: [
     {
       from: 'idea',
@@ -95,6 +97,12 @@ export const contentItemStateMachine: StateMachine<ContentItemStatus, ContentIte
       from: 'in_editorial_review',
       to: 'approved',
       event: 'approve',
+      allowedActors: ['Editor', 'CEO'],
+    },
+    {
+      from: 'in_editorial_review',
+      to: 'rejected',
+      event: 'reject',
       allowedActors: ['Editor', 'CEO'],
     },
     {

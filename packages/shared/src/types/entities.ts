@@ -287,6 +287,7 @@ export const ContentItemStatusSchema = z.enum([
   'in_editorial_review',
   'needs_changes',
   'approved',
+  'rejected',
   'scheduled',
   'published',
   'archived',

@@ -351,7 +351,7 @@ export const approveContentHandler: ToolHandler<{
     const result = await contentRepository.transition(
       input.content_id,
       'approve',
-      'EditorAgent',
+      'Editor',
       context.agentId,
       {
         quality_score: input.quality_score,
@@ -482,7 +482,7 @@ export const requestChangesHandler: ToolHandler<{
     const result = await contentRepository.transition(
       input.content_id,
       'request_changes',
-      'EditorAgent',
+      'Editor',
       context.agentId,
       {
         quality_score: input.quality_score,
@@ -534,17 +534,40 @@ export const rejectContentHandler: ToolHandler<{
       return toolError(`Content item not found: ${input.content_id}`)
     }
 
-    // ---- 1. Best-effort: close the PR (non-fatal on failure) ----
-    let prInfo: PRLookupResult | null = null
+    if (content.status !== 'in_editorial_review') {
+      return toolError(
+        `Content must be in "in_editorial_review" status to reject. Current status: ${content.status}`
+      )
+    }
+
+    // ---- 1. Look up PR (read-only, no side effect yet) ----
+    const prInfo: PRLookupResult | null = await findPRForContent(
+      content.website_id,
+      input.content_id
+    )
+
+    // ---- 2. Transition state FIRST. If the state machine rejects (wrong
+    //     event/actor/state), bail out BEFORE touching the PR. Closing a PR
+    //     is irreversible from the editor's tools — we don't want a
+    //     "rejected" PR with content still in_editorial_review. ----
+    const result = await contentRepository.transition(
+      input.content_id,
+      'reject',
+      'Editor',
+      context.agentId,
+      { reason: input.reason, pr_number: prInfo?.prNumber }
+    )
+
+    if (!result.success) {
+      return toolError(`Failed to reject content: ${result.error}`)
+    }
+
+    // ---- 3. Best-effort: close the PR (state already advanced) ----
     let prClosed = false
-    try {
-      prInfo = await findPRForContent(content.website_id, input.content_id)
-      if (prInfo) {
+    if (prInfo) {
+      try {
         const { client, owner, repo } = await getGitHubClientForWebsite(content.website_id)
         const octokit = client.getOctokit()
-
-        // Post a closing comment first so the rejection reason is visible
-        // on the PR before it's closed.
         await octokit.issues.createComment({
           owner,
           repo,
@@ -558,8 +581,6 @@ export const rejectContentHandler: ToolHandler<{
             `*Rejected by: ${context.agentName} (${context.agentId})*`,
           ].join('\n'),
         })
-
-        // Then close the PR.
         await octokit.pulls.update({
           owner,
           repo,
@@ -568,19 +589,19 @@ export const rejectContentHandler: ToolHandler<{
         })
         prClosed = true
         console.log(`[EditorHandler] Closed PR #${prInfo.prNumber}`)
-      } else {
+      } catch (err) {
         console.warn(
-          `[EditorHandler] No PR found for content ${input.content_id}; skipping PR close (DB transition still proceeding)`
+          `[EditorHandler] Failed to close PR (non-fatal — state already 'rejected'):`,
+          err instanceof Error ? err.message : err
         )
       }
-    } catch (err) {
+    } else {
       console.warn(
-        `[EditorHandler] Failed to close PR (non-fatal):`,
-        err instanceof Error ? err.message : err
+        `[EditorHandler] No PR found for content ${input.content_id}; state transitioned to rejected`
       )
     }
 
-    // ---- 2. Persist the rejection record ----
+    // ---- 4. Persist the rejection record (after state + PR) ----
     const metadata = content.metadata || {}
     const reviews = metadata.reviews || []
     reviews.push({
@@ -597,19 +618,6 @@ export const rejectContentHandler: ToolHandler<{
     await contentRepository.update(input.content_id, {
       metadata: { ...metadata, reviews },
     })
-
-    // ---- 3. Transition to rejected ----
-    const result = await contentRepository.transition(
-      input.content_id,
-      'reject',
-      'EditorAgent',
-      context.agentId,
-      { reason: input.reason, pr_number: prInfo?.prNumber }
-    )
-
-    if (!result.success) {
-      return toolError(`Failed to reject content: ${result.error}`)
-    }
 
     return toolSuccess({
       content_id: input.content_id,
@@ -645,14 +653,19 @@ export const escalateToCEOHandler: ToolHandler<{
       return toolError(`Content item not found: ${input.content_id}`)
     }
 
-    // Create question ticket for CEO
+    // Create question ticket for CEO. The question_tickets table has no
+    // dedicated `content_id` column — keep the linkage in metadata so the
+    // INSERT only references real columns.
     const ticket = await questionTicketRepository.create({
       subject: input.subject,
       body: `${input.reason}\n\n**Risk Factors:**\n${input.risk_factors.map((r) => `- ${r}`).join('\n')}\n\n**Content Title:** ${content.title}\n**Content ID:** ${content.id}`,
       created_by_agent_id: context.agentId,
       target: 'CEO',
-      content_id: input.content_id,
       status: 'open',
+      metadata: {
+        content_id: input.content_id,
+        risk_factors: input.risk_factors,
+      },
     })
 
     // Add escalation to content metadata
