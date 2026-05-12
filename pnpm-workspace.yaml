@@ -1,3 +1,8 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+  # The cinque-terre Astro theme has its own package.json + own deps (astro,
+  # react, tailwind, etc.) and is built standalone by cinqueterre.travel's
+  # GitHub Actions workflow. Including it here ensures `pnpm install` at the
+  # monorepo root populates its node_modules so `pnpm astro build` finds astro.
+  - 'packages/site-builder/src/themes/*'
