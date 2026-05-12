@@ -212,18 +212,69 @@ export const getContentForReviewHandler: ToolHandler<{ content_id: string }> = a
       return toolError(`Content item not found: ${input.content_id}`)
     }
 
+    // REPO-CANONICAL: the actual draft body lives on the GitHub draft branch
+    // (`drafts/content-{id}` at `content/pages/drafts/{id}.json`), NOT in
+    // `content_items.body` (which is null since the migration). Read the
+    // draft from the repo so the editor sees real content to review.
+    let body: unknown[] = Array.isArray(content.body) ? (content.body as unknown[]) : []
+    let title: string = content.title
+    let draftSource: 'repo' | 'db' = 'db'
+    let draftCommitSha: string | undefined
+    let draftError: string | undefined
+
+    if (content.website_id) {
+      try {
+        const { GitHubContentService } = await import(
+          '@swarm-press/github-integration/src/content-service'
+        )
+        const websiteRepository = await getWebsiteRepository()
+        const website = await websiteRepository.findById(content.website_id)
+        if (website?.github_owner && website?.github_repo) {
+          const draftBranch = `drafts/content-${input.content_id}`
+          const draftPath = `content/pages/drafts/${input.content_id}.json`
+          const contentService = new GitHubContentService({
+            owner: website.github_owner,
+            repo: website.github_repo,
+            token: website.github_access_token || '',
+            branch: draftBranch,
+          })
+          const draftFile = await contentService.getPageByPath(draftPath)
+          if (draftFile?.content) {
+            const page = draftFile.content as { title?: string; body?: unknown[] }
+            if (Array.isArray(page.body) && page.body.length > 0) {
+              body = page.body
+              draftSource = 'repo'
+              draftCommitSha = draftFile.sha
+              if (typeof page.title === 'string' && page.title.trim()) {
+                title = page.title
+              }
+            }
+          }
+        }
+      } catch (err) {
+        draftError = err instanceof Error ? err.message : String(err)
+        console.warn(
+          `[EditorHandler] Could not load draft for ${input.content_id} from repo (will fall back to DB):`,
+          draftError
+        )
+      }
+    }
+
     return toolSuccess({
       id: content.id,
-      title: content.title,
-      brief: content.brief,
+      title,
+      brief: (content as { brief?: string }).brief,
       status: content.status,
-      body: content.body,
+      body,
       metadata: content.metadata,
       website_id: content.website_id,
       author_agent_id: content.author_agent_id,
       created_at: content.created_at,
       updated_at: content.updated_at,
-      block_count: Array.isArray(content.body) ? content.body.length : 0,
+      block_count: body.length,
+      draft_source: draftSource,
+      draft_commit_sha: draftCommitSha,
+      draft_load_error: draftError,
     })
   } catch (error) {
     return toolError(error instanceof Error ? error.message : 'Failed to fetch content')
