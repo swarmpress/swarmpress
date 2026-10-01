@@ -459,3 +459,104 @@ pub async fn run_editorial_pipeline(
         run.apply(ContentEvent::SubmitForReview, &run.writer())?;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Single-phase steps (docs/mvp.md). The sim owns the article's phases and
+// requests one job per phase; these run exactly one phase each and return an
+// artifact. State transitions are the sim's (ADR-0011), not done here.
+// ---------------------------------------------------------------------------
+
+/// What the writer has to work from in a draft phase.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum DraftInput {
+    /// First draft.
+    Fresh,
+    /// Revision: the previous page and the editor's review of it.
+    Revision { page: Value, review: EditorReview },
+}
+
+/// Result of one draft (or revision) phase.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum DraftStep {
+    /// A schema-valid page that passed the validator.
+    Ok { page: Value, llm_calls: u32 },
+    /// Still invalid after the repair turns: escalate (ticket / Agency).
+    Invalid { errors: Vec<String>, llm_calls: u32 },
+    /// The call failed (refusal, backend). Never retried with the same prompt.
+    Failed { error: LlmError, llm_calls: u32 },
+}
+
+fn step_run<'a>(
+    llm: &'a dyn Llm,
+    validator: &'a dyn PageValidator,
+    brief: &'a Brief,
+    staff: &'a Staffing,
+    cfg: &'a PipelineConfig,
+) -> Run<'a> {
+    Run {
+        llm,
+        validator,
+        brief,
+        staff,
+        cfg,
+        state: ContentState::Draft,
+        transitions: Vec::new(),
+        drafts: Vec::new(),
+        reviews: Vec::new(),
+        calls: 0,
+    }
+}
+
+/// Runs one draft or revision phase: a structured writer call plus the
+/// validator repair loop.
+pub async fn draft_step(
+    llm: &dyn Llm,
+    validator: &dyn PageValidator,
+    brief: &Brief,
+    staff: &Staffing,
+    cfg: &PipelineConfig,
+    input: &DraftInput,
+) -> DraftStep {
+    let mut run = step_run(llm, validator, brief, staff, cfg);
+    let (job, prompt) = match input {
+        DraftInput::Fresh => (
+            JobKind::Draft,
+            format!("{}\nWrite the complete page for this brief.", brief.render()),
+        ),
+        DraftInput::Revision { page, review } => (
+            JobKind::Revise,
+            format!(
+                "{brief}\n## Your current draft\n```json\n{page}\n```\n\n## Editor feedback (score {score}/10)\n{notes}\n{issues}\nAddress every point and return the complete revised page.",
+                brief = brief.render(),
+                page = serde_json::to_string_pretty(page).unwrap_or_default(),
+                score = review.score,
+                notes = review.notes,
+                issues = review.issues.iter().map(|i| format!("- {i}\n")).collect::<String>(),
+            ),
+        ),
+    };
+    let result = run.write(job, vec![LlmMessage::user(prompt)]).await;
+    let llm_calls = run.calls;
+    match result {
+        DraftResult::Ok(page) => DraftStep::Ok { page, llm_calls },
+        DraftResult::Invalid(errors) => DraftStep::Invalid { errors, llm_calls },
+        DraftResult::Failed(error) => DraftStep::Failed { error, llm_calls },
+    }
+}
+
+/// Runs one review phase. The rubric is applied by the caller (the sim
+/// compares the score with the company's quality bar); `revision` is the
+/// 0-based revision number shown to the editor.
+pub async fn review_step(
+    llm: &dyn Llm,
+    brief: &Brief,
+    staff: &Staffing,
+    cfg: &PipelineConfig,
+    page: &Value,
+    revision: usize,
+) -> Result<EditorReview, LlmError> {
+    let no_validation = |_: &Value| -> Result<(), Vec<String>> { Ok(()) };
+    let mut run = step_run(llm, &no_validation, brief, staff, cfg);
+    run.drafts = vec![Value::Null; revision + 1];
+    run.review(page).await
+}
