@@ -44,7 +44,7 @@ approves what matters, and delegates the rest.
 | Department | Roles (sim `Role`) | Typical rooms | What they produce |
 |---|---|---|---|
 | Executive Office | `Cfo`, `Secretary` | CEO office, Finance office | Budgets, forecasts, payroll, briefings, triage, scheduling |
-| Strategy | `Strategist`, `Analyst`, `DataScientist` | Meeting room, Strategy room | Content strategy, editorial calendar, market/competitor analysis, project proposals; **KPIs from Google Analytics** (§6a) |
+| Strategy | `Strategist`, `Analyst`, `DataScientist` | Meeting room, Strategy room | Content strategy, editorial calendar, market/competitor analysis, project proposals; **KPIs from our own tracker** (§6a) |
 | Editorial | `EditorInChief`, `Editor`, `Writer`, `Translator`, `FactChecker` | Newsroom, Editor office, Translation desk | Articles, pages, collections, reviews, translations |
 | Photo & Video | `PhotoEditor`, `Photographer`, `VideoProducer` | Photo studio | Shoots (real assets later), photo selection from the media index, captions/alt text |
 | Web Development | `ArtDirector`, `WebDeveloper`, `UxDesigner` | Design studio | Site theme, layouts, custom blocks (agent-authored themes, ADR-0015) |
