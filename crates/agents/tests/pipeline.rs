@@ -497,7 +497,9 @@ use agents::pipeline::{draft_step, review_step, DraftInput, DraftStep, EditorRev
 
 #[tokio::test]
 async fn draft_step_fresh_returns_a_valid_page() {
-    let llm = FakeLlm::new([FakeReply::Json(page("The path out of Vernazza climbs fast."))]);
+    let llm = FakeLlm::new([FakeReply::Json(page(
+        "The path out of Vernazza climbs fast.",
+    ))]);
     let v = validator();
     let step = draft_step(&llm, &v, &brief(), &staff(), &cfg(), &DraftInput::Fresh).await;
     match step {
@@ -507,7 +509,9 @@ async fn draft_step_fresh_returns_a_valid_page() {
         }
         other => panic!("{other:?}"),
     }
-    assert!(llm.calls()[0].request.messages[0].text.contains("Write the complete page"));
+    assert!(llm.calls()[0].request.messages[0]
+        .text
+        .contains("Write the complete page"));
 }
 
 #[tokio::test]
@@ -539,7 +543,10 @@ async fn draft_step_revision_carries_the_editor_feedback() {
         issues: vec!["No fee info".into()],
         high_risk: vec![],
     };
-    let input = DraftInput::Revision { page: page("Draft one."), review: prev };
+    let input = DraftInput::Revision {
+        page: page("Draft one."),
+        review: prev,
+    };
     let step = draft_step(&llm, &v, &brief(), &staff(), &cfg(), &input).await;
     assert!(matches!(step, DraftStep::Ok { .. }));
     let prompt = &llm.calls()[0].request.messages[0].text;
@@ -556,7 +563,10 @@ async fn review_step_returns_the_structured_review_without_applying_the_rubric()
         .await
         .unwrap();
     assert_eq!(r.decision, ReviewDecision::Approve);
-    assert_eq!(r.score, 6, "the sim compares the score with the bar, not the step");
+    assert_eq!(
+        r.score, 6,
+        "the sim compares the score with the bar, not the step"
+    );
     let prompt = &llm.calls()[0].request.messages[0].text;
     assert!(prompt.contains("revision 0"));
     assert!(prompt.contains("approval bar is 7"));
