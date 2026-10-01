@@ -1,1229 +1,167 @@
-# swarm.press — Claude Development Guide
-
-> **Last Updated:** 2026-05-12
-> **Status:** Autonomous chain verified end-to-end against the live cinqueterre.travel site
-> **Spec Version:** 1.1
-> **Schema Version:** 1.2.0 (46 block types, 11 agents, 11 workflows)
-> **Storage Contract:** repo-canonical — page/collection content lives in
-> the site's GitHub repo; Postgres holds only operational metadata.
-> **Live Proof:** https://cinqueterre.travel/en/blog/last-light-on-sentiero-azzurro/
-> — autonomously briefed, drafted by WriterAgent, approved by EditorAgent,
-> merged via RepoClient, deployed by GitHub Actions. Human only wrote the brief.
-
----
-
-## 📖 What is swarm.press?
-
-**swarm.press** is a fully autonomous virtual publishing house operated by intelligent agents with human oversight.
-
-It is **not** a generic content generator. It is a **structured organization** with:
-- Departments (Editorial, Writers, SEO, Media, Engineering, Distribution, Governance)
-- Roles and responsibilities (RBAC + RACI)
-- Formal workflows (BPMN 2.0)
-- State machines for entity lifecycles
-- Event-driven communication (CloudEvents)
-- A human CEO who approves high-risk decisions
-
-**Think of it as:** A real media company where all employees are autonomous AI agents, following real-world publishing workflows.
-
----
-
-## 🎯 Core Philosophy
-
-### 1. **Spec-Driven Development**
-- Implementation follows specification, never the reverse
-- All changes must update the spec first
-- See: `specs/specs.md` (full 2,300+ line specification)
-
-### 2. **Schema is Sacred**
-- **MASTER SCHEMA:** `packages/backend/src/db/migrations/000_schema.sql`
-- This is the SINGLE SOURCE OF TRUTH for the database
-- Before adding new features, READ THIS FILE to understand the current schema
-- When adding features, UPDATE THIS FILE (not create new migrations)
-- All `CREATE TABLE` / `CREATE INDEX` use `IF NOT EXISTS`; triggers use `DROP TRIGGER IF EXISTS` then `CREATE TRIGGER` so the file is replayable
-- New objects from concurrent worktrees must be appended **after** the `-- AUDIT TRAILER` marker at the end of the file, each in its own `BEGIN/COMMIT` block, to avoid merge conflicts on the previous COMMIT
-- The schema is applied by `scripts/bootstrap.ts` via the `pg` library (no `psql` shell-out), reading every `*.sql` file in `packages/backend/src/db/migrations/` lexicographically
-- **Content (page bodies, collection items) lives in the site's GitHub repo, NOT in Postgres.** Postgres only holds operational metadata (tasks, schedules, agent activity, audit log, outbox, prompt templates, registry rows). The columns `content_items.body` and `collection_items.data` are DEPRECATED — see the schema's repo-canonical migration block at the bottom of `000_schema.sql`.
-
-### 3. **Agents Are Employees**
-Each agent has:
-- A role (Writer, Editor, SEO Specialist, etc.)
-- Capabilities (what it can do)
-- Constraints (what it cannot do)
-- Escalation rules (when to ask for help)
-- Tools (functions it can call)
-
-### 4. **Workflows Are BPMN 2.0**
-All processes are explicit, auditable, and executable:
-- Content Production: idea → draft → review → publish
-- Editorial Review: submit → approve/reject → revise loop
-- Publishing: build → validate → deploy
-
-### 5. **No Silent Magic**
-Every action produces:
-- A Task
-- An Event (CloudEvents)
-- A State Transition
-- A Review or QuestionTicket
-
-### 6. **CEO Has Final Authority**
-- Human oversight for high-risk decisions
-- Agents escalate via QuestionTickets
-- No agent can bypass governance
-
----
-
-## 🏗️ Architecture Decisions (Authoritative)
-
-### Technology Stack
-
-| Layer | Technology | Rationale |
-|-------|-----------|-----------|
-| **Agent Runtime** | Claude Agent SDK | Stateless agents with tools + delegation |
-| **Workflow Engine** | Temporal.io | Long-running, fault-tolerant orchestration |
-| **Event Bus** | NATS + JetStream | CloudEvents, simple, reliable |
-| **Database** | PostgreSQL | Relational model + JSONB for content |
-| **Content Storage** | PostgreSQL + S3/Cloudflare R2 | Metadata in DB, media in object storage |
-| **Website Generator** | Astro | Static/hybrid sites, component-based |
-| **Monorepo** | Turborepo + pnpm | Shared types, schemas, unified builds |
-| **Admin Dashboard** | Astro + React + shadcn/ui | Web UI for content management |
-| **Collaboration** | GitHub | PRs, Issues, webhooks for content review |
-| **Authentication** | GitHub OAuth | User authentication via GitHub |
-
-### Key Patterns
-
-#### **Temporal ↔ Agents (Synchronous)**
-```typescript
-// Temporal Workflow
-export async function contentProductionWorkflow(briefId: string) {
-  // Step 1: Writer drafts content
-  const draft = await callAgentActivity('WriterAgent', 'write_draft', { briefId })
-
-  // Step 2: Editor reviews
-  const review = await callAgentActivity('EditorAgent', 'review_content', { draft })
-
-  if (review.result === 'needs_changes') {
-    // Loop back to writer
-    return await contentProductionWorkflow(briefId)
-  }
-
-  // Step 3: Publish
-  await callAgentActivity('EngineeringAgent', 'publish_site', { draft })
-}
-```
-
-#### **Agents Are Stateless**
-```typescript
-// ❌ BAD: Agent stores state internally
-class WriterAgent {
-  private drafts = new Map() // NO!
-  private conversationHistory: Message[] = [] // NO! leaks across tasks
-}
-
-// ✅ GOOD: All state in PostgreSQL; conversation is per-call locals
-class WriterAgent {
-  async writeDraft(brief: Brief) {
-    const conversationHistory: Message[] = [] // local to this call
-    const draft = await callClaude(...)
-    await db.contentItems.insert(draft) // State goes to DB
-    await eventBus.publish('content.created', { id: draft.id })
-    return draft
-  }
-}
-```
-
-`AgentFactory.getAgent()` always returns a **fresh instance** — there is no
-agent cache. The `BaseAgent` class holds no per-call state; conversation
-history is scoped to the `execute()` call.
-
-#### **Content as JSON Blocks**
-```typescript
-// ContentItem.body is structured JSON, not plain Markdown
-type ContentBody = Block[]
-
-type Block =
-  | { type: 'paragraph', markdown: string }
-  | { type: 'hero', title: string, subtitle?: string }
-  | { type: 'image', src: string, caption: string, alt: string }
-  | { type: 'faq', items: Array<{ q: string, a: string }> }
-
-// Why? LLM-friendly, flexible, component-ready
-```
-
-**Renderers must NOT parse Markdown at render time.** Inline emphasis
-(bold, italic) belongs in structured sub-blocks, not regex on paragraph
-text. A coverage test at `packages/site-builder/test/block-coverage.test.ts`
-asserts every Zod-registered block type has a corresponding renderer case
-(currently 46/46).
-
-#### **State Machines Enforce Transitions**
-```typescript
-// Before transitioning ContentItem state:
-const canTransition = stateMachine.validate({
-  from: 'draft',
-  to: 'in_editorial_review',
-  actor: 'WriterAgent',
-  contentId: '123'
-})
-
-if (!canTransition) {
-  throw new Error('Invalid state transition')
-}
-
-// Update DB + write event to outbox — same transaction
-await stateMachineEngine.executeTransition({
-  entityType: 'content_item',
-  entityId: '123',
-  to: 'in_editorial_review',
-  expectedUpdatedAt: priorUpdatedAt, // optimistic lock
-})
-// OutboxWorker drains event_outbox to NATS asynchronously
-```
-
-#### **Content I/O via RepoClient**
-All agent reads/writes of page or collection content go through `RepoClient`
-(`packages/github-integration/src/repo-client.ts`):
-
-```typescript
-import { getRepoClient } from '@swarm-press/github-integration'
-
-const repo = await getRepoClient(websiteId)
-const page = await repo.getPageByPath('content/pages/en/riomaggiore.json')
-await repo.savePageByPath('content/pages/en/riomaggiore.json', updatedPage, message)
-```
-
-`getRepoClient(websiteId)` reads
-`websites.{github_owner, github_repo, github_access_token}` from Postgres
-and returns a memoized client per (websiteId, branch) tuple. Agents
-NEVER touch Octokit directly. The Postgres columns
-`content_items.body`, `collection_items.data` (and the
-`collection_item_versions` table) are DEPRECATED and should not be read
-or written by new code — page/collection JSON in the site repo is the
-source of truth, with Git history as the version log.
-
-#### **Transactional Outbox for CloudEvents**
-The state-machine engine writes both the state change and the resulting
-CloudEvent inside a single Postgres transaction:
-- `state_audit_log` row + entity update + `event_outbox` insert all commit together
-- `OutboxWorker` (`packages/backend/src/services/outbox-worker.service.ts`)
-  polls `event_outbox` and publishes to NATS with at-least-once delivery
-- Optimistic concurrency: `executeTransition()` accepts `expectedUpdatedAt`
-  and throws `StateTransitionConflict` if the row was modified concurrently
-- The worker is NOT auto-started; bootstrap your application with
-  `import { outboxWorker } from '@swarm-press/backend'; outboxWorker.start()`
-
-#### **Temporal Workflow Determinism**
-Code under `packages/workflows/src/workflows/**` runs inside the Temporal
-replay sandbox and must be deterministic:
-- ❌ `Date.now()`, `Math.random()`, `crypto.randomUUID()`, direct `fetch()`
-- ✅ Use the activities in `packages/workflows/src/activities/determinism.ts`:
-  `generateId(prefix)`, `measureDuration(startMs)`, `getCurrentTimestamp()`
-- ✅ Activities (under `src/activities/`) ARE allowed to be non-deterministic
-- An ESLint `no-restricted-syntax` rule scoped to `src/workflows/**`
-  enforces this at lint time (see root `.eslintrc.json`)
-- All `proxyActivities` retry policies set `initialInterval`,
-  `backoffCoefficient: 2`, and `maximumInterval` — no instant retry storms
-
----
-
-## 📦 Content Architecture Pattern (repo-canonical)
-
-After the repo-canonical migration, the **site's GitHub repository is the
-canonical store of record for content**. Postgres holds only operational
-metadata. Each website is one repo with its own GitHub Actions deploy
-workflow — multi-site is "more rows in `websites`," each with its own
-repo.
-
-### Storage Separation
-| Type | Location | Purpose |
-|------|----------|---------|
-| **Operational metadata** | PostgreSQL | Agents, workflows, state, tasks, reviews, schedules, audit log, outbox, prompt templates, registry rows |
-| **Content (canonical)** | Site GitHub repo (JSON) | Pages, collections, site config, agent overrides — **single source of truth** |
-| **Media** | S3 / Cloudflare R2 | Images, videos, binary assets |
-
-### Why repo-canonical?
-- **Version Control**: full Git history per change, native diff/blame/PR tooling.
-- **Agent Collaboration**: agents commit JSON; humans review PRs; same surface as human contributors.
-- **Theme Decoupling**: same JSON content, different theme renderers.
-- **Multi-language**: `LocalizedString` JSON shape, validated at write.
-- **Deploy isolation**: each site repo's `.github/workflows/deploy.yml`
-  owns its own build + deploy. Platform never builds or pushes to
-  gh-pages itself.
-- **No drift**: with one source of truth, the dual-write hazards we
-  fought during the audit cannot recur.
-
-### Per-Site Repository Structure
-```
-{site}.travel/                     # one repo per website
-├── .github/
-│   └── workflows/
-│       └── deploy.yml             # CANONICAL build + deploy (Actions)
-├── content/
-│   ├── site.json                  # site-wide config (theme, etc.)
-│   ├── config/                    # agent overrides
-│   │   ├── agent-schemas.json
-│   │   ├── writer-prompt.json
-│   │   ├── collection-research.json
-│   │   ├── blog-workflow.json
-│   │   ├── media-guidelines.json
-│   │   └── villages/{village}.json
-│   ├── pages/                     # page content (JSON blocks)
-│   │   ├── {lang}/                # multi-language routing
-│   │   │   ├── index.json
-│   │   │   └── {village}.json
-│   └── collections/               # per-village arrays
-│       ├── restaurants/{village}.json
-│       ├── accommodations/{village}.json
-│       └── hikes/{village}.json
-└── (theme is consumed from the monorepo via the deploy workflow;
-   the repo itself does not vendor the theme)
-```
-
-Page JSON shape (enforced live):
-`{ id, slug:LocalizedString, title:LocalizedString, page_type, seo, body[], status, timestamps }`.
-Collection items are stored as **per-village arrays**, NOT one file per
-item. `LocalizedString` requires `en` (already enforced post-audit).
-
-### Agent Workflow with Content
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│  AGENT WORKFLOW (repo-canonical, end-to-end verified 2026-05-12)    │
-├──────────────────────────────────────────────────────────────────────┤
-│  1. Brief inserted in Postgres (manually, by schedule, or admin)    │
-│  2. createContentBrief activity emits brief.created → event_outbox  │
-│  3. OutboxWorker drains outbox → publishes to NATS                  │
-│  4. EventTriggerService starts contentProductionWorkflow            │
-│     (deterministic workflowId = content-production-{contentId})     │
-│  5. WriterAgent commits page JSON to drafts/content-{id} branch     │
-│     at content/pages/blog/{slug}.json (routable on the live site)   │
-│  6. submit_for_review opens PR on the site repo                     │
-│  7. editorialReviewWorkflow starts (manual or auto-chained)         │
-│  8. EditorAgent reads draft from repo, scores quality, decides:     │
-│      approve  → RepoClient.mergePR(squash)                          │
-│      reject   → state → 'rejected', PR closed                       │
-│      changes  → state → 'needs_changes', comment on PR              │
-│  9. Merge to main triggers site repo's .github/workflows/deploy.yml │
-│ 10. Action builds Astro (monorepo theme + repo content)             │
-│ 11. actions/deploy-pages@v4 publishes to GitHub Pages               │
-│ 12. Page is live at /{lang}/blog/{slug}/ on the site domain         │
-│ 13. (optional) deployment_status webhook → state_audit_log          │
-└──────────────────────────────────────────────────────────────────────┘
-```
-
-### Path convention
-
-The PR branch (`drafts/content-{contentId}`) is what makes work-in-progress
-"draft" — there is no `drafts/` *path prefix* anymore. WriterAgent commits
-straight to the page's real path:
-
-- Default for blog posts: `content/pages/blog/{slug}.json`
-- Slug source: `content_items.slug` (must be set when the brief is inserted)
-- Language source: `websites.language` (defaults to `'en'`)
-- Slug field shape inside the JSON: `{ "en": "/en/blog/{slug}", … }`
-- `page_type`: `"blog-article"`
-
-When the PR merges, the page appears at `https://{site}/{lang}/blog/{slug}/`
-on the next deploy. Symmetry: a published page and a drafted-but-unmerged
-page share the same path; the only difference is which branch they live on.
-
-### Build & Deploy
-The platform no longer performs local Astro builds or pushes to
-gh-pages. Build+deploy is owned by each site repo's own GitHub Actions
-workflow (`.github/workflows/deploy.yml`), which:
-
-1. Checks out the site repo (which holds the canonical content JSON).
-2. Checks out the swarmpress monorepo for the Astro theme.
-3. `pnpm install` at the monorepo root (now also populates
-   `packages/site-builder/src/themes/*` because that glob was added to
-   `pnpm-workspace.yaml`).
-4. Builds the Astro theme with `CONTENT_DIR=content/pages`.
-5. Deploys via `actions/deploy-pages@v4`.
-
-GitHub Pages must be configured for **Workflow** source on the site repo
-(`gh api -X PUT /repos/{owner}/{repo}/pages -f build_type=workflow`) — the
-legacy gh-pages branch source is decoupled from `actions/deploy-pages` and
-will silently serve stale content if both are configured.
-
-Once GitHub fires the `deployment_status.success` webhook, the platform
-records the transition in `state_audit_log`. (The `publishingWorkflow`'s
-deploy-wait activity is currently a polling stub — see follow-ups below.)
-
-#### Operational requirements on the site repo
-- A `MONOREPO_PAT` secret (any token with `repo` or `public_repo` scope is
-  enough since `swarmpress/swarmpress` is public — actions/checkout still
-  errors when the `token:` field is set to an unset secret).
-- Pages source set to **Workflow** (not legacy branch).
-- The workflow `.github/workflows/deploy.yml` itself (template lives in
-  the cinqueterre.travel repo).
-
-The retired pieces (kept for backward compat as deprecated paths):
-- `EngineeringAgent.{validate_content, build_site, deploy_site, publish_website, build_from_github}` tools
-- `packages/site-builder/src/generator/{build,deploy}.ts` (local Astro
-  build + Octokit gh-pages push — the "parallel deploy nobody saw")
-- `github.deployToPages` tRPC mutation
-- `publishingWorkflow`'s former engineering-build / engineering-deploy
-  steps (replaced by `waitForDeploymentActivity`)
-
----
-
-## 🏝️ Cinque Terre Reference Implementation
-
-The Cinque Terre travel website serves as the **reference implementation** for the agentic content system.
-
-### Key Components
-| Component | Location |
-|-----------|----------|
-| **Theme** | `packages/site-builder/src/themes/cinque-terre/` |
-| **Content Submodule** | `cinqueterre.travel/` |
-| **Agent Configs** | `cinqueterre.travel/content/config/` |
-| **Village Data** | `cinqueterre.travel/content/config/villages/` |
-
-### Multi-Language Support (LocalizedString)
-```typescript
-// All user-facing content uses this strict shape (Zod-validated):
-type LocalizedString = {
-  en: string  // English (REQUIRED — also the fallback locale)
-  de?: string // German
-  fr?: string // French
-  it?: string // Italian
-}
-
-// Always read via the shared helper — never `value[locale] || value.en`:
-import { getLocalizedValue } from '@swarm-press/shared'
-const title = getLocalizedValue(page.title, locale)  // falls back to .en
-
-// Example usage in village JSON
-{
-  "title": {
-    "en": "Riomaggiore",
-    "de": "Riomaggiore",
-    "fr": "Riomaggiore",
-    "it": "Riomaggiore"
-  }
-}
-```
-
-The previous loose `string | Record<string, string>` shape silently broke
-consumers that assumed an object. The schema is now strict and `en` is
-required at the type level.
-
-### Theme Features
-- **Coastal Spine Navigation**: Village-centric geographic navigation
-- **5 Villages**: Riomaggiore, Manarola, Corniglia, Vernazza, Monterosso
-- **35+ Astro Components**: Editorial blocks, village content, collections
-- **Dynamic Village Config**: JSON-based village data (weather, character, essentials)
-
-> Note: the submodule's `build-all-pages.js` (vanilla JS HTML generator) is a
-> legacy fallback; the live deploy uses the Astro theme via the submodule's
-> `.github/workflows/deploy.yml`.
-
----
-
-## 📂 Current Implementation Structure
+# SimPress: development guide
+
+> **Last updated:** 2026-10-01 · **Milestone:** M0 (Foundations) · **Branch:**
+> `claude/simpress-babylon`
+> **Legacy:** the TypeScript swarm.press is at tag `legacy-ts` (readable via
+> `git show legacy-ts:<path>`). Don't port legacy files; re-specify the concepts.
+
+## What SimPress is
+
+SimPress is a browser **management sim / digital dollhouse**. Each player is the CEO of an AI
+publishing house, shown as a detailed isometric 3D building (Babylon.js, WebGPU with a WebGL2
+fallback).
+- The staff are LLM agents. Their meetings play out as speech bubbles, and their work produces
+  **one real website per player**.
+- The design department designs and evolves that site's theme.
+- The user's own company is the imported, still-live **cinqueterre.travel**.
+
+Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0027). Features and their health:
+`docs/features/` plus Cockpit.
+
+## Architecture in one screen
 
 ```
-swarm-press/
-├── packages/
-│   ├── backend/              # API server, PostgreSQL models, tRPC routers
-│   │   ├── src/api/          # Express + tRPC API server
-│   │   │   ├── routers/      # 15+ tRPC routers (content, task, ticket, etc.)
-│   │   │   ├── server.ts     # Express app
-│   │   │   └── webhooks.router.ts  # GitHub webhooks
-│   │   ├── src/db/           # PostgreSQL repositories
-│   │   │   ├── migrations/   # Schema (000_schema.sql)
-│   │   │   ├── repositories/ # 12+ repositories
-│   │   │   └── connection.ts # Database singleton
-│   │   ├── src/services/     # Business logic services
-│   │   │   ├── github.service.ts
-│   │   │   ├── github-sync.service.ts
-│   │   │   ├── media.service.ts
-│   │   │   ├── prompt-resolver.service.ts
-│   │   │   └── auth.service.ts
-│   │   └── src/state-machine/ # State machine engine
-│   ├── workflows/            # Temporal.io workflows
-│   │   ├── src/workflows/    # 3 workflows
-│   │   │   ├── content-production.workflow.ts
-│   │   │   ├── editorial-review.workflow.ts
-│   │   │   └── publishing.workflow.ts
-│   │   ├── src/activities/   # Agent invocation activities
-│   │   └── src/temporal/     # Temporal client & worker
-│   ├── agents/               # Claude Agent SDK implementations
-│   │   ├── src/writer/       # WriterAgent
-│   │   ├── src/editor/       # EditorAgent
-│   │   ├── src/engineering/  # EngineeringAgent
-│   │   ├── src/ceo-assistant/ # CEOAssistantAgent
-│   │   └── src/base/         # Agent factory & utilities
-│   ├── shared/               # Shared types, schemas, utilities
-│   │   ├── src/types/        # TypeScript types
-│   │   ├── src/content/      # Block types & collections
-│   │   │   ├── blocks.ts     # 60+ block types with Zod validation
-│   │   │   └── collections/  # Event, POI, FAQ, News schemas
-│   │   ├── src/state-machines/ # State machine definitions
-│   │   ├── src/logging/      # Structured logging, error tracking
-│   │   └── src/config/       # Environment config
-│   ├── site-builder/         # Astro website generation
-│   │   ├── src/components/   # Core block components (.astro)
-│   │   │   └── blocks/       # Hero, Paragraph, FAQ, etc.
-│   │   ├── src/generator/    # Build & deploy functions
-│   │   ├── src/layouts/      # Base layouts
-│   │   └── src/themes/       # Site-specific themes
-│   │       └── cinque-terre/ # Reference implementation (35+ components)
-│   ├── event-bus/            # NATS/CloudEvents integration
-│   │   ├── src/publisher.ts  # Event publishing
-│   │   ├── src/subscriber.ts # Event subscription
-│   │   └── src/cloudevents.ts # CloudEvents helpers
-│   ├── github-integration/   # GitHub collaboration layer
-│   │   ├── src/client.ts     # GitHub API wrapper
-│   │   ├── src/pull-requests.ts # PR operations
-│   │   ├── src/issues.ts     # Issue operations
-│   │   ├── src/webhooks.ts   # Webhook processing
-│   │   └── src/sync.ts       # Bidirectional sync
-│   └── experimental-cli/     # Operator CLI prototype (not integrated, see audit item 32)
-├── apps/
-│   ├── admin/                # Admin Dashboard (React + shadcn/ui)
-│   │   ├── src/components/
-│   │   │   ├── sitemap/      # Sitemap graph visualization
-│   │   │   ├── editorial/    # Kanban board, Gantt, tasks
-│   │   │   ├── blueprints/   # Blueprint editor
-│   │   │   └── ui/           # shadcn/ui components
-│   │   ├── src/pages/        # Astro pages
-│   │   │   └── api/          # API routes
-│   │   └── src/hooks/        # React hooks
-│   └── dashboard/            # CEO Dashboard (minimal)
-├── scripts/
-│   ├── bootstrap.ts          # System initialization
-│   ├── seed.ts               # Sample data
-│   ├── clear.ts              # Reset database
-│   ├── test-e2e.ts           # Real end-to-end test (Postgres + NATS + Temporal)
-│   ├── test-workflow-mock.ts # Mocked unit-style workflow walk-through
-│   └── README.md             # Index of all scripts
-├── specs/
-│   ├── specs.md              # Full specification (2,300+ lines)
-│   ├── idea.md               # GitHub integration design
-│   ├── sitemap-component.md  # Agentic sitemap features
-│   ├── agentic_editorial_planning_spec.md # Editorial workflow
-│   ├── prompting.md          # Prompt engineering
-│   └── collections_binaries.md # Collections & media management
-├── domain/
-│   ├── schemas/              # JSON Schema files
-│   └── workflows/bpmn/       # BPMN workflow diagrams
-├── docker-compose.yml        # PostgreSQL, NATS, Temporal
-├── turbo.json                # Turborepo build config
-├── CLAUDE.md                 # This file
-└── README.md                 # User-facing documentation
+apps/game (TS, Vite) ── Babylon scene ◄ render state ◄ client-wasm (sim-core replica)
+                     ── Preact overlay · LocalLlm worker (WebGPU) for staff jobs
+        │ WebSocket, postcard frames, lockstep + hash checks
+crates/server (axum, tokio) ── company actors (authoritative sim-core, 10 Hz)
+   ├ command log + daily snapshots (Postgres)
+   ├ job queue (Postgres SKIP LOCKED) → crates/agents (pipelines, meetings, QA) → crates/claude
+   ├ browser job worker protocol (leases, server-side artifact validation)
+   ├ crates/knowledge (closed-world indexes) · crates/content-model (schemas)
+   └ crates/github (GitHub App) → one site repo per company ◄ webhooks
+Postgres is the ONLY infrastructure. Site repos build with @swarm-press/site-kit on GitHub Actions.
 ```
 
----
+| Path | What | Exists at M0 |
+|---|---|---|
+| `crates/sim-core` | deterministic sim (`World`, clock, hash; later building, staff, projects, economy, events, inbox, `render_state()`) | clock + hash |
+| `crates/protocol` | WS frames, commands, snapshots (postcard, `PROTO_VERSION`) | `Hello` |
+| `crates/client-wasm` | `wasm-bindgen` facade (`Sim`) | yes |
+| `crates/content-schema` | Rust page validator over the exported JSON Schema (→ `content-model` in M3) | yes |
+| `crates/{knowledge,claude,agents,github,server,testkit}` | see `docs/architecture/` | being built |
+| `apps/game` | Babylon client: engine, iso camera, cutaway, office, lighting, post-FX, HUD | yes |
+| `packages/content-schema` | Zod source of the page schema → `page.schema.json` | yes |
+| `packages/site-kit`, `themes/starter` | Astro integration + starter theme | planned (M3) |
+| `packages/site-builder/src/themes/cinque-terre` | **FROZEN**: the live site builds it | yes (do not touch) |
+| `xtask` | `cargo xtask wasm [--release]` | yes |
+| `docs/` | architecture, game-design, guides, runbooks, adr, features | yes |
 
-## 🗂️ Database Schema (Current State)
+## Critical rules (never break these)
 
-The master schema at `packages/backend/src/db/migrations/000_schema.sql` includes:
+1. **The sim is deterministic.** In `crates/sim-core`:
+   - integers and fixed point only: money in cents, stats in permille;
+   - `BTreeMap`/`Vec` only, never iterate a `HashMap`;
+   - all randomness from `World.rng` (seeded PCG);
+   - no `std::time`, no I/O, no threads, no async.
 
-### Core Organizational Entities
-- **companies** - Top-level organizations
-- **departments** - Organizational units
-- **roles** - Functions with permissions (JSONB)
-- **agents** - AI employees with capabilities
+   The same seed plus the same command log must give the same `World::hash` natively and in wasm.
+2. **Text never enters the sim.** LLM output, transcripts and page bodies enter only as
+   server-issued commands carrying digests: `Cmd::JobCompleted{digest{ok, score, words,
+   qa_defects, artifact_sha}}`, `Cmd::Utterance{meeting, seq, speaker, chars}`.
+3. **The orchestrator owns transitions; LLMs return artifacts.**
+   - No LLM tool can approve, merge, publish or change a stage.
+   - Pipelines are Rust state machines. The editor approves at a score of 7 or above, with at
+     most 3 revisions, then a ticket.
+4. **Transition first, then the side effect.**
+   - The state transition, its command-log entry and the `Effect::RequestJob` commit in one
+     Postgres transaction.
+   - GitHub and Claude calls happen afterwards, idempotently, keyed by job id.
+   - Results come back as commands.
+5. **Closed world.**
+   - Agents refer to pages, entities and media only by ids from the knowledge indexes.
+   - Unknown ids are validation errors, returned to the model.
+   - Missing knowledge becomes a `NEEDS_PAGE` or `NEEDS_MEDIA` ticket, never an invention.
+6. **One source of truth per entity.** Content lives in the site repo; gameplay state in the
+   command log and snapshots; transcripts and `llm_calls` in Postgres.
+7. **The server is authoritative.**
+   - Clients send `ClientCommand`s, which are validated by the shared `validate_command`.
+   - The browser never holds GitHub credentials, and the server validates every browser-produced
+     artifact (schema, links and media, size, injection hygiene).
+8. **The render-state contract.**
+   - The renderer draws exactly `render_state()` and decides nothing: lights, monitors, poses,
+     positions and time of day.
+   - Paths are computed in the sim, and the renderer only interpolates.
+   - New visual facts need a contract change (`docs/architecture/render-state.md`).
+9. **The frozen theme path.** `packages/site-builder/src/themes/cinque-terre/**`, its glob in
+   `pnpm-workspace.yaml` and its lockfile entries stay byte-identical until cutover step 0 (pin
+   `ref: legacy-final`) or step 1 lands. The live cinqueterre.travel deploy checks out this repo.
+   See `docs/runbooks/cinqueterre-cutover.md`.
+10. **QuestionTickets are the only channel to the CEO.** Every ticket has a `default_option` and a
+    `deadline_step`.
+11. **Stubs fail loudly.** An unimplemented executor or stage blocks the project and opens a
+    ticket. It never "succeeds" with a placeholder.
+12. **Content is JSON blocks with `LocalizedString` (`en` required).**
+    - Read values through `localize()` / `getLocalizedValue()`.
+    - Renderers never parse Markdown.
+    - Prompt block docs are generated from the schemas.
+13. **Postgres only.** No Temporal, NATS, Redis or queues beyond the `jobs` table with `SKIP
+    LOCKED` and `LISTEN/NOTIFY`.
+14. **Decisions change through ADRs.** Write a new ADR in Cockpit's dialect: `# ADR-NNNN —
+    Title`, `**Status:**`, `**Date:**`, then Context, Decision and Consequences, including the
+    alternatives and the negatives. Accepted ADRs are superseded, never rewritten.
 
-### Website & Content Structure
-- **websites** - Publication surfaces with GitHub integration
-  - GitHub repo connection (owner, repo, installation_id, access_token)
-  - GitHub Pages deployment (branch, path, custom domain, status)
-  - `last_deployed_at` / `deployment_status` updated by the
-    `deployment_status` webhook handler (WS4), not by the platform's
-    own deploy code
-- **pages** - Sitemap structure with agentic features
-  - SEO profiles, internal links, suggestions, tasks (all JSONB)
-  - Hierarchical structure (parent_id)
-  - **Note:** there is no `pages.body` column; page block content lives
-    in the site repo at `content/pages/{lang}/{slug}.json`, not in
-    Postgres
-- **content_blueprints** - Page templates
-- **content_items** - Operational metadata for editorial tasks
-  - `content_items.body` is **DEPRECATED** (nullable, no new writes) —
-    page body JSON lives in the site repo. The row is now an ops handle
-    (status, author, timestamps, metadata) for the editorial workflow.
+## Testing and evidence (Cockpit)
 
-### Editorial Planning System
-- **editorial_tasks** - Content planning with SEO & linking metadata
-- **task_phases** - Detailed phase tracking (research, outline, draft, etc.)
+Health is derived, never declared. Don't tick boxes in docs. Write tests that Cockpit can link.
 
-### Workflow & Collaboration
-- **tasks** - General workflow tasks
-- **reviews** - Editorial reviews
-- **question_tickets** - Escalations to humans
+- Every feature is a file at `docs/features/<chapter>/NNN-slug.md`, with frontmatter `id`
+  (`FEAT-NNN`), `title`, `status` (planned / in-progress / stable), `importance`, `paths` and
+  `adrs`. Its `paths` must cover the code **and the test files**. Rust unit tests in `src/lib.rs`
+  are mapped in `docs/test-map.yaml`.
+- `cockpit.toml` registers every suite: nextest JUnit (split per crate), wasm-bindgen-test,
+  vitest, Playwright e2e and visual, Criterion, and `cockpit.benchmark.v1` documents in
+  `artifacts/bench/`.
+- **Critical and high features that are not `planned` must have passing test evidence.** `cockpit
+  validate --strict` is the CI gate.
+- Commit messages mention `FEAT-0xx` (and `ADR 0xx`).
+- When you start implementing a planned feature, switch it to `in-progress` in the same PR that
+  adds its tests.
 
-### Agent Activities
-- **agent_activities** - Activity log
-- **suggestions** - AI-generated ideas
+## Commands
 
-### Prompt Management (3-Level System)
-- **company_prompt_templates** - Baseline prompts (Level 1)
-- **website_prompt_templates** - Brand-specific overrides (Level 2)
-- **agent_prompt_bindings** - Individual agent assignments (Level 3)
-- **prompt_executions** - Performance tracking with quality metrics
-
-### Analytics & Caching
-- **sitemap_analytics_cache** - Cached metrics
-- **graph_positions** - Visual editor positions
-- **state_audit_log** - State machine transitions
-
----
-
-## 🤖 Agent Specifications
-
-### Core Agents (Implemented)
-
-| Agent | Department | Capabilities |
-|-------|-----------|--------------|
-| **WriterAgent** | Writers Room | research_topic, write_draft, revise_draft, submit_for_review |
-| **EditorAgent** | Editorial | review_content, request_changes, approve_content, reject_content, escalate_to_ceo |
-| **EngineeringAgent** | Engineering | get_website_info, export_collection_to_github, import_collection_from_github, batch jobs (build/deploy tools DEPRECATED — see Build & Deploy section) |
-| **CEOAssistantAgent** | Governance | summarize_tickets, organize_escalations, notify_ceo |
-
-### Agent Location
-```
-packages/agents/src/
-├── writer/
-│   ├── index.ts
-│   └── writer-agent.ts
-├── editor/
-│   ├── index.ts
-│   └── editor-agent.ts
-├── engineering/
-│   ├── index.ts
-│   └── engineering-agent.ts
-├── ceo-assistant/
-│   ├── index.ts
-│   └── ceo-assistant-agent.ts
-├── base/
-│   ├── agent.ts          # Base agent class
-│   ├── factory.ts        # Agent factory
-│   └── utilities.ts      # Shared utilities
-├── examples/
-│   └── delegation-example.ts
-└── index.ts
-```
-
----
-
-## 🔄 Workflows (Implemented)
-
-### 3 Temporal Workflows
-
-```
-packages/workflows/src/workflows/
-├── content-production.workflow.ts  # Full content lifecycle
-├── editorial-review.workflow.ts    # Review & approval
-├── publishing.workflow.ts          # Build & deploy
-└── index.ts
-```
-
-### Content Production Workflow
-```
-1. CEO/Editor creates brief
-2. WriterAgent drafts content
-3. WriterAgent submits for review
-4. EditorAgent reviews
-   - needs_changes → back to step 2
-   - rejected → END
-   - approved → continue
-5. SEO optimization (stubbed)
-6. Media assets (stubbed)
-7. EngineeringAgent prepares build
-8. (Optional) CEO approves if high-risk
-9. EngineeringAgent publishes
-10. CloudEvent: content.published
-```
-
----
-
-## 📡 Events (CloudEvents)
-
-### Event Bus Location
-```
-packages/event-bus/src/
-├── publisher.ts       # Event publishing
-├── subscriber.ts      # Event subscription
-├── cloudevents.ts     # CloudEvents helpers
-├── connection.ts      # NATS connection
-└── index.ts
-```
-
-### Event Categories
-
-| Category | Events |
-|----------|--------|
-| **Content** | content.created, content.submittedForReview, content.approved, content.published |
-| **Review** | review.completed, review.needsChanges |
-| **Tasks** | task.created, task.completed |
-| **Tickets** | ticket.created, ticket.answered, ticket.closed |
-| **Publishing** | deploy.started, deploy.success, deploy.failed |
-
----
-
-## 🌐 GitHub Integration
-
-### Features
-- **Content Review via PRs** - All content goes through PR review
-- **Tasks as Issues** - Editorial tasks synced to GitHub Issues
-- **Question Tickets** - Escalations as Issues
-- **Webhook Sync** - Bidirectional GitHub ↔ Database sync
-- **OAuth Authentication** - Users authenticate via GitHub
-
-### Implementation
-```
-packages/github-integration/src/
-├── client.ts           # GitHub API wrapper (Octokit)
-├── pull-requests.ts    # PR operations (create, update, merge)
-├── issues.ts           # Issue operations
-├── webhooks.ts         # Webhook processing
-├── sync.ts             # Bidirectional sync logic
-└── index.ts
-```
-
-### Website GitHub Fields (in schema)
-```sql
-github_repo_url TEXT,
-github_owner TEXT,
-github_repo TEXT,
-github_installation_id TEXT,
-github_access_token TEXT,
-github_connected_at TIMESTAMPTZ,
-
--- GitHub Pages Deployment
-github_pages_enabled BOOLEAN,
-github_pages_url TEXT,
-github_pages_branch TEXT,
-github_pages_path TEXT,
-github_pages_custom_domain TEXT,
-last_deployed_at TIMESTAMPTZ,
-deployment_status TEXT,
-deployment_error TEXT
-```
-
----
-
-## 📚 Collections System
-
-### Implemented Collections
-```
-packages/shared/src/content/collections/
-├── event.ts      # EventSchema (Zod)
-├── poi.ts        # POISchema (Points of Interest)
-├── faq.ts        # FAQSchema
-├── news.ts       # NewsSchema
-├── registry.ts   # Collection registry
-└── index.ts
-```
-
-### Database Tables
-- **website_collections** - Per-website collection config (active)
-- **collection_items** - Operational handle for collection records;
-  `collection_items.data` is **DEPRECATED** (nullable, no new writes) —
-  item content lives in the site repo at
-  `content/collections/{type}/{village}.json` (per-village arrays)
-- **collection_item_versions** - **DEPRECATED**, replaced by Git history
-  on the site repo. Retained for backward compat; a follow-up cleanup
-  PR may DROP the table once a data audit confirms it is unused.
-- **media** - Binary asset registry (active)
-- **media_processing_queue** - Image processing queue (active)
-
----
-
-## ⚙️ Agent Configuration Files
-
-Site-specific agent configurations live in the content submodule under `content/config/`:
-
-### Configuration Types
-
-| File | Purpose | Used By |
-|------|---------|---------|
-| `agent-schemas.json` | Block type documentation for LLMs | All agents |
-| `writer-prompt.json` | Editorial voice override | WriterAgent |
-| `collection-research.json` | Research workflow configuration | CollectionResearchWorkflow |
-| `blog-workflow.json` | Blog publishing workflow | WriterAgent, EditorAgent |
-| `media-guidelines.json` | Imagery search queries and guidelines | MediaAgent |
-| `villages/*.json` | Village-specific localized content | All agents |
-
-### Writer Prompt Override Example
-```json
-{
-  "website_prompt_template": {
-    "name": "Cinque Terre Writer Prompt",
-    "capability": "write_draft",
-    "template_additions": "## Editorial Voice\nYou are writing as Giulia Rossi...",
-    "variables_override": {
-      "brand_name": "Cinque Terre Dispatch",
-      "editor_name": "Giulia Rossi",
-      "editorial_tone": "warm, knowledgeable, personal"
-    },
-    "examples_override": [
-      {
-        "type": "editorial-hero",
-        "example": { "title": "...", "subtitle": "...", "badge": "Local Secrets" }
-      }
-    ]
-  }
-}
-```
-
-### Collection Research Config Example
-```json
-{
-  "collections": {
-    "restaurants": {
-      "research_prompt": "Find authentic local restaurants in {village}...",
-      "search_queries": ["best restaurants {village} Cinque Terre", "local trattoria {village}"],
-      "extraction_hints": ["rating", "price_range", "cuisine_type", "local_favorite"],
-      "max_results": 10
-    }
-  },
-  "research_schedule": {
-    "restaurants": "quarterly",
-    "hikes": "weekly",
-    "events": "daily"
-  }
-}
-```
-
-### Village JSON Config Example
-```json
-{
-  "slug": "riomaggiore",
-  "seo": {
-    "title": { "en": "Riomaggiore | Cinque Terre Dispatch", "de": "...", "fr": "...", "it": "..." },
-    "description": { "en": "Discover Riomaggiore, the easternmost village...", ... }
-  },
-  "hero": {
-    "image": "https://images.unsplash.com/...",
-    "title": { "en": "Riomaggiore", ... },
-    "subtitle": { "en": "The easternmost jewel of Cinque Terre...", ... }
-  },
-  "intro": {
-    "essentials": {
-      "today": { "weather": "23°C, sunny", "seaTemp": "21°C", "sunset": "20:47" },
-      "character": { "origins": "Born in 8th Century", "rating": "4.6/5" }
-    }
-  }
-}
-```
-
----
-
-## 🎨 Site Builder (Astro)
-
-### 46 Block Types (with Zod Validation)
-
-Block types are defined in `packages/shared/src/content/blocks.ts`. Marketing,
-E-commerce and Application-UI block schemas were pruned per audit item 8 (no
-renderer existed and the cinque-terre theme did not use them); restore from
-git history if a future theme needs them.
-
-| Category | Count | Examples |
-|----------|-------|----------|
-| **Core** | 12 | paragraph, heading, hero, image, gallery, quote, list, faq, callout, embed, collection-embed, map |
-| **Section (theme-adjacent)** | 8 | hero-section, feature-section, stats-section, cta-section, faq-section, content-section, newsletter, section-header |
-| **Cinque Terre Theme** | 12 | village-selector, places-to-stay, eat-drink, featured-carousel, highlights, audio-guides, practical-advice, etc. |
-| **Editorial** | 5 | editorial-hero, editorial-intro, editorial-interlude, editor-note, closing-note |
-| **Template** | 9 | itinerary-hero, itinerary-days, team-grid, airports-overview, weather-live, weather-journal, blog-article, collection-with-interludes, blog-index |
-
-A coverage test at `packages/site-builder/test/block-coverage.test.ts` asserts
-every block type has a matching `case` in
-`packages/site-builder/src/themes/cinque-terre/src/ContentRenderer.astro` and
-vice versa. Run with `tsx packages/site-builder/test/block-coverage.test.ts`.
-
-### Theme Architecture
-```
-packages/site-builder/src/themes/
-└── cinque-terre/              # Reference implementation
-    ├── src/
-    │   ├── components/        # 35+ Astro components
-    │   │   ├── blocks/        # Block renderers
-    │   │   ├── ui/            # shadcn/ui components
-    │   │   └── ...            # Navigation, Footer, etc.
-    │   ├── config/            # Theme configuration
-    │   │   ├── navigation.config.ts  # Coastal Spine navigation
-    │   │   └── village-content.config.ts  # Loads from JSON
-    │   ├── pages/             # Dynamic routes
-    │   │   └── [lang]/        # Multi-language routing
-    │   │       └── [village]/ # Village-scoped pages
-    │   ├── layouts/           # Layout templates
-    │   └── ContentRenderer.astro  # Block rendering engine
-    └── astro.config.mjs       # Astro configuration
-```
-
-### Generator
-```
-packages/site-builder/src/generator/
-├── build.ts    # Astro build execution
-├── deploy.ts   # Deployment to platforms
-└── index.ts
-```
-
----
-
-## 🖥️ Admin Dashboard
-
-### Key Features
-- **Sitemap Graph** - Visual sitemap with drag-drop
-- **Editorial Kanban** - Task management with columns
-- **Gantt View** - Timeline visualization
-- **Blueprint Editor** - Page template designer
-- **Page Editor** - Visual page content editing with SlugPicker for collections
-- **Site Editor** - Site-wide configuration with LocalizedStringEditor
-- **Collections Browser** - Browse and manage collection items
-- **GitHub Integration** - Repo connection, sync panel
-- **Analytics Overlays** - SEO metrics, suggestions
-- **User Management** - GitHub OAuth, team switching
-
-### Component Structure
-```
-apps/admin/src/components/
-├── sitemap/
-│   ├── PageNode.tsx           # Graph nodes
-│   ├── ClusterNode.tsx        # Node clusters
-│   ├── SitemapControls.tsx    # Toolbar
-│   ├── GitHubSyncPanel.tsx    # Sync status
-│   ├── AnalyticsOverlay.tsx   # Metrics
-│   └── SuggestionsOverlay.tsx # AI suggestions
-├── page-editor/
-│   ├── PageEditor.tsx         # Main page editor
-│   ├── SectionPropertiesPanel.tsx # Section editing
-│   └── SlugPicker.tsx         # Collection item picker with search/reorder
-├── site-editor/
-│   ├── SiteEditor.tsx         # Site configuration editor
-│   ├── ContextPanel.tsx       # Context-aware settings
-│   ├── LocalizedStringEditor.tsx # Multi-language string editor
-│   └── nodes/PageNode.tsx     # Page tree nodes
-├── collections/
-│   ├── CollectionBrowser.tsx  # Main collection browser
-│   ├── CollectionTypeList.tsx # Collection type navigation
-│   ├── CollectionItemsGrid.tsx # Grid display of items
-│   ├── CollectionItemCard.tsx # Item card component
-│   └── CollectionItemDetail.tsx # Item detail view
-├── editorial/
-│   ├── KanbanBoard.tsx        # Main kanban
-│   ├── KanbanView.tsx         # View wrapper
-│   ├── TaskCard.tsx           # Task cards
-│   ├── TaskFormModal.tsx      # Create/edit
-│   ├── GanttView.tsx          # Timeline
-│   └── GraphView.tsx          # Dependency graph
-├── blueprints/
-│   ├── BlueprintEditor.tsx    # Template editor
-│   ├── BlueprintCanvas.tsx    # Visual canvas
-│   └── ComponentLibrary.tsx   # Block palette
-├── ui/                        # shadcn/ui components
-│   ├── button.tsx
-│   ├── card.tsx
-│   ├── dialog.tsx
-│   ├── kanban.tsx
-│   ├── gantt.tsx
-│   └── ... (20+ components)
-├── GitHubConnector.tsx        # OAuth flow
-├── DeploymentPanel.tsx        # GitHub Pages deploy
-├── AppSidebar.tsx             # Navigation
-├── AppLayout.tsx              # Main layout
-└── UserNav.tsx                # User menu
-```
-
----
-
-## ⚠️ Critical Rules (Never Break These)
-
-1. **Never skip workflows** — All content must go through the full BPMN process
-2. **Never bypass state machines** — All transitions go through `executeTransition()`, which writes the audit row, the entity update, and the outbox event in one transaction
-3. **Never let agents act outside their role** — Enforce RBAC strictly
-4. **All content I/O goes through `RepoClient`** — agents never touch Octokit directly. Import via `@swarm-press/github-integration`'s `getRepoClient(websiteId)`.
-5. **Content lives in the site repo, never in Postgres** — page bodies and collection items belong in `content/pages/` and `content/collections/` of the site's GitHub repo. The Postgres columns `content_items.body` and `collection_items.data` are DEPRECATED.
-6. **Build and deploy are owned by each site's own GitHub Actions workflow** — the platform never runs Astro locally and never pushes to gh-pages. Merging the editorial PR is what triggers deployment.
-7. **Always emit state-change events via the outbox** — direct `eventBus.publish()` from inside a state-changing transaction is forbidden; insert into `event_outbox` in the same tx and let `OutboxWorker` deliver. Build/deploy events are NOT outbox-driven; they are observed via the GitHub `deployment_status` webhook.
-8. **Always use QuestionTickets for escalation** — No informal CEO pings
-9. **Agents are stateless** — No instance fields for conversation/cache; `AgentFactory` always returns fresh instances
-10. **Temporal workflow code must be deterministic** — No `Date.now()`, `Math.random()`, `crypto.randomUUID()`, or `fetch()` inside `packages/workflows/src/workflows/**`. Use the determinism activities. ESLint enforces this.
-11. **Temporal calls agents synchronously** — Not event-driven
-12. **Content is JSON blocks** — Not plain Markdown, not MDX. Renderers do not parse markdown at render time.
-13. **LocalizedString must always include `en`** — Read via `getLocalizedValue(value, locale)`, never `value[locale] || value.en`
-14. **Schema appends go after the AUDIT TRAILER marker** — In their own `BEGIN/COMMIT` block, so parallel worktrees can merge cleanly
-15. **Drafts are PR branches, not paths** — WriterAgent commits the page at its real routable path (e.g. `content/pages/blog/{slug}.json`) on the `drafts/content-{id}` branch. There is no `content/pages/drafts/` directory. The branch is the staging mechanism; the merge is the publish step.
-16. **State-machine actor names match the machine, not the agent class** — actors are `Writer`, `Editor`, `CEO`, `EngineeringAgent`, `SEOSpecialist`, `ChiefEditor` (see `packages/shared/src/state-machines/index.ts`). Don't pass class names like `EditorAgent` to `transition()`.
-17. **TypeScript generics inside `.astro` template returns must avoid `<` ambiguity** — Astro's parser can read `Record<string, string>` as JSX. Use `{ [k: string]: string }` instead.
-18. **Spec is the source of truth** — Implementation follows spec
-19. **CEO has final authority** — No agent can override CEO decisions
-
----
-
-## 🧪 Development Workflow
-
-### Local Setup
-
-```bash
-# 1. Clone repo
-git clone <repo-url>
-cd swarm-press
-
-# 2. Install dependencies
+```sh
+# setup
 pnpm install
+cargo install cargo-nextest --locked
+cargo install wasm-bindgen-cli --version 0.2.100
+rustup toolchain install 1.98.0 --profile minimal
+cargo +1.98.0 install --git https://github.com/drietsch/cockpit --locked --root ~/.local   # cockpit
 
-# 3. Configure environment
-cp .env.example .env
-# Edit .env with API keys
+# dev
+pnpm dev                                      # cargo xtask wasm + Vite (apps/game)
+cargo xtask wasm --release
 
-# 4. Start infrastructure
-docker compose up -d  # PostgreSQL, NATS, Temporal
+# checks
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo nextest run --workspace --profile ci    # → target/nextest/ci/junit.xml
+pnpm typecheck
+pnpm test                                     # content-schema scripts + apps/game vitest
+pnpm schema:check                             # Zod ↔ committed page.schema.json drift
+pnpm --filter @swarm-press/game build && pnpm test:e2e     # Playwright (webgpu + fallback)
+(cd apps/game && pnpm exec vitest run --reporter=default --reporter=junit \
+   --outputFile.junit=test-results/vitest-junit.xml)       # run AFTER Playwright (it empties test-results/)
 
-# 5. Bootstrap
-tsx scripts/bootstrap.ts
-
-# 6. Run development servers
-pnpm dev  # Starts all services
+# evidence gate
+cockpit scan && cockpit status
+cockpit validate --strict
+cockpit serve --watch                         # http://127.0.0.1:4747
 ```
 
-### Key Commands
+## Where to look
 
-```bash
-# Build all packages
-pnpm build
-
-# Run API server
-pnpm --filter @swarm-press/backend dev
-
-# Run Temporal worker
-pnpm --filter @swarm-press/workflows dev
-
-# Run admin dashboard
-pnpm --filter @swarm-press/admin dev
-
-# Run tests
-tsx scripts/test-e2e.ts
-
-# Reset database
-tsx scripts/clear.ts
-tsx scripts/seed.ts
-```
-
-### Accessing Services
-
-| Service | URL |
-|---------|-----|
-| **API Server** | http://localhost:3000 |
-| **Admin Dashboard** | http://localhost:4321 |
-| **Temporal UI** | http://localhost:8233 |
-| **NATS Monitoring** | http://localhost:8222 |
-
----
-
-## 📚 Key References
-
-### Documentation
-| Resource | Location |
-|----------|----------|
-| **Documentation Index** | `docs/index.md` |
-| **Architecture Overview** | `docs/architecture/overview.md` |
-| **API Reference** | `docs/reference/api.md` |
-| **Quickstart Guide** | `docs/getting-started/quickstart.md` |
-| **Deployment Guide** | `docs/guides/deployment.md` |
-| **Vocs Doc Site** | `apps/docs/` (run with `pnpm docs:dev`) |
-
-### Specifications (Authoritative)
-| Resource | Location |
-|----------|----------|
-| **Full Specification** | `specs/specs.md` |
-| **GitHub Integration Design** | `specs/idea.md` |
-| **Sitemap Spec** | `specs/sitemap-component.md` |
-| **Editorial Planning Spec** | `specs/agentic_editorial_planning_spec.md` |
-| **Collections Spec** | `specs/collections_binaries.md` |
-
-### Source Code
-| Resource | Location |
-|----------|----------|
-| **Database Schema** | `packages/backend/src/db/migrations/000_schema.sql` |
-| **Agent Definitions** | `packages/agents/src/` |
-| **Temporal Workflows** | `packages/workflows/src/workflows/` |
-| **API Routers** | `packages/backend/src/api/routers/` |
-| **Block Components** | `packages/site-builder/src/components/blocks/` |
-| **Collection Schemas** | `packages/shared/src/content/collections/` |
-
----
-
-## 🚀 Implementation Status
-
-### Core Platform (Complete)
-- [x] Monorepo setup (Turborepo + pnpm)
-- [x] Database schema with all core entities
-- [x] 11 autonomous agents (Writer, Editor, QA, Media, MediaSelector, Linker, PageOrchestrator, PagePolish, Audit, Engineering, CEOAssistant)
-- [x] 11 Temporal workflows (content, editorial, publishing, batch, scheduling, QA, etc.)
-- [x] State machine engine with audit log
-- [x] NATS event bus with CloudEvents
-- [x] tRPC API with 27 routers
-- [x] GitHub integration (PRs, Issues, webhooks, sync, OAuth)
-- [x] Admin dashboard (sitemap, kanban, blueprints, collections, scheduling)
-- [x] Prompt management system (3-level hierarchy)
-- [x] 50+ operational scripts (indexed in `scripts/README.md`; shared env helpers in `scripts/utils/env.ts`)
-- [x] Documentation site (Vocs)
-- [x] Transactional outbox for at-least-once CloudEvent delivery (`event_outbox` + `OutboxWorker`)
-- [x] Optimistic concurrency on state transitions (`StateTransitionConflict`)
-- [x] Block-coverage test (`packages/site-builder/test/block-coverage.test.ts`)
-- [x] ESLint determinism rule for Temporal workflow code
-
-**Agent System:**
-- [x] WriterAgent with language guidelines and personas
-- [x] EditorAgent with editorial config loader
-- [x] QAAgent for quality assurance
-- [x] MediaAgent and MediaSelectorAgent for media
-- [x] LinkerAgent for internal linking
-- [x] PageOrchestratorAgent for page coordination
-- [x] PagePolishAgent for coherence
-- [x] AuditAgent for content auditing
-- [x] EngineeringAgent — DEPRECATED build/deploy tools (`build_site`, `deploy_site`, `publish_website`, `validate_content`, `build_from_github`); active tools are GitHub sync helpers and batch processing
-- [x] CEOAssistantAgent for escalations
-- [x] Agent adapters (REST, GraphQL, MCP, JavaScript sandbox)
-- [x] **RepoClient**: per-website GitHub abstraction
-      (`packages/github-integration/src/repo-client.ts`) — single content
-      I/O path; agents never touch Octokit directly
-
-**Workflow System:**
-- [x] Content Production workflow
-- [x] Editorial Review workflow
-- [x] Publishing workflow — repo-canonical: merges editorial PR, then
-      waits for `deployment_status` webhook. No longer triggers local
-      Astro builds.
-- [x] Batch Processing workflow
-- [x] Page Content Generation workflow
-- [x] Collection Research workflow
-- [x] QA Gate workflow
-- [x] Scheduled Content workflow
-- [x] Scheduled Maintenance workflow
-- [x] Content Integrity workflow
-- [x] Website Generation workflow
-
-**Build & Deploy (DEPRECATED platform paths — owned by site repo Actions):**
-- [~] `EngineeringAgent.{build_site, deploy_site, publish_website, validate_content, build_from_github}` — handlers retained, NOT registered as Claude tools
-- [~] `packages/site-builder/src/generator/build.ts` — local Astro build, deprecated; do not add new callers
-- [~] `packages/site-builder/src/generator/deploy.ts` — Octokit gh-pages push, deprecated; do not add new callers
-- [~] `github.deployToPages` tRPC mutation — deprecated; logs warning, retained for backward compat
-- [~] Local Astro build on Temporal worker — replaced by GitHub Actions in each site repo
-
-**Webhook surface (WS4):**
-- [x] `pull_request.opened` handler — upserts `pr_content_mappings`
-- [x] `push` to main handler — emits `content.pushed` CloudEvent into outbox
-- [x] `deployment_status` handler — records deploy completion in `state_audit_log` and on the `websites` row
-- [x] `pr_content_mappings` table — PR ↔ content_item mapping for editor approval flow
-
-**Autonomous Scheduling:**
-- [x] Temporal Schedules integration
-- [x] 4 schedule types (content, media, links, stale)
-- [x] Schedule management API
-- [x] Execution history tracking
-- [x] Calendar view in admin
-- [x] Manual trigger capability
-
-**Batch Processing:**
-- [x] Batch job management
-- [x] Progress tracking
-- [x] Error handling per item
-- [x] Resumable jobs
-
-**Collections System:**
-- [x] 8+ collection types (restaurants, accommodations, hikes, etc.)
-- [x] Collection research workflow
-- [x] Version history
-- [x] Collections browser UI
-- [x] SlugPicker for embedding
-
-**Cinque Terre Theme:**
-- [x] 46 block types with Zod validation (down from 67 after audit item 8)
-- [x] 39 Astro components
-- [x] Multi-language support (EN/DE/FR/IT)
-- [x] Village JSON configuration
-- [x] Content submodule architecture
-- [x] Weather integration
-
-**Admin Dashboard:**
-- [x] Collections browser
-- [x] Page editor with SlugPicker
-- [x] Site editor with LocalizedStringEditor
-- [x] Schedule management panel
-- [x] Schedule calendar
-- [x] Execution history
-
-**Services:**
-- [x] Image generation service
-- [x] Stock photo service
-- [x] Weather API service
-- [x] WKI (Website Knowledge Index) builder
-- [x] Batch processing service
-- [x] Storage service (S3/R2)
-
-### End-to-end live verification (2026-05-12)
-- [x] **Full autonomous chain proven against the live cinqueterre.travel site.**
-      A brief inserted into Postgres became
-      [/en/blog/last-light-on-sentiero-azzurro/](https://cinqueterre.travel/en/blog/last-light-on-sentiero-azzurro/)
-      with WriterAgent (Isabella) drafting, EditorAgent (Marco)
-      approving (quality_score=7), RepoClient merging PR #6, GitHub
-      Actions deploying. No human in the loop except the brief author.
-- [x] WriterAgent commits at routable blog path
-      (`content/pages/blog/{slug}.json`) — drafts/{id} subdirectory retired
-- [x] EditorAgent reads draft body from the repo (was reading null DB body)
-- [x] State machine has `reject` event + `rejected` terminal state
-- [x] Editor side-effects ordered: state transition first, PR action second
-- [x] `question_tickets.content_id` issue resolved (folded into metadata)
-- [x] Pessimistic SELECT…FOR UPDATE in state-transition engine
-      (Date-precision fix vs optimistic-lock)
-- [x] State-audit-log INSERT aligned with actual schema
-      (`actor_type` not `actor`, no `event` column)
-- [x] Worker process connects to NATS at startup so
-      `publishContentEvent` activities don't throw "JetStream not initialized"
-- [x] EventTriggerService routes `brief.created` → `contentProductionWorkflow`
-      with deterministic workflowId
-- [x] Block-shape normalizer (Writer's tool prompt vs canonical Zod schema)
-- [x] `pnpm-workspace.yaml` includes `packages/site-builder/src/themes/*`
-      so `pnpm install` populates the theme's node_modules for Actions builds
-- [x] `Record<string, string>` rewritten as `{ [k: string]: string }` in
-      `ContentRenderer.astro` (Astro template parser misreads `<` as JSX)
-
-### Known follow-ups (work but not yet polished)
-- [ ] `waitForDeploymentActivity` is still a polling stub; convert to a
-      Temporal signal driven by the `deployment_status` webhook
-- [ ] `EventTriggerService.stop()` only flips a flag; NATS subscriber
-      doesn't truly unsubscribe (relies on connection close at shutdown)
-- [ ] Writer agent resolution in `EventTriggerService` is global, not
-      per-website (no `findByWebsiteAndCapability` yet)
-- [ ] `pr_content_mappings` has no `merge_commit_sha` column; webhook
-      handler uses "most-recently-merged" heuristic to map deploy → content
-- [ ] Several deprecated shims in `@swarm-press/github-integration`
-      (`syncContentToGitHub`, `getGitHubMapping`) — port callers to
-      `RepoClient` and remove
-- [ ] Migrate the legacy `cinqueterre.travel/build-all-pages.js`
-      vanilla-JS generator out of the submodule
-
-### Post-MVP Roadmap
-- [ ] Multi-tenancy (multiple sites in one platform)
-- [ ] Distribution agent (social media, newsletters)
-- [ ] Advanced analytics dashboard
-- [ ] Visual workflow editor
-- [ ] CEO oversight dashboard
-- [ ] Advanced observability (Prometheus, tracing)
-- [ ] Theme route for non-blog autonomous pages (village pages, collections)
-
----
-
-## 🤝 Contributing
-
-When working on swarm.press:
-
-1. **Read the spec first** — `specs/specs.md` is authoritative
-2. **Update the schema** — `000_schema.sql` is the source of truth
-3. **Write tests** — Unit tests for agents, integration tests for workflows
-4. **Emit events** — Every state change should publish a CloudEvent
-5. **Document decisions** — Update this file when making architectural changes
-6. **Follow patterns** — Look at existing code for examples
-
----
-
-**Last Updated:** 2026-05-12
-**Implementation Status:** Autonomous chain proven end-to-end against the live cinqueterre.travel site. See "End-to-end live verification" section above.
-
----
-
-**Remember:** swarm.press is not just AI content generation. It's a fully structured, autonomous publishing organization with real workflows, real governance, and real accountability. Build it accordingly.
+| Topic | Doc |
+|---|---|
+| System, data flow, design rules | `docs/architecture/overview.md` |
+| Sim entities, systems, commands, pipeline stages | `docs/architecture/sim.md` |
+| Frames, lockstep, REST | `docs/architecture/protocol.md` |
+| Render state | `docs/architecture/render-state.md` |
+| Roles, personas, prompts, pipelines, meetings, QA | `docs/architecture/agents.md` |
+| Local LLMs and the Agency | `docs/architecture/hybrid-inference.md` |
+| Blocks, LocalizedString, indexes | `docs/architecture/content-model.md` |
+| Site kit and themes | `docs/architecture/site-kit.md` |
+| Babylon, cutaway, lighting, tiers | `docs/architecture/lighting-and-rendering.md` |
+| Game rules and numbers | `docs/game-design/` |
+| Tests and Cockpit | `docs/guides/testing.md` |
+| Live-site migration | `docs/runbooks/cinqueterre-cutover.md` |

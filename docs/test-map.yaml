@@ -1,0 +1,21 @@
+# Cockpit test map (cockpit.toml → [test_map]).
+#
+# Precedence: an explicit tag in the test itself wins, then this map, then `paths:` ownership in
+# docs/features. Use this file only for tests that paths cannot attribute precisely, mainly
+# Rust unit tests in a crate's `src/lib.rs`: nextest reports them with the source path
+# `crates/<crate>/src`, which every feature of that crate would otherwise own.
+#
+# Keys under `match` are ANDed. `classname` is the Cargo package; `title` is a substring of the
+# test name (`tests::clock_wraps_at_midnight`). Move tests into modules (`src/clock.rs`) and
+# drop the entry once paths can do the job.
+
+- match: { classname: sim-core, title: "tests::clock_" }
+  features: [FEAT-002]
+- match: { classname: sim-core, title: "_hash" }
+  features: [FEAT-001]
+- match: { classname: protocol }
+  features: [FEAT-011]
+- match: { classname: content-schema }
+  features: [FEAT-042]
+- match: { classname: client-wasm }
+  features: [FEAT-001, FEAT-023]
