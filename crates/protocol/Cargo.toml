@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 serde.workspace = true
 postcard.workspace = true
+sim-core.workspace = true
 
 [lints]
 workspace = true
