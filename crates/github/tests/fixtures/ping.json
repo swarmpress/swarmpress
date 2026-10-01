@@ -1,0 +1,6 @@
+{
+  "zen": "Design for failure.",
+  "hook_id": 467071,
+  "hook": { "type": "App", "id": 467071, "active": true, "events": ["pull_request", "push", "check_run"] },
+  "sender": { "login": "drietsch", "id": 1001 }
+}

@@ -1,0 +1,43 @@
+{
+  "action": "completed",
+  "check_run": {
+    "id": 128620228,
+    "name": "kit check --strict",
+    "node_id": "MDg6Q2hlY2tSdW4xMjg2MjAyMjg=",
+    "head_sha": "ec26c3e57ca3a959ca5aad62de7213c562f8c821",
+    "external_id": "",
+    "url": "https://api.github.com/repos/simpress-sites/cinqueterre-travel/check-runs/128620228",
+    "html_url": "https://github.com/simpress-sites/cinqueterre-travel/runs/128620228",
+    "details_url": "https://github.com/simpress-sites/cinqueterre-travel/actions/runs/9001/job/128620228",
+    "status": "completed",
+    "conclusion": "failure",
+    "started_at": "2026-05-12T09:05:00Z",
+    "completed_at": "2026-05-12T09:07:21Z",
+    "output": {
+      "title": "Theme lint failed",
+      "summary": "theme/components/Hero.astro imports node:fs",
+      "annotations_count": 1
+    },
+    "check_suite": {
+      "id": 118578147,
+      "head_branch": "design/spring-refresh",
+      "head_sha": "ec26c3e57ca3a959ca5aad62de7213c562f8c821",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    "app": { "id": 15368, "slug": "github-actions", "name": "GitHub Actions" },
+    "pull_requests": [
+      { "id": 2001234570, "number": 9, "head": { "ref": "design/spring-refresh", "sha": "ec26c3e57ca3a959ca5aad62de7213c562f8c821" }, "base": { "ref": "main", "sha": "a10867b14bb761a232cd80139fbd4c0d33264240" } }
+    ]
+  },
+  "repository": {
+    "id": 42,
+    "name": "cinqueterre-travel",
+    "full_name": "simpress-sites/cinqueterre-travel",
+    "private": false,
+    "owner": { "login": "simpress-sites", "id": 9000, "type": "Organization" },
+    "default_branch": "main"
+  },
+  "sender": { "login": "github-actions[bot]", "id": 41898282, "type": "Bot" },
+  "installation": { "id": 55501 }
+}
