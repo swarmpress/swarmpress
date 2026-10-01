@@ -1,87 +1,21 @@
-version: '3.8'
-
+# Postgres is the only infrastructure SimPress needs (ADR-0008).
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
-    container_name: swarmpress-postgres
+    container_name: simpress-postgres
     environment:
-      POSTGRES_USER: swarmpress
-      POSTGRES_PASSWORD: swarmpress
-      POSTGRES_DB: swarmpress
+      POSTGRES_USER: simpress
+      POSTGRES_PASSWORD: simpress
+      POSTGRES_DB: simpress
     ports:
       - '5432:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U swarmpress']
-      interval: 10s
+      test: ['CMD-SHELL', 'pg_isready -U simpress']
+      interval: 5s
       timeout: 5s
-      retries: 5
-
-  # NATS with JetStream
-  # Pinned to a specific patch release to keep environments reproducible.
-  # 2.10.29 is the latest 2.10.x stable as of 2026-05.
-  nats:
-    image: nats:2.10.29-alpine
-    container_name: swarmpress-nats
-    command: '-js -m 8222'
-    ports:
-      - '4222:4222'  # Client connections
-      - '8222:8222'  # HTTP monitoring
-    volumes:
-      - nats-data:/data
-    healthcheck:
-      test: ['CMD', 'wget', '--spider', 'http://localhost:8222/healthz']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Temporal Server
-  temporal:
-    image: temporalio/auto-setup:1.22.4
-    container_name: swarmpress-temporal
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      - DB=postgres12
-      - DB_PORT=5432
-      - POSTGRES_USER=swarmpress
-      - POSTGRES_PWD=swarmpress
-      - POSTGRES_SEEDS=postgres
-    ports:
-      - '7233:7233'  # gRPC
-      - '8233:8233'  # HTTP
-    healthcheck:
-      test: ['CMD', 'tctl', '--address', 'temporal:7233', 'workflow', 'list']
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-
-  # Temporal UI
-  # =====================================================================
-  # Compatibility: this UI image is exercised against the temporal server
-  # pinned above. If you upgrade either side, bump the other in lock-step.
-  # Tested with temporalio/auto-setup:1.22.4
-  # =====================================================================
-  temporal-ui:
-    image: temporalio/ui:2.21.3
-    container_name: swarmpress-temporal-ui
-    depends_on:
-      - temporal
-    environment:
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
-    ports:
-      - '8080:8080'
+      retries: 10
 
 volumes:
   postgres-data:
-  nats-data:
-  temporal-data:
-
-networks:
-  default:
-    name: swarmpress-network

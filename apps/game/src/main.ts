@@ -1,56 +1,82 @@
-import { Application, Container, Graphics, Text } from 'pixi.js'
 import init, { Sim, version } from 'swarm-wasm'
-import { TILE_H, TILE_W, tileToScreen } from './iso'
+import { createEngine } from './render/engine'
+import { formatClock } from './render/daylight'
+import { QUALITY, type Quality } from './render/postfx'
+import { createGameScene } from './render/scene'
+import { DEMO_BUILDING, demoRenderState } from './state/render-state'
+import { mountHud } from './ui/hud'
 
+/**
+ * URL parameters (also used by the visual tests):
+ *   renderer=webgl     force the WebGL2 fallback
+ *   quality=low|medium|high
+ *   t=HH:MM            freeze the clock at this time (deterministic screenshots)
+ *   speed=N            sim steps per 100 ms (sandbox fast-forward), default 50
+ *   facing=0..3        camera angle
+ */
 async function main() {
   await init()
+  const params = new URLSearchParams(location.search)
+  const quality = (params.get('quality') as Quality) || 'high'
+  const frozen = params.get('t')
+  const speed = Number(params.get('speed') ?? 50)
 
-  const app = new Application()
-  const forceWebgl = new URLSearchParams(location.search).get('renderer') === 'webgl'
-  await app.init({
-    preference: forceWebgl ? 'webgl' : 'webgpu',
-    background: '#1b1f2a',
-    resizeTo: window,
-    antialias: true,
-  })
-  document.getElementById('stage')!.appendChild(app.canvas)
+  const canvas = document.createElement('canvas')
+  canvas.id = 'game'
+  canvas.style.width = '100%'
+  canvas.style.height = '100%'
+  canvas.style.touchAction = 'none'
+  document.getElementById('stage')!.appendChild(canvas)
 
-  const world = new Container()
-  app.stage.addChild(world)
+  const { engine, name: renderer } = await createEngine(canvas, params.get('renderer') === 'webgl')
+  const game = createGameScene(engine, canvas, DEMO_BUILDING, { quality: QUALITY[quality] ?? QUALITY.high, postFx: true })
 
-  const tile = new Graphics()
-    .poly([0, -TILE_H / 2, TILE_W / 2, 0, 0, TILE_H / 2, -TILE_W / 2, 0])
-    .fill(0x3d8f6a)
-    .stroke({ width: 2, color: 0x9fe0bf })
-  const pos = tileToScreen(0, 0)
-  tile.position.set(pos.x, pos.y)
-  world.addChild(tile)
+  if (params.has('facing')) game.iso.setFacing(Number(params.get('facing')))
+  game.iso.snap()
 
   const sim = new Sim(42n)
-  const renderer = app.renderer.name
-  const label = new Text({
-    text: '',
-    style: { fill: 0xe8e6e3, fontSize: 14, fontFamily: 'system-ui' },
+  let minuteOverride: number | null = null
+  if (frozen) {
+    const [h, m] = frozen.split(':').map(Number)
+    minuteOverride = h * 60 + (m || 0)
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'q') game.iso.rotate(-1)
+    if (e.key === 'e') game.iso.rotate(1)
   })
-  label.position.set(12, 12)
-  app.stage.addChild(label)
 
-  const center = () => world.position.set(app.screen.width / 2, app.screen.height / 2)
-  center()
-  app.renderer.on('resize', center)
-
-  // Fixed 100 ms simulation step, independent of frame rate.
+  const hud = mountHud(document.getElementById('ui')!)
   let acc = 0
-  app.ticker.add((t) => {
-    acc += t.deltaMS
-    while (acc >= 100) {
-      sim.tick()
-      acc -= 100
+  let lastMinute = -1
+  engine.runRenderLoop(() => {
+    if (minuteOverride === null) {
+      acc += engine.getDeltaTime()
+      while (acc >= 100) {
+        sim.advance(speed)
+        acc -= 100
+      }
     }
-    label.text = `${version()} · renderer: ${renderer} · step ${sim.step()}`
+    const minute = minuteOverride ?? sim.minute_of_day()
+    if (minute !== lastMinute) {
+      game.update(demoRenderState(minute, sim.day()))
+      lastMinute = minute
+    }
+    game.scene.render()
+    hud.set({ clock: formatClock(minute), day: sim.day(), renderer, version: version(), fps: Math.round(engine.getFps()) })
   })
+  window.addEventListener('resize', () => engine.resize())
 
-  ;(window as unknown as { __simpress: unknown }).__simpress = { app, sim, renderer }
+  ;(window as unknown as { __simpress: unknown }).__simpress = {
+    renderer,
+    sim,
+    scene: game.scene,
+    ready: () => game.scene.isReady(),
+    frames: () => engine.frameId,
+  }
 }
 
-main()
+main().catch((err) => {
+  console.error(err)
+  document.body.dataset.error = String(err)
+})

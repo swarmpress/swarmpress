@@ -1,48 +1,49 @@
 import { ArcRotateCamera, Camera, PointerEventTypes, Scene, Vector3 } from '@babylonjs/core'
-
-/** True isometric elevation: the camera looks down at atan(1/sqrt(2)) ≈ 35.26°. */
-export const ISO_BETA = Math.PI / 2 - Math.atan(1 / Math.SQRT2)
-/** Four 90° viewing angles, like The Sims / Two Point Hospital. */
-export const ISO_ALPHAS = [-Math.PI / 4, Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4]
+import { clampZoom, DEFAULT_FACING, ISO_ALPHAS, ISO_BETA, orthoExtents } from './camera-math'
 
 export interface IsoCamera {
   camera: ArcRotateCamera
   rotate(step: 1 | -1): void
-  /** Index into ISO_ALPHAS; the cutaway uses it to pick which walls to hide. */
+  /** Index into ISO_ALPHAS. */
   facing(): number
+  /** Jump to one of the four snapped angles (0..3). */
+  setFacing(index: number): void
+  /** Finish any rotation animation instantly (deterministic screenshots). */
+  snap(): void
 }
 
 /**
  * Orthographic isometric camera (ADR-0005). Fixed elevation, four snapped
  * rotations (Q/E), wheel zoom, drag to pan.
  */
-export function createIsoCamera(scene: Scene, canvas: HTMLCanvasElement, target: Vector3): IsoCamera {
-  const camera = new ArcRotateCamera('iso', ISO_ALPHAS[0], ISO_BETA, 60, target, scene)
+export function createIsoCamera(scene: Scene, canvas: HTMLCanvasElement | null, target: Vector3): IsoCamera {
+  const camera = new ArcRotateCamera('iso', ISO_ALPHAS[DEFAULT_FACING], ISO_BETA, 60, target, scene)
   camera.mode = Camera.ORTHOGRAPHIC_CAMERA
   camera.minZ = 0.1
   camera.maxZ = 200
   camera.inputs.clear()
 
   let zoom = 9 // half-height of the view in metres
-  let facingIndex = 0
+  let facingIndex = DEFAULT_FACING
   let targetAlpha = camera.alpha
 
   const applyOrtho = () => {
     const engine = scene.getEngine()
     const aspect = engine.getRenderWidth() / Math.max(1, engine.getRenderHeight())
-    camera.orthoTop = zoom
-    camera.orthoBottom = -zoom
-    camera.orthoLeft = -zoom * aspect
-    camera.orthoRight = zoom * aspect
+    const e = orthoExtents(zoom, aspect)
+    camera.orthoTop = e.top
+    camera.orthoBottom = e.bottom
+    camera.orthoLeft = e.left
+    camera.orthoRight = e.right
   }
   applyOrtho()
   scene.getEngine().onResizeObservable.add(applyOrtho)
 
-  canvas.addEventListener(
+  canvas?.addEventListener(
     'wheel',
     (e) => {
       e.preventDefault()
-      zoom = Math.min(20, Math.max(3, zoom * (e.deltaY > 0 ? 1.1 : 1 / 1.1)))
+      zoom = clampZoom(zoom * (e.deltaY > 0 ? 1.1 : 1 / 1.1))
       applyOrtho()
     },
     { passive: false },
@@ -79,5 +80,12 @@ export function createIsoCamera(scene: Scene, canvas: HTMLCanvasElement, target:
       targetAlpha += (step * Math.PI) / 2
     },
     facing: () => facingIndex,
+    setFacing(index) {
+      facingIndex = ((index % 4) + 4) % 4
+      targetAlpha = ISO_ALPHAS[facingIndex]
+    },
+    snap() {
+      camera.alpha = targetAlpha
+    },
   }
 }

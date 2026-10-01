@@ -10,6 +10,10 @@
       #stage { position: fixed; inset: 0; }
       #ui { position: fixed; inset: 0; pointer-events: none; }
       #ui > * { pointer-events: auto; }
+      .hud { position: absolute; top: 12px; left: 12px; display: flex; gap: 12px; align-items: baseline;
+             padding: 6px 12px; border-radius: 8px; background: rgba(15, 18, 26, 0.72); backdrop-filter: blur(6px); }
+      .hud-clock { font-weight: 600; font-size: 16px; font-variant-numeric: tabular-nums; }
+      .hud-meta { opacity: 0.7; font-size: 12px; }
     </style>
   </head>
   <body>

@@ -5,14 +5,13 @@
   "description": "SimPress: an isometric publishing-house game where AI staff run a real website",
   "scripts": {
     "dev": "pnpm --filter @swarm-press/game dev",
-    "build": "pnpm -r --filter '!docs' --filter '!@swarm-press/theme-*' build",
+    "build": "pnpm --filter @swarm-press/game build",
     "typecheck": "pnpm -r --filter @swarm-press/game --filter @swarm-press/content-schema typecheck",
     "test": "pnpm -r --filter @swarm-press/content-schema --filter @swarm-press/game test",
+    "test:e2e": "pnpm --filter @swarm-press/game test:e2e",
     "schema:export": "pnpm --filter @swarm-press/content-schema export",
     "schema:check": "pnpm --filter @swarm-press/content-schema check",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "docs:dev": "pnpm --filter docs dev",
-    "docs:build": "pnpm --filter docs build"
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
