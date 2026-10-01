@@ -21,7 +21,8 @@ use crate::app::AppState;
 use crate::auth::CurrentUser;
 use crate::db::{self, User};
 use crate::error::{AppError, AppResult};
-use crate::jobs::{parse_artifact, Executor};
+use crate::jobs::{parse_artifact, Executor, Job};
+use crate::plan::JobCompletion;
 use crate::wire::{self, ClientFrame, ServerFrame};
 
 pub async fn ws_handler(
@@ -119,6 +120,7 @@ impl Conn {
             return;
         }
         let mut rx = sub.rx;
+        let mut plan_rx = self.st.plan.hub().subscribe(self.company_id);
         let mut notices = self.st.notifier.subscribe();
         let mut offer_tick = tokio::time::interval(Duration::from_secs(5));
         offer_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -147,6 +149,19 @@ impl Conn {
                     Err(RecvError::Closed) => {
                         // Actor exited (restart/unload): reload and resync.
                         self.resnapshot(&mut socket, &mut rx).await
+                    }
+                },
+                p = plan_rx.recv() => match p {
+                    Ok(frame) => self.send(&mut socket, &frame).await,
+                    Err(RecvError::Lagged(n)) => {
+                        tracing::warn!(company_id = %self.company_id, lagged = n, "plan stream lagged");
+                        self.send(&mut socket, &ServerFrame::Error {
+                            message: "plan stream lagged; refetch /api/plan".into(),
+                        }).await
+                    }
+                    Err(RecvError::Closed) => {
+                        plan_rx = self.st.plan.hub().subscribe(self.company_id);
+                        Ok(())
                     }
                 },
                 n = notices.recv() => match n {
@@ -438,7 +453,7 @@ impl Conn {
         let verdict = parse_artifact(artifact_json, self.st.cfg.max_artifact_bytes)
             .and_then(|v| self.st.validator.validate(&job, &v).map(|()| v));
         let reply = match verdict {
-            Ok(artifact) => match self.st.jobs.complete(id, &self.owner, &artifact).await {
+            Ok(artifact) => match self.complete(&job, &artifact).await {
                 Ok(true) => {
                     tracing::info!(job_id = %id, kind = %job.kind, "browser job completed");
                     // STUB: the sim command `JobCompleted{digest}` does not exist
@@ -478,6 +493,48 @@ impl Conn {
         };
         self.send(socket, &reply).await?;
         self.offer_jobs(socket).await
+    }
+
+    /// Store an accepted artifact. When the job targets a plan item
+    /// (`payload.item_id` + `payload.actor`) and the artifact carries
+    /// `planOps`, the ops are validated and appended in the same transaction
+    /// as the job completion (publishing-plan.md §3).
+    async fn complete(&self, job: &Job, artifact: &serde_json::Value) -> anyhow::Result<bool> {
+        let item = job
+            .payload
+            .get("item_id")
+            .or_else(|| job.payload.get("itemId"))
+            .and_then(|v| v.as_str());
+        let actor = job.payload.get("actor").and_then(|v| v.as_str());
+        let ops = artifact
+            .get("planOps")
+            .or_else(|| artifact.get("plan_ops"))
+            .and_then(|v| v.as_array());
+        match (job.company_id, item, actor, ops) {
+            (Some(company), Some(item), Some(actor), Some(ops)) => {
+                let outcome = self
+                    .st
+                    .plan
+                    .complete_job_with_ops(
+                        company,
+                        item,
+                        actor,
+                        ops,
+                        JobCompletion {
+                            job_id: job.id,
+                            owner: &self.owner,
+                            result: artifact,
+                        },
+                    )
+                    .await?;
+                if let Some(o) = &outcome {
+                    tracing::info!(job_id = %job.id, item, accepted = o.accepted.len(),
+                        rejected = o.rejected.len(), "plan ops applied with job result");
+                }
+                Ok(outcome.is_some())
+            }
+            _ => self.st.jobs.complete(job.id, &self.owner, artifact).await,
+        }
     }
 
     async fn cleanup(&mut self) {
