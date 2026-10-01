@@ -56,13 +56,13 @@ impl Simulation for World {
     }
 
     fn apply(&mut self, cmd: &[u8]) -> Result<(), String> {
-        // STUB: sim-core has no command type yet (another workstream is adding
-        // `protocol::Command` + `World::apply`). Fail loudly, never silently.
-        tracing::error!(
-            len = cmd.len(),
-            "Simulation::apply for sim_core::World is not implemented; rejecting command"
-        );
-        Err("not implemented: sim-core World::apply".into())
+        // Clients may only send player commands; server-issued commands
+        // (job results, utterances, site signals) never come off the socket.
+        let command: sim_core::Command =
+            postcard::from_bytes(cmd).map_err(|e| format!("undecodable command: {e}"))?;
+        World::apply(self, command)
+            .map(|_| ())
+            .map_err(|reject| format!("{reject:?}"))
     }
 
     fn snapshot(&self) -> Vec<u8> {
@@ -151,9 +151,24 @@ mod tests {
     }
 
     #[test]
-    fn world_apply_fails_loudly() {
+    fn world_rejects_undecodable_commands_without_changing_state() {
         let mut w = <World as Simulation>::create(7, 60);
-        assert!(w.apply(b"x").unwrap_err().contains("not implemented"));
+        let before = Simulation::hash(&w);
+        let err = Simulation::apply(&mut w, b"\xff\xff\xff").unwrap_err();
+        assert!(err.contains("undecodable"), "{err}");
+        assert_eq!(Simulation::hash(&w), before);
+    }
+
+    #[test]
+    fn world_applies_postcard_player_commands() {
+        let mut w = sim_core::scenarios::demo_office(42);
+        let before = Simulation::hash(&w);
+        let cmd = sim_core::Command::SetPolicy(sim_core::commands::Policy::Overtime(
+            sim_core::commands::OvertimePolicy::Crunch,
+        ));
+        let bytes = postcard::to_allocvec(&cmd).unwrap();
+        Simulation::apply(&mut w, &bytes).unwrap();
+        assert_ne!(Simulation::hash(&w), before);
     }
 
     #[test]
