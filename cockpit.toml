@@ -46,7 +46,7 @@ packages = ["server"]
 id = "server/nextest"
 component = "server"
 [[evidence.split]]
-packages = ["agents"]
+packages = ["agents", "orchestrator"]
 id = "agents/nextest"
 component = "agents"
 [[evidence.split]]
@@ -81,7 +81,7 @@ path = ".cockpit/evidence/server__nextest/**/*.xml"
 component = "server"
 [[evidence]]
 id = "agents/nextest"
-title = "cargo nextest: agents (FakeClaude pipelines, meetings, QA)"
+title = "cargo nextest: agents + orchestrator (FakeClaude pipelines, meetings, QA, MVP loop)"
 format = "junit"
 kind = "integration"
 path = ".cockpit/evidence/agents__nextest/**/*.xml"

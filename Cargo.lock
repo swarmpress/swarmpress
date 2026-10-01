@@ -925,9 +925,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "r-efi 5.3.0",
  "wasip2",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1701,6 +1703,23 @@ name = "oorandom"
 version = "11.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
+
+[[package]]
+name = "orchestrator"
+version = "0.2.0"
+dependencies = [
+ "agents",
+ "async-trait",
+ "content-schema",
+ "getrandom 0.3.4",
+ "github",
+ "jsonschema",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "xxhash-rust",
+]
 
 [[package]]
 name = "outref"

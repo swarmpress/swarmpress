@@ -41,7 +41,8 @@ The legacy TypeScript code is reachable at the git tag `legacy-ts`.
 
 [Overview](game-design/overview.md) · [Staff](game-design/staff.md) ·
 [Rooms and progression](game-design/rooms-and-progression.md) · [Economy](game-design/economy.md) ·
-[Events and inbox](game-design/events-and-inbox.md) · [Leaderboard](game-design/leaderboard.md)
+[Events and inbox](game-design/events-and-inbox.md) · [Leaderboard](game-design/leaderboard.md) ·
+[What the SDK makes possible](game-design/sdk-ideas.md)
 
 ### Guides and runbooks
 
