@@ -55,3 +55,4 @@ Accepted ADRs are never rewritten.
 | [0033](0033-credits-a-closed-loop-platform-currency-separate-from-in-game-cash.md) | Credits: a closed-loop platform currency, separate from in-game cash | Accepted |
 | [0034](0034-living-personas-memories-relationships-and-recorded-conversations.md) | Living personas: memories, relationships and recorded conversations | Accepted |
 | [0035](0035-the-real-world-enters-through-a-world-context-service.md) | The real world enters through a World Context Service | Accepted |
+| [0036](0036-a-day-director-thread-steers-each-day-within-sim-bounds.md) | A Day Director thread steers each day, within sim bounds | Accepted |
