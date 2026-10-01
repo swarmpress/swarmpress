@@ -53,3 +53,5 @@ Accepted ADRs are never rewritten.
 | [0031](0031-the-publishing-plan-is-the-shared-workspace-for-ceo-and-agents.md) | The publishing plan is the shared workspace for CEO and agents | Accepted |
 | [0032](0032-first-party-analytics-tracker-owned-by-the-data-scientist.md) | First-party analytics tracker, owned by the data scientist | Accepted |
 | [0033](0033-credits-a-closed-loop-platform-currency-separate-from-in-game-cash.md) | Credits: a closed-loop platform currency, separate from in-game cash | Accepted |
+| [0034](0034-living-personas-memories-relationships-and-recorded-conversations.md) | Living personas: memories, relationships and recorded conversations | Accepted |
+| [0035](0035-the-real-world-enters-through-a-world-context-service.md) | The real world enters through a World Context Service | Accepted |
