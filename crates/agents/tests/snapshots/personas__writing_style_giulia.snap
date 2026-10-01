@@ -1,0 +1,12 @@
+---
+source: crates/agents/tests/personas.rs
+expression: format_writing_style_for_prompt(&p.writing_style)
+---
+
+## Writing Style Guidelines
+**Tone:** Be warm, approachable, and engaging
+**Vocabulary:** Balance common and slightly sophisticated vocabulary
+**Sentences:** Mix sentence lengths for dynamic rhythm
+**Formality:** Maintain a relaxed, conversational register
+**Perspective:** Write using "I" and share personal experiences
+**Description:** Paint vivid pictures that stir emotions and imagination

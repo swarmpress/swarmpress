@@ -1,0 +1,21 @@
+[package]
+name = "agents"
+description = "SimPress agent layer: roles, personas, prompt layering, state machines, executors, meetings and the editorial pipeline (orchestrator-owned; LLMs return artifacts)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+claude = { path = "../claude" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+async-trait = "0.1"
+toml = "0.8"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+insta = { version = "1", features = ["json"] }
+
+[lints]
+workspace = true

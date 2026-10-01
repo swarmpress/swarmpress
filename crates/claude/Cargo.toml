@@ -1,0 +1,25 @@
+[package]
+name = "claude"
+description = "Claude Messages API client over raw HTTP: SSE streaming, tool-use loop, structured output, prompt caching, refusal and fallback handling, retries"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+async-trait = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+tokio = { version = "1", features = ["time"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+fastrand = "2"
+jsonschema = { version = "0.33", default-features = false }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+wiremock = "0.6"
+insta = { version = "1", features = ["json"] }
+
+[lints]
+workspace = true
