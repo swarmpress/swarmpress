@@ -1,0 +1,153 @@
+# SimPress roles and job executors.
+#
+# Loaded by `agents::RolesConfig` (embedded at build time via include_str!,
+# overridable at runtime with RolesConfig::from_toml_str).
+#
+# [roles.*]   Claude (Agency) model + effort per role (plan, Subsystems 3).
+#             Applies to Claude-executed jobs. Staff jobs run on the local
+#             browser model tier (plan D); see config/models.toml.
+# [seniority] Staff seniority overrides the role's Claude model (plan A):
+#             Junior -> haiku, Mid -> sonnet, Senior/Star -> opus.
+# [jobs.*]    Executor policy per JobKind: browser | claude | browser_then_claude,
+#             the minimum device tier for browser execution, the role whose
+#             prompt/profile runs the job, and the output token budget.
+#
+# Effort is always sent explicitly (output_config.effort); valid values:
+# low | medium | high | xhigh | max. Thinking is adaptive on these models and
+# is never configured here.
+
+[roles.editor_in_chief]
+model = "claude-opus-5-5"
+effort = "high"
+
+[roles.writer]
+model = "claude-opus-5-5"
+effort = "medium"
+
+[roles.editor]
+model = "claude-opus-5-5"
+effort = "medium"
+
+[roles.art_director]
+model = "claude-opus-5-5"
+effort = "high"
+vision = true
+
+[roles.frontend_dev]
+model = "claude-opus-5-5"
+effort = "high"
+vision = true
+
+[roles.seo]
+model = "claude-sonnet-5-5"
+effort = "medium"
+web_search = true
+
+[roles.linker]
+model = "claude-sonnet-5-5"
+effort = "medium"
+web_search = true
+
+[roles.researcher]
+model = "claude-sonnet-5-5"
+effort = "medium"
+web_search = true
+
+[roles.media]
+model = "claude-haiku-4-5"
+effort = "low"
+
+[roles.chatter]
+model = "claude-sonnet-5-5"
+effort = "low"
+
+# Not in the plan's table; chosen to match comparable roles.
+[roles.qa]
+model = "claude-sonnet-5-5"
+effort = "medium"
+
+[roles.translator]
+model = "claude-sonnet-5-5"
+effort = "medium"
+
+[roles.critic]
+model = "claude-sonnet-5-5"
+effort = "medium"
+vision = true
+
+[seniority]
+junior = "claude-haiku-4-5"
+mid = "claude-sonnet-5-5"
+senior = "claude-opus-5-5"
+star = "claude-opus-5-5"
+
+# ---------------------------------------------------------------------------
+# Job executors (plan D). Tiers: low < mid < high.
+# ---------------------------------------------------------------------------
+
+[jobs.standup]
+executor = "browser"
+min_tier = "low"
+role = "editor_in_chief"
+max_tokens = 1024
+
+[jobs.brief]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "editor_in_chief"
+max_tokens = 2048
+
+[jobs.draft]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "writer"
+max_tokens = 16000
+
+[jobs.revise]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "writer"
+max_tokens = 16000
+
+[jobs.edit_review]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "editor"
+max_tokens = 4096
+
+[jobs.qa_coherence]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "qa"
+max_tokens = 4096
+
+[jobs.translate]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "translator"
+max_tokens = 16000
+
+[jobs.research]
+executor = "claude"
+role = "researcher"
+max_tokens = 8000
+
+[jobs.art_direction]
+executor = "claude"
+role = "art_director"
+max_tokens = 8000
+
+[jobs.theme_code]
+executor = "claude"
+role = "frontend_dev"
+max_tokens = 32000
+
+[jobs.visual_review]
+executor = "claude"
+role = "art_director"
+max_tokens = 4096
+
+[jobs.critic_review]
+executor = "claude"
+role = "critic"
+max_tokens = 4096

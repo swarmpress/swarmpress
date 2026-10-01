@@ -1,0 +1,67 @@
+---
+source: crates/claude/tests/requests.rs
+expression: prepared
+---
+{
+  "url": "https://api.anthropic.com/v1/messages",
+  "headers": [
+    [
+      "x-api-key",
+      "<redacted>"
+    ],
+    [
+      "anthropic-version",
+      "2023-06-01"
+    ],
+    [
+      "content-type",
+      "application/json"
+    ],
+    [
+      "accept",
+      "text/event-stream"
+    ]
+  ],
+  "body": {
+    "max_tokens": 1024,
+    "messages": [
+      {
+        "content": [
+          {
+            "text": "Who speaks next?",
+            "type": "text"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "claude-haiku-4-5",
+    "output_config": {
+      "effort": "low",
+      "format": {
+        "schema": {
+          "properties": {
+            "next": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "next"
+          ],
+          "type": "object"
+        },
+        "type": "json_schema"
+      }
+    },
+    "stream": true,
+    "system": [
+      {
+        "cache_control": {
+          "type": "ephemeral"
+        },
+        "text": "You moderate the standup.",
+        "type": "text"
+      }
+    ]
+  }
+}

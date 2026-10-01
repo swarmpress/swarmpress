@@ -1,0 +1,106 @@
+# Browser LLM registry (plan D, ADR-0026). Served to clients; loaded and
+# validated by `agents::ModelRegistry`.
+#
+# !!! NOTHING IN THIS FILE HAS BEEN VERIFIED YET !!!
+# huggingface.co was unreachable from the authoring environment, so:
+#   - every `sha256` is the placeholder "TODO-UNVERIFIED". Clients MUST refuse
+#     to load a model whose checksum is a placeholder
+#     (`ModelEntry::verified_sha256()` returns an error for it).
+#   - `hf_repo`, `size_bytes`, buffer limits and VRAM numbers are estimates
+#     for the named model class and dtype. Replace them with the measured
+#     values from the model eval harness before shipping.
+#
+# Fields:
+#   id                                   stable registry id
+#   hf_repo                              Hugging Face repo (Transformers.js / ONNX)
+#   dtype                                weight format (q4f16, q4, fp16 ...)
+#   size_bytes                           total download size
+#   sha256                               integrity hash of the weights archive
+#   context                              usable context length (tokens)
+#   min_max_buffer_size                  required GPUAdapter limits.maxBufferSize (bytes)
+#   min_max_storage_buffer_binding_size  required limits.maxStorageBufferBindingSize (bytes)
+#   approx_vram_mb                       approximate VRAM while generating
+#   tier                                 device tier the model needs: low | mid | high
+#   roles                                staff roles the model may serve
+#   eval_pending                         true = vendor claims not yet confirmed by our
+#                                        eval; never auto-selected
+#
+# Tier selection (plan D): capability probe -> device tier; seniority picks
+# within the tier (Junior = smallest eligible, Senior/Star = largest that fits).
+
+[[model]]
+id = "qwen3-0.6b-q4f16"
+description = "Tiny chatter model for low-end devices: hallway chatter and standup small talk"
+hf_repo = "onnx-community/Qwen3-0.6B-ONNX"
+dtype = "q4f16"
+size_bytes = 570_000_000
+sha256 = "TODO-UNVERIFIED"
+context = 8192
+min_max_buffer_size = 268_435_456
+min_max_storage_buffer_binding_size = 134_217_728
+approx_vram_mb = 900
+tier = "low"
+roles = ["chatter", "editor_in_chief", "writer", "editor", "media", "qa", "seo", "linker"]
+eval_pending = false
+
+[[model]]
+id = "qwen3-4b-q4f16"
+description = "~4B Qwen-class model, laptop tier: briefs, drafts, revisions, reviews, translation"
+hf_repo = "onnx-community/Qwen3-4B-ONNX"
+dtype = "q4f16"
+size_bytes = 2_800_000_000
+sha256 = "TODO-UNVERIFIED"
+context = 32768
+min_max_buffer_size = 1_073_741_824
+min_max_storage_buffer_binding_size = 1_073_741_824
+approx_vram_mb = 4200
+tier = "mid"
+roles = ["chatter", "editor_in_chief", "writer", "editor", "media", "qa", "seo", "linker", "translator"]
+eval_pending = false
+
+[[model]]
+id = "gpt-oss-20b-q4f16"
+description = "GPT-OSS-20B (MoE) q4f16, high tier"
+hf_repo = "onnx-community/gpt-oss-20b-ONNX"
+dtype = "q4f16"
+size_bytes = 12_800_000_000
+sha256 = "TODO-UNVERIFIED"
+context = 32768
+min_max_buffer_size = 2_147_483_648
+min_max_storage_buffer_binding_size = 2_147_483_648
+approx_vram_mb = 14500
+tier = "high"
+roles = ["editor_in_chief", "writer", "editor", "qa", "seo", "linker", "translator"]
+eval_pending = false
+
+# 27-30B class: vendor-claimed quality/footprint. Only enabled if the eval
+# harness confirms the claims (plan D). Repo names are unknown placeholders.
+[[model]]
+id = "ternary-bonsai-2-27b"
+description = "Ternary Bonsai 2 (27-30B class, ternary weights): vendor claims unverified"
+hf_repo = "TODO-UNKNOWN/ternary-bonsai-2"
+dtype = "ternary"
+size_bytes = 7_000_000_000
+sha256 = "TODO-UNVERIFIED"
+context = 32768
+min_max_buffer_size = 2_147_483_648
+min_max_storage_buffer_binding_size = 2_147_483_648
+approx_vram_mb = 9000
+tier = "high"
+roles = ["editor_in_chief", "writer", "editor", "qa", "translator"]
+eval_pending = true
+
+[[model]]
+id = "muse-glimmer-30b"
+description = "Muse Glimmer (27-30B class): vendor claims unverified"
+hf_repo = "TODO-UNKNOWN/muse-glimmer"
+dtype = "q4f16"
+size_bytes = 16_000_000_000
+sha256 = "TODO-UNVERIFIED"
+context = 32768
+min_max_buffer_size = 2_147_483_648
+min_max_storage_buffer_binding_size = 2_147_483_648
+approx_vram_mb = 18000
+tier = "high"
+roles = ["editor_in_chief", "writer", "editor", "qa", "translator"]
+eval_pending = true
