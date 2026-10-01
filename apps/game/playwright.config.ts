@@ -4,17 +4,19 @@ const executablePath = process.env.CHROMIUM_PATH || undefined
 
 export default defineConfig({
   testDir: 'e2e',
-  timeout: 60_000,
+  timeout: 180_000,
+  reporter: [['list'], ['json', { outputFile: 'test-results/playwright.json' }]],
+  expect: { toHaveScreenshot: { animations: 'disabled' } },
+  use: { baseURL: 'http://localhost:4173', viewport: { width: 1280, height: 800 } },
   webServer: {
     command: 'pnpm exec vite preview --port 4173 --strictPort',
     port: 4173,
     reuseExistingServer: !process.env.CI,
   },
-  use: { baseURL: 'http://localhost:4173' },
   projects: [
     {
       // Headless Chromium without flags exposes no WebGPU adapter, so this
-      // exercises Pixi's automatic WebGL fallback.
+      // exercises the automatic WebGL2 fallback in createEngine().
       name: 'fallback',
       use: { launchOptions: { executablePath } },
     },

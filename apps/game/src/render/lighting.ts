@@ -14,8 +14,8 @@ import { createStaffMesh, type OfficeHandles } from './office'
 const c3 = (c: Rgb) => new Color3(c.r, c.g, c.b)
 
 /** Interior light levels (PBR physical units, tuned against the reference shots). */
-export const CEILING_INTENSITY = 6
-export const LAMP_INTENSITY = 2.5
+export const CEILING_INTENSITY = 14
+export const LAMP_INTENSITY = 3
 const SCREEN_ON = new Color3(0.55, 0.75, 1.0)
 const SCREEN_OFF = new Color3(0, 0, 0)
 
