@@ -8,9 +8,18 @@ license.workspace = true
 [dependencies]
 serde.workspace = true
 postcard.workspace = true
+thiserror.workspace = true
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 rand_pcg = { version = "0.3", features = ["serde1"] }
 rand_core = "0.6"
+
+[dev-dependencies]
+proptest = "1"
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "step"
+harness = false
 
 [lints]
 workspace = true
