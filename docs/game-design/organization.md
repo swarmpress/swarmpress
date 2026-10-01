@@ -44,7 +44,7 @@ approves what matters, and delegates the rest.
 | Department | Roles (sim `Role`) | Typical rooms | What they produce |
 |---|---|---|---|
 | Executive Office | `Cfo`, `Secretary` | CEO office, Finance office | Budgets, forecasts, payroll, briefings, triage, scheduling |
-| Strategy | `Strategist`, `Analyst` | Meeting room, Strategy room | Content strategy, editorial calendar, market/competitor analysis, project proposals |
+| Strategy | `Strategist`, `Analyst`, `DataScientist` | Meeting room, Strategy room | Content strategy, editorial calendar, market/competitor analysis, project proposals; **KPIs from Google Analytics** (§6a) |
 | Editorial | `EditorInChief`, `Editor`, `Writer`, `Translator`, `FactChecker` | Newsroom, Editor office, Translation desk | Articles, pages, collections, reviews, translations |
 | Photo & Video | `PhotoEditor`, `Photographer`, `VideoProducer` | Photo studio | Shoots (real assets later), photo selection from the media index, captions/alt text |
 | Web Development | `ArtDirector`, `WebDeveloper`, `UxDesigner` | Design studio | Site theme, layouts, custom blocks (agent-authored themes, ADR-0015) |
@@ -228,6 +228,48 @@ commentary.
   reports; the CEO flies blind, and the HUD shows "books not kept". You can
   run the company without one, but you'll feel it.
 
+## 6a. Data Scientist: KPIs from Google Analytics
+
+The Data Scientist is a person in Strategy (persona, desk in the Strategy room)
+who owns **measurement**. Real traffic from each project's site comes back into
+the game through this role.
+
+- **Ingestion (server, deterministic code):**
+  - A nightly `AnalyticsSync` job per project calls the **Google Analytics 4
+    Data API** (`properties/{id}:runReport`) for the project's GA4 property.
+  - Metrics: sessions, users, page views, engagement rate, average engagement
+    time, conversions/key events.
+  - Dimensions: date, page path, language, source/medium, country.
+  - Results are stored as `analytics_daily` rows (per project, per day, per
+    page and language).
+  - Credentials: a Google service account with Viewer access on the property;
+    per-project `ga4_property_id` (ADR-0032).
+- **Into the sim:** a compact, server-issued
+  `Cmd::AnalyticsSignals { project, day, sessions, users, pageviews, engagement_pm, top_pages_digest }`.
+  Integer, deterministic for every replica. It feeds:
+  - **Goals** progress (for example "40k monthly readers");
+  - the audience model, blended at no more than 30% with the sim's own
+    estimate (ADR-0021) so real traffic is a bonus, not the decider;
+  - per-project revenue attribution (audience × CPM) in the CFO's ledgers.
+- **Data Scientist jobs (LLM; numbers only from the data, same validator rule
+  as the CFO):**
+  - `KpiReport`: a weekly report to the CEO (Monday, before the editorial
+    board). Headline KPIs vs last week and vs goals, top and bottom pages,
+    language split, traffic sources, anomalies, and 3 recommendations.
+  - `ContentPerformance`: posted into each published work item's thread at its
+    follow-up date ("+14 days: 1,240 views, 62% engaged; outperforms the
+    harvest workstream median"). This is the plan's `followup` field.
+  - `ExperimentReadout`: when a redesign or SEO change ships, a before/after
+    comparison on the affected pages.
+- **Effects on play:**
+  - Strategy's pitches and the Monday board use the KPI report as input.
+  - Underperforming items become `update` work items.
+  - The leaderboard can show verified audience.
+- **Without a Data Scientist,** or without GA access, the game runs on
+  SiteAudit facts and the sim's audience estimate only. Goals tied to
+  analytics show "not measured", and there are no KPI reports. Without GA
+  credentials the HUD says "analytics not connected" instead of failing.
+
 ## 7. Executive Secretary: delegation
 
 The Secretary is the CEO's force multiplier and the front door of the Inbox.
@@ -323,6 +365,7 @@ The server serves the same files.
 - `OpsCheck` (IT)
 - `SeoPlan`, `MarketingPlan`, `Newsletter`
 - `FinanceReport`, `HiringAffordability`
+- `KpiReport`, `ContentPerformance`, `ExperimentReadout` (data scientist)
 - `SecretaryTriage`, `CeoBriefing`, `DraftReply`
 - `CandidateGeneration`
 
@@ -335,7 +378,7 @@ Executors follow ADR-0024:
 | Department | People |
 |---|---|
 | Executive Office | **CFO** Elena Marchetti (new) · **Secretary** Paolo Bianchi (new) |
-| Strategy | Chiara Galli, content strategist (new) |
+| Strategy | Chiara Galli, content strategist (new) · Matteo Greco, data scientist (new) |
 | Editorial | **EiC** Sophia (legacy "editorial leader"), **Editor** Marco (legacy senior editor), **Writers** Giulia (food), Isabella (outdoors), Lorenzo (history/culture) |
 | Photo & Video | Francesca (photographer, legacy) |
 | Web Development | Luca Moretti, web developer (new; the legacy name "Luca" was the linker) |
@@ -343,7 +386,7 @@ Executors follow ADR-0024:
 | SEO & Marketing | Alessia Ferri, SEO & marketing specialist (new) |
 
 Everyone is staffed 100% on cinqueterre.travel, except the CFO, the
-Secretary and the strategist (0% project, company-wide). The legacy writer
+Secretary, the strategist and the data scientist (0% project, company-wide). The legacy writer
 routing (`agent-page-mapping.ts`) becomes **topic affinities** in each
 persona. Within a project team, page types go to the writer whose affinities
 match (food → Giulia, hiking → Isabella, history → Lorenzo, hotels → Sophia,

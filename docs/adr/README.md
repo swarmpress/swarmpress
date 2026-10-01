@@ -51,3 +51,4 @@ Accepted ADRs are never rewritten.
 | [0029](0029-a-company-runs-several-projects-each-with-its-own-team.md) | A company runs several projects, each with its own team | Accepted |
 | [0030](0030-personas-are-a-data-catalog-with-cv-hobbies-and-interests.md) | Personas are a data catalog with CV, hobbies and interests | Accepted |
 | [0031](0031-the-publishing-plan-is-the-shared-workspace-for-ceo-and-agents.md) | The publishing plan is the shared workspace for CEO and agents | Accepted |
+| [0032](0032-real-traffic-from-google-analytics-via-the-data-scientist.md) | Real traffic from Google Analytics, owned by the data scientist | Accepted |
