@@ -71,3 +71,8 @@ temp/
 # Playwright
 test-results/
 playwright-report/
+
+# Cockpit index and pulled evidence (derived, deletable; see cockpit.toml)
+.cockpit/
+# cockpit.benchmark.v1 documents written by reporters (uploaded as CI artifacts)
+/artifacts/

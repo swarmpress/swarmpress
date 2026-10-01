@@ -1,0 +1,375 @@
+# Cockpit (https://github.com/drietsch/cockpit) derives per-feature health for SimPress from
+# docs/features/**, docs/adr/**, the test and benchmark reports below, and git history.
+# Missing evidence is Unknown, never green. See docs/guides/testing.md and ADR-0022.
+#
+#   cockpit scan && cockpit status        # local overview
+#   cockpit validate --strict             # the CI gate (runs after the test jobs)
+#   cockpit pull                          # fetch the newest CI artifacts from GitHub Actions
+#   cockpit serve --watch                 # dashboard on http://127.0.0.1:4747
+
+[project]
+id = "simpress"
+name = "SimPress"
+primary_branch = "main"
+
+[features]
+path = "docs/features"
+id_pattern = "^FEAT-\\d{3}$"
+default_importance = "normal"
+default_lifecycle = "planned"
+
+[adrs]
+path = "docs/adr"
+exclude = ["README.md"]
+
+[git]
+# Commits that touch only these never make evidence stale.
+implementation_paths_exclude = ["docs/**", "**/*.md", "cockpit.toml", "assets/out/**"]
+
+# ---------------------------------------------------------------- Rust (cargo nextest)
+# `cargo nextest run --workspace --profile ci` → target/nextest/ci/junit.xml (.config/nextest.toml).
+# One report for the workspace, split per crate into components.
+[[evidence]]
+id = "simpress/nextest"
+title = "cargo nextest (workspace)"
+format = "junit"
+kind = "unit"
+path = [".cockpit/evidence/simpress__nextest/**/*.xml", "target/nextest/ci/junit.xml"]
+component = "sim"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "nextest-junit"
+branch = "main"
+[[evidence.split]]
+packages = ["server"]
+id = "server/nextest"
+component = "server"
+[[evidence.split]]
+packages = ["agents"]
+id = "agents/nextest"
+component = "agents"
+[[evidence.split]]
+packages = ["claude"]
+id = "claude/nextest"
+component = "agents"
+[[evidence.split]]
+packages = ["github"]
+id = "github/nextest"
+component = "ops"
+[[evidence.split]]
+packages = ["knowledge"]
+id = "knowledge/nextest"
+component = "content"
+[[evidence.split]]
+packages = ["content-schema", "content-model"]
+id = "content/nextest"
+component = "content"
+[[evidence.split]]
+packages = ["protocol", "client-wasm"]
+id = "net/nextest"
+component = "net"
+
+# Split targets: the workspace report above routes these crates' cases here. Their own paths
+# only hold artifacts pulled under their id (none today: CI uploads one workspace report).
+[[evidence]]
+id = "server/nextest"
+title = "cargo nextest: server (sqlx::test, actors, WS, job queue)"
+format = "junit"
+kind = "integration"
+path = ".cockpit/evidence/server__nextest/**/*.xml"
+component = "server"
+[[evidence]]
+id = "agents/nextest"
+title = "cargo nextest: agents (FakeClaude pipelines, meetings, QA)"
+format = "junit"
+kind = "integration"
+path = ".cockpit/evidence/agents__nextest/**/*.xml"
+component = "agents"
+[[evidence]]
+id = "claude/nextest"
+title = "cargo nextest: claude client (SSE fixtures, request snapshots)"
+format = "junit"
+kind = "unit"
+path = ".cockpit/evidence/claude__nextest/**/*.xml"
+component = "agents"
+[[evidence]]
+id = "github/nextest"
+title = "cargo nextest: github (FakeGitHub, wiremock, HMAC)"
+format = "junit"
+kind = "integration"
+path = ".cockpit/evidence/github__nextest/**/*.xml"
+component = "ops"
+[[evidence]]
+id = "knowledge/nextest"
+title = "cargo nextest: knowledge indexes"
+format = "junit"
+kind = "unit"
+path = ".cockpit/evidence/knowledge__nextest/**/*.xml"
+component = "content"
+[[evidence]]
+id = "content/nextest"
+title = "cargo nextest: content model (Rust validator, shared fixtures)"
+format = "junit"
+kind = "conformance"
+path = ".cockpit/evidence/content__nextest/**/*.xml"
+component = "content"
+[[evidence]]
+id = "net/nextest"
+title = "cargo nextest: protocol and client-wasm"
+format = "junit"
+kind = "unit"
+path = ".cockpit/evidence/net__nextest/**/*.xml"
+component = "net"
+
+# ---------------------------------------------------------------- wasm (wasm-bindgen-test)
+# Golden determinism in wasm, under node and headless Chromium:
+# `cargo xtask wasm-test` → target/wasm-test/junit.xml
+[[evidence]]
+id = "simpress/wasm-bindgen-test"
+title = "wasm-bindgen-test (node + Chromium)"
+format = "junit"
+kind = "unit"
+path = [".cockpit/evidence/simpress__wasm-bindgen-test/**/*.xml", "target/wasm-test/junit.xml"]
+component = "sim"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "wasm-test-junit"
+branch = "main"
+
+# ---------------------------------------------------------------- client (vitest)
+# `pnpm --filter @swarm-press/game test -- --reporter=default --reporter=junit
+#   --outputFile.junit=test-results/vitest-junit.xml`
+[[evidence]]
+id = "game/vitest"
+title = "apps/game vitest (incl. Babylon NullEngine)"
+format = "junit"
+kind = "unit"
+path = [".cockpit/evidence/game__vitest/**/*.xml", "apps/game/test-results/vitest-junit.xml"]
+component = "render"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "game-vitest-junit"
+branch = "main"
+
+[[evidence]]
+id = "content-schema/vitest"
+title = "packages/content-schema vitest"
+format = "junit"
+kind = "conformance"
+path = [".cockpit/evidence/content-schema__vitest/**/*.xml", "packages/content-schema/test-results/vitest-junit.xml"]
+component = "content"
+note = "unfed until packages/content-schema runs its tests (today tsx scripts) under vitest"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "content-schema-vitest-junit"
+branch = "main"
+
+[[evidence]]
+id = "site-kit/vitest"
+title = "packages/site-kit vitest"
+format = "junit"
+kind = "unit"
+path = [".cockpit/evidence/site-kit__vitest/**/*.xml", "packages/site-kit/test-results/vitest-junit.xml"]
+component = "content"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "site-kit-vitest-junit"
+branch = "main"
+
+# ---------------------------------------------------------------- client (Playwright)
+# `pnpm --filter @swarm-press/game test:e2e` with the JSON reporter
+# (PLAYWRIGHT_JSON_OUTPUT_NAME=test-results/playwright.json --reporter=json,list)
+[[evidence]]
+id = "game/playwright-e2e"
+title = "apps/game Playwright (WebGPU + WebGL2)"
+format = "playwright"
+kind = "e2e"
+path = [".cockpit/evidence/game__playwright-e2e/**/*.json", "apps/game/test-results/playwright.json"]
+component = "render"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "game-playwright"
+branch = "main"
+
+# Visual regression at frozen sim times x 4 camera angles: expected/actual/diff attachment
+# triples become cockpit visual tests.
+[[evidence]]
+id = "game/playwright-visual"
+title = "apps/game visual regression"
+format = "playwright"
+kind = "visual"
+path = [".cockpit/evidence/game__playwright-visual/**/*.json", "apps/game/test-results/playwright-visual.json"]
+component = "render"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "game-playwright-visual"
+branch = "main"
+
+[[evidence]]
+id = "site-kit/playwright"
+title = "packages/site-kit fixture-site screenshots"
+format = "playwright"
+kind = "visual"
+path = [".cockpit/evidence/site-kit__playwright/**/*.json", "packages/site-kit/test-results/playwright.json"]
+component = "content"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "site-kit-playwright"
+branch = "main"
+
+# ---------------------------------------------------------------- benchmarks
+# Criterion: sim-core step and pathfinding (`cargo bench -p sim-core`).
+[[evidence]]
+id = "simpress/criterion"
+title = "criterion (sim-core)"
+format = "criterion"
+kind = "benchmark"
+path = [".cockpit/evidence/simpress__criterion/**/estimates.json", "target/criterion/**/new/estimates.json"]
+component = "sim"
+features = ["FEAT-001"]
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "criterion"
+branch = "main"
+
+# cockpit.benchmark.v1 documents written by small reporters into artifacts/bench/.
+[[evidence]]
+id = "bench/bundle-size"
+title = "wasm bundle and asset download size"
+format = "cockpit-benchmark"
+kind = "benchmark"
+path = [".cockpit/evidence/bench__bundle-size/**/*.json", "artifacts/bench/bundle-size*.json"]
+component = "render"
+features = ["FEAT-017", "FEAT-029"]
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "bench-bundle-size"
+branch = "main"
+
+[[evidence]]
+id = "bench/frame-time"
+title = "frame time and draw calls per scene and quality tier"
+format = "cockpit-benchmark"
+kind = "benchmark"
+path = [".cockpit/evidence/bench__frame-time/**/*.json", "artifacts/bench/frame-time*.json"]
+component = "render"
+features = ["FEAT-022", "FEAT-040"]
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "bench-frame-time"
+branch = "main"
+
+[[evidence]]
+id = "bench/agent-pipeline"
+title = "agent pipeline cost and latency (FakeClaude + live evals)"
+format = "cockpit-benchmark"
+kind = "benchmark"
+path = [".cockpit/evidence/bench__agent-pipeline/**/*.json", "artifacts/bench/agent-pipeline*.json"]
+component = "agents"
+features = ["FEAT-032", "FEAT-036"]
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "bench-agent-pipeline"
+branch = "main"
+
+[[evidence]]
+id = "bench/server-load"
+title = "server load test (companies per core)"
+format = "cockpit-benchmark"
+kind = "benchmark"
+path = [".cockpit/evidence/bench__server-load/**/*.json", "artifacts/bench/server-load*.json"]
+component = "server"
+features = ["FEAT-014"]
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "nightly.yml"
+artifact = "bench-server-load"
+branch = "main"
+
+[[evidence]]
+id = "bench/model-eval"
+title = "local model eval (rubric score, tokens/sec per registry model)"
+format = "cockpit-benchmark"
+kind = "benchmark"
+path = [".cockpit/evidence/bench__model-eval/**/*.json", "artifacts/bench/model-eval*.json"]
+component = "inference"
+features = ["FEAT-038"]
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "nightly.yml"
+artifact = "bench-model-eval"
+branch = "main"
+
+[[components]]
+id = "sim"
+title = "Simulation"
+group = "sim"
+[[components]]
+id = "net"
+title = "Protocol and sync"
+group = "net"
+[[components]]
+id = "server"
+title = "Server"
+group = "net"
+[[components]]
+id = "render"
+title = "Client and rendering"
+group = "render"
+[[components]]
+id = "agents"
+title = "Agents"
+group = "agents"
+[[components]]
+id = "inference"
+title = "Hybrid inference"
+group = "inference"
+[[components]]
+id = "content"
+title = "Content and sites"
+group = "content"
+[[components]]
+id = "ops"
+title = "Operations"
+group = "ops"
+
+# Tests that cannot be linked by path (Rust unit tests in a crate's lib.rs resolve to the crate's
+# src/ directory) are mapped explicitly here. Path ownership covers everything else.
+[test_map]
+files = ["docs/test-map.yaml"]
+
+[health]
+max_evidence_age = "14d"
+required_evidence = { critical = ["test"], high = ["test"], normal = [], low = [] }
+
+[performance]
+baseline = "previous-comparable"
+[[performance.metrics]]
+match = "*/*/wasm.bytes"
+determinism = "deterministic"
+direction = "lower_is_better"
+budget = { max = 3145728 }
+[[performance.metrics]]
+match = "*/*/claude.calls"
+determinism = "deterministic"
+direction = "lower_is_better"
+[[performance.metrics]]
+match = "*/*/frame.p95_ms"
+determinism = "environment-sensitive"
+direction = "lower_is_better"
+budget = { max = 33.3 }
+
+[policy.references]
+fail_on_broken_reference = true
