@@ -39,6 +39,15 @@ brand and safety risk.
   Personas have `[family]` and `[traditions]` profile sections, so holiday talk is personal ("how
   I celebrate Christmas with my family"). Religious and cultural holidays are treated as
   personal traditions, never assumed to be shared.
+- **Live media in the office:**
+  - a TV with an officially embeddable live news channel, rendered in 3D via `HtmlMesh`;
+  - a web radio, with now-playing read on the server from ICY metadata or station APIs;
+  - a wall clock with the real time.
+
+  They are client-side cosmetics. Channel and station lists are reviewed configuration, limited to
+  sources whose terms allow embedding, so not CNN unless a licensed embed is available. The
+  people's knowledge of them comes from the world snapshot: the channel's headlines and the
+  station's now-playing.
 - **The real day versus the game clock:** the outside world is always the real current day. An
   optional real-time mode aligns game days with real days in the HQ timezone.
 - **Guardrails for current events and politics:**

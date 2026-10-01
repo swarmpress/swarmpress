@@ -1,0 +1,39 @@
+# Live media in the office (docs/game-design/living-people-and-the-real-world.md §5, ADR-0035).
+# Operator-reviewed: only sources whose terms allow free embedding / public listening.
+# Availability is region-dependent; verify each entry before enabling it in production.
+
+[[tv]]
+id = "dw-news"
+name = "DW News"
+embed = "youtube-live"          # official broadcaster live embed
+channel_ref = "TODO-verify"     # YouTube channel/live id, verified by the operator
+headlines_feed = "https://rss.dw.com/rdf/rss-en-all"
+enabled = false
+
+[[tv]]
+id = "france24-en"
+name = "France 24 (English)"
+embed = "youtube-live"
+channel_ref = "TODO-verify"
+headlines_feed = "https://www.france24.com/en/rss"
+enabled = false
+
+[[tv]]
+id = "euronews-en"
+name = "Euronews (English)"
+embed = "youtube-live"
+channel_ref = "TODO-verify"
+headlines_feed = "https://www.euronews.com/rss"
+enabled = false
+
+# CNN: live stream generally requires TV-provider authentication; add only with a licensed embed.
+
+[[radio]]
+id = "example-italian-indie"
+name = "TODO: pick stations via radio-browser.info"
+stream = "TODO-verify"
+now_playing = "icy"             # icy | station-api
+enabled = false
+
+[clock]
+timezone_from = "company.hq_timezone"   # e.g. Europe/Rome for the cinqueterre company

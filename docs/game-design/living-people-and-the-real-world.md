@@ -254,3 +254,38 @@ colleagues do at work. Within limits:
 - A "Today" widget: date, weather, top headlines with sources.
 - Weather visible through the windows of the 3D office, and seasonal
   decorations (Christmas tree and lights, and so on) in the office.
+
+## 5. Live media in the office: TV, radio, wall clock
+
+The office has real windows onto the present: a TV with live news, a web
+radio and a clock with the real time. These are **cosmetic in the client**
+(the sim stays deterministic). What people *know* about them comes through
+the World Context Service, so their conversations stay grounded.
+
+| Device | What you see and hear | What the people know | Notes |
+|---|---|---|---|
+| **TV** (equipment `Television`, for example in the newsroom or kitchen) | A **live news channel** on the TV screen, rendered as an HTML element placed in 3D (Babylon `HtmlMesh`). Muted by default; click the TV for sound (browser autoplay rules). | The channel's current headlines (its RSS feed) in the `WorldSnapshot`, so "did you see what they just said about…" is grounded | **Channel list is operator-reviewed configuration** (`config/media.toml`). Only sources that officially allow free embedding (broadcasters' own live embeds, region-dependent: DW News, France 24, Euronews, Al Jazeera English, Sky News, …). CNN's live stream generally needs a TV-provider login and broadcast rights, so it can be listed only if a licensed embed is available. |
+| **Web radio** (equipment `Radio`) | A real internet radio stream, louder when the camera is close to the room (volume by distance; spatial audio where the stream allows CORS) | **Now playing** (artist and title), read **on the server** from the stream's ICY metadata or the station's now-playing API, added to the world snapshot | Stations from a reviewed list (`config/media.toml`, optionally discovered via the radio-browser.info directory). The game never records or re-streams audio. |
+| **Wall clock** (equipment `WallClock`) | An analog clock showing the **real time** in the HQ timezone | Already in the date/time context | In fast game-day mode, the clock shows real time while the sun follows game time (the office lives in a dream-time, the clock reminds you of the real one). In real-time mode they match. |
+
+- **In the sim:** TV and radio are equipment with on/off **state** in the
+  render state. Someone switches the radio on when they arrive and the last
+  person out switches it off, which is deterministic. *Which* channel or
+  station is a company setting, outside the sim hash.
+- **Moments the Day Director can stage** (ADR-0036/0037), all grounded in
+  real data:
+  - **"Guess the band":** someone hums along, colleagues guess (in
+    character, from their music interests), and the reveal comes from the
+    real now-playing metadata. A small affinity and mood bump, and a shared
+    memory.
+  - **Breaking news on the TV:** people gather in front of it if a headline
+    matches their `[world].topics`, react civilly, and the strategist may
+    propose a timely work item if it's relevant to a project (for example a
+    rail strike affecting the Cinque Terre).
+  - **Clock moments:** the countdown at a real New Year's Eve, the last
+    minutes before a real deadline, or "it's already 6pm in real life, go
+    home!" in real-time mode.
+- **Privacy and rights:** streams play directly from the broadcaster in the
+  player's browser. The platform only reads public now-playing metadata and
+  headline feeds (with attribution). Media can be switched off per company
+  (`world.media = off | radio | tv | all`).
