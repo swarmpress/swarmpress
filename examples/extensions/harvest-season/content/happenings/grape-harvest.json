@@ -1,0 +1,28 @@
+{
+  "id": "grape-harvest",
+  "title": { "en": "Harvest day on the terraces", "it": "Giorno di vendemmia" },
+  "story": {
+    "en": "Rosa comes in with purple hands and a crate of grapes from her family's terrace. The newsroom gathers around it, and by lunch there is a proposal for a harvest diary."
+  },
+  "trigger": { "kind": "roll", "permille_per_day": 120, "from_day": 0, "to_day": 30 },
+  "cooldown_days": 365,
+  "primitives": [
+    {
+      "type": "prop",
+      "kind": "grape-crate",
+      "place": "newsroom",
+      "ttl_days": 3,
+      "label": { "en": "A crate of Bosco grapes" }
+    },
+    { "type": "gather", "people": ["persona:Rosa", "role:writer", "role:editor"], "place": "newsroom", "minutes": 20 },
+    { "type": "emote", "person": "persona:Rosa", "kind": "laugh" },
+    { "type": "mood", "people": ["all"], "delta": 15 },
+    {
+      "type": "proposal",
+      "kind": "article",
+      "title": { "en": "A harvest diary from the Corniglia terraces" },
+      "brief": { "en": "Five short entries over one harvest week: the people, the monorail, the weather, the weight." }
+    },
+    { "type": "narration", "text": { "en": "The newsroom smells of grapes today." } }
+  ]
+}

@@ -145,6 +145,68 @@ jobs:
             apps/game/reports/playwright-visual.json
             apps/game/test-results
 
+  sdk:
+    name: Extension SDK (sdk, sandbox, simpress runner, browser parity)
+    runs-on: ubuntu-latest
+    needs: wasm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: wasm-pkg
+          path: crates/client-wasm/pkg
+      - run: pnpm -r --filter @simpress/sdk --filter @simpress/sandbox --filter @simpress/runner typecheck
+      - name: SDK JSON Schemas in sync with zod
+        run: pnpm --filter @simpress/sdk check
+      - name: bun test (sdk, sandbox, runner; JUnit per package)
+        run: pnpm test:sdk
+      - name: Examples via the runner (Bun)
+        run: |
+          for ex in examples/extensions/*/; do
+            bun packages/runner/src/cli.ts check "$ex"
+            bun packages/runner/src/cli.ts test "$ex"
+          done
+          bun packages/runner/src/cli.ts run --seed 42 --days 3 $(for ex in examples/extensions/*/; do echo --ext "$ex"; done)
+      - name: Runner under Node (content pack, no bundling)
+        run: node packages/runner/src/cli.ts test examples/extensions/harvest-season
+      - run: pnpm --filter @simpress/sandbox exec playwright install --with-deps chromium
+      - name: Sandbox browser parity (Chromium)
+        run: pnpm --filter @simpress/sandbox test:e2e
+        env:
+          CI: '1'
+          PW_JSON: reports/playwright.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: sdk-junit
+          path: packages/sdk/reports/junit.xml
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: sandbox-junit
+          path: packages/sandbox/reports/junit.xml
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: sandbox-playwright
+          path: packages/sandbox/reports/playwright.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: runner-junit
+          path: packages/runner/reports/junit.xml
+
   live-theme:
     name: Frozen cinque-terre theme still builds (live site guard)
     runs-on: ubuntu-latest
@@ -172,7 +234,7 @@ jobs:
   cockpit:
     name: Cockpit (feature health gate)
     runs-on: ubuntu-latest
-    needs: [rust, wasm, web]
+    needs: [rust, wasm, web, sdk]
     if: ${{ !cancelled() }}
     steps:
       - uses: actions/checkout@v4
@@ -207,6 +269,22 @@ jobs:
         with:
           name: bench-bundle-size
           path: artifacts/bench
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-junit
+          path: packages/sdk/reports
+      - uses: actions/download-artifact@v4
+        with:
+          name: sandbox-junit
+          path: packages/sandbox/reports
+      - uses: actions/download-artifact@v4
+        with:
+          name: sandbox-playwright
+          path: packages/sandbox/reports
+      - uses: actions/download-artifact@v4
+        with:
+          name: runner-junit
+          path: packages/runner/reports
       - run: cockpit scan
       - run: cockpit status
       - run: cockpit validate --strict

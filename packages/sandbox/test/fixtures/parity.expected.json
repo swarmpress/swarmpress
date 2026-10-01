@@ -1,0 +1,100 @@
+{
+  "job": {
+    "artifact": {
+      "kind": "fact-check-report",
+      "content": {
+        "page_id": "villages",
+        "results": [
+          {
+            "claim": "Vernazza is one of the five villages of the Cinque Terre.",
+            "source": "https://en.wikipedia.org/api/rest_v1/page/summary/Vernazza",
+            "verdict": "supported",
+            "reason": "listed as a Cinque Terre town."
+          },
+          {
+            "claim": "Monterosso has 12,000 inhabitants.",
+            "source": "https://en.wikipedia.org/api/rest_v1/page/summary/Monterosso_al_Mare",
+            "verdict": "contradicted",
+            "reason": "about 1,500 inhabitants."
+          }
+        ]
+      }
+    },
+    "digest": {
+      "ok": false,
+      "score": 7,
+      "words": 15,
+      "qa_defects": 1,
+      "artifact_sha": "9609293ec77d41af1bda341c7334a33832312fc55b7b8914523e596abe97cd52"
+    }
+  },
+  "tool": {
+    "claims": [
+      "Riomaggiore has 1,300 residents."
+    ]
+  },
+  "store": {
+    "store/factchecks/villages.json": "{\"page_id\":\"villages\",\"results\":[{\"claim\":\"Vernazza is one of the five villages of the Cinque Terre.\",\"source\":\"https://en.wikipedia.org/api/rest_v1/page/summary/Vernazza\",\"verdict\":\"supported\",\"reason\":\"listed as a Cinque Terre town.\"},{\"claim\":\"Monterosso has 12,000 inhabitants.\",\"source\":\"https://en.wikipedia.org/api/rest_v1/page/summary/Monterosso_al_Mare\",\"verdict\":\"contradicted\",\"reason\":\"about 1,500 inhabitants.\"}]}"
+  },
+  "logs": [
+    "info: checked 2 claim(s) on villages: 1 defect(s)"
+  ],
+  "commands": [
+    [],
+    [],
+    [
+      {
+        "type": "DeviceFault",
+        "device_kind": "coffee-machine",
+        "day": 1
+      },
+      {
+        "type": "MoodBeat",
+        "people": "all",
+        "delta_permille": -20,
+        "reason": "coffee-machine-broke"
+      }
+    ],
+    [
+      {
+        "type": "DeviceRepaired",
+        "device_kind": "coffee-machine",
+        "day": 1
+      }
+    ],
+    [
+      {
+        "type": "DeviceFault",
+        "device_kind": "coffee-machine",
+        "day": 2
+      },
+      {
+        "type": "MoodBeat",
+        "people": "all",
+        "delta_permille": -20,
+        "reason": "coffee-machine-broke"
+      }
+    ],
+    [
+      {
+        "type": "DeviceRepaired",
+        "device_kind": "coffee-machine",
+        "day": 2
+      }
+    ],
+    [],
+    [],
+    [],
+    [],
+    [],
+    []
+  ],
+  "clock": {
+    "now": 1767225600000,
+    "iso": "2026-01-01T00:00:00.000Z",
+    "r": [
+      0.5916928979568183,
+      0.7049730001017451
+    ]
+  }
+}

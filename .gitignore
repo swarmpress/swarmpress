@@ -77,3 +77,9 @@ playwright-report/
 # cockpit.benchmark.v1 documents written by reporters (uploaded as CI artifacts)
 /artifacts/
 apps/game/reports/
+
+# Extension SDK (ADR-0042): test reports, build scratch, browser parity fixture
+packages/*/reports/
+packages/sandbox/e2e/.fixture/
+packages/sandbox/.build-*/
+.simpress-build/

@@ -1,0 +1,14 @@
+{
+  "name": "@simpress-examples/coffee-machine-rule",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Example sim rule: the coffee machine sometimes breaks at the start of a day",
+  "scripts": {
+    "check": "bun ../../../packages/runner/src/cli.ts check .",
+    "test": "bun ../../../packages/runner/src/cli.ts test ."
+  },
+  "devDependencies": {
+    "@simpress/sdk": "workspace:*"
+  }
+}

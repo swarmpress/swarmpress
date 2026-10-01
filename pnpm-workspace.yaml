@@ -2,6 +2,11 @@ packages:
   - 'apps/game'
   - 'packages/content-schema'
   - 'packages/tracker'
+  # Extension SDK (ADR-0042): SDK, QuickJS sandbox, the `simpress` runner, examples.
+  - 'packages/sdk'
+  - 'packages/sandbox'
+  - 'packages/runner'
+  - 'examples/extensions/*'
   # The cinque-terre Astro theme has its own package.json + own deps (astro,
   # react, tailwind, etc.) and is built standalone by each site repo's
   # GitHub Actions deploy workflow, which checks out this monorepo and runs
