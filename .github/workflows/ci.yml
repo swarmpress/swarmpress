@@ -105,6 +105,11 @@ jobs:
           name: wasm-pkg
           path: crates/client-wasm/pkg
       - run: pnpm schema:check
+      - name: Tracker script (tests, size budget, embedded copy in sync)
+        run: |
+          pnpm --filter tracker test
+          pnpm --filter tracker build
+          pnpm --filter tracker check-drift
       - run: pnpm --filter @swarm-press/content-schema test
       - run: pnpm --filter @swarm-press/game typecheck
       - run: pnpm --filter @swarm-press/game exec vitest run --reporter=default --reporter=junit --outputFile.junit=reports/vitest-junit.xml
