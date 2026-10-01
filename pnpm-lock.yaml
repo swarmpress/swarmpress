@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+neverBuiltDependencies:
+  - onnxruntime-node
+
 importers:
 
   .:
@@ -4239,7 +4242,6 @@ packages:
   /onnxruntime-node@1.30.0:
     resolution: {integrity: sha512-twhs1C2C/BFkz1yc5OY0KIU2GUq6DURO7hD4bx5Q2Qy3nAMJwRXW8xU3NVczE29VA9lolLOYepoD8fjTGOfIqw==}
     os: [win32, darwin, linux]
-    requiresBuild: true
     dependencies:
       adm-zip: 0.6.1
       global-agent: 4.1.3
