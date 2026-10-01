@@ -7,7 +7,10 @@ export type RendererName = 'webgpu' | 'webgl2'
  * fallback for testing and for users with broken drivers.
  */
 export async function createEngine(canvas: HTMLCanvasElement, forceWebgl: boolean): Promise<{ engine: AbstractEngine; name: RendererName }> {
-  if (!forceWebgl && (await WebGPUEngine.IsSupportedAsync)) {
+  // Probe with navigator.gpu only: WebGPUEngine.IsSupportedAsync requests a
+  // separate adapter, and on some implementations (SwiftShader) dropping it
+  // invalidates the instance the engine's device is created from.
+  if (!forceWebgl && typeof navigator !== 'undefined' && 'gpu' in navigator) {
     try {
       const engine = new WebGPUEngine(canvas, { antialias: true, adaptToDeviceRatio: true })
       await engine.initAsync()

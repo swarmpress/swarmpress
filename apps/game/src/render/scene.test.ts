@@ -35,6 +35,19 @@ describe('game scene (NullEngine)', () => {
     for (const m of game.office.materials) expect(m.maxSimultaneousLights).toBe(MAX_LIGHTS_PER_MATERIAL)
   })
 
+  it('merges ceiling fixtures into the room light budget but draws every panel', () => {
+    const crowded = { ...DEMO_BUILDING, rooms: DEMO_BUILDING.rooms.map((r) => r.id !== 'newsroom' ? r : {
+      ...r,
+      ceilingLights: [
+        { id: 'a', x: 2.5, z: 2.5 }, { id: 'b', x: 7.5, z: 2.5 }, { id: 'c', x: 2.5, z: 7.5 }, { id: 'd', x: 7.5, z: 7.5 },
+      ],
+    }) }
+    const g = createGameScene(engine, null, crowded, { quality: QUALITY.low, postFx: false })
+    const news = g.office.rooms.get('newsroom')!
+    expect(news.panels).toHaveLength(4)
+    expect(news.lights.length + news.layout.desks.length + 2).toBeLessThanOrEqual(MAX_LIGHTS_PER_MATERIAL)
+  })
+
   it('scopes room lights to the room instead of the whole building', () => {
     const news = game.office.rooms.get('newsroom')!
     const editorDesk = game.scene.getMeshByName('desk-desk-ed')!
@@ -45,7 +58,7 @@ describe('game scene (NullEngine)', () => {
     game.update(demoRenderState(23 * 60, 0))
     const marco = game.office.staff.get('marco')!
     const lights = game.scene.lights.filter((l) => l.includedOnlyMeshes.includes(marco.body)).map((l) => l.name)
-    expect(lights.sort()).toEqual(['ceiling-el-1', 'lamp-desk-ed'])
+    expect(lights.sort()).toEqual(['ceiling-editor-0', 'lamp-desk-ed'])
   })
 
   it('cuts away the walls facing the camera', () => {

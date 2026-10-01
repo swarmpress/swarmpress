@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test'
 
-type Handle = { renderer: string; frames(): number; sim: { step(): bigint } }
+type Handle = { renderer: string; fallback: string | null; frames(): number; sim: { step(): bigint } }
 
 // SwiftShader's WebGPU cannot copy canvas-backed textures that real GPUs can.
 export const SWIFTSHADER_KNOWN = /copyExternalImageToTexture/
@@ -17,8 +17,11 @@ export async function boot(page: Page, path: string) {
     const h = (window as unknown as { __simpress?: Handle }).__simpress
     return !!h && h.frames() > 10
   }, null, { timeout: 120_000 })
-  const renderer = await page.evaluate(() => (window as unknown as { __simpress: Handle }).__simpress.renderer)
-  return { errors, renderer }
+  const { renderer, fallback } = await page.evaluate(() => {
+    const h = (window as unknown as { __simpress: Handle }).__simpress
+    return { renderer: h.renderer, fallback: h.fallback }
+  })
+  return { errors, renderer, fallback }
 }
 
 /** Frozen-clock pages stop rendering once stable; wait for that. */

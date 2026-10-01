@@ -80,6 +80,22 @@ function pbr(scene: Scene, name: string, albedo: Color3, roughness: number, meta
   return m
 }
 
+/** Merge fixtures into at most `n` light positions (row-major chunks, centroid each). */
+export function groupFixtures(fixtures: Array<{ x: number; z: number }>, n: number): Array<{ x: number; z: number }> {
+  if (fixtures.length <= n) return fixtures.map((f) => ({ x: f.x, z: f.z }))
+  const sorted = [...fixtures].sort((a, b) => a.z - b.z || a.x - b.x)
+  const per = Math.ceil(sorted.length / n)
+  const groups: Array<{ x: number; z: number }> = []
+  for (let i = 0; i < sorted.length; i += per) {
+    const chunk = sorted.slice(i, i + per)
+    groups.push({
+      x: chunk.reduce((a, f) => a + f.x, 0) / chunk.length,
+      z: chunk.reduce((a, f) => a + f.z, 0) / chunk.length,
+    })
+  }
+  return groups
+}
+
 function roomAt(layout: BuildingLayout, x: number, z: number): RoomLayout | undefined {
   return layout.rooms.find((r) => x >= r.x && x < r.x + r.w && z >= r.z && z < r.z + r.d)
 }
@@ -214,9 +230,14 @@ export function buildOffice(scene: Scene, layout: BuildingLayout): OfficeHandles
     shadowReceivers.push(floor)
     const handle: RoomHandle = { layout: room, floor, lights: [], panels: [], panelMaterial, scope: [floor] }
     for (const l of room.ceilingLights) {
-      const panel = box(`panel-${l.id}`, 1.2, 0.04, 0.6, l.x, H - 0.05, l.z, panelMaterial)
-      handle.panels.push(panel)
-      const light = new PointLight(`ceiling-${l.id}`, new Vector3(l.x, H - 0.3, l.z), scene)
+      handle.panels.push(box(`panel-${l.id}`, 1.2, 0.04, 0.6, l.x, H - 0.05, l.z, panelMaterial))
+    }
+    // The sim decides where fixtures are; how many point lights represent
+    // them is a rendering budget decision (ADR-0006): sun + sky + one lamp per
+    // desk + ceiling lights must stay within MAX_LIGHTS_PER_MATERIAL.
+    const ceilingBudget = Math.max(1, MAX_LIGHTS_PER_MATERIAL - 2 - room.desks.length)
+    for (const [i, group] of groupFixtures(room.ceilingLights, ceilingBudget).entries()) {
+      const light = new PointLight(`ceiling-${room.id}-${i}`, new Vector3(group.x, H - 0.3, group.z), scene)
       light.diffuse = new Color3(1.0, 0.95, 0.86)
       light.range = Math.max(room.w, room.d)
       light.intensity = 0

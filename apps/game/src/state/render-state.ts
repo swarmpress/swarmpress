@@ -3,11 +3,23 @@
  *
  * The renderer never decides gameplay facts. It draws exactly what this
  * structure says: who sits where, which lights and monitors are on, and the
- * time of day. From M1 onward it is produced by sim-core via client-wasm;
- * until then `demoRenderState` provides a hand-written stand-in.
+ * time of day. It is produced by sim-core via client-wasm
+ * (`Sim.render_state_json()` / `Sim.layout_json()`); `demoRenderState` is a
+ * hand-written fixture for renderer unit tests only.
  */
 
-export type RoomKind = 'newsroom' | 'editor-office' | 'meeting-room' | 'seo-lab' | 'media-studio' | 'ceo-office'
+export type RoomKind =
+  | 'newsroom'
+  | 'editor-office'
+  | 'meeting-room'
+  | 'archive'
+  | 'photo-studio'
+  | 'seo-lab'
+  | 'translation-desk'
+  | 'design-studio'
+  | 'ceo-office'
+  | 'kitchen'
+  | 'server-room'
 
 /** Axis-aligned room on the building grid, in metres. x grows east, z grows south. */
 export interface RoomLayout {
@@ -31,6 +43,8 @@ export interface BuildingLayout {
   rooms: RoomLayout[]
 }
 
+export type Pose = 'walk' | 'sit' | 'type' | 'talk' | 'listen' | 'idle'
+
 export interface StaffRender {
   id: string
   name: string
@@ -38,7 +52,9 @@ export interface StaffRender {
   x: number
   z: number
   /** Desk the person is seated at, if any (turns that monitor on). */
-  seatedAt?: string
+  seatedAt?: string | null
+  pose?: Pose
+  activity?: string
 }
 
 export interface RenderState {

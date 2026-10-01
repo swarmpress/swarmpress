@@ -110,7 +110,7 @@ export function applyRenderState(scene: Scene, office: OfficeHandles, lighting: 
       office.staff.set(s.id, handle)
     }
     handle.root.setEnabled(true)
-    scopeStaffLights(office, handle, roomAt(office, s.x, s.z), s.seatedAt)
+    scopeStaffLights(office, handle, roomAt(office, s.x, s.z), s.seatedAt ?? undefined)
     handle.root.position.set(s.x, 0, s.z)
     // Seated people sit lower.
     handle.root.scaling.y = s.seatedAt ? 0.82 : 1
