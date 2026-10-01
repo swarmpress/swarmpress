@@ -1,0 +1,46 @@
+{
+  "ref": "refs/heads/main",
+  "before": "a10867b14bb761a232cd80139fbd4c0d33264240",
+  "after": "9fceb02d0ae598e95dc970b74767f19372d61af8",
+  "created": false,
+  "deleted": false,
+  "forced": false,
+  "base_ref": null,
+  "compare": "https://github.com/simpress-sites/cinqueterre-travel/compare/a10867b14bb7...9fceb02d0ae5",
+  "commits": [
+    {
+      "id": "9fceb02d0ae598e95dc970b74767f19372d61af8",
+      "tree_id": "f9d2a07e9488b91af2641b26b9407fe22a451433",
+      "distinct": true,
+      "message": "Last light on Sentiero Azzurro (#6)",
+      "timestamp": "2026-05-12T09:14:40Z",
+      "url": "https://github.com/simpress-sites/cinqueterre-travel/commit/9fceb02d0ae598e95dc970b74767f19372d61af8",
+      "author": { "name": "simpress-bot[bot]", "email": "1+simpress-bot[bot]@users.noreply.github.com" },
+      "committer": { "name": "GitHub", "email": "noreply@github.com" },
+      "added": ["content/pages/blog/last-light-on-sentiero-azzurro.json"],
+      "removed": [],
+      "modified": ["content/pages/blog/index.json"]
+    }
+  ],
+  "head_commit": {
+    "id": "9fceb02d0ae598e95dc970b74767f19372d61af8",
+    "tree_id": "f9d2a07e9488b91af2641b26b9407fe22a451433",
+    "message": "Last light on Sentiero Azzurro (#6)",
+    "timestamp": "2026-05-12T09:14:40Z",
+    "added": ["content/pages/blog/last-light-on-sentiero-azzurro.json"],
+    "removed": [],
+    "modified": ["content/pages/blog/index.json"]
+  },
+  "pusher": { "name": "simpress-bot[bot]", "email": null },
+  "repository": {
+    "id": 42,
+    "name": "cinqueterre-travel",
+    "full_name": "simpress-sites/cinqueterre-travel",
+    "private": false,
+    "owner": { "name": "simpress-sites", "login": "simpress-sites", "id": 9000 },
+    "default_branch": "main",
+    "master_branch": "main"
+  },
+  "sender": { "login": "simpress-bot[bot]", "id": 1, "type": "Bot" },
+  "installation": { "id": 55501 }
+}
