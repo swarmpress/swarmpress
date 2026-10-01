@@ -166,6 +166,16 @@ impl TestServer {
         (status, res.json().await.unwrap_or(Value::Null))
     }
 
+    pub async fn put_json(&self, path: &str, cookie: Option<&str>, body: Value) -> (u16, Value) {
+        let mut req = self.http.put(self.url(path)).json(&body);
+        if let Some(c) = cookie {
+            req = req.header(COOKIE, c);
+        }
+        let res = req.send().await.unwrap();
+        let status = res.status().as_u16();
+        (status, res.json().await.unwrap_or(Value::Null))
+    }
+
     /// Sign in a fresh player and give them a company. Returns (cookie, company_id).
     pub async fn player(&self, github_id: i64) -> (String, uuid::Uuid) {
         let cookie = self.login(github_id, &format!("player{github_id}")).await;

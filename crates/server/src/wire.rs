@@ -95,6 +95,13 @@ pub enum ServerFrame {
     Error {
         message: String,
     },
+    /// A post was appended to a work item's thread (publishing-plan.md §2).
+    /// `post_json` is the post as in `GET /api/plan` (`posts[item_id][]`).
+    /// Clients fetch `GET /api/plan` once and then apply these in order.
+    PlanPost {
+        item_id: String,
+        post_json: String,
+    },
 }
 
 /// Client → server.
@@ -170,6 +177,10 @@ mod tests {
             ServerFrame::JobLease {
                 job_id: "j".into(),
                 until_ms: -5,
+            },
+            ServerFrame::PlanPost {
+                item_id: "work-item-4".into(),
+                post_json: "{\"id\":\"post-1\"}".into(),
             },
         ];
         for f in frames {

@@ -1,0 +1,20 @@
+{
+  "name": "@swarm-press/tracker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SimPress first-party, cookieless analytics beacon (ADR-0032); served by the server at /t/s.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "sync": "node scripts/build.mjs --sync",
+    "check-drift": "node scripts/build.mjs --check",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

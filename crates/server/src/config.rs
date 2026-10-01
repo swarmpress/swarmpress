@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 
 use crate::actor::ActorConfig;
 use crate::jobs::RetryPolicy;
+use crate::tracker::TrackerConfig;
 
 /// GitHub OAuth app settings. The base URLs are configurable so tests can
 /// point them at a fake provider (wiremock).
@@ -70,6 +71,8 @@ pub struct Config {
     pub claude_concurrency: usize,
     /// Upper bound on a browser artifact (bytes of JSON text).
     pub max_artifact_bytes: usize,
+    /// First-party analytics tracker (ADR-0032).
+    pub tracker: TrackerConfig,
 }
 
 impl Config {
@@ -89,6 +92,11 @@ impl Config {
             job_reap_interval: Duration::from_secs(5),
             claude_concurrency: 1,
             max_artifact_bytes: 256 * 1024,
+            tracker: TrackerConfig {
+                origin: "http://127.0.0.1".into(),
+                trust_forwarded_for: true,
+                ..TrackerConfig::default()
+            },
         }
     }
 
@@ -133,6 +141,23 @@ impl Config {
             ..defaults
         };
 
+        let td = TrackerConfig::default();
+        let tracker = TrackerConfig {
+            origin: opt("SIMPRESS_TRACKER_ORIGIN")
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| public_url.clone()),
+            raw_retention_days: num("SIMPRESS_TRACKER_RAW_RETENTION_DAYS", td.raw_retention_days)?
+                .max(1),
+            allow_localhost: flag(
+                "SIMPRESS_TRACKER_ALLOW_LOCALHOST",
+                public_url.starts_with("http://localhost") || public_url.starts_with("http://127."),
+            )?,
+            trust_forwarded_for: flag("SIMPRESS_TRACKER_TRUST_PROXY", td.trust_forwarded_for)?,
+            rate_per_min: num("SIMPRESS_TRACKER_RATE_PER_MIN", td.rate_per_min)?,
+            burst: num("SIMPRESS_TRACKER_BURST", td.burst)?,
+            ..td
+        };
+
         Ok(Self {
             database_url,
             bind,
@@ -147,6 +172,7 @@ impl Config {
             job_reap_interval: Duration::from_secs(num("SIMPRESS_JOB_REAP_SECS", 5)?),
             claude_concurrency: num("SIMPRESS_CLAUDE_CONCURRENCY", 4)?,
             max_artifact_bytes: num("SIMPRESS_MAX_ARTIFACT_BYTES", 256 * 1024)?,
+            tracker,
         })
     }
 
@@ -169,6 +195,15 @@ fn opt(key: &str) -> Option<String> {
 
 fn req(key: &str) -> Result<String> {
     std::env::var(key).with_context(|| format!("{key} must be set"))
+}
+
+fn flag(key: &str, default: bool) -> Result<bool> {
+    match opt(key).as_deref() {
+        None | Some("") => Ok(default),
+        Some("1" | "true" | "yes" | "on") => Ok(true),
+        Some("0" | "false" | "no" | "off") => Ok(false),
+        Some(v) => anyhow::bail!("{key}={v:?} must be true or false"),
+    }
 }
 
 fn num<T: std::str::FromStr>(key: &str, default: T) -> Result<T>
