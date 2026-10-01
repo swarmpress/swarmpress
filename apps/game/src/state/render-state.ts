@@ -78,11 +78,11 @@ export const DEMO_BUILDING: BuildingLayout = {
         { id: 'desk-3', x: 2.5, z: 6.5, rot: 0 },
         { id: 'desk-4', x: 5, z: 6.5, rot: 0 },
       ],
+      // Two wide fixtures: with four desk lamps plus sun and sky this is the
+      // 8-light WebGPU budget for the newsroom floor (ADR-0006).
       ceilingLights: [
-        { id: 'nl-1', x: 3, z: 3 },
-        { id: 'nl-2', x: 7, z: 3 },
-        { id: 'nl-3', x: 3, z: 7 },
-        { id: 'nl-4', x: 7, z: 7 },
+        { id: 'nl-1', x: 4, z: 3 },
+        { id: 'nl-2', x: 4, z: 7 },
       ],
     },
     {

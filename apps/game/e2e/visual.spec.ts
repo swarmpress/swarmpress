@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { boot } from './helpers'
+import { boot, waitStill } from './helpers'
 
 /**
  * Visual regression of the dollhouse at frozen sim times (ADR-0022).
@@ -13,7 +13,7 @@ for (const t of TIMES) {
   test(`dollhouse at ${t}`, async ({ page }, info) => {
     test.skip(info.project.name !== 'fallback', 'baselines are taken on the WebGL2 software path')
     await boot(page, `/?renderer=webgl&quality=medium&t=${t}`)
-    await page.waitForTimeout(500)
+    await waitStill(page)
     await expect(page.locator('#stage canvas')).toHaveScreenshot(`dollhouse-${t.replace(':', '')}.png`, {
       maxDiffPixelRatio: 0.01,
     })
@@ -24,7 +24,7 @@ for (const facing of [0, 2, 3]) {
   test(`camera angle ${facing} cuts away the facing walls`, async ({ page }, info) => {
     test.skip(info.project.name !== 'fallback', 'baselines are taken on the WebGL2 software path')
     await boot(page, `/?renderer=webgl&quality=medium&t=13:00&facing=${facing}`)
-    await page.waitForTimeout(500)
+    await waitStill(page)
     await expect(page.locator('#stage canvas')).toHaveScreenshot(`dollhouse-facing-${facing}.png`, {
       maxDiffPixelRatio: 0.01,
     })

@@ -1,4 +1,4 @@
-import { NullEngine } from '@babylonjs/core'
+import { NullEngine, type AbstractMesh } from '@babylonjs/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DEMO_BUILDING, demoRenderState } from '../state/render-state'
 import { ISO_ALPHAS } from './camera-math'
@@ -24,11 +24,13 @@ describe('game scene (NullEngine)', () => {
     expect(sides).toEqual(new Set(['north', 'south', 'east', 'west']))
   })
 
-  it('keeps every room within the per-material light budget', () => {
-    for (const room of game.office.rooms.values()) {
-      const lamps = room.layout.desks.length
-      // ceiling + desk lamps + sun + sky
-      expect(room.lights.length + lamps + 2).toBeLessThanOrEqual(MAX_LIGHTS_PER_MATERIAL)
+  const lightsOn = (mesh: AbstractMesh) =>
+    game.scene.lights.filter((l) => l.includedOnlyMeshes.length === 0 || l.includedOnlyMeshes.includes(mesh)).length
+
+  it('keeps every mesh within the WebGPU light budget at every time of day', () => {
+    for (let minute = 0; minute < 1440; minute += 60) {
+      game.update(demoRenderState(minute, 0))
+      for (const mesh of game.scene.meshes) expect(lightsOn(mesh), `${mesh.name} @${minute}`).toBeLessThanOrEqual(MAX_LIGHTS_PER_MATERIAL)
     }
     for (const m of game.office.materials) expect(m.maxSimultaneousLights).toBe(MAX_LIGHTS_PER_MATERIAL)
   })
@@ -37,6 +39,13 @@ describe('game scene (NullEngine)', () => {
     const news = game.office.rooms.get('newsroom')!
     const editorDesk = game.scene.getMeshByName('desk-desk-ed')!
     for (const l of news.lights) expect(l.includedOnlyMeshes).not.toContain(editorDesk)
+  })
+
+  it('lights a person only by their own room and desk lamp', () => {
+    game.update(demoRenderState(23 * 60, 0))
+    const marco = game.office.staff.get('marco')!
+    const lights = game.scene.lights.filter((l) => l.includedOnlyMeshes.includes(marco.body)).map((l) => l.name)
+    expect(lights.sort()).toEqual(['ceiling-el-1', 'lamp-desk-ed'])
   })
 
   it('cuts away the walls facing the camera', () => {

@@ -6,10 +6,11 @@ import {
   Scene,
   ShadowGenerator,
   Vector3,
+  type AbstractMesh,
 } from '@babylonjs/core'
 import type { RenderState } from '../state/render-state'
 import { daylight, keyLightDirection, type Rgb } from './daylight'
-import { createStaffMesh, type OfficeHandles } from './office'
+import { createStaffMesh, type OfficeHandles, type StaffHandle } from './office'
 
 const c3 = (c: Rgb) => new Color3(c.r, c.g, c.b)
 
@@ -18,6 +19,28 @@ export const CEILING_INTENSITY = 14
 export const LAMP_INTENSITY = 3
 const SCREEN_ON = new Color3(0.55, 0.75, 1.0)
 const SCREEN_OFF = new Color3(0, 0, 0)
+
+function roomAt(office: OfficeHandles, x: number, z: number): string | undefined {
+  for (const [id, r] of office.rooms) {
+    const l = r.layout
+    if (x >= l.x && x < l.x + l.w && z >= l.z && z < l.z + l.d) return id
+  }
+  return undefined
+}
+
+/** A person is lit by the room they stand in and by their own desk lamp only. */
+function scopeStaffLights(office: OfficeHandles, handle: StaffHandle, roomId: string | undefined, deskId: string | undefined) {
+  const meshes = [handle.body, handle.head]
+  const set = (list: AbstractMesh[], include: boolean) => {
+    for (const m of meshes) {
+      const i = list.indexOf(m)
+      if (include && i < 0) list.push(m)
+      if (!include && i >= 0) list.splice(i, 1)
+    }
+  }
+  for (const [id, room] of office.rooms) for (const l of room.lights) set(l.includedOnlyMeshes, id === roomId)
+  for (const [id, desk] of office.desks) set(desk.lamp.includedOnlyMeshes, id === deskId)
+}
 
 export interface Lighting {
   sun: DirectionalLight
@@ -84,12 +107,10 @@ export function applyRenderState(scene: Scene, office: OfficeHandles, lighting: 
       handle.root.parent = office.root
       lighting.shadows?.addShadowCaster(handle.body)
       lighting.shadows?.addShadowCaster(handle.head)
-      // Staff are lit by whichever room they are in; include them in every room light.
-      for (const room of office.rooms.values()) for (const l of room.lights) l.includedOnlyMeshes.push(handle.body, handle.head)
-      for (const desk of office.desks.values()) desk.lamp.includedOnlyMeshes.push(handle.body, handle.head)
       office.staff.set(s.id, handle)
     }
     handle.root.setEnabled(true)
+    scopeStaffLights(office, handle, roomAt(office, s.x, s.z), s.seatedAt)
     handle.root.position.set(s.x, 0, s.z)
     // Seated people sit lower.
     handle.root.scaling.y = s.seatedAt ? 0.82 : 1

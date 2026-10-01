@@ -20,3 +20,10 @@ export async function boot(page: Page, path: string) {
   const renderer = await page.evaluate(() => (window as unknown as { __simpress: Handle }).__simpress.renderer)
   return { errors, renderer }
 }
+
+/** Frozen-clock pages stop rendering once stable; wait for that. */
+export async function waitStill(page: Page) {
+  await page.waitForFunction(() => (window as unknown as { __simpress: { still(): boolean } }).__simpress.still(), null, {
+    timeout: 120_000,
+  })
+}

@@ -6,7 +6,7 @@ export default defineConfig({
   testDir: 'e2e',
   timeout: 180_000,
   reporter: [['list'], ['json', { outputFile: 'test-results/playwright.json' }]],
-  expect: { toHaveScreenshot: { animations: 'disabled' } },
+  expect: { timeout: 60_000, toHaveScreenshot: { animations: 'disabled' } },
   use: { baseURL: 'http://localhost:4173', viewport: { width: 1280, height: 800 } },
   webServer: {
     command: 'pnpm exec vite preview --port 4173 --strictPort',

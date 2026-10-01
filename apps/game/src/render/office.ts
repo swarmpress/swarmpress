@@ -12,8 +12,12 @@ import {
 import type { BuildingLayout, RoomLayout } from '../state/render-state'
 import type { Side } from './cutaway'
 
-/** Lights that may affect one material at once (ADR-0006 light budget). */
-export const MAX_LIGHTS_PER_MATERIAL = 12
+/**
+ * Lights that may affect one mesh at once (ADR-0006 light budget). Babylon's
+ * WebGPU engine gives every light its own uniform buffer and supports at most
+ * 8 per material, so lights are scoped per room and per desk.
+ */
+export const MAX_LIGHTS_PER_MATERIAL = 8
 
 const WALL_T = 0.15
 const SILL = 0.9
@@ -29,6 +33,8 @@ export interface WallPiece {
 export interface DeskHandle {
   id: string
   roomId: string
+  /** Desk furniture lit by this desk's lamp. */
+  meshes: AbstractMesh[]
   screen: Mesh
   screenMaterial: PBRMaterial
   lamp: PointLight
@@ -37,10 +43,12 @@ export interface DeskHandle {
 
 export interface RoomHandle {
   layout: RoomLayout
+  floor: Mesh
   lights: PointLight[]
   panels: Mesh[]
   panelMaterial: PBRMaterial
-  meshes: AbstractMesh[]
+  /** Meshes lit by this room's ceiling lights (floor, furniture, adjacent walls). */
+  scope: AbstractMesh[]
 }
 
 export interface StaffHandle {
@@ -56,7 +64,6 @@ export interface OfficeHandles {
   rooms: Map<string, RoomHandle>
   desks: Map<string, DeskHandle>
   staff: Map<string, StaffHandle>
-  floor: Mesh
   /** Everything that should cast sun/moon shadows. */
   shadowCasters: AbstractMesh[]
   /** Everything that should receive shadows. */
@@ -104,12 +111,6 @@ export function buildOffice(scene: Scene, layout: BuildingLayout): OfficeHandles
   const walls: WallPiece[] = []
   const rooms = new Map<string, RoomHandle>()
   const desks = new Map<string, DeskHandle>()
-
-  const floor = MeshBuilder.CreateGround('floor', { width: layout.width, height: layout.depth }, scene)
-  floor.position.set(layout.width / 2, 0, layout.depth / 2)
-  floor.material = floorMat
-  floor.parent = root
-  shadowReceivers.push(floor)
 
   const box = (name: string, w: number, h: number, d: number, x: number, y: number, z: number, m: PBRMaterial) => {
     const b = MeshBuilder.CreateBox(name, { width: w, height: h, depth: d }, scene)
@@ -196,9 +197,22 @@ export function buildOffice(scene: Scene, layout: BuildingLayout): OfficeHandles
   }
 
   // --- Rooms: ceiling light panels + point lights, furniture --------------
+  const overlaps = (m: AbstractMesh, room: RoomLayout) => {
+    const b = m.getBoundingInfo().boundingBox
+    const min = b.minimumWorld
+    const max = b.maximumWorld
+    const pad = 0.3
+    return max.x >= room.x - pad && min.x <= room.x + room.w + pad && max.z >= room.z - pad && min.z <= room.z + room.d + pad
+  }
+
   for (const room of layout.rooms) {
     const panelMaterial = mat(`panel-${room.id}`, new Color3(0.95, 0.95, 0.92), 0.3)
-    const handle: RoomHandle = { layout: room, lights: [], panels: [], panelMaterial, meshes: [] }
+    const floor = MeshBuilder.CreateGround(`floor-${room.id}`, { width: room.w, height: room.d }, scene)
+    floor.position.set(room.x + room.w / 2, 0, room.z + room.d / 2)
+    floor.material = floorMat
+    floor.parent = root
+    shadowReceivers.push(floor)
+    const handle: RoomHandle = { layout: room, floor, lights: [], panels: [], panelMaterial, scope: [floor] }
     for (const l of room.ceilingLights) {
       const panel = box(`panel-${l.id}`, 1.2, 0.04, 0.6, l.x, H - 0.05, l.z, panelMaterial)
       handle.panels.push(panel)
@@ -223,8 +237,8 @@ export function buildOffice(scene: Scene, layout: BuildingLayout): OfficeHandles
       lamp.diffuse = new Color3(1.0, 0.72, 0.42)
       lamp.range = 2.5
       lamp.intensity = 0
-      desks.set(d.id, { id: d.id, roomId: room.id, screen, screenMaterial, lamp, lampShade })
-      handle.meshes.push(desk, legs, screen, stand, lampShade)
+      desks.set(d.id, { id: d.id, roomId: room.id, meshes: [desk, legs, screen, stand], screen, screenMaterial, lamp, lampShade })
+      handle.scope.push(desk, legs, screen, stand, lampShade)
       shadowCasters.push(desk, legs, screen)
       shadowReceivers.push(desk)
     }
@@ -234,19 +248,21 @@ export function buildOffice(scene: Scene, layout: BuildingLayout): OfficeHandles
       const cz = room.z + room.d / 2
       const table = box(`table-${room.id}`, 3, 0.06, 1.4, cx, 0.74, cz, deskMat)
       const base = box(`table-${room.id}-base`, 0.4, 0.72, 0.4, cx, 0.36, cz, metalMat)
-      handle.meshes.push(table, base)
+      handle.scope.push(table, base)
       shadowCasters.push(table, base)
       shadowReceivers.push(table)
     }
     rooms.set(room.id, handle)
   }
 
-  // Scope room lights to the room's own meshes plus shared shells (ADR-0006).
+  // Scope lights (ADR-0006): ceiling lights reach their room's floor,
+  // furniture and adjacent walls; desk lamps reach only their desk, the room
+  // floor and whoever sits there (added per frame in applyRenderState).
   for (const h of rooms.values()) {
-    const scoped = [floor, ...h.meshes, ...walls.map((w) => w.mesh), ...h.panels]
-    for (const l of h.lights) l.includedOnlyMeshes = scoped
-    for (const d of desks.values()) if (d.roomId === h.layout.id) d.lamp.includedOnlyMeshes = scoped
+    for (const w of walls) if (overlaps(w.mesh, h.layout)) h.scope.push(w.mesh)
+    for (const l of h.lights) l.includedOnlyMeshes = [...h.scope]
   }
+  for (const d of desks.values()) d.lamp.includedOnlyMeshes = [...d.meshes, rooms.get(d.roomId)!.floor]
 
   return {
     root,
@@ -254,7 +270,6 @@ export function buildOffice(scene: Scene, layout: BuildingLayout): OfficeHandles
     rooms,
     desks,
     staff: new Map(),
-    floor,
     shadowCasters,
     shadowReceivers,
     materials,

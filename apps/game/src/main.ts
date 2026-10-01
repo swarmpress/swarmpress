@@ -13,6 +13,8 @@ import { mountHud } from './ui/hud'
  *   t=HH:MM            freeze the clock at this time (deterministic screenshots)
  *   speed=N            sim steps per 100 ms (sandbox fast-forward), default 50
  *   facing=0..3        camera angle
+ *   With t=, the loop stops once the scene is ready and 20 frames are drawn
+ *   (`__simpress.still()` turns true) so screenshots are stable and cheap.
  */
 async function main() {
   await init()
@@ -49,6 +51,8 @@ async function main() {
   const hud = mountHud(document.getElementById('ui')!)
   let acc = 0
   let lastMinute = -1
+  let stillFrames = 0
+  let still = false
   engine.runRenderLoop(() => {
     if (minuteOverride === null) {
       acc += engine.getDeltaTime()
@@ -64,6 +68,10 @@ async function main() {
     }
     game.scene.render()
     hud.set({ clock: formatClock(minute), day: sim.day(), renderer, version: version(), fps: Math.round(engine.getFps()) })
+    if (minuteOverride !== null && game.scene.isReady() && ++stillFrames >= 20) {
+      engine.stopRenderLoop()
+      still = true
+    }
   })
   window.addEventListener('resize', () => engine.resize())
 
@@ -73,6 +81,7 @@ async function main() {
     scene: game.scene,
     ready: () => game.scene.isReady(),
     frames: () => engine.frameId,
+    still: () => still,
   }
 }
 
