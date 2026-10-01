@@ -47,3 +47,6 @@ Accepted ADRs are never rewritten.
 | [0025](0025-browser-job-worker-protocol.md) | Browser job worker protocol, leases, leader election, server-side artifact validation | Accepted |
 | [0026](0026-model-registry-webgpu-capability-tiers.md) | Model registry and WebGPU capability tiers | Accepted |
 | [0027](0027-gpu-sharing-renderer-and-local-llm.md) | GPU sharing between renderer and local LLM | Accepted |
+| [0028](0028-organization-model-executive-office-and-departments.md) | Organization model: CEO, executive office and departments | Accepted |
+| [0029](0029-a-company-runs-several-projects-each-with-its-own-team.md) | A company runs several projects, each with its own team | Accepted |
+| [0030](0030-personas-are-a-data-catalog-with-cv-hobbies-and-interests.md) | Personas are a data catalog with CV, hobbies and interests | Accepted |
