@@ -28,6 +28,17 @@ brand and safety risk.
   Headlines and other text stay server-side.
 - **Prompts** get an hourly `WorldSnapshot` (date, weather, 5–10 attributed headlines).
   Utterances record which snapshot items they used.
+- **Dates and time shape life in the office.** A `CalendarSignals` command carries the real
+  date, holiday and festive-season state. It drives:
+  - seasonal decorations;
+  - leave and capacity patterns around holidays;
+  - morale nudges;
+  - office events (end-of-year party, Secret Santa, birthdays, name days);
+  - seasonal workstreams in the plan.
+
+  Personas have `[family]` and `[traditions]` profile sections, so holiday talk is personal ("how
+  I celebrate Christmas with my family"). Religious and cultural holidays are treated as
+  personal traditions, never assumed to be shared.
 - **The real day versus the game clock:** the outside world is always the real current day. An
   optional real-time mode aligns game days with real days in the HQ timezone.
 - **Guardrails for current events and politics:**

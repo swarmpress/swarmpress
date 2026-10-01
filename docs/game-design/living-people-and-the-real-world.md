@@ -152,6 +152,44 @@ Context Service**. Personas know:
   hours aligned to the HQ timezone), so the office lights, the weather and the
   news line up exactly.
 
+### Dates and time shape life in the office
+
+The **real calendar** (the World Context Service's date and holiday calendar
+for the HQ's country and region) drives what people talk about, how they
+feel and what happens in the office.
+
+| Time scale | Examples |
+|---|---|
+| **Holidays and festive seasons** | **Christmas:** decorations go up in December (a tree in the lobby, lights in the 3D office); people talk about how they'll celebrate with their families, travel home, the panettone vs pandoro debate; a Secret Santa and an end-of-year party event; leave requests spike, so capacity drops in the week between Christmas and Epiphany. Also New Year, Epiphany (La Befana), Easter and Pasquetta, Liberation Day, Labour Day, Republic Day, **Ferragosto** (the August slowdown), All Saints, local patron saints' days (for example San Giovanni in Genoa, Santa Margherita in Vernazza), plus the persona's own **name day** (onomastico) and birthday. |
+| **Seasons** | Tourist high season vs winter calm (matches the content calendar), the grape and olive harvest, first swim of the year, storm season |
+| **Week** | Monday catch-up after the weekend ("what did you do on Sunday?"), the Friday mood, the weekend gap in real-time mode |
+| **Day** | Morning coffee chat, the lunch break, the afternoon slump, late-night crunch talk |
+
+- **Personal and cultural:** each persona has a `[family]` section
+  (household and the key people in their life, briefly) and `[traditions]`
+  (how *they* celebrate the holidays: Giulia's Christmas Eve fish dinner in
+  La Spezia, Isabella skiing over New Year, Lorenzo's Epiphany procession in
+  his village). Traditions vary by person and background, and some
+  colleagues don't celebrate a given holiday. Small talk uses these, so
+  conversations are personal rather than generic.
+- **Deterministic effects in the sim:** a `CalendarSignals` server command
+  (real date, holiday id, festive-season flag, days to the next holiday)
+  drives:
+  - seasonal **office decorations** in the render state;
+  - **leave and capacity** patterns (seeded leave requests around holidays,
+    which reach the Inbox via the Secretary);
+  - **morale** nudges (the festive season lifts; working through a holiday
+    hurts unless paid as overtime);
+  - **events**: the end-of-year party, Secret Santa, birthday cake, name-day
+    greetings.
+- **Content:** holidays feed the editorial plan's seasonal workstreams
+  ("Christmas in the Cinque Terre villages", "Ferragosto crowds: how to
+  avoid them"). The strategist proposes them ahead of time, from the content
+  calendar plus the holiday calendar.
+- **Game clock vs real date:** holidays and seasons always follow the real
+  date, consistent with weather and news. In real-time mode the office is
+  actually closed on public holidays unless the CEO approves holiday work.
+
 ### Guardrails for current events and politics
 
 Personas may talk about real current events, including politics, the way
@@ -174,6 +212,9 @@ colleagues do at work. Within limits:
   citations.
 - **Off switch.** A company setting `world.news = off | headlines | full`;
   weather and date are always on.
+- **Holidays and traditions are inclusive.** Religious and cultural holidays
+  are discussed as personal traditions, never as something everyone shares
+  or must share. A persona's own background decides what they celebrate.
 
 ## 4. Data and API
 
@@ -182,7 +223,7 @@ colleagues do at work. Within limits:
 - An `Affinity` matrix (`BTreeMap<(StaffId, StaffId), i8>`).
 - Life-event scheduling (birthdays, leave, sick days).
 - Small-talk triggers emitting `RequestJob{SmallTalk}`.
-- Server commands `WorldSignals`, `ProjectWeather`, and
+- Server commands `WorldSignals`, `ProjectWeather`, `CalendarSignals` (holiday, festive season), and
   `AffinityDeltas{conversation, deltas}` (from the moderator outcome).
 - Weather in `RenderState`.
 
@@ -205,10 +246,11 @@ colleagues do at work. Within limits:
   non-partisan.
 
 **UI:**
-- Profile card tabs: Vita (CV), Personality (traits, values, opinions), Life
-  log (memories and events), Relationships.
+- Profile card tabs: Vita (CV), Personality (traits, values, opinions), Family
+  and traditions, Life log (memories and events), Relationships.
 - A conversation viewer that shows each utterance with an **inspector** for
   its recorded parameters.
 - A relationship graph.
 - A "Today" widget: date, weather, top headlines with sources.
-- Weather visible through the windows of the 3D office.
+- Weather visible through the windows of the 3D office, and seasonal
+  decorations (Christmas tree and lights, and so on) in the office.
