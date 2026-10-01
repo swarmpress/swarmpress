@@ -12,8 +12,11 @@
 //!   deleted. IPs and user agents are never stored.
 //! - Sessions: per visitor, a new session starts after 30 minutes without an
 //!   event; `session_hash = xxh3(salt_day ‖ visitor_hash ‖ session_start)`.
+//! - The rollup is computed in Rust from the raw rows (deterministic, plain
+//!   SQL only; ADR-0041) and written by `crate::db::tracker`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -28,16 +31,16 @@ use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::PgPool;
 use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
-use uuid::Uuid;
 use xxhash_rust::xxh3::xxh3_64;
 
-use crate::app::AppState;
+use crate::app::{require_company, AppState};
 use crate::auth::CurrentUser;
+pub use crate::db::tracker::Project;
+use crate::db::tracker::{self as store, DailyRow, NewProjectRow, TotalsRow};
+use crate::db::Db;
 use crate::error::{AppError, AppResult};
-use crate::plan::require_company;
 
 /// The built beacon script. Regenerate with `pnpm --filter tracker sync`;
 /// `pnpm --filter tracker check-drift` (and the `assets_match_built_tracker`
@@ -101,7 +104,7 @@ fn next_midnight(day: NaiveDate) -> DateTime<Utc> {
 impl SaltKeeper {
     /// The salt for `now`'s UTC day. On the first call of a new day: create
     /// (or adopt another process's) salt and delete expired ones.
-    pub async fn salt_for(&self, pool: &PgPool, now: DateTime<Utc>) -> Result<[u8; 32]> {
+    pub async fn salt_for(&self, db: &Db, now: DateTime<Utc>) -> Result<[u8; 32]> {
         let day = now.date_naive();
         let mut cur = self.current.lock().await;
         if let Some((d, s)) = *cur {
@@ -111,26 +114,9 @@ impl SaltKeeper {
         }
         let mut fresh = [0u8; 32];
         rand::rngs::OsRng.fill_bytes(&mut fresh);
-        sqlx::query(
-            "INSERT INTO tracker_salts (day, salt, expires_at) VALUES ($1, $2, $3)
-             ON CONFLICT (day) DO NOTHING",
-        )
-        .bind(day)
-        .bind(&fresh[..])
-        .bind(next_midnight(day))
-        .execute(pool)
-        .await
-        .context("store salt")?;
-        let (stored,): (Vec<u8>,) = sqlx::query_as("SELECT salt FROM tracker_salts WHERE day = $1")
-            .bind(day)
-            .fetch_one(pool)
-            .await
-            .context("load salt")?;
-        sqlx::query("DELETE FROM tracker_salts WHERE expires_at <= $1")
-            .bind(now)
-            .execute(pool)
-            .await
-            .context("delete expired salts")?;
+        let stored =
+            store::ensure_salt(db, day, &fresh, next_midnight(day).timestamp_millis()).await?;
+        store::delete_expired_salts(db, now.timestamp_millis()).await?;
         let salt: [u8; 32] = stored
             .as_slice()
             .try_into()
@@ -140,8 +126,8 @@ impl SaltKeeper {
     }
 }
 
-pub fn visitor_hash(salt: &[u8; 32], ip: &str, ua: &str, project: Uuid) -> u64 {
-    let mut buf = Vec::with_capacity(32 + ip.len() + ua.len() + 18);
+pub fn visitor_hash(salt: &[u8; 32], ip: &str, ua: &str, project: &str) -> u64 {
+    let mut buf = Vec::with_capacity(32 + ip.len() + ua.len() + project.len() + 2);
     buf.extend_from_slice(salt);
     buf.extend_from_slice(ip.as_bytes());
     buf.push(0);
@@ -190,14 +176,15 @@ impl Sessions {
 
 // ------------------------------------------------------------ rate limit
 
-/// Per-IP token bucket in integer milli-tokens. Memory only.
-pub struct RateLimiter {
+/// Token bucket per key (an IP for the collector, a user id for the web
+/// fetch proxy), in integer milli-tokens. Memory only.
+pub struct RateLimiter<K = IpAddr> {
     rate_per_min: u64,
     burst_milli: u64,
-    buckets: Mutex<HashMap<IpAddr, (u64, Instant)>>,
+    buckets: Mutex<HashMap<K, (u64, Instant)>>,
 }
 
-impl RateLimiter {
+impl<K: Hash + Eq> RateLimiter<K> {
     const MAX_KEYS: usize = 100_000;
 
     pub fn new(rate_per_min: u32, burst: u32) -> Self {
@@ -208,7 +195,7 @@ impl RateLimiter {
         }
     }
 
-    pub fn allow(&self, ip: IpAddr, now: Instant) -> bool {
+    pub fn allow(&self, key: K, now: Instant) -> bool {
         let mut m = self.buckets.lock().expect("rate limiter lock");
         if m.len() >= Self::MAX_KEYS {
             let (rate, burst) = (self.rate_per_min, self.burst_milli);
@@ -218,7 +205,7 @@ impl RateLimiter {
                 tokens.saturating_add(ms.saturating_mul(rate) / 60) < burst
             });
         }
-        let (tokens, last) = m.entry(ip).or_insert((self.burst_milli, now));
+        let (tokens, last) = m.entry(key).or_insert((self.burst_milli, now));
         let ms =
             u64::try_from(now.saturating_duration_since(*last).as_millis()).unwrap_or(u64::MAX);
         // rate_per_min tokens/min = rate_per_min * 1000 milli-tokens / 60_000 ms.
@@ -330,8 +317,8 @@ pub struct CleanEvent {
     pub utm_medium: Option<String>,
     pub utm_campaign: Option<String>,
     pub viewport: &'static str,
-    pub engaged_ms: Option<i32>,
-    pub scroll_pct: Option<i16>,
+    pub engaged_ms: Option<i64>,
+    pub scroll_pct: Option<i64>,
     pub outbound_domain: Option<String>,
 }
 
@@ -379,14 +366,12 @@ impl RawEvent {
             _ => "",
         };
         let engaged_ms = match (kind, self.e) {
-            ("engagement", Some(ms)) if ms > 0 => {
-                Some(i32::try_from(ms.min(MAX_ENGAGED_MS)).unwrap_or(i32::MAX))
-            }
+            ("engagement", Some(ms)) if ms > 0 => Some(ms.min(MAX_ENGAGED_MS)),
             ("engagement", _) => return Err("engagement needs e > 0".into()),
             _ => None,
         };
         let scroll_pct = match (kind, self.s) {
-            ("scroll", Some(p @ (25 | 50 | 75 | 100))) => Some(i16::try_from(p).unwrap_or(0)),
+            ("scroll", Some(p @ (25 | 50 | 75 | 100))) => Some(p),
             ("scroll", _) => return Err("scroll needs s in 25/50/75/100".into()),
             _ => None,
         };
@@ -526,15 +511,13 @@ pub async fn preflight(State(st): State<AppState>, headers: HeaderMap) -> Respon
     let known = if host_allowed(&host, None, st.tracker.cfg.allow_localhost) {
         true
     } else {
-        let bare = host.strip_prefix("www.").unwrap_or(&host).to_string();
-        sqlx::query_scalar::<_, i64>(
-            "SELECT count(*) FROM projects WHERE domain = $1 OR $1 LIKE '%.' || domain",
-        )
-        .bind(&bare)
-        .fetch_one(&st.pool)
-        .await
-        .map(|n| n > 0)
-        .unwrap_or(false)
+        let bare = host
+            .strip_prefix("www.")
+            .unwrap_or(&host)
+            .to_ascii_lowercase();
+        store::domain_registered(&st.db, &bare)
+            .await
+            .unwrap_or(false)
     };
     if !known {
         return status(StatusCode::FORBIDDEN);
@@ -590,18 +573,13 @@ pub async fn collect(
     if raw.k.len() > 64 {
         return status(StatusCode::NOT_FOUND);
     }
-    let project: Option<(Uuid, Option<String>)> =
-        match sqlx::query_as("SELECT id, domain FROM projects WHERE tracker_key = $1")
-            .bind(&raw.k)
-            .fetch_optional(&st.pool)
-            .await
-        {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::error!(error = %e, "tracker: project lookup failed");
-                return status(StatusCode::SERVICE_UNAVAILABLE);
-            }
-        };
+    let project = match store::project_by_key(&st.db, &raw.k).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!(error = %e, "tracker: project lookup failed");
+            return status(StatusCode::SERVICE_UNAVAILABLE);
+        }
+    };
     let Some((project_id, domain)) = project else {
         return status(StatusCode::NOT_FOUND);
     };
@@ -617,7 +595,7 @@ pub async fn collect(
         return with_cors(status(StatusCode::NO_CONTENT), &origin);
     };
     let now = Utc::now();
-    match store_event(&st, project_id, &ip.to_string(), ua, &ev, now).await {
+    match store_event(&st, &project_id, &ip.to_string(), ua, &ev, now).await {
         Ok(()) => with_cors(status(StatusCode::NO_CONTENT), &origin),
         Err(e) => {
             tracing::error!(error = %e, "tracker: storing event failed");
@@ -629,14 +607,14 @@ pub async fn collect(
 /// Hash the visitor/session and insert the event. Never stores `ip` or `ua`.
 pub async fn store_event(
     st: &AppState,
-    project_id: Uuid,
+    project_id: &str,
     ip: &str,
     ua: &str,
     ev: &CleanEvent,
     now: DateTime<Utc>,
 ) -> Result<()> {
     let t = &st.tracker;
-    let salt = t.salts.salt_for(&st.pool, now).await?;
+    let salt = t.salts.salt_for(&st.db, now).await?;
     let visitor = visitor_hash(&salt, ip, ua, project_id);
     let start = t.sessions.lock().expect("sessions lock").start_for(
         now.date_naive(),
@@ -644,43 +622,19 @@ pub async fn store_event(
         now.timestamp_millis(),
     );
     let session = session_hash(&salt, visitor, start);
-    insert_event(&st.pool, project_id, now, ev, visitor, session).await
+    insert_event(&st.db, project_id, now, ev, visitor, session).await
 }
 
 /// Insert one normalized event (also used by test fixtures).
 pub async fn insert_event(
-    pool: &PgPool,
-    project_id: Uuid,
+    db: &Db,
+    project_id: &str,
     ts: DateTime<Utc>,
     ev: &CleanEvent,
     visitor: u64,
     session: u64,
 ) -> Result<()> {
-    sqlx::query(
-        "INSERT INTO tracker_events (project_id, ts, type, path, lang, ref_domain, utm_source,
-            utm_medium, utm_campaign, viewport, engaged_ms, scroll_pct, outbound_domain,
-            visitor_hash, session_hash)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
-    )
-    .bind(project_id)
-    .bind(ts)
-    .bind(ev.kind)
-    .bind(&ev.path)
-    .bind(&ev.lang)
-    .bind(&ev.ref_domain)
-    .bind(&ev.utm_source)
-    .bind(&ev.utm_medium)
-    .bind(&ev.utm_campaign)
-    .bind(ev.viewport)
-    .bind(ev.engaged_ms)
-    .bind(ev.scroll_pct)
-    .bind(&ev.outbound_domain)
-    .bind(visitor as i64)
-    .bind(session as i64)
-    .execute(pool)
-    .await
-    .context("insert tracker event")?;
-    Ok(())
+    store::insert_event(db, project_id, ts.timestamp_millis(), ev, visitor, session).await
 }
 
 // ------------------------------------------------------------ rollup
@@ -692,117 +646,142 @@ fn first_complete_day(now: DateTime<Utc>, retention_days: u32) -> NaiveDate {
     cutoff.date_naive().succ_opt().expect("date in range")
 }
 
+fn day_of(ts_ms: i64) -> NaiveDate {
+    Utc.timestamp_millis_opt(ts_ms)
+        .single()
+        .map_or(NaiveDate::MIN, |t| t.date_naive())
+}
+
+fn midnight_ms(day: NaiveDate) -> i64 {
+    Utc.from_utc_datetime(&day.and_hms_opt(0, 0, 0).expect("midnight"))
+        .timestamp_millis()
+}
+
+#[derive(Default)]
+struct PageAgg {
+    sessions: BTreeSet<i64>,
+    visitors: BTreeSet<i64>,
+    pageviews: i64,
+    engaged_ms_sum: i64,
+    engaged_count: i64,
+    scroll_75: i64,
+    outbound: i64,
+}
+
+type PageKey<'a> = (&'a str, NaiveDate, &'a str, &'a str, &'a str);
+type DayKey<'a> = (&'a str, NaiveDate);
+
+fn count(x: usize) -> i64 {
+    i64::try_from(x).unwrap_or(i64::MAX)
+}
+
+/// The rollup of raw events (ordered by ts, id) as a pure function:
+/// per-page rows and per-day totals for every (project, day) present.
+pub fn compute_rollup(events: &[store::RawRow]) -> (Vec<DailyRow>, Vec<TotalsRow>) {
+    // First-touch source per session: utm_source, else referrer, else direct.
+    let mut first_touch: BTreeMap<(&str, i64), String> = BTreeMap::new();
+    for e in events {
+        first_touch
+            .entry((e.project_id.as_str(), e.session_hash))
+            .or_insert_with(|| {
+                e.utm_source
+                    .clone()
+                    .or_else(|| e.ref_domain.clone())
+                    .unwrap_or_else(|| "direct".into())
+            });
+    }
+    let mut pages: BTreeMap<PageKey<'_>, PageAgg> = BTreeMap::new();
+    // (project, day) → session → (pageviews, engaged ms); and visitors.
+    let mut sessions: BTreeMap<DayKey<'_>, BTreeMap<i64, (i64, i64)>> = BTreeMap::new();
+    let mut visitors: BTreeMap<DayKey<'_>, BTreeSet<i64>> = BTreeMap::new();
+    for e in events {
+        let day = day_of(e.ts);
+        let project = e.project_id.as_str();
+        let source = first_touch[&(project, e.session_hash)].as_str();
+        let a = pages
+            .entry((project, day, e.path.as_str(), e.lang.as_str(), source))
+            .or_default();
+        let s = sessions
+            .entry((project, day))
+            .or_default()
+            .entry(e.session_hash)
+            .or_default();
+        match e.kind.as_str() {
+            "pageview" => {
+                a.sessions.insert(e.session_hash);
+                a.visitors.insert(e.visitor_hash);
+                a.pageviews += 1;
+                s.0 += 1;
+                visitors
+                    .entry((project, day))
+                    .or_default()
+                    .insert(e.visitor_hash);
+            }
+            "engagement" => {
+                let ms = e.engaged_ms.unwrap_or(0);
+                a.engaged_ms_sum += ms;
+                a.engaged_count += 1;
+                s.1 += ms;
+            }
+            "scroll" if e.scroll_pct == Some(75) => a.scroll_75 += 1,
+            "outbound" => a.outbound += 1,
+            _ => {}
+        }
+    }
+    let daily = pages
+        .into_iter()
+        .map(|((project, day, path, lang, source), a)| DailyRow {
+            project_id: project.to_string(),
+            day,
+            path: path.to_string(),
+            lang: lang.to_string(),
+            source: source.to_string(),
+            sessions: count(a.sessions.len()),
+            visitors: count(a.visitors.len()),
+            pageviews: a.pageviews,
+            engaged_ms_sum: a.engaged_ms_sum,
+            engaged_count: a.engaged_count,
+            scroll_75_count: a.scroll_75,
+            outbound_count: a.outbound,
+        })
+        .collect();
+    // A session is engaged with >= 10 s visible time or >= 2 pageviews.
+    let totals = sessions
+        .into_iter()
+        .map(|((project, day), ss)| TotalsRow {
+            project_id: project.to_string(),
+            day,
+            sessions: count(ss.values().filter(|(pv, _)| *pv > 0).count()),
+            visitors: count(visitors.get(&(project, day)).map_or(0, BTreeSet::len)),
+            pageviews: ss.values().map(|(pv, _)| pv).sum(),
+            engaged_sessions: count(
+                ss.values()
+                    .filter(|(pv, ms)| *pv > 0 && (*ms >= 10_000 || *pv >= 2))
+                    .count(),
+            ),
+            engaged_ms_sum: ss.values().map(|(_, ms)| ms).sum(),
+        })
+        .collect();
+    (daily, totals)
+}
+
 /// Recompute `analytics_daily` and `analytics_daily_totals` for every day
 /// whose raw events are complete (deterministic: a pure function of the raw
 /// rows). Returns the number of (project, day) pairs written.
-pub async fn rollup(pool: &PgPool, now: DateTime<Utc>, retention_days: u32) -> Result<u64> {
+pub async fn rollup(db: &Db, now: DateTime<Utc>, retention_days: u32) -> Result<u64> {
     let from = first_complete_day(now, retention_days);
-    let mut tx = pool.begin().await?;
-    sqlx::query(
-        "CREATE TEMP TABLE rollup_ev ON COMMIT DROP AS
-         WITH ev AS (
-           SELECT e.*, (e.ts AT TIME ZONE 'UTC')::date AS day
-           FROM tracker_events e
-           WHERE e.ts >= ($1::date)::timestamp AT TIME ZONE 'UTC'
-         ),
-         first_touch AS (
-           SELECT DISTINCT ON (project_id, session_hash) project_id, session_hash,
-                  COALESCE(utm_source, ref_domain, 'direct') AS source
-           FROM ev
-           ORDER BY project_id, session_hash, ts, id
-         )
-         SELECT ev.*, f.source FROM ev
-         JOIN first_touch f USING (project_id, session_hash)",
-    )
-    .bind(from)
-    .execute(&mut *tx)
-    .await
-    .context("rollup: stage events")?;
-
-    sqlx::query(
-        "DELETE FROM analytics_daily WHERE day >= $1
-           AND (project_id, day) IN (SELECT DISTINCT project_id, day FROM rollup_ev)",
-    )
-    .bind(from)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query(
-        "DELETE FROM analytics_daily_totals WHERE day >= $1
-           AND (project_id, day) IN (SELECT DISTINCT project_id, day FROM rollup_ev)",
-    )
-    .bind(from)
-    .execute(&mut *tx)
-    .await?;
-
-    sqlx::query(
-        "INSERT INTO analytics_daily (project_id, day, path, lang, source, sessions, visitors,
-            pageviews, engaged_ms_sum, engaged_count, scroll_75_count, outbound_count)
-         SELECT project_id, day, path, lang, source,
-                count(DISTINCT session_hash) FILTER (WHERE type = 'pageview'),
-                count(DISTINCT visitor_hash) FILTER (WHERE type = 'pageview'),
-                count(*) FILTER (WHERE type = 'pageview'),
-                COALESCE(sum(engaged_ms) FILTER (WHERE type = 'engagement'), 0),
-                count(*) FILTER (WHERE type = 'engagement'),
-                count(*) FILTER (WHERE type = 'scroll' AND scroll_pct = 75),
-                count(*) FILTER (WHERE type = 'outbound')
-         FROM rollup_ev
-         GROUP BY project_id, day, path, lang, source",
-    )
-    .execute(&mut *tx)
-    .await
-    .context("rollup: analytics_daily")?;
-
-    // A session is engaged with >= 10 s visible time or >= 2 pageviews.
-    let n = sqlx::query(
-        "INSERT INTO analytics_daily_totals (project_id, day, sessions, visitors, pageviews,
-            engaged_sessions, engaged_ms_sum)
-         WITH s AS (
-           SELECT project_id, day, session_hash,
-                  count(*) FILTER (WHERE type = 'pageview') AS pv,
-                  COALESCE(sum(engaged_ms) FILTER (WHERE type = 'engagement'), 0) AS ms
-           FROM rollup_ev GROUP BY project_id, day, session_hash
-         ),
-         v AS (
-           SELECT project_id, day, count(DISTINCT visitor_hash) AS visitors
-           FROM rollup_ev WHERE type = 'pageview' GROUP BY project_id, day
-         )
-         SELECT s.project_id, s.day,
-                count(*) FILTER (WHERE s.pv > 0),
-                COALESCE(max(v.visitors), 0),
-                sum(s.pv),
-                count(*) FILTER (WHERE s.pv > 0 AND (s.ms >= 10000 OR s.pv >= 2)),
-                sum(s.ms)
-         FROM s LEFT JOIN v USING (project_id, day)
-         GROUP BY s.project_id, s.day",
-    )
-    .execute(&mut *tx)
-    .await
-    .context("rollup: totals")?
-    .rows_affected();
-    tx.commit().await?;
-    Ok(n)
+    let events = store::raw_events_since(db, midnight_ms(from)).await?;
+    let (daily, totals) = compute_rollup(&events);
+    store::replace_rollup(db, &daily, &totals).await?;
+    Ok(u64::try_from(totals.len()).unwrap_or(u64::MAX))
 }
 
 /// Delete raw events older than the retention window and expired salts.
 /// Returns (events deleted, salts deleted).
-pub async fn retention(
-    pool: &PgPool,
-    now: DateTime<Utc>,
-    retention_days: u32,
-) -> Result<(u64, u64)> {
+pub async fn retention(db: &Db, now: DateTime<Utc>, retention_days: u32) -> Result<(u64, u64)> {
     let cutoff = now - chrono::Duration::days(i64::from(retention_days));
-    let ev = sqlx::query("DELETE FROM tracker_events WHERE ts < $1")
-        .bind(cutoff)
-        .execute(pool)
-        .await
-        .context("delete old events")?
-        .rows_affected();
-    let salts = sqlx::query("DELETE FROM tracker_salts WHERE expires_at <= $1")
-        .bind(now)
-        .execute(pool)
-        .await
-        .context("delete expired salts")?
-        .rows_affected();
+    let ev = store::delete_events_before(db, cutoff.timestamp_millis()).await?;
+    let salts = store::delete_expired_salts(db, now.timestamp_millis()).await?;
     Ok((ev, salts))
 }
 
@@ -811,8 +790,8 @@ pub async fn retention(
 /// The integers handed to the sim as `Cmd::AnalyticsSignals` (ADR-0032).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct AnalyticsSignal {
-    pub company_id: Uuid,
-    pub project_id: Uuid,
+    pub company_id: String,
+    pub project_id: String,
     /// The sim's project id ("project-1").
     pub sim_project_id: String,
     pub day: NaiveDate,
@@ -862,47 +841,36 @@ pub fn top_pages_digest<S: AsRef<str>>(paths: &[S]) -> u64 {
     xxh3_64(joined.as_bytes())
 }
 
+fn u32_of(v: i64) -> u32 {
+    u32::try_from(v.max(0)).unwrap_or(u32::MAX)
+}
+
 /// Compute the signal of one project/day from the rollup tables.
 pub async fn compute_signal(
-    pool: &PgPool,
-    project_id: Uuid,
+    db: &Db,
+    project_id: &str,
     day: NaiveDate,
 ) -> Result<Option<AnalyticsSignal>> {
-    let row: Option<(Uuid, String, i32, i32, i32, i32)> = sqlx::query_as(
-        "SELECT p.company_id, p.sim_project_id, t.sessions, t.visitors, t.pageviews, t.engaged_sessions
-         FROM analytics_daily_totals t JOIN projects p ON p.id = t.project_id
-         WHERE t.project_id = $1 AND t.day = $2",
-    )
-    .bind(project_id)
-    .bind(day)
-    .fetch_optional(pool)
-    .await?;
-    let Some((company_id, sim_project_id, sessions, visitors, pageviews, engaged)) = row else {
+    let Some(t) = store::totals_row(db, project_id, day).await? else {
         return Ok(None);
     };
-    let top: Vec<(String,)> = sqlx::query_as(
-        "SELECT path FROM analytics_daily WHERE project_id = $1 AND day = $2
-         GROUP BY path ORDER BY sum(pageviews) DESC, path ASC LIMIT 10",
-    )
-    .bind(project_id)
-    .bind(day)
-    .fetch_all(pool)
-    .await?;
-    let u = |v: i32| u32::try_from(v).unwrap_or(0);
-    let engagement_pm = if sessions > 0 {
-        u32::try_from(i64::from(engaged) * 1000 / i64::from(sessions)).unwrap_or(0)
+    let Some((company_id, sim_project_id)) = store::project_owner(db, project_id).await? else {
+        return Ok(None);
+    };
+    let paths = store::top_paths(db, project_id, day, 10).await?;
+    let engagement_pm = if t.sessions > 0 {
+        u32_of(t.engaged_sessions * 1000 / t.sessions)
     } else {
         0
     };
-    let paths: Vec<String> = top.into_iter().map(|t| t.0).collect();
     Ok(Some(AnalyticsSignal {
         company_id,
-        project_id,
+        project_id: project_id.to_string(),
         sim_project_id,
         day,
-        sessions: u(sessions),
-        visitors: u(visitors),
-        pageviews: u(pageviews),
+        sessions: u32_of(t.sessions),
+        visitors: u32_of(t.visitors),
+        pageviews: u32_of(t.pageviews),
         engagement_pm: engagement_pm.min(1000),
         top_pages_digest: top_pages_digest(&paths),
     }))
@@ -912,78 +880,50 @@ pub async fn compute_signal(
 /// row yet: store a `pending` signal. Then hand every pending signal to the
 /// sink and mark the applied ones. Returns the number of new signal rows.
 pub async fn nightly_signals(
-    pool: &PgPool,
+    db: &Db,
     sink: &dyn AnalyticsSignalSink,
     now: DateTime<Utc>,
 ) -> Result<u64> {
     let today = now.date_naive();
-    let missing: Vec<(Uuid, NaiveDate)> = sqlx::query_as(
-        "SELECT t.project_id, t.day FROM analytics_daily_totals t
-         LEFT JOIN analytics_signals s ON s.project_id = t.project_id AND s.day = t.day
-         WHERE t.day < $1 AND s.project_id IS NULL
-         ORDER BY t.day, t.project_id",
-    )
-    .bind(today)
-    .fetch_all(pool)
-    .await?;
     let mut created = 0;
-    for (project_id, day) in missing {
-        let Some(sig) = compute_signal(pool, project_id, day).await? else {
+    for (project_id, day) in store::days_without_signal(db, today).await? {
+        let Some(sig) = compute_signal(db, &project_id, day).await? else {
             continue;
         };
-        created += sqlx::query(
-            "INSERT INTO analytics_signals (project_id, day, sessions, visitors, pageviews,
-                engagement_pm, top_pages_digest)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (project_id, day) DO NOTHING",
-        )
-        .bind(project_id)
-        .bind(day)
-        .bind(i32::try_from(sig.sessions).unwrap_or(i32::MAX))
-        .bind(i32::try_from(sig.visitors).unwrap_or(i32::MAX))
-        .bind(i32::try_from(sig.pageviews).unwrap_or(i32::MAX))
-        .bind(i32::try_from(sig.engagement_pm).unwrap_or(0))
-        .bind(sig.top_pages_digest as i64)
-        .execute(pool)
-        .await?
-        .rows_affected();
-    }
-
-    type PendingRow = (Uuid, NaiveDate, Uuid, String, i32, i32, i32, i32, i64);
-    let pending: Vec<PendingRow> = sqlx::query_as(
-        "SELECT s.project_id, s.day, p.company_id, p.sim_project_id, s.sessions, s.visitors,
-                s.pageviews, s.engagement_pm, s.top_pages_digest
-         FROM analytics_signals s JOIN projects p ON p.id = s.project_id
-         WHERE s.status = 'pending' ORDER BY s.day, s.project_id",
-    )
-    .fetch_all(pool)
-    .await?;
-    for (project_id, day, company_id, sim_project_id, se, vi, pv, pm, digest) in pending {
-        let u = |v: i32| u32::try_from(v).unwrap_or(0);
-        let sig = AnalyticsSignal {
-            company_id,
-            project_id,
-            sim_project_id,
+        created += store::insert_signal(
+            db,
+            &project_id,
             day,
-            sessions: u(se),
-            visitors: u(vi),
-            pageviews: u(pv),
-            engagement_pm: u(pm),
-            top_pages_digest: digest as u64,
+            sig.sessions,
+            sig.visitors,
+            sig.pageviews,
+            sig.engagement_pm,
+            sig.top_pages_digest,
+            now.timestamp_millis(),
+        )
+        .await?;
+    }
+    for row in store::pending_signals(db).await? {
+        let sig = AnalyticsSignal {
+            company_id: row.company_id,
+            project_id: row.project_id.clone(),
+            sim_project_id: row.sim_project_id,
+            day: row.day,
+            sessions: u32_of(row.sessions),
+            visitors: u32_of(row.visitors),
+            pageviews: u32_of(row.pageviews),
+            engagement_pm: u32_of(row.engagement_pm),
+            // The digest is a 64-bit pattern stored as INTEGER.
+            top_pages_digest: row.top_pages_digest as u64,
         };
         match sink.deliver(&sig).await {
             Ok(SinkOutcome::Applied) => {
-                sqlx::query(
-                    "UPDATE analytics_signals SET status = 'applied', applied_at = now()
-                     WHERE project_id = $1 AND day = $2 AND status = 'pending'",
-                )
-                .bind(project_id)
-                .bind(day)
-                .execute(pool)
-                .await?;
+                store::mark_signal_applied(db, &row.project_id, row.day, now.timestamp_millis())
+                    .await?;
             }
             Ok(SinkOutcome::Pending) => {}
             Err(e) => {
-                tracing::error!(error = %e, project = %project_id, %day, "delivering analytics signal failed");
+                tracing::error!(error = %e, project = %row.project_id, day = %row.day, "delivering analytics signal failed");
             }
         }
     }
@@ -992,14 +932,14 @@ pub async fn nightly_signals(
 
 /// One run of the hourly job: rollup, nightly signals, retention.
 pub async fn run_maintenance(
-    pool: &PgPool,
+    db: &Db,
     sink: &dyn AnalyticsSignalSink,
     cfg: &TrackerConfig,
     now: DateTime<Utc>,
 ) -> Result<()> {
-    let n = rollup(pool, now, cfg.raw_retention_days).await?;
-    let s = nightly_signals(pool, sink, now).await?;
-    let (ev, salts) = retention(pool, now, cfg.raw_retention_days).await?;
+    let n = rollup(db, now, cfg.raw_retention_days).await?;
+    let s = nightly_signals(db, sink, now).await?;
+    let (ev, salts) = retention(db, now, cfg.raw_retention_days).await?;
     tracing::info!(
         days = n,
         signals = s,
@@ -1011,7 +951,7 @@ pub async fn run_maintenance(
 }
 
 pub fn spawn_maintenance(st: &AppState) -> JoinHandle<()> {
-    let pool = st.pool.clone();
+    let db = st.db.clone();
     let sink = st.signal_sink.clone();
     let cfg = st.tracker.cfg.clone();
     tokio::spawn(async move {
@@ -1019,7 +959,7 @@ pub fn spawn_maintenance(st: &AppState) -> JoinHandle<()> {
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             tick.tick().await;
-            if let Err(e) = run_maintenance(&pool, sink.as_ref(), &cfg, Utc::now()).await {
+            if let Err(e) = run_maintenance(&db, sink.as_ref(), &cfg, Utc::now()).await {
                 tracing::error!(error = ?e, "tracker maintenance failed");
             }
         }
@@ -1028,20 +968,16 @@ pub fn spawn_maintenance(st: &AppState) -> JoinHandle<()> {
 
 // ------------------------------------------------------------ projects API
 
-#[derive(Clone, Debug, Serialize, sqlx::FromRow)]
-#[serde(rename_all = "camelCase")]
-pub struct Project {
-    pub id: Uuid,
-    pub sim_project_id: String,
-    pub slug: String,
-    pub name: String,
-    pub domain: Option<String>,
-    pub repo: Option<String>,
-    pub tracker_key: String,
-    pub created_at: DateTime<Utc>,
+/// Sim ids and slugs: lowercase letter first, then lowercase letters,
+/// digits and dashes, at most 64 bytes ("project-1", "cinqueterre").
+pub fn valid_sim_id(s: &str) -> bool {
+    let b = s.as_bytes();
+    !b.is_empty()
+        && b.len() <= 64
+        && b[0].is_ascii_lowercase()
+        && b.iter()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
 }
-
-const PROJECT_COLS: &str = "id, sim_project_id, slug, name, domain, repo, tracker_key, created_at";
 
 pub fn new_tracker_key() -> String {
     let mut b = [0u8; 12];
@@ -1059,26 +995,22 @@ pub struct NewProject {
     pub repo: Option<String>,
 }
 
-pub async fn create_project(
-    pool: &PgPool,
-    company_id: Uuid,
-    p: &NewProject,
-) -> Result<Option<Project>> {
-    sqlx::query_as::<_, Project>(&format!(
-        "INSERT INTO projects (company_id, sim_project_id, slug, name, domain, repo, tracker_key)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING
-         RETURNING {PROJECT_COLS}"
-    ))
-    .bind(company_id)
-    .bind(&p.sim_project_id)
-    .bind(&p.slug)
-    .bind(&p.name)
-    .bind(&p.domain)
-    .bind(&p.repo)
-    .bind(new_tracker_key())
-    .fetch_optional(pool)
+/// `Ok(None)` when the sim id or slug is taken in the company.
+pub async fn create_project(db: &Db, company_id: &str, p: &NewProject) -> Result<Option<Project>> {
+    store::create_project(
+        db,
+        &NewProjectRow {
+            company_id,
+            sim_project_id: &p.sim_project_id,
+            slug: &p.slug,
+            name: &p.name,
+            domain: p.domain.as_deref(),
+            repo: p.repo.as_deref(),
+            tracker_key: &new_tracker_key(),
+        },
+        Utc::now().timestamp_millis(),
+    )
     .await
-    .context("create project")
 }
 
 fn project_json(t: &Tracker, p: &Project) -> Value {
@@ -1091,13 +1023,8 @@ pub async fn list_projects(
     State(st): State<AppState>,
     CurrentUser(user): CurrentUser,
 ) -> AppResult<Json<Vec<Value>>> {
-    let c = require_company(&st, user.id).await?;
-    let rows = sqlx::query_as::<_, Project>(&format!(
-        "SELECT {PROJECT_COLS} FROM projects WHERE company_id = $1 ORDER BY created_at, slug"
-    ))
-    .bind(c.id)
-    .fetch_all(&st.pool)
-    .await?;
+    let c = require_company(&st, &user.id).await?;
+    let rows = store::list_projects(&st.db, &c.id).await?;
     Ok(Json(
         rows.iter().map(|p| project_json(&st.tracker, p)).collect(),
     ))
@@ -1108,15 +1035,15 @@ pub async fn post_project(
     CurrentUser(user): CurrentUser,
     Json(mut body): Json<NewProject>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
-    let c = require_company(&st, user.id).await?;
-    if !crate::plan::valid_sim_id(&body.sim_project_id) {
+    let c = require_company(&st, &user.id).await?;
+    if !valid_sim_id(&body.sim_project_id) {
         return Err(AppError::BadRequest("invalid simProjectId".into()));
     }
     body.name = body.name.trim().to_string();
     if body.name.is_empty() || body.name.chars().count() > 120 {
         return Err(AppError::BadRequest("name must be 1-120 characters".into()));
     }
-    if !crate::plan::valid_sim_id(&body.slug) {
+    if !valid_sim_id(&body.slug) {
         return Err(AppError::BadRequest(
             "slug must be lowercase letters, digits and dashes".into(),
         ));
@@ -1135,7 +1062,7 @@ pub async fn post_project(
             .ok_or_else(|| AppError::BadRequest("domain must be a host name".into()))?;
         body.domain = Some(host);
     }
-    match create_project(&st.pool, c.id, &body).await? {
+    match create_project(&st.db, &c.id, &body).await? {
         Some(p) => Ok((StatusCode::CREATED, Json(project_json(&st.tracker, &p)))),
         None => Err(AppError::Conflict(
             "a project with this id or slug exists".into(),
@@ -1158,77 +1085,53 @@ pub async fn get_analytics(
     CurrentUser(user): CurrentUser,
     Query(q): Query<AnalyticsQuery>,
 ) -> AppResult<Json<Value>> {
-    let c = require_company(&st, user.id).await?;
+    let c = require_company(&st, &user.id).await?;
     let days = q.days.unwrap_or(28).clamp(1, 90);
-    let project = sqlx::query_as::<_, Project>(&format!(
-        "SELECT {PROJECT_COLS} FROM projects
-         WHERE company_id = $1 AND (id::text = $2 OR slug = $2 OR sim_project_id = $2)"
-    ))
-    .bind(c.id)
-    .bind(&q.project)
-    .fetch_optional(&st.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("no such project".into()))?;
+    let project = store::find_project(&st.db, &c.id, &q.project)
+        .await?
+        .ok_or_else(|| AppError::NotFound("no such project".into()))?;
     let today = Utc::now().date_naive();
     let from = today - chrono::Duration::days(i64::from(days - 1));
 
-    type DayRow = (NaiveDate, i32, i32, i32, i32, f64);
-    let series: Vec<DayRow> = sqlx::query_as(
-        "SELECT d::date, COALESCE(t.sessions, 0), COALESCE(t.visitors, 0), COALESCE(t.pageviews, 0),
-                COALESCE(t.engaged_sessions, 0),
-                COALESCE(round(t.engaged_sessions::numeric / NULLIF(t.sessions, 0), 4), 0)::float8
-         FROM generate_series($2::date, $3::date, interval '1 day') d
-         LEFT JOIN analytics_daily_totals t ON t.project_id = $1 AND t.day = d::date
-         ORDER BY d",
-    )
-    .bind(project.id)
-    .bind(from)
-    .bind(today)
-    .fetch_all(&st.pool)
-    .await?;
-    let top_pages: Vec<(String, i64, i64, i64)> = sqlx::query_as(
-        "SELECT path, sum(pageviews)::bigint, sum(sessions)::bigint,
-                COALESCE(sum(engaged_ms_sum) / NULLIF(sum(engaged_count), 0), 0)::bigint
-         FROM analytics_daily WHERE project_id = $1 AND day >= $2
-         GROUP BY path ORDER BY sum(pageviews) DESC, path LIMIT 10",
-    )
-    .bind(project.id)
-    .bind(from)
-    .fetch_all(&st.pool)
-    .await?;
-    let languages: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT lang, sum(pageviews)::bigint FROM analytics_daily
-         WHERE project_id = $1 AND day >= $2
-         GROUP BY lang ORDER BY sum(pageviews) DESC, lang",
-    )
-    .bind(project.id)
-    .bind(from)
-    .fetch_all(&st.pool)
-    .await?;
-    let sources: Vec<(String, i64, i64)> = sqlx::query_as(
-        "SELECT source, sum(sessions)::bigint, sum(pageviews)::bigint FROM analytics_daily
-         WHERE project_id = $1 AND day >= $2
-         GROUP BY source ORDER BY sum(pageviews) DESC, source LIMIT 20",
-    )
-    .bind(project.id)
-    .bind(from)
-    .fetch_all(&st.pool)
-    .await?;
+    // Zero-filled day series (from..=today).
+    let stored: BTreeMap<NaiveDate, store::DaySeriesRow> =
+        store::day_series(&st.db, &project.id, from, today)
+            .await?
+            .into_iter()
+            .map(|r| (r.day, r))
+            .collect();
+    let series: Vec<store::DaySeriesRow> = from
+        .iter_days()
+        .take_while(|d| *d <= today)
+        .map(|d| {
+            stored.get(&d).cloned().unwrap_or(store::DaySeriesRow {
+                day: d,
+                sessions: 0,
+                visitors: 0,
+                pageviews: 0,
+                engaged_sessions: 0,
+                engagement_rate: 0.0,
+            })
+        })
+        .collect();
+    let top_pages = store::top_pages(&st.db, &project.id, from).await?;
+    let languages = store::languages(&st.db, &project.id, from).await?;
+    let sources = store::sources(&st.db, &project.id, from).await?;
 
     let (mut ts, mut tv, mut tp, mut te) = (0i64, 0i64, 0i64, 0i64);
     for r in &series {
-        ts += i64::from(r.1);
-        tv += i64::from(r.2);
-        tp += i64::from(r.3);
-        te += i64::from(r.4);
+        ts += r.sessions;
+        tv += r.visitors;
+        tp += r.pageviews;
+        te += r.engaged_sessions;
     }
     let engagement_pm = if ts > 0 { te * 1000 / ts } else { 0 };
     Ok(Json(json!({
         "project": { "id": project.id, "simProjectId": project.sim_project_id, "slug": project.slug,
                      "name": project.name, "domain": project.domain },
         "from": from, "to": today, "days": series.iter().map(|r| json!({
-            "day": r.0, "sessions": r.1, "visitors": r.2, "pageviews": r.3,
-            "engagedSessions": r.4, "engagementRate": r.5,
+            "day": r.day, "sessions": r.sessions, "visitors": r.visitors, "pageviews": r.pageviews,
+            "engagedSessions": r.engaged_sessions, "engagementRate": r.engagement_rate,
         })).collect::<Vec<_>>(),
         "totals": { "sessions": ts, "visitors": tv, "pageviews": tp, "engagedSessions": te,
                     "engagementPm": engagement_pm },

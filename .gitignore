@@ -77,3 +77,6 @@ playwright-report/
 # cockpit.benchmark.v1 documents written by reporters (uploaded as CI artifacts)
 /artifacts/
 apps/game/reports/
+
+# Local server data (SQLite + sync blobs, SIMPRESS_DATA_DIR)
+/data/
