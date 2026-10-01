@@ -139,3 +139,87 @@ first `DayTick` writes a short "while you were away" recap from the event log.
     `week_arcs` with output schemas;
   - the digest formatter;
   - the arc catalogue with allowed steps.
+
+## 7. Improvisation: extraordinary, unscripted happenings
+
+The intents in §3 keep ordinary days believable. Now and then the director
+does something **nobody defined**: an *extraordinary happening*. The **story
+is free**: the director invents what happens, in its own words, grounded in
+who these people are and what is going on. The **mechanics are composed**
+from a small, safe set of **effect primitives**, so the unexpected can't break
+the sim, the economy or the CEO's authority.
+
+Examples of what can emerge, none of them pre-scripted:
+- Lorenzo finds a 17th-century map of the old mule paths in the archive. He
+  gathers Isabella and Francesca around it, and the next morning there's a
+  proposal for a 4-part "Lost paths of the Cinque Terre" series in the plan.
+- During a real sirocco storm the power flickers. Davide jokes about the
+  server room's "Ligurian UPS". The team ends up writing a live "storm day in
+  the villages" update, which Alessia pushes to the newsletter.
+- On a quiet Sunday-in-August shift, Giulia invites a fisherman from
+  Riomaggiore to the office for an interview. A guest appears in the lobby,
+  and the interview becomes a draft work item.
+- After a viral post, the whole team spontaneously celebrates at the coffee
+  machine with Francesca's playlist. Paolo pins a printout of the traffic
+  graph to the wall, and it stays there as a prop.
+
+### Effect primitives (the director's toolbox)
+
+| Primitive | What it can do | Bounds |
+|---|---|---|
+| `gather{people[], place, minutes}` | People walk to a place and stay together | People on site and free; at most 60 game minutes; capacity |
+| `emote{person, kind}` | Laugh, cheer, think, surprise, applause, phone call, … (animation clips) | Catalogue of clips; no harmful kinds |
+| `prop{kind, place, ttl_days, label}` | Temporary prop in the 3D office: pinned printout, map on the table, cake, flowers, guest chair, whiteboard sketch, decoration | Procedural or catalogue props only; at most 5 active; TTL ≤ 14 days |
+| `guest{name, role, place, minutes}` | A visitor (external, unnamed in sim stats), for example "a fisherman from Riomaggiore" | Fictional or role-described only (never a real private person by name); no stats, no hiring |
+| `ambience{kind, minutes}` | Music, lights dim, storm flicker (tied to real weather), cheering crowd sound | Must be tied to a cited cause |
+| `memory{people[], text}` | Shared memories of the happening | Grounding: must describe the happening itself |
+| `affinity{pairs[], delta}` / `mood{people[], delta}` | Social and emotional aftermath | Same caps as §3, counted in the daily budget |
+| `proposal{work item: kind, title, brief, workstream?}` | **Real work emerges**: a plan proposal from the protagonist | Goes through the normal plan and editorial gates; the CEO or EiC must accept; nothing auto-publishes |
+| `ticket{kind, summary, options}` | A decision for the CEO that the happening raises | Via the Secretary; standard ticket rules |
+| `spotlight{line}` / `narration{text}` | The story told in the CEO feed, with an "extraordinary" badge | Grounded; civil |
+| `arc{type: novel, title, steps≤5}` | It becomes a multi-day thread | Novel arcs are still workplace-appropriate |
+
+A happening is a **script of 2–12 primitives** with a title, a short story,
+the cited grounds (memories, interests, weather, holiday, events) and a
+"why now". The sim plays it out over game minutes or days. People actually
+walk, gather and emote, and props appear in the 3D office.
+
+### Rarity, novelty and safety
+
+- **Wonder budget:** at most 1 extraordinary happening per company per real
+  day (and at most 2 per game week in fast mode). The chance rises with what
+  the digest offers: a holiday, weather extremes, a viral post, an arc
+  climax, a quiet stretch.
+- **Novelty:** the director sees a list of past happenings (titles and
+  embeddings). The server rejects a happening too similar to an earlier one
+  (embedding similarity threshold, plus checks on primitive patterns).
+  Surprises stay surprising.
+- **Grounding:** every happening must cite at least 2 digest facts:
+  something about the people (interests, memories, traditions) and something
+  about the moment (weather, calendar, events, plan).
+- **Same hard limits as all intents:**
+  - no money, salaries, budgets, priorities, hiring, ticket answers or
+    publishing;
+  - no real private persons;
+  - civility and workplace-appropriateness;
+  - content ideas only ever become *proposals*.
+- **CEO control:**
+  - a per-company **"magic" setting** (off | rare | lively) scales the
+    budget;
+  - every happening can be opened ("why did this happen?", with the full
+    recording, ADR-0034);
+  - any lingering effect (a prop, an arc) can be dismissed;
+  - proposals can be declined.
+- **Offline:** the fallback director never improvises. Happenings need the
+  LLM director, so they're a reason to come back.
+
+### Beyond the catalogue (later)
+
+When a happening needs a prop or animation that doesn't exist, the director
+describes it (`prop{kind: "custom", description}`).
+- **Now:** it renders as a labelled procedural placeholder.
+- **Later:** the description can be sent to the Agency (Claude, metered in
+  credits) to assemble a small glTF from the parametric asset kit. If
+  approved, the prop joins the company's catalogue. So, over time, the
+  office's set of possible things grows out of what has actually happened
+  in it.
