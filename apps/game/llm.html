@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SimPress LLM harness</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; padding: 16px; background: #1b1f2a; color: #e8e6e3; font: 14px system-ui, sans-serif; }
+      main { max-width: 960px; margin: 0 auto; display: grid; gap: 12px; }
+      h1 { font-size: 18px; margin: 0; }
+      fieldset { border: 1px solid #333a4a; border-radius: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      label { display: inline-flex; gap: 6px; align-items: center; }
+      select, input, textarea, button { font: inherit; color: inherit; background: #262c3a; border: 1px solid #3a4256; border-radius: 6px; padding: 6px 8px; }
+      textarea { width: 100%; box-sizing: border-box; min-height: 72px; }
+      button { cursor: pointer; } button:disabled { opacity: 0.5; cursor: default; }
+      progress { width: 240px; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #12151d; padding: 10px; border-radius: 8px; margin: 0; min-height: 2em; }
+      .muted { opacity: 0.7; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>SimPress local LLM harness</h1>
+      <p class="muted">Loads a model in the LLM worker and streams a chat completion. "tiny-random-llama" is an offline random-weight fixture (gibberish, proves the runtime path); registry models download from the Hugging Face Hub into Cache Storage.</p>
+      <fieldset>
+        <label>Model <select id="model"></select></label>
+        <label>Device <select id="device"><option>webgpu</option><option>wasm</option></select></label>
+        <button id="load">Load</button>
+        <progress id="progress" max="1" value="0"></progress>
+        <span id="progress-label" class="muted"></span>
+      </fieldset>
+      <textarea id="prompt">Write one sentence of hallway chatter for a newsroom in Cinque Terre.</textarea>
+      <fieldset>
+        <label>Max tokens <input id="max" type="number" value="64" min="1" max="2048" style="width: 6em" /></label>
+        <label>Temperature <input id="temp" type="number" value="0.7" step="0.1" min="0" max="2" style="width: 5em" /></label>
+        <button id="run" disabled>Generate</button>
+        <button id="stop" disabled>Stop</button>
+        <span id="stats" class="muted"></span>
+      </fieldset>
+      <pre id="out"></pre>
+      <details>
+        <summary>Device capabilities and model selection</summary>
+        <pre id="caps"></pre>
+      </details>
+    </main>
+    <script type="module" src="/src/llm/harness.ts"></script>
+  </body>
+</html>
