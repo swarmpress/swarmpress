@@ -52,3 +52,4 @@ Accepted ADRs are never rewritten.
 | [0030](0030-personas-are-a-data-catalog-with-cv-hobbies-and-interests.md) | Personas are a data catalog with CV, hobbies and interests | Accepted |
 | [0031](0031-the-publishing-plan-is-the-shared-workspace-for-ceo-and-agents.md) | The publishing plan is the shared workspace for CEO and agents | Accepted |
 | [0032](0032-first-party-analytics-tracker-owned-by-the-data-scientist.md) | First-party analytics tracker, owned by the data scientist | Accepted |
+| [0033](0033-credits-a-closed-loop-platform-currency-separate-from-in-game-cash.md) | Credits: a closed-loop platform currency, separate from in-game cash | Accepted |
