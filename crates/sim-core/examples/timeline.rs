@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use sim_core::scenarios::{demo_office, golden_script, GOLDEN_SEED};
-use sim_core::staff::persona;
+use sim_core::staff::persona_slug;
 
 fn main() {
     let steps: u64 = std::env::args()
@@ -33,7 +33,7 @@ fn main() {
                     c.day,
                     c.minute / 60,
                     c.minute % 60,
-                    persona(s.persona).name
+                    persona_slug(s.persona)
                 );
                 last.insert(s.id.0, a);
             }

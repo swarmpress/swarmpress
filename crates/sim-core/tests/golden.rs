@@ -8,7 +8,7 @@
 
 use sim_core::scenarios::{golden_script, run_golden, GOLDEN_STEPS};
 
-const GOLDEN_HASH: u64 = 0x3b02_96fc_7d0f_2aba;
+const GOLDEN_HASH: u64 = 0x510c_1fc2_8504_1e3c;
 
 #[test]
 fn golden_hash() {
