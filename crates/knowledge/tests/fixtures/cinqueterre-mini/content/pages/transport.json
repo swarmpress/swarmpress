@@ -1,0 +1,175 @@
+{
+  "id": "transport-de-001",
+  "slug": {
+    "de": "/de/transport",
+    "fr": "/fr/transport"
+  },
+  "title": {
+    "en": "Transportation in Cinque Terre: Complete Guide to Moving Between Villages"
+  },
+  "page_type": "info",
+  "template": "cinque-terre-editorial",
+  "seo": {
+    "title": {
+      "en": "Cinque Terre Transport Guide | Trains, Ferries & More"
+    },
+    "description": {
+      "en": "Master Cinque Terre transportation with trains, ferries, and walking paths. Expert timing, tickets, and insider tips for seamless village hopping."
+    }
+  },
+  "body": [
+    {
+      "type": "editorial-hero",
+      "badge": "Transportation Guide",
+      "title": "Navigate Cinque Terre<br/>Like a Local",
+      "subtitle": "Master the art of seamless village hopping with our comprehensive guide to trains, ferries, and scenic pathways. Every schedule, every route, every insider tip you need.",
+      "image": "https://images.unsplash.com/photo-1544828237-b63b6409fd74?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDQzNDB8MHwxfHNlYXJjaHwxfHxjaW5xdWUlMjB0ZXJyZSUyMGl0YWx5JTIwY29sb3JmdWwlMjB2aWxsYWdlfGVufDB8MHx8fDE3NjkzMjczNTF8MA&ixlib=rb-4.1.0&q=80&w=1080"
+    },
+    {
+      "type": "editorial-intro",
+      "content": "Eleven kilometers of dramatic coastline. Two to four minutes between villages by train. A sixteen-euro daily card that unlocks unlimited travel and trails. Twenty minutes by ferry from Monterosso to Levanto, with the entire Ligurian coast unfolding before you."
+    },
+    {
+      "type": "collection-embed",
+      "collectionType": "transportation",
+      "heading": "Transportation Options",
+      "headingLevel": 2,
+      "items": [
+        {
+          "slug": "cinque-terre-regional-train",
+          "title": "Cinque Terre Regional Train Service",
+          "url": "/cinque-terre-regional-train",
+          "category": {
+            "tags": [
+              "scenic",
+              "frequent",
+              "village-hopping"
+            ],
+            "primary": "Train",
+            "secondary": "Regional Service"
+          },
+          "data": {}
+        }
+      ],
+      "display": {
+        "layout": "grid",
+        "columns": 3,
+        "showImage": true,
+        "showSummary": true,
+        "imageAspect": "landscape"
+      },
+      "showViewAll": false,
+      "viewAllUrl": "/transportation"
+    },
+    {
+      "type": "content-section",
+      "variant": "text-with-image",
+      "image": "https://images.unsplash.com/photo-1544828237-b63b6409fd74?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDQzNDB8MHwxfHNlYXJjaHwxfHxjaW5xdWUlMjB0ZXJyZSUyMGl0YWx5JTIwY29sb3JmdWwlMjB2aWxsYWdlfGVufDB8MHx8fDE3NjkzMjczNTF8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "title": "Choose Your Perfect Transportation Style",
+      "content": "Your transportation choice shapes your entire Cinque Terre experience. The regional train offers efficiency and frequency, whisking you between villages in minutes with departures every 20-30 minutes during peak season. For a more romantic approach, seasonal ferries provide breathtaking coastal perspectives, operating from March to October with the most frequent service from May through September.\n\nWalking the ancient sentieri (trails) connects you intimately with the landscape, though prepare for challenging terrain and varying closure schedules due to weather and maintenance. The famous Via dell'Amore remains closed indefinitely, but alternative coastal paths offer equally stunning experiences.\n\nPro tip: Purchase the Cinque Terre Card for unlimited train travel, trail access, and Wi-Fi at stations. The daily card (€16) pays for itself after just two train journeys, and the multi-day options provide even better value for extended stays.",
+      "imagePosition": "left"
+    },
+    {
+      "type": "collection-with-interludes",
+      "heading": "Transportation Essentials",
+      "headingLevel": 2,
+      "intro": "Everything you need to know for smooth travels between the five villages.",
+      "items": [
+        {
+          "type": "experience",
+          "icon": "clock",
+          "title": "Perfect Timing",
+          "description": "Trains run every 20-30 minutes in high season, 1-2 hours in winter. Ferry service operates March-October with peak frequency May-September."
+        },
+        {
+          "type": "experience",
+          "icon": "credit-card",
+          "title": "Smart Ticketing",
+          "description": "Cinque Terre Card includes unlimited trains and trails. Single tickets €4-5, but card pays for itself quickly with multiple journeys."
+        },
+        {
+          "type": "interlude",
+          "content": "There's something magical about watching the villages appear and disappear through train tunnel windows—each emergence revealing a new palette of pastel houses against azure sea."
+        },
+        {
+          "type": "experience",
+          "icon": "map",
+          "title": "Route Planning",
+          "description": "Download offline maps before arriving. Cell service can be spotty in tunnels and remote trail sections."
+        },
+        {
+          "type": "experience",
+          "icon": "accessibility",
+          "title": "Accessibility Options",
+          "description": "All train stations have elevator access. Monterosso and Manarola offer the best wheelchair-friendly village exploration."
+        },
+        {
+          "type": "interlude",
+          "content": "The ferry offers a perspective impossible from land—watching the terraced vineyards rise impossibly steep from the water, understanding why these villages remained isolated for centuries."
+        },
+        {
+          "type": "experience",
+          "icon": "luggage",
+          "title": "Luggage Strategy",
+          "description": "Pack light for train travel. Most stations have small platforms. Consider luggage transfer services between accommodations."
+        },
+        {
+          "type": "experience",
+          "icon": "weather",
+          "title": "Weather Considerations",
+          "description": "Trails close in severe weather. Ferries cancel in rough seas. Always have train backup plans, especially October-March."
+        }
+      ]
+    },
+    {
+      "type": "faq-section",
+      "title": "Transportation Questions Answered",
+      "subtitle": "Real answers from someone who's taken every train and walked every path",
+      "faqs": [
+        {
+          "question": "Should I buy train tickets in advance?",
+          "answer": "Not necessary for regional trains between villages - they don't sell out and you can buy tickets at machines or validate Cinque Terre Cards. However, book high-speed trains to/from major cities like Rome or Florence well in advance for better prices."
+        },
+        {
+          "question": "Can I bring luggage on the regional trains?",
+          "answer": "Yes, but space is limited. Large suitcases can be challenging during peak times when trains are crowded. Consider luggage transfer services or pack light. There are no dedicated luggage areas on these short trains."
+        },
+        {
+          "question": "What happens if trails are closed due to weather?",
+          "answer": "Trail closures are common, especially in winter and after heavy rain. Always check current status at park offices or online before setting out. Trains provide reliable backup transportation - this is why the Cinque Terre Card covering both is so valuable."
+        },
+        {
+          "question": "Are ferries worth the extra cost?",
+          "answer": "Absolutely, for the experience and perspective. The coastal views are spectacular and you'll appreciate the villages from the sea. Ferry tickets are €10-35 depending on route. They operate March-October with most frequent service May-September."
+        },
+        {
+          "question": "How early should I start traveling between villages?",
+          "answer": "First trains run around 6:00 AM, with service every 20-30 minutes during high season. Start early to avoid crowds, especially for photography and trail hiking. Last trains typically run until midnight in summer, but check current schedules."
+        },
+        {
+          "question": "Is parking available in the villages?",
+          "answer": "Very limited and expensive (€3-5/hour where available). Monterosso has the most parking options. Better to park in La Spezia (€15-20/day) and take trains, or use the parking in Levanto. The villages are largely car-free zones."
+        }
+      ]
+    },
+    {
+      "type": "closing-note",
+      "title": "Ready to Master Cinque Terre Transportation?",
+      "content": "Get detailed schedules, insider routing tips, and real-time updates for seamless village hopping.",
+      "primaryButton": {
+        "text": "Get Complete Transport Guide",
+        "url": "/en/transportation"
+      },
+      "secondaryButton": {
+        "text": "Check Live Train Times",
+        "url": "/en/transportation"
+      }
+    }
+  ],
+  "metadata": {
+    "page_type": "info"
+  },
+  "status": "published",
+  "created_at": "2025-12-12T22:00:00.000Z",
+  "updated_at": "2025-12-16T13:29:01.921Z"
+}

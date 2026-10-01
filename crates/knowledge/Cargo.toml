@@ -1,0 +1,15 @@
+[package]
+name = "knowledge"
+description = "Closed-world site knowledge: manifest, entity/media/page/collection indexes, link and media resolution"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+content-model = { path = "../content-model" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

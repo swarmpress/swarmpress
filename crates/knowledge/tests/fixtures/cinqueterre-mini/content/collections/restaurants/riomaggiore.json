@@ -1,0 +1,228 @@
+{
+ "collection_type": "cinqueterre_restaurants",
+ "village": "riomaggiore",
+ "generated_at": "2025-12-10T16:13:26.117Z",
+ "item_count": 20,
+ "items": [
+  {
+   "slug": "rio-bistrot",
+   "name": {
+    "de": "Rio Bistrot",
+    "en": "Rio Bistrot",
+    "fr": "Rio Bistrot",
+    "it": "Rio Bistrot"
+   },
+   "village": "riomaggiore",
+   "rank": 1
+  },
+  {
+   "slug": "dau-cila",
+   "name": {
+    "de": "Dau Cila",
+    "en": "Dau Cila",
+    "fr": "Dau Cila",
+    "it": "Dau Cila"
+   },
+   "village": "riomaggiore",
+   "rank": 2
+  },
+  {
+   "slug": "te-la-do-io-la-merenda",
+   "name": {
+    "de": "Te la do io la merenda",
+    "en": "Te la do io la merenda",
+    "fr": "Te la do io la merenda",
+    "it": "Te la do io la merenda"
+   },
+   "village": "riomaggiore",
+   "rank": 3
+  },
+  {
+   "slug": "fuori-rotta",
+   "name": {
+    "de": "Fuori Rotta",
+    "en": "Fuori Rotta",
+    "fr": "Fuori Rotta",
+    "it": "Fuori Rotta"
+   },
+   "village": "riomaggiore",
+   "rank": 4
+  },
+  {
+   "slug": "a-pie-de-ma",
+   "name": {
+    "de": "A Pie' de Ma'",
+    "en": "A Pie' de Ma'",
+    "fr": "A Pie' de Ma'",
+    "it": "A Pie' de Ma'"
+   },
+   "village": "riomaggiore",
+   "rank": 5
+  },
+  {
+   "slug": "trattoria-dal-billy",
+   "name": {
+    "de": "Trattoria Dal Billy",
+    "en": "Trattoria Dal Billy",
+    "fr": "Trattoria Dal Billy",
+    "it": "Trattoria Dal Billy"
+   },
+   "village": "riomaggiore",
+   "rank": 11
+  },
+  {
+   "slug": "vertical-wine-bar",
+   "name": {
+    "de": "Vertical Wine Bar",
+    "en": "Vertical Wine Bar",
+    "fr": "Vertical Wine Bar",
+    "it": "Vertical Wine Bar"
+   },
+   "village": "riomaggiore",
+   "rank": 16
+  },
+  {
+   "slug": "trattoria-la-grotta",
+   "name": {
+    "de": "Trattoria La Grotta",
+    "en": "Trattoria La Grotta",
+    "fr": "Trattoria La Grotta",
+    "it": "Trattoria La Grotta"
+   },
+   "village": "riomaggiore",
+   "rank": 18
+  },
+  {
+   "slug": "punta-bonfiglio-bar",
+   "name": {
+    "de": "Punta Bonfiglio Bar",
+    "en": "Punta Bonfiglio Bar",
+    "fr": "Punta Bonfiglio Bar",
+    "it": "Punta Bonfiglio Bar"
+   },
+   "village": "riomaggiore",
+   "rank": 20
+  },
+  {
+   "slug": "tutti-fritti",
+   "name": {
+    "de": "Tutti Fritti",
+    "en": "Tutti Fritti",
+    "fr": "Tutti Fritti",
+    "it": "Tutti Fritti"
+   },
+   "village": "riomaggiore",
+   "rank": 6
+  },
+  {
+   "slug": "bar-centrale",
+   "name": {
+    "de": "Bar Centrale",
+    "en": "Bar Centrale",
+    "fr": "Bar Centrale",
+    "it": "Bar Centrale"
+   },
+   "village": "riomaggiore",
+   "rank": 7
+  },
+  {
+   "slug": "il-pescato-cucinato",
+   "name": {
+    "de": "Il Pescato Cucinato",
+    "en": "Il Pescato Cucinato",
+    "fr": "Il Pescato Cucinato",
+    "it": "Il Pescato Cucinato"
+   },
+   "village": "riomaggiore",
+   "rank": 8
+  },
+  {
+   "slug": "osteria-del-borgo",
+   "name": {
+    "de": "Osteria del Borgo",
+    "en": "Osteria del Borgo",
+    "fr": "Osteria del Borgo",
+    "it": "Osteria del Borgo"
+   },
+   "village": "riomaggiore",
+   "rank": 9
+  },
+  {
+   "slug": "cappun-magru",
+   "name": {
+    "de": "Cappun Magru",
+    "en": "Cappun Magru",
+    "fr": "Cappun Magru",
+    "it": "Cappun Magru"
+   },
+   "village": "riomaggiore",
+   "rank": 10
+  },
+  {
+   "slug": "da-aristide",
+   "name": {
+    "de": "Da Aristide",
+    "en": "Da Aristide",
+    "fr": "Da Aristide",
+    "it": "Da Aristide"
+   },
+   "village": "riomaggiore",
+   "rank": 12
+  },
+  {
+   "slug": "osteria-san-giacomo",
+   "name": {
+    "de": "Osteria San Giacomo",
+    "en": "Osteria San Giacomo",
+    "fr": "Osteria San Giacomo",
+    "it": "Osteria San Giacomo"
+   },
+   "village": "riomaggiore",
+   "rank": 13
+  },
+  {
+   "slug": "la-cantina-dello-zio-bramante",
+   "name": {
+    "de": "La Cantina dello Zio Bramante",
+    "en": "La Cantina dello Zio Bramante",
+    "fr": "La Cantina dello Zio Bramante",
+    "it": "La Cantina dello Zio Bramante"
+   },
+   "village": "riomaggiore",
+   "rank": 14
+  },
+  {
+   "slug": "bar-o-netto",
+   "name": {
+    "de": "Bar O Netto",
+    "en": "Bar O Netto",
+    "fr": "Bar O Netto",
+    "it": "Bar O Netto"
+   },
+   "village": "riomaggiore",
+   "rank": 15
+  },
+  {
+   "slug": "la-conchiglia-bistrot",
+   "name": {
+    "de": "La Conchiglia Bistrot",
+    "en": "La Conchiglia Bistrot",
+    "fr": "La Conchiglia Bistrot",
+    "it": "La Conchiglia Bistrot"
+   },
+   "village": "riomaggiore",
+   "rank": 17
+  },
+  {
+   "slug": "il-pirun-pizzeria",
+   "name": {
+    "de": "Il Pirun Pizzeria",
+    "en": "Il Pirun Pizzeria",
+    "fr": "Il Pirun Pizzeria",
+    "it": "Il Pirun Pizzeria"
+   },
+   "village": "riomaggiore",
+   "rank": 19
+  }
+ ]
+}

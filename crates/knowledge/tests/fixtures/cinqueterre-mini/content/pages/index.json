@@ -1,0 +1,52 @@
+{
+  "id": "1e787c50-d4c0-4d9a-9913-cafeafedf4c1",
+  "slug": {
+    "en": "/en",
+    "de": "/de",
+    "fr": "/fr",
+    "it": "/it"
+  },
+  "title": {
+    "en": "Cinque Terre Dispatch | Luxury Travel Guide",
+    "de": "Cinque Terre Dispatch | Exklusiver Reisefuehrer",
+    "fr": "Cinque Terre Dispatch | Guide de Voyage d'Exception",
+    "it": "Cinque Terre Dispatch | Guida di Viaggio Esclusiva"
+  },
+  "page_type": "language_root",
+  "seo": {
+    "title": {
+      "en": "Cinque Terre Dispatch | Luxury Travel Guide",
+      "de": "Cinque Terre Dispatch | Exklusiver Reisefuehrer",
+      "fr": "Cinque Terre Dispatch | Guide de Voyage d'Exception",
+      "it": "Cinque Terre Dispatch | Guida di Viaggio Esclusiva"
+    },
+    "description": {
+      "en": "A journey through the five colorful villages suspended between sea and sky. Discover the Italian Riviera's most romantic destination.",
+      "de": "Eine Reise durch fuenf farbenfrohe Doerfer zwischen Meer und Himmel. Entdecken Sie das romantischste Ziel der italienischen Riviera.",
+      "fr": "Un voyage a travers cinq villages colores suspendus entre mer et ciel. Decouvrez la destination la plus romantique de la Riviera italienne.",
+      "it": "Un viaggio attraverso cinque borghi colorati sospesi tra mare e cielo. Scoprite la destinazione piu romantica della Riviera Ligure."
+    }
+  },
+  "template": "cinque-terre-homepage",
+  "body": [
+    { "type": "hero-section" },
+    { "type": "featured-carousel" },
+    { "type": "trending-now" },
+    { "type": "village-selector" },
+    { "type": "places-to-stay" },
+    { "type": "eat-drink" },
+    { "type": "highlights" },
+    { "type": "curated-escapes" },
+    { "type": "latest-stories" },
+    { "type": "audio-guides" },
+    { "type": "practical-advice" },
+    { "type": "about" },
+    { "type": "newsletter" }
+  ],
+  "metadata": {
+    "page_type": "language_root"
+  },
+  "status": "published",
+  "created_at": "2025-12-04T13:18:46.911Z",
+  "updated_at": "2026-01-07T12:00:00.000Z"
+}

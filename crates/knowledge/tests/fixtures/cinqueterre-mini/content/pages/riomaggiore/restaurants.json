@@ -1,0 +1,277 @@
+{
+  "id": "3837ebbc-d52c-49d1-8c26-1bde0bf13e7f",
+  "slug": {
+    "en": "/en/riomaggiore/restaurants",
+    "de": "/de/riomaggiore/restaurants",
+    "fr": "/fr/riomaggiore/restaurants",
+    "it": "/it/riomaggiore/restaurants"
+  },
+  "title": {
+    "en": "Where to Eat in Riomaggiore | Cinque Terre Dispatch",
+    "de": "Essen in Riomaggiore | Cinque Terre Dispatch",
+    "fr": "Ou manger a Riomaggiore | Cinque Terre Dispatch",
+    "it": "Dove mangiare a Riomaggiore | Cinque Terre Dispatch"
+  },
+  "page_type": "restaurants",
+  "seo": {
+    "title": {
+      "en": "Where to Eat in Riomaggiore | Cinque Terre Dispatch",
+      "de": "Essen in Riomaggiore | Cinque Terre Dispatch",
+      "fr": "Ou manger a Riomaggiore | Cinque Terre Dispatch",
+      "it": "Dove mangiare a Riomaggiore | Cinque Terre Dispatch"
+    },
+    "description": {
+      "en": "From cliff-side trattorias to fried fish in paper cones—a local's guide to the tables where Riomaggiore feeds its soul.",
+      "de": "Von Trattorien an der Klippe bis zu frittiertem Fisch in Papiertueten—ein Insider-Guide zu den Tischen, an denen Riomaggiore seine Seele naehrt.",
+      "fr": "Des trattorias a flanc de falaise aux cornets de poissons frits—le guide d'une locale pour decouvrir les tables ou Riomaggiore nourrit son ame.",
+      "it": "Dalle trattorie sulla scogliera al pesce fritto nel cartoccio—la guida di una locale ai tavoli dove Riomaggiore nutre la sua anima."
+    }
+  },
+  "template": "cinque-terre-editorial",
+  "body": [
+    {
+      "type": "editorial-hero",
+      "title": {
+        "en": "Where the Village<br/>Feeds Its Soul",
+        "de": "Wo das Dorf<br/>seine Seele naehrt",
+        "fr": "Ou le village<br/>nourrit son ame",
+        "it": "Dove il paese<br/>nutre la sua anima"
+      },
+      "subtitle": {
+        "en": "In Riomaggiore, eating is not tourism. It is participation—in the morning catch, in the afternoon lull, in the golden hour that makes every meal a ceremony.",
+        "de": "In Riomaggiore ist Essen kein Tourismus. Es ist Teilnahme—am morgendlichen Fang, an der Nachmittagsruhe, an der goldenen Stunde, die jede Mahlzeit zur Zeremonie macht.",
+        "fr": "A Riomaggiore, manger n'est pas du tourisme. C'est une participation—a la peche du matin, au calme de l'apres-midi, a l'heure doree qui transforme chaque repas en ceremonie.",
+        "it": "A Riomaggiore, mangiare non e turismo. E partecipazione—alla pesca del mattino, alla quiete del pomeriggio, all'ora dorata che trasforma ogni pasto in una cerimonia."
+      },
+      "badge": {
+        "en": "Dining Guide",
+        "de": "Restaurant-Guide",
+        "fr": "Guide Gastronomique",
+        "it": "Guida Ristoranti"
+      },
+      "image": "https://images.unsplash.com/photo-1544828237-b63b6409fd74?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDQzNDB8MHwxfHNlYXJjaHwxfHxjaW5xdWUlMjB0ZXJyZSUyMGl0YWx5JTIwY29sb3JmdWwlMjB2aWxsYWdlfGVufDB8MHx8fDE3NjkzMjczNTF8MA&ixlib=rb-4.1.0&q=80&w=1080"
+    },
+    {
+      "type": "editorial-intro",
+      "badge": {
+        "en": "The Dining Story",
+        "de": "Die kulinarische Geschichte",
+        "fr": "L'histoire gastronomique",
+        "it": "La storia gastronomica"
+      },
+      "quote": {
+        "en": "The best restaurants in Riomaggiore are not trying to impress you. They are trying to feed you what the sea offered this morning and what the hills have been perfecting for eight centuries.",
+        "de": "Die besten Restaurants in Riomaggiore versuchen nicht, Sie zu beeindrucken. Sie wollen Ihnen servieren, was das Meer heute Morgen geboten hat und was die Huegel seit acht Jahrhunderten perfektionieren.",
+        "fr": "Les meilleurs restaurants de Riomaggiore ne cherchent pas a vous impressionner. Ils veulent vous servir ce que la mer a offert ce matin et ce que les collines perfectionnent depuis huit siecles.",
+        "it": "I migliori ristoranti di Riomaggiore non cercano di impressionarti. Vogliono servirti cio che il mare ha offerto stamattina e cio che le colline perfezionano da otto secoli."
+      },
+      "content": {
+        "en": [
+          "There is a **hierarchy** here, but it is not what you expect. A Michelin-recognized kitchen sits alongside a focaccia window, and the locals frequent both with equal reverence.",
+          "The **rhythm of meals** matters more than the venue. A quick standing lunch at noon—fried fish, paper cone, harbor view. A slow aperitivo as the light turns gold. And dinner only when the village has settled into evening.",
+          "You will notice **short menus**. This is integrity, not limitation. If the chef wasn't at the harbor this morning, the fish won't be on the plate tonight.",
+          "**Reservations** are not optional for dinner. These terraces are small, and the demand is not."
+        ],
+        "de": [
+          "Es gibt hier eine **Hierarchie**, aber nicht die, die Sie erwarten. Eine Michelin-anerkannte Kueche existiert neben einem Focaccia-Fenster, und die Einheimischen frequentieren beide mit gleicher Ehrfurcht.",
+          "Der **Rhythmus der Mahlzeiten** zaehlt mehr als der Ort. Ein schnelles Mittagessen im Stehen—frittierter Fisch, Papiertuete, Hafenblick. Ein langsamer Aperitivo, wenn das Licht golden wird. Und Abendessen erst, wenn das Dorf in die Nacht eingetaucht ist.",
+          "Sie werden **kurze Speisekarten** bemerken. Das ist Integritaet, keine Einschraenkung. Wenn der Koch heute Morgen nicht am Hafen war, wird der Fisch heute Abend nicht auf dem Teller sein.",
+          "**Reservierungen** sind fuer das Abendessen obligatorisch. Diese Terrassen sind klein, die Nachfrage nicht."
+        ],
+        "fr": [
+          "Il y a une **hierarchie** ici, mais pas celle que vous attendez. Une cuisine reconnue par le Michelin coexiste avec un comptoir a focaccia, et les locaux frequentent les deux avec la meme reverence.",
+          "Le **rythme des repas** compte plus que l'endroit. Un dejeuner rapide debout a midi—poisson frit, cornet en papier, vue sur le port. Un aperitivo lent quand la lumiere devient doree. Et le diner seulement quand le village s'est installe dans la soiree.",
+          "Vous remarquerez des **menus courts**. C'est de l'integrite, pas une limitation. Si le chef n'etait pas au port ce matin, le poisson ne sera pas dans l'assiette ce soir.",
+          "Les **reservations** ne sont pas optionnelles pour le diner. Ces terrasses sont petites, la demande ne l'est pas."
+        ],
+        "it": [
+          "C'e una **gerarchia** qui, ma non quella che vi aspettate. Una cucina riconosciuta dalla Guida Michelin convive accanto a una finestra di focaccia, e i locali frequentano entrambe con uguale riverenza.",
+          "Il **ritmo dei pasti** conta piu del locale. Un pranzo veloce in piedi a mezzogiorno—pesce fritto, cartoccio, vista sul porto. Un aperitivo lento mentre la luce diventa dorata. E la cena solo quando il paese si e adagiato nella sera.",
+          "Noterete **menu brevi**. Questa e integrita, non limitazione. Se lo chef non era al porto stamattina, il pesce non sara nel piatto stasera.",
+          "Le **prenotazioni** non sono opzionali per la cena. Queste terrazze sono piccole, la domanda no."
+        ]
+      }
+    },
+    {
+      "type": "collection-with-interludes",
+      "collectionType": "restaurants",
+      "slugs": [
+        "dau-cila",
+        "rio-bistrot",
+        "trattoria-dal-billy",
+        "a-pie-de-ma"
+      ],
+      "interludes": [
+        {
+          "afterIndex": 2,
+          "type": "primary",
+          "badge": {
+            "en": "Editorial Interlude",
+            "de": "Redaktioneller Einschub",
+            "fr": "Interlude editorial",
+            "it": "Intermezzo editoriale"
+          },
+          "title": {
+            "en": "The Logic of the Climb",
+            "de": "Die Logik des Aufstiegs",
+            "fr": "La logique de la montee",
+            "it": "La logica della salita"
+          },
+          "quote": {
+            "en": "In Riomaggiore, the best views require effort. The restaurants at the top are not inconvenient—they are honest. They ask you to work for your dinner, and they reward you with perspectives that no waterfront table can offer.",
+            "de": "In Riomaggiore erfordern die besten Aussichten Anstrengung. Die Restaurants oben sind nicht unbequem—sie sind ehrlich. Sie bitten Sie, fuer Ihr Abendessen zu arbeiten, und belohnen Sie mit Perspektiven, die kein Tisch am Wasser bieten kann.",
+            "fr": "A Riomaggiore, les plus belles vues demandent un effort. Les restaurants en haut ne sont pas incommodes—ils sont honnetes. Ils vous demandent de travailler pour votre diner, et vous recompensent avec des perspectives qu'aucune table au bord de l'eau ne peut offrir.",
+            "it": "A Riomaggiore, le viste migliori richiedono sforzo. I ristoranti in cima non sono scomodi—sono onesti. Vi chiedono di lavorare per la vostra cena, e vi ricompensano con prospettive che nessun tavolo sul lungomare puo offrire."
+          }
+        }
+      ],
+      "village": "riomaggiore"
+    },
+    {
+      "type": "editorial-intro",
+      "badge": {
+        "en": "The Quick Bites",
+        "de": "Schnelle Happen",
+        "fr": "Les petites faims",
+        "it": "Morsi veloci"
+      },
+      "quote": {
+        "en": "Not every meal needs a reservation. Some of the village's finest eating happens standing up, paper in hand, with the harbor as your dining room.",
+        "de": "Nicht jede Mahlzeit braucht eine Reservierung. Einige der besten Mahlzeiten des Dorfes finden im Stehen statt, Papier in der Hand, mit dem Hafen als Speisesaal.",
+        "fr": "Tous les repas n'ont pas besoin de reservation. Certains des meilleurs repas du village se prennent debout, papier en main, avec le port comme salle a manger.",
+        "it": "Non tutti i pasti hanno bisogno di prenotazione. Alcuni dei migliori pasti del paese si fanno in piedi, carta in mano, con il porto come sala da pranzo."
+      },
+      "content": {
+        "en": [
+          "**Te la do io la merenda** is a legend. The focaccia here—particularly the focaccia col formaggio—draws a line out the door every morning. Join it.",
+          "**Tutti Fritti** and **Il Pescato Cucinato** serve the same essential dish: the day's catch, battered, fried, and served in a paper cone. The argument about which is better has no resolution. Try both.",
+          "**Vertical Wine Bar** blurs the line between wine shop and neighborhood gathering. The selection is local and the advice is honest. A perfect aperitivo stop.",
+          "**Bar Centrale** is where the village's social life happens. Morning espresso, afternoon gossip, evening prosecco. The coffee is good, but the people-watching is better."
+        ],
+        "de": [
+          "**Te la do io la merenda** ist eine Legende. Die Focaccia hier—besonders die Focaccia col formaggio—zieht jeden Morgen eine Schlange vor die Tuer. Stellen Sie sich an.",
+          "**Tutti Fritti** und **Il Pescato Cucinato** servieren dasselbe wesentliche Gericht: den Tagesfang, paniert, frittiert und in einer Papiertuete serviert. Die Diskussion darueber, welches besser ist, hat keine Loesung. Probieren Sie beide.",
+          "**Vertical Wine Bar** verwischt die Grenze zwischen Weinladen und Nachbarschaftstreff. Die Auswahl ist lokal und die Beratung ehrlich. Ein perfekter Aperitivo-Stopp.",
+          "**Bar Centrale** ist der Ort, an dem das soziale Leben des Dorfes stattfindet. Morgens Espresso, nachmittags Klatsch, abends Prosecco. Der Kaffee ist gut, aber das Leute-Beobachten ist besser."
+        ],
+        "fr": [
+          "**Te la do io la merenda** est une legende. La focaccia ici—particulierement la focaccia col formaggio—attire une file chaque matin. Rejoignez-la.",
+          "**Tutti Fritti** et **Il Pescato Cucinato** servent le meme plat essentiel: la peche du jour, panee, frite et servie dans un cornet en papier. Le debat sur lequel est le meilleur n'a pas de resolution. Essayez les deux.",
+          "**Vertical Wine Bar** brouille la frontiere entre cave a vin et lieu de rassemblement du quartier. La selection est locale et les conseils sont honnetes. Un arret aperitivo parfait.",
+          "**Bar Centrale** est l'endroit ou se passe la vie sociale du village. Espresso le matin, potins l'apres-midi, prosecco le soir. Le cafe est bon, mais observer les gens est encore mieux."
+        ],
+        "it": [
+          "**Te la do io la merenda** e una leggenda. La focaccia qui—particolarmente la focaccia col formaggio—crea una fila fuori dalla porta ogni mattina. Mettetevi in coda.",
+          "**Tutti Fritti** e **Il Pescato Cucinato** servono lo stesso piatto essenziale: il pescato del giorno, impanato, fritto e servito in un cartoccio. La discussione su quale sia migliore non ha soluzione. Provateli entrambi.",
+          "**Vertical Wine Bar** sfuma il confine tra enoteca e ritrovo di quartiere. La selezione e locale e i consigli sono onesti. Una tappa perfetta per l'aperitivo.",
+          "**Bar Centrale** e dove si svolge la vita sociale del paese. Espresso al mattino, pettegolezzi nel pomeriggio, prosecco la sera. Il caffe e buono, ma osservare la gente e meglio."
+        ]
+      }
+    },
+    {
+      "type": "collection-with-interludes",
+      "collectionType": "restaurants",
+      "slugs": [
+        "te-la-do-io-la-merenda",
+        "vertical-wine-bar",
+        "tutti-fritti",
+        "punta-bonfiglio-bar"
+      ],
+      "interludes": [
+        {
+          "afterIndex": 1,
+          "type": "secondary",
+          "badge": {
+            "en": "Local Wisdom",
+            "de": "Lokale Weisheit",
+            "fr": "Sagesse locale",
+            "it": "Saggezza locale"
+          },
+          "title": {
+            "en": "The Case for Standing Up",
+            "de": "Das Argument fuers Stehen",
+            "fr": "L'argument pour manger debout",
+            "it": "L'argomento per mangiare in piedi"
+          },
+          "quote": {
+            "en": "Italians understand that some of the best eating happens on your feet. A focaccia tastes different when you're standing in morning sunlight. A cone of fried fish belongs in motion, not at a table. Trust the rhythm.",
+            "de": "Italiener verstehen, dass einige der besten Mahlzeiten im Stehen stattfinden. Eine Focaccia schmeckt anders, wenn Sie im Morgenlicht stehen. Eine Tuete frittierter Fisch gehoert in Bewegung, nicht an einen Tisch. Vertrauen Sie dem Rhythmus.",
+            "fr": "Les Italiens comprennent que certains des meilleurs repas se prennent debout. Une focaccia a un gout different quand on est debout dans la lumiere du matin. Un cornet de poisson frit appartient au mouvement, pas a une table. Faites confiance au rythme.",
+            "it": "Gli italiani capiscono che alcuni dei migliori pasti si fanno in piedi. Una focaccia ha un sapore diverso quando si sta in piedi nella luce del mattino. Un cartoccio di pesce fritto appartiene al movimento, non a un tavolo. Fidatevi del ritmo."
+          }
+        }
+      ],
+      "village": "riomaggiore"
+    },
+    {
+      "type": "closing-note",
+      "title": {
+        "en": "The Table Will Find You",
+        "de": "Der Tisch wird Sie finden",
+        "fr": "La table vous trouvera",
+        "it": "Il tavolo vi trovera"
+      },
+      "content": {
+        "en": [
+          "Eating in Riomaggiore is not about finding the perfect restaurant. It's about matching your meal to your moment.",
+          "Some days demand a terrace with tablecloths and wine lists. Others call for nothing more than fried fish in paper, eaten on warm rocks while the harbor busies itself below.",
+          "Listen to the village. Follow your hunger. The table will find you."
+        ],
+        "de": [
+          "Essen in Riomaggiore geht nicht darum, das perfekte Restaurant zu finden. Es geht darum, Ihre Mahlzeit an Ihren Moment anzupassen.",
+          "Manche Tage verlangen eine Terrasse mit Tischtuchern und Weinkarten. Andere verlangen nichts mehr als frittierten Fisch im Papier, gegessen auf warmen Felsen, waehrend der Hafen sich darunter beschaeftigt.",
+          "Hoeren Sie auf das Dorf. Folgen Sie Ihrem Hunger. Der Tisch wird Sie finden."
+        ],
+        "fr": [
+          "Manger a Riomaggiore ne consiste pas a trouver le restaurant parfait. C'est faire correspondre votre repas a votre moment.",
+          "Certains jours demandent une terrasse avec nappes et cartes des vins. D'autres n'appellent rien de plus que du poisson frit dans du papier, mange sur des rochers chauds pendant que le port s'affaire en dessous.",
+          "Ecoutez le village. Suivez votre faim. La table vous trouvera."
+        ],
+        "it": [
+          "Mangiare a Riomaggiore non significa trovare il ristorante perfetto. Significa far corrispondere il pasto al vostro momento.",
+          "Alcuni giorni richiedono una terrazza con tovaglie e carte dei vini. Altri non chiedono nient'altro che pesce fritto nel cartoccio, mangiato su rocce calde mentre il porto si da da fare sotto.",
+          "Ascoltate il paese. Seguite la vostra fame. Il tavolo vi trovera."
+        ]
+      },
+      "buttons": [
+        {
+          "text": {
+            "en": "Plan Your Itinerary",
+            "de": "Planen Sie Ihre Reiseroute",
+            "fr": "Planifiez votre itineraire",
+            "it": "Pianifica il tuo itinerario"
+          },
+          "url": {
+            "en": "/en/itinerary",
+            "de": "/de/itinerary",
+            "fr": "/fr/itinerary",
+            "it": "/it/itinerary"
+          },
+          "variant": "primary"
+        },
+        {
+          "text": {
+            "en": "Explore the Village",
+            "de": "Entdecken Sie das Dorf",
+            "fr": "Explorez le village",
+            "it": "Esplora il paese"
+          },
+          "url": {
+            "en": "/en/riomaggiore",
+            "de": "/de/riomaggiore",
+            "fr": "/fr/riomaggiore",
+            "it": "/it/riomaggiore"
+          },
+          "variant": "secondary"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "village_id": "riomaggiore",
+    "page_type": "restaurants"
+  },
+  "status": "published",
+  "created_at": "2025-12-04T13:18:46.911Z",
+  "updated_at": "2026-01-07T20:00:00.000Z"
+}

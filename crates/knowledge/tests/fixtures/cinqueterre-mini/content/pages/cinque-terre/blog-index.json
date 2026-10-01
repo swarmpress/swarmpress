@@ -1,0 +1,319 @@
+{
+  "id": "blog-index-page-01",
+  "slug": {
+    "en": "/en/blog",
+    "de": "/de/blog",
+    "fr": "/fr/blog",
+    "it": "/it/blog"
+  },
+  "title": {
+    "en": "The Dispatch | Stories & Guides from Cinque Terre",
+    "de": "The Dispatch | Geschichten & Reiseführer aus den Cinque Terre",
+    "fr": "The Dispatch | Récits & Guides des Cinque Terre",
+    "it": "The Dispatch | Storie & Guide dalle Cinque Terre"
+  },
+  "page_type": "blog-index",
+  "seo": {
+    "title": {
+      "en": "The Dispatch | Stories & Guides from Cinque Terre",
+      "de": "The Dispatch | Geschichten & Reiseführer aus den Cinque Terre",
+      "fr": "The Dispatch | Récits & Guides des Cinque Terre",
+      "it": "The Dispatch | Storie & Guide dalle Cinque Terre"
+    },
+    "description": {
+      "en": "We don't just list places; we tell their stories. Curated chronicles of life in the five villages.",
+      "de": "Wir listen nicht nur Orte auf; wir erzählen ihre Geschichten. Kuratierte Chroniken des Lebens in den fünf Dörfern.",
+      "fr": "Nous ne faisons pas que lister des lieux ; nous racontons leurs histoires. Chroniques curées de la vie dans les cinq villages.",
+      "it": "Non elenchiamo solo luoghi; raccontiamo le loro storie. Cronache curate della vita nei cinque borghi."
+    }
+  },
+  "template": "cinque-terre",
+  "body": [
+    {
+      "type": "blog-index",
+      "stories": [
+        {
+          "id": 1,
+          "slug": "the-ultimate-guide-to-cinque-terres-best-beaches",
+          "title": {
+            "en": "The Ultimate Guide to Cinque Terre's Best Beaches",
+            "de": "Der ultimative Führer zu den schönsten Stränden der Cinque Terre",
+            "fr": "Le Guide Ultime des Plus Belles Plages des Cinque Terre",
+            "it": "La Guida Definitiva alle Migliori Spiagge delle Cinque Terre"
+          },
+          "excerpt": {
+            "en": "From the sandy shores of Monterosso to the hidden rocky coves of Riomaggiore, we explore the most pristine swimming spots in the Italian Riviera.",
+            "de": "Von den Sandstränden von Monterosso bis zu den versteckten Felsbuchten von Riomaggiore – wir erkunden die unberührtesten Badeplätze der italienischen Riviera.",
+            "fr": "Des plages de sable de Monterosso aux criques rocheuses cachées de Riomaggiore, nous explorons les coins de baignade les plus préservés de la Riviera italienne.",
+            "it": "Dalle spiagge sabbiose di Monterosso alle calette rocciose nascoste di Riomaggiore, esploriamo i luoghi di balneazione più incontaminati della Riviera Italiana."
+          },
+          "author": "Giulia Rossi",
+          "date": {
+            "en": "Oct 15, 2023",
+            "de": "15. Okt. 2023",
+            "fr": "15 oct. 2023",
+            "it": "15 ott. 2023"
+          },
+          "readTime": {
+            "en": "8 min read",
+            "de": "8 Min. Lesezeit",
+            "fr": "8 min de lecture",
+            "it": "8 min di lettura"
+          },
+          "category": {
+            "en": "Guides",
+            "de": "Reiseführer",
+            "fr": "Guides",
+            "it": "Guide"
+          },
+          "image": "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
+          "isLead": true
+        },
+        {
+          "id": 2,
+          "slug": "5-hidden-gelaterias-you-need-to-try",
+          "title": {
+            "en": "5 Hidden Gelaterias You Need to Try",
+            "de": "5 versteckte Eisdielen, die Sie probieren müssen",
+            "fr": "5 Glaciers Cachés à Découvrir Absolument",
+            "it": "5 Gelaterie Nascoste da Provare Assolutamente"
+          },
+          "excerpt": {
+            "en": "Skip the tourist traps and find the real deal. Our local experts reveal where to find the creamiest artisanal gelato in the five villages.",
+            "de": "Meiden Sie die Touristenfallen und finden Sie das Echte. Unsere lokalen Experten verraten, wo Sie das cremigste handwerkliche Eis in den fünf Dörfern finden.",
+            "fr": "Évitez les pièges à touristes et trouvez l'authentique. Nos experts locaux révèlent où trouver la glace artisanale la plus onctueuse des cinq villages.",
+            "it": "Evitate le trappole per turisti e trovate quello autentico. I nostri esperti locali rivelano dove trovare il gelato artigianale più cremoso nei cinque borghi."
+          },
+          "author": "Marco Bianchi",
+          "date": {
+            "en": "Oct 14, 2023",
+            "de": "14. Okt. 2023",
+            "fr": "14 oct. 2023",
+            "it": "14 ott. 2023"
+          },
+          "readTime": {
+            "en": "4 min read",
+            "de": "4 Min. Lesezeit",
+            "fr": "4 min de lecture",
+            "it": "4 min di lettura"
+          },
+          "category": {
+            "en": "Food",
+            "de": "Essen",
+            "fr": "Gastronomie",
+            "it": "Cibo"
+          },
+          "image": "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 3,
+          "slug": "a-photographers-guide-to-manarola-at-sunset",
+          "title": {
+            "en": "A Photographer's Guide to Manarola at Sunset",
+            "de": "Ein Fotografen-Führer zu Manarola bei Sonnenuntergang",
+            "fr": "Guide du Photographe pour Manarola au Coucher du Soleil",
+            "it": "Guida del Fotografo a Manarola al Tramonto"
+          },
+          "excerpt": {
+            "en": "Capturing the perfect golden hour shot in Manarola requires timing and positioning. Here are the best angles and secret spots.",
+            "de": "Das perfekte Foto zur goldenen Stunde in Manarola erfordert das richtige Timing und die richtige Position. Hier sind die besten Winkel und geheimen Orte.",
+            "fr": "Capturer la photo parfaite à l'heure dorée à Manarola nécessite un bon timing et un bon positionnement. Voici les meilleurs angles et spots secrets.",
+            "it": "Catturare lo scatto perfetto all'ora d'oro a Manarola richiede tempismo e posizionamento. Ecco le migliori angolazioni e i posti segreti."
+          },
+          "author": "Elena Moretti",
+          "date": {
+            "en": "Oct 12, 2023",
+            "de": "12. Okt. 2023",
+            "fr": "12 oct. 2023",
+            "it": "12 ott. 2023"
+          },
+          "readTime": {
+            "en": "6 min read",
+            "de": "6 Min. Lesezeit",
+            "fr": "6 min de lecture",
+            "it": "6 min di lettura"
+          },
+          "category": {
+            "en": "Photography",
+            "de": "Fotografie",
+            "fr": "Photographie",
+            "it": "Fotografia"
+          },
+          "image": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop"
+        },
+        {
+          "id": 4,
+          "slug": "hiking-the-blue-trail-what-to-expect",
+          "title": {
+            "en": "Hiking the Blue Trail: What to Expect",
+            "de": "Wanderung auf dem Sentiero Azzurro: Was Sie erwartet",
+            "fr": "Randonnée sur le Sentier Bleu : À Quoi S'attendre",
+            "it": "Escursione sul Sentiero Azzurro: Cosa Aspettarsi"
+          },
+          "excerpt": {
+            "en": "Everything you need to know about the Sentiero Azzurro, from difficulty levels and closures to the most scenic stops along the way.",
+            "de": "Alles, was Sie über den Sentiero Azzurro wissen müssen, von Schwierigkeitsgraden und Sperrungen bis zu den schönsten Aussichtspunkten unterwegs.",
+            "fr": "Tout ce que vous devez savoir sur le Sentiero Azzurro, des niveaux de difficulté et fermetures aux arrêts les plus pittoresques en chemin.",
+            "it": "Tutto quello che dovete sapere sul Sentiero Azzurro, dai livelli di difficoltà e chiusure alle soste più panoramiche lungo il percorso."
+          },
+          "author": "Luca Verdi",
+          "date": {
+            "en": "Oct 10, 2023",
+            "de": "10. Okt. 2023",
+            "fr": "10 oct. 2023",
+            "it": "10 ott. 2023"
+          },
+          "readTime": {
+            "en": "10 min read",
+            "de": "10 Min. Lesezeit",
+            "fr": "10 min de lecture",
+            "it": "10 min di lettura"
+          },
+          "category": {
+            "en": "Guides",
+            "de": "Reiseführer",
+            "fr": "Guides",
+            "it": "Guide"
+          },
+          "image": "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 5,
+          "slug": "where-to-stay-hotel-vs-airbnb",
+          "title": {
+            "en": "Where to Stay: Hotel vs. Airbnb",
+            "de": "Wo übernachten: Hotel vs. Airbnb",
+            "fr": "Où Séjourner : Hôtel vs. Airbnb",
+            "it": "Dove Alloggiare: Hotel vs. Airbnb"
+          },
+          "excerpt": {
+            "en": "Choosing the right accommodation can make or break your trip. We weigh the pros and cons for every type of traveler.",
+            "de": "Die Wahl der richtigen Unterkunft kann Ihre Reise perfekt machen oder ruinieren. Wir wägen die Vor- und Nachteile für jeden Reisetyp ab.",
+            "fr": "Choisir le bon hébergement peut faire ou défaire votre voyage. Nous pesons le pour et le contre pour chaque type de voyageur.",
+            "it": "Scegliere l'alloggio giusto può fare o distruggere il vostro viaggio. Pesiamo i pro e i contro per ogni tipo di viaggiatore."
+          },
+          "author": "Sofia Neri",
+          "date": {
+            "en": "Oct 08, 2023",
+            "de": "08. Okt. 2023",
+            "fr": "08 oct. 2023",
+            "it": "08 ott. 2023"
+          },
+          "readTime": {
+            "en": "5 min read",
+            "de": "5 Min. Lesezeit",
+            "fr": "5 min de lecture",
+            "it": "5 min di lettura"
+          },
+          "category": {
+            "en": "Hotels",
+            "de": "Hotels",
+            "fr": "Hôtels",
+            "it": "Hotel"
+          },
+          "image": "https://images.unsplash.com/photo-1611892440504-42a792e24d32?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 6,
+          "slug": "day-trip-to-portovenere",
+          "title": {
+            "en": "Day Trip to Portovenere",
+            "de": "Tagesausflug nach Portovenere",
+            "fr": "Excursion d'une Journée à Portovenere",
+            "it": "Gita di un Giorno a Portovenere"
+          },
+          "excerpt": {
+            "en": "Often called the 'sixth village', Portovenere offers a more tranquil but equally stunning experience. Here's why you should visit.",
+            "de": "Oft als 'sechstes Dorf' bezeichnet, bietet Portovenere ein ruhigeres, aber ebenso beeindruckendes Erlebnis. Hier erfahren Sie, warum Sie es besuchen sollten.",
+            "fr": "Souvent appelée le 'sixième village', Portovenere offre une expérience plus tranquille mais tout aussi époustouflante. Voici pourquoi vous devriez la visiter.",
+            "it": "Spesso chiamata il 'sesto borgo', Portovenere offre un'esperienza più tranquilla ma altrettanto mozzafiato. Ecco perché dovreste visitarla."
+          },
+          "author": "Giulia Rossi",
+          "date": {
+            "en": "Oct 05, 2023",
+            "de": "05. Okt. 2023",
+            "fr": "05 oct. 2023",
+            "it": "05 ott. 2023"
+          },
+          "readTime": {
+            "en": "7 min read",
+            "de": "7 Min. Lesezeit",
+            "fr": "7 min de lecture",
+            "it": "7 min di lettura"
+          },
+          "category": {
+            "en": "Guides",
+            "de": "Reiseführer",
+            "fr": "Guides",
+            "it": "Guide"
+          },
+          "image": "https://images.unsplash.com/photo-1612172166035-4ed0327be526?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDQzNDB8MHwxfHNlYXJjaHwxfHxtb250ZXJvc3NvJTIwY2lucXVlJTIwdGVycmUlMjBpdGFseSUyMGNvbG9yZnVsJTIwaG91c2VzfGVufDB8MHx8fDE3NjkzMjczNjF8MA&ixlib=rb-4.1.0&q=80&w=1080"
+        }
+      ],
+      "categories": {
+        "en": [
+          "All Stories",
+          "Guides",
+          "Food & Drink",
+          "Culture",
+          "Photography",
+          "Hotels"
+        ],
+        "de": [
+          "Alle Geschichten",
+          "Reiseführer",
+          "Essen & Trinken",
+          "Kultur",
+          "Fotografie",
+          "Hotels"
+        ],
+        "fr": [
+          "Toutes les Histoires",
+          "Guides",
+          "Gastronomie",
+          "Culture",
+          "Photographie",
+          "Hôtels"
+        ],
+        "it": [
+          "Tutte le Storie",
+          "Guide",
+          "Cibo & Bevande",
+          "Cultura",
+          "Fotografia",
+          "Hotel"
+        ]
+      },
+      "introTitle": {
+        "en": "Slow Journalism for a\nFast-Moving Coastline.",
+        "de": "Langsamer Journalismus für eine\nSchnelllebige Küste.",
+        "fr": "Journalisme Lent pour un\nLittoral en Mouvement.",
+        "it": "Giornalismo Lento per una\nCosta in Movimento."
+      },
+      "introSubtitle": {
+        "en": "We don't just list places; we tell their stories. From the salt-crusted traditions of the local fishermen to the quietest corners of the high trails, welcome to our curated chronicle of life in the five villages.",
+        "de": "Wir listen nicht nur Orte auf; wir erzählen ihre Geschichten. Von den salzverkrusteten Traditionen der lokalen Fischer bis zu den stillsten Winkeln der Höhenwege – willkommen zu unserer kuratierten Chronik des Lebens in den fünf Dörfern.",
+        "fr": "Nous ne faisons pas que lister des lieux ; nous racontons leurs histoires. Des traditions croûtées de sel des pêcheurs locaux aux coins les plus tranquilles des sentiers de montagne, bienvenue dans notre chronique curée de la vie dans les cinq villages.",
+        "it": "Non elenchiamo solo luoghi; raccontiamo le loro storie. Dalle tradizioni incrostate di sale dei pescatori locali agli angoli più tranquilli dei sentieri d'altura, benvenuti nella nostra cronaca curata della vita nei cinque borghi."
+      },
+      "newsletterTitle": {
+        "en": "Get the Dispatch in\nYour Inbox.",
+        "de": "Erhalten Sie The Dispatch in\nIhrem Posteingang.",
+        "fr": "Recevez The Dispatch dans\nVotre Boîte Mail.",
+        "it": "Ricevi The Dispatch nella\nTua Casella di Posta."
+      },
+      "newsletterSubtitle": {
+        "en": "Join 15,000+ lovers of the Italian Riviera. No spam, just curated stories, local secrets, and seasonal guides delivered once a month.",
+        "de": "Schließen Sie sich über 15.000 Liebhabern der italienischen Riviera an. Kein Spam, nur kuratierte Geschichten, lokale Geheimnisse und saisonale Reiseführer, einmal im Monat.",
+        "fr": "Rejoignez plus de 15 000 amoureux de la Riviera italienne. Pas de spam, juste des histoires curées, des secrets locaux et des guides saisonniers livrés une fois par mois.",
+        "it": "Unisciti a oltre 15.000 amanti della Riviera Italiana. Niente spam, solo storie curate, segreti locali e guide stagionali consegnate una volta al mese."
+      }
+    }
+  ],
+  "metadata": {
+    "page_type": "blog-index"
+  },
+  "status": "published",
+  "created_at": "2025-01-05T00:00:00.000Z",
+  "updated_at": "2026-01-08T00:00:00.000Z"
+}

@@ -1,0 +1,482 @@
+{
+ "$schema": "./sitemap-schema.json",
+ "version": "1.0.0",
+ "lastUpdated": "2026-01-13T08:26:04.485Z",
+ "baseUrl": "https://cinqueterre.travel",
+ "languages": [
+  "en",
+  "de",
+  "fr",
+  "it"
+ ],
+ "defaultLanguage": "en",
+ "pages": {
+  "home": {
+   "slug": "",
+   "canonicalUrl": {
+    "en": "/en",
+    "de": "/de",
+    "fr": "/fr",
+    "it": "/it"
+   },
+   "title": {
+    "en": "Cinque Terre Dispatch | Luxury Travel Guide",
+    "de": "Cinque Terre Dispatch | Exklusiver Reiseführer",
+    "fr": "Cinque Terre Dispatch | Guide de Voyage d'Exception",
+    "it": "Cinque Terre Dispatch | Guida di Viaggio Esclusiva"
+   },
+   "pageType": "homepage",
+   "parent": null,
+   "children": [
+    "riomaggiore",
+    "manarola",
+    "corniglia",
+    "vernazza",
+    "monterosso"
+   ],
+   "allowedLinkTargets": [
+    "villages",
+    "hikes",
+    "restaurants",
+    "accommodations",
+    "blog",
+    "itinerary"
+   ],
+   "keywords": [
+    "cinque terre",
+    "travel guide",
+    "italian riviera",
+    "luxury travel"
+   ]
+  },
+  "riomaggiore": {
+   "slug": "riomaggiore",
+   "canonicalUrl": {
+    "en": "/en/riomaggiore",
+    "de": "/de/riomaggiore",
+    "fr": "/fr/riomaggiore",
+    "it": "/it/riomaggiore"
+   },
+   "title": {
+    "en": "Riomaggiore",
+    "de": "Riomaggiore",
+    "fr": "Riomaggiore",
+    "it": "Riomaggiore"
+   },
+   "pageType": "village",
+   "parent": "home",
+   "children": [
+    "riomaggiore/restaurants",
+    "riomaggiore/accommodations",
+    "riomaggiore/hikes",
+    "riomaggiore/pois",
+    "riomaggiore/events"
+   ],
+   "allowedLinkTargets": [
+    "villages",
+    "hikes",
+    "restaurants",
+    "accommodations",
+    "beaches",
+    "sights"
+   ],
+   "entity": "riomaggiore",
+   "keywords": [
+    "riomaggiore",
+    "colorful houses",
+    "harbor",
+    "cliffs"
+   ]
+  },
+  "riomaggiore/restaurants": {
+   "slug": "riomaggiore/restaurants",
+   "canonicalUrl": {
+    "en": "/en/riomaggiore/restaurants",
+    "de": "/de/riomaggiore/restaurants",
+    "fr": "/fr/riomaggiore/restaurants",
+    "it": "/it/riomaggiore/restaurants"
+   },
+   "title": {
+    "en": "Restaurants in Riomaggiore",
+    "de": "Restaurants in Riomaggiore",
+    "fr": "Restaurants à Riomaggiore",
+    "it": "Ristoranti a Riomaggiore"
+   },
+   "pageType": "collection",
+   "collection": "restaurants",
+   "parent": "riomaggiore",
+   "entity": "riomaggiore",
+   "allowedLinkTargets": [
+    "villages",
+    "restaurants",
+    "accommodations"
+   ]
+  },
+  "riomaggiore/hikes": {
+   "slug": "riomaggiore/hikes",
+   "canonicalUrl": {
+    "en": "/en/riomaggiore/hikes",
+    "de": "/de/riomaggiore/hikes",
+    "fr": "/fr/riomaggiore/hikes",
+    "it": "/it/riomaggiore/hikes"
+   },
+   "title": {
+    "en": "Hiking Trails from Riomaggiore",
+    "de": "Wanderwege ab Riomaggiore",
+    "fr": "Sentiers de Randonnée depuis Riomaggiore",
+    "it": "Sentieri da Riomaggiore"
+   },
+   "pageType": "collection",
+   "collection": "hikes",
+   "parent": "riomaggiore",
+   "entity": "riomaggiore",
+   "allowedLinkTargets": [
+    "villages",
+    "hikes",
+    "trails"
+   ]
+  },
+  "manarola": {
+   "slug": "manarola",
+   "canonicalUrl": {
+    "en": "/en/manarola",
+    "de": "/de/manarola",
+    "fr": "/fr/manarola",
+    "it": "/it/manarola"
+   },
+   "title": {
+    "en": "Manarola",
+    "de": "Manarola",
+    "fr": "Manarola",
+    "it": "Manarola"
+   },
+   "pageType": "village",
+   "parent": "home",
+   "children": [
+    "manarola/restaurants",
+    "manarola/accommodations",
+    "manarola/hikes",
+    "manarola/pois",
+    "manarola/events"
+   ],
+   "allowedLinkTargets": [
+    "villages",
+    "hikes",
+    "restaurants",
+    "accommodations",
+    "beaches",
+    "sights"
+   ],
+   "entity": "manarola",
+   "keywords": [
+    "manarola",
+    "wine",
+    "sunset",
+    "vineyards",
+    "sciacchetra"
+   ]
+  },
+  "corniglia": {
+   "slug": "corniglia",
+   "canonicalUrl": {
+    "en": "/en/corniglia",
+    "de": "/de/corniglia",
+    "fr": "/fr/corniglia",
+    "it": "/it/corniglia"
+   },
+   "title": {
+    "en": "Corniglia",
+    "de": "Corniglia",
+    "fr": "Corniglia",
+    "it": "Corniglia"
+   },
+   "pageType": "village",
+   "parent": "home",
+   "children": [
+    "corniglia/restaurants",
+    "corniglia/accommodations",
+    "corniglia/hikes",
+    "corniglia/pois",
+    "corniglia/events"
+   ],
+   "allowedLinkTargets": [
+    "villages",
+    "hikes",
+    "restaurants",
+    "accommodations",
+    "sights"
+   ],
+   "entity": "corniglia",
+   "keywords": [
+    "corniglia",
+    "hilltop",
+    "steps",
+    "quiet",
+    "authentic"
+   ]
+  },
+  "vernazza": {
+   "slug": "vernazza",
+   "canonicalUrl": {
+    "en": "/en/vernazza",
+    "de": "/de/vernazza",
+    "fr": "/fr/vernazza",
+    "it": "/it/vernazza"
+   },
+   "title": {
+    "en": "Vernazza",
+    "de": "Vernazza",
+    "fr": "Vernazza",
+    "it": "Vernazza"
+   },
+   "pageType": "village",
+   "parent": "home",
+   "children": [
+    "vernazza/restaurants",
+    "vernazza/accommodations",
+    "vernazza/hikes",
+    "vernazza/pois",
+    "vernazza/events"
+   ],
+   "allowedLinkTargets": [
+    "villages",
+    "hikes",
+    "restaurants",
+    "accommodations",
+    "beaches",
+    "sights"
+   ],
+   "entity": "vernazza",
+   "keywords": [
+    "vernazza",
+    "harbor",
+    "castle",
+    "tower",
+    "piazza",
+    "medieval"
+   ]
+  },
+  "monterosso": {
+   "slug": "monterosso",
+   "canonicalUrl": {
+    "en": "/en/monterosso",
+    "de": "/de/monterosso",
+    "fr": "/fr/monterosso",
+    "it": "/it/monterosso"
+   },
+   "title": {
+    "en": "Monterosso al Mare",
+    "de": "Monterosso al Mare",
+    "fr": "Monterosso al Mare",
+    "it": "Monterosso al Mare"
+   },
+   "pageType": "village",
+   "parent": "home",
+   "children": [
+    "monterosso/restaurants",
+    "monterosso/accommodations",
+    "monterosso/hikes",
+    "monterosso/pois",
+    "monterosso/events"
+   ],
+   "allowedLinkTargets": [
+    "villages",
+    "hikes",
+    "restaurants",
+    "accommodations",
+    "beaches",
+    "sights"
+   ],
+   "entity": "monterosso",
+   "keywords": [
+    "monterosso",
+    "beach",
+    "sand",
+    "lemons",
+    "limoncello"
+   ]
+  },
+  "hikes": {
+   "slug": "hikes",
+   "canonicalUrl": {
+    "en": "/en/hikes",
+    "de": "/de/hikes",
+    "fr": "/fr/hikes",
+    "it": "/it/hikes"
+   },
+   "title": {
+    "en": "Hiking Trails",
+    "de": "Wanderwege",
+    "fr": "Sentiers de Randonnée",
+    "it": "Sentieri Escursionistici"
+   },
+   "pageType": "collection-hub",
+   "collection": "hikes",
+   "parent": "home",
+   "allowedLinkTargets": [
+    "villages",
+    "hikes",
+    "trails"
+   ]
+  },
+  "restaurants": {
+   "slug": "restaurants",
+   "canonicalUrl": {
+    "en": "/en/restaurants",
+    "de": "/de/restaurants",
+    "fr": "/fr/restaurants",
+    "it": "/it/restaurants"
+   },
+   "title": {
+    "en": "Restaurants",
+    "de": "Restaurants",
+    "fr": "Restaurants",
+    "it": "Ristoranti"
+   },
+   "pageType": "collection-hub",
+   "collection": "restaurants",
+   "parent": "home",
+   "allowedLinkTargets": [
+    "villages",
+    "restaurants"
+   ]
+  },
+  "blog": {
+   "slug": "blog",
+   "canonicalUrl": {
+    "en": "/en/blog",
+    "de": "/de/blog",
+    "fr": "/fr/blog",
+    "it": "/it/blog"
+   },
+   "title": {
+    "en": "The Dispatch | Stories & Guides",
+    "de": "Die Depesche | Geschichten & Reiseführer",
+    "fr": "Les Dépêches | Récits & Guides",
+    "it": "Il Dispaccio | Storie & Guide"
+   },
+   "pageType": "blog-index",
+   "parent": "home",
+   "allowedLinkTargets": [
+    "villages",
+    "hikes",
+    "restaurants",
+    "accommodations",
+    "blog"
+   ],
+   "children": [
+    "blog/the-ultimate-guide-to-cinque-terres-best-beaches",
+    "blog/5-hidden-gelaterias-you-need-to-try"
+   ]
+  },
+  "itinerary": {
+   "slug": "itinerary",
+   "canonicalUrl": {
+    "en": "/en/itinerary",
+    "de": "/de/itinerary",
+    "fr": "/fr/itinerary",
+    "it": "/it/itinerary"
+   },
+   "title": {
+    "en": "The Salt & Stone Path | 4-Day Journey",
+    "de": "Der Salz & Stein Pfad | 4-Tage-Reise",
+    "fr": "Le Chemin du Sel et de la Pierre | 4 Jours",
+    "it": "Il Sentiero del Sale e della Pietra | 4 Giorni"
+   },
+   "pageType": "itinerary",
+   "parent": "home",
+   "allowedLinkTargets": [
+    "villages",
+    "hikes",
+    "restaurants",
+    "accommodations"
+   ]
+  },
+  "transportation": {
+   "slug": "transportation",
+   "canonicalUrl": {
+    "en": "/en/transportation",
+    "de": "/de/transportation",
+    "fr": "/fr/transportation",
+    "it": "/it/transportation"
+   },
+   "title": {
+    "en": "Getting There & Around",
+    "de": "Anreise & Fortbewegung",
+    "fr": "Comment Arriver & Se Déplacer",
+    "it": "Come Arrivare & Muoversi"
+   },
+   "pageType": "info",
+   "parent": "home",
+   "allowedLinkTargets": [
+    "villages",
+    "accommodations"
+   ]
+  }
+ },
+ "pageTypes": {
+  "homepage": {
+   "linkDensity": {
+    "min": 5,
+    "max": 15
+   },
+   "description": "Main landing page"
+  },
+  "village": {
+   "linkDensity": {
+    "min": 3,
+    "max": 10
+   },
+   "description": "Village overview page"
+  },
+  "collection": {
+   "linkDensity": {
+    "min": 2,
+    "max": 5
+   },
+   "description": "Collection page (restaurants, hotels, etc.)"
+  },
+  "collection-hub": {
+   "linkDensity": {
+    "min": 3,
+    "max": 8
+   },
+   "description": "Hub page for a collection type across all villages"
+  },
+  "editorial": {
+   "linkDensity": {
+    "min": 3,
+    "max": 8
+   },
+   "description": "Editorial/guide content"
+  },
+  "blog-index": {
+   "linkDensity": {
+    "min": 2,
+    "max": 5
+   },
+   "description": "Blog listing page"
+  },
+  "blog-post": {
+   "linkDensity": {
+    "min": 2,
+    "max": 6
+   },
+   "description": "Individual blog post"
+  },
+  "itinerary": {
+   "linkDensity": {
+    "min": 5,
+    "max": 12
+   },
+   "description": "Multi-day itinerary"
+  },
+  "info": {
+   "linkDensity": {
+    "min": 1,
+    "max": 5
+   },
+   "description": "Informational page"
+  }
+ }
+}
