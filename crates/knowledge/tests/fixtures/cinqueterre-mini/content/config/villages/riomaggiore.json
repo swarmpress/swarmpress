@@ -1,0 +1,115 @@
+{
+  "slug": "riomaggiore",
+  "seo": {
+    "title": {
+      "en": "Riomaggiore | Cinque Terre Dispatch",
+      "de": "Riomaggiore | Cinque Terre Dispatch",
+      "fr": "Riomaggiore | Cinque Terre Dispatch",
+      "it": "Riomaggiore | Cinque Terre Dispatch"
+    },
+    "description": {
+      "en": "Discover Riomaggiore, the easternmost village of Cinque Terre. Colorful cliffside houses, stunning harbor views, and authentic Italian charm.",
+      "de": "Entdecken Sie Riomaggiore, das östlichste Dorf der Cinque Terre. Bunte Klippenhäuser, atemberaubende Hafenblicke und authentischer italienischer Charme.",
+      "fr": "Découvrez Riomaggiore, le village le plus oriental des Cinque Terre. Maisons colorées sur les falaises, vues imprenables sur le port et charme italien authentique.",
+      "it": "Scopri Riomaggiore, il villaggio più orientale delle Cinque Terre. Case colorate sulla scogliera, viste mozzafiato sul porto e autentico fascino italiano."
+    }
+  },
+  "hero": {
+    "image": "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
+    "imageAlt": {
+      "en": "Riomaggiore colorful houses on the cliff",
+      "de": "Riomaggiore bunte Häuser an der Klippe",
+      "fr": "Maisons colorées de Riomaggiore sur la falaise",
+      "it": "Case colorate di Riomaggiore sulla scogliera"
+    },
+    "tagline": {
+      "en": "Cinque Terre",
+      "de": "Cinque Terre",
+      "fr": "Cinque Terre",
+      "it": "Cinque Terre"
+    },
+    "title": {
+      "en": "Riomaggiore",
+      "de": "Riomaggiore",
+      "fr": "Riomaggiore",
+      "it": "Riomaggiore"
+    },
+    "subtitle": {
+      "en": "The easternmost jewel of Cinque Terre, where pastel houses tumble down steep cliffs to meet the turquoise sea.",
+      "de": "Das östlichste Juwel der Cinque Terre, wo pastellfarbene Häuser steile Klippen hinab zum türkisfarbenen Meer stürzen.",
+      "fr": "Le joyau le plus oriental des Cinque Terre, où les maisons pastel dégringolent les falaises abruptes pour rejoindre la mer turquoise.",
+      "it": "Il gioiello più orientale delle Cinque Terre, dove le case color pastello scendono ripide scogliere per incontrare il mare turchese."
+    },
+    "primaryCta": {
+      "label": {
+        "en": "Explore Riomaggiore",
+        "de": "Riomaggiore erkunden",
+        "fr": "Explorer Riomaggiore",
+        "it": "Esplora Riomaggiore"
+      },
+      "href": "#villages"
+    },
+    "secondaryCta": {
+      "label": {
+        "en": "Plan Your Visit",
+        "de": "Ihren Besuch planen",
+        "fr": "Planifier votre visite",
+        "it": "Pianifica la tua visita"
+      },
+      "href": "#plan"
+    }
+  },
+  "intro": {
+    "leadStory": {
+      "title": {
+        "en": "Riomaggiore, Where the Sea Meets the Soul",
+        "de": "Riomaggiore, Wo das Meer die Seele trifft",
+        "fr": "Riomaggiore, Où la mer rencontre l'âme",
+        "it": "Riomaggiore, Dove il mare incontra l'anima"
+      },
+      "excerpt": {
+        "en": "Riomaggiore welcomes you like an old friend, instantly familiar and endlessly charming. Colorful, sun-washed streets cling to the cliffs, guiding you down toward the water. Below, the endless blue of the Ligurian Sea unfolds, setting the rhythm for life in this timeless coastal village.",
+        "de": "Riomaggiore begrüßt Sie wie einen alten Freund, sofort vertraut und endlos charmant. Bunte, sonnendurchflutete Straßen klammern sich an die Klippen und führen Sie hinunter zum Wasser.",
+        "fr": "Riomaggiore vous accueille comme un vieil ami, instantanément familier et infiniment charmant. Des rues colorées baignées de soleil s'accrochent aux falaises, vous guidant vers l'eau.",
+        "it": "Riomaggiore ti accoglie come un vecchio amico, immediatamente familiare e infinitamente affascinante. Strade colorate e soleggiate si aggrappano alle scogliere, guidandoti verso l'acqua."
+      },
+      "author": "Giulia Rossi",
+      "date": "Oct 15, 2023",
+      "readTime": "8 min read",
+      "category": "Guides",
+      "image": "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop"
+    },
+    "essentials": {
+      "title": {
+        "en": "Riomaggiore Essentials 2026",
+        "de": "Riomaggiore Essentials 2026",
+        "fr": "Essentiels Riomaggiore 2026",
+        "it": "Essenziali Riomaggiore 2026"
+      },
+      "subtitle": {
+        "en": "Today's atmosphere and real-time details, grounded in Riomaggiore's timeless character",
+        "de": "Heutige Atmosphäre und Echtzeit-Details, verwurzelt in Riomaggiores zeitlosem Charakter",
+        "fr": "Ambiance du jour et détails en temps réel, ancrés dans le caractère intemporel de Riomaggiore",
+        "it": "Atmosfera di oggi e dettagli in tempo reale, radicati nel carattere senza tempo di Riomaggiore"
+      },
+      "today": {
+        "weather": "☀️ 23°C, light breeze",
+        "seaTemp": "🌊 21°C",
+        "seaConditions": "Calm to moderate",
+        "sunset": "20:47"
+      },
+      "experience": {
+        "crowdRhythm": "Lively day, quiet eve",
+        "bestFelt": "Slowly, on foot",
+        "villageShape": "Rising to the sky",
+        "foodWine": "Simple, honest flavors"
+      },
+      "character": {
+        "origins": "Born in 8th Century",
+        "shapedBy": "Sea, stone, patience",
+        "rating": "4.6/5",
+        "rememberedFor": "\"Views that linger\""
+      }
+    }
+  }
+}

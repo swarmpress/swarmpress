@@ -1,0 +1,117 @@
+{
+  "$schema": "../../../packages/site-builder/src/schemas/site-config.json",
+  "version": "1.0.0",
+  "site": {
+    "name": "Cinqueterre.travel",
+    "title": "Cinqueterre.travel - Your Complete Guide to the Italian Riviera",
+    "tagline": "Discover the magic of Italy's most beautiful coastal villages",
+    "logo": "https://images.unsplash.com/photo-1544828237-b63b6409fd74?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDQzNDB8MHwxfHNlYXJjaHwxfHxjaW5xdWUlMjB0ZXJyZSUyMGl0YWx5JTIwY29sb3JmdWwlMjB2aWxsYWdlfGVufDB8MHx8fDE3NjkzMjczNTF8MA&ixlib=rb-4.1.0&q=80&w=1080",
+    "favicon": "https://images.unsplash.com/photo-1544828237-b63b6409fd74?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDQzNDB8MHwxfHNlYXJjaHwxfHxjaW5xdWUlMjB0ZXJyZSUyMGl0YWx5JTIwY29sb3JmdWwlMjB2aWxsYWdlfGVufDB8MHx8fDE3NjkzMjczNTF8MA&ixlib=rb-4.1.0&q=80&w=1080",
+    "base_url": "https://cinqueterre.travel",
+    "default_language": "en",
+    "languages": [
+      "en"
+    ]
+  },
+  "theme": {
+    "name": "black-tomato-dark",
+    "mode": "dark",
+    "colors": {
+      "primary": {
+        "50": "#fff7ed",
+        "100": "#ffedd5",
+        "200": "#fed7aa",
+        "300": "#fdba74",
+        "400": "#fb923c",
+        "500": "#f97316",
+        "600": "#ea580c",
+        "700": "#c2410c",
+        "800": "#9a3412",
+        "900": "#7c2d12"
+      },
+      "secondary": {
+        "50": "#fafafa",
+        "100": "#f5f5f5",
+        "200": "#e5e5e5",
+        "300": "#d4d4d4",
+        "400": "#a3a3a3",
+        "500": "#737373",
+        "600": "#525252",
+        "700": "#404040",
+        "800": "#262626",
+        "900": "#171717"
+      }
+    },
+    "fonts": {
+      "sans": "Inter, system-ui, sans-serif",
+      "serif": "Playfair Display, Georgia, serif",
+      "display": "Playfair Display, Georgia, serif"
+    },
+    "borderRadius": "0.375rem",
+    "shadows": "default",
+    "semanticColors": {
+      "background": "#0a0a0a",
+      "backgroundAlt": "#141414",
+      "surface": "#1a1a1a",
+      "foreground": "#fafafa",
+      "foregroundMuted": "#a3a3a3",
+      "border": "#262626",
+      "brand": "#f97316",
+      "brandForeground": "#ffffff",
+      "accent": "#f97316",
+      "accentForeground": "#ffffff"
+    },
+    "gradients": {
+      "hero": "linear-gradient(135deg, rgba(249, 115, 22, 0.1) 0%, rgba(10, 10, 10, 0.95) 50%)",
+      "card": "linear-gradient(180deg, rgba(26, 26, 26, 0.8) 0%, rgba(10, 10, 10, 0.95) 100%)",
+      "overlay": "linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, transparent 60%)"
+    },
+    "overlays": {
+      "dark": "rgba(10, 10, 10, 0.7)",
+      "medium": "rgba(10, 10, 10, 0.5)",
+      "light": "rgba(10, 10, 10, 0.3)"
+    }
+  },
+  "layout": {
+    "header": {
+      "variant": "simple",
+      "sticky": true,
+      "transparent_on_hero": true,
+      "show_cta_button": true
+    },
+    "footer": {
+      "variant": "four-column",
+      "show_social": true,
+      "show_newsletter": false
+    },
+    "container": {
+      "max_width": "7xl",
+      "padding": "6"
+    }
+  },
+  "seo": {
+    "default_og_image": "https://images.unsplash.com/photo-1544828237-b63b6409fd74?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDQzNDB8MHwxfHNlYXJjaHwxfHxjaW5xdWUlMjB0ZXJyZSUyMGl0YWx5JTIwY29sb3JmdWwlMjB2aWxsYWdlfGVufDB8MHx8fDE3NjkzMjczNTF8MA&ixlib=rb-4.1.0&q=80&w=1080",
+    "structured_data": {
+      "organization": {
+        "@type": "Organization",
+        "name": "Cinqueterre.travel",
+        "url": "https://cinqueterre.travel",
+        "logo": "https://images.unsplash.com/photo-1544828237-b63b6409fd74?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDQzNDB8MHwxfHNlYXJjaHwxfHxjaW5xdWUlMjB0ZXJyZSUyMGl0YWx5JTIwY29sb3JmdWwlMjB2aWxsYWdlfGVufDB8MHx8fDE3NjkzMjczNTF8MA&ixlib=rb-4.1.0&q=80&w=1080",
+        "sameAs": [
+          "https://www.instagram.com/cinqueterretravel",
+          "https://www.facebook.com/cinqueterretravel"
+        ]
+      }
+    }
+  },
+  "analytics": {},
+  "features": {
+    "dark_mode": false,
+    "search": true,
+    "breadcrumbs": true,
+    "reading_time": false,
+    "share_buttons": true,
+    "table_of_contents": false,
+    "comments": false
+  }
+}

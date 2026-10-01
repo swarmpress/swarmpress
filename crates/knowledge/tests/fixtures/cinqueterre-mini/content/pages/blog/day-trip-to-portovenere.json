@@ -1,0 +1,74 @@
+{
+  "id": "day-trip-to-portovenere",
+  "slug": {
+    "en": "/en/blog/day-trip-to-portovenere",
+    "de": "/de/blog/day-trip-to-portovenere",
+    "fr": "/fr/blog/day-trip-to-portovenere",
+    "it": "/it/blog/day-trip-to-portovenere"
+  },
+  "title": {
+    "en": "Day Trip to Portovenere | The Dispatch"
+  },
+  "page_type": "blog-article",
+  "seo": {
+    "title": {
+      "en": "Day Trip to Portovenere | The Dispatch"
+    },
+    "description": {
+      "en": "Why the 'sixth village' deserves a full day, and how to get there by ferry or bus."
+    }
+  },
+  "template": "cinque-terre-blog-article",
+  "body": [
+    {
+      "type": "blog-article",
+      "post": {
+        "title": "Day Trip to Portovenere",
+        "subtitle": "Why the 'sixth village' deserves a full day, and how to get there by ferry or bus.",
+        "author": "Giulia Rossi",
+        "authorBio": "A local guide who considers Portovenere an essential part of any Cinque Terre itinerary.",
+        "date": "January 25, 2026",
+        "readTime": "7 min read",
+        "category": "Guides",
+        "image": "https://images.unsplash.com/photo-1533104816931-20fa691ff6ca?q=80&w=2670&auto=format&fit=crop",
+        "tags": [
+          "Portovenere",
+          "Day Trip",
+          "Guides",
+          "Beyond Cinque Terre"
+        ]
+      },
+      "content": {
+        "intro": "Technically not part of Cinque Terre, Portovenere sits at the tip of the peninsula that forms the Gulf of La Spezia. Its striped church, medieval fortress, and Byron's Grotto make it an unmissable addition to any Cinque Terre itinerary.",
+        "sections": [
+          {
+            "title": "Getting There",
+            "text": "By ferry: Boats run from Monterosso, Vernazza, Manarola, and Riomaggiore (45-90 minutes depending on stops). By bus: Take the train to La Spezia, then bus P or 11 (30 minutes). The ferry is slower but offers spectacular coastal views. Consider ferry one way, bus the other."
+          },
+          {
+            "title": "The Church of San Pietro",
+            "text": "The black-and-white striped church perched on the rocky promontory is Portovenere's icon. Built in 1198, it sits on the site of an ancient temple to Venus. The views from the church terrace are extraordinary—especially at sunset."
+          },
+          {
+            "title": "Byron's Grotto",
+            "text": "The sea cave beneath the church is named for Lord Byron, who allegedly swam across the bay to visit Shelley in Lerici. You can peek into the grotto from above, or arrange a boat tour to enter it. The swimming here is excellent for strong swimmers."
+          },
+          {
+            "title": "What Else to Do",
+            "text": "Climb to Castello Doria for panoramic views. Lunch in the colorful Piazza Spallanzani. Take a boat to Palmaria Island for hiking and swimming. Browse the narrow medieval lanes for local crafts. End with aperitivo watching the sunset paint the church golden."
+          }
+        ],
+        "quote": {
+          "text": "Portovenere has the beauty of Cinque Terre with a fraction of the crowds. It's not an alternative—it's a necessary addition to the experience.",
+          "author": "Giulia Rossi"
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "page_type": "blog-article"
+  },
+  "status": "published",
+  "created_at": "2026-01-25T08:04:40.620Z",
+  "updated_at": "2026-01-25T08:04:40.620Z"
+}

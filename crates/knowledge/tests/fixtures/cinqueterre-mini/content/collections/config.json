@@ -1,0 +1,47 @@
+{
+ "id": "42b7e20d-7f6c-48aa-9e16-f610a84b79a6",
+ "domain": "cinqueterre.travel",
+ "title": "Cinqueterre.travel - Your Complete Guide to the Italian Riviera",
+ "description": "The ultimate travel resource for Cinque Terre, featuring comprehensive guides to all five villages, hiking trails, restaurants, hotels, weather information, and local culture.",
+ "collections": [
+  {
+   "type": "accommodations",
+   "displayName": "Accommodations"
+  },
+  {
+   "type": "events",
+   "displayName": "Events"
+  },
+  {
+   "type": "hikes",
+   "displayName": "Hiking Trails"
+  },
+  {
+   "type": "pois",
+   "displayName": "Points of Interest"
+  },
+  {
+   "type": "region",
+   "displayName": "Cinque Terre Region"
+  },
+  {
+   "type": "restaurants",
+   "displayName": "Restaurants"
+  },
+  {
+   "type": "transportation",
+   "displayName": "Transportation"
+  },
+  {
+   "type": "villages",
+   "displayName": "Villages"
+  },
+  {
+   "type": "weather",
+   "displayName": "Weather"
+  }
+ ],
+ "settings": {
+  "theme": "default"
+ }
+}

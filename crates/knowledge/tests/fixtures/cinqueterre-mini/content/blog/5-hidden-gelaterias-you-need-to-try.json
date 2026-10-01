@@ -1,0 +1,89 @@
+{
+  "id": "5-hidden-gelaterias-you-need-to-try",
+  "slug": {
+    "en": "/en/blog/5-hidden-gelaterias-you-need-to-try",
+    "de": "/de/blog/5-hidden-gelaterias-you-need-to-try",
+    "fr": "/fr/blog/5-hidden-gelaterias-you-need-to-try",
+    "it": "/it/blog/5-hidden-gelaterias-you-need-to-try"
+  },
+  "title": {
+    "en": "5 Hidden Gelaterias You Need to Try | The Dispatch"
+  },
+  "page_type": "blog-article",
+  "seo": {
+    "title": {
+      "en": "5 Hidden Gelaterias You Need to Try | The Dispatch"
+    },
+    "description": {
+      "en": "Skip the tourist traps and find the real deal. Our local experts reveal where to find the creamiest artisanal gelato in the five villages."
+    }
+  },
+  "template": "cinque-terre-blog-article",
+  "body": [
+    {
+      "type": "blog-article",
+      "post": {
+        "title": "5 Hidden Gelaterias You Need to Try",
+        "subtitle": "Skip the tourist traps and find the real deal. Our local experts reveal where to find the creamiest artisanal gelato in the five villages.",
+        "author": "Marco Bianchi",
+        "authorBio": "A professional food critic and gelato enthusiast, Marco has spent years tasting his way through Italy's best cremerias. He now calls Vernazza home.",
+        "date": "October 14, 2023",
+        "readTime": "4 min read",
+        "category": "Food",
+        "image": "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop",
+        "tags": ["Gelato", "Foodie", "Local Secrets", "Vernazza", "Corniglia"]
+      },
+      "content": {
+        "intro": "In Italy, gelato is not just a dessert; it's a daily ritual. In the Cinque Terre, where the sun beats down on the stone paths and the salt air makes you crave something sweet and cold, finding the right gelateria is essential.",
+        "sections": [
+          {
+            "title": "The Art of the Scoop",
+            "text": "True artisanal gelato is distinguished by its texture and the quality of its ingredients. Look for muted, natural colors—bright neon green pistachio is a warning sign. In the five villages, the best gelaterias use local lemons from Monterosso and honey from the high hills."
+          }
+        ],
+        "gelaterias": [
+          {
+            "name": "Gelateria Vernazza",
+            "village": "Vernazza",
+            "specialty": "Cinque Terre Honey & Ricotta",
+            "description": "A legendary spot where the line is always worth it. Their honey and ricotta flavor is a revelation of local ingredients."
+          },
+          {
+            "name": "Alberto Gelateria",
+            "village": "Corniglia",
+            "specialty": "Basil & Lemon",
+            "description": "Tucked away in the quiet streets of Corniglia, Alberto is famous for his refreshing basil gelato—a true taste of Liguria."
+          },
+          {
+            "name": "Gelateria Riomaggiore",
+            "village": "Riomaggiore",
+            "specialty": "Sciacchetrà Wine Gelato",
+            "description": "A unique creation that incorporates the famous local dessert wine. Sweet, complex, and utterly unforgettable."
+          },
+          {
+            "name": "Il Porticciolo",
+            "village": "Manarola",
+            "specialty": "Fig & Walnut",
+            "description": "Using figs from the terraces above, this tiny shop creates flavors that taste like the hillside itself."
+          },
+          {
+            "name": "Gelateria Centrale",
+            "village": "Monterosso",
+            "specialty": "Classic Stracciatella",
+            "description": "Sometimes the classics are best. Their stracciatella is made with real chocolate shavings and is impossibly creamy."
+          }
+        ],
+        "quote": {
+          "text": "The secret to the best gelato in Liguria is the balance between the mountain honey and the coastal citrus. It's the entire landscape in a single cone.",
+          "author": "Marco Bianchi"
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "page_type": "blog-article"
+  },
+  "status": "published",
+  "created_at": "2023-10-14T12:00:00.000Z",
+  "updated_at": "2023-10-14T12:00:00.000Z"
+}

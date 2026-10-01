@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Map of wineries on the terraces above a village",
+  "properties": {
+    "title": { "type": "string" },
+    "village": { "type": "string" },
+    "wineries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": { "name": { "type": "string" }, "image": { "type": "string" } },
+        "required": ["name"]
+      }
+    }
+  },
+  "required": ["wineries"],
+  "additionalProperties": false,
+  "x-block-meta": {
+    "intent": "orient",
+    "media": { "required": false, "min": 0, "max": 6, "entityMatch": "strict" },
+    "context": ["village"]
+  }
+}

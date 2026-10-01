@@ -107,6 +107,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "content-model"
+version = "0.2.0"
+dependencies = [
+ "content-schema",
+ "jsonschema",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "content-schema"
 version = "0.2.0"
 dependencies = [
@@ -334,6 +345,16 @@ dependencies = [
  "serde",
  "serde_json",
  "uuid-simd",
+]
+
+[[package]]
+name = "knowledge"
+version = "0.2.0"
+dependencies = [
+ "content-model",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

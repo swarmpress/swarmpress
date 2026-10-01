@@ -1,0 +1,115 @@
+{
+  "slug": "corniglia",
+  "seo": {
+    "title": {
+      "en": "Corniglia | Cinque Terre Dispatch",
+      "de": "Corniglia | Cinque Terre Dispatch",
+      "fr": "Corniglia | Cinque Terre Dispatch",
+      "it": "Corniglia | Cinque Terre Dispatch"
+    },
+    "description": {
+      "en": "Discover Corniglia, the only Cinque Terre village perched high on a promontory. 382 steps lead to authentic village life and panoramic views.",
+      "de": "Entdecken Sie Corniglia, das einzige Cinque Terre-Dorf hoch auf einem Vorgebirge. 382 Stufen führen zum authentischen Dorfleben und Panoramablicken.",
+      "fr": "Découvrez Corniglia, le seul village des Cinque Terre perché sur un promontoire. 382 marches mènent à la vie de village authentique et aux vues panoramiques.",
+      "it": "Scopri Corniglia, l'unico villaggio delle Cinque Terre arroccato su un promontorio. 382 gradini portano alla vita autentica del villaggio e alle viste panoramiche."
+    }
+  },
+  "hero": {
+    "image": "https://images.unsplash.com/photo-1529260830199-42c24126f198?q=80&w=2676&auto=format&fit=crop",
+    "imageAlt": {
+      "en": "Corniglia perched high on the cliffs",
+      "de": "Corniglia hoch auf den Klippen thronend",
+      "fr": "Corniglia perchée sur les falaises",
+      "it": "Corniglia arroccata sulle scogliere"
+    },
+    "tagline": {
+      "en": "Cinque Terre",
+      "de": "Cinque Terre",
+      "fr": "Cinque Terre",
+      "it": "Cinque Terre"
+    },
+    "title": {
+      "en": "Corniglia",
+      "de": "Corniglia",
+      "fr": "Corniglia",
+      "it": "Corniglia"
+    },
+    "subtitle": {
+      "en": "The quiet heart of Cinque Terre, perched 100 meters above the sea. Climb 382 steps to find vineyards, olive groves, and the most authentic village life.",
+      "de": "Das ruhige Herz der Cinque Terre, 100 Meter über dem Meer thronend. Erklimmen Sie 382 Stufen zu Weinbergen, Olivenhainen und dem authentischsten Dorfleben.",
+      "fr": "Le cœur tranquille des Cinque Terre, perché à 100 mètres au-dessus de la mer. Grimpez 382 marches pour trouver vignobles, oliveraies et la vie de village la plus authentique.",
+      "it": "Il cuore tranquillo delle Cinque Terre, arroccato 100 metri sopra il mare. Salite 382 gradini per trovare vigneti, uliveti e la vita di villaggio più autentica."
+    },
+    "primaryCta": {
+      "label": {
+        "en": "Explore Corniglia",
+        "de": "Corniglia erkunden",
+        "fr": "Explorer Corniglia",
+        "it": "Esplora Corniglia"
+      },
+      "href": "#villages"
+    },
+    "secondaryCta": {
+      "label": {
+        "en": "Plan Your Visit",
+        "de": "Ihren Besuch planen",
+        "fr": "Planifier votre visite",
+        "it": "Pianifica la tua visita"
+      },
+      "href": "#plan"
+    }
+  },
+  "intro": {
+    "leadStory": {
+      "title": {
+        "en": "Corniglia, The Village Above the Clouds",
+        "de": "Corniglia, Das Dorf über den Wolken",
+        "fr": "Corniglia, Le Village au-dessus des Nuages",
+        "it": "Corniglia, Il Villaggio sopra le Nuvole"
+      },
+      "excerpt": {
+        "en": "Corniglia rewards those who make the climb. Perched high on a rocky promontory, this is the only Cinque Terre village without direct sea access, yet its panoramic views and peaceful streets make every step worthwhile.",
+        "de": "Corniglia belohnt diejenigen, die den Aufstieg wagen. Hoch auf einem Felsvorsprung thronend, ist dies das einzige Cinque Terre-Dorf ohne direkten Meerzugang.",
+        "fr": "Corniglia récompense ceux qui font l'ascension. Perché sur un promontoire rocheux, c'est le seul village des Cinque Terre sans accès direct à la mer.",
+        "it": "Corniglia premia coloro che affrontano la salita. Arroccato su un promontorio roccioso, è l'unico villaggio delle Cinque Terre senza accesso diretto al mare."
+      },
+      "author": "Elena Moretti",
+      "date": "Oct 20, 2023",
+      "readTime": "6 min read",
+      "category": "Hidden Gems",
+      "image": "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?q=80&w=2670&auto=format&fit=crop"
+    },
+    "essentials": {
+      "title": {
+        "en": "Corniglia Essentials 2026",
+        "de": "Corniglia Essentials 2026",
+        "fr": "Essentiels Corniglia 2026",
+        "it": "Essenziali Corniglia 2026"
+      },
+      "subtitle": {
+        "en": "Today's atmosphere and real-time details, grounded in Corniglia's hilltop serenity",
+        "de": "Heutige Atmosphäre und Echtzeit-Details, verwurzelt in Corniglias Hügelruhe",
+        "fr": "Ambiance du jour et détails en temps réel, ancrés dans la sérénité de Corniglia",
+        "it": "Atmosfera di oggi e dettagli in tempo reale, radicati nella serenità collinare di Corniglia"
+      },
+      "today": {
+        "weather": "21°C, cool breeze",
+        "seaTemp": "20°C",
+        "seaConditions": "View from above",
+        "sunset": "20:46"
+      },
+      "experience": {
+        "crowdRhythm": "Peaceful all day",
+        "bestFelt": "Walking slowly, looking up",
+        "villageShape": "Compact and cozy",
+        "foodWine": "Honey, focaccia, local wine"
+      },
+      "character": {
+        "origins": "Named for Roman family",
+        "shapedBy": "Steps, vines, solitude",
+        "rating": "4.5/5",
+        "rememberedFor": "\"The quiet one\""
+      }
+    }
+  }
+}
