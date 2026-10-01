@@ -3,7 +3,8 @@
 > Status: design contract for M1/M4 game logic (2026-10-01). Decisions:
 > [ADR-0028](../adr/0028-organization-model-executive-office-and-departments.md),
 > [ADR-0029](../adr/0029-a-company-runs-several-projects-each-with-its-own-team.md),
-> [ADR-0030](../adr/0030-personas-are-a-data-catalog-with-cv-hobbies-and-interests.md).
+> [ADR-0030](../adr/0030-personas-are-a-data-catalog-with-cv-hobbies-and-interests.md);
+> the central plane is the [publishing plan](publishing-plan.md) ([ADR-0031](../adr/0031-the-publishing-plan-is-the-shared-workspace-for-ceo-and-agents.md)).
 
 The player is the **CEO** of a publishing house. Like a real one, it has
 departments full of individual people, an executive office that helps the CEO

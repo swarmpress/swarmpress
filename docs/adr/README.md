@@ -50,3 +50,4 @@ Accepted ADRs are never rewritten.
 | [0028](0028-organization-model-executive-office-and-departments.md) | Organization model: CEO, executive office and departments | Accepted |
 | [0029](0029-a-company-runs-several-projects-each-with-its-own-team.md) | A company runs several projects, each with its own team | Accepted |
 | [0030](0030-personas-are-a-data-catalog-with-cv-hobbies-and-interests.md) | Personas are a data catalog with CV, hobbies and interests | Accepted |
+| [0031](0031-the-publishing-plan-is-the-shared-workspace-for-ceo-and-agents.md) | The publishing plan is the shared workspace for CEO and agents | Accepted |
