@@ -15,5 +15,15 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
+    // LLM runtime: llm.html is the dev harness / e2e page for src/llm (see e2e/llm.spec.ts).
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        llm: fileURLToPath(new URL('./llm.html', import.meta.url)),
+      },
+    },
   },
+  // LLM runtime: the model worker (src/llm/worker.ts) is a module worker with
+  // code-split imports; the default 'iife' worker format cannot code-split.
+  worker: { format: 'es' },
 })
