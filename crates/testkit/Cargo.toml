@@ -1,0 +1,25 @@
+[package]
+name = "testkit"
+description = "Shared test helpers for SimPress crates: test DB setup, fake GitHub OAuth, WS test client, world builders"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+# testkit deliberately does NOT depend on the server crate, so any crate
+# (including the server's own unit tests) can use it without a dependency cycle.
+
+[dependencies]
+sim-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+postcard.workspace = true
+anyhow.workspace = true
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.26"
+futures = "0.3"
+wiremock = "0.6"
+sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls"] }
+
+[lints]
+workspace = true
