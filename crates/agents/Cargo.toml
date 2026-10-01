@@ -6,7 +6,9 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
-claude = { path = "../claude" }
+# Types, `ClaudeApi` and structured-output helpers only; no HTTP transport,
+# so agents (and the orchestrator) build for wasm32-unknown-unknown.
+claude = { path = "../claude", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
