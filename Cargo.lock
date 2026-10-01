@@ -1154,7 +1154,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots 1.0.9",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -1464,6 +1464,7 @@ version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
+ "cc",
  "pkg-config",
  "vcpkg",
 ]
@@ -2179,7 +2180,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams",
  "web-sys",
- "webpki-roots 1.0.9",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -2388,26 +2389,19 @@ dependencies = [
 name = "server"
 version = "0.2.0"
 dependencies = [
- "agents",
  "anyhow",
  "async-trait",
  "axum",
  "axum-extra",
  "chrono",
- "claude",
- "content-schema",
  "futures",
  "github",
  "hex",
- "jsonschema",
- "postcard",
- "protocol",
  "rand 0.8.8",
  "reqwest",
  "serde",
  "serde_json",
  "sha2",
- "sim-core",
  "sqlx",
  "testkit",
  "thiserror",
@@ -2593,7 +2587,6 @@ dependencies = [
  "memchr",
  "once_cell",
  "percent-encoding",
- "rustls",
  "serde",
  "serde_json",
  "sha2",
@@ -2603,8 +2596,6 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "url",
- "uuid",
- "webpki-roots 0.26.11",
 ]
 
 [[package]]
@@ -2685,7 +2676,6 @@ dependencies = [
  "stringprep",
  "thiserror",
  "tracing",
- "uuid",
  "whoami",
 ]
 
@@ -2724,7 +2714,6 @@ dependencies = [
  "stringprep",
  "thiserror",
  "tracing",
- "uuid",
  "whoami",
 ]
 
@@ -2751,7 +2740,6 @@ dependencies = [
  "thiserror",
  "tracing",
  "url",
- "uuid",
 ]
 
 [[package]]
@@ -2842,7 +2830,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sim-core",
- "sqlx",
  "tokio",
  "tokio-tungstenite 0.26.2",
  "wiremock",
@@ -3515,15 +3502,6 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "webpki-roots"
-version = "0.26.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
-dependencies = [
- "webpki-roots 1.0.9",
 ]
 
 [[package]]

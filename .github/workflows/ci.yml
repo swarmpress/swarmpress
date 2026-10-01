@@ -16,18 +16,7 @@ jobs:
   rust:
     name: Rust (fmt, clippy, nextest)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: simpress
-          POSTGRES_PASSWORD: simpress
-          POSTGRES_DB: simpress
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U simpress" --health-interval 5s --health-timeout 5s --health-retries 10
-    env:
-      DATABASE_URL: postgres://simpress:simpress@localhost:5432/simpress
+    # The server tests use temp-file / in-memory SQLite (ADR-0039): no services.
     steps:
       - uses: actions/checkout@v4
         with:

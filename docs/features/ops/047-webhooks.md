@@ -4,7 +4,8 @@ title: "Webhooks"
 status: planned
 importance: high
 paths:
-  - "crates/server/src/webhooks/**"
+  - crates/server/src/webhooks.rs
+  - crates/server/tests/gateway.rs
   - crates/github/src/webhooks.rs
 adrs:
   - ADR-0009

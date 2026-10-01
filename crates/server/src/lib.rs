@@ -1,30 +1,33 @@
-//! SimPress central server.
+//! SimPress central server (local-first, ADR-0038; SQLite, ADR-0039).
 //!
-//! - [`app`]: state, HTTP routes, bootstrap
-//! - [`auth`]: GitHub OAuth + cookie sessions
-//! - [`actor`]: per-company authoritative sim actors and their registry
-//! - [`store`]: command log + snapshots (Postgres, in-memory for tests)
-//! - [`ws`]: lockstep WebSocket + browser job worker
-//! - [`wire`]: postcard frames spoken on `/ws`
-//! - [`jobs`]: Postgres job queue, notifier, reaper, Claude pool, artifact validation
-//! - [`sim`]: the [`sim::Simulation`] seam over sim-core
-//! - [`plan`]: publishing-plan text store, CEO REST, agent plan ops, `PlanPost` fan-out
-//! - [`tracker`]: first-party analytics collector, rollup, retention, nightly signals
+//! The company itself (sim, plan, orchestrator, local LLM staff) runs in the
+//! player's browser. This server keeps only what must be shared, secret or
+//! trusted:
+//!
+//! - [`auth`]: GitHub OAuth, the development login and cookie sessions
+//! - [`companies`]: one company per player, its site-repo binding and the
+//!   device lease
+//! - [`gateway`]: content PRs on the player's behalf (`PathPolicy`)
+//! - [`events`]: the offline event inbox (poll + WebSocket push)
+//! - [`webhooks`]: GitHub `deployment_status` → `DeployLanded`
+//! - [`sync`]: command-log segments and snapshots (backup / new device)
+//! - [`web`]: the fetch proxy (SSRF-guarded) and the Firecrawl stub
+//! - [`tracker`]: first-party analytics collector, rollup, retention, signals
+//! - [`db`]: every SQL statement (SQLite, single writer + readers)
+//! - [`app`]: state, routes, background tasks
 
-pub mod actor;
 pub mod app;
 pub mod auth;
+pub mod companies;
 pub mod config;
 pub mod db;
 pub mod error;
-pub mod jobs;
-pub mod orchestrator;
-pub mod plan;
-pub mod sim;
-pub mod store;
+pub mod events;
+pub mod gateway;
+pub mod sync;
 pub mod tracker;
-pub mod wire;
-pub mod ws;
+pub mod web;
+pub mod webhooks;
 
 pub use app::{router, serve, AppState};
 pub use config::Config;

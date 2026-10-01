@@ -10,12 +10,12 @@ use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
 use common::{Opts, TestServer};
 use reqwest::header::{CONTENT_TYPE, COOKIE, ORIGIN, REFERER, USER_AGENT};
 use serde_json::{json, Value};
+use simpress_server::db::tracker::{self as store, DailyRow};
+use simpress_server::db::{accounts, Db};
 use simpress_server::tracker::{
     self, AnalyticsSignal, AnalyticsSignalSink, CleanEvent, PendingSignalSink, SaltKeeper,
     SinkOutcome,
 };
-use sqlx::PgPool;
-use uuid::Uuid;
 
 const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
 const SITE: &str = "https://cinqueterre.travel";
@@ -80,16 +80,18 @@ impl<'a> Beacon<'a> {
     }
 }
 
-async fn event_count(pool: &PgPool) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM tracker_events")
-        .fetch_one(pool)
-        .await
-        .unwrap()
+async fn event_count(db: &Db) -> i64 {
+    store::event_count(db).await.unwrap()
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn projects_get_public_tracker_keys_and_snippets(pool: PgPool) {
-    let s = TestServer::start(pool).await;
+/// A migrated private in-memory database.
+async fn mem() -> Db {
+    Db::memory().await.unwrap()
+}
+
+#[tokio::test]
+async fn projects_get_public_tracker_keys_and_snippets() {
+    let s = TestServer::start().await;
     let (a, _) = s.player(1).await;
     let (b, _) = s.player(2).await;
     let p = project(&s, &a).await;
@@ -116,9 +118,9 @@ async fn projects_get_public_tracker_keys_and_snippets(pool: PgPool) {
     assert_eq!(list_a.as_array().unwrap().len(), 1);
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn script_is_served(pool: PgPool) {
-    let s = TestServer::start(pool).await;
+#[tokio::test]
+async fn script_is_served() {
+    let s = TestServer::start().await;
     let res = s.http.get(s.url("/t/s.js")).send().await.unwrap();
     assert_eq!(res.status(), 200);
     assert!(res.headers()[CONTENT_TYPE]
@@ -130,9 +132,9 @@ async fn script_is_served(pool: PgPool) {
     assert!(body.contains("sendBeacon"), "the built tracker is embedded");
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn collector_checks(pool: PgPool) {
-    let s = TestServer::start(pool.clone()).await;
+#[tokio::test]
+async fn collector_checks() {
+    let s = TestServer::start().await;
     let (a, _) = s.player(1).await;
     let key = project(&s, &a).await["trackerKey"]
         .as_str()
@@ -153,19 +155,7 @@ async fn collector_checks(pool: PgPool) {
             .unwrap(),
         SITE
     );
-    let row: (
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        String,
-    ) = sqlx::query_as(
-        "SELECT type, path, lang, ref_domain, utm_source, viewport FROM tracker_events",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let row = store::event_summaries(&s.db).await.unwrap().remove(0);
     assert_eq!(
         row,
         (
@@ -214,7 +204,7 @@ async fn collector_checks(pool: PgPool) {
     );
 
     // Bots, DNT and GPC are accepted and dropped.
-    let before = event_count(&pool).await;
+    let before = event_count(&s.db).await;
     for ua in [
         "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/120.0.0.0 Safari/537.36",
@@ -231,7 +221,7 @@ async fn collector_checks(pool: PgPool) {
     let mut gpc = Beacon::new(&s);
     gpc.extra = vec![("sec-gpc", "1")];
     assert_eq!(gpc.send(ev("pageview")).await, 204);
-    assert_eq!(event_count(&pool).await, before, "nothing stored");
+    assert_eq!(event_count(&s.db).await, before, "nothing stored");
 
     // CORS preflight for a registered domain only.
     let pre = s
@@ -255,18 +245,14 @@ async fn collector_checks(pool: PgPool) {
     let _ = COOKIE;
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn collector_rate_limits_per_ip(pool: PgPool) {
-    let s = TestServer::start_with(
-        pool.clone(),
-        Opts {
-            tweak: Box::new(|c| {
-                c.tracker.burst = 3;
-                c.tracker.rate_per_min = 1;
-            }),
-            ..Opts::default()
-        },
-    )
+#[tokio::test]
+async fn collector_rate_limits_per_ip() {
+    let s = TestServer::start_with(Opts {
+        tweak: Box::new(|c| {
+            c.tracker.burst = 3;
+            c.tracker.rate_per_min = 1;
+        }),
+    })
     .await;
     let (a, _) = s.player(1).await;
     let key = project(&s, &a).await["trackerKey"]
@@ -282,12 +268,13 @@ async fn collector_rate_limits_per_ip(pool: PgPool) {
     let mut other = Beacon::new(&s);
     other.ip = "198.51.100.7";
     assert_eq!(other.send(ev).await, 204);
-    assert_eq!(event_count(&pool).await, 4);
+    assert_eq!(event_count(&s.db).await, 4);
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn salts_rotate_daily_and_visitor_hashes_follow(pool: PgPool) {
-    let p = Uuid::new_v4();
+#[tokio::test]
+async fn salts_rotate_daily_and_visitor_hashes_follow() {
+    let pool = mem().await;
+    let p = "6f1c2c9e-0d5b-4b8e-9a39-3f0a7f2d1c11";
     let day1 = Utc.with_ymd_and_hms(2026, 10, 1, 9, 0, 0).unwrap();
     let keeper = SaltKeeper::default();
     let s1 = keeper.salt_for(&pool, day1).await.unwrap();
@@ -313,7 +300,7 @@ async fn salts_rotate_daily_and_visitor_hashes_follow(pool: PgPool) {
         "ip matters"
     );
     assert_ne!(
-        tracker::visitor_hash(&s1, "203.0.113.5", UA, Uuid::new_v4()),
+        tracker::visitor_hash(&s1, "203.0.113.5", UA, "another-project"),
         h(&s1),
         "project matters"
     );
@@ -323,22 +310,14 @@ async fn salts_rotate_daily_and_visitor_hashes_follow(pool: PgPool) {
     assert_ne!(s1, s2);
     assert_ne!(h(&s1), h(&s2), "different across rotation");
     // Yesterday's salt is destroyed after rotation.
-    let days: Vec<(NaiveDate,)> = sqlx::query_as("SELECT day FROM tracker_salts")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
-    assert_eq!(days, vec![(day2.date_naive(),)]);
+    let days = store::salt_days(&pool).await.unwrap();
+    assert_eq!(days, vec![day2.date_naive()]);
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn schema_has_no_ip_or_user_agent_columns(pool: PgPool) {
-    let cols: Vec<(String, String)> = sqlx::query_as(
-        "SELECT table_name::text, column_name::text FROM information_schema.columns
-         WHERE table_schema = 'public'",
-    )
-    .fetch_all(&pool)
-    .await
-    .unwrap();
+#[tokio::test]
+async fn schema_has_no_ip_or_user_agent_columns() {
+    let pool = mem().await;
+    let cols = store::schema_columns(&pool).await.unwrap();
     assert!(cols.iter().any(|(t, _)| t == "tracker_events"));
     for (t, c) in &cols {
         let c = c.to_ascii_lowercase();
@@ -369,17 +348,17 @@ fn ev(kind: &'static str, path: &str) -> CleanEvent {
     }
 }
 
-async fn new_project(pool: &PgPool, gh: i64) -> (Uuid, Uuid) {
-    let u = simpress_server::db::upsert_github_user(pool, gh, &format!("u{gh}"), None, None)
+async fn new_project(pool: &Db, gh: i64) -> (String, String) {
+    let u = accounts::upsert_github_user(pool, gh, &format!("u{gh}"), None, None, 0)
         .await
         .unwrap();
-    let c = simpress_server::db::create_company(pool, u.id, "Gazette", 1, 60)
+    let c = accounts::create_company(pool, &u.id, "Gazette", 1, "o/r", "main", 0)
         .await
         .unwrap()
         .unwrap();
     let p = tracker::create_project(
         pool,
-        c.id,
+        &c.id,
         &tracker::NewProject {
             sim_project_id: "project-1".into(),
             slug: "cinqueterre".into(),
@@ -395,7 +374,7 @@ async fn new_project(pool: &PgPool, gh: i64) -> (Uuid, Uuid) {
 }
 
 /// Three sessions on `day` (see the assertions for the expected rollup).
-async fn fixture(pool: &PgPool, project: Uuid, day: NaiveDate) {
+async fn fixture(pool: &Db, project: &str, day: NaiveDate) {
     let at = |h: u32, m: u32| -> DateTime<Utc> {
         Utc.from_utc_datetime(&day.and_hms_opt(h, m, 0).unwrap())
     };
@@ -434,23 +413,35 @@ async fn fixture(pool: &PgPool, project: Uuid, day: NaiveDate) {
     ins(at(11, 0), de, v2, s3).await;
 }
 
-type DailyRow = (String, String, String, i32, i32, i32, i64, i32, i32, i32);
+type Daily = (String, String, String, i64, i64, i64, i64, i64, i64, i64);
 
-async fn daily(pool: &PgPool, day: NaiveDate) -> Vec<DailyRow> {
-    sqlx::query_as(
-        "SELECT path, lang, source, sessions, visitors, pageviews, engaged_ms_sum, engaged_count,
-                scroll_75_count, outbound_count
-         FROM analytics_daily WHERE day = $1 ORDER BY path, lang, source",
-    )
-    .bind(day)
-    .fetch_all(pool)
-    .await
-    .unwrap()
+async fn daily(pool: &Db, day: NaiveDate) -> Vec<Daily> {
+    store::daily_rows(pool, day)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|r: DailyRow| {
+            (
+                r.path,
+                r.lang,
+                r.source,
+                r.sessions,
+                r.visitors,
+                r.pageviews,
+                r.engaged_ms_sum,
+                r.engaged_count,
+                r.scroll_75_count,
+                r.outbound_count,
+            )
+        })
+        .collect()
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn rollup_is_correct_and_idempotent(pool: PgPool) {
+#[tokio::test]
+async fn rollup_is_correct_and_idempotent() {
+    let pool = mem().await;
     let (_, p) = new_project(&pool, 1).await;
+    let p = p.as_str();
     let day = NaiveDate::from_ymd_opt(2026, 9, 30).unwrap();
     fixture(&pool, p, day).await;
     // An event far outside the complete-day window is not rolled up.
@@ -468,29 +459,27 @@ async fn rollup_is_correct_and_idempotent(pool: PgPool) {
     tracker::rollup(&pool, now, 7).await.unwrap();
 
     let s = |x: &str| x.to_string();
-    let expected: Vec<DailyRow> = vec![
+    let expected: Vec<Daily> = vec![
         (s("/a"), s("en"), s("direct"), 1, 1, 1, 3000, 1, 0, 0),
         (s("/a"), s("en"), s("google.com"), 1, 1, 1, 12000, 1, 1, 0),
         (s("/b"), s("en"), s("google.com"), 1, 1, 1, 0, 0, 0, 1),
         (s("/de/a"), s("de"), s("newsletter"), 1, 1, 1, 0, 0, 0, 0),
     ];
     assert_eq!(daily(&pool, day).await, expected);
-    let totals: (i32, i32, i32, i32, i64) = sqlx::query_as(
-        "SELECT sessions, visitors, pageviews, engaged_sessions, engaged_ms_sum
-         FROM analytics_daily_totals WHERE project_id = $1 AND day = $2",
-    )
-    .bind(p)
-    .bind(day)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let t = store::totals_row(&pool, p, day).await.unwrap().unwrap();
     // S1 is engaged (12 s, 2 pageviews); S2 (3 s, 1 pv) and S3 are not.
-    assert_eq!(totals, (3, 2, 4, 1, 15_000));
-    let (old,): (i64,) = sqlx::query_as("SELECT count(*) FROM analytics_daily WHERE path = '/old'")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(old, 0);
+    assert_eq!(
+        (
+            t.sessions,
+            t.visitors,
+            t.pageviews,
+            t.engaged_sessions,
+            t.engaged_ms_sum
+        ),
+        (3, 2, 4, 1, 15_000)
+    );
+    let old_day = NaiveDate::from_ymd_opt(2026, 9, 1).unwrap();
+    assert!(daily(&pool, old_day).await.is_empty());
 
     // Deterministic: re-running yields the same rows.
     tracker::rollup(&pool, now + Duration::hours(1), 7)
@@ -499,9 +488,11 @@ async fn rollup_is_correct_and_idempotent(pool: PgPool) {
     assert_eq!(daily(&pool, day).await, expected);
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn retention_deletes_old_raw_events_and_expired_salts(pool: PgPool) {
+#[tokio::test]
+async fn retention_deletes_old_raw_events_and_expired_salts() {
+    let pool = mem().await;
     let (_, p) = new_project(&pool, 1).await;
+    let p = p.as_str();
     let now = Utc.with_ymd_and_hms(2026, 10, 10, 12, 0, 0).unwrap();
     for (age_days, path) in [(8, "/old"), (6, "/recent"), (0, "/today")] {
         tracker::insert_event(
@@ -521,11 +512,8 @@ async fn retention_deletes_old_raw_events_and_expired_salts(pool: PgPool) {
         .unwrap();
     let (events, salts) = tracker::retention(&pool, now, 7).await.unwrap();
     assert_eq!((events, salts), (1, 1));
-    let left: Vec<(String,)> = sqlx::query_as("SELECT path FROM tracker_events ORDER BY ts")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
-    assert_eq!(left, vec![(s("/recent"),), (s("/today"),)]);
+    let left = store::event_paths(&pool).await.unwrap();
+    assert_eq!(left, vec![s("/recent"), s("/today")]);
 
     fn s(x: &str) -> String {
         x.to_string()
@@ -545,9 +533,11 @@ impl AnalyticsSignalSink for RecordingSink {
     }
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn nightly_signals_are_deterministic_and_marked(pool: PgPool) {
+#[tokio::test]
+async fn nightly_signals_are_deterministic_and_marked() {
+    let pool = mem().await;
     let (company, p) = new_project(&pool, 1).await;
+    let p = p.as_str();
     let day = NaiveDate::from_ymd_opt(2026, 9, 30).unwrap();
     fixture(&pool, p, day).await;
     let now = Utc.with_ymd_and_hms(2026, 10, 1, 1, 0, 0).unwrap();
@@ -560,11 +550,8 @@ async fn nightly_signals_are_deterministic_and_marked(pool: PgPool) {
             .unwrap(),
         1
     );
-    let status: String = sqlx::query_scalar("SELECT status FROM analytics_signals")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(status, "pending");
+    let status = store::signal_statuses(&pool).await.unwrap();
+    assert_eq!(status, ["pending"]);
 
     let a = tracker::compute_signal(&pool, p, day)
         .await
@@ -598,11 +585,8 @@ async fn nightly_signals_are_deterministic_and_marked(pool: PgPool) {
     );
     let got = sink.got.lock().unwrap().clone();
     assert_eq!(got, vec![a]);
-    let status: String = sqlx::query_scalar("SELECT status FROM analytics_signals")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(status, "applied");
+    let status = store::signal_statuses(&pool).await.unwrap();
+    assert_eq!(status, ["applied"]);
     // Today's (unfinished) day never gets a signal.
     tracker::insert_event(&pool, p, now, &ev("pageview", "/today"), 5, 5)
         .await
@@ -616,16 +600,16 @@ async fn nightly_signals_are_deterministic_and_marked(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn analytics_api_shape(pool: PgPool) {
-    let s = TestServer::start(pool.clone()).await;
+#[tokio::test]
+async fn analytics_api_shape() {
+    let s = TestServer::start().await;
     let (a, _) = s.player(1).await;
     let (b, _) = s.player(2).await;
     let p = project(&s, &a).await;
-    let pid: Uuid = p["id"].as_str().unwrap().parse().unwrap();
+    let pid = p["id"].as_str().unwrap().to_string();
     let yesterday = Utc::now().date_naive() - Duration::days(1);
-    fixture(&pool, pid, yesterday).await;
-    tracker::rollup(&pool, Utc::now(), 7).await.unwrap();
+    fixture(&s.db, &pid, yesterday).await;
+    tracker::rollup(&s.db, Utc::now(), 7).await.unwrap();
 
     let (st, body) = s
         .get_json("/api/analytics?project=cinqueterre&days=7", Some(&a))
@@ -687,9 +671,9 @@ async fn analytics_api_shape(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn collected_events_get_hashed_sessions(pool: PgPool) {
-    let s = TestServer::start(pool.clone()).await;
+#[tokio::test]
+async fn collected_events_get_hashed_sessions() {
+    let s = TestServer::start().await;
     let (a, _) = s.player(1).await;
     let key = project(&s, &a).await["trackerKey"]
         .as_str()
@@ -706,11 +690,7 @@ async fn collected_events_get_hashed_sessions(pool: PgPool) {
             204
         );
     }
-    let rows: Vec<(i64, i64)> =
-        sqlx::query_as("SELECT visitor_hash, session_hash FROM tracker_events ORDER BY id")
-            .fetch_all(&pool)
-            .await
-            .unwrap();
+    let rows = store::event_hashes(&s.db).await.unwrap();
     assert_eq!(rows[0], rows[1], "same visitor, same session");
     assert_ne!(rows[0].0, rows[2].0, "different visitor");
 }

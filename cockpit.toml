@@ -74,7 +74,7 @@ component = "net"
 # only hold artifacts pulled under their id (none today: CI uploads one workspace report).
 [[evidence]]
 id = "server/nextest"
-title = "cargo nextest: server (sqlx::test, actors, WS, job queue)"
+title = "cargo nextest: server (SQLite, auth, leases, gateway, events, sync, web, tracker)"
 format = "junit"
 kind = "integration"
 path = ".cockpit/evidence/server__nextest/**/*.xml"
