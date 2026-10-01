@@ -173,11 +173,18 @@ async fn reload_fast_forwards_to_wall_clock(pool: PgPool) {
         0,
         "load itself does not block on catch-up"
     );
-    tokio::time::sleep(Duration::from_millis(25)).await;
-    let early = h.probe().await.unwrap().step;
-    assert!(early <= 1000, "bounded per tick: {early}");
-    tokio::time::sleep(Duration::from_millis(400)).await;
-    let p = h.probe().await.unwrap().step;
+    // Catch-up is spread over ticks (at most `catchup_budget` steps each; the
+    // exact bound is asserted under paused time in the actor unit tests).
+    // Poll with a generous deadline so the test holds on a loaded CI runner.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let mut p = 0;
+    while std::time::Instant::now() < deadline {
+        p = h.probe().await.unwrap().step;
+        if p >= 3000 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     assert!(p >= 3000, "caught up to wall clock: {p}");
 }
 
