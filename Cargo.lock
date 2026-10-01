@@ -2388,13 +2388,18 @@ dependencies = [
 name = "server"
 version = "0.2.0"
 dependencies = [
+ "agents",
  "anyhow",
  "async-trait",
  "axum",
  "axum-extra",
  "chrono",
+ "claude",
+ "content-schema",
  "futures",
+ "github",
  "hex",
+ "jsonschema",
  "postcard",
  "protocol",
  "rand 0.8.8",

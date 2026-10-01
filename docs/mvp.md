@@ -1,62 +1,97 @@
-# MVP: one article, end to end
+# MVP: one article, end to end (local-first)
 
-The MVP is done when **one automated test and one manual run** both show
-this loop working on the merged tree:
+> Architecture: [ADR-0038](adr/0038-local-first-the-browser-is-authoritative-for-a-company.md) (browser
+> authoritative, DuckDB-wasm), [ADR-0039](adr/0039-sqlite-is-the-central-database.md) (central SQLite),
+> [ADR-0040](adr/0040-web-access-for-local-models-fetch-proxy-and-firecrawl.md) (web access).
+
+The MVP is done when **an automated browser test and a manual run** both show
+this loop on the merged tree:
 
 ```
-CEO logs in ─► company "cinqueterre.travel" founded (13 people, 1 project, plan seeded)
+Browser (authoritative)                                          Central server (Rust + SQLite)
+───────────────────────────────────────────────────────────     ─────────────────────────────────────
+dev login ─────────────────────────────────────────────────────► session; company + project row; lease
+found company: sim-core scenario "cinqueterre" (13 people)
+DuckDB-wasm/OPFS: sim log + snapshots, plan, briefs, artifacts, transcripts
    │
-   ▼  sim runs (server actor, 10 Hz) ◄────────── browser replica in lockstep (3D office, overlay UI)
-09:00 project standup ──► RequestJob(Standup) ──► executor ──► transcript (utterances) + outcome
-   │                                                          └─► plan: work item + brief + minutes post
-   ▼
-Draft phase  ──► RequestJob(Draft, writer=Giulia) ──► executor ──► page JSON
-   │                 validate (content-model v2 + knowledge closed-world) ─ repair loop
-   │                 GitHub: branch drafts/content-<id>, commit content/pages/blog/<slug>.json, PR
-   │                 plan: handoff post, artifact post (PR)
-   ▼
-Review phase ──► RequestJob(Review, editor=Marco) ──► verdict {decision, score, notes}
-   │                 plan: review post; score ≥ 7 → approve, else revise (≤3) / escalate (ticket)
-   ▼
-Publish ──► orchestrator squash-merges the PR ──► deployment_status webhook (or simulated)
-   │                 ServerCommand::DeployLanded{work_item} → item published, KPIs, CEO feed
-   ▼
-CEO sees it: Plan board (item moved to Published, full thread), Inbox, Performance (tracker)
+09:00 standup ─ Effect::RequestJob(Standup)
+   └─ orchestrator (wasm) ─ LocalLlm (FakeLlm in tests) ─ transcript, briefs
+        └─ ServerCommand::MeetingOutcome → sim creates work item
+Draft phase ─ RequestJob(Draft) ─ orchestrator: page JSON, validate (content-schema + house style)
+   └─ gateway: open draft PR ───────────────────────────────────► POST /api/gateway/draft (PathPolicy:
+                                                                   content/** on drafts/*) → GitHub
+   └─ plan: minutes, artifact, handoff posts (DuckDB)              (FakeGitHub in tests/dev)
+Review phase ─ RequestJob(Review) ─ verdict/score → plan review post
+   └─ JobCompleted{score} → sim: <7 revise, ≥7 publish
+Publish ─ RequestJob(Publish) ─ gateway: merge ─────────────────► POST /api/gateway/merge → squash merge
+                                                                   deployment_status webhook (or simulated
+                                                                   in dev) → offline/online event inbox
+   ◄──────────────────────────── event: DeployLanded{work_item} ◄─ GET /api/events (+ push channel)
+   └─ ServerCommand::DeployLanded → item Published; plan status post; CEO feed
+sync: append log segment + snapshot ───────────────────────────► PUT /api/sync/{company}/… (blobs on disk)
+reload / new device: restore from sync, fast-forward to now (fallback director), merge inbox events
 ```
 
-## Executors in the MVP
+## Contracts
 
-| Mode | Used by | LLM | GitHub |
-|---|---|---|---|
-| **test** (CI, deterministic) | `crates/server/tests/mvp_e2e.rs` | `FakeClaude` / scripted `FakeLlm` | `FakeGitHub` |
-| **dev** (local manual run) | `SIMPRESS_MODE=dev` | Claude via `ANTHROPIC_*` env, or scripted fake when unset | Local file-backed `FakeGitHub`, or a sandbox repo when a token is configured |
-| **live** | Production | Browser staff (ADR-0024), plus Agency (Claude) | GitHub App on the site repo |
+**sim ↔ orchestrator** (unchanged):
+- `Effect::RequestJob { job_id, kind, project, work_item, brief_ref, revision, staff }`,
+  drained with `World::drain_effects()`.
+- Results come back as `ServerCommand::{MeetingOutcome, JobCompleted, DeployLanded}`.
 
-## Contract between the sim and the orchestrator
+In the browser these are *local* commands that the client applies at the next
+step boundary and appends to the command log. "Server command" just means
+"not a player command".
 
-- The sim emits `Effect::RequestJob { job_id, kind, project, work_item, staff[] }`
-  (deterministic `job_id`), drained by the actor after each step.
-  - `kind` is one of `standup | brief | draft | review | publish`.
-- The orchestrator turns each effect into a `jobs` row (idempotency key
-  `company:job_id`), runs it, writes plan text and artifacts, and feeds the
-  result back as a `ServerCommand`:
-  - `JobCompleted { job_id, digest }`;
-  - `MeetingOutcome { meeting, briefs[] }`, which creates work items;
-  - `DeployLanded { work_item }`.
-- The sim owns every state transition; the orchestrator only reports
-  outcomes (ADR-0011).
+**`crates/orchestrator`** (wasm-compatible, no tokio or sqlx). Same logic as
+the earlier server prototype (`git show 5f…:crates/server/src/orchestrator.rs`):
+- `Orchestrator<S: Store, G: Gateway>` with `run(&JobRequest) -> Result<Vec<Outcome>>`.
+- `trait Store`: briefs, artifacts, transcripts and plan posts (item text,
+  append post), async.
+- `trait Gateway`: `open_draft(content_id, path, page, message) -> DraftPr`
+  and `merge(pr, head_sha) -> merged_sha`.
+- `Llm` is the agents crate trait.
+- Implementations:
+  - `MemStore` and `FakeGateway` for tests;
+  - in the browser: a DuckDB-backed store and an HTTP gateway (JS bridge,
+    `crates/client-wasm`);
+  - on the server: SQLite store and a direct github gateway, used only for
+    Agency jobs later.
+
+**Central HTTP API** (SQLite):
+
+| Area | Endpoints |
+|---|---|
+| Auth | `POST /auth/dev/login` (only with `SIMPRESS_DEV_AUTH=1`), GitHub OAuth, `GET /api/me` |
+| Company | `POST /api/companies`, `GET /api/companies/me`, `POST /api/companies/{id}/lease` |
+| Gateway | `POST /api/gateway/draft`, `POST /api/gateway/merge` (company lease required; PathPolicy) |
+| Events | `GET /api/events?after=`, plus a WebSocket push channel (`/ws/events`) |
+| Sync | `PUT/GET /api/sync/{company}/log/{segment}`, `PUT/GET /api/sync/{company}/snapshot` |
+| Web | `GET /web/fetch?url=`; `POST /web/firecrawl/*` (stubbed: credits wave) |
+| Tracker | `/t/s.js`, `/t/e`, `/api/analytics` (from ADR-0032, on SQLite) |
+
+## Executors
+
+| Mode | LLM | GitHub |
+|---|---|---|
+| test (CI) | scripted `FakeLlm` (Rust tests), scripted fake `LocalLlm` (browser e2e) | `FakeGitHub` in the server |
+| dev (manual) | `?llm=fake` scripted, or a real local model once Hugging Face is reachable | `SIMPRESS_GITHUB=fake` (file-backed) or a sandbox repo |
+| live | browser staff, plus Agency (Claude, credits) | GitHub App |
 
 ## Acceptance checklist
 
-- [ ] `cargo nextest run --workspace` green, including `mvp_e2e`
-- [ ] `pnpm -r test` and the Playwright smoke, visual and UI suites green
-- [ ] `mvp_e2e`: standup → work item → draft PR with schema-valid page JSON
-      → review ≥ 7 → merged → `DeployLanded` → item `published`, and the
-      plan thread contains minutes, handoff, artifact, review and status
-      posts in order
-- [ ] Manual dev run: `docker compose up -d` (or `crates/server/scripts/test-pg.sh start`),
-      `cargo run -p server`, `pnpm dev`; log in (dev login), watch the
-      standup bubbles, see the item move across the Plan board, open the PR
-      artifact
-- [ ] `cockpit validate --strict` green, with MVP features linked to evidence
-- [ ] Docs: getting started covers the dev run; CLAUDE.md is current
+- [ ] `cargo nextest run --workspace` green (sim, orchestrator with `MemStore`
+      covering the full loop, server on SQLite)
+- [ ] `cargo build -p orchestrator --target wasm32-unknown-unknown`, and
+      client-wasm exports the orchestrator bridge
+- [ ] Browser e2e (`apps/game/e2e/mvp.spec.ts`) green:
+  - dev login → company founded;
+  - fast-forward to 09:00;
+  - standup → draft PR → review 6 → revision → review 8 → merge;
+  - DeployLanded via the events API → item published;
+  - the Plan panel shows the thread;
+  - a reload restores everything from OPFS;
+  - a fresh browser context restores from central sync.
+- [ ] `pnpm -r test`, the Playwright smoke and visual suites, and
+      `cockpit validate --strict` green
+- [ ] Docs: getting started covers the dev run (server + `pnpm dev`, fake modes)

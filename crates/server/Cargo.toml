@@ -17,6 +17,10 @@ path = "src/main.rs"
 [dependencies]
 sim-core.workspace = true
 protocol.workspace = true
+content-schema.workspace = true
+agents = { path = "../agents" }
+claude = { path = "../claude" }
+github = { path = "../github" }
 serde.workspace = true
 serde_json.workspace = true
 postcard.workspace = true
@@ -52,6 +56,7 @@ time = "0.3"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 [dev-dependencies]
+jsonschema = { version = "0.33", default-features = false }
 testkit = { path = "../testkit" }
 tokio-tungstenite = "0.26"
 wiremock = "0.6"

@@ -18,6 +18,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod jobs;
+pub mod orchestrator;
 pub mod plan;
 pub mod sim;
 pub mod store;

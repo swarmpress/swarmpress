@@ -57,3 +57,6 @@ Accepted ADRs are never rewritten.
 | [0035](0035-the-real-world-enters-through-a-world-context-service.md) | The real world enters through a World Context Service | Accepted |
 | [0036](0036-a-day-director-thread-steers-each-day-within-sim-bounds.md) | A Day Director thread steers each day, within sim bounds | Accepted |
 | [0037](0037-extraordinary-unscripted-happenings-composed-from-safe-primitives.md) | Extraordinary, unscripted happenings, composed from safe primitives | Accepted |
+| [0038](0038-local-first-the-browser-is-authoritative-for-a-company.md) | Local-first: the browser is authoritative for a company | Accepted |
+| [0039](0039-sqlite-is-the-central-database.md) | SQLite is the central database | Accepted |
+| [0040](0040-web-access-for-local-models-fetch-proxy-and-firecrawl.md) | Web access for local models: fetch proxy and Firecrawl | Accepted |
