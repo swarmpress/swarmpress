@@ -60,3 +60,4 @@ Accepted ADRs are never rewritten.
 | [0038](0038-local-first-the-browser-is-authoritative-for-a-company.md) | Local-first: the browser is authoritative for a company | Accepted |
 | [0039](0039-sqlite-is-the-central-database.md) | SQLite is the central database | Accepted |
 | [0040](0040-web-access-for-local-models-fetch-proxy-and-firecrawl.md) | Web access for local models: fetch proxy and Firecrawl | Accepted |
+| [0041](0041-turso-in-the-browser-one-sqlite-dialect-everywhere.md) | Turso in the browser; one SQLite dialect everywhere | Accepted |

@@ -1,7 +1,7 @@
 # MVP: one article, end to end (local-first)
 
 > Architecture: [ADR-0038](adr/0038-local-first-the-browser-is-authoritative-for-a-company.md) (browser
-> authoritative, DuckDB-wasm), [ADR-0039](adr/0039-sqlite-is-the-central-database.md) (central SQLite),
+> authoritative), [ADR-0041](adr/0041-turso-in-the-browser-one-sqlite-dialect-everywhere.md) (Turso wasm on OPFS, one SQLite dialect), [ADR-0039](adr/0039-sqlite-is-the-central-database.md) (central SQLite),
 > [ADR-0040](adr/0040-web-access-for-local-models-fetch-proxy-and-firecrawl.md) (web access).
 
 The MVP is done when **an automated browser test and a manual run** both show
@@ -12,7 +12,7 @@ Browser (authoritative)                                          Central server 
 ───────────────────────────────────────────────────────────     ─────────────────────────────────────
 dev login ─────────────────────────────────────────────────────► session; company + project row; lease
 found company: sim-core scenario "cinqueterre" (13 people)
-DuckDB-wasm/OPFS: sim log + snapshots, plan, briefs, artifacts, transcripts
+Turso wasm/OPFS: sim log + snapshots, plan, briefs, artifacts, transcripts
    │
 09:00 standup ─ Effect::RequestJob(Standup)
    └─ orchestrator (wasm) ─ LocalLlm (FakeLlm in tests) ─ transcript, briefs
@@ -20,7 +20,7 @@ DuckDB-wasm/OPFS: sim log + snapshots, plan, briefs, artifacts, transcripts
 Draft phase ─ RequestJob(Draft) ─ orchestrator: page JSON, validate (content-schema + house style)
    └─ gateway: open draft PR ───────────────────────────────────► POST /api/gateway/draft (PathPolicy:
                                                                    content/** on drafts/*) → GitHub
-   └─ plan: minutes, artifact, handoff posts (DuckDB)              (FakeGitHub in tests/dev)
+   └─ plan: minutes, artifact, handoff posts (Turso)               (FakeGitHub in tests/dev)
 Review phase ─ RequestJob(Review) ─ verdict/score → plan review post
    └─ JobCompleted{score} → sim: <7 revise, ≥7 publish
 Publish ─ RequestJob(Publish) ─ gateway: merge ─────────────────► POST /api/gateway/merge → squash merge
@@ -53,7 +53,7 @@ the earlier server prototype (`git show 5f…:crates/server/src/orchestrator.rs`
 - `Llm` is the agents crate trait.
 - Implementations:
   - `MemStore` and `FakeGateway` for tests;
-  - in the browser: a DuckDB-backed store and an HTTP gateway (JS bridge,
+  - in the browser: a Turso-wasm-backed store (sqlite-wasm fallback, ADR-0041) and an HTTP gateway (JS bridge,
     `crates/client-wasm`);
   - on the server: SQLite store and a direct github gateway, used only for
     Agency jobs later.
