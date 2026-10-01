@@ -69,7 +69,7 @@ jobs:
           size=$(gzip -9 -c crates/client-wasm/pkg/client_wasm_bg.wasm | wc -c)
           echo "client_wasm_bg.wasm gzip: $size bytes"
           mkdir -p artifacts/bench
-          cat > artifacts/bench/wasm-size.json <<JSON
+          cat > artifacts/bench/bundle-size-wasm.json <<JSON
           { "schema": "cockpit.benchmark.v1", "name": "wasm-size", "component": "client-wasm",
             "provenance": { "commit": "${{ github.sha }}", "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)" },
             "metrics": [ { "name": "client_wasm_bg.wasm gzip", "unit": "bytes", "value": $size,
@@ -83,7 +83,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: bench-wasm
+          name: bench-bundle-size
           path: artifacts/bench
 
   web:
@@ -107,18 +107,38 @@ jobs:
       - run: pnpm schema:check
       - run: pnpm --filter @swarm-press/content-schema test
       - run: pnpm --filter @swarm-press/game typecheck
-      - run: pnpm --filter @swarm-press/game exec vitest run --reporter=default --reporter=junit --outputFile.junit=test-results/vitest-junit.xml
+      - run: pnpm --filter @swarm-press/game exec vitest run --reporter=default --reporter=junit --outputFile.junit=reports/vitest-junit.xml
       - name: Build client (wasm prebuilt)
         run: pnpm --filter @swarm-press/game exec vite build
       - run: pnpm --filter @swarm-press/game exec playwright install --with-deps chromium
-      - run: pnpm --filter @swarm-press/game exec playwright test
+      - name: Playwright e2e (WebGPU + WebGL2)
+        run: pnpm --filter @swarm-press/game exec playwright test e2e/smoke.spec.ts
         env:
           CI: '1'
+          PW_JSON: reports/playwright.json
+      - name: Playwright visual regression
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @swarm-press/game exec playwright test e2e/visual.spec.ts
+        env:
+          CI: '1'
+          PW_JSON: reports/playwright-visual.json
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: web-test-results
-          path: apps/game/test-results
+          name: game-vitest-junit
+          path: apps/game/reports/vitest-junit.xml
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: game-playwright
+          path: apps/game/reports/playwright.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: game-playwright-visual
+          path: |
+            apps/game/reports/playwright-visual.json
+            apps/game/test-results
 
   live-theme:
     name: Frozen cinque-terre theme still builds (live site guard)
@@ -167,11 +187,20 @@ jobs:
           path: target/nextest/ci
       - uses: actions/download-artifact@v4
         with:
-          name: web-test-results
-          path: apps/game/test-results
+          name: game-vitest-junit
+          path: apps/game/reports
       - uses: actions/download-artifact@v4
         with:
-          name: bench-wasm
+          name: game-playwright
+          path: apps/game/reports
+      - uses: actions/download-artifact@v4
+        with:
+          # multi-path upload is rooted at apps/game (reports/ + test-results/)
+          name: game-playwright-visual
+          path: apps/game
+      - uses: actions/download-artifact@v4
+        with:
+          name: bench-bundle-size
           path: artifacts/bench
       - run: cockpit scan
       - run: cockpit status

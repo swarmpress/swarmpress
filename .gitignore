@@ -76,3 +76,4 @@ playwright-report/
 .cockpit/
 # cockpit.benchmark.v1 documents written by reporters (uploaded as CI artifacts)
 /artifacts/
+apps/game/reports/

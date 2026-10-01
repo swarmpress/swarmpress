@@ -67,10 +67,16 @@ holds. Each step is reverted with one revert commit.
             uses: actions/checkout@v4
             with:
               repository: swarmpress/swarmpress
-   +          ref: legacy-final
+   +          # Pinned to the last TypeScript-era commit (tag legacy-final).
+   +          ref: 391d5de8fe4eae3184dfd3f845f7e418239123f9
               path: swarmpress
               token: ${{ secrets.MONOREPO_PAT }}
    ```
+
+   The ref is the full commit SHA rather than the tag name so the pin works even before the
+   tags are pushed. A ready-made commit with exactly this change exists on the local branch
+   `simpress/cutover-step-0` of the site repo checkout (also exported as a `git format-patch`
+   file); apply it with `git am` if the session cannot push.
 
 3. Run the workflow (`workflow_dispatch`) and capture the baseline crawl.
 

@@ -146,7 +146,7 @@ id = "game/vitest"
 title = "apps/game vitest (incl. Babylon NullEngine)"
 format = "junit"
 kind = "unit"
-path = [".cockpit/evidence/game__vitest/**/*.xml", "apps/game/test-results/vitest-junit.xml"]
+path = [".cockpit/evidence/game__vitest/**/*.xml", "apps/game/reports/vitest-junit.xml"]
 component = "render"
 [evidence.github]
 repo = "swarmpress/swarmpress"
@@ -189,7 +189,7 @@ id = "game/playwright-e2e"
 title = "apps/game Playwright (WebGPU + WebGL2)"
 format = "playwright"
 kind = "e2e"
-path = [".cockpit/evidence/game__playwright-e2e/**/*.json", "apps/game/test-results/playwright.json"]
+path = [".cockpit/evidence/game__playwright-e2e/**/*.json", "apps/game/reports/playwright.json"]
 component = "render"
 [evidence.github]
 repo = "swarmpress/swarmpress"
@@ -204,7 +204,7 @@ id = "game/playwright-visual"
 title = "apps/game visual regression"
 format = "playwright"
 kind = "visual"
-path = [".cockpit/evidence/game__playwright-visual/**/*.json", "apps/game/test-results/playwright-visual.json"]
+path = [".cockpit/evidence/game__playwright-visual/**/*.json", "apps/game/reports/playwright-visual.json"]
 component = "render"
 [evidence.github]
 repo = "swarmpress/swarmpress"
