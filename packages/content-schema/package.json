@@ -1,0 +1,24 @@
+{
+  "name": "@swarm-press/content-schema",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Canonical page/block schemas (Zod) shared by the site theme and the Rust server via exported JSON Schema",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "export": "tsx scripts/export-json-schema.ts",
+    "check": "tsx scripts/export-json-schema.ts --check",
+    "test": "tsx test/block-coverage.test.ts && tsx test/page.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.22.4",
+    "zod-to-json-schema": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

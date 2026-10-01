@@ -1,0 +1,13 @@
+[package]
+name = "protocol"
+description = "Wire protocol between the SimPress server and the browser client"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+postcard.workspace = true
+
+[lints]
+workspace = true

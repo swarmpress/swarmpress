@@ -1,0 +1,7 @@
+{
+  "id": "p3",
+  "slug": { "en": "/en/blog/x" },
+  "title": { "en": "X" },
+  "page_type": "blog-article",
+  "body": [ { "type": "pricing-section", "tiers": [] } ]
+}

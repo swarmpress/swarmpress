@@ -1,0 +1,18 @@
+{
+  "id": "content-0001",
+  "slug": { "en": "/en/blog/last-light-on-sentiero-azzurro" },
+  "title": { "en": "Last Light on the Sentiero Azzurro" },
+  "page_type": "blog-article",
+  "seo": { "title": "Last Light on the Sentiero Azzurro", "description": "A dusk walk between villages." },
+  "body": [
+    { "type": "hero", "title": "Last Light", "subtitle": "Dusk on the coastal path" },
+    { "type": "heading", "level": 2, "text": "Setting out" },
+    { "type": "paragraph", "markdown": "We left Monterosso as the ferries stopped running." },
+    { "type": "callout", "style": "info", "content": "Carry a headlamp after sunset." },
+    { "type": "faq", "items": [ { "question": "Is it safe at dusk?", "answer": "Yes, with a light." } ] }
+  ],
+  "metadata": { "author": "Isabella" },
+  "status": "draft",
+  "created_at": "2026-05-12T08:00:00Z",
+  "updated_at": "2026-05-12T09:00:00Z"
+}

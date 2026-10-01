@@ -1,38 +1,23 @@
 {
   "name": "swarm-press",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "A fully autonomous virtual publishing house operated by intelligent agents",
+  "description": "SimPress: an isometric publishing-house game where AI staff run a real website",
   "scripts": {
-    "dev": "turbo run dev",
-    "build": "turbo run build",
-    "test": "turbo run test",
-    "lint": "turbo run lint",
-    "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean && rm -rf node_modules",
+    "dev": "pnpm --filter @swarm-press/game dev",
+    "build": "pnpm -r --filter '!docs' --filter '!@swarm-press/theme-*' build",
+    "typecheck": "pnpm -r --filter @swarm-press/game --filter @swarm-press/content-schema typecheck",
+    "test": "pnpm -r --filter @swarm-press/content-schema --filter @swarm-press/game test",
+    "schema:export": "pnpm --filter @swarm-press/content-schema export",
+    "schema:check": "pnpm --filter @swarm-press/content-schema check",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "cli": "pnpm --filter @swarm-press/cli run cli",
-    "webhook-proxy": "npx smee-client --url https://smee.io/DGG7mVlrWR2zB1M4 --target http://localhost:3000/webhooks/github",
     "docs:dev": "pnpm --filter docs dev",
-    "docs:build": "pnpm run docs:generate && pnpm --filter docs build",
-    "docs:generate": "typedoc",
-    "docs:lint": "markdownlint-cli2 'docs/**/*.md' 'apps/docs/**/*.mdx'",
-    "docs:link-check": "find docs -name '*.md' | xargs markdown-link-check -q",
-    "docs:validate": "pnpm run docs:lint"
+    "docs:build": "pnpm --filter docs build"
   },
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ],
   "devDependencies": {
     "@types/node": "^20.10.0",
-    "markdown-link-check": "^3.14.2",
-    "markdownlint-cli2": "^0.19.1",
     "prettier": "^3.1.0",
     "tsx": "^4.7.0",
-    "turbo": "^1.11.0",
-    "typedoc": "^0.28.14",
-    "typedoc-plugin-markdown": "^4.9.0",
     "typescript": "^5.3.3"
   },
   "engines": {

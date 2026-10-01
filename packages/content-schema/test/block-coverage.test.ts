@@ -3,12 +3,12 @@
  * Block coverage test
  *
  * Asserts that every block type registered in
- *   packages/shared/src/content/blocks.ts
+ *   packages/content-schema/src/blocks.ts
  * has a matching `case '<type>':` in
  *   packages/site-builder/src/themes/cinque-terre/src/ContentRenderer.astro
  * and vice versa.
  *
- * Run with `tsx packages/site-builder/test/block-coverage.test.ts`.
+ * Run with `pnpm --filter @swarm-press/content-schema test`.
  * Exits non-zero on any drift.
  */
 
@@ -21,7 +21,7 @@ const REPO_ROOT = resolve(__dirname, '..', '..', '..')
 
 const BLOCKS_PATH = resolve(
   REPO_ROOT,
-  'packages/shared/src/content/blocks.ts'
+  'packages/content-schema/src/blocks.ts'
 )
 const RENDERER_PATH = resolve(
   REPO_ROOT,

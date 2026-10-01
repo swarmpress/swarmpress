@@ -1,0 +1,7 @@
+{
+  "id": "p1",
+  "slug": { "en": "/en/blog/minimal", "de": "/de/blog/minimal" },
+  "title": { "en": "Minimal", "de": "Minimal" },
+  "page_type": "blog-article",
+  "body": []
+}
