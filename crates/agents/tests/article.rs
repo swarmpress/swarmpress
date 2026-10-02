@@ -1679,10 +1679,29 @@ fn the_article_profile_rejects_pages_the_theme_would_render_wrongly() {
     let mut page = good.clone();
     page["body"] = json!([]);
     assert_eq!(issues(&page).len(), 4);
-    // The one agent-written article that is live does not fit the profile.
+
+    // The theme's route reads `seo.<field>.<lang>`: plain strings (which
+    // schema v1 required) would give the page an empty meta description.
+    let mut page = good.clone();
+    page["seo"] = json!({"title": "A plain title", "description": "A plain description."});
+    assert_eq!(
+        issues(&page),
+        vec![
+            "[title] /seo/title: an article's seo.title is {\"en\": \"…\"} and not empty",
+            "[title] /seo/description: an article's seo.description is {\"en\": \"…\"} and not empty",
+        ]
+    );
+    let mut page = good.clone();
+    page["seo"]["description"]["en"] = json!(" ");
+    assert_eq!(issues(&page).len(), 1);
+
+    // The one agent-written article that is live does not fit the profile:
+    // two blocks outside the article set, no intro paragraph after the hero,
+    // no section heading, HTML in the closing and an empty `seo`.
     let live = json!({
         "id": "x", "slug": {"en": "/en/blog/last-light-on-sentiero-azzurro"}, "title": {"en": "t"},
         "page_type": "blog-article",
+        "seo": {},
         "body": [
             {"type": "editorial-hero", "title": "t", "image": "https://img.test/a"},
             {"type": "editorial-intro", "quote": "q", "leftContent": "<p>l</p>", "rightContent": "<p>r</p>"},
@@ -1691,7 +1710,7 @@ fn the_article_profile_rejects_pages_the_theme_would_render_wrongly() {
             {"type": "closing-note", "title": "t", "content": "<p>c</p>"}
         ]
     });
-    assert_eq!(issues(&live).len(), 5, "{:#?}", issues(&live));
+    assert_eq!(issues(&live).len(), 7, "{:#?}", issues(&live));
 }
 
 // ---------------------------------------------------------------- digests

@@ -1485,7 +1485,9 @@ pub fn section_of_pointer(page: &Value, pointer: &str) -> Option<SectionId> {
 ///   by at least one block), then exactly one `closing-note`, last;
 /// - no raw `<` or `>` in the two fields the theme renders through
 ///   `set:html` (`editorial-hero.title`, `closing-note.content`);
-/// - every slug is `/<lang>/blog/<slug>` with the same `<slug>`.
+/// - every slug is `/<lang>/blog/<slug>` with the same `<slug>`;
+/// - `seo.title` and `seo.description` are localized objects with a non-empty
+///   `en` (the theme's route ignores plain strings there).
 pub fn check_article_profile(page: &Value) -> Vec<PageIssue> {
     let mut out = Vec::new();
     let mut issue = |section: Option<SectionId>, pointer: String, message: String| {
@@ -1532,6 +1534,21 @@ pub fn check_article_profile(page: &Value) -> Vec<PageIssue> {
             }
         }
         _ => issue(None, "/slug".into(), "an article needs a slug".into()),
+    }
+    // The theme's page route reads `seo.<field>.<lang>` and falls back to
+    // `.en`; a plain string is ignored and the page gets an empty meta
+    // description.
+    for field in ["title", "description"] {
+        let localized = page["seo"][field]["en"]
+            .as_str()
+            .is_some_and(|s| !s.trim().is_empty());
+        if !localized {
+            issue(
+                Some(SectionId::Title),
+                format!("/seo/{field}"),
+                format!("an article's seo.{field} is {{\"en\": \"…\"}} and not empty"),
+            );
+        }
     }
 
     let empty = Vec::new();
