@@ -1,6 +1,6 @@
 # ADR-0032 — First-party analytics tracker, owned by the data scientist
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0044
 **Date:** 2026-10-01
 
 ## Context

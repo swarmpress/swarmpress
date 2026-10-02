@@ -14,8 +14,9 @@ fallback).
 - The company is extensible through a JS SDK.
 - The user's own company is the imported, still-live **cinqueterre.travel**.
 
-Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0043; ADR-0038 to 0043 define
-the current architecture). Features and their health: `docs/features/` plus Cockpit.
+Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0055; ADR-0038 to 0055 define
+the current architecture; ADR-0044 to 0055 are decided and mostly not built yet). Features and
+their health: `docs/features/` plus Cockpit.
 
 ## Architecture in one screen (local-first, ADR-0038)
 
@@ -78,15 +79,23 @@ Site repos build with @swarm-press/site-kit + an agent-authored theme on GitHub 
    indexes. Unknown ids are validation errors returned to the model. Missing knowledge becomes a
    `NEEDS_PAGE` or `NEEDS_MEDIA` ticket.
 6. **One source of truth per entity.**
-   - Content lives in the site repo.
-   - Company state lives in the browser's command log and snapshots, synced centrally as
+   - Content lives in the site repo, which the player owns (ADR-0047). Asset bytes live in object
+     storage; each asset's sidecar lives in the site repo (ADR-0050).
+   - Company state lives in the executor's command log and snapshots, synced centrally as
      immutable segments.
-   - Plan text, transcripts and artifacts live in the browser store.
-   - Accounts, leases, events and the credits ledger live in central SQLite.
-7. **The browser is authoritative for its company, under a lease.**
-   - Only the lease holder writes.
-   - The browser never holds GitHub or other credentials: the central gateway and credential
-     proxy do.
+   - Plan text, transcripts and artifacts live in the executor's store, with a synced backup
+     copy (text packs, ADR-0046).
+   - Accounts, leases and epochs, the log head, the job ledger, events and the billing ledger
+     live in central SQLite.
+   - Asset storage, text packs, the job ledger and the billing ledger are decided and not built
+     yet (build order in `docs/architecture/commercial-model.md`).
+7. **The lease-holding executor is authoritative for its company.**
+   - An executor is a browser or a runner. Only the lease holder writes, and the lease epoch
+     fences every write: gateway, sync, job ledger and paid spend (ADR-0045).
+   - The browser never holds platform credentials: the central gateway and credential proxy do.
+     A player may hold their own provider keys on their own device (ADR-0054).
+   - Epochs and fencing are decided and not built yet: today the lease is a random id, checked
+     on gateway routes only.
    - Leaderboards trust only facts that replay (challenges) or are audited from the live site.
 8. **The render-state contract.** The renderer draws exactly `render_state()` and decides
    nothing. New visual facts need a contract change (`docs/architecture/render-state.md`).
@@ -102,7 +111,8 @@ Site repos build with @swarm-press/site-kit + an agent-authored theme on GitHub 
     Markdown. Prompt block docs are generated from the schemas.
 13. **Minimal infrastructure.**
     - In the browser: Turso wasm (sqlite-wasm fallback).
-    - Centrally: one Rust binary with SQLite.
+    - Centrally: one Rust binary with SQLite is the whole control plane.
+    - Object storage and runner containers are allowed as the data and compute plane (ADR-0049).
     - SQL is written in the plain SQLite subset Turso also accepts (ADR-0041): no extensions,
       FTS, virtual tables or generated columns.
     - No Postgres, Temporal, NATS, Redis or external queues.
@@ -159,7 +169,7 @@ cargo build -p orchestrator --target wasm32-unknown-unknown
 pnpm schema:check                             # Zod ↔ committed page.schema.json drift
 pnpm --filter @swarm-press/game build && pnpm test:e2e     # Playwright (webgpu + fallback)
 (cd apps/game && pnpm exec vitest run --reporter=default --reporter=junit \
-   --outputFile.junit=test-results/vitest-junit.xml)       # run AFTER Playwright (it empties test-results/)
+   --outputFile.junit=reports/vitest-junit.xml)            # → apps/game/reports/ (Cockpit evidence)
 
 # evidence gate
 cockpit scan && cockpit status
@@ -175,6 +185,7 @@ cockpit serve --watch                         # http://127.0.0.1:4747
 | Sim entities, systems, commands, pipeline stages | `docs/architecture/sim.md` |
 | MVP contract, central HTTP API | `docs/mvp.md`, `crates/server/README.md` |
 | Local-first, storage, SDK | ADR-0038…0043, `docs/architecture/sdk.md`, `docs/guides/extending.md` |
+| Commercial model, executors, continuity, pricing, assets (decided, not built) | ADR-0044…0055, `docs/architecture/commercial-model.md` |
 | Render state | `docs/architecture/render-state.md` |
 | Roles, personas, prompts, pipelines, meetings, QA | `docs/architecture/agents.md` |
 | Local LLMs and the Agency | `docs/architecture/hybrid-inference.md` |

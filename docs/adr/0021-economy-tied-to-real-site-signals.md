@@ -1,6 +1,6 @@
 # ADR-0021 — Economy tied to real site signals
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0055
 **Date:** 2026-10-01
 
 ## Context

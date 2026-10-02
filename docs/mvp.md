@@ -29,7 +29,7 @@ Publish ─ RequestJob(Publish) ─ gateway: merge ─────────�
    ◄──────────────────────────── event: DeployLanded{work_item} ◄─ GET /api/events (+ push channel)
    └─ ServerCommand::DeployLanded → item Published; plan status post; CEO feed
 sync: append log segment + snapshot ───────────────────────────► PUT /api/sync/{company}/… (blobs on disk)
-reload / new device: restore from sync, fast-forward to now (fallback director), merge inbox events
+reload / new device: restore from OPFS or sync by replay to the checkpoint, merge inbox events (ADR-0048)
 ```
 
 ## Contracts
@@ -44,7 +44,7 @@ step boundary and appends to the command log. "Server command" just means
 "not a player command".
 
 **`crates/orchestrator`** (wasm-compatible, no tokio or sqlx). Same logic as
-the earlier server prototype (`git show 5f…:crates/server/src/orchestrator.rs`):
+the earlier server prototype (`git show f0db482:crates/server/src/orchestrator.rs`):
 - `Orchestrator<S: Store, G: Gateway>` with `run(&JobRequest) -> Result<Vec<Outcome>>`.
 - `trait Store`: briefs, artifacts, transcripts and plan posts (item text,
   append post), async.
@@ -76,7 +76,7 @@ the earlier server prototype (`git show 5f…:crates/server/src/orchestrator.rs`
 | Mode | LLM | GitHub |
 |---|---|---|
 | test (CI) | scripted `FakeLlm` (Rust tests), scripted fake `LocalLlm` (browser e2e) | `FakeGitHub` in the server |
-| dev (manual) | `?llm=fake` scripted, or a real local model once Hugging Face is reachable | `SWARMPRESS_GITHUB=fake` (file-backed) or a sandbox repo |
+| dev (manual) | `?llm=fake` scripted, or a real local model once Hugging Face is reachable | `SWARMPRESS_GITHUB=fake` (in-memory, lost on restart) or a sandbox repo |
 | live | browser staff, plus Agency (Claude, credits) | GitHub App |
 
 ## Acceptance checklist

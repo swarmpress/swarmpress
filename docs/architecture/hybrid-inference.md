@@ -36,8 +36,9 @@ Features: FEAT-037 to FEAT-041.
 
 In game, Claude-backed work appears as an **external Agency**: contractors visit the building,
 sit at a guest desk, and send an invoice. Star hires may be Agency contracts. Escalating is a
-visible, costly choice. When no browser is open, the sim keeps ticking, Claude jobs continue,
-and browser jobs queue.
+visible, costly choice. When no executor is running, the company rests: the sim does not advance and
+no job runs. Work continues while the player is away only through a continuity runner, self-hosted
+or managed (ADR-0048).
 
 ## Runtime (`apps/game/src/llm/`)
 

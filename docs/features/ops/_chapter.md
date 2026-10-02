@@ -16,3 +16,5 @@ GitHub App, webhooks, onboarding, SiteAudit, the cinqueterre cutover, observabil
 | [FEAT-050](050-cinqueterre-cutover.md) | cinqueterre.travel cutover | planned | critical |
 | [FEAT-051](051-observability.md) | Observability | planned | normal |
 | [FEAT-052](052-ci-evidence-gate.md) | Build tooling, CI and the Cockpit evidence gate | in-progress | normal |
+| [FEAT-065](065-coordinator-managed-runs.md) | Company coordinator and managed continuity runs | planned | high |
+| [FEAT-066](066-state-repo-mirror.md) | State-repo mirror | planned | normal |

@@ -1,6 +1,6 @@
 # ADR-0042 — Extension SDK and the headless Bun runner
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0053
 **Date:** 2026-10-01
 
 ## Context

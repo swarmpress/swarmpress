@@ -8,8 +8,10 @@ paths:
   - crates/server/src/db/accounts.rs
   - crates/server/tests/http.rs
   - crates/testkit/src/lib.rs
+  - crates/server/tests/runner_tokens.rs
 adrs:
   - ADR-0019
+  - ADR-0045
 ---
 
 # Auth: GitHub OAuth and cookie sessions
@@ -19,11 +21,16 @@ state-changing REST, Origin check on WS upgrade, per-company authorisation.
 
 Decisions: [ADR-0019](../../adr/0019-auth-github-oauth-cookie-sessions.md).
 
+Runner tokens (increment A6, FEAT-063): a non-browser executor authenticates with
+`Authorization: Bearer <token>`. `runner_tokens` stores only the hash; a token is scoped to one
+company (and, for managed runs, one run) and can be revoked.
+
 ## Acceptance criteria
 
 - [ ] Fake OAuth provider flow logs in and rotates the session id.
 - [ ] A session can command only its own companies.
 - [ ] Cross-origin WS upgrade is rejected.
+- [ ] A runner token works only for its company, and not after revocation.
 
 ## Evidence
 

@@ -1,6 +1,6 @@
 # ADR-0025 — Browser job worker protocol, leases, leader election, server-side artifact validation
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0048
 **Date:** 2026-10-01
 
 ## Context

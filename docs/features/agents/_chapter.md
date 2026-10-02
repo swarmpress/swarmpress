@@ -17,3 +17,4 @@ Claude client, the organisation and prompts, orchestrator-owned pipelines, meeti
 | [FEAT-035](035-design-department.md) | Design department | planned | high |
 | [FEAT-036](036-agent-evals.md) | Agent eval harness and pipeline cost | planned | normal |
 | [FEAT-059](059-orchestrator-wasm-bridge.md) | Orchestrator in the browser (orchestrator-wasm JS bridge) | in-progress | high |
+| [FEAT-073](073-cfo-infra-spend-report.md) | CFO infrastructure spend report and unit-tagged numbers validator | planned | high |

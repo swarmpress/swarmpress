@@ -6,7 +6,7 @@ staff are real LLM agents: their meetings play out as speech bubbles, and their 
 **one real website per player**. The user's own company is the imported, still-live
 [cinqueterre.travel](https://cinqueterre.travel).
 
-swarm.press is a greenfield rebuild of swarm.press ([ADR-0001](adr/0001-greenfield-rebuild-legacy-tag.md)).
+swarm.press is a greenfield rebuild of the earlier TypeScript swarm.press ([ADR-0001](adr/0001-greenfield-rebuild-legacy-tag.md)).
 The legacy TypeScript code is reachable at the git tag `legacy-ts`.
 
 ## Where things are
@@ -17,7 +17,7 @@ The legacy TypeScript code is reachable at the git tag `legacy-ts`.
 | [Game design](game-design/overview.md) | Time, staff, rooms and progression, economy, events and inbox, leaderboard |
 | [Guides](guides/getting-started.md) | Getting started, testing (Cockpit evidence), asset pipeline, contributing |
 | [Runbooks](runbooks/operations.md) | Operations, and the [cinqueterre cutover](runbooks/cinqueterre-cutover.md) |
-| [ADRs](adr/README.md) | ADR-0001 to ADR-0027, the decisions and the alternatives we rejected |
+| [ADRs](adr/README.md) | ADR-0001 to ADR-0055, the decisions and the alternatives we rejected |
 | [Features](features/) | FEAT-001 onwards, one file per feature, read by Cockpit to derive health |
 
 ### Architecture
@@ -40,6 +40,9 @@ The legacy TypeScript code is reachable at the git tag `legacy-ts`.
   QuickJS sandbox, the `swarmpress` runner, the sim-rule contract
 - [Browser runtime](architecture/browser-runtime.md): the company store (Turso wasm / sqlite-wasm
   on OPFS), the central API client, the orchestrator-wasm bridge, cross-origin isolation
+- [Commercial model and managed architecture](architecture/commercial-model.md): the free
+  baseline, executors and fencing, backup, continuity, pricing and spend control, assets, BYO
+  (decided in ADR-0044 to ADR-0055, not built yet)
 
 ### Game design
 

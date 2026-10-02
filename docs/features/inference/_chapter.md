@@ -14,3 +14,4 @@ In-browser LLMs for staff work, the model registry, the browser job worker proto
 | [FEAT-039](039-content-gateway.md) | Content gateway and events inbox | in-progress | critical |
 | [FEAT-040](040-gpu-scheduler.md) | GPU scheduler | planned | high |
 | [FEAT-041](041-agency-escalation.md) | Agency escalation | planned | high |
+| [FEAT-064](064-llm-proxy-memo.md) | Central LLM proxy and memo cache | planned | high |

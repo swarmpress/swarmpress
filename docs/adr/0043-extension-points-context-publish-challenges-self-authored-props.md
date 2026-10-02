@@ -1,6 +1,6 @@
 # ADR-0043 — Extension points: context providers, publish targets, challenges, staff-authored extensions, prop packs
 
-**Status:** Accepted (amends ADR-0042)
+**Status:** Accepted (amends ADR-0042); amended by ADR-0053
 **Date:** 2026-10-01
 
 ## Context

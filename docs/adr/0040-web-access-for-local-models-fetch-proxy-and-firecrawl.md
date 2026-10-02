@@ -1,6 +1,6 @@
 # ADR-0040 — Web access for local models: fetch proxy and Firecrawl
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0051
 **Date:** 2026-10-01
 
 ## Context

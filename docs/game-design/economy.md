@@ -54,7 +54,8 @@ audience_{d+1} = audience_d + r × audience_d × (1 − audience_d / target)    
 | Loan interest | 8% over the loan term, daily |
 
 Real Claude spend is recorded in `llm_calls` for operations. The in-game Agency price is a game
-balance number, not the real API cost. There is no real-money cost cap.
+balance number, not the real API cost. Real spend is capped: every paid job is bounded by a
+credit hold (ADR-0033) and by the company's spend policy (ADR-0052).
 
 ## Reputation (0–1000)
 

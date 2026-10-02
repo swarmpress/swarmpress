@@ -1,6 +1,6 @@
 # ADR-0036 — A Day Director thread steers each day, within sim bounds
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0048
 **Date:** 2026-10-01
 
 ## Context

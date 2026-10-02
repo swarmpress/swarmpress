@@ -1,7 +1,8 @@
 # ADR-0038 — Local-first: the browser is authoritative for a company
 
 **Status:** Accepted (supersedes ADR-0003's server authority, ADR-0008, ADR-0020's server actor;
-amends ADR-0025; storage engine superseded in part by ADR-0041: Turso wasm instead of DuckDB-wasm)
+amends ADR-0025; storage engine superseded in part by ADR-0041: Turso wasm instead of DuckDB-wasm;
+amended by ADR-0045, ADR-0048, ADR-0054)
 **Date:** 2026-10-01
 
 ## Context

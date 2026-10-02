@@ -1,6 +1,6 @@
 # ADR-0041 — Turso in the browser; one SQLite dialect everywhere
 
-**Status:** Accepted (supersedes the DuckDB-wasm part of ADR-0038)
+**Status:** Accepted (supersedes the DuckDB-wasm part of ADR-0038); amended by ADR-0046
 **Date:** 2026-10-01
 
 ## Context

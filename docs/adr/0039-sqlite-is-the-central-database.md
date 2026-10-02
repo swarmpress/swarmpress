@@ -1,6 +1,6 @@
 # ADR-0039 — SQLite is the central database
 
-**Status:** Accepted (supersedes ADR-0008)
+**Status:** Accepted (supersedes ADR-0008); amended by ADR-0046, ADR-0049
 **Date:** 2026-10-01
 
 ## Context

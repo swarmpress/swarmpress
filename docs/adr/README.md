@@ -22,12 +22,12 @@ Accepted ADRs are never rewritten.
 |---|---|---|
 | [0001](0001-greenfield-rebuild-legacy-tag.md) | Greenfield rebuild, legacy tag | Accepted |
 | [0002](0002-rust-server-and-sim-core-wasm-client.md) | Rust server and sim core, wasm client | Accepted |
-| [0003](0003-deterministic-lockstep-server-authority.md) | Deterministic lockstep with server authority, command log and snapshots | Accepted |
+| [0003](0003-deterministic-lockstep-server-authority.md) | Deterministic lockstep with server authority, command log and snapshots | Superseded in part |
 | [0004](0004-babylonjs-webgpu-webgl2-fallback.md) | Babylon.js with WebGPU, WebGL2 fallback | Accepted |
 | [0005](0005-orthographic-iso-dollhouse-camera-and-cutaway.md) | Orthographic iso dollhouse camera and cutaway | Accepted |
 | [0006](0006-baked-gi-dynamic-lights-day-night.md) | Baked static GI plus dynamic gameplay lights; lighting as sim state; day/night | Accepted |
 | [0007](0007-sim-renderer-render-state-contract.md) | Sim→renderer render-state contract | Accepted |
-| [0008](0008-postgres-only-infrastructure.md) | Postgres as the only infrastructure (state, queue, notify) | Accepted |
+| [0008](0008-postgres-only-infrastructure.md) | Postgres as the only infrastructure (state, queue, notify) | Superseded in part |
 | [0009](0009-site-repo-canonical-github-app.md) | Site repo canonical; one repo per company in the platform org via a GitHub App | Accepted |
 | [0010](0010-claude-over-raw-http.md) | Claude over raw HTTP; per-role model and effort; structured outputs; refusal policy | Accepted |
 | [0011](0011-orchestrator-owns-state-transitions.md) | Orchestrator owns state transitions; LLMs return artifacts | Accepted |
@@ -39,7 +39,7 @@ Accepted ADRs are never rewritten.
 | [0017](0017-asset-pipeline-cc0-blender-gltf.md) | Asset pipeline: CC0 kits, Blender bake, glTF/KTX2 | Accepted |
 | [0018](0018-overlay-ui-in-preact.md) | Overlay UI in Preact | Accepted |
 | [0019](0019-auth-github-oauth-cookie-sessions.md) | Auth: GitHub OAuth and cookie sessions | Accepted |
-| [0020](0020-real-time-ticks-offline-catch-up.md) | Real-time ticks and offline catch-up | Accepted |
+| [0020](0020-real-time-ticks-offline-catch-up.md) | Real-time ticks and offline catch-up | Superseded in part |
 | [0021](0021-economy-tied-to-real-site-signals.md) | Economy tied to real site signals | Accepted |
 | [0022](0022-testing-strategy-cockpit-evidence-gate.md) | Testing strategy, with Cockpit as the evidence and feature-health gate | Accepted |
 | [0023](0023-cinqueterre-migration-and-cutover.md) | cinqueterre migration and cutover | Accepted |
@@ -63,3 +63,15 @@ Accepted ADRs are never rewritten.
 | [0041](0041-turso-in-the-browser-one-sqlite-dialect-everywhere.md) | Turso in the browser; one SQLite dialect everywhere | Accepted |
 | [0042](0042-extension-sdk-and-the-headless-bun-runner.md) | Extension SDK and the headless Bun runner | Accepted |
 | [0043](0043-extension-points-context-publish-challenges-self-authored-props.md) | Extension points: context providers, publish targets, challenges, staff-authored extensions, prop packs | Accepted |
+| [0044](0044-commercial-principle-free-baseline-and-quotas.md) | Commercial principle, free baseline and quotas | Accepted |
+| [0045](0045-executors-lease-epochs-and-fencing.md) | Executors, lease epochs and fencing | Accepted |
+| [0046](0046-durable-backup-snapshots-text-packs-state-repo-mirror.md) | Durable backup: snapshots, text packs, state-repo mirror | Accepted |
+| [0047](0047-player-owned-repositories.md) | Player-owned repositories | Accepted |
+| [0048](0048-executor-time-and-continuity-shifts.md) | Executor time and continuity shifts | Accepted |
+| [0049](0049-managed-infrastructure-single-binary-control-plane-cloudflare-data-plane.md) | Managed infrastructure: single-binary control plane, Cloudflare data plane | Accepted |
+| [0050](0050-binary-assets-content-addressed-object-storage.md) | Binary assets: content-addressed object storage, sidecars in the site repo | Accepted |
+| [0051](0051-ledger-unit-pricing-buckets-and-top-ups.md) | Ledger unit, pricing, buckets and top-ups | Accepted |
+| [0052](0052-spend-requests-budgets-and-the-cfo.md) | Spend requests, budgets and the CFO | Accepted |
+| [0053](0053-extension-placement-and-limits.md) | Extension placement and limits | Accepted |
+| [0054](0054-byo-infrastructure-and-player-held-secrets.md) | Bring your own infrastructure, and player-held secrets | Accepted |
+| [0055](0055-leagues-and-the-in-game-currency-symbol.md) | Leagues and the in-game currency symbol | Accepted |

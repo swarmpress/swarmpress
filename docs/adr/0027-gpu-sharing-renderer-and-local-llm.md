@@ -1,6 +1,6 @@
 # ADR-0027 — GPU sharing between renderer and local LLM
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0048
 **Date:** 2026-10-01
 
 ## Context

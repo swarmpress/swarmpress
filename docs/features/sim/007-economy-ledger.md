@@ -9,6 +9,7 @@ paths:
   - config/economy.toml
 adrs:
   - ADR-0021
+  - ADR-0055
 ---
 
 # Economy and ledger
@@ -18,6 +19,9 @@ reputation) plus audience CPM; logistic audience growth; costs from salaries, re
 and overtime; a double-entry `Ledger`. Real site facts enter via `Cmd::SiteSignals`.
 
 Decisions: [ADR-0021](../../adr/0021-economy-tied-to-real-site-signals.md).
+
+In-game cash has its own currency symbol (ADR-0055); € is reserved for real money. Real spend
+never enters this ledger (FEAT-071). The UI side is FEAT-072.
 
 ## Acceptance criteria
 

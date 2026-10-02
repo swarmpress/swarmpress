@@ -16,6 +16,8 @@ paths:
 adrs:
   - ADR-0009
   - ADR-0038
+  - ADR-0045
+  - ADR-0050
 ---
 
 # Content gateway and events inbox
@@ -32,3 +34,12 @@ The browser never holds GitHub credentials. It calls `POST /api/gateway/draft` a
 
 Merges and the `deployment_status` webhook produce events (`DeployLanded`, `DeployFailed`). The
 browser reads them from `GET /api/events?after=` or the `/ws/events` push channel.
+
+Planned changes:
+- **Fencing (FEAT-013, ADR-0045):** the lease header becomes `<epoch>.<lease_id>`; a stale epoch
+  gets 409, and the per-company mutex covers the GitHub call.
+- **Server-side validation:** the draft endpoint validates the page against `content-schema`
+  instead of trusting the browser.
+- **Assets (FEAT-075, ADR-0050):** the draft endpoint validates media sidecars; the merge refuses
+  if a referenced asset is missing and promotes staged assets before merging.
+- **Quotas (FEAT-067):** 60 writes per hour and 20 merges per day per company.

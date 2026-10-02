@@ -1,6 +1,6 @@
 # ADR-0033 — Credits: a closed-loop platform currency, separate from in-game cash
 
-**Status:** Accepted (amends the plan's "no API cost limits")
+**Status:** Accepted (amends the plan's "no API cost limits"); amended by ADR-0044, ADR-0051, ADR-0055
 **Date:** 2026-10-01
 
 ## Context

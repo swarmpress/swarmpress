@@ -33,6 +33,9 @@ natively and under wasm-bindgen-test (`crates/client-wasm/tests/runner_golden.rs
 
 Decisions: [ADR-0042](../../adr/0042-extension-sdk-and-the-headless-bun-runner.md).
 
+The runner as a production executor (`swarmpress continue`, resuming a real company from sync)
+is FEAT-063. The golden fixtures gain cases with a command log and a snapshot (FEAT-060).
+
 ## Acceptance criteria
 
 - [ ] Bun hash = native hash = wasm hash for every golden case.
