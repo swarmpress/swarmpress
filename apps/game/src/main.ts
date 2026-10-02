@@ -170,7 +170,8 @@ async function main(params: URLSearchParams, boot: BootScreen) {
       },
     })
   }
-  // Labels never cover the HUD or the overlay's toolbar and panels (live pages; frozen ones show neither).
+  // Labels never cover the HUD or the overlay's toolbar and panels. Live pages only: on frozen
+  // screenshot pages the HUD's text (fps) varies, and the labels must not vary with it.
   if (!frozen) {
     game.setOccluders(() => {
       const c = canvas.getBoundingClientRect()
@@ -204,7 +205,7 @@ async function main(params: URLSearchParams, boot: BootScreen) {
       fps: Math.round(engine.getFps()),
     })
     hud.setClock(clockHud())
-    if (frozen && game.scene.isReady() && ++stillFrames >= 20) {
+    if (frozen && game.isReady() && ++stillFrames >= 20) {
       engine.stopRenderLoop()
       still = true
     }
@@ -216,7 +217,7 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     fallback: params.get('fallback'),
     sim,
     scene: game.scene,
-    ready: () => game.scene.isReady(),
+    ready: () => game.isReady(),
     frames: () => engine.frameId,
     still: () => still,
     overlay: overlay?.store ?? null,

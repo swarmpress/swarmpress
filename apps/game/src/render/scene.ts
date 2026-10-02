@@ -49,6 +49,8 @@ export interface GameScene {
   onPick(picks: ScenePicks): void
   /** Everyone on site and where they are drawn (tests and dev tools). */
   people(): PersonOnScreen[]
+  /** The building and the labels drawn over it are ready (shaders compiled, textures uploaded). */
+  isReady(): boolean
 }
 
 export interface SceneOptions {
@@ -141,5 +143,6 @@ export function createGameScene(
       picks = p
     },
     people: () => staff.onScreen(),
+    isReady: () => scene.isReady() && staff.labels.scene.isReady(),
   }
 }
