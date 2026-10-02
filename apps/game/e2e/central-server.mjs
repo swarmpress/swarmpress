@@ -31,6 +31,12 @@ const child = spawn(bin, [], {
     SWARMPRESS_DEV_AUTH: '1',
     SWARMPRESS_GITHUB: 'fake',
     SWARMPRESS_SIMULATE_DEPLOY: '1',
+    // The scripted orchestrator still writes the pre-MVP article shape (no
+    // hero, no closing note), which the gateway's article profile refuses
+    // with 422 (ADR-0061). Remove this line when the orchestrator assembles
+    // the new shape (increment P1): the e2e then exercises the profile too.
+    // The server accepts `off` only with the fake GitHub.
+    SWARMPRESS_ARTICLE_PROFILE: process.env.SWARMPRESS_ARTICLE_PROFILE ?? 'off',
     SWARMPRESS_STATIC_DIR: '',
     DATABASE_URL: `sqlite://${dir}/s.db?mode=rwc`,
     SWARMPRESS_DATA_DIR: dir,
