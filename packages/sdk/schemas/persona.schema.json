@@ -4,32 +4,73 @@
   "title": "persona",
   "type": "object",
   "properties": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,31}$"
+    },
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
     "name": {
       "type": "string",
-      "minLength": 1,
-      "maxLength": 40
+      "minLength": 1
     },
-    "display_role": {
+    "pronouns": {
+      "type": "string",
+      "pattern": "^[^/\\n]+\\/[^\\n]+$"
+    },
+    "age": {
+      "type": "integer",
+      "minimum": 18,
+      "maximum": 80
+    },
+    "hometown": {
       "type": "string",
       "minLength": 1
+    },
+    "department": {
+      "type": "string",
+      "enum": [
+        "executive-office",
+        "strategy",
+        "editorial",
+        "photo-video",
+        "web-development",
+        "it-operations",
+        "seo-marketing"
+      ]
     },
     "role": {
       "type": "string",
       "enum": [
-        "editor_in_chief",
-        "writer",
+        "cfo",
+        "secretary",
+        "strategist",
+        "analyst",
+        "data-scientist",
+        "editor-in-chief",
         "editor",
-        "qa",
-        "art_director",
-        "frontend_dev",
-        "seo",
-        "linker",
-        "researcher",
-        "media",
+        "writer",
         "translator",
-        "chatter",
-        "critic"
+        "fact-checker",
+        "photo-editor",
+        "photographer",
+        "video-producer",
+        "art-director",
+        "web-developer",
+        "ux-designer",
+        "it-engineer",
+        "dev-ops",
+        "seo-specialist",
+        "marketing-manager",
+        "social-media-manager"
       ]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
     },
     "seniority": {
       "type": "string",
@@ -40,27 +81,201 @@
         "star"
       ]
     },
-    "expertise": {
+    "salary_eur_month": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "languages": {
       "type": "array",
       "items": {
         "type": "string",
         "minLength": 1
-      }
+      },
+      "minItems": 1
     },
-    "persona": {
-      "type": "string",
-      "minLength": 1
-    },
-    "background": {
-      "type": "string",
-      "minLength": 1
-    },
-    "voice_characteristics": {
+    "affinities": {
       "type": "array",
       "items": {
         "type": "string",
         "minLength": 1
-      }
+      },
+      "minItems": 1
+    },
+    "pitch": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "birthday": {
+      "type": "string",
+      "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+    },
+    "name_day": {
+      "type": "string",
+      "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+    },
+    "bio": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cv": {
+      "type": "object",
+      "properties": {
+        "education": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "years": {
+                "type": "string",
+                "minLength": 1
+              },
+              "what": {
+                "type": "string",
+                "minLength": 1
+              },
+              "where": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "years",
+              "what",
+              "where"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "experience": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "years": {
+                "type": "string",
+                "minLength": 1
+              },
+              "role": {
+                "type": "string",
+                "minLength": 1
+              },
+              "org": {
+                "type": "string",
+                "minLength": 1
+              },
+              "highlights": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "years",
+              "role",
+              "org",
+              "highlights"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 2
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "awards": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0,
+          "default": []
+        }
+      },
+      "required": [
+        "education",
+        "experience",
+        "skills"
+      ],
+      "additionalProperties": false
+    },
+    "life": {
+      "type": "object",
+      "properties": {
+        "hobbies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "interests": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "quirks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "likes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "dislikes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "work_style": {
+          "type": "string",
+          "minLength": 1
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 2,
+          "maxItems": 4
+        }
+      },
+      "required": [
+        "hobbies",
+        "interests",
+        "quirks",
+        "likes",
+        "dislikes",
+        "work_style",
+        "values"
+      ],
+      "additionalProperties": false
     },
     "traits": {
       "type": "object",
@@ -132,71 +347,201 @@
         },
         "descriptive_style": {
           "type": "string"
+        },
+        "voice": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0
+        },
+        "preferences": {
+          "type": "object",
+          "properties": {
+            "opening_style": {
+              "type": "string",
+              "minLength": 1
+            },
+            "structure_preference": {
+              "type": "string",
+              "minLength": 1
+            },
+            "closing_style": {
+              "type": "string",
+              "minLength": 1
+            },
+            "favorite_topics": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 0
+            },
+            "avoid_topics": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 0
+            }
+          },
+          "required": [
+            "opening_style",
+            "structure_preference",
+            "closing_style",
+            "favorite_topics",
+            "avoid_topics"
+          ],
+          "additionalProperties": false
+        },
+        "sample_phrases": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "propertyNames": {
+            "pattern": "^[a-z]{2}$"
+          }
         }
       },
       "additionalProperties": false
     },
-    "content_preferences": {
+    "relationships": {
       "type": "object",
       "properties": {
-        "opening_style": {
-          "type": "string"
-        },
-        "structure_preference": {
-          "type": "string"
-        },
-        "closing_style": {
-          "type": "string"
-        },
-        "favorite_topics": {
+        "friends": {
           "type": "array",
           "items": {
-            "type": "string"
-          }
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0
         },
-        "avoid_topics": {
+        "friction": {
           "type": "array",
           "items": {
-            "type": "string"
-          }
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "family": {
+      "type": "object",
+      "properties": {
+        "household": {
+          "type": "string",
+          "minLength": 1
+        },
+        "key_people": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0,
+          "default": []
         }
       },
       "required": [
-        "opening_style",
-        "structure_preference",
-        "closing_style",
-        "favorite_topics",
-        "avoid_topics"
+        "household"
       ],
       "additionalProperties": false
     },
-    "sample_phrases": {
+    "traditions": {
       "type": "object",
       "additionalProperties": {
-        "type": "array",
-        "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
+    },
+    "world": {
+      "type": "object",
+      "properties": {
+        "news_interest": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "topics": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "tone_on_current_events": {
           "type": "string",
           "minLength": 1
         }
       },
-      "propertyNames": {
-        "pattern": "^[a-z]{2}$"
-      }
+      "required": [
+        "news_interest",
+        "topics",
+        "tone_on_current_events"
+      ],
+      "additionalProperties": false
+    },
+    "appearance": {
+      "type": "object",
+      "properties": {
+        "palette": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "palette",
+        "description"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
+    "slug",
+    "id",
     "name",
-    "display_role",
+    "pronouns",
+    "age",
+    "hometown",
+    "department",
     "role",
+    "title",
     "seniority",
-    "expertise",
-    "persona",
-    "background",
-    "voice_characteristics",
+    "salary_eur_month",
+    "languages",
+    "affinities",
+    "pitch",
+    "birthday",
+    "bio",
+    "cv",
+    "life",
     "traits",
-    "writing_style",
-    "content_preferences",
-    "sample_phrases"
+    "family",
+    "traditions",
+    "world",
+    "appearance"
   ],
   "additionalProperties": false
 }

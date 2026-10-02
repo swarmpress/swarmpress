@@ -19,19 +19,27 @@
       "items": {
         "type": "string",
         "enum": [
-          "editor_in_chief",
-          "writer",
+          "cfo",
+          "secretary",
+          "strategist",
+          "analyst",
+          "data-scientist",
+          "editor-in-chief",
           "editor",
-          "qa",
-          "art_director",
-          "frontend_dev",
-          "seo",
-          "linker",
-          "researcher",
-          "media",
+          "writer",
           "translator",
-          "chatter",
-          "critic"
+          "fact-checker",
+          "photo-editor",
+          "photographer",
+          "video-producer",
+          "art-director",
+          "web-developer",
+          "ux-designer",
+          "it-engineer",
+          "dev-ops",
+          "seo-specialist",
+          "marketing-manager",
+          "social-media-manager"
         ]
       },
       "minItems": 1

@@ -128,10 +128,27 @@ describe("personas match the Rust agents Persona", () => {
     const giulia = parseDocument<any>(PersonaSchema, readFileSync(join(dir, "giulia.toml"), "utf8"), "giulia.toml");
     if (!giulia.ok) throw new Error("giulia");
     const p = giulia.value;
+    expect(PersonaSchema.safeParse(p).success).toBe(true);
     expect(PersonaSchema.safeParse({ ...p, mood: "happy" }).success).toBe(false);
-    expect(PersonaSchema.safeParse({ ...p, sample_phrases: { it: ["ciao"] } }).success).toBe(false);
+    expect(
+      PersonaSchema.safeParse({ ...p, writing_style: { ...p.writing_style, sample_phrases: { it: ["ciao"] } } }).success,
+    ).toBe(false);
     expect(PersonaSchema.safeParse({ ...p, traits: { ...p.traits, rigor: 101 } }).success).toBe(false);
     expect(PersonaSchema.safeParse({ ...p, role: "ceo" }).success).toBe(false);
+    expect(PersonaSchema.safeParse({ ...p, role: "editor_in_chief" }).success).toBe(false);
+  });
+  test("v2 rules: stated pronouns, role in its department, CV depth, writers need a style", () => {
+    const giulia = parseDocument<any>(PersonaSchema, readFileSync(join(dir, "giulia.toml"), "utf8"), "giulia.toml");
+    if (!giulia.ok) throw new Error("giulia");
+    const p = giulia.value;
+    expect(PersonaSchema.safeParse({ ...p, pronouns: "" }).success).toBe(false);
+    expect(PersonaSchema.safeParse({ ...p, department: "strategy" }).success).toBe(false);
+    expect(PersonaSchema.safeParse({ ...p, cv: { ...p.cv, experience: p.cv.experience.slice(0, 1) } }).success).toBe(false);
+    expect(PersonaSchema.safeParse({ ...p, writing_style: undefined }).success).toBe(false);
+    expect(PersonaSchema.safeParse({ ...p, birthday: "13-01" }).success).toBe(false);
+    expect(PersonaSchema.safeParse({ ...p, appearance: { ...p.appearance, palette: "red" } }).success).toBe(false);
+    const elena = parseDocument<any>(PersonaSchema, readFileSync(join(dir, "elena.toml"), "utf8"), "elena.toml");
+    expect(elena.ok && elena.value.writing_style === undefined && elena.value.role === "cfo").toBe(true);
   });
 });
 

@@ -217,16 +217,13 @@ fn catalog_json_is_camel_case() {
     assert_eq!(giulia["slug"], "giulia");
     assert_eq!(giulia["salaryEurMonth"], 4200);
     assert_eq!(giulia["inPool"], false);
-    assert_eq!(giulia["life"]["workStyle"].as_str().is_some(), true);
+    assert!(giulia["life"]["workStyle"].as_str().is_some());
     assert!(giulia["writingStyle"]["samplePhrases"]["en"].is_array());
     assert!(
         giulia["traditions"]["name_day"].is_string(),
         "data keys kept"
     );
-    assert_eq!(
-        giulia["cv"]["education"][0]["where"].as_str().is_some(),
-        true
-    );
+    assert!(giulia["cv"]["education"][0]["where"].as_str().is_some());
     assert_eq!(j["roles"].as_array().unwrap().len(), 21);
     assert_eq!(j["departments"][0]["id"], "executive-office");
 }
@@ -407,4 +404,74 @@ fn work_routing_follows_affinities_and_legacy_fallbacks() {
     let mixed = team(&["valentina", "marco"]);
     let r: Vec<&Persona> = mixed.iter().collect();
     assert_eq!(best_writer_for("events", &r).as_deref(), Some("valentina"));
+}
+
+// ---------------------------------------------------------------- SDK pack schema
+
+fn repo_file(rel: &str) -> String {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(rel);
+    std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+}
+
+/// Every property path (`cv.experience[].org`) and every enum, so key sets
+/// and wire names can be compared between the two schemas.
+fn shape(v: &serde_json::Value, path: &str, out: &mut BTreeSet<String>) {
+    if let Some(e) = v.get("enum").and_then(|e| e.as_array()) {
+        let mut vals: Vec<&str> = e.iter().filter_map(|x| x.as_str()).collect();
+        vals.sort_unstable();
+        out.insert(format!("{path} enum {}", vals.join(",")));
+    }
+    if let Some(props) = v.get("properties").and_then(|p| p.as_object()) {
+        for (k, sub) in props {
+            let p = if path.is_empty() {
+                k.clone()
+            } else {
+                format!("{path}.{k}")
+            };
+            out.insert(p.clone());
+            shape(sub, &p, out);
+        }
+    }
+    if let Some(items) = v.get("items") {
+        shape(items, &format!("{path}[]"), out);
+    }
+}
+
+/// `packages/sdk/schemas/persona.schema.json` (generated from the SDK's zod
+/// `PersonaSchema`) must describe exactly the Rust `Persona`: the same keys
+/// at every level and the same role/department/seniority wire names. The
+/// Rust catalog is the source of truth; fix the SDK schema when this fails.
+#[test]
+fn sdk_pack_persona_schema_matches_rust() {
+    let sdk: serde_json::Value =
+        serde_json::from_str(&repo_file("packages/sdk/schemas/persona.schema.json")).unwrap();
+    let (mut a, mut b) = (BTreeSet::new(), BTreeSet::new());
+    shape(&persona_json_schema(), "", &mut a);
+    shape(&sdk, "", &mut b);
+    let only_rust: Vec<_> = a.difference(&b).collect();
+    let only_sdk: Vec<_> = b.difference(&a).collect();
+    assert!(
+        only_rust.is_empty() && only_sdk.is_empty(),
+        "persona schema drift\n  only in Rust: {only_rust:?}\n  only in SDK: {only_sdk:?}"
+    );
+    assert_eq!(sdk["additionalProperties"], false);
+
+    let v = claude::SchemaValidator::new(&sdk).unwrap();
+    for p in Catalog::builtin().all() {
+        v.validate(&serde_json::to_value(p).unwrap())
+            .unwrap_or_else(|e| panic!("{} vs the SDK schema: {e:?}", p.slug));
+    }
+}
+
+/// Example pack personas are real v2 personas the Rust loader accepts.
+#[test]
+fn example_pack_personas_load_in_rust() {
+    let rosa = Persona::from_toml_str(&repo_file(
+        "examples/extensions/harvest-season/content/personas/rosa.toml",
+    ))
+    .unwrap_or_else(|e| panic!("rosa: {e}"));
+    assert_eq!((rosa.slug.as_str(), rosa.role), ("rosa", Role::Writer));
+    assert!(Catalog::builtin().by_id(rosa.id).is_none());
 }
