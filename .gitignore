@@ -89,3 +89,9 @@ packages/*/reports/
 packages/sandbox/e2e/.fixture/
 packages/sandbox/.build-*/
 .swarmpress-build/
+
+# Upstream WebGPU model engine: fetched by apps/game/scripts/bonsai-runtime.mjs,
+# unlicensed upstream, never committed (ADR-0057).
+apps/game/public/vendor/
+# Chrome profile of the gated Bonsai e2e (caches the model weights).
+apps/game/.bonsai-profile/

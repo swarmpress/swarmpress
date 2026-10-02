@@ -1,0 +1,24 @@
+{
+  "format": "swarmpress.bonsai-runtime-lock.v1",
+  "note": "Pins of the upstream WebGPU engine and model. The engine itself is NOT in this repository (no upstream licence); scripts/bonsai-runtime.mjs fetches the pinned page and cuts the engine into public/vendor/bonsai/ (git-ignored). A bump re-runs e2e/bonsai-equivalence.spec.ts and the benchmark.",
+  "space": {
+    "id": "webml-community/ternary-bonsai-2-webgpu-kernels",
+    "sha": "94320c9da2b7aeac5b5807c9e61d696a3c09edb5",
+    "file": "index.html",
+    "bytes": 1553969,
+    "sha256": "4422addfa476ebd81195a77cd259038c4c5d56c87fc053c2387de02e065f1918"
+  },
+  "engine": {
+    "exportName": "TernaryBonsai2",
+    "bytes": 1429458,
+    "sha256": "d94c1729d7a7f084d2a2887f39487f3d27e6e296dea93def54495a5d1b9c29f6",
+    "output": "engine.mjs"
+  },
+  "model": {
+    "repo": "prism-ml/Ternary-Bonsai-2-27B-gguf",
+    "revision": "b072e1d3b35a0a630cece372c2127528e0994386",
+    "file": "Ternary-Bonsai-2-27B-PTQ1_0.gguf",
+    "bytes": 5946648928,
+    "sha256": "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3"
+  }
+}
