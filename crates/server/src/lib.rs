@@ -8,6 +8,7 @@
 //! - [`companies`]: one company per player, its site-repo binding and the
 //!   device lease
 //! - [`gateway`]: content PRs on the player's behalf (`PathPolicy`)
+//! - [`article`]: the blog-article profile the gateway enforces on drafts
 //! - [`events`]: the offline event inbox (poll + WebSocket push)
 //! - [`webhooks`]: GitHub `deployment_status` → `DeployLanded`
 //! - [`sync`]: command-log segments and snapshots (backup / new device)
@@ -17,6 +18,7 @@
 //! - [`app`]: state, routes, background tasks
 
 pub mod app;
+pub mod article;
 pub mod auth;
 pub mod companies;
 pub mod config;

@@ -3,7 +3,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 
 /// HTTP-facing error. Internal errors are logged and returned without detail.
-/// Every error body is `{"error": "..."}`.
+/// Every error body is `{"error": "..."}`; a 422 adds `"issues": [...]`.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("not signed in")]
@@ -20,6 +20,14 @@ pub enum AppError {
     PayloadTooLarge(String),
     #[error("{0}")]
     UnsupportedMediaType(String),
+    /// The request is well formed but its content fails validation (a page
+    /// that breaks the schema or the article profile). The body carries the
+    /// individual problems: `{"error": "...", "issues": ["...", ...]}`.
+    #[error("{message}")]
+    Unprocessable {
+        message: String,
+        issues: Vec<String>,
+    },
     /// A required precondition header (e.g. the company lease) is missing.
     #[error("{0}")]
     PreconditionRequired(String),
@@ -53,6 +61,7 @@ impl AppError {
             AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::PayloadTooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
             AppError::UnsupportedMediaType(_) => StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            AppError::Unprocessable { .. } => StatusCode::UNPROCESSABLE_ENTITY,
             AppError::PreconditionRequired(_) => StatusCode::PRECONDITION_REQUIRED,
             AppError::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
             AppError::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
@@ -74,7 +83,13 @@ impl IntoResponse for AppError {
             }
             other => other.to_string(),
         };
-        (status, Json(serde_json::json!({ "error": message }))).into_response()
+        let body = match &self {
+            AppError::Unprocessable { issues, .. } => {
+                serde_json::json!({ "error": message, "issues": issues })
+            }
+            _ => serde_json::json!({ "error": message }),
+        };
+        (status, Json(body)).into_response()
     }
 }
 

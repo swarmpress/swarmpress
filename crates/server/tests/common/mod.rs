@@ -234,6 +234,114 @@ impl TestServer {
     }
 }
 
+// ---------------------------------------------------------------- gateway
+
+/// The fencing-token header of gateway calls.
+pub const LEASE: &str = "x-swarmpress-lease";
+
+/// A signed-in player with a company, its lease and its (fake) site repo.
+pub struct GatewayPlayer {
+    pub cookie: String,
+    pub company: String,
+    /// The fencing token (`<epoch>.<lease_id>`).
+    pub lease: String,
+    /// `swarmpress-sites/player{n}-site`.
+    pub repo: github::RepoId,
+}
+
+impl TestServer {
+    /// Player `n` with a company and the lease taken by `laptop`.
+    pub async fn gateway_player(&self, n: i64) -> GatewayPlayer {
+        let (cookie, company) = self.player(n).await;
+        let lease = self.lease(&cookie, &company, "laptop").await;
+        GatewayPlayer {
+            cookie,
+            company,
+            lease,
+            repo: github::RepoId::new("swarmpress-sites", format!("player{n}-site")),
+        }
+    }
+
+    /// `POST /api/gateway/{route}` with the player's session and lease.
+    pub async fn gateway(&self, p: &GatewayPlayer, route: &str, body: Value) -> (u16, Value) {
+        self.send_json(
+            Method::POST,
+            &format!("/api/gateway/{route}"),
+            Some(&p.cookie),
+            &[(LEASE, &p.lease)],
+            Some(body),
+        )
+        .await
+    }
+
+    /// Draft `page` as `content_id` at `content/pages/blog/{slug}.json`.
+    pub async fn draft_article(
+        &self,
+        p: &GatewayPlayer,
+        content_id: &str,
+        slug: &str,
+        page: Value,
+    ) -> (u16, Value) {
+        self.gateway(
+            p,
+            "draft",
+            json!({ "content_id": content_id, "work_item": format!("work-{content_id}"),
+                    "path": article_path(slug), "page": page, "message": format!("Draft: {slug}") }),
+        )
+        .await
+    }
+
+    /// Every event in the player's inbox, oldest first.
+    pub async fn inbox(&self, cookie: &str) -> Vec<Value> {
+        let (st, body) = self.get_json("/api/events?after=0", Some(cookie)).await;
+        assert_eq!(st, 200, "{body}");
+        body["events"].as_array().unwrap().clone()
+    }
+}
+
+pub fn article_path(slug: &str) -> String {
+    format!("content/pages/blog/{slug}.json")
+}
+
+/// An article in the shape the orchestrator assembles for the frozen theme
+/// (docs/design/mvp-pipeline.md section 4): hero, intro, sections, closing
+/// note; plain text; localized `seo`; four slug keys.
+pub fn article(content_id: &str, slug: &str, title: &str) -> Value {
+    json!({
+        "id": content_id,
+        "slug": {
+            "en": format!("/en/blog/{slug}"),
+            "de": format!("/de/blog/{slug}"),
+            "fr": format!("/fr/blog/{slug}"),
+            "it": format!("/it/blog/{slug}")
+        },
+        "title": { "en": title },
+        "page_type": "blog-article",
+        "seo": {
+            "title": { "en": format!("{title} | The Dispatch") },
+            "description": { "en": format!("{title}: what the terraces look like when the whole village picks grapes.") },
+            "keywords": ["manarola", "harvest"]
+        },
+        "body": [
+            { "type": "editorial-hero", "title": title,
+              "subtitle": format!("{title}: what the terraces look like when the whole village picks grapes."),
+              "badge": "Culture",
+              "image": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
+              "height": "70vh" },
+            { "type": "paragraph", "markdown": "The monorail starts before the sun does, and by seven the first crates are on their way down." },
+            { "type": "heading", "level": 2, "text": "Tuesday: the first crates" },
+            { "type": "paragraph", "markdown": "Maria and her sons carry the first crates down by hand, as her father did." },
+            { "type": "list", "ordered": false, "items": ["Bring water", "Wear boots"] },
+            { "type": "callout", "style": "info", "content": "The terraces are private land: ask before you walk in." },
+            { "type": "closing-note", "badge": "Practical Notes", "title": "Before you go",
+              "content": "Harvest runs from mid-September &amp; into October.",
+              "actions": [{ "label": "More about Manarola", "href": "/en/manarola", "variant": "primary" }] }
+        ],
+        "metadata": { "author": "Giulia Rossi", "category": "Culture" },
+        "status": "in_review"
+    })
+}
+
 impl Drop for TestServer {
     fn drop(&mut self) {
         self.server.abort();

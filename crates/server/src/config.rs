@@ -118,6 +118,11 @@ pub struct Config {
     pub lease_ttl: Duration,
     /// Upper bound on a gateway page (bytes of JSON text).
     pub max_page_bytes: usize,
+    /// Enforce the blog-article profile on drafts under `content/pages/blog/`
+    /// (`SWARMPRESS_ARTICLE_PROFILE`, default `enforce`). `off` is accepted
+    /// only with the fake GitHub: a bridge for scripted runs whose
+    /// orchestrator still writes the pre-MVP article shape.
+    pub article_profile: bool,
     /// Upper bound on one sync upload (`SWARMPRESS_SYNC_MAX_BYTES`, default 64 MiB).
     pub sync_max_bytes: usize,
     pub web: WebConfig,
@@ -148,6 +153,7 @@ impl Config {
             simulate_deploy: true,
             lease_ttl: Duration::from_secs(90),
             max_page_bytes: 256 * 1024,
+            article_profile: true,
             sync_max_bytes: 8 * 1024 * 1024,
             web: WebConfig::default(),
             static_dir: None,
@@ -219,6 +225,14 @@ impl Config {
             github_mode == GithubMode::Fake,
         )?;
 
+        let article_profile = match opt("SWARMPRESS_ARTICLE_PROFILE").as_deref() {
+            None | Some("" | "enforce") => true,
+            Some("off") => false,
+            Some(v) => {
+                anyhow::bail!("SWARMPRESS_ARTICLE_PROFILE={v:?} must be `enforce` or `off`")
+            }
+        };
+
         let static_dir = match opt("SWARMPRESS_STATIC_DIR") {
             Some(v) if v.is_empty() => None,
             Some(v) => Some(PathBuf::from(v)),
@@ -261,7 +275,7 @@ impl Config {
             ..td
         };
 
-        Ok(Self {
+        let cfg = Self {
             database_url,
             data_dir,
             bind,
@@ -276,13 +290,29 @@ impl Config {
             simulate_deploy,
             lease_ttl: Duration::from_secs(num("SWARMPRESS_LEASE_SECS", 90)?.max(1)),
             max_page_bytes: 256 * 1024,
+            article_profile,
             sync_max_bytes: num("SWARMPRESS_SYNC_MAX_BYTES", 64 * 1024 * 1024)?,
             web,
             static_dir,
             coep,
             session_ttl: Duration::from_secs(num("SWARMPRESS_SESSION_TTL_SECS", 30 * 24 * 3600)?),
             tracker,
-        })
+        };
+        cfg.validate()?;
+        Ok(cfg)
+    }
+
+    /// Combinations that must stop the server at startup. Called by
+    /// [`Config::from_env`] and by `AppState::new`.
+    pub fn validate(&self) -> Result<()> {
+        let real = matches!(self.github_mode, GithubMode::Real { .. });
+        if real && !self.article_profile {
+            anyhow::bail!(
+                "SWARMPRESS_ARTICLE_PROFILE=off is only allowed with SWARMPRESS_GITHUB=fake: \
+                 a real site repository always gets the article profile"
+            );
+        }
+        Ok(())
     }
 
     /// Cookies get `Secure` when the public origin is https.
@@ -321,5 +351,45 @@ where
         Some(v) => v
             .parse()
             .map_err(|e| anyhow::anyhow!("{key}={v:?} is not a valid number: {e}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn real(token: Option<&str>) -> GithubMode {
+        GithubMode::Real {
+            api_base: "https://api.github.com".into(),
+            token: token.map(String::from),
+            app_id: None,
+            app_private_key_path: None,
+        }
+    }
+
+    fn cfg() -> Config {
+        Config::for_tests(
+            "sqlite::memory:",
+            PathBuf::from("data"),
+            GithubOAuthConfig::github("id", "secret"),
+        )
+    }
+
+    #[test]
+    fn the_test_config_is_valid() {
+        cfg().validate().unwrap();
+    }
+
+    #[test]
+    fn the_article_profile_cannot_be_switched_off_for_a_real_repository() {
+        let mut c = cfg();
+        c.article_profile = false;
+        c.validate().expect("off is a bridge for the fake GitHub");
+        c.simulate_deploy = false;
+        c.github_mode = real(Some("tok"));
+        let e = c.validate().unwrap_err().to_string();
+        assert!(e.contains("SWARMPRESS_ARTICLE_PROFILE"), "{e}");
+        c.article_profile = true;
+        c.validate().unwrap();
     }
 }

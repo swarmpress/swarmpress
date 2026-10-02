@@ -40,6 +40,7 @@ development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are i
 | `GITHUB_SITES_ORG` | `swarmpress-sites` | owner of the default site repo `{org}/{login}-site` |
 | `GITHUB_WEBHOOK_SECRET` | | `POST /webhooks/github` (503 when unset) |
 | `SWARMPRESS_SIMULATE_DEPLOY` | on with `fake`, else off | emit `DeployLanded` right after a gateway merge |
+| `SWARMPRESS_ARTICLE_PROFILE` | `enforce` | the article profile on drafts under `content/pages/blog/`. `off` is a bridge for scripted runs whose orchestrator still writes the pre-MVP article shape: it is accepted only with `SWARMPRESS_GITHUB=fake` (a startup error otherwise), and the site checks (create-only path, one open pull request per path) stay on |
 | `SWARMPRESS_LEASE_SECS` | 90 | company lease length |
 | `SWARMPRESS_SYNC_MAX_BYTES` | 67108864 | largest sync upload |
 | `SWARMPRESS_WEB_FETCH_RATE_PER_MIN`, `SWARMPRESS_WEB_FETCH_BURST` | 30, 10 | per-user token bucket for `/web/fetch` |
@@ -60,7 +61,7 @@ development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are i
 | `POST /api/companies/{id}/lease` | `{device_id, mode?, kind?}` → `{epoch, lease_id, token, holder, holder_kind, ttl_ms, renewed, handover_requested, handover_by, head}` (ADR-0045). `mode`: `acquire` (default; a free, expired, released or own lease, epoch + 1), `renew` (with `x-swarmpress-lease`; epoch unchanged, works past expiry if nobody took the lease), `request` (as `acquire`, and a 409 records a handover request and publishes `HandoverRequested`), `force` (takeover, epoch + 1, publishes `LeaseRevoked`). Another executor's unexpired lease answers 409 `{error, epoch, holder, holder_kind, ttl_ms, handover_requested}`. `kind`: `browser` (default) or `self`. The epoch is never reset |
 | `DELETE /api/companies/{id}/lease` | with `x-swarmpress-lease`: release (204), 409 if not held. The epoch stays |
 | `x-swarmpress-lease` | the fencing token `<epoch>.<lease_id>` (the lease reply's `token`). A fenced route answers 428 without it and 409 when the epoch or the lease id is not the company's current, unexpired one. A lease grant and every fenced write hold a per-company mutex, so a takeover waits for an in-flight write to be recorded |
-| `POST /api/gateway/draft` | lease required. `{content_id, path, page, message, work_item?}` → `{number, branch, head_sha, created_pr, committed}` |
+| `POST /api/gateway/draft` | lease required. `{content_id, path, page, message, work_item?}` → `{number, branch, head_sha, created_pr, committed}`. An article (`content/pages/blog/*.json`) that breaks the schema or the article profile answers 422 `{error, issues: [..]}`; a path that exists on the base branch, a second open pull request for the path, or a second path for the content id answers 409 |
 | `POST /api/gateway/merge` | lease required. `{number, head_sha}` → `{merged_sha}`; only PRs this company opened through the gateway; 409 if the head moved |
 | `GET /api/events?after=&limit=` | `{events: [{seq, company_id, kind, payload, created_at}], last_seq}` (oldest first, max 500) |
 | `GET /ws/events?after=` | WebSocket (cookie auth): backlog after `after`, then live events, one JSON text frame each |
@@ -90,6 +91,28 @@ through `github::GuardedRepo` + `PathPolicy`: only `content/**`, only on
 backslashes or NUL are refused (400), paths outside `content/` are refused
 (403), and the page must be a JSON object in a `.json` file of at most
 256 KiB (413). Merges are squash merges at the exact reviewed head.
+
+#### Articles (ADR-0061)
+
+A draft at `content/pages/blog/<slug>.json` is an article and is validated on
+the server, whatever the browser checked (`src/article.rs`,
+`gateway::check_draft`, `gateway::check_against_site`):
+
+| Check | Answer |
+|---|---|
+| a valid page under schema v2 (`content_model::validate_page_v2`) | 422 `{error, issues}` |
+| `page_type` is `blog-article`; `id` is the content id | 422 |
+| the slug (the file stem) is lowercase kebab-case, 1 to 100 bytes, and every `slug.<lang>` is `/<lang>/blog/<slug>` | 422 |
+| exactly one `editorial-hero`, first; exactly one `closing-note`, last; in between only `heading`, `paragraph`, `list`, `callout`, `image`, with at least one paragraph | 422 |
+| no raw `<` or `>` in `editorial-hero.title` and `closing-note.content` (the theme prints both as HTML) | 422 |
+| links and media against the site's indexes (closed world) | 422; **not checked yet**: `gateway::check_closed_world` takes an optional knowledge base and there is none until the knowledge pack lands |
+| the path does not exist on the base branch (article paths are create-only) | 409 |
+| no other open gateway pull request of the company targets the path | 409 |
+| the content id has no open pull request on another path | 409 |
+
+`content/pages/blog-index.json` cannot be drafted at all (403): only the merge
+writes it. Every other `content/**` page is accepted as before: a JSON object,
+no schema check, and a draft may change a page that exists on the base branch.
 
 ### Web fetch rules (ADR-0040)
 
@@ -123,7 +146,8 @@ later).
 | `db` | `Db` (writer/reader pools, migrations, `begin_immediate`) and the repositories: `accounts` (users, sessions, companies, leases), `events`, `gateway` (gateway PRs, webhook deliveries), `sync`, `tracker`. |
 | `auth` | GitHub OAuth, dev login, session rows keyed by sha256(token), the `CurrentUser` extractor. |
 | `companies` | Company create/read, lease acquire/renew/release, `require_lease`. |
-| `gateway` | `RepoBackend` (fake, token, App, unconfigured), draft and merge handlers, `PathPolicy` checks. |
+| `gateway` | `RepoBackend` (fake, token, App, unconfigured), draft and merge handlers, `PathPolicy` checks, the site checks for articles, the closed-world extension point. |
+| `article` | The blog-article profile (pure): schema v2, block set and order, slug, the two HTML fields. |
 | `events` | `EventHub` (tokio broadcast), `publish`, `/api/events`, `/ws/events`. |
 | `webhooks` | GitHub webhook receiver (`github::webhooks::WebhookHandler` + SQLite dedupe). |
 | `sync` | Sync blob handlers (temp file + rename, index rows). |
@@ -144,10 +168,11 @@ cargo clippy -p server -p testkit --all-targets -- -D warnings
 
 | Suite | Covers |
 |---|---|
-| unit (`src/**`) | DB pools (WAL, FKs, read-only readers, `BEGIN IMMEDIATE`), accounts and leases, dev-login validation, gateway path policy and repo parsing, SSRF IP/URL checks (incl. resolving `localhost`), HTML → text, tracker helpers. |
+| unit (`src/**`) | DB pools (WAL, FKs, read-only readers, `BEGIN IMMEDIATE`), accounts and leases, dev-login validation, gateway path policy and repo parsing, the article profile (every violation), config combinations refused at startup, SSRF IP/URL checks (incl. resolving `localhost`), HTML → text, tracker helpers. |
 | `tests/http.rs` | Schema, healthz, OAuth flow (state/code errors, cookie attributes, hashed sessions, logout, expiry via the manual clock), dev login on and off, one company per user, repo binding, static/SPA serving. |
 | `tests/lease.rs` | Acquire, renew, conflict (409 with holder), force takeover, expiry, configurable TTL, release, ownership. |
 | `tests/gateway.rs` | Draft + revision + merge against FakeGitHub, stale-head 409, idempotent merge, one simulated `DeployLanded`, PathPolicy rejections (nothing written), lease required (428/409, takeover, expiry), merging only own PRs, `deployment_status` webhook (bad HMAC, dedupe, success, failure, other repos). |
+| `tests/articles.rs` | Articles through the gateway: a valid fixture drafts; each profile violation answers 422 with its issue and writes nothing; an existing slug, a second open pull request for the path and a second path for the content id answer 409; the blog index cannot be drafted; other content is untouched; the profile switch. |
 | `tests/events.rs` | Polling with `after`/`limit`, per-company scoping, WebSocket backlog + live push. |
 | `tests/sync.rs` | Segment immutability (201/200/409), list, bytes on disk, snapshot with step, owner-only access. |
 | `tests/web.rs` | SSRF refusals and bad URLs, per-user 429, Firecrawl 501, HTML reduction, JSON, redirects, 415 and 413 against a local wiremock. |

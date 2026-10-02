@@ -51,6 +51,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(cfg: Config, db: Db) -> Result<Self> {
+        cfg.validate()?;
         let github = Arc::new(RepoBackend::from_mode(&cfg.github_mode)?);
         Ok(Self::with_parts(cfg, db, Arc::new(SystemClock), github))
     }

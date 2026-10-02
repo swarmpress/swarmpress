@@ -69,6 +69,47 @@ pub async fn get_pr(db: &Db, company_id: &str, number: i64) -> Result<Option<Gat
     .context("load gateway PR")
 }
 
+/// The company's open (unmerged) gateway PRs that target `path`, other than
+/// the draft lineage of `content_id` itself (create-only article paths,
+/// ADR-0061 decision 5). Paths are compared without case.
+pub async fn open_prs_for_path(
+    db: &Db,
+    company_id: &str,
+    path: &str,
+    content_id: &str,
+) -> Result<Vec<GatewayPr>> {
+    sqlx::query_as::<_, GatewayPr>(&format!(
+        "SELECT {PR_COLS} FROM gateway_prs
+         WHERE company_id = ?1 AND lower(path) = lower(?2) AND content_id <> ?3
+           AND merged_sha IS NULL
+         ORDER BY number"
+    ))
+    .bind(company_id)
+    .bind(path)
+    .bind(content_id)
+    .fetch_all(&db.writer)
+    .await
+    .context("open gateway PRs for a path")
+}
+
+/// The company's open (unmerged) gateway PRs of `content_id`, newest first.
+pub async fn open_prs_for_content(
+    db: &Db,
+    company_id: &str,
+    content_id: &str,
+) -> Result<Vec<GatewayPr>> {
+    sqlx::query_as::<_, GatewayPr>(&format!(
+        "SELECT {PR_COLS} FROM gateway_prs
+         WHERE company_id = ?1 AND content_id = ?2 AND merged_sha IS NULL
+         ORDER BY number DESC"
+    ))
+    .bind(company_id)
+    .bind(content_id)
+    .fetch_all(&db.writer)
+    .await
+    .context("open gateway PRs of a content id")
+}
+
 pub async fn set_merged(
     db: &Db,
     company_id: &str,

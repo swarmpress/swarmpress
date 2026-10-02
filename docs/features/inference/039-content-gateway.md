@@ -10,6 +10,8 @@ paths:
   - crates/server/src/db/events.rs
   - crates/server/tests/gateway.rs
   - crates/server/tests/events.rs
+  - crates/server/src/article.rs
+  - crates/server/tests/articles.rs
   - apps/game/src/net/central.ts
   - apps/game/src/net/central.test.ts
   - apps/game/e2e/orchestrator.spec.ts
@@ -51,9 +53,13 @@ Planned changes:
 - **MVP (ADR-0061; design in [`docs/design/mvp-pipeline.md`](../../design/mvp-pipeline.md) sections
   3, 4, 7 and 8):**
   - **K1:** `GET /api/gateway/knowledge`, the knowledge pack.
-  - **G3:** `check_draft` validates the v2 schema and the article profile, checks links and media
-    against the site's indexes, refuses a path that exists on base or is targeted by another open
-    pull request of the company, and refuses an empty slug.
+  - **G3 (built, except the closed-world half):** for `content/pages/blog/*.json`, `check_draft`
+    validates the v2 schema and the article profile (`crates/server/src/article.rs`) and refuses an
+    empty slug (422 with `issues`); the draft is refused with 409 when the path exists on base, when
+    another open pull request of the company targets it, or when the content id already drafts
+    another path. Links and media are not checked yet: `gateway::check_closed_world` takes an
+    optional knowledge base and gets none until K1 lands. The blog index cannot be drafted (403).
+    Other `content/**` pages are accepted as before.
   - **G4:** finalise on merge in the same pull request: verify the reviewed head, merge base into
     the branch, set `status: published`, append the blog-index entry, squash-merge.
   - **G6:** attribution fields; the persona as author of draft commits; trailers on the squash

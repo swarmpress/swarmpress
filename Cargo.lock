@@ -2469,6 +2469,7 @@ dependencies = [
  "axum",
  "axum-extra",
  "chrono",
+ "content-model",
  "futures",
  "github",
  "hex",
