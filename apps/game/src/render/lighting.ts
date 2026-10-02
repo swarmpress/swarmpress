@@ -6,41 +6,24 @@ import {
   Scene,
   ShadowGenerator,
   Vector3,
-  type AbstractMesh,
 } from '@babylonjs/core'
-import type { RenderState } from '../state/render-state'
+import type { LightLevel, RenderState } from '../state/render-state'
 import { daylight, keyLightDirection, type Rgb } from './daylight'
-import { createStaffMesh, type OfficeHandles, type StaffHandle } from './office'
+import type { OfficeHandles } from './office'
 
-const c3 = (c: Rgb) => new Color3(c.r, c.g, c.b)
+const setColor = (out: Color3, c: Rgb) => out.set(c.r, c.g, c.b)
 
 /** Interior light levels (PBR physical units, tuned against the reference shots). */
 export const CEILING_INTENSITY = 14
+/** A room people only pass through is dimmed (`RoomRender.light` = `dim`). */
+export const DIM_FACTOR = 0.4
 export const LAMP_INTENSITY = 3
 const SCREEN_ON = new Color3(0.55, 0.75, 1.0)
 const SCREEN_OFF = new Color3(0, 0, 0)
-
-function roomAt(office: OfficeHandles, x: number, z: number): string | undefined {
-  for (const [id, r] of office.rooms) {
-    const l = r.layout
-    if (x >= l.x && x < l.x + l.w && z >= l.z && z < l.z + l.d) return id
-  }
-  return undefined
-}
-
-/** A person is lit by the room they stand in and by their own desk lamp only. */
-function scopeStaffLights(office: OfficeHandles, handle: StaffHandle, roomId: string | undefined, deskId: string | undefined) {
-  const meshes = [handle.body, handle.head]
-  const set = (list: AbstractMesh[], include: boolean) => {
-    for (const m of meshes) {
-      const i = list.indexOf(m)
-      if (include && i < 0) list.push(m)
-      if (!include && i >= 0) list.splice(i, 1)
-    }
-  }
-  for (const [id, room] of office.rooms) for (const l of room.lights) set(l.includedOnlyMeshes, id === roomId)
-  for (const [id, desk] of office.desks) set(desk.lamp.includedOnlyMeshes, id === deskId)
-}
+const PANEL_ON = new Color3(1, 0.97, 0.9)
+const PANEL_DIM = new Color3(0.5, 0.48, 0.44)
+const SHADE_ON = new Color3(1, 0.7, 0.35)
+const BLACK = new Color3(0, 0, 0)
 
 export interface Lighting {
   sun: DirectionalLight
@@ -64,55 +47,47 @@ export function createLighting(scene: Scene, office: OfficeHandles, opts: { shad
   return { sun, sky, shadows }
 }
 
+const scratch = new Vector3()
+
 /**
- * Applies the sim's render state to the scene (ADR-0007). The renderer makes
- * no gameplay decisions: every light, screen and person comes from `state`.
+ * Applies the sim's render state to the building (ADR-0007): sun and sky from
+ * the minute, ceiling lights from each room's light level, monitors and desk
+ * lamps from the devices, and the props the sim switches (the coffee
+ * machine's lamp, a whiteboard in use). The renderer makes no gameplay
+ * decisions; the people are the staff layer's (`characters/staff.ts`).
  */
 export function applyRenderState(scene: Scene, office: OfficeHandles, lighting: Lighting, state: RenderState, center: Vector3) {
   const d = daylight(state.minute)
   const dir = keyLightDirection(d)
   lighting.sun.direction.set(dir.x, dir.y, dir.z)
-  lighting.sun.position = center.subtract(new Vector3(dir.x, dir.y, dir.z).scale(30))
-  lighting.sun.diffuse = c3(d.keyColor)
+  scratch.set(dir.x, dir.y, dir.z)
+  lighting.sun.position = center.subtract(scratch.scaleInPlace(30))
+  setColor(lighting.sun.diffuse, d.keyColor)
   lighting.sun.intensity = d.keyIntensity
-  lighting.sky.diffuse = c3(d.skyColor)
-  lighting.sky.groundColor = c3(d.groundColor)
+  setColor(lighting.sky.diffuse, d.skyColor)
+  setColor(lighting.sky.groundColor, d.groundColor)
   lighting.sky.intensity = d.ambientIntensity
   scene.clearColor = new Color4(d.clearColor.r, d.clearColor.g, d.clearColor.b, 1)
 
+  const levels = new Map<string, LightLevel>()
+  for (const r of state.rooms ?? []) levels.set(r.id, r.light)
   for (const [id, room] of office.rooms) {
-    const on = state.roomLights[id] === true
-    for (const l of room.lights) l.intensity = on ? CEILING_INTENSITY : 0
-    room.panelMaterial.emissiveColor = on ? new Color3(1, 0.97, 0.9) : Color3.Black()
+    const level: LightLevel = levels.get(id) ?? (state.roomLights[id] === true ? 'on' : 'off')
+    const k = level === 'on' ? 1 : level === 'dim' ? DIM_FACTOR : 0
+    for (const l of room.lights) l.intensity = CEILING_INTENSITY * k
+    room.panelMaterial.emissiveColor = level === 'on' ? PANEL_ON : level === 'dim' ? PANEL_DIM : BLACK
   }
 
   for (const [id, desk] of office.desks) {
-    const screenOn = state.monitors[id] === true
-    desk.screenMaterial.emissiveColor = screenOn ? SCREEN_ON : SCREEN_OFF
+    desk.screenMaterial.emissiveColor = state.monitors[id] === true ? SCREEN_ON : SCREEN_OFF
     const lampOn = state.deskLamps[id] === true
     desk.lamp.intensity = lampOn ? LAMP_INTENSITY : 0
-    ;(desk.lampShade.material as { emissiveColor?: Color3 }).emissiveColor = lampOn ? new Color3(1, 0.7, 0.35) : Color3.Black()
+    ;(desk.lampShade.material as { emissiveColor?: Color3 }).emissiveColor = lampOn ? SHADE_ON : BLACK
   }
 
-  const present = new Set(state.staff.map((s) => s.id))
-  for (const [id, handle] of office.staff) {
-    if (!present.has(id)) {
-      handle.root.setEnabled(false)
-    }
-  }
-  for (const s of state.staff) {
-    let handle = office.staff.get(s.id)
-    if (!handle) {
-      handle = createStaffMesh(scene, s.id, Color3.FromHexString(s.color))
-      handle.root.parent = office.root
-      lighting.shadows?.addShadowCaster(handle.body)
-      lighting.shadows?.addShadowCaster(handle.head)
-      office.staff.set(s.id, handle)
-    }
-    handle.root.setEnabled(true)
-    scopeStaffLights(office, handle, roomAt(office, s.x, s.z), s.seatedAt ?? undefined)
-    handle.root.position.set(s.x, 0, s.z)
-    // Seated people sit lower.
-    handle.root.scaling.y = s.seatedAt ? 0.82 : 1
+  if (office.props.size) {
+    const states = new Map<string, string>()
+    for (const dev of state.devices ?? []) states.set(dev.id, dev.state)
+    for (const [id, p] of office.props) if (p.glow) p.glow.emissiveColor = (states.get(id) ?? 'off') === 'off' ? BLACK : p.glowColor
   }
 }

@@ -152,6 +152,35 @@ async function main(params: URLSearchParams, boot: BootScreen) {
           session?.dataSource() ?? selectDataSource(sim, params, () => sim.day() * 1440 + sim.minute_of_day()),
         )
   // --- end CEO overlay ---
+  // --- scene ↔ overlay (FEAT-024): label texts and picking come from the store here; render/ reads none ---
+  if (overlay) {
+    const store = overlay.store
+    game.setLookups({
+      staff: (id) => {
+        const s = store.staff(id)
+        return s ? { name: store.personaOf(id).name, role: s.role } : undefined
+      },
+      workItem: (id) => store.planText.peek().items[id]?.title || undefined,
+    })
+    game.onPick({
+      person: (id) => store.openProfile({ staff: id }),
+      workItem: (id) => {
+        store.selectedItem.value = id
+        store.panel.value = 'plan'
+      },
+    })
+  }
+  // Labels never cover the HUD or the overlay's toolbar and panels (live pages; frozen ones show neither).
+  if (!frozen) {
+    game.setOccluders(() => {
+      const c = canvas.getBoundingClientRect()
+      return Array.from(document.querySelectorAll('.hud, .hud-card, .toolbar, .panel'), (el) => {
+        const r = el.getBoundingClientRect()
+        return { left: r.left - c.left, top: r.top - c.top, right: r.right - c.left, bottom: r.bottom - c.top }
+      })
+    })
+  }
+  // --- end scene ↔ overlay ---
   let lastStep = -1n
   let stillFrames = 0
   let still = false
@@ -193,6 +222,8 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     overlay: overlay?.store ?? null,
     session: session?.hook ?? null,
     clock,
+    // Everyone on site, where they are drawn this frame and on the canvas (e2e smooth-movement check).
+    people: () => game.people(),
   }
 }
 
