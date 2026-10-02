@@ -8,6 +8,9 @@ paths:
   - crates/server/src/db/accounts.rs
   - crates/server/tests/lease.rs
   - "apps/game/src/store/**"
+  - apps/game/src/net/central.ts
+  - apps/game/src/net/central.test.ts
+  - apps/game/e2e/orchestrator.spec.ts
 adrs:
   - ADR-0038
   - ADR-0041

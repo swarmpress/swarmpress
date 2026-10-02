@@ -14,8 +14,8 @@ cargo nextest run -p orchestrator
 
 | Piece | Implementations |
 |---|---|
-| `Store` (briefs, artifacts, transcripts, plan posts; JSON in/out) | `MemStore`; later DuckDB (browser, JS bridge) and SQLite (server) |
-| `Gateway` (`open_draft`, `merge`) | `FakeGateway`; `GithubGateway` over `github::ContentRepo` (native only); later the browser's HTTP gateway |
+| `Store` (briefs, artifacts, transcripts, plan posts; JSON in/out) | `MemStore`; the browser's `CompanyStore` (Turso wasm / sqlite-wasm) through `crates/orchestrator-wasm`; later SQLite (server) |
+| `Gateway` (`open_draft`, `merge`) | `FakeGateway`; `GithubGateway` over `github::ContentRepo` (native only); the browser's central gateway client through `crates/orchestrator-wasm` |
 | `agents::Llm` | `FakeLlm` in tests; local models in the browser; Claude for Agency jobs |
 
 Async traits are `Send` natively and `?Send` on wasm32 (`agents::MaybeSendSync`).

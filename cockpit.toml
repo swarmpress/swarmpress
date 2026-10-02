@@ -237,6 +237,24 @@ workflow = "ci.yml"
 artifact = "runner-junit"
 branch = "main"
 
+# ---------------------------------------------------------------- orchestrator-wasm (bun test)
+# The MVP loop through the JS bridge (crates/orchestrator-wasm/tests/loop.test.ts), run from the
+# repo root so classnames are repo-relative: `bun test crates/orchestrator-wasm/tests
+# --reporter=junit --reporter-outfile=crates/orchestrator-wasm/reports/junit.xml`, then
+# packages/sdk/scripts/bun-junit.ts.
+[[evidence]]
+id = "orchestrator-wasm/bun-test"
+title = "crates/orchestrator-wasm bun test (MVP loop through the JS bridge)"
+format = "junit"
+kind = "integration"
+path = [".cockpit/evidence/orchestrator-wasm__bun-test/**/*.xml", "crates/orchestrator-wasm/reports/junit.xml"]
+component = "agents"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "orchestrator-wasm-junit"
+branch = "main"
+
 # ---------------------------------------------------------------- client (Playwright)
 # `pnpm --filter @swarm-press/game test:e2e` with the JSON reporter
 # (PLAYWRIGHT_JSON_OUTPUT_NAME=test-results/playwright.json --reporter=json,list)
@@ -251,6 +269,21 @@ component = "render"
 repo = "swarmpress/swarmpress"
 workflow = "ci.yml"
 artifact = "game-playwright"
+branch = "main"
+
+# The browser runtime against the real simpress-server, per store engine (turso, sqlite):
+# `playwright test -c playwright.orchestrator.config.ts` (PW_JSON=reports/playwright-orchestrator.json).
+[[evidence]]
+id = "game/playwright-orchestrator"
+title = "apps/game browser runtime e2e (store engines, central client, orchestrator-wasm)"
+format = "playwright"
+kind = "e2e"
+path = [".cockpit/evidence/game__playwright-orchestrator/**/*.json", "apps/game/reports/playwright-orchestrator.json"]
+component = "net"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "game-playwright-orchestrator"
 branch = "main"
 
 # Visual regression at frozen sim times x 4 camera angles: expected/actual/diff attachment

@@ -201,16 +201,21 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         req.staff.iter().find(|s| s.role == role)
     }
 
-    fn staff_by_id<'a>(
+    /// Staff member `id` from the job, else as recorded with the brief, else
+    /// anyone in the job with `fallback_role`.
+    fn staff_by_id(
         &self,
-        req: &'a JobRequest,
+        req: &JobRequest,
+        rec: &BriefRecord,
         id: &str,
         fallback_role: &str,
-    ) -> Result<&'a StaffRef> {
+    ) -> Result<StaffRef> {
         req.staff
             .iter()
             .find(|s| s.id == id)
+            .or_else(|| rec.staff.iter().find(|s| s.id == id))
             .or_else(|| self.find(req, fallback_role))
+            .cloned()
             .ok_or_else(|| invalid(format!("job {} has no {fallback_role}", req.job_id)))
     }
 
@@ -378,6 +383,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 editor: editor.id.clone(),
                 minutes: minutes.clone(),
                 work_item: None,
+                staff: vec![writer.clone(), editor.clone()],
             };
             self.store
                 .put_brief(
@@ -402,9 +408,9 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         let item = self.work_item(req)?;
         let rec = self.load_brief(req).await?;
         let brief = &rec.brief;
-        let writer = self.staff_by_id(req, &rec.writer, "writer")?;
-        let editor = self.staff_by_id(req, &rec.editor, "editor")?;
-        let staffing = self.staffing(writer, editor)?;
+        let writer = self.staff_by_id(req, &rec, &rec.writer, "writer")?;
+        let editor = self.staff_by_id(req, &rec, &rec.editor, "editor")?;
+        let staffing = self.staffing(&writer, &editor)?;
         let cfg = self.pipeline_config();
         let brief_ref = req.brief_ref.unwrap_or_default();
 
@@ -564,9 +570,9 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     async fn review(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
         let item = self.work_item(req)?;
         let rec = self.load_brief(req).await?;
-        let writer = self.staff_by_id(req, &rec.writer, "writer")?;
-        let editor = self.staff_by_id(req, &rec.editor, "editor")?;
-        let staffing = self.staffing(writer, editor)?;
+        let writer = self.staff_by_id(req, &rec, &rec.writer, "writer")?;
+        let editor = self.staff_by_id(req, &rec, &rec.editor, "editor")?;
+        let staffing = self.staffing(&writer, &editor)?;
         let mut art = self
             .load_artifact(req, item)
             .await?
