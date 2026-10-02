@@ -25,6 +25,7 @@
 mod article;
 mod gateway;
 mod run;
+mod site;
 mod store;
 
 pub use article::{
@@ -37,6 +38,7 @@ pub use article::{
 pub use gateway::GithubGateway;
 pub use gateway::{DraftPr, FakeGateway, FakePr, Gateway, GatewayError};
 pub use run::{Orchestrator, OrchestratorError, SiteBinding};
+pub use site::{ConfigSource, SiteKnowledge, STYLE_GUIDE_PATH, WRITER_PROMPT_PATH};
 pub use store::{
     ArtifactRecord, BriefRecord, MemStore, Store, StoreError, PLAN_POSTS_PER_ITEM, POST_TYPES,
 };

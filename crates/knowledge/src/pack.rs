@@ -158,6 +158,7 @@ pub fn load(pack: &Pack) -> Result<KnowledgeBase, KnowledgeError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kb::ClosedWorldKind;
     use crate::source::MemSource;
     use serde_json::json;
 
@@ -255,6 +256,48 @@ mod tests {
         assert_eq!(kb.resolve_media("media:alpha-1").unwrap().id, "alpha-1");
         assert!(kb.resolve_media("media:invented").is_err());
         assert!(kb.collections.files.is_empty());
+    }
+
+    #[test]
+    fn closed_world_issues_name_the_pointer_and_the_value() {
+        let kb = load(&build(&site(), "c0ffee").unwrap()).unwrap();
+        let page = json!({
+            "slug": {"en": "/en/blog/x"},
+            "body": [
+                {"type": "image", "src": "https://img.test/a", "alt": "known"},
+                {"type": "image", "src": "https://img.test/invented", "alt": "unknown"},
+                {"type": "closing-note", "actions": [
+                    {"label": "ok", "href": "/en/alpha"},
+                    {"label": "gone", "href": "/en/nowhere"}
+                ]}
+            ]
+        });
+        let issues = kb.closed_world_issues(&page);
+        assert_eq!(
+            issues
+                .iter()
+                .map(|i| (i.kind, i.pointer.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                (ClosedWorldKind::Link, "/body/2/actions/1/href"),
+                (ClosedWorldKind::Media, "/body/1/src"),
+            ]
+        );
+        assert_eq!(
+            issues[0].to_string(),
+            "/body/2/actions/1/href: \"/en/nowhere\" is not a page of the site: no page at this route"
+        );
+        assert!(
+            issues[1]
+                .message
+                .starts_with("\"https://img.test/invented\" is not in the media index"),
+            "{}",
+            issues[1]
+        );
+        assert_eq!(ClosedWorldKind::Media.code(), "media");
+        assert!(kb
+            .closed_world_issues(&json!({"body": [{"type": "image", "src": "https://img.test/a"}]}))
+            .is_empty());
     }
 
     #[test]

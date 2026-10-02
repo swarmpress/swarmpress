@@ -35,8 +35,8 @@ pub mod summary;
 pub use collections::{CollectionFile, CollectionIndex, CollectionItem, FileShape};
 pub use entities::{Entity, EntityIndex, EntityKind};
 pub use kb::{
-    BrokenRef, KnowledgeBase, LinkCandidate, LinkReport, MediaReport, NeedsPage, NeedsPageReason,
-    PageCheck, RefKind, SiteAudit, UnknownMedia,
+    BrokenRef, ClosedWorldIssue, ClosedWorldKind, KnowledgeBase, LinkCandidate, LinkReport,
+    MediaReport, NeedsPage, NeedsPageReason, PageCheck, RefKind, SiteAudit, UnknownMedia,
 };
 pub use manifest::{CollectionDef, Region, Section, SiteManifest};
 pub use media::{

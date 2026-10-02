@@ -9,8 +9,8 @@ use agents::prompts::SiteContext;
 use agents::{FakeLlm, FakeReply, StyleGuide};
 use github::{FakeGitHub, RepoId};
 use orchestrator::{
-    site_validator, Digest, FakeGateway, Gateway, GithubGateway, JobKind, JobRequest, MemStore,
-    Orchestrator, Outcome, SiteBinding, StaffRef, Store,
+    site_validator, ConfigSource, Digest, FakeGateway, Gateway, GithubGateway, JobKind, JobRequest,
+    MemStore, Orchestrator, Outcome, SiteBinding, StaffRef, Store,
 };
 use serde_json::{json, Value};
 
@@ -90,6 +90,9 @@ fn site() -> SiteBinding {
         quality_bar: 7,
         simulate_deploy: true,
         standup_max_turns: 4,
+        knowledge: None,
+        style_source: ConfigSource::Binding,
+        writer_prompt_source: ConfigSource::Absent,
     }
 }
 

@@ -15,6 +15,7 @@ use serde_json::{json, Value};
 
 use crate::article::{article_schema, brief_ref_for, slugify, word_count, ARTICLE_BLOCK_DOCS};
 use crate::gateway::{Gateway, GatewayError};
+use crate::site::{ConfigSource, SiteKnowledge};
 use crate::store::{ArtifactRecord, BriefRecord, Store, StoreError};
 use crate::{BriefOut, Digest, JobKind, JobRequest, Outcome, StaffRef};
 
@@ -49,6 +50,11 @@ fn corrupt(e: serde_json::Error) -> OrchestratorError {
 }
 
 /// How one project's site is wired (repo access lives in the [`Gateway`]).
+///
+/// The browser and the runner build it from JSON ([`SiteBinding::from_json`],
+/// `crate::site`): with the site's knowledge pack, the style guide and the
+/// writer prompt are the site's own files and [`Self::knowledge`] holds the
+/// loaded closed world.
 pub struct SiteBinding {
     pub site_id: String,
     pub brand_name: String,
@@ -61,6 +67,15 @@ pub struct SiteBinding {
     /// waiting for the site repo's `deployment_status` webhook.
     pub simulate_deploy: bool,
     pub standup_max_turns: u32,
+    /// The site's knowledge pack, loaded (ADR-0061). `None` without a pack
+    /// (tests, the harness). The Draft and Review jobs do not read it yet;
+    /// the staged Draft job (P2) builds its `context#0` from it with
+    /// [`crate::article_context`].
+    pub knowledge: Option<SiteKnowledge>,
+    /// Where [`SiteContext::style_guide`] came from.
+    pub style_source: ConfigSource,
+    /// Where the writer-prompt layer of [`Self::context`] came from.
+    pub writer_prompt_source: ConfigSource,
 }
 
 /// Runs sim jobs. Generic over where text lives ([`Store`]) and how the repo

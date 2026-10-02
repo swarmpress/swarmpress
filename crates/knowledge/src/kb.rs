@@ -105,6 +105,44 @@ pub struct MediaReport {
     pub unknown: Vec<UnknownMedia>,
 }
 
+/// What a closed-world problem is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClosedWorldKind {
+    /// A reference to a page (or collection) the site does not have.
+    Link,
+    /// A media reference that is not in the media index.
+    Media,
+}
+
+impl ClosedWorldKind {
+    /// `link` or `media`: the issue code the orchestrator's validator reports.
+    pub fn code(self) -> &'static str {
+        match self {
+            ClosedWorldKind::Link => "link",
+            ClosedWorldKind::Media => "media",
+        }
+    }
+}
+
+/// One closed-world problem of a page (CLAUDE.md rule 5), as text a model or
+/// a person can act on. [`KnowledgeBase::closed_world_issues`] is the one
+/// place this text is made: the orchestrator's article validator and the
+/// gateway's draft check both report it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ClosedWorldIssue {
+    pub kind: ClosedWorldKind,
+    /// JSON pointer into the page.
+    pub pointer: String,
+    pub message: String,
+}
+
+impl std::fmt::Display for ClosedWorldIssue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.pointer, self.message)
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct PageCheck {
     pub schema: Option<content_model::Report>,
@@ -668,6 +706,31 @@ impl KnowledgeBase {
             },
             Err(e) => r.unknown.push(unknown(e.to_string())),
         }
+    }
+
+    /// The page's links that do not resolve and its media that is not in the
+    /// index ([`Self::check_links`], [`Self::check_media`]), links first, each
+    /// in page order. Empty: the page stays inside the closed world.
+    pub fn closed_world_issues(&self, page: &Value) -> Vec<ClosedWorldIssue> {
+        let links = self
+            .check_links(page)
+            .broken
+            .into_iter()
+            .map(|b| ClosedWorldIssue {
+                kind: ClosedWorldKind::Link,
+                pointer: b.pointer,
+                message: format!("{:?} is not a page of the site: {}", b.value, b.reason),
+            });
+        let media = self
+            .check_media(page)
+            .unknown
+            .into_iter()
+            .map(|m| ClosedWorldIssue {
+                kind: ClosedWorldKind::Media,
+                pointer: m.pointer,
+                message: format!("{:?} is not in the media index: {}", m.value, m.reason),
+            });
+        links.chain(media).collect()
     }
 
     /// Everything `write_page` checks: schema (if a registry is given), links, media.

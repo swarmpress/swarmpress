@@ -664,25 +664,9 @@ impl SiteValidatorV2 {
                 }
             }
         }
-        for broken in self.kb.check_links(page).broken {
-            out.push(issue(
-                "link",
-                broken.pointer,
-                format!(
-                    "{:?} is not a page of the site: {}",
-                    broken.value, broken.reason
-                ),
-            ));
-        }
-        for unknown in self.kb.check_media(page).unknown {
-            out.push(issue(
-                "media",
-                unknown.pointer,
-                format!(
-                    "{:?} is not in the media index: {}",
-                    unknown.value, unknown.reason
-                ),
-            ));
+        // The same check and text the gateway's draft check reports.
+        for i in self.kb.closed_world_issues(page) {
+            out.push(issue(i.kind.code(), i.pointer, i.message));
         }
         out
     }

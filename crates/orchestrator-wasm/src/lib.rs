@@ -33,13 +33,12 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use agents::llm::DeltaSink;
-use agents::prompts::SiteContext;
-use agents::{Llm, LlmError, LlmRequest, StyleGuide};
+use agents::{Llm, LlmError, LlmRequest};
 use async_trait::async_trait;
 use js_sys::{Array, Function, Promise, Reflect, JSON};
 use orchestrator::{
-    site_validator, DraftPr, Gateway, GatewayError, JobRequest, Orchestrator, Outcome, SiteBinding,
-    Store, StoreError,
+    DraftPr, Gateway, GatewayError, JobRequest, Orchestrator, Outcome, SiteBinding, Store,
+    StoreError,
 };
 use serde_json::{json, Value};
 use wasm_bindgen::prelude::*;
@@ -362,41 +361,16 @@ impl Llm for JsLlm {
 
 // ---------------------------------------------------------------- site + JSON shims
 
-/// `{site_id, brand_name, language, style_guide, writer_prompt?, quality_bar?,
-/// simulate_deploy?, standup_max_turns?}`.
+/// `{site_id, brand_name, language?, knowledge_pack?, style_guide?,
+/// writer_prompt?, quality_bar?, simulate_deploy?, standup_max_turns?}`
+/// (`orchestrator::SiteBinding::from_json`): with `knowledge_pack` (the pack
+/// JSON text of `GET /api/gateway/knowledge`) the style guide and the writer
+/// prompt are the site's own files and the binding carries the loaded
+/// closed world; `style_guide` / `writer_prompt` are the fallback without a
+/// pack, and without either the house style is empty.
 fn site_binding(site_json: &str) -> Result<SiteBinding, String> {
     let v: Value = serde_json::from_str(site_json).map_err(|e| format!("site JSON: {e}"))?;
-    let text = |k: &str| -> Result<String, String> {
-        v.get(k)
-            .and_then(Value::as_str)
-            .map(String::from)
-            .ok_or_else(|| format!("site.{k} (string) is required"))
-    };
-    let site_id = text("site_id")?;
-    let style = v.get("style_guide").ok_or("site.style_guide is required")?;
-    let style = StyleGuide::from_json_str(&style.to_string())
-        .map_err(|e| format!("site.style_guide: {e}"))?;
-    let context = SiteContext::new(&site_id, style, v.get("writer_prompt"))
-        .map_err(|e| format!("site context: {e}"))?;
-    let small = |k: &str, d: u64| v.get(k).and_then(Value::as_u64).unwrap_or(d);
-    Ok(SiteBinding {
-        brand_name: text("brand_name")?,
-        language: v
-            .get("language")
-            .and_then(Value::as_str)
-            .unwrap_or("en")
-            .to_string(),
-        validator: site_validator(&context),
-        context,
-        site_id,
-        quality_bar: u8::try_from(small("quality_bar", 7)).map_err(|e| e.to_string())?,
-        simulate_deploy: v
-            .get("simulate_deploy")
-            .and_then(Value::as_bool)
-            .unwrap_or(false),
-        standup_max_turns: u32::try_from(small("standup_max_turns", 4))
-            .map_err(|e| e.to_string())?,
-    })
+    SiteBinding::from_json(&v)
 }
 
 /// Parse a job request; `brief_ref` may be a decimal string.
@@ -552,6 +526,15 @@ impl OrchestratorHandle {
             orch: Rc::new(Orchestrator::new(JsStore(store), gateway, llm, site)),
             work_item,
         })
+    }
+
+    /// What the site binding was built from, as JSON text:
+    /// `{site_id, commit, pages, media, entities, blog_index, style_guide,
+    /// writer_prompt}` (`commit` and the counts are `null` without a
+    /// knowledge pack; the sources are `pack`, `binding` or `absent`).
+    #[wasm_bindgen(js_name = siteSummary)]
+    pub fn site_summary(&self) -> String {
+        self.orch.site().summary().to_string()
     }
 
     /// Run one job request (JSON); resolves to the outcomes as JSON text,

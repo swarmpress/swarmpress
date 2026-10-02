@@ -196,13 +196,16 @@ fn pack_from_a_checkout_round_trips_to_an_equal_knowledge_base() {
 fn pack_carries_the_fixture_config_and_the_blog_index() {
     let src = src();
     let pack = pack::build(&src, COMMIT).unwrap();
-    // The fixture has three of the eight config files, and the blog index.
+    // The fixture has five of the eight config files (the style guide and the
+    // writer prompt are the real site's, verbatim), and the blog index.
     assert_eq!(
         pack.files.keys().map(String::as_str).collect::<Vec<_>>(),
         vec![
             "content/config/entity-index.json",
             "content/config/media-index.json",
             "content/config/sitemap-index.json",
+            "content/config/style-guide.json",
+            "content/config/writer-prompt.json",
             BLOG_INDEX_PATH,
         ]
     );

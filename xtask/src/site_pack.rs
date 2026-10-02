@@ -139,7 +139,7 @@ mod tests {
         let pack = Pack::from_json(&written).unwrap();
         assert_eq!(pack.commit, "c0ffee");
         assert_eq!(pack.pages.len(), 9);
-        assert_eq!(pack.files.len(), 4);
+        assert_eq!(pack.files.len(), 6);
         let kb = pack::load(&pack).unwrap();
         assert_eq!(kb.media.len(), 20);
         assert_eq!(
