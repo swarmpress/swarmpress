@@ -17,5 +17,8 @@
   features: [FEAT-011]
 - match: { classname: content-schema }
   features: [FEAT-042]
+# The shared golden fixture (packages/runner/test/fixtures/golden.json): native = wasm = Bun.
+- match: { classname: client-wasm, title: "runner_golden_hashes_match" }
+  features: [FEAT-001, FEAT-055]
 - match: { classname: client-wasm }
   features: [FEAT-001, FEAT-023]

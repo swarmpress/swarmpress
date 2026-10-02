@@ -1,0 +1,29 @@
+{
+  "name": "@simpress/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SimPress extension SDK: manifest and content-pack schemas, skill and sim-rule contracts, define* helpers (ADR-0042)",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./runtime": "./src/runtime.ts",
+    "./schemas/*": "./schemas/*"
+  },
+  "scripts": {
+    "export": "bun scripts/export-json-schema.ts",
+    "check": "bun scripts/export-json-schema.ts --check",
+    "test": "mkdir -p reports; bun test --reporter=junit --reporter-outfile=reports/junit.xml; s=$?; bun ../sdk/scripts/bun-junit.ts reports/junit.xml; exit $s",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "smol-toml": "^1.9.0",
+    "zod": "^3.22.4",
+    "zod-to-json-schema": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "typescript": "^5.9.0"
+  }
+}

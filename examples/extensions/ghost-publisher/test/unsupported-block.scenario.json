@@ -1,0 +1,23 @@
+{
+  "$schema": "../../../../packages/sdk/schemas/scenario.schema.json",
+  "name": "an unsupported block fails the draft loudly",
+  "seed": 1,
+  "days": 0,
+  "publish": {
+    "credential": { "ref": "cred_ghost_demo", "secret": "recorded-admin-jwt" },
+    "draft": {
+      "contentId": "page-x",
+      "path": "content/pages/x.json",
+      "message": "x",
+      "page": {
+        "id": "x",
+        "slug": { "en": "x" },
+        "title": { "en": "X" },
+        "page_type": "guide",
+        "body": [{ "type": "gallery", "layout": "grid", "images": [] }]
+      }
+    },
+    "server": [{ "method": "GET", "url": "https://demo.ghost.io/never" }],
+    "expect": { "error": "block type \"gallery\" is not supported" }
+  }
+}

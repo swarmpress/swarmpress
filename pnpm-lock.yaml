@@ -64,6 +64,36 @@ importers:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@20.19.25)(jsdom@26.1.0)(tsx@4.20.6)
 
+  examples/extensions/coffee-machine-rule:
+    devDependencies:
+      '@simpress/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+
+  examples/extensions/fact-checker:
+    devDependencies:
+      '@simpress/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+
+  examples/extensions/ghost-publisher:
+    devDependencies:
+      '@simpress/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+
+  examples/extensions/harvest-season:
+    devDependencies:
+      '@simpress/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+
+  examples/extensions/ligurian-ferries:
+    devDependencies:
+      '@simpress/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+
   packages/content-schema:
     dependencies:
       zod:
@@ -81,6 +111,63 @@ importers:
         version: 4.20.6
       typescript:
         specifier: ^5.3.3
+        version: 5.9.3
+
+  packages/runner:
+    dependencies:
+      '@simpress/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
+      '@simpress/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+    devDependencies:
+      '@types/bun':
+        specifier: 1.3.14
+        version: 1.3.14
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
+  packages/sandbox:
+    dependencies:
+      '@jitl/quickjs-wasmfile-release-sync':
+        specifier: 0.32.0
+        version: 0.32.0
+      quickjs-emscripten-core:
+        specifier: 0.32.0
+        version: 0.32.0
+    devDependencies:
+      '@playwright/test':
+        specifier: 1.56.1
+        version: 1.56.1
+      '@simpress/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      '@types/bun':
+        specifier: 1.3.14
+        version: 1.3.14
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
+  packages/sdk:
+    dependencies:
+      smol-toml:
+        specifier: ^1.9.0
+        version: 1.9.0
+      zod:
+        specifier: ^3.22.4
+        version: 3.25.76
+      zod-to-json-schema:
+        specifier: ^3.25.0
+        version: 3.25.0(zod@3.25.76)
+    devDependencies:
+      '@types/bun':
+        specifier: 1.3.14
+        version: 1.3.14
+      typescript:
+        specifier: ^5.9.0
         version: 5.9.3
 
   packages/site-builder/src/themes/cinque-terre:
@@ -1478,6 +1565,16 @@ packages:
     dev: false
     optional: true
 
+  /@jitl/quickjs-ffi-types@0.32.0:
+    resolution: {integrity: sha512-v9T+GQpmk43VDJ7d72sf0Nexhk+ArvtUihW27dy7lqAl0zBObFKtSBBIm5RBjwIhE8VwsPPm9PNuvPvNqLWUEg==}
+    dev: false
+
+  /@jitl/quickjs-wasmfile-release-sync@0.32.0:
+    resolution: {integrity: sha512-BKNDI/TPBfGlLNGYpLrhcDGXmIk4xHm4MRAisOBnOzpXVn9HZWsfmMAc9WMBrAHjvvds6HOikKeaOBKdPdpVrg==}
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.32.0
+    dev: false
+
   /@jridgewell/gen-mapping@0.3.13:
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
     dependencies:
@@ -2338,6 +2435,12 @@ packages:
       '@babel/types': 7.28.5
     dev: false
 
+  /@types/bun@1.3.14:
+    resolution: {integrity: sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw==}
+    dependencies:
+      bun-types: 1.3.14
+    dev: true
+
   /@types/chai@5.2.3:
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
     dependencies:
@@ -2830,6 +2933,12 @@ packages:
       electron-to-chromium: 1.5.259
       node-releases: 2.0.27
       update-browserslist-db: 1.1.4(browserslist@4.28.0)
+
+  /bun-types@1.3.14:
+    resolution: {integrity: sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ==}
+    dependencies:
+      '@types/node': 20.19.25
+    dev: true
 
   /cac@6.7.14:
     resolution: {integrity: sha512-b6Ilus+c3RrdDk+JhLKUAQfzzgLEPy6wcXqS7f/xe1EETvsDP6GORG7SFuOs6cID5YkqchW/LXZbX5bc8j7ZcQ==}
@@ -4587,6 +4696,12 @@ packages:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
     dev: true
+
+  /quickjs-emscripten-core@0.32.0:
+    resolution: {integrity: sha512-QFnPfjFey8EqknSrSxe1hZrf1/8z7/6s1QzGOmKo6++02r7QRRX7ZoyNaZh7JuVjWsVW87KnQrbZqnHkOAzUyg==}
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.32.0
+    dev: false
 
   /radix3@1.1.2:
     resolution: {integrity: sha512-b484I/7b8rDEdSDKckSSBA8knMpcdsXudlE/LNL639wFoHKwLbEkQFZHWEYwDC0wa0FKUcCY+GAF73Z7wxNVFA==}

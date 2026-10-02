@@ -1,0 +1,8 @@
+{
+  "$schema": "../../../../packages/sdk/schemas/scenario.schema.json",
+  "name": "rule output replays across two runs (7 days)",
+  "seed": 7,
+  "days": 7,
+  "expect": { "hash": "replay", "day": 7 },
+  "rules": { "expect": { "commands": "replay" } }
+}
