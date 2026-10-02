@@ -12,11 +12,13 @@ import financeLive from './fixtures/live/finance.json'
 import inboxLive from './fixtures/live/inbox.json'
 import orgLive from './fixtures/live/org.json'
 import planLive from './fixtures/live/plan.json'
+import { OrchestrationLoop, type LoopSim } from '../orchestration/loop'
+import { fakePlanStore } from './live-testing'
 import { mountOverlay } from './mount'
 import { availableViews } from './plan-logic'
 import { flush } from './testing'
 import type { InboxJson } from './types'
-import { hasOrgApi, WasmDataSource, type SimOrgApi } from './wasm-source'
+import { companyStoreOptions, hasOrgApi, WasmDataSource, type SimOrgApi } from './wasm-source'
 
 /**
  * The overlay over the real wasm sim (`Sim.demo`, the cinqueterre company),
@@ -303,6 +305,105 @@ describe.skipIf(!built)('WasmDataSource over the real sim', () => {
     expect(within(region(/Finance/)).getByRole('note').textContent).toMatch(/^Revenue is not modelled yet/)
     expect(region(/Finance/).querySelector('blockquote')).toBeNull()
     expect(within(region(/Finance/)).queryByRole('heading', { name: 'CFO report' })).toBeNull()
+  })
+
+  it('a session source sees what its loop applies while the clock is held, and keeps its commands in the log', async () => {
+    // The pieces session.ts wires together: the sim, the orchestration loop
+    // (here with a scripted orchestrator) and the data source built from
+    // `companyStoreOptions` plus the step-and-log change key.
+    const sim = wasm.Sim.scenario('cinqueterre', 42n)
+    const staff = (JSON.parse(sim.org_json()) as { staff: Array<{ id: string; role: string }> }).staff
+    const brief = { brief_ref: 42, writer: staff.find((s) => s.role === 'writer')!.id, editor: staff.find((s) => s.role === 'editor')!.id }
+    const kv = new Map<string, string>()
+    const logged: Array<{ seq?: number; kind: string }> = []
+    const store = {
+      ...fakePlanStore(),
+      appendCommands: async (cmds: Array<{ seq?: number; kind: string }>) => (logged.push(...cmds), cmds.map((c) => c.seq ?? 0)),
+      getKv: async (k: string) => kv.get(k) ?? null,
+      setKv: async (k: string, v: string) => void kv.set(k, v),
+      deleteKv: async (k: string) => void kv.delete(k),
+    }
+    const loop = new OrchestrationLoop({
+      sim: sim as unknown as LoopSim,
+      store,
+      companyId: 'c1',
+      orchestrator: {
+        // The standup commissions one article; its draft job fails.
+        run: async (jobJson) => {
+          const job = JSON.parse(jobJson) as JobEffect
+          return JSON.stringify(
+            job.kind === 'standup'
+              ? [{ MeetingOutcome: { job_id: job.job_id, briefs: [brief] } }]
+              : [{ JobCompleted: { job_id: job.job_id, digest: { ok: false, score: 0, words: 0, qa_defects: 0, artifact_sha: null } } }],
+          )
+        },
+      },
+      codec: {
+        jobsFromEffects: (effects) => (JSON.parse(effects) as unknown[]).map((j) => JSON.stringify(j)),
+        outcomesForSim: (outcomes) => (JSON.parse(outcomes) as unknown[]).map((o) => JSON.stringify(o)),
+      },
+      retries: 0,
+      retryMs: 0,
+    })
+    const orgApi: SimOrgApi = {
+      org_json: () => sim.org_json(),
+      finance_json: () => sim.finance_json(),
+      inbox_json: () => sim.inbox_json(),
+      plan_json: () => sim.plan_json!(),
+      day: () => sim.day(),
+      minute_of_day: () => sim.minute_of_day(),
+      validate_command_json: (json) => sim.validate_command_json!(json),
+      apply_command_json: (json) => {
+        const r = loop.apply(json)
+        if (!r.ok) throw new Error(r.reason)
+      },
+    }
+    const session = new WasmDataSource(orgApi, {
+      pollMs: 20,
+      ...companyStoreOptions(store, { id: 'c1', site_repo: 'swarmpress/cinqueterre.travel' }),
+      changeKey: () => `${sim.step()}:${loop.lastSeq}`,
+    })
+    // The default key (the step alone) is right for the offline sandbox, where nothing but the source applies commands.
+    const stepOnly = new WasmDataSource({ ...orgApi, step: () => sim.step() }, { pollMs: 20 })
+    const tick = () => new Promise((r) => setTimeout(r, 80))
+
+    // Run to the 09:00 standup; the loop takes its job and the outcome waits for a boundary.
+    const perDay = Number(sim.steps_per_day())
+    for (let i = 0; i < perDay && sim.minute_of_day() < 9 * 60 + 1; i++) {
+      loop.boundary()
+      sim.advance(1)
+      loop.afterAdvance()
+    }
+    await loop.settled()
+    expect(loop.pendingCommands).toBe(1)
+    const seen: Array<string[] | undefined> = []
+    const off = [session.subscribe((t) => seen.push(t)), stepOnly.subscribe(() => undefined)]
+    expect((await session.getPlan()).items).toEqual([])
+    expect((await stepOnly.getPlan()).items).toEqual([])
+
+    // The clock is held (a model is at work): boundaries pass, the step does not move.
+    const held = sim.step()
+    loop.boundary() // MeetingOutcome: the work item exists, its draft job is requested
+    await loop.settled()
+    loop.boundary() // JobCompleted{ok: false}: blocked, with an escalation
+    await loop.idle()
+    expect(loop.errors).toEqual([])
+    expect(sim.step()).toBe(held)
+    await tick()
+    expect((await session.getPlan()).items.map((i) => i.status)).toEqual(['blocked'])
+    expect((await session.getInbox()).tickets.map((t) => [t.kind, t.status])).toEqual([['escalation', 'open']])
+    expect(seen.flat()).toEqual(expect.arrayContaining(['plan', 'inbox']))
+    expect((await stepOnly.getPlan()).items).toEqual([])
+
+    // A CEO command goes through the loop: applied, logged, and seen at the same step.
+    const ticket = (await session.getInbox()).tickets[0]
+    expect(await session.apply(toJson(cmd.answer(ticket.id, 'retry')))).toEqual({ ok: true })
+    await loop.flush()
+    expect((await session.getInbox()).tickets[0]).toMatchObject({ status: 'answered', answer: 'retry' })
+    expect(logged.map((c) => c.kind)).toEqual(['MeetingOutcome', 'JobCompleted', 'AnswerTicket'])
+    expect(loop.lastSeq).toBe(3)
+    expect(sim.step()).toBe(held)
+    off.forEach((f) => f())
   })
 
   it('does not re-serialise the views while the sim stands still', async () => {
