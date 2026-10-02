@@ -64,6 +64,7 @@ development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are i
 | `x-swarmpress-lease` | the fencing token `<epoch>.<lease_id>` (the lease reply's `token`). A fenced route answers 428 without it and 409 when the epoch or the lease id is not the company's current, unexpired one. A lease grant and every fenced write hold a per-company mutex, so a takeover waits for an in-flight write to be recorded |
 | `POST /api/gateway/draft` | lease required. `{content_id, path, page, message, work_item?, attribution?}` → `{number, branch, head_sha, created_pr, committed}`. An article (`content/pages/blog/*.json`) that breaks the schema or the article profile answers 422 `{error, issues: [..]}`; a path that exists on the base branch, a second open pull request for the path, or a second path for the content id answers 409 |
 | `POST /api/gateway/merge` | lease required. `{number, head_sha, attribution?}` → `{merged_sha}`; only PRs this company opened through the gateway; 409 if the head moved |
+| `POST /api/gateway/close` | lease required. `{number}` → `{number, closed: true, already_closed, branch_deleted}`: close a pull request this company opened through the gateway, without merging, and delete its `drafts/` branch (for cancelled work). 404 for any other pull request, 409 for a merged one. Idempotent: closing again answers `already_closed: true` and calls nothing; a close that failed half-way is completed by the next one |
 | `GET /api/events?after=&limit=` | `{events: [{seq, company_id, kind, payload, created_at}], last_seq}` (oldest first, max 500) |
 | `GET /ws/events?after=` | WebSocket (cookie auth): backlog after `after`, then live events, one JSON text frame each |
 | `POST /webhooks/github` | HMAC-verified (`X-Hub-Signature-256`), deduped by `X-GitHub-Delivery`. `deployment_status` success → `DeployLanded`, failure/error → `DeployFailed`, in every company bound to the repo |
@@ -177,6 +178,14 @@ timeout. `Db::begin_immediate` opens a `BEGIN IMMEDIATE` transaction for
 read-check-write sequences (the lease takeover today, the credits ledger
 later).
 
+Migrations (`migrations/`, applied at startup):
+
+| File | Adds |
+|---|---|
+| `0001_init.sql` | accounts, companies, events, gateway pull requests, webhook deliveries, sync, tracker |
+| `0002_executor.sql` | `company_executors`: the executor lease with its fencing epoch (ADR-0045) |
+| `0003_deploys.sql` | on `gateway_prs`: `merged_at`, `landed_at`, `deploy_state`, `deploy_detail`, `deploy_checked_at` (deploy observation), `closed_at` (`POST /api/gateway/close`), `final_head` (finalise on merge). Pull requests merged before it get `deploy_state = 'unknown'` |
+
 ## Modules
 
 | Module | What it does |
@@ -213,6 +222,7 @@ cargo clippy -p server -p testkit --all-targets -- -D warnings
 | `tests/gateway.rs` | Draft + revision + merge against FakeGitHub, stale-head 409, idempotent merge, one simulated `DeployLanded`, PathPolicy rejections (nothing written), lease required (428/409, takeover, expiry), merging only own PRs, `deployment_status` webhook (bad HMAC, dedupe, success, failure, other repos). |
 | `tests/articles.rs` | Articles through the gateway: a valid fixture drafts; each profile violation answers 422 with its issue and writes nothing; an existing slug, a second open pull request for the path and a second path for the content id answer 409; the blog index cannot be drafted; other content is untouched; the profile switch. |
 | `tests/attribution.rs` | The persona is the author of draft commits and the platform the committer; the squash commit carries `Co-authored-by` and the trailers, with the platform as author; the executor defaults to the lease holder; every malformed attribution answers 400 on draft and merge and reaches GitHub with nothing; without attribution nothing changes. |
+| `tests/close.rs` | `POST /api/gateway/close`: the pull request is closed and its branch deleted once; closing again calls nothing; foreign and hand-made pull requests answer 404 and are untouched; merged ones answer 409; the lease is required; a closed one cannot be merged and frees its path; an interrupted close is completed. |
 | `tests/events.rs` | Polling with `after`/`limit`, per-company scoping, WebSocket backlog + live push. |
 | `tests/sync.rs` | Segment immutability (201/200/409), list, bytes on disk, snapshot with step, owner-only access. |
 | `tests/web.rs` | SSRF refusals and bad URLs, per-user 429, Firecrawl 501, HTML reduction, JSON, redirects, 415 and 413 against a local wiremock. |

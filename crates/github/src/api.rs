@@ -94,4 +94,9 @@ pub trait RepoApi: Send + Sync {
 
     /// Download the zip of the named artifact of a workflow run.
     async fn download_artifact(&self, repo: &RepoId, run_id: u64, name: &str) -> Result<Vec<u8>>;
+
+    // ---- gateway additions (ADR-0061) ----------------------------------
+    /// Delete `branch`. `Ok(false)` when it did not exist. GitHub closes
+    /// the open pull requests whose head it was.
+    async fn delete_branch(&self, repo: &RepoId, branch: &str) -> Result<bool>;
 }

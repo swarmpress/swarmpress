@@ -908,4 +908,20 @@ impl RepoApi for HttpGitHub {
         let url = self.repo_url(repo, &["actions", "artifacts", &id, "zip"])?;
         Ok(self.send(Method::GET, url, None).await?.into_result()?.body)
     }
+
+    // ---- gateway additions (ADR-0061) ----------------------------------
+
+    async fn delete_branch(&self, repo: &RepoId, branch: &str) -> Result<bool> {
+        let mut segs = vec!["git", "refs", "heads"];
+        segs.extend(branch.split('/'));
+        let r = self
+            .send(Method::DELETE, self.repo_url(repo, &segs)?, None)
+            .await?;
+        match r.status {
+            // GitHub answers 422 "Reference does not exist" for a missing ref.
+            404 => Ok(false),
+            422 if r.text().to_ascii_lowercase().contains("does not exist") => Ok(false),
+            _ => r.into_result().map(|_| true),
+        }
+    }
 }

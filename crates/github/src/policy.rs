@@ -374,4 +374,11 @@ impl RepoApi for GuardedRepo {
     async fn download_artifact(&self, repo: &RepoId, run_id: u64, name: &str) -> Result<Vec<u8>> {
         self.inner.download_artifact(repo, run_id, name).await
     }
+
+    // ---- gateway additions (ADR-0061) ----------------------------------
+
+    async fn delete_branch(&self, repo: &RepoId, branch: &str) -> Result<bool> {
+        self.policy.check_admin(self.actor, "delete_branch")?;
+        self.inner.delete_branch(repo, branch).await
+    }
 }

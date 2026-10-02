@@ -10,8 +10,11 @@
 //!   company opened through the gateway can be merged. With
 //!   `SWARMPRESS_SIMULATE_DEPLOY` a `DeployLanded` event follows at once;
 //!   otherwise the site's `deployment_status` webhook produces it.
+//! - `POST /api/gateway/close {number}` → `{number, closed, already_closed,
+//!   branch_deleted}`: close a pull request this company opened, without
+//!   merging, and delete its draft branch ([`close`]).
 //!
-//! Both require the company lease (`x-swarmpress-lease`). `PathPolicy`: the
+//! All require the company lease (`x-swarmpress-lease`). `PathPolicy`: the
 //! draft is written as a content agent (`content/**` only, `drafts/` branch
 //! only, platform files refused) and must be a `.json` page object of at
 //! most 256 KiB; `..`, absolute paths, backslashes and NUL are refused.
@@ -47,7 +50,7 @@ use github::content::page_bytes;
 use github::provenance::with_trailers;
 use github::{
     ActorKind, AppAuth, ContentRepo, FakeGitHub, GitHubError, GuardedRepo, HttpGitHub, PathPolicy,
-    Provenance, RepoApi, RepoId, StaticToken,
+    PrState, Provenance, RepoApi, RepoId, StaticToken,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -540,6 +543,11 @@ pub async fn merge(
         .ok_or_else(|| {
             AppError::NotFound(format!("PR #{number} was not opened by this company"))
         })?;
+    if pr.closed_at.is_some() {
+        return Err(AppError::Conflict(format!(
+            "PR #{number} was closed; it cannot be merged"
+        )));
+    }
     let repo = parse_repo(&company.site_repo)
         .ok_or_else(|| AppError::Conflict("the company's site repo binding is invalid".into()))?;
     // The server merges as the platform bot: the browser only asks for PRs
@@ -575,6 +583,91 @@ pub async fn merge(
         .await?;
     }
     Ok(Json(json!({ "merged_sha": merged.sha })))
+}
+
+#[derive(Deserialize)]
+pub struct CloseBody {
+    pub number: u64,
+}
+
+/// `POST /api/gateway/close {number}` → `{number, closed, already_closed,
+/// branch_deleted}` (ADR-0061 decision 8): close a pull request this company
+/// opened through the gateway, without merging it, and delete its draft
+/// branch. For work that was cancelled.
+///
+/// Lease-fenced like the other gateway writes. 404 for a pull request the
+/// gateway did not open for this company; 409 for a merged one. Idempotent:
+/// closing again answers 200 with `already_closed: true` and calls nothing,
+/// and a close that failed half-way is completed by the next one (a pull
+/// request already closed on GitHub, a branch already gone).
+pub async fn close(
+    State(st): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    headers: HeaderMap,
+    Json(body): Json<CloseBody>,
+) -> AppResult<Json<Value>> {
+    // Held to the end of the handler, as in `draft` and `merge`.
+    let fenced = require_lease(&st, &headers, &user).await?;
+    let company = &fenced.company;
+    let number = i64::try_from(body.number)
+        .map_err(|_| AppError::BadRequest("number out of range".into()))?;
+    let pr = store::get_pr(&st.db, &company.id, number)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("PR #{number} was not opened by this company"))
+        })?;
+    if pr.merged_sha.is_some() {
+        return Err(AppError::Conflict(format!(
+            "PR #{number} is merged; it cannot be closed"
+        )));
+    }
+    let reply = |already_closed: bool, branch_deleted: bool| {
+        Json(json!({
+            "number": body.number,
+            "closed": true,
+            "already_closed": already_closed,
+            "branch_deleted": branch_deleted,
+        }))
+    };
+    if pr.closed_at.is_some() {
+        return Ok(reply(true, false));
+    }
+    // Only a draft branch is ever deleted, whatever the row says.
+    PathPolicy::default()
+        .check_branch(ActorKind::ContentAgent, &pr.branch)
+        .map_err(gh_error)?;
+    let repo = parse_repo(&company.site_repo)
+        .ok_or_else(|| AppError::Conflict("the company's site repo binding is invalid".into()))?;
+    // Closing and deleting a branch are platform operations: the browser
+    // names a number, the server decides what that touches.
+    let api = st.github.api_for(&repo).await?;
+    let on_github = api.get_pr(&repo, body.number).await.map_err(gh_error)?;
+    if on_github.merged {
+        return Err(AppError::Conflict(format!(
+            "PR #{number} is merged on GitHub; it cannot be closed"
+        )));
+    }
+    if on_github.state == PrState::Open {
+        api.close_pr(&repo, body.number).await.map_err(gh_error)?;
+    }
+    // The content id may have been drafted again on the same branch (after
+    // somebody closed this pull request by hand): its new pull request keeps
+    // the branch.
+    let reused = api
+        .find_open_pr(&repo, &pr.branch)
+        .await
+        .map_err(gh_error)?
+        .is_some();
+    let branch_deleted = if reused {
+        false
+    } else {
+        api.delete_branch(&repo, &pr.branch)
+            .await
+            .map_err(gh_error)?
+    };
+    store::set_closed(&st.db, &company.id, number, st.now_ms()).await?;
+    tracing::info!(company_id = %company.id, number, branch = %pr.branch, branch_deleted, "gateway close");
+    Ok(reply(false, branch_deleted))
 }
 
 #[cfg(test)]

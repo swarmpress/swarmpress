@@ -1064,4 +1064,27 @@ impl RepoApi for FakeGitHub {
             .cloned()
             .ok_or_else(|| nf(format!("artifact {name} in run {run_id}")))
     }
+
+    // ---- gateway additions (ADR-0061) ----------------------------------
+
+    async fn delete_branch(&self, repo: &RepoId, branch: &str) -> Result<bool> {
+        let mut s = self.enter("delete_branch")?;
+        let r = s.repo_mut(repo)?;
+        if branch == r.default_branch {
+            return Err(GitHubError::Validation(format!(
+                "cannot delete the default branch {branch}"
+            )));
+        }
+        let Some(head) = r.branches.remove(branch) else {
+            return Ok(false);
+        };
+        // GitHub closes the open pull requests of a deleted head branch.
+        for pr in r.prs.values_mut() {
+            if pr.state == PrState::Open && pr.head_ref == branch {
+                pr.state = PrState::Closed;
+                pr.frozen_head_sha = Some(head.clone());
+            }
+        }
+        Ok(true)
+    }
 }

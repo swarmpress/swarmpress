@@ -785,3 +785,33 @@ async fn the_author_is_not_part_of_the_fake_sha() {
     }
     assert_eq!(script(None).await, script(Some(giulia())).await);
 }
+
+#[tokio::test]
+async fn delete_branch_closes_its_open_pull_request() {
+    let f = fake();
+    f.create_branch(&repo(), "drafts/a", "main").await.unwrap();
+    let w = f
+        .put_file(&repo(), &put("drafts/a", "content/a.json", "A", None))
+        .await
+        .unwrap();
+    let pr = f.create_pr(&repo(), &new_pr("drafts/a")).await.unwrap();
+
+    assert!(f.delete_branch(&repo(), "drafts/a").await.unwrap());
+    assert!(f.get_branch(&repo(), "drafts/a").await.unwrap().is_none());
+    let closed = f.get_pr(&repo(), pr.number).await.unwrap();
+    assert_eq!((closed.state, closed.merged), (PrState::Closed, false));
+    assert_eq!(closed.head_sha, w.commit_sha, "the head is frozen");
+    assert!(f.find_open_pr(&repo(), "drafts/a").await.unwrap().is_none());
+
+    // Deleting it again, or a branch that never existed, is not an error.
+    assert!(!f.delete_branch(&repo(), "drafts/a").await.unwrap());
+    assert!(!f.delete_branch(&repo(), "drafts/never").await.unwrap());
+    // The default branch stays.
+    assert!(matches!(
+        f.delete_branch(&repo(), "main").await,
+        Err(GitHubError::Validation(_))
+    ));
+    assert!(f.get_branch(&repo(), "main").await.unwrap().is_some());
+    // The name can be used again.
+    f.create_branch(&repo(), "drafts/a", "main").await.unwrap();
+}

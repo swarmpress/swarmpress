@@ -13,6 +13,7 @@ paths:
   - crates/server/src/article.rs
   - crates/server/tests/articles.rs
   - crates/server/tests/attribution.rs
+  - crates/server/tests/close.rs
   - crates/github/src/provenance.rs
   - crates/github/tests/content_repo.rs
   - crates/orchestrator/src/gateway.rs
@@ -72,4 +73,7 @@ Planned changes:
     `Job`, `Job-Kind`, `Work-Item`, `Model`, `Executor`, `Reviewed-by`, `Approved-by`. The author's
     email is synthesised by the server; a malformed attribution answers 400. `Gateway::open_draft_as`
     and `merge_as` carry it in the orchestrator; `centralGateway` passes it as a trailing argument.
-  - **G7:** `POST /api/gateway/close` for cancelled items, used by a day-start sweeper.
+  - **G7 (the route is built; the day-start sweeper is not):** `POST /api/gateway/close {number}`
+    closes a pull request this company opened and deletes its draft branch; lease-fenced,
+    idempotent, 404 for other pull requests, 409 for merged ones; recorded as
+    `gateway_prs.closed_at` (migration `0003_deploys.sql`). A closed pull request frees its path.

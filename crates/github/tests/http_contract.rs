@@ -973,3 +973,46 @@ async fn get_commit_maps_author_and_committer() {
     let bare = h.gh.get_commit(&repo(), "bare").await.unwrap();
     assert_eq!((bare.author, bare.committer), (None, None));
 }
+
+#[tokio::test]
+async fn delete_branch_deletes_the_ref_and_tolerates_a_missing_one() {
+    let h = harness().await;
+    Mock::given(method("DELETE"))
+        .and(path("/repos/acme/site/git/refs/heads/drafts/content-x"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&h.server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/repos/acme/site/git/refs/heads/drafts/gone"))
+        .respond_with(
+            ResponseTemplate::new(422)
+                .set_body_json(json!({ "message": "Reference does not exist" })),
+        )
+        .mount(&h.server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/repos/acme/site/git/refs/heads/drafts/never"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({ "message": "Not Found" })))
+        .mount(&h.server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/repos/acme/site/git/refs/heads/main"))
+        .respond_with(
+            ResponseTemplate::new(422)
+                .set_body_json(json!({ "message": "Cannot delete protected branch 'main'" })),
+        )
+        .mount(&h.server)
+        .await;
+    assert!(h
+        .gh
+        .delete_branch(&repo(), "drafts/content-x")
+        .await
+        .unwrap());
+    assert!(!h.gh.delete_branch(&repo(), "drafts/gone").await.unwrap());
+    assert!(!h.gh.delete_branch(&repo(), "drafts/never").await.unwrap());
+    assert!(matches!(
+        h.gh.delete_branch(&repo(), "main").await,
+        Err(GitHubError::Validation(_))
+    ));
+}

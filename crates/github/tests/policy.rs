@@ -243,3 +243,24 @@ async fn guarded_update_pr_cannot_change_state_or_base() {
         .unwrap_err();
     assert!(matches!(e, GitHubError::PolicyDenied { .. }));
 }
+
+// ---- gateway additions (ADR-0061) -------------------------------------------
+
+#[tokio::test]
+async fn only_the_bot_deletes_branches() {
+    let (f, r) = setup();
+    f.create_branch(&r, "drafts/content-1", "main")
+        .await
+        .unwrap();
+    f.clear_calls();
+    for actor in [CONTENT, DESIGN] {
+        let g = GuardedRepo::new(f.clone(), actor);
+        assert!(matches!(
+            g.delete_branch(&r, "drafts/content-1").await,
+            Err(GitHubError::PolicyDenied { .. })
+        ));
+    }
+    assert!(f.calls().is_empty(), "{:?}", f.calls());
+    let bot = GuardedRepo::new(f.clone(), BOT);
+    assert!(bot.delete_branch(&r, "drafts/content-1").await.unwrap());
+}

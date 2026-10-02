@@ -149,6 +149,7 @@ pub fn router(st: AppState) -> Router {
             post(gateway::draft).layer(gateway_limit),
         )
         .route("/api/gateway/merge", post(gateway::merge))
+        .route("/api/gateway/close", post(gateway::close))
         // events
         .route("/api/events", get(events::list))
         .route("/ws/events", get(events::ws))
