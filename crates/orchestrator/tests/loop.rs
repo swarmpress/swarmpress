@@ -366,3 +366,58 @@ async fn review_before_draft_is_an_invalid_job() {
         "{err}"
     );
 }
+
+/// The sim staffs each job with the people doing it (docs/mvp.md): the whole
+/// team for the standup, only the writer for a draft, only the editor for a
+/// review, an IT engineer for the publish. The orchestrator takes the other
+/// side's persona from the brief record.
+#[tokio::test]
+async fn sim_shaped_staffing_runs_the_whole_loop() {
+    let llm = Arc::new(FakeLlm::new(script()));
+    let gw = Arc::new(FakeGateway::new());
+    let orch = Orchestrator::new(MemStore::new(), gw.clone(), llm, site());
+    let out = orch.run(&job(1, JobKind::Standup, None, 0)).await.unwrap();
+    let Outcome::MeetingOutcome { briefs, .. } = &out[0] else {
+        panic!("{out:?}")
+    };
+    let brief_ref = briefs[0].brief_ref;
+    let only = |id: &str, persona: &str, role: &str| {
+        vec![StaffRef {
+            id: id.into(),
+            persona: persona.into(),
+            role: role.into(),
+        }]
+    };
+    let staffed = |job_id, kind, revision, staff: Vec<StaffRef>| JobRequest {
+        staff,
+        ..job(job_id, kind, Some(brief_ref), revision)
+    };
+    let writer = only("staff-1", "giulia", "writer");
+    let editor = only("staff-5", "marco", "editor");
+    for (job_id, kind, revision, staff) in [
+        (2, JobKind::Draft, 0, writer.clone()),
+        (3, JobKind::Review, 0, editor.clone()),
+        (4, JobKind::Draft, 1, writer),
+        (5, JobKind::Review, 1, editor),
+        (
+            6,
+            JobKind::Publish,
+            1,
+            only("staff-11", "davide", "it-engineer"),
+        ),
+    ] {
+        let out = orch
+            .run(&staffed(job_id, kind, revision, staff))
+            .await
+            .unwrap_or_else(|e| panic!("job {job_id}: {e}"));
+        assert!(completed(&out).ok, "job {job_id}: {out:?}");
+    }
+    assert_eq!(gw.merge_count(), 1);
+    let plan = orch.store().plan_json(COMPANY).await.unwrap();
+    let posts = plan["posts"]["work-item-1"].as_array().unwrap();
+    assert_eq!(
+        posts[2]["to"],
+        json!("staff-5"),
+        "the handoff still names the editor"
+    );
+}

@@ -8,6 +8,8 @@ paths:
   - crates/server/src/db/sync.rs
   - crates/server/tests/sync.rs
   - "apps/game/src/sync/**"
+  - apps/game/src/net/central.ts
+  - apps/game/src/net/central.test.ts
 adrs:
   - ADR-0038
   - ADR-0039

@@ -54,7 +54,8 @@ the earlier server prototype (`git show 5f…:crates/server/src/orchestrator.rs`
 - Implementations:
   - `MemStore` and `FakeGateway` for tests;
   - in the browser: a Turso-wasm-backed store (sqlite-wasm fallback, ADR-0041) and an HTTP gateway (JS bridge,
-    `crates/client-wasm`);
+    `crates/orchestrator-wasm`, a separate module from `client-wasm`; see
+    `docs/architecture/browser-runtime.md`);
   - on the server: SQLite store and a direct github gateway, used only for
     Agency jobs later.
 
@@ -83,7 +84,7 @@ the earlier server prototype (`git show 5f…:crates/server/src/orchestrator.rs`
 - [ ] `cargo nextest run --workspace` green (sim, orchestrator with `MemStore`
       covering the full loop, server on SQLite)
 - [ ] `cargo build -p orchestrator --target wasm32-unknown-unknown`, and
-      client-wasm exports the orchestrator bridge
+      `crates/orchestrator-wasm` exports the orchestrator bridge (its own module and size budget)
 - [ ] Browser e2e (`apps/game/e2e/mvp.spec.ts`) green:
   - dev login → company founded;
   - fast-forward to 09:00;

@@ -21,7 +21,9 @@
     "@babylonjs/loaders": "^9.29.0",
     "@huggingface/transformers": "^4.3.0",
     "onnxruntime-web": "1.31.0-dev.20260914-8d85527a0",
-    "smol-toml": "^1.9.0"
+    "smol-toml": "^1.9.0",
+    "@tursodatabase/database-wasm": "0.8.1",
+    "@sqlite.org/sqlite-wasm": "3.53.4-build1"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.0",

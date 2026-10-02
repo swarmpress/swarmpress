@@ -38,6 +38,8 @@ The legacy TypeScript code is reachable at the git tag `legacy-ts`.
   lighting, quality tiers
 - [Extension SDK](architecture/sdk.md): extension kinds, `simpress.ext.json`, capabilities, the
   QuickJS sandbox, the `simpress` runner, the sim-rule contract
+- [Browser runtime](architecture/browser-runtime.md): the company store (Turso wasm / sqlite-wasm
+  on OPFS), the central API client, the orchestrator-wasm bridge, cross-origin isolation
 
 ### Game design
 

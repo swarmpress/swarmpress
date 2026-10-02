@@ -1,0 +1,88 @@
+/**
+ * The company store's migrations: one set for every engine, in the plain
+ * SQLite subset that Turso and SQLite both accept (ADR-0041): no extensions,
+ * virtual tables, triggers, CHECKs, generated columns, AUTOINCREMENT or
+ * WITHOUT ROWID. JSON lives in TEXT columns; bytes in BLOBs; instants are
+ * unix ms INTEGERs.
+ *
+ * Append a migration to change the schema; never edit a shipped one.
+ */
+
+export interface Migration {
+  version: number
+  name: string
+  sql: string
+}
+
+export const MIGRATIONS: Migration[] = [
+  {
+    version: 1,
+    name: 'company store',
+    sql: `
+CREATE TABLE command_log (
+  seq INTEGER PRIMARY KEY,
+  step INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  payload BLOB NOT NULL
+);
+CREATE INDEX command_log_step ON command_log (step);
+
+CREATE TABLE snapshots (
+  step INTEGER PRIMARY KEY,
+  bytes BLOB NOT NULL,
+  hash TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE briefs (
+  company TEXT NOT NULL,
+  brief_ref TEXT NOT NULL,
+  record TEXT NOT NULL,
+  work_item TEXT,
+  PRIMARY KEY (company, brief_ref)
+);
+
+CREATE TABLE artifacts (
+  company TEXT NOT NULL,
+  work_item TEXT NOT NULL,
+  record TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (company, work_item)
+);
+
+CREATE TABLE transcripts (
+  company TEXT NOT NULL,
+  job_id INTEGER NOT NULL,
+  seq INTEGER NOT NULL,
+  speaker TEXT NOT NULL,
+  text TEXT NOT NULL,
+  PRIMARY KEY (company, job_id, seq)
+);
+
+CREATE TABLE plan_items (
+  company TEXT NOT NULL,
+  item TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  brief TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (company, item)
+);
+
+CREATE TABLE plan_posts (
+  id INTEGER PRIMARY KEY,
+  company TEXT NOT NULL,
+  item TEXT NOT NULL,
+  type TEXT NOT NULL,
+  post TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX plan_posts_item ON plan_posts (company, item, id);
+
+CREATE TABLE kv (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+`,
+  },
+]
+
+export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version
