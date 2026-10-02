@@ -56,7 +56,7 @@ Site repos build with @swarm-press/site-kit + an agent-authored theme on GitHub 
 | `packages/site-kit`, `themes/starter` | Astro integration + starter theme |
 | `examples/extensions/*` | SDK examples |
 | `packages/site-builder/src/themes/cinque-terre` | **FROZEN**: the live site builds it |
-| `xtask` | `cargo xtask wasm [--release]` |
+| `xtask` | `cargo xtask wasm [--release]`, `cargo xtask site-pack <site-dir> [--out file]` |
 
 ## Critical rules (never break these)
 

@@ -311,7 +311,7 @@ parts have none.
 ### Pack (K1)
 
 - `GET /api/gateway/knowledge` (lease required, ETag = base head sha) returns
-  `{commit, files: {path: text}, pages: [PageEntry]}`.
+  `{commit, files: {path: text}, manifest: SiteManifest, pages: [PageEntry]}`. (`manifest` was added in the build: without it a loaded pack cannot reproduce the direct build's language order and site name.)
 - `files` holds eight config files verbatim from `content/config/`: `entity-index.json`
   (12.5 kB), `media-index.json` (172 kB, 338 images), `sitemap-index.json` (33 kB),
   `style-guide.json`, `writer-prompt.json` (9.9 kB), `content-calendar.json`,
