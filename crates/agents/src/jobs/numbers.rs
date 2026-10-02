@@ -7,6 +7,10 @@
 //! Identifiers and codes are not figures: digits glued to letters (`W41`,
 //! `GA4`, `C1`), hyphenated ids (`project-1`, `ticket-3`) and path segments
 //! are skipped.
+//!
+//! This is an output validator outside the deterministic sim, so comparing
+//! figures with `f64` tolerance is fine here (rule 1 binds `sim-core` only).
+#![allow(clippy::float_arithmetic)]
 
 use serde_json::Value;
 

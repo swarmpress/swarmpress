@@ -22,3 +22,8 @@
   features: [FEAT-001, FEAT-055]
 - match: { classname: client-wasm }
   features: [FEAT-001, FEAT-023]
+# agents unit tests in src/ (persona year ranges, the "never invent numbers" scanner).
+- match: { classname: agents, title: "personas::tests::" }
+  features: [FEAT-031]
+- match: { classname: agents, title: "jobs::numbers::tests::" }
+  features: [FEAT-031]

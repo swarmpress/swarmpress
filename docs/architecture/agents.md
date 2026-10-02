@@ -10,58 +10,101 @@ in [hybrid-inference.md](hybrid-inference.md).
 
 ## Organisation and RBAC
 
-| Department | Roles | Room | May produce |
-|---|---|---|---|
-| Editorial | Editor-in-Chief (EiC), Editor | EditorOffice | briefs, reviews (score + verdict), pitch decisions |
-| Writers Room | Writer | Newsroom | page JSON drafts, revisions |
-| Research and SEO | Researcher, SEO, Linker | SeoLab | research notes (with `web_search`), link passes, SEO fields |
-| Media | MediaEditor | PhotoStudio | media selections from the closed index, alt texts |
-| Translation | Translator | TranslationDesk | localized fields |
-| QA | QA | SeoLab, or any desk | QA reports (defect codes + coherence verdict) |
-| Design | Art Director, Front-end Dev, QA designer | DesignStudio | mood boards, theme files, visual reviews |
-| Governance | CEO (the player) | CeoOffice | ticket answers, policies |
+The organisation is specified in [organization.md](../game-design/organization.md)
+([ADR-0028](../adr/0028-organization-model-executive-office-and-departments.md)) and implemented
+in `crates/agents/src/roles.rs`. Role and department names are kebab-case on the wire and match
+`sim-core`'s `Role`.
+
+| Department | Roles |
+|---|---|
+| `executive-office` | `cfo`, `secretary` |
+| `strategy` | `strategist`, `analyst`, `data-scientist` |
+| `editorial` | `editor-in-chief`, `editor`, `writer`, `translator`, `fact-checker` |
+| `photo-video` | `photo-editor`, `photographer`, `video-producer` |
+| `web-development` | `art-director`, `web-developer`, `ux-designer` |
+| `it-operations` | `it-engineer`, `dev-ops` |
+| `seo-marketing` | `seo-specialist`, `marketing-manager`, `social-media-manager` |
+
+`ceo` (the player) and `system` (the orchestrator) are actors, not staff. Every staff role has a
+salary band (`Role::salary_band_eur_month`) that persona salaries must fall in.
 
 - RBAC is enforced by the **tool set** each role receives, and by the orchestrator, which accepts
-  an artifact kind only from the roles allowed to produce it.
+  an artifact kind only from the roles allowed to produce it (`JobPolicy::performed_by`).
   - A Writer has no merge tool, and nobody does.
-  - A Front-end Dev's repo tool refuses writes outside `theme/**`.
-- QuestionTickets are the only channel to the CEO.
+  - The web developer's `site-change` job returns artifacts only (a proposed diff); it never
+    deploys.
+- Publishing-plan edits are `PlanOp`s checked by `agents::validate_plan_ops` (role × op, plus
+  contextual rules such as "only your own items"; [ADR-0031](../adr/0031-the-publishing-plan-is-the-shared-workspace-for-ceo-and-agents.md)).
+- QuestionTickets are the only channel to the CEO. The Executive Secretary triages them first.
 
-## Roles and models
+## Roles, jobs and models
 
-`config/roles.toml` holds the per-role defaults for Claude-executed (Agency) jobs:
+`config/roles.toml` holds three tables:
 
-| Role | Model | Effort / extras |
-|---|---|---|
-| Editor-in-Chief | opus-5-5 | high |
-| Writer, Editor | opus-5-5 | medium |
-| Art Director, Front-end Dev | opus-5-5 | high, vision |
-| SEO, Linker, Researcher | sonnet-5-5 | `web_search` |
-| Media | haiku-4-5 | |
-| Chatter | sonnet-5-5 | low |
+- `[roles.*]`: the Claude model and effort per role for Agency (Claude-executed) jobs, with
+  `web_search` (strategist, analyst, SEO, marketing) or `vision` (art director, web developer, UX
+  designer) where the role needs them.
+- `[seniority]`: a staff member's seniority overrides the model (Junior → haiku-4-5, Mid →
+  sonnet-5-5, Senior/Star → opus-5-5). On the local model tier, seniority instead picks the model
+  *within the device tier* ([ADR-0026](../adr/0026-model-registry-webgpu-capability-tiers.md)).
+- `[jobs.*]`: one executor policy per `JobKind` ([ADR-0024](../adr/0024-hybrid-inference-browser-llms-and-claude.md)):
+  the role that performs it (plus `also`, the fallbacks when a project team has nobody in that
+  role), the executor (`browser`, `claude`, `browser_then_claude`), the minimum device tier and
+  the output budget. A test fails if a `JobKind` has no policy or no prompt template.
 
-A staff member's **seniority** overrides the model: Junior → haiku-4-5, Mid → sonnet-5-5,
-Senior/Star → opus-5-5. For staff jobs on the local model tier, seniority instead picks the
-model *within the device tier* ([ADR-0026](../adr/0026-model-registry-webgpu-capability-tiers.md)).
+| Executor | Jobs |
+|---|---|
+| `browser` | standup chatter; the secretary's triage, CEO briefing, draft reply and thread summary |
+| `claude` | research, art direction, theme code, visual and critic reviews, project business case, site change, candidate generation |
+| `browser_then_claude` | everything else: briefs, drafts, revisions, edit review, QA, translation, strategy pitch and weekly plan, KPI and content reports, plan scheduling, photo selection and briefs, ops check, SEO and marketing plans, newsletter, finance report, hiring affordability |
+
+Organisation jobs live in `crates/agents/src/jobs/` and each has a structured-output schema plus a
+validator that feeds errors back to the model:
+
+- **CFO** (`finance-report`, `hiring-affordability`) and **data scientist** (`kpi-report`,
+  `content-performance`, `experiment-readout`): every number in the output, including figures
+  inside text, must appear in the input (`jobs::numbers`). Dropping decimals is allowed; anything
+  else is an invented figure.
+- **Executive Secretary** (`secretary-triage`): priority by the legacy rubric (HIGH: legal,
+  financial, high-risk or a critical blocker; MEDIUM: strategy, resource allocation, policy; LOW:
+  informational), a one-paragraph summary and a proposed option that must be one of the ticket's
+  options.
+- **Candidate generation**: the output must validate as a persona and receives the next free pool
+  id.
 
 ## Personas
 
-Persona records carry over from the legacy `agent-personas.ts`: background, writing style (tone,
-formality, perspective, descriptive style), voice characteristics, preferred openings and
-closings, favourite and avoided topics, and sample phrases in en/de/fr/it.
+Personas are a data catalog ([ADR-0030](../adr/0030-personas-are-a-data-catalog-with-cv-hobbies-and-interests.md),
+schema v2 in organization.md §3): one TOML file per person in `crates/agents/personas/`, embedded
+at build time and validated strictly by `Catalog::builtin()` (unknown fields, empty fields, unique
+ids and slugs, slug = file name, relationship targets, salary within the role's band, CV depth,
+stated pronouns, non-partisan `world`).
 
-| Persona | Speciality | Imported as |
-|---|---|---|
-| Giulia | Culinary expert and food writer: Ligurian cuisine, trattorie, wine | Senior Writer |
-| Isabella | Adventure travel writer: trails, beaches, outdoor | Senior Writer |
-| Lorenzo | Cultural historian: villages, architecture, traditions | Senior Writer |
-| Sophia | Hospitality and accommodations expert | Senior Writer |
-| Marco | Practical information specialist: transport, logistics | Senior Writer |
-| Francesca | Visual storyteller and photography expert | Senior MediaEditor |
+| Id | Slug | Name | Role | Seniority |
+|---|---|---|---|---|
+| 1 | giulia | Giulia Rossi | writer (food, wine, restaurants) | senior |
+| 2 | isabella | Isabella Ferraro | writer (hiking, beaches, outdoors) | senior |
+| 3 | lorenzo | Lorenzo Bertolotti | writer (history, culture, villages) | senior |
+| 4 | sophia | Sophia Lanza | editor-in-chief (hospitality background) | senior |
+| 5 | marco | Marco Vitali | editor (practical information) | senior |
+| 6 | francesca | Francesca De Luca | photographer | senior |
+| 7 | elena | Elena Marchetti | cfo | senior |
+| 8 | paolo | Paolo Bianchi | secretary | senior |
+| 9 | chiara | Chiara Galli | strategist | mid |
+| 10 | luca | Luca Moretti | web-developer | mid |
+| 11 | davide | Davide Conti | it-engineer | senior |
+| 12 | alessia | Alessia Ferri | seo-specialist | mid |
+| 13 | matteo | Matteo Greco | data-scientist | mid |
 
-For cinqueterre.travel, a generated EiC, Editor, QA, Art Director and Front-end Dev complete the
-staff (cutover step 6). New companies hire from generated candidate cards (three per hire
-ticket).
+Ids 100 and up are the **hiring pool** (18 candidates, junior to star, covering every staff role).
+The writers keep their legacy voice (writing style, voice, content preferences, sample phrases in
+en/de/fr/it). Work routing uses `affinities`: `best_writer_for(topic, team)` picks the writer whose
+affinities match the topic, with the legacy `agent-page-mapping.ts` fallbacks.
+
+`catalog_json()` and `cargo run -p agents --example export_catalog -- <out.json>` export the
+catalog as camelCase JSON for tools and the UI. Content packs carry personas in the same shape:
+`packages/sdk`'s `PersonaSchema` mirrors the Rust `Persona`, and a test fails when the two drift
+([sdk.md](sdk.md)).
 
 ## Prompt layering
 
@@ -76,8 +119,10 @@ There are three levels (carried over from the legacy `specs/prompting.md`):
      "legendary";
    - `linking-policy.json`, `writer-prompt.json`, `media-guidelines.json`, `blog-workflow.json`;
    - the brand voice and languages from the manifest.
-3. **Persona and staff**: the persona record, plus a **work-style paragraph** rendered from the
-   staff member's traits. For example, high rigor with low speed renders as "You double-check
+3. **Persona and staff**: the persona block (`format_persona_for_prompt`: name, title, pitch, CV
+   highlights, hobbies, interests and quirks, relationships for meeting dynamics, the writing
+   style for writers and editors, phrases in the site language with an `en` fallback), plus a
+   **work-style paragraph** rendered from the staff member's traits. For example, high rigor with low speed renders as "You double-check
    facts against the entity index before writing; you prefer fewer, well-sourced claims."
 
 Rules:
