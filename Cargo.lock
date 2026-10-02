@@ -1722,6 +1722,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "orchestrator-wasm"
+version = "0.2.0"
+dependencies = [
+ "agents",
+ "async-trait",
+ "claude",
+ "js-sys",
+ "orchestrator",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "outref"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

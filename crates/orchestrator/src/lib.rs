@@ -10,8 +10,9 @@
 //! `wasm32-unknown-unknown` and runs in the browser (ADR-0038):
 //!
 //! - [`Store`] holds text: briefs, artifacts, transcripts and the plan thread.
-//!   [`MemStore`] is the in-memory implementation; the browser plugs in a
-//!   DuckDB-backed store through a JS bridge, the server a SQLite one.
+//!   [`MemStore`] is the in-memory implementation; the browser plugs in its
+//!   Turso/sqlite-wasm store through the JS bridge (`crates/orchestrator-wasm`),
+//!   the server a SQLite one.
 //! - [`Gateway`] performs repo operations: open a draft PR, merge it.
 //!   [`FakeGateway`] is in-memory; [`GithubGateway`] (native only) wraps
 //!   `github::ContentRepo`; the browser uses an HTTP gateway to the central

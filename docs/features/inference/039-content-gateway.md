@@ -10,6 +10,9 @@ paths:
   - crates/server/src/db/events.rs
   - crates/server/tests/gateway.rs
   - crates/server/tests/events.rs
+  - apps/game/src/net/central.ts
+  - apps/game/src/net/central.test.ts
+  - apps/game/e2e/orchestrator.spec.ts
 adrs:
   - ADR-0009
   - ADR-0038

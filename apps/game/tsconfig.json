@@ -10,7 +10,10 @@
     "jsx": "react-jsx",
     "jsxImportSource": "preact",
     "types": ["vite/client"],
-    "paths": { "swarm-wasm": ["../../crates/client-wasm/pkg/client_wasm"] }
+    "paths": {
+      "swarm-wasm": ["../../crates/client-wasm/pkg/client_wasm"],
+      "orchestrator-wasm": ["../../crates/orchestrator-wasm/pkg/orchestrator_wasm"]
+    }
   },
-  "include": ["src", "e2e", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
+  "include": ["src", "e2e", "vite.config.ts", "vitest.config.ts", "playwright.config.ts", "playwright.orchestrator.config.ts"]
 }

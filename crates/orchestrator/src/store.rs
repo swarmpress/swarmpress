@@ -2,7 +2,8 @@
 //! plan thread, keyed by company and sim ids.
 //!
 //! The trait speaks `serde_json::Value` and strings so that a JS bridge
-//! (DuckDB-wasm in the browser) can implement it without sharing Rust types.
+//! (`crates/orchestrator-wasm`, over the browser's CompanyStore) can implement
+//! it without sharing Rust types.
 //! The shapes are [`BriefRecord`], [`ArtifactRecord`] and the plan post shape
 //! documented on [`Store::append_post`].
 
@@ -41,6 +42,12 @@ pub struct BriefRecord {
     /// Set by [`Store::claim_brief`] when the first draft job arrives.
     #[serde(default)]
     pub work_item: Option<String>,
+    /// The writer and editor as the standup saw them (persona, role). Later
+    /// jobs may carry only the staff member doing the work (the sim staffs a
+    /// draft with its writer, a review with its editor); the other one's
+    /// persona comes from here.
+    #[serde(default)]
+    pub staff: Vec<crate::StaffRef>,
 }
 
 /// The latest artifacts of one work item (stored as JSON by
