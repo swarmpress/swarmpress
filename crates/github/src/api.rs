@@ -7,6 +7,7 @@
 use async_trait::async_trait;
 
 use crate::error::Result;
+use crate::snapshot::Snapshot;
 use crate::types::*;
 
 #[async_trait]
@@ -46,6 +47,14 @@ pub trait RepoApi: Send + Sync {
 
     /// Immediate children of a directory. Empty when the path does not exist.
     async fn list_dir(&self, repo: &RepoId, git_ref: &str, path: &str) -> Result<Vec<DirEntry>>;
+
+    /// Every text file under `prefix` at `git_ref` (a branch name or a full
+    /// commit sha), read in one go, with the commit the ref pointed at.
+    /// `prefix` is a directory or file path; empty means the whole repo.
+    /// Files that are not UTF-8 text are listed in [`Snapshot::skipped`].
+    /// `NotFound` when the ref does not exist; `TooLarge` over the
+    /// implementation's caps.
+    async fn snapshot(&self, repo: &RepoId, git_ref: &str, prefix: &str) -> Result<Snapshot>;
 
     async fn put_file(&self, repo: &RepoId, req: &PutFile) -> Result<WriteResult>;
 

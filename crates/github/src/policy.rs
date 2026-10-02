@@ -19,6 +19,7 @@ use async_trait::async_trait;
 
 use crate::api::RepoApi;
 use crate::error::{GitHubError, Result};
+use crate::snapshot::Snapshot;
 use crate::types::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -291,6 +292,10 @@ impl RepoApi for GuardedRepo {
 
     async fn list_dir(&self, repo: &RepoId, git_ref: &str, path: &str) -> Result<Vec<DirEntry>> {
         self.inner.list_dir(repo, git_ref, path).await
+    }
+
+    async fn snapshot(&self, repo: &RepoId, git_ref: &str, prefix: &str) -> Result<Snapshot> {
+        self.inner.snapshot(repo, git_ref, prefix).await
     }
 
     async fn put_file(&self, repo: &RepoId, req: &PutFile) -> Result<WriteResult> {

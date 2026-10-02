@@ -12,6 +12,8 @@
 //! * [`ratelimit`] — per-installation token bucket + GitHub rate-limit feedback.
 //! * [`webhooks`] — HMAC verification, typed events, delivery dedupe.
 //! * [`ContentRepo`] — idempotent draft/merge/theme-branch flows.
+//! * [`snapshot`] — all text files under a prefix at one commit, as a
+//!   [`knowledge::SiteSource`] (the knowledge pack is built from it).
 //! * [`revert`] — open a revert PR for a squash commit (rollback path).
 
 pub mod api;
@@ -24,6 +26,7 @@ pub mod http;
 pub mod policy;
 pub mod ratelimit;
 pub mod revert;
+pub mod snapshot;
 pub mod types;
 pub mod webhooks;
 
@@ -37,4 +40,5 @@ pub use http::{HttpGitHub, DEFAULT_API_BASE};
 pub use policy::{ActorKind, GuardedRepo, PathPolicy};
 pub use ratelimit::{Governor, GovernorConfig, GovernorPool, RateLimitInfo};
 pub use revert::open_revert_pr;
+pub use snapshot::{Snapshot, SnapshotLimits};
 pub use types::*;

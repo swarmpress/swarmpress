@@ -67,6 +67,11 @@ pub enum GitHubError {
     /// Caller passed something invalid (bad branch name, bad path).
     #[error("invalid argument: {0}")]
     InvalidArgument(String),
+
+    /// A snapshot exceeded a [`crate::SnapshotLimits`] cap. Nothing partial
+    /// is returned.
+    #[error("too large: {0}")]
+    TooLarge(String),
 }
 
 impl GitHubError {

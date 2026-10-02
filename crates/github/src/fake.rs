@@ -21,6 +21,7 @@ use sha1::{Digest, Sha1};
 
 use crate::api::RepoApi;
 use crate::error::{GitHubError, Result};
+use crate::snapshot::{as_text, clean_prefix, in_prefix, Snapshot};
 use crate::types::*;
 
 type Tree = BTreeMap<String, String>; // path -> blob sha
@@ -666,6 +667,35 @@ impl RepoApi for FakeGitHub {
         let mut v: Vec<DirEntry> = out.into_values().collect();
         v.sort_by(|a, b| a.path.cmp(&b.path));
         Ok(v)
+    }
+
+    async fn snapshot(&self, repo: &RepoId, git_ref: &str, prefix: &str) -> Result<Snapshot> {
+        let s = self.enter("snapshot")?;
+        let r = s.repo(repo)?;
+        let sha = s
+            .resolve(r, git_ref)
+            .ok_or_else(|| nf(format!("ref {git_ref}")))?;
+        let prefix = clean_prefix(prefix);
+        let mut files = BTreeMap::new();
+        let mut skipped = Vec::new();
+        for (path, blob) in s.tree(&sha) {
+            if !in_prefix(&path, &prefix) {
+                continue;
+            }
+            match as_text(s.blobs.get(&blob).cloned().unwrap_or_default()) {
+                Some(text) => {
+                    files.insert(path, text);
+                }
+                None => skipped.push(path),
+            }
+        }
+        Ok(Snapshot {
+            repo: repo.clone(),
+            sha,
+            prefix,
+            files,
+            skipped,
+        })
     }
 
     async fn put_file(&self, repo: &RepoId, req: &PutFile) -> Result<WriteResult> {

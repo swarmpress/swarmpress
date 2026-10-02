@@ -20,6 +20,7 @@ use crate::auth::TokenProvider;
 use crate::clock::{Clock, Sleeper, SystemClock, TokioSleeper};
 use crate::error::{GitHubError, Result};
 use crate::ratelimit::{Governor, GovernorConfig, RateLimitInfo};
+use crate::snapshot::{is_full_sha, Snapshot, SnapshotLimits, TarballReader};
 use crate::types::*;
 
 pub const DEFAULT_API_BASE: &str = "https://api.github.com";
@@ -94,10 +95,6 @@ fn decode_b64(s: &str) -> Result<Vec<u8>> {
         .map_err(|e| GitHubError::Decode(format!("base64: {e}")))
 }
 
-fn is_full_sha(s: &str) -> bool {
-    s.len() == 40 && s.chars().all(|c| c.is_ascii_hexdigit())
-}
-
 struct RawResponse {
     status: u16,
     body: Vec<u8>,
@@ -134,6 +131,15 @@ pub struct HttpGitHub {
     clock: Arc<dyn Clock>,
     sleeper: Arc<dyn Sleeper>,
     max_retries: u32,
+    snapshot_limits: SnapshotLimits,
+}
+
+/// What [`HttpGitHub::exchange`] hands back.
+enum Reply {
+    /// The whole body was read.
+    Buffered(RawResponse),
+    /// A success whose body is still on the wire.
+    Stream(reqwest::Response),
 }
 
 impl std::fmt::Debug for HttpGitHub {
@@ -155,6 +161,7 @@ impl HttpGitHub {
             clock,
             sleeper: Arc::new(TokioSleeper),
             max_retries: 3,
+            snapshot_limits: SnapshotLimits::default(),
         })
     }
 
@@ -178,6 +185,12 @@ impl HttpGitHub {
 
     pub fn with_http_client(mut self, http: reqwest::Client) -> Self {
         self.http = http;
+        self
+    }
+
+    /// Size caps for [`RepoApi::snapshot`].
+    pub fn with_snapshot_limits(mut self, limits: SnapshotLimits) -> Self {
+        self.snapshot_limits = limits;
         self
     }
 
@@ -205,6 +218,34 @@ impl HttpGitHub {
     /// response whatever its status, except rate limits that outlast the
     /// retry budget, which become [`GitHubError::RateLimited`].
     async fn send(&self, method: Method, url: Url, body: Option<&Value>) -> Result<RawResponse> {
+        match self.exchange(method, url, body, false).await? {
+            Reply::Buffered(r) => Ok(r),
+            Reply::Stream(resp) => Ok(RawResponse {
+                status: resp.status().as_u16(),
+                body: resp.bytes().await?.to_vec(),
+            }),
+        }
+    }
+
+    /// GET whose successful body is read by the caller as it arrives (large
+    /// downloads). Failures are read and mapped as usual.
+    async fn open(&self, url: Url) -> Result<reqwest::Response> {
+        match self.exchange(Method::GET, url, None, true).await? {
+            Reply::Stream(resp) => Ok(resp),
+            Reply::Buffered(r) => Err(map_status(r.status, &r.text())),
+        }
+    }
+
+    /// The paced, retrying request loop behind [`Self::send`] and
+    /// [`Self::open`]. With `stream`, a 2xx response is returned before its
+    /// body is read.
+    async fn exchange(
+        &self,
+        method: Method,
+        url: Url,
+        body: Option<&Value>,
+        stream: bool,
+    ) -> Result<Reply> {
         let mut attempt: u32 = 0;
         loop {
             self.governor
@@ -222,6 +263,10 @@ impl HttpGitHub {
             let resp = req.send().await?;
             let status = resp.status().as_u16();
             let info = RateLimitInfo::from_headers(resp.headers());
+            if stream && (200..300).contains(&status) {
+                self.governor.observe_at(self.clock.now_ms(), info);
+                return Ok(Reply::Stream(resp));
+            }
             let bytes = resp.bytes().await?.to_vec();
             let now = self.clock.now_ms();
             let imposed = self.governor.observe_at(now, info);
@@ -236,10 +281,10 @@ impl HttpGitHub {
                         || info.retry_after_s.is_some()
                         || secondary_msg));
             if !rate_limited {
-                return Ok(RawResponse {
+                return Ok(Reply::Buffered(RawResponse {
                     status,
                     body: bytes,
-                });
+                }));
             }
             let wait = if imposed.is_zero() {
                 self.governor.penalize_secondary_at(now, attempt)
@@ -602,6 +647,25 @@ impl RepoApi for HttpGitHub {
             .collect();
         out.sort_by(|a, b| a.path.cmp(&b.path));
         Ok(out)
+    }
+
+    /// `GET /repos/{owner}/{repo}/tarball/{ref}`: GitHub redirects to a
+    /// `.tar.gz` of the tree, which is decoded while it downloads. Only the
+    /// text under `prefix` is held in memory.
+    async fn snapshot(&self, repo: &RepoId, git_ref: &str, prefix: &str) -> Result<Snapshot> {
+        if git_ref.is_empty() {
+            return Err(GitHubError::InvalidArgument(
+                "snapshot needs a branch or commit".into(),
+            ));
+        }
+        let mut segs = vec!["tarball"];
+        segs.extend(git_ref.split('/'));
+        let mut resp = self.open(self.repo_url(repo, &segs)?).await?;
+        let mut reader = TarballReader::new(prefix, self.snapshot_limits);
+        while let Some(chunk) = resp.chunk().await? {
+            reader.feed(&chunk)?;
+        }
+        reader.finish(repo, git_ref)
     }
 
     async fn put_file(&self, repo: &RepoId, req: &PutFile) -> Result<WriteResult> {

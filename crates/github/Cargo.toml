@@ -6,12 +6,17 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
+# `Snapshot` implements `knowledge::SiteSource` (knowledge cannot depend on
+# this crate: it compiles to wasm, and has no reqwest or tokio).
+knowledge = { path = "../knowledge" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 async-trait = "0.1"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
+# gzip for the repository tarball (snapshot); pure Rust (miniz_oxide).
+flate2 = "1"
 hex = "0.4"
 hmac = "0.12"
 http = "1"
