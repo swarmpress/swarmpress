@@ -1,5 +1,9 @@
 # Agents (`crates/agents`, `crates/claude`)
 
+> **Local-first update ([ADR-0038](../adr/0038-local-first-the-browser-is-authoritative-for-a-company.md)):**
+> the pipelines run in `crates/orchestrator` (wasm, in the browser). Text goes to the browser
+> store, and PRs go through the central gateway.
+
 The staff of a SimPress company are LLM agents with a role, a persona, a seniority and a place in
 the building. They never run the company's process. Deterministic pipelines do that, call them
 for artifacts, and decide transitions from what they return

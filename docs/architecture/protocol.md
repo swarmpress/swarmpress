@@ -1,5 +1,10 @@
 # Protocol (`crates/protocol`)
 
+> **Local-first update ([ADR-0038](../adr/0038-local-first-the-browser-is-authoritative-for-a-company.md)):**
+> lockstep frames and server-authoritative sync are retired. The browser is authoritative, and
+> the central HTTP API (gateway, events, sync, lease) is listed in [docs/mvp.md](../mvp.md) and
+> `crates/server/README.md`. The command and snapshot encodings below still apply.
+
 The browser and the server talk over one WebSocket per tab, carrying **postcard-encoded
 frames**, plus a small REST surface for large or rarely needed data. `PROTO_VERSION` (currently
 `1`) bumps on any breaking change to frames or to the sim's command set.
