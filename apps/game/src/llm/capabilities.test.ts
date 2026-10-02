@@ -71,7 +71,8 @@ describe('chooseModels with fixture profiles', () => {
     const s = chooseModels(LAPTOP_IGPU_8GB, DEFAULT_REGISTRY, ALLOW)
     expect(s.tier).toBe('small')
     expect(s.byRole.writer).toBe('qwen3-0.6b-q4f16')
-    expect(s.byRole.translator).toBeNull() // only served by large+ → Agency
+    // config/models.toml lets the small model serve every staff role (translator included).
+    expect(s.byRole.translator).toBe('qwen3-0.6b-q4f16')
     expect(s.excluded['qwen3-4b-q4f16']).toBe('exceeds VRAM budget')
   })
 
