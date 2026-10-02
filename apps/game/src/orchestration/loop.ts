@@ -15,20 +15,31 @@
  * its id as soon as `run()` resolves and reused if the page reloads before
  * they are logged.
  *
- * Failures are loud (CLAUDE.md rule 11): a job that keeps failing is reported
- * to the sim as `JobCompleted{ok: false}` (the item is blocked and a ticket
- * raised), and a failed command-log write halts the loop.
+ * Failures are loud (CLAUDE.md rule 11): a job that keeps failing, or that
+ * runs past its wall-clock limit, is reported to the sim as
+ * `JobCompleted{ok: false}` (the item is blocked and a ticket raised), and a
+ * failed command-log write halts the loop.
+ *
+ * Game time (ADR-0060, FEAT-080): every job has a due step (`due-step.ts`).
+ * Jobs run one at a time, earliest due first, and the clock holds one step
+ * short of the earliest due step until that job's outcome is applied
+ * (`holdClock`), so an action costs its phase minimum in game time however
+ * long the model took. The hold is policy of this host: nothing of it is in
+ * the sim or in the command log.
  */
 import { commandKind, settles, type ReplaySim } from '../catchup/replay'
 import type { OrchestratorLike } from '../orchestrator/bridge'
 import type { CommandRecord } from '../store/company-store'
 import { commandBytes } from '../sync/segments'
+import { dueStepSource, type DueStepSource, type StepRange } from './due-step'
 
 export interface LoopSim extends ReplaySim {
   validate_command_json(json: string): string | undefined
   /** The skeleton: `items[].{id,status}` and the pending `jobs[].{id,kind,requestedMinute}`. */
   plan_json(project?: string | null): string
   pending_effects(): number
+  /** FEAT-079: the earliest due step of the sim's pending jobs (feature-detected by `dueStepSource`). */
+  next_due_step?: () => bigint | number | null | undefined
 }
 
 export interface LoopStore {
@@ -53,6 +64,10 @@ export interface JobRecord {
   revision: number
   work_item: string | null
   state: JobState
+  /** The step the job is due at (ADR-0060): the clock holds one step short of it until the outcome is applied. */
+  due_step: number
+  /** Who works on it, for the status chip ("Giulia"; "Team" for a standup); null when the request names nobody. */
+  who: string | null
   /** From the `JobCompleted` digest. */
   ok?: boolean
   score?: number
@@ -68,7 +83,19 @@ export interface LoopOptions {
   /** Retries of a job whose run rejects (store or gateway errors are retryable). Default 2. */
   retries?: number
   retryMs?: number
+  /**
+   * Wall-clock limit of one `run()`, in ms: one number for every job, or per
+   * job kind (missing kinds keep their default). 0 or Infinity: no limit.
+   * Default `DEFAULT_JOB_TIMEOUT_MS`.
+   */
+  jobTimeoutMs?: number | Partial<Record<string, number>>
+  /** Where due steps come from. Default: the sim's view when the wasm build has it, else derived in the host. */
+  due?: DueStepSource
+  /** Finished jobs kept in `jobs` (jobs still in flight are always kept). Default 50. */
+  keepJobs?: number
   log?: (line: string) => void
+  /** Called with every loop error (also kept in `errors`): the HUD shows it as a toast and on the chip. */
+  onError?: (message: string) => void
   /** Called after plan text in the store changed (a job's posts, the deploy status post). */
   onPlanText?: () => void
   /** Called after a `DeployLanded` was applied (the item is published). */
@@ -87,12 +114,36 @@ export const PENDING_DEPLOYS_KEY = 'deploys.pending'
 export const jobOutcomeKey = (jobId: number) => `job.outcome.${jobId}`
 
 /**
- * The sim drops a standup whose outcome has not arrived 60 game minutes after
- * it opened (sim-core `STANDUP_TIMEOUT_MINUTES`). A model can take longer than
- * that in real time, so the clock is held once a standup job has been in
- * flight for this many game minutes.
+ * Wall-clock limits of one job run. Generous: a staged draft is expected to
+ * take about eight minutes on the target machine (docs/mvp.md, unmeasured).
+ * A job past its limit is given up on and reported as failed; cancelling the
+ * model call itself is a later increment (P6), so the abandoned run may still
+ * occupy the model for a while.
  */
-export const STANDUP_HOLD_MINUTES = 30
+export const DEFAULT_JOB_TIMEOUT_MS: Record<string, number> = {
+  standup: 30 * 60_000,
+  draft: 60 * 60_000,
+  review: 30 * 60_000,
+  publish: 15 * 60_000,
+}
+/** The limit of a job kind not listed above. */
+export const FALLBACK_JOB_TIMEOUT_MS = 60 * 60_000
+/** Finished jobs kept in `OrchestrationLoop.jobs`, and errors kept in `errors`. */
+export const KEEP_JOBS = 50
+export const KEEP_ERRORS = 50
+
+/** A job ran past its wall-clock limit: the loop gives up on it, without a retry. */
+export class JobTimeout extends Error {
+  constructor(readonly limitMs: number) {
+    super(`timed out after ${formatLimit(limitMs)}`)
+    this.name = 'JobTimeout'
+  }
+}
+
+function formatLimit(ms: number): string {
+  if (ms >= 60_000) return `${Math.round(ms / 6000) / 10} min`
+  return ms >= 1000 ? `${Math.round(ms / 100) / 10} s` : `${ms} ms`
+}
 
 interface PlanItem {
   id: string
@@ -110,8 +161,25 @@ interface PlanView {
   jobs?: PlanJob[]
 }
 
+interface QueuedJob {
+  json: string
+  rec: JobRecord
+}
+
+/** Earliest due step first, ties by job id. */
+const runsBefore = (a: JobRecord, b: JobRecord) => a.due_step < b.due_step || (a.due_step === b.due_step && a.job_id < b.job_id)
+
+/** "giulia" → "Giulia": the persona slug of the first person on the job; a standup is the team's. */
+function whoOf(job: { kind: string; staff?: { persona?: string | null }[] }): string | null {
+  if (job.kind === 'standup') return 'Team'
+  const slug = job.staff?.[0]?.persona
+  return slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : null
+}
+
 export class OrchestrationLoop {
+  /** The last `keepJobs` finished jobs, and every job still in flight, oldest first. */
   readonly jobs: JobRecord[] = []
+  /** The last `KEEP_ERRORS` errors. */
   readonly errors: string[] = []
   /** Commands applied (and logged) by this loop since it started. */
   logged = 0
@@ -124,9 +192,19 @@ export class OrchestrationLoop {
   /** The seq of the last command applied (the log is contiguous from 1). */
   private seq = 0
   private byId = new Map<number, JobRecord>()
+  /** Every job id this loop took in (a job is never queued twice, also after its record was trimmed). */
+  private seen = new Set<number>()
   private completed = new Set<number>()
   private landed = new Set<string>()
-  private queue: string[] = []
+  /** Jobs waiting or running; the running one stays in here until it finished. */
+  private queue: QueuedJob[] = []
+  /** Jobs taken in whose outcome is not applied yet (and that the loop did not give up on). */
+  private open = new Set<number>()
+  private due: DueStepSource
+  /** Intakes started and not finished: effects left the sim, their jobs are not queued yet. */
+  private taking = 0
+  /** `sim.step()` when the sim's effects were last looked at. */
+  private seenStep: number
   /** Outcome commands waiting for the next step boundary. */
   private ready: string[] = []
   /** Work items whose deploy landed, waiting until the sim accepts DeployLanded. */
@@ -138,6 +216,8 @@ export class OrchestrationLoop {
 
   constructor(private o: LoopOptions) {
     this.log = o.log ?? (() => undefined)
+    this.due = o.due ?? dueStepSource(o.sim)
+    this.seenStep = Number(o.sim.step())
   }
 
   /** Job ids and work items already settled in the replayed log, and the log's last seq. */
@@ -164,19 +244,51 @@ export class OrchestrationLoop {
   }
 
   /**
-   * True while the sim clock must not advance: the loop is halted, or a
-   * standup job is still in flight close to the sim's meeting timeout.
+   * The earliest due step of a job this loop still works on (queued, running,
+   * or finished with its outcome waiting for a boundary); null without one.
+   * No plan parse: due steps are recorded when a job is taken in.
+   */
+  get nextDueStep(): number | null {
+    return this.open.size ? this.due.next() : null
+  }
+
+  /** Effects left the sim and their jobs are not queued yet (the due steps are not known). */
+  get settling(): boolean {
+    return this.taking > 0
+  }
+
+  /** A pending job or a queued command exists: the day is not done. */
+  get busy(): boolean {
+    return this.taking > 0 || this.open.size > 0 || this.ready.length > 0
+  }
+
+  /**
+   * True while the sim clock must not advance (ADR-0060): the loop is halted,
+   * jobs are being taken in, or the next step would reach the due step of a
+   * job whose outcome is not applied yet. (The model's readiness, pause and
+   * rest are the clock driver's: session/clock-driver.ts.)
    */
   get holdClock(): boolean {
-    if (this.halted) return true
-    const standups = this.jobs.filter((j) => j.kind === 'standup' && (j.state === 'queued' || j.state === 'running'))
-    if (!standups.length) return false
-    const pending = (JSON.parse(this.o.sim.plan_json()) as PlanView).jobs ?? []
-    const now = this.o.sim.minute_of_day()
-    return standups.some((s) => {
-      const p = pending.find((j) => j.id === s.job_id)
-      return !!p && (now - p.requestedMinute + 1440) % 1440 >= STANDUP_HOLD_MINUTES
-    })
+    if (this.halted || this.taking > 0) return true
+    const next = this.nextDueStep
+    return next != null && Number(this.o.sim.step()) + 1 >= next
+  }
+
+  /** The job the clock waits for: the one running, else the earliest due one in flight. */
+  get heldFor(): JobRecord | null {
+    let first: JobRecord | null = null
+    for (const id of this.open) {
+      const rec = this.byId.get(id)
+      if (!rec) continue
+      if (rec.state === 'running') return rec
+      if (!first || runsBefore(rec, first)) first = rec
+    }
+    return first
+  }
+
+  /** Where the due steps come from: the sim's view, or derived in the host. */
+  get dueOrigin(): 'sim' | 'host' {
+    return this.due.origin
   }
 
   /** Restores DeployLanded events that arrived before a reload but were not applied yet. */
@@ -194,28 +306,54 @@ export class OrchestrationLoop {
    * waits for are queued, so a standup that timed out or a job whose item was
    * cancelled before the reload is not run again.
    */
-  enqueueEffects(effectsJson: string, opts: { pendingOnly?: boolean } = {}): Promise<void> {
+  enqueueEffects(effectsJson: string, opts: { pendingOnly?: boolean; requested?: StepRange } = {}): Promise<void> {
     if (effectsJson === '[]') return this.intake
     const pending = opts.pendingOnly ? new Set(((JSON.parse(this.o.sim.plan_json()) as PlanView).jobs ?? []).map((j) => j.id)) : null
-    this.intake = this.intake.then(async () => {
-      for (const jobJson of await this.o.codec.jobsFromEffects(effectsJson, this.o.companyId)) {
-        const j = JSON.parse(jobJson) as { job_id: number; kind: string; revision: number; work_item: string | null }
-        if (this.completed.has(j.job_id) || this.byId.has(j.job_id)) continue
-        if (pending && !pending.has(j.job_id)) continue
-        const rec: JobRecord = { job_id: j.job_id, kind: j.kind, revision: j.revision, work_item: j.work_item, state: 'queued' }
-        this.byId.set(j.job_id, rec)
-        this.jobs.push(rec)
-        this.queue.push(jobJson)
-      }
-      this.pump()
-    })
-    this.intake = this.intake.catch((e) => this.fail(`effects: ${String(e)}`))
+    // Until the jobs are queued their due steps are unknown: the clock holds (`settling`).
+    this.taking++
+    this.intake = this.intake
+      .then(async () => {
+        const fresh: QueuedJob[] = []
+        for (const jobJson of await this.o.codec.jobsFromEffects(effectsJson, this.o.companyId)) {
+          const j = JSON.parse(jobJson) as { job_id: number; kind: string; revision: number; work_item: string | null; staff?: { persona?: string | null }[] }
+          if (this.completed.has(j.job_id) || this.seen.has(j.job_id)) continue
+          if (pending && !pending.has(j.job_id)) continue
+          this.seen.add(j.job_id)
+          fresh.push({ json: jobJson, rec: { job_id: j.job_id, kind: j.kind, revision: j.revision, work_item: j.work_item, state: 'queued', due_step: 0, who: whoOf(j) } })
+        }
+        const due = this.due.track(
+          fresh.map((f) => f.rec),
+          opts.requested,
+        )
+        fresh.forEach((f, i) => {
+          f.rec.due_step = due[i]
+          this.byId.set(f.rec.job_id, f.rec)
+          this.open.add(f.rec.job_id)
+          this.jobs.push(f.rec)
+          this.queue.push(f)
+        })
+        this.trim()
+        this.pump()
+      })
+      .catch((e) => this.fail(`effects: ${String(e)}`))
+      .finally(() => {
+        this.taking--
+      })
     return this.intake
   }
 
-  /** After the sim advanced: drain its effects into the job queue. */
-  afterAdvance() {
-    if (this.o.sim.pending_effects() > 0) void this.enqueueEffects(this.o.sim.drain_effects_json())
+  /**
+   * After the sim advanced: drain its effects into the job queue. Returns true
+   * when it asked for a job; the caller then stops stepping until the job is
+   * taken in. Called after every single step, the request step is exact.
+   */
+  afterAdvance(): boolean {
+    const now = Number(this.o.sim.step())
+    const after = Math.min(this.seenStep, now)
+    this.seenStep = now
+    if (this.o.sim.pending_effects() === 0) return false
+    void this.enqueueEffects(this.o.sim.drain_effects_json(), { requested: { after, upTo: now } })
+    return true
   }
 
   /**
@@ -231,7 +369,12 @@ export class OrchestrationLoop {
         continue
       }
       const r = this.apply(cmd)
-      if (!r.ok) this.fail(`outcome rejected by the sim: ${r.reason} (${cmd.slice(0, 120)})`)
+      if (!r.ok) {
+        this.fail(`outcome rejected by the sim: ${r.reason} (${cmd.slice(0, 120)})`)
+        // Nothing more will come for that job: the clock must not wait for it.
+        const job = settles(cmd).job
+        if (job != null) this.close(job)
+      }
     }
     if (this.deploys.length) this.tryDeploys()
   }
@@ -251,7 +394,10 @@ export class OrchestrationLoop {
     // can name the exact log position of the world it captured.
     const rec: CommandRecord = { seq: ++this.seq, step: Number(this.o.sim.step()), kind: commandKind(json), payload: commandBytes(json) }
     const s = settles(json)
-    if (s.job != null) this.completed.add(s.job)
+    if (s.job != null) {
+      this.completed.add(s.job)
+      this.close(s.job)
+    }
     if (s.landed) this.landed.add(s.landed)
     this.logged++
     this.write(async () => {
@@ -389,15 +535,64 @@ export class OrchestrationLoop {
 
   private fail(msg: string) {
     this.errors.push(msg)
+    if (this.errors.length > KEEP_ERRORS) this.errors.splice(0, this.errors.length - KEEP_ERRORS)
     console.error(`[orchestration] ${msg}`)
+    this.o.onError?.(msg)
+  }
+
+  /** The job is settled for the clock: its outcome was applied, or nothing will come for it. */
+  private close(jobId: number) {
+    this.open.delete(jobId)
+    this.due.settle(jobId)
+  }
+
+  /** Keeps the last `keepJobs` finished jobs; jobs still in flight always stay. */
+  private trim() {
+    const keep = this.o.keepJobs ?? KEEP_JOBS
+    for (let i = 0; this.jobs.length > keep && i < this.jobs.length; ) {
+      const rec = this.jobs[i]
+      if (this.open.has(rec.job_id) || rec.state === 'queued' || rec.state === 'running') i++
+      else {
+        this.jobs.splice(i, 1)
+        this.byId.delete(rec.job_id)
+      }
+    }
+  }
+
+  private timeoutFor(kind: string): number {
+    const t = this.o.jobTimeoutMs
+    if (typeof t === 'number') return t
+    return t?.[kind] ?? DEFAULT_JOB_TIMEOUT_MS[kind] ?? FALLBACK_JOB_TIMEOUT_MS
+  }
+
+  /** `orchestrator.run` under the job's wall-clock limit; rejects with `JobTimeout` past it. */
+  private runWithLimit(rec: JobRecord, jobJson: string): Promise<string> {
+    const run = this.o.orchestrator.run(jobJson)
+    const limit = this.timeoutFor(rec.kind)
+    if (!(limit > 0) || !Number.isFinite(limit)) return run
+    return new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new JobTimeout(limit)), limit)
+      // A run that settles after the limit is ignored: the loop gave up on it.
+      run.then(
+        (out) => {
+          clearTimeout(timer)
+          resolve(out)
+        },
+        (e) => {
+          clearTimeout(timer)
+          reject(e)
+        },
+      )
+    })
   }
 
   private pump() {
     if (this.running) return
     this.running = (async () => {
       while (this.queue.length && !this.halted) {
-        const jobJson = this.queue[0]
-        const rec = this.byId.get((JSON.parse(jobJson) as { job_id: number }).job_id)!
+        // One job at a time, earliest due first (ADR-0060 decision 4); a running job is never preempted.
+        const next = this.queue.reduce((best, q) => (runsBefore(q.rec, best.rec) ? q : best))
+        const { json: jobJson, rec } = next
         rec.state = 'running'
         const retries = this.o.retries ?? 2
         const key = jobOutcomeKey(rec.job_id)
@@ -407,11 +602,14 @@ export class OrchestrationLoop {
             let out = await this.o.store.getKv(key)
             if (out) this.log(`${rec.kind} job ${rec.job_id}: reusing the stored outcome`)
             else {
-              out = await this.o.orchestrator.run(jobJson)
+              out = await this.runWithLimit(rec, jobJson)
               await this.o.store.setKv(key, out)
             }
             this.summarize(rec, out)
-            this.ready.push(...(await this.o.codec.outcomesForSim(out)))
+            const cmds = await this.o.codec.outcomesForSim(out)
+            this.ready.push(...cmds)
+            // A run without an outcome for its own job leaves nothing to wait for.
+            if (!cmds.some((c) => settles(c).job === rec.job_id)) this.close(rec.job_id)
             rec.state = 'done'
             this.o.onPlanText?.()
             this.log(`${rec.kind} r${rec.revision} (job ${rec.job_id}) → ${out.slice(0, 200)}`)
@@ -426,7 +624,8 @@ export class OrchestrationLoop {
               this.log(`${rec.kind} job ${rec.job_id} stopped (${msg}): ${this.halted}`)
               return
             }
-            if (attempt < retries) {
+            // A job past its limit is not retried: its first run may still be going (no cancel yet, P6).
+            if (attempt < retries && !(e instanceof JobTimeout)) {
               this.log(`${rec.kind} job ${rec.job_id} failed (${msg}); retrying`)
               await new Promise((r) => setTimeout(r, this.o.retryMs ?? 2000))
               continue
@@ -443,11 +642,11 @@ export class OrchestrationLoop {
               this.ready.push(
                 JSON.stringify({ JobCompleted: { job_id: rec.job_id, digest: { ok: false, score: 0, words: 0, qa_defects: 0, artifact_sha: null } } }),
               )
-            }
+            } else this.close(rec.job_id)
             break
           }
         }
-        this.queue.shift()
+        this.queue.splice(this.queue.indexOf(next), 1)
       }
     })().finally(() => {
       this.running = null

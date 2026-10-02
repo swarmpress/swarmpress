@@ -3,9 +3,12 @@ import { createEngine } from './render/engine'
 import { formatClock } from './render/daylight'
 import { QUALITY, type Quality } from './render/postfx'
 import { createGameScene } from './render/scene'
+import { ClockDriver, clockStatus, type ClockHost } from './session/clock-driver'
 import type { GameSession } from './session/session'
+import { startTickTimer } from './session/tick-timer'
 import type { BuildingLayout, RenderState } from './state/render-state'
-import { mountHud } from './ui/hud'
+import { DEMO_STAGES, mountBootScreen, SESSION_STAGES, type BootScreen } from './ui/boot-screen'
+import { hudNotify, mountHud } from './ui/hud'
 import { mountOverlay, selectDataSource } from './ui/mount'
 
 /**
@@ -13,7 +16,8 @@ import { mountOverlay, selectDataSource } from './ui/mount'
  *   renderer=webgl     force the WebGL2 fallback
  *   quality=low|medium|high
  *   t=HH:MM            run the sim to this time of day and freeze it (deterministic screenshots)
- *   speed=N            sim steps per 100 ms of real time (fast-forward), default 1 = real time
+ *   speed=N            sim steps per 100 ms of real time (fast-forward), default 1 = real time;
+ *                      the HUD's speed buttons change it while the page runs
  *   facing=0..3        camera angle
  *   seed=N             sim seed, default 42
  *   tz=Area/City       HQ timezone for the real-time wall clocks, default Europe/Rome
@@ -22,14 +26,19 @@ import { mountOverlay, selectDataSource } from './ui/mount'
  *                      (src/session/session.ts; also login=, llm=fake, store=, ff=HH:MM)
  * With t=, the loop stops once the scene is ready and 20 frames are drawn
  * (`__swarmpress.still()` turns true) so screenshots are stable and cheap.
+ *
+ * The clock (ADR-0060, src/session/clock-driver.ts): wall time is clamped
+ * before it becomes sim steps, so a tab that was hidden never bursts; a
+ * session's clock also holds while a job is due and rests at night. The HUD
+ * shows its state. Frozen pages (t=) have no clock and no clock HUD.
  */
 
 /** If the WebGPU device dies before this many frames, reload on WebGL2. */
 const WEBGPU_WATCHDOG_FRAMES = 60
 
-async function main() {
+async function main(params: URLSearchParams, boot: BootScreen) {
+  boot.stage('wasm')
   await init()
-  const params = new URLSearchParams(location.search)
   const quality = (params.get('quality') as Quality) || 'high'
   const frozen = params.get('t')
   const speed = Math.max(1, Number(params.get('speed') ?? 1))
@@ -44,6 +53,7 @@ async function main() {
   canvas.style.touchAction = 'none'
   document.getElementById('stage')!.appendChild(canvas)
 
+  boot.stage('renderer')
   const { engine, name: renderer } = await createEngine(canvas, params.get('renderer') === 'webgl')
 
   // Offline sandbox (default): the browser runs its own sim-core replica.
@@ -53,8 +63,10 @@ async function main() {
   let session: GameSession | null = null
   if (params.get('central') === '1') {
     const { startSession } = await import('./session/session')
-    session = await startSession({ params })
+    // Loop errors (a failed or timed-out job, a rejected outcome) become a toast and a mark on the chip.
+    session = await startSession({ params, onStage: (stage) => boot.stage(stage), onError: hudNotify })
   }
+  boot.stage('scene')
   const sim = session?.sim ?? Sim.demo(seed)
   const layout = JSON.parse(sim.layout_json()) as BuildingLayout
   const game = createGameScene(engine, canvas, layout, { quality: QUALITY[quality] ?? QUALITY.high, postFx: true })
@@ -89,7 +101,44 @@ async function main() {
     if (e.key === 'e') game.iso.rotate(1)
   })
 
-  const hud = mountHud(document.getElementById('ui')!)
+  // The clock. A session brings its own (holds, rest, the model's readiness);
+  // the offline demo only needs the clamp, pause and speed. Frozen pages have none.
+  const demoHost: ClockHost = {
+    view: () => ({
+      step: Number(sim.step()),
+      minuteOfDay: sim.minute_of_day(),
+      stepsPerDay: Number(sim.steps_per_day()),
+      halted: false,
+      modelReady: true,
+      nextDueStep: null,
+      busy: false,
+      settling: false,
+    }),
+    boundary: () => undefined,
+    advance: (steps) => {
+      sim.advance(steps)
+      return steps
+    },
+  }
+  const clock = frozen ? null : (session?.clock ?? new ClockDriver(demoHost, { speed, policy: { rest: false } }))
+  const clockHud = () => {
+    if (!clock) return null
+    const status = session
+      ? session.status()
+      : clockStatus({ hold: clock.hold, phase: clock.state.phase, halted: null, leaseLost: null, model: { state: 'ready' }, heldBy: null })
+    return {
+      status,
+      paused: clock.state.paused,
+      speed: clock.state.speed,
+      unattendedDays: session ? clock.state.unattendedDays : null,
+      resting: clock.resting,
+    }
+  }
+  // While the tab is hidden the render loop stops; a 1 Hz worker timer keeps a
+  // session's clock ticking (bounded by the same clamp) so work in flight can finish.
+  if (session && clock) startTickTimer(() => clock.idleTickAt(performance.now()))
+
+  const hud = mountHud(document.getElementById('ui')!, clock)
 
   // --- CEO management overlay (ADR-0018, docs/game-design/organization.md) ---
   // Uses the sim's organization API when it exists (feature-detected), else
@@ -103,27 +152,14 @@ async function main() {
           session?.dataSource() ?? selectDataSource(sim, params, () => sim.day() * 1440 + sim.minute_of_day()),
         )
   // --- end CEO overlay ---
-  let acc = 0
   let lastStep = -1n
   let stillFrames = 0
   let still = false
+  boot.done()
   engine.runRenderLoop(() => {
-    if (!frozen) {
-      acc += engine.getDeltaTime()
-      while (acc >= 100) {
-        if (session) {
-          // Step boundary: apply job outcomes and landed deploys, then step and drain effects.
-          session.boundary()
-          if (!session.paused) {
-            sim.advance(speed)
-            session.afterAdvance()
-          }
-        } else {
-          sim.advance(speed)
-        }
-        acc -= 100
-      }
-    }
+    // Wall time since the last tick, clamped: per 100 ms slice a step boundary
+    // (job outcomes and landed deploys are applied), then the steps the clock allows.
+    clock?.tickAt(performance.now())
     const step = sim.step()
     if (step !== lastStep) {
       game.update(JSON.parse(sim.render_state_json()) as RenderState)
@@ -138,6 +174,7 @@ async function main() {
       version: version(),
       fps: Math.round(engine.getFps()),
     })
+    hud.setClock(clockHud())
     if (frozen && game.scene.isReady() && ++stillFrames >= 20) {
       engine.stopRenderLoop()
       still = true
@@ -155,10 +192,16 @@ async function main() {
     still: () => still,
     overlay: overlay?.store ?? null,
     session: session?.hook ?? null,
+    clock,
   }
 }
 
-main().catch((err) => {
+const params = new URLSearchParams(location.search)
+const boot = mountBootScreen(document.body, params.get('central') === '1' ? SESSION_STAGES : DEMO_STAGES)
+main(params, boot).catch((err) => {
   console.error(err)
   document.body.dataset.error = String(err)
+  // A visible error, whatever stage failed (after boot the screen is put back up).
+  if (!boot.el.isConnected) document.body.append(boot.el)
+  boot.fail(err)
 })

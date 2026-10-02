@@ -10,6 +10,8 @@
  *   → orchestration loop (sim effects → orchestrator-wasm → commands) + events
  *   → checkpoints: locally every game hour, sealed to central sync every game
  *     day and on `pagehide`
+ *   → the clock (ADR-0060, session/clock-driver.ts): held while a job is due,
+ *     the model is not ready or the loop is halted; resting at night
  *
  * URL parameters (besides main.ts's):
  *   central=1        turn the session on
@@ -33,6 +35,7 @@ import { commandBytes, decodeSnapshot, encodeSnapshot, type Checkpoint } from '.
 import { fetchRemote, NEXT_SEGMENT_KEY, SEALED_SEQ_KEY, SyncUploader, toLogged, type SealResult } from '../sync/uploader'
 import type { DataTopic } from '../ui/data-source'
 import { companyStoreOptions, WasmDataSource, type SimOrgApi } from '../ui/wasm-source'
+import { cleanDays, ClockDriver, clockStatus, sessionClockHost, type ClockStatus, type ModelStatus } from './clock-driver'
 
 export const SCENARIO = 'cinqueterre'
 
@@ -111,8 +114,19 @@ export interface SessionHook {
     paused: boolean
     jobs: JobRecord[]
     queued: number
-    /** The clock is held for a standup job close to the sim's meeting timeout, or because the loop halted. */
+    /** The loop holds the clock: a pending job is due (ADR-0060), jobs are being taken in, or the loop halted. */
     holdClock: boolean
+    /** The earliest due step of a job in flight; null without one. */
+    nextDueStep: number | null
+    /** What the HUD chip shows: running, held, resting, model loading, lease lost, halted or paused. */
+    status: ClockStatus
+    /** Sim steps per 100 ms of clock. */
+    speed: number
+    /** Days that still start by themselves after the day is done. */
+    unattendedDays: number
+    /** The day-done card is up: the clock rests until the next day is started. */
+    resting: boolean
+    model: ModelStatus
     halted: string | null
     /** Why this session does not run the company (another executor holds the lease, or it was lost); null while it does. */
     readOnly: string | null
@@ -138,6 +152,12 @@ export interface SessionHook {
   /** Pauses the sim clock (jobs keep running; outcomes still apply at boundaries). Time only: nothing else changes. */
   pause(): void
   resume(): void
+  setSpeed(speed: number): void
+  setUnattendedDays(days: number): void
+  /** The day-done card's button: skips the night. */
+  startNextDay(): void
+  /** What the model backend reports; only `ready` lets the clock run. */
+  setModelStatus(status: ModelStatus): void
   /** Waits until queued jobs ran and their outcomes are applied and logged. */
   idle(): Promise<void>
   /** Local checkpoint + sealed segment and checkpoint on the central server. */
@@ -151,11 +171,16 @@ export interface GameSession {
   company: Company
   loop: OrchestrationLoop
   hook: SessionHook
-  readonly paused: boolean
-  /** Call at every step boundary, before `sim.advance`. */
-  boundary(): void
-  /** Call after every `sim.advance`. */
-  afterAdvance(): void
+  /**
+   * The game clock (ADR-0060): the render loop ticks it every frame, the 1 Hz
+   * worker timer while the tab is hidden. It calls the loop's boundary, steps
+   * the sim and drains its effects; pause, speed and rest are its settings.
+   */
+  clock: ClockDriver
+  /** What the HUD chip shows. */
+  status(): ClockStatus
+  /** The model backend reports its state here; only `ready` lets the clock run (`?llm=fake` is ready). */
+  setModelStatus(status: ModelStatus): void
   /** The overlay's data source: the sim (commands logged through the loop) plus the store's plan text. */
   dataSource(): WasmDataSource
 }
@@ -182,11 +207,21 @@ class SessionDataSource extends WasmDataSource {
   }
 }
 
+/** The boot stages of a session, in order (the boot screen shows them). */
+export type SessionStage = 'login' | 'store' | 'lease' | 'restore' | 'orchestrator'
+
 export interface SessionOptions {
   params: URLSearchParams
   client?: CentralClient
   log?: (line: string) => void
+  /** Called when a boot stage starts. */
+  onStage?: (stage: SessionStage) => void
+  /** Called with every error of the orchestration loop (the HUD shows a toast and marks the chip). */
+  onError?: (message: string) => void
 }
+
+/** kv key of the "unattended days" setting (host policy; never in the sim or the command log). */
+export const UNATTENDED_DAYS_KEY = 'clock.unattended_days'
 
 /** A LocalLlm that fails loudly: the real model runtime is not wired into the session yet (use `?llm=fake`). */
 function unwiredLlm(): FakeLlm {
@@ -346,10 +381,13 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   const log = opts.log ?? ((line: string) => console.info(`[session] ${line}`))
   const client = opts.client ?? new CentralClient()
   const login = params.get('login') || 'ceo'
+  const stage = opts.onStage ?? (() => undefined)
 
+  stage('login')
   const me = await signIn(client, login)
   const company = me.company ?? (await client.myCompany()) ?? (await client.createCompany({ name: `${login} Dispatch` }))
   // One database per company: the command log and checkpoints are the company's.
+  stage('store')
   const store = await openCompanyStore({ name: `swarmpress-${company.id}.db` })
   await store.setKv('company.id', company.id)
 
@@ -357,6 +395,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   // it is free, expired, released or its own; another executor's live lease
   // leaves this session read-only until the player takes over explicitly
   // (`takeover=1`, which the notice's button sets).
+  stage('lease')
   const takeover = params.get('takeover') === '1'
   // (`as`: these are assigned from callbacks, which narrowing cannot see.)
   let readOnly = null as string | null
@@ -393,11 +432,13 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     history.replaceState(null, '', url)
   }
 
+  stage('restore')
   const { sim, info: restored, result, lastSeq } = await restore(store, client, company, { forceReplay: params.get('restore') === 'replay' })
   log(
     `company ${company.id} restored from ${restored.source} at step ${restored.step} (${restored.snapshot ? 'snapshot + ' : ''}${restored.replayed} commands replayed, ${restored.ms} ms)`,
   )
 
+  stage('orchestrator')
   const calls: GatewayCall[] = []
   const orchestrator = await createOrchestrator({
     store,
@@ -416,6 +457,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     orchestrator,
     codec: { jobsFromEffects, outcomesForSim },
     log,
+    onError: opts.onError,
     onPlanText: () => sources.forEach((s) => s.planTextChanged()),
     // A published item is the moment worth keeping: seal the log and a checkpoint to central sync (docs/mvp.md).
     onLanded: () => void checkpoint(),
@@ -466,7 +508,6 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   else await events.start()
 
   const sync = new SyncUploader(client, store, company.id)
-  let paused = false
 
   let sealed: CheckpointResult | null = null
   // Step, hash and log position are read in one synchronous turn: commands
@@ -524,6 +565,39 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     void checkpoint()
   })
 
+  // The clock (ADR-0060). The model backend reports through `setModelStatus`;
+  // the scripted `?llm=fake` model is ready at once, and no other model is
+  // wired into the session yet (`unwiredLlm`), so the clock holds without it.
+  let model: ModelStatus =
+    params.get('llm') === 'fake' ? { state: 'ready', detail: 'scripted model' } : { state: 'none', detail: 'no local model is wired in yet; use ?llm=fake' }
+  const speed = Number(params.get('speed') ?? 1)
+  // The "unattended days" setting is host policy: it lives in the kv, not in the sim.
+  let savedDays = cleanDays(Number((await store.getKv(UNATTENDED_DAYS_KEY)) ?? 0))
+  const clock = new ClockDriver(
+    // Per slice: the loop's boundary (outcomes and landed deploys), then single steps with the effects drained after each.
+    sessionClockHost(sim, loop, { modelReady: () => model.state === 'ready', onStep: onClock }),
+    {
+      speed,
+      unattendedDays: savedDays,
+      onChange: (state) => {
+        if (state.unattendedDays === savedDays) return
+        savedDays = state.unattendedDays
+        // A setting, kept across reloads; a failed write only loses the setting.
+        store.setKv(UNATTENDED_DAYS_KEY, String(savedDays)).catch((e) => log(`unattended days not saved: ${String(e)}`))
+      },
+    },
+  )
+  const heldBy = () => {
+    const job = loop.heldFor
+    return job ? `${job.who ? `${job.who} · ` : ''}${job.kind}` : null
+  }
+  const status = () => clockStatus({ hold: clock.hold, phase: clock.state.phase, halted: loop.halted, leaseLost: readOnly, model, heldBy: heldBy() })
+  const setModelStatus = (next: ModelStatus) => {
+    model = { ...next }
+    clock.refresh()
+  }
+  clock.refresh()
+
   const items = (): Record<string, string> =>
     Object.fromEntries((JSON.parse(sim.plan_json()) as { items: { id: string; status: string }[] }).items.map((i) => [i.id, i.status]))
 
@@ -548,10 +622,16 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       ...capture(),
       day: sim.day(),
       minute: sim.minute_of_day(),
-      paused,
+      paused: clock.state.paused,
       jobs: loop.jobs.map((j) => ({ ...j })),
       queued: loop.queued,
       holdClock: loop.holdClock,
+      nextDueStep: loop.nextDueStep,
+      status: status(),
+      speed: clock.state.speed,
+      unattendedDays: clock.state.unattendedDays,
+      resting: clock.resting,
+      model: { ...model },
       halted: loop.halted,
       readOnly,
       handoverRequestedBy: handoverBy,
@@ -570,12 +650,12 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     },
     gateway: () => calls.map((c) => ({ ...c })),
     events: () => [...received],
-    pause: () => {
-      paused = true
-    },
-    resume: () => {
-      paused = false
-    },
+    pause: () => clock.pause(),
+    resume: () => clock.resume(),
+    setSpeed: (n) => clock.setSpeed(n),
+    setUnattendedDays: (n) => clock.setUnattendedDays(n),
+    startNextDay: () => clock.startNextDay(),
+    setModelStatus,
     idle: () => loop.idle(),
     checkpoint,
     errors: () => [...loop.errors],
@@ -602,14 +682,9 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     company,
     loop,
     hook,
-    get paused() {
-      return paused || loop.holdClock
-    },
-    boundary: () => loop.boundary(),
-    afterAdvance: () => {
-      loop.afterAdvance()
-      onClock()
-    },
+    clock,
+    status,
+    setModelStatus,
     dataSource: () => {
       const s = new SessionDataSource(orgApi, { ...companyStoreOptions(store, company), changeKey: () => `${sim.step()}:${loop.lastSeq}` })
       sources.add(s)
