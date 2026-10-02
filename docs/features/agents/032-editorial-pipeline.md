@@ -1,12 +1,13 @@
 ---
 id: FEAT-032
 title: "Editorial pipeline (orchestrator)"
-status: planned
+status: in-progress
 importance: critical
 paths:
   - "crates/agents/src/pipelines/**"
   - "crates/agents/tests/pipeline*.rs"
   - "crates/server/tests/full_pipeline*.rs"
+  - "crates/orchestrator/**"
 adrs:
   - ADR-0011
   - ADR-0009
@@ -27,6 +28,6 @@ Decisions: [ADR-0011](../../adr/0011-orchestrator-owns-state-transitions.md), [A
 
 ## Evidence
 
-- `agents/nextest`
+- `agents/nextest` (includes the `orchestrator` crate: `crates/orchestrator/tests/loop.rs`)
 - `server/nextest`
 - `bench/agent-pipeline`

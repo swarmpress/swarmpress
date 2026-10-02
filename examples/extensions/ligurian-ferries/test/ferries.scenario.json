@@ -1,0 +1,42 @@
+{
+  "$schema": "../../../../packages/sdk/schemas/scenario.schema.json",
+  "name": "cancellations become a transport fact and a Vernazza happening; unchanged pages yield nothing",
+  "seed": 1,
+  "days": 0,
+  "polls": [
+    {
+      "region": "cinque-terre",
+      "now": "2026-10-01T07:00:00+02:00",
+      "web": {
+        "https://www.navigazionegolfodeipoeti.it/en/timetable/cinque-terre": {
+          "headers": { "content-type": "text/html" },
+          "file": "fixtures/timetable-cancelled.html"
+        }
+      },
+      "expect": { "facts": 1, "happenings": 1, "cursor": "2026-10-01T06:30", "factKinds": ["transport"] }
+    },
+    {
+      "region": "cinque-terre",
+      "now": "2026-10-01T07:30:00+02:00",
+      "cursor": "2026-10-01T06:30",
+      "web": {
+        "https://www.navigazionegolfodeipoeti.it/en/timetable/cinque-terre": { "file": "fixtures/timetable-cancelled.html" }
+      },
+      "expect": { "facts": 0, "happenings": 0, "cursor": "2026-10-01T06:30" }
+    },
+    {
+      "region": "cinque-terre",
+      "now": "2026-10-02T07:00:00+02:00",
+      "cursor": "2026-10-01T06:30",
+      "web": {
+        "https://www.navigazionegolfodeipoeti.it/en/timetable/cinque-terre": { "file": "fixtures/timetable-regular.html" }
+      },
+      "expect": { "facts": 0, "happenings": 0, "cursor": "2026-10-02T06:30" }
+    },
+    {
+      "region": "lake-como",
+      "now": "2026-10-01T07:00:00+02:00",
+      "expect": { "error": "not in poll.regions" }
+    }
+  ]
+}

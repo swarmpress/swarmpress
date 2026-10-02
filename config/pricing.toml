@@ -1,0 +1,29 @@
+# Credit pricing for metered Agency (server-side LLM) jobs — ADR-0033, docs/game-design/credits.md §3.
+# Rates are USD per million tokens. Changing a rate is a reviewed config change;
+# every ledger entry records the price_version it was charged under.
+price_version = "2026-10-01"
+credit_value_usd = 0.01   # 1 ◆ = $0.01
+margin = 0.20             # platform margin on metered usage
+
+[models."claude-opus-5-5"]
+input = 4.00
+output = 20.00
+cache_read = 0.20
+cache_write = 5.00
+
+[models."claude-sonnet-5-5"]
+input = 2.00
+output = 10.00
+cache_read = 0.20
+cache_write = 2.50
+
+[models."claude-haiku-4-5"]
+input = 1.00
+output = 5.00
+cache_read = 0.10
+cache_write = 1.25
+
+[grants]
+starter = 500
+weekly_allowance = 100
+allowance_bank_cap = 300

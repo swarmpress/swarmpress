@@ -7,8 +7,9 @@ At M0 there is no server in production.
 
 | Piece | Runs as | State |
 |---|---|---|
-| `server` | one Rust binary (axum + tokio); several replicas possible, company actors partitioned by `company_id` advisory lock | Postgres |
-| Postgres | managed instance (≥ 14) | command logs, snapshots, jobs, sessions, transcripts, `llm_calls` |
+| `server` | one Rust binary (axum + tokio), **one process** (ADR-0039): the central role only, since companies run in the browser (ADR-0038) | SQLite + `SIMPRESS_DATA_DIR` |
+| SQLite | embedded, WAL, one file (`data/simpress.db`); one writer connection, parallel readers | users, sessions, companies, leases, event inbox, gateway PRs, webhook deliveries, sync index, tracker |
+| Sync blobs | files under `SIMPRESS_DATA_DIR/sync/{company}/` (object storage later) | command-log segments, latest snapshot per company |
 | Static client | `apps/game/dist` on a CDN | — |
 | Assets | `assets/out` on a CDN (KTX2/glTF), model shards from Hugging Face or a mirror | — |
 | Site repos | GitHub (platform org), GitHub Pages | content |
@@ -17,14 +18,19 @@ At M0 there is no server in production.
 
 | Variable | Notes |
 |---|---|
-| `DATABASE_URL` | required |
-| `ANTHROPIC_API_KEY` | Agency jobs. Missing → Claude jobs fail loudly (ticket), browser jobs unaffected |
-| `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET` | repo access, webhooks |
-| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | OAuth sign-in |
-| `PLATFORM_ORG` | org for new site repos |
-| `SESSION_SECRET` | cookie signing; rotating it logs everyone out |
-| `SIM_DAY_REAL_MINUTES` | 60 on live servers; a world constant (changing it needs a migration) |
-| `RUST_LOG` | e.g. `info,server=debug` |
+| `DATABASE_URL` | default `sqlite://data/simpress.db?mode=rwc` |
+| `SIMPRESS_DATA_DIR` | sync blobs; default `./data` |
+| `SIMPRESS_DEV_AUTH` | `1` enables `POST /auth/dev/login`. **Never in production** |
+| `SIMPRESS_GITHUB` | `fake` = in-memory FakeGitHub for the content gateway; anything else = real GitHub |
+| `GITHUB_TOKEN` or `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY_PATH` | content gateway credentials. Missing → gateway answers 503 |
+| `GITHUB_WEBHOOK_SECRET` | `POST /webhooks/github` (`deployment_status` → `DeployLanded`) |
+| `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` | OAuth sign-in |
+| `GITHUB_SITES_ORG` | owner of default site repos (`{org}/{login}-site`) |
+| `SIMPRESS_SIMULATE_DEPLOY` | emit `DeployLanded` right after a gateway merge (default on with the fake GitHub) |
+| `SIMPRESS_LEASE_SECS` | company lease length, default 90 |
+| `RUST_LOG` | e.g. `info,simpress_server=debug` |
+
+See `.env.example` for the full list (tracker, web fetch limits).
 
 `config/roles.toml`, `config/models.toml`, `config/economy.toml`, `config/events.ron` and
 `config/rooms.ron` are loaded at start-up. A change to economy, event or room data alters sim
@@ -89,10 +95,13 @@ Logs are structured `tracing` JSON, with `company_id`, `job_id`, `step` and `mee
 
 ## Backups and restore
 
-- Postgres point-in-time recovery, with daily snapshots retained for 30 days.
-- A company restores to any day boundary from its snapshot plus its command log. Site content is in
-  git, so nothing content-related lives only in Postgres.
-- Transcripts and `llm_calls` live in Postgres and follow the database's backup policy.
+- SQLite is replicated continuously with Litestream (or a periodic `VACUUM INTO`) to object
+  storage (ADR-0039). The sync blob directory is backed up alongside it.
+- A company restores from its synced snapshot plus its command-log segments
+  (`/api/sync/{company}/…`). Site content is in git, so nothing content-related lives only on
+  the server.
+- Company data that never leaves the browser (plan text, transcripts) is protected by the
+  browser's persistent storage plus central sync (ADR-0038).
 
 ## Load and capacity
 

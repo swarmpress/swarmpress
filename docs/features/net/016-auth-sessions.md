@@ -4,9 +4,10 @@ title: "Auth: GitHub OAuth and cookie sessions"
 status: planned
 importance: high
 paths:
-  - "crates/server/src/auth/**"
-  - "crates/server/tests/auth*.rs"
-  - crates/testkit/src/fake_oauth.rs
+  - crates/server/src/auth.rs
+  - crates/server/src/db/accounts.rs
+  - crates/server/tests/http.rs
+  - crates/testkit/src/lib.rs
 adrs:
   - ADR-0019
 ---

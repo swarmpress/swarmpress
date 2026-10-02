@@ -57,9 +57,11 @@ fn wasm(release: bool) -> Result<()> {
             ]),
     )?;
     let dir = if release { "wasm-release" } else { "debug" };
-    let wasm = root.join(format!(
-        "target/wasm32-unknown-unknown/{dir}/client_wasm.wasm"
-    ));
+    // Honour a shared CARGO_TARGET_DIR (relative paths are relative to the workspace root).
+    let target = env::var_os("CARGO_TARGET_DIR")
+        .map(|t| root.join(t))
+        .unwrap_or_else(|| root.join("target"));
+    let wasm = target.join(format!("wasm32-unknown-unknown/{dir}/client_wasm.wasm"));
     run(Command::new("wasm-bindgen")
         .arg(&wasm)
         .args(["--target", "web", "--out-dir"])

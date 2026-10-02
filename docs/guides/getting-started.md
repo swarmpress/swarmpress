@@ -8,7 +8,6 @@
 | wasm-bindgen CLI | **0.2.100** exactly | `cargo install wasm-bindgen-cli --version 0.2.100` |
 | Node | ≥ 20 (22 recommended) | client, content schema |
 | pnpm | ≥ 8 | workspaces |
-| Docker | any | Postgres (the only infrastructure) |
 | cargo-nextest | latest | test runner, JUnit for Cockpit |
 | Cockpit | from `drietsch/cockpit` (Rust 1.98.0) | feature health ([testing.md](testing.md)) |
 | Blender | 4.x (only for asset work) | [asset-pipeline.md](asset-pipeline.md) |
@@ -32,22 +31,30 @@ At M0 the scene is driven by `demoRenderState`. Server-backed play arrives in M2
 
 ## With the server (M2 onwards)
 
+The central server is one binary with an embedded SQLite database (ADR-0039): no Docker, no
+database server.
+
 ```sh
-cp .env.example .env        # DATABASE_URL, GITHUB_APP_*, ANTHROPIC_API_KEY, SESSION_SECRET
-docker compose up -d        # Postgres only
-cargo run -p server         # applies migrations, listens on :3000
-pnpm dev                    # client proxies /api and /ws to :3000
+cp .env.example .env        # dev defaults: fake GitHub, dev login, SQLite in ./data
+set -a && . ./.env && set +a
+cargo run -p server --bin simpress-server   # creates ./data/simpress.db, migrates, listens on :8080
+pnpm dev                    # the client must reach /auth, /api, /ws and /web on :8080 (Vite proxy)
 ```
 
-Environment variables (see `.env.example`):
+Dev mode signs in without GitHub (`POST /auth/dev/login {"login":"ada"}` with
+`SIMPRESS_DEV_AUTH=1`) and writes content PRs to an in-memory FakeGitHub
+(`SIMPRESS_GITHUB=fake`), where merges land a simulated `DeployLanded` event.
+
+Environment variables (see `.env.example` for all of them):
 
 | Variable | Used by |
 |---|---|
-| `DATABASE_URL` | server (sqlx) |
-| `ANTHROPIC_API_KEY` | `crates/claude` (Agency jobs). Without it, Claude jobs fail loudly with a ticket |
-| `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | `crates/github`, auth |
-| `PLATFORM_ORG` | the GitHub org where player site repos are created |
-| `SESSION_SECRET` | cookie signing |
+| `DATABASE_URL` | server (sqlx/SQLite), default `sqlite://data/simpress.db?mode=rwc` |
+| `SIMPRESS_DATA_DIR` | sync blobs (command-log segments, snapshots), default `./data` |
+| `SIMPRESS_DEV_AUTH`, `SIMPRESS_GITHUB`, `SIMPRESS_SIMULATE_DEPLOY` | dev login, fake GitHub, simulated deploys |
+| `GITHUB_TOKEN` or `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY_PATH`, `GITHUB_WEBHOOK_SECRET` | content gateway, deploy webhooks |
+| `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` | GitHub sign-in |
+| `GITHUB_SITES_ORG` | owner of default site repos |
 
 ## Everyday commands
 

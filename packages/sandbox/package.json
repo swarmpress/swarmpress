@@ -1,0 +1,27 @@
+{
+  "name": "@simpress/sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "QuickJS-in-wasm sandbox with a Bun-compatible API subset for SimPress extensions (browser and Bun, ADR-0042)",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "mkdir -p reports; bun test --reporter=junit --reporter-outfile=reports/junit.xml test; s=$?; bun ../sdk/scripts/bun-junit.ts reports/junit.xml; exit $s",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
+    "quickjs-emscripten-core": "0.32.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@simpress/sdk": "workspace:*",
+    "@types/bun": "1.3.14",
+    "typescript": "^5.9.0"
+  }
+}

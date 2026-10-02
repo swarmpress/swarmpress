@@ -28,7 +28,10 @@ pub mod roles;
 pub mod state;
 
 pub use house_style::StyleGuide;
-pub use llm::{CallProfile, ClaudeLlm, FakeLlm, FakeReply, Llm, LlmError, LlmMessage, LlmRequest};
+pub use llm::{
+    CallProfile, ClaudeLlm, FakeLlm, FakeReply, Llm, LlmError, LlmMessage, LlmRequest,
+    MaybeSendSync,
+};
 pub use meetings::{
     run_meeting, MeetingEvent, MeetingOutcome, MeetingResult, MeetingSpec, Participant,
 };

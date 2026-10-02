@@ -1,113 +1,226 @@
--- SimPress server schema, v1.
--- Postgres is the only infrastructure (ADR-0008). Content lives in site repos;
--- these tables hold players, the event-sourced sim log, the job queue and audits.
+-- SimPress central service schema (ADR-0038 local-first, ADR-0039 SQLite).
+--
+-- Conventions:
+--   * ids are TEXT (uuid strings), except AUTOINCREMENT-like INTEGER PRIMARY KEY
+--     sequences (events, tracker events);
+--   * instants are INTEGER unix epoch milliseconds (`*_at`, `ts`);
+--   * calendar days are TEXT 'YYYY-MM-DD' (UTC);
+--   * JSON is TEXT checked with json_valid().
+-- Plain SQLite subset that Turso also accepts (ADR-0041): no extensions, no
+-- virtual tables, no FTS, no generated columns, no triggers, no STRICT.
 
+-- ------------------------------------------------------------ accounts
+
+-- A player signs in with GitHub OAuth (github_id) or, in development only,
+-- with the dev login (dev_login, SIMPRESS_DEV_AUTH=1).
 CREATE TABLE users (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    github_id   BIGINT NOT NULL UNIQUE,
+    id          TEXT PRIMARY KEY,
+    github_id   INTEGER UNIQUE,
+    dev_login   TEXT UNIQUE,
     login       TEXT NOT NULL,
     name        TEXT,
     avatar_url  TEXT,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL,
+    CHECK (github_id IS NOT NULL OR dev_login IS NOT NULL)
 );
 
 -- Session tokens are never stored in clear: id = hex(sha256(cookie token)).
 CREATE TABLE sessions (
     id          TEXT PRIMARY KEY,
-    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    expires_at  TIMESTAMPTZ NOT NULL
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at  INTEGER NOT NULL,
+    expires_at  INTEGER NOT NULL
 );
-CREATE INDEX sessions_user_idx ON sessions(user_id);
-CREATE INDEX sessions_expires_idx ON sessions(expires_at);
+CREATE INDEX sessions_user_idx ON sessions (user_id);
+CREATE INDEX sessions_expires_idx ON sessions (expires_at);
 
--- One company (publishing house) per player. created_at is the sim epoch:
--- the authoritative step is (now - created_at) / 100 ms.
+-- One company per player. The company itself (sim, plan, artifacts) lives in
+-- the player's browser; this row is the central identity, the site repo
+-- binding and the anchor for leases, events and sync blobs.
 CREATE TABLE companies (
-    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_user_id     UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    id                TEXT PRIMARY KEY,
+    owner_user_id     TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     name              TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
-    seed              BIGINT NOT NULL,
-    day_real_minutes  INTEGER NOT NULL CHECK (day_real_minutes > 0),
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+    seed              INTEGER NOT NULL,
+    -- `owner/name` of the company's site repo (the content gateway's target).
+    site_repo         TEXT NOT NULL,
+    site_base_branch  TEXT NOT NULL DEFAULT 'main',
+    created_at        INTEGER NOT NULL
+);
+CREATE INDEX companies_site_repo_idx ON companies (site_repo);
+
+-- The device that currently holds the company (ADR-0038: one active device).
+-- At most one row per company; expired rows are taken over in place.
+CREATE TABLE company_leases (
+    company_id   TEXT PRIMARY KEY REFERENCES companies(id) ON DELETE CASCADE,
+    lease_id     TEXT NOT NULL UNIQUE,
+    device_id    TEXT NOT NULL CHECK (length(device_id) BETWEEN 1 AND 128),
+    acquired_at  INTEGER NOT NULL,
+    renewed_at   INTEGER NOT NULL,
+    expires_at   INTEGER NOT NULL
 );
 
--- Event-sourced command log. Replaying (latest snapshot + commands ordered by
--- step, seq) reproduces the authoritative world exactly.
-CREATE TABLE sim_commands (
-    company_id  UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    step        BIGINT NOT NULL CHECK (step >= 0),
-    seq         INTEGER NOT NULL CHECK (seq >= 0),
-    payload     BYTEA NOT NULL,
-    user_id     UUID REFERENCES users(id) ON DELETE SET NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (company_id, step, seq)
-);
+-- ------------------------------------------------------------ events
 
--- Snapshot at `step` is the world state right after stepping into `step`,
--- before any command of that step is applied.
-CREATE TABLE sim_snapshots (
-    company_id  UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    step        BIGINT NOT NULL CHECK (step >= 0),
-    hash        BIGINT NOT NULL,
-    payload     BYTEA NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (company_id, step)
+-- The offline event inbox (deploy results, webhook outcomes, ...). `seq` is
+-- global and monotonic; clients poll with `after=<last seq>`.
+CREATE TABLE events (
+    seq         INTEGER PRIMARY KEY,
+    company_id  TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL CHECK (length(kind) BETWEEN 1 AND 64),
+    payload     TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(payload)),
+    created_at  INTEGER NOT NULL
 );
+CREATE INDEX events_company_seq_idx ON events (company_id, seq);
 
--- Durable job queue (SELECT ... FOR UPDATE SKIP LOCKED + LISTEN/NOTIFY).
-CREATE TABLE jobs (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_id       UUID REFERENCES companies(id) ON DELETE CASCADE,
-    kind             TEXT NOT NULL,
-    executor         TEXT NOT NULL CHECK (executor IN ('browser', 'claude')),
-    min_tier         SMALLINT NOT NULL DEFAULT 0 CHECK (min_tier >= 0),
-    priority         INTEGER NOT NULL DEFAULT 0,
-    payload          JSONB NOT NULL DEFAULT '{}'::jsonb,
-    status           TEXT NOT NULL DEFAULT 'queued'
-                     CHECK (status IN ('queued', 'running', 'succeeded', 'dead', 'cancelled')),
-    attempts         INTEGER NOT NULL DEFAULT 0,
-    max_attempts     INTEGER NOT NULL DEFAULT 5 CHECK (max_attempts > 0),
-    run_after        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    lease_owner      TEXT,
-    lease_until      TIMESTAMPTZ,
-    idempotency_key  TEXT UNIQUE,
-    result           JSONB,
-    error            TEXT,
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX jobs_ready_idx ON jobs (executor, priority DESC, run_after)
-    WHERE status = 'queued';
-CREATE INDEX jobs_company_ready_idx ON jobs (company_id, executor)
-    WHERE status = 'queued';
-CREATE INDEX jobs_lease_idx ON jobs (lease_until) WHERE status = 'running';
+-- ------------------------------------------------------------ content gateway
 
--- Audit of every LLM call (Claude and browser-executed).
-CREATE TABLE llm_calls (
-    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    job_id         UUID REFERENCES jobs(id) ON DELETE SET NULL,
-    company_id     UUID REFERENCES companies(id) ON DELETE SET NULL,
-    executor       TEXT NOT NULL,
-    model          TEXT NOT NULL,
-    status         TEXT NOT NULL,
-    input_tokens   INTEGER,
-    output_tokens  INTEGER,
-    latency_ms     INTEGER,
-    request        JSONB,
-    response       JSONB,
-    error          TEXT,
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+-- Every draft PR the gateway opened, so merges are limited to the company's
+-- own PRs and deploy webhooks map a merged sha back to the content id.
+CREATE TABLE gateway_prs (
+    company_id   TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    number       INTEGER NOT NULL,
+    content_id   TEXT NOT NULL,
+    work_item    TEXT,
+    path         TEXT NOT NULL,
+    branch       TEXT NOT NULL,
+    head_sha     TEXT NOT NULL,
+    merged_sha   TEXT,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    PRIMARY KEY (company_id, number)
 );
-CREATE INDEX llm_calls_company_idx ON llm_calls (company_id, created_at);
+CREATE INDEX gateway_prs_merged_idx ON gateway_prs (merged_sha);
 
 -- GitHub webhook dedupe (X-GitHub-Delivery).
 CREATE TABLE webhook_deliveries (
-    id            BIGSERIAL PRIMARY KEY,
-    delivery_id   TEXT NOT NULL UNIQUE,
-    event         TEXT NOT NULL,
-    payload       JSONB NOT NULL,
-    received_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    processed_at  TIMESTAMPTZ
+    delivery_id  TEXT PRIMARY KEY,
+    event        TEXT NOT NULL,
+    received_at  INTEGER NOT NULL
 );
+
+-- ------------------------------------------------------------ sync
+
+-- Index rows for the company's append-only command-log segments. The bytes
+-- are files under SIMPRESS_DATA_DIR; a segment never changes once written.
+CREATE TABLE sync_segments (
+    company_id  TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    segment     INTEGER NOT NULL CHECK (segment >= 0),
+    sha256      TEXT NOT NULL,
+    size        INTEGER NOT NULL CHECK (size >= 0),
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (company_id, segment)
+);
+
+-- The latest snapshot per company (file on disk).
+CREATE TABLE sync_snapshots (
+    company_id  TEXT PRIMARY KEY REFERENCES companies(id) ON DELETE CASCADE,
+    step        INTEGER NOT NULL CHECK (step >= 0),
+    sha256      TEXT NOT NULL,
+    size        INTEGER NOT NULL CHECK (size >= 0),
+    updated_at  INTEGER NOT NULL
+);
+
+-- ------------------------------------------------------------ tracker (ADR-0032)
+
+-- One row per publication a company runs. `tracker_key` is public: it is
+-- embedded in the site's tracker snippet and is not a secret.
+CREATE TABLE projects (
+    id              TEXT PRIMARY KEY,
+    company_id      TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    sim_project_id  TEXT NOT NULL,
+    slug            TEXT NOT NULL CHECK (
+                        length(slug) BETWEEN 1 AND 63
+                        AND slug GLOB '[a-z0-9]*'
+                        AND slug NOT GLOB '*[^a-z0-9-]*'),
+    name            TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
+    -- Registered site host, lowercase, no scheme/port (e.g. cinqueterre.travel).
+    domain          TEXT CHECK (domain IS NULL OR (
+                        length(domain) BETWEEN 1 AND 253
+                        AND domain NOT GLOB '*[^a-z0-9.-]*')),
+    repo            TEXT,
+    tracker_key     TEXT NOT NULL UNIQUE,
+    created_at      INTEGER NOT NULL,
+    UNIQUE (company_id, sim_project_id),
+    UNIQUE (company_id, slug)
+);
+CREATE INDEX projects_domain_idx ON projects (domain);
+
+-- Privacy by construction: no IP address and no user-agent column exists
+-- anywhere in this schema (a test introspects the schema to keep it so).
+-- The current day's salt; deleted once it expires (next UTC midnight).
+CREATE TABLE tracker_salts (
+    day         TEXT PRIMARY KEY,
+    salt        BLOB NOT NULL CHECK (length(salt) = 32),
+    expires_at  INTEGER NOT NULL
+);
+
+-- Raw events, short retention (SIMPRESS_TRACKER_RAW_RETENTION_DAYS).
+CREATE TABLE tracker_events (
+    id               INTEGER PRIMARY KEY,
+    project_id       TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    ts               INTEGER NOT NULL,
+    type             TEXT NOT NULL CHECK (type IN ('pageview', 'engagement', 'scroll', 'outbound')),
+    path             TEXT NOT NULL CHECK (length(path) BETWEEN 1 AND 512),
+    lang             TEXT NOT NULL DEFAULT '',
+    ref_domain       TEXT,
+    utm_source       TEXT,
+    utm_medium       TEXT,
+    utm_campaign     TEXT,
+    viewport         TEXT NOT NULL DEFAULT '' CHECK (viewport IN ('', 'mobile', 'tablet', 'desktop')),
+    engaged_ms       INTEGER CHECK (engaged_ms IS NULL OR engaged_ms >= 0),
+    scroll_pct       INTEGER CHECK (scroll_pct IS NULL OR scroll_pct IN (25, 50, 75, 100)),
+    outbound_domain  TEXT,
+    visitor_hash     INTEGER NOT NULL,
+    session_hash     INTEGER NOT NULL
+);
+CREATE INDEX tracker_events_project_ts_idx ON tracker_events (project_id, ts);
+CREATE INDEX tracker_events_ts_idx ON tracker_events (ts);
+
+-- Rollup: project x day x page x language x source, where `source` is the
+-- session's first-touch source (utm_source, else referrer domain, else 'direct').
+CREATE TABLE analytics_daily (
+    project_id       TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    day              TEXT NOT NULL,
+    path             TEXT NOT NULL,
+    lang             TEXT NOT NULL,
+    source           TEXT NOT NULL,
+    sessions         INTEGER NOT NULL,
+    visitors         INTEGER NOT NULL,
+    pageviews        INTEGER NOT NULL,
+    engaged_ms_sum   INTEGER NOT NULL,
+    engaged_count    INTEGER NOT NULL,
+    scroll_75_count  INTEGER NOT NULL,
+    outbound_count   INTEGER NOT NULL,
+    PRIMARY KEY (project_id, day, path, lang, source)
+);
+
+-- Per project x day totals (distinct sessions/visitors cannot be summed from
+-- the per-page rows once raw events are gone).
+CREATE TABLE analytics_daily_totals (
+    project_id        TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    day               TEXT NOT NULL,
+    sessions          INTEGER NOT NULL,
+    visitors          INTEGER NOT NULL,
+    pageviews         INTEGER NOT NULL,
+    engaged_sessions  INTEGER NOT NULL,
+    engaged_ms_sum    INTEGER NOT NULL,
+    PRIMARY KEY (project_id, day)
+);
+
+-- Nightly integer signals for the company's sim. `pending` until delivered.
+CREATE TABLE analytics_signals (
+    project_id        TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    day               TEXT NOT NULL,
+    sessions          INTEGER NOT NULL,
+    visitors          INTEGER NOT NULL,
+    pageviews         INTEGER NOT NULL,
+    engagement_pm     INTEGER NOT NULL CHECK (engagement_pm BETWEEN 0 AND 1000),
+    top_pages_digest  INTEGER NOT NULL,
+    status            TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'applied')),
+    created_at        INTEGER NOT NULL,
+    applied_at        INTEGER,
+    PRIMARY KEY (project_id, day)
+);
+CREATE INDEX analytics_signals_status_idx ON analytics_signals (status);

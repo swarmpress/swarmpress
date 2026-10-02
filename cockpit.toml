@@ -46,7 +46,7 @@ packages = ["server"]
 id = "server/nextest"
 component = "server"
 [[evidence.split]]
-packages = ["agents"]
+packages = ["agents", "orchestrator"]
 id = "agents/nextest"
 component = "agents"
 [[evidence.split]]
@@ -74,14 +74,14 @@ component = "net"
 # only hold artifacts pulled under their id (none today: CI uploads one workspace report).
 [[evidence]]
 id = "server/nextest"
-title = "cargo nextest: server (sqlx::test, actors, WS, job queue)"
+title = "cargo nextest: server (SQLite, auth, leases, gateway, events, sync, web, tracker)"
 format = "junit"
 kind = "integration"
 path = ".cockpit/evidence/server__nextest/**/*.xml"
 component = "server"
 [[evidence]]
 id = "agents/nextest"
-title = "cargo nextest: agents (FakeClaude pipelines, meetings, QA)"
+title = "cargo nextest: agents + orchestrator (FakeClaude pipelines, meetings, QA, MVP loop)"
 format = "junit"
 kind = "integration"
 path = ".cockpit/evidence/agents__nextest/**/*.xml"
@@ -179,6 +179,62 @@ component = "content"
 repo = "swarmpress/swarmpress"
 workflow = "ci.yml"
 artifact = "site-kit-vitest-junit"
+branch = "main"
+
+# ---------------------------------------------------------------- extension SDK (bun test)
+# `pnpm test:sdk` (each package: bun test --reporter=junit → reports/junit.xml, then
+# packages/sdk/scripts/bun-junit.ts rewrites classnames to test file paths, vitest-style).
+[[evidence]]
+id = "sdk/bun-test"
+title = "packages/sdk bun test (manifest, content schemas, runtime helpers)"
+format = "junit"
+kind = "unit"
+path = [".cockpit/evidence/sdk__bun-test/**/*.xml", "packages/sdk/reports/junit.xml"]
+component = "sdk"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "sdk-junit"
+branch = "main"
+
+[[evidence]]
+id = "sandbox/bun-test"
+title = "packages/sandbox bun test (capabilities, limits, deterministic mode, async host I/O)"
+format = "junit"
+kind = "unit"
+path = [".cockpit/evidence/sandbox__bun-test/**/*.xml", "packages/sandbox/reports/junit.xml"]
+component = "sdk"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "sandbox-junit"
+branch = "main"
+
+# The same example bundles in headless Chromium must give the Bun result (parity).
+[[evidence]]
+id = "sandbox/playwright"
+title = "packages/sandbox browser parity (Chromium)"
+format = "playwright"
+kind = "e2e"
+path = [".cockpit/evidence/sandbox__playwright/**/*.json", "packages/sandbox/reports/playwright.json"]
+component = "sdk"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "sandbox-playwright"
+branch = "main"
+
+[[evidence]]
+id = "runner/bun-test"
+title = "packages/runner bun test (simpress CLI, examples, golden hashes, extension kinds)"
+format = "junit"
+kind = "integration"
+path = [".cockpit/evidence/runner__bun-test/**/*.xml", "packages/runner/reports/junit.xml"]
+component = "sdk"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "runner-junit"
 branch = "main"
 
 # ---------------------------------------------------------------- client (Playwright)
@@ -344,6 +400,10 @@ group = "content"
 id = "ops"
 title = "Operations"
 group = "ops"
+[[components]]
+id = "sdk"
+title = "Extension SDK"
+group = "sdk"
 
 # Tests that cannot be linked by path (Rust unit tests in a crate's lib.rs resolve to the crate's
 # src/ directory) are mapped explicitly here. Path ownership covers everything else.

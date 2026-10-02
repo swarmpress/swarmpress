@@ -3,7 +3,8 @@
 > Status: design contract for M1/M4 game logic (2026-10-01). Decisions:
 > [ADR-0028](../adr/0028-organization-model-executive-office-and-departments.md),
 > [ADR-0029](../adr/0029-a-company-runs-several-projects-each-with-its-own-team.md),
-> [ADR-0030](../adr/0030-personas-are-a-data-catalog-with-cv-hobbies-and-interests.md).
+> [ADR-0030](../adr/0030-personas-are-a-data-catalog-with-cv-hobbies-and-interests.md);
+> the central plane is the [publishing plan](publishing-plan.md) ([ADR-0031](../adr/0031-the-publishing-plan-is-the-shared-workspace-for-ceo-and-agents.md)).
 
 The player is the **CEO** of a publishing house. Like a real one, it has
 departments full of individual people, an executive office that helps the CEO
@@ -43,7 +44,7 @@ approves what matters, and delegates the rest.
 | Department | Roles (sim `Role`) | Typical rooms | What they produce |
 |---|---|---|---|
 | Executive Office | `Cfo`, `Secretary` | CEO office, Finance office | Budgets, forecasts, payroll, briefings, triage, scheduling |
-| Strategy | `Strategist`, `Analyst` | Meeting room, Strategy room | Content strategy, editorial calendar, market/competitor analysis, project proposals |
+| Strategy | `Strategist`, `Analyst`, `DataScientist` | Meeting room, Strategy room | Content strategy, editorial calendar, market/competitor analysis, project proposals; **KPIs from our own tracker** (§6a) |
 | Editorial | `EditorInChief`, `Editor`, `Writer`, `Translator`, `FactChecker` | Newsroom, Editor office, Translation desk | Articles, pages, collections, reviews, translations |
 | Photo & Video | `PhotoEditor`, `Photographer`, `VideoProducer` | Photo studio | Shoots (real assets later), photo selection from the media index, captions/alt text |
 | Web Development | `ArtDirector`, `WebDeveloper`, `UxDesigner` | Design studio | Site theme, layouts, custom blocks (agent-authored themes, ADR-0015) |
@@ -227,6 +228,49 @@ commentary.
   reports; the CEO flies blind, and the HUD shows "books not kept". You can
   run the company without one, but you'll feel it.
 
+## 6a. Data Scientist: KPIs from our own tracker
+
+The Data Scientist is a person in Strategy (persona, desk in the Strategy room)
+who owns **measurement**. Real traffic from each project's site comes back into
+the game through this role, measured by the platform's **own first-party
+tracker** (ADR-0032), not Google Analytics.
+
+- **Collection (platform code):**
+  - A tiny cookieless script, shipped in every theme by the site-kit, beacons
+    `pageview`, `engagement` (visible time), `scroll` depth and `outbound`
+    clicks to the central server (`POST /t/e`).
+  - Each event carries the project key, page path, language, referrer domain
+    and UTM tags.
+  - No cookies, no user ids, no stored IPs. Unique visitors are counted with a
+    daily rotating salt that is then destroyed.
+  - Raw events are kept 7 days at most. An hourly rollup writes
+    `analytics_daily` (project × day × page × language × source).
+- **Into the sim:** a nightly, server-issued
+  `Cmd::AnalyticsSignals { project, day, sessions, visitors, pageviews, engagement_pm, top_pages_digest }`.
+  Integer, deterministic for every replica. It feeds:
+  - **Goals** progress (for example "40k monthly readers");
+  - the audience model, blended at no more than 30% with the sim's own
+    estimate (ADR-0021);
+  - per-project revenue attribution (audience × CPM) in the CFO's ledgers.
+- **Data Scientist jobs (LLM; numbers only from the aggregates, same validator
+  rule as the CFO; raw events never reach a model):**
+  - `KpiReport`: a weekly report to the CEO (Monday 09:30 KPI review, before
+    the editorial board). Headline KPIs vs last week and vs goals, top and
+    bottom pages, language split, traffic sources, anomalies, and 3
+    recommendations.
+  - `ContentPerformance`: posted into each published work item's thread at its
+    follow-up date ("+14 days: 1,240 views, 62% engaged").
+  - `ExperimentReadout`: before/after on the affected pages when a redesign or
+    SEO change ships.
+- **Effects on play:**
+  - Strategy's pitches and the Monday board use the KPI report.
+  - Underperforming items become `update` work items.
+  - The leaderboard can show verified audience.
+- **Without a Data Scientist,** or before the tracker has data, the game runs
+  on SiteAudit facts and the sim's estimate. Goals tied to analytics show "not
+  measured yet", there are no KPI reports, and the HUD says "tracker: no data
+  yet".
+
 ## 7. Executive Secretary: delegation
 
 The Secretary is the CEO's force multiplier and the front door of the Inbox.
@@ -322,6 +366,7 @@ The server serves the same files.
 - `OpsCheck` (IT)
 - `SeoPlan`, `MarketingPlan`, `Newsletter`
 - `FinanceReport`, `HiringAffordability`
+- `KpiReport`, `ContentPerformance`, `ExperimentReadout` (data scientist)
 - `SecretaryTriage`, `CeoBriefing`, `DraftReply`
 - `CandidateGeneration`
 
@@ -334,7 +379,7 @@ Executors follow ADR-0024:
 | Department | People |
 |---|---|
 | Executive Office | **CFO** Elena Marchetti (new) · **Secretary** Paolo Bianchi (new) |
-| Strategy | Chiara Galli, content strategist (new) |
+| Strategy | Chiara Galli, content strategist (new) · Matteo Greco, data scientist (new) |
 | Editorial | **EiC** Sophia (legacy "editorial leader"), **Editor** Marco (legacy senior editor), **Writers** Giulia (food), Isabella (outdoors), Lorenzo (history/culture) |
 | Photo & Video | Francesca (photographer, legacy) |
 | Web Development | Luca Moretti, web developer (new; the legacy name "Luca" was the linker) |
@@ -342,7 +387,7 @@ Executors follow ADR-0024:
 | SEO & Marketing | Alessia Ferri, SEO & marketing specialist (new) |
 
 Everyone is staffed 100% on cinqueterre.travel, except the CFO, the
-Secretary and the strategist (0% project, company-wide). The legacy writer
+Secretary, the strategist and the data scientist (0% project, company-wide). The legacy writer
 routing (`agent-page-mapping.ts`) becomes **topic affinities** in each
 persona. Within a project team, page types go to the writer whose affinities
 match (food → Giulia, hiking → Isabella, history → Lorenzo, hotels → Sophia,

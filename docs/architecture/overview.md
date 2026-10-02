@@ -6,7 +6,12 @@ SimPress has four moving parts:
 - a **browser client** that renders a replica of it;
 - the **site repositories** where the staff's real work lands.
 
-Postgres is the only infrastructure ([ADR-0008](../adr/0008-postgres-only-infrastructure.md)).
+The central server keeps its small dataset in embedded SQLite
+([ADR-0039](../adr/0039-sqlite-is-the-central-database.md), superseding ADR-0008); companies run
+local-first in the browser ([ADR-0038](../adr/0038-local-first-the-browser-is-authoritative-for-a-company.md)).
+The diagram below still shows the pre-pivot server; the central role now is auth, companies and
+leases, the content gateway, the event inbox, sync blobs, the web fetch proxy and the tracker
+(see `crates/server/README.md`).
 
 ```
 Browser ─────────────────────────────────────────────┐

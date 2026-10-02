@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../packages/sdk/schemas/manifest.schema.json",
+  "id": "dev.simpress.examples.harvest-season",
+  "name": "Harvest season",
+  "version": "0.1.0",
+  "sdk": "^0.1.0",
+  "description": "A vineyard-raised wine writer and two harvest happenings for a Ligurian publishing house.",
+  "kinds": ["content-pack"],
+  "capabilities": [],
+  "entry": {
+    "content": {
+      "personas": ["content/personas/rosa.toml"],
+      "happenings": ["content/happenings/grape-harvest.json", "content/happenings/first-sciacchetra.json"],
+      "prompt_layers": ["content/prompt-layers/harvest-writer.json"]
+    }
+  },
+  "provenance": { "author": { "name": "SimPress examples" } }
+}
