@@ -8,6 +8,8 @@ paths:
   - crates/agents/src/article.rs
   - crates/agents/src/llm.rs
   - "crates/agents/tests/pipeline*.rs"
+  - crates/agents/tests/article.rs
+  - "crates/agents/tests/fixtures/article/**"
   - "crates/orchestrator/**"
   - "crates/agents/prompts/**"
   - crates/orchestrator-wasm/src/lib.rs

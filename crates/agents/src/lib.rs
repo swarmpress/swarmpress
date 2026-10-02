@@ -19,10 +19,14 @@
 //! - [`llm`]: the [`Llm`] trait with Claude and fake backends.
 //! - [`meetings`]: moderated multi-agent meetings.
 //! - [`pipeline`]: the editorial pipeline.
+//! - [`article`]: the staged article (ADR-0058): stage schemas and typed
+//!   results, plain-text rules, per-section checks, deterministic assembly
+//!   of the page and the editor's reading text.
 //! - [`qa`]: the QA coherence review.
 
 #![recursion_limit = "256"]
 
+pub mod article;
 pub mod house_style;
 pub mod jobs;
 pub mod llm;

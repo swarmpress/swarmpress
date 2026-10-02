@@ -1,0 +1,31 @@
+{
+  "heroes": [
+    {
+      "alias": "M1",
+      "media_id": "manarola-sights-001",
+      "url": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
+      "alt": "Manarola seen from the sea at dusk",
+      "about": "manarola, sights, village-overview, sunset",
+      "credit": "Photo by Luca Bravo on Unsplash"
+    },
+    {
+      "alias": "M2",
+      "media_id": "manarola-sights-014",
+      "url": "https://images.unsplash.com/photo-1499678329028-101435549a4e?q=80&w=2670&auto=format&fit=crop",
+      "alt": "Terraced vineyards above Manarola",
+      "about": "manarola, sights, viewpoint"
+    },
+    {
+      "alias": "M3",
+      "media_id": "region-sights-007",
+      "url": "https://images.unsplash.com/photo-1538681105587-85640961bf8b?q=80&w=2670&auto=format&fit=crop",
+      "alt": "The Cinque Terre coast from the high path",
+      "about": "region, sights, viewpoint"
+    }
+  ],
+  "links": [
+    { "alias": "L1", "page_id": "manarola", "route": "/en/manarola", "title": "Manarola" },
+    { "alias": "L2", "page_id": "culinary", "route": "/en/culinary", "title": "Food and Wine" },
+    { "alias": "L3", "page_id": "manarola-hiking", "route": "/en/manarola/hiking", "title": "Hiking from Manarola" }
+  ]
+}

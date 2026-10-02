@@ -14,6 +14,7 @@ version = "0.2.0"
 dependencies = [
  "async-trait",
  "claude",
+ "content-model",
  "insta",
  "serde",
  "serde_json",

@@ -1,0 +1,126 @@
+{
+  "body": [
+    {
+      "badge": "Food & Drink",
+      "height": "70vh",
+      "image": "https://images.unsplash.com/photo-1499678329028-101435549a4e?q=80&w=2000&auto=format&fit=crop",
+      "subtitle": "What the Sciacchetrà harvest looks like from the path above the village, and how to watch it without getting in the way.",
+      "title": "Crates, Ladders &amp; Sweet Wine: Harvest Week in Manarola",
+      "type": "editorial-hero"
+    },
+    {
+      "markdown": "In the second week of September the terraces above Manarola fill with crates, ladders and people who have done this every year of their lives.",
+      "type": "paragraph"
+    },
+    {
+      "markdown": "The grapes are for Sciacchetrà, the sweet wine of the Cinque Terre, and the harvest is short, steep and done almost entirely by hand.",
+      "type": "paragraph"
+    },
+    {
+      "level": 2,
+      "text": "Where the vines grow",
+      "type": "heading"
+    },
+    {
+      "markdown": "The vineyards sit on dry stone terraces that climb from the village to the ridge. Each strip is only a few rows wide, so no tractor fits, and the pickers carry every crate down narrow stairs cut into the walls.",
+      "type": "paragraph"
+    },
+    {
+      "markdown": "A small monorail, the trenino, now does some of the lifting. It runs on a single rail up the slope and saves the growers hours of carrying on the steepest plots.",
+      "type": "paragraph"
+    },
+    {
+      "level": 2,
+      "text": "How to watch the harvest",
+      "type": "heading"
+    },
+    {
+      "markdown": "You can see the work from the public path that leaves the top of the village and follows the terraces toward Volastra. Go early: picking starts at first light and stops before the midday heat.",
+      "type": "paragraph"
+    },
+    {
+      "items": [
+        "Stay on the marked path and leave the vineyard gates as you find them.",
+        "Step aside for anyone carrying a crate; they have the right of way.",
+        "Ask before you photograph people at work."
+      ],
+      "ordered": false,
+      "type": "list"
+    },
+    {
+      "content": "The path has little shade and no fountain after the last houses, so carry water and wear shoes with a firm grip.",
+      "style": "info",
+      "type": "callout"
+    },
+    {
+      "alt": "Manarola seen from the sea at dusk",
+      "caption": "Photo by Luca Bravo on Unsplash",
+      "src": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=1200&auto=format&fit=crop",
+      "type": "image"
+    },
+    {
+      "level": 2,
+      "text": "What ends up in the glass",
+      "type": "heading"
+    },
+    {
+      "markdown": "After picking, the best bunches are laid out on racks to dry for weeks, away from the sun. Only then are they pressed, which is why a small bottle takes so many grapes.",
+      "type": "paragraph"
+    },
+    {
+      "markdown": "Several cellars in Manarola pour it by the glass with a plate of dry biscuits. Order one, drink it slowly, and ask where the grapes came from.",
+      "type": "paragraph"
+    },
+    {
+      "actions": [
+        {
+          "href": "/en/manarola",
+          "label": "Manarola",
+          "variant": "primary"
+        },
+        {
+          "href": "/en/manarola/hiking",
+          "label": "Hiking from Manarola",
+          "variant": "secondary"
+        }
+      ],
+      "badge": "Practical Notes",
+      "content": "The harvest moves with the weather and can start a week early or late, so ask in the village before you plan around it. Trains stop in Manarola all day &amp; evening, and the path to the terraces starts behind the church square.",
+      "title": "Before you go",
+      "type": "closing-note"
+    }
+  ],
+  "id": "content-5d2c8e1f0a7b3c49",
+  "metadata": {
+    "author": "Giulia Rossi",
+    "brief_ref": "6712345678901234567",
+    "category": "Food & Drink",
+    "hero_media_id": "manarola-sights-014",
+    "inline_media_id": "manarola-sights-001"
+  },
+  "page_type": "blog-article",
+  "seo": {
+    "description": {
+      "en": "What the Sciacchetrà harvest looks like from the path above the village, and how to watch it without getting in the way."
+    },
+    "keywords": [
+      "Manarola",
+      "Sciacchetrà",
+      "wine harvest",
+      "vineyards"
+    ],
+    "title": {
+      "en": "Crates, Ladders & Sweet Wine: Harvest Week in Manarola | The Dispatch"
+    }
+  },
+  "slug": {
+    "de": "/de/blog/harvest-week-in-manarola",
+    "en": "/en/blog/harvest-week-in-manarola",
+    "fr": "/fr/blog/harvest-week-in-manarola",
+    "it": "/it/blog/harvest-week-in-manarola"
+  },
+  "status": "in_review",
+  "title": {
+    "en": "Crates, Ladders & Sweet Wine: Harvest Week in Manarola"
+  }
+}

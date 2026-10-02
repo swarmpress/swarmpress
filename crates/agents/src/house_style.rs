@@ -110,7 +110,8 @@ impl StyleGuide {
     }
 }
 
-fn contains_phrase(hay: &str, needle: &str) -> bool {
+/// Whether `needle` occurs in `hay` as whole words (both already lowercased).
+pub fn contains_phrase(hay: &str, needle: &str) -> bool {
     if needle.is_empty() {
         return false;
     }

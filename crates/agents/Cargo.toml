@@ -18,6 +18,8 @@ toml = "0.8"
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 insta = { version = "1", features = ["json"] }
+# Tests only: the assembled article is validated against the v2 page schema.
+content-model = { path = "../content-model" }
 
 [lints]
 workspace = true

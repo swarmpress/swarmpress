@@ -44,3 +44,6 @@
   features: [FEAT-031]
 - match: { classname: agents, title: "jobs::numbers::tests::" }
   features: [FEAT-031]
+# The staged article's unit tests in src/article.rs (section ids, sentence splitting, media URLs).
+- match: { classname: agents, title: "article::tests::" }
+  features: [FEAT-032]

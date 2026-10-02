@@ -1,0 +1,97 @@
+{
+  "outline": {
+    "title": "Crates, Ladders & Sweet Wine: Harvest Week in Manarola",
+    "dek": "What the Sciacchetrà harvest looks like from the path above the village, and how to watch it without getting in the way.",
+    "category": "Food & Drink",
+    "hero": "M2",
+    "sections": [
+      {
+        "heading": "Where the vines grow",
+        "points": ["dry stone terraces too narrow for machines", "the trenino monorail"],
+        "words": 120
+      },
+      {
+        "heading": "How to watch the harvest",
+        "points": ["the public path toward Volastra", "go early", "path etiquette"],
+        "words": 150
+      },
+      {
+        "heading": "What ends up in the glass",
+        "points": ["drying the grapes on racks", "tasting in the village"],
+        "words": 100
+      }
+    ],
+    "closing_title": "Before you go",
+    "links": ["L1", "L3"]
+  },
+  "intro": {
+    "blocks": [
+      {
+        "type": "paragraph",
+        "text": "In the second week of September the terraces above Manarola fill with crates, ladders and people who have done this every year of their lives.",
+        "items": []
+      },
+      {
+        "type": "paragraph",
+        "text": "The grapes are for Sciacchetrà, the sweet wine of the Cinque Terre, and the harvest is short, steep and done almost entirely by hand.",
+        "items": []
+      }
+    ]
+  },
+  "sections": [
+    {
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "The vineyards sit on dry stone terraces that climb from the village to the ridge. Each strip is only a few rows wide, so no tractor fits, and the pickers carry every crate down narrow stairs cut into the walls.",
+          "items": []
+        },
+        {
+          "type": "paragraph",
+          "text": "A small monorail, the **trenino**, now does some of the lifting. It runs on a single rail up the slope and saves the growers hours of carrying on the steepest plots.",
+          "items": []
+        }
+      ]
+    },
+    {
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "You can see the work from the public path that leaves the top of the village and follows the terraces toward Volastra. Go early: picking starts at first light and stops before the midday heat.",
+          "items": []
+        },
+        {
+          "type": "list",
+          "text": "",
+          "items": [
+            "Stay on the marked path and leave the vineyard gates as you find them.",
+            "Step aside for anyone carrying a crate; they have the right of way.",
+            "Ask before you photograph people at work."
+          ]
+        },
+        {
+          "type": "tip",
+          "text": "The path has little shade and no fountain after the last houses, so carry water and wear shoes with a firm grip.",
+          "items": []
+        }
+      ]
+    },
+    {
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "After picking, the best bunches are laid out on racks to dry for weeks, away from the sun. Only then are they pressed, which is why a small bottle takes so many grapes.",
+          "items": []
+        },
+        {
+          "type": "paragraph",
+          "text": "Several cellars in Manarola pour it by the glass with a plate of dry biscuits. Order one, drink it slowly, and ask where the grapes came from.",
+          "items": []
+        }
+      ]
+    }
+  ],
+  "closing": {
+    "content": "The harvest moves with the weather and can start a week early or late, so ask in the village before you plan around it. Trains stop in Manarola all day & evening, and the path to the terraces starts behind the church square."
+  }
+}
