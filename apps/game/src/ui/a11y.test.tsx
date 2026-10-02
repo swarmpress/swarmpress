@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import axe from 'axe-core'
 import { afterEach, describe, expect, it } from 'vitest'
+import wire from './fixtures/plan-wire.json'
+import { normalizePlanText, type PlanTextWire } from './plan-wire'
 import type { PanelId } from './store'
 import { flush, setup } from './testing'
 
@@ -49,6 +51,20 @@ describe('axe: no violations', () => {
     }
   })
 
+  it('text-only work item from an orchestrator thread', async () => {
+    ctx = setup()
+    const text = normalizePlanText(wire as PlanTextWire)
+    for (const [id, t] of Object.entries(text.items)) ctx.source.planStore.putItem(id, t)
+    for (const [id, posts] of Object.entries(text.posts)) for (const { id: _id, ...p } of posts) ctx.source.planStore.addPost(id, p)
+    ctx.store.panel.value = 'plan'
+    await flush()
+    expect(await audit(ctx.el), 'board').toEqual([])
+    ctx.store.selectedItem.value = 'work-item-21'
+    await flush()
+    expect(document.querySelectorAll('li.post')).toHaveLength(6)
+    expect(await audit(ctx.el), 'detail').toEqual([])
+  })
+
   it('project detail', async () => {
     ctx = setup()
     ctx.store.panel.value = 'projects'
@@ -69,7 +85,7 @@ describe('axe: no violations', () => {
 
   it('degraded states (no CFO, no secretary, no data scientist)', async () => {
     ctx = setup()
-    for (const s of ['staff-7', 'staff-8', 'staff-13']) ctx.source.apply(JSON.stringify({ Fire: { staff: s } }))
+    for (const s of ['staff-7', 'staff-8', 'staff-13']) ctx.source.applySync(JSON.stringify({ Fire: { staff: s } }))
     for (const id of ['finance', 'inbox', 'performance', 'hiring'] as PanelId[]) {
       ctx.store.panel.value = id
       await flush()

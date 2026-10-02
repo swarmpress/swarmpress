@@ -18,12 +18,11 @@ export function useCandidates(): CandidateView[] {
   const fromOrg = org.candidates
   const list: CandidateJson[] =
     fromOrg ??
-    store.source
-      .listPersonas()
+    store.personas.value
       .filter((p) => p.candidate && !employed.has(p.slug))
       .map((p) => ({ id: `candidate-${p.id}`, persona: p.slug, askingEurMonth: p.salaryEurMonth, affordability: null }))
   return list.flatMap((c) => {
-    const persona = store.source.getPersona(c.persona)
+    const persona = store.persona(c.persona)
     return persona ? [{ candidate: c, persona }] : []
   })
 }

@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { cmd, eurMonthToCentsPerDay, toJson, type Command } from './commands'
 import { FIXTURE_NOW, MockDataSource } from './mock-source'
 
-const apply = (s: MockDataSource, c: Command) => s.apply(toJson(c))
-const check = (s: MockDataSource, c: Command) => s.validate(toJson(c))
-const staff = (s: MockDataSource, id: string) => s.getOrg().staff.find((x) => x.id === id)!
+const apply = (s: MockDataSource, c: Command) => s.applySync(toJson(c))
+const check = (s: MockDataSource, c: Command) => s.validateSync(toJson(c))
+const staff = (s: MockDataSource, id: string) => s.current.org.staff.find((x) => x.id === id)!
 
 describe('command JSON (serde external tagging, §5)', () => {
   it('encodes struct, newtype and unit variants', () => {
@@ -23,20 +23,20 @@ describe('command JSON (serde external tagging, §5)', () => {
 })
 
 describe('MockDataSource', () => {
-  it('serves the fixtures and the fixture clock', () => {
+  it('serves the fixtures and the fixture clock', async () => {
     const s = new MockDataSource()
-    expect(s.getOrg().staff).toHaveLength(13)
-    expect(s.getOrg().executive).toMatchObject({ cfo: 'staff-7', secretary: 'staff-8' })
-    expect(s.getPersona('giulia')?.name).toBe('Giulia Rossi')
-    expect(s.now()).toBe(FIXTURE_NOW)
-    expect(s.getOrg().projects[0].missingRoles).toEqual(['translator'])
+    expect(s.current.org.staff).toHaveLength(13)
+    expect(s.current.org.executive).toMatchObject({ cfo: 'staff-7', secretary: 'staff-8' })
+    expect((await s.getPersona('giulia'))?.name).toBe('Giulia Rossi')
+    expect(await s.now()).toBe(FIXTURE_NOW)
+    expect(s.current.org.projects[0].missingRoles).toEqual(['translator'])
   })
 
   it('validate() never mutates', () => {
     const s = new MockDataSource()
-    const before = JSON.stringify(s.getOrg())
+    const before = JSON.stringify(s.current.org)
     expect(check(s, cmd.assign('staff-1', 'project-2', 20)).ok).toBe(true)
-    expect(JSON.stringify(s.getOrg())).toBe(before)
+    expect(JSON.stringify(s.current.org)).toBe(before)
   })
 
   it('enforces the 100% allocation rule', () => {
@@ -48,7 +48,7 @@ describe('MockDataSource', () => {
       { project: 'project-1', allocation: 80 },
       { project: 'project-2', allocation: 20 },
     ])
-    expect(s.getOrg().projects[1].team).toEqual([{ staff: 'staff-1', allocation: 20 }])
+    expect(s.current.org.projects[1].team).toEqual([{ staff: 'staff-1', allocation: 20 }])
     // Re-allocating on the same project replaces, not adds.
     expect(apply(s, cmd.assign('staff-1', 'project-1', 70)).ok).toBe(true)
     expect(check(s, cmd.assign('staff-1', 'project-2', 30)).ok).toBe(true)
@@ -59,7 +59,7 @@ describe('MockDataSource', () => {
   it('removes from projects and clears the lead', () => {
     const s = new MockDataSource()
     expect(apply(s, cmd.remove('staff-4', 'project-1')).ok).toBe(true)
-    expect(s.getOrg().projects[0].lead).toBeNull()
+    expect(s.current.org.projects[0].lead).toBeNull()
     expect(staff(s, 'staff-4').projects).toEqual([])
     expect(check(s, cmd.remove('staff-4', 'project-1')).ok).toBe(false)
   })
@@ -68,7 +68,7 @@ describe('MockDataSource', () => {
     const s = new MockDataSource()
     expect(check(s, cmd.setLead('project-1', 'staff-9')).reason).toMatch(/must be on the cinqueterre\.travel team/)
     expect(apply(s, cmd.setLead('project-1', 'staff-5')).ok).toBe(true)
-    expect(s.getOrg().projects[0].lead).toBe('staff-5')
+    expect(s.current.org.projects[0].lead).toBe('staff-5')
   })
 
   it('gates CreateProject and activating projects by company level', () => {
@@ -76,25 +76,25 @@ describe('MockDataSource', () => {
     const create = cmd.createProject({ name: 'Portofino Weekly', slug: 'portofino-weekly', domain: 'portofino.travel', budgetEurMonth: 10000 })
     expect(check(s, create).reason).toMatch(/Locked: Company level 2 allows 1 running project\. Level 3 unlocks 2\./)
     expect(check(s, cmd.setStatus('project-2', 'active')).ok).toBe(false)
-    s.patch({ org: { ...s.getOrg(), company: { level: 3, maxProjects: 2 } } })
+    s.patch({ org: { ...s.current.org, company: { level: 3, maxProjects: 2 } } })
     expect(apply(s, create).ok).toBe(true)
-    expect(s.getOrg().projects.at(-1)).toMatchObject({ slug: 'portofino-weekly', status: 'active', budgetEurMonth: 10000 })
-    expect(s.getFinance().projects.at(-1)).toMatchObject({ budgetEurMonth: 10000, spentEurMonth: 0 })
+    expect(s.current.org.projects.at(-1)).toMatchObject({ slug: 'portofino-weekly', status: 'active', budgetEurMonth: 10000 })
+    expect(s.current.finance.projects.at(-1)).toMatchObject({ budgetEurMonth: 10000, spentEurMonth: 0 })
   })
 
   it('sets budgets and clears a resolved overrun alert', () => {
     const s = new MockDataSource()
-    expect(s.getFinance().projects[0].overBudget).toBe(true)
+    expect(s.current.finance.projects[0].overBudget).toBe(true)
     expect(apply(s, cmd.setBudgetEurMonth('project-1', 50000)).ok).toBe(true)
-    expect(s.getFinance().projects[0]).toMatchObject({ budgetEurMonth: 50000, overBudget: false })
-    expect(s.getFinance().alerts).toEqual([])
+    expect(s.current.finance.projects[0]).toMatchObject({ budgetEurMonth: 50000, overBudget: false })
+    expect(s.current.finance.alerts).toEqual([])
   })
 
   it('answers tickets once, with a valid option, and posts a decision to linked work items', () => {
     const s = new MockDataSource()
     expect(check(s, cmd.answer('ticket-3', 'nope')).reason).toMatch(/not an option/)
     expect(apply(s, cmd.answer('ticket-3', 'cut-scope')).ok).toBe(true)
-    const t = s.getInbox().tickets.find((x) => x.id === 'ticket-3')!
+    const t = s.current.inbox.tickets.find((x) => x.id === 'ticket-3')!
     expect(t).toMatchObject({ status: 'resolved', resolvedBy: 'ceo', answer: 'cut-scope' })
     expect(check(s, cmd.answer('ticket-3', 'cut-scope')).reason).toBe('Ticket already resolved')
     const last = s.planStore.posts('work-item-5').at(-1)!
@@ -104,10 +104,10 @@ describe('MockDataSource', () => {
   it('delegates to the secretary, and refuses without one', () => {
     const s = new MockDataSource()
     expect(apply(s, cmd.delegate({ ScheduleMeeting: { attendees: ['staff-7', 'staff-4'], agenda: 'Budget review', project: null } })).ok).toBe(true)
-    expect(s.getInbox().secretaryQueue.at(-1)).toMatchObject({ kind: 'schedule-meeting', status: 'queued' })
+    expect(s.current.inbox.secretaryQueue.at(-1)).toMatchObject({ kind: 'schedule-meeting', status: 'queued' })
     expect(check(s, cmd.delegate({ ScheduleMeeting: { attendees: [], agenda: 'x', project: null } })).reason).toMatch(/attendee/)
     expect(apply(s, cmd.fire('staff-8')).ok).toBe(true)
-    expect(s.getOrg().executive.secretary).toBeNull()
+    expect(s.current.org.executive.secretary).toBeNull()
     expect(check(s, cmd.delegate({ PrepareBriefing: { project: null } })).reason).toMatch(/No executive secretary/)
     expect(check(s, cmd.setDelegation('low')).ok).toBe(false)
     expect(check(s, cmd.setDelegation('off')).ok).toBe(true)
@@ -116,15 +116,15 @@ describe('MockDataSource', () => {
   it('sets the delegation policy', () => {
     const s = new MockDataSource()
     expect(apply(s, cmd.setDelegation('low-and-medium')).ok).toBe(true)
-    expect(s.getInbox().delegation).toBe('low-and-medium')
-    expect(s.getOrg().executive.delegation).toBe('low-and-medium')
+    expect(s.current.inbox.delegation).toBe('low-and-medium')
+    expect(s.current.org.executive.delegation).toBe('low-and-medium')
   })
 
   it('stops keeping the books when the CFO is fired', () => {
     const s = new MockDataSource()
     expect(apply(s, cmd.fire('staff-7')).ok).toBe(true)
-    expect(s.getOrg().executive.cfo).toBeNull()
-    expect(s.getFinance()).toMatchObject({ booksKept: false, alerts: [], report: null })
+    expect(s.current.org.executive.cfo).toBeNull()
+    expect(s.current.finance).toMatchObject({ booksKept: false, alerts: [], report: null })
   })
 
   it('praises once per person per day, promotes, sets salary', () => {
@@ -143,13 +143,13 @@ describe('MockDataSource', () => {
   it('hires from the pool', () => {
     const s = new MockDataSource()
     expect(apply(s, cmd.hire('candidate-101')).ok).toBe(true)
-    const anna = s.getOrg().staff.at(-1)!
+    const anna = s.current.org.staff.at(-1)!
     expect(anna).toMatchObject({ id: 'staff-14', persona: 'anna', role: 'translator', projects: [] })
-    expect(s.getOrg().candidates?.some((c) => c.id === 'candidate-101')).toBe(false)
+    expect(s.current.org.candidates?.some((c) => c.id === 'candidate-101')).toBe(false)
     expect(check(s, cmd.hire('candidate-101')).ok).toBe(false)
     // Staffing the translator clears the missing role.
     expect(apply(s, cmd.assign(anna.id, 'project-1', 100)).ok).toBe(true)
-    expect(s.getOrg().projects[0].missingRoles).toEqual([])
+    expect(s.current.org.projects[0].missingRoles).toEqual([])
   })
 
   describe('plan commands (publishing-plan.md)', () => {
@@ -162,7 +162,7 @@ describe('MockDataSource', () => {
       expect(check(s, cmd.assignPhase('work-item-2', 1, 'staff-9')).reason).toBe('Chiara is not on the cinqueterre.travel team')
       expect(check(s, cmd.assignPhase('work-item-2', 0, 'staff-2')).reason).toMatch(/already done/)
       expect(apply(s, cmd.assignPhase('work-item-2', 1, 'staff-2')).ok).toBe(true)
-      expect(s.getPlan().items.find((i) => i.id === 'work-item-2')!.phases[1].assignee).toBe('staff-2')
+      expect(s.current.plan.items.find((i) => i.id === 'work-item-2')!.phases[1].assignee).toBe('staff-2')
       expect(s.planStore.posts('work-item-2').at(-1)).toMatchObject({ type: 'decision', author: 'ceo' })
     })
 
@@ -171,7 +171,7 @@ describe('MockDataSource', () => {
       apply(s, cmd.hire('candidate-101'))
       apply(s, cmd.assign('staff-14', 'project-1', 100))
       expect(apply(s, cmd.assignPhase('work-item-8', 0, 'staff-14')).ok).toBe(true)
-      const it8 = s.getPlan().items.find((i) => i.id === 'work-item-8')!
+      const it8 = s.current.plan.items.find((i) => i.id === 'work-item-8')!
       expect(it8.phases[0].state).toBe('pending')
       expect(it8.status).toBe('planned')
     })
@@ -179,7 +179,7 @@ describe('MockDataSource', () => {
     it('re-prioritizes, approves only items in review, cancels', () => {
       const s = new MockDataSource()
       expect(apply(s, cmd.setPriority('work-item-3', 'urgent')).ok).toBe(true)
-      expect(s.getPlan().items.find((i) => i.id === 'work-item-3')!.priority).toBe('urgent')
+      expect(s.current.plan.items.find((i) => i.id === 'work-item-3')!.priority).toBe('urgent')
       expect(check(s, cmd.setItemStatus('work-item-3', 'approved')).reason).toMatch(/Only items in review/)
       expect(apply(s, cmd.setItemStatus('work-item-12', 'approved')).ok).toBe(true)
       expect(apply(s, cmd.setItemStatus('work-item-4', 'cancelled')).ok).toBe(true)
@@ -188,10 +188,10 @@ describe('MockDataSource', () => {
 
     it('accepts a proposal into a new backlog item, once', () => {
       const s = new MockDataSource()
-      const n = s.getPlan().items.length
+      const n = s.current.plan.items.length
       expect(apply(s, cmd.acceptProposal('work-item-1', 'post-14')).ok).toBe(true)
-      const created = s.getPlan().items.at(-1)!
-      expect(s.getPlan().items).toHaveLength(n + 1)
+      const created = s.current.plan.items.at(-1)!
+      expect(s.current.plan.items).toHaveLength(n + 1)
       expect(created).toMatchObject({ kind: 'newsletter', status: 'backlog', workstream: 'ws-1' })
       expect(s.planStore.text().items[created.id].title).toBe('Harvest newsletter series (3 issues)')
       expect(s.planStore.posts('work-item-1').find((p) => p.id === 'post-14')!.accepted).toBe(true)
@@ -201,12 +201,12 @@ describe('MockDataSource', () => {
 
     it('sends a phase to the Agency and books the fee', () => {
       const s = new MockDataSource()
-      const agency = s.getFinance().company.agencyEur
+      const agency = s.current.finance.company.agencyEur
       expect(apply(s, cmd.sendToAgency('work-item-8', 0)).ok).toBe(true)
-      const it8 = s.getPlan().items.find((i) => i.id === 'work-item-8')!
+      const it8 = s.current.plan.items.find((i) => i.id === 'work-item-8')!
       expect(it8.phases[0]).toMatchObject({ agency: true, assignee: null, state: 'working' })
       expect(it8.status).toBe('in-progress')
-      expect(s.getFinance().company.agencyEur).toBe(agency + 360)
+      expect(s.current.finance.company.agencyEur).toBe(agency + 360)
       expect(check(s, cmd.sendToAgency('work-item-8', 0)).reason).toBe('Already with the Agency')
     })
 

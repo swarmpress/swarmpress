@@ -1,5 +1,5 @@
 import { PANELS, StoreContext, useStore, type OverlayStore, type PanelId } from '../store'
-import { Icon } from './common'
+import { Icon, Panel } from './common'
 import { Finance } from './Finance'
 import { Hiring } from './Hiring'
 import { Inbox } from './Inbox'
@@ -69,6 +69,18 @@ function Toast() {
   )
 }
 
+/** Before the first snapshot arrives from the (async) data source. */
+function Loading({ id }: { id: PanelId }) {
+  const def = PANELS.find((p) => p.id === id)!
+  return (
+    <Panel id={id} title={def.label}>
+      <p class="muted" role="status">
+        Loading…
+      </p>
+    </Panel>
+  )
+}
+
 function Body() {
   const store = useStore()
   const id = store.panel.value
@@ -76,7 +88,7 @@ function Body() {
   return (
     <>
       <Toolbar />
-      {View && <View />}
+      {id && View && (store.ready.value ? <View /> : <Loading id={id} />)}
       <ProfileCard />
       <Toast />
     </>

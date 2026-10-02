@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { cmd } from '../commands'
 import { eur, sentence, titleCase } from '../format'
 import type { Persona } from '../personas'
@@ -37,7 +37,7 @@ export function ProfileCard() {
   if (!target) return null
 
   const staff = 'staff' in target ? store.staff(target.staff) : undefined
-  const persona: Persona | undefined = staff ? store.personaOf(staff.id) : 'persona' in target ? store.source.getPersona(target.persona) : undefined
+  const persona: Persona | undefined = staff ? store.personaOf(staff.id) : 'persona' in target ? store.persona(target.persona) : undefined
   if (!persona) return null
   const candidate = !staff ? pool.find((c) => c.persona.slug === persona.slug)?.candidate : undefined
 
@@ -167,7 +167,7 @@ function Relationships({ persona }: { persona: Persona }) {
   if (friends.length + friction.length === 0) return null
   const who = (slug: string) => {
     const s = store.org.value.staff.find((x) => x.persona === slug)
-    return s ? <PersonButton staff={s.id} compact /> : <span class="chip">{store.source.getPersona(slug)?.name ?? slug}</span>
+    return s ? <PersonButton staff={s.id} compact /> : <span class="chip">{store.persona(slug)?.name ?? slug}</span>
   }
   return (
     <div class="facts">
@@ -243,10 +243,11 @@ export function AllocationEditor({ staff }: { staff: StaffJson }) {
   const pct = edit?.key === key ? edit.pct : (current ?? Math.min(max, 50))
   const setPct = (n: number) => setEdit({ key, pct: n })
   const value = Math.min(pct, max)
-  const verdict = useMemo(
-    () => (value < 1 ? { ok: false, reason: max === 0 ? `Fully allocated elsewhere (${allocationTotal(staff, project)}%)` : 'Pick at least 1%' } : store.check(cmd.assign(staff.id, project, value))),
-    [staff, project, value, store.org.value],
-  )
+  // store.check() is cached per snapshot and re-renders when the source answers.
+  const verdict =
+    value < 1
+      ? { ok: false, reason: max === 0 ? `Fully allocated elsewhere (${allocationTotal(staff, project)}%)` : 'Pick at least 1%' }
+      : store.check(cmd.assign(staff.id, project, value))
   if (projects.length === 0) return null
   return (
     <form
@@ -254,7 +255,7 @@ export function AllocationEditor({ staff }: { staff: StaffJson }) {
       aria-labelledby="assign-title"
       onSubmit={(e) => {
         e.preventDefault()
-        if (verdict.ok) store.run(cmd.assign(staff.id, project, value), `Assigned ${value}% to ${store.projectName(project)}`)
+        if (verdict.ok) void store.run(cmd.assign(staff.id, project, value), `Assigned ${value}% to ${store.projectName(project)}`)
       }}
     >
       <h4 id="assign-title">Assign to project</h4>
@@ -319,7 +320,7 @@ function StaffActions({ staff, name }: { staff: StaffJson; name: string }) {
           type="button"
           class="btn btn-danger"
           onClick={() => {
-            if (store.run(cmd.fire(staff.id), `${name} has left the company`).ok) store.closeProfile()
+            void store.run(cmd.fire(staff.id), `${name} has left the company`).then((r) => r.ok && store.closeProfile())
           }}
         >
           Confirm: fire {name}

@@ -27,6 +27,7 @@ export function WorkItemDetail({ item }: { item: WorkItemJson }) {
         <h3 class="detail-title">{t?.title ?? item.id}</h3>
         <Badge tone={item.status === 'blocked' ? 'bad' : item.status === 'published' ? 'good' : 'info'}>{sentence(item.status)}</Badge>
         <Badge tone={priorityTone(item.priority)}>{sentence(item.priority)}</Badge>
+        {item.textOnly && <Badge tone="neutral">Status from the thread</Badge>}
       </div>
       <p class="small muted">
         {sentence(item.kind)} · {store.projectName(item.project)}
@@ -191,7 +192,7 @@ function PhaseRow({ item, index }: { item: WorkItemJson; index: number }) {
             class="btn"
             disabled={!verdict?.ok}
             onClick={() => {
-              if (store.run(cmd.assignPhase(item.id, index, who), `${sentence(p.kind)} → ${store.nameOf(who)}`).ok) setWho('')
+              void store.run(cmd.assignPhase(item.id, index, who), `${sentence(p.kind)} → ${store.nameOf(who)}`).then((r) => r.ok && setWho(''))
             }}
           >
             Reassign
@@ -259,7 +260,6 @@ function Mentions({ text }: { text: string }) {
 export function Thread({ item, posts }: { item: WorkItemJson; posts: PlanPost[] }) {
   const store = useStore()
   const [draft, setDraft] = useState('')
-  const now = store.now.value
   return (
     <section aria-labelledby="thread-title" class="thread">
       <h4 id="thread-title">
@@ -275,14 +275,9 @@ export function Thread({ item, posts }: { item: WorkItemJson; posts: PlanPost[] 
         onSubmit={(e) => {
           e.preventDefault()
           if (!draft.trim()) return
-          store.source.planStore.addPost(item.id, {
-            type: 'comment',
-            author: 'ceo',
-            day: Math.floor(now / 1440),
-            minute: now % 1440,
-            text: draft.trim(),
-          })
+          const text = draft.trim()
           setDraft('')
+          void store.comment(item.id, text)
         }}
       >
         <label class="field">
@@ -300,7 +295,7 @@ export function Thread({ item, posts }: { item: WorkItemJson; posts: PlanPost[] 
 export function ThreadPost({ item, post: p }: { item: WorkItemJson; post: PlanPost }) {
   const store = useStore()
   const isStaff = p.author.startsWith('staff-')
-  const when = `Day ${p.day + 1} · ${pad2(Math.floor(p.minute / 60))}:${pad2(p.minute % 60)}`
+  const when = p.day != null ? `Day ${p.day + 1} · ${pad2(Math.floor((p.minute ?? 0) / 60))}:${pad2((p.minute ?? 0) % 60)}` : ''
   const accept = p.type === 'proposal' && !p.accepted ? store.check(cmd.acceptProposal(item.id, p.id)) : null
   return (
     <li class={`post post-${p.type}`} data-type={p.type}>

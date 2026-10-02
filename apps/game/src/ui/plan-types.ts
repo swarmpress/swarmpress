@@ -2,7 +2,8 @@
  * The media & publishing plan (docs/game-design/publishing-plan.md, ADR-0031).
  *
  * `PlanJson` is the deterministic skeleton from `Sim.plan_json(project?)` (§7);
- * `PlanText` is the text joined client-side from the PlanStore (server REST or
+ * `PlanText` is the text joined client-side from the plan store (orchestrator
+ * `plan_json` wire shape, normalized by plan-wire.ts; server REST or
  * the offline mock), keyed by the same ids.
  */
 
@@ -86,6 +87,8 @@ export interface WorkItemJson {
   languages?: string[]
   /** UI extension: game day work started, for the timeline. */
   startDay?: number | null
+  /** UI only: known from plan text (orchestrator threads) but not in the sim skeleton. */
+  textOnly?: boolean
 }
 
 export interface WorkstreamJson {
@@ -142,9 +145,12 @@ export interface PlanPost {
   type: PostType
   /** `staff-N`, `ceo`, or `system`. */
   author: string
-  day: number
-  minute: number
+  /** Game time; absent on orchestrator posts until the store stamps them. */
+  day?: number
+  minute?: number
   text: string
+  /** Type-specific data as the orchestrator writes it (see plan-wire.ts). */
+  payload?: Record<string, unknown>
   /** handoff: receiving staff. */
   to?: string | null
   /** review */

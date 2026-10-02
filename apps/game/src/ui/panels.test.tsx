@@ -93,7 +93,7 @@ describe('profile card', () => {
     expect(d.getByText(/Total after: 90% of 100%/)).toBeTruthy()
     fireEvent.click(d.getByRole('button', { name: 'Assign' }))
     await flush()
-    expect(source.getOrg().staff[0].projects).toContainEqual({ project: 'project-2', allocation: 10 })
+    expect(source.current.org.staff[0].projects).toContainEqual({ project: 'project-2', allocation: 10 })
     expect(d.getByText(/90% of 100% allocated/)).toBeTruthy()
 
     // Fully allocated person: slider disabled with a reason.
@@ -116,7 +116,7 @@ describe('profile card', () => {
     expect(screen.getByRole('alertdialog', { name: 'Fire Lorenzo?' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Confirm: fire Lorenzo' }))
     await flush()
-    expect(source.getOrg().staff.some((s) => s.id === 'staff-3')).toBe(false)
+    expect(source.current.org.staff.some((s) => s.id === 'staff-3')).toBe(false)
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 })
@@ -141,13 +141,13 @@ describe('inbox', () => {
     expect(within(list[0]).getByText('3h 10m left')).toBeTruthy()
     fireEvent.click(within(list[0]).getByRole('button', { name: /^Hold/ }))
     await flush()
-    expect(source.getInbox().tickets.find((x) => x.id === 'ticket-2')).toMatchObject({ status: 'resolved', answer: 'hold' })
+    expect(source.current.inbox.tickets.find((x) => x.id === 'ticket-2')).toMatchObject({ status: 'resolved', answer: 'hold' })
     expect(within(panel(/Inbox/)).getByRole('heading', { name: /Open tickets \(4\)/ })).toBeTruthy()
   })
 
   it('disables delegation (policy and Delegate menu) without a secretary, with an explanation', async () => {
     const { store, source } = await open()
-    source.patch({ org: { ...source.getOrg(), executive: { ...source.getOrg().executive, secretary: null } } })
+    source.patch({ org: { ...source.current.org, executive: { ...source.current.org.executive, secretary: null } } })
     store.panel.value = 'inbox'
     await flush()
     const p = within(panel(/Inbox/))
@@ -175,7 +175,7 @@ describe('inbox', () => {
     expect(submit().disabled).toBe(false)
     fireEvent.click(submit())
     await flush()
-    expect(source.getInbox().secretaryQueue.at(-1)).toMatchObject({ kind: 'schedule-meeting', detail: 'Q4 budget with Elena Marchetti' })
+    expect(source.current.inbox.secretaryQueue.at(-1)).toMatchObject({ kind: 'schedule-meeting', detail: 'Q4 budget with Elena Marchetti' })
   })
 })
 
@@ -192,7 +192,7 @@ describe('finance', () => {
 
   it('shows "No CFO — books not reviewed" without a CFO', async () => {
     const { store, source } = await open()
-    source.apply(JSON.stringify({ Fire: { staff: 'staff-7' } }))
+    source.applySync(JSON.stringify({ Fire: { staff: 'staff-7' } }))
     store.panel.value = 'finance'
     await flush()
     const p = within(panel(/Finance/))
@@ -217,7 +217,7 @@ describe('projects', () => {
 
   it('creates a project once the level allows it', async () => {
     const { store, source } = await open()
-    source.patch({ org: { ...source.getOrg(), company: { level: 3, maxProjects: 2 } } })
+    source.patch({ org: { ...source.current.org, company: { level: 3, maxProjects: 2 } } })
     store.panel.value = 'projects'
     await flush()
     const p = within(panel(/Projects/))
@@ -225,7 +225,7 @@ describe('projects', () => {
     await flush()
     fireEvent.click(p.getByRole('button', { name: 'Create project' }))
     await flush()
-    expect(source.getOrg().projects.at(-1)).toMatchObject({ name: 'Portofino Weekly', slug: 'portofino-weekly' })
+    expect(source.current.org.projects.at(-1)).toMatchObject({ name: 'Portofino Weekly', slug: 'portofino-weekly' })
   })
 
   it('shows the project detail with missing roles and budget', async () => {
@@ -250,14 +250,14 @@ describe('hiring', () => {
     expect(p.getByText(/CFO: Affordable and fills the missing translator role/)).toBeTruthy()
     fireEvent.click(p.getByRole('button', { name: 'Hire Anna Kowalska' }))
     await flush()
-    expect(source.getOrg().staff.some((s) => s.persona === 'anna')).toBe(true)
+    expect(source.current.org.staff.some((s) => s.persona === 'anna')).toBe(true)
   })
 })
 
 describe('plan', () => {
   it('filters the board by project, workstream and person', async () => {
     const { source, store } = await open()
-    const items = source.getPlan().items
+    const items = source.current.plan.items
     expect(filterItems(items, { project: null, workstream: 'ws-3', person: null }).map((i) => i.id)).toEqual(['work-item-5', 'work-item-6'])
     expect(filterItems(items, { project: null, workstream: null, person: 'staff-6' }).map((i) => i.id)).toEqual([
       'work-item-1',
@@ -358,7 +358,7 @@ describe('plan', () => {
     expect(btn.disabled).toBe(false)
     fireEvent.click(btn)
     await flush()
-    expect(source.getPlan().items.find((i) => i.id === 'work-item-2')!.phases[1].assignee).toBe('staff-3')
+    expect(source.current.plan.items.find((i) => i.id === 'work-item-2')!.phases[1].assignee).toBe('staff-3')
   })
 
   it('lets the CEO comment, accept a proposal and send a phase to the Agency', async () => {
@@ -381,7 +381,7 @@ describe('plan', () => {
     await flush()
     fireEvent.click(screen.getAllByRole('button', { name: 'Send to Agency' })[0])
     await flush()
-    expect(source.getPlan().items.find((i) => i.id === 'work-item-8')!.phases[0].agency).toBe(true)
+    expect(source.current.plan.items.find((i) => i.id === 'work-item-8')!.phases[0].agency).toBe(true)
   })
 })
 
@@ -409,7 +409,7 @@ describe('performance', () => {
 
   it('shows "No data scientist — KPIs not reported" when none is employed', async () => {
     const { store, source } = await open()
-    source.apply(JSON.stringify({ Fire: { staff: 'staff-13' } }))
+    source.applySync(JSON.stringify({ Fire: { staff: 'staff-13' } }))
     store.panel.value = 'performance'
     await flush()
     expect(screen.getByText('No data scientist — KPIs not reported')).toBeTruthy()
@@ -423,7 +423,7 @@ describe('HUD', () => {
     const { hudBusiness } = await import('./hud')
     const { source } = await open()
     expect(hudBusiness.value).toEqual({ cashEur: 92900.09, runwayDays: 61, booksKept: true, openTickets: 5, highTickets: 2 })
-    source.apply(JSON.stringify({ Fire: { staff: 'staff-7' } }))
+    source.applySync(JSON.stringify({ Fire: { staff: 'staff-7' } }))
     await flush()
     expect(hudBusiness.value?.booksKept).toBe(false)
   })

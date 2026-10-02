@@ -1,5 +1,5 @@
 import { centsPerDayToEurMonth, kebab, type Command, type CommandResult, type SecretaryTask } from './commands'
-import type { GameDataSource } from './data-source'
+import type { DataTopic, GameDataSource, NewPlanPost } from './data-source'
 import financeFixture from './fixtures/finance.json'
 import inboxFixture from './fixtures/inbox.json'
 import orgFixture from './fixtures/org.json'
@@ -8,6 +8,7 @@ import planTextFixture from './fixtures/plan-text.json'
 import planFixture from './fixtures/plan.json'
 import { loadPersonaCatalog, CANDIDATE_MIN_ID, type Persona } from './personas'
 import { MemoryPlanStore, type PlanStore } from './plan-store'
+import { normalizePlanText, type PlanTextWire } from './plan-wire'
 import type { PlanJson, PlanPost, PlanText, WorkItemJson } from './plan-types'
 import {
   allocationTotal,
@@ -48,7 +49,8 @@ export interface MockOptions {
   clock?: () => number
   /** Override parts of the fixture state (tests). */
   state?: Partial<MockState>
-  planText?: PlanText
+  /** Plan text: UI shape or the orchestrator's `plan_json` wire shape. */
+  planText?: PlanText | PlanTextWire
 }
 
 const SENIORITY: Seniority[] = ['junior', 'mid', 'senior', 'star']
@@ -71,53 +73,77 @@ export const FIXTURE_NOW = (inboxFixture as { nowMinute: number }).nowMinute
  * so the overlay is fully playable offline and in tests.
  */
 export class MockDataSource implements GameDataSource {
+  /** Mock-only: the in-memory plan text (tests and dev tools read it synchronously). */
   readonly planStore: PlanStore
   private state: MockState
   private personas: Persona[]
-  private listeners = new Set<() => void>()
+  private listeners = new Set<(topics?: DataTopic[]) => void>()
   private clock: () => number
 
   constructor(opts: MockOptions = {}) {
     this.state = { ...fixtureState(), ...structuredClone(opts.state ?? {}) }
     this.personas = opts.personas ?? loadPersonaCatalog().personas
     this.clock = opts.clock ?? (() => FIXTURE_NOW)
-    this.planStore = new MemoryPlanStore(opts.planText ?? (planTextFixture as unknown as PlanText))
+    this.planStore = new MemoryPlanStore(normalizePlanText(opts.planText ?? (planTextFixture as unknown as PlanText)))
     for (const p of this.state.org.projects) recomputeMissing(this.state.org, p.id)
-    this.planStore.subscribe(() => this.emit())
+    this.planStore.subscribe(() => this.emit(['plan']))
   }
 
-  getOrg() {
+  /** Mock-only synchronous view of the state (tests). */
+  get current(): Readonly<MockState> {
+    return this.state
+  }
+
+  async getOrg() {
     return this.state.org
   }
-  getFinance() {
+  async getFinance() {
     return this.state.finance
   }
-  getInbox() {
+  async getInbox() {
     return this.state.inbox
   }
-  getPlan() {
+  async getPlan() {
     return this.state.plan
   }
-  getPerformance() {
+  async getPlanText() {
+    return this.planStore.text()
+  }
+  async getPerformance() {
     return this.state.performance
   }
-  getPersona(slug: string) {
+  async getPersona(slug: string) {
     return this.personas.find((p) => p.slug === slug)
   }
-  listPersonas() {
+  async listPersonas() {
     return this.personas
   }
-  now() {
+  async now() {
     return this.clock()
   }
 
-  validate(commandJson: string): CommandResult {
+  async validate(commandJson: string): Promise<CommandResult> {
+    return this.validateSync(commandJson)
+  }
+
+  async apply(commandJson: string): Promise<CommandResult> {
+    return this.applySync(commandJson)
+  }
+
+  async appendPost(item: string, post: NewPlanPost): Promise<PlanPost> {
+    const now = this.clock()
+    return this.planStore.addPost(item, { day: Math.floor(now / 1440), minute: now % 1440, ...post })
+  }
+
+  /** Mock-only synchronous `validate` (tests). */
+  validateSync(commandJson: string): CommandResult {
     const draft = structuredClone(this.state)
     const { ok, reason } = this.run(draft, commandJson)
     return ok ? { ok } : { ok, reason }
   }
 
-  apply(commandJson: string): CommandResult {
+  /** Mock-only synchronous `apply` (tests). */
+  applySync(commandJson: string): CommandResult {
     const draft = structuredClone(this.state)
     const out = this.run(draft, commandJson)
     if (!out.ok) return { ok: false, reason: out.reason }
@@ -131,7 +157,7 @@ export class MockDataSource implements GameDataSource {
     return { ok: true }
   }
 
-  subscribe(onChange: () => void) {
+  subscribe(onChange: (topics?: DataTopic[]) => void) {
     this.listeners.add(onChange)
     return () => void this.listeners.delete(onChange)
   }
@@ -142,8 +168,8 @@ export class MockDataSource implements GameDataSource {
     this.emit()
   }
 
-  private emit() {
-    this.listeners.forEach((l) => l())
+  private emit(topics?: DataTopic[]) {
+    this.listeners.forEach((l) => l(topics))
   }
 
   private run(s: MockState, json: string): Outcome {

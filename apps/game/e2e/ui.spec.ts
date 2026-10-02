@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 import { expect, test, type Page } from '@playwright/test'
-import { boot } from './helpers'
+import { boot, waitStill } from './helpers'
 
 /**
  * CEO management overlay (ADR-0018) in the real browser, on the WebGL2
@@ -86,7 +86,7 @@ test.describe('CEO overlay', () => {
     expect(await contrast(page), 'profile contrast').toEqual([])
 
     // Assign 10% to the second project; the slider stops at 20% (80% elsewhere).
-    await dialog.getByLabel('Project', { exact: true }).selectOption('project-2')
+    await dialog.getByRole('combobox', { name: 'Project', exact: true }).selectOption('project-2')
     const slider = dialog.getByRole('slider')
     await expect(slider).toHaveAttribute('max', '20')
     await slider.fill('10')
@@ -114,6 +114,15 @@ test.describe('CEO overlay', () => {
     await shot(page, 'plan-work-item')
     expect(await contrast(page), 'work item contrast').toEqual([])
     expect(errors).toEqual([])
+  })
+
+  test('stays out of frozen screenshot pages unless asked for', async ({ page }) => {
+    await boot(page, '/?renderer=webgl&quality=low&t=13:00')
+    await waitStill(page)
+    await expect(toolbar(page)).toHaveCount(0)
+    await expect(page.locator('.hud-business')).toHaveCount(0)
+    await boot(page, '/?renderer=webgl&quality=low&t=13:00&ui=mock')
+    await expect(toolbar(page)).toBeVisible()
   })
 
   test('stays usable at 1024 px wide', async ({ page }) => {

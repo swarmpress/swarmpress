@@ -1,0 +1,78 @@
+{
+  "items": {
+    "work-item-21": {
+      "title": "Via dell'Amore reopening: what changed",
+      "brief": "Angle: the reopened Via dell'Amore between Riomaggiore and Manarola. Audience: first-time visitors. Must cover: tickets, one-way rule, opening hours, accessibility."
+    },
+    "work-item-22": {
+      "title": "Monterosso lemon festival",
+      "brief": "Dates, the lemon-themed stalls, how to get there by train."
+    }
+  },
+  "todos": {},
+  "workstreams": {},
+  "goals": {},
+  "posts": {
+    "work-item-21": [
+      {
+        "type": "minutes",
+        "author": "system",
+        "text": "staff-5: Let's cover the Via dell'Amore reopening this week.\nstaff-1: I'll take it; the one-way rule is the news.\nstaff-6: I can shoot the tunnel at golden hour.",
+        "payload": { "job": 41, "brief": { "title": "Via dell'Amore reopening: what changed" } },
+        "id": "post-1",
+        "item": "work-item-21"
+      },
+      {
+        "type": "artifact",
+        "author": "system",
+        "text": "PR #12 on draft/work-item-21 (842 words)",
+        "payload": { "pr": 12, "branch": "draft/work-item-21", "path": "content/pages/en/via-dell-amore.json", "sha": "9f2c1aa7b3e4", "revision": 0 },
+        "id": "post-2",
+        "item": "work-item-21"
+      },
+      {
+        "type": "handoff",
+        "author": "staff-1",
+        "to": "staff-5",
+        "text": "First draft of \"Via dell'Amore reopening: what changed\" is in PR #12 for review.",
+        "payload": {},
+        "id": "post-3",
+        "item": "work-item-21"
+      },
+      {
+        "type": "review",
+        "author": "staff-5",
+        "text": "Strong lead; opening hours need a source.\n- Cite the park authority for the opening hours",
+        "payload": { "verdict": "approve", "score": 8 },
+        "id": "post-4",
+        "item": "work-item-21"
+      },
+      {
+        "type": "artifact",
+        "author": "system",
+        "text": "PR #12 merged (4be81c2)",
+        "payload": { "pr": 12, "merged_sha": "4be81c2d9a01" },
+        "id": "post-5",
+        "item": "work-item-21"
+      },
+      {
+        "type": "status",
+        "author": "system",
+        "text": "Deployed (simulated).",
+        "payload": {},
+        "id": "post-6",
+        "item": "work-item-21"
+      }
+    ],
+    "work-item-22": [
+      {
+        "type": "status",
+        "author": "system",
+        "text": "A model call failed; the item is blocked until the CEO decides.",
+        "payload": { "error": "rate limited" },
+        "id": "post-7",
+        "item": "work-item-22"
+      }
+    ]
+  }
+}

@@ -213,10 +213,12 @@ export function CreateProject() {
       aria-describedby={lock ? 'create-lock' : undefined}
       onSubmit={(e) => {
         e.preventDefault()
-        if (v.ok && store.run(cmd.createProject({ name, slug, domain, budgetEurMonth: budget }), `${name} created`).ok) {
+        if (!v.ok) return
+        void store.run(cmd.createProject({ name, slug, domain, budgetEurMonth: budget }), `${name} created`).then((r) => {
+          if (!r.ok) return
           setName('')
           setDomain('')
-        }
+        })
       }}
     >
       <h3 id="create-title">Create project</h3>

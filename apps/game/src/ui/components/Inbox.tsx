@@ -216,11 +216,13 @@ export function DelegateMenu({ disabledReason }: { disabledReason: string | null
       aria-labelledby="delegate-title"
       onSubmit={(e) => {
         e.preventDefault()
-        if (v.ok && store.run(cmd.delegate(task()), `Delegated: ${label}`).ok) {
+        if (!v.ok) return
+        void store.run(cmd.delegate(task()), `Delegated: ${label}`).then((r) => {
+          if (!r.ok) return
           setAgenda('')
           setTopic('')
           setAttendees([])
-        }
+        })
       }}
     >
       <h3 id="delegate-title">Delegate to the secretary</h3>
