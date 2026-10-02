@@ -18,7 +18,7 @@ import type { OpenedBackend } from '../backend'
 import type { ChatMessage, GenerateOptions, LoadProgress, LocalLlm, RuntimeCapabilities, Validator } from '../types'
 import { sectionWords, type Closing, type Outline, type SectionDraft } from './article'
 import { wordCount } from './corpus'
-import { FIXTURES, estimateCaseTokens, type ArticlePlan, type BenchCase, type FixtureId, type Suite } from './fixtures'
+import { ARTICLE_CALLS, FIXTURES, estimateCaseTokens, type ArticlePlan, type BenchCase, type FixtureId, type Suite } from './fixtures'
 import type { FrameRecorder } from './frames'
 import {
   RESULTS_SCHEMA,
@@ -199,7 +199,7 @@ export function startBench(d: BenchDeps): BenchRun {
     modelId: d.modelId,
     model: d.model ?? null,
     config,
-    fixtures: suite.fixtures.map((f) => ({ id: f.id, letter: f.letter, label: f.label, kind: f.kind, count: f.count, fullCount: FIXTURES[f.id].count, budget: f.budget, inputTokens: f.inputTokens })),
+    fixtures: suite.fixtures.map((f) => ({ id: f.id, letter: f.letter, label: f.label, kind: f.kind, count: f.count, fullCount: FIXTURES[f.id].count, prompts: f.kind === 'staged' ? f.count * ARTICLE_CALLS : f.count, budget: f.budget, inputTokens: f.inputTokens })),
     env: d.env,
     capabilities: { probe: null, loaded: null },
     startedAt: new Date().toISOString(),
@@ -318,11 +318,16 @@ export function startBench(d: BenchDeps): BenchRun {
       /* a lost device has nothing to report */
     }
     if (withUa && d.measureMemory) {
-      const m = await d.measureMemory().catch(() => null)
-      if (m) {
-        sample.uaBytes = m.bytes
-        sample.uaWindowBytes = m.windowBytes
-        sample.uaWorkerBytes = m.workerBytes
+      try {
+        const m = await d.measureMemory()
+        if (m) {
+          sample.uaBytes = m.bytes
+          sample.uaWindowBytes = m.windowBytes
+          sample.uaWorkerBytes = m.workerBytes
+        }
+      } catch (e) {
+        // Why the browser gave no number, so the report can say so instead of a bare "not measured".
+        sample.uaError = errorOf(e).message
       }
     }
     results.memory.push(sample)

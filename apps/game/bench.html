@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>swarm.press model qualification</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; background: #1b1f2a; color: #e8e6e3; font: 14px system-ui, sans-serif; }
+      main { display: grid; grid-template-columns: minmax(320px, 440px) 1fr; gap: 12px; padding: 12px; box-sizing: border-box; height: 100vh; }
+      section { display: grid; gap: 10px; align-content: start; overflow: auto; min-height: 0; }
+      h1 { font-size: 17px; margin: 0; }
+      h2 { font-size: 13px; margin: 6px 0 0; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7; }
+      button { font: inherit; color: inherit; background: #262c3a; border: 1px solid #3a4256; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      a { color: #9ac1ff; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #12151d; padding: 10px; border-radius: 8px; margin: 0; font: 12px ui-monospace, Menlo, monospace; }
+      #scene { background: #0d0f14; border-radius: 8px; overflow: hidden; min-height: 300px; }
+      .muted { opacity: 0.7; font-size: 12px; margin: 0; }
+      @media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } #scene { height: 50vh; } }
+    </style>
+  </head>
+  <body data-bench="loading">
+    <main>
+      <section>
+        <h1>swarm.press model qualification</h1>
+        <p class="muted">
+          Test page, not part of the production build. Runs the qualification fixtures against one local
+          model backend (<code>?llm=bonsai|chrome|transformers|fake</code>), optionally with the office
+          scene drawing at <code>?quality=low|medium|high</code>. Driven by
+          <code>e2e/bonsai-bench.spec.ts</code> through <code>window.__bench</code>; see
+          <code>docs/runbooks/model-qualification.md</code>. Bonsai needs the engine installed first and
+          downloads about 6 GB of weights on its first load.
+        </p>
+        <p><button id="start">Start</button> <a id="download" hidden>Download the results</a></p>
+        <pre id="status">loading</pre>
+        <h2>Configuration</h2>
+        <pre id="config"></pre>
+        <h2>Stages</h2>
+        <pre id="stages"></pre>
+        <h2>Fixtures</h2>
+        <pre id="fixtures"></pre>
+        <h2>Report preview</h2>
+        <p class="muted" id="verdict"></p>
+        <pre id="report"></pre>
+      </section>
+      <div id="scene"></div>
+    </main>
+    <script type="module" src="/src/llm/bench/harness.ts"></script>
+  </body>
+</html>

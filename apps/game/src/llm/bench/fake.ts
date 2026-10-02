@@ -13,7 +13,7 @@ import { runStructured, streamFromGenerate } from '../structured'
 import type { ChatMessage, GenerateOptions, GenerateResult, JsonSchema, LoadProgress, LocalLlm, RuntimeCapabilities, StructuredOptions } from '../types'
 import { caseKeyOf, type FixtureId, type Suite } from './fixtures'
 
-export const BENCH_FAKE_MODEL = 'bench-fake'
+export const BENCH_FAKE_MODEL = 'scripted'
 export const BENCH_FAKE_BYTES = 64 * 1024 * 1024
 
 export type Fault =

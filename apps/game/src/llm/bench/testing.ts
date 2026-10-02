@@ -89,7 +89,7 @@ export function results(over: Partial<BenchResults> = {}, config: Partial<BenchC
     modelId: 'ternary-bonsai-2-27b',
     model: null,
     config: c,
-    fixtures: ids.map((id) => ({ id, letter: FIXTURES[id].letter, label: FIXTURES[id].label, kind: FIXTURES[id].kind, count: FIXTURES[id].count, fullCount: FIXTURES[id].count, budget: FIXTURES[id].budget, inputTokens: FIXTURES[id].inputTokens })),
+    fixtures: ids.map((id) => ({ id, letter: FIXTURES[id].letter, label: FIXTURES[id].label, kind: FIXTURES[id].kind, count: FIXTURES[id].count, fullCount: FIXTURES[id].count, prompts: FIXTURES[id].kind === 'staged' ? FIXTURES[id].count * 8 : new Set((over.calls ?? []).filter((c) => c.fixture === id).map((c) => c.key)).size, budget: FIXTURES[id].budget, inputTokens: FIXTURES[id].inputTokens })),
     env: { userAgent: 'test', browser: 'Chrome 154.0.8037.95', crossOriginIsolated: true, hardwareConcurrency: 16, deviceMemoryGb: 8, gpu: null },
     capabilities: { probe: null, loaded: null },
     startedAt: '2026-10-02T10:00:00.000Z',

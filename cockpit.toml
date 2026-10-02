@@ -317,6 +317,24 @@ workflow = "ci.yml"
 artifact = "game-playwright-visual"
 branch = "main"
 
+# The model qualification harness (bench.html) on the scripted backend in headless Chromium:
+# no GPU, no network (ADR-0057). Its benchmark documents feed bench/model-eval and bench/frame-time.
+# `CI=1 PW_JSON=reports/playwright-bench.json playwright test -c playwright.bonsai.config.ts --project=scripted`
+[[evidence]]
+id = "game/playwright-bench"
+title = "apps/game qualification harness on the scripted backend (reports, counts)"
+format = "playwright"
+kind = "e2e"
+path = [".cockpit/evidence/game__playwright-bench/**/*.json", "apps/game/reports/playwright-bench.json"]
+component = "inference"
+features = ["FEAT-037"]
+note = "unfed in CI until .github/workflows/ci.yml runs the scripted project and uploads this report"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "game-playwright-bench"
+branch = "main"
+
 [[evidence]]
 id = "site-kit/playwright"
 title = "packages/site-kit fixture-site screenshots"

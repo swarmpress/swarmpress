@@ -540,7 +540,7 @@ export function qualify(runs: BenchResults[], extras: QualificationExtras = {}):
     else {
       const one = oneRepairPct(structured)
       const first = firstAttemptPct(structured)
-      const thin = (primary?.fixtures ?? []).filter((f) => f.kind !== 'generate').filter((f) => firstPass.filter((c) => c.fixture === f.id && c.kind === 'structured').length < T.validPct.prompts)
+      const thin = (primary?.fixtures ?? []).filter((f) => f.kind !== 'generate').filter((f) => f.prompts < T.validPct.prompts)
       let verdict: Verdict = one < T.validPct.noGo ? 'no-go' : one >= T.validPct.go && first >= T.validPct.goFirst ? 'go' : 'conditional'
       // Fewer than 50 distinct prompts in a fixture cannot establish a rate; a no-go stands, with its n.
       if (thin.length > 0 && verdict !== 'no-go') verdict = 'insufficient'
@@ -915,7 +915,7 @@ export function qualificationMarkdown(input: QualificationInput): string {
   const mem = runs.flatMap((r) => r.memory.map((m) => ({ run: runLabel(r), ...m })))
   if (mem.length === 0) out.push('No sample.', '')
   else {
-    out.push(...table(['Run', 'When', 'GPU live', 'GPU peak', 'Page and workers (measureUserAgentSpecificMemory)'], mem.map((m) => [m.run, m.label, fmtBytes(m.gpuLiveBytes), fmtBytes(m.gpuPeakBytes), m.uaBytes === null ? 'not measured' : `${fmtBytes(m.uaBytes)}${m.uaWorkerBytes ? ` (workers ${fmtBytes(m.uaWorkerBytes)})` : ''}`])), '')
+    out.push(...table(['Run', 'When', 'GPU live', 'GPU peak', 'Page and workers (measureUserAgentSpecificMemory)'], mem.map((m) => [m.run, m.label, fmtBytes(m.gpuLiveBytes), fmtBytes(m.gpuPeakBytes), m.uaBytes === null ? (m.uaError ? `not measured: ${m.uaError}` : 'not measured') : `${fmtBytes(m.uaBytes)}${m.uaWorkerBytes ? ` (workers ${fmtBytes(m.uaWorkerBytes)})` : ''}`])), '')
     if (input.extras?.gpuProcessPeakRssBytes) out.push(`Chrome's GPU process, resident memory peak sampled from outside the browser: ${fmtBytes(input.extras.gpuProcessPeakRssBytes)}.`, '')
   }
 

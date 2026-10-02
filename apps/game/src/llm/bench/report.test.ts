@@ -273,6 +273,10 @@ describe('the go/no-go table at its thresholds', () => {
     expect(verdict(qualify([results({ calls: twice })]), 'validity')).toBe('go')
     // Free-text calls are not part of it.
     expect(verdict(qualify([results({ calls: calls('meeting-turn', 20) })]), 'validity')).toBe('not-measured')
+    // The sample is what the run planned: an article that stopped at its outline does not shrink it.
+    const staged = results({ calls: [...calls('short-action', 50), ...calls('staged-article', 49)] })
+    expect(staged.fixtures.find((f) => f.id === 'staged-article')!.prompts).toBe(56)
+    expect(verdict(qualify([staged]), 'validity')).toBe('go')
   })
 
   it('section: p50 60 s or less and 95% valid, the mirrored checks included', () => {

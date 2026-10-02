@@ -123,6 +123,8 @@ export interface MemorySample {
   uaBytes: number | null
   uaWindowBytes?: number | null
   uaWorkerBytes?: number | null
+  /** Why `uaBytes` is missing, when the page tried. */
+  uaError?: string
 }
 
 export type FramePhase = 'idle-unloaded' | 'loading' | 'idle' | 'generating'
@@ -218,6 +220,8 @@ export interface FixtureInfo {
   count: number
   /** Prompts at scale 1. */
   fullCount: number
+  /** Distinct prompts this run plans for the fixture (a staged article is several); validity needs 50. */
+  prompts: number
   budget: CallBudget
   inputTokens: [number, number]
 }

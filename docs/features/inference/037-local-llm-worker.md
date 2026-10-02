@@ -18,6 +18,8 @@ paths:
   - apps/game/e2e/bonsai-equivalence.spec.ts
   - apps/game/e2e/bonsai-equivalence.goldens.json
   - apps/game/e2e/bonsai-bench.spec.ts
+  - apps/game/bench.html
+  - crates/agents/tests/bench_schemas.rs
   - apps/game/e2e/llm.spec.ts
   - crates/orchestrator-wasm/src/lib.rs
   - crates/orchestrator-wasm/tests/validate.test.ts
@@ -54,7 +56,7 @@ so the status stays `planned` until R2 lands with its evidence.
 - **R5:** `chrome-prompt-llm.ts` and `backend.ts`; one backend per company session, never switched
   silently.
 - **R6–R7:** qualification harness (`bench.html`, `src/llm/bench/*`) and the benchmark report under
-  `docs/qualification/`.
+  `docs/qualification/`. How to run it: `docs/runbooks/model-qualification.md`.
 - **R8:** session wiring, startup flow, origin-wide resident lock.
 - `job-runner.ts` (the retired offer/claim protocol) is deleted.
 

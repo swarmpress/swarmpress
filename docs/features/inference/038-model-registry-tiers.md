@@ -12,6 +12,8 @@ paths:
   - "apps/game/src/llm/runtime/bonsai/manifest/**"
   - apps/game/src/llm/runtime/bonsai/manifest.test.ts
   - apps/game/src/llm/runtime/bonsai/runtime.lock.json
+  - apps/game/src/llm/bench/report.ts
+  - apps/game/src/llm/bench/report.test.ts
   - crates/agents/src/models.rs
   - crates/agents/tests/config.rs
 adrs:
