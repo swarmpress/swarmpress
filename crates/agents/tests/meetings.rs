@@ -11,7 +11,7 @@ use claude::FakeClaude;
 use serde_json::{json, Value};
 
 fn participant(name: &str) -> Participant {
-    let p = Persona::builtin(name).unwrap();
+    let p = Persona::builtin(&name.to_lowercase()).unwrap();
     let agent = PromptLayer::from_persona(&p, "en");
     let text = resolve(
         &templates::meeting_speaker(),

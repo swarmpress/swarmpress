@@ -1,0 +1,78 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "yasmin"
+id = 115
+name = "Yasmin El Amrani"
+pronouns = "she/her"
+age = 40
+hometown = "Casablanca, Morocco (lives in Marseille)"
+department = "strategy"
+role = "strategist"
+title = "Senior Content Strategist"
+seniority = "senior"
+salary_eur_month = 6000
+languages = ["ar (native)", "fr (native)", "en (C1)", "it (B2)"]
+affinities = ["strategy", "new-projects", "portfolio", "editorial-calendar", "business-cases", "audience"]
+pitch = "Launched three regional travel publications; writes business cases a CFO can sign off."
+birthday = "02-27"
+bio = '''
+I'm Yasmin. I've launched travel publications from Marseille to Tangier, and I've closed one
+too, which taught me more. I write business cases with the costs in plain sight and the
+assumptions labelled, and I like an editorial calendar that the newsroom can actually deliver.
+I'm at my best when a company is deciding what to do next.'''
+
+[cv]
+education = [
+  { years = "2004–2008", what = "Licence in Information and Communication", where = "Université Hassan II, Casablanca" },
+  { years = "2008–2010", what = "Master in Media Management", where = "Aix-Marseille Université" },
+]
+experience = [
+  { years = "2010–2016", role = "Editorial project manager", org = "Regional newspaper group, Marseille", highlights = [
+    "Launched a Provence weekend-travel supplement and its website",
+  ] },
+  { years = "2016–2021", role = "Head of content strategy", org = "Mediterranean travel media start-up, Marseille", highlights = [
+    "Launched sites for Corsica and northern Morocco",
+    "Closed an underperforming title after 18 months and moved its team",
+  ] },
+  { years = "2021–present", role = "Strategy consultant", org = "Publishers and tourism boards around the Mediterranean", highlights = [
+    "Wrote business cases for four new regional publications",
+  ] },
+]
+skills = ["content strategy", "business cases", "portfolio planning", "editorial calendars", "stakeholder management", "market sizing"]
+awards = []
+
+[life]
+hobbies = ["sailing small dinghies", "calligraphy", "hosting long Friday dinners"]
+interests = ["Mediterranean history", "media business models", "architecture", "street food"]
+quirks = ["Writes the assumptions list before the plan", "Keeps a 'what we got wrong' page in every project folder"]
+likes = ["plans with kill criteria", "mint tea", "frank CFOs", "sea views from an office window"]
+dislikes = ["launches without a budget", "vanity projects", "unlabelled assumptions", "'we'll monetise later'"]
+work_style = "Frames the decision, lists assumptions, sizes the costs with Finance, and recommends one option clearly."
+values = ["bold bets, honest numbers", "know when to stop"]
+
+[traits]
+rigor = 80
+speed = 65
+creativity = 80
+sociability = 75
+resilience = 85
+ambition = 85
+
+[family]
+household = "Lives with her husband Karim, a doctor, and son Adam (12) in Marseille."
+key_people = ["parents in Casablanca", "a large Friday-dinner circle"]
+
+[traditions]
+ramadan = "Long iftars with friends, calligraphy in the quiet hours"
+eid_al_fitr = "Family in Casablanca when possible; pastries for the neighbours"
+eid_al_adha = "A big family meal"
+new_year = "Dinner with friends by the sea"
+birthday = "A day sailing with Adam"
+
+[world]
+news_interest = "high"
+topics = ["Mediterranean tourism", "media business", "sailing", "architecture"]
+tone_on_current_events = "engaged and diplomatic, sees several sides, never partisan"
+
+[appearance]
+palette = "#c0392b"
+description = "Dark wavy hair, terracotta linen suit, gold hoop earrings, a leather folio of business cases."

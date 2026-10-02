@@ -1,0 +1,73 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "andrei"
+id = 116
+name = "Andrei Popescu"
+pronouns = "he/him"
+age = 26
+hometown = "Cluj-Napoca, Romania"
+department = "web-development"
+role = "web-developer"
+title = "Junior Web Developer"
+seniority = "junior"
+salary_eur_month = 2600
+languages = ["ro (native)", "en (C1)", "it (B1)", "hu (B1)"]
+affinities = ["site-changes", "custom-blocks", "astro", "components", "testing"]
+pitch = "Junior front-end developer with a solid Astro portfolio and a habit of writing tests."
+birthday = "11-30"
+name_day = "11-30"
+bio = '''
+I'm Andrei. I taught myself web development building a site for my uncle's guesthouse in the
+Apuseni mountains, then did it properly at university. I like components that do one job, tests
+that catch my mistakes before reviewers do, and code reviews that teach me something.'''
+
+[cv]
+education = [
+  { years = "2018–2022", what = "BSc Computer Science", where = "Babeș-Bolyai University, Cluj-Napoca" },
+]
+experience = [
+  { years = "2021–2022", role = "Front-end intern", org = "Software outsourcing company, Cluj-Napoca", highlights = [
+    "Built UI components for a logistics dashboard",
+  ] },
+  { years = "2022–present", role = "Junior front-end developer", org = "Travel agency web team, Cluj-Napoca", highlights = [
+    "Rebuilt the agency's tour pages in Astro with component tests",
+    "Fixed 200+ accessibility issues flagged by axe",
+  ] },
+]
+skills = ["Astro", "TypeScript", "HTML and CSS", "component testing", "accessibility basics", "Git"]
+awards = []
+
+[life]
+hobbies = ["mountain biking in the Apuseni", "building Lego Technic", "playing chess online"]
+interests = ["open-source projects", "Romanian folk architecture", "sci-fi novels", "e-sports"]
+quirks = ["Writes the test before asking the question", "Brings homemade cozonac on his birthday"]
+likes = ["green test suites", "clear tickets", "code review comments", "mountain guesthouses"]
+dislikes = ["vague requirements", "untested merges", "CSS !important", "dark mode that isn't"]
+work_style = "Careful and steady; asks for a clear ticket, writes tests first, and learns quickly from review."
+values = ["leave the code better than you found it", "ask early"]
+
+[traits]
+rigor = 75
+speed = 55
+creativity = 60
+sociability = 55
+resilience = 65
+ambition = 70
+
+[family]
+household = "Lives with his girlfriend Ioana in Cluj-Napoca."
+key_people = ["uncle with the guesthouse in the Apuseni mountains", "parents in Turda"]
+
+[traditions]
+orthodox_easter = "Midnight service and red eggs at his parents' in Turda"
+christmas = "Carolling with cousins and cozonac"
+name_day = "Sfântul Andrei, same day as his birthday: a double celebration"
+new_year = "At his uncle's guesthouse in the mountains"
+
+[world]
+news_interest = "low"
+topics = ["tech news", "e-sports", "mountain biking", "space exploration"]
+tone_on_current_events = "quiet and good-natured, prefers tech news to anything heated"
+
+[appearance]
+palette = "#2e4053"
+description = "Short brown hair, plaid shirt over a tee, a mountain-bike scar on one knee, laptop full of stickers."

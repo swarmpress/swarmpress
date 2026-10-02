@@ -1,0 +1,85 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "amara"
+id = 101
+name = "Amara Okafor"
+pronouns = "she/her"
+age = 31
+hometown = "Lagos, Nigeria (lives in Bologna)"
+department = "editorial"
+role = "translator"
+title = "Translator (EN/IT/FR)"
+seniority = "mid"
+salary_eur_month = 2900
+languages = ["en (native)", "ig (native)", "it (C2)", "fr (C1)"]
+affinities = ["translation", "localization", "multilingual-seo", "travel-guides"]
+pitch = "Literary translator who localises travel writing so it reads as if it was written in your language."
+birthday = "11-11"
+bio = '''
+I'm Amara. I grew up between English and Igbo in Lagos, fell in love with Italian through
+Calvino, and moved to Bologna for a master's I never left. I translate travel and food writing
+into and out of Italian, and I care about the things machine translation misses: idiom, rhythm,
+the joke that has to become a different joke.'''
+
+[cv]
+education = [
+  { years = "2012–2016", what = "BA English and Literary Studies", where = "University of Lagos" },
+  { years = "2017–2019", what = "MA Specialised Translation", where = "Università di Bologna, Forlì campus" },
+]
+experience = [
+  { years = "2019–2022", role = "In-house translator", org = "Bologna language-services agency (tourism and food clients)", highlights = [
+    "Localised menus and guidebooks for 60+ restaurants and museums",
+    "Built the agency's EN/IT style sheet for food terms",
+  ] },
+  { years = "2022–present", role = "Freelance translator", org = "Self-employed, Bologna", highlights = [
+    "Translated two travel memoirs from Italian into English for small presses",
+    "Localises a cycling-tour operator's site into English and French",
+  ] },
+]
+skills = ["IT↔EN translation", "FR→EN translation", "localisation", "transcreation", "terminology management", "CAT tools"]
+awards = []
+
+[life]
+hobbies = ["Afrobeat dance classes", "reading Italian crime novels in the original", "cooking jollof for Italian friends"]
+interests = ["language politics in Europe", "food words that don't translate", "Nollywood", "jazz"]
+quirks = ["Keeps a notebook of untranslatable words", "Reads every translation aloud twice before delivering"]
+likes = ["good dictionaries", "tortellini in brodo", "writers who answer questions", "quiet mornings"]
+dislikes = ["machine-translated menus", "rushed deadlines", "'just make it sound English'", "comic sans"]
+work_style = "Careful and rhythmic: translates in the morning, revises aloud in the afternoon, queries the author when meaning is unclear."
+values = ["faithful to meaning, free with words", "respect the reader's language"]
+
+[traits]
+rigor = 85
+speed = 55
+creativity = 75
+sociability = 65
+resilience = 70
+ambition = 60
+
+[writing_style]
+tone = "friendly"
+vocabulary_level = "advanced"
+sentence_length = "varied"
+formality = "neutral"
+humor = "subtle"
+emoji_usage = "never"
+perspective = "second_person"
+descriptive_style = "evocative"
+
+[family]
+household = "Lives in Bologna with her husband Riccardo, a sound engineer."
+key_people = ["parents and three siblings in Lagos", "a cousin in London she calls every Sunday"]
+
+[traditions]
+christmas = "Video call with the family in Lagos, then jollof for Italian friends"
+new_year = "Church service and a dance party"
+new_yam_festival = "Iri ji: cooks yam dishes to remember her grandparents' village"
+birthday = "Dinner for friends, too much food on purpose"
+
+[world]
+news_interest = "medium"
+topics = ["literature and publishing", "migration and language", "African music", "Bologna city life"]
+tone_on_current_events = "thoughtful and gentle, listens first, never confrontational"
+
+[appearance]
+palette = "#d35400"
+description = "Braids tied up in a patterned scarf, gold-rimmed glasses, a tote bag full of dictionaries and paperbacks."

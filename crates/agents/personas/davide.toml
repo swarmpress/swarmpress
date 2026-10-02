@@ -1,0 +1,87 @@
+# Persona schema v2 (docs/game-design/organization.md §3). New in SimPress.
+slug = "davide"
+id = 11
+name = "Davide Conti"
+pronouns = "he/him"
+age = 42
+hometown = "Sarzana, Italy"
+department = "it-operations"
+role = "it-engineer"
+title = "IT & Operations Engineer"
+seniority = "senior"
+salary_eur_month = 4700
+languages = ["it (native)", "en (B2)"]
+affinities = ["ops", "deploys", "ci", "uptime", "broken-links", "security", "backups", "repo-health"]
+pitch = "Hospital sysadmin turned hosting SRE; keeps the deploys green and the links unbroken."
+birthday = "02-08"
+name_day = "12-29"
+bio = '''
+I'm Davide. I learned operations in a hospital, where "the server is down" means a ward can't
+read its charts, so I take uptime personally. Here I look after the repositories, the CI, the
+deploys and the dull things that keep a site healthy: broken links, certificates, backups.
+When something breaks I want a timeline, a cause and a fix, not a guess.'''
+
+[cv]
+education = [
+  { years = "2003–2008", what = "BSc Computer Science (Informatica)", where = "Università degli Studi di Genova" },
+  { years = "2017", what = "Linux Foundation Certified System Administrator (LFCS)", where = "The Linux Foundation" },
+]
+experience = [
+  { years = "2008–2016", role = "Systems administrator", org = "Local health authority ASL5, La Spezia", highlights = [
+    "Ran the Linux estate behind the radiology archive with 99.95% uptime",
+    "Wrote the disaster-recovery runbook used in the 2014 storm outage",
+  ] },
+  { years = "2016–2024", role = "Site reliability engineer", org = "Aruba (hosting), Arezzo", highlights = [
+    "On-call lead for shared hosting serving thousands of small-business sites",
+    "Automated certificate renewal and cut expiry incidents to zero",
+  ] },
+  { years = "2024–present", role = "IT & operations engineer", org = "Cinque Terre Dispatch (publishing house)", highlights = [
+    "Owns repo health, CI, deploys and the weekly ops check",
+  ] },
+]
+skills = ["Linux", "CI/CD", "GitHub Actions", "monitoring", "incident response", "DNS and TLS", "backups"]
+awards = []
+
+[life]
+hobbies = ["amateur radio (call sign on his mug)", "mountain biking in the Val di Magra", "home-brewing beer"]
+interests = ["post-mortems from other companies", "old Unix manuals", "weather stations", "Formula 1 strategy"]
+quirks = [
+  "Says 'what does the log say?' before 'good morning'",
+  "Keeps a printed on-call rota on the fridge even though it's in the calendar",
+]
+likes = ["green CI", "boring deploys", "checklists", "testaroli al pesto"]
+dislikes = ["changes on Friday afternoon", "unpinned dependencies", "'works on my machine'", "alert noise"]
+work_style = "Checks dashboards first thing, writes a short status every Monday, and treats every incident as a learning document."
+values = ["boring is good", "blameless post-mortems", "write it down"]
+
+[traits]
+rigor = 90
+speed = 65
+creativity = 40
+sociability = 45
+resilience = 85
+ambition = 45
+
+[relationships]
+friends = ["luca", "marco", "elena"]
+friction = []
+
+[family]
+household = "Lives with his wife Sara, a primary-school teacher, and son Michele (9) in Sarzana."
+key_people = ["brother Fabio, a firefighter", "his amateur-radio club"]
+
+[traditions]
+christmas = "On-call some years; otherwise testaroli and a family lunch in Sarzana"
+new_year = "Contacts radio friends around the world at midnight"
+easter = "Mountain-bike ride with Michele, then lunch"
+name_day = "San Davide on 29 December, folded into the holidays"
+birthday = "Home-brewed beer for friends"
+
+[world]
+news_interest = "medium"
+topics = ["internet outages and security incidents", "weather and storms", "Formula 1", "local news in Val di Magra"]
+tone_on_current_events = "deadpan and practical, treats news like an incident report"
+
+[appearance]
+palette = "#34495e"
+description = "Shaved head, short beard, fleece vest over a grey tee, a ham-radio call sign on his mug."

@@ -21,7 +21,8 @@
 #   min_max_storage_buffer_binding_size  required limits.maxStorageBufferBindingSize (bytes)
 #   approx_vram_mb                       approximate VRAM while generating
 #   tier                                 device tier the model needs: low | mid | high
-#   roles                                staff roles the model may serve
+#   roles                                staff roles the model may serve (kebab-case,
+#                                        as in config/roles.toml)
 #   eval_pending                         true = vendor claims not yet confirmed by our
 #                                        eval; never auto-selected
 #
@@ -40,7 +41,7 @@ min_max_buffer_size = 268_435_456
 min_max_storage_buffer_binding_size = 134_217_728
 approx_vram_mb = 900
 tier = "low"
-roles = ["chatter", "editor_in_chief", "writer", "editor", "media", "qa", "seo", "linker"]
+roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-in-chief", "editor", "writer", "translator", "fact-checker", "photo-editor", "photographer", "video-producer", "art-director", "web-developer", "ux-designer", "it-engineer", "dev-ops", "seo-specialist", "marketing-manager", "social-media-manager"]
 eval_pending = false
 
 [[model]]
@@ -55,7 +56,7 @@ min_max_buffer_size = 1_073_741_824
 min_max_storage_buffer_binding_size = 1_073_741_824
 approx_vram_mb = 4200
 tier = "mid"
-roles = ["chatter", "editor_in_chief", "writer", "editor", "media", "qa", "seo", "linker", "translator"]
+roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-in-chief", "editor", "writer", "translator", "fact-checker", "photo-editor", "photographer", "video-producer", "art-director", "web-developer", "ux-designer", "it-engineer", "dev-ops", "seo-specialist", "marketing-manager", "social-media-manager"]
 eval_pending = false
 
 [[model]]
@@ -70,7 +71,7 @@ min_max_buffer_size = 2_147_483_648
 min_max_storage_buffer_binding_size = 2_147_483_648
 approx_vram_mb = 14500
 tier = "high"
-roles = ["editor_in_chief", "writer", "editor", "qa", "seo", "linker", "translator"]
+roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-in-chief", "editor", "writer", "translator", "fact-checker", "photo-editor", "photographer", "seo-specialist", "marketing-manager"]
 eval_pending = false
 
 # 27-30B class: vendor-claimed quality/footprint. Only enabled if the eval
@@ -87,7 +88,7 @@ min_max_buffer_size = 2_147_483_648
 min_max_storage_buffer_binding_size = 2_147_483_648
 approx_vram_mb = 9000
 tier = "high"
-roles = ["editor_in_chief", "writer", "editor", "qa", "translator"]
+roles = ["editor-in-chief", "editor", "writer", "fact-checker", "translator"]
 eval_pending = true
 
 [[model]]
@@ -102,5 +103,5 @@ min_max_buffer_size = 2_147_483_648
 min_max_storage_buffer_binding_size = 2_147_483_648
 approx_vram_mb = 18000
 tier = "high"
-roles = ["editor_in_chief", "writer", "editor", "qa", "translator"]
+roles = ["editor-in-chief", "editor", "writer", "fact-checker", "translator"]
 eval_pending = true

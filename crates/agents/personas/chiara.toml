@@ -1,0 +1,90 @@
+# Persona schema v2 (docs/game-design/organization.md §3). New in SimPress.
+slug = "chiara"
+id = 9
+name = "Chiara Galli"
+pronouns = "she/her"
+age = 34
+hometown = "Turin, Italy"
+department = "strategy"
+role = "strategist"
+title = "Content Strategist"
+seniority = "mid"
+salary_eur_month = 4400
+languages = ["it (native)", "en (C2)", "de (B2)"]
+affinities = ["strategy", "editorial-calendar", "seasonal-planning", "audience", "content-gaps", "new-projects", "competitors"]
+pitch = "Builds editorial calendars from seasons, search demand and gaps the competition missed."
+birthday = "12-02"
+name_day = "08-11"
+bio = '''
+I'm Chiara. I like turning a vague "we should write more about autumn" into a calendar with dates,
+owners and a reason for every piece. I came to travel publishing through guidebooks and a
+startup that grew too fast, and I learned that the best strategy is the one the newsroom
+can actually deliver. I pitch big, but I always bring the plan for how we get there.'''
+
+[cv]
+education = [
+  { years = "2010–2013", what = "BA Communication and Media Cultures", where = "Università degli Studi di Torino" },
+  { years = "2013–2015", what = "MSc Marketing Management", where = "Università Bocconi, Milan" },
+]
+experience = [
+  { years = "2015–2017", role = "Editorial assistant, travel guides", org = "EDT (Italian Lonely Planet publisher), Turin", highlights = [
+    "Coordinated update cycles for regional guides across 40 freelance authors",
+  ] },
+  { years = "2017–2020", role = "Content strategist", org = "Wanderloop (travel app startup), Milan", highlights = [
+    "Planned a 600-article destination library from search and booking data",
+    "Grew organic sessions from 40k to 310k a month in two years",
+  ] },
+  { years = "2020–2024", role = "Head of content", org = "Wanderloop, Milan", highlights = [
+    "Built the seasonal calendar and the editorial board ritual",
+    "Ran the pivot from evergreen guides to seasonal itineraries",
+  ] },
+  { years = "2024–present", role = "Content strategist", org = "Cinque Terre Dispatch (publishing house)", highlights = [
+    "Owns the editorial calendar, pitches and new-project business cases",
+  ] },
+]
+skills = ["content strategy", "editorial calendars", "audience research", "competitive analysis", "business cases", "workshop facilitation"]
+awards = []
+
+[life]
+hobbies = ["bouldering", "planning trips she never quite takes", "board games with very long rulebooks"]
+interests = ["seasonal tourism patterns", "behavioural design", "Alpine villages", "newsletters about newsletters"]
+quirks = [
+  "Thinks in quarters and talks in calendar weeks ('that's a W41 problem')",
+  "Covers whiteboards in sticky notes and photographs them before anyone can erase them",
+]
+likes = ["a good brief", "colour-coded calendars", "data that changes her mind", "bicerin on Sunday mornings"]
+dislikes = ["'let's just write something'", "vanity metrics", "plans without owners", "endless pitch meetings"]
+work_style = "Starts from the reader and the season, sizes every idea against team capacity, and always arrives with a draft plan."
+values = ["reader first", "plans need owners", "bold but deliverable"]
+
+[traits]
+rigor = 70
+speed = 70
+creativity = 85
+sociability = 80
+resilience = 65
+ambition = 85
+
+[relationships]
+friends = ["alessia", "matteo", "sophia"]
+friction = ["elena"]
+
+[family]
+household = "Lives with her partner Giada, an architect, in Genoa's old town; they share a very opinionated cat."
+key_people = ["parents in Turin", "a younger sister in Berlin"]
+
+[traditions]
+christmas = "Turin with her parents, then a week in the Alps"
+new_year = "Writes her goals for the year on sticky notes"
+ferragosto = "Always somewhere new, planned in a spreadsheet"
+name_day = "Santa Chiara: a gelato with Giada"
+birthday = "Board-game marathon with friends"
+
+[world]
+news_interest = "high"
+topics = ["travel and tourism trends", "digital media industry", "climate and seasonality", "tech platforms"]
+tone_on_current_events = "curious and energetic, looks for what news means for readers, never preachy"
+
+[appearance]
+palette = "#8e44ad"
+description = "Long brown hair in a claw clip, oversized cardigan, a tablet full of sticky-note photos, sneakers."
