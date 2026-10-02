@@ -98,6 +98,7 @@ export class SiteKnowledgeKeeper {
   private error: string | null = null
   private refreshes: KnowledgeStatus['refreshes'] = []
   private inFlight: Promise<RefreshResult> | null = null
+  private queued: Promise<RefreshResult> | null = null
   private listeners = new Set<(pack: SitePack) => void>()
   private log: (line: string) => void
 
@@ -141,12 +142,32 @@ export class SiteKnowledgeKeeper {
     return this.pack
   }
 
-  /** Asks the server for the pack (with `If-None-Match`). Concurrent calls share one request. Never rejects. */
+  /**
+   * Asks the server for the pack (with `If-None-Match`). Never rejects. A
+   * refresh asked for while one is in flight runs after it, since that one
+   * may have started before the change that prompted this one (a merge);
+   * every further call until then shares that follow-up.
+   */
   refresh(reason: KnowledgeReason): Promise<RefreshResult> {
-    this.inFlight ??= this.fetch(reason).finally(() => {
-      this.inFlight = null
+    if (!this.inFlight) return this.start(reason)
+    this.queued ??= this.inFlight.then(() => {
+      this.queued = null
+      return this.start(reason)
     })
-    return this.inFlight
+    return this.queued
+  }
+
+  /** Resolves once no refresh is in flight or queued. */
+  async idle(): Promise<void> {
+    while (this.inFlight || this.queued) await (this.queued ?? this.inFlight)
+  }
+
+  private start(reason: KnowledgeReason): Promise<RefreshResult> {
+    const p: Promise<RefreshResult> = this.fetch(reason).finally(() => {
+      if (this.inFlight === p) this.inFlight = null
+    })
+    this.inFlight = p
+    return p
   }
 
   private async fetch(reason: KnowledgeReason): Promise<RefreshResult> {

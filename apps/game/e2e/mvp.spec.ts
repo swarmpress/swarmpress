@@ -246,14 +246,26 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
   // own style guide and writer prompt; the merge moved the head, so the pack was fetched again.
   expect(done.knowledge.bound).toMatch(/^[0-9a-f]{7,}$/)
   expect(done.knowledge.binding).toMatchObject({ site_id: 'cinqueterre.travel', commit: done.knowledge.bound, media: 20, pages: 9, style_guide: 'pack', writer_prompt: 'pack' })
-  await expect.poll(async () => (await state(page)).knowledge.commit, { timeout: 30_000 }).toBe(gateway[2].mergedSha)
+  await expect
+    .poll(
+      async () => {
+        const k = (await state(page)).knowledge
+        return [k.commit, k.refreshes.length]
+      },
+      { timeout: 30_000 },
+    )
+    .toEqual([gateway[2].mergedSha, 4])
   const knowledge = (await state(page)).knowledge
   expect(knowledge).toMatchObject({ source: 'network', error: null })
   expect(knowledge.refreshes.slice(0, 2)).toEqual([
     { reason: 'start', result: 'fetched' },
     { reason: 'standup', result: 'not-modified' },
   ])
-  expect(knowledge.refreshes).toContainEqual({ reason: 'merge', result: 'fetched' })
+  // The merge and its DeployLanded both refetch; the server publishes the simulated deploy before
+  // the merge answers, so either may be the one that brought the new pack.
+  const afterMerge = knowledge.refreshes.slice(2)
+  expect(afterMerge.map((r) => r.reason).sort()).toEqual(['deploy', 'merge'])
+  expect(afterMerge.filter((r) => r.result === 'fetched')).toHaveLength(1)
 
   // ---------------------------------------------------------------- DeployLanded via the events API
   const events = await session(page, 'events')

@@ -142,15 +142,19 @@ describe('SiteKnowledgeKeeper', () => {
     expect(ro.status().error).toContain('read-only')
   })
 
-  it('shares one request between concurrent refreshes, and gives up on one that hangs', async () => {
+  it('runs a refresh asked for during another one after it, sharing it with later calls; gives up on one that hangs', async () => {
     let release!: (v: KnowledgeFetch) => void
     const slow = () => new Promise<never>((resolve) => (release = resolve as never))
-    const { client, etags } = fakeClient([slow as Answer])
+    const { client, etags } = fakeClient([slow as Answer, fetched(B)])
     const k = new SiteKnowledgeKeeper(client, fakeStore())
-    const [a, b] = [k.refresh('merge'), k.refresh('deploy')]
+    // The first may have started before the merge the second is about: the second runs after it.
+    const [a, b, c] = [k.refresh('standup'), k.refresh('merge'), k.refresh('deploy')]
     release(fetched(A))
-    expect(await Promise.all([a, b])).toEqual(['fetched', 'fetched'])
-    expect(etags).toHaveLength(1)
+    expect(await Promise.all([a, b, c])).toEqual(['fetched', 'fetched', 'fetched'])
+    expect(etags).toEqual([null, `"${A}"`])
+    expect(k.current?.commit).toBe(B)
+    expect(k.status().refreshes.map((r) => r.reason)).toEqual(['standup', 'merge'])
+    await k.idle()
 
     vi.useFakeTimers()
     try {
@@ -207,7 +211,7 @@ describe('the session refetch points (SiteOrchestrator, refetchAfterMerge, refet
     expect(etags).toHaveLength(2)
     expect(await gw.merge(1, 'h', '{"staff_id":"s","name":"n"}')).toBe('merged')
     expect(inner.merge).toHaveBeenCalledWith(1, 'h', '{"staff_id":"s","name":"n"}')
-    await k.refresh('merge') // joins the request the merge started
+    await k.idle() // the refresh the merge started
     expect(etags).toEqual([null, `"${A}"`, `"${A}"`])
     expect(k.current?.commit).toBe(B)
     // ...and the next job runs on a handle bound to the new commit; the old one is freed.
@@ -223,7 +227,7 @@ describe('the session refetch points (SiteOrchestrator, refetchAfterMerge, refet
     const onEvent = refetchOnDeploy(k, () => !readOnly)
     onEvent({ kind: 'DeployFailed' })
     onEvent({ kind: 'DeployLanded' })
-    await k.refresh('deploy')
+    await k.idle()
     expect(etags).toEqual([null, `"${A}"`, `"${A}"`, `"${B}"`])
     readOnly = true
     onEvent({ kind: 'DeployLanded' })
