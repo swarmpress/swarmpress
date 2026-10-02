@@ -11,9 +11,15 @@
  * (chooseModels → allowEvalPending: false) until the eval harness (plan:
  * "Test suites — Local LLM") measures real sizes and quality.
  *
- * Roles use the staff-role vocabulary of config/roles.toml plus "chatter".
+ * Roles use the kebab-case staff-role vocabulary of config/roles.toml, plus the
+ * client-only pseudo-role "chatter" (hallway small talk, not a staff job). Model
+ * ids and staff roles must agree with config/models.toml; registry.drift.test.ts
+ * enforces that. The granite chatter model is client-only.
  */
 import type { ModelRegistry } from './registry'
+
+/** Every staff role in config/roles.toml (kebab-case). */
+export const STAFF_ROLES = ['cfo', 'secretary', 'strategist', 'analyst', 'data-scientist', 'editor-in-chief', 'editor', 'writer', 'translator', 'fact-checker', 'photo-editor', 'photographer', 'video-producer', 'art-director', 'web-developer', 'ux-designer', 'it-engineer', 'dev-ops', 'seo-specialist', 'marketing-manager', 'social-media-manager'] as const
 
 const MiB = 1024 * 1024
 const GiB = 1024 * MiB
@@ -45,7 +51,7 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
       minStorageBufferBindingSize: 128 * MiB,
       approxVramBytes: 900 * MiB,
       tier: 'small',
-      roles: ['chatter', 'editor_in_chief', 'writer', 'editor', 'media', 'qa', 'seo', 'linker'],
+      roles: ['chatter', ...STAFF_ROLES],
       evalPending: true,
     },
     {
@@ -60,7 +66,7 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
       minStorageBufferBindingSize: 1 * GiB,
       approxVramBytes: 4200 * MiB,
       tier: 'large',
-      roles: ['chatter', 'editor_in_chief', 'writer', 'editor', 'media', 'qa', 'seo', 'linker', 'translator'],
+      roles: ['chatter', ...STAFF_ROLES],
       evalPending: true,
     },
     {
@@ -74,7 +80,7 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
       minStorageBufferBindingSize: 1 * GiB,
       approxVramBytes: 14500 * MiB,
       tier: 'xl',
-      roles: ['editor_in_chief', 'writer', 'editor', 'qa', 'seo', 'linker', 'translator'],
+      roles: ['cfo', 'secretary', 'strategist', 'analyst', 'data-scientist', 'editor-in-chief', 'editor', 'writer', 'translator', 'fact-checker', 'photo-editor', 'photographer', 'seo-specialist', 'marketing-manager'],
       evalPending: true,
     },
   ],

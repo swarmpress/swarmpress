@@ -2441,6 +2441,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-tungstenite 0.26.2",
+ "tower",
  "tower-http",
  "tracing",
  "tracing-subscriber",

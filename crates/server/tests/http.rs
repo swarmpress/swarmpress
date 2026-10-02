@@ -367,3 +367,42 @@ async fn serves_static_client_with_spa_fallback() {
     assert_eq!(get("/api/me").await.unwrap().status(), 401);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn static_client_is_cross_origin_isolated() {
+    let site = common::temp_dir("static");
+    std::fs::write(
+        site.join("index.html"),
+        "<!doctype html><title>SimPress</title>",
+    )
+    .unwrap();
+    let dir = site.clone();
+    let s = TestServer::start_with(Opts {
+        tweak: Box::new(move |c| c.static_dir = Some(dir)),
+    })
+    .await;
+    for path in ["/", "/some/spa/route"] {
+        let r = reqwest::get(s.url(path)).await.unwrap();
+        assert_eq!(r.status(), 200, "{path}");
+        let h = r.headers();
+        assert_eq!(h["cross-origin-opener-policy"], "same-origin", "{path}");
+        assert_eq!(
+            h["cross-origin-embedder-policy"], "credentialless",
+            "{path}"
+        );
+    }
+    // API responses are not the game page and carry no isolation headers.
+    let r = reqwest::get(s.url("/healthz")).await.unwrap();
+    assert!(r.headers().get("cross-origin-embedder-policy").is_none());
+
+    let dir = site.clone();
+    let off = TestServer::start_with(Opts {
+        tweak: Box::new(move |c| {
+            c.static_dir = Some(dir);
+            c.coep = None;
+        }),
+    })
+    .await;
+    let r = reqwest::get(off.url("/")).await.unwrap();
+    assert!(r.headers().get("cross-origin-opener-policy").is_none());
+}

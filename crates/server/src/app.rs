@@ -4,14 +4,16 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use axum::extract::{DefaultBodyLimit, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderName, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use github::{Clock, SystemClock};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
+use tower::ServiceBuilder;
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::auth::{self, CurrentUser};
@@ -161,7 +163,24 @@ pub fn router(st: AppState) -> Router {
     if let Some(dir) = &st.cfg.static_dir {
         if dir.is_dir() {
             let index = dir.join("index.html");
-            r = r.fallback_service(ServeDir::new(dir).fallback(ServeFile::new(index)));
+            let files = ServeDir::new(dir).fallback(ServeFile::new(index));
+            r = match st.cfg.coep.as_deref() {
+                // The game page must be cross-origin isolated for Turso wasm's
+                // shared-memory threads (ADR-0041).
+                Some(coep) => r.fallback_service(
+                    ServiceBuilder::new()
+                        .layer(SetResponseHeaderLayer::overriding(
+                            HeaderName::from_static("cross-origin-opener-policy"),
+                            HeaderValue::from_static("same-origin"),
+                        ))
+                        .layer(SetResponseHeaderLayer::overriding(
+                            HeaderName::from_static("cross-origin-embedder-policy"),
+                            HeaderValue::from_str(coep).expect("validated in config"),
+                        ))
+                        .service(files),
+                ),
+                None => r.fallback_service(files),
+            };
         } else {
             tracing::warn!(dir = %dir.display(), "static dir does not exist; not serving the game client");
         }
