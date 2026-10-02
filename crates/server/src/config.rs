@@ -123,6 +123,10 @@ pub struct Config {
     pub web: WebConfig,
     /// Built game client to serve at `/` (SPA fallback to index.html).
     pub static_dir: Option<PathBuf>,
+    /// Cross-origin isolation for the served client (ADR-0041): the COEP value sent with
+    /// COOP `same-origin` (`SIMPRESS_COEP` = `credentialless` (default), `require-corp`, or
+    /// `off` to send neither header).
+    pub coep: Option<String>,
     pub session_ttl: Duration,
     /// First-party analytics tracker (ADR-0032).
     pub tracker: TrackerConfig,
@@ -147,6 +151,7 @@ impl Config {
             sync_max_bytes: 8 * 1024 * 1024,
             web: WebConfig::default(),
             static_dir: None,
+            coep: Some("credentialless".into()),
             session_ttl: Duration::from_secs(30 * 24 * 3600),
             tracker: TrackerConfig {
                 origin: "http://127.0.0.1".into(),
@@ -217,6 +222,15 @@ impl Config {
             None => Some(PathBuf::from("apps/game/dist")),
         };
 
+        let coep = match opt("SIMPRESS_COEP").as_deref() {
+            None | Some("") | Some("credentialless") => Some("credentialless".to_string()),
+            Some("require-corp") => Some("require-corp".to_string()),
+            Some("off") => None,
+            Some(v) => anyhow::bail!(
+                "SIMPRESS_COEP={v:?} must be `credentialless`, `require-corp` or `off`"
+            ),
+        };
+
         let wd = WebConfig::default();
         let web = WebConfig {
             rate_per_min: num("SIMPRESS_WEB_FETCH_RATE_PER_MIN", wd.rate_per_min)?,
@@ -259,6 +273,7 @@ impl Config {
             sync_max_bytes: num("SIMPRESS_SYNC_MAX_BYTES", 64 * 1024 * 1024)?,
             web,
             static_dir,
+            coep,
             session_ttl: Duration::from_secs(num("SIMPRESS_SESSION_TTL_SECS", 30 * 24 * 3600)?),
             tracker,
         })
