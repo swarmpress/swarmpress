@@ -1,0 +1,375 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://simpress.dev/sdk/0.1.0/manifest.schema.json",
+  "title": "manifest",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+(\\.[a-z0-9-]+)+$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "sdk": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "kinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "content-pack",
+          "sim-rule",
+          "skill",
+          "panel",
+          "context-provider",
+          "publish-target",
+          "challenge",
+          "prop-pack"
+        ]
+      },
+      "minItems": 1
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(web|credits|ui|llm:(low|mid|high|agency)|store:[a-z][a-z0-9_]{0,31})$"
+      },
+      "default": []
+    },
+    "entry": {
+      "type": "object",
+      "properties": {
+        "bundle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content": {
+          "type": "object",
+          "properties": {
+            "personas": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "happenings": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "prompt_layers": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "props": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "rule": {
+      "type": "object",
+      "properties": {
+        "stepInterval": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "stepInterval"
+      ],
+      "additionalProperties": false
+    },
+    "poll": {
+      "type": "object",
+      "properties": {
+        "cadenceMinutes": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 10080
+        },
+        "regions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "cadenceMinutes",
+        "regions"
+      ],
+      "additionalProperties": false
+    },
+    "origins": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^https?:\\/\\/[A-Za-z0-9.-]+(:\\d+)?$"
+      }
+    },
+    "credential": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "bearer",
+            "basic",
+            "header",
+            "ghost-admin"
+          ]
+        },
+        "header": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9-]+$"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "panel": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "object",
+          "properties": {
+            "en": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "en"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Language code → text; `en` is required"
+        },
+        "slot": {
+          "type": "string",
+          "enum": [
+            "sidebar",
+            "drawer",
+            "modal"
+          ],
+          "default": "drawer"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "challenge": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "object",
+          "properties": {
+            "en": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "en"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Language code → text; `en` is required"
+        },
+        "seed": {
+          "type": "string",
+          "pattern": "^\\d{1,20}$"
+        },
+        "scenario": {
+          "type": "object",
+          "properties": {
+            "base": {
+              "type": "string",
+              "enum": [
+                "demo",
+                "empty"
+              ],
+              "default": "demo"
+            },
+            "packs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]+(\\.[a-z0-9-]+)+$"
+              },
+              "default": []
+            },
+            "rules": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]+(\\.[a-z0-9-]+)+$"
+              },
+              "default": []
+            }
+          },
+          "additionalProperties": false
+        },
+        "scoreExport": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$",
+          "default": "score"
+        },
+        "end": {
+          "type": "object",
+          "properties": {
+            "day": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3650
+            },
+            "bankrupt": {
+              "type": "boolean",
+              "default": true
+            }
+          },
+          "required": [
+            "day"
+          ],
+          "additionalProperties": false,
+          "description": "The run ends at this game day, or earlier on bankruptcy"
+        }
+      },
+      "required": [
+        "title",
+        "seed",
+        "scenario",
+        "end"
+      ],
+      "additionalProperties": false
+    },
+    "provenance": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "authoredBy": {
+              "type": "object",
+              "properties": {
+                "staffId": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  ]
+                },
+                "company": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "jobId": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "staffId",
+                "company",
+                "jobId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "authoredBy"
+          ],
+          "additionalProperties": false,
+          "description": "Written by a staff member's author_extension job; installed only after CEO approval (ADR-0043)"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "author": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "author"
+          ],
+          "additionalProperties": false,
+          "description": "Written by a person"
+        }
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "version",
+    "sdk",
+    "kinds"
+  ],
+  "additionalProperties": false
+}

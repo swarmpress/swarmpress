@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://simpress.dev/sdk/0.1.0/poll-result.schema.json",
+  "title": "poll-result",
+  "type": "object",
+  "properties": {
+    "cursor": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 1024
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "weather",
+              "transport",
+              "event",
+              "closure",
+              "news"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          },
+          "source_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "region": {
+            "type": "string",
+            "minLength": 1
+          },
+          "valid_from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})$"
+          },
+          "expires_at": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})$"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "summary",
+          "source_url",
+          "region",
+          "valid_from",
+          "expires_at"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 50
+    },
+    "happenings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "hook": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          },
+          "involves_roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "editor_in_chief",
+                "writer",
+                "editor",
+                "qa",
+                "art_director",
+                "frontend_dev",
+                "seo",
+                "linker",
+                "researcher",
+                "media",
+                "translator",
+                "chatter",
+                "critic"
+              ]
+            },
+            "minItems": 1
+          },
+          "urgency": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3
+          },
+          "expires_at": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})$"
+          }
+        },
+        "required": [
+          "title",
+          "hook",
+          "involves_roles",
+          "urgency",
+          "expires_at"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 10
+    }
+  },
+  "required": [
+    "cursor",
+    "facts",
+    "happenings"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,33 @@
+{
+  "id": "first-sciacchetra",
+  "title": { "en": "The first Sciacchetrà tasting" },
+  "story": {
+    "en": "A grower invites the team to taste last year's Sciacchetrà before release. Somebody has to decide whether it becomes a feature."
+  },
+  "trigger": { "kind": "every", "days": 30, "offset": 7 },
+  "primitives": [
+    {
+      "type": "guest",
+      "role": { "en": "a grower from Volastra" },
+      "place": "meeting-room",
+      "minutes": 45
+    },
+    { "type": "gather", "people": ["persona:Rosa", "role:editor_in_chief"], "place": "meeting-room", "minutes": 45 },
+    {
+      "type": "memory",
+      "people": ["persona:Rosa", "role:editor_in_chief"],
+      "text": { "en": "Tasted the new Sciacchetrà with a grower from Volastra." }
+    },
+    {
+      "type": "ticket",
+      "kind": "feature-pitch",
+      "summary": { "en": "Run a Sciacchetrà release feature this month?" },
+      "options": [
+        { "id": "approve", "label": { "en": "Commission the feature" } },
+        { "id": "later", "label": { "en": "Keep it for next year" } }
+      ],
+      "default_option": "later",
+      "deadline_days": 2
+    }
+  ]
+}

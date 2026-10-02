@@ -490,3 +490,96 @@ async fn claude_backend_full_revision_loop_and_reject() {
     assert_eq!(r.final_state, S::Rejected);
     assert_eq!(fake.remaining(), 0);
 }
+
+// --- single-phase steps (docs/mvp.md) -------------------------------------
+
+use agents::pipeline::{draft_step, review_step, DraftInput, DraftStep, EditorReview};
+
+#[tokio::test]
+async fn draft_step_fresh_returns_a_valid_page() {
+    let llm = FakeLlm::new([FakeReply::Json(page(
+        "The path out of Vernazza climbs fast.",
+    ))]);
+    let v = validator();
+    let step = draft_step(&llm, &v, &brief(), &staff(), &cfg(), &DraftInput::Fresh).await;
+    match step {
+        DraftStep::Ok { page, llm_calls } => {
+            assert_eq!(llm_calls, 1);
+            assert!(page.to_string().contains("Vernazza"));
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(llm.calls()[0].request.messages[0]
+        .text
+        .contains("Write the complete page"));
+}
+
+#[tokio::test]
+async fn draft_step_repairs_then_gives_up_like_the_full_pipeline() {
+    let llm = FakeLlm::new([
+        FakeReply::Json(page("stunning")),
+        FakeReply::Json(page("still stunning")),
+        FakeReply::Json(page("so stunning")),
+    ]);
+    let v = validator();
+    let step = draft_step(&llm, &v, &brief(), &staff(), &cfg(), &DraftInput::Fresh).await;
+    match step {
+        DraftStep::Invalid { errors, llm_calls } => {
+            assert_eq!(llm_calls, 3);
+            assert!(errors[0].contains("stunning"));
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn draft_step_revision_carries_the_editor_feedback() {
+    let llm = FakeLlm::new([FakeReply::Json(page("Draft two, with the trail fee."))]);
+    let v = validator();
+    let prev = EditorReview {
+        decision: ReviewDecision::NeedsChanges,
+        score: 6,
+        notes: "Mention the trail fee.".into(),
+        issues: vec!["No fee info".into()],
+        high_risk: vec![],
+    };
+    let input = DraftInput::Revision {
+        page: page("Draft one."),
+        review: prev,
+    };
+    let step = draft_step(&llm, &v, &brief(), &staff(), &cfg(), &input).await;
+    assert!(matches!(step, DraftStep::Ok { .. }));
+    let prompt = &llm.calls()[0].request.messages[0].text;
+    assert!(prompt.contains("score 6/10"));
+    assert!(prompt.contains("Mention the trail fee."));
+    assert!(prompt.contains("- No fee info"));
+    assert!(prompt.contains("Draft one."));
+}
+
+#[tokio::test]
+async fn review_step_returns_the_structured_review_without_applying_the_rubric() {
+    let llm = FakeLlm::new([FakeReply::Json(review("approve", 6, "Fine I guess"))]);
+    let r = review_step(&llm, &brief(), &staff(), &cfg(), &page("One."), 0)
+        .await
+        .unwrap();
+    assert_eq!(r.decision, ReviewDecision::Approve);
+    assert_eq!(
+        r.score, 6,
+        "the sim compares the score with the bar, not the step"
+    );
+    let prompt = &llm.calls()[0].request.messages[0].text;
+    assert!(prompt.contains("revision 0"));
+    assert!(prompt.contains("approval bar is 7"));
+}
+
+#[tokio::test]
+async fn review_step_surfaces_refusals() {
+    let llm = FakeLlm::new([FakeReply::Error(LlmError::Refusal {
+        category: Some("other".into()),
+        explanation: None,
+    })]);
+    let err = review_step(&llm, &brief(), &staff(), &cfg(), &page("One."), 2)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, LlmError::Refusal { .. }));
+}

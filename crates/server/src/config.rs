@@ -6,8 +6,9 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 
-use crate::actor::ActorConfig;
-use crate::jobs::RetryPolicy;
+use crate::tracker::TrackerConfig;
+
+pub const DEFAULT_DATABASE_URL: &str = "sqlite://data/simpress.db?mode=rwc";
 
 /// GitHub OAuth app settings. The base URLs are configurable so tests can
 /// point them at a fake provider (wiremock).
@@ -48,52 +49,122 @@ impl GithubOAuthConfig {
     }
 }
 
+/// Which GitHub the content gateway talks to (`SIMPRESS_GITHUB`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GithubMode {
+    /// In-memory `github::FakeGitHub` (tests, dev). Repos are created on demand.
+    Fake,
+    /// The real REST API: a static token (`GITHUB_TOKEN`) or the GitHub App
+    /// (`GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY_PATH`). With neither, gateway
+    /// calls fail loudly with 503.
+    Real {
+        api_base: String,
+        token: Option<String>,
+        app_id: Option<String>,
+        app_private_key_path: Option<PathBuf>,
+    },
+}
+
+/// Web fetch proxy (ADR-0040).
+#[derive(Clone, Debug)]
+pub struct WebConfig {
+    /// Per-user token bucket for `/web/fetch`.
+    pub rate_per_min: u32,
+    pub burst: u32,
+    pub max_bytes: usize,
+    pub timeout: Duration,
+    pub max_redirects: usize,
+    /// Allow loopback/private targets. Never set from the environment: only
+    /// tests that fetch from a local mock server turn this on.
+    pub allow_private_for_tests: bool,
+}
+
+impl Default for WebConfig {
+    fn default() -> Self {
+        Self {
+            rate_per_min: 30,
+            burst: 10,
+            max_bytes: 2 * 1024 * 1024,
+            timeout: Duration::from_secs(10),
+            max_redirects: 5,
+            allow_private_for_tests: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Config {
+    /// `sqlite://data/simpress.db?mode=rwc` (default) or `sqlite::memory:`.
     pub database_url: String,
+    /// Sync blobs and other files (`SIMPRESS_DATA_DIR`, default `./data`).
+    pub data_dir: PathBuf,
     pub bind: SocketAddr,
     /// Public origin players use (OAuth redirect target, cookie `Secure` flag).
     pub public_url: String,
     pub github: GithubOAuthConfig,
+    /// `POST /auth/dev/login` is enabled (`SIMPRESS_DEV_AUTH=1`). Never in production.
+    pub dev_auth: bool,
+    /// Content gateway backend (`SIMPRESS_GITHUB=fake`, otherwise real).
+    pub github_mode: GithubMode,
+    /// Owner for site repos of companies created without an explicit repo
+    /// (`GITHUB_SITES_ORG`, default `simpress-sites`).
+    pub sites_org: String,
+    /// `X-Hub-Signature-256` secret for `POST /webhooks/github`.
+    pub webhook_secret: Option<String>,
+    /// Emit `DeployLanded` right after a gateway merge (`SIMPRESS_SIMULATE_DEPLOY`,
+    /// default on with the fake GitHub, off otherwise).
+    pub simulate_deploy: bool,
+    /// Company lease length (`SIMPRESS_LEASE_SECS`, default 90).
+    pub lease_ttl: Duration,
+    /// Upper bound on a gateway page (bytes of JSON text).
+    pub max_page_bytes: usize,
+    /// Upper bound on one sync upload (`SIMPRESS_SYNC_MAX_BYTES`, default 64 MiB).
+    pub sync_max_bytes: usize,
+    pub web: WebConfig,
     /// Built game client to serve at `/` (SPA fallback to index.html).
     pub static_dir: Option<PathBuf>,
-    /// Real minutes per game day for newly created companies.
-    pub default_day_real_minutes: u32,
     pub session_ttl: Duration,
-    pub actor: ActorConfig,
-    /// Lease length handed to job workers (browser and Claude).
-    pub job_lease: Duration,
-    pub job_retry: RetryPolicy,
-    /// How often expired leases are reaped.
-    pub job_reap_interval: Duration,
-    /// Concurrent Claude jobs per server process.
-    pub claude_concurrency: usize,
-    /// Upper bound on a browser artifact (bytes of JSON text).
-    pub max_artifact_bytes: usize,
+    /// First-party analytics tracker (ADR-0032).
+    pub tracker: TrackerConfig,
 }
 
 impl Config {
-    /// A config suitable for tests: all URLs local, short timings.
-    pub fn for_tests(database_url: &str, github: GithubOAuthConfig) -> Self {
+    /// A config suitable for tests: local URLs, dev auth and the fake GitHub on.
+    pub fn for_tests(database_url: &str, data_dir: PathBuf, github: GithubOAuthConfig) -> Self {
         Self {
             database_url: database_url.into(),
+            data_dir,
             bind: "127.0.0.1:0".parse().expect("valid addr"),
             public_url: "http://localhost:5173".into(),
             github,
+            dev_auth: true,
+            github_mode: GithubMode::Fake,
+            sites_org: "simpress-sites".into(),
+            webhook_secret: Some("test-webhook-secret".into()),
+            simulate_deploy: true,
+            lease_ttl: Duration::from_secs(90),
+            max_page_bytes: 256 * 1024,
+            sync_max_bytes: 8 * 1024 * 1024,
+            web: WebConfig::default(),
             static_dir: None,
-            default_day_real_minutes: 60,
             session_ttl: Duration::from_secs(30 * 24 * 3600),
-            actor: ActorConfig::default(),
-            job_lease: Duration::from_secs(30),
-            job_retry: RetryPolicy::default(),
-            job_reap_interval: Duration::from_secs(5),
-            claude_concurrency: 1,
-            max_artifact_bytes: 256 * 1024,
+            tracker: TrackerConfig {
+                origin: "http://127.0.0.1".into(),
+                trust_forwarded_for: true,
+                ..TrackerConfig::default()
+            },
         }
     }
 
     pub fn from_env() -> Result<Self> {
-        let database_url = req("DATABASE_URL")?;
+        let database_url = opt("DATABASE_URL")
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| DEFAULT_DATABASE_URL.into());
+        let data_dir = PathBuf::from(
+            opt("SIMPRESS_DATA_DIR")
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| "data".into()),
+        );
         let bind = opt("SIMPRESS_BIND")
             .unwrap_or_else(|| "127.0.0.1:8080".into())
             .parse()
@@ -114,9 +185,31 @@ impl Config {
         if let Some(v) = opt("GITHUB_API_URL") {
             github.api_base = v;
         }
-        if github.client_id.is_empty() {
-            tracing::warn!("GITHUB_OAUTH_CLIENT_ID is empty: GitHub login will fail");
+        let dev_auth = flag("SIMPRESS_DEV_AUTH", false)?;
+        if github.client_id.is_empty() && !dev_auth {
+            tracing::warn!(
+                "GITHUB_OAUTH_CLIENT_ID is empty and SIMPRESS_DEV_AUTH is off: nobody can sign in"
+            );
         }
+        if dev_auth {
+            tracing::warn!(
+                "SIMPRESS_DEV_AUTH=1: POST /auth/dev/login signs anyone in. Development only."
+            );
+        }
+
+        let github_mode = match opt("SIMPRESS_GITHUB").as_deref() {
+            Some("fake") => GithubMode::Fake,
+            None | Some("" | "real") => GithubMode::Real {
+                api_base: github.api_base.clone(),
+                token: opt("GITHUB_TOKEN").filter(|v| !v.is_empty()),
+                app_id: opt("GITHUB_APP_ID").filter(|v| !v.is_empty()),
+                app_private_key_path: opt("GITHUB_APP_PRIVATE_KEY_PATH")
+                    .filter(|v| !v.is_empty())
+                    .map(PathBuf::from),
+            },
+            Some(v) => anyhow::bail!("SIMPRESS_GITHUB={v:?} must be `fake` or `real`"),
+        };
+        let simulate_deploy = flag("SIMPRESS_SIMULATE_DEPLOY", github_mode == GithubMode::Fake)?;
 
         let static_dir = match opt("SIMPRESS_STATIC_DIR") {
             Some(v) if v.is_empty() => None,
@@ -124,29 +217,50 @@ impl Config {
             None => Some(PathBuf::from("apps/game/dist")),
         };
 
-        let defaults = ActorConfig::default();
-        let actor = ActorConfig {
-            hash_every: num("SIMPRESS_HASH_EVERY_STEPS", defaults.hash_every)?,
-            snapshot_every: num("SIMPRESS_SNAPSHOT_EVERY_STEPS", defaults.snapshot_every)?,
-            catchup_budget: num("SIMPRESS_CATCHUP_STEPS_PER_TICK", defaults.catchup_budget)?,
-            idle_unload: Some(Duration::from_secs(num("SIMPRESS_IDLE_UNLOAD_SECS", 300)?)),
-            ..defaults
+        let wd = WebConfig::default();
+        let web = WebConfig {
+            rate_per_min: num("SIMPRESS_WEB_FETCH_RATE_PER_MIN", wd.rate_per_min)?,
+            burst: num("SIMPRESS_WEB_FETCH_BURST", wd.burst)?,
+            ..wd
+        };
+
+        let td = TrackerConfig::default();
+        let tracker = TrackerConfig {
+            origin: opt("SIMPRESS_TRACKER_ORIGIN")
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| public_url.clone()),
+            raw_retention_days: num("SIMPRESS_TRACKER_RAW_RETENTION_DAYS", td.raw_retention_days)?
+                .max(1),
+            allow_localhost: flag(
+                "SIMPRESS_TRACKER_ALLOW_LOCALHOST",
+                public_url.starts_with("http://localhost") || public_url.starts_with("http://127."),
+            )?,
+            trust_forwarded_for: flag("SIMPRESS_TRACKER_TRUST_PROXY", td.trust_forwarded_for)?,
+            rate_per_min: num("SIMPRESS_TRACKER_RATE_PER_MIN", td.rate_per_min)?,
+            burst: num("SIMPRESS_TRACKER_BURST", td.burst)?,
+            ..td
         };
 
         Ok(Self {
             database_url,
+            data_dir,
             bind,
             public_url,
             github,
+            dev_auth,
+            github_mode,
+            sites_org: opt("GITHUB_SITES_ORG")
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| "simpress-sites".into()),
+            webhook_secret: opt("GITHUB_WEBHOOK_SECRET").filter(|v| !v.is_empty()),
+            simulate_deploy,
+            lease_ttl: Duration::from_secs(num("SIMPRESS_LEASE_SECS", 90)?.max(1)),
+            max_page_bytes: 256 * 1024,
+            sync_max_bytes: num("SIMPRESS_SYNC_MAX_BYTES", 64 * 1024 * 1024)?,
+            web,
             static_dir,
-            default_day_real_minutes: num("SIMPRESS_DAY_REAL_MINUTES", 60)?,
             session_ttl: Duration::from_secs(num("SIMPRESS_SESSION_TTL_SECS", 30 * 24 * 3600)?),
-            actor,
-            job_lease: Duration::from_secs(num("SIMPRESS_JOB_LEASE_SECS", 60)?),
-            job_retry: RetryPolicy::default(),
-            job_reap_interval: Duration::from_secs(num("SIMPRESS_JOB_REAP_SECS", 5)?),
-            claude_concurrency: num("SIMPRESS_CLAUDE_CONCURRENCY", 4)?,
-            max_artifact_bytes: num("SIMPRESS_MAX_ARTIFACT_BYTES", 256 * 1024)?,
+            tracker,
         })
     }
 
@@ -167,8 +281,13 @@ fn opt(key: &str) -> Option<String> {
     std::env::var(key).ok()
 }
 
-fn req(key: &str) -> Result<String> {
-    std::env::var(key).with_context(|| format!("{key} must be set"))
+fn flag(key: &str, default: bool) -> Result<bool> {
+    match opt(key).as_deref() {
+        None | Some("") => Ok(default),
+        Some("1" | "true" | "yes" | "on") => Ok(true),
+        Some("0" | "false" | "no" | "off") => Ok(false),
+        Some(v) => anyhow::bail!("{key}={v:?} must be true or false"),
+    }
 }
 
 fn num<T: std::str::FromStr>(key: &str, default: T) -> Result<T>

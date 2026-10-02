@@ -14,6 +14,7 @@ import { mountHud } from './ui/hud'
  *   speed=N            sim steps per 100 ms (offline sandbox fast-forward), default 1 = real time
  *   facing=0..3        camera angle
  *   seed=N             sim seed, default 42
+ *   tz=Area/City       HQ timezone for the real-time wall clocks, default Europe/Rome
  * With t=, the loop stops once the scene is ready and 20 frames are drawn
  * (`__simpress.still()` turns true) so screenshots are stable and cheap.
  */
@@ -28,6 +29,8 @@ async function main() {
   const frozen = params.get('t')
   const speed = Math.max(1, Number(params.get('speed') ?? 1))
   const seed = BigInt(params.get('seed') ?? 42)
+  // The company's HQ timezone; comes from the company record once a server is connected.
+  const timeZone = params.get('tz') ?? 'Europe/Rome'
 
   const canvas = document.createElement('canvas')
   canvas.id = 'game'
@@ -57,8 +60,12 @@ async function main() {
     })
   }
 
+  // Wall clocks show the real time, except when frozen for screenshots, where
+  // they show the frozen time so visual tests stay deterministic.
+  let frozenInstant: Date | null = null
   if (frozen) {
     const [h, m] = frozen.split(':').map(Number)
+    frozenInstant = new Date(Date.UTC(2026, 9, 1, h, m || 0, 0))
     const target = h * 60 + (m || 0)
     const stepsPerMinute = Number(sim.steps_per_day()) / 1440
     const minutes = (target - sim.minute_of_day() + 1440) % 1440
@@ -88,6 +95,7 @@ async function main() {
       game.update(JSON.parse(sim.render_state_json()) as RenderState)
       lastStep = step
     }
+    game.setClock(frozenInstant ?? new Date(), frozenInstant ? 'UTC' : timeZone)
     game.scene.render()
     hud.set({
       clock: formatClock(sim.minute_of_day()),

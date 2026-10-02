@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "pnpm --filter @swarm-press/game dev",
     "build": "pnpm --filter @swarm-press/game build",
-    "typecheck": "pnpm -r --filter @swarm-press/game --filter @swarm-press/content-schema typecheck",
+    "typecheck": "pnpm -r --filter @swarm-press/game --filter @swarm-press/content-schema --filter @simpress/sdk --filter @simpress/sandbox --filter @simpress/runner typecheck",
     "test": "pnpm -r --filter @swarm-press/content-schema --filter @swarm-press/game test",
     "test:e2e": "pnpm --filter @swarm-press/game test:e2e",
+    "test:sdk": "pnpm -r --filter @simpress/sdk --filter @simpress/sandbox --filter @simpress/runner test",
+    "simpress": "bun packages/runner/src/cli.ts",
     "schema:export": "pnpm --filter @swarm-press/content-schema export",
     "schema:check": "pnpm --filter @swarm-press/content-schema check",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""

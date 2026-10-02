@@ -36,17 +36,21 @@ The legacy TypeScript code is reachable at the git tag `legacy-ts`.
 - [Site kit](architecture/site-kit.md): `@swarm-press/site-kit` and agent-authored themes
 - [Lighting and rendering](architecture/lighting-and-rendering.md): Babylon/WebGPU, cutaway,
   lighting, quality tiers
+- [Extension SDK](architecture/sdk.md): extension kinds, `simpress.ext.json`, capabilities, the
+  QuickJS sandbox, the `simpress` runner, the sim-rule contract
 
 ### Game design
 
 [Overview](game-design/overview.md) · [Staff](game-design/staff.md) ·
 [Rooms and progression](game-design/rooms-and-progression.md) · [Economy](game-design/economy.md) ·
-[Events and inbox](game-design/events-and-inbox.md) · [Leaderboard](game-design/leaderboard.md)
+[Events and inbox](game-design/events-and-inbox.md) · [Leaderboard](game-design/leaderboard.md) ·
+[What the SDK makes possible](game-design/sdk-ideas.md)
 
 ### Guides and runbooks
 
 [Getting started](guides/getting-started.md) · [Testing and evidence](guides/testing.md) ·
-[Asset pipeline](guides/asset-pipeline.md) · [Contributing](guides/contributing.md) ·
+[Asset pipeline](guides/asset-pipeline.md) · [Writing extensions](guides/extending.md) ·
+[Contributing](guides/contributing.md) ·
 [Operations](runbooks/operations.md) · [cinqueterre cutover](runbooks/cinqueterre-cutover.md)
 
 ## Status (2026-10-01, milestone M0)

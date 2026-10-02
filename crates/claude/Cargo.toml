@@ -5,15 +5,21 @@ edition.workspace = true
 version.workspace = true
 license.workspace = true
 
+[features]
+default = ["http"]
+http = ["dep:reqwest", "dep:tokio", "dep:futures-util", "dep:fastrand"]
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 async-trait = "0.1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
-tokio = { version = "1", features = ["time"] }
-futures-util = { version = "0.3", default-features = false, features = ["std"] }
-fastrand = "2"
+# HTTP transport (`HttpClaude`). Off for wasm consumers (agents, orchestrator),
+# which only need the types, the `ClaudeApi` trait and the structured-output helpers.
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"], optional = true }
+tokio = { version = "1", features = ["time"], optional = true }
+futures-util = { version = "0.3", default-features = false, features = ["std"], optional = true }
+fastrand = { version = "2", optional = true }
 jsonschema = { version = "0.33", default-features = false }
 
 [dev-dependencies]

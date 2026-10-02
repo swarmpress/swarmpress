@@ -1,0 +1,48 @@
+{
+  "$schema": "../../../../packages/sdk/schemas/scenario.schema.json",
+  "name": "fact-check finds one contradicted claim and returns a digest",
+  "seed": 42,
+  "days": 0,
+  "jobs": [
+    {
+      "kind": "fact-check",
+      "input": {
+        "page_id": "villages-overview",
+        "claims": [
+          { "text": "Vernazza is one of the five villages of the Cinque Terre.", "source": "Vernazza" },
+          { "text": "Monterosso has 12,000 inhabitants.", "source": "Monterosso_al_Mare" }
+        ]
+      },
+      "llm": [
+        "SUPPORTED: the summary names Vernazza as one of the Cinque Terre villages.",
+        "CONTRADICTED: the summary gives about 1,500 inhabitants."
+      ],
+      "web": {
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Vernazza": { "file": "fixtures/vernazza.json" },
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Monterosso_al_Mare": { "file": "fixtures/monterosso.json" }
+      },
+      "expect": {
+        "digest": { "ok": false, "score": 7, "words": 15, "qa_defects": 1 },
+        "artifactKind": "fact-check-report"
+      }
+    },
+    {
+      "kind": "fact-check",
+      "input": { "page_id": "empty", "claims": [] },
+      "expect": { "digest": { "ok": true, "score": 10, "words": 0, "qa_defects": 0 } }
+    },
+    {
+      "kind": "fact-check",
+      "input": { "page_id": "no-script", "claims": [{ "text": "Vernazza has a harbour.", "source": "Vernazza" }] },
+      "web": { "https://en.wikipedia.org/api/rest_v1/page/summary/Vernazza": { "file": "fixtures/vernazza.json" } },
+      "expect": { "error": "FakeLlm: no scripted response left" }
+    }
+  ],
+  "tools": [
+    {
+      "tool": "extract_claims",
+      "input": { "text": "It is lovely. Riomaggiore has 1,300 residents. The trail reopened in 2024." },
+      "expect": { "output": { "claims": ["Riomaggiore has 1,300 residents.", "The trail reopened in 2024."] } }
+    }
+  ]
+}
