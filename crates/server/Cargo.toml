@@ -1,6 +1,6 @@
 [package]
 name = "server"
-description = "SimPress central server: auth, company actors, lockstep WebSocket, job queue (axum + tokio + sqlx/Postgres)"
+description = "SimPress central server (local-first): auth, companies and leases, content gateway, event inbox, sync blobs, web fetch proxy, tracker (axum + tokio + sqlx/SQLite)"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -15,11 +15,9 @@ name = "simpress-server"
 path = "src/main.rs"
 
 [dependencies]
-sim-core.workspace = true
-protocol.workspace = true
+github = { path = "../github" }
 serde.workspace = true
 serde_json.workspace = true
-postcard.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 
@@ -30,14 +28,11 @@ tower-http = { version = "0.6", features = ["fs", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 sqlx = { version = "0.8", default-features = false, features = [
-  "postgres",
+  "sqlite",
   "runtime-tokio",
-  "tls-rustls",
   "macros",
   "migrate",
-  "uuid",
   "chrono",
-  "json",
 ] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 uuid = { version = "1", features = ["v4", "serde"] }

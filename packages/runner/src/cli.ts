@@ -1,0 +1,104 @@
+#!/usr/bin/env bun
+/**
+ * simpress — the headless SimPress host (ADR-0042).
+ *
+ *   bun packages/runner/src/cli.ts <command> …     (Node 22+: node packages/runner/src/cli.ts …)
+ */
+import { pathToFileURL } from "node:url";
+import { SDK_VERSION } from "@simpress/sdk";
+import { cmdBuild, cmdCheck, cmdNew, cmdPack, cmdRun, cmdTest, consoleOut, type Out } from "./commands.ts";
+import { TEMPLATE_KINDS } from "./templates.ts";
+
+export const USAGE = `simpress ${SDK_VERSION} — headless SimPress host and extension toolkit
+
+usage:
+  simpress new <kind> <dir>        scaffold an extension (${TEMPLATE_KINDS.join(" | ")})
+  simpress check <dir>             manifest, schemas, sdk range, capabilities, bundle exports, determinism replay
+  simpress build <dir>             bundle entry.bundle into dist/ext.bundle.js (one IIFE, sets globalThis.ext)
+  simpress run [options]           run the wasm sim headless and drive extensions through the sandbox
+      --seed <u64>                 world seed (default 42)
+      --days <n>                   game days to fast-forward (default 1)
+      --ext <dir>                  load an extension (repeatable)
+      --world demo|empty           starting world (default demo)
+      --web fixtures|live          fixture-backed fetch (default) or the real network
+      --json                       print one JSON report instead of text
+  simpress test <dir>              run every *.scenario.json under <dir>
+  simpress pack <dir> [--out f]    check, build and write <id>-<version>.simpress.tgz with sha256 integrity
+
+The client-wasm build must exist (cargo xtask wasm) for run, test and sim-rule checks.`;
+
+export async function main(argv: string[], out: Out = consoleOut): Promise<number> {
+  const [cmd, ...rest] = argv;
+  const flags = new Map<string, string[]>();
+  const positional: string[] = [];
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a.startsWith("--")) {
+      const [k, inline] = a.slice(2).split("=", 2);
+      const boolean = k === "json" || k === "help";
+      const v = inline ?? (boolean ? "true" : rest[++i]);
+      if (v === undefined) {
+        out.error(`simpress: --${k} needs a value`);
+        return 2;
+      }
+      flags.set(k, [...(flags.get(k) ?? []), v]);
+    } else positional.push(a);
+  }
+  const one = (k: string) => flags.get(k)?.at(-1);
+  const needDir = (what: string) => {
+    if (!positional[0]) throw new UsageError(`simpress ${what}: missing <dir>`);
+    return positional[0];
+  };
+  try {
+    switch (cmd) {
+      case "new":
+        if (positional.length < 2) throw new UsageError("simpress new: usage: simpress new <kind> <dir>");
+        return await cmdNew(positional[0], positional[1], out);
+      case "check":
+        return await cmdCheck(needDir("check"), out);
+      case "build":
+        return await cmdBuild(needDir("build"), out);
+      case "test":
+        return await cmdTest(needDir("test"), out);
+      case "pack":
+        return await cmdPack(needDir("pack"), out, one("out"));
+      case "run": {
+        const seedS = one("seed") ?? "42";
+        const daysS = one("days") ?? "1";
+        if (!/^\d{1,20}$/.test(seedS) || BigInt(seedS) > 0xffff_ffff_ffff_ffffn) throw new UsageError(`--seed must be a u64, got ${seedS}`);
+        if (!/^\d+$/.test(daysS) || Number(daysS) > 3650) throw new UsageError(`--days must be 0..3650, got ${daysS}`);
+        const web = one("web") ?? "fixtures";
+        if (web !== "fixtures" && web !== "live") throw new UsageError(`--web must be fixtures or live`);
+        const world = one("world") ?? "demo";
+        if (world !== "demo" && world !== "empty") throw new UsageError(`--world must be demo or empty`);
+        return await cmdRun(
+          { seed: BigInt(seedS), days: Number(daysS), exts: [...(flags.get("ext") ?? []), ...positional], json: flags.has("json"), web, world },
+          out,
+        );
+      }
+      case undefined:
+      case "help":
+      case "--help":
+      case "-h":
+        out.log(USAGE);
+        return cmd === undefined ? 2 : 0;
+      default:
+        throw new UsageError(`simpress: unknown command "${cmd}"`);
+    }
+  } catch (e) {
+    if (e instanceof UsageError) {
+      out.error(e.message);
+      out.error("run `simpress help` for usage");
+      return 2;
+    }
+    out.error(`error: ${e instanceof Error ? e.message : String(e)}`);
+    return 1;
+  }
+}
+
+class UsageError extends Error {}
+
+const meta = import.meta as ImportMeta & { main?: boolean };
+if (meta.main ?? (!!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)) {
+  process.exit(await main(process.argv.slice(2)));
+}

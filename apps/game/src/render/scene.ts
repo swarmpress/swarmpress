@@ -5,6 +5,7 @@ import { isCutAway } from './cutaway'
 import { applyRenderState, createLighting, type Lighting } from './lighting'
 import { buildOffice, type OfficeHandles } from './office'
 import { createPostFx, type QualitySettings } from './postfx'
+import { buildWallClocks } from './wallclock'
 
 export interface GameScene {
   scene: Scene
@@ -15,6 +16,9 @@ export interface GameScene {
   update(state: RenderState): void
   /** Re-evaluate which walls are cut away for the current camera angle. */
   updateCutaway(): void
+  /** Set the wall clocks to a real instant in the HQ timezone (cosmetic, not sim state). */
+  setClock(instant: Date, timeZone: string): void
+  clockCount: number
 }
 
 export interface SceneOptions {
@@ -34,6 +38,7 @@ export function createGameScene(
   const iso = createIsoCamera(scene, canvas, center.clone())
   const office = buildOffice(scene, layout)
   const lighting = createLighting(scene, office, { shadows: opts.quality.shadows, shadowMapSize: opts.quality.shadowMapSize })
+  const clocks = buildWallClocks(scene, layout)
   if (opts.postFx) createPostFx(scene, iso.camera, opts.quality)
 
   const updateCutaway = () => {
@@ -52,5 +57,7 @@ export function createGameScene(
     iso,
     update: (state) => applyRenderState(scene, office, lighting, state, center),
     updateCutaway,
+    setClock: (instant, timeZone) => clocks.set(instant, timeZone),
+    clockCount: clocks.count,
   }
 }

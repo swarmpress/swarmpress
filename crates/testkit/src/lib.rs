@@ -1,33 +1,10 @@
 //! Shared test helpers for SimPress crates.
 //!
-//! - [`db`]: locate the test Postgres (`DATABASE_URL`), with a helpful panic
 //! - [`oauth`]: a fake GitHub OAuth provider + API (wiremock)
 //! - [`ws`]: a postcard WebSocket test client (tokio-tungstenite)
 //! - [`world`]: deterministic world builders and golden-hash helpers
 //!
 //! This crate does not depend on the server, so server unit tests can use it.
-
-pub mod db {
-    /// The Postgres URL used by `#[sqlx::test]` and other DB tests.
-    /// Panics with setup instructions when unset.
-    pub fn database_url() -> String {
-        std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-            panic!(
-                "DATABASE_URL is not set. Start a throwaway Postgres with\n  \
-                 eval \"$(crates/server/scripts/test-pg.sh start)\"\n\
-                 or `docker compose up -d postgres` and export DATABASE_URL."
-            )
-        })
-    }
-
-    /// Quick connectivity check, for tests that want to fail early and clearly.
-    pub async fn ping() -> anyhow::Result<()> {
-        use sqlx::Connection;
-        let mut c = sqlx::PgConnection::connect(&database_url()).await?;
-        sqlx::query("SELECT 1").execute(&mut c).await?;
-        Ok(())
-    }
-}
 
 pub mod oauth {
     use serde_json::json;

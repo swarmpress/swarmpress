@@ -1,0 +1,14 @@
+{
+  "name": "@simpress-examples/fact-checker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Example agent skill: one tool and one job that returns an artifact and a digest",
+  "scripts": {
+    "check": "bun ../../../packages/runner/src/cli.ts check .",
+    "test": "bun ../../../packages/runner/src/cli.ts test ."
+  },
+  "devDependencies": {
+    "@simpress/sdk": "workspace:*"
+  }
+}

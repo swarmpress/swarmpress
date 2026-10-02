@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../packages/sdk/schemas/manifest.schema.json",
+  "id": "dev.simpress.examples.coffee-machine-rule",
+  "name": "The temperamental coffee machine",
+  "version": "0.1.0",
+  "sdk": "^0.1.0",
+  "description": "A sim rule: some mornings the coffee machine breaks, morale dips, and it is repaired at 10:00.",
+  "kinds": ["sim-rule"],
+  "capabilities": [],
+  "entry": { "bundle": "src/index.ts" },
+  "rule": { "stepInterval": 500 },
+  "provenance": { "author": { "name": "SimPress examples" } }
+}

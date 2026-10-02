@@ -1,0 +1,6 @@
+{
+  "id": "harvest-writer",
+  "applies_to": "writer",
+  "template_additions": "## Harvest season\nDuring the harvest (September to October), give practical timing: which villages are busy, when the monorails run, and that cellar visits need booking.",
+  "variables": { "season": "harvest" }
+}

@@ -1,81 +1,81 @@
-//! Integration-test harness: a real server on 127.0.0.1:0 backed by the
-//! per-test database from `#[sqlx::test]`, with a fake GitHub OAuth provider.
+//! Integration-test harness: a real server on 127.0.0.1:0 backed by a fresh
+//! temp-file SQLite database (WAL, writer + reader pools) per test, the
+//! in-memory `github::FakeGitHub` for the content gateway, a fake GitHub
+//! OAuth provider (wiremock) and a manual clock.
 #![allow(dead_code)]
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use github::{FakeGitHub, ManualClock, SystemClock};
 use reqwest::header::{COOKIE, LOCATION, SET_COOKIE};
 use reqwest::redirect::Policy;
-use serde_json::Value;
-use simpress_server::actor;
-use simpress_server::app::{self, AppState, Background};
+use reqwest::Method;
+use serde_json::{json, Value};
+use simpress_server::app::{self, AppState};
 use simpress_server::config::{Config, GithubOAuthConfig};
-use simpress_server::jobs::{ArtifactValidator, JobNotifier, PermissiveValidator};
-use simpress_server::sim::LedgerSim;
-use sqlx::PgPool;
-use testkit::oauth::{FakeGitHub, GithubUser, CLIENT_ID, CLIENT_SECRET};
-use testkit::ws::WsClient;
+use simpress_server::db::Db;
+use simpress_server::gateway::RepoBackend;
+use testkit::oauth::{self, GithubUser, CLIENT_ID, CLIENT_SECRET};
 use tokio::task::JoinHandle;
 
 pub struct TestServer {
     pub addr: std::net::SocketAddr,
     pub st: AppState,
-    pub gh: FakeGitHub,
+    pub db: Db,
+    /// Fake GitHub OAuth provider (login flow).
+    pub gh: oauth::FakeGitHub,
+    pub clock: Arc<ManualClock>,
     pub http: reqwest::Client,
+    pub dir: PathBuf,
     server: JoinHandle<()>,
-    bg: Option<Background>,
 }
 
 pub struct Opts {
-    pub validator: Arc<dyn ArtifactValidator>,
     pub tweak: Box<dyn FnOnce(&mut Config) + Send>,
-    /// Start the reaper + Claude pool (off by default so tests drive them).
-    pub background: bool,
 }
 
 impl Default for Opts {
     fn default() -> Self {
         Self {
-            validator: Arc::new(PermissiveValidator),
             tweak: Box::new(|_| {}),
-            background: false,
         }
     }
 }
 
+pub fn temp_dir(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("simpress-{tag}-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+/// A migrated temp-file database (WAL) in `dir`.
+pub async fn file_db(dir: &std::path::Path) -> Db {
+    let url = format!("sqlite://{}/simpress.db?mode=rwc", dir.display());
+    let db = Db::connect(&url).await.unwrap();
+    db.migrate().await.unwrap();
+    db
+}
+
 impl TestServer {
-    pub async fn start(pool: PgPool) -> Self {
-        Self::start_with(pool, Opts::default()).await
+    pub async fn start() -> Self {
+        Self::start_with(Opts::default()).await
     }
 
-    pub async fn start_with(pool: PgPool, opts: Opts) -> Self {
-        let gh = FakeGitHub::start().await;
+    pub async fn start_with(opts: Opts) -> Self {
+        let dir = temp_dir("test");
+        let db = file_db(&dir).await;
+        let gh = oauth::FakeGitHub::start().await;
         let mut cfg = Config::for_tests(
             "",
+            dir.join("data"),
             GithubOAuthConfig::with_base(&gh.base_url(), CLIENT_ID, CLIENT_SECRET),
         );
-        cfg.actor.idle_unload = None;
         (opts.tweak)(&mut cfg);
-        let (notifier, notifier_task) = JobNotifier::start(&pool).await.expect("LISTEN");
-        let st = AppState::new(
-            cfg,
-            pool,
-            actor::spawner::<LedgerSim>(),
-            notifier,
-            opts.validator,
-        );
-        let bg = if opts.background {
-            Some(app::spawn_background(
-                &st,
-                Arc::new(simpress_server::jobs::UnconfiguredClaude),
-                Some(notifier_task),
-            ))
-        } else {
-            Some(Background {
-                tasks: vec![notifier_task],
-            })
-        };
+        let clock = ManualClock::new(github::Clock::now_ms(&SystemClock));
+        let backend = Arc::new(RepoBackend::from_mode(&cfg.github_mode).unwrap());
+        let st = AppState::with_parts(cfg, db.clone(), clock.clone(), backend);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let st2 = st.clone();
@@ -86,16 +86,19 @@ impl TestServer {
         });
         let http = reqwest::Client::builder()
             .redirect(Policy::none())
+            .no_proxy()
             .timeout(Duration::from_secs(10))
             .build()
             .unwrap();
         Self {
             addr,
             st,
+            db,
             gh,
+            clock,
             http,
+            dir,
             server,
-            bg,
         }
     }
 
@@ -103,8 +106,13 @@ impl TestServer {
         format!("http://{}{}", self.addr, path)
     }
 
-    pub fn ws_url(&self) -> String {
-        format!("ws://{}/ws", self.addr)
+    pub fn ws_url(&self, path: &str) -> String {
+        format!("ws://{}{}", self.addr, path)
+    }
+
+    /// The in-memory GitHub behind the content gateway.
+    pub fn fake_github(&self) -> Arc<FakeGitHub> {
+        self.st.github.fake().expect("fake github").clone()
     }
 
     /// Full OAuth web flow against the fake GitHub; returns the Cookie header
@@ -146,54 +154,89 @@ impl TestServer {
         cookie_pair(&res, "simpress_session").expect("session cookie")
     }
 
-    pub async fn get_json(&self, path: &str, cookie: Option<&str>) -> (u16, Value) {
-        let mut req = self.http.get(self.url(path));
+    /// `POST /auth/dev/login`; returns the Cookie header value.
+    pub async fn dev_login(&self, login: &str) -> String {
+        let res = self
+            .http
+            .post(self.url("/auth/dev/login"))
+            .json(&json!({ "login": login }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200, "dev login");
+        cookie_pair(&res, "simpress_session").expect("session cookie")
+    }
+
+    pub async fn send_json(
+        &self,
+        method: Method,
+        path: &str,
+        cookie: Option<&str>,
+        headers: &[(&str, &str)],
+        body: Option<Value>,
+    ) -> (u16, Value) {
+        let mut req = self.http.request(method, self.url(path));
         if let Some(c) = cookie {
             req = req.header(COOKIE, c);
+        }
+        for (k, v) in headers {
+            req = req.header(*k, *v);
+        }
+        if let Some(b) = body {
+            req = req.json(&b);
         }
         let res = req.send().await.unwrap();
         let status = res.status().as_u16();
         (status, res.json().await.unwrap_or(Value::Null))
+    }
+
+    pub async fn get_json(&self, path: &str, cookie: Option<&str>) -> (u16, Value) {
+        self.send_json(Method::GET, path, cookie, &[], None).await
     }
 
     pub async fn post_json(&self, path: &str, cookie: Option<&str>, body: Value) -> (u16, Value) {
-        let mut req = self.http.post(self.url(path)).json(&body);
-        if let Some(c) = cookie {
-            req = req.header(COOKIE, c);
-        }
-        let res = req.send().await.unwrap();
-        let status = res.status().as_u16();
-        (status, res.json().await.unwrap_or(Value::Null))
+        self.send_json(Method::POST, path, cookie, &[], Some(body))
+            .await
     }
 
-    /// Sign in a fresh player and give them a company. Returns (cookie, company_id).
-    pub async fn player(&self, github_id: i64) -> (String, uuid::Uuid) {
-        let cookie = self.login(github_id, &format!("player{github_id}")).await;
+    pub async fn put_json(&self, path: &str, cookie: Option<&str>, body: Value) -> (u16, Value) {
+        self.send_json(Method::PUT, path, cookie, &[], Some(body))
+            .await
+    }
+
+    /// Sign in a fresh dev player and give them a company. Returns
+    /// (cookie, company_id).
+    pub async fn player(&self, n: i64) -> (String, String) {
+        let cookie = self.dev_login(&format!("player{n}")).await;
         let (status, body) = self
             .post_json(
                 "/api/companies",
                 Some(&cookie),
-                serde_json::json!({ "name": "Gazette" }),
+                json!({ "name": "Gazette" }),
             )
             .await;
         assert_eq!(status, 201, "{body}");
-        let id = body["id"].as_str().unwrap().parse().unwrap();
-        (cookie, id)
+        (cookie, body["id"].as_str().unwrap().to_string())
     }
 
-    pub async fn ws(&self, cookie: &str) -> WsClient {
-        WsClient::connect(&self.ws_url(), Some(cookie))
-            .await
-            .unwrap()
+    /// Take the company lease for `device`; returns the lease id.
+    pub async fn lease(&self, cookie: &str, company: &str, device: &str) -> String {
+        let (st, body) = self
+            .post_json(
+                &format!("/api/companies/{company}/lease"),
+                Some(cookie),
+                json!({ "device_id": device }),
+            )
+            .await;
+        assert_eq!(st, 200, "{body}");
+        body["lease_id"].as_str().unwrap().to_string()
     }
 }
 
 impl Drop for TestServer {
     fn drop(&mut self) {
         self.server.abort();
-        if let Some(bg) = &self.bg {
-            bg.abort();
-        }
+        let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
 

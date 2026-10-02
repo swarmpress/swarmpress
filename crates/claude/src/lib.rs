@@ -16,6 +16,7 @@
 mod api;
 mod error;
 pub mod fake;
+#[cfg(feature = "http")]
 mod http;
 pub mod sse;
 mod structured;
@@ -25,6 +26,7 @@ mod types;
 pub use api::{ClaudeApi, EventSink};
 pub use error::{ClaudeError, Result};
 pub use fake::{FakeClaude, Scripted};
+#[cfg(feature = "http")]
 pub use http::{
     HttpClaude, HttpConfig, PreparedRequest, RetryPolicy, ANTHROPIC_VERSION, DEFAULT_BASE_URL,
     FALLBACK_BETA,

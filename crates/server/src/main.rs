@@ -1,11 +1,7 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use simpress_server::actor;
 use simpress_server::app::{self, AppState};
 use simpress_server::config::Config;
-use simpress_server::db;
-use simpress_server::jobs::{JobNotifier, PermissiveValidator, UnconfiguredClaude};
+use simpress_server::db::Db;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -17,19 +13,14 @@ async fn main() -> Result<()> {
         .init();
 
     let cfg = Config::from_env()?;
-    let pool = db::connect(&cfg.database_url).await?;
-    db::migrate(&pool).await?;
+    std::fs::create_dir_all(&cfg.data_dir)?;
+    let db = Db::connect(&cfg.database_url).await?;
+    db.migrate().await?;
+    tracing::info!(database = %cfg.database_url, data_dir = %cfg.data_dir.display(), "database ready");
 
-    let (notifier, notifier_task) = JobNotifier::start(&pool).await?;
     let listener = tokio::net::TcpListener::bind(cfg.bind).await?;
-    let st = AppState::new(
-        cfg,
-        pool,
-        actor::spawner::<sim_core::World>(),
-        notifier,
-        Arc::new(PermissiveValidator),
-    );
-    let bg = app::spawn_background(&st, Arc::new(UnconfiguredClaude), Some(notifier_task));
+    let st = AppState::new(cfg, db.clone())?;
+    let bg = app::spawn_background(&st);
 
     app::serve(listener, st, async {
         let _ = tokio::signal::ctrl_c().await;
@@ -37,5 +28,6 @@ async fn main() -> Result<()> {
     })
     .await?;
     bg.abort();
+    db.close().await;
     Ok(())
 }

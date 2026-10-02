@@ -1,0 +1,628 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://simpress.dev/sdk/0.1.0/happening.schema.json",
+  "title": "happening",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "title": {
+      "type": "object",
+      "properties": {
+        "en": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "en"
+      ],
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Language code → text; `en` is required"
+    },
+    "story": {
+      "type": "object",
+      "properties": {
+        "en": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "en"
+      ],
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Language code → text; `en` is required"
+    },
+    "trigger": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "roll"
+            },
+            "permille_per_day": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "from_day": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "to_day": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "permille_per_day"
+          ],
+          "additionalProperties": false,
+          "description": "Seeded daily roll from the world RNG"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "day"
+            },
+            "day": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "day"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "every"
+            },
+            "days": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          "required": [
+            "kind",
+            "days"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "cooldown_days": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "primitives": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "gather"
+              },
+              "people": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(all|any|role:[a-z_]+|persona:[A-Za-z][A-Za-z' -]{0,39})$"
+                },
+                "minItems": 1
+              },
+              "place": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$",
+                "description": "a room kind, e.g. newsroom, meeting-room, kitchen"
+              },
+              "minutes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 60
+              }
+            },
+            "required": [
+              "type",
+              "people",
+              "place",
+              "minutes"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "emote"
+              },
+              "person": {
+                "type": "string",
+                "pattern": "^(all|any|role:[a-z_]+|persona:[A-Za-z][A-Za-z' -]{0,39})$"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "laugh",
+                  "cheer",
+                  "think",
+                  "surprise",
+                  "applause",
+                  "phone_call",
+                  "wave",
+                  "sigh"
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "person",
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "prop"
+              },
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              },
+              "place": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$",
+                "description": "a room kind, e.g. newsroom, meeting-room, kitchen"
+              },
+              "ttl_days": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 14
+              },
+              "label": {
+                "type": "object",
+                "properties": {
+                  "en": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "en"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Language code → text; `en` is required"
+              }
+            },
+            "required": [
+              "type",
+              "kind",
+              "place",
+              "ttl_days",
+              "label"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "guest"
+              },
+              "role": {
+                "type": "object",
+                "properties": {
+                  "en": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "en"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "role-described, never a real private person"
+              },
+              "place": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$",
+                "description": "a room kind, e.g. newsroom, meeting-room, kitchen"
+              },
+              "minutes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 120
+              }
+            },
+            "required": [
+              "type",
+              "role",
+              "place",
+              "minutes"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "ambience"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "music",
+                  "lights_dim",
+                  "storm_flicker",
+                  "crowd_cheer",
+                  "rain"
+                ]
+              },
+              "minutes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 120
+              }
+            },
+            "required": [
+              "type",
+              "kind",
+              "minutes"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "memory"
+              },
+              "people": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(all|any|role:[a-z_]+|persona:[A-Za-z][A-Za-z' -]{0,39})$"
+                },
+                "minItems": 1
+              },
+              "text": {
+                "type": "object",
+                "properties": {
+                  "en": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "en"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Language code → text; `en` is required"
+              }
+            },
+            "required": [
+              "type",
+              "people",
+              "text"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "mood"
+              },
+              "people": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(all|any|role:[a-z_]+|persona:[A-Za-z][A-Za-z' -]{0,39})$"
+                },
+                "minItems": 1
+              },
+              "delta": {
+                "type": "integer",
+                "minimum": -30,
+                "maximum": 30,
+                "description": "permille; |delta| ≤ 30 ‰ per beat (day-director §3)"
+              }
+            },
+            "required": [
+              "type",
+              "people",
+              "delta"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "affinity"
+              },
+              "pairs": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": [
+                    {
+                      "type": "string",
+                      "pattern": "^(all|any|role:[a-z_]+|persona:[A-Za-z][A-Za-z' -]{0,39})$"
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^(all|any|role:[a-z_]+|persona:[A-Za-z][A-Za-z' -]{0,39})$"
+                    }
+                  ]
+                },
+                "minItems": 1
+              },
+              "delta": {
+                "type": "integer",
+                "minimum": -30,
+                "maximum": 30,
+                "description": "permille; |delta| ≤ 30 ‰ per beat (day-director §3)"
+              }
+            },
+            "required": [
+              "type",
+              "pairs",
+              "delta"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "proposal"
+              },
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              },
+              "title": {
+                "type": "object",
+                "properties": {
+                  "en": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "en"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Language code → text; `en` is required"
+              },
+              "brief": {
+                "type": "object",
+                "properties": {
+                  "en": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "en"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Language code → text; `en` is required"
+              }
+            },
+            "required": [
+              "type",
+              "kind",
+              "title",
+              "brief"
+            ],
+            "additionalProperties": false,
+            "description": "A plan proposal: goes through the normal gates, never auto-publishes"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "ticket"
+              },
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "en": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "en"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Language code → text; `en` is required"
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]*$"
+                    },
+                    "label": {
+                      "type": "object",
+                      "properties": {
+                        "en": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "en"
+                      ],
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Language code → text; `en` is required"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "label"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "default_option": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              },
+              "deadline_days": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 7
+              }
+            },
+            "required": [
+              "type",
+              "kind",
+              "summary",
+              "options",
+              "default_option",
+              "deadline_days"
+            ],
+            "additionalProperties": false,
+            "description": "A CEO ticket; default_option must be one of options[].id (rule 10)"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "spotlight"
+              },
+              "line": {
+                "type": "object",
+                "properties": {
+                  "en": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "en"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Language code → text; `en` is required"
+              }
+            },
+            "required": [
+              "type",
+              "line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "narration"
+              },
+              "text": {
+                "type": "object",
+                "properties": {
+                  "en": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "en"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Language code → text; `en` is required"
+              }
+            },
+            "required": [
+              "type",
+              "text"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 2,
+      "maxItems": 12
+    }
+  },
+  "required": [
+    "id",
+    "title",
+    "story",
+    "trigger",
+    "primitives"
+  ],
+  "additionalProperties": false
+}
