@@ -1,5 +1,5 @@
-import { centsPerDayToEurMonth, kebab, type Command, type CommandResult, type SecretaryTask } from './commands'
-import type { DataTopic, GameDataSource, NewPlanPost } from './data-source'
+import { ALL_COMMANDS, centsPerDayToEurMonth, kebab, type Command, type CommandResult, type SecretaryTask } from './commands'
+import { NO_SITE_LINKS, type DataTopic, type GameDataSource, type NewPlanPost, type SiteLinks, type SourceCapabilities } from './data-source'
 import financeFixture from './fixtures/finance.json'
 import inboxFixture from './fixtures/inbox.json'
 import orgFixture from './fixtures/org.json'
@@ -51,6 +51,10 @@ export interface MockOptions {
   state?: Partial<MockState>
   /** Plan text: UI shape or the orchestrator's `plan_json` wire shape. */
   planText?: PlanText | PlanTextWire
+  /** Command variants this source has; defaults to every command the overlay builds. */
+  commands?: readonly string[]
+  /** Where pull requests and pages live (the fixtures' artifact posts carry their own URLs). */
+  site?: Partial<SiteLinks>
 }
 
 const SENIORITY: Seniority[] = ['junior', 'mid', 'senior', 'star']
@@ -79,8 +83,11 @@ export class MockDataSource implements GameDataSource {
   private personas: Persona[]
   private listeners = new Set<(topics?: DataTopic[]) => void>()
   private clock: () => number
+  private caps: SourceCapabilities
 
   constructor(opts: MockOptions = {}) {
+    // The mock plays every command and has KPI fixtures.
+    this.caps = { commands: new Set(opts.commands ?? ALL_COMMANDS), performance: true, site: { ...NO_SITE_LINKS, ...opts.site } }
     this.state = { ...fixtureState(), ...structuredClone(opts.state ?? {}) }
     // The fixtures reference the fixture personas (candidates included), not the live catalog.
     this.personas = opts.personas ?? loadFixturePersonas().personas
@@ -93,6 +100,10 @@ export class MockDataSource implements GameDataSource {
   /** Mock-only synchronous view of the state (tests). */
   get current(): Readonly<MockState> {
     return this.state
+  }
+
+  capabilities() {
+    return this.caps
   }
 
   async getOrg() {

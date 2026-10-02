@@ -15,8 +15,10 @@
  * commands through the constructors in `cmd`. The organization commands
  * match the README; the plan commands (`UpdateWorkItem`, `AssignPhase`,
  * `AcceptProposal`, `CompleteTodo`, `SendToAgency`) follow
- * publishing-plan.md §6 and are rejected by the sim until it implements
- * them (the panels then show the sim's reason).
+ * publishing-plan.md §6 and are not in `sim_core::Command` yet. Which
+ * commands a data source has is its `capabilities().commands`
+ * (`SIM_COMMANDS` for the live sim); the store never sends one that is
+ * missing and the panels disable its control with `NOT_AVAILABLE`.
  */
 
 export type StaffRef = string
@@ -90,6 +92,37 @@ export type Command =
   | { SendToAgency: { item: WorkItemRef; phase: number } }
 
 export type CommandName = Command extends infer C ? (C extends Record<infer K, unknown> ? K : never) : never
+
+/**
+ * The commands of this module that `sim_core::Command` has
+ * (crates/sim-core/src/commands.rs). The sim rejects any other variant with
+ * "unknown variant"; wasm-live.test.tsx holds this list against the real sim.
+ */
+export const SIM_COMMANDS: readonly CommandName[] = [
+  'Hire',
+  'Fire',
+  'Promote',
+  'SetSalary',
+  'AssignToProject',
+  'RemoveFromProject',
+  'SetProjectLead',
+  'CreateProject',
+  'SetProjectStatus',
+  'SetProjectBudget',
+  'AnswerTicket',
+  'Delegate',
+  'Praise',
+  'SetDelegation',
+]
+
+/** Plan commands of publishing-plan.md §6 the sim does not have yet (the mock source applies them). */
+export const PLAN_COMMANDS: readonly CommandName[] = ['UpdateWorkItem', 'AssignPhase', 'AcceptProposal', 'CompleteTodo', 'SendToAgency']
+
+/** Every command the overlay can build. */
+export const ALL_COMMANDS: readonly CommandName[] = [...SIM_COMMANDS, ...PLAN_COMMANDS]
+
+/** Tooltip and rejection reason of an action whose command the data source does not have. */
+export const NOT_AVAILABLE = 'Not available yet'
 
 export interface CommandResult {
   ok: boolean

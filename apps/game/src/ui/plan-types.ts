@@ -168,8 +168,12 @@ export interface PlanPost {
   /** status: transition. */
   from?: string
   toStatus?: string
-  /** artifact */
-  artifact?: { label: string; url?: string; path?: string }
+  /**
+   * artifact: `url` when the post carries one (fixtures); `pr` and `commit`
+   * (the merged sha) from the orchestrator's payload, linked through the
+   * source's `SiteLinks` (links.ts).
+   */
+  artifact?: { label: string; url?: string; path?: string; pr?: number; commit?: string }
   /** todo-add / todo-done */
   todo?: string
   /** performance (ContentPerformance) */

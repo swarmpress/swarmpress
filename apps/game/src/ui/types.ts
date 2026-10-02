@@ -70,6 +70,8 @@ export interface ProjectJson {
   team: TeamMember[]
   budgetEurMonth: number
   missingRoles: string[]
+  /** Sim: `owner/name` of the site repository the scenario assigns (the session's company row is what the gateway writes to). */
+  repo?: string
   /** First-party tracker summary (organization.md §6a, ADR-0032). */
   analytics?: ProjectAnalyticsJson
 }
@@ -121,7 +123,8 @@ export interface ProjectFinance {
   overBudget: boolean
 }
 
-export type AlertKind = 'runway-low' | 'budget-overrun' | 'payroll-jump' | 'cash-negative' | string
+/** The sim's CFO alert kinds (`ALERT_KINDS` in crates/client-wasm/src/json.rs: ticket kind slugs). */
+export type AlertKind = 'runway-low' | 'budget-overrun' | 'payroll-spike' | 'loan-offer' | string
 
 export interface FinanceAlert {
   kind: AlertKind
@@ -141,22 +144,33 @@ export interface FinanceJson {
   booksUnkept?: boolean
   /** Mock fixtures' older spelling of `!booksUnkept`. */
   booksKept?: boolean
+  /** Sim: true while revenue is a stub that always books 0 (`economy::REVENUE_IS_STUB`). */
+  revenueStubbed?: boolean
   /** UI extension: the CFO's monthly narrative (`FinanceReport`). */
   report?: string | null
 }
 
-export type TicketStatus = 'open' | 'resolved' | string
+/** Sim: `open` | `answered` | `expired`; the mock fixtures say `resolved`. */
+export type TicketStatus = 'open' | 'answered' | 'expired' | 'resolved' | string
 
 export interface TicketJson {
   id: string
+  /** Ticket kind slug (`escalation`, `budget-overrun`, …). Open-ended: unknown kinds render generically. */
   kind: string
   priority: Priority
   project: string | null
   from: string | null
   status: TicketStatus
   routedViaSecretary: boolean
+  /** Option ids as the sim names them; sent back verbatim in `AnswerTicket`. Open-ended like `kind`. */
   options: string[]
   defaultOption: string | null
+  /** Sim: the work item the ticket is about (escalations, publish approvals). */
+  workItem?: string | null
+  /** Sim: money at stake in euros (`amount_cents`); 0 when the ticket carries none. */
+  amountEur?: number
+  /** Sim: the role a `missing-role` ticket is about. */
+  role?: string | null
   /** Absolute game minute (day * 1440 + minute of day) the default option fires. */
   deadlineMinute: number | null
   /** UI extension: the secretary's one-paragraph summary (resolved from `summary_ref`). */

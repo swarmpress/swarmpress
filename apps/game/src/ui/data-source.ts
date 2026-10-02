@@ -10,6 +10,40 @@ export type DataTopic = 'org' | 'finance' | 'inbox' | 'plan' | 'performance' | '
 export type NewPlanPost = Omit<PlanPost, 'id'>
 
 /**
+ * Where the company's pull requests and published pages live. Session or
+ * company data, never a constant in the UI: a field that is `null` means
+ * "not known", and the panels then render plain text instead of a link.
+ */
+export interface SiteLinks {
+  /** `owner/name` of the site repository on GitHub (the session's `company.site_repo`). */
+  repo: string | null
+  /**
+   * Public base URL of the published site (`https://cinqueterre.travel`).
+   * HOOK: no source sets it yet. The company row has the repository and its
+   * base branch only; the public address belongs to the site configuration.
+   * Until a source provides it, no "published page" link is rendered.
+   */
+  publicBaseUrl: string | null
+  /** Language segment of the site's routes (the site binding's `language`); `en` when unset. */
+  language?: string | null
+}
+
+export const NO_SITE_LINKS: SiteLinks = Object.freeze({ repo: null, publicBaseUrl: null })
+
+/** What a data source can do. Fixed for the lifetime of the source. */
+export interface SourceCapabilities {
+  /**
+   * The command variants the source applies (`Hire`, `AnswerTicket`, …; see
+   * commands.ts). The store never sends a command that is not listed, and
+   * the panels disable its control.
+   */
+  commands: ReadonlySet<string>
+  /** KPIs exist (tracker + KpiReport). False leaves the Performance panel out of the navigation. */
+  performance: boolean
+  site: SiteLinks
+}
+
+/**
  * Where the overlay reads the company from and sends CEO commands to
  * (ADR-0018: the overlay never mutates the sim directly).
  *
@@ -26,6 +60,8 @@ export type NewPlanPost = Omit<PlanPost, 'id'>
  * `WasmDataSource` (feature-detected `Sim.*_json` + `apply_command_json`).
  */
 export interface GameDataSource {
+  /** Which commands, panels and links this source has. */
+  capabilities(): SourceCapabilities
   /** `Sim.org_json()` (organization.md §9). */
   getOrg(): Promise<OrgJson>
   /** `Sim.finance_json()` (organization.md §9). */

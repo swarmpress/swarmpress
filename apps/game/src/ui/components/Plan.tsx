@@ -1,12 +1,12 @@
 import { useState } from 'preact/hooks'
 import { sentence } from '../format'
-import { currentPhase, filterItems, itemProgress, workload, WORK_MINUTES_PER_WEEK, type BoardFilter } from '../plan-logic'
+import { availableViews, currentPhase, filterItems, itemProgress, workload, WORK_MINUTES_PER_WEEK, type BoardFilter, type PlanView } from '../plan-logic'
 import { STATUS_ORDER, type WorkItemJson } from '../plan-types'
 import { useStore } from '../store'
 import { Badge, Meter, Panel, PersonButton, priorityTone, TabPanel, Tabs } from './common'
 import { WorkItemDetail } from './WorkItem'
 
-type View = 'board' | 'calendar' | 'timeline' | 'workload' | 'goals'
+type View = PlanView
 const VIEWS: Array<{ id: View; label: string }> = [
   { id: 'board', label: 'Board' },
   { id: 'calendar', label: 'Calendar' },
@@ -18,9 +18,13 @@ const VIEWS: Array<{ id: View; label: string }> = [
 /** The media & publishing plan: the CEO's main instrument (publishing-plan.md §5, ADR-0031). */
 export function Plan() {
   const store = useStore()
-  const [view, setView] = useState<View>('board')
+  const [chosen, setView] = useState<View>('board')
   const [filter, setFilter] = useState<BoardFilter>({ project: null, workstream: null, person: null })
   const selected = store.plan.value.items.find((i) => i.id === store.selectedItem.value)
+  // Only the views the plan has data for (the live sim exports no schedule or goals yet).
+  const available = availableViews(store.plan.value)
+  const tabs = VIEWS.filter((v) => available.includes(v.id))
+  const view = available.includes(chosen) ? chosen : 'board'
 
   return (
     <Panel id="plan" title="Media & publishing plan" wide>
@@ -29,14 +33,21 @@ export function Plan() {
       ) : (
         <>
           <Filters filter={filter} onChange={setFilter} />
-          <Tabs label="Plan views" idPrefix="plan" tabs={VIEWS} value={view} onChange={setView} />
-          <TabPanel idPrefix="plan" value={view}>
-            {view === 'board' && <Board filter={filter} />}
-            {view === 'calendar' && <Calendar filter={filter} />}
-            {view === 'timeline' && <Timeline filter={filter} />}
-            {view === 'workload' && <Workload />}
-            {view === 'goals' && <Goals />}
-          </TabPanel>
+          {tabs.length > 1 ? (
+            <>
+              <Tabs label="Plan views" idPrefix="plan" tabs={tabs} value={view} onChange={setView} />
+              <TabPanel idPrefix="plan" value={view}>
+                {view === 'board' && <Board filter={filter} />}
+                {view === 'calendar' && <Calendar filter={filter} />}
+                {view === 'timeline' && <Timeline filter={filter} />}
+                {view === 'workload' && <Workload />}
+                {view === 'goals' && <Goals />}
+              </TabPanel>
+            </>
+          ) : (
+            // The board is the only view with data: no tab row for a single tab.
+            <Board filter={filter} />
+          )}
         </>
       )}
     </Panel>

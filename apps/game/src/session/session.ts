@@ -27,7 +27,7 @@ import { openCompanyStore, type CompanyStore, type Plan } from '../store'
 import { commandBytes, decodeCheckpoint, encodeCheckpoint, type Checkpoint } from '../sync/segments'
 import { fetchRemote, NEXT_SEGMENT_KEY, SEALED_SEQ_KEY, SyncUploader, toLogged, type SealResult } from '../sync/uploader'
 import type { DataTopic } from '../ui/data-source'
-import { planTextFromStore, WasmDataSource, type SimOrgApi } from '../ui/wasm-source'
+import { companyStoreOptions, WasmDataSource, type SimOrgApi } from '../ui/wasm-source'
 
 export const SCENARIO = 'cinqueterre'
 
@@ -494,7 +494,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       onClock()
     },
     dataSource: () => {
-      const s = new SessionDataSource(orgApi, { planText: planTextFromStore(store, company.id) })
+      const s = new SessionDataSource(orgApi, { ...companyStoreOptions(store, company), changeKey: () => `${sim.step()}:${loop.lastSeq}` })
       sources.add(s)
       return s
     },

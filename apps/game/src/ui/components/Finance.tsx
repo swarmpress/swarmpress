@@ -3,12 +3,20 @@ import { booksKept as areBooksKept, noCfoReason } from '../rules'
 import { useStore } from '../store'
 import { Meter, Notice, Panel, PersonButton } from './common'
 
+/**
+ * The sim's CFO alerts are its open financial tickets (`ALERT_KINDS` in
+ * crates/client-wasm/src/json.rs), keyed by ticket kind; the thresholds are
+ * the constants of crates/sim-core/src/finance.rs. An unknown kind falls
+ * back to its slug as a sentence.
+ */
 const ALERT_TEXT: Record<string, string> = {
   'runway-low': 'Runway under 30 days',
   'budget-overrun': 'Over budget by more than 10%',
-  'payroll-jump': 'Payroll up more than 15% from a single hire',
-  'cash-negative': 'Cash below zero: loan offer pending',
+  'payroll-spike': 'Payroll up more than 15% from a single hire',
+  'loan-offer': 'Cash below zero: loan offer pending',
 }
+
+export const alertLabel = (kind: string) => ALERT_TEXT[kind] ?? sentence(kind)
 
 /** The CFO's books (organization.md §6). Without a CFO: an explicit "books not reviewed" state. */
 export function Finance() {
@@ -20,6 +28,8 @@ export function Finance() {
   const c = f.company
   const costs = c.salariesEur + c.rentEur + c.upkeepEur + c.agencyEur
   const net = c.revenueEur - costs
+  // The live sim exports no CFO narrative yet: no report, no block (never an empty quote).
+  const report = typeof f.report === 'string' ? f.report.trim() : ''
 
   return (
     <Panel id="finance" title="Finance">
@@ -59,7 +69,7 @@ export function Finance() {
           <ul class="alert-list">
             {f.alerts.map((a, i) => (
               <li key={i} class="alert-item">
-                <strong>{ALERT_TEXT[a.kind] ?? sentence(a.kind)}</strong>
+                <strong>{alertLabel(a.kind)}</strong>
                 {a.project && <> · {store.projectName(a.project)}</>}
                 {a.ticket && (
                   <button type="button" class="link-btn" onClick={() => (store.panel.value = 'inbox')}>
@@ -104,6 +114,11 @@ export function Finance() {
             </tr>
           </tbody>
         </table>
+        {f.revenueStubbed && (
+          <p class="small muted" role="note">
+            Revenue is not modelled yet: the books show costs only, so revenue stays at {eur(0)}.
+          </p>
+        )}
       </section>
 
       <section aria-labelledby="proj-fin-title">
@@ -149,10 +164,10 @@ export function Finance() {
         </div>
       </section>
 
-      {booksKept && f.report && (
+      {booksKept && report !== '' && (
         <section aria-labelledby="cfo-report-title" class="report">
           <h3 id="cfo-report-title">CFO report</h3>
-          <blockquote>{f.report}</blockquote>
+          <blockquote>{report}</blockquote>
         </section>
       )}
     </Panel>

@@ -5,7 +5,7 @@ import type { GameDataSource } from './data-source'
 import { hudBusiness } from './hud'
 import { booksKept } from './rules'
 import { FIXTURE_NOW, MockDataSource } from './mock-source'
-import { createOverlayStore, PANELS, type OverlayStore } from './store'
+import { createOverlayStore, type OverlayStore } from './store'
 import { hasOrgApi, WasmDataSource } from './wasm-source'
 import './overlay.css'
 
@@ -18,7 +18,7 @@ const isTyping = (t: EventTarget | null) => {
   return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
 }
 
-/** Global keyboard shortcuts: panel letters and 1–7, Escape closes. */
+/** Global keyboard shortcuts: panel letters and the panel's position (1–7), Escape closes. */
 export function handleShortcut(store: OverlayStore, e: KeyboardEvent): boolean {
   if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return false
   if (e.key === 'Escape') {
@@ -30,7 +30,7 @@ export function handleShortcut(store: OverlayStore, e: KeyboardEvent): boolean {
   }
   if (isTyping(e.target)) return false
   const k = e.key.toLowerCase()
-  const panel = PANELS.find((p, i) => p.key === k || String(i + 1) === k)
+  const panel = store.panels.find((p, i) => p.key === k || String(i + 1) === k)
   if (!panel) return false
   store.togglePanel(panel.id)
   return true

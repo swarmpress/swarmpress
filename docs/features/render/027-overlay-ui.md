@@ -51,6 +51,26 @@ Design: [`docs/design/mvp-pipeline.md`](../../design/mvp-pipeline.md) section 5 
 - **U2:** fixes on live data: ticket text names the article; the false "no secretary" text goes;
   actions the sim lacks are disabled; CEO comments persist; pull-request and page links; empty Plan
   tabs and the Performance panel are hidden; Finance alert labels and a "revenue not modelled" note.
+  How it is built:
+  - A data source states what it can do (`GameDataSource.capabilities()`): the command variants it
+    has (`SIM_COMMANDS` for the live sim, checked against the real sim in `wasm-live.test.tsx`),
+    whether KPIs exist, and the site links. `store.can(name)` is the one capability check: `check`
+    and `run` never validate or send a command the source lacks, and the Work item controls for it
+    are disabled with the tooltip "Not available yet".
+  - The Inbox ticket is data-driven: kind and option ids render from a label table with a generic
+    fallback, so a ticket kind the UI has never heard of shows up and is answerable (the option id
+    goes back verbatim). It names the work item (title from the plan text), the amount and the
+    role, and shows the deadline as game day and time with the option that applies when it expires.
+  - CEO comments go through the CompanyStore's post API (`ceoPostsToStore`). That API takes the
+    orchestrator's post types only, so a comment is filed as a `status` post with its real type in
+    `payload.ui_type` (`toStorePost` / `normalizePost` in `plan-wire.ts`).
+  - Links (`links.ts`): the pull request and the merge commit link to `company.site_repo`. The
+    published-page link is a hook: `SiteLinks.publicBaseUrl` is set by no source yet (the company
+    row has no public address), so no page link renders until one provides it.
+  - Plan views without data (`availableViews`) and the Performance panel without a KPI source are
+    left out of the navigation; the fixtures (`?ui=mock`) have data for all of them.
+  - The 1 s poll of `WasmDataSource` re-serialises the JSON views only when its change key (the sim
+    step; in a session step plus the loop's command count) has moved.
 - **T:** the HUD status chip (Running / Held / Resting / Model loading / Lease lost / Halted), pause
   and speed buttons, a boot screen (FEAT-080).
 

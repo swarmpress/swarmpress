@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { CompanyStore } from '../store'
 import { MemorySqliteDriver } from '../store/sqlite-driver'
-import { planTextFromStore, WasmDataSource, type SimOrgApi } from './wasm-source'
+import { companyStoreOptions, planTextFromStore, WasmDataSource, type SimOrgApi } from './wasm-source'
 
 const sim: SimOrgApi = {
   org_json: () => JSON.stringify({ ceo: { name: 'You' }, executive: { cfo: null, secretary: null, delegation: 'off' }, departments: [], staff: [], projects: [] }),
@@ -31,12 +31,41 @@ describe('WasmDataSource + CompanyStore plan text', () => {
     expect(text.items['work-item-1'].title).toBe('Harvest week in Manarola')
     expect(text.posts['work-item-1'].map((p) => p.type)).toEqual(['minutes', 'artifact', 'handoff', 'review'])
     expect(text.posts['work-item-1'][3]).toMatchObject({ verdict: 'changes', score: 6 })
-    expect(text.posts['work-item-1'][1].artifact).toEqual({ label: 'draft/work-item-1', path: 'content/pages/en/harvest.json' })
+    expect(text.posts['work-item-1'][1].artifact).toEqual({ label: 'draft/work-item-1', path: 'content/pages/en/harvest.json', pr: 3 })
 
     await s.appendPost('work-item-1', { type: 'comment', author: 'ceo', text: 'Add the festival dates' })
     text = await s.getPlanText()
     expect(text.posts['work-item-1'].map((p) => p.type)).toEqual(['minutes', 'artifact', 'handoff', 'review', 'comment'])
-    // The store keeps only the orchestrator's posts.
+    // Without `appendPost` (the offline sandbox) the comment stays in memory: the store keeps only the orchestrator's posts.
     expect((await store.plan('c1')).posts['work-item-1']).toHaveLength(4)
+  })
+
+  it('keeps a CEO comment in the store, so a reloaded session still shows it', async () => {
+    const store = await CompanyStore.open(await MemorySqliteDriver.open())
+    const company = { id: 'c1', site_repo: 'swarmpress/cinqueterre.travel' }
+    await store.setItemText('c1', 'work-item-1', 'Harvest week in Manarola', 'Angle: the grape harvest')
+    await store.appendPost('c1', 'work-item-1', JSON.stringify({ type: 'review', author: 'staff-5', text: 'Tighten the intro.', payload: { verdict: 'changes', score: 6 } }))
+
+    // What session.ts builds its data source from.
+    const before = new WasmDataSource(sim, { personas: [], ...companyStoreOptions(store, company) })
+    const seen: Array<string[] | undefined> = []
+    const off = before.subscribe((t) => seen.push(t))
+    const saved = await before.appendPost('work-item-1', { type: 'comment', author: 'ceo', text: 'Add the festival dates' })
+    off()
+    expect(saved).toMatchObject({ id: expect.stringMatching(/^post-\d+$/), type: 'comment', author: 'ceo', day: 0, minute: 600, text: 'Add the festival dates' })
+    expect(seen).toContainEqual(['plan'])
+    // It is a row of the store's post table now, through the store's own post API.
+    expect((await store.plan('c1')).posts['work-item-1']).toHaveLength(2)
+
+    // Reload: a new data source over the same store (the sim is restored from the log; plan text comes from the store).
+    const after = new WasmDataSource(sim, { personas: [], ...companyStoreOptions(store, company) })
+    const posts = (await after.getPlanText()).posts['work-item-1']
+    expect(posts.map((p) => [p.type, p.author, p.text])).toEqual([
+      ['review', 'staff-5', 'Tighten the intro.'],
+      ['comment', 'ceo', 'Add the festival dates'],
+    ])
+    expect(posts[1]).toMatchObject({ id: saved.id, day: 0, minute: 600 })
+    expect(posts[1].payload).toBeUndefined()
+    expect(after.capabilities().site).toEqual({ repo: 'swarmpress/cinqueterre.travel', publicBaseUrl: null })
   })
 })

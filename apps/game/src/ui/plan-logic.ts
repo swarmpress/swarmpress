@@ -59,3 +59,27 @@ export function workload(plan: PlanJson, org: OrgJson, today: number): WorkloadR
   }
   return [...rows.values()]
 }
+
+export type PlanView = 'board' | 'calendar' | 'timeline' | 'workload' | 'goals'
+
+const isOpen = (it: WorkItemJson) => it.status !== 'published' && it.status !== 'cancelled'
+
+/**
+ * The plan views the skeleton has data for. The board always. The others
+ * plot what the live sim does not export yet (a publish schedule, start and
+ * due days, goals; its only `publishDay` is the day an item went live), so
+ * they are left out instead of shown empty, and come back as soon as the
+ * data does:
+ * - calendar: an open item with a planned publish day;
+ * - timeline: an item with a start day and a due or publish day;
+ * - workload: an open item with a due or publish day (the week buckets);
+ * - goals: a goal.
+ */
+export function availableViews(plan: PlanJson): PlanView[] {
+  const views: PlanView[] = ['board']
+  if (plan.items.some((i) => isOpen(i) && i.publishDay != null)) views.push('calendar')
+  if (plan.items.some((i) => i.startDay != null && (i.dueDay ?? i.publishDay) != null)) views.push('timeline')
+  if (plan.items.some((i) => isOpen(i) && (i.dueDay ?? i.publishDay) != null)) views.push('workload')
+  if (plan.goals.length > 0) views.push('goals')
+  return views
+}

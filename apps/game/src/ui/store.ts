@@ -1,8 +1,8 @@
 import { createContext } from 'preact'
 import { useContext } from 'preact/hooks'
 import { batch, computed, signal, type ReadonlySignal } from '@preact/signals'
-import { toJson, type Command, type CommandResult } from './commands'
-import { readSnapshot, type GameDataSource, type GameSnapshot } from './data-source'
+import { commandName, NOT_AVAILABLE, toJson, type Command, type CommandName, type CommandResult } from './commands'
+import { readSnapshot, type GameDataSource, type GameSnapshot, type SiteLinks } from './data-source'
 import { placeholderPersona, type Persona } from './personas'
 import type { PlanJson, PlanText } from './plan-types'
 import { EMPTY_PLAN, EMPTY_PLAN_TEXT, withTextOnlyItems } from './plan-wire'
@@ -18,7 +18,7 @@ export interface PanelDef {
   icon: string
 }
 
-/** Toolbar order: the Plan is the primary instrument (ADR-0031). */
+/** Toolbar order: the Plan is the primary instrument (ADR-0031). A store offers the ones its source has data for (`store.panels`). */
 export const PANELS: PanelDef[] = [
   { id: 'plan', label: 'Plan', key: 'p', icon: 'plan' },
   { id: 'inbox', label: 'Inbox', key: 'i', icon: 'inbox' },
@@ -40,6 +40,16 @@ export interface Toast {
 
 export interface OverlayStore {
   source: GameDataSource
+  /** The panels the source has data for, in toolbar order (Performance only with KPIs). */
+  panels: PanelDef[]
+  /** Where pull requests and published pages live; from the source, never a constant. */
+  site: SiteLinks
+  /**
+   * The capability check for every action: does the source have this
+   * command? `check` and `run` apply it too, so a missing command is never
+   * validated or sent; a panel asks it to disable a control up front.
+   */
+  can(name: CommandName): boolean
   /** False until the first snapshot has been read from the source. */
   ready: ReadonlySignal<boolean>
   org: ReadonlySignal<OrgJson>
@@ -102,8 +112,11 @@ const EMPTY_SNAPSHOT: GameSnapshot = {
 
 /** What `check()` returns while the source is still answering. */
 export const PENDING: CommandResult = Object.freeze({ ok: false, reason: 'Checking…' })
+/** What `check()` and `run()` return for a command the source does not have. */
+export const UNAVAILABLE: CommandResult = Object.freeze({ ok: false, reason: NOT_AVAILABLE })
 
 export function createOverlayStore(source: GameDataSource): OverlayStore {
+  const caps = source.capabilities()
   const snap = signal<GameSnapshot>(EMPTY_SNAPSHOT)
   const ready = signal(false)
   const clock = signal(0)
@@ -156,6 +169,9 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
 
   const store: OverlayStore = {
     source,
+    panels: PANELS.filter((p) => p.id !== 'performance' || caps.performance),
+    site: caps.site,
+    can: (name) => caps.commands.has(name),
     ready,
     org: computed(() => snap.value.org),
     finance: computed(() => snap.value.finance),
@@ -171,6 +187,10 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
     selectedItem: signal<string | null>(null),
     toast,
     async run(cmd, success) {
+      if (!store.can(commandName(cmd))) {
+        say(NOT_AVAILABLE, 'error')
+        return UNAVAILABLE
+      }
       const r = await source.apply(toJson(cmd))
       if (r.ok) {
         await load()
@@ -179,6 +199,7 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
       return r
     },
     check(cmd) {
+      if (!store.can(commandName(cmd))) return UNAVAILABLE
       const json = toJson(cmd)
       const cached = checks.value.get(json)
       if (cached) return cached
@@ -222,6 +243,7 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
       if (el && el.isConnected) queueMicrotask(() => el.focus())
     },
     togglePanel(id) {
+      if (!store.panels.some((p) => p.id === id)) return
       store.panel.value = store.panel.value === id ? null : id
     },
     refresh: load,

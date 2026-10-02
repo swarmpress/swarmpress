@@ -27,7 +27,7 @@ export function Toolbar() {
   return (
     <nav class="toolbar" aria-label="CEO tools">
       <ul>
-        {PANELS.map((p, i) => (
+        {store.panels.map((p, i) => (
           <li key={p.id}>
             <button
               type="button"

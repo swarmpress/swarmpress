@@ -1,4 +1,5 @@
-import type { PlanJson, PlanPost, PlanText, PostType, WorkItemJson, WorkItemStatus } from './plan-types'
+import type { NewPlanPost } from './data-source'
+import { POST_TYPES, type PlanJson, type PlanPost, type PlanText, type PostType, type WorkItemJson, type WorkItemStatus } from './plan-types'
 
 /**
  * The plan-text wire shape, as the orchestrator's `Store::plan_json` writes it
@@ -14,6 +15,11 @@ import type { PlanJson, PlanPost, PlanText, PostType, WorkItemJson, WorkItemStat
  * `{pr, merged_sha}`, minutes: `{job, brief}`). Posts carry no game time yet.
  * `normalizePlanText` turns that into the UI's `PlanText`; posts that are
  * already in UI shape (the mock fixtures) pass through unchanged.
+ *
+ * The CEO's own posts (comments) live in the same store. Its post API takes
+ * the orchestrator's types only, so `toStorePost` files them as `status`
+ * posts with the real type in `payload.ui_type`, and `normalizePost` turns
+ * them back.
  */
 export interface WirePost {
   id?: string
@@ -42,18 +48,39 @@ export const EMPTY_PLAN: PlanJson = { goals: [], workstreams: [], items: [] }
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined)
 
+/** Payload key of a stored post that carries its real (UI) type. */
+const UI_TYPE = 'ui_type'
+/** The store type a UI post is filed under (an orchestrator type with no side effects for readers). */
+const STORE_TYPE = 'status'
+
+/**
+ * A post written by the UI (a CEO comment) in the shape the CompanyStore's
+ * post API accepts (`Store::append_post`: orchestrator post types only).
+ * Author, game time and text are stored as they are.
+ */
+export function toStorePost(post: NewPlanPost): WirePost {
+  const { type, payload, ...rest } = post
+  return { ...rest, type: STORE_TYPE, payload: { ...(payload ?? {}), [UI_TYPE]: type } }
+}
+
 export function normalizePost(raw: WirePost, item: string, index: number): PlanPost {
-  const payload = (raw.payload ?? {}) as Record<string, unknown>
+  const payload = { ...(raw.payload ?? {}) } as Record<string, unknown>
+  // A UI post stored through `toStorePost`: back to its real type.
+  const filed = str(payload[UI_TYPE])
+  const uiType = filed && (POST_TYPES as string[]).includes(filed) ? (filed as PostType) : null
+  if (uiType) delete payload[UI_TYPE]
+  const type = uiType ?? raw.type
   const post: PlanPost = {
     ...(raw as unknown as PlanPost),
     id: raw.id ?? `${item}-post-${index + 1}`,
-    type: raw.type as PostType,
+    type: type as PostType,
     author: raw.author || 'system',
     text: raw.text ?? '',
   }
-  if (raw.payload != null) post.payload = payload
+  if (raw.payload != null && (!uiType || Object.keys(payload).length)) post.payload = payload
+  else delete post.payload
   if (raw.to != null) post.to = raw.to
-  switch (raw.type) {
+  switch (type) {
     case 'review': {
       const v = str(payload.verdict)
       if (!post.verdict && (v === 'approve' || v === 'changes' || v === 'reject')) post.verdict = v
@@ -67,7 +94,12 @@ export function normalizePost(raw: WirePost, item: string, index: number): PlanP
         const path = str(payload.path)
         const branch = str(payload.branch)
         const label = merged ? `commit ${merged.slice(0, 7)}` : (branch ?? (pr != null ? `PR #${pr}` : (path ?? 'artifact')))
-        if (pr != null || path || merged) post.artifact = { label, path }
+        if (pr != null || path || merged) {
+          post.artifact = { label, path }
+          // What the panels link: the pull request and, once merged, its commit.
+          if (pr != null) post.artifact.pr = pr
+          if (merged) post.artifact.commit = merged
+        }
       }
       break
     }

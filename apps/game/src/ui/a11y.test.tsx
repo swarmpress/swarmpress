@@ -2,6 +2,7 @@
 import axe from 'axe-core'
 import { afterEach, describe, expect, it } from 'vitest'
 import wire from './fixtures/plan-wire.json'
+import { LIVE_ITEM, liveSim, liveTicket, setupLive } from './live-testing'
 import { normalizePlanText, type PlanTextWire } from './plan-wire'
 import type { PanelId } from './store'
 import { flush, setup } from './testing'
@@ -20,9 +21,12 @@ async function audit(root: Element) {
 }
 
 let ctx: ReturnType<typeof setup> | null = null
+let live: ReturnType<typeof setupLive> | null = null
 afterEach(() => {
   ctx?.cleanup()
   ctx = null
+  live?.cleanup()
+  live = null
 })
 
 const PANELS: PanelId[] = ['plan', 'inbox', 'org', 'projects', 'finance', 'performance', 'hiring']
@@ -81,6 +85,36 @@ describe('axe: no violations', () => {
     ctx.store.openProfile({ persona: 'anna' })
     await flush()
     expect(await audit(ctx.el)).toEqual([])
+  })
+
+  it('live data: tickets of known and unknown kinds, a work item with disabled actions and links, the board alone, finance', async () => {
+    const sim = liveSim()
+    sim.state.inbox.tickets.push(
+      liveTicket({ id: 'ticket-90', kind: 'PublishApproval', options: ['Publish', 'SendBack', 'Kill', 'Defer'], defaultOption: 'Defer', workItem: LIVE_ITEM }),
+      liveTicket({ id: 'ticket-91', kind: 'budget-overrun', options: ['approve-overrun', 'cut-scope'], amountEur: 3600, project: 'project-1' }),
+      liveTicket({ id: 'ticket-92', kind: 'quantum-audit', options: ['do-it'], status: 'expired', resolvedBy: 'default', answer: 'do-it' }),
+    )
+    const text: PlanTextWire = {
+      items: { [LIVE_ITEM]: { title: 'Harvest week in Manarola', brief: 'Angle: the grape harvest.' } },
+      posts: {
+        [LIVE_ITEM]: [
+          { type: 'artifact', author: 'system', text: 'PR #12 on drafts/content-harvest (842 words)', payload: { pr: 12, branch: 'drafts/content-harvest', path: 'content/pages/blog/harvest.json' } },
+          { type: 'artifact', author: 'system', text: 'PR #12 merged (4be81c2)', payload: { pr: 12, merged_sha: '4be81c2d9a01' } },
+        ],
+      },
+    }
+    const c = (live = setupLive(sim, { planText: async () => text, site: { repo: 'swarmpress/cinqueterre.travel' } }))
+    await c.store.refresh()
+    for (const id of ['inbox', 'plan', 'finance'] as PanelId[]) {
+      c.store.panel.value = id
+      await flush()
+      expect(await audit(c.el), id).toEqual([])
+    }
+    c.store.panel.value = 'plan'
+    c.store.selectedItem.value = LIVE_ITEM
+    await flush()
+    expect(document.querySelectorAll('.work-item a[href^="https://github.com/"]').length).toBeGreaterThan(0)
+    expect(await audit(c.el), 'work item').toEqual([])
   })
 
   it('degraded states (no CFO, no secretary, no data scientist)', async () => {

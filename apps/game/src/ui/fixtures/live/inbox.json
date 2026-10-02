@@ -1,0 +1,38 @@
+{
+  "delegation": "low",
+  "secretary": "staff-8",
+  "secretaryQueue": [
+    {
+      "dueMinute": 540,
+      "id": "task-1",
+      "kind": "prepare-briefing",
+      "status": "done"
+    }
+  ],
+  "tickets": [
+    {
+      "amountEur": 0,
+      "answer": null,
+      "createdMinute": 571,
+      "deadlineMinute": 2011,
+      "deadlineStep": 13260,
+      "defaultOption": "kill",
+      "from": "staff-5",
+      "id": "ticket-1",
+      "kind": "escalation",
+      "options": [
+        "retry",
+        "kill"
+      ],
+      "priority": "high",
+      "project": "project-1",
+      "proposedOption": "kill",
+      "replyDrafted": false,
+      "resolvedBy": null,
+      "role": null,
+      "routedViaSecretary": true,
+      "status": "open",
+      "workItem": "work-item-1"
+    }
+  ]
+}

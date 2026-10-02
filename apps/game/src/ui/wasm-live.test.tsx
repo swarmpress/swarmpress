@@ -1,12 +1,21 @@
 // @vitest-environment jsdom
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { screen, within } from '@testing-library/preact'
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { cmd, toJson } from './commands'
+import { fireEvent, screen, within } from '@testing-library/preact'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { ALL_COMMANDS, cmd, NOT_AVAILABLE, SIM_COMMANDS, toJson, type Command } from './commands'
+import { optionLabel } from './components/Inbox'
+import { countdown, gameTime } from './format'
+import clockLive from './fixtures/live/clock.json'
+import financeLive from './fixtures/live/finance.json'
+import inboxLive from './fixtures/live/inbox.json'
+import orgLive from './fixtures/live/org.json'
+import planLive from './fixtures/live/plan.json'
 import { mountOverlay } from './mount'
+import { availableViews } from './plan-logic'
 import { flush } from './testing'
+import type { InboxJson } from './types'
 import { hasOrgApi, WasmDataSource, type SimOrgApi } from './wasm-source'
 
 /**
@@ -18,11 +27,91 @@ import { hasOrgApi, WasmDataSource, type SimOrgApi } from './wasm-source'
 const PKG = resolve(process.cwd(), '../../crates/client-wasm/pkg') + '/'
 const built = existsSync(`${PKG}client_wasm.js`)
 
+type RealSim = SimOrgApi & {
+  advance(n: number): void
+  steps_per_day(): bigint
+  step(): bigint
+  hash(): bigint
+  pending_effects(): number
+  drain_effects_json(): string
+  free(): void
+}
 type WasmModule = {
   initSync(m: { module: BufferSource }): unknown
-  Sim: { demo(seed: bigint): SimOrgApi & { advance(n: number): void; steps_per_day(): bigint; free(): void } }
+  Sim: { demo(seed: bigint): RealSim; scenario(name: string, seed: bigint): RealSim }
 }
 let wasm: WasmModule
+
+const LIVE_FIXTURES = resolve(process.cwd(), 'src/ui/fixtures/live')
+const TITLE = 'Harvest week in Manarola'
+
+interface JobEffect {
+  job_id: number
+  kind: string
+}
+
+/**
+ * The company a session runs (`cinqueterre`, seed 42) on its first morning:
+ * the 09:00 standup commissions one article, its draft job fails, and the
+ * sim blocks the item and raises an Escalation about it. Every command is
+ * one the orchestration loop sends (crates/client-wasm/README.md).
+ */
+function escalated() {
+  const sim = wasm.Sim.scenario('cinqueterre', 42n)
+  const effects = (): JobEffect[] => JSON.parse(sim.drain_effects_json()) as JobEffect[]
+  const perDay = Number(sim.steps_per_day())
+  for (let i = 0; i < perDay && sim.minute_of_day() < 9 * 60 + 1; i++) sim.advance(1)
+  const standup = effects().find((e) => e.kind === 'standup')!
+  const staff = (JSON.parse(sim.org_json()) as { staff: Array<{ id: string; role: string }> }).staff
+  const writer = staff.find((s) => s.role === 'writer')!.id
+  const editor = staff.find((s) => s.role === 'editor')!.id
+  sim.apply_command_json(JSON.stringify({ MeetingOutcome: { job_id: standup.job_id, briefs: [{ brief_ref: 42, writer, editor }] } }))
+  sim.advance(1)
+  const draft = effects().find((e) => e.kind === 'draft')!
+  sim.advance(Math.round((perDay / 1440) * 30))
+  sim.apply_command_json(JSON.stringify({ JobCompleted: { job_id: draft.job_id, digest: { ok: false, score: 0, words: 0, qa_defects: 0, artifact_sha: null } } }))
+  sim.advance(1)
+  const inbox = JSON.parse(sim.inbox_json()) as InboxJson
+  const ticket = inbox.tickets.find((t) => t.kind === 'escalation')!
+  return { sim, ticket, item: ticket.workItem! }
+}
+
+/** Where `fixture` and `real` disagree in shape: a key the real view lacks, or a different JSON type (null matches anything). */
+function shapeDiff(fixture: unknown, real: unknown, path: string): string[] {
+  if (fixture === null || real === null) return []
+  if (Array.isArray(fixture) || Array.isArray(real)) {
+    if (!Array.isArray(fixture) || !Array.isArray(real)) return [`${path}: array vs ${typeof real}`]
+    return fixture.length && real.length ? shapeDiff(fixture[0], real[0], `${path}[0]`) : []
+  }
+  if (typeof fixture !== typeof real) return [`${path}: ${typeof fixture} vs ${typeof real}`]
+  if (typeof fixture !== 'object') return []
+  return Object.entries(fixture as Record<string, unknown>).flatMap(([k, v]) =>
+    k in (real as Record<string, unknown>) ? shapeDiff(v, (real as Record<string, unknown>)[k], `${path}.${k}`) : [`${path}.${k}: missing in the sim's view`],
+  )
+}
+
+/** One sample of every command the overlay builds, by variant. */
+const SAMPLES: Record<string, Command> = {
+  Hire: cmd.hire('candidate-1'),
+  Fire: cmd.fire('staff-1'),
+  Promote: cmd.promote('staff-1'),
+  SetSalary: cmd.setSalaryEurMonth('staff-1', 4000),
+  AssignToProject: cmd.assign('staff-1', 'project-1', 50),
+  RemoveFromProject: cmd.remove('staff-1', 'project-1'),
+  SetProjectLead: cmd.setLead('project-1', 'staff-1'),
+  CreateProject: cmd.createProject({ name: 'Amalfi Dispatch', slug: 'amalfi-dispatch', domain: 'amalfi.travel' }),
+  SetProjectStatus: cmd.setStatus('project-1', 'paused'),
+  SetProjectBudget: cmd.setBudgetEurMonth('project-1', 40000),
+  AnswerTicket: cmd.answer('ticket-1', 'retry'),
+  Delegate: cmd.delegate('TriageInbox'),
+  Praise: cmd.praise('staff-1'),
+  SetDelegation: cmd.setDelegation('low'),
+  UpdateWorkItem: cmd.setPriority('work-item-1', 'urgent'),
+  AssignPhase: cmd.assignPhase('work-item-1', 0, 'staff-1'),
+  AcceptProposal: cmd.acceptProposal('work-item-1', 'post-1'),
+  CompleteTodo: cmd.completeTodo('work-item-1', 'todo-1'),
+  SendToAgency: cmd.sendToAgency('work-item-1', 0),
+}
 
 describe.skipIf(!built)('WasmDataSource over the real sim', () => {
   beforeAll(async () => {
@@ -33,12 +122,24 @@ describe.skipIf(!built)('WasmDataSource over the real sim', () => {
   afterEach(() => {
     dispose?.()
     dispose = null
+    vi.useRealTimers()
   })
   const demo = () => {
     const sim = wasm.Sim.demo(42n)
     sim.advance(Number(sim.steps_per_day()) / 2)
     return sim
   }
+  const mount = (source: WasmDataSource) => {
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    const h = mountOverlay(el, source)
+    dispose = () => {
+      h.dispose()
+      el.remove()
+    }
+    return h
+  }
+  const region = (name: RegExp) => screen.getByRole('region', { name })
 
   it('exposes the organization API and every staff persona is in the catalog', async () => {
     const sim = demo()
@@ -63,19 +164,23 @@ describe.skipIf(!built)('WasmDataSource over the real sim', () => {
     expect(over.reason).toBeTruthy()
     expect(await s.validate(toJson(cmd.setDelegation('low-and-medium')))).toEqual({ ok: true })
     expect(await s.validate(toJson(cmd.createProject({ name: 'Amalfi Dispatch', slug: 'amalfi-dispatch', domain: 'amalfi.travel' })))).toBeDefined()
-    // Plan commands are not in the sim yet: rejected loudly, never silently accepted.
+    // Plan commands are not in the sim yet: the sim itself rejects them (the store never sends one, see below).
     const plan = await s.validate(toJson(cmd.assignPhase('work-item-1', 0, 'staff-1')))
     expect(plan).toMatchObject({ ok: false, reason: expect.stringMatching(/unknown variant `AssignPhase`/) })
   })
 
+  it('SIM_COMMANDS is exactly the set of overlay commands the sim has', () => {
+    const sim = demo()
+    expect(Object.keys(SAMPLES).sort()).toEqual([...ALL_COMMANDS].sort())
+    const known = ALL_COMMANDS.filter((name) => !/unknown variant/.test(String(sim.validate_command_json!(toJson(SAMPLES[name])) ?? '')))
+    expect(known).toEqual([...SIM_COMMANDS])
+    const caps = new WasmDataSource(sim).capabilities()
+    expect([...caps.commands]).toEqual([...SIM_COMMANDS])
+    expect(caps).toMatchObject({ performance: false, site: { repo: null, publicBaseUrl: null } })
+  })
+
   it('renders the org chart, finance and inbox from the sim', async () => {
-    const el = document.createElement('div')
-    document.body.appendChild(el)
-    const h = mountOverlay(el, new WasmDataSource(demo()))
-    dispose = () => {
-      h.dispose()
-      el.remove()
-    }
+    const h = mount(new WasmDataSource(demo()))
     await h.store.refresh()
     for (const id of ['org', 'finance', 'inbox', 'projects', 'plan'] as const) {
       h.store.panel.value = id
@@ -86,6 +191,148 @@ describe.skipIf(!built)('WasmDataSource over the real sim', () => {
     h.store.panel.value = 'org'
     await flush()
     const giulia = h.store.persona('giulia')!.name
-    expect(within(screen.getByRole('region', { name: /Org chart/ })).getByRole('button', { name: new RegExp(giulia) })).toBeTruthy()
+    expect(within(region(/Org chart/)).getByRole('button', { name: new RegExp(giulia) })).toBeTruthy()
+  })
+
+  // ---------------------------------------------------------------- increment U2: truthful on live data
+
+  it('the live fixtures of the jsdom suites have the shapes the sim exports', () => {
+    const { sim } = escalated()
+    const real = {
+      clock: { day: sim.day(), minute: sim.minute_of_day(), step: Number(sim.step()) },
+      org: JSON.parse(sim.org_json()) as unknown,
+      finance: JSON.parse(sim.finance_json()) as unknown,
+      inbox: JSON.parse(sim.inbox_json()) as unknown,
+      plan: JSON.parse(sim.plan_json!()) as unknown,
+    }
+    // `UPDATE_LIVE_FIXTURES=1 vitest run src/ui/wasm-live.test.tsx` captures them again from the sim.
+    if (process.env.UPDATE_LIVE_FIXTURES) {
+      mkdirSync(LIVE_FIXTURES, { recursive: true })
+      for (const [name, view] of Object.entries(real)) writeFileSync(`${LIVE_FIXTURES}/${name}.json`, `${JSON.stringify(view, null, 2)}\n`)
+      return
+    }
+    const fixtures = { clock: clockLive, org: orgLive, finance: financeLive, inbox: inboxLive, plan: planLive }
+    for (const [name, fixture] of Object.entries(fixtures)) expect(shapeDiff(fixture, real[name as keyof typeof real], name), name).toEqual([])
+    // What the jsdom suites rely on: an open escalation about a work item of the plan.
+    const ticket = (inboxLive as unknown as InboxJson).tickets.find((t) => t.kind === 'escalation')!
+    expect(ticket).toMatchObject({ status: 'open', workItem: (planLive as { items: Array<{ id: string }> }).items[0].id })
+  })
+
+  it('an Escalation raised by the sim names its article and says when which default applies', async () => {
+    const { sim, ticket, item } = escalated()
+    expect(ticket).toMatchObject({ kind: 'escalation', status: 'open', workItem: expect.stringMatching(/^work-item-\d+$/) })
+    const source = new WasmDataSource(sim, { planText: async () => ({ items: { [item]: { title: TITLE, brief: 'Angle: the grape harvest.' } } }) })
+    const h = mount(source)
+    await h.store.refresh()
+    h.store.panel.value = 'inbox'
+    await flush()
+    const article = within(region(/Inbox/)).getByRole('article', { name: 'Escalation' })
+    expect(within(article).getByRole('button', { name: TITLE })).toBeTruthy()
+    expect(article.textContent).not.toMatch(/untriaged|no summary|no secretary/i)
+    const now = await source.now()
+    expect(article.querySelector('.ticket-deadline')!.textContent).toBe(
+      `Due ${gameTime(ticket.deadlineMinute!)} · ${countdown(ticket.deadlineMinute! - now)} · if unanswered: ${optionLabel(ticket.defaultOption!)}`,
+    )
+    // One button per option of the ticket, labelled from the option id (plus the Secretary's proposal and the default marker).
+    expect(within(article).getAllByRole('button').map((b) => b.textContent!.replace(/ \((proposed|default at deadline)\)/g, ''))).toEqual([TITLE, ...ticket.options.map(optionLabel)])
+
+    // Answering it with one of its own options is accepted by the sim.
+    const other = ticket.options.find((o) => o !== ticket.defaultOption)!
+    fireEvent.click(within(article).getByRole('button', { name: optionLabel(other) }))
+    await flush()
+    expect((await source.getInbox()).tickets.find((t) => t.id === ticket.id)).toMatchObject({ status: 'answered', answer: other, resolvedBy: 'ceo' })
+  })
+
+  it('the dead actions of a real work item are disabled and change nothing in the sim', async () => {
+    const { sim, item } = escalated()
+    const sent: string[] = []
+    const watched: SimOrgApi = {
+      org_json: () => sim.org_json(),
+      finance_json: () => sim.finance_json(),
+      inbox_json: () => sim.inbox_json(),
+      plan_json: () => sim.plan_json!(),
+      day: () => sim.day(),
+      minute_of_day: () => sim.minute_of_day(),
+      step: () => sim.step(),
+      apply_command_json: (json) => (sent.push(json), sim.apply_command_json(json)),
+      validate_command_json: (json) => (sent.push(json), sim.validate_command_json!(json)),
+    }
+    const h = mount(new WasmDataSource(watched, { planText: async () => ({ items: { [item]: { title: TITLE, brief: '' } } }) }))
+    await h.store.refresh()
+    h.store.panel.value = 'plan'
+    h.store.selectedItem.value = item
+    await flush()
+    const hash = sim.hash()
+    const p = within(region(/Media & publishing plan/))
+    const dead = [
+      p.getByRole('button', { name: 'Re-prioritize' }),
+      p.getByRole('button', { name: 'Approve' }),
+      p.getByRole('button', { name: 'Cancel item…' }),
+      ...p.getAllByRole('button', { name: 'Reassign' }),
+      ...p.getAllByRole('button', { name: 'Send to Agency' }),
+    ] as HTMLButtonElement[]
+    expect(dead.length).toBeGreaterThanOrEqual(5)
+    for (const b of dead) {
+      expect(b.disabled, b.textContent!).toBe(true)
+      expect(b.title, b.textContent!).toBe(NOT_AVAILABLE)
+      fireEvent.click(b)
+    }
+    await flush()
+    expect((await h.store.run(cmd.setItemStatus(item, 'cancelled'))).ok).toBe(false)
+    expect(sent).toEqual([])
+    expect(sim.hash()).toBe(hash)
+  })
+
+  it('live navigation and finance: no Performance panel, no empty plan views, the revenue note, no empty report', async () => {
+    const { sim } = escalated()
+    const h = mount(new WasmDataSource(sim))
+    await h.store.refresh()
+    await flush()
+    const tools = within(screen.getByRole('navigation', { name: 'CEO tools' })).getAllByRole('button').map((b) => b.querySelector('.tool-label')!.textContent)
+    expect(tools).toEqual(['Plan', 'Inbox', 'Org chart', 'Projects', 'Finance', 'Hiring'])
+
+    expect(availableViews(h.store.plan.value)).toEqual(['board'])
+    h.store.panel.value = 'plan'
+    await flush()
+    expect(within(region(/Media & publishing plan/)).queryByRole('tablist')).toBeNull()
+    expect(within(region(/Media & publishing plan/)).getAllByRole('article')).toHaveLength(1)
+
+    h.store.panel.value = 'finance'
+    await flush()
+    expect(h.store.finance.value.revenueStubbed).toBe(true)
+    expect(within(region(/Finance/)).getByRole('note').textContent).toMatch(/^Revenue is not modelled yet/)
+    expect(region(/Finance/).querySelector('blockquote')).toBeNull()
+    expect(within(region(/Finance/)).queryByRole('heading', { name: 'CFO report' })).toBeNull()
+  })
+
+  it('does not re-serialise the views while the sim stands still', async () => {
+    vi.useFakeTimers()
+    const sim = demo()
+    let reads = 0
+    const counted: SimOrgApi = {
+      org_json: () => (reads++, sim.org_json()),
+      finance_json: () => (reads++, sim.finance_json()),
+      inbox_json: () => (reads++, sim.inbox_json()),
+      plan_json: () => (reads++, sim.plan_json!()),
+      day: () => sim.day(),
+      minute_of_day: () => sim.minute_of_day(),
+      step: () => sim.step(),
+      apply_command_json: (json) => sim.apply_command_json(json),
+    }
+    const s = new WasmDataSource(counted, { pollMs: 1000 })
+    const seen: Array<string[] | undefined> = []
+    const off = s.subscribe((t) => seen.push(t))
+    await s.getOrg()
+    expect(reads).toBe(4)
+    vi.advanceTimersByTime(5000)
+    expect(reads).toBe(4)
+    expect(seen).toEqual(Array.from({ length: 5 }, () => ['clock']))
+    sim.advance(Number(sim.steps_per_day()) / 24)
+    vi.advanceTimersByTime(1000)
+    expect(reads).toBe(8)
+    // A command at the same step is seen at once.
+    expect(await s.apply(toJson(cmd.praise('staff-1')))).toEqual({ ok: true })
+    expect(reads).toBe(12)
+    off()
   })
 })

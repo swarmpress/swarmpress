@@ -1,9 +1,18 @@
+import type { ComponentChildren } from 'preact'
 import { useState } from 'preact/hooks'
-import { cmd } from '../commands'
+import { cmd, NOT_AVAILABLE, PLAN_COMMANDS, type CommandName } from '../commands'
 import { pad2, sentence } from '../format'
+import { commitUrl, publishedPageUrl, pullRequestUrl } from '../links'
 import { PRIORITY_ORDER, type PlanPost, type WorkItemJson } from '../plan-types'
-import { useStore } from '../store'
+import { useStore, type OverlayStore } from '../store'
 import { Avatar, Badge, Meter, PersonButton, priorityTone } from './common'
+
+/**
+ * The tooltip of an action whose command the data source does not have
+ * (`store.can`, the one capability check), else nothing. Such a control is
+ * disabled; the store would not send its command either.
+ */
+const missing = (store: OverlayStore, name: CommandName) => (store.can(name) ? undefined : NOT_AVAILABLE)
 
 /** Work item: brief, phases, todos, artifacts, tickets and the live thread (publishing-plan.md §1–2, §5). */
 export function WorkItemDetail({ item }: { item: WorkItemJson }) {
@@ -17,6 +26,11 @@ export function WorkItemDetail({ item }: { item: WorkItemJson }) {
   const [confirmCancel, setConfirmCancel] = useState(false)
   const approve = store.check(cmd.setItemStatus(item.id, 'approved'))
   const cancel = store.check(cmd.setItemStatus(item.id, 'cancelled'))
+  const noUpdate = missing(store, 'UpdateWorkItem')
+  const noTodo = missing(store, 'CompleteTodo')
+  // The live page of a published item, from the newest artifact that names its path.
+  const pagePath = artifacts.map((a) => a.artifact!.path).filter(Boolean).pop()
+  const pageUrl = item.status === 'published' ? publishedPageUrl(store.site, pagePath) : null
 
   return (
     <div class="detail work-item">
@@ -46,7 +60,7 @@ export function WorkItemDetail({ item }: { item: WorkItemJson }) {
       <div class="actions-row ceo-actions" role="group" aria-label="CEO actions">
         <label class="field-inline">
           <span>Priority</span>
-          <select value={priority} onChange={(e) => setPriority(e.currentTarget.value as WorkItemJson['priority'])}>
+          <select value={priority} disabled={!!noUpdate} title={noUpdate} onChange={(e) => setPriority(e.currentTarget.value as WorkItemJson['priority'])}>
             {PRIORITY_ORDER.map((p) => (
               <option key={p} value={p}>
                 {sentence(p)}
@@ -54,7 +68,13 @@ export function WorkItemDetail({ item }: { item: WorkItemJson }) {
             ))}
           </select>
         </label>
-        <button type="button" class="btn" disabled={priority === item.priority} onClick={() => store.run(cmd.setPriority(item.id, priority), `Priority: ${priority}`)}>
+        <button
+          type="button"
+          class="btn"
+          disabled={!!noUpdate || priority === item.priority}
+          title={noUpdate}
+          onClick={() => store.run(cmd.setPriority(item.id, priority), `Priority: ${priority}`)}
+        >
           Re-prioritize
         </button>
         <button type="button" class="btn" disabled={!approve.ok} title={approve.reason} onClick={() => store.run(cmd.setItemStatus(item.id, 'approved'), 'Approved')}>
@@ -73,11 +93,12 @@ export function WorkItemDetail({ item }: { item: WorkItemJson }) {
             </button>
           </span>
         ) : (
-          <button type="button" class="btn btn-danger-quiet" disabled={!cancel.ok} title={cancel.reason} onClick={() => setConfirmCancel(true)}>
+          <button type="button" class="btn btn-danger-quiet" disabled={!cancel.ok} title={cancel.reason} onClick={() => cancel.ok && setConfirmCancel(true)}>
             Cancel item…
           </button>
         )}
       </div>
+      {PLAN_COMMANDS.some((c) => !store.can(c)) && <p class="small muted">Greyed-out actions are not available yet.</p>}
 
       <section aria-labelledby="phases-title">
         <h4 id="phases-title">Phases</h4>
@@ -98,7 +119,8 @@ export function WorkItemDetail({ item }: { item: WorkItemJson }) {
                   <input
                     type="checkbox"
                     checked={td.done}
-                    disabled={td.done}
+                    disabled={td.done || !!noTodo}
+                    title={noTodo}
                     onChange={() => store.run(cmd.completeTodo(item.id, td.id), 'Todo done')}
                   />
                   <span class={td.done ? 'done' : ''}>{text.todos[td.id] ?? td.id}</span>
@@ -114,6 +136,13 @@ export function WorkItemDetail({ item }: { item: WorkItemJson }) {
         <section aria-labelledby="links-title" class="links">
           <h4 id="links-title">Artifacts &amp; links</h4>
           <ul>
+            {pageUrl && (
+              <li>
+                <a href={pageUrl} target="_blank" rel="noopener noreferrer">
+                  Published page
+                </a>
+              </li>
+            )}
             {artifacts.map((a) => (
               <li key={a.id}>
                 <ArtifactLink a={a.artifact!} />
@@ -152,6 +181,7 @@ function PhaseRow({ item, index }: { item: WorkItemJson; index: number }) {
   const [who, setWho] = useState('')
   const verdict = who ? store.check(cmd.assignPhase(item.id, index, who)) : null
   const agency = store.check(cmd.sendToAgency(item.id, index))
+  const noAssign = missing(store, 'AssignPhase')
   const done = p.state === 'done'
   const id = `${item.id}-ph-${index}`
   return (
@@ -167,7 +197,7 @@ function PhaseRow({ item, index }: { item: WorkItemJson; index: number }) {
         <div class="phase-actions">
           <label class="field-inline">
             <span>Reassign</span>
-            <select id={id} value={who} onChange={(e) => setWho(e.currentTarget.value)}>
+            <select id={id} value={who} disabled={!!noAssign} title={noAssign} onChange={(e) => setWho(e.currentTarget.value)}>
               <option value="">Choose…</option>
               <optgroup label="Project team">
                 {team.map((m) => (
@@ -191,6 +221,7 @@ function PhaseRow({ item, index }: { item: WorkItemJson; index: number }) {
             type="button"
             class="btn"
             disabled={!verdict?.ok}
+            title={noAssign}
             onClick={() => {
               void store.run(cmd.assignPhase(item.id, index, who), `${sentence(p.kind)} → ${store.nameOf(who)}`).then((r) => r.ok && setWho(''))
             }}
@@ -211,14 +242,34 @@ function PhaseRow({ item, index }: { item: WorkItemJson; index: number }) {
   )
 }
 
-function ArtifactLink({ a }: { a: NonNullable<PlanPost['artifact']> }) {
-  return a.url ? (
-    <a href={a.url} target="_blank" rel="noopener noreferrer">
-      {a.label}
+/** A link that opens outside the game, or its text when the address is not known. */
+function External({ href, children }: { href: string | null; children: ComponentChildren }) {
+  return href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {children}
     </a>
   ) : (
+    <>{children}</>
+  )
+}
+
+/**
+ * An artifact: its own URL when the post carries one, else the pull request
+ * and (once merged) the commit in the company's site repository, which the
+ * data source names (`store.site`). Without a repository they stay text.
+ */
+function ArtifactLink({ a }: { a: NonNullable<PlanPost['artifact']> }) {
+  const { site } = useStore()
+  if (a.url) return <External href={a.url}>{a.label}</External>
+  return (
     <span>
-      {a.label}
+      {a.pr != null ? <External href={pullRequestUrl(site, a.pr)}>{`PR #${a.pr}`}</External> : !a.commit && a.label}
+      {a.commit && (
+        <>
+          {a.pr != null && ' · '}
+          <External href={commitUrl(site, a.commit)}>{a.label}</External>
+        </>
+      )}
       {a.path && <code class="small"> {a.path}</code>}
     </span>
   )

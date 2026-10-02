@@ -1,9 +1,9 @@
-import type { CommandResult } from './commands'
-import type { DataTopic, GameDataSource, NewPlanPost } from './data-source'
+import { SIM_COMMANDS, type CommandResult } from './commands'
+import { NO_SITE_LINKS, type DataTopic, type GameDataSource, type NewPlanPost, type SiteLinks, type SourceCapabilities } from './data-source'
 import { loadPersonaCatalog, type Persona } from './personas'
 import { MemoryPlanStore, type PlanStore } from './plan-store'
 import type { PlanJson, PlanPost, PlanText } from './plan-types'
-import { EMPTY_PLAN, EMPTY_PLAN_TEXT, normalizePlanText, splitPlanJson, type PlanTextWire } from './plan-wire'
+import { EMPTY_PLAN, EMPTY_PLAN_TEXT, normalizePlanText, normalizePost, splitPlanJson, toStorePost, type PlanTextWire } from './plan-wire'
 import type { FinanceJson, InboxJson, OrgJson, PerformanceJson } from './types'
 
 /**
@@ -31,6 +31,8 @@ export interface SimOrgApi {
   plan_json?(): string
   day(): number
   minute_of_day(): number
+  /** The sim step (the wasm `Sim` has it): the poll's default change key. */
+  step?(): number | bigint
 }
 
 export function hasOrgApi(sim: unknown): sim is SimOrgApi {
@@ -75,6 +77,43 @@ export const planTextFromStore =
   (store: { planJson(company: string): Promise<string> }, company: string) => async (): Promise<PlanTextWire> =>
     JSON.parse(await store.planJson(company)) as PlanTextWire
 
+/** The part of the CompanyStore the overlay reads and writes plan text through. */
+export interface PlanTextStore {
+  planJson(company: string): Promise<string>
+  /** `Store::append_post`: appends a post to an item's thread and returns its id. */
+  appendPost(company: string, item: string, postJson: string): Promise<string>
+}
+
+/**
+ * CEO posts kept in the CompanyStore through its post API, so they are part
+ * of the plan text the next `planJson` returns (and survive a reload). See
+ * `toStorePost` for how a comment fits the store's post types.
+ */
+export const ceoPostsToStore =
+  (store: PlanTextStore, company: string) =>
+  async (item: string, post: NewPlanPost): Promise<PlanPost> => {
+    const wire = toStorePost(post)
+    const id = await store.appendPost(company, item, JSON.stringify(wire))
+    return normalizePost({ ...wire, id }, item, 0)
+  }
+
+/**
+ * What a session's data source takes from its company: plan text read from
+ * and CEO posts written to the CompanyStore, and the site repository of the
+ * company row for pull-request links. The public address of the site is not
+ * part of the company row (see `SiteLinks.publicBaseUrl`).
+ */
+export function companyStoreOptions(
+  store: PlanTextStore,
+  company: { id: string; site_repo?: string | null },
+): Pick<WasmOptions, 'planText' | 'appendPost' | 'site'> {
+  return {
+    planText: planTextFromStore(store, company.id),
+    appendPost: ceoPostsToStore(store, company.id),
+    site: { repo: company.site_repo || null },
+  }
+}
+
 const EMPTY_PERFORMANCE: PerformanceJson = { asOfDay: 0, projects: [], report: null }
 
 export interface WasmOptions {
@@ -85,15 +124,31 @@ export interface WasmOptions {
    */
   planText?: () => Promise<PlanTextWire | PlanText>
   /**
-   * Persist a CEO post; defaults to an in-memory list next to the store's
-   * text (the CompanyStore only accepts the orchestrator's post types).
+   * Persist a CEO post (`ceoPostsToStore` for the CompanyStore). Without it
+   * posts stay in an in-memory list next to the store's text and are lost on
+   * reload (the offline sandbox).
    */
   appendPost?: (item: string, post: NewPlanPost) => Promise<PlanPost>
-  /** KPIs come from the tracker + KpiReport, not the sim. */
+  /** KPIs come from the tracker + KpiReport, not the sim. Without it the Performance panel is not offered. */
   performance?: () => Promise<PerformanceJson>
   /** Poll interval for change detection (the sim has no change events). */
   pollMs?: number
+  /** Command variants the sim has; defaults to `SIM_COMMANDS` (commands.ts). */
+  commands?: readonly string[]
+  /** Where pull requests and published pages live (session: the company row). */
+  site?: Partial<SiteLinks>
+  /**
+   * A cheap value that changes whenever the sim's JSON views may have
+   * changed; the poll re-serialises them only then. Defaults to `sim.step()`
+   * when the sim has it. A session whose loop applies commands between steps
+   * (outcomes at a held clock) passes step plus the loop's command count.
+   * Without either, the poll re-reads every time.
+   */
+  changeKey?: () => unknown
 }
+
+/** No change key: the views are re-read on every poll. */
+const NO_KEY = Symbol('no-change-key')
 
 interface Parsed {
   org: OrgJson
@@ -109,6 +164,9 @@ export class WasmDataSource implements GameDataSource {
   private listeners = new Set<(topics?: DataTopic[]) => void>()
   private cache = { org: '', finance: '', inbox: '', plan: '' }
   private parsed: Parsed | null = null
+  /** The change key the cached views were read at. */
+  private readAt: unknown = NO_KEY
+  private caps: SourceCapabilities
   private timer: ReturnType<typeof setInterval> | null = null
   /** CEO posts and text when no external store is wired (offline sandbox). */
   private local: PlanStore = new MemoryPlanStore(EMPTY_PLAN_TEXT)
@@ -118,7 +176,16 @@ export class WasmDataSource implements GameDataSource {
     private opts: WasmOptions = {},
   ) {
     this.personas = opts.personas ?? loadPersonaCatalog().personas
+    this.caps = {
+      commands: new Set(opts.commands ?? SIM_COMMANDS),
+      performance: !!opts.performance,
+      site: { ...NO_SITE_LINKS, ...opts.site },
+    }
     this.local.subscribe(() => this.emit(['plan']))
+  }
+
+  capabilities() {
+    return this.caps
   }
 
   async getOrg() {
@@ -173,7 +240,8 @@ export class WasmDataSource implements GameDataSource {
     } catch (e) {
       return { ok: false, reason: typeof e === 'string' ? e : (e as Error).message }
     }
-    if (r.ok) this.poll()
+    // A command changes the views without the step moving.
+    if (r.ok) this.poll(true)
     return r
   }
 
@@ -200,8 +268,20 @@ export class WasmDataSource implements GameDataSource {
     }
   }
 
-  private poll() {
-    const changed = this.refresh()
+  private changeKey(): unknown {
+    if (this.opts.changeKey) return this.opts.changeKey()
+    return typeof this.sim.step === 'function' ? this.sim.step() : NO_KEY
+  }
+
+  /**
+   * Change detection. The views are a pure function of the sim state, so
+   * while the change key stands still (a paused, held or resting clock)
+   * nothing is serialised or parsed; subscribers still get their clock tick.
+   */
+  private poll(force = false) {
+    const key = this.changeKey()
+    const unchanged = !force && this.parsed !== null && key !== NO_KEY && key === this.readAt
+    const changed = unchanged ? [] : this.refresh(key)
     if (changed.length) this.emit(changed)
     else if (this.listeners.size) this.emit(['clock'])
   }
@@ -212,7 +292,8 @@ export class WasmDataSource implements GameDataSource {
   }
 
   /** Re-read the JSON views; returns what changed. */
-  private refresh(): DataTopic[] {
+  private refresh(key: unknown = this.changeKey()): DataTopic[] {
+    this.readAt = key
     const next = {
       org: this.sim.org_json(),
       finance: this.sim.finance_json(),

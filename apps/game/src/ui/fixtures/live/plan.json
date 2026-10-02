@@ -1,0 +1,66 @@
+{
+  "feed": [
+    {
+      "kind": "blocked",
+      "minute": 571,
+      "project": "project-1",
+      "workItem": "work-item-1"
+    }
+  ],
+  "goals": [],
+  "items": [
+    {
+      "briefRef": 42,
+      "createdDay": 0,
+      "currentPhase": "draft",
+      "dependsOn": [],
+      "dueDay": null,
+      "id": "work-item-1",
+      "kind": "article",
+      "lastScore": null,
+      "meeting": "meeting-1",
+      "owner": "staff-5",
+      "phases": [
+        {
+          "assignee": "staff-1",
+          "estimateMinutes": 120,
+          "job": 2,
+          "kind": "draft",
+          "progress": 0.252,
+          "score": null,
+          "state": "blocked"
+        },
+        {
+          "assignee": "staff-5",
+          "estimateMinutes": 60,
+          "job": null,
+          "kind": "review",
+          "progress": 0,
+          "score": null,
+          "state": "pending"
+        },
+        {
+          "assignee": "staff-11",
+          "estimateMinutes": 15,
+          "job": null,
+          "kind": "publish",
+          "progress": 0,
+          "score": null,
+          "state": "pending"
+        }
+      ],
+      "priority": "normal",
+      "project": "project-1",
+      "publishDay": null,
+      "revision": 0,
+      "status": "blocked",
+      "tickets": [
+        "ticket-1"
+      ],
+      "todos": [],
+      "workstream": null
+    }
+  ],
+  "jobs": [],
+  "workstreams": []
+}

@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks'
-import { cmd, roleVariant, type SecretaryTask } from '../commands'
-import { countdown, gameTime, sentence } from '../format'
+import { cmd, kebab, roleVariant, type SecretaryTask } from '../commands'
+import { countdown, eur, gameTime, sentence } from '../format'
 import { humanRole, noSecretaryReason, REQUIRED_ROLES } from '../rules'
 import { useStore } from '../store'
 import type { Delegation, Priority, TicketJson } from '../types'
@@ -18,6 +18,53 @@ export function sortTickets(tickets: TicketJson[]): TicketJson[] {
     return (a.deadlineMinute ?? Infinity) - (b.deadlineMinute ?? Infinity)
   })
 }
+
+/**
+ * What the Inbox knows about a ticket kind. The table only adds words: a
+ * kind or an option that is not listed renders from its id and is answered
+ * like any other (`AnswerTicket` sends the option id back as the sim gave it).
+ */
+interface KindInfo {
+  label: string
+  /** One neutral line on what the ticket means, shown when the Secretary wrote no summary. */
+  about?: string
+  /** How the ticket's amount reads (`€3,600 over budget`); the bare amount otherwise. */
+  amount?: (eurText: string) => string
+}
+
+const TICKET_KINDS: Record<string, KindInfo> = {
+  // crates/sim-core/src/inbox.rs `TicketKind`; amounts as crates/sim-core/src/finance.rs and world.rs raise them.
+  escalation: { label: 'Escalation', about: 'Work on this item is blocked until you decide.' },
+  'budget-overrun': { label: 'Budget overrun', about: 'The project spent more than its budget for the month so far.', amount: (a) => `${a} over budget` },
+  'runway-low': { label: 'Runway low', about: 'Cash covers less than 30 days at the current burn.', amount: (a) => `${a} cash` },
+  'payroll-spike': { label: 'Payroll spike', about: 'One hire raised payroll by more than 15%.', amount: (a) => `${a} a month` },
+  'loan-offer': { label: 'Loan offer', about: 'Cash is below zero and the bank offers a loan.', amount: (a) => `${a} loan` },
+  'missing-role': { label: 'Missing role', about: 'A project team lacks a role it needs.' },
+  'hire-affordability': { label: 'Hire affordability', about: 'The CFO looked at whether the company can afford a hire.', amount: (a) => `${a} a month` },
+  'project-proposal': { label: 'Project proposal', about: 'A new publication is proposed.' },
+  // The publish gate and failure tickets (ADR-0059, ADR-0062).
+  'publish-approval': { label: 'Approve for publishing', about: 'The article passed review and waits for your approval before it is merged.' },
+  'standup-failed': { label: 'Standup failed', about: 'The morning standup ended without a result.' },
+  'deploy-failed': { label: 'Deploy failed', about: 'The site deploy of a merged article failed.' },
+  'needs-media': { label: 'Media needed', about: 'No usable image was found for the article.' },
+  'needs-page': { label: 'Page needed', about: 'The article needs a page the site does not have.' },
+}
+
+const OPTION_LABELS: Record<string, string> = {
+  publish: 'Publish',
+  'send-back': 'Send back',
+  kill: 'Kill',
+  defer: 'Defer',
+  retry: 'Retry',
+  skip: 'Skip',
+}
+
+/** `PublishApproval`, `publish_approval` and `publish-approval` are the same id. */
+const slug = (id: string) => kebab(id).replace(/[_\s]+/g, '-')
+
+const kindInfo = (kind: string): KindInfo | undefined => TICKET_KINDS[slug(kind)]
+export const ticketTitle = (kind: string) => kindInfo(kind)?.label ?? sentence(slug(kind))
+export const optionLabel = (option: string) => OPTION_LABELS[slug(option)] ?? sentence(slug(option))
 
 const DELEGATION: Array<{ id: Delegation; label: string; hint: string }> = [
   { id: 'off', label: 'Off', hint: 'You answer everything' },
@@ -123,47 +170,94 @@ function DelegationPolicy({ value, disabled }: { value: Delegation; disabled: bo
 function Ticket({ t }: { t: TicketJson }) {
   const store = useStore()
   const now = store.now.value
+  const open = t.status === 'open'
   const delta = t.deadlineMinute == null ? null : t.deadlineMinute - now
-  const title = sentence(t.kind)
+  const info = kindInfo(t.kind)
+  const title = ticketTitle(t.kind)
+  // What the ticket is about: the work item by its title in the plan text, the money and the role.
+  const itemTitle = t.workItem ? store.planText.value.items[t.workItem]?.title || t.workItem : null
+  const amount = t.amountEur ? (info?.amount ?? ((a: string) => a))(eur(t.amountEur)) : null
+  const subject = itemTitle != null || amount != null || !!t.role
   return (
-    <article class={`ticket ticket-${t.priority}`} aria-labelledby={`${t.id}-title`}>
+    <article class={`ticket ticket-${t.priority}`} aria-labelledby={`${t.id}-title`} data-kind={t.kind}>
       <header class="ticket-head">
         <Badge tone={t.priority}>{sentence(t.priority)}</Badge>
         <h4 id={`${t.id}-title`}>{title}</h4>
         {t.routedViaSecretary && <Badge tone="info">via Secretary</Badge>}
       </header>
+      {subject && (
+        <p class="ticket-subject">
+          {itemTitle != null && (
+            <button
+              type="button"
+              class="link-btn"
+              title="Open the work item in the plan"
+              onClick={() => {
+                store.selectedItem.value = t.workItem!
+                store.panel.value = 'plan'
+              }}
+            >
+              {itemTitle}
+            </button>
+          )}
+          {t.role && (
+            <>
+              {itemTitle != null && ' · '}
+              Role: {humanRole(t.role)}
+            </>
+          )}
+          {amount != null && (
+            <>
+              {(itemTitle != null || t.role) && ' · '}
+              <strong>{amount}</strong>
+            </>
+          )}
+        </p>
+      )}
       <p class="small muted">
         {t.id} · {store.projectName(t.project)}
         {t.from && <> · from {store.nameOf(t.from)}</>}
-        {delta != null && t.status === 'open' && (
-          <>
-            {' '}
-            ·{' '}
-            <span class={delta < 120 ? 'bad-text' : ''} title={`Default "${t.defaultOption}" at ${gameTime(t.deadlineMinute!)}`}>
-              {countdown(delta)}
-            </span>
-          </>
-        )}
       </p>
-      <p class="ticket-summary">{t.summary ?? <em class="muted">Untriaged: no summary (no secretary).</em>}</p>
-      {t.status === 'open' ? (
-        <div class="options" role="group" aria-label={`Answer ${title}`}>
-          {t.options.map((o) => (
-            <button
-              key={o}
-              type="button"
-              class={`btn${o === t.proposedOption ? ' is-proposed' : ''}`}
-              onClick={() => store.run(cmd.answer(t.id, o), `Answered ${t.id}: ${sentence(o)}`)}
-            >
-              {sentence(o)}
-              {o === t.proposedOption && <span class="small"> (proposed)</span>}
-              {o === t.defaultOption && <span class="sr-only"> (default at deadline)</span>}
-            </button>
-          ))}
-        </div>
+      {t.summary ? <p class="ticket-summary">{t.summary}</p> : info?.about && <p class="ticket-summary small">{info.about}</p>}
+      {open ? (
+        <>
+          {delta != null && (
+            <p class="small ticket-deadline">
+              Due {gameTime(t.deadlineMinute!)} · <span class={delta < 120 ? 'bad-text' : ''}>{countdown(delta)}</span>
+              {t.defaultOption && (
+                <>
+                  {' '}
+                  · if unanswered: <strong>{optionLabel(t.defaultOption)}</strong>
+                </>
+              )}
+            </p>
+          )}
+          <div class="options" role="group" aria-label={`Answer ${title}`}>
+            {t.options.map((o) => (
+              <button
+                key={o}
+                type="button"
+                class={`btn${o === t.proposedOption ? ' is-proposed' : ''}`}
+                onClick={() => store.run(cmd.answer(t.id, o), `Answered ${t.id}: ${optionLabel(o)}`)}
+              >
+                {optionLabel(o)}
+                {o === t.proposedOption && <span class="small"> (proposed)</span>}
+                {o === t.defaultOption && <span class="sr-only"> (default at deadline)</span>}
+              </button>
+            ))}
+          </div>
+        </>
       ) : (
         <p class="small">
-          Answered <strong>{sentence(t.answer ?? '')}</strong> by {t.resolvedBy === 'ceo' ? 'you' : (t.resolvedBy ?? 'default')}.
+          {t.status === 'expired' || t.resolvedBy === 'default' ? (
+            <>
+              Not answered by the deadline: <strong>{optionLabel(t.answer ?? t.defaultOption ?? '')}</strong> applied.
+            </>
+          ) : (
+            <>
+              Answered <strong>{optionLabel(t.answer ?? '')}</strong> by {t.resolvedBy === 'ceo' ? 'you' : t.resolvedBy === 'secretary' ? 'the Secretary' : (t.resolvedBy ?? 'default')}.
+            </>
+          )}
         </p>
       )}
     </article>
@@ -285,7 +379,7 @@ export function DelegateMenu({ disabledReason }: { disabledReason: string | null
             <select value={ticket} onChange={(e) => setTicket(e.currentTarget.value)}>
               {openTickets.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.id} · {sentence(t.kind)}
+                  {t.id} · {ticketTitle(t.kind)}
                 </option>
               ))}
             </select>

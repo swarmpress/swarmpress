@@ -124,7 +124,20 @@ test.describe('CEO overlay', () => {
     await expect(org.getByRole('button', { name: /Giulia/ })).toBeVisible()
     await page.keyboard.press('f')
     await expect(region(page, 'Finance')).toBeVisible()
+    // Live data: revenue is a stub in the sim, and the panel says so.
+    await expect(region(page, 'Finance').getByRole('note')).toContainText('Revenue is not modelled yet')
     await shot(page, 'live-finance')
+    expect(await contrast(page), 'live finance contrast').toEqual([])
+    // No KPI source live: the Performance panel is not offered, by button or by key.
+    await expect(toolbar(page).getByRole('button')).toHaveCount(PANELS.length - 1)
+    await expect(toolbar(page).getByRole('button', { name: /^Performance/ })).toHaveCount(0)
+    await page.keyboard.press('k')
+    await expect(region(page, 'Performance')).toHaveCount(0)
+    await expect(region(page, 'Finance')).toBeVisible()
+    // The plan shows the board alone: the sim exports nothing for the other views.
+    await page.keyboard.press('p')
+    await expect(region(page, 'Media & publishing plan')).toBeVisible()
+    await expect(region(page, 'Media & publishing plan').getByRole('tab')).toHaveCount(0)
     expect(errors).toEqual([])
   })
 

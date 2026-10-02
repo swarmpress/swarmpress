@@ -1,0 +1,47 @@
+{
+  "alerts": [],
+  "booksUnkept": false,
+  "cashEur": 185790,
+  "company": {
+    "agencyEur": 0,
+    "overtimeEur": 0,
+    "rentEur": 0,
+    "revenueEur": 0,
+    "salariesEur": 0,
+    "upkeepEur": 0
+  },
+  "dailyBurnEur": 3073.86,
+  "dayOfMonth": 1,
+  "lastClose": null,
+  "loan": null,
+  "month": 1,
+  "overhead": {
+    "agencyEur": 0,
+    "overtimeEur": 0,
+    "rentEur": 0,
+    "revenueEur": 0,
+    "salariesEur": 0,
+    "upkeepEur": 0
+  },
+  "projects": [
+    {
+      "budgetEurMonth": 80000,
+      "id": "project-1",
+      "month": {
+        "agencyEur": 0,
+        "overtimeEur": 0,
+        "rentEur": 0,
+        "revenueEur": 0,
+        "salariesEur": 0,
+        "upkeepEur": 0
+      },
+      "name": "cinqueterre.travel",
+      "overBudget": false,
+      "revenueEstimateEurMonth": 0,
+      "revenueEurMonth": 0,
+      "spentEurMonth": 0
+    }
+  ],
+  "revenueStubbed": true,
+  "runwayDays": 60
+}
