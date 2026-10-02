@@ -10,9 +10,18 @@ paths:
   - apps/game/src/llm/chrome-prompt-llm.ts
   - apps/game/src/llm/backend.ts
   - apps/game/scripts/bonsai-runtime.mjs
+  - apps/game/bonsai.html
+  - apps/game/src/harness/bonsai-harness.ts
+  - apps/game/playwright.bonsai.config.ts
+  - apps/game/e2e/bonsai-fixture.ts
+  - apps/game/e2e/bonsai.spec.ts
+  - apps/game/e2e/bonsai-equivalence.spec.ts
+  - apps/game/e2e/bonsai-equivalence.goldens.json
   - apps/game/e2e/bonsai-bench.spec.ts
   - apps/game/e2e/llm.spec.ts
   - crates/orchestrator-wasm/src/lib.rs
+  - crates/orchestrator-wasm/tests/validate.test.ts
+  - crates/claude/tests/schema_validator.rs
 adrs:
   - ADR-0024
   - ADR-0057

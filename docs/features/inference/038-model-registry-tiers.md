@@ -10,8 +10,10 @@ paths:
   - apps/game/src/llm/download.ts
   - apps/game/src/llm/registry.default.ts
   - "apps/game/src/llm/runtime/bonsai/manifest/**"
+  - apps/game/src/llm/runtime/bonsai/manifest.test.ts
   - apps/game/src/llm/runtime/bonsai/runtime.lock.json
   - crates/agents/src/models.rs
+  - crates/agents/tests/config.rs
 adrs:
   - ADR-0026
   - ADR-0057
