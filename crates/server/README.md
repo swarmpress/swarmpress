@@ -39,7 +39,11 @@ development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are i
 | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH` | | real gateway as the GitHub App (installation per repo). Without a token or App, gateway calls answer 503 |
 | `GITHUB_SITES_ORG` | `swarmpress-sites` | owner of the default site repo `{org}/{login}-site` |
 | `GITHUB_WEBHOOK_SECRET` | | `POST /webhooks/github` (503 when unset) |
-| `SWARMPRESS_SIMULATE_DEPLOY` | on with `fake`, else off | emit `DeployLanded` right after a gateway merge |
+| `SWARMPRESS_SIMULATE_DEPLOY` | on with `fake`, else off | emit `DeployLanded` right after a gateway merge. A startup error with a real GitHub: it would report every merge as live |
+| `SWARMPRESS_DEPLOY_POLL_SECS` | 30 | deploy poller interval (real GitHub only; at least 5) |
+| `SWARMPRESS_DEPLOY_POLL_MAX_AGE_SECS` | 3600 | a merge still pending this long after it was merged fails as `timed_out` and is no longer asked about (at least 60) |
+| `SWARMPRESS_DEPLOY_POLL_BATCH` | 20 | most merges asked about per repository and round, the newest (1 to 100) |
+| `SWARMPRESS_DEPLOY_CHECK` | `deploy` | name of the check run (the workflow job) whose success means the site is live |
 | `SWARMPRESS_ARTICLE_PROFILE` | `enforce` | the article profile on drafts under `content/pages/blog/`. `off` is a bridge for scripted runs whose orchestrator still writes the pre-MVP article shape: it is accepted only with `SWARMPRESS_GITHUB=fake` (a startup error otherwise), and the site checks (create-only path, one open pull request per path) stay on |
 | `SWARMPRESS_STAFF_EMAIL_DOMAIN` | `staff.swarm.press` | mail domain of the git author addresses synthesised for staff personas (`<staff>+<company>@<domain>`); a host name. Choose it before the first live merge: the site's history is not rewritten |
 | `SWARMPRESS_LEASE_SECS` | 90 | company lease length |
@@ -65,9 +69,10 @@ development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are i
 | `POST /api/gateway/draft` | lease required. `{content_id, path, page, message, work_item?, attribution?}` → `{number, branch, head_sha, created_pr, committed}`. An article (`content/pages/blog/*.json`) that breaks the schema or the article profile answers 422 `{error, issues: [..]}`; a path that exists on the base branch, a second open pull request for the path, or a second path for the content id answers 409 |
 | `POST /api/gateway/merge` | lease required. `{number, head_sha, attribution?}` → `{merged_sha}`; only PRs this company opened through the gateway; 409 if the head moved |
 | `POST /api/gateway/close` | lease required. `{number}` → `{number, closed: true, already_closed, branch_deleted}`: close a pull request this company opened through the gateway, without merging, and delete its `drafts/` branch (for cancelled work). 404 for any other pull request, 409 for a merged one. Idempotent: closing again answers `already_closed: true` and calls nothing; a close that failed half-way is completed by the next one |
+| `GET /api/gateway/deploy-status?number=` (or `?work_item=`) | session required, no lease. What became of one of the company's gateway pull requests: `{number, content_id, work_item, path, state, merged_sha, merged_at, landed_at, closed_at, detail, checked_at, now}` with `state` one of `open`, `closed`, `pending`, `landed`, `failed`, `unknown`. Instants are unix ms on the server's clock (`now`). Reads the record only. 400 unless exactly one key is given, 404 for an unknown pull request |
 | `GET /api/events?after=&limit=` | `{events: [{seq, company_id, kind, payload, created_at}], last_seq}` (oldest first, max 500) |
 | `GET /ws/events?after=` | WebSocket (cookie auth): backlog after `after`, then live events, one JSON text frame each |
-| `POST /webhooks/github` | HMAC-verified (`X-Hub-Signature-256`), deduped by `X-GitHub-Delivery`. `deployment_status` success → `DeployLanded`, failure/error → `DeployFailed`, in every company bound to the repo |
+| `POST /webhooks/github` | HMAC-verified (`X-Hub-Signature-256`), deduped by `X-GitHub-Delivery`. `deployment_status` of a commit the gateway merged: success lands every gateway pull request of the repository merged at or before it (`DeployLanded` each), failure/error fails that pull request (`DeployFailed`). A deployment of any other commit is reported, unmapped, to every company bound to the repo. See "Deploy observation" |
 | `PUT /api/sync/{company}/log/{segment}` | raw bytes; 201 stored, 200 identical, 409 different bytes (immutable) |
 | `GET /api/sync/{company}/log/{segment}` | the bytes (`x-swarmpress-sha256`) |
 | `GET /api/sync/{company}/log` | `{segments: [{segment, sha256, size, created_at}]}` |
@@ -154,6 +159,44 @@ synthesises `<staff_id>+<company id>@<SWARMPRESS_STAFF_EMAIL_DOMAIN>`.
   `Co-authored-by: <name> <address>`. Its git author is the token's user or
   the App and cannot be changed: GitHub's merge API has no author field.
 
+### Deploy observation (ADR-0061 decision 7)
+
+A merged gateway pull request is `pending` until a deployment that contains it
+is seen to succeed (`landed`) or its deployment is seen to fail (`failed`).
+`src/deploys.rs` holds the two transitions; each pull request lands or fails
+once, whichever source reports it, and the event is stored in the same
+transaction as the transition.
+
+| Source | `source` in the event | When |
+|---|---|---|
+| the poller | `poll` | a real GitHub (token or App) and no simulated deploys: a background task asks every `SWARMPRESS_DEPLOY_POLL_SECS` for the check runs of each merged, unlanded commit. A server on localhost receives no webhooks, so this is what the owner's machine uses |
+| the webhook | `webhook` | `deployment_status` deliveries, when the server has a public address |
+| simulation | `simulated` | `SWARMPRESS_SIMULATE_DEPLOY` with the fake GitHub: the merge lands at once |
+
+- **At or before.** The site's deploy workflow runs in one concurrency group
+  and GitHub drops a queued run when a newer one arrives, so a burst of merges
+  produces fewer deployments than merges. A successful deployment of the merge
+  commit S lands every unlanded gateway pull request of that repository merged
+  at or before S (`merged_at`, kept strictly increasing per repository).
+- **Check runs.** The deploy check (`SWARMPRESS_DEPLOY_CHECK`, default `deploy`)
+  completed with `success` means live. Any check completed with `failure`,
+  `timed_out`, `startup_failure` or `action_required` means failed. A check
+  still queued or running means wait. No check run, or only `cancelled`,
+  `skipped`, `neutral` or `stale` ones, means the run has not started or was
+  superseded: such a merge fails only when a later merge's deployment failed
+  and nothing after it is still running.
+- **Timeout.** A merge still pending after
+  `SWARMPRESS_DEPLOY_POLL_MAX_AGE_SECS` fails with `state: "timed_out"` and is
+  no longer asked about.
+- **A failed merge lands later** if a later deployment succeeds, or if its own
+  workflow is re-run and succeeds while it is still inside the polling window.
+- **Events.** `DeployLanded` and `DeployFailed` carry
+  `{content_id, work_item, number, merged_sha, deployed_sha, state, detail, environment, source}`.
+  `merged_sha` is the pull request's own squash commit; `deployed_sha` the
+  commit whose deployment was observed.
+- **Not covered:** a deployment of a commit the gateway did not merge (a push
+  by hand) cannot be placed among the merges, so it lands nothing by itself.
+
 ### Web fetch rules (ADR-0040)
 
 `http`/`https` only, no URL credentials; the host is resolved and every
@@ -197,7 +240,8 @@ Migrations (`migrations/`, applied at startup):
 | `gateway` | `RepoBackend` (fake, token, App, unconfigured), draft and merge handlers, `PathPolicy` checks, the site checks for articles, the closed-world extension point. |
 | `article` | The blog-article profile (pure): schema v2, block set and order, slug, the two HTML fields. |
 | `events` | `EventHub` (tokio broadcast), `publish`, `/api/events`, `/ws/events`. |
-| `webhooks` | GitHub webhook receiver (`github::webhooks::WebhookHandler` + SQLite dedupe). |
+| `webhooks` | GitHub webhook receiver (`github::webhooks::WebhookHandler` + SQLite dedupe); `deployment_status` feeds `deploys`. |
+| `deploys` | Deploy observation: check-run verdicts, the plan for a repository's merges, the land and fail transitions with their events, the poller (real GitHub only), `GET /api/gateway/deploy-status`. |
 | `sync` | Sync blob handlers (temp file + rename, index rows). |
 | `web` | Fetch proxy, SSRF guard, HTML → text, Firecrawl stub. |
 | `tracker` | First-party analytics (ADR-0032): collector, salts, rollup (computed in Rust), retention, nightly signals, `/api/projects`, `/api/analytics`. |
@@ -223,6 +267,7 @@ cargo clippy -p server -p testkit --all-targets -- -D warnings
 | `tests/articles.rs` | Articles through the gateway: a valid fixture drafts; each profile violation answers 422 with its issue and writes nothing; an existing slug, a second open pull request for the path and a second path for the content id answer 409; the blog index cannot be drafted; other content is untouched; the profile switch. |
 | `tests/attribution.rs` | The persona is the author of draft commits and the platform the committer; the squash commit carries `Co-authored-by` and the trailers, with the platform as author; the executor defaults to the lease holder; every malformed attribution answers 400 on draft and merge and reaches GitHub with nothing; without attribution nothing changes. |
 | `tests/close.rs` | `POST /api/gateway/close`: the pull request is closed and its branch deleted once; closing again calls nothing; foreign and hand-made pull requests answer 404 and are untouched; merged ones answer 409; the lease is required; a closed one cannot be merged and frees its path; an interrupted close is completed. |
+| `tests/deploys.rs` | The poller's round against the fake GitHub and the manual clock: a success lands the merge, a failure emits one `DeployFailed` and a re-run lands it, a burst of merges with one deployment lands all at or before it (poller and webhook), a superseded merge fails with the deployment that replaced it, a merge nobody deployed times out; `deploy-status` (states, scoping); the poller does not run with the fake or with simulated deploys; simulated deploys with a real GitHub refuse to start; the background task against a wiremock GitHub. |
 | `tests/events.rs` | Polling with `after`/`limit`, per-company scoping, WebSocket backlog + live push. |
 | `tests/sync.rs` | Segment immutability (201/200/409), list, bytes on disk, snapshot with step, owner-only access. |
 | `tests/web.rs` | SSRF refusals and bad URLs, per-user 429, Firecrawl 501, HTML reduction, JSON, redirects, 415 and 413 against a local wiremock. |

@@ -24,7 +24,7 @@ use crate::error::{AppError, AppResult};
 use crate::events::{self, EventHub};
 use crate::gateway::{self, RepoBackend};
 use crate::tracker::{self, AnalyticsSignalSink, PendingSignalSink, RateLimiter, Tracker};
-use crate::{companies, sync, web, webhooks};
+use crate::{companies, deploys, sync, web, webhooks};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -150,6 +150,7 @@ pub fn router(st: AppState) -> Router {
         )
         .route("/api/gateway/merge", post(gateway::merge))
         .route("/api/gateway/close", post(gateway::close))
+        .route("/api/gateway/deploy-status", get(deploys::status))
         // events
         .route("/api/events", get(events::list))
         .route("/ws/events", get(events::ws))
@@ -251,10 +252,12 @@ impl Background {
     }
 }
 
-/// Start the hourly maintenance: tracker rollup, nightly signals and
-/// retention, and expired-session cleanup.
+/// Start the hourly maintenance (tracker rollup, nightly signals and
+/// retention, expired-session cleanup) and, with a real GitHub, the deploy
+/// poller ([`deploys::spawn`]; never with the fake or simulated deploys).
 pub fn spawn_background(st: &AppState) -> Background {
     let mut tasks = vec![tracker::spawn_maintenance(st)];
+    tasks.extend(deploys::spawn(st));
     let st2 = st.clone();
     tasks.push(tokio::spawn(async move {
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(3600));

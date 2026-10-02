@@ -7,9 +7,10 @@
 //!   Idempotent (`github::ContentRepo::open_draft`).
 //! - `POST /api/gateway/merge {number, head_sha}` → `{merged_sha}`: squash
 //!   merge, refused unless the head is exactly `head_sha`. Only PRs this
-//!   company opened through the gateway can be merged. With
-//!   `SWARMPRESS_SIMULATE_DEPLOY` a `DeployLanded` event follows at once;
-//!   otherwise the site's `deployment_status` webhook produces it.
+//!   company opened through the gateway can be merged. The merge is then
+//!   `pending` until its deployment is observed ([`crate::deploys`]): by the
+//!   poller, by the site's `deployment_status` webhook, or at once with
+//!   `SWARMPRESS_SIMULATE_DEPLOY` (fake GitHub only).
 //! - `POST /api/gateway/close {number}` → `{number, closed, already_closed,
 //!   branch_deleted}`: close a pull request this company opened, without
 //!   merging, and delete its draft branch ([`close`]).
@@ -60,10 +61,10 @@ use crate::article::{self, check_article_profile};
 use crate::auth::CurrentUser;
 use crate::companies::require_lease;
 use crate::config::GithubMode;
-use crate::db::gateway::{self as store, NewGatewayPr};
+use crate::db::gateway::{self as store, Land, NewGatewayPr};
 use crate::db::Lease;
+use crate::deploys;
 use crate::error::{AppError, AppResult};
-use crate::events::{self, kinds};
 
 /// Where repo operations go.
 pub enum RepoBackend {
@@ -564,21 +565,21 @@ pub async fn merge(
         .merge_draft_with(body.number, &body.head_sha, trailers.as_deref())
         .await
         .map_err(gh_error)?;
-    let first_time = pr.merged_sha.is_none();
+    // The merge is `pending` from here: its deployment is awaited. The
+    // webhook, the poller or (fake GitHub only) the simulation lands it.
     store::set_merged(&st.db, &company.id, number, &merged.sha, st.now_ms()).await?;
     tracing::info!(company_id = %company.id, number, merged_sha = %merged.sha, "gateway merge");
-    if first_time && st.cfg.simulate_deploy {
-        events::publish(
+    if st.cfg.simulate_deploy {
+        // Lands once: a repeated merge finds nothing left to land.
+        deploys::land(
             &st,
-            &company.id,
-            kinds::DEPLOY_LANDED,
-            json!({
-                "content_id": pr.content_id,
-                "work_item": pr.work_item,
-                "merged_sha": merged.sha,
-                "number": body.number,
-                "source": "simulated",
-            }),
+            Land::Pr {
+                company_id: &company.id,
+                number,
+            },
+            deploys::SOURCE_SIMULATED,
+            Some(&merged.sha),
+            None,
         )
         .await?;
     }

@@ -4,8 +4,10 @@
 
 use anyhow::{Context, Result};
 use serde::Serialize;
+use serde_json::Value;
 use sqlx::FromRow;
 
+use super::events::{insert_event_in, Event};
 use super::Db;
 
 /// One pull request the gateway opened (`gateway_prs`).
@@ -52,6 +54,11 @@ impl GatewayPr {
 const PR_COLS: &str = "company_id, number, content_id, work_item, path, branch, head_sha, \
      merged_sha, merged_at, landed_at, deploy_state, deploy_detail, deploy_checked_at, \
      closed_at, final_head";
+
+/// [`PR_COLS`] of `gateway_prs p` in a join.
+const P_COLS: &str = "p.company_id, p.number, p.content_id, p.work_item, p.path, p.branch, \
+     p.head_sha, p.merged_sha, p.merged_at, p.landed_at, p.deploy_state, p.deploy_detail, \
+     p.deploy_checked_at, p.closed_at, p.final_head";
 
 pub struct NewGatewayPr<'a> {
     pub company_id: &'a str,
@@ -158,6 +165,12 @@ pub async fn set_closed(db: &Db, company_id: &str, number: i64, now_ms: i64) -> 
     Ok(())
 }
 
+/// Record the squash merge. The first time, the pull request becomes
+/// `pending` (its deployment is awaited) and gets its `merged_at`.
+///
+/// `merged_at` orders the merges of a repository for the "at or before"
+/// rule, so it is kept strictly increasing per repository: `now_ms`, or one
+/// more than the latest merge when the clock did not move (or went back).
 pub async fn set_merged(
     db: &Db,
     company_id: &str,
@@ -166,7 +179,16 @@ pub async fn set_merged(
     now_ms: i64,
 ) -> Result<()> {
     sqlx::query(
-        "UPDATE gateway_prs SET merged_sha = ?3, updated_at = ?4 WHERE company_id = ?1 AND number = ?2",
+        "UPDATE gateway_prs
+            SET merged_sha = ?3,
+                merged_at = COALESCE(merged_at, max(?4, COALESCE((
+                    SELECT max(p.merged_at) + 1
+                      FROM gateway_prs p JOIN companies c ON c.id = p.company_id
+                     WHERE lower(c.site_repo) =
+                           (SELECT lower(site_repo) FROM companies WHERE id = ?1)), 0))),
+                deploy_state = COALESCE(deploy_state, 'pending'),
+                updated_at = ?4
+          WHERE company_id = ?1 AND number = ?2",
     )
     .bind(company_id)
     .bind(number)
@@ -178,20 +200,207 @@ pub async fn set_merged(
     Ok(())
 }
 
-/// The company's PR whose squash commit is `merged_sha` (deploy webhooks).
-pub async fn pr_by_merged_sha(
+// ---------------------------------------------------------------- deploys
+
+/// A merged pull request the poller watches, with its repository.
+#[derive(Clone, Debug, FromRow, PartialEq, Eq)]
+pub struct WatchedPr {
+    #[sqlx(flatten)]
+    pub pr: GatewayPr,
+    /// `owner/name` of the company's site repo.
+    pub site_repo: String,
+}
+
+/// Merged pull requests whose deployment is still open: `pending` or
+/// `failed` (a failed one lands when a later deployment succeeds), not
+/// landed, merged at or after `since_ms`. Oldest first.
+pub async fn watched_prs(db: &Db, since_ms: i64) -> Result<Vec<WatchedPr>> {
+    sqlx::query_as::<_, WatchedPr>(&format!(
+        "SELECT {P_COLS}, c.site_repo AS site_repo
+           FROM gateway_prs p JOIN companies c ON c.id = p.company_id
+          WHERE p.merged_sha IS NOT NULL AND p.landed_at IS NULL
+            AND p.deploy_state IN ('pending', 'failed') AND p.merged_at >= ?1
+          ORDER BY p.merged_at, p.number"
+    ))
+    .bind(since_ms)
+    .fetch_all(&db.writer)
+    .await
+    .context("watched gateway PRs")
+}
+
+/// Pending pull requests merged before `before_ms`: nobody saw their
+/// deployment in time.
+pub async fn stale_pending(db: &Db, before_ms: i64) -> Result<Vec<GatewayPr>> {
+    sqlx::query_as::<_, GatewayPr>(&format!(
+        "SELECT {PR_COLS} FROM gateway_prs
+          WHERE merged_sha IS NOT NULL AND landed_at IS NULL
+            AND deploy_state = 'pending' AND merged_at < ?1
+          ORDER BY merged_at, number"
+    ))
+    .bind(before_ms)
+    .fetch_all(&db.writer)
+    .await
+    .context("stale pending gateway PRs")
+}
+
+/// The gateway pull request, of any company bound to `repo` (`owner/name`),
+/// whose squash commit is `merged_sha`.
+pub async fn merged_pr_in_repo(db: &Db, repo: &str, merged_sha: &str) -> Result<Option<GatewayPr>> {
+    sqlx::query_as::<_, GatewayPr>(&format!(
+        "SELECT {P_COLS}
+           FROM gateway_prs p JOIN companies c ON c.id = p.company_id
+          WHERE lower(c.site_repo) = lower(?1) AND p.merged_sha = ?2
+          ORDER BY p.merged_at LIMIT 1"
+    ))
+    .bind(repo)
+    .bind(merged_sha)
+    .fetch_optional(&db.writer)
+    .await
+    .context("gateway PR by merged sha in a repo")
+}
+
+/// Which merges a successful deployment contains.
+#[derive(Clone, Copy, Debug)]
+pub enum Land<'a> {
+    /// One pull request (a simulated deploy).
+    Pr { company_id: &'a str, number: i64 },
+    /// Every pull request of the repository `repo` (`owner/name`, any
+    /// company bound to it) merged at or before `merged_at`.
+    RepoThrough { repo: &'a str, merged_at: i64 },
+}
+
+/// Land the merged, unlanded pull requests in `scope` and store one event of
+/// `kind` per pull request (`payload` builds it), in one transaction: a pull
+/// request lands exactly once, whoever reports the deployment. Returns what
+/// landed, oldest first.
+pub async fn land(
+    db: &Db,
+    scope: Land<'_>,
+    now_ms: i64,
+    detail: Option<&str>,
+    kind: &str,
+    payload: &(dyn Fn(&GatewayPr) -> Value + Sync),
+) -> Result<Vec<(GatewayPr, Event)>> {
+    let mut tx = db.begin_immediate().await?;
+    let rows = match scope {
+        Land::Pr { company_id, number } => {
+            sqlx::query_as::<_, GatewayPr>(&format!(
+                "SELECT {PR_COLS} FROM gateway_prs
+                  WHERE company_id = ?1 AND number = ?2
+                    AND merged_sha IS NOT NULL AND landed_at IS NULL"
+            ))
+            .bind(company_id)
+            .bind(number)
+            .fetch_all(&mut *tx)
+            .await
+        }
+        Land::RepoThrough { repo, merged_at } => {
+            sqlx::query_as::<_, GatewayPr>(&format!(
+                "SELECT {P_COLS}
+                   FROM gateway_prs p JOIN companies c ON c.id = p.company_id
+                  WHERE lower(c.site_repo) = lower(?1)
+                    AND p.merged_sha IS NOT NULL AND p.landed_at IS NULL
+                    AND p.deploy_state IN ('pending', 'failed') AND p.merged_at <= ?2
+                  ORDER BY p.merged_at, p.number"
+            ))
+            .bind(repo)
+            .bind(merged_at)
+            .fetch_all(&mut *tx)
+            .await
+        }
+    }
+    .context("gateway PRs to land")?;
+    let mut out = Vec::with_capacity(rows.len());
+    for mut pr in rows {
+        sqlx::query(
+            "UPDATE gateway_prs
+                SET landed_at = ?3, deploy_state = 'landed', deploy_detail = ?4, updated_at = ?3
+              WHERE company_id = ?1 AND number = ?2",
+        )
+        .bind(&pr.company_id)
+        .bind(pr.number)
+        .bind(now_ms)
+        .bind(detail)
+        .execute(&mut *tx)
+        .await
+        .context("land gateway PR")?;
+        pr.landed_at = Some(now_ms);
+        pr.deploy_state = Some("landed".into());
+        pr.deploy_detail = detail.map(String::from);
+        let event = insert_event_in(&mut *tx, &pr.company_id, kind, &payload(&pr), now_ms).await?;
+        out.push((pr, event));
+    }
+    tx.commit().await.context("commit landed gateway PRs")?;
+    Ok(out)
+}
+
+/// A pending merge failed to deploy: mark it and store its event, in one
+/// transaction. `None` when the pull request was not pending (it already
+/// landed or failed): nothing changes and no event is stored.
+pub async fn fail(
     db: &Db,
     company_id: &str,
-    merged_sha: &str,
+    number: i64,
+    detail: &str,
+    now_ms: i64,
+    kind: &str,
+    payload: &Value,
+) -> Result<Option<Event>> {
+    let mut tx = db.begin_immediate().await?;
+    let changed = sqlx::query(
+        "UPDATE gateway_prs
+            SET deploy_state = 'failed', deploy_detail = ?3, updated_at = ?4
+          WHERE company_id = ?1 AND number = ?2
+            AND deploy_state = 'pending' AND landed_at IS NULL",
+    )
+    .bind(company_id)
+    .bind(number)
+    .bind(detail)
+    .bind(now_ms)
+    .execute(&mut *tx)
+    .await
+    .context("fail gateway PR")?
+    .rows_affected();
+    if changed == 0 {
+        return Ok(None);
+    }
+    let event = insert_event_in(&mut *tx, company_id, kind, payload, now_ms).await?;
+    tx.commit().await.context("commit failed gateway PR")?;
+    Ok(Some(event))
+}
+
+/// Record that the poller asked GitHub about these pull requests.
+pub async fn touch_checked(db: &Db, prs: &[(String, i64)], now_ms: i64) -> Result<()> {
+    for (company_id, number) in prs {
+        sqlx::query(
+            "UPDATE gateway_prs SET deploy_checked_at = ?3 WHERE company_id = ?1 AND number = ?2",
+        )
+        .bind(company_id)
+        .bind(number)
+        .bind(now_ms)
+        .execute(&db.writer)
+        .await
+        .context("record deploy check")?;
+    }
+    Ok(())
+}
+
+/// The company's newest gateway pull request for a sim work item.
+pub async fn latest_pr_for_work_item(
+    db: &Db,
+    company_id: &str,
+    work_item: &str,
 ) -> Result<Option<GatewayPr>> {
     sqlx::query_as::<_, GatewayPr>(&format!(
-        "SELECT {PR_COLS} FROM gateway_prs WHERE company_id = ?1 AND merged_sha = ?2"
+        "SELECT {PR_COLS} FROM gateway_prs
+          WHERE company_id = ?1 AND work_item = ?2
+          ORDER BY number DESC LIMIT 1"
     ))
     .bind(company_id)
-    .bind(merged_sha)
-    .fetch_optional(&db.reader)
+    .bind(work_item)
+    .fetch_optional(&db.writer)
     .await
-    .context("gateway PR by merged sha")
+    .context("gateway PR by work item")
 }
 
 /// Record a webhook delivery id; `true` the first time it is seen.

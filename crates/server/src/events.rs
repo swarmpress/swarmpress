@@ -26,9 +26,14 @@ use crate::error::AppResult;
 
 /// Event kinds (`events.kind`).
 pub mod kinds {
-    /// A merged content PR is live: `{content_id, work_item, merged_sha, number, source}`.
+    /// A merged content PR is live: `{content_id, work_item, number,
+    /// merged_sha, deployed_sha, state, detail, environment, source}`
+    /// (`crate::deploys::payload`). `source` is `webhook`, `poll` or
+    /// `simulated`; `deployed_sha` is the commit whose deployment was seen
+    /// (the PR's own merge, or a later one that contains it).
     pub const DEPLOY_LANDED: &str = "DeployLanded";
-    /// A deployment of a merged sha failed: `{content_id, work_item, merged_sha, state, source}`.
+    /// The deployment of a merged PR failed or was never seen: the same
+    /// payload, with `state` `failure`, `error` or `timed_out` and `detail`.
     pub const DEPLOY_FAILED: &str = "DeployFailed";
     /// A new grant displaced an unreleased lease (ADR-0045):
     /// `{epoch, holder, new_epoch, by}`. Only the executor whose epoch is
@@ -72,9 +77,16 @@ pub async fn publish(
     payload: Value,
 ) -> AppResult<Event> {
     let ev = store::insert_event(&st.db, company_id, kind, &payload, st.now_ms()).await?;
-    tracing::info!(company_id, kind, seq = ev.seq, "event published");
-    st.events.send(ev.clone());
+    announce(st, ev.clone());
     Ok(ev)
+}
+
+/// Push an event that is already stored to the connected sockets. For
+/// events written in the same transaction as the change they report
+/// (deploy outcomes): store first, commit, then announce.
+pub(crate) fn announce(st: &AppState, ev: Event) {
+    tracing::info!(company_id = %ev.company_id, kind = %ev.kind, seq = ev.seq, "event published");
+    st.events.send(ev);
 }
 
 #[derive(Deserialize)]

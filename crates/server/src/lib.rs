@@ -10,7 +10,9 @@
 //! - [`gateway`]: content PRs on the player's behalf (`PathPolicy`)
 //! - [`article`]: the blog-article profile the gateway enforces on drafts
 //! - [`events`]: the offline event inbox (poll + WebSocket push)
-//! - [`webhooks`]: GitHub `deployment_status` → `DeployLanded`
+//! - [`webhooks`]: GitHub `deployment_status` → `DeployLanded` / `DeployFailed`
+//! - [`deploys`]: what became of a merge: the poller for servers without a
+//!   public address, the "at or before" rule, `GET /api/gateway/deploy-status`
 //! - [`sync`]: command-log segments and snapshots (backup / new device)
 //! - [`web`]: the fetch proxy (SSRF-guarded) and the Firecrawl stub
 //! - [`tracker`]: first-party analytics collector, rollup, retention, signals
@@ -23,6 +25,7 @@ pub mod auth;
 pub mod companies;
 pub mod config;
 pub mod db;
+pub mod deploys;
 pub mod error;
 pub mod events;
 pub mod gateway;

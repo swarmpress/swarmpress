@@ -46,6 +46,21 @@ pub async fn insert_event(
     payload: &Value,
     now_ms: i64,
 ) -> Result<Event> {
+    insert_event_in(&db.writer, company_id, kind, payload, now_ms).await
+}
+
+/// [`insert_event`] on any executor: inside a transaction (`&mut *tx`), the
+/// event is stored together with the change it reports, or not at all.
+pub async fn insert_event_in<'e, E>(
+    executor: E,
+    company_id: &str,
+    kind: &str,
+    payload: &Value,
+    now_ms: i64,
+) -> Result<Event>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let row = sqlx::query_as::<_, EventRow>(
         "INSERT INTO events (company_id, kind, payload, created_at) VALUES (?1, ?2, ?3, ?4)
          RETURNING seq, company_id, kind, payload, created_at",
@@ -54,7 +69,7 @@ pub async fn insert_event(
     .bind(kind)
     .bind(payload.to_string())
     .bind(now_ms)
-    .fetch_one(&db.writer)
+    .fetch_one(executor)
     .await
     .context("insert event")?;
     Ok(row.into_event())

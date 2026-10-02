@@ -2,10 +2,21 @@
 //!
 //! Verified with `X-Hub-Signature-256` (`GITHUB_WEBHOOK_SECRET`, constant
 //! time), parsed and deduped by `X-GitHub-Delivery` (`webhook_deliveries`).
-//! A `deployment_status` of `success` becomes a `DeployLanded` event, and
-//! `failure`/`error` a `DeployFailed` event, in the inbox of every company
-//! bound to the repo; the deployed sha is mapped back to the gateway PR
-//! (content id, work item) when the gateway merged it.
+//!
+//! Only `deployment_status` is acted on; it is one of the sources of deploy
+//! observation ([`crate::deploys`], `source: "webhook"`):
+//!
+//! - `success` of a commit the gateway merged lands every gateway pull
+//!   request of that repository merged **at or before** it (one
+//!   `DeployLanded` each, in the inbox of the company that owns it): the
+//!   Pages concurrency group can skip the runs of earlier merges, and this
+//!   deployment contains them.
+//! - `failure` / `error` of a commit the gateway merged fails that pull
+//!   request (`DeployFailed`), once, unless it already landed.
+//! - A deployment of a commit the gateway did not merge (a push by hand)
+//!   cannot be placed among the merges. It lands nothing, and is reported to
+//!   every company bound to the repository as an event without a pull
+//!   request, as before.
 
 use std::sync::Arc;
 
@@ -16,10 +27,11 @@ use axum::http::{HeaderMap, StatusCode};
 use github::webhooks::{
     Delivery, DeliveryDedupe, DeploymentState, WebhookError, WebhookEvent, WebhookHandler,
 };
-use serde_json::json;
 
 use crate::app::AppState;
+use crate::db::gateway::Land;
 use crate::db::{accounts, gateway, Db};
+use crate::deploys::{self, SOURCE_WEBHOOK};
 use crate::error::{AppError, AppResult};
 use crate::events::{self, kinds};
 
@@ -76,35 +88,62 @@ pub async fn github(
         }
         Delivery::Fresh(env) => env,
     };
-    if let WebhookEvent::DeploymentStatus(ev) = &env.event {
-        let kind = match ev.deployment_status.state {
-            DeploymentState::Success => Some(kinds::DEPLOY_LANDED),
-            DeploymentState::Failure | DeploymentState::Error => Some(kinds::DEPLOY_FAILED),
-            _ => None,
-        };
-        if let Some(kind) = kind {
-            let sha = &ev.deployment.sha;
-            for company in accounts::companies_by_repo(&st.db, &ev.repository.full_name).await? {
-                let pr = gateway::pr_by_merged_sha(&st.db, &company.id, sha).await?;
+    let WebhookEvent::DeploymentStatus(ev) = &env.event else {
+        tracing::debug!(event = %env.event_name, "webhook ignored");
+        return Ok(StatusCode::ACCEPTED);
+    };
+    let success = match ev.deployment_status.state {
+        DeploymentState::Success => true,
+        DeploymentState::Failure | DeploymentState::Error => false,
+        _ => return Ok(StatusCode::ACCEPTED),
+    };
+    let state = format!("{:?}", ev.deployment_status.state).to_ascii_lowercase();
+    let sha = ev.deployment.sha.as_str();
+    let repo = ev.repository.full_name.as_str();
+    let environment = Some(ev.deployment.environment.as_str());
+    match gateway::merged_pr_in_repo(&st.db, repo, sha).await? {
+        Some(pr) if success => {
+            deploys::land(
+                &st,
+                Land::RepoThrough {
+                    repo,
+                    merged_at: pr.merged_at.unwrap_or_else(|| st.now_ms()),
+                },
+                SOURCE_WEBHOOK,
+                Some(sha),
+                environment,
+            )
+            .await?;
+        }
+        Some(pr) => {
+            let detail = format!("the deployment of {sha} reported {state}");
+            deploys::fail(
+                &st,
+                &pr,
+                &state,
+                &detail,
+                SOURCE_WEBHOOK,
+                Some(sha),
+                environment,
+            )
+            .await?;
+        }
+        None => {
+            let kind = if success {
+                kinds::DEPLOY_LANDED
+            } else {
+                kinds::DEPLOY_FAILED
+            };
+            for company in accounts::companies_by_repo(&st.db, repo).await? {
                 events::publish(
                     &st,
                     &company.id,
                     kind,
-                    json!({
-                        "content_id": pr.as_ref().map(|p| p.content_id.clone()),
-                        "work_item": pr.as_ref().and_then(|p| p.work_item.clone()),
-                        "number": pr.as_ref().map(|p| p.number),
-                        "merged_sha": sha,
-                        "state": format!("{:?}", ev.deployment_status.state).to_ascii_lowercase(),
-                        "environment": ev.deployment.environment,
-                        "source": "webhook",
-                    }),
+                    deploys::payload(None, &state, SOURCE_WEBHOOK, Some(sha), None, environment),
                 )
                 .await?;
             }
         }
-    } else {
-        tracing::debug!(event = %env.event_name, "webhook ignored");
     }
     Ok(StatusCode::ACCEPTED)
 }

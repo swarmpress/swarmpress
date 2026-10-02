@@ -92,6 +92,36 @@ impl Default for WebConfig {
     }
 }
 
+/// Deploy observation by polling (ADR-0061 decision 7). Only used with a
+/// real GitHub: see `deploys::enabled`.
+#[derive(Clone, Debug)]
+pub struct DeployWatchConfig {
+    /// How often the poller asks GitHub (`SWARMPRESS_DEPLOY_POLL_SECS`,
+    /// default 30, at least 5).
+    pub poll_interval: Duration,
+    /// A merge still pending this long after it was merged fails as
+    /// `timed_out` and is no longer asked about
+    /// (`SWARMPRESS_DEPLOY_POLL_MAX_AGE_SECS`, default 3600).
+    pub max_age: Duration,
+    /// Most merges asked about per repository and round, the newest first
+    /// (`SWARMPRESS_DEPLOY_POLL_BATCH`, default 20).
+    pub batch: usize,
+    /// Name of the check run (the workflow job) that publishes the site
+    /// (`SWARMPRESS_DEPLOY_CHECK`, default `deploy`).
+    pub check_name: String,
+}
+
+impl Default for DeployWatchConfig {
+    fn default() -> Self {
+        Self {
+            poll_interval: Duration::from_secs(30),
+            max_age: Duration::from_secs(3600),
+            batch: 20,
+            check_name: "deploy".into(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Config {
     /// `sqlite://data/swarmpress.db?mode=rwc` (default) or `sqlite::memory:`.
@@ -112,8 +142,11 @@ pub struct Config {
     /// `X-Hub-Signature-256` secret for `POST /webhooks/github`.
     pub webhook_secret: Option<String>,
     /// Emit `DeployLanded` right after a gateway merge (`SWARMPRESS_SIMULATE_DEPLOY`,
-    /// default on with the fake GitHub, off otherwise).
+    /// default on with the fake GitHub, off otherwise). With a real GitHub
+    /// it is refused at startup: it would report merges as live that are not.
     pub simulate_deploy: bool,
+    /// The deploy poller (real GitHub only).
+    pub deploys: DeployWatchConfig,
     /// Company lease length (`SWARMPRESS_LEASE_SECS`, default 90).
     pub lease_ttl: Duration,
     /// Upper bound on a gateway page (bytes of JSON text).
@@ -155,6 +188,7 @@ impl Config {
             sites_org: "swarmpress-sites".into(),
             webhook_secret: Some("test-webhook-secret".into()),
             simulate_deploy: true,
+            deploys: DeployWatchConfig::default(),
             lease_ttl: Duration::from_secs(90),
             max_page_bytes: 256 * 1024,
             article_profile: true,
@@ -293,6 +327,22 @@ impl Config {
                 .unwrap_or_else(|| "swarmpress-sites".into()),
             webhook_secret: opt("GITHUB_WEBHOOK_SECRET").filter(|v| !v.is_empty()),
             simulate_deploy,
+            deploys: {
+                let d = DeployWatchConfig::default();
+                DeployWatchConfig {
+                    poll_interval: Duration::from_secs(
+                        num("SWARMPRESS_DEPLOY_POLL_SECS", d.poll_interval.as_secs())?.max(5),
+                    ),
+                    max_age: Duration::from_secs(
+                        num("SWARMPRESS_DEPLOY_POLL_MAX_AGE_SECS", d.max_age.as_secs())?.max(60),
+                    ),
+                    batch: num("SWARMPRESS_DEPLOY_POLL_BATCH", d.batch)?.clamp(1, 100),
+                    check_name: opt("SWARMPRESS_DEPLOY_CHECK")
+                        .map(|v| v.trim().to_string())
+                        .filter(|v| !v.is_empty())
+                        .unwrap_or(d.check_name),
+                }
+            },
             lease_ttl: Duration::from_secs(num("SWARMPRESS_LEASE_SECS", 90)?.max(1)),
             max_page_bytes: 256 * 1024,
             article_profile,
@@ -315,6 +365,13 @@ impl Config {
     /// [`Config::from_env`] and by `AppState::new`.
     pub fn validate(&self) -> Result<()> {
         let real = matches!(self.github_mode, GithubMode::Real { .. });
+        if real && self.simulate_deploy {
+            anyhow::bail!(
+                "SWARMPRESS_SIMULATE_DEPLOY=1 is only allowed with SWARMPRESS_GITHUB=fake: \
+                 with a real GitHub it would report every merge as live, deployed or not. \
+                 Deploys of a real repository are observed by polling and by the webhook"
+            );
+        }
         if real && !self.article_profile {
             anyhow::bail!(
                 "SWARMPRESS_ARTICLE_PROFILE=off is only allowed with SWARMPRESS_GITHUB=fake: \
@@ -422,6 +479,20 @@ mod tests {
         assert!(e.contains("SWARMPRESS_ARTICLE_PROFILE"), "{e}");
         c.article_profile = true;
         c.validate().unwrap();
+    }
+
+    #[test]
+    fn simulated_deploys_are_refused_with_a_real_github() {
+        let mut c = cfg();
+        assert!(c.simulate_deploy, "the fake's default");
+        for mode in [real(Some("tok")), real(None)] {
+            c.github_mode = mode;
+            c.simulate_deploy = true;
+            let e = c.validate().unwrap_err().to_string();
+            assert!(e.contains("SWARMPRESS_SIMULATE_DEPLOY"), "{e}");
+            c.simulate_deploy = false;
+            c.validate().unwrap();
+        }
     }
 
     #[test]
