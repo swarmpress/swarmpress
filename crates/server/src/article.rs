@@ -226,6 +226,25 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// The page the orchestrator's assembly produces (`agents::article::assemble_page`,
+    /// its golden fixture) must pass the gateway's profile: the two sides of one contract.
+    #[test]
+    fn the_assembled_golden_article_passes_the_profile() {
+        let page: Value = serde_json::from_str(include_str!(
+            "../../agents/tests/fixtures/article/page.golden.json"
+        ))
+        .unwrap();
+        let id = page["id"].as_str().unwrap().to_string();
+        assert_eq!(
+            check_article_profile(
+                &page,
+                "content/pages/blog/harvest-week-in-manarola.json",
+                &id
+            ),
+            Ok(())
+        );
+    }
+
     const PATH: &str = "content/pages/blog/harvest-week-in-manarola.json";
     const ID: &str = "content-1a2b";
 
