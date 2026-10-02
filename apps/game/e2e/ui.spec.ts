@@ -29,7 +29,8 @@ async function contrast(page: Page) {
   await page.addScriptTag({ path: AXE })
   return page.evaluate(async () => {
     const axe = (window as unknown as { axe: { run: (c: unknown, o: unknown) => Promise<{ violations: Array<{ id: string; nodes: Array<{ target: string[]; failureSummary: string }> }> }> } }).axe
-    const r = await axe.run('#overlay', { runOnly: ['color-contrast'] })
+    // The article preview is a sandboxed frame without scripts: axe cannot run inside it, and it is the page's own look.
+    const r = await axe.run('#overlay', { runOnly: ['color-contrast'], iframes: false })
     return r.violations.flatMap((v) => v.nodes.map((n) => `${n.target.join(' ')}: ${n.failureSummary}`))
   })
 }
@@ -42,7 +43,7 @@ test.describe('CEO overlay', () => {
   test('opens every panel from the toolbar and by keyboard', async ({ page }) => {
     const { errors } = await boot(page, '/?renderer=webgl&quality=low&ui=mock')
     await expect(page.locator('.hud-business')).toContainText('Cash')
-    await expect(page.locator('.hud-business')).toContainText('2 high')
+    await expect(page.locator('.hud-business')).toContainText('3 high')
 
     const buttons = toolbar(page).getByRole('button')
     await expect(buttons.first()).toContainText('Plan')
@@ -100,11 +101,11 @@ test.describe('CEO overlay', () => {
     // Answer the high-risk ticket.
     await page.keyboard.press('i')
     const inbox = region(page, 'Inbox')
-    await expect(inbox.getByRole('heading', { name: /Open tickets \(5\)/ })).toBeVisible()
+    await expect(inbox.getByRole('heading', { name: /Open tickets \(6\)/ })).toBeVisible()
     const ticket = inbox.getByRole('article', { name: 'High risk article' })
     await ticket.getByRole('button', { name: /^Hold/ }).click()
-    await expect(inbox.getByRole('heading', { name: /Open tickets \(4\)/ })).toBeVisible()
-    await expect(page.locator('.hud-business')).toContainText('1 high')
+    await expect(inbox.getByRole('heading', { name: /Open tickets \(5\)/ })).toBeVisible()
+    await expect(page.locator('.hud-business')).toContainText('2 high')
     await shot(page, 'inbox-answered')
 
     // Plan: open a work item with its thread.
@@ -113,6 +114,70 @@ test.describe('CEO overlay', () => {
     await expect(page.getByText('Changes requested · score 6/10')).toBeVisible()
     await shot(page, 'plan-work-item')
     expect(await contrast(page), 'work item contrast').toEqual([])
+    expect(errors).toEqual([])
+  })
+
+  test('publish approval: the article in its ticket, the preview, and Send back with a note', async ({ page }) => {
+    const { errors } = await boot(page, '/?renderer=webgl&quality=low&ui=mock')
+    // What the preview frame asks the network for (the game page's own requests are not counted).
+    const fromPreview: string[] = []
+    page.on('request', (r) => {
+      if (r.frame() !== page.mainFrame()) fromPreview.push(r.url())
+    })
+    await page.keyboard.press('i')
+    const inbox = region(page, 'Inbox')
+    const ticket = inbox.getByRole('article', { name: 'Publish approval', exact: true })
+    await expect(ticket).toHaveCount(1)
+    await expect(ticket.getByRole('button', { name: 'Harvest week in Manarola', exact: true })).toBeVisible()
+    // The two groups, apart: what was counted, and what the editor thinks.
+    const measured = ticket.getByRole('group', { name: 'Measured checks' })
+    await expect(measured).toContainText('314 of 400 target (79%), within ±25%')
+    await expect(measured).toContainText('Banned phrases')
+    const opinion = ticket.getByRole('group', { name: 'Editor’s opinion' })
+    await expect(opinion).toContainText('Score 8/10')
+    await expect(ticket.getByText('Pull request #31')).toBeVisible()
+    await ticket.scrollIntoViewIfNeeded()
+    await shot(page, 'inbox-publish-approval')
+    expect(await contrast(page), 'approval ticket contrast').toEqual([])
+
+    // The preview: a dialog with the page in a sandboxed frame.
+    await ticket.getByRole('button', { name: 'Read article' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Crates, Ladders & Sweet Wine: Harvest Week in Manarola' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText('Preview (approximation of the live theme)')
+    const iframe = dialog.locator('iframe')
+    await expect(iframe).toHaveAttribute('sandbox', '')
+    const article = page.frameLocator('.article-preview iframe')
+    await expect(article.getByRole('heading', { level: 1 })).toHaveText('Crates, Ladders & Sweet Wine: Harvest Week in Manarola')
+    await expect(article.getByRole('heading', { level: 2 })).toHaveCount(4)
+    await expect(article.getByRole('link')).toHaveCount(0)
+    // The frame is an opaque origin: the page cannot reach into it, and it cannot reach the page.
+    expect(await iframe.evaluate((f) => (f as HTMLIFrameElement).contentDocument)).toBeNull()
+    await shot(page, 'article-preview')
+    expect(await contrast(page), 'preview dialog contrast').toEqual([])
+    // The frame asked for the hero and the inline image at their https addresses, and for nothing else.
+    await expect.poll(() => fromPreview.length).toBe(2)
+    expect(fromPreview.map((u) => new URL(u).origin + new URL(u).pathname)).toEqual([
+      'https://images.unsplash.com/photo-1499678329028-101435549a4e',
+      'https://images.unsplash.com/photo-1516483638261-f4dbaf036963',
+    ])
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+    await expect(ticket.getByRole('button', { name: 'Read article' })).toBeFocused()
+
+    // Send back with a note: the note lands in the thread, then the ticket is answered.
+    await ticket.getByRole('button', { name: /^Send back/ }).click()
+    await ticket.getByRole('textbox', { name: 'What should change? (optional)' }).fill('Name one grower in the trenino paragraph.')
+    await ticket.getByRole('button', { name: 'Send back with this note' }).click()
+    // Answered, it moves under the (closed) "Resolved" list.
+    await expect(inbox.locator('article[data-kind="publish-approval"]')).toContainText('Answered Send back by you.')
+    await page.keyboard.press('p')
+    await region(page, 'Media & publishing plan').getByRole('button', { name: 'Harvest week in Manarola', exact: true }).click()
+    const note = page.locator('li.post[data-type="send-back-note"]')
+    await expect(note).toContainText('Name one grower in the trenino paragraph.')
+    // The thread's pull-request post opens the same preview.
+    await page.locator('li.post[data-type="artifact"]').getByRole('button', { name: 'Read article' }).click()
+    await expect(page.frameLocator('.article-preview iframe').getByRole('heading', { level: 1 })).toHaveText('Crates, Ladders & Sweet Wine: Harvest Week in Manarola')
     expect(errors).toEqual([])
   })
 
