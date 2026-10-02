@@ -105,6 +105,22 @@ async function approveInInbox(page: Page, shot: string) {
   await expect(ticket).toContainText(TITLE)
   const options = inbox.getByRole('group', { name: 'Answer Publish approval' })
   await expect(options.getByRole('button')).toHaveText([/^Publish/, /^Send back/, /^Kill/, /^Defer/])
+  // What the CEO judges it by (increment U1), from the store's artifact record: the
+  // measured checks apart from the editor's opinion (the second review: 8), and the pull request.
+  await expect(ticket.getByRole('group', { name: 'Measured checks' })).toContainText(/Words\s*\d+ of 600 target/)
+  await expect(ticket.getByRole('group', { name: 'Editor’s opinion' })).toContainText('Score 8/10')
+  const draft = (await session(page, 'gateway'))[1]
+  await expect(ticket.getByText(`Pull request #${draft.number}`)).toBeVisible()
+  // The preview: the page JSON in a sandboxed frame; its one h1 is the article's title.
+  await ticket.getByRole('button', { name: 'Read article' }).click()
+  const preview = page.getByRole('dialog', { name: TITLE })
+  await expect(preview).toBeVisible()
+  await expect(preview.locator('iframe')).toHaveAttribute('sandbox', '')
+  await expect(page.frameLocator('.article-preview iframe').getByRole('heading', { level: 1 })).toHaveText(TITLE)
+  await expect(page.frameLocator('.article-preview iframe').getByText('Maria and her sons')).toBeVisible()
+  await page.screenshot({ path: `test-results/mvp/${shot}-preview.png` })
+  await page.keyboard.press('Escape')
+  await expect(preview).toHaveCount(0)
   await page.screenshot({ path: `test-results/mvp/${shot}.png` })
   await options.getByRole('button', { name: /^Publish/ }).click()
   // Answered: the ticket has no options any more, and the command is in the log.
