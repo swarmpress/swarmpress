@@ -205,6 +205,19 @@ jobs:
         with:
           name: game-playwright-orchestrator
           path: apps/game/reports/playwright-orchestrator.json
+      # The MVP acceptance test (docs/mvp.md): the real game page (?central=1, production
+      # build) against simpress-server, on both store engines.
+      - name: Playwright MVP e2e (one article, end to end; turso + sqlite)
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @swarm-press/game exec playwright test -c playwright.mvp.config.ts
+        env:
+          CI: '1'
+          PW_JSON: reports/playwright-mvp.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: game-playwright-mvp
+          path: apps/game/reports/playwright-mvp.json
 
   sdk:
     name: Extension SDK (sdk, sandbox, simpress runner, browser parity)
@@ -363,6 +376,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: game-playwright-orchestrator
+          path: apps/game/reports
+      - uses: actions/download-artifact@v4
+        with:
+          name: game-playwright-mvp
           path: apps/game/reports
       - uses: actions/download-artifact@v4
         with:

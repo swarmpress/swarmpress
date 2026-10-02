@@ -27,8 +27,9 @@
 
 ## Branches and PRs
 
-- Work happens on `claude/simpress-babylon` (milestone branches) until the fresh tree replaces
-  `main`, by a normal merge and never a force-push.
+- Work happens on short-lived branches off `main` and merges back by a normal merge, never a
+  force-push. (The fresh tree replaced `main` when `claude/simpress-babylon` was merged; that
+  branch is gone.)
 - Each milestone's PRs include the docs, ADRs and tests for what they change.
 - CI must be green: fmt, clippy, tests, wasm, Playwright, schema drift, the frozen-theme build,
   and Cockpit.

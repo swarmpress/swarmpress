@@ -42,7 +42,13 @@ export function encodeSegment(commands: LoggedCommand[]): Uint8Array {
 export function decodeSegment(bytes: Uint8Array): LoggedCommand[] {
   const doc = JSON.parse(dec.decode(bytes)) as SegmentDoc
   if (doc.format !== SEGMENT_FORMAT) throw new Error(`unknown log segment format ${JSON.stringify(doc.format)}`)
-  return doc.commands.map((c) => ({ seq: c.seq, step: c.step, kind: c.kind, json: c.cmd }))
+  if (!Array.isArray(doc.commands)) throw new Error('log segment without a commands array')
+  return doc.commands.map((c, i) => {
+    if (!Number.isInteger(c?.seq) || !Number.isInteger(c?.step) || typeof c.kind !== 'string' || typeof c.cmd !== 'string') {
+      throw new Error(`log segment entry ${i} is malformed`)
+    }
+    return { seq: c.seq, step: c.step, kind: c.kind, json: c.cmd }
+  })
 }
 
 export function encodeCheckpoint(c: Omit<Checkpoint, 'format'>): Uint8Array {
@@ -52,6 +58,9 @@ export function encodeCheckpoint(c: Omit<Checkpoint, 'format'>): Uint8Array {
 export function decodeCheckpoint(bytes: Uint8Array): Checkpoint {
   const c = JSON.parse(dec.decode(bytes)) as Checkpoint
   if (c.format !== CHECKPOINT_FORMAT) throw new Error(`unknown checkpoint format ${JSON.stringify(c.format)}`)
+  if (!Number.isInteger(c.step) || !Number.isInteger(c.lastSeq) || typeof c.hash !== 'string' || typeof c.seed !== 'string' || typeof c.scenario !== 'string') {
+    throw new Error('malformed checkpoint')
+  }
   return c
 }
 

@@ -286,6 +286,22 @@ workflow = "ci.yml"
 artifact = "game-playwright-orchestrator"
 branch = "main"
 
+# The MVP acceptance test (docs/mvp.md): the real game page with `?central=1` against the real
+# simpress-server, one article from standup to published, then reload and a fresh context
+# (`playwright test -c playwright.mvp.config.ts`, PW_JSON=reports/playwright-mvp.json).
+[[evidence]]
+id = "game/playwright-mvp"
+title = "apps/game MVP loop e2e (game page, central server, one article end to end)"
+format = "playwright"
+kind = "e2e"
+path = [".cockpit/evidence/game__playwright-mvp/**/*.json", "apps/game/reports/playwright-mvp.json"]
+component = "net"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "game-playwright-mvp"
+branch = "main"
+
 # Visual regression at frozen sim times x 4 camera angles: expected/actual/diff attachment
 # triples become cockpit visual tests.
 [[evidence]]

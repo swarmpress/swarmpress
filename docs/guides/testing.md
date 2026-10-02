@@ -75,6 +75,8 @@ cockpit doctor                                # which evidence sources have file
 | `content-schema/vitest` | same, in `packages/content-schema` (its tests are tsx scripts today, so this source is unfed) | `packages/content-schema/test-results/vitest-junit.xml` |
 | `site-kit/vitest`, `site-kit/playwright` | in `packages/site-kit` | `packages/site-kit/test-results/…` |
 | `game/playwright-e2e` | `playwright test --reporter=json` | `apps/game/test-results/playwright.json` |
+| `game/playwright-orchestrator` | `playwright test -c playwright.orchestrator.config.ts` (starts `simpress-server`) | `apps/game/reports/playwright-orchestrator.json` |
+| `game/playwright-mvp` | `playwright test -c playwright.mvp.config.ts` (the game page with `?central=1`, starts `simpress-server`) | `apps/game/reports/playwright-mvp.json` |
 | `game/playwright-visual` | visual project (frozen sim times × 4 angles) | `apps/game/test-results/playwright-visual.json` |
 | `simpress/criterion` | `cargo bench -p sim-core` | `target/criterion/**/new/estimates.json` |
 | `bench/bundle-size`, `bench/frame-time`, `bench/agent-pipeline` | small reporters (below) | `artifacts/bench/<name>*.json` |

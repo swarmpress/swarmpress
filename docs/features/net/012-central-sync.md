@@ -10,6 +10,7 @@ paths:
   - "apps/game/src/sync/**"
   - apps/game/src/net/central.ts
   - apps/game/src/net/central.test.ts
+  - apps/game/e2e/mvp.spec.ts
 adrs:
   - ADR-0038
   - ADR-0039

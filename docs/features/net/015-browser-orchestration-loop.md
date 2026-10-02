@@ -1,12 +1,12 @@
 ---
 id: FEAT-015
 title: "Browser orchestration loop"
-status: planned
+status: in-progress
 importance: critical
 paths:
   - "apps/game/src/orchestration/**"
-  - "crates/client-wasm/src/orchestrator*.rs"
-  - "apps/game/e2e/mvp.spec.ts"
+  - "apps/game/src/session/**"
+  - apps/game/e2e/mvp.spec.ts
 adrs:
   - ADR-0011
   - ADR-0038
@@ -16,14 +16,21 @@ adrs:
 
 Replaces "Postgres job queue" (ADR-0008 was superseded by ADR-0039).
 
-The loop works like this:
+The game page runs it with `?central=1` (`apps/game/src/session/session.ts`: dev login, company,
+lease, company store, restore, then the loop). Without the parameter the page stays the offline
+demo.
+
+The loop (`apps/game/src/orchestration/loop.ts`) works like this:
 1. Drain `Effect::RequestJob` from the wasm sim.
-2. Run the job through the `orchestrator` crate (wasm), with the browser store, local LLM staff
-   and the central gateway.
-3. Apply the resulting `MeetingOutcome` / `JobCompleted` / `DeployLanded` as commands at the
-   next step boundary.
+2. Run the job through the `orchestrator` crate (its wasm bridge is FEAT-059), with the browser
+   store, a `LocalLlm` and the central gateway.
+3. Apply the resulting `MeetingOutcome` / `JobCompleted` as commands at the next step boundary.
+   `DeployLanded` arrives as a central event and is applied the same way.
 4. Append those commands to the command log.
 
 Jobs are idempotent by `job_id`, so a crash or reload re-runs them safely.
+
+Not there yet: the session has no real local model. Without `?llm=fake` (the scripted MVP
+model) every job fails loudly.
 
 Acceptance: the MVP loop in `docs/mvp.md` passes end to end in `apps/game/e2e/mvp.spec.ts`.

@@ -26,6 +26,7 @@ import { createOrchestrator, jobsFromEffects, llmFromQuery, localLlmBridge, outc
 import { openCompanyStore, type CompanyStore, type Plan } from '../store'
 import { commandBytes, decodeCheckpoint, encodeCheckpoint, type Checkpoint } from '../sync/segments'
 import { fetchRemote, NEXT_SEGMENT_KEY, SEALED_SEQ_KEY, SyncUploader, toLogged, type SealResult } from '../sync/uploader'
+import type { DataTopic } from '../ui/data-source'
 import { planTextFromStore, WasmDataSource, type SimOrgApi } from '../ui/wasm-source'
 
 export const SCENARIO = 'cinqueterre'
@@ -52,7 +53,7 @@ export interface RestoreInfo {
   replayed: number
   /** The checkpoint the replay targeted (null for a new company). */
   checkpoint: { step: number; hash: string } | null
-  /** Replay hash == checkpoint hash (null when there was no checkpoint at that step). */
+  /** Replay hash == checkpoint hash at the checkpoint's step (null without a checkpoint; a mismatch aborts the restore). */
   verified: boolean | null
   ms: number
 }
@@ -78,6 +79,8 @@ export interface SessionInfo {
   leaseId: string | null
   events: string
   restored: RestoreInfo
+  /** Steps the `ff=` fast-forward ran on boot (0 without it, or when that time had passed). */
+  fastForwarded: number
 }
 
 export interface CheckpointResult {
@@ -98,6 +101,11 @@ export interface SessionHook {
     paused: boolean
     jobs: JobRecord[]
     queued: number
+    /** The clock is held for a standup job close to the sim's meeting timeout, or because the loop halted. */
+    holdClock: boolean
+    halted: string | null
+    /** The last checkpoint that reached the central server (a sealed log and snapshot). */
+    sealed: CheckpointResult | null
     pendingCommands: number
     pendingDeploys: string[]
     logged: number
@@ -109,9 +117,11 @@ export interface SessionHook {
   items(): Record<string, string>
   /** The plan text in the store (posts of the work-item thread). */
   planText(): Promise<Plan>
+  /** The command log in the store (seq, step and kind of every logged command). */
+  commandLog(): Promise<{ seq: number; step: number; kind: string }[]>
   gateway(): GatewayCall[]
   events(): CentralEvent[]
-  /** Pauses the sim clock (jobs keep running; outcomes still apply at boundaries). */
+  /** Pauses the sim clock (jobs keep running; outcomes still apply at boundaries). Time only: nothing else changes. */
   pause(): void
   resume(): void
   /** Waits until queued jobs ran and their outcomes are applied and logged. */
@@ -134,6 +144,28 @@ export interface GameSession {
   afterAdvance(): void
   /** The overlay's data source: the sim (commands logged through the loop) plus the store's plan text. */
   dataSource(): WasmDataSource
+}
+
+/**
+ * The overlay's source for a session. Plan text lives in the store, not the
+ * sim, so `WasmDataSource`'s change detection (it compares the sim's JSON
+ * views) cannot see a new thread post: the loop reports store writes here.
+ */
+class SessionDataSource extends WasmDataSource {
+  private planListeners = new Set<(topics?: DataTopic[]) => void>()
+
+  override subscribe(onChange: (topics?: DataTopic[]) => void) {
+    this.planListeners.add(onChange)
+    const off = super.subscribe(onChange)
+    return () => {
+      this.planListeners.delete(onChange)
+      off()
+    }
+  }
+
+  planTextChanged() {
+    this.planListeners.forEach((l) => l(['plan']))
+  }
 }
 
 export interface SessionOptions {
@@ -167,7 +199,14 @@ async function deviceId(store: CompanyStore): Promise<string> {
   return id
 }
 
-async function restore(store: CompanyStore, client: CentralClient, company: Company): Promise<{ sim: Sim; info: RestoreInfo; result: ReplayResult }> {
+/** The log is `1..n` without holes; anything else is a damaged store or a broken sync. */
+function assertContiguous(commands: LoggedCommand[], where: string) {
+  commands.forEach((c, i) => {
+    if (c.seq !== i + 1) throw new Error(`${where}: the command log has a gap (command #${i + 1} is missing, found #${c.seq})`)
+  })
+}
+
+async function restore(store: CompanyStore, client: CentralClient, company: Company): Promise<{ sim: Sim; info: RestoreInfo; result: ReplayResult; lastSeq: number }> {
   const t0 = performance.now()
   let source: RestoreSource = 'opfs'
   let commands: LoggedCommand[] = (await store.commandsAfter(-1)).map(toLogged)
@@ -186,11 +225,38 @@ async function restore(store: CompanyStore, client: CentralClient, company: Comp
       if (cp) await store.putSnapshot(cp.step, encodeCheckpoint(cp), cp.hash)
     } else source = 'new'
   }
+  // A restore that cannot be trusted stops here (the page shows the error) instead of running on a wrong world.
+  assertContiguous(commands, `restore from ${source}`)
   if (cp && cp.seed !== String(company.seed)) throw new Error(`checkpoint seed ${cp.seed} is not the company's seed ${company.seed}`)
+  if (cp && commands.length < cp.lastSeq) {
+    throw new Error(`restore from ${source}: the command log ends at #${commands.length}, the checkpoint needs #${cp.lastSeq}`)
+  }
   const sim = Sim.scenario(cp?.scenario ?? SCENARIO, BigInt(company.seed))
-  const result = replay(sim, commands, cp?.step ?? 0)
-  const verified = cp && result.step === cp.step ? result.hash === cp.hash : null
-  if (verified === false) console.error(`[session] replay desync: step ${result.step} hash ${result.hash}, checkpoint ${cp!.hash}`)
+  // First to the checkpoint (the commands it covers, then its step), where the
+  // hash is checked; then the commands logged after it.
+  const covered = cp ? commands.filter((c) => c.seq <= cp.lastSeq) : []
+  let result = replay(sim, covered, cp?.step ?? 0)
+  let verified: boolean | null = null
+  if (cp) {
+    verified = result.step === cp.step && result.hash === cp.hash
+    if (!verified) {
+      throw new Error(
+        `restore from ${source}: replay desync at the checkpoint (step ${result.step} hash ${result.hash}, checkpoint step ${cp.step} hash ${cp.hash})`,
+      )
+    }
+  }
+  const later = commands.slice(covered.length)
+  if (later.length) {
+    const more = replay(sim, later)
+    result = {
+      step: more.step,
+      hash: more.hash,
+      applied: result.applied + more.applied,
+      effects: [...result.effects, ...more.effects],
+      completedJobs: new Set([...result.completedJobs, ...more.completedJobs]),
+      landed: new Set([...result.landed, ...more.landed]),
+    }
+  }
   const info: RestoreInfo = {
     source,
     step: result.step,
@@ -200,7 +266,7 @@ async function restore(store: CompanyStore, client: CentralClient, company: Comp
     verified,
     ms: Math.round(performance.now() - t0),
   }
-  return { sim, info, result }
+  return { sim, info, result, lastSeq: commands.length }
 }
 
 function recordingGateway(inner: OrchestratorGateway, calls: GatewayCall[]): OrchestratorGateway {
@@ -237,7 +303,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   })
   await lease.start()
 
-  const { sim, info: restored, result } = await restore(store, client, company)
+  const { sim, info: restored, result, lastSeq } = await restore(store, client, company)
   log(`company ${company.id} restored from ${restored.source} at step ${restored.step} (${restored.replayed} commands, ${restored.ms} ms)`)
 
   const calls: GatewayCall[] = []
@@ -250,16 +316,30 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     llm: localLlmBridge(llmFromQuery(location.search, unwiredLlm)),
     site: SITE,
   })
-  const loop = new OrchestrationLoop({ sim, store, companyId: company.id, orchestrator, codec: { jobsFromEffects, outcomesForSim }, log })
-  loop.seed(result.completedJobs, result.landed)
+  const sources = new Set<SessionDataSource>()
+  const loop = new OrchestrationLoop({
+    sim,
+    store,
+    companyId: company.id,
+    orchestrator,
+    codec: { jobsFromEffects, outcomesForSim },
+    log,
+    onPlanText: () => sources.forEach((s) => s.planTextChanged()),
+    // A published item is the moment worth keeping: seal the log and a checkpoint to central sync (docs/mvp.md).
+    onLanded: () => void checkpoint(),
+  })
+  loop.seed(result.completedJobs, result.landed, lastSeq)
   await loop.loadPendingDeploys()
-  // Jobs requested before the reload whose outcome never made it into the log run again (idempotent by job id).
-  for (const e of result.effects) void loop.enqueueEffects(e)
+  // Jobs requested before the reload that the sim still waits for run again
+  // (or reuse their stored outcome, if `run()` had finished).
+  for (const e of result.effects) void loop.enqueueEffects(e, { pendingOnly: true })
 
   // Fast-forward (dev and e2e): deterministic stepping, no commands.
   const ff = parseClock(params.get('ff'))
+  let fastForwarded = 0
   if (ff != null) {
     const n = stepsUntil(sim, ff)
+    fastForwarded = n
     for (let left = n; left > 0; left -= Math.min(left, 1000)) {
       sim.advance(Math.min(left, 1000))
       loop.afterAdvance()
@@ -282,23 +362,31 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   const sync = new SyncUploader(client, store, company.id)
   let paused = false
 
-  const capture = () => ({ step: Number(sim.step()), hash: sim.hash().toString() })
+  let sealed: CheckpointResult | null = null
+  // Step, hash and log position are read in one synchronous turn: commands
+  // applied later are not part of this checkpoint.
+  const capture = () => ({ step: Number(sim.step()), hash: sim.hash().toString(), lastSeq: loop.lastSeq })
   const checkpointLocal = async (at = capture()) => {
     await loop.flush()
-    const lastSeq = await store.lastSeq()
-    await store.putSnapshot(at.step, encodeCheckpoint({ scenario: SCENARIO, seed: String(company.seed), lastSeq, ...at }), at.hash)
+    if (loop.halted) throw new Error(`no checkpoint: ${loop.halted}`)
+    await store.putSnapshot(at.step, encodeCheckpoint({ scenario: SCENARIO, seed: String(company.seed), ...at }), at.hash)
     return at
   }
-  const checkpoint = async (): Promise<CheckpointResult> => {
+  async function checkpoint(): Promise<CheckpointResult> {
     const at = capture()
-    await checkpointLocal(at)
+    let local = false
     let central: SealResult | null = null
     try {
+      await checkpointLocal(at)
+      local = true
       central = await sync.seal({ scenario: SCENARIO, seed: String(company.seed), ...at })
     } catch (e) {
-      loop.errors.push(`sync failed: ${String(e)}`)
+      loop.errors.push(`checkpoint failed: ${String(e)}`)
+      console.error(`[session] checkpoint failed: ${String(e)}`)
     }
-    return { ...at, local: true, central }
+    const r: CheckpointResult = { step: at.step, hash: at.hash, local, central }
+    if (central && (!sealed || r.step >= sealed.step)) sealed = r
+    return r
   }
 
   // Checkpoints: locally every game hour, to central every game day.
@@ -314,7 +402,9 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       void checkpoint()
     } else if (!localBusy) {
       localBusy = true
-      void checkpointLocal().finally(() => (localBusy = false))
+      void checkpointLocal()
+        .catch((e) => console.error(`[session] local checkpoint failed: ${String(e)}`))
+        .finally(() => (localBusy = false))
     }
   }
   window.addEventListener('pagehide', () => {
@@ -337,6 +427,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       leaseId: lease.current?.lease_id ?? null,
       events: events.transport,
       restored,
+      fastForwarded,
     }),
     state: () => ({
       ...capture(),
@@ -345,6 +436,9 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       paused,
       jobs: loop.jobs.map((j) => ({ ...j })),
       queued: loop.queued,
+      holdClock: loop.holdClock,
+      halted: loop.halted,
+      sealed: sealed ? { ...sealed } : null,
       pendingCommands: loop.pendingCommands,
       pendingDeploys: loop.pendingDeploys,
       logged: loop.logged,
@@ -353,6 +447,10 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     plan: () => JSON.parse(sim.plan_json()),
     items,
     planText: () => store.plan(company.id),
+    commandLog: async () => {
+      await loop.flush()
+      return (await store.commandsAfter(-1)).map((c) => ({ seq: c.seq, step: c.step, kind: c.kind }))
+    },
     gateway: () => calls.map((c) => ({ ...c })),
     events: () => [...received],
     pause: () => {
@@ -388,13 +486,17 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     loop,
     hook,
     get paused() {
-      return paused
+      return paused || loop.holdClock
     },
     boundary: () => loop.boundary(),
     afterAdvance: () => {
       loop.afterAdvance()
       onClock()
     },
-    dataSource: () => new WasmDataSource(orgApi, { planText: planTextFromStore(store, company.id) }),
+    dataSource: () => {
+      const s = new SessionDataSource(orgApi, { planText: planTextFromStore(store, company.id) })
+      sources.add(s)
+      return s
+    },
   }
 }

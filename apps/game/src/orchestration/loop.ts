@@ -10,7 +10,14 @@
  * appended to the store's command log with the step it was applied at, so a
  * replay from the seed reproduces the world (catchup/replay.ts). Jobs are
  * keyed by `job_id`: a job whose outcome is already in the log is never
- * queued again, and the orchestrator itself is idempotent per job.
+ * queued again. `run()` is not idempotent for drafts and reviews (it would
+ * call the model again and post twice), so a job's outcomes are stored under
+ * its id as soon as `run()` resolves and reused if the page reloads before
+ * they are logged.
+ *
+ * Failures are loud (CLAUDE.md rule 11): a job that keeps failing is reported
+ * to the sim as `JobCompleted{ok: false}` (the item is blocked and a ticket
+ * raised), and a failed command-log write halts the loop.
  */
 import { commandKind, settles, type ReplaySim } from '../catchup/replay'
 import type { OrchestratorLike } from '../orchestrator/bridge'
@@ -19,6 +26,7 @@ import { commandBytes } from '../sync/segments'
 
 export interface LoopSim extends ReplaySim {
   validate_command_json(json: string): string | undefined
+  /** The skeleton: `items[].{id,status}` and the pending `jobs[].{id,kind,requestedMinute}`. */
   plan_json(project?: string | null): string
   pending_effects(): number
 }
@@ -28,6 +36,7 @@ export interface LoopStore {
   appendPost(company: string, item: string, postJson: string): Promise<string>
   getKv(key: string): Promise<string | null>
   setKv(key: string, value: string): Promise<void>
+  deleteKv?(key: string): Promise<void>
 }
 
 /** The two pure helpers of orchestrator-wasm (sync in wasm; the lazy loader makes them async). */
@@ -60,6 +69,10 @@ export interface LoopOptions {
   retries?: number
   retryMs?: number
   log?: (line: string) => void
+  /** Called after plan text in the store changed (a job's posts, the deploy status post). */
+  onPlanText?: () => void
+  /** Called after a `DeployLanded` was applied (the item is published). */
+  onLanded?: (workItem: string) => void
 }
 
 export interface ApplyResult {
@@ -70,9 +83,31 @@ export interface ApplyResult {
 /** kv key holding work items whose DeployLanded arrived but is not applied yet. */
 export const PENDING_DEPLOYS_KEY = 'deploys.pending'
 
+/** kv key of a job's outcomes JSON, kept from `run()` resolving until its command is logged. */
+export const jobOutcomeKey = (jobId: number) => `job.outcome.${jobId}`
+
+/**
+ * The sim drops a standup whose outcome has not arrived 60 game minutes after
+ * it opened (sim-core `STANDUP_TIMEOUT_MINUTES`). A model can take longer than
+ * that in real time, so the clock is held once a standup job has been in
+ * flight for this many game minutes.
+ */
+export const STANDUP_HOLD_MINUTES = 30
+
 interface PlanItem {
   id: string
   status: string
+}
+
+interface PlanJob {
+  id: number
+  kind: string
+  requestedMinute: number
+}
+
+interface PlanView {
+  items: PlanItem[]
+  jobs?: PlanJob[]
 }
 
 export class OrchestrationLoop {
@@ -80,6 +115,10 @@ export class OrchestrationLoop {
   readonly errors: string[] = []
   /** Commands applied (and logged) by this loop since it started. */
   logged = 0
+  /** Why the loop stopped (a command could not be written to the log); null while it runs. */
+  halted: string | null = null
+  /** The seq of the last command applied (the log is contiguous from 1). */
+  private seq = 0
   private byId = new Map<number, JobRecord>()
   private completed = new Set<number>()
   private landed = new Set<string>()
@@ -97,10 +136,32 @@ export class OrchestrationLoop {
     this.log = o.log ?? (() => undefined)
   }
 
-  /** Job ids and work items already settled in the replayed log. */
-  seed(completed: Iterable<number>, landed: Iterable<string>) {
+  /** Job ids and work items already settled in the replayed log, and the log's last seq. */
+  seed(completed: Iterable<number>, landed: Iterable<string>, lastSeq = 0) {
     for (const j of completed) this.completed.add(j)
     for (const w of landed) this.landed.add(w)
+    this.seq = lastSeq
+  }
+
+  /** The seq of the last command applied; read it in the same turn as the sim's step and hash for a checkpoint. */
+  get lastSeq(): number {
+    return this.seq
+  }
+
+  /**
+   * True while the sim clock must not advance: the loop is halted, or a
+   * standup job is still in flight close to the sim's meeting timeout.
+   */
+  get holdClock(): boolean {
+    if (this.halted) return true
+    const standups = this.jobs.filter((j) => j.kind === 'standup' && (j.state === 'queued' || j.state === 'running'))
+    if (!standups.length) return false
+    const pending = (JSON.parse(this.o.sim.plan_json()) as PlanView).jobs ?? []
+    const now = this.o.sim.minute_of_day()
+    return standups.some((s) => {
+      const p = pending.find((j) => j.id === s.job_id)
+      return !!p && (now - p.requestedMinute + 1440) % 1440 >= STANDUP_HOLD_MINUTES
+    })
   }
 
   /** Restores DeployLanded events that arrived before a reload but were not applied yet. */
@@ -112,13 +173,20 @@ export class OrchestrationLoop {
     }
   }
 
-  /** Queues the jobs of a drained effects array (`[]` is a no-op). */
-  enqueueEffects(effectsJson: string): Promise<void> {
+  /**
+   * Queues the jobs of a drained effects array (`[]` is a no-op).
+   * `pendingOnly` (effects re-emitted by a replay): only jobs the sim still
+   * waits for are queued, so a standup that timed out or a job whose item was
+   * cancelled before the reload is not run again.
+   */
+  enqueueEffects(effectsJson: string, opts: { pendingOnly?: boolean } = {}): Promise<void> {
     if (effectsJson === '[]') return this.intake
+    const pending = opts.pendingOnly ? new Set(((JSON.parse(this.o.sim.plan_json()) as PlanView).jobs ?? []).map((j) => j.id)) : null
     this.intake = this.intake.then(async () => {
       for (const jobJson of await this.o.codec.jobsFromEffects(effectsJson, this.o.companyId)) {
         const j = JSON.parse(jobJson) as { job_id: number; kind: string; revision: number; work_item: string | null }
         if (this.completed.has(j.job_id) || this.byId.has(j.job_id)) continue
+        if (pending && !pending.has(j.job_id)) continue
         const rec: JobRecord = { job_id: j.job_id, kind: j.kind, revision: j.revision, work_item: j.work_item, state: 'queued' }
         this.byId.set(j.job_id, rec)
         this.jobs.push(rec)
@@ -140,6 +208,7 @@ export class OrchestrationLoop {
    * back, then any held DeployLanded the sim now accepts.
    */
   boundary() {
+    if (this.halted) return
     while (this.ready.length) {
       const cmd = this.ready.shift()!
       if (commandKind(cmd) === 'DeployLanded') {
@@ -157,23 +226,38 @@ export class OrchestrationLoop {
    * command log. CEO commands from the overlay come through here too.
    */
   apply(json: string): ApplyResult {
+    if (this.halted) return { ok: false, reason: `the session is halted: ${this.halted}` }
     try {
       this.o.sim.apply_command_json(json)
     } catch (e) {
       return { ok: false, reason: typeof e === 'string' ? e : (e as Error).message }
     }
-    const rec: CommandRecord = { step: Number(this.o.sim.step()), kind: commandKind(json), payload: commandBytes(json) }
+    // The seq is assigned here, in the same turn as the apply, so a checkpoint
+    // can name the exact log position of the world it captured.
+    const rec: CommandRecord = { seq: ++this.seq, step: Number(this.o.sim.step()), kind: commandKind(json), payload: commandBytes(json) }
     const s = settles(json)
     if (s.job != null) this.completed.add(s.job)
     if (s.landed) this.landed.add(s.landed)
     this.logged++
-    this.write(() => this.o.store.appendCommands([rec]).then(() => undefined))
+    this.write(async () => {
+      await this.o.store.appendCommands([rec])
+      // The outcome is in the log now; its copy in the kv is no longer needed.
+      if (s.job != null) await this.o.store.deleteKv?.(jobOutcomeKey(s.job)).catch(() => undefined)
+    }).catch((e) => {
+      // The world has a command the log does not: stop before anything else is built on it.
+      this.halted = `command #${rec.seq} (${rec.kind}) could not be written to the log: ${String(e)}`
+      this.fail(this.halted)
+    })
     // A logged command may request new jobs at once (e.g. MeetingOutcome → Draft).
     this.afterAdvance()
     return { ok: true }
   }
 
-  /** A DeployLanded event from the central server (EventStream handler): persisted, applied when the sim accepts it. */
+  /**
+   * A DeployLanded event from the central server (EventStream handler):
+   * persisted, applied when the sim accepts it. Rejects when it could not be
+   * persisted, so the event cursor does not move past it.
+   */
   async deployLanded(workItem: string, info: { mergedSha?: string; source?: string } = {}): Promise<void> {
     if (this.landed.has(workItem) || this.deploys.some((d) => d.workItem === workItem)) return
     this.deploys.push({ workItem, ...info })
@@ -219,11 +303,11 @@ export class OrchestrationLoop {
   private holdDeploy(workItem: string) {
     if (this.landed.has(workItem) || this.deploys.some((d) => d.workItem === workItem)) return
     this.deploys.push({ workItem, source: 'orchestrator' })
-    void this.persistDeploys()
+    this.persistDeploys().catch((e) => this.fail(`pending deploys not persisted: ${String(e)}`))
   }
 
   private items(): PlanItem[] {
-    return (JSON.parse(this.o.sim.plan_json()) as { items: PlanItem[] }).items
+    return (JSON.parse(this.o.sim.plan_json()) as PlanView).items
   }
 
   private tryDeploys() {
@@ -260,21 +344,30 @@ export class OrchestrationLoop {
         minute,
         payload: { merged_sha: d.mergedSha ?? null, source: d.source ?? null },
       }
-      this.write(() => this.o.store.appendPost(this.o.companyId, d.workItem, JSON.stringify(post)).then(() => undefined))
+      this.write(() => this.o.store.appendPost(this.o.companyId, d.workItem, JSON.stringify(post)).then(() => this.o.onPlanText?.())).catch((e) =>
+        this.fail(`status post not written: ${String(e)}`),
+      )
       this.log(`DeployLanded ${d.workItem} applied at step ${this.o.sim.step()}`)
+      this.o.onLanded?.(d.workItem)
     }
     this.deploys = keep
-    if (changed) void this.persistDeploys()
+    if (changed) this.persistDeploys().catch((e) => this.fail(`pending deploys not persisted: ${String(e)}`))
   }
 
   private persistDeploys(): Promise<void> {
     const snapshot = JSON.stringify(this.deploys)
-    this.write(() => this.o.store.setKv(PENDING_DEPLOYS_KEY, snapshot))
-    return this.writes
+    return this.write(() => this.o.store.setKv(PENDING_DEPLOYS_KEY, snapshot))
   }
 
-  private write(fn: () => Promise<void>) {
-    this.writes = this.writes.then(fn).catch((e) => this.fail(`store write failed: ${String(e)}`))
+  /**
+   * Store writes run one after another, in call order. The returned promise
+   * rejects when this write failed (the caller decides what that means); the
+   * chain itself carries on.
+   */
+  private write(fn: () => Promise<void>): Promise<void> {
+    const done = this.writes.then(fn)
+    this.writes = done.catch(() => undefined)
+    return done
   }
 
   private fail(msg: string) {
@@ -290,12 +383,20 @@ export class OrchestrationLoop {
         const rec = this.byId.get((JSON.parse(jobJson) as { job_id: number }).job_id)!
         rec.state = 'running'
         const retries = this.o.retries ?? 2
+        const key = jobOutcomeKey(rec.job_id)
         for (let attempt = 0; ; attempt++) {
           try {
-            const out = await this.o.orchestrator.run(jobJson)
+            // Outcomes of a run that finished before a reload, but were not logged yet, are reused.
+            let out = await this.o.store.getKv(key)
+            if (out) this.log(`${rec.kind} job ${rec.job_id}: reusing the stored outcome`)
+            else {
+              out = await this.o.orchestrator.run(jobJson)
+              await this.o.store.setKv(key, out)
+            }
             this.summarize(rec, out)
             this.ready.push(...(await this.o.codec.outcomesForSim(out)))
             rec.state = 'done'
+            this.o.onPlanText?.()
             this.log(`${rec.kind} r${rec.revision} (job ${rec.job_id}) → ${out.slice(0, 200)}`)
             break
           } catch (e) {
@@ -305,11 +406,19 @@ export class OrchestrationLoop {
               await new Promise((r) => setTimeout(r, this.o.retryMs ?? 2000))
               continue
             }
-            // Stubs fail loudly (CLAUDE.md rule 11): the job stays unsettled in
-            // the sim, which keeps the item where it is; a reload re-runs it.
+            // Stubs fail loudly (CLAUDE.md rule 11): the sim is told the job
+            // failed, so it blocks the item and raises the escalation ticket.
+            // A standup has no failure command; the sim ends the meeting
+            // without briefs when its hour is over.
             rec.state = 'failed'
+            rec.ok = false
             rec.error = msg
             this.fail(`${rec.kind} job ${rec.job_id} failed: ${msg}`)
+            if (rec.kind !== 'standup') {
+              this.ready.push(
+                JSON.stringify({ JobCompleted: { job_id: rec.job_id, digest: { ok: false, score: 0, words: 0, qa_defects: 0, artifact_sha: null } } }),
+              )
+            }
             break
           }
         }
