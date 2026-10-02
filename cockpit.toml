@@ -328,7 +328,6 @@ kind = "e2e"
 path = [".cockpit/evidence/game__playwright-bench/**/*.json", "apps/game/reports/playwright-bench.json"]
 component = "inference"
 features = ["FEAT-037"]
-note = "unfed in CI until .github/workflows/ci.yml runs the scripted project and uploads this report"
 [evidence.github]
 repo = "swarmpress/swarmpress"
 workflow = "ci.yml"

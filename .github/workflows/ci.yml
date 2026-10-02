@@ -218,6 +218,20 @@ jobs:
         with:
           name: game-playwright-mvp
           path: apps/game/reports/playwright-mvp.json
+      # The model qualification harness on the scripted backend (ADR-0057): no GPU, no
+      # network. Only the Playwright report is uploaded; the scripted run's benchmark
+      # documents are not real measurements and must not feed bench/model-eval.
+      - name: Playwright qualification harness (scripted backend)
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @swarm-press/game exec playwright test -c playwright.bonsai.config.ts --project=scripted
+        env:
+          CI: '1'
+          PW_JSON: reports/playwright-bench.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: game-playwright-bench
+          path: apps/game/reports/playwright-bench.json
 
   sdk:
     name: Extension SDK (sdk, sandbox, swarmpress runner, browser parity)
@@ -380,6 +394,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: game-playwright-mvp
+          path: apps/game/reports
+      - uses: actions/download-artifact@v4
+        with:
+          name: game-playwright-bench
           path: apps/game/reports
       - uses: actions/download-artifact@v4
         with:
