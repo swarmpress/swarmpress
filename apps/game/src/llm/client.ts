@@ -1,15 +1,16 @@
 /**
  * Main-thread RPC client for the LLM worker. Implements LocalLlm, so game
- * code (and the JobRunner) can use the worker exactly like an in-process
- * adapter. Structured output runs here, on top of the worker's generate,
- * so the validator (content-model wasm) stays on the main thread.
+ * code can use the worker exactly like an in-process adapter. Structured
+ * output runs here, on top of the worker's generate, so the validator (the
+ * Rust one from orchestrator-wasm) stays on the main thread.
  *
  *   const llm = LlmClient.spawn({ registry })
- *   await llm.load('qwen3-4b-q4f16', (p) => bar.set(p.fraction))
+ *   await llm.load('ternary-bonsai-2-27b', (p) => bar.set(p.fraction))
  *   for await (const d of llm.stream(messages)) bubble.append(d)
  */
-import type { Endpoint, FromWorker, ModelSpec, ToWorker, WireGenerateOptions } from './protocol'
+import type { BenchRequest, BenchResult, Endpoint, FromWorker, ModelSpec, RuntimeEventKind, ToWorker, WireGenerateOptions } from './protocol'
 import { findModel, type ModelRegistry } from './registry'
+import { bonsaiManifest } from './runtime/bonsai/manifest'
 import { runStructured, streamFromGenerate } from './structured'
 import { TINY_MODEL_ENTRY } from './testing/tiny-model'
 import {
@@ -21,6 +22,7 @@ import {
   type JsonSchema,
   type LoadProgress,
   type LocalLlm,
+  type RuntimeCapabilities,
   type StructuredOptions,
 } from './types'
 
@@ -37,6 +39,8 @@ export interface LlmClientOptions {
   resolveSpec?: (modelId: string) => ModelSpec | undefined
   /** Called with every progress event of any load (UI: "installing the newsroom's brains"). */
   onProgress?: (p: LoadProgress) => void
+  /** The worker lost its GPU device or hit a GPU error; the model must be loaded again. */
+  onEvent?: (e: { kind: RuntimeEventKind; message: string }) => void
 }
 
 export class LlmWorkerError extends Error {
@@ -52,6 +56,8 @@ export class LlmClient implements LocalLlm {
   private pending = new Map<number, Pending>()
   private terminate?: () => void
   private closed = false
+  /** The spec of the last load, so `capabilities()` can probe before the model is ready. */
+  private lastSpec: ModelSpec | undefined
 
   constructor(
     private ep: Endpoint,
@@ -72,6 +78,12 @@ export class LlmClient implements LocalLlm {
 
   private onMessage = (ev: MessageEvent) => {
     const msg = ev.data as FromWorker
+    if (msg.type === 'event') {
+      // A lost device takes the model with it.
+      if (msg.kind === 'device-lost') this.modelId = null
+      this.o.onEvent?.({ kind: msg.kind, message: msg.message })
+      return
+    }
     const p = this.pending.get(msg.id)
     if (!p) return
     switch (msg.type) {
@@ -121,6 +133,25 @@ export class LlmClient implements LocalLlm {
     }
     const m = this.o.registry ? findModel(this.o.registry, modelId) : undefined
     if (!m) throw new Error(`unknown model "${modelId}" (not in registry)`)
+    // A pinned manifest selects the Bonsai WebGPU runtime; it must describe the same file as the registry.
+    const manifest = bonsaiManifest(modelId)
+    if (manifest) {
+      if (manifest.repo !== m.hfRepo) throw new Error(`model "${modelId}": the manifest (${manifest.repo}) and the registry (${m.hfRepo}) name different repos`)
+      return {
+        id: m.id,
+        hfRepo: manifest.repo,
+        dtype: manifest.packing,
+        device: 'webgpu',
+        sizeBytes: manifest.bytes,
+        adapter: 'bonsai-kernels',
+        file: manifest.file,
+        revision: manifest.revision,
+        sha256: manifest.sha256,
+        context: Math.min(manifest.context, m.context),
+        runtime: { url: manifest.runtime.url, sha256: manifest.runtime.sha256 },
+        ...(manifest.decodePipelineDepth !== undefined ? { decodePipelineDepth: manifest.decodePipelineDepth } : {}),
+      }
+    }
     return { id: m.id, hfRepo: m.hfRepo, dtype: opts.dtype ?? m.dtype, device: opts.device ?? m.device ?? 'webgpu', sizeBytes: m.sizeBytes }
   }
 
@@ -130,6 +161,7 @@ export class LlmClient implements LocalLlm {
   }
 
   async loadSpec(spec: ModelSpec, onProgress?: (p: LoadProgress) => void): Promise<void> {
+    this.lastSpec = spec
     const res = await this.call<{ modelId: string | null }>({ type: 'load', id: this.nextId++, spec }, { onProgress })
     this.modelId = res.modelId
   }
@@ -142,6 +174,11 @@ export class LlmClient implements LocalLlm {
       topP: opts.topP,
       stop: opts.stop,
       stream: Boolean(opts.onDelta),
+      thinking: opts.thinking,
+      reasoningBudget: opts.reasoningBudget,
+      answerPrefix: opts.answerPrefix,
+      stopOnJsonEnd: opts.stopOnJsonEnd,
+      prefixKey: opts.prefixKey,
     }
     if (opts.signal?.aborted) throw new LlmCancelledError()
     const onAbort = () => this.ep.postMessage({ type: 'cancel', id: this.nextId++, target: id } satisfies ToWorker)
@@ -159,6 +196,25 @@ export class LlmClient implements LocalLlm {
 
   async structured<T>(messages: ChatMessage[], schema: JsonSchema, opts: StructuredOptions = {}): Promise<T> {
     return (await runStructured<T>((m, o) => this.generate(m, o), messages, schema, opts)).value
+  }
+
+  /**
+   * Capabilities of the worker's adapter. Before the first load, pass the
+   * model id whose adapter should be probed (the model itself is not loaded).
+   */
+  capabilities(modelId?: string): Promise<RuntimeCapabilities> {
+    const spec = modelId ? this.resolveSpec(modelId) : this.lastSpec
+    return this.call<RuntimeCapabilities>({ type: 'probe', id: this.nextId++, ...(spec ? { spec } : {}) })
+  }
+
+  /** Fixed-prompt benchmark of the loaded model (adapters that support it). */
+  bench(request: BenchRequest): Promise<BenchResult> {
+    return this.call<BenchResult>({ type: 'bench', id: this.nextId++, request })
+  }
+
+  /** Drop the worker's cached prompt state. */
+  async resetSession(): Promise<void> {
+    await this.call({ type: 'resetSession', id: this.nextId++ })
   }
 
   /** Unload the model (frees GPU memory) but keep the worker. */

@@ -83,5 +83,26 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
       roles: ['cfo', 'secretary', 'strategist', 'analyst', 'data-scientist', 'editor-in-chief', 'editor', 'writer', 'translator', 'fact-checker', 'photo-editor', 'photographer', 'seo-specialist', 'marketing-manager'],
       evalPending: true,
     },
+    {
+      // The one resident model of the MVP (ADR-0057). It runs on the custom
+      // WebGPU engine (runtime/bonsai), selected by its manifest, not on
+      // Transformers.js. Repo, size and sha256 are the pinned PTQ1_0 GGUF; the
+      // buffer limits and VRAM are estimates until the qualification benchmark.
+      id: 'ternary-bonsai-2-27b',
+      description: 'Ternary Bonsai 2 27B, PTQ1_0 packing (1.75 bits/weight), custom WebGPU kernels.',
+      hfRepo: 'prism-ml/Ternary-Bonsai-2-27B-gguf',
+      dtype: 'PTQ1_0',
+      sizeBytes: 5_946_648_928,
+      context: 16384,
+      minMaxBufferSize: 2 * GiB,
+      minStorageBufferBindingSize: 2 * GiB,
+      approxVramBytes: 9000 * MiB,
+      tier: 'xl',
+      // Every staff role: with the Bonsai backend one resident model serves all of them
+      // (the backend picks it directly; tier selection below is for the multi-model path).
+      roles: [...STAFF_ROLES],
+      evalPending: true,
+      sha256: '53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3',
+    },
   ],
 }

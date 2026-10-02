@@ -75,21 +75,33 @@ roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-
 eval_pending = false
 
 # 27-30B class: vendor-claimed quality/footprint. Only enabled if the eval
-# harness confirms the claims (plan D). Repo names are unknown placeholders.
+# harness confirms the claims (plan D).
+#
+# Ternary Bonsai 2 is the one resident model of the MVP (ADR-0057): it runs on
+# the custom WebGPU engine (apps/game/src/llm/runtime/bonsai), not on
+# Transformers.js. `hf_repo`, `size_bytes` and `sha256` are the pinned PTQ1_0
+# GGUF (Hub revision b072e1d3b35a0a630cece372c2127528e0994386; the revision and
+# the engine build are in the runtime's manifest and lock file). `context` is
+# the engine's default generation cache. The buffer limits and the VRAM figure
+# are still the earlier estimates (the engine shards weights to the adapter's
+# limit, so the real requirement is probably lower) until the qualification
+# benchmark runs; `eval_pending` stays true until then.
 [[model]]
 id = "ternary-bonsai-2-27b"
-description = "Ternary Bonsai 2 (27-30B class, ternary weights): vendor claims unverified"
-hf_repo = "TODO-UNKNOWN/ternary-bonsai-2"
-dtype = "ternary"
-size_bytes = 7_000_000_000
-sha256 = "TODO-UNVERIFIED"
-context = 32768
+description = "Ternary Bonsai 2 27B, PTQ1_0 packing (1.75 bits/weight), custom WebGPU kernels"
+hf_repo = "prism-ml/Ternary-Bonsai-2-27B-gguf"
+dtype = "PTQ1_0"
+size_bytes = 5_946_648_928
+sha256 = "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3"
+context = 16384
 min_max_buffer_size = 2_147_483_648
 min_max_storage_buffer_binding_size = 2_147_483_648
 approx_vram_mb = 9000
 tier = "high"
-roles = ["editor-in-chief", "editor", "writer", "fact-checker", "translator"]
+roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-in-chief", "editor", "writer", "translator", "fact-checker", "photo-editor", "photographer", "video-producer", "art-director", "web-developer", "ux-designer", "it-engineer", "dev-ops", "seo-specialist", "marketing-manager", "social-media-manager"]
 eval_pending = true
+
+# Muse Glimmer: research candidate; the repo name is an unknown placeholder.
 
 [[model]]
 id = "muse-glimmer-30b"

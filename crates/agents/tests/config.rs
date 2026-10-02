@@ -150,8 +150,17 @@ fn model_registry_loads_and_flags_placeholders_loudly() {
         .map(|m| m.id.as_str())
         .collect();
     assert_eq!(pending, ["ternary-bonsai-2-27b", "muse-glimmer-30b"]);
-    // every checksum is still a placeholder: loading must be refused
-    for m in r.models() {
+    // Ternary Bonsai 2 is pinned to a real repo and checksum (ADR-0057); it
+    // stays eval_pending until the qualification benchmark has run.
+    let bonsai = r.get("ternary-bonsai-2-27b").unwrap();
+    assert_eq!(bonsai.hf_repo, "prism-ml/Ternary-Bonsai-2-27B-gguf");
+    assert_eq!(
+        bonsai.verified_sha256(),
+        Ok("53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3")
+    );
+    assert_eq!(bonsai.verified_repo(), Ok(bonsai.hf_repo.as_str()));
+    // every other checksum is still a placeholder: loading must be refused
+    for m in r.models().iter().filter(|m| m.id != bonsai.id) {
         assert!(
             matches!(
                 m.verified_sha256(),
@@ -161,7 +170,7 @@ fn model_registry_loads_and_flags_placeholders_loudly() {
             m.id
         );
     }
-    assert!(r.unverified().len() >= r.models().len());
+    assert!(r.unverified().len() >= r.models().len() - 1);
     assert!(r
         .get("gpt-oss-20b-q4f16")
         .unwrap()

@@ -134,4 +134,110 @@ describe('LlmClient RPC specifics', () => {
     await client.dispose()
     await expect(client.generate([{ role: 'user', content: 'x' }])).rejects.toThrow(/disposed/)
   })
+
+  it('resolves the Bonsai registry id into a manifest spec for the WebGPU engine', async () => {
+    const { client, specs } = connect(new FakeLlm())
+    await client.load('ternary-bonsai-2-27b')
+    expect(specs[0]).toMatchObject({
+      id: 'ternary-bonsai-2-27b',
+      adapter: 'bonsai-kernels',
+      hfRepo: 'prism-ml/Ternary-Bonsai-2-27B-gguf',
+      dtype: 'PTQ1_0',
+      device: 'webgpu',
+      file: 'Ternary-Bonsai-2-27B-PTQ1_0.gguf',
+      revision: 'b072e1d3b35a0a630cece372c2127528e0994386',
+      sizeBytes: 5946648928,
+      context: 16384,
+      runtime: { url: '/vendor/bonsai/engine.mjs' },
+    })
+    expect(specs[0].sha256).toMatch(/^[0-9a-f]{64}$/)
+    expect(specs[0].runtime!.sha256).toMatch(/^[0-9a-f]{64}$/)
+    // Other registry models stay on the Transformers.js adapter.
+    expect(client.resolveSpec('qwen3-4b-q4f16').adapter).toBeUndefined()
+  })
+
+  it('passes the reasoning and stop options to the worker', async () => {
+    const fake = new FakeLlm({ script: ['{"a": 1}'] })
+    const { client } = connect(fake)
+    await client.load('qwen3-0.6b-q4f16')
+    await client.generate([{ role: 'user', content: 'x' }], { thinking: 'medium', reasoningBudget: 512, answerPrefix: '{', stopOnJsonEnd: true, prefixKey: 'writer' })
+    expect(fake.calls[0].opts).toMatchObject({ thinking: 'medium', reasoningBudget: 512, answerPrefix: '{', stopOnJsonEnd: true, prefixKey: 'writer' })
+  })
+
+  it('probes the adapter without loading the model, resets its session and reports a missing benchmark', async () => {
+    const resets: number[] = []
+    const fake = Object.assign(new FakeLlm(), {
+      capabilities: async () => ({
+        backend: 'fake',
+        label: 'Scripted',
+        webgpu: false,
+        supportsConstrainedOutput: false,
+        supportsPrefixReuse: false,
+        supportsVision: false,
+        reasoningModes: ['off' as const],
+        contextTokens: 4096,
+      }),
+      resetSession: async () => {
+        resets.push(1)
+      },
+    })
+    const { client, specs } = connect(fake)
+    await expect(client.capabilities()).rejects.toThrow(/needs a model spec/)
+    const caps = await client.capabilities('qwen3-0.6b-q4f16')
+    expect(caps).toMatchObject({ backend: 'fake', contextTokens: 4096 })
+    // The adapter was built for the probe, but nothing was loaded.
+    expect(specs).toHaveLength(1)
+    expect(fake.loads).toEqual([])
+    expect(client.modelId).toBeNull()
+    await client.resetSession()
+    expect(resets).toEqual([1])
+    await expect(client.bench({ maxNewTokens: 8, mode: 'adapter', ids: [1] })).rejects.toThrow(/no benchmark/)
+  })
+
+  it('an adapter without a probe of its own reports the minimum', async () => {
+    const { client } = connect(new FakeLlm())
+    expect(await client.capabilities('qwen3-0.6b-q4f16')).toMatchObject({ backend: 'transformers', supportsConstrainedOutput: false, reasoningModes: ['off'], contextTokens: null })
+  })
+
+  it('forwards a lost GPU device as an event and forgets the model', async () => {
+    const ch = new MessageChannel()
+    channels.push(ch)
+    let emit: ((kind: 'device-lost' | 'gpu-error', message: string) => void) | undefined
+    createWorkerHost(ch.port2 as unknown as Endpoint, (_spec, host) => {
+      emit = host.emit
+      return new FakeLlm()
+    })
+    const events: { kind: string; message: string }[] = []
+    const client = new LlmClient(ch.port1 as unknown as Endpoint, { registry: DEFAULT_REGISTRY, onEvent: (e) => events.push(e) })
+    await client.load('qwen3-0.6b-q4f16')
+    expect(client.modelId).toBe('qwen3-0.6b-q4f16')
+    emit!('device-lost', 'GPU process crashed')
+    await new Promise((r) => setTimeout(r, 10))
+    expect(events).toEqual([{ kind: 'device-lost', message: 'GPU process crashed' }])
+    expect(client.modelId).toBeNull()
+  })
+
+  it('merges token deltas that arrive within the batch window', async () => {
+    const ch = new MessageChannel()
+    channels.push(ch)
+    let clock = 0
+    const fake = new FakeLlm({ script: ['a b c d e f'] })
+    createWorkerHost(ch.port2 as unknown as Endpoint, () => fake, undefined, { deltaBatchMs: 50, now: () => clock })
+    const client = new LlmClient(ch.port1 as unknown as Endpoint, { registry: DEFAULT_REGISTRY })
+    await client.load('qwen3-0.6b-q4f16')
+    const deltas: string[] = []
+    // The clock never advances: everything after the first delta is held until the result.
+    const res = await client.generate([{ role: 'user', content: 'x' }], { onDelta: (d) => deltas.push(d) })
+    expect(deltas).toEqual(['a ', 'b c d e f'])
+    expect(deltas.join('')).toBe(res.text)
+    // With time passing between tokens, each one goes out on its own.
+    fake.push('g h i')
+    const spaced: string[] = []
+    const tick = fake as unknown as { sleep: (ms: number) => Promise<void> }
+    tick.sleep = async () => {
+      clock += 60
+    }
+    await client.generate([{ role: 'user', content: 'y' }], { onDelta: (d) => spaced.push(d) })
+    expect(spaced).toEqual(['g ', 'h ', 'i'])
+  })
 })

@@ -1,0 +1,23 @@
+{
+  "format": "swarmpress.model-manifest.v1",
+  "id": "ternary-bonsai-2-27b",
+  "adapter": "bonsai-kernels",
+  "repo": "prism-ml/Ternary-Bonsai-2-27B-gguf",
+  "revision": "b072e1d3b35a0a630cece372c2127528e0994386",
+  "file": "Ternary-Bonsai-2-27B-PTQ1_0.gguf",
+  "bytes": 5946648928,
+  "sha256": "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3",
+  "packing": "PTQ1_0",
+  "context": 16384,
+  "reasoning": ["off", "medium", "xhigh"],
+  "runtime": {
+    "url": "/vendor/bonsai/engine.mjs",
+    "sha256": "d94c1729d7a7f084d2a2887f39487f3d27e6e296dea93def54495a5d1b9c29f6",
+    "space": "webml-community/ternary-bonsai-2-webgpu-kernels",
+    "spaceSha": "94320c9da2b7aeac5b5807c9e61d696a3c09edb5"
+  },
+  "notices": {
+    "model": "Apache-2.0. Created using Bonsai by Prism ML. Base model: Qwen3.8-27B.",
+    "runtime": "No licence upstream. Fetched at setup by scripts/bonsai-runtime.mjs, never committed or redistributed (ADR-0057)."
+  }
+}
