@@ -33,7 +33,8 @@ describe("swarmpress run", () => {
 
   test("--json drives every extension kind through the sandbox", async () => {
     const exts = EXAMPLE_DIRS.flatMap((e) => ["--ext", join(EXAMPLES, e)]);
-    const r = await swarmpress("run", "--days", "1", "--json", ...exts);
+    // Seed 2: the coffee machine breaks on day 0 (the rule seed includes the extension id).
+    const r = await swarmpress("run", "--seed", "2", "--days", "1", "--json", ...exts);
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
     const report = JSON.parse(r.out);

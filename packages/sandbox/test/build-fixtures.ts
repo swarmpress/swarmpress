@@ -19,7 +19,7 @@ const SDK_RUNTIME = join(ROOT, "packages", "sdk", "src", "runtime.ts");
 const sdkPlugin = {
   name: "swarmpress-sdk",
   setup(b: { onResolve(o: { filter: RegExp }, cb: () => { path: string }): void }) {
-    b.onResolve({ filter: /^@swarmpress\/sdk(\/runtime)?$/ }, () => ({ path: SDK_RUNTIME }));
+    b.onResolve({ filter: /^@swarm-press\/sdk(\/runtime)?$/ }, () => ({ path: SDK_RUNTIME }));
   },
 };
 

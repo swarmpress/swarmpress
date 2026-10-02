@@ -191,7 +191,7 @@ export async function buildBundle(ext: Extension): Promise<{ code: string; sha25
         {
           name: "swarmpress-sdk",
           setup(b: any) {
-            b.onResolve({ filter: /^@swarmpress\/sdk(\/runtime)?$/ }, () => ({ path: sdkRuntime }));
+            b.onResolve({ filter: /^@swarm-press\/sdk(\/runtime)?$/ }, () => ({ path: sdkRuntime }));
           },
         },
       ],
