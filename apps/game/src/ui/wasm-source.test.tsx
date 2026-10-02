@@ -138,7 +138,8 @@ describe('overlay over the live source', () => {
     expect(t.getByText(/Approved · score 8\/10/)).toBeTruthy()
     expect(t.getByText(/Deployed \(simulated\)/)).toBeTruthy()
     expect(t.getByText('content/pages/en/via-dell-amore.json')).toBeTruthy()
-    expect(thread.querySelector('.handoff-to')?.textContent).toMatch(/→ Marco Ferretti/)
+    // staff-5 is persona `marco` in the live catalog.
+    expect(thread.querySelector('.handoff-to')?.textContent).toContain(`→ ${h.store.persona('marco')!.name}`)
   })
 
   it('answers a ticket through the sim and updates the HUD inbox count', async () => {

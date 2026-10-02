@@ -9,7 +9,10 @@ const staff = (s: MockDataSource, id: string) => s.current.org.staff.find((x) =>
 describe('command JSON (serde external tagging, §5)', () => {
   it('encodes struct, newtype and unit variants', () => {
     expect(toJson(cmd.assign('staff-1', 'project-1', 80))).toBe('{"AssignToProject":{"staff":"staff-1","project":"project-1","allocation_pct":80}}')
-    expect(cmd.setDelegation('low-and-medium')).toEqual({ SetPolicy: { Delegation: 'LowAndMedium' } })
+    expect(cmd.setDelegation('low-and-medium')).toEqual({ SetDelegation: { policy: 'low-and-medium' } })
+    expect(toJson(cmd.createProject({ name: 'Amalfi Dispatch', slug: 'amalfi-dispatch', domain: 'amalfi.travel' }))).toBe(
+      '{"CreateProject":{"slug":"amalfi-dispatch","name":"Amalfi Dispatch","domain":"amalfi.travel"}}',
+    )
     expect(cmd.delegate('TriageInbox')).toEqual({ Delegate: { task: 'TriageInbox' } })
     expect(cmd.setStatus('project-1', 'paused')).toEqual({ SetProjectStatus: { project: 'project-1', status: 'Paused' } })
     expect(cmd.setBudgetEurMonth('project-1', 600)).toEqual({ SetProjectBudget: { project: 'project-1', monthly_cents: 60000 } })
@@ -73,13 +76,13 @@ describe('MockDataSource', () => {
 
   it('gates CreateProject and activating projects by company level', () => {
     const s = new MockDataSource()
-    const create = cmd.createProject({ name: 'Portofino Weekly', slug: 'portofino-weekly', domain: 'portofino.travel', budgetEurMonth: 10000 })
+    const create = cmd.createProject({ name: 'Portofino Weekly', slug: 'portofino-weekly', domain: 'portofino.travel' })
     expect(check(s, create).reason).toMatch(/Locked: Company level 2 allows 1 running project\. Level 3 unlocks 2\./)
     expect(check(s, cmd.setStatus('project-2', 'active')).ok).toBe(false)
     s.patch({ org: { ...s.current.org, company: { level: 3, maxProjects: 2 } } })
     expect(apply(s, create).ok).toBe(true)
-    expect(s.current.org.projects.at(-1)).toMatchObject({ slug: 'portofino-weekly', status: 'active', budgetEurMonth: 10000 })
-    expect(s.current.finance.projects.at(-1)).toMatchObject({ budgetEurMonth: 10000, spentEurMonth: 0 })
+    expect(s.current.org.projects.at(-1)).toMatchObject({ slug: 'portofino-weekly', status: 'active', budgetEurMonth: 0 })
+    expect(s.current.finance.projects.at(-1)).toMatchObject({ budgetEurMonth: 0, spentEurMonth: 0 })
   })
 
   it('sets budgets and clears a resolved overrun alert', () => {

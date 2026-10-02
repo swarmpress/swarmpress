@@ -205,7 +205,7 @@ export function CreateProject() {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
   const lock = projectLockReason(store.org.value)
-  const v = lock ? { ok: false, reason: `Locked: ${lock}` } : name.trim() ? store.check(cmd.createProject({ name, slug, domain, budgetEurMonth: budget })) : { ok: false, reason: 'Name the publication' }
+  const v = lock ? { ok: false, reason: `Locked: ${lock}` } : name.trim() ? store.check(cmd.createProject({ name, slug, domain })) : { ok: false, reason: 'Name the publication' }
   return (
     <form
       class="card create-project"
@@ -214,10 +214,13 @@ export function CreateProject() {
       onSubmit={(e) => {
         e.preventDefault()
         if (!v.ok) return
-        void store.run(cmd.createProject({ name, slug, domain, budgetEurMonth: budget }), `${name} created`).then((r) => {
+        void store.run(cmd.createProject({ name, slug, domain }), `${name} created`).then(async (r) => {
           if (!r.ok) return
           setName('')
           setDomain('')
+          // The sim creates projects without a budget; set it as a second command.
+          const created = store.org.value.projects.find((p) => p.slug === slug)
+          if (created && budget > 0) await store.run(cmd.setBudgetEurMonth(created.id, budget))
         })
       }}
     >

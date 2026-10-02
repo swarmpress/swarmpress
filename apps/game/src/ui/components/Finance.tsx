@@ -1,5 +1,5 @@
 import { eur, sentence } from '../format'
-import { noCfoReason } from '../rules'
+import { booksKept as areBooksKept, noCfoReason } from '../rules'
 import { useStore } from '../store'
 import { Meter, Notice, Panel, PersonButton } from './common'
 
@@ -16,7 +16,7 @@ export function Finance() {
   const f = store.finance.value
   const org = store.org.value
   const cfo = org.executive.cfo
-  const booksKept = !!cfo && f.booksKept !== false
+  const booksKept = !!cfo && areBooksKept(f, store.org.value)
   const c = f.company
   const costs = c.salariesEur + c.rentEur + c.upkeepEur + c.agencyEur
   const net = c.revenueEur - costs

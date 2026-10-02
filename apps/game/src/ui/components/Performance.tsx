@@ -44,7 +44,7 @@ export function Performance() {
   const projects = org.projects
   const [project, setProject] = useState(projects[0]?.id ?? '')
   const [range, setRange] = useState<'7' | '30'>('7')
-  const scientist = org.staff.find((s) => s.role === 'data_scientist')
+  const scientist = org.staff.find((s) => s.role === 'data-scientist')
   const pp = perf.projects.find((p) => p.project === project)
   const orgAnalytics = projects.find((p) => p.id === project)?.analytics
   const connected = (orgAnalytics?.connected ?? pp?.connected ?? false) && !!pp?.connected && !!pp.last7

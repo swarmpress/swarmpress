@@ -6,7 +6,7 @@ import orgFixture from './fixtures/org.json'
 import performanceFixture from './fixtures/performance.json'
 import planTextFixture from './fixtures/plan-text.json'
 import planFixture from './fixtures/plan.json'
-import { loadPersonaCatalog, CANDIDATE_MIN_ID, type Persona } from './personas'
+import { loadFixturePersonas, CANDIDATE_MIN_ID, type Persona } from './personas'
 import { MemoryPlanStore, type PlanStore } from './plan-store'
 import { normalizePlanText, type PlanTextWire } from './plan-wire'
 import type { PlanJson, PlanPost, PlanText, WorkItemJson } from './plan-types'
@@ -82,7 +82,8 @@ export class MockDataSource implements GameDataSource {
 
   constructor(opts: MockOptions = {}) {
     this.state = { ...fixtureState(), ...structuredClone(opts.state ?? {}) }
-    this.personas = opts.personas ?? loadPersonaCatalog().personas
+    // The fixtures reference the fixture personas (candidates included), not the live catalog.
+    this.personas = opts.personas ?? loadFixturePersonas().personas
     this.clock = opts.clock ?? (() => FIXTURE_NOW)
     this.planStore = new MemoryPlanStore(normalizePlanText(opts.planText ?? (planTextFixture as unknown as PlanText)))
     for (const p of this.state.org.projects) recomputeMissing(this.state.org, p.id)
@@ -286,7 +287,7 @@ function reduce(s: MockState, c: Command, personas: Persona[], now: number, text
           s.inbox.delegation = 'off'
           s.inbox.secretaryQueue = []
         }
-        if (st.role === 'data_scientist' && !org.staff.some((x) => x.role === 'data_scientist')) s.performance.report = null
+        if (st.role === 'data-scientist' && !org.staff.some((x) => x.role === 'data-scientist')) s.performance.report = null
         return ok()
       }
       case 'Promote': {
@@ -344,15 +345,14 @@ function reduce(s: MockState, c: Command, personas: Persona[], now: number, text
         return ok()
       }
       case 'CreateProject': {
-        const prop = body.proposal as { name: string; slug: string; domain: string; monthly_budget_cents: number }
+        const prop = body as { name: string; slug: string; domain: string }
         must(prop?.name?.trim(), 'A project needs a name')
         must(/^[a-z0-9][a-z0-9-]*$/.test(prop.slug ?? ''), 'Slug must be lowercase kebab-case')
         must(!org.projects.some((p) => p.slug === prop.slug), `Slug ${prop.slug} is taken`)
-        must(prop.monthly_budget_cents >= 0, 'Budget cannot be negative')
         const lock = projectLockReason(org)
         must(!lock, `Locked: ${lock}`)
         const id = `project-${Math.max(0, ...org.projects.map((p) => Number(p.id.split('-')[1]))) + 1}`
-        const budget = Math.round(prop.monthly_budget_cents / 100)
+        const budget = 0
         org.projects.push({
           id,
           slug: prop.slug,
@@ -424,12 +424,11 @@ function reduce(s: MockState, c: Command, personas: Persona[], now: number, text
         st.morale = Math.min(1, st.morale + 0.05)
         return ok()
       }
-      case 'SetPolicy': {
-        const d = (body as { Delegation?: string }).Delegation
-        must(d, 'Unsupported policy')
-        must(['Off', 'Low', 'LowAndMedium'].includes(d), `Unknown delegation ${d}`)
-        must(d === 'Off' || org.executive.secretary, noSecretaryReason)
-        const wire = d === 'LowAndMedium' ? 'low-and-medium' : (d.toLowerCase() as 'off' | 'low')
+      case 'SetDelegation': {
+        const d = kebab(String((body as { policy?: string }).policy ?? ''))
+        must(['off', 'low', 'low-and-medium'].includes(d), `Unknown delegation ${d}`)
+        must(d === 'off' || org.executive.secretary, noSecretaryReason)
+        const wire = d as 'off' | 'low' | 'low-and-medium'
         org.executive.delegation = wire
         s.inbox.delegation = wire
         return ok()
@@ -569,8 +568,8 @@ function describeTask(task: SecretaryTask, s: MockState, personas: Persona[]): [
     case 'ScheduleMeeting': {
       const t = (task as Extract<SecretaryTask, { ScheduleMeeting: unknown }>).ScheduleMeeting
       must(t.attendees.length > 0, 'Pick at least one attendee')
-      must(t.agenda.trim(), 'A meeting needs an agenda')
-      return ['schedule-meeting', `${t.agenda.trim()} with ${t.attendees.map(who).join(', ')}`]
+      must(t.agenda?.trim(), 'A meeting needs an agenda')
+      return ['schedule-meeting', `${t.agenda?.trim()} with ${t.attendees.map(who).join(', ')}`]
     }
     case 'PrepareBriefing': {
       const t = (task as Extract<SecretaryTask, { PrepareBriefing: unknown }>).PrepareBriefing

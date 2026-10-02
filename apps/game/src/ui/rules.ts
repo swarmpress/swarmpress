@@ -1,5 +1,5 @@
 import type { PhaseKind } from './plan-types'
-import type { OrgJson, StaffJson } from './types'
+import type { FinanceJson, OrgJson, StaffJson } from './types'
 
 /**
  * Game rules the overlay needs before asking the sim (e.g. a slider's max).
@@ -8,6 +8,9 @@ import type { OrgJson, StaffJson } from './types'
  */
 
 export const MAX_ALLOCATION = 100
+
+/** Books are kept when there is a CFO and the sim does not flag them unkept (§6). */
+export const booksKept = (f: FinanceJson, org: OrgJson) => !!org.executive.cfo && f.booksKept !== false && f.booksUnkept !== true
 
 /** Projects a company may run at once by level (organization.md §4). */
 export function projectCapForLevel(level: number): number {
@@ -45,30 +48,30 @@ export const maxAllocationFor = (s: StaffJson, project: string) => Math.max(0, M
 
 /** Which roles may take which phase (publishing-plan.md §3: role-checked). */
 export const PHASE_ROLES: Record<string, string[]> = {
-  research: ['writer', 'editor', 'editor_in_chief', 'analyst', 'strategist', 'data_scientist', 'fact_checker'],
-  outline: ['writer', 'editor', 'editor_in_chief'],
-  draft: ['writer', 'editor', 'editor_in_chief'],
-  media: ['photographer', 'photo_editor', 'video_producer'],
-  'links-seo': ['seo_specialist', 'marketing_manager', 'social_media_manager'],
-  review: ['editor', 'editor_in_chief', 'art_director'],
-  publish: ['it_engineer', 'devops', 'web_developer', 'editor', 'editor_in_chief'],
+  research: ['writer', 'editor', 'editor-in-chief', 'analyst', 'strategist', 'data-scientist', 'fact-checker'],
+  outline: ['writer', 'editor', 'editor-in-chief'],
+  draft: ['writer', 'editor', 'editor-in-chief'],
+  media: ['photographer', 'photo-editor', 'video-producer'],
+  'links-seo': ['seo-specialist', 'marketing-manager', 'social-media-manager'],
+  review: ['editor', 'editor-in-chief', 'art-director'],
+  publish: ['it-engineer', 'dev-ops', 'web-developer', 'editor', 'editor-in-chief'],
   translate: ['translator'],
-  design: ['art_director', 'ux_designer', 'web_developer'],
-  build: ['web_developer', 'it_engineer', 'devops'],
-  ops: ['it_engineer', 'devops'],
-  analysis: ['data_scientist', 'analyst', 'strategist', 'it_engineer'],
+  design: ['art-director', 'ux-designer', 'web-developer'],
+  build: ['web-developer', 'it-engineer', 'dev-ops'],
+  ops: ['it-engineer', 'dev-ops'],
+  analysis: ['data-scientist', 'analyst', 'strategist', 'it-engineer'],
 }
 
 export const rolesForPhase = (kind: PhaseKind) => PHASE_ROLES[kind] ?? []
 
 /** Roles a publication team needs (missing ones block work, §4). */
 export const REQUIRED_ROLES: Array<{ role: string; satisfiedBy: string[] }> = [
-  { role: 'editor', satisfiedBy: ['editor', 'editor_in_chief'] },
+  { role: 'editor', satisfiedBy: ['editor', 'editor-in-chief'] },
   { role: 'writer', satisfiedBy: ['writer'] },
-  { role: 'photographer', satisfiedBy: ['photographer', 'photo_editor'] },
-  { role: 'web_developer', satisfiedBy: ['web_developer'] },
-  { role: 'seo_specialist', satisfiedBy: ['seo_specialist', 'marketing_manager'] },
-  { role: 'it_engineer', satisfiedBy: ['it_engineer', 'devops'] },
+  { role: 'photographer', satisfiedBy: ['photographer', 'photo-editor'] },
+  { role: 'web-developer', satisfiedBy: ['web-developer'] },
+  { role: 'seo-specialist', satisfiedBy: ['seo-specialist', 'marketing-manager'] },
+  { role: 'it-engineer', satisfiedBy: ['it-engineer', 'dev-ops'] },
   { role: 'translator', satisfiedBy: ['translator'] },
 ]
 

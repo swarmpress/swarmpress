@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { contrastRatio, textOn } from './format'
-import { buildCatalog, loadPersonaCatalog, parsePersona, PersonaError, selectCatalog } from './personas'
+import { buildCatalog, loadFixturePersonas, loadPersonaCatalog, parsePersona, PersonaError, selectCatalog } from './personas'
 
 const VALID = `
 slug = "giulia"
@@ -125,19 +125,29 @@ describe('catalog loading', () => {
     expect(r.personas[0].name).toBe('Giulia Rossi')
   })
 
+  it('bundles the real catalog (crates/agents/personas) without errors: the team (1–13) and a hiring pool (≥ 100)', () => {
+    const r = loadPersonaCatalog()
+    expect(r.source).toBe('catalog')
+    expect(r.errors).toEqual([])
+    const ids = r.personas.map((p) => p.id)
+    expect(ids.filter((i) => i < 100)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
+    expect(r.personas.filter((p) => p.candidate).length).toBeGreaterThanOrEqual(3)
+    expect(r.personas.find((p) => p.slug === 'matteo')?.role).toBe('data-scientist')
+  })
+
   it('bundles the UI fixtures: the cinqueterre team (1–13) and a hiring pool (≥ 100)', () => {
-    const { personas } = loadPersonaCatalog()
+    const { personas } = loadFixturePersonas()
     const ids = personas.map((p) => p.id)
     expect(ids.filter((i) => i < 100)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
     expect(personas.filter((p) => p.candidate).length).toBeGreaterThanOrEqual(3)
     expect(personas.find((p) => p.slug === 'elena')?.role).toBe('cfo')
-    expect(personas.find((p) => p.slug === 'matteo')?.role).toBe('data_scientist')
+    expect(personas.find((p) => p.slug === 'matteo')?.role).toBe('data-scientist')
   })
 })
 
 describe('avatar colours', () => {
   it('every catalog palette gets initials with at least 4.5:1 contrast', () => {
-    for (const p of loadPersonaCatalog().personas) {
+    for (const p of [...loadPersonaCatalog().personas, ...loadFixturePersonas().personas]) {
       const bg = p.appearance.palette
       expect(contrastRatio(bg, textOn(bg)), `${p.slug} ${bg}`).toBeGreaterThanOrEqual(4.5)
     }

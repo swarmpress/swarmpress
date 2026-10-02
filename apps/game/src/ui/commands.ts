@@ -2,18 +2,21 @@
  * CEO commands (docs/game-design/organization.md §5) as the JSON the overlay
  * hands to `Sim.apply_command_json()` / `Sim.validate_command_json()`.
  *
- * Encoding: serde's default **external tagging** of `sim_core::Command`.
+ * Encoding: serde's default **external tagging** of `sim_core::Command`, as
+ * documented in crates/client-wasm/README.md ("JSON commands"):
  * - struct variant  → `{ "AssignToProject": { "staff": "staff-1", "project": "project-1", "allocation_pct": 80 } }`
- * - newtype variant → `{ "SetPolicy": { "Delegation": "Low" } }`
  * - unit variant    → `"TriageInbox"`
  * Field names are the Rust field names (snake_case); enum values are the Rust
- * variant names (PascalCase). Ids are the strings the JSON views use
- * (`staff-1`, `project-1`, `ticket-3`, `candidate-100`).
+ * variant names (PascalCase) or the kebab-case slugs of the JSON views. Ids
+ * are the strings the JSON views use (`staff-1`, `project-1`, `ticket-3`,
+ * `candidate-4`). Money is integer cents.
  *
- * INTEGRATION: this module is the only place that knows the wire shape. When
- * the sim lands, check every variant against crates/client-wasm/README.md
- * ("apply_command_json") and adjust here only; every panel builds commands
- * through the constructors in `cmd`.
+ * This module is the only place that knows the wire shape; every panel builds
+ * commands through the constructors in `cmd`. The organization commands
+ * match the README; the plan commands (`UpdateWorkItem`, `AssignPhase`,
+ * `AcceptProposal`, `CompleteTodo`, `SendToAgency`) follow
+ * publishing-plan.md §6 and are rejected by the sim until it implements
+ * them (the panels then show the sim's reason).
  */
 
 export type StaffRef = string
@@ -45,30 +48,23 @@ export type WorkItemUpdate =
 /** `sim_core::ProjectStatus` */
 export type ProjectStatusVariant = 'Proposed' | 'Active' | 'Paused' | 'Archived'
 
-/** `sim_core::DelegationPolicy` (§7) */
-export type DelegationVariant = 'Off' | 'Low' | 'LowAndMedium'
+/** `sim_core::DelegationPolicy` (§7), as the views' slug. */
+export type DelegationSlug = 'off' | 'low' | 'low-and-medium'
 
 /** `sim_core::Role` variant name, e.g. `Photographer`, `EditorInChief`. */
 export type RoleVariant = string
 
-export interface ProjectProposal {
-  name: string
-  slug: string
-  domain: string
-  monthly_budget_cents: number
-}
 
 /** `sim_core::SecretaryTaskKind` — the payload of `Delegate{task}` (§7). */
 export type SecretaryTask =
   | 'TriageInbox'
-  | { ScheduleMeeting: { attendees: StaffRef[]; agenda: string; project: ProjectRef | null } }
+  /** `agenda` is a UI extension (the sim ignores unknown fields). */
+  | { ScheduleMeeting: { attendees: StaffRef[]; agenda?: string; project: ProjectRef | null } }
   | { PrepareBriefing: { project: ProjectRef | null } }
   | { DraftReply: { ticket: TicketRef } }
   | { ArrangeHiring: { role: RoleVariant; project: ProjectRef | null } }
   | { FollowUp: { staff: StaffRef; topic: string } }
 
-/** `sim_core::Policy` variants the overlay sets. */
-export type PolicyCommand = { Delegation: DelegationVariant }
 
 export type Command =
   | { Hire: { candidate: CandidateRef } }
@@ -78,13 +74,13 @@ export type Command =
   | { AssignToProject: { staff: StaffRef; project: ProjectRef; allocation_pct: number } }
   | { RemoveFromProject: { staff: StaffRef; project: ProjectRef } }
   | { SetProjectLead: { project: ProjectRef; staff: StaffRef } }
-  | { CreateProject: { proposal: ProjectProposal } }
+  | { CreateProject: { slug: string; name: string; domain: string } }
   | { SetProjectStatus: { project: ProjectRef; status: ProjectStatusVariant } }
   | { SetProjectBudget: { project: ProjectRef; monthly_cents: number } }
   | { AnswerTicket: { ticket: TicketRef; option: string } }
   | { Delegate: { task: SecretaryTask } }
   | { Praise: { staff: StaffRef } }
-  | { SetPolicy: PolicyCommand }
+  | { SetDelegation: { policy: DelegationSlug } }
   // Publishing plan (publishing-plan.md §6, ADR-0031)
   | { UpdateWorkItem: { item: WorkItemRef; update: WorkItemUpdate } }
   | { AssignPhase: { item: WorkItemRef; phase: number; staff: StaffRef } }
@@ -110,7 +106,6 @@ const STATUS: Record<string, ProjectStatusVariant> = {
   paused: 'Paused',
   archived: 'Archived',
 }
-const DELEGATION: Record<string, DelegationVariant> = { off: 'Off', low: 'Low', 'low-and-medium': 'LowAndMedium' }
 
 /** `editor_in_chief` / `in-progress` → `EditorInChief` / `InProgress`. */
 export const pascal = (role: string): string =>
@@ -139,10 +134,9 @@ export const cmd = {
   }),
   remove: (staff: StaffRef, project: ProjectRef): Command => ({ RemoveFromProject: { staff, project } }),
   setLead: (project: ProjectRef, staff: StaffRef): Command => ({ SetProjectLead: { project, staff } }),
-  createProject: (p: { name: string; slug: string; domain: string; budgetEurMonth: number }): Command => ({
-    CreateProject: {
-      proposal: { name: p.name, slug: p.slug, domain: p.domain, monthly_budget_cents: Math.round(p.budgetEurMonth * 100) },
-    },
+  /** The budget is a separate `SetProjectBudget` once the project exists. */
+  createProject: (p: { name: string; slug: string; domain: string }): Command => ({
+    CreateProject: { slug: p.slug, name: p.name, domain: p.domain },
   }),
   setStatus: (project: ProjectRef, status: string): Command => ({
     SetProjectStatus: { project, status: STATUS[status] ?? (status as ProjectStatusVariant) },
@@ -162,13 +156,11 @@ export const cmd = {
   acceptProposal: (item: WorkItemRef, post: string): Command => ({ AcceptProposal: { item, post } }),
   completeTodo: (item: WorkItemRef, todo: string): Command => ({ CompleteTodo: { item, todo } }),
   sendToAgency: (item: WorkItemRef, phase: number): Command => ({ SendToAgency: { item, phase } }),
-  setDelegation: (policy: string): Command => ({ SetPolicy: { Delegation: DELEGATION[policy] ?? (policy as DelegationVariant) } }),
+  setDelegation: (policy: DelegationSlug): Command => ({ SetDelegation: { policy } }),
 }
 
 /** Back to the wire forms used in the JSON views. */
 export const statusFromVariant = (v: ProjectStatusVariant) => v.toLowerCase() as 'proposed' | 'active' | 'paused' | 'archived'
-export const delegationFromVariant = (v: DelegationVariant) =>
-  v === 'LowAndMedium' ? 'low-and-medium' : (v.toLowerCase() as 'off' | 'low')
 
 export const toJson = (c: Command) => JSON.stringify(c)
 

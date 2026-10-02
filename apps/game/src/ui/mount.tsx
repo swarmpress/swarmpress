@@ -3,6 +3,7 @@ import { effect } from '@preact/signals'
 import { Overlay } from './components/Overlay'
 import type { GameDataSource } from './data-source'
 import { hudBusiness } from './hud'
+import { booksKept } from './rules'
 import { FIXTURE_NOW, MockDataSource } from './mock-source'
 import { createOverlayStore, PANELS, type OverlayStore } from './store'
 import { hasOrgApi, WasmDataSource } from './wasm-source'
@@ -53,7 +54,7 @@ export function mountOverlay(el: HTMLElement, source: GameDataSource) {
     hudBusiness.value = {
       cashEur: f.cashEur,
       runwayDays: f.runwayDays,
-      booksKept: !!org.executive.cfo && f.booksKept !== false,
+      booksKept: booksKept(f, org),
       openTickets: open.length,
       highTickets: open.filter((t) => t.priority === 'high').length,
     }

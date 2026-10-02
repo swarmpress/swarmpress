@@ -35,7 +35,7 @@ export interface StaffJson {
   id: string
   /** Persona slug in the catalog (crates/agents/personas/<slug>.toml). */
   persona: string
-  /** Sim `Role`, snake_case (`writer`, `editor_in_chief`, `cfo`). */
+  /** Sim `Role` as the views' kebab-case slug (`writer`, `editor-in-chief`, `data-scientist`). */
   role: string
   department: DepartmentId | string
   seniority: Seniority
@@ -137,7 +137,9 @@ export interface FinanceJson {
   company: CompanyPnl
   projects: ProjectFinance[]
   alerts: FinanceAlert[]
-  /** UI extension: false when there is no CFO ("books not kept", §6). */
+  /** Sim (client-wasm README): true when nobody keeps the books (no CFO, §6). */
+  booksUnkept?: boolean
+  /** Mock fixtures' older spelling of `!booksUnkept`. */
   booksKept?: boolean
   /** UI extension: the CFO's monthly narrative (`FinanceReport`). */
   report?: string | null

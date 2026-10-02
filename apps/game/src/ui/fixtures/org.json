@@ -9,7 +9,7 @@
   },
   "departments": [
     {
-      "id": "executive",
+      "id": "executive-office",
       "name": "Executive Office",
       "head": null,
       "members": [
@@ -126,7 +126,7 @@
     {
       "id": "staff-4",
       "persona": "sophia",
-      "role": "editor_in_chief",
+      "role": "editor-in-chief",
       "department": "editorial",
       "seniority": "star",
       "salaryEurMonth": 6800,
@@ -178,7 +178,7 @@
       "id": "staff-7",
       "persona": "elena",
       "role": "cfo",
-      "department": "executive",
+      "department": "executive-office",
       "seniority": "senior",
       "salaryEurMonth": 6200,
       "morale": 0.69,
@@ -190,7 +190,7 @@
       "id": "staff-8",
       "persona": "paolo",
       "role": "secretary",
-      "department": "executive",
+      "department": "executive-office",
       "seniority": "mid",
       "salaryEurMonth": 2900,
       "morale": 0.8,
@@ -213,7 +213,7 @@
     {
       "id": "staff-10",
       "persona": "luca",
-      "role": "web_developer",
+      "role": "web-developer",
       "department": "web-development",
       "seniority": "mid",
       "salaryEurMonth": 4100,
@@ -230,7 +230,7 @@
     {
       "id": "staff-11",
       "persona": "davide",
-      "role": "it_engineer",
+      "role": "it-engineer",
       "department": "it-operations",
       "seniority": "senior",
       "salaryEurMonth": 4300,
@@ -247,7 +247,7 @@
     {
       "id": "staff-12",
       "persona": "alessia",
-      "role": "seo_specialist",
+      "role": "seo-specialist",
       "department": "seo-marketing",
       "seniority": "mid",
       "salaryEurMonth": 3700,
@@ -264,7 +264,7 @@
     {
       "id": "staff-13",
       "persona": "matteo",
-      "role": "data_scientist",
+      "role": "data-scientist",
       "department": "strategy",
       "seniority": "senior",
       "salaryEurMonth": 4900,
@@ -345,7 +345,7 @@
         "editor",
         "writer",
         "photographer",
-        "web_developer"
+        "web-developer"
       ],
       "analytics": {
         "connected": false,

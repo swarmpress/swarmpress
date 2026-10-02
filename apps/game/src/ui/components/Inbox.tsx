@@ -295,7 +295,7 @@ export function DelegateMenu({ disabledReason }: { disabledReason: string | null
           <label class="field">
             <span>Role</span>
             <select value={role} onChange={(e) => setRole(e.currentTarget.value)}>
-              {[...REQUIRED_ROLES.map((r) => r.role), 'cfo', 'secretary', 'strategist', 'data_scientist', 'editor_in_chief'].map((r) => (
+              {[...REQUIRED_ROLES.map((r) => r.role), 'cfo', 'secretary', 'strategist', 'data-scientist', 'editor-in-chief'].map((r) => (
                 <option key={r} value={r}>
                   {sentence(humanRole(r))}
                 </option>

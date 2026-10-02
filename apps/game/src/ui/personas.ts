@@ -124,8 +124,9 @@ export function parsePersona(source: string, file = '<persona>'): Persona {
       pronouns: raw.pronouns as string,
       age: typeof raw.age === 'number' ? raw.age : null,
       hometown: str(raw.hometown),
-      department: raw.department as string,
-      role: raw.role as string,
+      // The catalog and the sim views use kebab-case slugs; accept snake_case too.
+      department: (raw.department as string).replace(/_/g, '-'),
+      role: (raw.role as string).replace(/_/g, '-'),
       title: raw.title as string,
       seniority: raw.seniority as Seniority,
       salaryEurMonth: salary,
@@ -197,6 +198,15 @@ export function selectCatalog(catalogFiles: Record<string, string>, fixtureFiles
 }
 
 let cached: CatalogResult | null = null
+let fixtureCache: CatalogResult | null = null
+
+/** The UI's own persona fixtures (the world of `MockDataSource` and the tests). */
+export function loadFixturePersonas(): CatalogResult {
+  if (fixtureCache) return fixtureCache
+  const files = import.meta.glob('./fixtures/personas/*.toml', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+  fixtureCache = { ...buildCatalog(files), source: 'fixtures' }
+  return fixtureCache
+}
 
 /** The catalog bundled at build time (organization.md §9), falling back to UI fixtures. */
 export function loadPersonaCatalog(): CatalogResult {

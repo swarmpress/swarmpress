@@ -20,7 +20,7 @@ export function OrgChart() {
     return `${humanRole(s.role)} · ${total ? `${total}% on projects` : 'company-wide'}`
   }
   const { cfo, secretary } = org.executive
-  const depts = org.departments.filter((d) => d.id !== 'executive')
+  const depts = org.departments.filter((d) => d.id !== 'executive' && d.id !== 'executive-office')
 
   return (
     <Panel id="org" title="Org chart" wide>
