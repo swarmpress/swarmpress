@@ -51,12 +51,15 @@ export function fallbackWorkLabel(workItemId: string): string {
   return t ? t[0].toUpperCase() + t.slice(1) : 'Work item'
 }
 
-export function labelText(s: Pick<StaffRender, 'id' | 'name' | 'role' | 'workItem'>, lookups: SceneLookups | undefined): LabelText {
+/** The role is shown next to the name only from this zoom (half-height of the view, metres) inwards. */
+export const ROLE_ZOOM = 9
+
+export function labelText(s: Pick<StaffRender, 'id' | 'name' | 'role' | 'workItem'>, lookups: SceneLookups | undefined, withRole = true): LabelText {
   const who = lookups?.staff?.(s.id)
   const title = s.workItem ? lookups?.workItem?.(s.workItem)?.trim() : undefined
   return {
     name: truncate(who?.name || s.name || s.id, MAX_NAME_CHARS),
-    role: truncate(humanRole(who?.role ?? s.role ?? ''), MAX_ROLE_CHARS),
+    role: withRole ? truncate(humanRole(who?.role ?? s.role ?? ''), MAX_ROLE_CHARS) : '',
     work: s.workItem ? truncate(title || fallbackWorkLabel(s.workItem), MAX_WORK_CHARS) : null,
   }
 }

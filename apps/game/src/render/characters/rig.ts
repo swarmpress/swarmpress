@@ -2,12 +2,13 @@
  * A person in simple geometry (FEAT-024): a capsule and a head, with a cap of
  * hair so the facing shows, and three parts that appear with a pose: legs
  * bent over a seat, forearms on the keyboard, and the speaker's ring on the
- * floor. No glTF and no skeleton; a pose is a handful of transforms.
+ * floor. No glTF and no skeleton; a pose is a handful of transforms. Seats
+ * are the office's (desk chairs, the stools around tables).
  *
  * Geometry is built once and shared by every person (clones share vertex
- * buffers). Skin, hair, stool and ring materials are shared too; only the
- * body colour is per person. People are separate meshes, not instances: each
- * is lit by the room they are in, and instances would share one set of lights.
+ * buffers). Skin, hair and ring materials are shared too; only the body
+ * colour is per person. People are separate meshes, not instances: each is
+ * lit by the room they are in, and instances would share one set of lights.
  */
 import { Color3, Mesh, MeshBuilder, PBRMaterial, Scene, StandardMaterial, TransformNode } from '@babylonjs/core'
 import type { Pose } from '../../state/render-state'
@@ -36,8 +37,6 @@ export interface StaffHandle {
   lap: Mesh
   /** Forearms, shown when typing or talking. */
   arms: Mesh
-  /** What a person at a table sits on (desks have their own chair). */
-  stool: Mesh
   /** On the floor under the meeting's speaker. */
   ring: Mesh
   /** The meshes room lights and the desk lamp light. */
@@ -49,8 +48,8 @@ export interface StaffHandle {
   motion: PoseMotion
   phase: number
   heading: number
-  /** What is applied to the meshes, to skip work when nothing changed. */
-  shown: { pose: Pose | null; stance: Stance | null; seat: string | null; arms: boolean; ring: boolean }
+  /** What is applied to the meshes, to skip work when nothing changed (null: not yet applied). */
+  shown: { pose: Pose | null; stance: Stance | null; arms: boolean | null; ring: boolean | null }
   /** The room and desk whose lights include this person. */
   litRoom: string | undefined
   litDesk: string | undefined
@@ -96,16 +95,14 @@ export function createRigFactory(scene: Scene, maxLights: number): RigFactory {
   right.position.set(0.2, 0, 0.27)
   const arms = template(Mesh.MergeMeshes([left, right], true)!)
   arms.name = 'staff-t-arms'
-  const stool = template(MeshBuilder.CreateCylinder('staff-t-stool', { diameter: 0.36, height: 0.44, tessellation: 16 }, scene))
   const ring = template(MeshBuilder.CreateTorus('staff-t-ring', { diameter: 0.86, thickness: 0.05, tessellation: 32 }, scene))
 
   const skin = pbr(scene, 'staff-skin', new Color3(0.86, 0.68, 0.55), 0.6, maxLights)
   const hairMat = pbr(scene, 'staff-hair', new Color3(0.16, 0.11, 0.08), 0.8, maxLights)
-  const stoolMat = pbr(scene, 'staff-stool', new Color3(0.2, 0.2, 0.22), 0.5, maxLights)
   const ringMat = new StandardMaterial('staff-ring', scene)
   ringMat.disableLighting = true
   ringMat.emissiveColor = new Color3(1, 0.78, 0.36)
-  const materials = [skin, hairMat, stoolMat]
+  const materials = [skin, hairMat]
 
   return {
     materials,
@@ -131,7 +128,6 @@ export function createRigFactory(scene: Scene, maxLights: number): RigFactory {
         hair: part(hair, 'hair', torso, hairMat),
         lap: part(lap, 'lap', root, bodyMat),
         arms: part(arms, 'arms', torso, bodyMat),
-        stool: part(stool, 'stool', root, stoolMat),
         ring: part(ring, 'ring', root, ringMat),
         lit: [],
         walk: createWalk(),
@@ -140,7 +136,7 @@ export function createRigFactory(scene: Scene, maxLights: number): RigFactory {
         motion: emptyMotion(),
         phase: phaseOf(id),
         heading: 0,
-        shown: { pose: null, stance: null, seat: null, arms: false, ring: false },
+        shown: { pose: null, stance: null, arms: null, ring: null },
         litRoom: undefined,
         litDesk: undefined,
         workItem: null,
@@ -149,18 +145,17 @@ export function createRigFactory(scene: Scene, maxLights: number): RigFactory {
       h.hair.parent = h.head
       h.hair.position.set(0, 0.01, -0.012)
       h.hair.rotation.x = -0.55
-      h.stool.position.y = 0.22
       h.ring.position.y = 0.03
       h.ring.isPickable = false
-      h.lit = [h.body, h.head, h.hair, h.lap, h.arms, h.stool]
-      applyStance(h, 'stand', null, false, false)
+      h.lit = [h.body, h.head, h.hair, h.lap, h.arms]
+      applyStance(h, 'stand', false, false)
       return h
     },
   }
 }
 
 /** Stand or sit, and which parts show. Only touches the meshes when something changed. */
-export function applyStance(h: StaffHandle, stance: Stance, seat: string | null, arms: boolean, ring: boolean): void {
+export function applyStance(h: StaffHandle, stance: Stance, arms: boolean, ring: boolean): void {
   const s = h.shown
   if (s.stance !== stance) {
     const g = stance === 'sit' ? SIT : STAND
@@ -171,10 +166,6 @@ export function applyStance(h: StaffHandle, stance: Stance, seat: string | null,
     h.arms.position.y = ARMS_Y - g.pivot
     h.lap.setEnabled(stance === 'sit')
     s.stance = stance
-  }
-  if (s.seat !== seat) {
-    h.stool.setEnabled(seat === 'table')
-    s.seat = seat
   }
   if (s.arms !== arms) {
     h.arms.setEnabled(arms)

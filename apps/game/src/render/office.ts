@@ -185,11 +185,19 @@ export function buildOffice(scene: Scene, layout: BuildingLayout): OfficeHandles
     c.parent = parent
     return c
   }
-  /** One mesh from several parts with the same material (fewer draw calls). */
+  /**
+   * One mesh from several parts with the same material (fewer draw calls).
+   * The result is baked in world space and hangs from the office root, so
+   * the parts' parents' matrices must be current when it is called.
+   */
   const merged = (name: string, parts: Mesh[]) => {
-    const m = parts.length === 1 ? parts[0] : Mesh.MergeMeshes(parts, true, true)!
+    if (parts.length === 1) {
+      parts[0].name = name
+      return parts[0]
+    }
+    const m = Mesh.MergeMeshes(parts, true, true)!
     m.name = name
-    m.parent = m.parent ?? root
+    m.parent = root
     return m
   }
 
@@ -343,6 +351,8 @@ export function buildOffice(scene: Scene, layout: BuildingLayout): OfficeHandles
       node.parent = root
       node.position.set(d.x, 0, d.z)
       node.rotation.y = Math.atan2(d.seat[0] - d.x, d.seat[1] - d.z)
+      // Merged parts are baked in world space: the node's matrix must be current first.
+      node.computeWorldMatrix(true)
       const seatDist = Math.hypot(d.seat[0] - d.x, d.seat[1] - d.z)
       const wide = room.props.some((p) => p.attachedTo === d.id && p.kind === 'color-monitor')
       const desk = box(`desk-${d.id}`, 1.4, 0.05, 0.7, 0, TABLE_HEIGHT, 0, deskMat, node)
@@ -363,8 +373,6 @@ export function buildOffice(scene: Scene, layout: BuildingLayout): OfficeHandles
         box(`chair-${d.id}-back`, 0.44, 0.42, 0.05, 0, SEAT_HEIGHT + 0.26, seatDist + 0.24, chairMat, node),
         box(`chair-${d.id}-post`, 0.06, SEAT_HEIGHT - 0.06, 0.06, 0, (SEAT_HEIGHT - 0.06) / 2, seatDist, chairMat, node),
       ])
-      chair.parent = node
-      node.computeWorldMatrix(true)
       for (const m of [desk, legs, screen, stand, lampShade, chair]) m.computeWorldMatrix(true)
       desks.set(d.id, { id: d.id, roomId: room.id, meshes: [desk, legs, screen, stand, chair], screen, screenMaterial, lamp, lampShade })
       handle.scope.push(desk, legs, screen, stand, lampShade, chair)
@@ -417,6 +425,7 @@ export function buildOffice(scene: Scene, layout: BuildingLayout): OfficeHandles
     node.parent = root
     node.position.set(p.x, 0, p.z)
     node.rotation.y = facingIntoRoom(room, p.x, p.z)
+    node.computeWorldMatrix(true)
     const parts: Mesh[] = []
     let glow: PBRMaterial | null = null
     let glowColor = Color3.Black()
@@ -487,7 +496,6 @@ export function buildOffice(scene: Scene, layout: BuildingLayout): OfficeHandles
         part(box(`${k}-shade`, 0.16, 0.14, 0.16, 0, 1.05, 0, propMats.counter, node))
         break
     }
-    node.computeWorldMatrix(true)
     for (const m of parts) m.computeWorldMatrix(true)
     return { id: p.id, kind: p.kind, roomId: room.id, glow, glowColor, meshes: parts }
   }

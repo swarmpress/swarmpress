@@ -35,13 +35,13 @@ import type {
 type Missing<T, K extends readonly PropertyKey[]> = Exclude<keyof T, K[number]>
 
 /** All keys of `T`, as a list; leaving one out does not compile. */
-function keysOf<T>() {
+export function keysOf<T>() {
   return <const K extends readonly (keyof T & string)[]>(...keys: K & ([Missing<T, K>] extends [never] ? unknown : { missing: Missing<T, K> })): readonly string[] =>
     keys
 }
 
 /** All members of the string union `T`, as a list; leaving one out does not compile. */
-function valuesOf<T extends string>() {
+export function valuesOf<T extends string>() {
   return <const V extends readonly T[]>(...values: V & ([Exclude<T, V[number]>] extends [never] ? unknown : { missing: Exclude<T, V[number]> })): readonly string[] =>
     values
 }

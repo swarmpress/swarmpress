@@ -155,8 +155,8 @@ export function createStaffLayer(
     h.heading = walking || !(dtMs < TURN_MS * 10) ? target : lerpAngle(h.heading, target, dtMs / TURN_MS)
     h.root.rotation.y = h.heading
     const pose = walking ? 'walk' : view.pose
-    if (walking) applyStance(h, 'stand', null, false, false)
-    else applyStance(h, view.stance, view.seat, view.arms, view.ring)
+    if (walking) applyStance(h, 'stand', false, false)
+    else applyStance(h, view.stance, view.arms, view.ring)
     h.shown.pose = pose
     poseMotion(pose, step, sample.distance, h.phase, h.motion)
     const look = !walking && view.lookX !== null && view.lookZ !== null ? headTurn(h.heading, x, z, view.lookX, view.lookZ) : 0

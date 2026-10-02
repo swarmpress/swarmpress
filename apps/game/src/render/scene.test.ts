@@ -1,8 +1,13 @@
 import { NullEngine, type AbstractMesh } from '@babylonjs/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { DEMO_BUILDING, demoRenderState } from '../state/render-state'
+import { DEMO_BUILDING, demoRenderState, type BuildingLayout, type RenderState } from '../state/render-state'
+import layoutJson from '../state/fixtures/demo-layout.json'
+import lunchJson from '../state/fixtures/demo-lunch.json'
+import standupJson from '../state/fixtures/demo-standup.json'
+import workingJson from '../state/fixtures/demo-working.json'
 import { ISO_ALPHAS } from './camera-math'
 import { CEILING_INTENSITY, LAMP_INTENSITY } from './lighting'
+import { distanceAtStep, emptyRoute, emptySample, sampleRoute, setRoute } from './characters/motion'
 import { MAX_LIGHTS_PER_MATERIAL } from './office'
 import { QUALITY } from './postfx'
 import { createGameScene, type GameScene } from './scene'
@@ -116,5 +121,123 @@ describe('game scene (NullEngine)', () => {
     expect(game.lighting.shadows).not.toBeNull()
     const low = createGameScene(engine, null, DEMO_BUILDING, { quality: QUALITY.low, postFx: false })
     expect(low.lighting.shadows).toBeNull()
+  })
+})
+
+const layout = layoutJson as unknown as BuildingLayout
+const standup = standupJson as unknown as RenderState
+const working = workingJson as unknown as RenderState
+const lunch = lunchJson as unknown as RenderState
+
+describe('the real office (NullEngine, layout and states from the wasm sim)', () => {
+  let office: GameScene
+  beforeEach(() => {
+    office = createGameScene(engine, null, layout, { quality: QUALITY.medium, postFx: false })
+  })
+  const lights = (mesh: AbstractMesh) =>
+    office.scene.lights.filter((l) => l.includedOnlyMeshes.length === 0 || l.includedOnlyMeshes.includes(mesh)).length
+
+  it('builds every room kind, the hallway floor, the street and the props the layout lists', () => {
+    expect(office.office.rooms.size).toBe(layout.rooms.length)
+    expect(office.office.hall).not.toBeNull()
+    const kinds = new Set([...office.office.props.values()].map((p) => p.kind))
+    for (const k of ['coffee-machine', 'whiteboard', 'plant', 'camera-rig', 'archive-shelf', 'mood-board-wall']) expect(kinds, k).toContain(k)
+    for (const kind of ['kitchen', 'meeting-room', 'strategy-room']) {
+      const room = layout.rooms.find((r) => r.kind === kind)!
+      expect(office.scene.getMeshByName(`table-${room.id}`), kind).not.toBeNull()
+      expect(office.scene.getMeshByName(`stools-${room.id}`), kind).not.toBeNull()
+    }
+    expect(office.roomNames.decals.map((d) => d.room.label)).toContain('Finance office')
+  })
+
+  it('keeps every mesh within the light budget with everyone in, at noon and at night', () => {
+    for (const state of [standup, working, lunch, { ...lunch, minute: 23 * 60 }]) {
+      office.update(state, 0)
+      office.frame(50)
+      for (const mesh of office.scene.meshes) expect(lights(mesh), mesh.name).toBeLessThanOrEqual(MAX_LIGHTS_PER_MATERIAL)
+    }
+  })
+
+  it('poses people from the render state: seated typing, a speaker with a ring, seated listeners', () => {
+    office.update(standup, 0)
+    const speaker = standup.staff.find((s) => s.pose === 'talk')!
+    const h = office.staff.handles.get(speaker.id)!
+    expect(h.shown.stance).toBe('sit')
+    expect(h.ring.isEnabled()).toBe(true)
+    const listener = office.staff.handles.get(standup.staff.find((s) => s.pose === 'listen')!.id)!
+    expect([listener.shown.stance, listener.ring.isEnabled()]).toEqual(['sit', false])
+    office.update(working, 1000)
+    const typist = office.staff.handles.get(working.staff.find((s) => s.pose === 'type')!.id)!
+    expect([typist.shown.stance, typist.arms.isEnabled(), typist.workItem]).toEqual(['sit', true, 'work-item-1'])
+    // the ring went with the turn
+    expect(h.ring.isEnabled()).toBe(false)
+  })
+
+  it('draws a walker between steps on the sim path, and holds everyone while no step comes', () => {
+    office.update(lunch, 0)
+    const walker = lunch.staff.find((s) => s.pose === 'walk')!
+    const h = office.staff.handles.get(walker.id)!
+    expect([h.root.position.x, h.root.position.z]).toEqual([walker.x, walker.z])
+    // the sim's next step: the walker is (step − startStep) × speed along the path
+    const route = emptyRoute()
+    setRoute(route, walker.path!)
+    const at = emptySample()
+    sampleRoute(route, distanceAtStep(route, lunch.step + 1), at)
+    const next = structuredClone(lunch)
+    next.step += 1
+    Object.assign(next.staff.find((s) => s.id === walker.id)!, { x: at.x, z: at.z })
+    office.update(next, 100)
+    const seen = new Set<string>()
+    const from = distanceAtStep(route, lunch.step)
+    const to = distanceAtStep(route, next.step)
+    for (let t = 100; t <= 260; t += 16) {
+      office.frame(t)
+      seen.add(`${h.root.position.x.toFixed(5)},${h.root.position.z.toFixed(5)}`)
+      // on the path, between where the sim had the walker and where it has them now
+      expect(h.sample.distance).toBeGreaterThanOrEqual(from - 1e-9)
+      expect(h.sample.distance).toBeLessThanOrEqual(to + 1e-9)
+    }
+    expect(seen.size).toBeGreaterThan(4)
+    expect([h.root.position.x, h.root.position.z]).toEqual([at.x, at.z])
+    expect(h.root.rotation.y).toBeCloseTo(h.sample.heading)
+    // the clock is held: nothing moves
+    office.frame(60_000)
+    expect([h.root.position.x, h.root.position.z]).toEqual([at.x, at.z])
+  })
+
+  it('labels people from the lookups it is given, with what they work on', () => {
+    office.setLookups({ staff: (id) => ({ name: `Person ${id}`, role: 'writer' }), workItem: (id) => (id === 'work-item-1' ? 'Harvest week in Manarola' : undefined) })
+    office.update(working, 0)
+    const typist = working.staff.find((s) => s.pose === 'type')!
+    expect(office.staff.labels.textOf(typist.id)).toMatchObject({ name: `Person ${typist.id}`, work: 'Harvest week in Manarola' })
+    const other = working.staff.find((s) => !s.workItem)!
+    expect(office.staff.labels.textOf(other.id)?.work).toBeNull()
+  })
+
+  it('picks a person or their label under the pointer, and the work line for the work item', () => {
+    engine.setSize(1280, 800)
+    office.update(working, 0)
+    office.scene.render()
+    const people = office.people()
+    const typist = people.find((p) => p.pose === 'type')!
+    const label = typist.label!
+    const mid = (label.left + label.right) / 2
+    expect(office.staff.pick(mid, label.bottom - 3)).toEqual({ staff: typist.id, workItem: 'work-item-1' })
+    expect(office.staff.pick(mid, label.top + 3)).toEqual({ staff: typist.id, workItem: null })
+    // a body no label covers
+    const body = people.find((p) => !p.walking && !office.staff.labels.hit(p.screenX, p.screenY))!
+    expect(office.staff.pick(body.screenX, body.screenY)).toEqual({ staff: body.id, workItem: body.workItem })
+    expect(office.staff.pick(2, 2)).toBeNull()
+  })
+
+  it('hides people who left and brings them back where the sim has them', () => {
+    office.update(lunch, 0)
+    const gone = lunch.staff[0].id
+    office.update({ ...lunch, step: lunch.step + 1, staff: lunch.staff.slice(1) }, 100)
+    expect(office.staff.handles.get(gone)!.root.isEnabled()).toBe(false)
+    office.update({ ...lunch, step: lunch.step + 2 }, 200)
+    const h = office.staff.handles.get(gone)!
+    expect(h.root.isEnabled()).toBe(true)
+    expect([h.root.position.x, h.root.position.z]).toEqual([lunch.staff[0].x, lunch.staff[0].z])
   })
 })

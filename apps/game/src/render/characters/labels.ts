@@ -28,6 +28,7 @@ import {
   labelSize,
   labelText,
   onWorkLine,
+  ROLE_ZOOM,
   sameText,
   stackLabels,
   type LabelSlots,
@@ -171,6 +172,9 @@ export function createLabels(main: Scene, capacity = 64): Labels {
   material.disableDepthWrite = true
 
   let lookups: SceneLookups = {}
+  /** Roles show when zoomed in (`ROLE_ZOOM`); the texts are redone when that changes. */
+  let withRole = false
+  let lastStaff: readonly StaffRender[] = []
   const entries: Array<Entry | undefined> = new Array(capacity).fill(undefined)
   const byStaff = new Map<string, number>()
   const slots: LabelSlots = createLabelSlots(capacity)
@@ -206,9 +210,10 @@ export function createLabels(main: Scene, capacity = 64): Labels {
       lookups = next
     },
     sync(staff) {
+      lastStaff = staff
       for (const e of entries) if (e) e.present = false
       for (const s of staff) {
-        const text = labelText(s, lookups)
+        const text = labelText(s, lookups, withRole)
         let cell = byStaff.get(s.id)
         if (cell === undefined) {
           cell = freeCell()
@@ -244,6 +249,10 @@ export function createLabels(main: Scene, capacity = 64): Labels {
       viewH = engine.getRenderHeight()
       px = 1 / engine.getHardwareScalingLevel()
       const zoom = camera.orthoTop ?? 10
+      if (zoom <= ROLE_ZOOM !== withRole) {
+        withRole = zoom <= ROLE_ZOOM
+        labels.sync(lastStaff)
+      }
       const ppm = viewH / (2 * zoom)
       const alpha = labelAlpha(zoom)
       material.alpha = alpha

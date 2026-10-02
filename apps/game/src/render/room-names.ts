@@ -16,7 +16,7 @@ import { LABEL_FONT } from './characters/label-layout'
 /** Height of the letters' line on the floor, metres. */
 export const ROOM_NAME_HEIGHT = 0.42
 /** Distance of the line's centre from the wall, metres. */
-export const ROOM_NAME_INSET = 0.42
+export const ROOM_NAME_INSET = 0.36
 const FONT_PX = 26
 const CELL_W = 400
 const CELL_H = 40
@@ -75,7 +75,9 @@ export function tableSeats(room: RoomLayout): Array<[number, number]> {
 }
 
 export interface RoomNameSpot {
-  x: number
+  /** The free stretch of the strip, x from `from` to `to`, at depth `z`. */
+  from: number
+  to: number
   z: number
   /** Widest the text may be, metres. */
   maxWidth: number
@@ -101,18 +103,28 @@ export function roomNameSpot(room: RoomLayout, side: 'north' | 'south'): RoomNam
     if (b.from - cursor > best.to - best.from) best = { from: cursor, to: b.from }
     cursor = Math.max(cursor, b.to)
   }
-  return { x: (best.from + best.to) / 2, z, maxWidth: Math.max(0, best.to - best.from - 0.1) }
+  return { from: best.from, to: best.to, z, maxWidth: Math.max(0, best.to - best.from - 0.1) }
+}
+
+/**
+ * The x of a name `width` metres wide in `spot`: at the end of the stretch
+ * away from the camera (`towards` −1 for west, +1 for east), so the low
+ * partition on the camera's side does not cover its end.
+ */
+export function nameX(spot: RoomNameSpot, width: number, towards: -1 | 1): number {
+  const w = Math.min(width, spot.maxWidth)
+  return towards < 0 ? spot.from + 0.05 + w / 2 : spot.to - 0.05 - w / 2
 }
 
 /**
  * The turn (`rotation.y`, 0 or π) that makes a name along the x axis read
  * left to right and upright for a camera whose right vector has x component
  * `rightX` and whose up vector has z component `upZ`. Unturned, the text
- * reads along +x with its top towards −z; turned by π, along −x with its top
- * towards +z. Of the two, the one that agrees more with the screen wins.
+ * reads along +x with its top towards +z; turned by π, along −x with its top
+ * towards −z. Of the two, the one that agrees more with the screen wins.
  */
 export function nameTurn(rightX: number, upZ: number): 0 | number {
-  return rightX - upZ >= 0 ? 0 : Math.PI
+  return rightX + upZ >= 0 ? 0 : Math.PI
 }
 
 export interface RoomNameDecal {
@@ -135,8 +147,9 @@ export interface RoomNames {
 function floorQuad(scene: Scene, name: string): Mesh {
   const mesh = new Mesh(name, scene)
   const data = new VertexData()
-  // Lying on the floor, +x the reading direction, the text's top towards −z.
-  data.positions = [-0.5, 0, 0.5, 0.5, 0, 0.5, 0.5, 0, -0.5, -0.5, 0, -0.5]
+  // Lying on the floor, +x the reading direction, the text's top towards +z
+  // (seen from above in Babylon's left-handed frame, +x right and +z up is unmirrored).
+  data.positions = [-0.5, 0, -0.5, 0.5, 0, -0.5, 0.5, 0, 0.5, -0.5, 0, 0.5]
   data.indices = [0, 2, 1, 0, 3, 2]
   data.normals = [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0]
   data.uvs = [0, 1, 1, 1, 1, 0, 0, 0]
@@ -204,7 +217,7 @@ export function buildRoomNames(scene: Scene, layout: BuildingLayout, parent: Tra
         const k = d.width > 0 ? Math.min(1, spot.maxWidth / d.width) : 1
         d.mesh.setEnabled(k > 0.45)
         d.mesh.scaling.set(d.width * k, 1, ROOM_NAME_HEIGHT * k)
-        d.mesh.position.set(spot.x, 0.006, spot.z)
+        d.mesh.position.set(nameX(spot, d.width * k, forward.x < 0 ? -1 : 1), 0.006, spot.z)
         d.mesh.rotation.y = turn
       }
     },

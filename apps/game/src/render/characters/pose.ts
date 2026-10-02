@@ -9,7 +9,7 @@ import type { BuildingLayout, DeskLayout, MeetingRender, Pose, RoomLayout, Staff
 import { POSES } from '../../state/render-state-shape'
 
 export type Stance = 'stand' | 'sit'
-/** What the person sits on: the chair at a desk (part of the office) or a stool at a table (part of the person). */
+/** What the person sits on: the chair at a desk or a stool at a table (both part of the office). */
 export type Seat = 'desk' | 'table' | null
 
 export interface PoseView {
