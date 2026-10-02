@@ -4,26 +4,21 @@ title: "Offline catch-up and fast-forward"
 status: planned
 importance: high
 paths:
-  - crates/server/src/actors/fast_forward.rs
-  - "crates/server/tests/catch_up*.rs"
-  - crates/server/src/bin/loadtest.rs
+  - "apps/game/src/catchup/**"
+  - "packages/runner/test/**"
 adrs:
   - ADR-0020
+  - ADR-0036
+  - ADR-0038
 ---
 
 # Offline catch-up and fast-forward
 
-Idle companies are woken at their next scheduled event and fast-forwarded in whole-step batches with
-the same deterministic `tick()`; ticket defaults apply at deadlines.
+On reopen, the browser restores its last snapshot and fast-forwards the deterministic sim to the
+current wall-clock step. While it does, the **fallback director** stands in for LLM-driven
+decisions. Events that queued centrally while the browser was closed, for example
+`DeployLanded`, are merged in step order.
 
-Decisions: [ADR-0020](../../adr/0020-real-time-ticks-offline-catch-up.md).
-
-## Acceptance criteria
-
-- [ ] Fast-forwarded and real-time-stepped companies reach the same hash.
-- [ ] Load test: 200 companies × 1 simulated hour within the per-core budget (`cockpit.benchmark.v1`).
-
-## Evidence
-
-- `server/nextest`
-- `bench/server-load`
+Acceptance:
+- Fast-forwarding a week finishes within the budget on a laptop-class device.
+- The result is identical whether replayed in the browser or in the headless runner.
