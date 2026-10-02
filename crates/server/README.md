@@ -35,6 +35,7 @@ development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are i
 | `SWARMPRESS_DEV_AUTH` | off | `1` enables `POST /auth/dev/login`. Never in production |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` | | GitHub sign-in (`GITHUB_OAUTH_AUTHORIZE_URL`, `GITHUB_OAUTH_TOKEN_URL`, `GITHUB_API_URL` override endpoints) |
 | `SWARMPRESS_GITHUB` | real | `fake` = in-memory `github::FakeGitHub` (repos created on demand; state is lost on restart) |
+| `SWARMPRESS_FAKE_SITE` | | a directory: every site repo the fake creates on demand starts with its files (all text files under it, at their paths relative to it; hidden entries left out), so the knowledge pack is a real site's. `apps/game/e2e/central-server.mjs` sets it to `crates/knowledge/tests/fixtures/cinqueterre-mini`. Without it a fake repo holds a `README.md` only (an empty pack). A startup error with a real GitHub |
 | `GITHUB_TOKEN` | | real gateway with a static token |
 | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH` | | real gateway as the GitHub App (installation per repo). Without a token or App, gateway calls answer 503 |
 | `GITHUB_SITES_ORG` | `swarmpress-sites` | owner of the default site repo `{org}/{login}-site` |
@@ -44,7 +45,7 @@ development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are i
 | `SWARMPRESS_DEPLOY_POLL_MAX_AGE_SECS` | 3600 | a merge still pending this long after it was merged fails as `timed_out` and is no longer asked about (at least 60) |
 | `SWARMPRESS_DEPLOY_POLL_BATCH` | 20 | most merges asked about per repository and round, the newest (1 to 100) |
 | `SWARMPRESS_DEPLOY_CHECK` | `deploy` | name of the check run (the workflow job) whose success means the site is live |
-| `SWARMPRESS_ARTICLE_PROFILE` | `enforce` | the article profile on drafts under `content/pages/blog/`. `off` is a bridge for scripted runs whose orchestrator still writes the pre-MVP article shape: it is accepted only with `SWARMPRESS_GITHUB=fake` (a startup error otherwise), and the site checks (create-only path, one open pull request per path) stay on |
+| `SWARMPRESS_ARTICLE_PROFILE` | `enforce` | the article profile on drafts under `content/pages/blog/`. `off` is a bridge for scripted runs whose orchestrator still writes the pre-MVP article shape: it is accepted only with `SWARMPRESS_GITHUB=fake` (a startup error otherwise), and the site checks (create-only path, one open pull request per path) stay on. With the profile off the closed-world check (links and media against the knowledge pack) is off too: the scripted runs write articles outside the site's indexes |
 | `SWARMPRESS_STAFF_EMAIL_DOMAIN` | `staff.swarm.press` | mail domain of the git author addresses synthesised for staff personas (`<staff>+<company>@<domain>`); a host name. Choose it before the first live merge: the site's history is not rewritten |
 | `SWARMPRESS_LEASE_SECS` | 90 | company lease length |
 | `SWARMPRESS_SYNC_MAX_BYTES` | 67108864 | largest sync upload |
@@ -69,6 +70,7 @@ development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are i
 | `POST /api/gateway/draft` | lease required. `{content_id, path, page, message, work_item?, attribution?}` → `{number, branch, head_sha, created_pr, committed}`. An article (`content/pages/blog/*.json`) that breaks the schema or the article profile answers 422 `{error, issues: [..]}`; a path that exists on the base branch, a second open pull request for the path, or a second path for the content id answers 409 |
 | `POST /api/gateway/merge` | lease required. `{number, head_sha, attribution?}` → `{merged_sha, finalized?}`; only PRs this company opened through the gateway; 409 if the head moved or the PR was closed. An article is finalised in the same pull request first (see "Finalise on merge") and the reply carries `finalized: {index: "added" \| "present" \| "absent" \| "skipped"}`. The merge is then `pending` until its deployment is observed |
 | `POST /api/gateway/close` | lease required. `{number}` → `{number, closed: true, already_closed, branch_deleted}`: close a pull request this company opened through the gateway, without merging, and delete its `drafts/` branch (for cancelled work). 404 for any other pull request, 409 for a merged one. Idempotent: closing again answers `already_closed: true` and calls nothing; a close that failed half-way is completed by the next one |
+| `GET /api/gateway/knowledge` | lease required (428 without the header, 409 with a stale one), like draft and merge. The knowledge pack (ADR-0061) of the site at the head of the company's base branch: 200 with the pack JSON `{commit, files, manifest, pages}` (`Content-Type: application/json`), `ETag: "<head sha>"` and `Cache-Control: no-cache`; 304 with the same `ETag` and `Cache-Control` and no body when `If-None-Match` names the head (weak, listed or `*` too). 404 when the base branch does not exist, 413 when the site is over the snapshot caps (`GitHubError::TooLarge`), 502 when a carried file is broken (an index that is not JSON) or GitHub fails. See "Knowledge pack" |
 | `GET /api/gateway/deploy-status?number=` (or `?work_item=`) | session required, no lease. What became of one of the company's gateway pull requests: `{number, content_id, work_item, path, state, merged_sha, merged_at, landed_at, closed_at, detail, checked_at, now}` with `state` one of `open`, `closed`, `pending`, `landed`, `failed`, `unknown`. Instants are unix ms on the server's clock (`now`). Reads the record only. 400 unless exactly one key is given, 404 for an unknown pull request |
 | `GET /api/events?after=&limit=` | `{events: [{seq, company_id, kind, payload, created_at}], last_seq}` (oldest first, max 500) |
 | `GET /ws/events?after=` | WebSocket (cookie auth): backlog after `after`, then live events, one JSON text frame each |
@@ -112,7 +114,7 @@ the server, whatever the browser checked (`src/article.rs`,
 | the slug (the file stem) is lowercase kebab-case, 1 to 100 bytes, and every `slug.<lang>` is `/<lang>/blog/<slug>` | 422 |
 | exactly one `editorial-hero`, first; exactly one `closing-note`, last; in between only `heading`, `paragraph`, `list`, `callout`, `image`, with at least one paragraph | 422 |
 | no raw `<` or `>` in `editorial-hero.title` and `closing-note.content` (the theme prints both as HTML) | 422 |
-| links and media against the site's indexes (closed world) | 422; **not checked yet**: `gateway::check_closed_world` takes an optional knowledge base and there is none until the knowledge pack lands |
+| links and media against the site's indexes (closed world): every internal link resolves to a page of the site and every media reference is in the media index, checked against the knowledge pack at the base head (`KnowledgeBase::closed_world_issues`, the check and text of the orchestrator's article validator) | 422 `{error, issues}`, one `<pointer>: <message>` line each, e.g. `/body/6/actions/0/href: "/en/nowhere" is not a page of the site: no page at this route`; 413 when the pack cannot be built because the site is over the snapshot caps. Off with `SWARMPRESS_ARTICLE_PROFILE=off` |
 | the path does not exist on the base branch (article paths are create-only) | 409 |
 | no other open gateway pull request of the company targets the path | 409 |
 | the content id has no open pull request on another path | 409 |
@@ -120,6 +122,22 @@ the server, whatever the browser checked (`src/article.rs`,
 `content/pages/blog-index.json` cannot be drafted at all (403): only the merge
 writes it. Every other `content/**` page is accepted as before: a JSON object,
 no schema check, and a draft may change a page that exists on the base branch.
+
+#### Knowledge pack (ADR-0061 decision 1)
+
+`GET /api/gateway/knowledge` (`src/site_knowledge.rs`) resolves the head of
+the company's base branch (`RepoApi::get_branch`): that sha is the ETag. On a
+miss it reads `RepoApi::snapshot(repo, sha, "content")` (the tarball with a
+real GitHub, the tree with the fake), builds the pack with
+`knowledge::pack::build` and serialises it with `Pack::to_json`
+(deterministic: one commit, one byte string; about 384 kB for
+cinqueterre.travel). The JSON and the `KnowledgeBase` loaded from it
+(`knowledge::pack::load`) are cached in memory per (repository, sha), at most
+8 entries, least recently used dropped first; the draft check reads the same
+entry. A merge through the gateway drops the repository's entries (its base
+head is the merge commit now), so the next request builds the new head's pack.
+A snapshot over its caps is a 413 and nothing partial is cached. The company
+lock is held for the lease check only, not across the download.
 
 #### Finalise on merge (ADR-0061 decision 6)
 
@@ -294,7 +312,8 @@ Migrations (`migrations/`, applied at startup):
 | `db` | `Db` (writer/reader pools, migrations, `begin_immediate`) and the repositories: `accounts` (users, sessions, companies, leases), `events`, `gateway` (gateway PRs, webhook deliveries), `sync`, `tracker`. |
 | `auth` | GitHub OAuth, dev login, session rows keyed by sha256(token), the `CurrentUser` extractor. |
 | `companies` | Company create/read, lease acquire/renew/release, `require_lease`. |
-| `gateway` | `RepoBackend` (fake, token, App, unconfigured), draft and merge handlers, `PathPolicy` checks, the site checks for articles, the closed-world extension point. |
+| `gateway` | `RepoBackend` (fake with its optional seed, token, App, unconfigured), draft and merge handlers, `PathPolicy` checks, the site checks for articles, the closed world (`ClosedWorld` for `KnowledgeBase`). |
+| `site_knowledge` | `GET /api/gateway/knowledge`, `If-None-Match`, the pack cache (`KnowledgeCache`) the draft check shares. |
 | `article` | The blog-article profile (pure): schema v2, block set and order, slug, the two HTML fields. |
 | `finalize` | Finalise on merge, the pure half: the published page, the story entry derived from it, and the text edit that adds it to the blog index. |
 | `events` | `EventHub` (tokio broadcast), `publish`, `/api/events`, `/ws/events`. |
@@ -323,6 +342,7 @@ cargo clippy -p server -p testkit --all-targets -- -D warnings
 | `tests/lease.rs` | Acquire, renew, conflict (409 with holder), force takeover, expiry, configurable TTL, release, ownership. |
 | `tests/gateway.rs` | Draft + revision + merge against FakeGitHub, stale-head 409, idempotent merge, one simulated `DeployLanded`, PathPolicy rejections (nothing written), lease required (428/409, takeover, expiry), merging only own PRs, `deployment_status` webhook (bad HMAC, dedupe, success, failure, other repos). |
 | `tests/articles.rs` | Articles through the gateway: a valid fixture drafts; each profile violation answers 422 with its issue and writes nothing; an existing slug, a second open pull request for the path and a second path for the content id answer 409; the blog index cannot be drafted; other content is untouched; the profile switch. |
+| `tests/knowledge.rs` | `GET /api/gateway/knowledge`: the pack of the base head with its `ETag`, `Cache-Control` and `Content-Type`; 304 on a matching (also weak or listed) `If-None-Match`; the second request is a cache hit; session and lease required (401, 428, 409 after a takeover), 404 without the base branch; a merge drops the cached pack and the next request answers the new head (new ETag, the merged article in `pages`); 413 for `TooLarge` (route and draft), 502 for a broken index; the closed-world refusal (422) of an unknown link and of media not in the index, nothing written; the fake GitHub path: a repo seeded by `SWARMPRESS_FAKE_SITE` gives the mini fixture's pack, the profile off accepts an article outside the closed world, an unseeded repo gives an empty valid pack. |
 | `tests/attribution.rs` | The persona is the author of draft commits and the platform the committer; the squash commit carries `Co-authored-by` and the trailers, with the platform as author; the executor defaults to the lease holder; every malformed attribution answers 400 on draft and merge and reaches GitHub with nothing; without attribution nothing changes. |
 | `tests/close.rs` | `POST /api/gateway/close`: the pull request is closed and its branch deleted once; closing again calls nothing; foreign and hand-made pull requests answer 404 and are untouched; merged ones answer 409; the lease is required; a closed one cannot be merged and frees its path; an interrupted close is completed. |
 | `tests/deploys.rs` | The poller's round against the fake GitHub and the manual clock: a success lands the merge, a failure emits one `DeployFailed` and a re-run lands it, a burst of merges with one deployment lands all at or before it (poller and webhook), a superseded merge fails with the deployment that replaced it, a merge nobody deployed times out; `deploy-status` (states, scoping); the poller does not run with the fake or with simulated deploys; simulated deploys with a real GitHub refuse to start; the background task against a wiremock GitHub. |
@@ -345,8 +365,8 @@ The collector serves `assets/tracker.min.js`, a committed build of
 - `POST /web/firecrawl/*` answers 501 until credits ship (wave 3).
 - The fetch proxy does not read robots.txt or cache yet (ADR-0040 asks for both).
 - `SWARMPRESS_GITHUB=fake` keeps repos in memory only.
-- Article drafts are not checked against the site's link and media indexes yet:
-  `gateway::check_closed_world` has no knowledge base until the knowledge pack lands.
+- The closed-world check of an article draft and the knowledge route read the pack of the base
+  head: a page another pull request adds is not linkable until that pull request merges.
 - The gateway has only been run against the in-memory GitHub and wiremock. Three GitHub
   behaviours it relies on are taken from the documentation and not verified against the real
   API: the Contents API's `author` field with the committer left out, the Merges API for

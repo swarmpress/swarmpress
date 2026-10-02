@@ -136,6 +136,11 @@ pub struct Config {
     pub dev_auth: bool,
     /// Content gateway backend (`SWARMPRESS_GITHUB=fake`, otherwise real).
     pub github_mode: GithubMode,
+    /// The initial tree of every fake site repository the gateway creates on
+    /// first use (`SWARMPRESS_FAKE_SITE`, a directory; fake GitHub only):
+    /// its files, at their paths relative to it. Without it a fake repository
+    /// starts with a `README.md` only, which gives an empty knowledge pack.
+    pub fake_site: Option<PathBuf>,
     /// Owner for site repos of companies created without an explicit repo
     /// (`GITHUB_SITES_ORG`, default `swarmpress-sites`).
     pub sites_org: String,
@@ -185,6 +190,7 @@ impl Config {
             github,
             dev_auth: true,
             github_mode: GithubMode::Fake,
+            fake_site: None,
             sites_org: "swarmpress-sites".into(),
             webhook_secret: Some("test-webhook-secret".into()),
             simulate_deploy: true,
@@ -259,6 +265,9 @@ impl Config {
             },
             Some(v) => anyhow::bail!("SWARMPRESS_GITHUB={v:?} must be `fake` or `real`"),
         };
+        let fake_site = opt("SWARMPRESS_FAKE_SITE")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from);
         let simulate_deploy = flag(
             "SWARMPRESS_SIMULATE_DEPLOY",
             github_mode == GithubMode::Fake,
@@ -322,6 +331,7 @@ impl Config {
             github,
             dev_auth,
             github_mode,
+            fake_site,
             sites_org: opt("GITHUB_SITES_ORG")
                 .filter(|v| !v.is_empty())
                 .unwrap_or_else(|| "swarmpress-sites".into()),
@@ -370,6 +380,12 @@ impl Config {
                 "SWARMPRESS_SIMULATE_DEPLOY=1 is only allowed with SWARMPRESS_GITHUB=fake: \
                  with a real GitHub it would report every merge as live, deployed or not. \
                  Deploys of a real repository are observed by polling and by the webhook"
+            );
+        }
+        if real && self.fake_site.is_some() {
+            anyhow::bail!(
+                "SWARMPRESS_FAKE_SITE is only allowed with SWARMPRESS_GITHUB=fake: \
+                 it seeds the in-memory site repositories of the fake"
             );
         }
         if real && !self.article_profile {
@@ -478,6 +494,21 @@ mod tests {
         let e = c.validate().unwrap_err().to_string();
         assert!(e.contains("SWARMPRESS_ARTICLE_PROFILE"), "{e}");
         c.article_profile = true;
+        c.validate().unwrap();
+    }
+
+    #[test]
+    fn a_fake_site_seed_is_refused_with_a_real_github() {
+        let mut c = cfg();
+        c.fake_site = Some(PathBuf::from(
+            "crates/knowledge/tests/fixtures/cinqueterre-mini",
+        ));
+        c.validate().expect("the fake may be seeded");
+        c.simulate_deploy = false;
+        c.github_mode = real(Some("tok"));
+        let e = c.validate().unwrap_err().to_string();
+        assert!(e.contains("SWARMPRESS_FAKE_SITE"), "{e}");
+        c.fake_site = None;
         c.validate().unwrap();
     }
 

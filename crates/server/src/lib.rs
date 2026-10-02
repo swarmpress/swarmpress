@@ -8,6 +8,9 @@
 //! - [`companies`]: one company per player, its site-repo binding and the
 //!   device lease
 //! - [`gateway`]: content PRs on the player's behalf (`PathPolicy`)
+//! - [`site_knowledge`]: the knowledge pack of a company's site
+//!   (`GET /api/gateway/knowledge`) and its cache, which the gateway's
+//!   closed-world draft check reads
 //! - [`article`]: the blog-article profile the gateway enforces on drafts
 //! - [`finalize`]: what a merge adds to an article: the published page and
 //!   its entry in the story list
@@ -32,6 +35,7 @@ pub mod error;
 pub mod events;
 pub mod finalize;
 pub mod gateway;
+pub mod site_knowledge;
 pub mod sync;
 pub mod tracker;
 pub mod web;

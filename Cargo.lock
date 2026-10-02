@@ -2473,6 +2473,7 @@ dependencies = [
  "futures",
  "github",
  "hex",
+ "knowledge",
  "rand 0.8.8",
  "reqwest",
  "serde",

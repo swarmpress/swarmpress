@@ -23,6 +23,7 @@ use crate::db::{accounts, Company, Db};
 use crate::error::{AppError, AppResult};
 use crate::events::{self, EventHub};
 use crate::gateway::{self, RepoBackend};
+use crate::site_knowledge::{self, KnowledgeCache};
 use crate::tracker::{self, AnalyticsSignalSink, PendingSignalSink, RateLimiter, Tracker};
 use crate::{companies, deploys, sync, web, webhooks};
 
@@ -37,6 +38,8 @@ pub struct AppState {
     pub events: EventHub,
     /// Content gateway backend (fake or real GitHub).
     pub github: Arc<RepoBackend>,
+    /// Knowledge packs by (site repository, commit) ([`site_knowledge`]).
+    pub knowledge: Arc<KnowledgeCache>,
     /// Per-user limiter for `/web/fetch`.
     pub web_limiter: Arc<RateLimiter<String>>,
     /// Serializes sync blob writes (single process).
@@ -54,7 +57,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(cfg: Config, db: Db) -> Result<Self> {
         cfg.validate()?;
-        let github = Arc::new(RepoBackend::from_mode(&cfg.github_mode)?);
+        let github = Arc::new(RepoBackend::from_config(&cfg)?);
         Ok(Self::with_parts(cfg, db, Arc::new(SystemClock), github))
     }
 
@@ -78,6 +81,7 @@ impl AppState {
             http,
             events: EventHub::default(),
             github,
+            knowledge: Arc::new(KnowledgeCache::default()),
             web_limiter,
             sync_lock: Arc::new(tokio::sync::Mutex::new(())),
             company_locks: CompanyLocks::default(),
@@ -168,6 +172,7 @@ pub fn router(st: AppState) -> Router {
         )
         .route("/api/gateway/merge", post(gateway::merge))
         .route("/api/gateway/close", post(gateway::close))
+        .route("/api/gateway/knowledge", get(site_knowledge::knowledge))
         .route("/api/gateway/deploy-status", get(deploys::status))
         // events
         .route("/api/events", get(events::list))

@@ -14,6 +14,8 @@
 //! - `POST /api/gateway/close {number}` → `{number, closed, already_closed,
 //!   branch_deleted}`: close a pull request this company opened, without
 //!   merging, and delete its draft branch ([`close`]).
+//! - `GET /api/gateway/knowledge` → the knowledge pack of the site at the
+//!   base head, `ETag`/`If-None-Match` (304) ([`crate::site_knowledge`]).
 //!
 //! All require the company lease (`x-swarmpress-lease`). `PathPolicy`: the
 //! draft is written as a content agent (`content/**` only, `drafts/` branch
@@ -35,10 +37,18 @@
 //! article profile ([`crate::article`], 422 with `issues`), and against the
 //! site: the path must not exist on the base branch, no other open gateway
 //! pull request of the company may target it, and a content id drafts one
-//! path (409 each). Closed-world link and media checks hang off
-//! [`check_closed_world`], which has no knowledge base until the knowledge
-//! pack lands. `content/pages/blog-index.json` cannot be drafted (403): the
-//! merge writes it. Every other `content/**` page is accepted as before.
+//! path (409 each). Its links and media must be in the site's closed world
+//! ([`check_closed_world`], 422 with `issues`, one `<pointer>: <message>`
+//! line each): the knowledge base of the knowledge pack at the base head
+//! ([`crate::site_knowledge`]). With the article profile off
+//! (`SWARMPRESS_ARTICLE_PROFILE=off`, fake GitHub only) the closed world is
+//! not checked either. `content/pages/blog-index.json` cannot be drafted
+//! (403): the merge writes it. Every other `content/**` page is accepted as
+//! before.
+//!
+//! `GET /api/gateway/knowledge` serves that pack to the browser (ETag = the
+//! base head; [`crate::site_knowledge`]). A merge drops the repository's
+//! cached packs.
 //!
 //! Merging an article finalises it first, in the same pull request
 //! (ADR-0061 decision 6, [`finalize_and_merge`]): the reviewed head is
@@ -62,6 +72,7 @@ use github::{
     MergeOptions, MergeResult, PathPolicy, PrState, Provenance, PutFile, RepoApi, RepoId,
     StaticToken,
 };
+use knowledge::KnowledgeBase;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -75,11 +86,16 @@ use crate::db::Lease;
 use crate::deploys;
 use crate::error::{AppError, AppResult};
 use crate::finalize::{self, IndexEdit};
+use crate::site_knowledge;
+
+/// The initial files of a fake site repository: (path, text).
+pub type FakeSeed = Arc<Vec<(String, String)>>;
 
 /// Where repo operations go.
 pub enum RepoBackend {
-    /// In-memory fake; repos are created on first use.
-    Fake(Arc<FakeGitHub>),
+    /// In-memory fake; repos are created on first use, with the seed's files
+    /// (`SWARMPRESS_FAKE_SITE`) or a `README.md` only.
+    Fake(Arc<FakeGitHub>, FakeSeed),
     /// Real REST API with one static token.
     Token(Arc<HttpGitHub>),
     /// Real REST API as a GitHub App (installation token per repo).
@@ -95,7 +111,7 @@ pub enum RepoBackend {
 impl std::fmt::Debug for RepoBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            RepoBackend::Fake(_) => "RepoBackend::Fake",
+            RepoBackend::Fake(..) => "RepoBackend::Fake",
             RepoBackend::Token(_) => "RepoBackend::Token",
             RepoBackend::App { .. } => "RepoBackend::App",
             RepoBackend::Unconfigured => "RepoBackend::Unconfigured",
@@ -104,9 +120,23 @@ impl std::fmt::Debug for RepoBackend {
 }
 
 impl RepoBackend {
+    /// The backend of a server config: [`Self::from_mode`], with the fake's
+    /// repositories seeded from `cfg.fake_site` when it is set.
+    pub fn from_config(cfg: &crate::config::Config) -> Result<Self> {
+        let backend = Self::from_mode(&cfg.github_mode)?;
+        match (backend, &cfg.fake_site) {
+            (RepoBackend::Fake(fake, _), Some(dir)) => {
+                let seed = load_fake_seed(dir)?;
+                tracing::info!(dir = %dir.display(), files = seed.len(), "fake site repositories are seeded");
+                Ok(RepoBackend::Fake(fake, Arc::new(seed)))
+            }
+            (backend, _) => Ok(backend),
+        }
+    }
+
     pub fn from_mode(mode: &GithubMode) -> Result<Self> {
         Ok(match mode {
-            GithubMode::Fake => RepoBackend::Fake(Arc::new(FakeGitHub::new())),
+            GithubMode::Fake => RepoBackend::Fake(Arc::new(FakeGitHub::new()), FakeSeed::default()),
             GithubMode::Real {
                 api_base,
                 token: Some(token),
@@ -144,7 +174,7 @@ impl RepoBackend {
     /// The fake, when running against it (tests, dev).
     pub fn fake(&self) -> Option<&Arc<FakeGitHub>> {
         match self {
-            RepoBackend::Fake(f) => Some(f),
+            RepoBackend::Fake(f, _) => Some(f),
             _ => None,
         }
     }
@@ -152,11 +182,16 @@ impl RepoBackend {
     /// A [`RepoApi`] that can write `repo`.
     pub async fn api_for(&self, repo: &RepoId) -> AppResult<Arc<dyn RepoApi>> {
         match self {
-            RepoBackend::Fake(fake) => {
+            RepoBackend::Fake(fake, seed) => {
                 match fake.get_repo(repo).await {
                     Ok(_) => {}
                     Err(GitHubError::NotFound(_)) => {
-                        fake.create_repo(repo, &[("README.md", "# swarm.press site\n")]);
+                        let mut files: Vec<(&str, &str)> =
+                            seed.iter().map(|(p, t)| (p.as_str(), t.as_str())).collect();
+                        if !files.iter().any(|(p, _)| *p == "README.md") {
+                            files.push(("README.md", "# swarm.press site\n"));
+                        }
+                        fake.create_repo(repo, &files);
                     }
                     Err(e) => return Err(gh_error(e)),
                 }
@@ -193,10 +228,53 @@ impl RepoBackend {
     }
 }
 
+/// The text files under `dir`, at their paths relative to it (`/`-separated),
+/// sorted; hidden entries (`.git`, ...) and files that are not UTF-8 are left
+/// out. The seed of the fake's site repositories (`SWARMPRESS_FAKE_SITE`).
+pub fn load_fake_seed(dir: &std::path::Path) -> Result<Vec<(String, String)>> {
+    fn walk(
+        root: &std::path::Path,
+        dir: &std::path::Path,
+        out: &mut Vec<(String, String)>,
+    ) -> Result<()> {
+        for entry in std::fs::read_dir(dir).with_context(|| format!("read {}", dir.display()))? {
+            let entry = entry?;
+            let name = entry.file_name();
+            if name.to_string_lossy().starts_with('.') {
+                continue;
+            }
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                walk(root, &path, out)?;
+            } else if let Ok(text) = std::fs::read_to_string(&path) {
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                out.push((rel, text));
+            }
+        }
+        Ok(())
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, &mut out)?;
+    if out.is_empty() {
+        anyhow::bail!("SWARMPRESS_FAKE_SITE={}: no files", dir.display());
+    }
+    out.sort();
+    Ok(out)
+}
+
 /// Map a GitHub error onto the HTTP surface.
 pub fn gh_error(e: GitHubError) -> AppError {
     match e {
         GitHubError::PolicyDenied { reason, .. } => AppError::Forbidden(reason),
+        // A snapshot over its caps (the knowledge pack of a site too big to
+        // read whole): nothing partial is used.
+        GitHubError::TooLarge(m) => AppError::PayloadTooLarge(m),
         GitHubError::InvalidArgument(m) => AppError::BadRequest(m),
         GitHubError::NotFound(m) => AppError::NotFound(m),
         e @ (GitHubError::Conflict(_)
@@ -304,19 +382,30 @@ pub fn check_draft(
 /// Closed-world site knowledge (CLAUDE.md rule 5; ADR-0061 decisions 1 and
 /// 4): the entity, media and page indexes of one site commit.
 ///
-/// EXTENSION POINT (increment K1): `knowledge::pack` builds the indexes the
-/// browser also gets from `GET /api/gateway/knowledge`. Implement this trait
-/// for the pack's `KnowledgeBase` (its `check_links` and `check_media`
-/// reports, as text) and return it from [`site_knowledge`]; the server crate
-/// does not depend on `knowledge` until then.
+/// Implemented by the [`KnowledgeBase`] of the site's knowledge pack, the one
+/// the browser gets from `GET /api/gateway/knowledge`
+/// ([`crate::site_knowledge`]).
 pub trait ClosedWorld: Send + Sync {
     /// Problems with the page's links and media against the indexes: one
     /// line per unknown link target or media reference.
     fn check_page(&self, page: &Value) -> Vec<String>;
 }
 
+/// `KnowledgeBase::closed_world_issues`, the check and the text the
+/// orchestrator's article validator reports too: one `<pointer>: <message>`
+/// line per link that does not resolve and per media reference that is not
+/// in the media index.
+impl ClosedWorld for KnowledgeBase {
+    fn check_page(&self, page: &Value) -> Vec<String> {
+        self.closed_world_issues(page)
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    }
+}
+
 /// Links and media of `page` against the site's indexes. Without a
-/// knowledge base (`None`, the case until K1 lands) nothing is checked.
+/// knowledge base (`None`: the article profile is off) nothing is checked.
 pub fn check_closed_world(page: &Value, site: Option<&dyn ClosedWorld>) -> Result<(), Vec<String>> {
     let Some(site) = site else {
         return Ok(());
@@ -329,17 +418,23 @@ pub fn check_closed_world(page: &Value, site: Option<&dyn ClosedWorld>) -> Resul
     }
 }
 
-/// The knowledge base of `repo` at the head of `base`, if the server has one.
-///
-/// EXTENSION POINT (increment K1): load (and cache by head sha) the
-/// knowledge pack here. Today no pack exists, so the closed-world half of
-/// the draft checks is skipped.
+/// The knowledge base of `repo` at the head of `base`: the knowledge pack's
+/// ([`crate::site_knowledge::site_pack`], cached by head sha). `None` when
+/// the article profile is off (`SWARMPRESS_ARTICLE_PROFILE=off`, fake GitHub
+/// only): the scripted runs that switch the profile off write articles that
+/// are not in the closed world either.
 async fn site_knowledge(
-    _st: &AppState,
-    _repo: &RepoId,
-    _base: &str,
+    st: &AppState,
+    api: &dyn RepoApi,
+    repo: &RepoId,
+    base: &str,
 ) -> AppResult<Option<Arc<dyn ClosedWorld>>> {
-    Ok(None)
+    if !st.cfg.article_profile {
+        return Ok(None);
+    }
+    let head = site_knowledge::base_head(api, repo, base).await?;
+    let pack = site_knowledge::site_pack(st, api, repo, &head).await?;
+    Ok(Some(pack.kb.clone()))
 }
 
 /// The article checks that need the site (ADR-0061 decisions 4 and 5):
@@ -389,7 +484,7 @@ async fn check_against_site(
             "{path} already exists on {base}: article paths are create-only"
         )));
     }
-    let site = site_knowledge(st, repo, base).await?;
+    let site = site_knowledge(st, api, repo, base).await?;
     check_closed_world(page, site.as_deref()).map_err(|issues| AppError::Unprocessable {
         message: format!("{path} refers to pages or media the site does not have"),
         issues,
@@ -610,7 +705,10 @@ pub async fn merge(
     // The merge is `pending` from here: its deployment is awaited. The
     // webhook, the poller or (fake GitHub only) the simulation lands it.
     store::set_merged(&st.db, &company.id, number, &merged.sha, st.now_ms()).await?;
-    tracing::info!(company_id = %company.id, number, merged_sha = %merged.sha, "gateway merge");
+    // The base head is the merge commit now: the packs of the old heads are
+    // stale (the next knowledge request builds the pack of the new head).
+    let dropped = st.knowledge.invalidate_repo(&company.site_repo);
+    tracing::info!(company_id = %company.id, number, merged_sha = %merged.sha, dropped_packs = dropped, "gateway merge");
     if st.cfg.simulate_deploy {
         // Lands once: a repeated merge finds nothing left to land.
         deploys::land(

@@ -74,7 +74,7 @@ impl TestServer {
         );
         (opts.tweak)(&mut cfg);
         let clock = ManualClock::new(github::Clock::now_ms(&SystemClock));
-        let backend = Arc::new(RepoBackend::from_mode(&cfg.github_mode).unwrap());
+        let backend = Arc::new(RepoBackend::from_config(&cfg).unwrap());
         let st = AppState::with_parts(cfg, db.clone(), clock.clone(), backend);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -250,15 +250,23 @@ pub struct GatewayPlayer {
 }
 
 impl TestServer {
-    /// Player `n` with a company and the lease taken by `laptop`.
+    /// Player `n` with a company and the lease taken by `laptop`. With the
+    /// fake GitHub its site repo is created holding [`SITE_FILES`], so the
+    /// common [`article`] stays inside the site's closed world.
     pub async fn gateway_player(&self, n: i64) -> GatewayPlayer {
         let (cookie, company) = self.player(n).await;
         let lease = self.lease(&cookie, &company, "laptop").await;
+        let repo = github::RepoId::new("swarmpress-sites", format!("player{n}-site"));
+        if let Some(fake) = self.st.github.fake() {
+            if fake.branch_head(&repo, "main").is_none() {
+                fake.create_repo(&repo, &with_site(&[]));
+            }
+        }
         GatewayPlayer {
             cookie,
             company,
             lease,
-            repo: github::RepoId::new("swarmpress-sites", format!("player{n}-site")),
+            repo,
         }
     }
 
@@ -299,6 +307,35 @@ impl TestServer {
     }
 }
 
+/// The hero image of [`article`]: in the media index of [`SITE_FILES`].
+pub const ARTICLE_HERO: &str =
+    "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop";
+
+/// A minimal site whose closed world holds what [`article`] refers to: the
+/// page `/en/manarola` (its closing link) and its hero image.
+pub const SITE_FILES: [(&str, &str); 3] = [
+    ("README.md", "# swarm.press site\n"),
+    (
+        "content/config/media-index.json",
+        r#"{"images": [{"id": "manarola-hero-001", "url": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2670&auto=format&fit=crop", "tags": {"village": "manarola", "category": "village-overview"}}]}"#,
+    ),
+    (
+        "content/pages/manarola.json",
+        r#"{"id": "manarola", "slug": {"en": "/en/manarola"}, "title": {"en": "Manarola"}, "page_type": "village", "status": "published", "body": []}"#,
+    ),
+];
+
+/// [`SITE_FILES`] plus `extra` (an `extra` path replaces a site file).
+pub fn with_site<'a>(extra: &[(&'a str, &'a str)]) -> Vec<(&'a str, &'a str)> {
+    let mut files: Vec<(&str, &str)> = SITE_FILES
+        .iter()
+        .copied()
+        .filter(|(p, _)| !extra.iter().any(|(q, _)| q == p))
+        .collect();
+    files.extend_from_slice(extra);
+    files
+}
+
 pub fn article_path(slug: &str) -> String {
     format!("content/pages/blog/{slug}.json")
 }
@@ -326,7 +363,7 @@ pub fn article(content_id: &str, slug: &str, title: &str) -> Value {
             { "type": "editorial-hero", "title": title,
               "subtitle": format!("{title}: what the terraces look like when the whole village picks grapes."),
               "badge": "Culture",
-              "image": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
+              "image": ARTICLE_HERO,
               "height": "70vh" },
             { "type": "paragraph", "markdown": "The monorail starts before the sun does, and by seven the first crates are on their way down." },
             { "type": "heading", "level": 2, "text": "Tuesday: the first crates" },

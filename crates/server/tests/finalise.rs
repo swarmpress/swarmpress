@@ -6,7 +6,7 @@
 
 mod common;
 
-use common::{article, article_path, GatewayPlayer, TestServer};
+use common::{article, article_path, with_site, GatewayPlayer, TestServer};
 use github::{GitHubError, PutFile, RepoApi};
 use serde_json::{json, Value};
 
@@ -86,13 +86,13 @@ async fn site(s: &TestServer, n: i64) -> GatewayPlayer {
     let p = s.gateway_player(n).await;
     s.fake_github().create_repo(
         &p.repo,
-        &[
+        &with_site(&[
             (INDEX_PATH, INDEX),
             (
                 "content/pages/blog/local-festivals-in-november.json",
                 "{\"id\":\"legacy\"}\n",
             ),
-        ],
+        ]),
     );
     p
 }
@@ -502,7 +502,7 @@ async fn a_broken_story_list_blocks_the_merge() {
     let s = TestServer::start().await;
     let p = s.gateway_player(1).await;
     s.fake_github()
-        .create_repo(&p.repo, &[(INDEX_PATH, "{\"body\":[]}\n")]);
+        .create_repo(&p.repo, &with_site(&[(INDEX_PATH, "{\"body\":[]}\n")]));
     let (number, head) = draft(
         &s,
         &p,

@@ -17,6 +17,9 @@ path = "src/main.rs"
 [dependencies]
 github = { path = "../github" }
 content-model = { path = "../content-model" }
+# The knowledge pack (ADR-0061): built here from a repository snapshot, served
+# to the browser, and loaded for the gateway's closed-world draft checks.
+knowledge = { path = "../knowledge" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

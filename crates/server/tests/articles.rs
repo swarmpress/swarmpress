@@ -4,7 +4,7 @@
 
 mod common;
 
-use common::{article, article_path, Opts, TestServer};
+use common::{article, article_path, with_site, Opts, TestServer};
 use serde_json::{json, Value};
 
 const SLUG: &str = "harvest-week-in-manarola";
@@ -168,10 +168,10 @@ async fn an_existing_article_cannot_be_overwritten() {
     // The site already has this article on main.
     s.fake_github().create_repo(
         &p.repo,
-        &[(
+        &with_site(&[(
             "content/pages/blog/hiking-the-blue-trail-what-to-expect.json",
             "{\"id\":\"legacy\"}\n",
-        )],
+        )]),
     );
     let slug = "hiking-the-blue-trail-what-to-expect";
     let (st, b) = s
