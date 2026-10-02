@@ -157,6 +157,9 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
   // The sim-core scenario "cinqueterre": 13 people.
   const org = await simJson<{ staff: unknown[] }>(page, 'org_json')
   expect(org.staff).toHaveLength(13)
+  // The boot screen is gone, and the HUD chip says what the clock does (FEAT-080).
+  await expect(page.locator('#boot-screen')).toHaveCount(0)
+  await expect(page.locator('.hud-chip')).toHaveAttribute('data-state', /^(running|held)$/)
 
   // ---------------------------------------------------------------- fast-forward to 09:00
   // The scenario starts at 07:00; 12,000 steps a day → 1,000 steps to 09:00.
@@ -192,9 +195,11 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
     .toBe('published')
   // Freeze the clock: the script has one article; tomorrow's standup would find it exhausted.
   await session(page, 'pause')
+  await expect(page.locator('.hud-chip')).toHaveAttribute('data-state', 'paused')
   await session(page, 'idle')
 
   const done = await state(page)
+  expect(done.status).toMatchObject({ state: 'paused', label: 'Paused' })
   expect(done.errors).toEqual([])
   expect(done.day).toBe(0)
   // standup → draft → review 6 → revision → review 8 → publish, each run once.
