@@ -5,7 +5,8 @@ const executablePath = process.env.CHROMIUM_PATH || undefined
 export default defineConfig({
   testDir: 'e2e',
   // Need the central server: playwright.orchestrator.config.ts, playwright.mvp.config.ts.
-  testIgnore: ['orchestrator.spec.ts', 'mvp.spec.ts'],
+  // Need a GPU and the real model (gated): playwright.bonsai.config.ts.
+  testIgnore: ['orchestrator.spec.ts', 'mvp.spec.ts', 'bonsai.spec.ts', 'bonsai-equivalence.spec.ts'],
   timeout: 180_000,
   // JSON report path is per run so smoke and visual evidence stay separate for Cockpit.
   reporter: [['list'], ['json', { outputFile: process.env.PW_JSON ?? 'reports/playwright.json' }]],

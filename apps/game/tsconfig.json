@@ -15,5 +15,5 @@
       "orchestrator-wasm": ["../../crates/orchestrator-wasm/pkg/orchestrator_wasm"]
     }
   },
-  "include": ["src", "e2e", "vite.config.ts", "vitest.config.ts", "playwright.config.ts", "playwright.orchestrator.config.ts"]
+  "include": ["src", "e2e", "vite.config.ts", "vitest.config.ts", "playwright.config.ts", "playwright.orchestrator.config.ts", "playwright.bonsai.config.ts"]
 }

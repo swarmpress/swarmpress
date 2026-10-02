@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>swarm.press Bonsai runtime harness</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; padding: 16px; background: #1b1f2a; color: #e8e6e3; font: 14px system-ui, sans-serif; }
+      main { max-width: 960px; margin: 0 auto; display: grid; gap: 12px; }
+      h1 { font-size: 18px; margin: 0; }
+      button { font: inherit; color: inherit; background: #262c3a; border: 1px solid #3a4256; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #12151d; padding: 10px; border-radius: 8px; margin: 0; min-height: 2em; }
+      .muted { opacity: 0.7; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>swarm.press Bonsai runtime harness</h1>
+      <p class="muted">
+        Test page for the in-browser WebGPU model runtime (not part of the production build):
+        Ternary Bonsai 2 27B through the pinned upstream engine, in the LLM worker and, for the
+        equivalence check, on the main thread. The engine must be installed first
+        (<code>pnpm --filter @swarm-press/game bonsai:runtime</code>); the first load downloads
+        about 6 GB of weights. Driven by <code>e2e/bonsai.spec.ts</code> and
+        <code>e2e/bonsai-equivalence.spec.ts</code> through <code>window.__bonsai</code>.
+      </p>
+      <p>
+        <button id="probe">Probe device</button>
+        <button id="smoke">Load in the worker and generate</button>
+        <button id="equivalence">Upstream equivalence</button>
+      </p>
+      <pre id="status">idle</pre>
+      <pre id="log"></pre>
+    </main>
+    <script type="module" src="/src/harness/bonsai-harness.ts"></script>
+  </body>
+</html>

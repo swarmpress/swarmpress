@@ -25,11 +25,14 @@ const isolation: Record<string, string> =
       }
 
 export default defineConfig(({ mode }) => {
-  // `vite build --mode harness` builds only the test harnesses (orchestrator.html)
-  // into dist-harness/; the production build never contains them.
+  // `vite build --mode harness` builds only the test harnesses (orchestrator.html,
+  // bonsai.html) into dist-harness/; the production build never contains them.
   const harness = mode === 'harness'
   const input: Record<string, string> = harness
-    ? { orchestrator: fileURLToPath(new URL('./orchestrator.html', import.meta.url)) }
+    ? {
+        orchestrator: fileURLToPath(new URL('./orchestrator.html', import.meta.url)),
+        bonsai: fileURLToPath(new URL('./bonsai.html', import.meta.url)),
+      }
     : {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         llm: fileURLToPath(new URL('./llm.html', import.meta.url)),
