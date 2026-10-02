@@ -165,6 +165,34 @@ Job execution:
 A refusal, or validation still failing after the repair turns, means `JobFailed`: the stage is
 blocked and a ticket opens.
 
+### The staged article (MVP, ADR-0058)
+
+One bounded local model cannot write a page in one call, so the Draft job writes it in stages
+(design: [`docs/design/mvp-pipeline.md`](../design/mvp-pipeline.md) §1, §3 and §4). The
+deterministic half is built as pure functions; wiring the stages into the Draft job is the next
+increment.
+
+- `crates/agents/src/article.rs`:
+  - stage schemas (`outline_schema`, `section_schema`, `closing_schema`, `review_schema`), flat
+    and limited to the keywords the browser's subset validator supports;
+  - typed results (`Outline`, `SectionDraft`, `Closing`, `SectionedReview`) and
+    `normalize_outline_words`;
+  - plain text (`sanitize_plain`, `html_escape`) and per-section checks (`check_section`,
+    `check_outline`, `check_closing`), whose errors name a section (`SectionId`: `title`,
+    `intro`, `s1`…, `closing`, `whole`);
+  - `assemble_page`, which writes the structure the model never writes (hero, headings, image,
+    closing actions, `seo`, envelope) and resolves shortlist aliases;
+  - `check_article_profile` (one hero first, closing last, one `<h1>` source);
+  - `reading_text` and `section_digest`, what the editor and later sections read.
+- `crates/orchestrator/src/article.rs`:
+  - the closed-world shortlists built from the knowledge base (`hero_shortlist` → `M1`…,
+    `link_shortlist` → `L1`…, `entity_facts`, `related_titles`, gathered by `article_context`);
+  - `site_validator_v2`: page schema v2, article profile, house style, link and media checks,
+    with every issue scoped to a section where the layout says which one.
+
+The model only names aliases. An alias that is not in the shortlist is a schema error for the
+model and an assembly error for the orchestrator, so it cannot reach a page (CLAUDE.md rule 5).
+
 ## Meetings
 
 [ADR-0012](../adr/0012-meetings-streamed-multi-agent-conversations.md). Kinds:

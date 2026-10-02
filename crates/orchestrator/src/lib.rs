@@ -28,7 +28,10 @@ mod run;
 mod store;
 
 pub use article::{
-    article_schema, brief_ref_for, site_validator, slugify, word_count, ARTICLE_BLOCK_DOCS,
+    article_context, article_schema, blog_categories, brief_entities, brief_ref_for, entity_facts,
+    hero_shortlist, link_shortlist, related_titles, site_validator, site_validator_v2, slugify,
+    used_hero_images, word_count, ArticleContext, SiteValidatorV2, ARTICLE_BLOCK_DOCS,
+    ENTITY_FACTS, HERO_SHORTLIST, LINK_SHORTLIST, RELATED_TITLES,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use gateway::GithubGateway;

@@ -8,6 +8,10 @@ license.workspace = true
 [dependencies]
 agents = { path = "../agents" }
 content-schema.workspace = true
+# Closed world in-process (ADR-0061): the site's indexes for shortlists and for
+# the link and media checks of the v2 validator. Both build for wasm32.
+content-model = { path = "../content-model" }
+knowledge = { path = "../knowledge" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

@@ -1750,10 +1750,12 @@ version = "0.2.0"
 dependencies = [
  "agents",
  "async-trait",
+ "content-model",
  "content-schema",
  "getrandom 0.3.4",
  "github",
  "jsonschema",
+ "knowledge",
  "serde",
  "serde_json",
  "thiserror",
