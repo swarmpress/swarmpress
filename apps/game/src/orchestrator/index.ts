@@ -12,9 +12,9 @@
 import type { OrchestratorGateway } from '../net/central'
 import type { OrchestratorStore } from '../store/company-store'
 import { FakeLlm } from '../llm/fake-llm'
-import type { LocalLlm } from '../llm/types'
+import type { LocalLlm, Validator } from '../llm/types'
 import { mvpScriptText } from '../llm/mvp-script'
-import type { OrchestratorLike, OrchestratorLlm, SiteBindingJson } from './bridge'
+import { rustValidator, type OrchestratorLike, type OrchestratorLlm, type SiteBindingJson } from './bridge'
 
 export * from './bridge'
 
@@ -40,7 +40,15 @@ export interface CreateOrchestratorOptions {
 
 export async function createOrchestrator(o: CreateOrchestratorOptions): Promise<OrchestratorLike & { free(): void }> {
   const m = await loadOrchestratorWasm()
+  // The browser's repair loop validates with the validator the Rust side
+  // re-checks with, so a value never passes here and fails there unrepaired.
+  o.llm.useValidator?.(rustValidator(m.validateJson))
   return new m.OrchestratorHandle(o.store, o.gateway, o.llm, JSON.stringify(o.site))
+}
+
+/** The Rust schema validator as a `Validator` (loads orchestrator-wasm). */
+export async function loadRustValidator(): Promise<Validator> {
+  return rustValidator((await loadOrchestratorWasm()).validateJson)
 }
 
 /**

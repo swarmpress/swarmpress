@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { FakeLlm } from './fake-llm'
-import { applyStop, extractJson, runStructured, StructuredOutputError, stripReasoning, validateJsonSchema, withSchemaPrompt } from './structured'
+import {
+  applyStop,
+  extractJson,
+  repairQuote,
+  runStructured,
+  StructuredOutputError,
+  StructuredTruncatedError,
+  stripReasoning,
+  trimToSentence,
+  validateJsonSchema,
+  withSchemaPrompt,
+} from './structured'
 
 const BRIEF = {
   type: 'object',
@@ -128,10 +139,65 @@ describe('runStructured', () => {
     expect(llm.calls[1].messages.at(-1)!.content).toContain('content-model')
   })
 
-  it('mentions the token limit when output was cut off', async () => {
+  it('retries a cut-off answer once, with reasoning off and the same conversation', async () => {
     const llm = new FakeLlm({ script: [{ text: '{"title": "abc", "an', finishReason: 'length' }, '{"title":"abc","angle":"news","words":300}'] })
-    await runStructured((m, o) => llm.generate(m, o), [{ role: 'user', content: 'x' }], BRIEF)
-    expect(llm.calls[1].messages.at(-1)!.content).toMatch(/token limit/)
+    const attempts: string[][] = []
+    const r = await runStructured((m, o) => llm.generate(m, o), [{ role: 'user', content: 'x' }], BRIEF, {
+      thinking: 'medium',
+      reasoningBudget: 500,
+      onAttempt: (a) => attempts.push(a.errors),
+    })
+    expect(r.value).toEqual({ title: 'abc', angle: 'news', words: 300 })
+    // The retry is not a repair turn: nothing is appended, and it does not count as a repair.
+    expect(r.repairs).toBe(0)
+    expect(llm.calls[1].messages).toEqual(llm.calls[0].messages)
+    expect(llm.calls[0].opts).toMatchObject({ thinking: 'medium', reasoningBudget: 500 })
+    expect(llm.calls[1].opts.thinking).toBe('off')
+    expect(llm.calls[1].opts.reasoningBudget).toBeUndefined()
+    expect(attempts[0][0]).toMatch(/token limit/)
+  })
+
+  it('never returns a cut-off value: a second truncation is StructuredTruncatedError', async () => {
+    const cut = { text: '{"title": "abc", "an', finishReason: 'length' as const }
+    const llm = new FakeLlm({ script: [cut, cut, '{"title":"abc","angle":"news","words":300}'] })
+    const err = await runStructured((m, o) => llm.generate(m, o), [{ role: 'user', content: 'x' }], BRIEF).catch((e) => e)
+    expect(err).toBeInstanceOf(StructuredTruncatedError)
+    expect(err).toBeInstanceOf(StructuredOutputError)
+    expect((err as StructuredTruncatedError).lastText).toBe('{"title": "abc", "an')
+    expect(llm.calls).toHaveLength(2)
+  })
+
+  it('accepts a complete value even when the token limit was hit after it', async () => {
+    const llm = new FakeLlm({ script: [{ text: '{"title":"abc","angle":"news","words":300} and then', finishReason: 'length' }] })
+    const r = await runStructured((m, o) => llm.generate(m, o), [{ role: 'user', content: 'x' }], BRIEF)
+    expect(r.value).toEqual({ title: 'abc', angle: 'news', words: 300 })
+  })
+
+  it('quotes only the answer back in a repair turn, never the reasoning, and caps it', async () => {
+    const reasoning = 'r '.repeat(4000)
+    const llm = new FakeLlm({
+      script: [`<think>${reasoning}</think>Sure: {"title": "x", "angle": "guide", "words": 300}`, '{"title":"abc","angle":"news","words":300}'],
+    })
+    await runStructured((m, o) => llm.generate(m, o), [{ role: 'user', content: 'x' }], BRIEF, { thinking: 'medium', maxTokens: 20000 })
+    const second = llm.calls[1]
+    // The extracted JSON, not the prose around it and not the reasoning.
+    expect(second.messages.at(-2)).toEqual({ role: 'assistant', content: '{"title": "x", "angle": "guide", "words": 300}' })
+    expect(second.opts.thinking).toBe('off')
+    // A long invalid answer is capped.
+    const long = `{"title": "${'y'.repeat(20000)}"`
+    expect(repairQuote(long, null, 200).length).toBeLessThan(300)
+    expect(repairQuote(long, null, 200)).toMatch(/cut: the previous answer was \d+ characters long/)
+    expect(repairQuote('<think>secret</think> {"a":1}', null, 200)).toBe('{"a":1}')
+  })
+})
+
+describe('trimToSentence', () => {
+  it('cuts at the last complete sentence', () => {
+    expect(trimToSentence('We should cover the harvest. It starts next week. And then the')).toBe('We should cover the harvest. It starts next week.')
+    expect(trimToSentence('Is it ready? "Almost," she said.')).toBe('Is it ready? "Almost," she said.')
+    expect(trimToSentence('Version 2.5 is out')).toBe('')
+    expect(trimToSentence('no sentence end here')).toBe('')
+    expect(trimToSentence('Done!  ')).toBe('Done!')
   })
 })
 

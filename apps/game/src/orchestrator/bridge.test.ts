@@ -4,13 +4,14 @@
 // localLlmBridge, and a fake JS gateway. Needs `cargo xtask wasm`.
 import { readFile } from 'node:fs/promises'
 import { beforeAll, describe, expect, it } from 'vitest'
-import init, { OrchestratorHandle } from 'orchestrator-wasm'
+import init, { OrchestratorHandle, validateJson } from 'orchestrator-wasm'
 import styleGuide from '../../../../crates/agents/tests/fixtures/style-guide.json'
+import { FakeLlm } from '../llm/fake-llm'
 import { MVP_POST_TYPES, MVP_REVIEW_NOTE } from '../llm/mvp-script'
 import { CompanyStore } from '../store/company-store'
 import { MemorySqliteDriver } from '../store/sqlite-driver'
 import { fakeMvpLlm, llmModeFromQuery } from './index'
-import { localLlmBridge, runMvpLoop, toChatMessages, type SiteBindingJson } from './bridge'
+import { defaultCallPolicy, localLlmBridge, runMvpLoop, rustValidator, toChatMessages, type SiteBindingJson } from './bridge'
 
 const SITE: SiteBindingJson = {
   site_id: 'cinqueterre.travel',
@@ -101,5 +102,125 @@ describe('orchestrator-wasm with the browser store and the fake LocalLlm', () =>
     expect(llmModeFromQuery('?llm=fake')).toBe('fake')
     expect(llmModeFromQuery('?llm=qwen')).toBe('local')
     expect(llmModeFromQuery('')).toBe('local')
+  })
+})
+
+// A page body whose blocks are an `anyOf`, like `article_schema()` in crates/orchestrator.
+const BODY_SCHEMA = {
+  type: 'object',
+  required: ['body'],
+  additionalProperties: false,
+  properties: {
+    body: {
+      type: 'array',
+      minItems: 1,
+      items: {
+        anyOf: [
+          {
+            type: 'object',
+            required: ['type', 'markdown'],
+            additionalProperties: false,
+            properties: { type: { const: 'paragraph' }, markdown: { type: 'string', minLength: 1 } },
+          },
+          {
+            type: 'object',
+            required: ['type', 'level', 'text'],
+            additionalProperties: false,
+            properties: { type: { const: 'heading' }, level: { type: 'integer', minimum: 2, maximum: 4 }, text: { type: 'string', minLength: 1 } },
+          },
+        ],
+      },
+    },
+  },
+}
+const BAD_BODY = '{"body": [{"type": "paragraph", "markdown": "ok"}, {"type": "heading", "level": 2}]}'
+const GOOD_BODY = '{"body": [{"type": "paragraph", "markdown": "ok"}, {"type": "heading", "level": 2, "text": "Harvest"}]}'
+const request = (max_tokens = 4096) => ({ profile: {}, system: ['s'], messages: [{ role: 'user' as const, text: 'write' }], max_tokens })
+const structured = (schema: object, max_tokens?: number) => JSON.stringify({ kind: 'structured', request: request(max_tokens), schema })
+
+describe('the Rust validator in the browser repair loop (validateJson)', () => {
+  it('reports an anyOf violation with its path, and nothing for a valid value', () => {
+    const errors = validateJson(JSON.stringify(BODY_SCHEMA), BAD_BODY)
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatch(/^\/body\/1: /)
+    expect(validateJson(JSON.stringify(BODY_SCHEMA), GOOD_BODY)).toEqual([])
+    expect(() => validateJson('{"type": "no-such-type"}', '{}')).toThrow(/bad schema/)
+    expect(() => validateJson('{}', '{not json')).toThrow(/value JSON/)
+  })
+
+  it('a body block that matches no anyOf branch now gets a repair turn', async () => {
+    const local = new FakeLlm({ script: [BAD_BODY, GOOD_BODY] })
+    const llm = localLlmBridge(local, { validate: rustValidator(validateJson) })
+    const out = JSON.parse(await llm.complete(structured(BODY_SCHEMA)))
+    expect(out.value.body[1]).toEqual({ type: 'heading', level: 2, text: 'Harvest' })
+    expect(local.calls).toHaveLength(2)
+    // The repair turn carries the Rust validator's message for the offending block.
+    expect(local.calls[1].messages.at(-1)!.content).toMatch(/\/body\/1: /)
+  })
+
+  it('the built-in subset validator alone lets that block through (the gap this closes)', async () => {
+    const local = new FakeLlm({ script: [BAD_BODY, GOOD_BODY] })
+    const out = JSON.parse(await localLlmBridge(local).complete(structured(BODY_SCHEMA)))
+    expect(out.value.body[1]).toEqual({ type: 'heading', level: 2 })
+    expect(local.calls).toHaveLength(1)
+  })
+
+  it('useValidator swaps the validator in after construction (what createOrchestrator does)', async () => {
+    const local = new FakeLlm({ script: [BAD_BODY, GOOD_BODY] })
+    const llm = localLlmBridge(local)
+    llm.useValidator!(rustValidator(validateJson))
+    const out = JSON.parse(await llm.complete(structured(BODY_SCHEMA)))
+    expect(out.value.body[1].text).toBe('Harvest')
+  })
+})
+
+describe('localLlmBridge policy and truncation', () => {
+  it('keeps a free-text turn that hit the token limit, cut at its last sentence', async () => {
+    const local = new FakeLlm({ script: [{ text: 'We should cover the harvest. It starts next week. And then the', finishReason: 'length' }] })
+    const out = JSON.parse(await localLlmBridge(local).complete(JSON.stringify({ kind: 'generate', request: request(600) })))
+    expect(out).toEqual({ text: 'We should cover the harvest. It starts next week.', truncated: true })
+  })
+
+  it('a cut-off turn without one complete sentence is Truncated', async () => {
+    const local = new FakeLlm({ script: [{ text: 'We should cover the', finishReason: 'length' }] })
+    const out = JSON.parse(await localLlmBridge(local).complete(JSON.stringify({ kind: 'generate', request: request(600) })))
+    expect(out).toEqual({ error: { Truncated: { partial: 'We should cover the' } } })
+  })
+
+  it('a structured answer cut off twice is Truncated, never a partial value', async () => {
+    const cut = { text: '{"body": [{"type": "paragraph", "markdown": "The terraces', finishReason: 'length' as const }
+    const local = new FakeLlm({ script: [cut, cut] })
+    const out = JSON.parse(await localLlmBridge(local).complete(structured(BODY_SCHEMA)))
+    expect(out.error.Truncated.partial).toContain('The terraces')
+    expect(local.calls).toHaveLength(2)
+    expect(local.calls[1].opts.thinking).toBe('off')
+  })
+
+  it('short structured picks answer directly from "{"; larger calls may reason within a cap', async () => {
+    const generate = { kind: 'generate' as const, request: request(600) }
+    expect(defaultCallPolicy(generate)).toEqual({ thinking: 'off' })
+    expect(defaultCallPolicy({ kind: 'structured', request: request(512), schema: { type: 'object' } })).toEqual({
+      thinking: 'off',
+      stopOnJsonEnd: true,
+      answerPrefix: '{',
+    })
+    expect(defaultCallPolicy({ kind: 'structured', request: request(512), schema: { type: 'array' } })).toEqual({ thinking: 'off', stopOnJsonEnd: true })
+    expect(defaultCallPolicy({ kind: 'structured', request: request(2000), schema: {} })).toEqual({ thinking: 'medium', reasoningBudget: 1000, stopOnJsonEnd: true })
+    expect(defaultCallPolicy({ kind: 'structured', request: request(4096), schema: {} }).reasoningBudget).toBe(2048)
+    expect(defaultCallPolicy({ kind: 'structured', request: request(16000), schema: {} }).reasoningBudget).toBe(2048)
+
+    const local = new FakeLlm({ script: ['{"next": "staff-2"}', GOOD_BODY] })
+    const llm = localLlmBridge(local)
+    await llm.complete(structured({ type: 'object' }, 512))
+    await llm.complete(structured(BODY_SCHEMA, 4096))
+    expect(local.calls[0].opts).toMatchObject({ maxTokens: 512, thinking: 'off', answerPrefix: '{', stopOnJsonEnd: true })
+    expect(local.calls[1].opts).toMatchObject({ maxTokens: 4096, thinking: 'medium', reasoningBudget: 2048, stopOnJsonEnd: true })
+  })
+
+  it('keeps a bounded record of calls', async () => {
+    const local = new FakeLlm({ responder: () => 'A sentence.' })
+    const llm = localLlmBridge(local, { maxCalls: 3 })
+    for (let i = 0; i < 5; i++) await llm.complete(JSON.stringify({ kind: 'generate', request: { ...request(50), messages: [{ role: 'user', text: `q${i}` }] } }))
+    expect(llm.calls.map((c) => c.request.messages[0].text)).toEqual(['q2', 'q3', 'q4'])
   })
 })

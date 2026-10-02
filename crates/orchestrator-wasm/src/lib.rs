@@ -77,6 +77,11 @@ export interface OrchestratorGateway {
  * Answer `{text}` (generate), `{value}` or `{text}` (structured), or
  * `{error: LlmError}` (`{Refusal: {category, explanation}}`, `{Truncated: {partial}}`,
  * `{InvalidOutput: {errors}}`, `{Unavailable: msg}`, `{Backend: msg}`), as JSON text or an object.
+ *
+ * A free-text answer that hit the token limit may come back as
+ * `{text, truncated: true}`: `text` is then the output cut at its last
+ * complete sentence and is accepted as the turn (a long meeting turn must not
+ * fail the meeting). `{error: {Truncated}}` is for output with nothing usable.
  */
 export interface OrchestratorLlm {
   complete(requestJson: string): Promise<string | object>
@@ -492,6 +497,24 @@ pub fn outcomes_json(out: &[Outcome]) -> String {
 }
 
 // ---------------------------------------------------------------- handle
+
+/// Validates `value_json` against the JSON Schema `schema_json` with the same
+/// validator [`Llm::structured`] applies to every structured answer (full
+/// JSON Schema, including `anyOf`). Returns the problems, empty when valid.
+///
+/// The browser's structured-output loop uses it for its repair turns, so a
+/// value never passes there and then fails here without a repair
+/// (`apps/game/src/llm/structured.ts` only has a subset validator of its own).
+#[wasm_bindgen(js_name = validateJson)]
+pub fn validate_json(schema_json: &str, value_json: &str) -> Result<Vec<String>, JsError> {
+    let schema: Value = serde_json::from_str(schema_json)
+        .map_err(|e| JsError::new(&format!("schema JSON: {e}")))?;
+    let value: Value =
+        serde_json::from_str(value_json).map_err(|e| JsError::new(&format!("value JSON: {e}")))?;
+    let validator = claude::SchemaValidator::new(&schema)
+        .map_err(|e| JsError::new(&format!("bad schema: {e}")))?;
+    Ok(validator.validate(&value).err().unwrap_or_default())
+}
 
 /// The module version (the crate version).
 #[wasm_bindgen]

@@ -4,8 +4,8 @@
  * loop driver (the sim's part, until the sim emits `Effect::RequestJob`).
  * Runs in the browser, under Node (vitest) and under Bun.
  */
-import type { ChatMessage, LocalLlm } from '../llm/types'
-import { StructuredOutputError } from '../llm/structured'
+import type { ChatMessage, LocalLlm, ThinkingMode, Validator } from '../llm/types'
+import { StructuredOutputError, StructuredTruncatedError, trimToSentence } from '../llm/structured'
 import type { MvpReply } from '../llm/mvp-script'
 import { MVP_TEAM } from '../llm/mvp-script'
 
@@ -85,6 +85,12 @@ export interface LlmCall {
 /** orchestrator-wasm's `OrchestratorLlm`. */
 export interface OrchestratorLlm {
   complete(requestJson: string): Promise<string>
+  /**
+   * Set the validator structured calls repair against. `createOrchestrator`
+   * passes the Rust one (`validateJson`) so the browser's repair loop and the
+   * Rust re-check agree; without it the subset validator of structured.ts is used.
+   */
+  useValidator?(validate: Validator): void
 }
 
 // ---------------------------------------------------------------- LLM adapters
@@ -97,29 +103,94 @@ export function toChatMessages(req: LlmRequestJson): ChatMessage[] {
   return out
 }
 
+/** How one call uses the model's reasoning and output budget. Adapters without the feature ignore it. */
+export interface CallPolicy {
+  thinking: ThinkingMode
+  /** Cap on reasoning tokens, on top of the answer budget (`max_tokens`). */
+  reasoningBudget?: number
+  answerPrefix?: string
+  stopOnJsonEnd?: boolean
+}
+
+/**
+ * The default policy for a model without constrained decoding (ADR-0057):
+ * free text and short structured picks answer directly; larger structured
+ * calls may reason first, within a cap of half their answer budget (at most
+ * 2048 tokens). A short pick whose schema is an object is forced to start at
+ * `{`. Structured calls stop as soon as their root JSON value is complete.
+ */
+export function defaultCallPolicy(call: LlmCall): CallPolicy {
+  if (call.kind === 'generate') return { thinking: 'off' }
+  const max = call.request.max_tokens
+  if (max <= 600) {
+    return { thinking: 'off', stopOnJsonEnd: true, ...(call.schema?.type === 'object' ? { answerPrefix: '{' } : {}) }
+  }
+  return { thinking: 'medium', reasoningBudget: Math.min(2048, Math.max(256, Math.round(max / 2))), stopOnJsonEnd: true }
+}
+
+/** The Rust schema validator (`validateJson` of orchestrator-wasm) as a `Validator`. */
+export function rustValidator(validateJson: (schemaJson: string, valueJson: string) => string[]): Validator {
+  return (value, schema) => {
+    const errors = validateJson(JSON.stringify(schema), JSON.stringify(value))
+    return errors.length ? { ok: false, errors } : { ok: true }
+  }
+}
+
+export interface LocalLlmBridgeOptions {
+  validate?: Validator
+  policy?: (call: LlmCall) => CallPolicy
+  /** Calls kept in `calls` (prompts are large); older ones are dropped. Default 200. */
+  maxCalls?: number
+}
+
 /**
  * `agents::Llm` over a LocalLlm (a browser model, or the scripted FakeLlm of
- * `?llm=fake`). Structured calls go through the LocalLlm's own repair loop;
- * the Rust side validates the result against the full JSON Schema again.
+ * `?llm=fake`). Structured calls go through the LocalLlm's own repair loop
+ * with the injected validator; the Rust side validates the result against the
+ * same JSON Schema again.
+ *
+ * A free-text turn that hits the token limit is not a failure: it is cut at
+ * its last complete sentence and returned (`truncated: true`). Only a turn
+ * with no complete sentence at all is `Truncated`.
  */
-export function localLlmBridge(llm: LocalLlm): OrchestratorLlm & { calls: LlmCall[] } {
+export function localLlmBridge(llm: LocalLlm, opts: LocalLlmBridgeOptions = {}): OrchestratorLlm & { calls: LlmCall[] } {
   const calls: LlmCall[] = []
+  const maxCalls = opts.maxCalls ?? 200
+  const policy = opts.policy ?? defaultCallPolicy
+  let validate = opts.validate
   return {
     calls,
+    useValidator(v: Validator) {
+      validate = v
+    },
     async complete(requestJson: string): Promise<string> {
       const call = JSON.parse(requestJson) as LlmCall
       calls.push(call)
+      if (calls.length > maxCalls) calls.splice(0, calls.length - maxCalls)
       const messages = toChatMessages(call.request)
       const maxTokens = call.request.max_tokens
+      const p = policy(call)
       try {
         if (call.kind === 'generate') {
-          const r = await llm.generate(messages, { maxTokens })
-          if (r.finishReason === 'length') return JSON.stringify({ error: { Truncated: { partial: r.text } } })
+          const r = await llm.generate(messages, { maxTokens, thinking: p.thinking, reasoningBudget: p.reasoningBudget })
+          if (r.finishReason === 'length') {
+            const text = trimToSentence(r.text)
+            if (!text) return JSON.stringify({ error: { Truncated: { partial: r.text } } })
+            return JSON.stringify({ text, truncated: true })
+          }
           return JSON.stringify({ text: r.text })
         }
-        const value = await llm.structured(messages, call.schema ?? {}, { maxTokens })
+        const value = await llm.structured(messages, call.schema ?? {}, {
+          maxTokens,
+          thinking: p.thinking,
+          reasoningBudget: p.reasoningBudget,
+          answerPrefix: p.answerPrefix,
+          stopOnJsonEnd: p.stopOnJsonEnd,
+          ...(validate ? { validate } : {}),
+        })
         return JSON.stringify({ value })
       } catch (e) {
+        if (e instanceof StructuredTruncatedError) return JSON.stringify({ error: { Truncated: { partial: e.lastText } } })
         if (e instanceof StructuredOutputError) return JSON.stringify({ error: { InvalidOutput: { errors: e.errors } } })
         return JSON.stringify({ error: { Backend: e instanceof Error ? e.message : String(e) } })
       }

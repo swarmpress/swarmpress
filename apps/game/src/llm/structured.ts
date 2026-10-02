@@ -110,8 +110,11 @@ function tryParse(raw: string): { ok: true; value: unknown } | { ok: false } {
 /**
  * Minimal JSON-Schema subset validator (type, required, properties,
  * additionalProperties=false, enum, const, items, minItems/maxItems,
- * minLength/maxLength, minimum/maximum). It is the default until the
- * content-model validator compiled to wasm is injected.
+ * minLength/maxLength, minimum/maximum). It does NOT check `anyOf`, `oneOf`,
+ * `allOf`, `pattern` or `$ref`. It is the fallback for callers without the
+ * wasm module; the orchestrator bridge injects the Rust validator
+ * (`validateJson` of orchestrator-wasm, see orchestrator/index.ts), which is
+ * the one the Rust side applies to every structured answer.
  */
 export function validateJsonSchema(value: unknown, schema: JsonSchema, path = '$'): ValidationResult {
   const errors: string[] = []
@@ -202,22 +205,71 @@ export function repairMessage(errors: string[]): ChatMessage {
 function addUsage(a: Usage, b: Usage): Usage {
   const completionTokens = a.completionTokens + b.completionTokens
   const durationMs = a.durationMs + b.durationMs
-  return {
+  const sum = (x: number | undefined, y: number | undefined) => (x === undefined && y === undefined ? undefined : (x ?? 0) + (y ?? 0))
+  const out: Usage = {
     promptTokens: a.promptTokens + b.promptTokens,
     completionTokens,
     durationMs,
     tokensPerSec: durationMs > 0 ? (completionTokens * 1000) / durationMs : 0,
   }
+  // The optional timings and counts are kept only when an adapter reports them.
+  const prefillMs = sum(a.prefillMs, b.prefillMs)
+  const reasoningTokens = sum(a.reasoningTokens, b.reasoningTokens)
+  const cachedPromptTokens = sum(a.cachedPromptTokens, b.cachedPromptTokens)
+  const ttftMs = a.ttftMs ?? b.ttftMs
+  if (prefillMs !== undefined) out.prefillMs = prefillMs
+  if (reasoningTokens !== undefined) out.reasoningTokens = reasoningTokens
+  if (cachedPromptTokens !== undefined) out.cachedPromptTokens = cachedPromptTokens
+  if (ttftMs !== undefined) out.ttftMs = ttftMs
+  return out
 }
 
 export const ZERO_USAGE: Usage = { promptTokens: 0, completionTokens: 0, durationMs: 0, tokensPerSec: 0 }
 
 export type GenerateFn = (messages: ChatMessage[], opts: GenerateOptions) => Promise<GenerateResult>
 
+/** The answer still hit the token limit after the one retry: there is no complete value to return. */
+export class StructuredTruncatedError extends StructuredOutputError {
+  constructor(attempts: number, partial: string) {
+    super('structured output was cut off at the token limit', attempts, partial, ['the output hit the token limit'])
+    this.name = 'StructuredTruncatedError'
+  }
+}
+
+/** Default cap on the previous answer quoted back in a repair turn, characters. */
+export const MAX_REPAIR_CHARS = 6000
+
+/**
+ * What a repair turn quotes back as the model's previous answer: the answer
+ * only, never the reasoning (a model that reasons at length would otherwise
+ * fill its context with its own reasoning on the first repair), and capped.
+ */
+export function repairQuote(text: string, raw: string | null, maxChars: number): string {
+  const answer = (raw ?? stripReasoning(text)).trim()
+  if (answer.length <= maxChars) return answer
+  return `${answer.slice(0, Math.max(0, maxChars))}\n[... cut: the previous answer was ${answer.length} characters long]`
+}
+
+/**
+ * Cut free text at its last complete sentence (a turn that hit the token
+ * limit). Returns '' when there is no complete sentence.
+ */
+export function trimToSentence(text: string): string {
+  const t = text.trimEnd()
+  const m = /^[\s\S]*[.!?…]["')\]»”’]*(?=\s|$)/.exec(t)
+  return m ? m[0].trimEnd() : ''
+}
+
 /**
  * Run the prompt → extract → validate → repair loop on top of any generate
- * function. Total attempts = 1 + maxRepairs. Throws StructuredOutputError
- * when exhausted; cancellation errors from `generate` propagate unchanged.
+ * function. Total attempts = 1 + maxRepairs, plus at most one retry when an
+ * answer is cut off at the token limit. Throws StructuredOutputError when
+ * the repairs are exhausted and StructuredTruncatedError when the retry is
+ * cut off as well; a cut-off answer is never returned as a value.
+ * Cancellation errors from `generate` propagate unchanged.
+ *
+ * Repair turns and the truncation retry run with reasoning off: the model has
+ * already reasoned about the task, and reasoning is what eats the budget.
  */
 export async function runStructured<T>(
   generate: GenerateFn,
@@ -225,20 +277,33 @@ export async function runStructured<T>(
   schema: JsonSchema,
   opts: StructuredOptions = {},
 ): Promise<StructuredResult<T>> {
-  const { validate = validateJsonSchema, maxRepairs = 2, onAttempt, ...genOpts } = opts
+  const { validate = validateJsonSchema, maxRepairs = 2, maxRepairChars = MAX_REPAIR_CHARS, onAttempt, ...genOpts } = opts
   const convo = withSchemaPrompt(messages, schema)
   let usage = ZERO_USAGE
   let lastText = ''
   let lastErrors: string[] = []
+  let attempts = 0
+  let truncationRetried = false
+  let reasoningOff = false
   for (let attempt = 0; attempt <= maxRepairs; attempt++) {
-    const res = await generate(convo, { temperature: 0.2, ...genOpts })
+    const res = await generate(convo, { temperature: 0.2, ...genOpts, ...(reasoningOff ? { thinking: 'off' as const, reasoningBudget: undefined } : {}) })
+    attempts++
     usage = addUsage(usage, res.usage)
     lastText = res.text
-    if (res.finishReason === 'cancelled') throw new StructuredOutputError('cancelled', attempt + 1, res.text, ['cancelled'])
+    if (res.finishReason === 'cancelled') throw new StructuredOutputError('cancelled', attempts, res.text, ['cancelled'])
     const ex = extractJson(res.text)
     let errors: string[]
     if (!ex.ok) {
-      errors = [res.finishReason === 'length' ? `${ex.error} (the output hit the token limit; be more concise)` : ex.error]
+      if (res.finishReason === 'length') {
+        // Cut off before the value was complete: one retry with reasoning off, then give up.
+        onAttempt?.({ attempt, text: res.text, errors: [`${ex.error} (the output hit the token limit)`] })
+        if (truncationRetried) throw new StructuredTruncatedError(attempts, stripReasoning(res.text))
+        truncationRetried = true
+        reasoningOff = true
+        attempt--
+        continue
+      }
+      errors = [ex.error]
     } else {
       const v = validate(ex.value, schema)
       if (v.ok) {
@@ -249,7 +314,8 @@ export async function runStructured<T>(
     }
     lastErrors = errors
     onAttempt?.({ attempt, text: res.text, errors })
-    convo.push({ role: 'assistant', content: res.text }, repairMessage(errors))
+    convo.push({ role: 'assistant', content: repairQuote(res.text, ex.ok ? ex.raw : null, maxRepairChars) }, repairMessage(errors))
+    reasoningOff = true
   }
   throw new StructuredOutputError(
     `structured output failed after ${maxRepairs + 1} attempts: ${lastErrors.join('; ')}`,
