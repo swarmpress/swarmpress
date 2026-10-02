@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./runtime": "./src/runtime/index.ts",
+    "./theme": "./src/theme.ts",
     "./components/*": "./components/*",
     "./routes/*": "./routes/*",
     "./styles/*": "./styles/*",
@@ -29,11 +30,12 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "test:unit": "vitest run --exclude test/integration/**",
+    "test:unit": "vitest run test/unit",
     "typecheck": "tsc --noEmit",
     "schema:export": "tsx scripts/export-manifest-schema.ts",
     "schema:check": "tsx scripts/export-manifest-schema.ts --check",
-    "kit": "node bin/kit.mjs"
+    "kit": "node bin/kit.mjs",
+    "test:junit": "vitest run --reporter=default --reporter=junit --outputFile.junit=test-results/vitest-junit.xml"
   },
   "peerDependencies": {
     "astro": "^5.1.0"

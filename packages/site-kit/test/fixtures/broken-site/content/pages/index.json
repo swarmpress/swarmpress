@@ -1,0 +1,12 @@
+{
+  "id": "home",
+  "slug": { "en": "/en", "de": "/de" },
+  "title": { "en": "Home", "de": "Start" },
+  "body": [
+    { "type": "heading", "level": 9, "text": "Bad level" },
+    { "type": "paragraph", "markdown": { "de": "Kein Englisch" } },
+    { "type": "image", "src": "media:does-not-exist", "alt": "x" },
+    { "type": "x:mystery", "foo": 1 },
+    { "type": "closing-note", "title": "Bye", "content": "Done", "actions": [{ "label": "Go", "href": "/missing-page", "variant": "primary" }] }
+  ]
+}

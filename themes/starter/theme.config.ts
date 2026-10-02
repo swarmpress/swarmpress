@@ -5,7 +5,7 @@
  * discovered by convention. Listing them explicitly documents the contract
  * and lets a site swap a single piece.
  */
-import { defineTheme } from '@swarm-press/site-kit'
+import { defineTheme } from '@swarm-press/site-kit/theme'
 import tokens from './tokens.json'
 
 import Article from './layouts/Article.astro'

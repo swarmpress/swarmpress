@@ -230,7 +230,13 @@
             "it": "Il miglior gelato viene preparato fresco ogni mattina. Andate prima delle 15 per texture e sapore ottimali."
           }
         }
-      ]
+      ],
+      "title": {
+        "en": "5 Hidden Gelaterias You Need to Try",
+        "de": "5 versteckte Gelaterias, die Sie unbedingt probieren muessen",
+        "fr": "5 gelaterias cachees a decouvrir absolument",
+        "it": "5 gelaterie nascoste da provare assolutamente"
+      }
     }
   ],
   "metadata": {

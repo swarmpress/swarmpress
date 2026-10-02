@@ -1,0 +1,7 @@
+---
+import { readFileSync } from 'node:fs'
+const { block, ctx } = Astro.props
+const greeting = ctx.lang === 'de' ? 'Hallo' : 'Hello'
+---
+<h2>{greeting} {ctx.l(block.text)}</h2>
+<script src="https://www.googletagmanager.com/gtag/js?id=G-XXXX"></script>

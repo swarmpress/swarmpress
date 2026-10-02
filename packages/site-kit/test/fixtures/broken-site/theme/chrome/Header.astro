@@ -1,0 +1,6 @@
+---
+const { ctx } = Astro.props
+const special = ctx.region?.slug === 'alpha'
+---
+<header class:list={[special && 'is-alpha']}><a href={ctx.brand.homeHref}>{ctx.brand.name}</a></header>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter" />

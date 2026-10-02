@@ -13,6 +13,7 @@
  *   hardcoded_region      region slugs / names from the manifest in theme code
  *   third_party_tracker   GA, GTM, Plausible, … (the kit ships the first-party tracker)
  *   island_directive      client:load / client:idle / client:only (client:visible only)
+ *   kit_root_import       value imports from the kit package root (use @swarm-press/site-kit/theme)
  *   tracker_missing       site.manifest.json has no analytics block
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
@@ -192,6 +193,12 @@ export function lintTheme(opts: LintOptions): Finding[] {
         continue
       }
       if (!isAllowedDependency(spec)) push('dependency_not_allowed', index, `"${spec}" is not on the kit dependency allowlist`)
+    }
+
+    // The package root pulls the build-time integration (Vite plugins, native
+    // binaries) into the page bundle; runtime code imports '@swarm-press/site-kit/theme'.
+    for (const m of code.matchAll(/\bimport\s+(?!type\b)[^'";]*?\bfrom\s+(['"])@swarm-press\/site-kit\1/g)) {
+      push('kit_root_import', m.index ?? 0, "value import from '@swarm-press/site-kit'; use '@swarm-press/site-kit/theme' (or `import type`)")
     }
 
     for (const m of shape.matchAll(/\bprocess\.env\b|\bimport\.meta\.glob\b|\bAstro\.glob\b|\bfetch\s*\(/g)) {

@@ -20,7 +20,9 @@ const rendered = blocks
 {
   rendered.map(({ block, index, component: C, source }) =>
     C ? (
-      <C block={block} ctx={ctx} index={index} />
+      <div class="kit-block" data-block={block.type} data-block-source={source}>
+        <C block={block} ctx={ctx} index={index} />
+      </div>
     ) : import.meta.env.DEV ? (
       <div class="kit-missing" role="note">No renderer for block <code>{block.type}</code> ({source})</div>
     ) : null,

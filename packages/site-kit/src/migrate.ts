@@ -201,6 +201,8 @@ export const RULES: CodemodRule[] = [
           case 'category':
           case 'heroImage':
           case 'authorImage':
+            out[k] = v
+            break
           case 'sidebar':
             if (isObj(v) && Array.isArray(v.relatedPosts) && v.relatedPosts.some((r: unknown) => isObj(r) && r.url === undefined && typeof r.slug === 'string')) {
               out.sidebar = {
@@ -235,6 +237,10 @@ export const RULES: CodemodRule[] = [
           default:
             extras[k] = v
         }
+      }
+      if (out.title === undefined && page.title !== undefined) {
+        out.title = page.title
+        record('title ← page.title')
       }
       if (Object.keys(extras).length) {
         stash(page, 'blog', extras)

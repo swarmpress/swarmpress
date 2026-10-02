@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import tailwindcss from '@tailwindcss/vite'
 import type { AstroIntegration } from 'astro'
 import { CORE_BLOCK_TYPES } from '@swarm-press/content-schema'
 import { loadSite } from './content/load'
@@ -193,7 +194,6 @@ export default function siteKit(options: SiteKitOptions = {}): AstroIntegration 
           },
         ]
         if (options.tailwind !== false) {
-          const { default: tailwindcss } = await import('@tailwindcss/vite')
           plugins.push(tailwindcss())
         }
         updateConfig({

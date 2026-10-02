@@ -1,7 +1,7 @@
 ---
 id: FEAT-044
 title: "Site kit (@swarm-press/site-kit)"
-status: planned
+status: in-progress
 importance: high
 paths:
   - "packages/site-kit/**"
