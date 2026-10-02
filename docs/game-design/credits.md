@@ -2,7 +2,7 @@
 
 > Status: design contract (2026-10-01). Decision: [ADR-0033](../adr/0033-credits-a-closed-loop-platform-currency-separate-from-in-game-cash.md).
 
-SimPress has **two currencies**, and they never mix:
+swarm.press has **two currencies**, and they never mix:
 
 | | **Cash (€)** | **Credits (◆)** |
 |---|---|---|

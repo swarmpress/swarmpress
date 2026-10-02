@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "SimPress first-party, cookieless analytics beacon (ADR-0032); served by the server at /t/s.js",
+  "description": "swarm.press first-party, cookieless analytics beacon (ADR-0032); served by the server at /t/s.js",
   "scripts": {
     "build": "node scripts/build.mjs",
     "sync": "node scripts/build.mjs --sync",

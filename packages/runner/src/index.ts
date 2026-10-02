@@ -1,4 +1,4 @@
-/** `@simpress/runner` as a library (tests, CI scripts, balance sweeps). */
+/** `@swarm-press/runner` as a library (tests, CI scripts, balance sweeps). */
 export { main, USAGE } from "./cli.ts";
 export * from "./commands.ts";
 export * from "./engine.ts";

@@ -81,31 +81,31 @@ importers:
 
   examples/extensions/coffee-machine-rule:
     devDependencies:
-      '@simpress/sdk':
+      '@swarm-press/sdk':
         specifier: workspace:*
         version: link:../../../packages/sdk
 
   examples/extensions/fact-checker:
     devDependencies:
-      '@simpress/sdk':
+      '@swarm-press/sdk':
         specifier: workspace:*
         version: link:../../../packages/sdk
 
   examples/extensions/ghost-publisher:
     devDependencies:
-      '@simpress/sdk':
+      '@swarm-press/sdk':
         specifier: workspace:*
         version: link:../../../packages/sdk
 
   examples/extensions/harvest-season:
     devDependencies:
-      '@simpress/sdk':
+      '@swarm-press/sdk':
         specifier: workspace:*
         version: link:../../../packages/sdk
 
   examples/extensions/ligurian-ferries:
     devDependencies:
-      '@simpress/sdk':
+      '@swarm-press/sdk':
         specifier: workspace:*
         version: link:../../../packages/sdk
 
@@ -130,10 +130,10 @@ importers:
 
   packages/runner:
     dependencies:
-      '@simpress/sandbox':
+      '@swarm-press/sandbox':
         specifier: workspace:*
         version: link:../sandbox
-      '@simpress/sdk':
+      '@swarm-press/sdk':
         specifier: workspace:*
         version: link:../sdk
     devDependencies:
@@ -156,7 +156,7 @@ importers:
       '@playwright/test':
         specifier: 1.56.1
         version: 1.56.1
-      '@simpress/sdk':
+      '@swarm-press/sdk':
         specifier: workspace:*
         version: link:../sdk
       '@types/bun':

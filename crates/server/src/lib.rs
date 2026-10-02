@@ -1,4 +1,4 @@
-//! SimPress central server (local-first, ADR-0038; SQLite, ADR-0039).
+//! swarm.press central server (local-first, ADR-0038; SQLite, ADR-0039).
 //!
 //! The company itself (sim, plan, orchestrator, local LLM staff) runs in the
 //! player's browser. This server keeps only what must be shared, secret or

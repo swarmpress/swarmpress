@@ -16,8 +16,8 @@
 //!   the orchestrator merging and the deploy webhook), `TechnicalLead` →
 //!   `EditorInChief` (unblocking) and dropped from ticket answering.
 //! - `brief.created` also allows the `EditorInChief`, who writes briefs from
-//!   the standup in SimPress.
-//! - Additions marked `SimPress:` below: `System` may block an in-progress
+//!   the standup in swarm.press.
+//! - Additions marked `swarm.press:` below: `System` may block an in-progress
 //!   task after a job failure and answer a ticket with its default option
 //!   when its deadline passes; the CEO may request changes (editor-deadlock
 //!   tickets).
@@ -284,7 +284,7 @@ impl StateMachine for ContentMachine {
                 to: S::InEditorialReview,
                 actors: &[R(Role::Writer)],
             },
-            // SimPress: the CEO may send a deadlocked piece back once more.
+            // swarm.press: the CEO may send a deadlocked piece back once more.
             Rule {
                 from: S::InEditorialReview,
                 event: E::RequestChanges,
@@ -350,7 +350,7 @@ impl StateMachine for TaskMachine {
                 to: S::InProgress,
                 actors: &[Assignee],
             },
-            // SimPress: the orchestrator blocks a task when its job fails.
+            // swarm.press: the orchestrator blocks a task when its job fails.
             Rule {
                 from: S::InProgress,
                 event: E::Error,
@@ -398,7 +398,7 @@ impl StateMachine for TicketMachine {
         use TicketEvent as E;
         use TicketState as S;
         &[
-            // SimPress: System answers with the ticket's default option at its deadline;
+            // swarm.press: System answers with the ticket's default option at its deadline;
             // the Secretary answers Low/Medium tickets under the CEO's delegation
             // policy (organization.md §7; the orchestrator checks the policy).
             Rule {

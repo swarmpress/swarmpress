@@ -8,10 +8,10 @@
 //! - `POST /api/gateway/merge {number, head_sha}` → `{merged_sha}`: squash
 //!   merge, refused unless the head is exactly `head_sha`. Only PRs this
 //!   company opened through the gateway can be merged. With
-//!   `SIMPRESS_SIMULATE_DEPLOY` a `DeployLanded` event follows at once;
+//!   `SWARMPRESS_SIMULATE_DEPLOY` a `DeployLanded` event follows at once;
 //!   otherwise the site's `deployment_status` webhook produces it.
 //!
-//! Both require the company lease (`x-simpress-lease`). `PathPolicy`: the
+//! Both require the company lease (`x-swarmpress-lease`). `PathPolicy`: the
 //! draft is written as a content agent (`content/**` only, `drafts/` branch
 //! only, platform files refused) and must be a `.json` page object of at
 //! most 256 KiB; `..`, absolute paths, backslashes and NUL are refused.
@@ -119,7 +119,7 @@ impl RepoBackend {
                 match fake.get_repo(repo).await {
                     Ok(_) => {}
                     Err(GitHubError::NotFound(_)) => {
-                        fake.create_repo(repo, &[("README.md", "# SimPress site\n")]);
+                        fake.create_repo(repo, &[("README.md", "# swarm.press site\n")]);
                     }
                     Err(e) => return Err(gh_error(e)),
                 }

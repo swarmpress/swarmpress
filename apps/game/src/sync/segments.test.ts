@@ -42,11 +42,11 @@ describe('log segments', () => {
     expect(decodeSegment(encodeSegment([TRIAGE]))).toEqual([TRIAGE])
   })
 
-  it('has a stable, documented encoding (simpress.log.v1, UTF-8 JSON)', () => {
-    expect(SEGMENT_FORMAT).toBe('simpress.log.v1')
-    expect(text(encodeSegment([]))).toBe('{"format":"simpress.log.v1","commands":[]}')
+  it('has a stable, documented encoding (swarmpress.log.v1, UTF-8 JSON)', () => {
+    expect(SEGMENT_FORMAT).toBe('swarmpress.log.v1')
+    expect(text(encodeSegment([]))).toBe('{"format":"swarmpress.log.v1","commands":[]}')
     expect(text(encodeSegment([PRAISE]))).toBe(
-      '{"format":"simpress.log.v1","commands":[{"seq":1,"step":540,"kind":"Praise","cmd":"{\\"Praise\\":{\\"staff\\":\\"staff-1\\"}}"}]}',
+      '{"format":"swarmpress.log.v1","commands":[{"seq":1,"step":540,"kind":"Praise","cmd":"{\\"Praise\\":{\\"staff\\":\\"staff-1\\"}}"}]}',
     )
   })
 
@@ -87,7 +87,7 @@ describe('log segments', () => {
   })
 
   it('rejects an unknown format, a checkpoint blob and non-JSON bytes', () => {
-    expect(() => decodeSegment(bytes('{"format":"simpress.log.v2","commands":[]}'))).toThrow(/unknown log segment format "simpress.log.v2"/)
+    expect(() => decodeSegment(bytes('{"format":"swarmpress.log.v2","commands":[]}'))).toThrow(/unknown log segment format "swarmpress.log.v2"/)
     expect(() => decodeSegment(bytes('{"commands":[]}'))).toThrow(/unknown log segment format/)
     expect(() => decodeSegment(encodeCheckpoint({ scenario: 'cinqueterre', seed: '7', step: 1, hash: '2', lastSeq: 0 }))).toThrow(/unknown log segment format/)
     expect(() => decodeSegment(new Uint8Array([0xff, 0x00, 0x01]))).toThrow()
@@ -109,10 +109,10 @@ describe('checkpoints', () => {
     expect(BigInt(back.hash)).toBe(9223372036854775809n)
   })
 
-  it('has a stable encoding (simpress.checkpoint.v1)', () => {
-    expect(CHECKPOINT_FORMAT).toBe('simpress.checkpoint.v1')
+  it('has a stable encoding (swarmpress.checkpoint.v1)', () => {
+    expect(CHECKPOINT_FORMAT).toBe('swarmpress.checkpoint.v1')
     expect(text(encodeCheckpoint({ scenario: 'cinqueterre', seed: '7', step: 60, hash: '42', lastSeq: 0 }))).toBe(
-      '{"format":"simpress.checkpoint.v1","scenario":"cinqueterre","seed":"7","step":60,"hash":"42","lastSeq":0}',
+      '{"format":"swarmpress.checkpoint.v1","scenario":"cinqueterre","seed":"7","step":60,"hash":"42","lastSeq":0}',
     )
   })
 
@@ -122,7 +122,7 @@ describe('checkpoints', () => {
   })
 
   it('rejects an unknown format, a segment blob and non-JSON bytes', () => {
-    expect(() => decodeCheckpoint(bytes('{"format":"simpress.checkpoint.v0","step":1}'))).toThrow(/unknown checkpoint format "simpress.checkpoint.v0"/)
+    expect(() => decodeCheckpoint(bytes('{"format":"swarmpress.checkpoint.v0","step":1}'))).toThrow(/unknown checkpoint format "swarmpress.checkpoint.v0"/)
     expect(() => decodeCheckpoint(encodeSegment([PRAISE]))).toThrow(/unknown checkpoint format/)
     expect(() => decodeCheckpoint(bytes('not json'))).toThrow()
   })

@@ -5,7 +5,7 @@
 > and on [organization.md](organization.md).
 
 Every real publishing house runs on a plan: what we publish, when, why, who
-does it, and what's blocking it. In SimPress the **media & publishing plan** is:
+does it, and what's blocking it. In swarm.press the **media & publishing plan** is:
 
 - **the CEO's main instrument**: you steer the company by shaping the plan
   (goals, priorities, approvals) rather than by doing the work;

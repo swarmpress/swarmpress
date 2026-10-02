@@ -6,13 +6,13 @@
 //!   200 when the identical bytes are already there, 409 when the segment
 //!   exists with different bytes (segments are immutable).
 //! - `GET /api/sync/{company}/log/{segment}` → the bytes
-//!   (`x-simpress-sha256`), `GET /api/sync/{company}/log` →
+//!   (`x-swarmpress-sha256`), `GET /api/sync/{company}/log` →
 //!   `{segments: [{segment, sha256, size, created_at}]}`.
-//! - `PUT /api/sync/{company}/snapshot` (raw bytes, `x-simpress-step`
+//! - `PUT /api/sync/{company}/snapshot` (raw bytes, `x-swarmpress-step`
 //!   required) replaces the latest snapshot; `GET` returns it with
-//!   `x-simpress-step` and `x-simpress-sha256`.
+//!   `x-swarmpress-step` and `x-swarmpress-sha256`.
 //!
-//! Bytes are files under `{SIMPRESS_DATA_DIR}/sync/{company}/`, written to a
+//! Bytes are files under `{SWARMPRESS_DATA_DIR}/sync/{company}/`, written to a
 //! temp file and renamed into place; SQLite holds the index rows.
 
 use std::path::{Path as FsPath, PathBuf};
@@ -32,8 +32,8 @@ use crate::companies::owned_company;
 use crate::db::{new_id, sync as store};
 use crate::error::{AppError, AppResult};
 
-pub const STEP_HEADER: &str = "x-simpress-step";
-pub const SHA_HEADER: &str = "x-simpress-sha256";
+pub const STEP_HEADER: &str = "x-swarmpress-step";
+pub const SHA_HEADER: &str = "x-swarmpress-sha256";
 
 fn company_dir(st: &AppState, company: &str) -> PathBuf {
     st.cfg.data_dir.join("sync").join(company)
@@ -166,7 +166,7 @@ pub async fn list_segments(
     Ok(Json(json!({ "segments": segments })))
 }
 
-/// `PUT /api/sync/{company}/snapshot` (`x-simpress-step` required)
+/// `PUT /api/sync/{company}/snapshot` (`x-swarmpress-step` required)
 pub async fn put_snapshot(
     State(st): State<AppState>,
     CurrentUser(user): CurrentUser,

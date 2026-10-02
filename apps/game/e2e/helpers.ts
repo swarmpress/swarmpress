@@ -14,11 +14,11 @@ export async function boot(page: Page, path: string) {
   await page.goto(path)
   await expect(page.locator('#stage canvas')).toBeVisible()
   await page.waitForFunction(() => {
-    const h = (window as unknown as { __simpress?: Handle }).__simpress
+    const h = (window as unknown as { __swarmpress?: Handle }).__swarmpress
     return !!h && h.frames() > 10
   }, null, { timeout: 120_000 })
   const { renderer, fallback } = await page.evaluate(() => {
-    const h = (window as unknown as { __simpress: Handle }).__simpress
+    const h = (window as unknown as { __swarmpress: Handle }).__swarmpress
     return { renderer: h.renderer, fallback: h.fallback }
   })
   return { errors, renderer, fallback }
@@ -26,7 +26,7 @@ export async function boot(page: Page, path: string) {
 
 /** Frozen-clock pages stop rendering once stable; wait for that. */
 export async function waitStill(page: Page) {
-  await page.waitForFunction(() => (window as unknown as { __simpress: { still(): boolean } }).__simpress.still(), null, {
+  await page.waitForFunction(() => (window as unknown as { __swarmpress: { still(): boolean } }).__swarmpress.still(), null, {
     timeout: 120_000,
   })
 }

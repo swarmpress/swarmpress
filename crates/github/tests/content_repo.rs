@@ -9,7 +9,7 @@ const PAGE_PATH: &str = "content/pages/blog/last-light.json";
 
 fn setup() -> (Arc<FakeGitHub>, RepoId) {
     let f = Arc::new(FakeGitHub::new());
-    let r = RepoId::new("simpress-sites", "cinqueterre-travel");
+    let r = RepoId::new("swarmpress-sites", "cinqueterre-travel");
     f.create_repo(
         &r,
         &[

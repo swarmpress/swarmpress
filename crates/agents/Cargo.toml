@@ -1,6 +1,6 @@
 [package]
 name = "agents"
-description = "SimPress agent layer: roles, personas, prompt layering, state machines, executors, meetings and the editorial pipeline (orchestrator-owned; LLMs return artifacts)"
+description = "swarm.press agent layer: roles, personas, prompt layering, state machines, executors, meetings and the editorial pipeline (orchestrator-owned; LLMs return artifacts)"
 edition.workspace = true
 version.workspace = true
 license.workspace = true

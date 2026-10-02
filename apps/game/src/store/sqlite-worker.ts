@@ -14,7 +14,7 @@ async function open(name: string, opfs: boolean): Promise<{ persistent: boolean;
   const sqlite3 = await loadSqlite()
   if (opfs) {
     try {
-      const pool = await sqlite3.installOpfsSAHPoolVfs({ name: 'simpress-sahpool', directory: '.simpress-sahpool' })
+      const pool = await sqlite3.installOpfsSAHPoolVfs({ name: 'swarmpress-sahpool', directory: '.swarmpress-sahpool' })
       core = new SqliteCore(new pool.OpfsSAHPoolDb(`/${name}`))
       return { persistent: true, reason: null }
     } catch (e) {

@@ -5,7 +5,7 @@
 
 ## Context
 
-Light is gameplay information in SimPress. Many facts are readable at a glance only if the
+Light is gameplay information in swarm.press. Many facts are readable at a glance only if the
 lighting tells the truth:
 - the office fills in the morning;
 - a lamp on at 21:00 means overtime;

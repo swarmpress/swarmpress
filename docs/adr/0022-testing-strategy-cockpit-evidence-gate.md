@@ -8,7 +8,7 @@
 The legacy project declared features "complete" in `CLAUDE.md` checklists while they were broken
 at runtime. That is assertion, not evidence.
 
-SimPress spans many test technologies:
+swarm.press spans many test technologies:
 - Rust unit and property tests;
 - wasm tests under node and Chromium;
 - vitest with Babylon `NullEngine`;

@@ -1,14 +1,14 @@
 {
   "$schema": "../../../packages/sdk/schemas/manifest.schema.json",
-  "id": "dev.simpress.examples.ghost-publisher",
+  "id": "press.swarm.examples.ghost-publisher",
   "name": "Ghost publisher",
   "version": "0.1.0",
   "sdk": "^0.1.0",
-  "description": "A publish target: maps SimPress page JSON (headings, paragraphs, lists, quotes) to a Ghost Admin API post; draft, publish, status.",
+  "description": "A publish target: maps swarm.press page JSON (headings, paragraphs, lists, quotes) to a Ghost Admin API post; draft, publish, status.",
   "kinds": ["publish-target"],
   "capabilities": ["web"],
   "origins": ["https://demo.ghost.io"],
   "credential": { "kind": "ghost-admin", "scopes": ["posts:write"] },
   "entry": { "bundle": "src/index.ts" },
-  "provenance": { "author": { "name": "SimPress examples" } }
+  "provenance": { "author": { "name": "swarm.press examples" } }
 }

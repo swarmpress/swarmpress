@@ -9,7 +9,7 @@ use github::RepoId;
 use reqwest::Method;
 use serde_json::{json, Value};
 
-const LEASE: &str = "x-simpress-lease";
+const LEASE: &str = "x-swarmpress-lease";
 
 fn page(title: &str) -> Value {
     json!({ "title": { "en": title }, "blocks": [{ "type": "paragraph", "text": { "en": "Hello" } }] })
@@ -58,7 +58,7 @@ async fn events(s: &TestServer, cookie: &str) -> Vec<Value> {
 async fn draft_then_merge_lands_a_deploy_event() {
     let s = TestServer::start().await;
     let p = player(&s, 1).await;
-    let repo = RepoId::new("simpress-sites", "player1-site");
+    let repo = RepoId::new("swarmpress-sites", "player1-site");
 
     let (st, d) = draft(
         &s,
@@ -344,7 +344,7 @@ async fn deployment_status_webhook_lands_the_deploy() {
     })
     .await;
     let p = player(&s, 1).await;
-    let repo = RepoId::new("simpress-sites", "player1-site");
+    let repo = RepoId::new("swarmpress-sites", "player1-site");
     let (_, d) = draft(
         &s,
         &p,

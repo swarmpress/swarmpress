@@ -9,7 +9,7 @@
 //!   time; the holder renews by posting again (same `lease_id`). Another
 //!   device's unexpired lease answers 409 (`{error, holder, expires_at}`)
 //!   unless `force: true`, which takes it over with a new `lease_id`.
-//! - `DELETE /api/companies/{id}/lease` with `x-simpress-lease` releases it.
+//! - `DELETE /api/companies/{id}/lease` with `x-swarmpress-lease` releases it.
 
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -25,7 +25,7 @@ use crate::db::{accounts, Company, LeaseOutcome, User};
 use crate::error::{AppError, AppResult};
 use crate::gateway::parse_repo;
 
-pub const LEASE_HEADER: &str = "x-simpress-lease";
+pub const LEASE_HEADER: &str = "x-swarmpress-lease";
 
 #[derive(Deserialize)]
 pub struct CreateCompany {

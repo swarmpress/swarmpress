@@ -1,7 +1,7 @@
 /**
  * Zod source of every SDK document schema. `scripts/export-json-schema.ts`
  * writes the JSON Schemas in `schemas/` from these (the same pattern as
- * `@swarm-press/content-schema`); `pnpm --filter @simpress/sdk check` fails on drift.
+ * `@swarm-press/content-schema`); `pnpm --filter @swarm-press/sdk check` fails on drift.
  */
 import { z } from "zod";
 import { validRange, SEMVER_PATTERN } from "./semver.ts";
@@ -121,7 +121,7 @@ export const ManifestSchema = z
       .refine((c) => new Set(c).size === c.length, "capabilities must be unique"),
     entry: z
       .object({
-        /** Source entry of the JS bundle (TS or JS), built by `simpress build`. */
+        /** Source entry of the JS bundle (TS or JS), built by `swarmpress build`. */
         bundle: RelPath.optional(),
         content: z
           .object({
@@ -587,7 +587,7 @@ export const OpenDraftResultSchema = z
 export const MergeResultSchema = z.object({ mergedSha: z.string().min(1) }).strict();
 export const StatusResultSchema = z.object({ state: z.enum(["open", "merged", "deployed", "failed"]) }).strict();
 
-// ---------------------------------------------------------------- scenarios (`simpress test`)
+// ---------------------------------------------------------------- scenarios (`swarmpress test`)
 
 const WebFixture = z
   .object({

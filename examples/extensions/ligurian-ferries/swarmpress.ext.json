@@ -1,6 +1,6 @@
 {
   "$schema": "../../../packages/sdk/schemas/manifest.schema.json",
-  "id": "dev.simpress.examples.ligurian-ferries",
+  "id": "press.swarm.examples.ligurian-ferries",
   "name": "Ligurian ferries",
   "version": "0.1.0",
   "sdk": "^0.1.0",
@@ -10,5 +10,5 @@
   "origins": ["https://www.navigazionegolfodeipoeti.it"],
   "entry": { "bundle": "src/index.ts" },
   "poll": { "cadenceMinutes": 30, "regions": ["cinque-terre"] },
-  "provenance": { "author": { "name": "SimPress examples" } }
+  "provenance": { "author": { "name": "swarm.press examples" } }
 }

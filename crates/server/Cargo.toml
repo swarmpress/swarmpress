@@ -1,17 +1,17 @@
 [package]
 name = "server"
-description = "SimPress central server (local-first): auth, companies and leases, content gateway, event inbox, sync blobs, web fetch proxy, tracker (axum + tokio + sqlx/SQLite)"
+description = "swarm.press central server (local-first): auth, companies and leases, content gateway, event inbox, sync blobs, web fetch proxy, tracker (axum + tokio + sqlx/SQLite)"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 publish = false
 
 [lib]
-name = "simpress_server"
+name = "swarmpress_server"
 path = "src/lib.rs"
 
 [[bin]]
-name = "simpress-server"
+name = "swarmpress-server"
 path = "src/main.rs"
 
 [dependencies]

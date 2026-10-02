@@ -32,5 +32,5 @@ Decisions: [ADR-0003](../../adr/0003-deterministic-lockstep-server-authority.md)
 
 ## Evidence
 
-- `simpress/nextest`
-- `simpress/criterion`
+- `swarmpress/nextest`
+- `swarmpress/criterion`

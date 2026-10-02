@@ -73,7 +73,7 @@ fn signature_rejections() {
 }
 
 fn repo() -> RepoId {
-    RepoId::new("simpress-sites", "cinqueterre-travel")
+    RepoId::new("swarmpress-sites", "cinqueterre-travel")
 }
 
 #[test]

@@ -1,11 +1,11 @@
 /**
- * The part of the SDK that extension bundles import (`@simpress/sdk/runtime`).
+ * The part of the SDK that extension bundles import (`@swarm-press/sdk/runtime`).
  *
  * Everything here runs INSIDE the QuickJS sandbox (ADR-0042), so it must not
  * depend on anything the sandbox does not grant: no `TextEncoder`, no
  * `crypto`, no Node or Bun modules, no zod. The only ambient APIs it touches
  * are the sandbox globals `Bun.file`, `Bun.write`, `fetch`, `console` and
- * `simpress.llm`, and only when a handler actually calls a facade.
+ * `swarmpress.llm`, and only when a handler actually calls a facade.
  */
 
 // ---------------------------------------------------------------- shared shapes
@@ -134,7 +134,7 @@ export interface ToolDef<I = any, O = any> {
 export interface JobDef {
   description: string;
   handler(ctx: JobContext): Promise<JobResult> | JobResult;
-  /** Demo input (and scripted FakeLlm replies) the runner uses for `simpress run`. */
+  /** Demo input (and scripted FakeLlm replies) the runner uses for `swarmpress run`. */
   example?: { input: unknown; revision?: number; llm?: string[] };
 }
 
@@ -267,7 +267,7 @@ export interface StatusResult {
 
 /**
  * Publish-target context. `credentialRef` is opaque: send it as the
- * `X-SimPress-Credential` header and the host's credential proxy swaps it for
+ * `X-SwarmPress-Credential` header and the host's credential proxy swaps it for
  * the real secret outside the sandbox.
  */
 export interface PublishContext extends HostContext {
@@ -288,7 +288,7 @@ export interface PublishTargetExport {
 }
 
 /** Header that carries the opaque credential reference to the host. */
-export const CREDENTIAL_HEADER = "X-SimPress-Credential";
+export const CREDENTIAL_HEADER = "X-SwarmPress-Credential";
 
 // ---------------------------------------------------------------- panel, challenge (types only in v0)
 
@@ -308,7 +308,7 @@ declare const Bun: {
   file(path: string): { text(): Promise<string>; json(): Promise<any>; exists(): Promise<boolean> };
   write(path: string, data: string): Promise<number>;
 };
-declare const simpress: { llm: { complete(req: LlmRequest): Promise<LlmResponse> } } | undefined;
+declare const swarmpress: { llm: { complete(req: LlmRequest): Promise<LlmResponse> } } | undefined;
 
 class CapabilityMissing extends Error {
   constructor(what: string) {
@@ -350,8 +350,8 @@ function webFacade(credentialRef?: string): WebFacade {
 function llmFacade(): LlmFacade {
   return {
     async complete(req) {
-      if (typeof simpress === "undefined" || !simpress?.llm) throw new CapabilityMissing(`llm:${req.tier}`);
-      return simpress.llm.complete(req);
+      if (typeof swarmpress === "undefined" || !swarmpress?.llm) throw new CapabilityMissing(`llm:${req.tier}`);
+      return swarmpress.llm.complete(req);
     },
   };
 }
@@ -369,7 +369,7 @@ export function hostContext(): HostContext {
 
 // ---------------------------------------------------------------- define* helpers
 
-/** Identity helper for typing a manifest object in TS (the file on disk is `simpress.ext.json`). */
+/** Identity helper for typing a manifest object in TS (the file on disk is `swarmpress.ext.json`). */
 export function defineExtension<T>(manifest: T): T {
   return manifest;
 }

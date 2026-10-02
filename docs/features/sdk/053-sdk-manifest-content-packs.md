@@ -13,7 +13,7 @@ adrs:
 
 # Extension SDK: manifest, capabilities and content packs
 
-`@simpress/sdk` holds the zod sources and exported JSON Schemas for `simpress.ext.json` (id, semver
+`@swarm-press/sdk` holds the zod sources and exported JSON Schemas for `swarmpress.ext.json` (id, semver
 version, `sdk` range, kinds, capabilities, entry points, provenance) and for content-pack documents:
 personas (exactly `agents::Persona`), authored happenings built from the ADR-0037 effect primitives,
 and site-level prompt layers. Its `runtime` entry point (`defineSkill`, `defineRule`,

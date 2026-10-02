@@ -5,7 +5,7 @@
 
 ## Context
 
-SimPress is connected to the live internet: its output is real websites, and its staff should
+swarm.press is connected to the live internet: its output is real websites, and its staff should
 live in the real present. That means knowing today's date and holidays, the real weather at the
 office and at each project's location, and current events, including politics. It should show
 up in small talk, editorial decisions and timely content. Unbounded web access in every prompt

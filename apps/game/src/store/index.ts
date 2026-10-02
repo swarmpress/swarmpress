@@ -16,7 +16,7 @@ export { MIGRATIONS, SCHEMA_VERSION } from './schema'
 export type StoreChoice = StoreEngine | 'auto'
 
 export interface OpenStoreOptions {
-  /** Database file name in OPFS. Default `simpress.db`. */
+  /** Database file name in OPFS. Default `swarmpress.db`. */
   name?: string
   /** Default: `?store=` from the page URL, else `auto`. */
   engine?: StoreChoice
@@ -38,7 +38,7 @@ async function openTurso(name: string) {
 }
 
 export async function openCompanyStore(opts: OpenStoreOptions = {}): Promise<CompanyStore> {
-  const name = opts.name ?? 'simpress.db'
+  const name = opts.name ?? 'swarmpress.db'
   const choice =
     opts.engine ?? (typeof location !== 'undefined' ? storeChoiceFromQuery(location.search) : ('auto' as StoreChoice))
   switch (choice) {

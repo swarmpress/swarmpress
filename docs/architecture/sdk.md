@@ -21,14 +21,14 @@ touching the engine. They must not break three invariants:
 
 | Path | Package | What |
 |---|---|---|
-| `packages/sdk` | `@simpress/sdk` | zod sources and exported JSON Schemas (`schemas/*.schema.json`), TS types, `define*` helpers, semver |
-| `packages/sdk/src/runtime.ts` | `@simpress/sdk/runtime` | what bundles import: `defineSkill`, `defineRule`, `defineContextProvider`, `definePublishTarget`, `jobResult`, pure-JS SHA-256. No zod, safe inside the sandbox |
-| `packages/sandbox` | `@simpress/sandbox` | QuickJS in wasm with a Bun-compatible API subset; the same code in the browser and under Bun/Node |
-| `packages/runner` | `@simpress/runner` | the `simpress` CLI: `new`, `check`, `build`, `run`, `test`, `pack` |
+| `packages/sdk` | `@swarm-press/sdk` | zod sources and exported JSON Schemas (`schemas/*.schema.json`), TS types, `define*` helpers, semver |
+| `packages/sdk/src/runtime.ts` | `@swarm-press/sdk/runtime` | what bundles import: `defineSkill`, `defineRule`, `defineContextProvider`, `definePublishTarget`, `jobResult`, pure-JS SHA-256. No zod, safe inside the sandbox |
+| `packages/sandbox` | `@swarm-press/sandbox` | QuickJS in wasm with a Bun-compatible API subset; the same code in the browser and under Bun/Node |
+| `packages/runner` | `@swarm-press/runner` | the `swarmpress` CLI: `new`, `check`, `build`, `run`, `test`, `pack` |
 | `examples/extensions/*` | | one example per implemented kind |
 
 `pnpm test:sdk` runs all three packages' `bun test` suites (JUnit in `packages/*/reports/junit.xml`);
-`pnpm --filter @simpress/sandbox test:e2e` runs the browser parity test.
+`pnpm --filter @swarm-press/sandbox test:e2e` runs the browser parity test.
 
 ## Kinds
 
@@ -45,13 +45,13 @@ touching the engine. They must not break three invariants:
 
 One extension may declare several kinds; all code kinds share one bundle.
 
-## The manifest: `simpress.ext.json`
+## The manifest: `swarmpress.ext.json`
 
 Schema: [`packages/sdk/schemas/manifest.schema.json`](../../packages/sdk/schemas/manifest.schema.json).
 
 ```json
 {
-  "id": "dev.simpress.examples.ghost-publisher",
+  "id": "press.swarm.examples.ghost-publisher",
   "name": "Ghost publisher",
   "version": "0.1.0",
   "sdk": "^0.1.0",
@@ -60,7 +60,7 @@ Schema: [`packages/sdk/schemas/manifest.schema.json`](../../packages/sdk/schemas
   "origins": ["https://demo.ghost.io"],
   "credential": { "kind": "ghost-admin", "scopes": ["posts:write"] },
   "entry": { "bundle": "src/index.ts" },
-  "provenance": { "author": { "name": "SimPress examples" } }
+  "provenance": { "author": { "name": "swarm.press examples" } }
 }
 ```
 
@@ -95,7 +95,7 @@ the VM. There is no ambient authority.
 | `store:<table>` | `Bun.file/Bun.write("store/<table>/…")`; the SDK's `store.table(name)` facade | sandbox path check (no `..`, no absolute paths, other tables refused) |
 | `web` | `fetch` (only to `origins` when declared) through `host.web`: the central fetch proxy in the browser (ADR-0040), fixtures or the network in the runner | sandbox origin check, then the host |
 | `credits` | paid web calls (Firecrawl) and `llm:agency` | the central service (not in v0) |
-| `llm:<tier>` | `simpress.llm.complete({tier, system?, prompt})` for granted tiers | sandbox tier check |
+| `llm:<tier>` | `swarmpress.llm.complete({tier, system?, prompt})` for granted tiers | sandbox tier check |
 | `ui` | a panel iframe | the overlay (not in v0) |
 
 Ungranted globals are simply absent (`typeof fetch === "undefined"`); an ungranted path, origin or
@@ -111,7 +111,7 @@ returns `{load(bundleJs), call(exportPath, arg, {seed?, nowMs?}), exports(), dis
   QuickJS wasm instance from one cached compiled module (a few ms).
 - **Globals.** `Bun.file(path).text()/json()/exists()`, `Bun.write(path, string)`, `Bun.env = {}`,
   `fetch` (with `web`; the response has `status`, `ok`, `headers.get()`, `text()`, `json()`),
-  `simpress.llm.complete` (with `llm:*`), `console.*` → `host.log`. Nothing else: no `process`,
+  `swarmpress.llm.complete` (with `llm:*`), `console.*` → `host.log`. Nothing else: no `process`,
   `require`, timers, `std`/`os`, filesystem or network. The raw host functions are captured by a
   prelude closure and deleted from the global object before the bundle runs.
 - **Limits** (`SandboxLimitError.limit`):
@@ -128,7 +128,7 @@ returns `{load(bundleJs), call(exportPath, arg, {seed?, nowMs?}), exports(), dis
   the sandbox resolves the deferred and runs `executePendingJobs`. `call()` awaits the result via
   `vm.resolvePromise`, and fails loudly when the promise can never settle.
 - **Deterministic mode** (sim rules, challenge scores): `Math.random` is a seeded mulberry32,
-  `Date`/`Date.now()` are pinned, and `fetch`, `simpress.llm` and store writes are unavailable.
+  `Date`/`Date.now()` are pinned, and `fetch`, `swarmpress.llm` and store writes are unavailable.
   `call(…, {seed, nowMs})` reseeds per call, so a hook's output depends only on its input and seed,
   not on call history.
 - **Parity.** `packages/sandbox/e2e/parity.spec.ts` runs the fact-checker and coffee-machine
@@ -149,12 +149,12 @@ its message protocol are not part of v0.
 
 The **pack hash** is SHA-256 over the canonical JSON of every validated document, sorted by section
 and file. It is meant to become part of the world config, so two players with the same packs get the
-same world; until sim-core has that hook, `simpress run` reports packs without applying them.
+same world; until sim-core has that hook, `swarmpress run` reports packs without applying them.
 
 ## Agent skills
 
 ```ts
-import { defineSkill, jobResult } from "@simpress/sdk/runtime";
+import { defineSkill, jobResult } from "@swarm-press/sdk/runtime";
 export default defineSkill({
   tools: { name: { description, input /* JSON Schema */, run(input, ctx) } },
   jobs: { kind: { description, example?, async handler({ job, store, llm, web, log }) {
@@ -197,7 +197,7 @@ That design was dropped: rules are JS bundles in deterministic mode, and their o
   In SDK v0 the wasm `Sim` only takes postcard-encoded commands, so the runner logs rule output with
   `status: "proposed"` and does not apply it; a JSON command entry point in `client-wasm` (or an
   SDK-side postcard encoder) closes that gap.
-- Rule calls run in extension-id order after the sim steps. `simpress check` runs a rule twice
+- Rule calls run in extension-id order after the sim steps. `swarmpress check` runs a rule twice
   over one day and fails if the proposed commands differ.
 
 ## Context providers
@@ -226,7 +226,7 @@ definePublishTarget({
 });
 ```
 
-- `ctx.web.fetch` adds `X-SimPress-Credential: <credentialRef>`. The **credential proxy** (the
+- `ctx.web.fetch` adds `X-SwarmPress-Credential: <credentialRef>`. The **credential proxy** (the
   central server in production, `FakeHttpServer` in the runner) removes that header, looks the
   reference up, and sets the real `Authorization` (`Bearer`, `Basic`, `Ghost <token>`, or a custom
   header). The secret never enters the sandbox, and a bundle that sets `Authorization` itself is
@@ -252,22 +252,22 @@ definePublishTarget({
 
 1. A job of kind `author_extension` (IT or front-end staff) returns a bundle source and a manifest
    as its artifact, with `provenance.authoredBy = {staffId, company, jobId}`.
-2. The host builds it and runs `simpress check` and `simpress test` in the sandbox.
+2. The host builds it and runs `swarmpress check` and `swarmpress test` in the sandbox.
 3. A CEO ticket shows the diff, the requested capabilities and the test results. Options: install,
    reject. **The default on deadline is reject.**
-4. Approval installs it; the manifest keeps the provenance. `simpress check` warns on
+4. Approval installs it; the manifest keeps the provenance. `swarmpress check` warns on
    `authoredBy` that installation needs this approval.
 
 ## The runner
 
 | Command | Does |
 |---|---|
-| `simpress new <kind> <dir>` | scaffolds `content-pack`, `skill`, `sim-rule`, `context-provider` or `publish-target`, with a passing scenario |
-| `simpress check <dir>` | manifest and content schemas, `sdk` range, capability sanity, builds the bundle, checks its exports per kind, determinism replay for rules |
-| `simpress build <dir>` | `Bun.build` → `dist/ext.bundle.js` (one IIFE that assigns `globalThis.ext`, no externals; `@simpress/sdk` always resolves to the runner's runtime) plus its SHA-256 |
-| `simpress run [--seed S] [--days N] [--ext dir…] [--world demo\|empty] [--web fixtures\|live] [--json]` | loads `crates/client-wasm/pkg`, fast-forwards, prints per-day step and hash, runs rules, demo jobs, polls and the publish cycle through the sandbox |
-| `simpress test <dir>` | runs every `*.scenario.json` ([schema](../../packages/sdk/schemas/scenario.schema.json)): seed, days, expected hash (`0x…` or `"replay"`), rule commands, job digests, tool outputs, polls, publish cycles |
-| `simpress pack <dir> [--out f]` | refuses a failing check; writes a reproducible `<id>-<version>.simpress.tgz` with `simpress.integrity.json` (SHA-256 per file, pack hash, bundle path) |
+| `swarmpress new <kind> <dir>` | scaffolds `content-pack`, `skill`, `sim-rule`, `context-provider` or `publish-target`, with a passing scenario |
+| `swarmpress check <dir>` | manifest and content schemas, `sdk` range, capability sanity, builds the bundle, checks its exports per kind, determinism replay for rules |
+| `swarmpress build <dir>` | `Bun.build` → `dist/ext.bundle.js` (one IIFE that assigns `globalThis.ext`, no externals; `@swarm-press/sdk` always resolves to the runner's runtime) plus its SHA-256 |
+| `swarmpress run [--seed S] [--days N] [--ext dir…] [--world demo\|empty] [--web fixtures\|live] [--json]` | loads `crates/client-wasm/pkg`, fast-forwards, prints per-day step and hash, runs rules, demo jobs, polls and the publish cycle through the sandbox |
+| `swarmpress test <dir>` | runs every `*.scenario.json` ([schema](../../packages/sdk/schemas/scenario.schema.json)): seed, days, expected hash (`0x…` or `"replay"`), rule commands, job digests, tool outputs, polls, publish cycles |
+| `swarmpress pack <dir> [--out f]` | refuses a failing check; writes a reproducible `<id>-<version>.swarmpress.tgz` with `swarmpress.integrity.json` (SHA-256 per file, pack hash, bundle path) |
 
 The runner uses web-standard APIs plus a thin file shim, so it also runs under Node 22+ (type
 stripping); building bundles needs Bun, and Node reuses a prebuilt `dist/ext.bundle.js`.

@@ -24,7 +24,7 @@ Decisions: [ADR-0004](../../adr/0004-babylonjs-webgpu-webgl2-fallback.md).
 
 - [ ] Boots on WebGPU in the `webgpu` project with no page errors (except the allow-listed SwiftShader text upload).
 - [ ] Boots on WebGL2 in the `fallback` project and with `?renderer=webgl`.
-- [ ] The wasm sim is ticking (`__simpress.sim.step() > 5`).
+- [ ] The wasm sim is ticking (`__swarmpress.sim.step() > 5`).
 
 ## Evidence
 

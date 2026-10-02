@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "SimPress browser client: Babylon.js (WebGPU) isometric dollhouse view over the Rust/wasm simulation",
+  "description": "swarm.press browser client: Babylon.js (WebGPU) isometric dollhouse view over the Rust/wasm simulation",
   "scripts": {
     "wasm": "cargo xtask wasm",
     "wasm:release": "cargo xtask wasm --release",

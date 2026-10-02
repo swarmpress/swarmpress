@@ -1,4 +1,4 @@
-//! Deterministic simulation core for SimPress.
+//! Deterministic simulation core for swarm.press.
 //!
 //! Rules (see the plan's "Game design and sim model"):
 //! - integer / fixed-point math only, no floats: positions are millimetres

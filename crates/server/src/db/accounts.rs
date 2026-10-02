@@ -80,7 +80,7 @@ pub async fn upsert_github_user(
     .context("upsert github user")
 }
 
-/// Create or fetch the development user `login` (SIMPRESS_DEV_AUTH=1 only).
+/// Create or fetch the development user `login` (SWARMPRESS_DEV_AUTH=1 only).
 pub async fn upsert_dev_user(db: &Db, login: &str, now_ms: i64) -> Result<User> {
     sqlx::query_as::<_, User>(&format!(
         "INSERT INTO users (id, dev_login, login, created_at, updated_at)

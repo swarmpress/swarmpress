@@ -16,7 +16,7 @@ authoritative.
    minimum device tier. The server queues browser jobs in the same Postgres job table
    ([ADR-0008](0008-postgres-only-infrastructure.md)).
 2. **One worker per company.** A connected client acts as the company's worker. Across multiple
-   tabs, the **Web Locks API** (`navigator.locks.request('simpress-worker-<company>')`) elects a
+   tabs, the **Web Locks API** (`navigator.locks.request('swarmpress-worker-<company>')`) elects a
    single leader. Other tabs only render.
 3. **WebSocket frames:**
    - `JobOffer{job_id, kind, inputs_ref, schema_ref, min_tier}`

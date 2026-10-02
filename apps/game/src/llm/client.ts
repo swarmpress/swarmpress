@@ -63,7 +63,7 @@ export class LlmClient implements LocalLlm {
 
   /** Spawn the module worker (Vite bundles worker.ts as its own chunk). */
   static spawn(o: LlmClientOptions = {}): LlmClient {
-    const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module', name: 'simpress-llm' })
+    const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module', name: 'swarmpress-llm' })
     const client = new LlmClient(worker as unknown as Endpoint, o)
     client.terminate = () => worker.terminate()
     worker.addEventListener('error', (e) => client.failAll(new Error(`LLM worker crashed: ${e.message}`)))

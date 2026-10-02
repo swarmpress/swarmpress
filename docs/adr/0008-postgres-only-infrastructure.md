@@ -12,7 +12,7 @@ service. Most of its runtime bugs lived in the seams between them:
 - workflow determinism;
 - non-unique workflow ids.
 
-SimPress needs four kinds of storage and delivery:
+swarm.press needs four kinds of storage and delivery:
 - durable state (companies, command logs, snapshots, transcripts, tickets, `llm_calls`);
 - a job queue with leases and retries (LLM jobs, GitHub operations, SiteAudits);
 - wake-ups (a new job, a finished job, a webhook);

@@ -1,4 +1,4 @@
-//! Wire protocol between the SimPress server and browser client.
+//! Wire protocol between the swarm.press server and browser client.
 //! Frames are postcard-encoded; bump [`PROTO_VERSION`] on any breaking change.
 //!
 //! Command types are defined in `sim-core` (the sim must apply them) and

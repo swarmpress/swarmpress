@@ -1,4 +1,4 @@
-# SimPress roles and job executors.
+# swarm.press roles and job executors.
 #
 # Loaded by `agents::RolesConfig` (embedded at build time via include_str!,
 # overridable at runtime with RolesConfig::from_toml_str).

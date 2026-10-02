@@ -2,7 +2,7 @@
   "name": "@swarm-press/site-kit",
   "version": "0.1.0",
   "type": "module",
-  "description": "Platform-owned Astro 5 integration for SimPress sites: routing, content loading + validation, i18n, SEO, block registry, closed-world links/media and the `kit` CLI. Themes only own presentation.",
+  "description": "Platform-owned Astro 5 integration for swarm.press sites: routing, content loading + validation, i18n, SEO, block registry, closed-world links/media and the `kit` CLI. Themes only own presentation.",
   "license": "MIT",
   "main": "./src/index.ts",
   "types": "./src/index.ts",

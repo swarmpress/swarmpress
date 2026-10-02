@@ -632,7 +632,7 @@ async fn artifacts_download() {
 #[tokio::test]
 async fn template_and_pages() {
     let f = FakeGitHub::new();
-    let tpl = RepoId::new("simpress", "starter");
+    let tpl = RepoId::new("swarmpress", "starter");
     f.create_template_repo(
         &tpl,
         &[
@@ -640,7 +640,7 @@ async fn template_and_pages() {
             ("content/site.json", "{}"),
         ],
     );
-    let not_tpl = RepoId::new("simpress", "plain");
+    let not_tpl = RepoId::new("swarmpress", "plain");
     f.create_repo(&not_tpl, &[]);
 
     let nr = NewRepo {

@@ -18,7 +18,7 @@ Features: FEAT-017 to FEAT-029.
    `initAsync()`.
 2. If that fails, or `?renderer=webgl` is set, create a WebGL2 `Engine` with a stencil buffer.
 
-`window.__simpress.renderer` reports `webgpu` or `webgl2` for tests. Playwright runs two
+`window.__swarmpress.renderer` reports `webgpu` or `webgl2` for tests. Playwright runs two
 projects: `webgpu` (`--enable-unsafe-webgpu --use-angle=swiftshader
 --enable-features=Vulkan`) and `fallback`.
 

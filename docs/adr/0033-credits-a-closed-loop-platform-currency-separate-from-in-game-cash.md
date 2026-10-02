@@ -5,7 +5,7 @@
 
 ## Context
 
-Some things in SimPress cost the platform real money or are worth real money:
+Some things in swarm.press cost the platform real money or are worth real money:
 - Agency work on commercial LLMs (Claude on the server);
 - theme and template purchases;
 - asset packs, premium services, and later creator sales.

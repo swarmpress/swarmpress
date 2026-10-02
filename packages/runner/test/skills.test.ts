@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { artifactSha } from "@simpress/sdk";
+import { artifactSha } from "@swarm-press/sdk";
 import { runJob } from "../src/engine.ts";
 import { ext, log } from "./helpers.ts";
 

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://simpress.dev/sdk/0.1.0/manifest.schema.json",
+  "$id": "https://swarm.press/sdk/0.1.0/manifest.schema.json",
   "title": "manifest",
   "type": "object",
   "properties": {

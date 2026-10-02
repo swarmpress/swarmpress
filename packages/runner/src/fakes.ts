@@ -4,8 +4,8 @@
  * (publish targets: the secret is injected here, outside the sandbox).
  */
 import { dirname, join } from "node:path";
-import { CREDENTIAL_HEADER } from "@simpress/sdk";
-import type { HostLlm, HostWeb, HostWebRequest, HostWebResponse } from "@simpress/sandbox";
+import { CREDENTIAL_HEADER } from "@swarm-press/sdk";
+import type { HostLlm, HostWeb, HostWebRequest, HostWebResponse } from "@swarm-press/sandbox";
 import { readText } from "./host.ts";
 import { RunnerError } from "./wasm.ts";
 
@@ -49,7 +49,7 @@ export function fixtureWeb(fixtures: Record<string, WebFixture>, baseDir: string
   };
 }
 
-/** Real network (`simpress run --web live`). */
+/** Real network (`swarmpress run --web live`). */
 export const liveWeb: HostWeb = async (req) => {
   const res = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body ?? undefined });
   const headers: Record<string, string> = {};
@@ -81,7 +81,7 @@ export function subset(want: unknown, got: unknown): boolean {
 
 /**
  * A recorded fake server behind the credential proxy. The proxy takes the
- * opaque `X-SimPress-Credential` header off the request, looks the reference
+ * opaque `X-SwarmPress-Credential` header off the request, looks the reference
  * up, and sets the real `Authorization` (or custom) header; the bundle never
  * sees the secret.
  */

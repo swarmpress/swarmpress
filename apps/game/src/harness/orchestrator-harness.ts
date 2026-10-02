@@ -45,7 +45,7 @@ const SITE: SiteBindingJson = {
   language: 'en',
   style_guide: styleGuide,
   quality_bar: 7,
-  // The central server reports the deploy (SIMPRESS_SIMULATE_DEPLOY or the webhook).
+  // The central server reports the deploy (SWARMPRESS_SIMULATE_DEPLOY or the webhook).
   simulate_deploy: false,
   standup_max_turns: 4,
 }
@@ -265,7 +265,7 @@ declare global {
   }
 }
 
-const ready = openCompanyStore({ name: 'simpress-harness.db' }).then((s) => {
+const ready = openCompanyStore({ name: 'swarmpress-harness.db' }).then((s) => {
   store = s
   const i = info()
   statusEl.textContent = JSON.stringify(i, null, 2)

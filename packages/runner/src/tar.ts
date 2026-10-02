@@ -1,6 +1,6 @@
 /**
  * Minimal deterministic ustar writer plus gzip (web `CompressionStream`), for
- * `simpress pack`. Entries are sorted, mtimes are 0 and owners are empty, so
+ * `swarmpress pack`. Entries are sorted, mtimes are 0 and owners are empty, so
  * the same files always give the same tar bytes.
  */
 

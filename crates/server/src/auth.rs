@@ -3,10 +3,10 @@
 //! - `/auth/github/login`: random `state` in an HttpOnly cookie, redirect to GitHub.
 //! - `/auth/github/callback`: verify `state`, exchange `code`, fetch `/user`,
 //!   upsert the user, create a session row (sha256 of the token) and set the
-//!   `simpress_session` cookie (HttpOnly, SameSite=Lax, Secure on https).
+//!   `swarmpress_session` cookie (HttpOnly, SameSite=Lax, Secure on https).
 //! - `/auth/logout` (POST): delete the session and clear the cookie.
 //! - `/auth/dev/login` (POST `{login}`): development sign-in without GitHub,
-//!   only when `SIMPRESS_DEV_AUTH=1` (404 otherwise).
+//!   only when `SWARMPRESS_DEV_AUTH=1` (404 otherwise).
 
 use axum::extract::{FromRequestParts, Query, State};
 use axum::http::request::Parts;
@@ -22,8 +22,8 @@ use crate::app::AppState;
 use crate::db::{accounts, User};
 use crate::error::{AppError, AppResult};
 
-pub const SESSION_COOKIE: &str = "simpress_session";
-pub const STATE_COOKIE: &str = "simpress_oauth_state";
+pub const SESSION_COOKIE: &str = "swarmpress_session";
+pub const STATE_COOKIE: &str = "swarmpress_oauth_state";
 
 pub fn random_token() -> String {
     let mut b = [0u8; 32];
@@ -210,7 +210,7 @@ pub fn valid_dev_login(login: &str) -> bool {
 }
 
 /// `POST /auth/dev/login {login}`: create or fetch the dev user and sign in.
-/// 404 unless `SIMPRESS_DEV_AUTH=1`.
+/// 404 unless `SWARMPRESS_DEV_AUTH=1`.
 pub async fn dev_login(
     State(st): State<AppState>,
     jar: CookieJar,

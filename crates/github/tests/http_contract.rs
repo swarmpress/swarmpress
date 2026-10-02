@@ -671,7 +671,7 @@ async fn artifact_download_follows_redirect() {
 async fn create_repo_from_template_posts_generate() {
     let h = harness().await;
     Mock::given(method("POST"))
-        .and(path("/repos/simpress/starter/generate"))
+        .and(path("/repos/swarmpress/starter/generate"))
         .and(body_partial_json(json!({
             "owner": "players", "name": "acme-news", "private": true, "include_all_branches": false
         })))
@@ -685,7 +685,7 @@ async fn create_repo_from_template_posts_generate() {
         .mount(&h.server)
         .await;
     Mock::given(method("POST"))
-        .and(path("/repos/simpress/starter/generate"))
+        .and(path("/repos/swarmpress/starter/generate"))
         .respond_with(ResponseTemplate::new(422).set_body_json(json!({
             "message": "Could not clone: Name already exists on this account"
         })))
@@ -698,12 +698,12 @@ async fn create_repo_from_template_posts_generate() {
         description: None,
     };
     let info =
-        h.gh.create_repo_from_template(&RepoId::new("simpress", "starter"), &nr)
+        h.gh.create_repo_from_template(&RepoId::new("swarmpress", "starter"), &nr)
             .await
             .unwrap();
     assert_eq!(info.id, RepoId::new("players", "acme-news"));
     assert!(matches!(
-        h.gh.create_repo_from_template(&RepoId::new("simpress", "starter"), &nr)
+        h.gh.create_repo_from_template(&RepoId::new("swarmpress", "starter"), &nr)
             .await,
         Err(GitHubError::AlreadyExists(_))
     ));

@@ -33,5 +33,5 @@ Decisions: [ADR-0006](../../adr/0006-baked-gi-dynamic-lights-day-night.md), [ADR
 
 ## Evidence
 
-- `simpress/nextest`
+- `swarmpress/nextest`
 - `game/vitest` (`daylight.test.ts`)

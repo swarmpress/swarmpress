@@ -8,7 +8,7 @@ use common::TestServer;
 use futures::StreamExt;
 use reqwest::header::COOKIE;
 use serde_json::{json, Value};
-use simpress_server::events;
+use swarmpress_server::events;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
 

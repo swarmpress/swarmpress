@@ -1,4 +1,4 @@
-# Cockpit (https://github.com/drietsch/cockpit) derives per-feature health for SimPress from
+# Cockpit (https://github.com/drietsch/cockpit) derives per-feature health for swarm.press from
 # docs/features/**, docs/adr/**, the test and benchmark reports below, and git history.
 # Missing evidence is Unknown, never green. See docs/guides/testing.md and ADR-0022.
 #
@@ -8,8 +8,8 @@
 #   cockpit serve --watch                 # dashboard on http://127.0.0.1:4747
 
 [project]
-id = "simpress"
-name = "SimPress"
+id = "swarmpress"
+name = "swarm.press"
 primary_branch = "main"
 
 [features]
@@ -30,11 +30,11 @@ implementation_paths_exclude = ["docs/**", "**/*.md", "cockpit.toml", "assets/ou
 # `cargo nextest run --workspace --profile ci` → target/nextest/ci/junit.xml (.config/nextest.toml).
 # One report for the workspace, split per crate into components.
 [[evidence]]
-id = "simpress/nextest"
+id = "swarmpress/nextest"
 title = "cargo nextest (workspace)"
 format = "junit"
 kind = "unit"
-path = [".cockpit/evidence/simpress__nextest/**/*.xml", "target/nextest/ci/junit.xml"]
+path = [".cockpit/evidence/swarmpress__nextest/**/*.xml", "target/nextest/ci/junit.xml"]
 component = "sim"
 [evidence.github]
 repo = "swarmpress/swarmpress"
@@ -126,11 +126,11 @@ component = "net"
 # Golden determinism in wasm, under node and headless Chromium:
 # `cargo xtask wasm-test` → target/wasm-test/junit.xml
 [[evidence]]
-id = "simpress/wasm-bindgen-test"
+id = "swarmpress/wasm-bindgen-test"
 title = "wasm-bindgen-test (node + Chromium)"
 format = "junit"
 kind = "unit"
-path = [".cockpit/evidence/simpress__wasm-bindgen-test/**/*.xml", "target/wasm-test/junit.xml"]
+path = [".cockpit/evidence/swarmpress__wasm-bindgen-test/**/*.xml", "target/wasm-test/junit.xml"]
 component = "sim"
 [evidence.github]
 repo = "swarmpress/swarmpress"
@@ -226,7 +226,7 @@ branch = "main"
 
 [[evidence]]
 id = "runner/bun-test"
-title = "packages/runner bun test (simpress CLI, examples, golden hashes, extension kinds)"
+title = "packages/runner bun test (swarmpress CLI, examples, golden hashes, extension kinds)"
 format = "junit"
 kind = "integration"
 path = [".cockpit/evidence/runner__bun-test/**/*.xml", "packages/runner/reports/junit.xml"]
@@ -271,7 +271,7 @@ workflow = "ci.yml"
 artifact = "game-playwright"
 branch = "main"
 
-# The browser runtime against the real simpress-server, per store engine (turso, sqlite):
+# The browser runtime against the real swarmpress-server, per store engine (turso, sqlite):
 # `playwright test -c playwright.orchestrator.config.ts` (PW_JSON=reports/playwright-orchestrator.json).
 [[evidence]]
 id = "game/playwright-orchestrator"
@@ -287,7 +287,7 @@ artifact = "game-playwright-orchestrator"
 branch = "main"
 
 # The MVP acceptance test (docs/mvp.md): the real game page with `?central=1` against the real
-# simpress-server, one article from standup to published, then reload and a fresh context
+# swarmpress-server, one article from standup to published, then reload and a fresh context
 # (`playwright test -c playwright.mvp.config.ts`, PW_JSON=reports/playwright-mvp.json).
 [[evidence]]
 id = "game/playwright-mvp"
@@ -333,11 +333,11 @@ branch = "main"
 # ---------------------------------------------------------------- benchmarks
 # Criterion: sim-core step and pathfinding (`cargo bench -p sim-core`).
 [[evidence]]
-id = "simpress/criterion"
+id = "swarmpress/criterion"
 title = "criterion (sim-core)"
 format = "criterion"
 kind = "benchmark"
-path = [".cockpit/evidence/simpress__criterion/**/estimates.json", "target/criterion/**/new/estimates.json"]
+path = [".cockpit/evidence/swarmpress__criterion/**/estimates.json", "target/criterion/**/new/estimates.json"]
 component = "sim"
 features = ["FEAT-001"]
 [evidence.github]

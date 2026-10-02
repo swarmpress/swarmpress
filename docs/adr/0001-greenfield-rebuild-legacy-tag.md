@@ -12,7 +12,7 @@ fifteen runtime fixes: workflow determinism, outbox draining, state-audit column
 order and a block-shape normaliser. The infrastructure was far heavier than the job needed, and
 every fix exposed the next integration seam.
 
-The product direction has also changed. swarm.press becomes **SimPress**, a management game in
+The product direction has also changed. swarm.press becomes **swarm.press**, a management game in
 which the publishing house is a visible isometric building and the staff are agents. That needs
 a deterministic simulation, a real-time renderer and a server-authoritative multiplayer model,
 and the old stack has no place for any of them.

@@ -1,4 +1,4 @@
-//! Shared test helpers for SimPress crates.
+//! Shared test helpers for swarm.press crates.
 //!
 //! - [`oauth`]: a fake GitHub OAuth provider + API (wiremock)
 //! - [`ws`]: a postcard WebSocket test client (tokio-tungstenite)

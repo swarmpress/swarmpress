@@ -121,7 +121,7 @@ budget.
 1. Each `JobKind` has an executor policy and a minimum tier. The server queues browser jobs in the
    ordinary `jobs` table.
 2. One tab per company is the worker, elected with
-   `navigator.locks.request('simpress-worker-<company>', …)`. The lock is released automatically
+   `navigator.locks.request('swarmpress-worker-<company>', …)`. The lock is released automatically
    if the tab dies.
 3. The frames are `JobOffer` → `JobClaim` → `JobLease{lease_until}` → `JobProgress{delta}`… →
    `JobResult{artifact}` or `JobFailed`. Progress deltas stream into speech bubbles and the

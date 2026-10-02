@@ -10,9 +10,9 @@ use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
 use common::{Opts, TestServer};
 use reqwest::header::{CONTENT_TYPE, COOKIE, ORIGIN, REFERER, USER_AGENT};
 use serde_json::{json, Value};
-use simpress_server::db::tracker::{self as store, DailyRow};
-use simpress_server::db::{accounts, Db};
-use simpress_server::tracker::{
+use swarmpress_server::db::tracker::{self as store, DailyRow};
+use swarmpress_server::db::{accounts, Db};
+use swarmpress_server::tracker::{
     self, AnalyticsSignal, AnalyticsSignalSink, CleanEvent, PendingSignalSink, SaltKeeper,
     SinkOutcome,
 };

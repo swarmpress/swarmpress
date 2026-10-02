@@ -14,7 +14,7 @@
  * fails the draft loudly instead of being dropped. Text is escaped, never
  * parsed as Markdown.
  */
-import { definePublishTarget } from "@simpress/sdk/runtime";
+import { definePublishTarget } from "@swarm-press/sdk/runtime";
 
 const ORIGIN = "https://demo.ghost.io";
 const API = ORIGIN + "/ghost/api/admin";
@@ -83,7 +83,7 @@ export default definePublishTarget({
       html: pageToHtml(page),
       status: "draft",
       custom_excerpt: input.message.slice(0, 300),
-      tags: [{ name: "#simpress" }],
+      tags: [{ name: "#swarmpress" }],
     };
     const p = await ghost(
       await web.fetch(`${API}/posts/?source=html`, { method: "POST", headers: HEADERS, body: JSON.stringify({ posts: [post] }) }),

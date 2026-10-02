@@ -1,6 +1,6 @@
 [package]
 name = "github"
-description = "GitHub App client for SimPress site repos: auth, contents/branches/PRs/checks, path guard, rate governor, webhooks, FakeGitHub"
+description = "GitHub App client for swarm.press site repos: auth, contents/branches/PRs/checks, path guard, rate governor, webhooks, FakeGitHub"
 edition.workspace = true
 version.workspace = true
 license.workspace = true

@@ -1,9 +1,9 @@
 /**
- * `@simpress/sandbox`: runs one extension bundle in QuickJS compiled to wasm
+ * `@swarm-press/sandbox`: runs one extension bundle in QuickJS compiled to wasm
  * (ADR-0042), with a Bun-compatible API subset and nothing else.
  *
  * The same code runs in the browser (in a Worker) and under Bun/Node (the
- * `simpress` runner), so an extension behaves identically in both.
+ * `swarmpress` runner), so an extension behaves identically in both.
  *
  * Globals inside the VM:
  * - `Bun.file(path).text()/json()/exists()`, `Bun.write(path, string)`: mapped to
@@ -11,12 +11,12 @@
  *   read-only `pack/…` (the extension's own files);
  * - `Bun.env`: always `{}`;
  * - `fetch`: only with the `web` capability (and only to `origins`, when given);
- * - `simpress.llm.complete`: only with an `llm:<tier>` capability;
+ * - `swarmpress.llm.complete`: only with an `llm:<tier>` capability;
  * - `console.*`: routed to `host.log`;
  * - nothing else: no `process`, `require`, timers, filesystem or network.
  *
  * Deterministic mode (sim rules, challenges): `Math.random` is seeded,
- * `Date`/`Date.now()` are pinned, and `fetch`, `simpress.llm` and store
+ * `Date`/`Date.now()` are pinned, and `fetch`, `swarmpress.llm` and store
  * writes are unavailable.
  */
 import { newQuickJSWASMModuleFromVariant, newVariant } from "quickjs-emscripten-core";
@@ -263,7 +263,7 @@ const PRELUDE = String.raw`(function (H, CAPS, DET) {
     });
   };
   var write = function (path, data) {
-    if (typeof data !== "string") return Promise.reject(new TypeError("Bun.write: the SimPress sandbox accepts string data only"));
+    if (typeof data !== "string") return Promise.reject(new TypeError("Bun.write: the swarm.press sandbox accepts string data only"));
     return H.write(String(path), data);
   };
   globalThis.Bun = Object.freeze({ file: file, write: write, env: Object.freeze({}) });
@@ -293,7 +293,7 @@ const PRELUDE = String.raw`(function (H, CAPS, DET) {
     };
   }
   if (H.llm) {
-    globalThis.simpress = Object.freeze({
+    globalThis.swarmpress = Object.freeze({
       llm: Object.freeze({ complete: function (req) { return H.llm(JSON.stringify(req)).then(function (t) { return JSON.parse(t); }); } }),
     });
   }
@@ -557,7 +557,7 @@ export async function createSandbox(opts: SandboxOptions): Promise<Sandbox> {
 
   // ---- prelude
   begin();
-  const preludeFn = vm.unwrapResult(vm.evalCode(PRELUDE, "simpress-prelude.js"));
+  const preludeFn = vm.unwrapResult(vm.evalCode(PRELUDE, "swarmpress-prelude.js"));
   const capsH = vm.unwrapResult(vm.evalCode(JSON.stringify([...caps].sort())));
   const detH = det
     ? vm.unwrapResult(vm.evalCode(`(${JSON.stringify({ seed: foldSeed(det.seed), nowMs: det.nowMs })})`))

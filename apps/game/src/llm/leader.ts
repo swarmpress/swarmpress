@@ -2,13 +2,13 @@
  * Job-worker leadership across tabs (plan D: "across multiple tabs, a Web
  * Locks API leader election picks one worker").
  *
- * Primary: `navigator.locks.request('simpress-llm-worker:<companyId>')`.
+ * Primary: `navigator.locks.request('swarmpress-llm-worker:<companyId>')`.
  * The holder is the leader; other tabs queue on the same lock and take over
  * automatically when the leader tab closes or releases (the browser drops
  * the lock with the tab, so there is no stale-leader window).
  *
  * Status (model loaded, current job, state) is shared on a BroadcastChannel
- * `simpress-llm-status:<companyId>` so follower tabs can show what the
+ * `swarmpress-llm-status:<companyId>` so follower tabs can show what the
  * newsroom's brains are doing.
  *
  * Fallbacks:
@@ -82,8 +82,8 @@ type Msg =
   | { t: 'hb'; tabId: string; leader: boolean }
   | { t: 'bye'; tabId: string }
 
-export const lockName = (companyId: string) => `simpress-llm-worker:${companyId}`
-export const channelName = (companyId: string) => `simpress-llm-status:${companyId}`
+export const lockName = (companyId: string) => `swarmpress-llm-worker:${companyId}`
+export const channelName = (companyId: string) => `swarmpress-llm-status:${companyId}`
 
 function randomId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `tab-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`

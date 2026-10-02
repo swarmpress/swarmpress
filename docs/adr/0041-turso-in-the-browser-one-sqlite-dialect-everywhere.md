@@ -28,7 +28,7 @@ The options were checked on 2026-10-01:
 | `@tursodatabase/sync` | 0.8.1 | yes | — | syncs **only with Turso Cloud** |
 
 A spike in headless Chromium (the Playwright build; Vite with COOP `same-origin` and COEP `require-corp`) was successful:
-- `connect('simpress.db')` on OPFS;
+- `connect('swarmpress.db')` on OPFS;
 - 1,000 inserts in one transaction plus `json_extract`, in about 1.7 s including the cold wasm
   load;
 - after a reload, all rows were still there.

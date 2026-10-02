@@ -1,5 +1,5 @@
 /**
- * SimPress first-party analytics beacon (ADR-0032).
+ * swarm.press first-party analytics beacon (ADR-0032).
  *
  * - No cookies, no storage, no ids: the server counts visitors with a salted
  *   hash that rotates daily.

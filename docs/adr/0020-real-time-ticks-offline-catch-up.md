@@ -5,7 +5,7 @@
 
 ## Context
 
-The work in SimPress is real: an LLM pipeline from brief to merged PR takes 10 to 40 minutes of
+The work in swarm.press is real: an LLM pipeline from brief to merged PR takes 10 to 40 minutes of
 wall time, and a deploy takes minutes. The game clock must make that feel natural.
 
 Players are offline most of the time, and the company has to keep running. A server can't afford

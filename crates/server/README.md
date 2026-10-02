@@ -1,6 +1,6 @@
-# simpress-server
+# swarmpress-server
 
-The central SimPress server in the local-first architecture
+The central swarm.press server in the local-first architecture
 ([ADR-0038](../../docs/adr/0038-local-first-the-browser-is-authoritative-for-a-company.md)):
 the company itself (sim, plan, orchestrator, local LLM staff) runs in the
 player's browser, and this server keeps only what must be shared, secret or
@@ -13,37 +13,37 @@ analytics tracker. One binary, one process, embedded SQLite
 
 ```bash
 cp .env.example .env && set -a && . ./.env && set +a
-cargo run -p server --bin simpress-server
+cargo run -p server --bin swarmpress-server
 ```
 
-`DATABASE_URL` defaults to `sqlite://data/simpress.db?mode=rwc`; the file and
+`DATABASE_URL` defaults to `sqlite://data/swarmpress.db?mode=rwc`; the file and
 its directory are created on first start and `migrations/` run at startup.
-Sync blobs go under `SIMPRESS_DATA_DIR` (default `./data`). For local
-development set `SIMPRESS_DEV_AUTH=1` and `SIMPRESS_GITHUB=fake` (both are in
+Sync blobs go under `SWARMPRESS_DATA_DIR` (default `./data`). For local
+development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are in
 `.env.example`).
 
 ## Environment
 
 | Variable | Default | Notes |
 |---|---|---|
-| `DATABASE_URL` | `sqlite://data/simpress.db?mode=rwc` | `sqlite::memory:` works for throwaway runs |
-| `SIMPRESS_DATA_DIR` | `data` | sync blobs (`sync/{company}/log/*.bin`, `snapshot.bin`) |
-| `SIMPRESS_BIND` | `127.0.0.1:8080` | |
-| `SIMPRESS_PUBLIC_URL` | `http://localhost:5173` | OAuth redirect base; `https` makes cookies `Secure` |
-| `SIMPRESS_STATIC_DIR` | `apps/game/dist` | built client served at `/` (empty = off) |
-| `SIMPRESS_SESSION_TTL_SECS` | 2592000 | |
-| `SIMPRESS_DEV_AUTH` | off | `1` enables `POST /auth/dev/login`. Never in production |
+| `DATABASE_URL` | `sqlite://data/swarmpress.db?mode=rwc` | `sqlite::memory:` works for throwaway runs |
+| `SWARMPRESS_DATA_DIR` | `data` | sync blobs (`sync/{company}/log/*.bin`, `snapshot.bin`) |
+| `SWARMPRESS_BIND` | `127.0.0.1:8080` | |
+| `SWARMPRESS_PUBLIC_URL` | `http://localhost:5173` | OAuth redirect base; `https` makes cookies `Secure` |
+| `SWARMPRESS_STATIC_DIR` | `apps/game/dist` | built client served at `/` (empty = off) |
+| `SWARMPRESS_SESSION_TTL_SECS` | 2592000 | |
+| `SWARMPRESS_DEV_AUTH` | off | `1` enables `POST /auth/dev/login`. Never in production |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` | | GitHub sign-in (`GITHUB_OAUTH_AUTHORIZE_URL`, `GITHUB_OAUTH_TOKEN_URL`, `GITHUB_API_URL` override endpoints) |
-| `SIMPRESS_GITHUB` | real | `fake` = in-memory `github::FakeGitHub` (repos created on demand; state is lost on restart) |
+| `SWARMPRESS_GITHUB` | real | `fake` = in-memory `github::FakeGitHub` (repos created on demand; state is lost on restart) |
 | `GITHUB_TOKEN` | | real gateway with a static token |
 | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH` | | real gateway as the GitHub App (installation per repo). Without a token or App, gateway calls answer 503 |
-| `GITHUB_SITES_ORG` | `simpress-sites` | owner of the default site repo `{org}/{login}-site` |
+| `GITHUB_SITES_ORG` | `swarmpress-sites` | owner of the default site repo `{org}/{login}-site` |
 | `GITHUB_WEBHOOK_SECRET` | | `POST /webhooks/github` (503 when unset) |
-| `SIMPRESS_SIMULATE_DEPLOY` | on with `fake`, else off | emit `DeployLanded` right after a gateway merge |
-| `SIMPRESS_LEASE_SECS` | 90 | company lease length |
-| `SIMPRESS_SYNC_MAX_BYTES` | 67108864 | largest sync upload |
-| `SIMPRESS_WEB_FETCH_RATE_PER_MIN`, `SIMPRESS_WEB_FETCH_BURST` | 30, 10 | per-user token bucket for `/web/fetch` |
-| `SIMPRESS_TRACKER_*` | | see `.env.example` |
+| `SWARMPRESS_SIMULATE_DEPLOY` | on with `fake`, else off | emit `DeployLanded` right after a gateway merge |
+| `SWARMPRESS_LEASE_SECS` | 90 | company lease length |
+| `SWARMPRESS_SYNC_MAX_BYTES` | 67108864 | largest sync upload |
+| `SWARMPRESS_WEB_FETCH_RATE_PER_MIN`, `SWARMPRESS_WEB_FETCH_BURST` | 30, 10 | per-user token bucket for `/web/fetch` |
+| `SWARMPRESS_TRACKER_*` | | see `.env.example` |
 | `RUST_LOG` | `info,sqlx=warn` | |
 
 ## Routes
@@ -51,24 +51,24 @@ development set `SIMPRESS_DEV_AUTH=1` and `SIMPRESS_GITHUB=fake` (both are in
 | Route | Notes |
 |---|---|
 | `GET /healthz` | `{"status":"ok"}`, or 503 when the database is unavailable |
-| `GET /auth/github/login`, `GET /auth/github/callback` | GitHub OAuth web flow (state cookie, code exchange, `/user`), sets `simpress_session` (HttpOnly, SameSite=Lax, Secure on https) |
-| `POST /auth/dev/login` | `{login}` (1–39 of `[A-Za-z0-9_-]`) creates or fetches the dev user and signs in; 404 unless `SIMPRESS_DEV_AUTH=1` |
+| `GET /auth/github/login`, `GET /auth/github/callback` | GitHub OAuth web flow (state cookie, code exchange, `/user`), sets `swarmpress_session` (HttpOnly, SameSite=Lax, Secure on https) |
+| `POST /auth/dev/login` | `{login}` (1–39 of `[A-Za-z0-9_-]`) creates or fetches the dev user and signs in; 404 unless `SWARMPRESS_DEV_AUTH=1` |
 | `POST /auth/logout` | deletes the session, clears the cookie |
 | `GET /api/me` | `{user, company}`; 401 without a session |
 | `POST /api/companies` | `{name, site_repo?, base_branch?}` → 201 company; 409 when the caller already owns one |
 | `GET /api/companies/me` | the caller's company, or 404 |
 | `POST /api/companies/{id}/lease` | `{device_id, force?}` → `{lease_id, holder, expires_at, renewed}`. The holder renews by posting again (same `lease_id`); another device's unexpired lease answers 409 `{error, holder, expires_at}` unless `force: true` |
-| `DELETE /api/companies/{id}/lease` | with `x-simpress-lease`: release (204), 409 if not held |
+| `DELETE /api/companies/{id}/lease` | with `x-swarmpress-lease`: release (204), 409 if not held |
 | `POST /api/gateway/draft` | lease required. `{content_id, path, page, message, work_item?}` → `{number, branch, head_sha, created_pr, committed}` |
 | `POST /api/gateway/merge` | lease required. `{number, head_sha}` → `{merged_sha}`; only PRs this company opened through the gateway; 409 if the head moved |
 | `GET /api/events?after=&limit=` | `{events: [{seq, company_id, kind, payload, created_at}], last_seq}` (oldest first, max 500) |
 | `GET /ws/events?after=` | WebSocket (cookie auth): backlog after `after`, then live events, one JSON text frame each |
 | `POST /webhooks/github` | HMAC-verified (`X-Hub-Signature-256`), deduped by `X-GitHub-Delivery`. `deployment_status` success → `DeployLanded`, failure/error → `DeployFailed`, in every company bound to the repo |
 | `PUT /api/sync/{company}/log/{segment}` | raw bytes; 201 stored, 200 identical, 409 different bytes (immutable) |
-| `GET /api/sync/{company}/log/{segment}` | the bytes (`x-simpress-sha256`) |
+| `GET /api/sync/{company}/log/{segment}` | the bytes (`x-swarmpress-sha256`) |
 | `GET /api/sync/{company}/log` | `{segments: [{segment, sha256, size, created_at}]}` |
-| `PUT /api/sync/{company}/snapshot` | raw bytes, `x-simpress-step` required; replaces the latest snapshot |
-| `GET /api/sync/{company}/snapshot` | the bytes with `x-simpress-step` and `x-simpress-sha256`; 404 before the first |
+| `PUT /api/sync/{company}/snapshot` | raw bytes, `x-swarmpress-step` required; replaces the latest snapshot |
+| `GET /api/sync/{company}/snapshot` | the bytes with `x-swarmpress-step` and `x-swarmpress-sha256`; 404 before the first |
 | `GET /web/fetch?url=` | `{url, status, content_type, text}`; see below |
 | `POST /web/firecrawl/{*rest}` | 501 `{"error":"firecrawl requires credits (wave 3)"}` |
 | `GET/POST /api/projects` | the company's publications; `POST {simProjectId, slug, name, domain?, repo?}` mints a public `trackerKey` |
@@ -164,6 +164,6 @@ The collector serves `assets/tracker.min.js`, a committed build of
 
 - `POST /web/firecrawl/*` answers 501 until credits ship (wave 3).
 - The fetch proxy does not read robots.txt or cache yet (ADR-0040 asks for both).
-- `SIMPRESS_GITHUB=fake` keeps repos in memory only.
+- `SWARMPRESS_GITHUB=fake` keeps repos in memory only.
 - `PendingSignalSink` leaves nightly analytics signals `pending`; delivering them to the
   browser (as inbox events) is still to come.

@@ -1,7 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ManifestSchema } from "@simpress/sdk";
+import { ManifestSchema } from "@swarm-press/sdk";
 import { main } from "../src/cli.ts";
 import type { Out } from "../src/commands.ts";
 import { logger } from "../src/engine.ts";
@@ -11,7 +11,7 @@ export const ROOT = join(import.meta.dir, "..", "..", "..");
 export const EXAMPLES = join(ROOT, "examples", "extensions");
 export const CLI = join(import.meta.dir, "..", "src", "cli.ts");
 
-export async function simpress(...argv: string[]): Promise<{ code: number; out: string; err: string }> {
+export async function swarmpress(...argv: string[]): Promise<{ code: number; out: string; err: string }> {
   const o: string[] = [];
   const e: string[] = [];
   const sink: Out = { log: (l) => o.push(l), error: (l) => e.push(l) };
@@ -19,7 +19,7 @@ export async function simpress(...argv: string[]): Promise<{ code: number; out: 
   return { code, out: o.join("\n"), err: e.join("\n") };
 }
 
-export function tempDir(prefix = "simpress-"): string {
+export function tempDir(prefix = "swarmpress-"): string {
   return mkdtempSync(join(tmpdir(), prefix));
 }
 

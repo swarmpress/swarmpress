@@ -47,7 +47,7 @@ fn is_memory(url: &str) -> bool {
 
 impl Db {
     /// Open (creating if needed, with `?mode=rwc`) the database at `url`,
-    /// e.g. `sqlite://data/simpress.db?mode=rwc`. WAL, `foreign_keys=ON`,
+    /// e.g. `sqlite://data/swarmpress.db?mode=rwc`. WAL, `foreign_keys=ON`,
     /// `synchronous=NORMAL`, 5 s busy timeout. Does not migrate.
     pub async fn connect(url: &str) -> Result<Self> {
         let base = SqliteConnectOptions::from_str(url)
@@ -156,7 +156,7 @@ mod tests {
 
     #[tokio::test]
     async fn file_db_uses_wal_and_foreign_keys() {
-        let dir = std::env::temp_dir().join(format!("simpress-db-{}", new_id()));
+        let dir = std::env::temp_dir().join(format!("swarmpress-db-{}", new_id()));
         let url = format!("sqlite://{}/x.db?mode=rwc", dir.display());
         let db = Db::connect(&url).await.unwrap();
         db.migrate().await.unwrap();

@@ -32,7 +32,7 @@ use crate::auth::CurrentUser;
 use crate::error::{AppError, AppResult};
 
 pub const USER_AGENT: &str = concat!(
-    "SimPressFetch/",
+    "SwarmPressFetch/",
     env!("CARGO_PKG_VERSION"),
     " (+https://github.com/swarmpress/swarmpress)"
 );

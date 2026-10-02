@@ -1,4 +1,4 @@
--- SimPress central service schema (ADR-0038 local-first, ADR-0039 SQLite).
+-- swarm.press central service schema (ADR-0038 local-first, ADR-0039 SQLite).
 --
 -- Conventions:
 --   * ids are TEXT (uuid strings), except AUTOINCREMENT-like INTEGER PRIMARY KEY
@@ -12,7 +12,7 @@
 -- ------------------------------------------------------------ accounts
 
 -- A player signs in with GitHub OAuth (github_id) or, in development only,
--- with the dev login (dev_login, SIMPRESS_DEV_AUTH=1).
+-- with the dev login (dev_login, SWARMPRESS_DEV_AUTH=1).
 CREATE TABLE users (
     id          TEXT PRIMARY KEY,
     github_id   INTEGER UNIQUE,
@@ -103,7 +103,7 @@ CREATE TABLE webhook_deliveries (
 -- ------------------------------------------------------------ sync
 
 -- Index rows for the company's append-only command-log segments. The bytes
--- are files under SIMPRESS_DATA_DIR; a segment never changes once written.
+-- are files under SWARMPRESS_DATA_DIR; a segment never changes once written.
 CREATE TABLE sync_segments (
     company_id  TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     segment     INTEGER NOT NULL CHECK (segment >= 0),
@@ -156,7 +156,7 @@ CREATE TABLE tracker_salts (
     expires_at  INTEGER NOT NULL
 );
 
--- Raw events, short retention (SIMPRESS_TRACKER_RAW_RETENTION_DAYS).
+-- Raw events, short retention (SWARMPRESS_TRACKER_RAW_RETENTION_DAYS).
 CREATE TABLE tracker_events (
     id               INTEGER PRIMARY KEY,
     project_id       TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,

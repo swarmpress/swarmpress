@@ -1,9 +1,9 @@
 {
-  "name": "@simpress/sdk",
+  "name": "@swarm-press/sdk",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "SimPress extension SDK: manifest and content-pack schemas, skill and sim-rule contracts, define* helpers (ADR-0042)",
+  "description": "swarm.press extension SDK: manifest and content-pack schemas, skill and sim-rule contracts, define* helpers (ADR-0042)",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

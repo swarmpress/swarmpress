@@ -1,5 +1,5 @@
 /**
- * Typed client for the central SimPress server (crates/server, ADR-0038/0039).
+ * Typed client for the central swarm.press server (crates/server, ADR-0038/0039).
  *
  * - auth: dev login, `me`, logout (cookie session; same origin through the
  *   Vite proxy in dev/preview);
@@ -15,9 +15,9 @@
  * on the server.
  */
 
-export const LEASE_HEADER = 'x-simpress-lease'
-export const STEP_HEADER = 'x-simpress-step'
-export const SHA_HEADER = 'x-simpress-sha256'
+export const LEASE_HEADER = 'x-swarmpress-lease'
+export const STEP_HEADER = 'x-swarmpress-step'
+export const SHA_HEADER = 'x-swarmpress-sha256'
 
 export interface CentralUser {
   id: string
@@ -173,7 +173,7 @@ export class CentralClient {
 
   // ------------------------------------------------------------ auth
 
-  /** `POST /auth/dev/login` (only with SIMPRESS_DEV_AUTH=1 on the server). */
+  /** `POST /auth/dev/login` (only with SWARMPRESS_DEV_AUTH=1 on the server). */
   devLogin(login: string): Promise<{ user: CentralUser }> {
     return this.json('POST', '/auth/dev/login', { json: { login } })
   }

@@ -31,4 +31,4 @@ Decisions: [ADR-0010](../../adr/0010-claude-over-raw-http.md), [ADR-0024](../../
 
 ## Evidence
 
-- `simpress/nextest`
+- `swarmpress/nextest`

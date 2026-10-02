@@ -1,5 +1,5 @@
 {
-  "name": "@simpress-examples/coffee-machine-rule",
+  "name": "@swarm-press-examples/coffee-machine-rule",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,6 +9,6 @@
     "test": "bun ../../../packages/runner/src/cli.ts test ."
   },
   "devDependencies": {
-    "@simpress/sdk": "workspace:*"
+    "@swarm-press/sdk": "workspace:*"
   }
 }

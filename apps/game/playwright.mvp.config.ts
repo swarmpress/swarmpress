@@ -2,14 +2,14 @@ import { defineConfig } from '@playwright/test'
 
 // e2e/mvp.spec.ts: the MVP acceptance test (docs/mvp.md), on the REAL game
 // page (`/?central=1`, the production build in dist/) against the real central
-// server. Two web servers: simpress-server (built by e2e/central-server.mjs,
+// server. Two web servers: swarmpress-server (built by e2e/central-server.mjs,
 // dev auth + fake GitHub + simulated deploys) and the Vite preview of the
 // production build, proxying /auth /api /ws /web to it. One project per store
 // engine. Ports differ from the default and orchestrator configs so the suites
 // can run side by side.
 const executablePath = process.env.CHROMIUM_PATH || undefined
-const central = process.env.SIMPRESS_MVP_BIND ?? '127.0.0.1:18081'
-const port = Number(process.env.SIMPRESS_MVP_PORT ?? 4176)
+const central = process.env.SWARMPRESS_MVP_BIND ?? '127.0.0.1:18081'
+const port = Number(process.env.SWARMPRESS_MVP_PORT ?? 4176)
 
 export default defineConfig({
   testDir: 'e2e',
@@ -31,14 +31,14 @@ export default defineConfig({
       reuseExistingServer: false,
       stdout: 'ignore',
       stderr: 'pipe',
-      env: { SIMPRESS_E2E_BIND: central },
+      env: { SWARMPRESS_E2E_BIND: central },
     },
     {
       command: `pnpm exec vite build && pnpm exec vite preview --port ${port} --strictPort`,
       url: `http://localhost:${port}/`,
       timeout: 300_000,
       reuseExistingServer: false,
-      env: { SIMPRESS_CENTRAL_URL: `http://${central}` },
+      env: { SWARMPRESS_CENTRAL_URL: `http://${central}` },
     },
   ],
   projects: [

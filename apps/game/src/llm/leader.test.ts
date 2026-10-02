@@ -92,7 +92,7 @@ describe('leader election with Web Locks', () => {
     const b = electLeader({ companyId: 'c2', tabId: 'B', locks, createChannel: null })
     await flush()
     expect(a.isLeader && b.isLeader).toBe(true)
-    expect(lockName('c1')).toBe('simpress-llm-worker:c1')
+    expect(lockName('c1')).toBe('swarmpress-llm-worker:c1')
   })
 
   it('leader status is broadcast to followers; followers cannot publish', async () => {

@@ -1,15 +1,15 @@
 # Runbook: operations
 
-How to run, observe and recover a SimPress deployment. Most of this describes the M2–M9 server.
+How to run, observe and recover a swarm.press deployment. Most of this describes the M2–M9 server.
 At M0 there is no server in production.
 
 ## Topology
 
 | Piece | Runs as | State |
 |---|---|---|
-| `server` | one Rust binary (axum + tokio), **one process** (ADR-0039): the central role only, since companies run in the browser (ADR-0038) | SQLite + `SIMPRESS_DATA_DIR` |
-| SQLite | embedded, WAL, one file (`data/simpress.db`); one writer connection, parallel readers | users, sessions, companies, leases, event inbox, gateway PRs, webhook deliveries, sync index, tracker |
-| Sync blobs | files under `SIMPRESS_DATA_DIR/sync/{company}/` (object storage later) | command-log segments, latest snapshot per company |
+| `server` | one Rust binary (axum + tokio), **one process** (ADR-0039): the central role only, since companies run in the browser (ADR-0038) | SQLite + `SWARMPRESS_DATA_DIR` |
+| SQLite | embedded, WAL, one file (`data/swarmpress.db`); one writer connection, parallel readers | users, sessions, companies, leases, event inbox, gateway PRs, webhook deliveries, sync index, tracker |
+| Sync blobs | files under `SWARMPRESS_DATA_DIR/sync/{company}/` (object storage later) | command-log segments, latest snapshot per company |
 | Static client | `apps/game/dist` on a CDN | — |
 | Assets | `assets/out` on a CDN (KTX2/glTF), model shards from Hugging Face or a mirror | — |
 | Site repos | GitHub (platform org), GitHub Pages | content |
@@ -18,17 +18,17 @@ At M0 there is no server in production.
 
 | Variable | Notes |
 |---|---|
-| `DATABASE_URL` | default `sqlite://data/simpress.db?mode=rwc` |
-| `SIMPRESS_DATA_DIR` | sync blobs; default `./data` |
-| `SIMPRESS_DEV_AUTH` | `1` enables `POST /auth/dev/login`. **Never in production** |
-| `SIMPRESS_GITHUB` | `fake` = in-memory FakeGitHub for the content gateway; anything else = real GitHub |
+| `DATABASE_URL` | default `sqlite://data/swarmpress.db?mode=rwc` |
+| `SWARMPRESS_DATA_DIR` | sync blobs; default `./data` |
+| `SWARMPRESS_DEV_AUTH` | `1` enables `POST /auth/dev/login`. **Never in production** |
+| `SWARMPRESS_GITHUB` | `fake` = in-memory FakeGitHub for the content gateway; anything else = real GitHub |
 | `GITHUB_TOKEN` or `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY_PATH` | content gateway credentials. Missing → gateway answers 503 |
 | `GITHUB_WEBHOOK_SECRET` | `POST /webhooks/github` (`deployment_status` → `DeployLanded`) |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` | OAuth sign-in |
 | `GITHUB_SITES_ORG` | owner of default site repos (`{org}/{login}-site`) |
-| `SIMPRESS_SIMULATE_DEPLOY` | emit `DeployLanded` right after a gateway merge (default on with the fake GitHub) |
-| `SIMPRESS_LEASE_SECS` | company lease length, default 90 |
-| `RUST_LOG` | e.g. `info,simpress_server=debug` |
+| `SWARMPRESS_SIMULATE_DEPLOY` | emit `DeployLanded` right after a gateway merge (default on with the fake GitHub) |
+| `SWARMPRESS_LEASE_SECS` | company lease length, default 90 |
+| `RUST_LOG` | e.g. `info,swarmpress_server=debug` |
 
 See `.env.example` for the full list (tracker, web fetch limits).
 

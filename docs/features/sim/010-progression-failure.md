@@ -24,4 +24,4 @@ Decisions: [ADR-0021](../../adr/0021-economy-tied-to-real-site-signals.md).
 
 ## Evidence
 
-- `simpress/nextest`
+- `swarmpress/nextest`

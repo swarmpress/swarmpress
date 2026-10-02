@@ -21,7 +21,7 @@ import { mountOverlay, selectDataSource } from './ui/mount'
  *   central=1          the MVP loop: dev login, company store, central server, orchestrator
  *                      (src/session/session.ts; also login=, llm=fake, store=, ff=HH:MM)
  * With t=, the loop stops once the scene is ready and 20 frames are drawn
- * (`__simpress.still()` turns true) so screenshots are stable and cheap.
+ * (`__swarmpress.still()` turns true) so screenshots are stable and cheap.
  */
 
 /** If the WebGPU device dies before this many frames, reload on WebGL2. */
@@ -145,7 +145,7 @@ async function main() {
   })
   window.addEventListener('resize', () => engine.resize())
 
-  ;(window as unknown as { __simpress: unknown }).__simpress = {
+  ;(window as unknown as { __swarmpress: unknown }).__swarmpress = {
     renderer,
     fallback: params.get('fallback'),
     sim,

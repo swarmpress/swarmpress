@@ -59,7 +59,7 @@ impl AppState {
         github: Arc<RepoBackend>,
     ) -> Self {
         let http = reqwest::Client::builder()
-            .user_agent(concat!("simpress-server/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("swarmpress-server/", env!("CARGO_PKG_VERSION")))
             .timeout(std::time::Duration::from_secs(20))
             .build()
             .expect("http client");
@@ -251,7 +251,7 @@ pub async fn serve(
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> Result<()> {
     let app = router(st);
-    tracing::info!(addr = %listener.local_addr()?, "simpress server listening");
+    tracing::info!(addr = %listener.local_addr()?, "swarmpress server listening");
     // Connect info gives the tracker collector the peer IP (rate limiting and
     // the salted visitor hash; never stored).
     axum::serve(

@@ -1,12 +1,12 @@
-# SimPress documentation
+# swarm.press documentation
 
-SimPress is a browser management sim in which each player is the CEO of an AI publishing house.
+swarm.press is a browser management sim in which each player is the CEO of an AI publishing house.
 The house appears as a detailed isometric 3D building rendered with Babylon.js on WebGPU. The
 staff are real LLM agents: their meetings play out as speech bubbles, and their work produces
 **one real website per player**. The user's own company is the imported, still-live
 [cinqueterre.travel](https://cinqueterre.travel).
 
-SimPress is a greenfield rebuild of swarm.press ([ADR-0001](adr/0001-greenfield-rebuild-legacy-tag.md)).
+swarm.press is a greenfield rebuild of swarm.press ([ADR-0001](adr/0001-greenfield-rebuild-legacy-tag.md)).
 The legacy TypeScript code is reachable at the git tag `legacy-ts`.
 
 ## Where things are
@@ -36,8 +36,8 @@ The legacy TypeScript code is reachable at the git tag `legacy-ts`.
 - [Site kit](architecture/site-kit.md): `@swarm-press/site-kit` and agent-authored themes
 - [Lighting and rendering](architecture/lighting-and-rendering.md): Babylon/WebGPU, cutaway,
   lighting, quality tiers
-- [Extension SDK](architecture/sdk.md): extension kinds, `simpress.ext.json`, capabilities, the
-  QuickJS sandbox, the `simpress` runner, the sim-rule contract
+- [Extension SDK](architecture/sdk.md): extension kinds, `swarmpress.ext.json`, capabilities, the
+  QuickJS sandbox, the `swarmpress` runner, the sim-rule contract
 - [Browser runtime](architecture/browser-runtime.md): the company store (Turso wasm / sqlite-wasm
   on OPFS), the central API client, the orchestrator-wasm bridge, cross-origin isolation
 

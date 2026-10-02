@@ -29,6 +29,6 @@ Decisions: [ADR-0011](../../adr/0011-orchestrator-owns-state-transitions.md), [A
 
 ## Evidence
 
-- `simpress/nextest`
+- `swarmpress/nextest`
 - `game/vitest` (inbox components)
 - `game/playwright-e2e` (inbox flow)

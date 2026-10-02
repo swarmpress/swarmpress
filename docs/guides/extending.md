@@ -12,8 +12,8 @@ You need Bun 1.3, and, for anything that runs the sim, the client-wasm build:
 ```sh
 pnpm install
 cargo xtask wasm            # writes crates/client-wasm/pkg (the runner tells you if it is missing)
-alias simpress="bun $PWD/packages/runner/src/cli.ts"   # or: pnpm simpress <command> …
-simpress help
+alias swarmpress="bun $PWD/packages/runner/src/cli.ts"   # or: pnpm swarmpress <command> …
+swarmpress help
 ```
 
 The runner also runs under Node 22+ (`node packages/runner/src/cli.ts …`), except `build`, which
@@ -22,7 +22,7 @@ needs `Bun.build`.
 ## 1. Scaffold
 
 ```sh
-simpress new skill extensions/headline-doctor
+swarmpress new skill extensions/headline-doctor
 ```
 
 Kinds with templates: `content-pack`, `skill`, `sim-rule`, `context-provider`, `publish-target`.
@@ -30,12 +30,12 @@ The skill template creates:
 
 ```
 extensions/headline-doctor/
-  simpress.ext.json              # id, version, sdk range, kinds, capabilities, entry
+  swarmpress.ext.json              # id, version, sdk range, kinds, capabilities, entry
   src/index.ts                   # defineSkill({ tools, jobs })
   test/summarize.scenario.json   # a passing scenario
 ```
 
-Edit `simpress.ext.json`: pick a reverse-DNS `id` you own, and request only the capabilities you
+Edit `swarmpress.ext.json`: pick a reverse-DNS `id` you own, and request only the capabilities you
 use. Players see them on install.
 
 ```json
@@ -52,10 +52,10 @@ use. Players see them on install.
 
 ## 2. Write the code
 
-Import from `@simpress/sdk/runtime` (it is bundled into your extension and runs in the sandbox):
+Import from `@swarm-press/sdk/runtime` (it is bundled into your extension and runs in the sandbox):
 
 ```ts
-import { defineSkill, jobResult } from "@simpress/sdk/runtime";
+import { defineSkill, jobResult } from "@swarm-press/sdk/runtime";
 
 export default defineSkill({
   jobs: {
@@ -78,7 +78,7 @@ Rules of the road:
 - Return `{artifact, digest}` (use `jobResult`). Never a stage, an approval or a merge: the
   orchestrator decides those.
 - Inside the sandbox you have `Bun.file`/`Bun.write` (your granted `store/<table>/…` paths and your
-  own files under `pack/…`), `fetch` (with `web`), `simpress.llm` (with `llm:<tier>`) and `console`.
+  own files under `pack/…`), `fetch` (with `web`), `swarmpress.llm` (with `llm:<tier>`) and `console`.
   Nothing else: no `process`, `require`, timers or filesystem.
 - Calls have a memory cap, an operation budget and a wall-time budget; a breach fails the call.
 - Sim rules run in deterministic mode: `Math.random` is seeded and `Date` is pinned, and their
@@ -91,7 +91,7 @@ Content packs have no code: add persona, happening and prompt-layer files and li
 ## 3. Check
 
 ```sh
-simpress check extensions/headline-doctor
+swarmpress check extensions/headline-doctor
 ```
 
 `check` validates the manifest and every content file against the SDK schemas, checks that the
@@ -103,7 +103,7 @@ advice.
 ## 4. Run
 
 ```sh
-simpress run --seed 42 --days 3 --ext extensions/headline-doctor
+swarmpress run --seed 42 --days 3 --ext extensions/headline-doctor
 ```
 
 The runner loads the same wasm sim the browser runs, fast-forwards it, and prints one line per
@@ -121,7 +121,7 @@ Add `--json` for a machine-readable report. Load several extensions with repeate
 ## 5. Test
 
 ```sh
-simpress test extensions/headline-doctor
+swarmpress test extensions/headline-doctor
 ```
 
 `test` runs every `*.scenario.json` under the folder
@@ -155,12 +155,12 @@ simpress test extensions/headline-doctor
 ## 6. Pack
 
 ```sh
-simpress pack extensions/headline-doctor
-# ✓ extensions/headline-doctor/dist/org.example.headline-doctor-0.1.0.simpress.tgz: 5 files, …, sha256 …
+swarmpress pack extensions/headline-doctor
+# ✓ extensions/headline-doctor/dist/org.example.headline-doctor-0.1.0.swarmpress.tgz: 5 files, …, sha256 …
 ```
 
 `pack` refuses an extension that fails `check`, builds the bundle, and writes a reproducible
-tar.gz with the manifest, sources, `dist/ext.bundle.js` and `simpress.integrity.json` (a SHA-256 per
+tar.gz with the manifest, sources, `dist/ext.bundle.js` and `swarmpress.integrity.json` (a SHA-256 per
 file plus the pack hash). That archive is what a future marketplace listing (ADR-0033) and the
 staff-authored approval flow consume.
 
@@ -174,4 +174,4 @@ staff-authored approval flow consume.
 | `examples/extensions/ligurian-ferries` | context provider | parsing an HTML timetable, a transport fact, a happening candidate, cursors |
 | `examples/extensions/ghost-publisher` | publish target | page blocks → Ghost Admin API HTML, the credential proxy, a recorded server |
 
-Each one passes `simpress check` and `simpress test`; `pnpm test:sdk` runs them in CI.
+Each one passes `swarmpress check` and `swarmpress test`; `pnpm test:sdk` runs them in CI.

@@ -5,12 +5,12 @@ mod common;
 use common::{cookie_pair, set_cookie_header, Opts, TestServer};
 use reqwest::header::{COOKIE, LOCATION};
 use serde_json::json;
-use simpress_server::db::accounts;
+use swarmpress_server::db::accounts;
 
 #[tokio::test]
 async fn migrations_apply_and_constraints_hold() {
     let s = TestServer::start().await;
-    let names: Vec<String> = simpress_server::db::tracker::schema_columns(&s.db)
+    let names: Vec<String> = swarmpress_server::db::tracker::schema_columns(&s.db)
         .await
         .unwrap()
         .into_iter()
@@ -90,7 +90,7 @@ async fn oauth_login_creates_session_and_me_works() {
     let token = cookie.split_once('=').unwrap().1;
     assert!(!accounts::session_exists(&s.db, token).await.unwrap());
     assert!(
-        accounts::session_exists(&s.db, &simpress_server::auth::session_id_hash(token))
+        accounts::session_exists(&s.db, &swarmpress_server::auth::session_id_hash(token))
             .await
             .unwrap()
     );
@@ -113,7 +113,7 @@ async fn session_cookie_attributes() {
         .send()
         .await
         .unwrap();
-    let state_hdr = set_cookie_header(&res, "simpress_oauth_state").unwrap();
+    let state_hdr = set_cookie_header(&res, "swarmpress_oauth_state").unwrap();
     assert!(state_hdr.contains("HttpOnly"), "{state_hdr}");
     assert!(state_hdr.contains("SameSite=Lax"), "{state_hdr}");
     let loc = res.headers()[LOCATION].to_str().unwrap().to_string();
@@ -131,12 +131,12 @@ async fn session_cookie_attributes() {
         .get(s.url(&format!(
             "/auth/github/callback?code=attrcode&state={state}"
         )))
-        .header(COOKIE, cookie_pair(&res, "simpress_oauth_state").unwrap())
+        .header(COOKIE, cookie_pair(&res, "swarmpress_oauth_state").unwrap())
         .send()
         .await
         .unwrap();
     assert_eq!(res.headers()[LOCATION], "http://localhost:5173/");
-    let sess = set_cookie_header(&res, "simpress_session").unwrap();
+    let sess = set_cookie_header(&res, "swarmpress_session").unwrap();
     assert!(
         sess.contains("HttpOnly") && sess.contains("SameSite=Lax") && sess.contains("Path=/"),
         "{sess}"
@@ -166,18 +166,18 @@ async fn oauth_rejects_bad_state_and_bad_code() {
     let res = s
         .http
         .get(s.url("/auth/github/callback?code=goodcode&state=abc"))
-        .header(COOKIE, "simpress_oauth_state=def")
+        .header(COOKIE, "swarmpress_oauth_state=def")
         .send()
         .await
         .unwrap();
     assert_eq!(res.status(), 400);
-    assert!(cookie_pair(&res, "simpress_session").is_none());
+    assert!(cookie_pair(&res, "swarmpress_session").is_none());
 
     // Unknown code: GitHub returns an error body.
     let res = s
         .http
         .get(s.url("/auth/github/callback?code=nope&state=abc"))
-        .header(COOKIE, "simpress_oauth_state=abc")
+        .header(COOKIE, "swarmpress_oauth_state=abc")
         .send()
         .await
         .unwrap();
@@ -190,7 +190,7 @@ async fn oauth_rejects_bad_state_and_bad_code() {
 
     // Forged session cookie.
     let (status, _) = s
-        .get_json("/api/me", Some("simpress_session=deadbeef"))
+        .get_json("/api/me", Some("swarmpress_session=deadbeef"))
         .await;
     assert_eq!(status, 401);
 }
@@ -254,7 +254,7 @@ async fn one_company_per_user() {
         .await;
     assert_eq!(status, 201, "{c}");
     assert_eq!(c["name"], "Carol Press");
-    assert_eq!(c["site_repo"], "simpress-sites/carol-site");
+    assert_eq!(c["site_repo"], "swarmpress-sites/carol-site");
     assert_eq!(c["site_base_branch"], "main");
 
     let (status, _) = s
@@ -295,12 +295,12 @@ async fn dev_login_creates_and_fetches_users() {
         .await
         .unwrap();
     assert_eq!(res.status(), 200);
-    let sess = set_cookie_header(&res, "simpress_session").unwrap();
+    let sess = set_cookie_header(&res, "swarmpress_session").unwrap();
     assert!(
         sess.contains("HttpOnly") && sess.contains("SameSite=Lax"),
         "{sess}"
     );
-    let cookie = cookie_pair(&res, "simpress_session").unwrap();
+    let cookie = cookie_pair(&res, "swarmpress_session").unwrap();
     let body: serde_json::Value = res.json().await.unwrap();
     assert_eq!(body["user"]["login"], "ada");
     assert_eq!(body["user"]["github_id"], serde_json::Value::Null);
@@ -341,7 +341,7 @@ async fn dev_login_is_off_unless_enabled() {
 
 #[tokio::test]
 async fn serves_static_client_with_spa_fallback() {
-    let dir = std::env::temp_dir().join(format!("simpress-static-{}", uuid::Uuid::new_v4()));
+    let dir = std::env::temp_dir().join(format!("swarmpress-static-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(dir.join("assets")).unwrap();
     std::fs::write(dir.join("index.html"), "<html>game</html>").unwrap();
     std::fs::write(dir.join("assets/app.js"), "console.log(1)").unwrap();
@@ -373,7 +373,7 @@ async fn static_client_is_cross_origin_isolated() {
     let site = common::temp_dir("static");
     std::fs::write(
         site.join("index.html"),
-        "<!doctype html><title>SimPress</title>",
+        "<!doctype html><title>swarm.press</title>",
     )
     .unwrap();
     let dir = site.clone();

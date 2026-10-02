@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(HERE, ".fixture");
-const ORIGIN = "http://sandbox.simpress.test";
+const ORIGIN = "http://sandbox.swarmpress.test";
 const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm" };
 
 test("the example bundles give the same result in Chromium as under Bun", async ({ page }) => {

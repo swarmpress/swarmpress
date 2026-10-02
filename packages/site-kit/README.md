@@ -1,6 +1,6 @@
 # @swarm-press/site-kit
 
-The platform-owned Astro 5 integration that every SimPress website is built on
+The platform-owned Astro 5 integration that every swarm.press website is built on
 ([ADR-0015](../../docs/adr/0015-agent-authored-themes-on-site-kit.md),
 [ADR-0016](../../docs/adr/0016-site-kit-distribution-via-npm.md), FEAT-044).
 

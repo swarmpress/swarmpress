@@ -75,7 +75,7 @@ holds. Each step is reverted with one revert commit.
 
    The ref is the full commit SHA rather than the tag name so the pin works even before the
    tags are pushed. A ready-made commit with exactly this change exists on the local branch
-   `simpress/cutover-step-0` of the site repo checkout (also exported as a `git format-patch`
+   `swarmpress/cutover-step-0` of the site repo checkout (also exported as a `git format-patch`
    file); apply it with `git am` if the session cannot push.
 
 3. Run the workflow (`workflow_dispatch`) and capture the baseline crawl.

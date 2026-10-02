@@ -6,7 +6,7 @@
  * commands. The host validates them and appends them to the command log;
  * replay re-applies the log and never re-runs this code.
  */
-import { defineRule, type ProposedCommand, type WorldView } from "@simpress/sdk/runtime";
+import { defineRule, type ProposedCommand, type WorldView } from "@swarm-press/sdk/runtime";
 
 /** Chance per morning, in permille (integers only in sim commands). */
 const BREAK_PERMILLE = 300;

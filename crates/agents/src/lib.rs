@@ -1,4 +1,4 @@
-//! SimPress agent layer.
+//! swarm.press agent layer.
 //!
 //! Design rules (plan "Lessons"): LLMs never drive state transitions; the
 //! orchestrator owns them and LLMs return artifacts. Stubs fail loudly.

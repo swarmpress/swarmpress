@@ -1,6 +1,6 @@
 // The MVP acceptance test (docs/mvp.md, "one article, end to end"), on the
 // REAL game page (`/?central=1`, production build) against the real
-// simpress-server (dev auth, fake GitHub, simulated deploys) with the scripted
+// swarmpress-server (dev auth, fake GitHub, simulated deploys) with the scripted
 // `?llm=fake` model:
 //
 //   dev login → company founded → fast-forward to 09:00
@@ -11,7 +11,7 @@
 //   → a fresh browser context restores from central sync
 //
 // The sim runs in the page's own render loop (`speed=` only scales the clock);
-// the spec observes through `window.__simpress.session` and drives nothing but
+// the spec observes through `window.__swarmpress.session` and drives nothing but
 // the clock (pause). Run with `playwright test -c playwright.mvp.config.ts`
 // (one project per store engine).
 import { expect, test, type Page } from '@playwright/test'
@@ -41,7 +41,7 @@ async function boot(page: Page, url: string) {
     () => {
       const failed = document.body.dataset.error
       if (failed) throw new Error(`the game page failed to boot: ${failed}`)
-      const h = (window as unknown as { __simpress?: { frames(): number; session: unknown } }).__simpress
+      const h = (window as unknown as { __swarmpress?: { frames(): number; session: unknown } }).__swarmpress
       return !!h && !!h.session && h.frames() > 5
     },
     null,
@@ -50,18 +50,18 @@ async function boot(page: Page, url: string) {
   return errors
 }
 
-/** Calls a method of the page's session hook (`window.__simpress.session`). */
+/** Calls a method of the page's session hook (`window.__swarmpress.session`). */
 function session<K extends keyof SessionHook>(page: Page, method: K): Promise<Awaited<ReturnType<SessionHook[K]>>> {
   return page.evaluate((m) => {
-    const hook = (window as unknown as { __simpress: { session: Record<string, () => unknown> } }).__simpress.session
+    const hook = (window as unknown as { __swarmpress: { session: Record<string, () => unknown> } }).__swarmpress.session
     return hook[m]()
   }, method) as Promise<Awaited<ReturnType<SessionHook[K]>>>
 }
 
-/** A JSON view of the page's sim (`window.__simpress.sim`). */
+/** A JSON view of the page's sim (`window.__swarmpress.sim`). */
 function simJson<T>(page: Page, view: 'org_json' | 'plan_json'): Promise<T> {
   return page.evaluate((v) => {
-    const sim = (window as unknown as { __simpress: { sim: Record<string, () => string> } }).__simpress.sim
+    const sim = (window as unknown as { __swarmpress: { sim: Record<string, () => string> } }).__swarmpress.sim
     return JSON.parse(sim[v]())
   }, view) as Promise<T>
 }

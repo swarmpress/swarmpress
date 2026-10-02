@@ -1,7 +1,7 @@
 # Persona schema v2 (docs/game-design/organization.md §3).
 # Voice, background and phrases ported from legacy
 # legacy/packages/agents/src/writer/agent-personas.ts (git 15998d0); routing
-# affinities from legacy agent-page-mapping.ts. Traits are SimPress design values.
+# affinities from legacy agent-page-mapping.ts. Traits are swarm.press design values.
 slug = "lorenzo"
 id = 3
 name = "Lorenzo Bertolotti"

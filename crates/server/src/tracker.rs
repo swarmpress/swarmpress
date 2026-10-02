@@ -53,9 +53,9 @@ pub const MAX_ENGAGED_MS: i64 = 6 * 3600 * 1000;
 
 #[derive(Clone, Debug)]
 pub struct TrackerConfig {
-    /// Public origin sites beacon to (`SIMPRESS_TRACKER_ORIGIN`), used in snippets.
+    /// Public origin sites beacon to (`SWARMPRESS_TRACKER_ORIGIN`), used in snippets.
     pub origin: String,
-    /// Raw events older than this are deleted (`SIMPRESS_TRACKER_RAW_RETENTION_DAYS`).
+    /// Raw events older than this are deleted (`SWARMPRESS_TRACKER_RAW_RETENTION_DAYS`).
     pub raw_retention_days: u32,
     /// Accept events from localhost/127.0.0.1 origins (development).
     pub allow_localhost: bool,

@@ -1,4 +1,4 @@
-# Persona schema v2 (docs/game-design/organization.md §3, §6a). New in SimPress.
+# Persona schema v2 (docs/game-design/organization.md §3, §6a). New in swarm.press.
 # In game his data is the platform's own first-party, cookieless aggregates
 # (analytics_daily; ADR-0032); GA4 appears only in his past jobs.
 slug = "matteo"

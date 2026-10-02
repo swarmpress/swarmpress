@@ -8,7 +8,7 @@
  *   the report in the `factchecks` store table, and returns an artifact plus a
  *   digest. It never approves, publishes or changes a stage.
  */
-import { defineSkill, jobResult } from "@simpress/sdk/runtime";
+import { defineSkill, jobResult } from "@swarm-press/sdk/runtime";
 
 interface Claim {
   text: string;

@@ -5,7 +5,7 @@
 
 ## Context
 
-The product owner wants SimPress to be extensible from the start: an SDK, plus a runner that
+The product owner wants swarm.press to be extensible from the start: an SDK, plus a runner that
 executes the wasm game outside the browser. The game is local-first (ADR-0038), its sim is a
 deterministic wasm module (ADR-0002), and its staff work through an orchestrator that is also
 compiled to wasm (`docs/mvp.md`).
@@ -27,10 +27,10 @@ Spikes on 2026-10-01:
 
 ## Decision
 
-The SDK is `@simpress/sdk` (TypeScript types, manifest schema, helpers) plus the `simpress`
+The SDK is `@swarm-press/sdk` (TypeScript types, manifest schema, helpers) plus the `swarmpress`
 CLI, which runs on Bun.
 
-An extension is a folder with `simpress.ext.json`: id, version, `sdk` semver range,
+An extension is a folder with `swarmpress.ext.json`: id, version, `sdk` semver range,
 capabilities requested, and entry points. Extension kinds are tiered by where they run:
 
 **Extensions are JavaScript bundles run in a wasm sandbox, client-side.** Bun has no wasm build,
@@ -38,7 +38,7 @@ so the sandbox is **QuickJS compiled to wasm** (`quickjs-emscripten`, about 230 
 lazy-loaded in a Worker), with a **Bun-compatible API subset**. Authors write and test in real
 Bun, and the identical bundle runs in the browser.
 
-- **Bundling:** `simpress build` bundles TS/JS with `Bun.build` into one script that assigns
+- **Bundling:** `swarmpress build` bundles TS/JS with `Bun.build` into one script that assigns
   `globalThis.ext`.
 - **The globals inside the sandbox are only what the host grants:**
   - `Bun.file(path).text()/json()` and `Bun.write`, mapped to capability-scoped store tables and
@@ -62,13 +62,13 @@ Bun, and the identical bundle runs in the browser.
 - **Capabilities are declared and granted.** The player sees the requested capabilities (web,
   credits, LLM tier, store tables) on install. The host enforces them; there is no ambient
   authority.
-- **The `simpress` runner (Bun)** is the headless game host:
+- **The `swarmpress` runner (Bun)** is the headless game host:
   - it loads `client-wasm` (and the orchestrator wasm once it ships), **the same QuickJS sandbox the browser uses** (extensions never run natively in Bun, so there is parity), a store (in-memory, or
     `@tursodatabase/database` native under Bun, using the same SQL as the browser per
     ADR-0041), FakeLlm or a local or remote LLM adapter, and FakeGitHub or the central gateway;
-  - **CLI:** `simpress new <kind>`, `simpress run [--days N] [--seed S] [--ext path…]`,
-    `simpress test` (scenario files: seed, commands, expected digests and hashes),
-    `simpress check` (manifest, schemas, determinism replay), `simpress pack`.
+  - **CLI:** `swarmpress new <kind>`, `swarmpress run [--days N] [--seed S] [--ext path…]`,
+    `swarmpress test` (scenario files: seed, commands, expected digests and hashes),
+    `swarmpress check` (manifest, schemas, determinism replay), `swarmpress pack`.
   - We dogfood it: sim scenarios, the orchestrator loop with FakeLlm, and determinism
     (browser hash = Bun hash = native hash) run under the runner in CI.
 - **Versioning:** the SDK follows semver and is tied to `PROTO_VERSION` and the content-schema

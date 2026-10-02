@@ -1,8 +1,8 @@
-//! GitHub integration for SimPress.
+//! GitHub integration for swarm.press.
 //!
 //! One repo per player company: page/collection JSON under `content/`, the
 //! agent-authored theme under `theme/`, deployed by the repo's own GitHub
-//! Actions to Pages. This crate is the only thing in SimPress that talks
+//! Actions to Pages. This crate is the only thing in swarm.press that talks
 //! to GitHub.
 //!
 //! * [`auth`] — GitHub App JWT → cached installation tokens; static-token dev mode.

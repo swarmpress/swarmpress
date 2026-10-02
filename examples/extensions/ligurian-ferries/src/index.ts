@@ -9,7 +9,7 @@
  * The page is parsed with plain string matching: the sandbox has no DOM.
  * The cursor is the page's "updated" stamp, so an unchanged page yields nothing new.
  */
-import { defineContextProvider, type Fact, type HappeningCandidate } from "@simpress/sdk/runtime";
+import { defineContextProvider, type Fact, type HappeningCandidate } from "@swarm-press/sdk/runtime";
 
 const ORIGIN = "https://www.navigazionegolfodeipoeti.it";
 const PAGE = ORIGIN + "/en/timetable/cinque-terre";

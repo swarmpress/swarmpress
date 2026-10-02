@@ -127,7 +127,7 @@ async fn release_and_ownership() {
             Method::DELETE,
             &path,
             Some(&cookie),
-            &[("x-simpress-lease", "nope")],
+            &[("x-swarmpress-lease", "nope")],
             None,
         )
         .await;
@@ -137,7 +137,7 @@ async fn release_and_ownership() {
             Method::DELETE,
             &path,
             Some(&cookie),
-            &[("x-simpress-lease", &lease)],
+            &[("x-swarmpress-lease", &lease)],
             None,
         )
         .await;

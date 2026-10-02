@@ -1,6 +1,6 @@
 [package]
 name = "orchestrator"
-description = "SimPress orchestrator: runs sim job requests (standup, draft, review, publish) through agents, a Store and a content Gateway; wasm-compatible (no tokio, no database)"
+description = "swarm.press orchestrator: runs sim job requests (standup, draft, review, publish) through agents, a Store and a content Gateway; wasm-compatible (no tokio, no database)"
 edition.workspace = true
 version.workspace = true
 license.workspace = true

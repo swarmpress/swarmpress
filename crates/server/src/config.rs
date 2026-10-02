@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 
 use crate::tracker::TrackerConfig;
 
-pub const DEFAULT_DATABASE_URL: &str = "sqlite://data/simpress.db?mode=rwc";
+pub const DEFAULT_DATABASE_URL: &str = "sqlite://data/swarmpress.db?mode=rwc";
 
 /// GitHub OAuth app settings. The base URLs are configurable so tests can
 /// point them at a fake provider (wiremock).
@@ -49,7 +49,7 @@ impl GithubOAuthConfig {
     }
 }
 
-/// Which GitHub the content gateway talks to (`SIMPRESS_GITHUB`).
+/// Which GitHub the content gateway talks to (`SWARMPRESS_GITHUB`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GithubMode {
     /// In-memory `github::FakeGitHub` (tests, dev). Repos are created on demand.
@@ -94,37 +94,37 @@ impl Default for WebConfig {
 
 #[derive(Clone, Debug)]
 pub struct Config {
-    /// `sqlite://data/simpress.db?mode=rwc` (default) or `sqlite::memory:`.
+    /// `sqlite://data/swarmpress.db?mode=rwc` (default) or `sqlite::memory:`.
     pub database_url: String,
-    /// Sync blobs and other files (`SIMPRESS_DATA_DIR`, default `./data`).
+    /// Sync blobs and other files (`SWARMPRESS_DATA_DIR`, default `./data`).
     pub data_dir: PathBuf,
     pub bind: SocketAddr,
     /// Public origin players use (OAuth redirect target, cookie `Secure` flag).
     pub public_url: String,
     pub github: GithubOAuthConfig,
-    /// `POST /auth/dev/login` is enabled (`SIMPRESS_DEV_AUTH=1`). Never in production.
+    /// `POST /auth/dev/login` is enabled (`SWARMPRESS_DEV_AUTH=1`). Never in production.
     pub dev_auth: bool,
-    /// Content gateway backend (`SIMPRESS_GITHUB=fake`, otherwise real).
+    /// Content gateway backend (`SWARMPRESS_GITHUB=fake`, otherwise real).
     pub github_mode: GithubMode,
     /// Owner for site repos of companies created without an explicit repo
-    /// (`GITHUB_SITES_ORG`, default `simpress-sites`).
+    /// (`GITHUB_SITES_ORG`, default `swarmpress-sites`).
     pub sites_org: String,
     /// `X-Hub-Signature-256` secret for `POST /webhooks/github`.
     pub webhook_secret: Option<String>,
-    /// Emit `DeployLanded` right after a gateway merge (`SIMPRESS_SIMULATE_DEPLOY`,
+    /// Emit `DeployLanded` right after a gateway merge (`SWARMPRESS_SIMULATE_DEPLOY`,
     /// default on with the fake GitHub, off otherwise).
     pub simulate_deploy: bool,
-    /// Company lease length (`SIMPRESS_LEASE_SECS`, default 90).
+    /// Company lease length (`SWARMPRESS_LEASE_SECS`, default 90).
     pub lease_ttl: Duration,
     /// Upper bound on a gateway page (bytes of JSON text).
     pub max_page_bytes: usize,
-    /// Upper bound on one sync upload (`SIMPRESS_SYNC_MAX_BYTES`, default 64 MiB).
+    /// Upper bound on one sync upload (`SWARMPRESS_SYNC_MAX_BYTES`, default 64 MiB).
     pub sync_max_bytes: usize,
     pub web: WebConfig,
     /// Built game client to serve at `/` (SPA fallback to index.html).
     pub static_dir: Option<PathBuf>,
     /// Cross-origin isolation for the served client (ADR-0041): the COEP value sent with
-    /// COOP `same-origin` (`SIMPRESS_COEP` = `credentialless` (default), `require-corp`, or
+    /// COOP `same-origin` (`SWARMPRESS_COEP` = `credentialless` (default), `require-corp`, or
     /// `off` to send neither header).
     pub coep: Option<String>,
     pub session_ttl: Duration,
@@ -143,7 +143,7 @@ impl Config {
             github,
             dev_auth: true,
             github_mode: GithubMode::Fake,
-            sites_org: "simpress-sites".into(),
+            sites_org: "swarmpress-sites".into(),
             webhook_secret: Some("test-webhook-secret".into()),
             simulate_deploy: true,
             lease_ttl: Duration::from_secs(90),
@@ -166,16 +166,16 @@ impl Config {
             .filter(|v| !v.is_empty())
             .unwrap_or_else(|| DEFAULT_DATABASE_URL.into());
         let data_dir = PathBuf::from(
-            opt("SIMPRESS_DATA_DIR")
+            opt("SWARMPRESS_DATA_DIR")
                 .filter(|v| !v.is_empty())
                 .unwrap_or_else(|| "data".into()),
         );
-        let bind = opt("SIMPRESS_BIND")
+        let bind = opt("SWARMPRESS_BIND")
             .unwrap_or_else(|| "127.0.0.1:8080".into())
             .parse()
-            .context("SIMPRESS_BIND must be host:port")?;
+            .context("SWARMPRESS_BIND must be host:port")?;
         let public_url =
-            opt("SIMPRESS_PUBLIC_URL").unwrap_or_else(|| "http://localhost:5173".into());
+            opt("SWARMPRESS_PUBLIC_URL").unwrap_or_else(|| "http://localhost:5173".into());
 
         let mut github = GithubOAuthConfig::github(
             opt("GITHUB_OAUTH_CLIENT_ID").unwrap_or_default(),
@@ -190,19 +190,19 @@ impl Config {
         if let Some(v) = opt("GITHUB_API_URL") {
             github.api_base = v;
         }
-        let dev_auth = flag("SIMPRESS_DEV_AUTH", false)?;
+        let dev_auth = flag("SWARMPRESS_DEV_AUTH", false)?;
         if github.client_id.is_empty() && !dev_auth {
             tracing::warn!(
-                "GITHUB_OAUTH_CLIENT_ID is empty and SIMPRESS_DEV_AUTH is off: nobody can sign in"
+                "GITHUB_OAUTH_CLIENT_ID is empty and SWARMPRESS_DEV_AUTH is off: nobody can sign in"
             );
         }
         if dev_auth {
             tracing::warn!(
-                "SIMPRESS_DEV_AUTH=1: POST /auth/dev/login signs anyone in. Development only."
+                "SWARMPRESS_DEV_AUTH=1: POST /auth/dev/login signs anyone in. Development only."
             );
         }
 
-        let github_mode = match opt("SIMPRESS_GITHUB").as_deref() {
+        let github_mode = match opt("SWARMPRESS_GITHUB").as_deref() {
             Some("fake") => GithubMode::Fake,
             None | Some("" | "real") => GithubMode::Real {
                 api_base: github.api_base.clone(),
@@ -212,46 +212,52 @@ impl Config {
                     .filter(|v| !v.is_empty())
                     .map(PathBuf::from),
             },
-            Some(v) => anyhow::bail!("SIMPRESS_GITHUB={v:?} must be `fake` or `real`"),
+            Some(v) => anyhow::bail!("SWARMPRESS_GITHUB={v:?} must be `fake` or `real`"),
         };
-        let simulate_deploy = flag("SIMPRESS_SIMULATE_DEPLOY", github_mode == GithubMode::Fake)?;
+        let simulate_deploy = flag(
+            "SWARMPRESS_SIMULATE_DEPLOY",
+            github_mode == GithubMode::Fake,
+        )?;
 
-        let static_dir = match opt("SIMPRESS_STATIC_DIR") {
+        let static_dir = match opt("SWARMPRESS_STATIC_DIR") {
             Some(v) if v.is_empty() => None,
             Some(v) => Some(PathBuf::from(v)),
             None => Some(PathBuf::from("apps/game/dist")),
         };
 
-        let coep = match opt("SIMPRESS_COEP").as_deref() {
+        let coep = match opt("SWARMPRESS_COEP").as_deref() {
             None | Some("") | Some("credentialless") => Some("credentialless".to_string()),
             Some("require-corp") => Some("require-corp".to_string()),
             Some("off") => None,
             Some(v) => anyhow::bail!(
-                "SIMPRESS_COEP={v:?} must be `credentialless`, `require-corp` or `off`"
+                "SWARMPRESS_COEP={v:?} must be `credentialless`, `require-corp` or `off`"
             ),
         };
 
         let wd = WebConfig::default();
         let web = WebConfig {
-            rate_per_min: num("SIMPRESS_WEB_FETCH_RATE_PER_MIN", wd.rate_per_min)?,
-            burst: num("SIMPRESS_WEB_FETCH_BURST", wd.burst)?,
+            rate_per_min: num("SWARMPRESS_WEB_FETCH_RATE_PER_MIN", wd.rate_per_min)?,
+            burst: num("SWARMPRESS_WEB_FETCH_BURST", wd.burst)?,
             ..wd
         };
 
         let td = TrackerConfig::default();
         let tracker = TrackerConfig {
-            origin: opt("SIMPRESS_TRACKER_ORIGIN")
+            origin: opt("SWARMPRESS_TRACKER_ORIGIN")
                 .filter(|v| !v.is_empty())
                 .unwrap_or_else(|| public_url.clone()),
-            raw_retention_days: num("SIMPRESS_TRACKER_RAW_RETENTION_DAYS", td.raw_retention_days)?
-                .max(1),
+            raw_retention_days: num(
+                "SWARMPRESS_TRACKER_RAW_RETENTION_DAYS",
+                td.raw_retention_days,
+            )?
+            .max(1),
             allow_localhost: flag(
-                "SIMPRESS_TRACKER_ALLOW_LOCALHOST",
+                "SWARMPRESS_TRACKER_ALLOW_LOCALHOST",
                 public_url.starts_with("http://localhost") || public_url.starts_with("http://127."),
             )?,
-            trust_forwarded_for: flag("SIMPRESS_TRACKER_TRUST_PROXY", td.trust_forwarded_for)?,
-            rate_per_min: num("SIMPRESS_TRACKER_RATE_PER_MIN", td.rate_per_min)?,
-            burst: num("SIMPRESS_TRACKER_BURST", td.burst)?,
+            trust_forwarded_for: flag("SWARMPRESS_TRACKER_TRUST_PROXY", td.trust_forwarded_for)?,
+            rate_per_min: num("SWARMPRESS_TRACKER_RATE_PER_MIN", td.rate_per_min)?,
+            burst: num("SWARMPRESS_TRACKER_BURST", td.burst)?,
             ..td
         };
 
@@ -265,16 +271,16 @@ impl Config {
             github_mode,
             sites_org: opt("GITHUB_SITES_ORG")
                 .filter(|v| !v.is_empty())
-                .unwrap_or_else(|| "simpress-sites".into()),
+                .unwrap_or_else(|| "swarmpress-sites".into()),
             webhook_secret: opt("GITHUB_WEBHOOK_SECRET").filter(|v| !v.is_empty()),
             simulate_deploy,
-            lease_ttl: Duration::from_secs(num("SIMPRESS_LEASE_SECS", 90)?.max(1)),
+            lease_ttl: Duration::from_secs(num("SWARMPRESS_LEASE_SECS", 90)?.max(1)),
             max_page_bytes: 256 * 1024,
-            sync_max_bytes: num("SIMPRESS_SYNC_MAX_BYTES", 64 * 1024 * 1024)?,
+            sync_max_bytes: num("SWARMPRESS_SYNC_MAX_BYTES", 64 * 1024 * 1024)?,
             web,
             static_dir,
             coep,
-            session_ttl: Duration::from_secs(num("SIMPRESS_SESSION_TTL_SECS", 30 * 24 * 3600)?),
+            session_ttl: Duration::from_secs(num("SWARMPRESS_SESSION_TTL_SECS", 30 * 24 * 3600)?),
             tracker,
         })
     }

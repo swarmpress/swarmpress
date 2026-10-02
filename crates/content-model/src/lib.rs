@@ -1,4 +1,4 @@
-//! Content model for SimPress sites.
+//! Content model for swarm.press sites.
 //!
 //! * [`localized`] — `LocalizedString` (v1, `en` required) and `Localized<T>`
 //!   (v2: plain value or per-language object).

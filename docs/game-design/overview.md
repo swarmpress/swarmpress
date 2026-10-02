@@ -4,7 +4,7 @@
 > hire, build, set policy and answer your inbox. Every article your newsroom publishes appears on
 > a **real website** that you own.
 
-SimPress is a management sim and digital dollhouse played in the browser. The building is a
+swarm.press is a management sim and digital dollhouse played in the browser. The building is a
 detailed isometric 3D cutaway. You watch writers arrive in the morning, the 09:00 standup argue
 over pitches in speech bubbles, the editor's lamp burning late before a deadline, and the server
 room blinking as a deploy lands.

@@ -1,6 +1,6 @@
 # Testing and evidence (Cockpit)
 
-SimPress doesn't declare features done. It **derives** their health from evidence. CI runs every
+swarm.press doesn't declare features done. It **derives** their health from evidence. CI runs every
 suite on every PR. [Cockpit](https://github.com/drietsch/cockpit) then reads the reports, the
 feature files, the ADRs and git history, and gives each feature a state: **Healthy**, **Needs
 Attention**, **Broken** or **Unknown**. Missing evidence is Unknown, never green
@@ -69,16 +69,16 @@ cockpit doctor                                # which evidence sources have file
 
 | Suite (`cockpit.toml` id) | Command | Report |
 |---|---|---|
-| `simpress/nextest`, split into `server/`, `agents/`, `claude/`, `github/`, `knowledge/`, `content/`, `net/nextest` | `cargo nextest run --workspace --profile ci` | `target/nextest/ci/junit.xml` (`.config/nextest.toml`) |
-| `simpress/wasm-bindgen-test` | `cargo xtask wasm-test` (node and headless Chromium) | `target/wasm-test/junit.xml` |
+| `swarmpress/nextest`, split into `server/`, `agents/`, `claude/`, `github/`, `knowledge/`, `content/`, `net/nextest` | `cargo nextest run --workspace --profile ci` | `target/nextest/ci/junit.xml` (`.config/nextest.toml`) |
+| `swarmpress/wasm-bindgen-test` | `cargo xtask wasm-test` (node and headless Chromium) | `target/wasm-test/junit.xml` |
 | `game/vitest` | `vitest run --reporter=junit --outputFile.junit=test-results/vitest-junit.xml` | `apps/game/test-results/vitest-junit.xml` |
 | `content-schema/vitest` | same, in `packages/content-schema` (its tests are tsx scripts today, so this source is unfed) | `packages/content-schema/test-results/vitest-junit.xml` |
 | `site-kit/vitest`, `site-kit/playwright` | in `packages/site-kit` | `packages/site-kit/test-results/…` |
 | `game/playwright-e2e` | `playwright test --reporter=json` | `apps/game/test-results/playwright.json` |
-| `game/playwright-orchestrator` | `playwright test -c playwright.orchestrator.config.ts` (starts `simpress-server`) | `apps/game/reports/playwright-orchestrator.json` |
-| `game/playwright-mvp` | `playwright test -c playwright.mvp.config.ts` (the game page with `?central=1`, starts `simpress-server`) | `apps/game/reports/playwright-mvp.json` |
+| `game/playwright-orchestrator` | `playwright test -c playwright.orchestrator.config.ts` (starts `swarmpress-server`) | `apps/game/reports/playwright-orchestrator.json` |
+| `game/playwright-mvp` | `playwright test -c playwright.mvp.config.ts` (the game page with `?central=1`, starts `swarmpress-server`) | `apps/game/reports/playwright-mvp.json` |
 | `game/playwright-visual` | visual project (frozen sim times × 4 angles) | `apps/game/test-results/playwright-visual.json` |
-| `simpress/criterion` | `cargo bench -p sim-core` | `target/criterion/**/new/estimates.json` |
+| `swarmpress/criterion` | `cargo bench -p sim-core` | `target/criterion/**/new/estimates.json` |
 | `bench/bundle-size`, `bench/frame-time`, `bench/agent-pipeline` | small reporters (below) | `artifacts/bench/<name>*.json` |
 | `bench/server-load`, `bench/model-eval` | nightly | `artifacts/bench/<name>*.json` |
 
@@ -133,7 +133,7 @@ ownership in the feature file.
 
    ## Evidence
 
-   - `simpress/nextest`, `game/vitest`
+   - `swarmpress/nextest`, `game/vitest`
    ```
 
 3. Add a row to the chapter's `_chapter.md` table.

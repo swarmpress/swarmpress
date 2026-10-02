@@ -10,7 +10,7 @@ Every person in the house has a vita: a CV, history and personality. That's
 the **static** part (the persona catalog, ADR-0030). Real colleagues also
 *change*. They remember the review that stung, they become friends over
 lunch, they react to the storm outside or today's news, and they grow.
-SimPress records all of that.
+swarm.press records all of that.
 
 ## 1. A person = profile + life record
 

@@ -49,6 +49,6 @@ Decisions: [ADR-0011](../../adr/0011-orchestrator-owns-state-transitions.md), [A
 
 ## Evidence
 
-- `simpress/nextest` (`crates/sim-core/tests/job_contract.rs`, `plan::tests`, the plan
+- `swarmpress/nextest` (`crates/sim-core/tests/job_contract.rs`, `plan::tests`, the plan
   invariants in `crates/sim-core/tests/invariants.rs`)
 - `server/nextest` (full pipeline test with fakes)

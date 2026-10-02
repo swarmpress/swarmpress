@@ -1,6 +1,6 @@
 {
   "$schema": "../../../packages/sdk/schemas/manifest.schema.json",
-  "id": "dev.simpress.examples.harvest-season",
+  "id": "press.swarm.examples.harvest-season",
   "name": "Harvest season",
   "version": "0.1.0",
   "sdk": "^0.1.0",
@@ -14,5 +14,5 @@
       "prompt_layers": ["content/prompt-layers/harvest-writer.json"]
     }
   },
-  "provenance": { "author": { "name": "SimPress examples" } }
+  "provenance": { "author": { "name": "swarm.press examples" } }
 }

@@ -17,7 +17,7 @@ import {
   sha256Hex,
   type ContentSection,
   type Manifest,
-} from "@simpress/sdk";
+} from "@swarm-press/sdk";
 import { exists, isBun, listFiles, readText, writeFile } from "./host.ts";
 import { RunnerError } from "./wasm.ts";
 
@@ -51,7 +51,7 @@ export async function loadExtension(dirArg: string, diag: Diagnostics): Promise<
   const dir = resolve(dirArg);
   const mpath = join(dir, MANIFEST_FILE);
   if (!(await exists(mpath))) {
-    diag.errors.push(`${dirArg}: no ${MANIFEST_FILE} (scaffold one with: simpress new <kind> ${dirArg})`);
+    diag.errors.push(`${dirArg}: no ${MANIFEST_FILE} (scaffold one with: swarmpress new <kind> ${dirArg})`);
     return null;
   }
   let raw: unknown;
@@ -157,7 +157,7 @@ const sdkRuntime = fileURLToPath(new URL("../../sdk/src/runtime.ts", import.meta
 
 /**
  * Bundles `entry.bundle` into one IIFE script that assigns `globalThis.ext`
- * (no externals). `@simpress/sdk` and `@simpress/sdk/runtime` always resolve
+ * (no externals). `@swarm-press/sdk` and `@swarm-press/sdk/runtime` always resolve
  * to this runner's SDK runtime, so scaffolds outside the monorepo build too.
  */
 export async function buildBundle(ext: Extension): Promise<{ code: string; sha256: string }> {
@@ -174,7 +174,7 @@ export async function buildBundle(ext: Extension): Promise<{ code: string; sha25
     );
   }
   const BunApi = (globalThis as any).Bun;
-  const tmp = join(ext.dir, ".simpress-build");
+  const tmp = join(ext.dir, ".swarmpress-build");
   const wrapper = join(tmp, "entry.js");
   await writeFile(
     wrapper,
@@ -189,9 +189,9 @@ export async function buildBundle(ext: Extension): Promise<{ code: string; sha25
       sourcemap: "none",
       plugins: [
         {
-          name: "simpress-sdk",
+          name: "swarmpress-sdk",
           setup(b: any) {
-            b.onResolve({ filter: /^@simpress\/sdk(\/runtime)?$/ }, () => ({ path: sdkRuntime }));
+            b.onResolve({ filter: /^@swarmpress\/sdk(\/runtime)?$/ }, () => ({ path: sdkRuntime }));
           },
         },
       ],

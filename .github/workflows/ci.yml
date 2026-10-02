@@ -195,7 +195,7 @@ jobs:
           name: orchestrator-wasm-pkg
           path: crates/orchestrator-wasm/pkg
       - run: pnpm --filter @swarm-press/game exec playwright install --with-deps chromium
-      - name: Playwright orchestrator e2e (turso + sqlite; builds simpress-server)
+      - name: Playwright orchestrator e2e (turso + sqlite; builds swarmpress-server)
         run: pnpm --filter @swarm-press/game exec playwright test -c playwright.orchestrator.config.ts
         env:
           CI: '1'
@@ -206,7 +206,7 @@ jobs:
           name: game-playwright-orchestrator
           path: apps/game/reports/playwright-orchestrator.json
       # The MVP acceptance test (docs/mvp.md): the real game page (?central=1, production
-      # build) against simpress-server, on both store engines.
+      # build) against swarmpress-server, on both store engines.
       - name: Playwright MVP e2e (one article, end to end; turso + sqlite)
         if: ${{ !cancelled() }}
         run: pnpm --filter @swarm-press/game exec playwright test -c playwright.mvp.config.ts
@@ -220,7 +220,7 @@ jobs:
           path: apps/game/reports/playwright-mvp.json
 
   sdk:
-    name: Extension SDK (sdk, sandbox, simpress runner, browser parity)
+    name: Extension SDK (sdk, sandbox, swarmpress runner, browser parity)
     runs-on: ubuntu-latest
     needs: wasm
     steps:
@@ -240,9 +240,9 @@ jobs:
         with:
           name: wasm-pkg
           path: crates/client-wasm/pkg
-      - run: pnpm -r --filter @simpress/sdk --filter @simpress/sandbox --filter @simpress/runner typecheck
+      - run: pnpm -r --filter @swarm-press/sdk --filter @swarm-press/sandbox --filter @swarm-press/runner typecheck
       - name: SDK JSON Schemas in sync with zod
-        run: pnpm --filter @simpress/sdk check
+        run: pnpm --filter @swarm-press/sdk check
       - name: bun test (sdk, sandbox, runner; JUnit per package)
         run: pnpm test:sdk
       - name: Examples via the runner (Bun)
@@ -254,9 +254,9 @@ jobs:
           bun packages/runner/src/cli.ts run --seed 42 --days 3 $(for ex in examples/extensions/*/; do echo --ext "$ex"; done)
       - name: Runner under Node (content pack, no bundling)
         run: node packages/runner/src/cli.ts test examples/extensions/harvest-season
-      - run: pnpm --filter @simpress/sandbox exec playwright install --with-deps chromium
+      - run: pnpm --filter @swarm-press/sandbox exec playwright install --with-deps chromium
       - name: Sandbox browser parity (Chromium)
-        run: pnpm --filter @simpress/sandbox test:e2e
+        run: pnpm --filter @swarm-press/sandbox test:e2e
         env:
           CI: '1'
           PW_JSON: reports/playwright.json

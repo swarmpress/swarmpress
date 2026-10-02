@@ -1,6 +1,6 @@
 [package]
 name = "protocol"
-description = "Wire protocol between the SimPress server and the browser client"
+description = "Wire protocol between the swarm.press server and the browser client"
 edition.workspace = true
 version.workspace = true
 license.workspace = true

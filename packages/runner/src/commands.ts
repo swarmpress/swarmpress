@@ -1,4 +1,4 @@
-/** The `simpress` commands. Each returns an exit code; output goes through `Out`. */
+/** The `swarmpress` commands. Each returns an exit code; output goes through `Out`. */
 import { readdir } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import {
@@ -9,8 +9,8 @@ import {
   formatIssues,
   type Kind,
   type Scenario,
-} from "@simpress/sdk";
-import { MemoryStore, createSandbox } from "@simpress/sandbox";
+} from "@swarm-press/sdk";
+import { MemoryStore, createSandbox } from "@swarm-press/sandbox";
 import {
   PollScheduler,
   describeSkill,
@@ -45,19 +45,19 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export async function cmdNew(kind: string, dir: string, out: Out): Promise<number> {
   if (!(TEMPLATE_KINDS as readonly string[]).includes(kind)) {
-    out.error(`simpress new: unknown kind "${kind}" (one of: ${TEMPLATE_KINDS.join(", ")})`);
+    out.error(`swarmpress new: unknown kind "${kind}" (one of: ${TEMPLATE_KINDS.join(", ")})`);
     return 2;
   }
   const target = resolve(dir);
   if ((await isDir(target)) && (await readdir(target)).length > 0) {
-    out.error(`simpress new: ${dir} exists and is not empty`);
+    out.error(`swarmpress new: ${dir} exists and is not empty`);
     return 1;
   }
   const slug = basename(target).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "my-extension";
   const files = template(kind as TemplateKind, slug);
   for (const [p, content] of Object.entries(files)) await writeFile(join(target, p), content);
   out.log(`created ${kind} ${dir}/ (${Object.keys(files).length} files): com.example.${slug}`);
-  out.log(`next:  simpress check ${dir}  →  simpress run --ext ${dir}  →  simpress test ${dir}  →  simpress pack ${dir}`);
+  out.log(`next:  swarmpress check ${dir}  →  swarmpress run --ext ${dir}  →  swarmpress test ${dir}  →  swarmpress pack ${dir}`);
   return 0;
 }
 
@@ -202,7 +202,7 @@ export async function cmdRun(o: RunOptions, out: Out): Promise<number> {
     if (!o.json) out.log(l);
   };
   const mod = await loadSim();
-  say(`simpress run: ${mod.version()} · seed ${o.seed} · ${o.days} day(s) · world ${o.world}`);
+  say(`swarmpress run: ${mod.version()} · seed ${o.seed} · ${o.days} day(s) · world ${o.world}`);
   for (const { ext } of loaded) say(`  ext ${summarize(ext)}`);
 
   const ruleExts = loaded.filter((l) => l.ext.manifest.kinds.includes("sim-rule"));
@@ -457,7 +457,7 @@ export async function cmdBuild(dir: string, out: Out): Promise<number> {
     return 1;
   }
   if (!ext.manifest.entry.bundle) {
-    out.error(`simpress build: ${ext.manifest.id} has no entry.bundle (content packs need no build)`);
+    out.error(`swarmpress build: ${ext.manifest.id} has no entry.bundle (content packs need no build)`);
     return 1;
   }
   const b = await buildBundle(ext);
@@ -488,9 +488,9 @@ export async function cmdPack(dir: string, out: Out, outFile?: string): Promise<
     bundle: r.bundle ? BUNDLE_OUT : null,
     files: Object.fromEntries(await Promise.all(files.map(async (f) => [f.path, await sha256(f.data)] as const))),
   };
-  files.push({ path: "simpress.integrity.json", data: new TextEncoder().encode(JSON.stringify(integrity, null, 2) + "\n") });
+  files.push({ path: "swarmpress.integrity.json", data: new TextEncoder().encode(JSON.stringify(integrity, null, 2) + "\n") });
   const archive = await gzip(tar(files));
-  const dest = outFile ? resolve(outFile) : join(ext.dir, "dist", `${ext.manifest.id}-${ext.manifest.version}.simpress.tgz`);
+  const dest = outFile ? resolve(outFile) : join(ext.dir, "dist", `${ext.manifest.id}-${ext.manifest.version}.swarmpress.tgz`);
   await writeFile(dest, archive);
   out.log(`✓ ${relative(process.cwd(), dest)}: ${files.length} files, ${archive.length} bytes, sha256 ${await sha256(archive)}`);
   return 0;

@@ -1,6 +1,6 @@
 # Architecture overview
 
-SimPress is local-first ([ADR-0038](../adr/0038-local-first-the-browser-is-authoritative-for-a-company.md)).
+swarm.press is local-first ([ADR-0038](../adr/0038-local-first-the-browser-is-authoritative-for-a-company.md)).
 It has four moving parts:
 - a deterministic **simulation** written once in Rust;
 - the **browser**, which runs a company authoritatively: the sim, the orchestrator, the staff's
@@ -46,7 +46,7 @@ Site repo GitHub Actions: site-kit build, PR checks + screenshots, Pages deploy
 | `crates/knowledge` | Site manifest, entity/media/sitemap indexes, closed-world link and media resolution | Inventing ids |
 | `crates/github` | App auth, repo-from-template, contents/branches/PRs/checks, webhooks | Holding user tokens |
 | `crates/testkit` | FakeClaude, FakeGitHub, fixtures, golden-hash helpers, world builders | Shipping in release builds |
-| `packages/sdk`, `packages/sandbox`, `packages/runner` | Extension SDK, QuickJS-wasm sandbox, `simpress` CLI on Bun (headless game host) | Running extensions outside the sandbox |
+| `packages/sdk`, `packages/sandbox`, `packages/runner` | Extension SDK, QuickJS-wasm sandbox, `swarmpress` CLI on Bun (headless game host) | Running extensions outside the sandbox |
 | `packages/site-kit` | Astro 5 integration: routing, content, i18n, SEO, block registry, `kit` CLI | Presentation |
 | `themes/starter` | The template theme for new players | Data loading |
 | Site repo `theme/` | Agent-authored presentation | fs/node access, remote scripts |
@@ -70,7 +70,7 @@ crates/
   testkit/         FakeClaude, FakeGitHub, fixtures, golden-hash helpers, world builders
 apps/game/         Vite + TS + Babylon.js + Preact overlay (+ src/llm local inference)
 packages/site-kit/ Astro integration: manifest routing, content loading, i18n, SEO, sitemap, block registry, collections routes
-packages/sdk, sandbox, runner/  extension SDK, QuickJS-wasm sandbox, simpress CLI (Bun)
+packages/sdk, sandbox, runner/  extension SDK, QuickJS-wasm sandbox, swarmpress CLI (Bun)
 packages/content-schema/  Zod source of the page schema; exports page.schema.json; conformance-tested against Rust
 themes/starter/    starter theme on site-kit (template for new players)
 assets/            blender/, kits/ (CC0 sources, LFS), manifest.toml, bake + export scripts, out/ (glTF/KTX2)

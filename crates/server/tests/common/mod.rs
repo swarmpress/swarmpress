@@ -13,10 +13,10 @@ use reqwest::header::{COOKIE, LOCATION, SET_COOKIE};
 use reqwest::redirect::Policy;
 use reqwest::Method;
 use serde_json::{json, Value};
-use simpress_server::app::{self, AppState};
-use simpress_server::config::{Config, GithubOAuthConfig};
-use simpress_server::db::Db;
-use simpress_server::gateway::RepoBackend;
+use swarmpress_server::app::{self, AppState};
+use swarmpress_server::config::{Config, GithubOAuthConfig};
+use swarmpress_server::db::Db;
+use swarmpress_server::gateway::RepoBackend;
 use testkit::oauth::{self, GithubUser, CLIENT_ID, CLIENT_SECRET};
 use tokio::task::JoinHandle;
 
@@ -45,14 +45,14 @@ impl Default for Opts {
 }
 
 pub fn temp_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("simpress-{tag}-{}", uuid::Uuid::new_v4()));
+    let dir = std::env::temp_dir().join(format!("swarmpress-{tag}-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
 
 /// A migrated temp-file database (WAL) in `dir`.
 pub async fn file_db(dir: &std::path::Path) -> Db {
-    let url = format!("sqlite://{}/simpress.db?mode=rwc", dir.display());
+    let url = format!("sqlite://{}/swarmpress.db?mode=rwc", dir.display());
     let db = Db::connect(&url).await.unwrap();
     db.migrate().await.unwrap();
     db
@@ -116,7 +116,7 @@ impl TestServer {
     }
 
     /// Full OAuth web flow against the fake GitHub; returns the Cookie header
-    /// value (`simpress_session=...`).
+    /// value (`swarmpress_session=...`).
     pub async fn login(&self, github_id: i64, login: &str) -> String {
         let code = format!("code{github_id}x{}", uuid::Uuid::new_v4().simple());
         self.gh
@@ -135,7 +135,7 @@ impl TestServer {
             location.starts_with(&self.gh.base_url()),
             "redirects to provider: {location}"
         );
-        let state_cookie = cookie_pair(&res, "simpress_oauth_state").expect("state cookie");
+        let state_cookie = cookie_pair(&res, "swarmpress_oauth_state").expect("state cookie");
         let state = url::Url::parse(&location)
             .unwrap()
             .query_pairs()
@@ -151,7 +151,7 @@ impl TestServer {
             .await
             .unwrap();
         assert!(res.status().is_redirection(), "callback: {}", res.status());
-        cookie_pair(&res, "simpress_session").expect("session cookie")
+        cookie_pair(&res, "swarmpress_session").expect("session cookie")
     }
 
     /// `POST /auth/dev/login`; returns the Cookie header value.
@@ -164,7 +164,7 @@ impl TestServer {
             .await
             .unwrap();
         assert_eq!(res.status(), 200, "dev login");
-        cookie_pair(&res, "simpress_session").expect("session cookie")
+        cookie_pair(&res, "swarmpress_session").expect("session cookie")
     }
 
     pub async fn send_json(

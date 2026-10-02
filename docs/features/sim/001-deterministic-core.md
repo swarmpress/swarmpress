@@ -37,6 +37,6 @@ Decisions: [ADR-0002](../../adr/0002-rust-server-and-sim-core-wasm-client.md), [
 
 ## Evidence
 
-- `simpress/nextest` (unit, `crates/sim-core/src/lib.rs` today)
-- `simpress/wasm-bindgen-test` (golden hash in wasm)
-- `simpress/criterion` (step time)
+- `swarmpress/nextest` (unit, `crates/sim-core/src/lib.rs` today)
+- `swarmpress/wasm-bindgen-test` (golden hash in wasm)
+- `swarmpress/criterion` (step time)

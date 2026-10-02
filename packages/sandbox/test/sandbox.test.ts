@@ -26,9 +26,9 @@ async function withSandbox<T>(opts: Partial<SandboxOptions>, bundle: string, fn:
 const okWeb: HostWeb = async (req) => ({ status: 200, headers: { "X-Echo": req.method }, body: JSON.stringify({ url: req.url, h: req.headers }) });
 
 describe("capabilities", () => {
-  test("only Bun, fetch (with web), console and simpress (with llm) are granted", async () => {
+  test("only Bun, fetch (with web), console and swarmpress (with llm) are granted", async () => {
     const probe = `globalThis.ext = { probe: () => ({
-      fetch: typeof fetch, process: typeof process, require: typeof require, simpress: typeof simpress,
+      fetch: typeof fetch, process: typeof process, require: typeof require, swarmpress: typeof swarmpress,
       setTimeout: typeof setTimeout, env: Object.keys(Bun.env).length, bunKeys: Object.keys(Bun).sort(), std: typeof std, os: typeof os,
     }) }`;
     const none = await withSandbox({}, probe, (call) => call("probe"));
@@ -36,7 +36,7 @@ describe("capabilities", () => {
       fetch: "undefined",
       process: "undefined",
       require: "undefined",
-      simpress: "undefined",
+      swarmpress: "undefined",
       setTimeout: "undefined",
       env: 0,
       bunKeys: ["env", "file", "write"],
@@ -49,7 +49,7 @@ describe("capabilities", () => {
       (call) => call("probe"),
     );
     expect(all.fetch).toBe("function");
-    expect(all.simpress).toBe("object");
+    expect(all.swarmpress).toBe("object");
   });
 
   test("fetch outside the declared origins is a CapabilityError", async () => {
@@ -64,7 +64,7 @@ describe("capabilities", () => {
   });
 
   test("an LLM tier that was not granted is denied", async () => {
-    const b = `globalThis.ext = { ask: (tier) => simpress.llm.complete({ tier, prompt: "hi" }) }`;
+    const b = `globalThis.ext = { ask: (tier) => swarmpress.llm.complete({ tier, prompt: "hi" }) }`;
     await withSandbox({ capabilities: ["llm:low"], host: { llm: async (r) => ({ text: `ok ${r.tier}` }) } }, b, async (call) => {
       expect((await call("ask", "low")).text).toBe("ok low");
       const e = await call("ask", "high").catch((x) => x);
@@ -163,7 +163,7 @@ describe("limits", () => {
 describe("deterministic mode", () => {
   const b = `globalThis.ext = {
     probe: () => ({ r: [Math.random(), Math.random(), Math.random()], now: Date.now(), d: new Date().toISOString(),
-                    explicit: new Date(0).toISOString(), fetch: typeof fetch, simpress: typeof simpress }),
+                    explicit: new Date(0).toISOString(), fetch: typeof fetch, swarmpress: typeof swarmpress }),
     write: () => Bun.write("store/notes/x", "1"),
   }`;
   const run = (seed: number | string, nowMs = 1_767_225_600_000) =>
@@ -185,7 +185,7 @@ describe("deterministic mode", () => {
     expect(a.d).toBe("2026-01-01T00:00:00.000Z");
     expect(a.explicit).toBe("1970-01-01T00:00:00.000Z");
     expect(a.fetch).toBe("undefined");
-    expect(a.simpress).toBe("undefined");
+    expect(a.swarmpress).toBe("undefined");
     expect((await run(43)).r).not.toEqual(a.r);
   });
 

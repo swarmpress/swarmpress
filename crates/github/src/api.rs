@@ -1,4 +1,4 @@
-//! The `RepoApi` trait: every repo operation SimPress performs on GitHub.
+//! The `RepoApi` trait: every repo operation swarm.press performs on GitHub.
 //!
 //! Implementations: [`crate::HttpGitHub`] (real REST), [`crate::FakeGitHub`]
 //! (in-memory, deterministic) and [`crate::GuardedRepo`] (path-policy

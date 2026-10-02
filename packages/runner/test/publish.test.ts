@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CapabilityError } from "@simpress/sandbox";
+import { CapabilityError } from "@swarm-press/sandbox";
 import { publishCycle } from "../src/engine.ts";
 import { FakeHttpServer, subset, type HttpExchange } from "../src/fakes.ts";
 import { ext, log } from "./helpers.ts";
@@ -22,13 +22,13 @@ describe("publish targets: the credential proxy", () => {
   const adapter = (extra = "") => `globalThis.ext = {
     openDraft: async ({ context }) => {
       ${extra}
-      const r = await fetch("https://cms.example/d", { method: "POST", headers: { "X-SimPress-Credential": context.credentialRef } });
+      const r = await fetch("https://cms.example/d", { method: "POST", headers: { "X-SwarmPress-Credential": context.credentialRef } });
       const seen = JSON.stringify({ context, headers: [] });
       if (seen.includes("s3cret")) throw new Error("secret leaked into the sandbox");
       return { ref: (await r.json()).id, headSha: "h1" };
     },
-    merge: async ({ context }) => ({ mergedSha: (await (await fetch("https://cms.example/m", { method: "POST", headers: { "X-SimPress-Credential": context.credentialRef } })).json()).sha }),
-    status: async ({ context }) => (await (await fetch("https://cms.example/s", { headers: { "X-SimPress-Credential": context.credentialRef } })).json()),
+    merge: async ({ context }) => ({ mergedSha: (await (await fetch("https://cms.example/m", { method: "POST", headers: { "X-SwarmPress-Credential": context.credentialRef } })).json()).sha }),
+    status: async ({ context }) => (await (await fetch("https://cms.example/s", { headers: { "X-SwarmPress-Credential": context.credentialRef } })).json()),
   }`;
 
   test("the secret is injected outside the sandbox; the bundle sees only the reference", async () => {

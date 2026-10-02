@@ -4,8 +4,8 @@
  */
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { PROTO_VERSION } from "@simpress/sdk";
-import type { WorldView } from "@simpress/sdk/runtime";
+import { PROTO_VERSION } from "@swarm-press/sdk";
+import type { WorldView } from "@swarm-press/sdk/runtime";
 import { exists, readBytes } from "./host.ts";
 
 /** The subset of the wasm `Sim` the runner uses (see `crates/client-wasm/pkg/client_wasm.d.ts`). */
@@ -38,9 +38,9 @@ export class RunnerError extends Error {
 const here = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(here, "..", "..", "..");
 
-/** `$SIMPRESS_WASM_PKG`, else `<repo>/crates/client-wasm/pkg`. */
+/** `$SWARMPRESS_WASM_PKG`, else `<repo>/crates/client-wasm/pkg`. */
 export function pkgDir(): string {
-  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SIMPRESS_WASM_PKG;
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWARMPRESS_WASM_PKG;
   return env ? resolve(env) : join(REPO_ROOT, "crates", "client-wasm", "pkg");
 }
 
@@ -54,7 +54,7 @@ export function loadSim(): Promise<SimModule> {
     if (!(await exists(js)) || !(await exists(wasm))) {
       throw new RunnerError(
         `client-wasm is not built: ${dir} has no client_wasm.js/client_wasm_bg.wasm.\n` +
-          `  Build it from the repo root with:  cargo xtask wasm   (or set SIMPRESS_WASM_PKG)`,
+          `  Build it from the repo root with:  cargo xtask wasm   (or set SWARMPRESS_WASM_PKG)`,
       );
     }
     const mod = await import(pathToFileURL(js).href);

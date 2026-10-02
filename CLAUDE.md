@@ -1,13 +1,12 @@
-# SimPress: development guide
+# swarm.press: development guide
 
-> **Last updated:** 2026-10-02 · **Milestone:** local-first MVP (`docs/mvp.md`) · **Branch:**
-> `claude/simpress-babylon`
+> **Last updated:** 2026-10-02 · **Milestone:** local-first MVP (`docs/mvp.md`) · **Branch:** `main`
 > **Legacy:** the TypeScript swarm.press is at tag `legacy-ts` (`git show legacy-ts:<path>`).
 > Don't port legacy files; re-specify the concepts.
 
-## What SimPress is
+## What swarm.press is
 
-SimPress is a browser **management sim / digital dollhouse**. Each player is the CEO of an AI
+swarm.press is a browser **management sim / digital dollhouse**. Each player is the CEO of an AI
 publishing house, shown as a detailed isometric 3D building (Babylon.js, WebGPU with a WebGL2
 fallback).
 - The staff are LLM agents with persistent personas. Their meetings play out as speech bubbles,
@@ -47,7 +46,7 @@ Site repos build with @swarm-press/site-kit + an agent-authored theme on GitHub 
 | `crates/server` | central service (axum, sqlx-sqlite) |
 | `crates/{content-schema,knowledge,github,protocol,testkit}` | page validation, indexes, GitHub client and fakes, wire types, test helpers |
 | `apps/game` | Babylon client, overlay UI, local LLM runtime |
-| `packages/sdk`, `packages/sandbox`, `packages/runner` | extension SDK, QuickJS sandbox, the `simpress` CLI (Bun) |
+| `packages/sdk`, `packages/sandbox`, `packages/runner` | extension SDK, QuickJS sandbox, the `swarmpress` CLI (Bun) |
 | `packages/content-schema`, `packages/tracker` | Zod page schema → `page.schema.json`; cookieless tracker |
 | `packages/site-kit`, `themes/starter` | Astro integration + starter theme |
 | `examples/extensions/*` | SDK examples |
@@ -144,9 +143,9 @@ cargo +1.98.0 install --git https://github.com/drietsch/cockpit --locked --root 
 
 # dev (see docs/guides/getting-started.md)
 cp .env.example .env && set -a && . ./.env && set +a
-cargo run -p server --bin simpress-server    # central service, SQLite in ./data, fake GitHub + dev login
+cargo run -p server --bin swarmpress-server    # central service, SQLite in ./data, fake GitHub + dev login
 pnpm dev                                      # cargo xtask wasm + Vite (apps/game)
-pnpm simpress run --days 3                    # headless game on Bun (SDK runner)
+pnpm swarmpress run --days 3                    # headless game on Bun (SDK runner)
 cargo xtask wasm --release
 
 # checks

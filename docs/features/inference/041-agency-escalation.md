@@ -27,4 +27,4 @@ Decisions: [ADR-0024](../../adr/0024-hybrid-inference-browser-llms-and-claude.md
 ## Evidence
 
 - `agents/nextest`
-- `simpress/nextest`
+- `swarmpress/nextest`

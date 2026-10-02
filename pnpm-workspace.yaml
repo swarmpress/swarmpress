@@ -4,7 +4,7 @@ packages:
   - 'packages/site-kit'
   - 'themes/*'
   - 'packages/tracker'
-  # Extension SDK (ADR-0042): SDK, QuickJS sandbox, the `simpress` runner, examples.
+  # Extension SDK (ADR-0042): SDK, QuickJS sandbox, the `swarmpress` runner, examples.
   - 'packages/sdk'
   - 'packages/sandbox'
   - 'packages/runner'

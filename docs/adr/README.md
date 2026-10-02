@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-SimPress ADRs are written in [Cockpit](https://github.com/drietsch/cockpit)'s dialect:
+swarm.press ADRs are written in [Cockpit](https://github.com/drietsch/cockpit)'s dialect:
 
 ```markdown
 # ADR-NNNN — Title

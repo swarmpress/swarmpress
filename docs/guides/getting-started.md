@@ -39,21 +39,21 @@ database server.
 ```sh
 cp .env.example .env        # dev defaults: fake GitHub, dev login, SQLite in ./data
 set -a && . ./.env && set +a
-cargo run -p server --bin simpress-server   # creates ./data/simpress.db, migrates, listens on :8080
+cargo run -p server --bin swarmpress-server   # creates ./data/swarmpress.db, migrates, listens on :8080
 pnpm dev                    # the client must reach /auth, /api, /ws and /web on :8080 (Vite proxy)
 ```
 
 Dev mode signs in without GitHub (`POST /auth/dev/login {"login":"ada"}` with
-`SIMPRESS_DEV_AUTH=1`) and writes content PRs to an in-memory FakeGitHub
-(`SIMPRESS_GITHUB=fake`), where merges land a simulated `DeployLanded` event.
+`SWARMPRESS_DEV_AUTH=1`) and writes content PRs to an in-memory FakeGitHub
+(`SWARMPRESS_GITHUB=fake`), where merges land a simulated `DeployLanded` event.
 
 Environment variables (see `.env.example` for all of them):
 
 | Variable | Used by |
 |---|---|
-| `DATABASE_URL` | server (sqlx/SQLite), default `sqlite://data/simpress.db?mode=rwc` |
-| `SIMPRESS_DATA_DIR` | sync blobs (command-log segments, snapshots), default `./data` |
-| `SIMPRESS_DEV_AUTH`, `SIMPRESS_GITHUB`, `SIMPRESS_SIMULATE_DEPLOY` | dev login, fake GitHub, simulated deploys |
+| `DATABASE_URL` | server (sqlx/SQLite), default `sqlite://data/swarmpress.db?mode=rwc` |
+| `SWARMPRESS_DATA_DIR` | sync blobs (command-log segments, snapshots), default `./data` |
+| `SWARMPRESS_DEV_AUTH`, `SWARMPRESS_GITHUB`, `SWARMPRESS_SIMULATE_DEPLOY` | dev login, fake GitHub, simulated deploys |
 | `GITHUB_TOKEN` or `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY_PATH`, `GITHUB_WEBHOOK_SECRET` | content gateway, deploy webhooks |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` | GitHub sign-in |
 | `GITHUB_SITES_ORG` | owner of default site repos |
@@ -63,11 +63,11 @@ Environment variables (see `.env.example` for all of them):
 The game page runs the MVP loop ([mvp.md](../mvp.md)) only when asked to with `?central=1`.
 Without it the page is the offline dollhouse above and never talks to the server.
 
-1. Start the server with the dev defaults from `.env.example` (`SIMPRESS_DEV_AUTH=1`,
-   `SIMPRESS_GITHUB=fake`, listening on `127.0.0.1:8080`), as shown above.
+1. Start the server with the dev defaults from `.env.example` (`SWARMPRESS_DEV_AUTH=1`,
+   `SWARMPRESS_GITHUB=fake`, listening on `127.0.0.1:8080`), as shown above.
 2. In a second terminal run `pnpm dev`. It builds both wasm modules (`crates/client-wasm` and
    `crates/orchestrator-wasm`) and starts Vite on port 5173. Vite proxies `/auth`, `/api`, `/ws`
-   and `/web` to `http://127.0.0.1:8080`; set `SIMPRESS_CENTRAL_URL` if the server listens
+   and `/web` to `http://127.0.0.1:8080`; set `SWARMPRESS_CENTRAL_URL` if the server listens
    elsewhere.
 3. Open <http://localhost:5173/?central=1&llm=fake&ff=09:00> in Chromium.
 
@@ -87,20 +87,20 @@ What should happen, in order:
 2. The draft opens a pull request through `POST /api/gateway/draft` (on the fake GitHub).
 3. The first review scores 6, so the item goes back for a revision. The second review scores 8.
 4. Publish merges the pull request through `POST /api/gateway/merge`. The fake GitHub then emits
-   a simulated `DeployLanded` event (`SIMPRESS_SIMULATE_DEPLOY`, on by default with the fake),
+   a simulated `DeployLanded` event (`SWARMPRESS_SIMULATE_DEPLOY`, on by default with the fake),
    and the item becomes published.
 
 Where to look:
 - The **Plan** panel in the overlay shows the work item and its thread.
 - The browser console prints `[session] …` lines (restore source, fast-forward, lease).
-- `__simpress.session` in the console is the same hook the e2e test uses: `.info()`, `.state()`
+- `__swarmpress.session` in the console is the same hook the e2e test uses: `.info()`, `.state()`
   (jobs, errors, world hash), `.items()` (work item → status), `.gateway()` (draft and merge
   calls), `.events()`, `await .planText()`, `await .checkpoint()`.
 
 Reload and a second device:
 - A reload restores the company from the browser store by replaying its command log.
 - The log is sealed to central sync once per game day and on `pagehide`, or on demand with
-  `await __simpress.session.checkpoint()`. A fresh browser profile with the same `login` then
+  `await __swarmpress.session.checkpoint()`. A fresh browser profile with the same `login` then
   restores from central sync. It takes the lease over from the first one.
 
 Limits of the fake modes:

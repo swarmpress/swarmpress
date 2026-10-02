@@ -1,8 +1,8 @@
 # `cargo nextest run --workspace --profile ci` writes JUnit XML to target/nextest/ci/junit.xml,
-# which cockpit.toml registers as the `simpress/nextest` evidence source (split per crate).
+# which cockpit.toml registers as the `swarmpress/nextest` evidence source (split per crate).
 [profile.ci]
 fail-fast = false
 
 [profile.ci.junit]
 path = "junit.xml"
-report-name = "simpress-nextest"
+report-name = "swarmpress-nextest"

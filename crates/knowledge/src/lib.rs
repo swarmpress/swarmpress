@@ -1,4 +1,4 @@
-//! Closed-world site knowledge for SimPress agents.
+//! Closed-world site knowledge for swarm.press agents.
 //!
 //! Built from a site repo checkout through [`SiteSource`] ([`DirSource`] on
 //! disk now, a GitHub-backed source later):

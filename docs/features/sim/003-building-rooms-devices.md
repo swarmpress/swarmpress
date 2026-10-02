@@ -34,5 +34,5 @@ Decisions: [ADR-0003](../../adr/0003-deterministic-lockstep-server-authority.md)
 
 ## Evidence
 
-- `simpress/nextest`
-- `simpress/wasm-bindgen-test`
+- `swarmpress/nextest`
+- `swarmpress/wasm-bindgen-test`

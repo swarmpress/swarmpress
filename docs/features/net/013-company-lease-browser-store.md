@@ -23,7 +23,7 @@ Replaces "Company actors, command log and snapshots". The server no longer runs 
 (ADR-0038).
 
 - **Lease:** one device holds a company's lease at a time (`POST /api/companies/{id}/lease`),
-  renewable, expiring after `SIMPRESS_LEASE_SECS`. Gateway calls require it.
+  renewable, expiring after `SWARMPRESS_LEASE_SECS`. Gateway calls require it.
 - **Store:** the browser keeps the command log, snapshots, plan, briefs, artifacts and
   transcripts in Turso wasm on OPFS, with an sqlite-wasm fallback, using one migration set
   (ADR-0041).

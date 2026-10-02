@@ -2,8 +2,8 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig, type ProxyOptions } from 'vite'
 import preact from '@preact/preset-vite'
 
-// The central server (crates/server, `SIMPRESS_BIND` default 127.0.0.1:8080).
-const central = process.env.SIMPRESS_CENTRAL_URL ?? 'http://127.0.0.1:8080'
+// The central server (crates/server, `SWARMPRESS_BIND` default 127.0.0.1:8080).
+const central = process.env.SWARMPRESS_CENTRAL_URL ?? 'http://127.0.0.1:8080'
 const proxy: Record<string, ProxyOptions> = {
   '/auth': { target: central, changeOrigin: false },
   '/api': { target: central, changeOrigin: false },
@@ -14,14 +14,14 @@ const proxy: Record<string, ProxyOptions> = {
 // Cross-origin isolation (ADR-0041): Turso wasm's threads need
 // SharedArrayBuffer. `credentialless` keeps no-cors subresources loadable
 // without CORP (Chromium, Firefox); Safari ignores it and gets the sqlite-wasm
-// store. SIMPRESS_COEP=require-corp switches to the strict form.
-// SIMPRESS_ISOLATION=off drops both headers (to compare behaviour without isolation).
+// store. SWARMPRESS_COEP=require-corp switches to the strict form.
+// SWARMPRESS_ISOLATION=off drops both headers (to compare behaviour without isolation).
 const isolation: Record<string, string> =
-  process.env.SIMPRESS_ISOLATION === 'off'
+  process.env.SWARMPRESS_ISOLATION === 'off'
     ? {}
     : {
         'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': process.env.SIMPRESS_COEP ?? 'credentialless',
+        'Cross-Origin-Embedder-Policy': process.env.SWARMPRESS_COEP ?? 'credentialless',
       }
 
 export default defineConfig(({ mode }) => {

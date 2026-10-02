@@ -1,6 +1,6 @@
 {
   "$schema": "../../../packages/sdk/schemas/manifest.schema.json",
-  "id": "dev.simpress.examples.fact-checker",
+  "id": "press.swarm.examples.fact-checker",
   "name": "Fact-check desk",
   "version": "0.1.0",
   "sdk": "^0.1.0",
@@ -9,5 +9,5 @@
   "capabilities": ["web", "llm:low", "store:factchecks"],
   "origins": ["https://en.wikipedia.org"],
   "entry": { "bundle": "src/index.ts" },
-  "provenance": { "author": { "name": "SimPress examples" } }
+  "provenance": { "author": { "name": "swarm.press examples" } }
 }

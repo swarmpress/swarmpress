@@ -63,7 +63,7 @@ the earlier server prototype (`git show 5f…:crates/server/src/orchestrator.rs`
 
 | Area | Endpoints |
 |---|---|
-| Auth | `POST /auth/dev/login` (only with `SIMPRESS_DEV_AUTH=1`), GitHub OAuth, `GET /api/me` |
+| Auth | `POST /auth/dev/login` (only with `SWARMPRESS_DEV_AUTH=1`), GitHub OAuth, `GET /api/me` |
 | Company | `POST /api/companies`, `GET /api/companies/me`, `POST /api/companies/{id}/lease` |
 | Gateway | `POST /api/gateway/draft`, `POST /api/gateway/merge` (company lease required; PathPolicy) |
 | Events | `GET /api/events?after=`, plus a WebSocket push channel (`/ws/events`) |
@@ -76,7 +76,7 @@ the earlier server prototype (`git show 5f…:crates/server/src/orchestrator.rs`
 | Mode | LLM | GitHub |
 |---|---|---|
 | test (CI) | scripted `FakeLlm` (Rust tests), scripted fake `LocalLlm` (browser e2e) | `FakeGitHub` in the server |
-| dev (manual) | `?llm=fake` scripted, or a real local model once Hugging Face is reachable | `SIMPRESS_GITHUB=fake` (file-backed) or a sandbox repo |
+| dev (manual) | `?llm=fake` scripted, or a real local model once Hugging Face is reachable | `SWARMPRESS_GITHUB=fake` (file-backed) or a sandbox repo |
 | live | browser staff, plus Agency (Claude, credits) | GitHub App |
 
 ## Acceptance checklist

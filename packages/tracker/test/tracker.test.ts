@@ -11,7 +11,7 @@ let n = 0;
 
 function script(attrs: Record<string, string> = { 'data-project': key }): HTMLScriptElement {
   const s = document.createElement('script');
-  s.src = 'https://play.simpress.example/t/s.js';
+  s.src = 'https://play.swarmpress.example/t/s.js';
   for (const [k, v] of Object.entries(attrs)) s.setAttribute(k, v);
   return s;
 }
@@ -56,7 +56,7 @@ afterEach(() => {
 describe('tracker', () => {
   it('sends a pageview on load with utm, lang and viewport, to the script origin', () => {
     expect(init(script())).toBe(true);
-    expect(sent[0].url).toBe('https://play.simpress.example/t/e');
+    expect(sent[0].url).toBe('https://play.swarmpress.example/t/e');
     expect(sent[0].body).toMatchObject({
       k: key,
       t: 'pageview',

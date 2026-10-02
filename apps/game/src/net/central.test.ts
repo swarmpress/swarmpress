@@ -33,7 +33,7 @@ function mock(handler: Handler) {
   return { client: new CentralClient({ baseUrl: 'http://central.test', fetch }), calls }
 }
 
-const COMPANY = { id: 'co-1', owner_user_id: 'u1', name: 'Dispatch', seed: 7, site_repo: 'simpress-sites/ada-site', site_base_branch: 'main', created_at: 1 }
+const COMPANY = { id: 'co-1', owner_user_id: 'u1', name: 'Dispatch', seed: 7, site_repo: 'swarmpress-sites/ada-site', site_base_branch: 'main', created_at: 1 }
 
 describe('CentralClient', () => {
   it('signs in, reads me, creates and gets the company', async () => {
@@ -95,7 +95,7 @@ describe('CentralClient', () => {
       if (method === 'GET' && url.endsWith('/log')) return json({ segments: [{ segment: 0, sha256: 's', size: 3, created_at: 1 }] })
       if (method === 'PUT' && url.endsWith('/snapshot')) return json({ step: 120, sha256: 't', size: 2 })
       if (method === 'GET' && url.endsWith('/snapshot'))
-        return new Response(new Uint8Array([9, 8]), { headers: { [STEP_HEADER]: '120', 'x-simpress-sha256': 't' } })
+        return new Response(new Uint8Array([9, 8]), { headers: { [STEP_HEADER]: '120', 'x-swarmpress-sha256': 't' } })
       return json({}, 500)
     })
     expect(await client.putLogSegment('co-1', 0, new Uint8Array([1, 2, 3]))).toEqual({ segment: 0, sha256: 's', size: 3, status: 201 })

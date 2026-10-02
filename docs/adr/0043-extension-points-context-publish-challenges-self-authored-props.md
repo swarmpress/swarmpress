@@ -47,7 +47,7 @@ were bolted on later, they would force breaking changes:
 4. **Staff-authored extensions** (a flow, not a kind).
    - A job kind `author_extension` lets IT or Front-end staff produce a bundle source plus a
      manifest.
-   - The host builds it and runs `simpress check/test` in the sandbox, then opens a CEO ticket
+   - The host builds it and runs `swarmpress check/test` in the sandbox, then opens a CEO ticket
      with the diff, the requested capabilities and the test results.
    - Approval installs it. The manifest records provenance (`authoredBy: staff id`, `company`,
      `job id`).
@@ -69,7 +69,7 @@ were bolted on later, they would force breaking changes:
 
 - **The world-context service (ADR-0035) gets a pluggable source.** Built-in feeds (weather,
   calendar) use the same interface, so first-party and third-party feeds are equal.
-- **SimPress can drive non-GitHub CMSs.** This opens real editorial teams as users.
+- **swarm.press can drive non-GitHub CMSs.** This opens real editorial teams as users.
 - **Leaderboards become trustworthy without server-side simulation.**
 - **Negative:**
   - The credential proxy is a new security surface: origin allowlists, per-company secrets,

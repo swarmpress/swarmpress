@@ -32,7 +32,7 @@ describe('TransformersJsLlm on the tiny fixture (node, cpu)', () => {
   beforeAll(async () => {
     // Node's ONNX loader wants a file path, so give it a throwaway FS cache.
     env.useFSCache = true
-    env.cacheDir = mkdtempSync(join(tmpdir(), 'simpress-tiny-llm-'))
+    env.cacheDir = mkdtempSync(join(tmpdir(), 'swarmpress-tiny-llm-'))
     llm = new TransformersJsLlm({
       resolve: () => ({ hfRepo: TINY_MODEL_ENTRY.hfRepo, dtype: 'fp32', device: 'cpu' as DeviceKind, sizeBytes: TINY_MODEL_ENTRY.sizeBytes }),
       fetch: tinyModelFetch(() => Promise.reject(new Error('network disabled in test'))),

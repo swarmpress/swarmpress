@@ -23,7 +23,7 @@ use crate::ratelimit::{Governor, GovernorConfig, RateLimitInfo};
 use crate::types::*;
 
 pub const DEFAULT_API_BASE: &str = "https://api.github.com";
-const USER_AGENT: &str = "simpress-github/0.2";
+const USER_AGENT: &str = "swarmpress-github/0.2";
 const API_VERSION: &str = "2022-11-28";
 
 pub(crate) fn build_client() -> Result<reqwest::Client> {

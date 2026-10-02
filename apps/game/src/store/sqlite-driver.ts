@@ -35,7 +35,7 @@ export class SqliteWorkerDriver implements SqlDriver {
 
   /** Starts the worker and opens `name` on the OPFS SAH pool (or in memory). */
   static async open(name: string): Promise<SqliteWorkerDriver> {
-    const worker = new Worker(new URL('./sqlite-worker.ts', import.meta.url), { type: 'module', name: 'simpress-sqlite' })
+    const worker = new Worker(new URL('./sqlite-worker.ts', import.meta.url), { type: 'module', name: 'swarmpress-sqlite' })
     const d = new SqliteWorkerDriver(worker)
     try {
       const r = (await d.call({ op: 'open', name, opfs: true })) as { persistent: boolean; reason: string | null }

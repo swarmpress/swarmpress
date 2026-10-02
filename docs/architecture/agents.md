@@ -4,7 +4,7 @@
 > the pipelines run in `crates/orchestrator` (wasm, in the browser). Text goes to the browser
 > store, and PRs go through the central gateway.
 
-The staff of a SimPress company are LLM agents with a role, a persona, a seniority and a place in
+The staff of a swarm.press company are LLM agents with a role, a persona, a seniority and a place in
 the building. They never run the company's process. Deterministic pipelines do that, call them
 for artifacts, and decide transitions from what they return
 ([ADR-0011](../adr/0011-orchestrator-owns-state-transitions.md)).

@@ -94,7 +94,7 @@ describe('LlmClient RPC specifics', () => {
     await client.load('qwen3-4b-q4f16', undefined, { device: 'wasm' })
     expect(specs[1].device).toBe('wasm')
     await client.load('tiny-random-llama')
-    expect(specs[2]).toMatchObject({ fixture: 'tiny-random-llama', hfRepo: 'simpress/tiny-random-llama' })
+    expect(specs[2]).toMatchObject({ fixture: 'tiny-random-llama', hfRepo: 'swarmpress/tiny-random-llama' })
     await expect(client.load('nope')).rejects.toThrow(/unknown model/)
   })
 

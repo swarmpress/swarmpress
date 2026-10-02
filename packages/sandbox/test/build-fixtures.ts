@@ -1,7 +1,7 @@
 /**
  * Builds the parity fixtures with Bun.build (run under Bun):
  * - the fact-checker and coffee-machine-rule example bundles (IIFE, `globalThis.ext`),
- *   built the same way `simpress build` does;
+ *   built the same way `swarmpress build` does;
  * - with `--browser`: `e2e/.fixture/` = page.js (sandbox + parity harness), the QuickJS wasm,
  *   index.html and both example bundles, for the Playwright parity test.
  *
@@ -17,9 +17,9 @@ const ROOT = join(PKG, "..", "..");
 const SDK_RUNTIME = join(ROOT, "packages", "sdk", "src", "runtime.ts");
 
 const sdkPlugin = {
-  name: "simpress-sdk",
+  name: "swarmpress-sdk",
   setup(b: { onResolve(o: { filter: RegExp }, cb: () => { path: string }): void }) {
-    b.onResolve({ filter: /^@simpress\/sdk(\/runtime)?$/ }, () => ({ path: SDK_RUNTIME }));
+    b.onResolve({ filter: /^@swarmpress\/sdk(\/runtime)?$/ }, () => ({ path: SDK_RUNTIME }));
   },
 };
 

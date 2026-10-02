@@ -6,7 +6,7 @@
   "deleted": false,
   "forced": false,
   "base_ref": null,
-  "compare": "https://github.com/simpress-sites/cinqueterre-travel/compare/a10867b14bb7...9fceb02d0ae5",
+  "compare": "https://github.com/swarmpress-sites/cinqueterre-travel/compare/a10867b14bb7...9fceb02d0ae5",
   "commits": [
     {
       "id": "9fceb02d0ae598e95dc970b74767f19372d61af8",
@@ -14,8 +14,8 @@
       "distinct": true,
       "message": "Last light on Sentiero Azzurro (#6)",
       "timestamp": "2026-05-12T09:14:40Z",
-      "url": "https://github.com/simpress-sites/cinqueterre-travel/commit/9fceb02d0ae598e95dc970b74767f19372d61af8",
-      "author": { "name": "simpress-bot[bot]", "email": "1+simpress-bot[bot]@users.noreply.github.com" },
+      "url": "https://github.com/swarmpress-sites/cinqueterre-travel/commit/9fceb02d0ae598e95dc970b74767f19372d61af8",
+      "author": { "name": "swarmpress-bot[bot]", "email": "1+swarmpress-bot[bot]@users.noreply.github.com" },
       "committer": { "name": "GitHub", "email": "noreply@github.com" },
       "added": ["content/pages/blog/last-light-on-sentiero-azzurro.json"],
       "removed": [],
@@ -31,16 +31,16 @@
     "removed": [],
     "modified": ["content/pages/blog/index.json"]
   },
-  "pusher": { "name": "simpress-bot[bot]", "email": null },
+  "pusher": { "name": "swarmpress-bot[bot]", "email": null },
   "repository": {
     "id": 42,
     "name": "cinqueterre-travel",
-    "full_name": "simpress-sites/cinqueterre-travel",
+    "full_name": "swarmpress-sites/cinqueterre-travel",
     "private": false,
-    "owner": { "name": "simpress-sites", "login": "simpress-sites", "id": 9000 },
+    "owner": { "name": "swarmpress-sites", "login": "swarmpress-sites", "id": 9000 },
     "default_branch": "main",
     "master_branch": "main"
   },
-  "sender": { "login": "simpress-bot[bot]", "id": 1, "type": "Bot" },
+  "sender": { "login": "swarmpress-bot[bot]", "id": 1, "type": "Bot" },
   "installation": { "id": 55501 }
 }

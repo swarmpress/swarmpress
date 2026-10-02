@@ -1,4 +1,4 @@
-# SimPress
+# swarm.press
 
 **An isometric publishing-house management game in which the staff are AI agents and the output
 is a real website.**
@@ -11,7 +11,7 @@ through pull requests you approve.
 
 The first company is real: [cinqueterre.travel](https://cinqueterre.travel).
 
-SimPress is the greenfield rebuild of swarm.press. The legacy TypeScript platform is preserved
+swarm.press is the greenfield rebuild of swarm.press. The legacy TypeScript platform is preserved
 at the git tag `legacy-ts`.
 
 ## How it works
@@ -36,7 +36,7 @@ Site repo: @swarm-press/site-kit + agent-authored theme → GitHub Actions → G
 - **Repo-canonical content:** JSON block pages with `LocalizedString`, one PR per piece, merged
   by the orchestrator, never by an LLM.
 - **Extensible:** JS bundles (content packs, skills, sim rules, panels, real-world feeds,
-  publish targets) run in a sandbox, with a Bun-powered `simpress` CLI to build and test them.
+  publish targets) run in a sandbox, with a Bun-powered `swarmpress` CLI to build and test them.
 
 ## Quick start
 
@@ -77,7 +77,7 @@ cockpit scan && cockpit status
 - [Architecture overview](docs/architecture/overview.md)
 - [Game design](docs/game-design/overview.md)
 - [Architecture Decision Records](docs/adr/README.md) (ADR-0001 to ADR-0043)
-- [Extending SimPress (SDK)](docs/guides/extending.md)
+- [Extending swarm.press (SDK)](docs/guides/extending.md)
 - [Testing and evidence](docs/guides/testing.md)
 - [cinqueterre.travel cutover runbook](docs/runbooks/cinqueterre-cutover.md)
 

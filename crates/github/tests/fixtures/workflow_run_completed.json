@@ -14,25 +14,25 @@
     "conclusion": "success",
     "workflow_id": 159038,
     "check_suite_id": 118578150,
-    "url": "https://api.github.com/repos/simpress-sites/cinqueterre-travel/actions/runs/9001",
-    "html_url": "https://github.com/simpress-sites/cinqueterre-travel/actions/runs/9001",
+    "url": "https://api.github.com/repos/swarmpress-sites/cinqueterre-travel/actions/runs/9001",
+    "html_url": "https://github.com/swarmpress-sites/cinqueterre-travel/actions/runs/9001",
     "pull_requests": [
       { "id": 2001234570, "number": 9, "head": { "ref": "design/spring-refresh", "sha": "ec26c3e57ca3a959ca5aad62de7213c562f8c821" }, "base": { "ref": "main", "sha": "a10867b14bb761a232cd80139fbd4c0d33264240" } }
     ],
     "created_at": "2026-05-12T09:04:00Z",
     "updated_at": "2026-05-12T09:12:00Z",
     "run_attempt": 1,
-    "artifacts_url": "https://api.github.com/repos/simpress-sites/cinqueterre-travel/actions/runs/9001/artifacts"
+    "artifacts_url": "https://api.github.com/repos/swarmpress-sites/cinqueterre-travel/actions/runs/9001/artifacts"
   },
   "workflow": { "id": 159038, "name": "site-ci", "path": ".github/workflows/site-ci.yml", "state": "active" },
   "repository": {
     "id": 42,
     "name": "cinqueterre-travel",
-    "full_name": "simpress-sites/cinqueterre-travel",
+    "full_name": "swarmpress-sites/cinqueterre-travel",
     "private": false,
-    "owner": { "login": "simpress-sites", "id": 9000, "type": "Organization" },
+    "owner": { "login": "swarmpress-sites", "id": 9000, "type": "Organization" },
     "default_branch": "main"
   },
-  "sender": { "login": "simpress-bot[bot]", "id": 1, "type": "Bot" },
+  "sender": { "login": "swarmpress-bot[bot]", "id": 1, "type": "Bot" },
   "installation": { "id": 55501 }
 }

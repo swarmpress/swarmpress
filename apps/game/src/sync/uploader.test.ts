@@ -1,7 +1,7 @@
 // Sealing to and restoring from the central sync API (FEAT-012): the real
 // CentralClient against a fake fetch that behaves like crates/server's sync
 // routes (README: 201 stored, 200 identical, 409 different bytes; the snapshot
-// needs x-simpress-step), over the real CompanyStore on the memory engine.
+// needs x-swarmpress-step), over the real CompanyStore on the memory engine.
 import { describe, expect, it } from 'vitest'
 import { commandKind, type LoggedCommand } from '../catchup/replay'
 import { CentralClient, CentralError, STEP_HEADER } from '../net/central'
@@ -58,12 +58,12 @@ function server() {
     }
     if (c.method === 'PUT') {
       const step = c.headers[STEP_HEADER]
-      if (step == null) return json({ error: 'x-simpress-step required' }, 400)
+      if (step == null) return json({ error: 'x-swarmpress-step required' }, 400)
       snapshots.set(company, { step: Number(step), bytes: c.body! })
       return json({ step: Number(step), sha256: 'sha', size: c.body!.length })
     }
     const snap = snapshots.get(company)
-    return snap ? new Response(snap.bytes as BodyInit, { headers: { [STEP_HEADER]: String(snap.step), 'x-simpress-sha256': 'sha' } }) : json({ error: 'no snapshot' }, 404)
+    return snap ? new Response(snap.bytes as BodyInit, { headers: { [STEP_HEADER]: String(snap.step), 'x-swarmpress-sha256': 'sha' } }) : json({ error: 'no snapshot' }, 404)
   }
 
   const fetch = async (url: string, init?: RequestInit): Promise<Response> => {

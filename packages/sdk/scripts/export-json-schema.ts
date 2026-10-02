@@ -19,7 +19,7 @@ export function render(name: string): string {
   const json = zodToJsonSchema(schema, { $refStrategy: "none", target: "jsonSchema7" }) as Record<string, unknown>;
   const doc = {
     $schema: "http://json-schema.org/draft-07/schema#",
-    $id: `https://simpress.dev/sdk/${SDK_VERSION}/${name}`,
+    $id: `https://swarm.press/sdk/${SDK_VERSION}/${name}`,
     title: name.replace(".schema.json", ""),
     ...json,
   };
@@ -34,7 +34,7 @@ for (const name of Object.keys(JSON_SCHEMAS)) {
   if (check) {
     const cur = await readFile(path, "utf8").catch(() => "");
     if (cur !== next) {
-      console.error(`drift: schemas/${name} differs from src/schemas.ts (run: pnpm --filter @simpress/sdk export)`);
+      console.error(`drift: schemas/${name} differs from src/schemas.ts (run: pnpm --filter @swarm-press/sdk export)`);
       drift++;
     }
   } else {

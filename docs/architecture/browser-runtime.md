@@ -109,7 +109,7 @@ getLogSegment(companyId, segment): Promise<Uint8Array | null>   listLogSegments(
 putSnapshot(companyId, step, bytes)          getSnapshot(companyId): Promise<{ step, sha256, bytes } | null>
 
 new LeaseKeeper(client, companyId, deviceId, { force?, onLost? })   // start() renews at 1/3 of the TTL; stop() releases
-centralGateway(client, () => leaseId): OrchestratorGateway          // x-simpress-lease on draft/merge
+centralGateway(client, () => leaseId): OrchestratorGateway          // x-swarmpress-lease on draft/merge
 new EventStream(client, companyId, kv, onEvent, { pollMs?, WebSocket? })
 ```
 
@@ -120,7 +120,7 @@ order, drops duplicates and other companies' events, and advances the cursor in 
 only after the handler resolves, so a reload neither replays nor loses an event.
 
 In dev and preview, Vite proxies `/auth`, `/api`, `/ws` (WebSocket) and `/web` to the central
-server: `SIMPRESS_CENTRAL_URL`, default `http://127.0.0.1:8080` (the server's `SIMPRESS_BIND`
+server: `SWARMPRESS_CENTRAL_URL`, default `http://127.0.0.1:8080` (the server's `SWARMPRESS_BIND`
 default). Cookies stay same-origin.
 
 ## The orchestrator bridge (`crates/orchestrator-wasm`)
@@ -164,7 +164,7 @@ script every call fails loudly.
 ## Cross-origin isolation
 
 The Vite dev and preview servers send `Cross-Origin-Opener-Policy: same-origin` and
-`Cross-Origin-Embedder-Policy: credentialless` (`SIMPRESS_COEP=require-corp` switches to the
+`Cross-Origin-Embedder-Policy: credentialless` (`SWARMPRESS_COEP=require-corp` switches to the
 strict form). Effects measured on 2026-10-02:
 
 - the game (Babylon, WebGPU and WebGL2), the LLM harness, the module workers and the
@@ -174,7 +174,7 @@ strict form). Effects measured on 2026-10-02:
   and radio) needs `<iframe credentialless>` or CORP;
 - Safari does not support `credentialless`: there the page is not isolated, and `auto` selects
   the sqlite-wasm store;
-- the central server's own static hosting (`SIMPRESS_STATIC_DIR`) does not send these headers
+- the central server's own static hosting (`SWARMPRESS_STATIC_DIR`) does not send these headers
   yet. Until it does, a build served from there runs on sqlite-wasm.
 
 ## Tests
@@ -185,4 +185,4 @@ strict form). Effects measured on 2026-10-02:
 | `apps/game/src/net/central.test.ts` (vitest) | every client call against a mocked fetch, lease renewal and loss, events polling, socket, dedupe, fallback |
 | `apps/game/src/orchestrator/bridge.test.ts` (vitest) | the MVP loop through orchestrator-wasm with CompanyStore and the `?llm=fake` LocalLlm |
 | `crates/orchestrator-wasm/tests/loop.test.ts` (`bun test`) | the MVP loop through the JS bridge with an in-memory JS store, a JS fake gateway and the scripted LLM; error mapping |
-| `apps/game/e2e/orchestrator.spec.ts` (Playwright, `-c playwright.orchestrator.config.ts`) | per engine (turso, sqlite): real `simpress-server` + Vite preview of the harness build (`vite build --mode harness`, not in the production build); login → company → lease → loop → `DeployLanded` via the events API → sync round trip → reload from OPFS; the sim-driven loop; `auto` picks Turso |
+| `apps/game/e2e/orchestrator.spec.ts` (Playwright, `-c playwright.orchestrator.config.ts`) | per engine (turso, sqlite): real `swarmpress-server` + Vite preview of the harness build (`vite build --mode harness`, not in the production build); login → company → lease → loop → `DeployLanded` via the events API → sync round trip → reload from OPFS; the sim-driven loop; `auto` picks Turso |

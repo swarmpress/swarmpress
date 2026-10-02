@@ -11,10 +11,10 @@ adrs:
 
 # Extension sandbox (QuickJS in wasm, Bun API subset)
 
-`@simpress/sandbox` runs one extension bundle in its own QuickJS-wasm instance
+`@swarm-press/sandbox` runs one extension bundle in its own QuickJS-wasm instance
 (`quickjs-emscripten-core` 0.32 + the release-sync variant), in the browser and under Bun/Node.
 Inside the VM there is only `Bun.file/Bun.write` (capability-scoped store tables and read-only
-pack files), `Bun.env = {}`, `fetch` with the `web` capability (origin allowlist), `simpress.llm`
+pack files), `Bun.env = {}`, `fetch` with the `web` capability (origin allowlist), `swarmpress.llm`
 with an `llm:<tier>` capability, and `console`. Memory (hard wasm-memory cap), interrupt (ops) and
 wall-time limits fail calls with typed errors. Deterministic mode seeds `Math.random`, pins `Date`
 and removes async I/O.

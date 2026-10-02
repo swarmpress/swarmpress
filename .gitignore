@@ -82,10 +82,10 @@ playwright-report/
 /artifacts/
 apps/game/reports/
 
-# Local server data (SQLite + sync blobs, SIMPRESS_DATA_DIR)
+# Local server data (SQLite + sync blobs, SWARMPRESS_DATA_DIR)
 /data/
 # Extension SDK (ADR-0042): test reports, build scratch, browser parity fixture
 packages/*/reports/
 packages/sandbox/e2e/.fixture/
 packages/sandbox/.build-*/
-.simpress-build/
+.swarmpress-build/

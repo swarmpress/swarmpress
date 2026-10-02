@@ -11,7 +11,7 @@
  *
  * URL parameters (besides main.ts's):
  *   central=1        turn the session on
- *   login=NAME       dev login (default `ceo`; needs SIMPRESS_DEV_AUTH=1 on the server)
+ *   login=NAME       dev login (default `ceo`; needs SWARMPRESS_DEV_AUTH=1 on the server)
  *   llm=fake         the scripted MVP model (src/llm/mvp-script.ts)
  *   store=…          the store engine (src/store)
  *   ff=HH:MM         fast-forward on boot to that time of the current game day
@@ -38,7 +38,7 @@ const SITE: SiteBindingJson = {
   language: 'en',
   style_guide: styleGuide,
   quality_bar: 7,
-  // The central server reports the deploy (the GitHub webhook, or SIMPRESS_SIMULATE_DEPLOY in dev).
+  // The central server reports the deploy (the GitHub webhook, or SWARMPRESS_SIMULATE_DEPLOY in dev).
   simulate_deploy: false,
   standup_max_turns: 4,
 }
@@ -90,7 +90,7 @@ export interface CheckpointResult {
   central: SealResult | null
 }
 
-/** `window.__simpress.session`: the e2e test hook (mirrors the orchestrator harness). */
+/** `window.__swarmpress.session`: the e2e test hook (mirrors the orchestrator harness). */
 export interface SessionHook {
   info(): SessionInfo
   state(): {
@@ -293,7 +293,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   const me = await signIn(client, login)
   const company = me.company ?? (await client.myCompany()) ?? (await client.createCompany({ name: `${login} Dispatch` }))
   // One database per company: the command log and checkpoints are the company's.
-  const store = await openCompanyStore({ name: `simpress-${company.id}.db` })
+  const store = await openCompanyStore({ name: `swarmpress-${company.id}.db` })
   await store.setKv('company.id', company.id)
 
   // The newest device takes the company over (dev/MVP; the lease UI comes later).

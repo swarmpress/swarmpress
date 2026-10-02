@@ -1,4 +1,4 @@
-# Persona schema v2 (docs/game-design/organization.md §3). New in SimPress.
+# Persona schema v2 (docs/game-design/organization.md §3). New in swarm.press.
 slug = "elena"
 id = 7
 name = "Elena Marchetti"

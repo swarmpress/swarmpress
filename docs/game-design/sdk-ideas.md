@@ -83,7 +83,7 @@ These run through our own tracker:
 `publish-target` adapters:
 - WordPress, Ghost, Contentful, Shopify blogs, Notion, and GitHub + Astro (built in).
 
-With these, SimPress becomes a playful front end for a real editorial team. They import their
+With these, swarm.press becomes a playful front end for a real editorial team. They import their
 style guide, the agents work in their CMS, and humans approve in the Inbox.
 
 ## 7. People

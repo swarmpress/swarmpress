@@ -2,14 +2,14 @@
   "action": "closed",
   "number": 6,
   "pull_request": {
-    "url": "https://api.github.com/repos/simpress-sites/cinqueterre-travel/pulls/6",
+    "url": "https://api.github.com/repos/swarmpress-sites/cinqueterre-travel/pulls/6",
     "id": 2001234567,
-    "html_url": "https://github.com/simpress-sites/cinqueterre-travel/pull/6",
+    "html_url": "https://github.com/swarmpress-sites/cinqueterre-travel/pull/6",
     "number": 6,
     "state": "closed",
     "locked": false,
     "title": "Last light on Sentiero Azzurro",
-    "user": { "login": "simpress-bot[bot]", "id": 1, "type": "Bot" },
+    "user": { "login": "swarmpress-bot[bot]", "id": 1, "type": "Bot" },
     "body": "Draft for content `last-light`.",
     "created_at": "2026-05-12T09:01:12Z",
     "updated_at": "2026-05-12T09:14:40Z",
@@ -19,21 +19,21 @@
     "labels": [{ "id": 11, "name": "content", "color": "ededed" }],
     "draft": false,
     "head": {
-      "label": "simpress-sites:drafts/content-last-light",
+      "label": "swarmpress-sites:drafts/content-last-light",
       "ref": "drafts/content-last-light",
       "sha": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
-      "repo": { "id": 42, "name": "cinqueterre-travel", "full_name": "simpress-sites/cinqueterre-travel" }
+      "repo": { "id": 42, "name": "cinqueterre-travel", "full_name": "swarmpress-sites/cinqueterre-travel" }
     },
     "base": {
-      "label": "simpress-sites:main",
+      "label": "swarmpress-sites:main",
       "ref": "main",
       "sha": "a10867b14bb761a232cd80139fbd4c0d33264240",
-      "repo": { "id": 42, "name": "cinqueterre-travel", "full_name": "simpress-sites/cinqueterre-travel" }
+      "repo": { "id": 42, "name": "cinqueterre-travel", "full_name": "swarmpress-sites/cinqueterre-travel" }
     },
     "merged": true,
     "mergeable": null,
     "mergeable_state": "unknown",
-    "merged_by": { "login": "simpress-bot[bot]", "id": 1 },
+    "merged_by": { "login": "swarmpress-bot[bot]", "id": 1 },
     "comments": 1,
     "commits": 1,
     "additions": 120,
@@ -44,13 +44,13 @@
     "id": 42,
     "node_id": "R_kgDOAAAAKg",
     "name": "cinqueterre-travel",
-    "full_name": "simpress-sites/cinqueterre-travel",
+    "full_name": "swarmpress-sites/cinqueterre-travel",
     "private": false,
-    "owner": { "login": "simpress-sites", "id": 9000, "type": "Organization" },
-    "html_url": "https://github.com/simpress-sites/cinqueterre-travel",
+    "owner": { "login": "swarmpress-sites", "id": 9000, "type": "Organization" },
+    "html_url": "https://github.com/swarmpress-sites/cinqueterre-travel",
     "default_branch": "main"
   },
-  "organization": { "login": "simpress-sites", "id": 9000 },
-  "sender": { "login": "simpress-bot[bot]", "id": 1, "type": "Bot" },
+  "organization": { "login": "swarmpress-sites", "id": 9000 },
+  "sender": { "login": "swarmpress-bot[bot]", "id": 1, "type": "Bot" },
   "installation": { "id": 55501, "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uNTU1MDE=" }
 }

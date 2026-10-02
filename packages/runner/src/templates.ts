@@ -1,5 +1,5 @@
-/** Scaffolds for `simpress new <kind> <dir>`. Each one passes `simpress check` and `simpress test`. */
-import { SDK_VERSION } from "@simpress/sdk";
+/** Scaffolds for `swarmpress new <kind> <dir>`. Each one passes `swarmpress check` and `swarmpress test`. */
+import { SDK_VERSION } from "@swarm-press/sdk";
 
 export const TEMPLATE_KINDS = ["content-pack", "skill", "sim-rule", "context-provider", "publish-target"] as const;
 export type TemplateKind = (typeof TEMPLATE_KINDS)[number];
@@ -13,7 +13,7 @@ function manifest(slug: string, kind: TemplateKind, extra: Record<string, unknow
     name: slug.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase()),
     version: "0.1.0",
     sdk: sdkRange,
-    description: `A ${kind} scaffolded by simpress new.`,
+    description: `A ${kind} scaffolded by swarmpress new.`,
     kinds: [kind],
     ...extra,
   });
@@ -23,7 +23,7 @@ export function template(kind: TemplateKind, slug: string): Record<string, strin
   switch (kind) {
     case "content-pack":
       return {
-        "simpress.ext.json": manifest(slug, kind, {
+        "swarmpress.ext.json": manifest(slug, kind, {
           capabilities: [],
           entry: { content: { personas: ["content/personas/nina.json"], happenings: ["content/happenings/team-lunch.json"] } },
         }),
@@ -105,8 +105,8 @@ export function template(kind: TemplateKind, slug: string): Record<string, strin
       };
     case "skill":
       return {
-        "simpress.ext.json": manifest(slug, kind, { capabilities: ["llm:low", "store:notes"], entry: { bundle: "src/index.ts" } }),
-        "src/index.ts": `import { defineSkill, jobResult } from "@simpress/sdk/runtime";
+        "swarmpress.ext.json": manifest(slug, kind, { capabilities: ["llm:low", "store:notes"], entry: { bundle: "src/index.ts" } }),
+        "src/index.ts": `import { defineSkill, jobResult } from "@swarm-press/sdk/runtime";
 
 export default defineSkill({
   tools: {
@@ -119,7 +119,7 @@ export default defineSkill({
   jobs: {
     summarize: {
       description: "Summarizes the input text with the low-tier model.",
-      example: { input: { text: "SimPress is a publishing-house sim." } },
+      example: { input: { text: "swarm.press is a publishing-house sim." } },
       async handler({ job, llm, store }) {
         const { text } = job.input as { text: string };
         const res = await llm.complete({ tier: "low", prompt: "Summarize in one sentence: " + text });
@@ -137,7 +137,7 @@ export default defineSkill({
           jobs: [
             {
               kind: "summarize",
-              input: { text: "SimPress is a publishing-house sim." },
+              input: { text: "swarm.press is a publishing-house sim." },
               llm: ["A sim about running a publishing house."],
               expect: { digest: { ok: true, score: 7, words: 7, qa_defects: 0 }, artifactKind: "summary" },
             },
@@ -147,8 +147,8 @@ export default defineSkill({
       };
     case "sim-rule":
       return {
-        "simpress.ext.json": manifest(slug, kind, { capabilities: [], entry: { bundle: "src/index.ts" }, rule: { stepInterval: 500 } }),
-        "src/index.ts": `import { defineRule } from "@simpress/sdk/runtime";
+        "swarmpress.ext.json": manifest(slug, kind, { capabilities: [], entry: { bundle: "src/index.ts" }, rule: { stepInterval: 500 } }),
+        "src/index.ts": `import { defineRule } from "@swarm-press/sdk/runtime";
 
 // Runs in deterministic mode: Math.random is seeded, Date is pinned to the sim clock.
 export default defineRule({
@@ -168,13 +168,13 @@ export default defineRule({
       };
     case "context-provider":
       return {
-        "simpress.ext.json": manifest(slug, kind, {
+        "swarmpress.ext.json": manifest(slug, kind, {
           capabilities: ["web"],
           origins: ["https://example.org"],
           entry: { bundle: "src/index.ts" },
           poll: { cadenceMinutes: 60, regions: ["cinque-terre"] },
         }),
-        "src/index.ts": `import { defineContextProvider } from "@simpress/sdk/runtime";
+        "src/index.ts": `import { defineContextProvider } from "@swarm-press/sdk/runtime";
 
 export default defineContextProvider({
   async poll({ now, region, cursor }) {
@@ -217,13 +217,13 @@ export default defineContextProvider({
       };
     case "publish-target":
       return {
-        "simpress.ext.json": manifest(slug, kind, {
+        "swarmpress.ext.json": manifest(slug, kind, {
           capabilities: ["web"],
           origins: ["https://cms.example.org"],
           credential: { kind: "bearer", scopes: ["posts:write"] },
           entry: { bundle: "src/index.ts" },
         }),
-        "src/index.ts": `import { definePublishTarget } from "@simpress/sdk/runtime";
+        "src/index.ts": `import { definePublishTarget } from "@swarm-press/sdk/runtime";
 
 const API = "https://cms.example.org/api";
 

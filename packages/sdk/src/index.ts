@@ -1,7 +1,7 @@
 /**
- * `@simpress/sdk`: types, schemas and helpers for SimPress extensions (ADR-0042, ADR-0043).
+ * `@swarm-press/sdk`: types, schemas and helpers for swarm.press extensions (ADR-0042, ADR-0043).
  *
- * Extension bundles should import `@simpress/sdk/runtime` (no zod, safe inside
+ * Extension bundles should import `@swarm-press/sdk/runtime` (no zod, safe inside
  * the sandbox). Tools (the runner, editors, CI) import this entry point.
  */
 import { parse as parseToml } from "smol-toml";

@@ -1,6 +1,6 @@
 [package]
 name = "testkit"
-description = "Shared test helpers for SimPress crates: fake GitHub OAuth, WS test client, world builders"
+description = "Shared test helpers for swarm.press crates: fake GitHub OAuth, WS test client, world builders"
 edition.workspace = true
 version.workspace = true
 license.workspace = true

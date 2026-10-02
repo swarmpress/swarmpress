@@ -18,7 +18,7 @@ async fn put(
         req = req.header(COOKIE, c);
     }
     if let Some(step) = step {
-        req = req.header("x-simpress-step", step);
+        req = req.header("x-swarmpress-step", step);
     }
     let res = req.send().await.unwrap();
     let st = res.status().as_u16();
@@ -62,7 +62,7 @@ async fn segments_are_immutable() {
     let (st, h, bytes) = get_bytes(&s, &cookie, &seg0).await;
     assert_eq!(st, 200);
     assert_eq!(bytes, b"log-bytes-0");
-    assert_eq!(h["x-simpress-sha256"], sha.as_str());
+    assert_eq!(h["x-swarmpress-sha256"], sha.as_str());
     assert_eq!(h["content-type"], "application/octet-stream");
 
     let big = 18_446_744_073_709_551_615u64; // u64::MAX, beyond SQLite INTEGER
@@ -136,7 +136,7 @@ async fn snapshot_is_latest_with_step() {
     let (st, h, bytes) = get_bytes(&s, &cookie, &path).await;
     assert_eq!(st, 200);
     assert_eq!(bytes, b"snap-2");
-    assert_eq!(h["x-simpress-step"], "1200");
+    assert_eq!(h["x-swarmpress-step"], "1200");
 }
 
 #[tokio::test]

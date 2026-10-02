@@ -2,7 +2,7 @@
 
 The first-party, cookieless analytics beacon behind
 [ADR-0032](../../docs/adr/0032-first-party-analytics-tracker-owned-by-the-data-scientist.md).
-The SimPress server serves it at `GET /t/s.js` and collects its events at
+The swarm.press server serves it at `GET /t/s.js` and collects its events at
 `POST /t/e`.
 
 ## Snippet
@@ -11,7 +11,7 @@ Each project gets a public tracker key (`GET /api/projects` returns it,
 along with a ready-made `snippet`). Add one tag to the site layout:
 
 ```html
-<script defer src="https://play.simpress.example/t/s.js" data-project="pk_0123456789abcdef01234567"></script>
+<script defer src="https://play.swarmpress.example/t/s.js" data-project="pk_0123456789abcdef01234567"></script>
 ```
 
 | Attribute | Notes |

@@ -1,5 +1,5 @@
 /**
- * A tiny random-weight decoder-only LM ("simpress/tiny-random-llama") built
+ * A tiny random-weight decoder-only LM ("swarmpress/tiny-random-llama") built
  * in pure TypeScript: an ONNX graph (protobuf written by hand), a WordPiece
  * tokenizer with a chat template, and a llama config. ~150 kB in total.
  *
@@ -17,7 +17,7 @@
  *   logits  = (x + flatten(ctx)) · Wout
  */
 
-export const TINY_MODEL_ID = 'simpress/tiny-random-llama'
+export const TINY_MODEL_ID = 'swarmpress/tiny-random-llama'
 
 const HIDDEN = 32
 const HEADS = 2
@@ -206,7 +206,7 @@ export function buildTinyOnnx(vocabSize: number, seed = 42): Uint8Array {
     ...outputs.map((v) => fMsg(12, v)),
   ]
   // ModelProto: ir_version(1) producer_name(2) graph(7) opset_import(8): { domain(1), version(2) }
-  return concat([fVarint(1, 8), fString(2, 'simpress-tiny-model'), fMsg(7, graph), fMsg(8, [fString(1, ''), fVarint(2, 17)])])
+  return concat([fVarint(1, 8), fString(2, 'swarmpress-tiny-model'), fMsg(7, graph), fMsg(8, [fString(1, ''), fVarint(2, 17)])])
 }
 
 export const TINY_CHAT_TEMPLATE =
@@ -277,7 +277,7 @@ export function tinyModelFiles(seed = 42): Record<string, Uint8Array> {
 
 /**
  * A `fetch` wrapper that serves the tiny model for any URL containing
- * `/simpress/tiny-random-llama/` (Hub URL or local model path) and defers
+ * `/swarmpress/tiny-random-llama/` (Hub URL or local model path) and defers
  * everything else to `inner`. Install as Transformers.js `env.fetch`.
  */
 export function tinyModelFetch(inner: typeof fetch, seed = 42): typeof fetch {
@@ -288,7 +288,7 @@ export function tinyModelFetch(inner: typeof fetch, seed = 42): typeof fetch {
     const at = url.indexOf(marker)
     if (at < 0) return inner(input, init)
     files ??= tinyModelFiles(seed)
-    // Hub URLs look like .../simpress/tiny-random-llama/resolve/main/<file>
+    // Hub URLs look like .../swarmpress/tiny-random-llama/resolve/main/<file>
     const rest = url.slice(at + marker.length).replace(/^resolve\/[^/]+\//, '').split('?')[0]
     const body = files[rest]
     if (!body) return new Response('not found', { status: 404, statusText: 'Not Found' })

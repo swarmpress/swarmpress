@@ -51,7 +51,7 @@
     }
   ],
   "routes": { "blogIndex": "blog" },
-  "analytics": { "endpoint": "https://play.simpress.dev", "projectKey": "cinqueterre-fixture" },
+  "analytics": { "endpoint": "https://play.swarm.press", "projectKey": "cinqueterre-fixture" },
   "screenshotPages": ["/", "/riomaggiore/", "/blog/"],
   "themeDir": ".."
 }

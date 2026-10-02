@@ -1,7 +1,7 @@
 use anyhow::Result;
-use simpress_server::app::{self, AppState};
-use simpress_server::config::Config;
-use simpress_server::db::Db;
+use swarmpress_server::app::{self, AppState};
+use swarmpress_server::config::Config;
+use swarmpress_server::db::Db;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]

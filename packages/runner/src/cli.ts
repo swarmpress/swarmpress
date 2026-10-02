@@ -1,29 +1,29 @@
 #!/usr/bin/env bun
 /**
- * simpress — the headless SimPress host (ADR-0042).
+ * swarmpress — the headless swarm.press host (ADR-0042).
  *
  *   bun packages/runner/src/cli.ts <command> …     (Node 22+: node packages/runner/src/cli.ts …)
  */
 import { pathToFileURL } from "node:url";
-import { SDK_VERSION } from "@simpress/sdk";
+import { SDK_VERSION } from "@swarm-press/sdk";
 import { cmdBuild, cmdCheck, cmdNew, cmdPack, cmdRun, cmdTest, consoleOut, type Out } from "./commands.ts";
 import { TEMPLATE_KINDS } from "./templates.ts";
 
-export const USAGE = `simpress ${SDK_VERSION} — headless SimPress host and extension toolkit
+export const USAGE = `swarmpress ${SDK_VERSION} — headless swarm.press host and extension toolkit
 
 usage:
-  simpress new <kind> <dir>        scaffold an extension (${TEMPLATE_KINDS.join(" | ")})
-  simpress check <dir>             manifest, schemas, sdk range, capabilities, bundle exports, determinism replay
-  simpress build <dir>             bundle entry.bundle into dist/ext.bundle.js (one IIFE, sets globalThis.ext)
-  simpress run [options]           run the wasm sim headless and drive extensions through the sandbox
+  swarmpress new <kind> <dir>        scaffold an extension (${TEMPLATE_KINDS.join(" | ")})
+  swarmpress check <dir>             manifest, schemas, sdk range, capabilities, bundle exports, determinism replay
+  swarmpress build <dir>             bundle entry.bundle into dist/ext.bundle.js (one IIFE, sets globalThis.ext)
+  swarmpress run [options]           run the wasm sim headless and drive extensions through the sandbox
       --seed <u64>                 world seed (default 42)
       --days <n>                   game days to fast-forward (default 1)
       --ext <dir>                  load an extension (repeatable)
       --world demo|empty           starting world (default demo)
       --web fixtures|live          fixture-backed fetch (default) or the real network
       --json                       print one JSON report instead of text
-  simpress test <dir>              run every *.scenario.json under <dir>
-  simpress pack <dir> [--out f]    check, build and write <id>-<version>.simpress.tgz with sha256 integrity
+  swarmpress test <dir>              run every *.scenario.json under <dir>
+  swarmpress pack <dir> [--out f]    check, build and write <id>-<version>.swarmpress.tgz with sha256 integrity
 
 The client-wasm build must exist (cargo xtask wasm) for run, test and sim-rule checks.`;
 
@@ -38,7 +38,7 @@ export async function main(argv: string[], out: Out = consoleOut): Promise<numbe
       const boolean = k === "json" || k === "help";
       const v = inline ?? (boolean ? "true" : rest[++i]);
       if (v === undefined) {
-        out.error(`simpress: --${k} needs a value`);
+        out.error(`swarmpress: --${k} needs a value`);
         return 2;
       }
       flags.set(k, [...(flags.get(k) ?? []), v]);
@@ -46,13 +46,13 @@ export async function main(argv: string[], out: Out = consoleOut): Promise<numbe
   }
   const one = (k: string) => flags.get(k)?.at(-1);
   const needDir = (what: string) => {
-    if (!positional[0]) throw new UsageError(`simpress ${what}: missing <dir>`);
+    if (!positional[0]) throw new UsageError(`swarmpress ${what}: missing <dir>`);
     return positional[0];
   };
   try {
     switch (cmd) {
       case "new":
-        if (positional.length < 2) throw new UsageError("simpress new: usage: simpress new <kind> <dir>");
+        if (positional.length < 2) throw new UsageError("swarmpress new: usage: swarmpress new <kind> <dir>");
         return await cmdNew(positional[0], positional[1], out);
       case "check":
         return await cmdCheck(needDir("check"), out);
@@ -83,12 +83,12 @@ export async function main(argv: string[], out: Out = consoleOut): Promise<numbe
         out.log(USAGE);
         return cmd === undefined ? 2 : 0;
       default:
-        throw new UsageError(`simpress: unknown command "${cmd}"`);
+        throw new UsageError(`swarmpress: unknown command "${cmd}"`);
     }
   } catch (e) {
     if (e instanceof UsageError) {
       out.error(e.message);
-      out.error("run `simpress help` for usage");
+      out.error("run `swarmpress help` for usage");
       return 2;
     }
     out.error(`error: ${e instanceof Error ? e.message : String(e)}`);

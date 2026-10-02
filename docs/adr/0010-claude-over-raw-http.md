@@ -5,7 +5,7 @@
 
 ## Context
 
-The legacy agents used the Claude Agent SDK from Node. SimPress's server is Rust, and agent work
+The legacy agents used the Claude Agent SDK from Node. swarm.press's server is Rust, and agent work
 must be observable and testable at the HTTP level. That means:
 - streaming tokens into speech bubbles;
 - tool loops;

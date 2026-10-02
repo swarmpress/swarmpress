@@ -1,7 +1,7 @@
 // The browser runtime end to end (docs/mvp.md, minus the sim loop): dev login
 // → company → lease → standup → draft PR → review 6 → revision → review 8 →
 // merge through orchestrator-wasm with the company store (one project per
-// engine: turso, sqlite), the central gateway of the real simpress-server
+// engine: turso, sqlite), the central gateway of the real swarmpress-server
 // and the scripted `?llm=fake` model; DeployLanded arrives through the events
 // API; a reload shows the plan from OPFS. Run with
 // `playwright test -c playwright.orchestrator.config.ts`.

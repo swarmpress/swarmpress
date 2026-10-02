@@ -1,6 +1,6 @@
 /**
  * The headless host: the wasm sim plus extensions, which run ONLY inside
- * `@simpress/sandbox` (the same QuickJS sandbox the browser uses).
+ * `@swarm-press/sandbox` (the same QuickJS sandbox the browser uses).
  */
 import {
   JobResultSchema,
@@ -14,8 +14,8 @@ import {
   type JobResult,
   type PollResult,
   type ProposedCommand,
-} from "@simpress/sdk";
-import { MemoryStore, createSandbox, type HostLlm, type HostLog, type HostWeb, type Sandbox } from "@simpress/sandbox";
+} from "@swarm-press/sdk";
+import { MemoryStore, createSandbox, type HostLlm, type HostLog, type HostWeb, type Sandbox } from "@swarm-press/sandbox";
 import { packFiles, type Extension } from "./extension.ts";
 import { FakeHttpServer, FakeLlm, type CredentialSpec, type HttpExchange } from "./fakes.ts";
 import { RunnerError, hex, loadSim, simNowMs, worldView, type WasmSim } from "./wasm.ts";

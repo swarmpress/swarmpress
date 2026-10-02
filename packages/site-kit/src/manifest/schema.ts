@@ -100,7 +100,7 @@ export const RoutesSchema = z
 
 export const AnalyticsSchema = z
   .object({
-    /** Tracker endpoint origin, e.g. `https://play.simpress.dev`. */
+    /** Tracker endpoint origin, e.g. `https://play.swarm.press`. */
     endpoint: z.string().url(),
     /** Project tracker key. */
     projectKey: z.string().min(1),

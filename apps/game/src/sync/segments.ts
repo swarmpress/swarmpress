@@ -11,8 +11,8 @@
  */
 import type { LoggedCommand } from '../catchup/replay'
 
-export const SEGMENT_FORMAT = 'simpress.log.v1'
-export const CHECKPOINT_FORMAT = 'simpress.checkpoint.v1'
+export const SEGMENT_FORMAT = 'swarmpress.log.v1'
+export const CHECKPOINT_FORMAT = 'swarmpress.checkpoint.v1'
 
 export interface Checkpoint {
   format: typeof CHECKPOINT_FORMAT

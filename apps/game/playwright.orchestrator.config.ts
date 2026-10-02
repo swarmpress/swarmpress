@@ -1,13 +1,13 @@
 import { defineConfig } from '@playwright/test'
 
 // e2e/orchestrator.spec.ts: the browser runtime against the real central
-// server. Two web servers: simpress-server (built by e2e/central-server.mjs)
+// server. Two web servers: swarmpress-server (built by e2e/central-server.mjs)
 // and the Vite preview of the harness build (`vite build --mode harness`,
 // dist-harness/, proxying /auth /api /ws /web to the server). One project per
 // store engine.
 const executablePath = process.env.CHROMIUM_PATH || undefined
-const central = process.env.SIMPRESS_E2E_BIND ?? '127.0.0.1:18080'
-const port = Number(process.env.SIMPRESS_E2E_PORT ?? 4175)
+const central = process.env.SWARMPRESS_E2E_BIND ?? '127.0.0.1:18080'
+const port = Number(process.env.SWARMPRESS_E2E_PORT ?? 4175)
 
 export default defineConfig({
   testDir: 'e2e',
@@ -30,7 +30,7 @@ export default defineConfig({
       url: `http://localhost:${port}/orchestrator.html`,
       timeout: 300_000,
       reuseExistingServer: false,
-      env: { SIMPRESS_CENTRAL_URL: `http://${central}` },
+      env: { SWARMPRESS_CENTRAL_URL: `http://${central}` },
     },
   ],
   projects: [

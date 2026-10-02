@@ -7,11 +7,11 @@
     "head_sha": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
     "status": "completed",
     "conclusion": "success",
-    "url": "https://api.github.com/repos/simpress-sites/cinqueterre-travel/check-suites/118578147",
+    "url": "https://api.github.com/repos/swarmpress-sites/cinqueterre-travel/check-suites/118578147",
     "before": "a10867b14bb761a232cd80139fbd4c0d33264240",
     "after": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
     "pull_requests": [
-      { "url": "https://api.github.com/repos/simpress-sites/cinqueterre-travel/pulls/6", "id": 2001234567, "number": 6, "head": { "ref": "drafts/content-last-light", "sha": "6dcb09b5b57875f334f61aebed695e2e4193db5e" }, "base": { "ref": "main", "sha": "a10867b14bb761a232cd80139fbd4c0d33264240" } }
+      { "url": "https://api.github.com/repos/swarmpress-sites/cinqueterre-travel/pulls/6", "id": 2001234567, "number": 6, "head": { "ref": "drafts/content-last-light", "sha": "6dcb09b5b57875f334f61aebed695e2e4193db5e" }, "base": { "ref": "main", "sha": "a10867b14bb761a232cd80139fbd4c0d33264240" } }
     ],
     "app": { "id": 15368, "slug": "github-actions" },
     "created_at": "2026-05-12T09:02:00Z",
@@ -21,9 +21,9 @@
   "repository": {
     "id": 42,
     "name": "cinqueterre-travel",
-    "full_name": "simpress-sites/cinqueterre-travel",
+    "full_name": "swarmpress-sites/cinqueterre-travel",
     "private": false,
-    "owner": { "login": "simpress-sites", "id": 9000, "type": "Organization" },
+    "owner": { "login": "swarmpress-sites", "id": 9000, "type": "Organization" },
     "default_branch": "main"
   },
   "sender": { "login": "github-actions[bot]", "id": 41898282, "type": "Bot" },
