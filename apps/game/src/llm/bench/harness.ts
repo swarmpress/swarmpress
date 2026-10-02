@@ -34,7 +34,7 @@ import type { UpstreamDeviceInfo } from '../runtime/bonsai/upstream'
 import type { LocalLlm, RuntimeCapabilities, ThinkingMode, Validator } from '../types'
 import { loadRustValidator } from '../../orchestrator'
 import { BENCH_FAKE_MODEL, BenchFakeLlm } from './fake'
-import { FRAMES_COUNTS, buildSuite, parseFixtureList, type FixtureId } from './fixtures'
+import { FRAMES_COUNTS, buildSuite, parseFixtureList, type FixtureId, type Suite } from './fixtures'
 import { FrameRecorder } from './frames'
 import type { BenchConfig, BenchResults, EquivalenceRecord, ModelPins } from './metrics'
 import { fmtBytes, fmtMs, overallVerdict, qualificationMarkdown, qualify } from './report'
@@ -314,39 +314,57 @@ function boot(): void {
     error = (e as Error).message
   }
 
+  /**
+   * Everything slow happens before Start is enabled: the validator, the scene
+   * and its idle window with no model loaded. A cold Chrome start needs the
+   * click's user activation to reach `LanguageModel.create()`, and that lasts
+   * seconds, not as long as a scene takes to boot.
+   */
+  interface Prepared {
+    suite: Suite
+    frames: FrameRecorder | null
+    scene: BenchScene | null
+    validate: Validator
+  }
+  let prepared: Promise<Prepared> | null = null
+  const prepare = (): Promise<Prepared> =>
+    (prepared ??= (async () => {
+      if (!parsed) throw new Error(error ?? 'no configuration')
+      const { config, forceWebgl } = parsed
+      const only = parseFixtureList(params.get('fixtures'))
+      const suite = buildSuite({
+        scale: config.scale,
+        only,
+        thinking: (config.thinking ?? undefined) as ThinkingMode | undefined,
+        counts: config.suite === 'frames' && !only && !params.has('scale') ? FRAMES_COUNTS : undefined,
+      })
+      config.fixtures = suite.fixtures.map((f) => f.id as FixtureId)
+      // The validator the game's repair loop uses; without it the run would measure a different path.
+      $('status').textContent = 'loading the validator'
+      const validate = await loadRustValidator()
+      const frames = config.quality ? new FrameRecorder() : null
+      let scene: BenchScene | null = null
+      if (frames && config.quality) {
+        $('status').textContent = 'starting the scene'
+        scene = await startScene($('scene'), config.quality, frames, forceWebgl)
+        if (config.idleMs > 0) {
+          $('status').textContent = `measuring idle frames (${Math.round(config.idleMs / 1000)} s, no model loaded)`
+          await new Promise((r) => setTimeout(r, config.idleMs))
+        }
+      }
+      return { suite, frames, scene, validate }
+    })())
+
   const start = async () => {
     if (done) return
     if (!parsed) throw new Error(error ?? 'no configuration')
-    const { config, backend, memory, forceWebgl } = parsed
+    const { config, backend, memory } = parsed
     ;($('start') as HTMLButtonElement).disabled = true
-    const only = parseFixtureList(params.get('fixtures'))
-    const suite = buildSuite({
-      scale: config.scale,
-      only,
-      thinking: (config.thinking ?? undefined) as ThinkingMode | undefined,
-      counts: config.suite === 'frames' && !only && !params.has('scale') ? FRAMES_COUNTS : undefined,
-    })
-    config.fixtures = suite.fixtures.map((f) => f.id as FixtureId)
-    const frames = config.quality ? new FrameRecorder() : null
-    let scene: BenchScene | null = null
+    const { suite, frames, scene, validate } = await prepare()
     let fake: BenchFakeLlm | null = null
     const events: [string, string][] = []
     const onEvent = (kind: string, message: string) => (run ? run.event(kind, message) : events.push([kind, message]))
     const w = wire(backend, onEvent, config, () => fake, (f) => (fake = f), suite)
-    let validate: Validator
-    try {
-      // The validator the game's repair loop uses; without it the run would measure a different path.
-      validate = await loadRustValidator()
-      if (frames && config.quality) {
-        $('status').textContent = 'starting the scene'
-        scene = await startScene($('scene'), config.quality, frames, forceWebgl)
-      }
-    } catch (e) {
-      error = `could not start: ${(e as Error).message}`
-      $('status').textContent = error
-      document.body.dataset.bench = 'failed'
-      throw e
-    }
     let probe: RuntimeCapabilities | null = null
     run = startBench({
       config,
@@ -373,6 +391,8 @@ function boot(): void {
         gpu: scene?.gpu ?? (await pageGpu()),
       },
       frames,
+      // The idle frames without a model were taken while preparing.
+      idleBeforeLoad: false,
       frameInfo: () => ({ renderer: scene?.renderer ?? 'none', quality: config.quality ?? 'off' }),
       inferStart: () => w.inferStart(probe),
       measureMemory: memory ? measureMemory : undefined,
@@ -421,9 +441,23 @@ function boot(): void {
     `device loss: ${c.deviceLoss}`,
     `cross-origin isolated: ${globalThis.crossOriginIsolated === true}`,
   ].join('\n')
-  $('status').textContent = 'ready'
-  document.body.dataset.bench = 'idle'
-  if (parsed!.autostart) void start().catch((e) => console.error(e))
+  const button = $('start') as HTMLButtonElement
+  button.disabled = true
+  document.body.dataset.bench = 'preparing'
+  prepare().then(
+    () => {
+      $('status').textContent = 'ready'
+      button.disabled = false
+      document.body.dataset.bench = 'idle'
+      if (parsed!.autostart) void start().catch((e) => console.error(e))
+    },
+    (e) => {
+      error = `could not start: ${(e as Error).message}`
+      window.__bench!.error = error
+      $('status').textContent = error
+      document.body.dataset.bench = 'failed'
+    },
+  )
 }
 
 boot()

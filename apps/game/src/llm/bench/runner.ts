@@ -86,6 +86,8 @@ export interface BenchDeps {
   now?: () => number
   sleep?: (ms: number) => Promise<void>
   frames?: FrameRecorder | null
+  /** Wait `idleMs` with no model loaded before the first load. False when the page already did (default true). */
+  idleBeforeLoad?: boolean
   frameInfo?: () => { renderer: string; quality: string }
   /** Were the weights in the browser cache before the first load? */
   inferStart?: () => Promise<'cold' | 'warm' | 'unknown'>
@@ -656,7 +658,7 @@ export function startBench(d: BenchDeps): BenchRun {
 
       results.start.inferred = (await d.inferStart?.().catch(() => 'unknown' as const)) ?? 'unknown'
       const kind = config.start !== 'unknown' ? config.start : results.start.inferred
-      if (frames && config.idleMs > 0) {
+      if (frames && config.idleMs > 0 && d.idleBeforeLoad !== false) {
         frames.setBase('idle-unloaded')
         await sleep(config.idleMs)
       }
