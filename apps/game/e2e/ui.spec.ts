@@ -116,6 +116,18 @@ test.describe('CEO overlay', () => {
     expect(errors).toEqual([])
   })
 
+  test('reads the live wasm sim by default', async ({ page }) => {
+    const { errors } = await boot(page, '/?renderer=webgl&quality=low')
+    await expect(page.locator('.hud-business')).toContainText('Cash')
+    await page.keyboard.press('o')
+    const org = region(page, 'Org chart')
+    await expect(org.getByRole('button', { name: /Giulia/ })).toBeVisible()
+    await page.keyboard.press('f')
+    await expect(region(page, 'Finance')).toBeVisible()
+    await shot(page, 'live-finance')
+    expect(errors).toEqual([])
+  })
+
   test('stays out of frozen screenshot pages unless asked for', async ({ page }) => {
     await boot(page, '/?renderer=webgl&quality=low&t=13:00')
     await waitStill(page)
