@@ -1,0 +1,38 @@
+{
+  "cashEur": 92900.09,
+  "runwayDays": 61,
+  "dailyBurnEur": 1520.4,
+  "month": 1,
+  "company": {
+    "revenueEur": 31850,
+    "salariesEur": 48720,
+    "rentEur": 6000,
+    "upkeepEur": 1450,
+    "agencyEur": 2380
+  },
+  "projects": [
+    {
+      "id": "project-1",
+      "budgetEurMonth": 45000,
+      "spentEurMonth": 48600,
+      "revenueEurMonth": 31850,
+      "overBudget": true
+    },
+    {
+      "id": "project-2",
+      "budgetEurMonth": 18000,
+      "spentEurMonth": 0,
+      "revenueEurMonth": 0,
+      "overBudget": false
+    }
+  ],
+  "alerts": [
+    {
+      "kind": "budget-overrun",
+      "project": "project-1",
+      "ticket": "ticket-3"
+    }
+  ],
+  "booksKept": true,
+  "report": "Month 1 closes 8% over budget on cinqueterre.travel, driven by Agency fees on the broken-link sweep (€2,380) and overtime in the newsroom. Revenue is ahead of plan thanks to the harvest pieces. I recommend capping Agency spend at €1,500/month and keeping hiring to one role until runway is above 90 days."
+}

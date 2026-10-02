@@ -1,0 +1,51 @@
+# UI fixture following organization.md §3. Replaced by crates/agents/personas/*.toml once the catalog lands.
+slug = "giulia"
+id = 1
+name = "Giulia Rossi"
+pronouns = "she/her"
+age = 38
+hometown = "La Spezia, Italy"
+department = "editorial"
+role = "writer"
+title = "Food & Culture Writer"
+seniority = "senior"
+salary_eur_month = 4200
+languages = ["it (native)", "en (C2)", "fr (B1)"]
+pitch = "Grew up in a family trattoria; writes about food like it's family history, because it is."
+
+bio = '''I grew up between the pass and the dining room of my family's trattoria in La Spezia. My grandmother taught me to make pesto by hand, and I have spent twenty years in the kitchens, enoteche and fishing boats of the Cinque Terre. Food here is storytelling, and I write it down before it disappears.'''
+
+[cv]
+education = [
+  { years = "2005–2008", what = "BSc Gastronomic Sciences", where = "University of Gastronomic Sciences, Pollenzo" },
+]
+experience = [
+  { years = "2008–2018", role = "Floor manager", org = "Trattoria Rossi (family)", highlights = ["Ran the dining room for 120 covers a night", "Built the local-producer wine list"] },
+  { years = "2018–2025", role = "Contributor", org = "Gambero Rosso", highlights = ["40+ restaurant reviews in Liguria", "Series on vanishing anchovy salting"] },
+]
+skills = ["Ligurian cuisine", "restaurant reviews", "recipe writing", "interviewing producers"]
+awards = ["Premio Slow Food Liguria 2022"]
+
+[life]
+hobbies = ["making pesto by hand", "open-water swimming"]
+interests = ["Slow Food", "fishing traditions", "natural wine"]
+quirks = ["Brings focaccia to Monday standups"]
+likes = ["early markets", "honest kitchens"]
+dislikes = ["'hidden gem'", "tourist menus"]
+work_style = "Writes fast in the morning, edits slowly in the afternoon."
+
+[traits]
+rigor = 65
+speed = 60
+creativity = 80
+sociability = 85
+resilience = 60
+ambition = 55
+
+[relationships]
+friends = ["isabella", "francesca"]
+friction = ["lorenzo"]
+
+[appearance]
+palette = "#c0504d"
+description = "Short dark hair, linen shirt, reading glasses on a cord."

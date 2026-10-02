@@ -1,0 +1,50 @@
+# UI fixture following organization.md §3. Replaced by crates/agents/personas/*.toml once the catalog lands.
+slug = "riccardo"
+id = 102
+name = "Riccardo Vitale"
+pronouns = "he/him"
+age = 39
+hometown = "Rome, Italy"
+department = "seo-marketing"
+role = "marketing_manager"
+title = "Marketing Manager"
+seniority = "senior"
+salary_eur_month = 5200
+languages = ["it (native)", "en (C1)"]
+pitch = "Ran partnerships for a national rail operator; brings sponsors and newsletter growth."
+
+bio = '''I sell trips people actually want to take. I would bring partnerships and a newsletter that pays for itself.'''
+
+[cv]
+education = [
+  { years = "2004–2009", what = "MBA", where = "LUISS Rome" },
+]
+experience = [
+  { years = "2009–2025", role = "Partnerships lead", org = "Trenitalia", highlights = ["Regional tourism partnerships"] },
+]
+skills = ["partnerships", "newsletters", "paid social"]
+awards = []
+
+[life]
+hobbies = ["padel"]
+interests = ["rail travel"]
+quirks = ["Carries business cards for every occasion"]
+likes = ["targets"]
+dislikes = ["unpriced ideas"]
+work_style = "Pipeline reviews every Monday."
+
+[traits]
+rigor = 60
+speed = 80
+creativity = 65
+sociability = 90
+resilience = 70
+ambition = 90
+
+[relationships]
+friends = []
+friction = []
+
+[appearance]
+palette = "#a0522d"
+description = "Sharp suit, no tie."

@@ -5,6 +5,7 @@ import { QUALITY, type Quality } from './render/postfx'
 import { createGameScene } from './render/scene'
 import type { BuildingLayout, RenderState } from './state/render-state'
 import { mountHud } from './ui/hud'
+import { mountOverlay, selectDataSource } from './ui/mount'
 
 /**
  * URL parameters (also used by the e2e and visual tests):
@@ -71,6 +72,15 @@ async function main() {
   })
 
   const hud = mountHud(document.getElementById('ui')!)
+
+  // --- CEO management overlay (ADR-0018, docs/game-design/organization.md) ---
+  // Uses the sim's organization API when it exists (feature-detected), else
+  // fixtures; `?ui=mock` forces the fixtures.
+  const overlay = mountOverlay(
+    document.getElementById('overlay')!,
+    selectDataSource(sim, params, () => sim.day() * 1440 + sim.minute_of_day()),
+  )
+  // --- end CEO overlay ---
   let acc = 0
   let lastStep = -1n
   let stillFrames = 0
@@ -111,6 +121,7 @@ async function main() {
     ready: () => game.scene.isReady(),
     frames: () => engine.frameId,
     still: () => still,
+    overlay: overlay.store,
   }
 }
 

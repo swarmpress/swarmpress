@@ -1,0 +1,644 @@
+{
+  "goals": [
+    {
+      "id": "goal-1",
+      "metric": "monthly_readers",
+      "target": 40000,
+      "current": 14200
+    },
+    {
+      "id": "goal-2",
+      "metric": "quality_avg",
+      "target": 8.0,
+      "current": 7.3
+    },
+    {
+      "id": "goal-3",
+      "metric": "healthy_links_pct",
+      "target": 100,
+      "current": 91
+    }
+  ],
+  "workstreams": [
+    {
+      "id": "ws-1",
+      "project": "project-1",
+      "status": "active"
+    },
+    {
+      "id": "ws-2",
+      "project": "project-1",
+      "status": "active"
+    },
+    {
+      "id": "ws-3",
+      "project": "project-1",
+      "status": "active"
+    },
+    {
+      "id": "ws-4",
+      "project": "project-1",
+      "status": "active"
+    }
+  ],
+  "items": [
+    {
+      "id": "work-item-1",
+      "project": "project-1",
+      "workstream": "ws-1",
+      "goal": "goal-1",
+      "kind": "article",
+      "status": "approved",
+      "priority": "high",
+      "owner": "staff-4",
+      "phases": [
+        {
+          "kind": "research",
+          "assignee": "staff-1",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 120
+        },
+        {
+          "kind": "draft",
+          "assignee": "staff-1",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 240
+        },
+        {
+          "kind": "media",
+          "assignee": "staff-6",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 180
+        },
+        {
+          "kind": "links-seo",
+          "assignee": "staff-12",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 60
+        },
+        {
+          "kind": "review",
+          "assignee": "staff-5",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 60
+        },
+        {
+          "kind": "publish",
+          "assignee": "staff-11",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 30
+        }
+      ],
+      "todos": [
+        {
+          "id": "todo-1",
+          "assignee": "staff-6",
+          "done": true
+        },
+        {
+          "id": "todo-2",
+          "assignee": "staff-1",
+          "done": true
+        },
+        {
+          "id": "todo-3",
+          "assignee": "staff-12",
+          "done": true
+        }
+      ],
+      "dependsOn": [],
+      "dueDay": 13,
+      "publishDay": 14,
+      "tickets": [],
+      "languages": [
+        "en",
+        "it"
+      ],
+      "startDay": 6
+    },
+    {
+      "id": "work-item-2",
+      "project": "project-1",
+      "workstream": "ws-1",
+      "goal": "goal-1",
+      "kind": "article",
+      "status": "in-progress",
+      "priority": "normal",
+      "owner": "staff-5",
+      "phases": [
+        {
+          "kind": "research",
+          "assignee": "staff-1",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 120
+        },
+        {
+          "kind": "draft",
+          "assignee": "staff-1",
+          "state": "working",
+          "progress": 0.4,
+          "estimateMinutes": 300
+        },
+        {
+          "kind": "media",
+          "assignee": "staff-6",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 120
+        },
+        {
+          "kind": "review",
+          "assignee": "staff-5",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 60
+        },
+        {
+          "kind": "publish",
+          "assignee": "staff-11",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 30
+        }
+      ],
+      "todos": [
+        {
+          "id": "todo-4",
+          "assignee": "staff-1",
+          "done": true
+        },
+        {
+          "id": "todo-5",
+          "assignee": "staff-6",
+          "done": false
+        }
+      ],
+      "dependsOn": [],
+      "dueDay": 17,
+      "publishDay": 19,
+      "tickets": [],
+      "languages": [
+        "en"
+      ],
+      "startDay": 9
+    },
+    {
+      "id": "work-item-3",
+      "project": "project-1",
+      "workstream": "ws-2",
+      "goal": "goal-2",
+      "kind": "page-refresh",
+      "status": "planned",
+      "priority": "normal",
+      "owner": "staff-5",
+      "phases": [
+        {
+          "kind": "research",
+          "assignee": "staff-2",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 120
+        },
+        {
+          "kind": "draft",
+          "assignee": "staff-2",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 180
+        },
+        {
+          "kind": "media",
+          "assignee": "staff-6",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 120
+        },
+        {
+          "kind": "review",
+          "assignee": "staff-5",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 45
+        }
+      ],
+      "todos": [
+        {
+          "id": "todo-6",
+          "assignee": "staff-2",
+          "done": false
+        }
+      ],
+      "dependsOn": [],
+      "dueDay": 20,
+      "publishDay": 21,
+      "tickets": [],
+      "languages": [
+        "en",
+        "de",
+        "it"
+      ],
+      "startDay": 14
+    },
+    {
+      "id": "work-item-4",
+      "project": "project-1",
+      "workstream": "ws-2",
+      "goal": "goal-2",
+      "kind": "page-refresh",
+      "status": "backlog",
+      "priority": "low",
+      "owner": "staff-5",
+      "phases": [
+        {
+          "kind": "research",
+          "assignee": "staff-3",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 120
+        },
+        {
+          "kind": "draft",
+          "assignee": "staff-3",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 180
+        },
+        {
+          "kind": "review",
+          "assignee": "staff-5",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 45
+        }
+      ],
+      "todos": [],
+      "dependsOn": [],
+      "dueDay": null,
+      "publishDay": null,
+      "tickets": [],
+      "languages": [
+        "en"
+      ],
+      "startDay": null
+    },
+    {
+      "id": "work-item-5",
+      "project": "project-1",
+      "workstream": "ws-3",
+      "goal": "goal-3",
+      "kind": "ops-task",
+      "status": "in-progress",
+      "priority": "urgent",
+      "owner": "staff-11",
+      "phases": [
+        {
+          "kind": "analysis",
+          "assignee": "staff-11",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 90
+        },
+        {
+          "kind": "build",
+          "assignee": "staff-11",
+          "state": "working",
+          "progress": 0.35,
+          "estimateMinutes": 600
+        },
+        {
+          "kind": "review",
+          "assignee": "staff-10",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 60
+        }
+      ],
+      "todos": [
+        {
+          "id": "todo-7",
+          "assignee": "staff-11",
+          "done": true
+        },
+        {
+          "id": "todo-8",
+          "assignee": "staff-11",
+          "done": false
+        },
+        {
+          "id": "todo-9",
+          "assignee": "staff-10",
+          "done": false
+        }
+      ],
+      "dependsOn": [],
+      "dueDay": 14,
+      "publishDay": null,
+      "tickets": [
+        "ticket-3"
+      ],
+      "languages": [],
+      "startDay": 8
+    },
+    {
+      "id": "work-item-6",
+      "project": "project-1",
+      "workstream": "ws-3",
+      "goal": "goal-3",
+      "kind": "audit",
+      "status": "blocked",
+      "priority": "high",
+      "owner": "staff-11",
+      "phases": [
+        {
+          "kind": "media",
+          "assignee": "staff-6",
+          "state": "blocked",
+          "progress": 0.2,
+          "estimateMinutes": 240
+        }
+      ],
+      "todos": [
+        {
+          "id": "todo-10",
+          "assignee": "staff-6",
+          "done": false
+        }
+      ],
+      "dependsOn": [],
+      "dueDay": 16,
+      "publishDay": null,
+      "tickets": [],
+      "languages": [],
+      "startDay": 10
+    },
+    {
+      "id": "work-item-7",
+      "project": "project-1",
+      "workstream": "ws-4",
+      "goal": "goal-2",
+      "kind": "redesign",
+      "status": "in-progress",
+      "priority": "normal",
+      "owner": "staff-10",
+      "phases": [
+        {
+          "kind": "design",
+          "assignee": "staff-10",
+          "state": "working",
+          "progress": 0.6,
+          "estimateMinutes": 480
+        },
+        {
+          "kind": "build",
+          "assignee": "staff-10",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 900
+        },
+        {
+          "kind": "review",
+          "assignee": "staff-4",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 60
+        }
+      ],
+      "todos": [
+        {
+          "id": "todo-11",
+          "assignee": "staff-10",
+          "done": true
+        },
+        {
+          "id": "todo-12",
+          "assignee": "staff-10",
+          "done": false
+        }
+      ],
+      "dependsOn": [],
+      "dueDay": 24,
+      "publishDay": 26,
+      "tickets": [],
+      "languages": [
+        "en",
+        "de",
+        "fr",
+        "it"
+      ],
+      "startDay": 5
+    },
+    {
+      "id": "work-item-8",
+      "project": "project-1",
+      "workstream": "ws-1",
+      "goal": "goal-1",
+      "kind": "translation",
+      "status": "blocked",
+      "priority": "normal",
+      "owner": "staff-4",
+      "phases": [
+        {
+          "kind": "translate",
+          "assignee": null,
+          "state": "blocked",
+          "progress": 0,
+          "estimateMinutes": 240
+        },
+        {
+          "kind": "review",
+          "assignee": "staff-5",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 45
+        }
+      ],
+      "todos": [],
+      "dependsOn": [
+        "work-item-1"
+      ],
+      "dueDay": 16,
+      "publishDay": 17,
+      "tickets": [
+        "ticket-1"
+      ],
+      "languages": [
+        "de"
+      ],
+      "startDay": null
+    },
+    {
+      "id": "work-item-9",
+      "project": "project-1",
+      "workstream": "ws-1",
+      "goal": "goal-1",
+      "kind": "seo-plan",
+      "status": "in-progress",
+      "priority": "high",
+      "owner": "staff-12",
+      "phases": [
+        {
+          "kind": "research",
+          "assignee": "staff-12",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 120
+        },
+        {
+          "kind": "links-seo",
+          "assignee": "staff-12",
+          "state": "working",
+          "progress": 0.7,
+          "estimateMinutes": 180
+        }
+      ],
+      "todos": [
+        {
+          "id": "todo-13",
+          "assignee": "staff-12",
+          "done": false
+        }
+      ],
+      "dependsOn": [],
+      "dueDay": 12,
+      "publishDay": null,
+      "tickets": [],
+      "languages": [],
+      "startDay": 7
+    },
+    {
+      "id": "work-item-10",
+      "project": "project-1",
+      "workstream": "ws-1",
+      "goal": "goal-1",
+      "kind": "article",
+      "status": "published",
+      "priority": "normal",
+      "owner": "staff-4",
+      "phases": [
+        {
+          "kind": "draft",
+          "assignee": "staff-2",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 240
+        },
+        {
+          "kind": "media",
+          "assignee": "staff-6",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 120
+        },
+        {
+          "kind": "review",
+          "assignee": "staff-5",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 60
+        },
+        {
+          "kind": "publish",
+          "assignee": "staff-11",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 30
+        }
+      ],
+      "todos": [],
+      "dependsOn": [],
+      "dueDay": 1,
+      "publishDay": 1,
+      "tickets": [],
+      "languages": [
+        "en"
+      ],
+      "startDay": 0
+    },
+    {
+      "id": "work-item-11",
+      "project": "project-1",
+      "workstream": "ws-1",
+      "goal": "goal-1",
+      "kind": "newsletter",
+      "status": "scheduled",
+      "priority": "normal",
+      "owner": "staff-12",
+      "phases": [
+        {
+          "kind": "draft",
+          "assignee": "staff-12",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 120
+        },
+        {
+          "kind": "review",
+          "assignee": "staff-4",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 30
+        },
+        {
+          "kind": "publish",
+          "assignee": "staff-12",
+          "state": "pending",
+          "progress": 0,
+          "estimateMinutes": 15
+        }
+      ],
+      "todos": [],
+      "dependsOn": [],
+      "dueDay": 15,
+      "publishDay": 15,
+      "tickets": [],
+      "languages": [
+        "en",
+        "de"
+      ],
+      "startDay": 10
+    },
+    {
+      "id": "work-item-12",
+      "project": "project-1",
+      "workstream": "ws-2",
+      "goal": "goal-2",
+      "kind": "collection-research",
+      "status": "in-review",
+      "priority": "normal",
+      "owner": "staff-5",
+      "phases": [
+        {
+          "kind": "research",
+          "assignee": "staff-1",
+          "state": "done",
+          "progress": 1,
+          "estimateMinutes": 240
+        },
+        {
+          "kind": "review",
+          "assignee": "staff-5",
+          "state": "working",
+          "progress": 0.3,
+          "estimateMinutes": 60
+        }
+      ],
+      "todos": [],
+      "dependsOn": [],
+      "dueDay": 12,
+      "publishDay": 13,
+      "tickets": [],
+      "languages": [
+        "en",
+        "it"
+      ],
+      "startDay": 8
+    }
+  ]
+}
