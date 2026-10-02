@@ -100,6 +100,9 @@ pub enum Effect {
 /// One brief agreed in a standup (`ServerCommand::MeetingOutcome`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BriefStub {
+    /// Defaults to `Article` when absent in JSON (the orchestrator's
+    /// `BriefOut` has no kind).
+    #[serde(default)]
     pub kind: WorkItemKind,
     pub writer: StaffId,
     pub editor: StaffId,
@@ -107,8 +110,11 @@ pub struct BriefStub {
     pub brief_ref: u64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub enum WorkItemKind {
+    #[default]
     #[serde(alias = "article")]
     Article,
 }
@@ -156,7 +162,9 @@ impl WorkItemStatus {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub enum WorkPriority {
     Urgent,
     High,
@@ -353,6 +361,9 @@ pub struct Plan {
     pub jobs_requested: u64,
     pub next_item: u32,
     pub feed: Vec<FeedEntry>,
+    /// The day each project last held its standup: one standup job per
+    /// project per day, even if the meeting ends early and is cleared.
+    pub standup_days: BTreeMap<ProjectId, u32>,
 }
 
 /// Roles that may write a brief's draft.
@@ -685,8 +696,7 @@ impl World {
         let meetings = &self.meetings;
         self.plan.jobs.retain(|_, j| {
             j.kind != JobKind::Standup
-                || j
-                    .meeting
+                || j.meeting
                     .and_then(|m| meetings.get(&m))
                     .is_some_and(|m| m.is_active(now))
         });
@@ -705,9 +715,8 @@ impl World {
             .items
             .values()
             .find(|i| {
-                i.phase().is_some_and(|p| {
-                    p.state == PhaseState::Working && p.assignee == Some(staff)
-                })
+                i.phase()
+                    .is_some_and(|p| p.state == PhaseState::Working && p.assignee == Some(staff))
             })
             .map(|i| i.id)
     }
@@ -783,7 +792,9 @@ impl World {
             .get(&id)
             .ok_or(Reject::Invalid("unknown work item"))?;
         if item.status != WorkItemStatus::Scheduled {
-            return Err(Reject::Invalid("the item is not merged and waiting for a deploy"));
+            return Err(Reject::Invalid(
+                "the item is not merged and waiting for a deploy",
+            ));
         }
         Ok(())
     }

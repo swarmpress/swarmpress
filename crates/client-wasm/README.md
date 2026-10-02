@@ -19,6 +19,7 @@ export function version(): string
 export class Sim {
   constructor(seed: bigint)              // empty company on the default lot
   static demo(seed: bigint): Sim         // the cinqueterre.travel starting company (13 staff)
+  static scenario(name: string, seed: bigint): Sim  // "cinqueterre" (= demo) | "empty"; throws otherwise
   tick(): void                           // one 100 ms step
   advance(steps: number): void
   step(): bigint
@@ -30,9 +31,12 @@ export class Sim {
   apply_command(bytes: Uint8Array): void            // postcard Command; throws the reason
   apply_server_command(bytes: Uint8Array): void     // postcard ServerCommand (offline sandbox)
   validate_command(bytes: Uint8Array): string | undefined  // undefined = would apply
-  apply_command_json(json: string): void            // JSON Command (below); throws the reason
-  validate_command_json(json: string): string | undefined
-  apply_server_command_json(json: string): void     // JSON ServerCommand (offline sandbox)
+  apply_command_json(json: string): void            // JSON Command or ServerCommand (below); throws the reason
+  validate_command_json(json: string): string | undefined  // same, without applying
+  apply_server_command_json(json: string): void     // JSON ServerCommand only
+  drain_effects_json(): string           // JSON RequestJob[] since the last drain (job contract)
+  pending_effects(): number              // effects waiting to be drained
+  plan_json(project?: string): string    // publishing plan skeleton (publishing-plan.md §7)
   render_state(): Uint8Array             // postcard sim_core::RenderState (mm)
   render_state_json(): string            // JSON, metres, TS RenderState shape
   layout_json(): string                  // JSON, metres, TS BuildingLayout shape
@@ -75,6 +79,49 @@ project `revenueEstimateEurMonth`, `month` (breakdown); tickets `role`,
 `dueMinute`. `deadlineMinute` / `createdMinute` / `dueMinute` are absolute
 game minutes since day 0, 00:00. `persona` is the catalog slug; unknown
 persona ids render as `persona-<n>`.
+
+### Job contract (docs/mvp.md, docs/architecture/sim.md)
+
+`drain_effects_json()` returns the effects emitted since the last drain, in
+the orchestrator's `JobRequest` field names (snake_case; add `company_id` and
+pass it to `Orchestrator::run`, which ignores `effect` and `meeting`):
+
+```jsonc
+[{"effect":"request-job","job_id":1,"kind":"standup","project":"project-1",
+  "work_item":null,"brief_ref":null,"revision":0,"meeting":"meeting-1",
+  "staff":[{"id":"staff-1","persona":"giulia","role":"writer"}, …]}
+,{"effect":"request-job","job_id":2,"kind":"draft","project":"project-1",
+  "work_item":"work-item-1","brief_ref":42,"revision":0,"meeting":null,
+  "staff":[{"id":"staff-1","persona":"giulia","role":"writer"}]}]
+```
+
+`kind` is `standup | draft | review | publish` (`brief` is reserved).
+Effects are not world state: draining (or not) never moves the hash. Every
+replica must drain after stepping, or the queue grows.
+
+The results go back through `apply_command_json` as server commands, in the
+orchestrator's `Outcome` JSON (see "Server commands" below). Then:
+
+- `MeetingOutcome` creates one work item per brief in its Draft phase and
+  requests a Draft job for the writer (`kind` defaults to `article`);
+- `JobCompleted` on a Draft (`ok`) → Review job for the editor once the
+  draft's minimum time (2 game hours) has passed; on a Review, score ≥ the
+  quality bar (7) → Publish job (IT engineer, DevOps or web developer);
+  lower → a new Draft with `revision + 1`, at most 3 revisions, then the item
+  is `blocked` with an `escalation` ticket (options `retry | kill`, default
+  `kill`, a deadline); `ok: false` on any job → `blocked` plus the ticket.
+  A finished Publish leaves the item `scheduled` (merged, awaiting the deploy);
+- `DeployLanded` → `published`.
+
+`plan_json(project?)` follows publishing-plan.md §7 (`goals` and
+`workstreams` are empty until they exist in the sim) and adds per item
+`briefRef`, `revision`, `lastScore`, `currentPhase`, `createdDay`, `meeting`,
+per phase `job` and `score` (reviews), plus `jobs[]` (pending: `id, kind,
+project, workItem, meeting, requestedMinute`) and `feed[]` (`kind:
+published|blocked, project, workItem, minute`). Items: `id: "work-item-1"`,
+`status` (`planned|in-progress|in-review|approved|scheduled|published|
+blocked|cancelled`), phases `draft|review|publish` with `state
+pending|working|done|blocked` and `progress` 0..1.
 
 ## JSON commands
 
@@ -132,9 +179,18 @@ Every command, with an example:
 {"Delegate":{"task":{"FollowUp":{"staff":"staff-3","topic":"morale"}}}}  // morale|workload|performance|salary
 ```
 
-Server commands for the offline sandbox (`apply_server_command_json`):
+Server commands (`apply_command_json` tells them apart by the variant name;
+`apply_server_command_json` accepts only these). The job results are exactly
+the orchestrator's `Outcome` JSON: a brief's `kind` may be omitted, and a
+digest's `artifact_sha` may be a hex string (its first 16 bytes are kept),
+`null`, or a 16-byte array:
 
 ```jsonc
+{"MeetingOutcome":{"job_id":1,"briefs":[{"brief_ref":42,"writer":"staff-1","editor":"staff-5"}]}}
+{"JobCompleted":{"job_id":2,"digest":{"ok":true,"score":0,"words":930,"qa_defects":0,
+                 "artifact_sha":"0123456789abcdef0123456789abcdef01234567"}}}
+{"JobCompleted":{"job_id":3,"digest":{"ok":true,"score":8,"words":0,"qa_defects":1,"artifact_sha":null}}}
+{"DeployLanded":{"work_item":"work-item-1"}}
 {"SiteSignals":{"live_pages":61,"languages":4,"broken_links":3,"media_count":338,
                 "lighthouse_performance":91,"lighthouse_accessibility":96,"lighthouse_seo":100}}
 {"AnalyticsSignals":{"project":"project-1","day":1,"sessions":1840,"visitors":1420,

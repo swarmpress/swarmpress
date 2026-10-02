@@ -10,8 +10,9 @@ use sim_core::economy::REVENUE_IS_STUB;
 use sim_core::equipment::{DeviceState, EquipmentKind};
 use sim_core::finance::CostBreakdown;
 use sim_core::geom::PosMm;
-use sim_core::ids::{PersonaId, StaffId};
+use sim_core::ids::{PersonaId, ProjectId, StaffId};
 use sim_core::inbox::TicketKind;
+use sim_core::plan::{Effect, PhaseKind};
 use sim_core::projects::{ProjectStatus, MONTH_DAYS};
 use sim_core::render_state::{Light, RenderState};
 use sim_core::roles::Department;
@@ -537,6 +538,7 @@ pub fn inbox(w: &World) -> Value {
                 "from": opt_id(t.from),
                 "role": t.role.map(|r| r.slug()),
                 "amountEur": eur(t.amount_cents),
+                "workItem": opt_id(t.work_item),
                 "status": t.status.slug(),
                 "routedViaSecretary": t.routed_via_secretary,
                 "options": t.options.iter().map(|o| o.slug()).collect::<Vec<_>>(),
@@ -568,6 +570,133 @@ pub fn inbox(w: &World) -> Value {
         "secretary": opt_id(w.exec.secretary),
         "tickets": tickets,
         "secretaryQueue": queue,
+    })
+}
+
+/// Someone on a job, resolved to names: the orchestrator's `StaffRef`.
+fn staff_ref(w: &World, id: StaffId) -> Value {
+    let (persona, role) = w.staff.get(&id).map_or_else(
+        || (Value::Null, Value::Null),
+        |s| (json!(persona_slug(s.persona)), json!(s.role.slug())),
+    );
+    json!({ "id": id.to_string(), "persona": persona, "role": role })
+}
+
+/// `Sim.drain_effects_json()`: effects in the orchestrator's `JobRequest`
+/// field names (snake_case; the caller adds `company_id`).
+pub fn effects(w: &World, effects: &[Effect]) -> Value {
+    effects
+        .iter()
+        .map(|e| match e {
+            Effect::RequestJob {
+                job_id,
+                kind,
+                project,
+                work_item,
+                brief_ref,
+                revision,
+                meeting,
+                staff,
+            } => json!({
+                "effect": "request-job",
+                "job_id": job_id,
+                "kind": kind.slug(),
+                "project": project.to_string(),
+                "work_item": opt_id(*work_item),
+                "brief_ref": brief_ref,
+                "revision": revision,
+                "meeting": opt_id(*meeting),
+                "staff": staff.iter().map(|s| staff_ref(w, *s)).collect::<Vec<_>>(),
+            }),
+        })
+        .collect()
+}
+
+/// `Sim.plan_json(project?)`: the publishing plan's skeleton
+/// (publishing-plan.md §7). Text is joined client-side from the plan store.
+pub fn plan(w: &World, project: Option<&str>) -> Value {
+    let day_of = |step: u64| w.config.clock_at(step).day;
+    let wanted = |p: ProjectId| project.is_none_or(|want| p.to_string() == want);
+    let items: Vec<Value> = w
+        .plan
+        .items
+        .values()
+        .filter(|i| wanted(i.project))
+        .map(|i| {
+            let phases: Vec<Value> = i
+                .phases
+                .iter()
+                .map(|p| {
+                    json!({
+                        "kind": p.kind.slug(),
+                        "assignee": opt_id(p.assignee),
+                        "state": p.state.slug(),
+                        "progress": unit(p.progress_pm(w.step)),
+                        "estimateMinutes": p.estimate_min,
+                        "job": p.job,
+                        "score": p.result.filter(|_| p.kind == PhaseKind::Review).map(|r| r.score),
+                    })
+                })
+                .collect();
+            json!({
+                "id": i.id.to_string(),
+                "project": i.project.to_string(),
+                "workstream": Value::Null,
+                "kind": i.kind.slug(),
+                "status": i.status.slug(),
+                "priority": i.priority.slug(),
+                "owner": opt_id(i.owner),
+                "briefRef": i.brief_ref,
+                "revision": i.revision,
+                "lastScore": i.last_score,
+                "currentPhase": i.phase().map(|p| p.kind.slug()),
+                "phases": phases,
+                "todos": [],
+                "dependsOn": [],
+                "dueDay": Value::Null,
+                "publishDay": i.published_step.map(day_of),
+                "createdDay": day_of(i.created_step),
+                "meeting": opt_id(i.meeting),
+                "tickets": i.tickets.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    let jobs: Vec<Value> = w
+        .plan
+        .jobs
+        .values()
+        .filter(|j| wanted(j.project))
+        .map(|j| {
+            json!({
+                "id": j.job_id,
+                "kind": j.kind.slug(),
+                "project": j.project.to_string(),
+                "workItem": opt_id(j.work_item),
+                "meeting": opt_id(j.meeting),
+                "requestedMinute": minute_of_step(w, j.requested_step),
+            })
+        })
+        .collect();
+    let feed: Vec<Value> = w
+        .plan
+        .feed
+        .iter()
+        .filter(|f| wanted(f.project))
+        .map(|f| {
+            json!({
+                "kind": f.kind.slug(),
+                "project": f.project.to_string(),
+                "workItem": f.work_item.to_string(),
+                "minute": minute_of_step(w, f.step),
+            })
+        })
+        .collect();
+    json!({
+        "goals": [],
+        "workstreams": [],
+        "items": items,
+        "jobs": jobs,
+        "feed": feed,
     })
 }
 

@@ -11,7 +11,8 @@
 
 pub mod json;
 
-use sim_core::commands::{Command, ServerCommand};
+use serde_json::Value;
+use sim_core::commands::{Command, Input, ServerCommand};
 use wasm_bindgen::prelude::*;
 
 /// Crate version plus protocol version, shown in the client HUD.
@@ -47,6 +48,20 @@ impl Sim {
         Sim {
             world: sim_core::scenarios::demo_office(seed),
         }
+    }
+
+    /// A world by scenario name (`sim_core::scenarios::scenario`):
+    /// `"cinqueterre"` (alias `"demo"`, same as [`Sim::demo`]) or `"empty"`.
+    /// Throws on an unknown name.
+    pub fn scenario(name: &str, seed: u64) -> Result<Sim, String> {
+        sim_core::scenarios::scenario(name, seed)
+            .map(|world| Sim { world })
+            .ok_or_else(|| {
+                format!(
+                    "unknown scenario {name:?} (known: {})",
+                    sim_core::scenarios::SCENARIOS.join(", ")
+                )
+            })
     }
 
     /// Advances one fixed step (100 ms).
@@ -145,37 +160,129 @@ impl Sim {
         json::inbox(&self.world).to_string()
     }
 
-    /// Parses a JSON [`Command`] (serde's external tagging, see the README)
-    /// and applies it now. `Err` carries the reason.
+    /// Parses a JSON command and applies it now: a player [`Command`] or a
+    /// [`ServerCommand`] (orchestrator results `MeetingOutcome`,
+    /// `JobCompleted`, `DeployLanded`; signals; utterances), told apart by
+    /// the variant name. Both go through the shared validation
+    /// (`sim_core::validate_input`). `Err` carries the reason. Shapes: README.
     pub fn apply_command_json(&mut self, json: &str) -> Result<(), String> {
-        let cmd = parse_command(json)?;
-        self.world.apply(cmd).map(|_| ()).map_err(|r| r.to_string())
+        let input = parse_input(json)?;
+        self.world
+            .apply_input(input)
+            .map(|_| ())
+            .map_err(|r| r.to_string())
     }
 
-    /// `None` when the JSON [`Command`] would apply, otherwise the reason.
+    /// `None` when the JSON command (player or server) would apply,
+    /// otherwise the reason.
     pub fn validate_command_json(&self, json: &str) -> Option<String> {
-        match parse_command(json) {
+        match parse_input(json) {
             Err(e) => Some(e),
-            Ok(cmd) => sim_core::validate(&self.world, &cmd)
+            Ok(input) => sim_core::validate_input(&self.world, &input)
                 .err()
                 .map(|r| r.to_string()),
         }
     }
 
-    /// Parses a JSON [`ServerCommand`] and applies it now (offline sandbox:
-    /// site and analytics signals, utterances).
+    /// Like [`Sim::apply_command_json`], but only accepts a [`ServerCommand`].
     pub fn apply_server_command_json(&mut self, json: &str) -> Result<(), String> {
-        let cmd: ServerCommand =
-            serde_json::from_str(json).map_err(|e| format!("bad server command: {e}"))?;
+        let cmd = parse_server_command(json)?;
         self.world
             .apply_server(cmd)
             .map(|_| ())
             .map_err(|r| r.to_string())
     }
+
+    /// Takes the effects emitted since the last drain, as a JSON array of
+    /// `RequestJob`s in the orchestrator's `JobRequest` field names (see the
+    /// README). Effects are not world state: draining never changes the hash.
+    pub fn drain_effects_json(&mut self) -> String {
+        let effects = self.world.drain_effects();
+        json::effects(&self.world, &effects).to_string()
+    }
+
+    /// Effects waiting to be drained.
+    pub fn pending_effects(&self) -> u32 {
+        u32::try_from(self.world.effects().len()).unwrap_or(u32::MAX)
+    }
+
+    /// The publishing plan's skeleton (publishing-plan.md §7), optionally
+    /// for one project (`"project-1"`).
+    pub fn plan_json(&self, project: Option<String>) -> String {
+        json::plan(&self.world, project.as_deref()).to_string()
+    }
 }
 
-fn parse_command(json: &str) -> Result<Command, String> {
-    serde_json::from_str(json).map_err(|e| format!("bad command: {e}"))
+/// `ServerCommand` variant names: a JSON command with one of these tags is a
+/// server command, anything else a player command.
+const SERVER_VARIANTS: [&str; 6] = [
+    "JobCompleted",
+    "MeetingOutcome",
+    "DeployLanded",
+    "Utterance",
+    "SiteSignals",
+    "AnalyticsSignals",
+];
+
+fn tag(v: &Value) -> Option<&str> {
+    match v {
+        Value::String(s) => Some(s),
+        Value::Object(o) if o.len() == 1 => o.keys().next().map(String::as_str),
+        _ => None,
+    }
+}
+
+/// Parses a player or server command from JSON.
+fn parse_input(json: &str) -> Result<Input, String> {
+    let v: Value = serde_json::from_str(json).map_err(|e| format!("bad command: {e}"))?;
+    if tag(&v).is_some_and(|t| SERVER_VARIANTS.contains(&t)) {
+        server_from_value(v).map(Input::Server)
+    } else {
+        serde_json::from_value(v)
+            .map(Input::Player)
+            .map_err(|e| format!("bad command: {e}"))
+    }
+}
+
+fn parse_server_command(json: &str) -> Result<ServerCommand, String> {
+    let v: Value = serde_json::from_str(json).map_err(|e| format!("bad server command: {e}"))?;
+    server_from_value(v)
+}
+
+/// Accepts the orchestrator's `Outcome` JSON as is: a `JobCompleted`
+/// digest's `artifact_sha` may be a hex string (first 16 bytes are kept) or
+/// `null`/absent (zeros) as well as a 16-byte array.
+fn server_from_value(mut v: Value) -> Result<ServerCommand, String> {
+    if let Some(d) = v
+        .get_mut("JobCompleted")
+        .and_then(|j| j.get_mut("digest"))
+        .and_then(Value::as_object_mut)
+    {
+        let sha = match d.get("artifact_sha") {
+            None | Some(Value::Null) => Some([0u8; 16]),
+            Some(Value::String(hex)) => Some(sha16(hex)?),
+            Some(_) => None,
+        };
+        if let Some(sha) = sha {
+            d.insert("artifact_sha".into(), serde_json::json!(sha));
+        }
+    }
+    serde_json::from_value(v).map_err(|e| format!("bad server command: {e}"))
+}
+
+/// First 16 bytes of a hex digest (shorter digests are zero-padded).
+fn sha16(hex: &str) -> Result<[u8; 16], String> {
+    let mut out = [0u8; 16];
+    let bytes = hex.as_bytes();
+    if !bytes.len().is_multiple_of(2) {
+        return Err("bad server command: artifact_sha has an odd length".into());
+    }
+    for (i, pair) in bytes.chunks(2).take(16).enumerate() {
+        let s = std::str::from_utf8(pair).map_err(|_| "bad server command: artifact_sha")?;
+        out[i] = u8::from_str_radix(s, 16)
+            .map_err(|_| format!("bad server command: artifact_sha {hex:?} is not hex"))?;
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -430,10 +537,130 @@ mod tests {
         }
         assert!(examples.len() >= 30, "{}", examples.len());
         for e in &examples {
-            let player = serde_json::from_str::<Command>(e);
-            let server = serde_json::from_str::<ServerCommand>(e);
-            assert!(player.is_ok() || server.is_ok(), "{e}: {player:?}");
+            let parsed = parse_input(e);
+            assert!(parsed.is_ok(), "{e}: {parsed:?}");
         }
+    }
+
+    /// The orchestrator loop through the JSON boundary: drain a standup
+    /// request, answer with the orchestrator's `Outcome` JSON, follow the
+    /// item to Published, and read it back from `plan_json`.
+    #[test]
+    fn job_contract_through_json() {
+        let mut sim = Sim::scenario("cinqueterre", 1).unwrap();
+        assert_eq!(sim.hash(), Sim::demo(1).hash());
+        assert!(Sim::scenario("atlantis", 1).is_err());
+        assert_eq!(
+            Sim::scenario("empty", 1).unwrap().hash(),
+            Sim::new(1).hash()
+        );
+        fn drain(sim: &mut Sim) -> Vec<Value> {
+            serde_json::from_str::<Value>(&sim.drain_effects_json())
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .clone()
+        }
+        fn run_until(sim: &mut Sim, kind: &str) -> Value {
+            for _ in 0..3_000 {
+                sim.tick();
+                if sim.pending_effects() > 0 {
+                    let e = drain(sim).remove(0);
+                    assert_eq!(e["kind"], kind);
+                    return e;
+                }
+            }
+            panic!("no {kind} job");
+        }
+        fn done(job: &Value, score: u8, sha: &str) -> String {
+            let job = job["job_id"].as_u64().unwrap();
+            serde_json::json!({
+                "JobCompleted": {
+                    "job_id": job,
+                    "digest": {
+                        "ok": true,
+                        "score": score,
+                        "words": 900,
+                        "qa_defects": 0,
+                        "artifact_sha": serde_json::from_str::<Value>(sha).unwrap(),
+                    }
+                }
+            })
+            .to_string()
+        }
+        // run to the 09:00 standup
+        let standup = run_until(&mut sim, "standup");
+        assert_eq!(sim.minute_of_day(), 540);
+        assert_eq!(standup["effect"], "request-job");
+        assert_eq!(standup["job_id"], 1);
+        assert_eq!(standup["project"], "project-1");
+        assert!(standup["work_item"].is_null());
+        assert!(standup["brief_ref"].is_null());
+        assert_eq!(standup["revision"], 0);
+        assert!(standup["meeting"].as_str().unwrap().starts_with("meeting-"));
+        let staff = standup["staff"].as_array().unwrap();
+        assert_eq!(
+            staff[0],
+            serde_json::json!({"id": "staff-1", "persona": "giulia", "role": "writer"})
+        );
+        // the orchestrator's MeetingOutcome (BriefOut has no kind)
+        let outcome = r#"{"MeetingOutcome":{"job_id":1,"briefs":[{"brief_ref":42,"writer":"staff-1","editor":"staff-5"}]}}"#;
+        assert_eq!(sim.validate_command_json(outcome), None);
+        sim.apply_command_json(outcome).unwrap();
+        let draft = drain(&mut sim).remove(0);
+        assert_eq!(draft["kind"], "draft");
+        assert_eq!(draft["work_item"], "work-item-1");
+        assert_eq!(draft["brief_ref"], 42);
+        assert_eq!(draft["staff"][0]["persona"], "giulia");
+        let plan: Value = serde_json::from_str(&sim.plan_json(None)).unwrap();
+        let item = &plan["items"][0];
+        assert_eq!(item["id"], "work-item-1");
+        assert_eq!(item["status"], "in-progress");
+        assert_eq!(item["owner"], "staff-5");
+        assert_eq!(item["phases"][0]["kind"], "draft");
+        assert_eq!(item["phases"][0]["assignee"], "staff-1");
+        assert_eq!(item["phases"][0]["state"], "working");
+        assert_eq!(item["phases"][0]["estimateMinutes"], 120);
+        assert_eq!(plan["jobs"][0]["id"], 2);
+        let other: Value = serde_json::from_str(&sim.plan_json(Some("project-9".into()))).unwrap();
+        assert!(other["items"].as_array().unwrap().is_empty());
+
+        // JobCompleted with the orchestrator's Digest (hex sha or null)
+        assert!(sim
+            .validate_command_json(&done(&draft, 0, r#""xyz""#))
+            .unwrap()
+            .contains("artifact_sha"));
+        sim.apply_command_json(&done(
+            &draft,
+            0,
+            r#""0123456789abcdef0123456789abcdef01234567""#,
+        ))
+        .unwrap();
+        let review = run_until(&mut sim, "review");
+        sim.apply_command_json(&done(&review, 6, "null")).unwrap();
+        let redraft = run_until(&mut sim, "draft");
+        assert_eq!(redraft["revision"], 1);
+        sim.apply_command_json(&done(&redraft, 0, "null")).unwrap();
+        let review = run_until(&mut sim, "review");
+        sim.apply_command_json(&done(&review, 8, "null")).unwrap();
+        let publish = run_until(&mut sim, "publish");
+        assert_eq!(publish["staff"][0]["role"], "it-engineer");
+        sim.apply_command_json(&done(&publish, 0, "null")).unwrap();
+        sim.advance(200);
+        let landed = r#"{"DeployLanded":{"work_item":"work-item-1"}}"#;
+        assert_eq!(sim.validate_command_json(landed), None);
+        sim.apply_command_json(landed).unwrap();
+        let plan: Value = serde_json::from_str(&sim.plan_json(Some("project-1".into()))).unwrap();
+        assert_eq!(plan["items"][0]["status"], "published");
+        assert_eq!(plan["items"][0]["revision"], 1);
+        assert_eq!(plan["items"][0]["lastScore"], 8);
+        assert_eq!(plan["feed"][0]["kind"], "published");
+        // validated: the same deploy again is rejected
+        assert!(sim.apply_command_json(landed).is_err());
+        assert!(sim.apply_server_command_json(landed).is_err());
+        assert!(sim
+            .apply_server_command_json(r#"{"Praise":{"staff":"staff-1"}}"#)
+            .is_err());
     }
 
     #[test]

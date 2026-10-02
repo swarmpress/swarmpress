@@ -26,10 +26,13 @@ use sim_core::economy::LedgerKind;
 use sim_core::equipment::EquipmentKind;
 use sim_core::finance::CostBreakdown;
 use sim_core::geom::{PosMm, Side, TileRect};
-use sim_core::ids::{CandidateId, EquipId, JobId, MeetingId, ProjectId, RoomId, StaffId, TicketId};
+use sim_core::ids::{
+    CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId,
+};
 use sim_core::inbox::{
     DelegationPolicy, FollowUpTopic, Priority, ResolvedBy, SecretaryTaskKind, TicketOption,
 };
+use sim_core::plan::{BriefStub, PhaseState, WorkItemKind, WorkItemStatus, MAX_REVISIONS};
 use sim_core::projects::ProjectStatus;
 use sim_core::roles::Role;
 use sim_core::scenarios::demo_office_with_config;
@@ -251,11 +254,23 @@ fn server_command() -> impl Strategy<Value = ServerCommand> {
                 top_pages_digest: u64::from(sessions),
             }
         ),
-        (1u32..5).prop_map(|j| ServerCommand::JobCompleted {
-            job_id: JobId(j),
+        (1u32..5).prop_map(|w| ServerCommand::DeployLanded {
+            work_item: WorkItemId(w),
+        }),
+        (1u64..8, 1u32..14, 1u32..14).prop_map(|(j, wr, ed)| ServerCommand::MeetingOutcome {
+            job_id: j,
+            briefs: vec![BriefStub {
+                kind: WorkItemKind::Article,
+                writer: StaffId(wr),
+                editor: StaffId(ed),
+                brief_ref: j,
+            }],
+        }),
+        (1u64..12, any::<bool>(), 0u8..11).prop_map(|(j, ok, score)| ServerCommand::JobCompleted {
+            job_id: j,
             digest: JobDigest {
-                ok: true,
-                score: 7,
+                ok,
+                score,
                 words: 800,
                 qa_defects: 0,
                 artifact_sha: [7; 16],
@@ -498,6 +513,42 @@ fn check_org(w: &World) {
     }
     if w.exec.secretary.is_none() {
         assert_eq!(w.pending_tasks(), 0);
+    }
+    check_plan(w);
+}
+
+/// The job contract: revisions are capped, blocked items are escalated,
+/// working phases wait on a pending job, pending jobs point at live work.
+fn check_plan(w: &World) {
+    for item in w.plan.items.values() {
+        assert!(
+            item.revision <= MAX_REVISIONS,
+            "{} over the revision cap",
+            item.id
+        );
+        if item.status == WorkItemStatus::Blocked {
+            assert!(
+                !item.tickets.is_empty(),
+                "{} blocked without a ticket",
+                item.id
+            );
+        }
+        if let Some(p) = item.phase() {
+            if p.state == PhaseState::Working && p.result.is_none() {
+                let job = p.job.expect("a working phase has a job");
+                assert!(
+                    w.plan.jobs.contains_key(&job),
+                    "{} waits on no job",
+                    item.id
+                );
+            }
+        }
+    }
+    for j in w.plan.jobs.values() {
+        assert!(j.job_id <= w.plan.jobs_requested);
+        if let Some(id) = j.work_item {
+            assert!(!w.plan.items[&id].status.is_closed());
+        }
     }
 }
 

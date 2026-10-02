@@ -16,7 +16,9 @@ pub use sim_core::inbox::{DelegationPolicy, FollowUpTopic, SecretaryTaskKind, Ti
 pub use sim_core::projects::ProjectStatus;
 pub use sim_core::roles::{Department, Role};
 
-/// v3: organization commands (projects, staffing, Inbox, delegation),
+/// v3: organization commands (projects, staffing, Inbox, delegation), the
+/// job contract (`ServerCommand::{MeetingOutcome, JobCompleted{job_id: u64},
+/// DeployLanded}`),
 /// `ServerCommand::AnalyticsSignals`, the extended `Role` set.
 /// v2: command frames (M1 sim commands).
 pub const PROTO_VERSION: u16 = 3;

@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use crate::building::{Door, RoomKind, Window};
 use crate::equipment::EquipmentKind;
 use crate::geom::{PosMm, Side, TileRect};
-use crate::ids::{CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId};
+use crate::ids::{
+    CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId,
+};
 use crate::inbox::{DelegationPolicy, SecretaryTaskKind, TicketOption};
 use crate::plan::BriefStub;
 use crate::projects::ProjectStatus;

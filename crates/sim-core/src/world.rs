@@ -1053,7 +1053,9 @@ impl World {
                 .map(|p| p.id)
                 .collect();
             for pid in active {
-                if self.has_meeting(MeetingKind::Standup, Some(pid), day) {
+                if self.has_meeting(MeetingKind::Standup, Some(pid), day)
+                    || self.plan.standup_days.get(&pid) == Some(&day)
+                {
                     continue;
                 }
                 let mut attendees: BTreeSet<StaffId> = self
@@ -1078,6 +1080,7 @@ impl World {
                         end,
                         attendees,
                     );
+                    self.plan.standup_days.insert(pid, day);
                     let job =
                         self.request_job(JobKind::Standup, pid, None, None, 0, Some(mid), staff);
                     if let Some(m) = self.meetings.get_mut(&mid) {

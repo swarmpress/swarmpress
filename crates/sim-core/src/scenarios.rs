@@ -40,13 +40,17 @@
 use crate::building::{Building, Door, Entrance, RoomKind, Window};
 use crate::clock::{hm, SimConfig};
 use crate::commands::{
-    Command, DemolishTarget, Input, OvertimePolicy, Placement, Policy, ServerCommand, SiteSignals,
+    Command, DemolishTarget, Input, JobDigest, OvertimePolicy, Placement, Policy, ServerCommand,
+    SiteSignals,
 };
 use crate::economy::Company;
 use crate::equipment::EquipmentKind;
 use crate::geom::{PosMm, Side, Tile, TileRect};
-use crate::ids::{CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId};
+use crate::ids::{
+    CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId,
+};
 use crate::inbox::{DelegationPolicy, FollowUpTopic, SecretaryTaskKind, TicketOption};
+use crate::plan::{BriefStub, WorkItemKind};
 use crate::projects::ProjectStatus;
 use crate::staff::{persona, persona_by_key, Schedule, Traits};
 use crate::world::World;
@@ -310,6 +314,20 @@ fn demo_props() -> [(EquipmentKind, PosMm); 8] {
     ]
 }
 
+/// Scenario names accepted by [`scenario`].
+pub const SCENARIOS: [&str; 3] = ["cinqueterre", "demo", "empty"];
+
+/// A world by scenario name: `"cinqueterre"` (alias `"demo"`) is the
+/// cinqueterre.travel starting company ([`demo_office`], 13 people,
+/// staff-1..staff-13); `"empty"` is an empty company on the default lot.
+pub fn scenario(name: &str, seed: u64) -> Option<World> {
+    match name {
+        "cinqueterre" | "demo" => Some(demo_office(seed)),
+        "empty" => Some(World::new(seed)),
+        _ => None,
+    }
+}
+
 /// The demo office with the default clock (20 real minutes per day, 07:00 start).
 pub fn demo_office(seed: u64) -> World {
     demo_office_with_config(seed, SimConfig::default())
@@ -446,6 +464,8 @@ pub fn demo_office_with_config(seed: u64, config: SimConfig) -> World {
 /// (CFO affordability ticket, auto-answered under Low delegation), staffing
 /// the hire, praise, promotion, a salary change, proposing a second project,
 /// delegated tasks (draft reply, meeting, follow-up), standup utterances,
+/// the job contract (a standup outcome with two briefs, drafts, a passing
+/// and a failing review, a revision, publishing, a landed deploy),
 /// site and analytics signals, overtime policy changes, firing the
 /// photographer mid-shift (missing-role ticket) and answering it, activating
 /// the second project and splitting a writer across both, placing and
@@ -573,6 +593,36 @@ pub fn golden_script() -> Vec<(u64, Input)> {
                 chars: 80,
             }),
         ),
+        // day 1, 09:20: the standup (job 2) agrees two briefs: work items 1
+        // (Giulia → Marco) and 2 (Lorenzo → Sophia), draft jobs 3 and 4
+        (
+            13_200,
+            s(ServerCommand::MeetingOutcome {
+                job_id: 2,
+                briefs: vec![
+                    BriefStub {
+                        kind: WorkItemKind::Article,
+                        writer: StaffId(1),
+                        editor: StaffId(5),
+                        brief_ref: 501,
+                    },
+                    BriefStub {
+                        kind: WorkItemKind::Article,
+                        writer: StaffId(3),
+                        editor: StaffId(4),
+                        brief_ref: 502,
+                    },
+                ],
+            }),
+        ),
+        (13_300, s(job_done(3, true, 0))),
+        (13_310, s(job_done(4, true, 0))),
+        // drafts done at 14_200: reviews 5 and 6; item 1 scores 8, item 2 4
+        (14_300, s(job_done(5, true, 8))),
+        (14_310, s(job_done(6, true, 4))),
+        // reviews done at 14_700: publish job 7 (item 1), redraft job 8
+        (14_800, s(job_done(7, true, 0))),
+        (14_900, s(job_done(8, true, 0))),
         // day 1, 11:00: the CEO approves the proposal directly
         (
             15_000,
@@ -585,6 +635,13 @@ pub fn golden_script() -> Vec<(u64, Input)> {
         (
             20_000,
             p(Command::SetPolicy(Policy::Overtime(OvertimePolicy::Crunch))),
+        ),
+        // item 1 merged at 14_825: its deploy lands
+        (
+            15_500,
+            s(ServerCommand::DeployLanded {
+                work_item: WorkItemId(1),
+            }),
         ),
         // day 2, 07:00
         (
@@ -667,6 +724,20 @@ pub fn golden_script() -> Vec<(u64, Input)> {
             }),
         ),
     ]
+}
+
+/// A successful job result with no artifact.
+fn job_done(job_id: u64, ok: bool, score: u8) -> ServerCommand {
+    ServerCommand::JobCompleted {
+        job_id,
+        digest: JobDigest {
+            ok,
+            score,
+            words: 900,
+            qa_defects: 0,
+            artifact_sha: [0x5e; 16],
+        },
+    }
 }
 
 /// Result of each scripted input, with the step it was applied at.
