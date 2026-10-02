@@ -10,12 +10,17 @@
 //! Step order (one step = 100 ms):
 //! 1. apply inputs stamped for the current step, by seq
 //! 2. advance the step counter and the clock
-//! 3. on a new day: settle accounts, roll today's schedules, new candidates
-//! 4. per elapsed minute: overtime, fatigue; per hour: morale
-//! 5. meetings: open the standup, close finished meetings
-//! 6. staff: move along paths, then decide (FSM) and plan new paths
+//! 3. on a new day: settle accounts (company + per-project ledgers, CFO
+//!    alerts, month close every 30 days), staffing check, roll today's
+//!    schedules, new candidates
+//! 4. per elapsed minute: overtime, fatigue; per hour: morale; the 08:30
+//!    briefing task; the Secretary's queue
+//! 5. meetings: open the day's rhythm (09:00 project standups, Monday 09:30
+//!    KPI review, Friday 16:00 finance review), close finished meetings
+//! 6. tickets: apply the default of every ticket past its deadline
+//! 7. staff: move along paths, then decide (FSM) and plan new paths
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use rand_core::RngCore;
 use rand_pcg::Pcg32;
@@ -24,17 +29,26 @@ use thiserror::Error;
 
 use crate::building::{Building, RoomKind};
 use crate::clock::{
-    hm, Clock, SimConfig, ARRIVAL_START, EVENING_START, LUNCH_MINUTES, STANDUP_END,
-    STANDUP_LATEST_ARRIVAL, STANDUP_START,
+    hm, Clock, SimConfig, Weekday, ARRIVAL_START, BRIEFING_TIME, EVENING_START, FINANCE_REVIEW_END,
+    FINANCE_REVIEW_START, KPI_REVIEW_END, KPI_REVIEW_START, LUNCH_MINUTES, STANDUP_END,
+    STANDUP_START,
 };
 use crate::commands::{
     Command, DemolishTarget, Input, OvertimePolicy, Placement, Policy, ServerCommand,
 };
 use crate::economy::{self, Company, DaySettlement, Ledger, LedgerKind};
 use crate::equipment::{Equipment, EquipmentKind};
+use crate::finance::{attribute_day, Finance, PAYROLL_SPIKE_PCT};
 use crate::geom::PosMm;
-use crate::ids::{CandidateId, EquipId, IdGen, MeetingId, PersonaId, RoomId, StaffId};
+use crate::ids::{
+    CandidateId, EquipId, IdGen, MeetingId, PersonaId, ProjectId, RoomId, StaffId, TaskId, TicketId,
+};
+use crate::inbox::{
+    ExecutiveOffice, SecretaryTask, SecretaryTaskKind, Ticket, TicketKind, TicketSpec,
+};
 use crate::pathfinding::{plan_path, NavGrid, Path};
+use crate::plan::{Effect, JobKind, Plan, STANDUP_TIMEOUT_MINUTES};
+use crate::projects::{Project, ProjectStatus, MONTH_DAYS};
 use crate::staff::{
     persona, salary_for, Activity, Candidate, Role, Schedule, Seniority, Spot, Staff, Traits,
     LATEST_LEAVE, PERSONAS, ROUND_TABLE_SEATS,
@@ -49,15 +63,52 @@ pub const CANDIDATES_PER_DAY: usize = 3;
 pub const MAX_STAFF: usize = 64;
 /// Starting morale.
 pub const START_MORALE: u16 = 700;
+/// `Praise` commands per game day.
+pub const PRAISES_PER_DAY: u8 = 3;
+/// Morale from one praise, permille (+20% with a CEO office).
+pub const PRAISE_MORALE: u16 = 30;
+/// People arriving later than this after a meeting starts skip it.
+pub const MEETING_GRACE_MINUTES: u16 = 5;
 
-/// A meeting in a meeting room. M1 knows one kind: the 09:00 standup.
+/// Why a meeting happens.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum MeetingKind {
+    /// 09:00, one per active project, with that project's team (the lead
+    /// moderates, the strategist pitches).
+    Standup,
+    /// Monday 09:30: the data scientist presents KPIs to the CEO office.
+    KpiReview,
+    /// Friday 16:00: the CFO's finance review with the CEO office.
+    FinanceReview,
+    /// Booked by the Secretary (`Delegate{ScheduleMeeting}`).
+    Scheduled,
+}
+
+impl MeetingKind {
+    pub const fn slug(self) -> &'static str {
+        match self {
+            MeetingKind::Standup => "standup",
+            MeetingKind::KpiReview => "kpi-review",
+            MeetingKind::FinanceReview => "finance-review",
+            MeetingKind::Scheduled => "scheduled",
+        }
+    }
+}
+
+/// A meeting at a room's table.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Meeting {
     pub id: MeetingId,
+    pub kind: MeetingKind,
+    pub project: Option<ProjectId>,
     pub room: RoomId,
     pub day: u32,
     pub start: u16,
     pub end: u16,
+    /// Who is expected. Only they walk over.
+    pub attendees: BTreeSet<StaffId>,
+    /// The standup's job, while its outcome is awaited.
+    pub job: Option<u64>,
     /// Next expected [`ServerCommand::Utterance`] seq.
     pub next_seq: u32,
     pub speaker: Option<StaffId>,
@@ -68,6 +119,11 @@ pub struct Meeting {
 impl Meeting {
     pub fn is_active(&self, now: Clock) -> bool {
         now.day == self.day && (self.start..self.end).contains(&now.minute)
+    }
+
+    /// Not over yet (scheduled or running).
+    pub fn is_pending(&self, now: Clock) -> bool {
+        (self.day, self.end) > (now.day, now.minute)
     }
 }
 
@@ -112,6 +168,25 @@ pub struct World {
     pub staff: BTreeMap<StaffId, Staff>,
     pub candidates: BTreeMap<CandidateId, Candidate>,
     pub meetings: BTreeMap<MeetingId, Meeting>,
+    /// Publications (ADR-0029).
+    pub projects: BTreeMap<ProjectId, Project>,
+    /// The Inbox (open and recently resolved tickets).
+    pub tickets: BTreeMap<TicketId, Ticket>,
+    /// The Secretary's delegated tasks (queued, working, recently done).
+    pub secretary_tasks: BTreeMap<TaskId, SecretaryTask>,
+    /// CFO, Secretary and the delegation policy.
+    pub exec: ExecutiveOffice,
+    /// Per-project books, month close.
+    pub finance: Finance,
+    /// Work items and pending jobs (the publishing plan's skeleton).
+    pub plan: Plan,
+    /// Effects since the last [`World::drain_effects`]. Not state: skipped
+    /// by serde, so outside the hash and snapshots.
+    #[serde(skip)]
+    pub(crate) effects: Vec<Effect>,
+    /// Day the praise counter belongs to, and praises given that day.
+    pub praise_day: u32,
+    pub praises_today: u8,
     pub ids: IdGen,
     /// Times a person could not find a path (should stay 0; connectivity is validated).
     pub nav_failures: u32,
@@ -154,12 +229,22 @@ impl World {
             staff: BTreeMap::new(),
             candidates: BTreeMap::new(),
             meetings: BTreeMap::new(),
+            projects: BTreeMap::new(),
+            tickets: BTreeMap::new(),
+            secretary_tasks: BTreeMap::new(),
+            exec: ExecutiveOffice::default(),
+            finance: Finance::default(),
+            plan: Plan::default(),
+            effects: Vec::new(),
+            praise_day: 0,
+            praises_today: 0,
             ids: IdGen::default(),
             nav_failures: 0,
             pending: BTreeMap::new(),
             seq_step: 0,
             next_seq: 0,
         };
+        w.finance.month_open_totals = w.ledger.totals.clone();
         w.refresh_candidates();
         w
     }
@@ -323,8 +408,9 @@ impl World {
             }
             Command::Hire { candidate } => {
                 if let Some(c) = self.candidates.remove(&candidate) {
+                    let payroll_before = self.payroll_cents_per_day();
                     let desk = self.free_desks().first().copied();
-                    self.add_staff(
+                    let id = self.add_staff(
                         c.persona,
                         c.role,
                         c.seniority,
@@ -334,10 +420,21 @@ impl World {
                         desk,
                     );
                     self.post(LedgerKind::HiringFee, -cost);
+                    self.hire_alerts(id, c.salary, payroll_before);
                 }
             }
             Command::Fire { staff } => {
                 self.post(LedgerKind::Severance, -cost);
+                self.unstaff(staff);
+                if self.exec.cfo == Some(staff) {
+                    self.exec.cfo = None;
+                }
+                if self.exec.secretary == Some(staff) {
+                    self.exec.secretary = None;
+                    // nobody left to do them
+                    self.secretary_tasks
+                        .retain(|_, t| t.status == crate::inbox::TaskStatus::Done);
+                }
                 if let Some(s) = self.staff.get_mut(&staff) {
                     s.leaving_for_good = true;
                     s.home_desk = None;
@@ -345,19 +442,191 @@ impl World {
                         self.staff.remove(&staff);
                     }
                 }
+                self.check_staffing();
             }
             Command::SetPolicy(p) => match p {
                 Policy::Overtime(o) => self.company.policies.overtime = o,
                 Policy::Autonomy(a) => self.company.policies.autonomy = a,
                 Policy::QualityBar(q) => self.company.policies.quality_bar = q,
             },
+            Command::Promote { staff } => {
+                if let Some(s) = self.staff.get_mut(&staff) {
+                    if let Some(next) = s.seniority.promoted() {
+                        s.seniority = next;
+                        s.salary += s.salary * 15 / 100;
+                        s.morale = s.morale.saturating_add(100).min(1000);
+                    }
+                }
+            }
+            Command::SetSalary {
+                staff,
+                cents_per_day,
+            } => {
+                if let Some(s) = self.staff.get_mut(&staff) {
+                    let old = s.salary.max(1);
+                    let change_pct = (cents_per_day - old) * 100 / old;
+                    let delta = (change_pct * 5).clamp(-200, 150);
+                    let m = i64::from(s.morale) + delta;
+                    s.morale = u16::try_from(m.clamp(0, 1000)).unwrap_or(0);
+                    s.salary = cents_per_day;
+                }
+            }
+            Command::AssignToProject {
+                staff,
+                project,
+                allocation_pct,
+            } => {
+                if let Some(s) = self.staff.get_mut(&staff) {
+                    s.projects.insert(project, allocation_pct);
+                }
+            }
+            Command::RemoveFromProject { staff, project } => {
+                if let Some(s) = self.staff.get_mut(&staff) {
+                    s.projects.remove(&project);
+                }
+                if let Some(p) = self.projects.get_mut(&project) {
+                    if p.lead == Some(staff) {
+                        p.lead = None;
+                    }
+                }
+                self.check_staffing();
+            }
+            Command::SetProjectLead { project, staff } => {
+                if let Some(p) = self.projects.get_mut(&project) {
+                    p.lead = Some(staff);
+                }
+            }
+            Command::CreateProject { slug, name, domain } => {
+                let id = self.ids.project();
+                let day = self.clock().day;
+                self.projects.insert(
+                    id,
+                    Project::new(id, &slug, &name, &domain, ProjectStatus::Proposed, day),
+                );
+                let from = self
+                    .staff
+                    .values()
+                    .find(|s| s.is_active() && s.role == Role::Strategist)
+                    .map(|s| s.id);
+                self.raise_ticket(TicketSpec {
+                    kind: TicketKind::ProjectProposal,
+                    project: Some(id),
+                    from,
+                    role: None,
+                    amount_cents: 0,
+                    work_item: None,
+                });
+            }
+            Command::SetProjectStatus { project, status } => {
+                self.close_proposal_ticket(project, status != ProjectStatus::Archived);
+                self.set_project_status(project, status);
+            }
+            Command::SetProjectBudget {
+                project,
+                monthly_cents,
+            } => {
+                if let Some(p) = self.projects.get_mut(&project) {
+                    p.budget_monthly_cents = monthly_cents;
+                }
+            }
+            Command::AnswerTicket { ticket, option } => {
+                self.resolve_ticket(ticket, option, crate::inbox::ResolvedBy::Ceo);
+            }
+            Command::Delegate { task } => {
+                self.enqueue_task(task);
+            }
+            Command::SetDelegation { policy } => {
+                self.exec.delegation = policy;
+                self.secretary_answers();
+            }
+            Command::Praise { staff } => {
+                let bonus = if self.building.first_room_of(RoomKind::CeoOffice).is_some() {
+                    PRAISE_MORALE + PRAISE_MORALE / 5
+                } else {
+                    PRAISE_MORALE
+                };
+                if let Some(s) = self.staff.get_mut(&staff) {
+                    s.morale = s.morale.saturating_add(bonus).min(1000);
+                }
+                self.praises_today += 1;
+            }
+        }
+    }
+
+    /// Changes a project's status (validated by the caller). Archiving
+    /// releases the team; activating checks staffing.
+    pub(crate) fn set_project_status(&mut self, project: ProjectId, status: ProjectStatus) {
+        let Some(p) = self.projects.get_mut(&project) else {
+            return;
+        };
+        if !p.status.can_become(status) {
+            return;
+        }
+        if status == ProjectStatus::Active
+            && p.status == ProjectStatus::Proposed
+            && self
+                .projects
+                .values()
+                .filter(|q| q.status == ProjectStatus::Active || q.status == ProjectStatus::Paused)
+                .count()
+                >= self.project_limit()
+        {
+            return;
+        }
+        if let Some(p) = self.projects.get_mut(&project) {
+            p.status = status;
+        }
+        match status {
+            ProjectStatus::Archived => self.release_team(project),
+            ProjectStatus::Active => self.check_staffing(),
+            _ => {}
+        }
+    }
+
+    /// Today's payroll, cents.
+    pub fn payroll_cents_per_day(&self) -> i64 {
+        self.staff
+            .values()
+            .filter(|s| s.is_active())
+            .map(|s| s.salary)
+            .sum()
+    }
+
+    /// CFO comments on a hire: affordability (always) and a payroll spike
+    /// when one hire raises payroll by more than 15%.
+    fn hire_alerts(&mut self, hired: StaffId, salary: i64, payroll_before: i64) {
+        let Some(cfo) = self.exec.cfo.filter(|c| *c != hired) else {
+            return;
+        };
+        self.raise_ticket(TicketSpec {
+            kind: TicketKind::HireAffordability,
+            project: None,
+            from: Some(cfo),
+            role: self.staff.get(&hired).map(|s| s.role),
+            amount_cents: salary * i64::from(MONTH_DAYS),
+            work_item: None,
+        });
+        if salary * 100 > payroll_before * PAYROLL_SPIKE_PCT {
+            self.raise_ticket(TicketSpec {
+                kind: TicketKind::PayrollSpike,
+                project: None,
+                from: Some(cfo),
+                role: self.staff.get(&hired).map(|s| s.role),
+                amount_cents: salary * i64::from(MONTH_DAYS),
+                work_item: None,
+            });
         }
     }
 
     fn execute_server(&mut self, cmd: ServerCommand) {
         match cmd {
-            // Rejected by validation in M1 (no jobs exist yet).
-            ServerCommand::JobCompleted { .. } => {}
+            ServerCommand::JobCompleted { job_id, digest } => {
+                self.apply_job_completed(job_id, digest);
+            }
+            ServerCommand::MeetingOutcome { job_id, briefs } => {
+                self.apply_meeting_outcome(job_id, &briefs);
+            }
+            ServerCommand::DeployLanded { work_item } => self.apply_deploy_landed(work_item),
             ServerCommand::Utterance {
                 meeting,
                 speaker,
@@ -372,6 +641,28 @@ impl World {
                 }
             }
             ServerCommand::SiteSignals(s) => self.company.signals = Some(s),
+            ServerCommand::AnalyticsSignals {
+                project,
+                day,
+                sessions,
+                visitors,
+                pageviews,
+                engagement_pm,
+                top_pages_digest,
+            } => {
+                if let Some(p) = self.projects.get_mut(&project) {
+                    p.analytics.record(crate::projects::AnalyticsDay {
+                        day,
+                        sessions,
+                        visitors,
+                        pageviews,
+                        engagement_pm,
+                        top_pages_digest,
+                    });
+                    p.refresh_kpis();
+                }
+                self.refresh_revenue_estimate(project);
+            }
         }
     }
 
@@ -419,9 +710,59 @@ impl World {
                 path: None,
                 overtime_minutes: 0,
                 leaving_for_good: false,
+                projects: BTreeMap::new(),
             },
         );
+        match role {
+            Role::Cfo if self.exec.cfo.is_none() => self.exec.cfo = Some(id),
+            Role::Secretary if self.exec.secretary.is_none() => {
+                self.exec.secretary = Some(id);
+                if self
+                    .tickets
+                    .values()
+                    .any(|t| t.is_open() && !t.routed_via_secretary)
+                {
+                    self.enqueue_task(SecretaryTaskKind::TriageInbox);
+                }
+            }
+            _ => {}
+        }
         id
+    }
+
+    /// Adds a candidate for `role` to today's shortlist: a pool persona with
+    /// that role nobody plays yet, else a generic one.
+    pub fn add_candidate_for_role(&mut self, role: Role) {
+        let taken = |p: PersonaId, w: &World| {
+            w.staff.values().any(|s| s.persona == p)
+                || w.candidates.values().any(|c| c.persona == p)
+        };
+        let pid = PERSONAS
+            .iter()
+            .filter(|p| p.role == role)
+            .map(|p| p.persona_id())
+            .find(|p| !taken(*p, self))
+            .unwrap_or(PersonaId(0));
+        let seniority = persona(pid).map_or(Seniority::Mid, |p| p.seniority);
+        let seniority = if seniority == Seniority::Star && self.company.level < 5 {
+            Seniority::Senior
+        } else {
+            seniority
+        };
+        let traits = Traits::roll(&mut self.rng);
+        let salary = persona(pid).map_or(salary_for(role, seniority), |p| p.salary_cents_per_day());
+        let id = self.ids.candidate();
+        self.candidates.insert(
+            id,
+            Candidate {
+                id,
+                persona: pid,
+                role,
+                seniority,
+                traits,
+                salary,
+            },
+        );
     }
 
     /// Desks nobody calls home, lowest id first.
@@ -451,7 +792,13 @@ impl World {
         let r = self.building.rooms.get(&room)?;
         let (dx, dz) = ROUND_TABLE_SEATS.get(usize::from(seat))?;
         let c = r.rect.center_mm();
-        Some(PosMm::new(c.x + dx, c.z + dz))
+        // keep every seat at least 400 mm off the walls
+        let hx = (r.rect.w * crate::geom::TILE_MM / 2 - 400).max(0);
+        let hz = (r.rect.d * crate::geom::TILE_MM / 2 - 400).max(0);
+        Some(PosMm::new(
+            c.x + (*dx).clamp(-hx, hx),
+            c.z + (*dz).clamp(-hz, hz),
+        ))
     }
 
     fn table_size(&self, room: RoomId) -> u8 {
@@ -464,31 +811,42 @@ impl World {
     pub fn refresh_candidates(&mut self) {
         self.candidates.clear();
         // Prefer personas nobody on staff (or on the shortlist) already plays.
-        let mut pool: Vec<PersonaId> = (0..PERSONAS.len())
-            .filter_map(|i| u16::try_from(i).ok().map(PersonaId))
+        // The executive office is filled deliberately, not from the daily list.
+        let mut pool: Vec<PersonaId> = PERSONAS
+            .iter()
+            .filter(|p| !p.role.is_executive())
+            .map(|p| p.persona_id())
             .filter(|p| !self.staff.values().any(|s| s.persona == *p))
             .collect();
         for _ in 0..CANDIDATES_PER_DAY {
             let id = self.ids.candidate();
             let pid = if pool.is_empty() {
                 let n = u32::try_from(PERSONAS.len()).unwrap_or(1);
-                PersonaId(u16::try_from(self.rng.next_u32() % n).unwrap_or(0))
+                let i = usize::try_from(self.rng.next_u32() % n).unwrap_or(0);
+                PERSONAS[i].persona_id()
             } else {
                 let n = u32::try_from(pool.len()).unwrap_or(1);
                 let i = usize::try_from(self.rng.next_u32() % n).unwrap_or(0);
                 pool.remove(i)
             };
-            let role = persona(pid).role;
-            let seniority = match self.rng.next_u32() % 100 {
-                0..=44 => Seniority::Junior,
-                45..=79 => Seniority::Mid,
-                80..=96 => Seniority::Senior,
-                _ if self.company.level >= 5 => Seniority::Star,
-                _ => Seniority::Senior,
+            // Candidates are catalog personas: their role, seniority and
+            // asking salary (± 10%) come from the catalog (ADR-0030).
+            let (role, seniority, asking) = persona(pid).map_or(
+                (
+                    Role::Writer,
+                    Seniority::Junior,
+                    salary_for(Role::Writer, Seniority::Junior),
+                ),
+                |p| (p.role, p.seniority, p.salary_cents_per_day()),
+            );
+            let seniority = if seniority == Seniority::Star && self.company.level < 5 {
+                Seniority::Senior
+            } else {
+                seniority
             };
             let traits = Traits::roll(&mut self.rng);
             let jitter = i64::from(self.rng.next_u32() % 21) - 10;
-            let salary = salary_for(role, seniority) * (100 + jitter) / 100;
+            let salary = asking * (100 + jitter) / 100;
             self.candidates.insert(
                 id,
                 Candidate {
@@ -539,13 +897,24 @@ impl World {
         // 5. meetings
         self.update_meetings(now);
 
-        // 6. staff
+        // 6. tickets past their deadline; work items whose phase is done
+        self.expire_tickets();
+        self.advance_work();
+
+        // 7. staff
         self.update_staff(now);
 
         report
     }
 
     fn settle(&mut self, day: u32) -> DaySettlement {
+        let attribution = attribute_day(
+            &self.staff,
+            &self.projects,
+            self.building.lot.area() * economy::RENT_PER_TILE,
+            economy::upkeep(&self.building),
+            economy::revenue_stub(),
+        );
         let s = economy::settle(
             day,
             &mut self.company,
@@ -553,6 +922,15 @@ impl World {
             &self.building,
             self.staff.values_mut(),
         );
+        self.book_day(&s, attribution);
+        self.finance_alerts();
+        // (`%` instead of `is_multiple_of` keeps MSRV 1.85)
+        if let 0 = (day + 1) % MONTH_DAYS {
+            self.month_close(day);
+        }
+        self.check_staffing();
+        self.praise_day = day + 1;
+        self.praises_today = 0;
         for st in self.staff.values_mut() {
             st.today = st.base_schedule.jittered(&mut self.rng);
         }
@@ -584,37 +962,199 @@ impl World {
                 s.morale = u16::try_from(next).unwrap_or(0);
             }
         }
+        // 08:30: the Secretary prepares the CEO briefing.
+        if self.exec.secretary.is_some()
+            && now.minute >= BRIEFING_TIME
+            && self.exec.briefing_queued_day != Some(now.day)
+        {
+            self.exec.briefing_queued_day = Some(now.day);
+            self.enqueue_task(SecretaryTaskKind::PrepareBriefing { project: None });
+        }
+        self.process_secretary();
     }
 
-    fn update_meetings(&mut self, now: Clock) {
-        if (STANDUP_START..STANDUP_END).contains(&now.minute)
-            && !self.meetings.values().any(|m| m.day == now.day)
-        {
-            if let Some(room) = self
-                .building
-                .first_room_of(RoomKind::MeetingRoom)
-                .map(|r| r.id)
-            {
-                let id = self.ids.meeting();
-                self.meetings.insert(
-                    id,
-                    Meeting {
-                        id,
+    /// Books a meeting.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn open_meeting(
+        &mut self,
+        kind: MeetingKind,
+        project: Option<ProjectId>,
+        room: RoomId,
+        day: u32,
+        start: u16,
+        end: u16,
+        attendees: BTreeSet<StaffId>,
+    ) -> MeetingId {
+        let id = self.ids.meeting();
+        self.meetings.insert(
+            id,
+            Meeting {
+                id,
+                kind,
+                project,
+                room,
+                day,
+                start,
+                end,
+                attendees,
+                job: None,
+                next_seq: 0,
+                speaker: None,
+                speak_until: 0,
+            },
+        );
+        id
+    }
+
+    fn has_meeting(&self, kind: MeetingKind, project: Option<ProjectId>, day: u32) -> bool {
+        self.meetings
+            .values()
+            .any(|m| m.kind == kind && m.project == project && m.day == day)
+    }
+
+    /// A meeting-capable room with no meeting overlapping `start..end` today.
+    fn free_meeting_room(
+        &self,
+        day: u32,
+        start: u16,
+        end: u16,
+        prefer: Option<RoomId>,
+    ) -> Option<RoomId> {
+        let free = |r: &RoomId| {
+            !self
+                .meetings
+                .values()
+                .any(|m| m.room == *r && m.day == day && m.start < end && start < m.end)
+        };
+        prefer
+            .into_iter()
+            .chain(self.building.meeting_rooms())
+            .find(free)
+    }
+
+    fn active_with_role(&self, role: Role) -> Vec<StaffId> {
+        self.staff
+            .values()
+            .filter(|s| s.is_active() && s.role == role)
+            .map(|s| s.id)
+            .collect()
+    }
+
+    /// The daily rhythm (organization.md §8).
+    fn schedule_rituals(&mut self, now: Clock) {
+        let day = now.day;
+        // 09:00: one standup per active project, with its team; the
+        // strategists pitch in.
+        if (STANDUP_START..STANDUP_END).contains(&now.minute) {
+            let active: Vec<ProjectId> = self
+                .projects
+                .values()
+                .filter(|p| p.status == ProjectStatus::Active)
+                .map(|p| p.id)
+                .collect();
+            for pid in active {
+                if self.has_meeting(MeetingKind::Standup, Some(pid), day)
+                    || self.plan.standup_days.get(&pid) == Some(&day)
+                {
+                    continue;
+                }
+                let mut attendees: BTreeSet<StaffId> = self
+                    .project_team(pid)
+                    .into_keys()
+                    .filter(|s| self.staff.get(s).is_some_and(|s| s.is_active()))
+                    .collect();
+                if attendees.is_empty() {
+                    continue;
+                }
+                attendees.extend(self.active_with_role(Role::Strategist));
+                // The standup runs until its outcome arrives, at most an hour.
+                let end = STANDUP_START + STANDUP_TIMEOUT_MINUTES;
+                if let Some(room) = self.free_meeting_room(day, STANDUP_START, end, None) {
+                    let staff: Vec<StaffId> = attendees.iter().copied().collect();
+                    let mid = self.open_meeting(
+                        MeetingKind::Standup,
+                        Some(pid),
                         room,
-                        day: now.day,
-                        start: STANDUP_START,
-                        end: STANDUP_END,
-                        next_seq: 0,
-                        speaker: None,
-                        speak_until: 0,
-                    },
+                        day,
+                        STANDUP_START,
+                        end,
+                        attendees,
+                    );
+                    self.plan.standup_days.insert(pid, day);
+                    let job =
+                        self.request_job(JobKind::Standup, pid, None, None, 0, Some(mid), staff);
+                    if let Some(m) = self.meetings.get_mut(&mid) {
+                        m.job = Some(job);
+                    }
+                }
+            }
+        }
+        let office: Vec<StaffId> = self
+            .exec
+            .cfo
+            .into_iter()
+            .chain(self.exec.secretary)
+            .collect();
+        // Monday 09:30: KPI review, only with a data scientist.
+        if now.weekday() == Weekday::Monday
+            && (KPI_REVIEW_START..KPI_REVIEW_END).contains(&now.minute)
+            && !self.has_meeting(MeetingKind::KpiReview, None, day)
+        {
+            let scientists = self.active_with_role(Role::DataScientist);
+            if !scientists.is_empty() {
+                let attendees: BTreeSet<StaffId> = scientists
+                    .into_iter()
+                    .chain(office.iter().copied())
+                    .collect();
+                if let Some(room) =
+                    self.free_meeting_room(day, KPI_REVIEW_START, KPI_REVIEW_END, None)
+                {
+                    self.open_meeting(
+                        MeetingKind::KpiReview,
+                        None,
+                        room,
+                        day,
+                        KPI_REVIEW_START,
+                        KPI_REVIEW_END,
+                        attendees,
+                    );
+                }
+            }
+        }
+        // Friday 16:00: finance review, only with a CFO.
+        if now.weekday() == Weekday::Friday
+            && (FINANCE_REVIEW_START..FINANCE_REVIEW_END).contains(&now.minute)
+            && self.exec.cfo.is_some()
+            && !self.has_meeting(MeetingKind::FinanceReview, None, day)
+        {
+            let attendees: BTreeSet<StaffId> = office.iter().copied().collect();
+            let prefer = self
+                .building
+                .first_room_of(RoomKind::FinanceOffice)
+                .map(|r| r.id);
+            if let Some(room) =
+                self.free_meeting_room(day, FINANCE_REVIEW_START, FINANCE_REVIEW_END, prefer)
+            {
+                self.open_meeting(
+                    MeetingKind::FinanceReview,
+                    None,
+                    room,
+                    day,
+                    FINANCE_REVIEW_START,
+                    FINANCE_REVIEW_END,
+                    attendees,
                 );
             }
         }
+    }
+
+    fn update_meetings(&mut self, now: Clock) {
+        self.schedule_rituals(now);
+        self.time_out_standups();
         let step = self.step;
         let staff = &self.staff;
         self.meetings.retain(|id, m| {
-            m.is_active(now)
+            m.is_pending(now)
                 || staff.values().any(
                     |s| matches!(s.spot, Some(Spot::MeetingSeat { meeting, .. }) if meeting == *id),
                 )
@@ -642,10 +1182,12 @@ impl World {
         if now.minute < s.today.arrive || now.minute >= leave {
             return Want::Away;
         }
-        if s.today.arrive <= STANDUP_LATEST_ARRIVAL {
-            if let Some(m) = self.meetings.values().find(|m| m.is_active(now)) {
-                return Want::Meeting(m.id);
-            }
+        if let Some(m) = self.meetings.values().find(|m| {
+            m.is_active(now)
+                && m.attendees.contains(&s.id)
+                && s.today.arrive <= m.start + MEETING_GRACE_MINUTES
+        }) {
+            return Want::Meeting(m.id);
         }
         if now.minute >= s.today.lunch && now.minute < s.today.lunch + LUNCH_MINUTES {
             return Want::Lunch;

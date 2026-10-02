@@ -13,7 +13,13 @@
 //! - [`geom`]: tiles (1 tile = 1 m), millimetre positions, rects, sides
 //! - [`building`]: lot, rooms, doors, windows, walls, connectivity
 //! - [`equipment`]: desks, monitors, lamps, lights, props
-//! - [`staff`]: personas, roles, traits, schedules, the staff FSM types
+//! - [`roles`]: departments and roles (`Role::department()`)
+//! - [`personas`]: the sim's slice of the persona catalog (ids, slugs, salaries)
+//! - [`staff`]: seniority, traits, schedules, project allocations, the staff FSM types
+//! - [`projects`]: publications, teams, work routing, missing roles, analytics KPIs
+//! - [`finance`]: per-project ledgers, month close, runway, CFO alerts
+//! - [`inbox`]: tickets, the executive office, secretary triage and delegation
+//! - [`plan`]: work items and the sim ↔ orchestrator job contract (effects)
 //! - [`pathfinding`]: deterministic A* on the tile grid through doors
 //! - [`commands`]: player [`Command`]s and [`ServerCommand`]s
 //! - [`validate`]: `validate(&World, &Command) -> Result<(), Reject>`
@@ -29,10 +35,16 @@ pub mod clock;
 pub mod commands;
 pub mod economy;
 pub mod equipment;
+pub mod finance;
 pub mod geom;
 pub mod ids;
+pub mod inbox;
 pub mod pathfinding;
+pub mod personas;
+pub mod plan;
+pub mod projects;
 pub mod render_state;
+pub mod roles;
 pub mod scenarios;
 pub mod staff;
 pub mod validate;

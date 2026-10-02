@@ -38,6 +38,40 @@ pub const EVENING_START: u16 = hm(18, 0);
 pub const DESK_LAMP_ON: u16 = hm(17, 0);
 /// Night starts.
 pub const NIGHT_START: u16 = hm(22, 0);
+/// The Secretary prepares the CEO briefing.
+pub const BRIEFING_TIME: u16 = hm(8, 30);
+/// Monday KPI review (data scientist → CEO office).
+pub const KPI_REVIEW_START: u16 = hm(9, 30);
+pub const KPI_REVIEW_END: u16 = hm(10, 0);
+/// Friday finance review (CFO → CEO office).
+pub const FINANCE_REVIEW_START: u16 = hm(16, 0);
+pub const FINANCE_REVIEW_END: u16 = hm(16, 30);
+
+/// Day of the week, Monday first. Day 0 is a Monday.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum Weekday {
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
+    Sunday,
+}
+
+impl Weekday {
+    pub const fn of_day(day: u32) -> Weekday {
+        match day % 7 {
+            0 => Weekday::Monday,
+            1 => Weekday::Tuesday,
+            2 => Weekday::Wednesday,
+            3 => Weekday::Thursday,
+            4 => Weekday::Friday,
+            5 => Weekday::Saturday,
+            _ => Weekday::Sunday,
+        }
+    }
+}
 
 /// Tunables that are fixed for the lifetime of a world.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,6 +122,10 @@ impl Clock {
     /// Minutes since day 0, 00:00.
     pub fn total_minutes(&self) -> u64 {
         u64::from(self.day) * MINUTES_PER_DAY + u64::from(self.minute)
+    }
+
+    pub fn weekday(&self) -> Weekday {
+        Weekday::of_day(self.day)
     }
 
     pub fn phase(&self) -> DayPhase {

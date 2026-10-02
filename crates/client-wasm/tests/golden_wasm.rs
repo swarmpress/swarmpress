@@ -11,7 +11,7 @@ use sim_core::scenarios::{golden_script, run_golden, GOLDEN_STEPS};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::wasm_bindgen_test;
 
-const GOLDEN_HASH: u64 = 0x3b02_96fc_7d0f_2aba;
+const GOLDEN_HASH: u64 = 0x591f_2064_16aa_2764;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 #[cfg_attr(not(target_arch = "wasm32"), test)]

@@ -13,6 +13,8 @@
   features: [FEAT-002]
 - match: { classname: sim-core, title: "_hash" }
   features: [FEAT-001]
+- match: { classname: sim-core, title: "plan::tests" }
+  features: [FEAT-006]
 - match: { classname: protocol }
   features: [FEAT-011]
 - match: { classname: content-schema }

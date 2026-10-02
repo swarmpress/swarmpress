@@ -3,8 +3,9 @@
 //! (checked by the proptest suite).
 //!
 //! The daily settlement runs when the clock crosses 00:00 and charges
-//! salaries (plus 1.5× overtime), rent per lot tile and upkeep per room tile
-//! and per piece of equipment.
+//! salaries (plus 1.5× overtime), rent per lot tile, upkeep per room tile
+//! and per piece of equipment, and the instalment of an outstanding bank
+//! loan. Per-project attribution of these amounts is in [`crate::finance`].
 //!
 //! **REVENUE IS A STUB.** [`revenue_stub`] always returns 0 until the
 //! publishing pipeline lands (M2: live pages × page value × quality ×
@@ -19,8 +20,12 @@ use crate::building::Building;
 use crate::commands::{AutonomyPolicy, OvertimePolicy, SiteSignals};
 use crate::staff::Staff;
 
-/// Rent per lot tile per day, cents.
-pub const RENT_PER_TILE: i64 = 1_200;
+/// Rent per lot tile per day, cents (€1.50, docs/game-design/economy.md).
+pub const RENT_PER_TILE: i64 = 150;
+/// Bank loan interest over its term, percent.
+pub const LOAN_INTEREST_PCT: i64 = 8;
+/// Bank loan term, days.
+pub const LOAN_DAYS: i64 = 30;
 /// Price of one tile of extra land, cents.
 pub const LAND_PER_TILE: i64 = 30_000;
 /// Severance when firing: days of salary.
@@ -47,6 +52,32 @@ pub enum LedgerKind {
     HiringFee,
     Severance,
     Revenue,
+    /// In-game Agency invoices (placeholder; jobs arrive in M2).
+    Agency,
+    /// Loan principal received.
+    Loan,
+    /// Loan instalments paid (principal + interest).
+    LoanRepayment,
+}
+
+/// An outstanding bank loan, repaid in daily instalments.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Loan {
+    pub principal: i64,
+    /// Principal + interest still owed.
+    pub remaining: i64,
+    pub daily_payment: i64,
+}
+
+impl Loan {
+    pub fn new(principal: i64) -> Loan {
+        let total = principal + principal * LOAN_INTEREST_PCT / 100;
+        Loan {
+            principal,
+            remaining: total,
+            daily_payment: (total + LOAN_DAYS - 1) / LOAN_DAYS,
+        }
+    }
 }
 
 /// One day's settlement.
@@ -58,6 +89,8 @@ pub struct DaySettlement {
     pub overtime: i64,
     pub rent: i64,
     pub upkeep: i64,
+    /// Loan instalment paid.
+    pub loan: i64,
     pub revenue: i64,
     pub revenue_stubbed: bool,
     pub net: i64,
@@ -130,6 +163,8 @@ pub struct Company {
     pub negative_days: u16,
     /// Latest nightly site audit, if any.
     pub signals: Option<SiteSignals>,
+    /// Outstanding bank loan.
+    pub loan: Option<Loan>,
 }
 
 impl Company {
@@ -142,6 +177,7 @@ impl Company {
             policies: Policies::default(),
             negative_days: 0,
             signals: None,
+            loan: None,
         }
     }
 
@@ -190,11 +226,22 @@ pub fn settle<'a>(
     let rent = building.lot.area() * RENT_PER_TILE;
     let upkeep = upkeep(building);
     let revenue = revenue_stub();
+    let mut loan = 0;
+    if let Some(l) = company.loan.as_mut() {
+        loan = l.daily_payment.min(l.remaining);
+        l.remaining -= loan;
+        if l.remaining <= 0 {
+            company.loan = None;
+        }
+    }
     ledger.post(&mut company.cash, LedgerKind::Salaries, -salaries);
     ledger.post(&mut company.cash, LedgerKind::Overtime, -overtime);
     ledger.post(&mut company.cash, LedgerKind::Rent, -rent);
     ledger.post(&mut company.cash, LedgerKind::Upkeep, -upkeep);
     ledger.post(&mut company.cash, LedgerKind::Revenue, revenue);
+    if loan != 0 {
+        ledger.post(&mut company.cash, LedgerKind::LoanRepayment, -loan);
+    }
     if company.cash < 0 {
         company.negative_days = company.negative_days.saturating_add(1);
     } else {
@@ -206,9 +253,10 @@ pub fn settle<'a>(
         overtime,
         rent,
         upkeep,
+        loan,
         revenue,
         revenue_stubbed: REVENUE_IS_STUB,
-        net: revenue - salaries - overtime - rent - upkeep,
+        net: revenue - salaries - overtime - rent - upkeep - loan,
         cash_after: company.cash,
     };
     ledger.history.push(s.clone());
@@ -221,6 +269,7 @@ pub fn settle<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geom::TileRect;
 
     #[test]
     fn post_keeps_cash_and_totals_in_sync() {
@@ -253,6 +302,29 @@ mod tests {
         assert_eq!(c.cash, 1_000_000 - s.rent);
         assert_eq!(l.opening_cash + l.total(), c.cash);
         assert_eq!(l.history.len(), 1);
+    }
+
+    #[test]
+    fn loans_are_repaid_with_interest() {
+        let mut c = Company::new(0, 1);
+        let mut l = Ledger::new(0);
+        let b = Building::new(
+            TileRect::new(0, 0, 0, 0),
+            crate::building::Entrance {
+                tile: crate::geom::Tile::new(0, 0),
+                side: crate::geom::Side::South,
+            },
+        );
+        l.post(&mut c.cash, LedgerKind::Loan, 1_000_000);
+        c.loan = Some(Loan::new(1_000_000));
+        let mut paid = 0;
+        for d in 0..40 {
+            paid += settle(d, &mut c, &mut l, &b, std::iter::empty()).loan;
+        }
+        assert_eq!(paid, 1_080_000);
+        assert!(c.loan.is_none());
+        assert_eq!(c.cash, -80_000);
+        assert_eq!(l.opening_cash + l.total(), c.cash);
     }
 
     #[test]

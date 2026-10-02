@@ -45,10 +45,16 @@ pub enum RoomKind {
     CeoOffice,
     Kitchen,
     ServerRoom,
+    /// The CFO's office (Executive Office, organization.md §2).
+    FinanceOffice,
+    /// Strategy department: strategist and data-scientist desks around a
+    /// planning table. Doubles as a second meeting room (a project standup
+    /// is held here when the meeting room is taken).
+    StrategyRoom,
 }
 
 impl RoomKind {
-    pub const ALL: [RoomKind; 11] = [
+    pub const ALL: [RoomKind; 13] = [
         RoomKind::Newsroom,
         RoomKind::EditorOffice,
         RoomKind::MeetingRoom,
@@ -60,6 +66,8 @@ impl RoomKind {
         RoomKind::CeoOffice,
         RoomKind::Kitchen,
         RoomKind::ServerRoom,
+        RoomKind::FinanceOffice,
+        RoomKind::StrategyRoom,
     ];
 
     /// Company level that unlocks this room kind (plan §A "Progression").
@@ -67,7 +75,11 @@ impl RoomKind {
     pub const fn unlock_level(self) -> u8 {
         match self {
             RoomKind::Newsroom | RoomKind::EditorOffice | RoomKind::Kitchen => 1,
-            RoomKind::MeetingRoom | RoomKind::Archive | RoomKind::CeoOffice => 2,
+            RoomKind::MeetingRoom
+            | RoomKind::Archive
+            | RoomKind::CeoOffice
+            | RoomKind::FinanceOffice
+            | RoomKind::StrategyRoom => 2,
             RoomKind::PhotoStudio | RoomKind::SeoLab | RoomKind::ServerRoom => 3,
             RoomKind::TranslationDesk | RoomKind::DesignStudio => 4,
         }
@@ -87,7 +99,7 @@ impl RoomKind {
         match self {
             RoomKind::Newsroom => 6,
             RoomKind::EditorOffice | RoomKind::CeoOffice => 10,
-            RoomKind::MeetingRoom | RoomKind::Kitchen => 3,
+            RoomKind::MeetingRoom | RoomKind::Kitchen | RoomKind::StrategyRoom => 3,
             RoomKind::ServerRoom => 20,
             _ => 8,
         }
@@ -97,7 +109,8 @@ impl RoomKind {
     pub const fn build_cost_per_tile(self) -> i64 {
         match self {
             RoomKind::Newsroom => 25_000,
-            RoomKind::EditorOffice | RoomKind::CeoOffice => 30_000,
+            RoomKind::EditorOffice | RoomKind::CeoOffice | RoomKind::FinanceOffice => 30_000,
+            RoomKind::StrategyRoom => 25_000,
             RoomKind::MeetingRoom | RoomKind::Kitchen | RoomKind::Archive => 20_000,
             RoomKind::PhotoStudio | RoomKind::DesignStudio => 40_000,
             RoomKind::SeoLab | RoomKind::TranslationDesk => 30_000,
@@ -128,6 +141,8 @@ impl RoomKind {
             RoomKind::CeoOffice => "CEO office",
             RoomKind::Kitchen => "Kitchen",
             RoomKind::ServerRoom => "Server room",
+            RoomKind::FinanceOffice => "Finance office",
+            RoomKind::StrategyRoom => "Strategy room",
         }
     }
 
@@ -145,6 +160,8 @@ impl RoomKind {
             RoomKind::CeoOffice => "ceo-office",
             RoomKind::Kitchen => "kitchen",
             RoomKind::ServerRoom => "server-room",
+            RoomKind::FinanceOffice => "finance-office",
+            RoomKind::StrategyRoom => "strategy-room",
         }
     }
 }
@@ -364,6 +381,23 @@ impl Building {
     /// Lowest-id room of a kind.
     pub fn first_room_of(&self, kind: RoomKind) -> Option<&Room> {
         self.rooms.values().find(|r| r.kind == kind)
+    }
+
+    /// Rooms that hold a meeting table, in the order meetings use them.
+    pub fn meeting_rooms(&self) -> Vec<RoomId> {
+        let mut out: Vec<RoomId> = self
+            .rooms
+            .values()
+            .filter(|r| r.kind == RoomKind::MeetingRoom)
+            .map(|r| r.id)
+            .collect();
+        out.extend(
+            self.rooms
+                .values()
+                .filter(|r| r.kind == RoomKind::StrategyRoom)
+                .map(|r| r.id),
+        );
+        out
     }
 
     /// Ceiling lights placed automatically with a room: one per ~6×6 m cell,

@@ -19,12 +19,14 @@
 //! first. Decisions are pure functions of the clock, the person's jittered
 //! schedule for today and company policy.
 
+use std::collections::BTreeMap;
+
 use rand_core::RngCore;
 use serde::{Deserialize, Serialize};
 
 use crate::clock::hm;
 use crate::geom::PosMm;
-use crate::ids::{EquipId, MeetingId, PersonaId, RoomId, StaffId};
+use crate::ids::{EquipId, MeetingId, PersonaId, ProjectId, RoomId, StaffId};
 use crate::pathfinding::Path;
 
 /// Permille stat, 0..=1000.
@@ -39,7 +41,10 @@ pub const SCHEDULE_JITTER_MINUTES: u16 = 10;
 /// Latest anyone stays (also caps jitter).
 pub const LATEST_LEAVE: u16 = hm(23, 50);
 /// Seat offsets around a room centre for meetings and the kitchen table (mm).
-pub const ROUND_TABLE_SEATS: [(i32, i32); 8] = [
+/// Small rooms use only the first seats (a table seats at most the room's
+/// capacity), and every offset is clamped to the room interior
+/// ([`crate::world::World::spot_pos`]).
+pub const ROUND_TABLE_SEATS: [(i32, i32); 12] = [
     (-1200, 0),
     (1200, 0),
     (0, -1000),
@@ -48,74 +53,14 @@ pub const ROUND_TABLE_SEATS: [(i32, i32); 8] = [
     (900, -800),
     (-900, 800),
     (900, 800),
+    (-2100, 0),
+    (2100, 0),
+    (0, -1900),
+    (0, 1900),
 ];
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub enum Role {
-    Writer,
-    Editor,
-    EditorInChief,
-    MediaEditor,
-    SeoSpecialist,
-    Translator,
-    ArtDirector,
-    FrontendDev,
-    QaAnalyst,
-    Researcher,
-}
-
-impl Role {
-    pub const ALL: [Role; 10] = [
-        Role::Writer,
-        Role::Editor,
-        Role::EditorInChief,
-        Role::MediaEditor,
-        Role::SeoSpecialist,
-        Role::Translator,
-        Role::ArtDirector,
-        Role::FrontendDev,
-        Role::QaAnalyst,
-        Role::Researcher,
-    ];
-
-    /// Salary multiplier, permille.
-    pub const fn pay_factor(self) -> i64 {
-        match self {
-            Role::Writer | Role::MediaEditor | Role::QaAnalyst => 1000,
-            Role::Editor => 1150,
-            Role::EditorInChief => 1400,
-            Role::SeoSpecialist => 1050,
-            Role::Translator | Role::Researcher => 950,
-            Role::ArtDirector | Role::FrontendDev => 1300,
-        }
-    }
-
-    /// Default working hours (arrive, leave, lunch).
-    pub const fn base_schedule(self) -> Schedule {
-        match self {
-            Role::Editor | Role::EditorInChief => Schedule::new(hm(8, 30), hm(18, 30), hm(12, 45)),
-            Role::FrontendDev | Role::ArtDirector => {
-                Schedule::new(hm(9, 30), hm(18, 30), hm(13, 0))
-            }
-            _ => Schedule::new(hm(9, 0), hm(18, 0), hm(12, 30)),
-        }
-    }
-
-    pub const fn slug(self) -> &'static str {
-        match self {
-            Role::Writer => "writer",
-            Role::Editor => "editor",
-            Role::EditorInChief => "editor-in-chief",
-            Role::MediaEditor => "media-editor",
-            Role::SeoSpecialist => "seo-specialist",
-            Role::Translator => "translator",
-            Role::ArtDirector => "art-director",
-            Role::FrontendDev => "frontend-dev",
-            Role::QaAnalyst => "qa-analyst",
-            Role::Researcher => "researcher",
-        }
-    }
-}
+pub use crate::personas::{persona, persona_by_key, persona_slug, Persona, PERSONAS};
+pub use crate::roles::{Department, Role};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Seniority {
@@ -143,6 +88,16 @@ impl Seniority {
             Seniority::Junior => "claude-haiku-4-5",
             Seniority::Mid => "claude-sonnet-5-5",
             Seniority::Senior | Seniority::Star => "claude-opus-5-5",
+        }
+    }
+
+    /// The next step up, if any.
+    pub const fn promoted(self) -> Option<Seniority> {
+        match self {
+            Seniority::Junior => Some(Seniority::Mid),
+            Seniority::Mid => Some(Seniority::Senior),
+            Seniority::Senior => Some(Seniority::Star),
+            Seniority::Star => None,
         }
     }
 
@@ -342,9 +297,31 @@ pub struct Staff {
     pub overtime_minutes: u32,
     /// Fired: walks out and is removed once off site.
     pub leaving_for_good: bool,
+    /// Project allocations in percent (ADR-0029). Sum is at most 100;
+    /// unallocated capacity is overhead ("house work").
+    pub projects: BTreeMap<ProjectId, u8>,
 }
 
 impl Staff {
+    /// Total allocation across projects, percent.
+    pub fn allocated_pct(&self) -> u16 {
+        self.projects.values().map(|p| u16::from(*p)).sum()
+    }
+
+    /// Allocation on one project, percent (0 when not on the team).
+    pub fn allocation(&self, project: ProjectId) -> u8 {
+        self.projects.get(&project).copied().unwrap_or(0)
+    }
+
+    pub fn department(&self) -> Department {
+        self.role.department()
+    }
+
+    /// Employed and not on the way out.
+    pub fn is_active(&self) -> bool {
+        !self.leaving_for_good
+    }
+
     pub fn is_on_site(&self) -> bool {
         self.activity != Activity::OffSite
     }
@@ -356,134 +333,6 @@ impl Staff {
             _ => None,
         }
     }
-}
-
-/// A fixed character from the house roster (legacy `agent-personas.ts`) or a
-/// generic hire.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Persona {
-    pub key: &'static str,
-    pub name: &'static str,
-    /// sRGB colour, 0xRRGGBB.
-    pub color: u32,
-    pub role: Role,
-    pub specialty: &'static str,
-}
-
-/// Persona catalogue. The first six are the legacy cinqueterre.travel staff.
-pub const PERSONAS: [Persona; 14] = [
-    Persona {
-        key: "isabella",
-        name: "Isabella",
-        color: 0xc0504d,
-        role: Role::Writer,
-        specialty: "Adventure travel writer",
-    },
-    Persona {
-        key: "lorenzo",
-        name: "Lorenzo",
-        color: 0x4f81bd,
-        role: Role::Writer,
-        specialty: "Cultural historian",
-    },
-    Persona {
-        key: "sophia",
-        name: "Sophia",
-        color: 0x9bbb59,
-        role: Role::Writer,
-        specialty: "Hospitality and accommodations expert",
-    },
-    Persona {
-        key: "giulia",
-        name: "Giulia",
-        color: 0x8064a2,
-        role: Role::Writer,
-        specialty: "Culinary expert and food writer",
-    },
-    Persona {
-        key: "marco",
-        name: "Marco",
-        color: 0xf79646,
-        role: Role::Editor,
-        specialty: "Practical information specialist",
-    },
-    Persona {
-        key: "francesca",
-        name: "Francesca",
-        color: 0x4bacc6,
-        role: Role::MediaEditor,
-        specialty: "Visual storyteller and photographer",
-    },
-    Persona {
-        key: "alessandro",
-        name: "Alessandro",
-        color: 0x2c4d75,
-        role: Role::SeoSpecialist,
-        specialty: "Search and structure",
-    },
-    Persona {
-        key: "chiara",
-        name: "Chiara",
-        color: 0xd99694,
-        role: Role::Translator,
-        specialty: "German and French translation",
-    },
-    Persona {
-        key: "matteo",
-        name: "Matteo",
-        color: 0x77933c,
-        role: Role::FrontendDev,
-        specialty: "Astro themes and performance",
-    },
-    Persona {
-        key: "elena",
-        name: "Elena",
-        color: 0x604a7b,
-        role: Role::ArtDirector,
-        specialty: "Typography and mood boards",
-    },
-    Persona {
-        key: "davide",
-        name: "Davide",
-        color: 0xb65708,
-        role: Role::QaAnalyst,
-        specialty: "Fact checking and link hygiene",
-    },
-    Persona {
-        key: "valentina",
-        name: "Valentina",
-        color: 0x31859c,
-        role: Role::Researcher,
-        specialty: "Local sources and opening hours",
-    },
-    Persona {
-        key: "paolo",
-        name: "Paolo",
-        color: 0x7f7f7f,
-        role: Role::EditorInChief,
-        specialty: "Editorial direction",
-    },
-    Persona {
-        key: "sara",
-        name: "Sara",
-        color: 0xc3d69b,
-        role: Role::Writer,
-        specialty: "Hiking and trails",
-    },
-];
-
-/// Persona by id, falling back to the first entry for unknown ids.
-pub fn persona(id: PersonaId) -> &'static Persona {
-    PERSONAS.get(usize::from(id.0)).unwrap_or(&PERSONAS[0])
-}
-
-/// Persona id by key.
-pub fn persona_by_key(key: &str) -> Option<PersonaId> {
-    PERSONAS
-        .iter()
-        .position(|p| p.key == key)
-        .and_then(|i| u16::try_from(i).ok())
-        .map(PersonaId)
 }
 
 /// Someone on today's hiring shortlist.
@@ -534,11 +383,13 @@ mod tests {
     }
 
     #[test]
-    fn personas() {
-        assert_eq!(persona_by_key("marco"), Some(PersonaId(4)));
-        assert_eq!(persona(PersonaId(4)).name, "Marco");
-        assert_eq!(persona(PersonaId(999)).key, "isabella");
+    fn personas_and_salaries() {
+        assert_eq!(persona_by_key("marco"), Some(PersonaId(5)));
+        assert_eq!(persona(PersonaId(5)).unwrap().name, "Marco");
+        assert!(persona(PersonaId(999)).is_none());
         assert_eq!(salary_for(Role::Editor, Seniority::Senior), 39_100);
+        assert_eq!(Seniority::Senior.promoted(), Some(Seniority::Star));
+        assert_eq!(Seniority::Star.promoted(), None);
     }
 
     #[test]
