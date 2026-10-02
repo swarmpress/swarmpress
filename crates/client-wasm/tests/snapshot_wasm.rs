@@ -30,7 +30,7 @@ fn golden_run_through_snapshots() {
     }
     let mut restores = 0;
     for _ in 0..GOLDEN_STEPS {
-        if w.step > 0 && w.step % 7_919 == 0 {
+        if w.step > 0 && w.step.is_multiple_of(7_919) {
             w = World::from_snapshot(&w.snapshot(), None).expect("restores");
             restores += 1;
         }

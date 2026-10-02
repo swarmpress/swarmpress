@@ -175,6 +175,20 @@ export interface RestoredSim<S> {
 }
 
 /**
+ * A record's seed text names `seed` when it is the same integer. The browser
+ * reads a company's u64 seed from JSON as a number, and records have always
+ * printed it with `String(number)` (the shortest text that reads back as that
+ * double, "12345678901234567000"), which is not the integer the sim was
+ * seeded with (`BigInt(number)`, 12345678901234567168): such a text names the
+ * seed when it reads back as the same double.
+ */
+export function sameSeed(text: string, seed: bigint): boolean {
+  if (text === seed.toString()) return true
+  const n = Number(text)
+  return /^\d+$/.test(text) && Number.isInteger(n) && BigInt(n) === seed
+}
+
+/**
  * Restores a sim: from the snapshot plus the commands after it when `world`
  * is given, else by replay from the seed. Throws, instead of returning a
  * world that cannot be trusted, when the snapshot is damaged, written by
@@ -185,7 +199,7 @@ export interface RestoredSim<S> {
 export function restoreSim<S extends RestorableSim>(make: SimFactory<S>, input: RestoreInput): RestoredSim<S> {
   const { commands, chunk } = input
   const point = input.point ?? null
-  if (point && point.seed !== input.seed.toString()) throw new Error(`the checkpoint's seed ${point.seed} is not the company's seed ${input.seed}`)
+  if (point && !sameSeed(point.seed, input.seed)) throw new Error(`the checkpoint's seed ${point.seed} is not the company's seed ${input.seed}`)
   if (point && commands.length < point.lastSeq) throw new Error(`the command log ends at #${commands.length}, the checkpoint needs #${point.lastSeq}`)
   const covered = point ? commands.filter((c) => c.seq <= point.lastSeq) : []
   const later = commands.slice(covered.length)
@@ -197,10 +211,11 @@ export function restoreSim<S extends RestorableSim>(make: SimFactory<S>, input: 
     } catch (e) {
       throw new Error(`the snapshot at step ${point.step} cannot be restored: ${String(e)}`)
     }
-    const at = { step: Number(sim.step()), hash: sim.hash().toString(), seed: sim.seed().toString() }
-    if (at.step !== point.step || at.hash !== point.hash || at.seed !== point.seed) {
+    // The world must be the company's (its seed, exactly) and the one the record describes (step and hash).
+    const at = { step: Number(sim.step()), hash: sim.hash().toString(), seed: sim.seed() }
+    if (at.step !== point.step || at.hash !== point.hash || at.seed !== input.seed) {
       throw new Error(
-        `the snapshot is not the world its record describes (snapshot: step ${at.step} hash ${at.hash} seed ${at.seed}; record: step ${point.step} hash ${point.hash} seed ${point.seed})`,
+        `the snapshot is not the world its record describes (snapshot: step ${at.step} hash ${at.hash} seed ${at.seed}; record: step ${point.step} hash ${point.hash}, company seed ${input.seed})`,
       )
     }
     // The outbox is not part of a snapshot: ask again for the jobs the sim waits for.
