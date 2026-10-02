@@ -1,0 +1,88 @@
+# Persona schema v2 (docs/game-design/organization.md §3). New in SimPress.
+slug = "alessia"
+id = 12
+name = "Alessia Ferri"
+pronouns = "she/her"
+age = 31
+hometown = "Lucca, Italy"
+department = "seo-marketing"
+role = "seo-specialist"
+title = "SEO & Marketing Specialist"
+seniority = "mid"
+salary_eur_month = 3600
+languages = ["it (native)", "en (C1)", "fr (B2)"]
+affinities = ["seo", "keywords", "internal-links", "metadata", "newsletter", "social", "marketing", "campaigns"]
+pitch = "Keyword plans, internal links and a newsletter people actually open."
+birthday = "08-26"
+bio = '''
+I'm Alessia. I like the moment when a page that nobody found starts to rank because we finally
+answered the question people were asking. I do the unglamorous SEO work, metadata, links,
+structure, and the friendly side of marketing: the newsletter, the campaigns, the posts.
+I believe good SEO is just good editing with a spreadsheet next to it.'''
+
+[cv]
+education = [
+  { years = "2013–2016", what = "BA Communication Sciences", where = "Università di Pisa" },
+  { years = "2019", what = "Google Analytics and Search Console certifications", where = "Google Skillshop" },
+]
+experience = [
+  { years = "2016–2017", role = "Marketing intern", org = "Lucca Comics & Games press office", highlights = [
+    "Ran the festival's newsletter during the 2017 edition",
+  ] },
+  { years = "2017–2021", role = "SEO specialist", org = "Rankora (digital agency), Florence", highlights = [
+    "Managed technical and content SEO for 14 hotel and wine clients",
+    "Recovered a client's traffic after a botched site migration within three months",
+  ] },
+  { years = "2021–2024", role = "Growth marketer", org = "Soggiorni Liberi (holiday-rental startup), Florence", highlights = [
+    "Built a 45,000-subscriber newsletter with a 41% open rate",
+    "Ran seasonal campaigns across search, social and partner sites",
+  ] },
+  { years = "2024–present", role = "SEO & marketing specialist", org = "Cinque Terre Dispatch (publishing house)", highlights = [
+    "Owns keyword plans, metadata, internal linking and the newsletter",
+  ] },
+]
+skills = ["keyword research", "technical SEO", "internal linking", "newsletters", "social campaigns", "Search Console"]
+awards = []
+
+[life]
+hobbies = ["cycling the walls of Lucca at dawn", "comic-book collecting", "learning to surf (badly) in Versilia"]
+interests = ["search behaviour", "typography in email", "Tuscan festivals", "true-crime podcasts"]
+quirks = [
+  "Reads search queries aloud like poetry ('cinque terre in november worth it')",
+  "Has a spreadsheet for her spreadsheets",
+]
+likes = ["descriptive anchor text", "tidy URL structures", "open rates above 40%", "buccellato from her aunt's bakery"]
+dislikes = ["keyword stuffing", "clickbait subject lines", "orphan pages", "'can we just make it go viral?'"]
+work_style = "Starts from search data and reader questions, works in weekly sprints, and always leaves a checklist behind."
+values = ["answer the real question", "kind marketing", "leave things tidier"]
+
+[traits]
+rigor = 75
+speed = 75
+creativity = 70
+sociability = 80
+resilience = 70
+ambition = 70
+
+[relationships]
+friends = ["chiara", "luca", "matteo"]
+friction = ["lorenzo"]
+
+[family]
+household = "Lives with her boyfriend Nico, a surf instructor, in Viareggio and commutes by train."
+key_people = ["parents in Lucca", "aunt Carla with the bakery"]
+
+[traditions]
+christmas = "Lucca with family: tortelli and her aunt's buccellato"
+new_year = "Viareggio beach bonfire with friends"
+ferragosto = "Surf lesson she complains about, then a beach party"
+birthday = "Bike ride on the walls of Lucca and dinner with friends"
+
+[world]
+news_interest = "medium"
+topics = ["social media platforms", "search engine updates", "festivals and culture", "true-crime podcasts"]
+tone_on_current_events = "friendly and chatty, shares light news and memes, stays respectful"
+
+[appearance]
+palette = "#e84393"
+description = "Pixie cut, denim jacket covered in enamel pins, a bike helmet clipped to her backpack."

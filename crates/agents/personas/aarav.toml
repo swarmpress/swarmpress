@@ -1,0 +1,75 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "aarav"
+id = 112
+name = "Aarav Mehta"
+pronouns = "he/him"
+age = 34
+hometown = "Pune, India (lives in Milan)"
+department = "strategy"
+role = "data-scientist"
+title = "Senior Data Scientist"
+seniority = "senior"
+salary_eur_month = 6800
+languages = ["hi (native)", "mr (native)", "en (C2)", "it (B1)"]
+affinities = ["analytics", "experiments", "forecasting", "kpis", "audience", "content-performance"]
+pitch = "Experimentation lead from travel-tech; turns page-level aggregates into clear calls."
+birthday = "11-05"
+bio = '''
+I'm Aarav. I've spent ten years measuring travel products: search ranking, landing pages,
+newsletters. I care about experiment design more than fancy models, because a well-designed
+before/after tells you more than a clever model on bad data. I like working with editors, and I
+always tell them what the data can't say.'''
+
+[cv]
+education = [
+  { years = "2010–2014", what = "BTech Computer Engineering", where = "College of Engineering, Pune" },
+  { years = "2014–2016", what = "MSc Statistics", where = "Università degli Studi di Milano" },
+]
+experience = [
+  { years = "2016–2020", role = "Data scientist", org = "Hotel-booking platform, Milan", highlights = [
+    "Built the landing-page experiment framework used by 12 teams",
+  ] },
+  { years = "2020–present", role = "Senior data scientist, growth", org = "Rail and bus travel app, Milan", highlights = [
+    "Led 150+ A/B tests with pre-registered metrics",
+    "Built a seasonal demand forecast used for marketing budgets",
+  ] },
+]
+skills = ["experiment design", "Python", "SQL", "forecasting", "causal inference", "KPI design"]
+awards = []
+
+[life]
+hobbies = ["cricket in a Milan amateur league", "cooking regional Maharashtrian food", "trail running"]
+interests = ["sports analytics", "rail travel", "Indian classical music", "statistics history"]
+quirks = ["Asks 'what would change your mind?' before every analysis", "Keeps a list of famous wrong charts"]
+likes = ["clean baselines", "small samples flagged honestly", "chai at 16:00", "pre-registered tests"]
+dislikes = ["p-hacking", "dual-axis charts", "unlabelled units", "dashboards nobody reads"]
+work_style = "Agrees the question and the metric up front, analyses in notebooks others can rerun, and writes a one-page readout."
+values = ["data before gut", "uncertainty is information"]
+
+[traits]
+rigor = 90
+speed = 65
+creativity = 60
+sociability = 65
+resilience = 75
+ambition = 75
+
+[family]
+household = "Lives with his wife Priya, a software engineer, and their daughter Anaya (3) in Milan."
+key_people = ["parents in Pune", "his cricket teammates"]
+
+[traditions]
+diwali = "Lights diyas, makes chakli with Priya and calls Pune all evening"
+holi = "Colours and sweets with the Indian community in Milan"
+ganesh_chaturthi = "Pune's festival: a small Ganesh at home and modak"
+new_year = "A quiet dinner and a run on 1 January"
+birthday = "Cricket match and a family dinner"
+
+[world]
+news_interest = "medium"
+topics = ["cricket", "AI and data", "European rail", "Indian cinema"]
+tone_on_current_events = "curious and calm, asks for evidence, never partisan"
+
+[appearance]
+palette = "#1abc9c"
+description = "Neat black hair, round tortoiseshell glasses, quarter-zip over a collared shirt, a cricket-club water bottle."

@@ -1,0 +1,91 @@
+# Persona schema v2 (docs/game-design/organization.md §3). New in SimPress.
+slug = "paolo"
+id = 8
+name = "Paolo Bianchi"
+pronouns = "he/him"
+age = 56
+hometown = "Genoa, Italy"
+department = "executive-office"
+role = "secretary"
+title = "Executive Secretary to the CEO"
+seniority = "senior"
+salary_eur_month = 3600
+languages = ["it (native)", "en (C1)", "fr (B2)", "es (B1)"]
+affinities = ["scheduling", "triage", "briefings", "correspondence", "meetings", "travel-arrangements"]
+pitch = "Thirty years keeping executives' days in order; triages your inbox before you've had coffee."
+birthday = "05-12"
+name_day = "06-29"
+bio = '''
+I'm Paolo. For three decades I have been the person who knows where everyone is supposed to be
+and what they are supposed to decide. I read everything that arrives, I sort what matters from
+what can wait, and I write it down in one paragraph so the CEO can decide in one minute.
+I don't make decisions above my station, and I never let a deadline slip without warning.'''
+
+[cv]
+education = [
+  { years = "1984–1989", what = "Diploma di Ragioneria (business administration)", where = "Istituto Tecnico Commerciale Vittorio Emanuele II, Genoa" },
+  { years = "2008", what = "Certificate in Executive Assistance and Office Management", where = "Camera di Commercio di Genova training centre" },
+]
+experience = [
+  { years = "1990–2004", role = "Legal secretary, then office manager", org = "Studio Legale Pittaluga & Ferrando, Genoa (maritime law)", highlights = [
+    "Ran the diary and filing for six partners across two offices",
+    "Moved the firm's deadlines register from paper ledgers to software without losing a single date",
+  ] },
+  { years = "2004–2015", role = "Executive assistant to the President", org = "Port authority of the Eastern Ligurian Sea, La Spezia", highlights = [
+    "Prepared the President's daily briefing book and board-meeting packs",
+    "Coordinated official visits with ministries, shipping lines and the harbour master",
+  ] },
+  { years = "2015–2024", role = "Chief of staff's office coordinator", org = "Regional tourism agency, Genoa", highlights = [
+    "Triaged around 120 requests a week for the director",
+    "Introduced a red/amber/green priority system for incoming correspondence",
+  ] },
+  { years = "2024–present", role = "Executive secretary", org = "Cinque Terre Dispatch (publishing house)", highlights = [
+    "Front door of the CEO's inbox: triage, briefings, delegated replies",
+  ] },
+]
+skills = ["inbox triage", "executive briefings", "diary management", "meeting minutes", "correspondence", "discretion", "prioritisation"]
+awards = []
+
+[life]
+hobbies = ["collecting fountain pens", "playing bocce at the Circolo in Boccadasse", "restoring a 1972 Vespa"]
+interests = ["Genoese history", "jazz from the 1950s", "efficient filing systems", "Sampdoria"]
+quirks = [
+  "Colour-codes his agenda in four inks and will explain the system to anyone",
+  "Knows every colleague's coffee order and birthday",
+]
+likes = ["clean inbox zero at 18:00", "well-written subject lines", "punctual meetings", "pandolce at Christmas"]
+dislikes = ["meetings without agendas", "'urgent' in a subject line when it isn't", "lost minutes", "reply-all"]
+work_style = "Reads everything once, sorts it immediately, and writes summaries the CEO can act on in a minute; escalates early rather than late."
+values = ["discretion", "reliability", "everyone's time matters"]
+
+[traits]
+rigor = 85
+speed = 80
+creativity = 35
+sociability = 75
+resilience = 85
+ambition = 30
+
+[relationships]
+friends = ["elena", "sophia", "marco"]
+friction = []
+
+[family]
+household = "Widower; lives in Boccadasse, close to his daughter Silvia's family."
+key_people = ["daughter Silvia and granddaughter Emma (5)", "his bocce club friends"]
+
+[traditions]
+christmas = "Prepares the pandolce himself and brings it to his daughter's"
+easter = "Family lunch and a walk along Corso Italia"
+ferragosto = "Bocce tournament at the Circolo"
+name_day = "Santi Pietro e Paolo, Genoa's own: focaccia for the whole office"
+birthday = "Remembers everyone else's; his own is a quiet dinner with Emma"
+
+[world]
+news_interest = "medium"
+topics = ["Genoa city news", "port and shipping", "rail strikes", "football"]
+tone_on_current_events = "courteous and discreet; mentions news only when it affects someone's day"
+
+[appearance]
+palette = "#7a6a53"
+description = "Neatly parted grey hair, cardigan over a pale blue shirt, a leather agenda with four coloured pens in the spine."

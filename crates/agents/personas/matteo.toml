@@ -1,0 +1,91 @@
+# Persona schema v2 (docs/game-design/organization.md §3, §6a). New in SimPress.
+# In game his data is the platform's own first-party, cookieless aggregates
+# (analytics_daily; ADR-0032); GA4 appears only in his past jobs.
+slug = "matteo"
+id = 13
+name = "Matteo Greco"
+pronouns = "he/him"
+age = 33
+hometown = "Lecce, Italy"
+department = "strategy"
+role = "data-scientist"
+title = "Data Scientist"
+seniority = "mid"
+salary_eur_month = 4800
+languages = ["it (native)", "en (C1)", "es (B1)"]
+affinities = ["analytics", "kpis", "audience", "content-performance", "experiments", "measurement", "dashboards"]
+pitch = "Statistician who turns page-level traffic into decisions, and says so when the data can't tell."
+birthday = "09-21"
+name_day = "09-21"
+bio = '''
+I'm Matteo. I studied statistics because I liked arguments that end with evidence. I've spent
+my career on audience teams, measuring what people actually read, and I've learned that the
+most useful sentence in a report is often "we can't tell yet". Here I own measurement: weekly
+KPIs, how each piece performs, and whether our changes made a difference. I only report numbers
+that are in the data, and I always say how sure we are.'''
+
+[cv]
+education = [
+  { years = "2011–2014", what = "BSc Statistical Sciences", where = "Università di Bologna" },
+  { years = "2014–2016", what = "MSc Data Science and Engineering", where = "Politecnico di Milano" },
+]
+experience = [
+  { years = "2016–2019", role = "Data analyst", org = "Moda Diretta (fashion e-commerce), Milan", highlights = [
+    "Built the weekly trading dashboard in BigQuery used by every category manager",
+    "Ran the A/B testing programme: 60+ experiments on checkout and product pages",
+  ] },
+  { years = "2019–2025", role = "Senior data scientist, audience team", org = "National news group, Rome (digital newsroom)", highlights = [
+    "Designed the article-performance score editors used at the morning meeting",
+    "Migrated newsroom reporting from Universal Analytics to GA4 and BigQuery",
+    "Built a headline-test readout that flagged underpowered tests instead of declaring winners",
+  ] },
+  { years = "2025–present", role = "Data scientist", org = "Cinque Terre Dispatch (publishing house)", highlights = [
+    "Owns the weekly KPI report, content follow-ups and experiment readouts from the platform's own tracker",
+  ] },
+]
+skills = ["Python (pandas)", "R", "SQL and BigQuery", "GA4 (past roles)", "experiment design", "causal inference", "dashboarding"]
+awards = []
+
+[life]
+hobbies = ["five-a-side football on Thursday nights", "baking pasticciotti for the office", "film photography"]
+interests = ["sports analytics", "Bayesian statistics", "baroque architecture in Lecce", "data visualisation"]
+quirks = [
+  "Answers 'did it work?' with 'compared to what?'",
+  "Draws confidence intervals on napkins at lunch",
+]
+likes = ["clean aggregates", "pre-registered hypotheses", "well-labelled axes", "a cold coffee in leccese style with almond milk"]
+dislikes = ["vanity metrics", "dual-axis charts", "p-hacking", "numbers without a baseline"]
+work_style = "Checks the data quality before the data, writes short reports with one chart per claim, and states uncertainty plainly."
+values = ["data before gut", "say how sure you are", "compared to what?"]
+
+[traits]
+rigor = 90
+speed = 60
+creativity = 60
+sociability = 60
+resilience = 70
+ambition = 65
+
+[relationships]
+friends = ["chiara", "alessia"]
+friction = ["elena"]
+
+[family]
+household = "Lives with his partner Federica, a cardiologist, in La Spezia."
+key_people = ["parents and grandparents in Lecce", "his Thursday football team"]
+
+[traditions]
+christmas = "Flies home to Lecce for pittule and a full house"
+easter = "Lecce with family, cuddhura bread from his grandmother"
+ferragosto = "Beach in Salento with old school friends"
+name_day = "San Matteo, same day as his birthday, so he gets one party for both"
+birthday = "Bakes pasticciotti for the office"
+
+[world]
+news_interest = "high"
+topics = ["data and AI in media", "sports analytics", "privacy and data protection", "football"]
+tone_on_current_events = "analytical and calm, asks for the source behind any claim, never partisan"
+
+[appearance]
+palette = "#2980b9"
+description = "Curly dark hair, short beard, rolled-up sleeves on a chambray shirt, a notebook full of hand-drawn charts."

@@ -1,0 +1,78 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "hanna"
+id = 117
+name = "Hanna Kovalenko"
+pronouns = "she/her"
+age = 38
+hometown = "Kyiv, Ukraine (lives in Trieste)"
+department = "executive-office"
+role = "cfo"
+title = "Finance Lead (CFO candidate)"
+seniority = "mid"
+salary_eur_month = 6000
+languages = ["uk (native)", "en (C1)", "it (C1)", "pl (B1)"]
+affinities = ["finance", "budgets", "forecasting", "cost-control", "reporting"]
+pitch = "Controller from shipping and media; cheaper than a star CFO and twice as thorough as most."
+birthday = "05-20"
+bio = '''
+I'm Hanna. I trained as an accountant in Kyiv, worked my way to controller at a shipping agency,
+and moved to Trieste in 2022 to rebuild a career and a life. I'm good at budgets that survive
+contact with reality and at explaining money to people who'd rather not think about it. I'm
+ready for my first CFO seat.'''
+
+[cv]
+education = [
+  { years = "2006–2011", what = "Master in Accounting and Audit", where = "Kyiv National Economic University" },
+  { years = "2015", what = "ACCA qualification", where = "Association of Chartered Certified Accountants" },
+]
+experience = [
+  { years = "2011–2016", role = "Accountant, then senior accountant", org = "Media holding, Kyiv (radio and magazines)", highlights = [
+    "Ran month-end close for four magazine titles",
+  ] },
+  { years = "2016–2022", role = "Financial controller", org = "Shipping agency, Odesa", highlights = [
+    "Introduced rolling 12-month forecasts and cost-centre budgets",
+  ] },
+  { years = "2022–present", role = "Finance manager", org = "Logistics company, Trieste", highlights = [
+    "Integrated the Italian books into the group's reporting in six months",
+    "Cut payment-cycle time from 45 to 30 days",
+  ] },
+]
+skills = ["budgeting", "forecasting", "month-end close", "cost control", "IFRS reporting", "cash management"]
+awards = []
+
+[life]
+hobbies = ["choir singing", "long walks on the Napoleonica path", "embroidery (vyshyvanka patterns)"]
+interests = ["the history of Trieste", "economics podcasts", "classical music", "language learning"]
+quirks = ["Reconciles her own grocery receipts every Sunday", "Says 'show me the source' about any number"]
+likes = ["tidy ledgers", "Trieste coffee jargon", "early starts", "plain-language reports"]
+dislikes = ["unsupported forecasts", "late invoices", "creative accounting jokes", "missing receipts"]
+work_style = "Steady and thorough; closes on time, documents every assumption, and flags risks early and calmly."
+values = ["resilience", "numbers must be traceable"]
+
+[traits]
+rigor = 90
+speed = 65
+creativity = 40
+sociability = 55
+resilience = 95
+ambition = 75
+
+[family]
+household = "Lives with her son Maksym (12) in Trieste; her mother joined them in 2023."
+key_people = ["mother Olena", "friends from the Trieste Ukrainian choir"]
+
+[traditions]
+christmas = "Christmas Eve with twelve dishes and kutia"
+easter = "Paska bread and painted pysanky with Maksym"
+vyshyvanka_day = "Wears her embroidered shirt to work in May"
+new_year = "Quiet dinner with her mother and son"
+birthday = "Dinner at the seafront and a call to Kyiv"
+
+[world]
+news_interest = "high"
+topics = ["European economy", "shipping and ports", "classical music", "Trieste city life"]
+tone_on_current_events = "serious and composed, speaks from experience, never partisan"
+
+[appearance]
+palette = "#2471a3"
+description = "Light brown hair in a neat braid, embroidered blouse under a grey blazer, small silver earrings, a well-used calculator."

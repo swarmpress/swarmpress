@@ -6,7 +6,12 @@
 //! - [`roles`]: roles, seniority, traits, tiers, [`JobKind`] executor
 //!   policies and the role → Claude model/effort table (`config/roles.toml`).
 //! - [`models`]: browser LLM registry (`config/models.toml`).
-//! - [`personas`]: the six legacy personas plus prompt formatters.
+//! - [`personas`]: the persona catalog (staff + hiring pool, schema v2) and
+//!   prompt formatters; [`routing`]: topic-affinity work routing.
+//! - [`plan`]: the publishing plan as agents see it (`PlanContext`,
+//!   `PlanOp`, RBAC validation).
+//! - [`jobs`]: structured organization jobs (CFO, Secretary, Strategy,
+//!   Data Science, Photo, Web, IT, SEO & Marketing, hiring).
 //! - [`prompts`]: company → site → agent prompt layering and templates.
 //! - [`house_style`]: a site's style guide, formatted for prompts and used as
 //!   a banned-phrase validator.
@@ -16,15 +21,20 @@
 //! - [`pipeline`]: the editorial pipeline.
 //! - [`qa`]: the QA coherence review.
 
+#![recursion_limit = "256"]
+
 pub mod house_style;
+pub mod jobs;
 pub mod llm;
 pub mod meetings;
 pub mod models;
 pub mod personas;
 pub mod pipeline;
+pub mod plan;
 pub mod prompts;
 pub mod qa;
 pub mod roles;
+pub mod routing;
 pub mod state;
 
 pub use house_style::StyleGuide;
@@ -36,15 +46,17 @@ pub use meetings::{
     run_meeting, MeetingEvent, MeetingOutcome, MeetingResult, MeetingSpec, Participant,
 };
 pub use models::{ModelEntry, ModelRegistry};
-pub use personas::Persona;
+pub use personas::{catalog_json, Catalog, Persona};
 pub use pipeline::{
     run_editorial_pipeline, Brief, EditorReview, PageValidator, PipelineConfig, PipelineOutcome,
     PipelineRun, Repo, Staffing,
 };
+pub use plan::{validate_plan_ops, PlanContext, PlanOp};
 pub use prompts::{resolve, CompanyPrompt, PromptLayer, ResolvedPrompt, SiteContext};
 pub use roles::{
-    ClaudeProfile, Executor, JobKind, Role, RolesConfig, Route, Seniority, Tier, Traits,
+    ClaudeProfile, Department, Executor, JobKind, Role, RolesConfig, Route, Seniority, Tier, Traits,
 };
+pub use routing::best_writer_for;
 pub use state::{
     Actor, ContentEvent, ContentState, StateMachine, TaskEvent, TaskState, TicketEvent, TicketState,
 };

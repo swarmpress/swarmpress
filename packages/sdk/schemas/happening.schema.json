@@ -133,7 +133,7 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "pattern": "^(all|any|role:[a-z_]+|persona:[A-Za-z][A-Za-z' -]{0,39})$"
+                  "pattern": "^(all|any|role:[a-z][a-z_-]*|persona:[A-Za-z][A-Za-z' -]{0,39})$"
                 },
                 "minItems": 1
               },
@@ -165,7 +165,7 @@
               },
               "person": {
                 "type": "string",
-                "pattern": "^(all|any|role:[a-z_]+|persona:[A-Za-z][A-Za-z' -]{0,39})$"
+                "pattern": "^(all|any|role:[a-z][a-z_-]*|persona:[A-Za-z][A-Za-z' -]{0,39})$"
               },
               "kind": {
                 "type": "string",
@@ -318,7 +318,7 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "pattern": "^(all|any|role:[a-z_]+|persona:[A-Za-z][A-Za-z' -]{0,39})$"
+                  "pattern": "^(all|any|role:[a-z][a-z_-]*|persona:[A-Za-z][A-Za-z' -]{0,39})$"
                 },
                 "minItems": 1
               },
@@ -357,7 +357,7 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "pattern": "^(all|any|role:[a-z_]+|persona:[A-Za-z][A-Za-z' -]{0,39})$"
+                  "pattern": "^(all|any|role:[a-z][a-z_-]*|persona:[A-Za-z][A-Za-z' -]{0,39})$"
                 },
                 "minItems": 1
               },
@@ -391,11 +391,11 @@
                   "items": [
                     {
                       "type": "string",
-                      "pattern": "^(all|any|role:[a-z_]+|persona:[A-Za-z][A-Za-z' -]{0,39})$"
+                      "pattern": "^(all|any|role:[a-z][a-z_-]*|persona:[A-Za-z][A-Za-z' -]{0,39})$"
                     },
                     {
                       "type": "string",
-                      "pattern": "^(all|any|role:[a-z_]+|persona:[A-Za-z][A-Za-z' -]{0,39})$"
+                      "pattern": "^(all|any|role:[a-z][a-z_-]*|persona:[A-Za-z][A-Za-z' -]{0,39})$"
                     }
                   ]
                 },

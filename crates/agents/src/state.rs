@@ -12,7 +12,7 @@
 //!   CEO is listed explicitly where the CEO acts (approve, reject, retire,
 //!   cancel, answer). CEO authority over agents is exercised through tickets.
 //! - Actor vocabulary is [`Role`]: `ChiefEditor` → `EditorInChief`,
-//!   `SEOSpecialist` → `Seo`, `EngineeringAgent` → `System` (publishing is
+//!   `SEOSpecialist` → `SeoSpecialist`, `EngineeringAgent` → `System` (publishing is
 //!   the orchestrator merging and the deploy webhook), `TechnicalLead` →
 //!   `EditorInChief` (unblocking) and dropped from ticket answering.
 //! - `brief.created` also allows the `EditorInChief`, who writes briefs from
@@ -313,7 +313,7 @@ impl StateMachine for ContentMachine {
                 from: S::Approved,
                 event: E::ReadyForPublish,
                 to: S::Scheduled,
-                actors: &[R(Role::Seo), R(Role::System)],
+                actors: &[R(Role::SeoSpecialist), R(Role::System)],
             },
             Rule {
                 from: S::Scheduled,
@@ -398,12 +398,19 @@ impl StateMachine for TicketMachine {
         use TicketEvent as E;
         use TicketState as S;
         &[
-            // SimPress: System answers with the ticket's default option at its deadline.
+            // SimPress: System answers with the ticket's default option at its deadline;
+            // the Secretary answers Low/Medium tickets under the CEO's delegation
+            // policy (organization.md §7; the orchestrator checks the policy).
             Rule {
                 from: S::Open,
                 event: E::AnswerProvided,
                 to: S::Answered,
-                actors: &[R(Role::Ceo), R(Role::EditorInChief), R(Role::System)],
+                actors: &[
+                    R(Role::Ceo),
+                    R(Role::EditorInChief),
+                    R(Role::Secretary),
+                    R(Role::System),
+                ],
             },
             Rule {
                 from: S::Answered,

@@ -1,0 +1,77 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "olusegun"
+id = 110
+name = "Olusegun Adeyemi"
+pronouns = "he/him"
+age = 41
+hometown = "Ibadan, Nigeria (lives in London)"
+department = "seo-marketing"
+role = "marketing-manager"
+title = "Marketing Manager"
+seniority = "senior"
+salary_eur_month = 6200
+languages = ["en (native)", "yo (native)", "fr (B2)", "it (A2)"]
+affinities = ["marketing", "campaigns", "newsletter", "partnerships", "brand", "audience-growth"]
+pitch = "Built newsletters and partnerships for two travel brands; grows audiences without shouting."
+birthday = "12-01"
+bio = '''
+I'm Olusegun. I've marketed travel for fifteen years, from a tour operator's brochure to a media
+brand's newsletter with half a million readers. I think the best marketing for a publication is
+the journalism, delivered to the right inbox at the right moment. I plan campaigns around seasons,
+measure them honestly, and kill the ones that don't work.'''
+
+[cv]
+education = [
+  { years = "2002–2006", what = "BSc Economics", where = "University of Ibadan" },
+  { years = "2008–2009", what = "MSc Marketing", where = "University of Manchester" },
+]
+experience = [
+  { years = "2009–2014", role = "Marketing executive, then manager", org = "Specialist tour operator, London", highlights = [
+    "Moved the brochure business to email and grew bookings from email 3x",
+  ] },
+  { years = "2014–2020", role = "Newsletter and CRM lead", org = "Travel media brand, London", highlights = [
+    "Grew the flagship newsletter to 480,000 subscribers",
+    "Launched destination partnerships with eight tourism boards",
+  ] },
+  { years = "2020–present", role = "Head of marketing", org = "Independent travel-guide publisher, London", highlights = [
+    "Ran seasonal campaigns across search, social, email and partners",
+  ] },
+]
+skills = ["campaign planning", "newsletters and CRM", "partnerships", "brand strategy", "budget management", "marketing analytics"]
+awards = ["Travel Marketing Awards shortlist, best newsletter (2018)"]
+
+[life]
+hobbies = ["Sunday league football", "cooking West African food for big tables", "vinyl collecting (highlife and Afrobeat)"]
+interests = ["the economics of media", "tourism in West Africa", "jazz", "running"]
+quirks = ["Writes subject lines on sticky notes and tests them on whoever is nearby", "Quotes open rates like football scores"]
+likes = ["clean lists", "honest reporting", "seasonal hooks", "jollof rice debates"]
+dislikes = ["purchased lists", "clickbait", "vanity follower counts", "campaigns without an end date"]
+work_style = "Sets a goal and a kill date for every campaign, reviews numbers weekly, and coaches his team rather than micromanaging."
+values = ["respect the reader's inbox", "measure honestly", "seasons beat stunts"]
+
+[traits]
+rigor = 75
+speed = 70
+creativity = 75
+sociability = 85
+resilience = 80
+ambition = 80
+
+[family]
+household = "Lives with his wife Funmi, a GP, and their children Tobi (10) and Ayo (7) in south London."
+key_people = ["parents in Ibadan", "his Sunday-league team"]
+
+[traditions]
+christmas = "Church, then a big lunch with jollof and roast potatoes for twenty"
+new_year = "Crossover night service with the family"
+easter = "Visits Ibadan when he can for the family gathering"
+birthday = "Dinner and highlife records with friends"
+
+[world]
+news_interest = "high"
+topics = ["media business", "travel industry", "Premier League football", "music"]
+tone_on_current_events = "good-humoured and balanced, enjoys debate, never partisan"
+
+[appearance]
+palette = "#b9770e"
+description = "Tall, close-cropped hair, tailored blazer over a patterned shirt, a vinyl tote bag."

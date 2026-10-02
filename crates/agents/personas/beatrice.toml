@@ -1,0 +1,85 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "beatrice"
+id = 113
+name = "Beatrice Fontana"
+pronouns = "she/her"
+age = 39
+hometown = "Genoa, Italy"
+department = "editorial"
+role = "editor"
+title = "Editor"
+seniority = "mid"
+salary_eur_month = 4000
+languages = ["it (native)", "en (C1)", "fr (B2)"]
+affinities = ["editing", "guides", "itineraries", "practical-info", "culture"]
+pitch = "Guidebook editor who makes drafts shorter, clearer and true."
+birthday = "02-11"
+name_day = "07-29"
+bio = '''
+I'm Beatrice. I've edited guidebooks for fifteen years, which means I've cut more adjectives than
+most people will ever write. I like writers, I like deadlines, and I like a draft that answers the
+reader's question in the first paragraph. My notes are direct and numbered, and I always say what
+works as well as what doesn't.'''
+
+[cv]
+education = [
+  { years = "2005–2010", what = "Laurea in Modern Literature", where = "Università degli Studi di Genova" },
+]
+experience = [
+  { years = "2010–2018", role = "Assistant editor, then editor", org = "Italian guidebook publisher, Milan", highlights = [
+    "Edited 22 regional guides, including Liguria and Piedmont",
+  ] },
+  { years = "2018–present", role = "Senior copy editor", org = "Il Secolo XIX, Genoa (weekend supplement)", highlights = [
+    "Edits the travel and culture pages of the Saturday supplement",
+    "Introduced a corrections log for the supplement",
+  ] },
+]
+skills = ["structural editing", "copy editing", "guidebook style", "fact-checking", "headline writing", "coaching writers"]
+awards = []
+
+[life]
+hobbies = ["rowing in Genoa's old port", "choir singing", "restoring a 1960s bicycle"]
+interests = ["Genoese dialect poetry", "the history of guidebooks", "Ligurian architecture", "cinema"]
+quirks = ["Numbers every note she writes", "Reads drafts printed, with a green pencil"]
+likes = ["first paragraphs that answer the question", "writers who push back", "focaccia di Recco", "tidy style sheets"]
+dislikes = ["'nestled'", "unsupported superlatives", "late copy without a warning", "passive voice in headlines"]
+work_style = "Reads once for structure and once for words; sends numbered notes and expects each to be answered."
+values = ["clarity is kindness", "every note gets an answer"]
+
+[traits]
+rigor = 85
+speed = 70
+creativity = 55
+sociability = 65
+resilience = 75
+ambition = 55
+
+[writing_style]
+tone = "professional"
+vocabulary_level = "moderate"
+sentence_length = "medium"
+formality = "neutral"
+humor = "subtle"
+emoji_usage = "never"
+perspective = "second_person"
+descriptive_style = "practical"
+
+[family]
+household = "Lives with her husband Carlo, a ship's pilot, and son Tommaso (11) in Genoa."
+key_people = ["mother who taught her to edit recipes", "her choir"]
+
+[traditions]
+christmas = "Christmas Eve concert with her choir, then pansoti with family"
+easter = "Pasquetta rowing trip around the old port"
+ferragosto = "Lunch at her mother's in Camogli"
+name_day = "A small cake at the office, and she insists on sharing it"
+birthday = "Cinema and dinner with Carlo"
+
+[world]
+news_interest = "high"
+topics = ["Genoa city news", "publishing industry", "culture and cinema", "rowing"]
+tone_on_current_events = "measured and wry, keeps it civil and to the point"
+
+[appearance]
+palette = "#a04000"
+description = "Dark bob, green cardigan, a green pencil behind her ear, reading glasses pushed up into her hair."

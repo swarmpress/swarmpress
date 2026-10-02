@@ -24,18 +24,18 @@ fn roles_table_matches_plan() {
         (p(Role::Editor).model.as_str(), p(Role::Editor).effort),
         (models::OPUS, Effort::Medium)
     );
-    for r in [Role::ArtDirector, Role::FrontendDev] {
+    for r in [Role::ArtDirector, Role::WebDeveloper] {
         assert_eq!(p(r).model, models::OPUS);
         assert_eq!(p(r).effort, Effort::High);
         assert!(p(r).vision);
     }
-    for r in [Role::Seo, Role::Linker, Role::Researcher] {
+    for r in [Role::SeoSpecialist, Role::Analyst, Role::MarketingManager] {
         assert_eq!(p(r).model, models::SONNET);
         assert!(p(r).web_search);
     }
-    assert_eq!(p(Role::Media).model, models::HAIKU);
+    assert_eq!(p(Role::PhotoEditor).model, models::HAIKU);
     assert_eq!(
-        (p(Role::Chatter).model.as_str(), p(Role::Chatter).effort),
+        (p(Role::Secretary).model.as_str(), p(Role::Secretary).effort),
         (models::SONNET, Effort::Low)
     );
     assert!(c.claude_profile(Role::Ceo, None).is_none());
@@ -55,7 +55,7 @@ fn seniority_overrides_model_but_not_effort() {
 #[test]
 fn every_job_kind_has_a_policy() {
     let c = RolesConfig::builtin();
-    for k in JobKind::ALL {
+    for &k in JobKind::ALL {
         let p = c.job(k);
         assert!(p.max_tokens > 0);
         if p.executor != Executor::Claude {
@@ -131,7 +131,7 @@ fn routing() {
 #[test]
 fn invalid_roles_config_is_rejected() {
     let missing_job =
-        agents::roles::ROLES_TOML.replace("[jobs.critic_review]", "[jobs.critic_reviewX]");
+        agents::roles::ROLES_TOML.replace("[jobs.critic-review]", "[jobs.critic-reviewX]");
     assert!(RolesConfig::from_toml_str(&missing_job).is_err());
     let bad_model = agents::roles::ROLES_TOML.replacen("claude-opus-5-5", "claude-opus-9", 1);
     assert!(RolesConfig::from_toml_str(&bad_model).is_err());
@@ -201,9 +201,21 @@ fn model_selection_by_tier_and_seniority() {
         let id = pick(Tier::High, Tier::High, Role::Writer, s).unwrap();
         assert_eq!(id, "gpt-oss-20b-q4f16");
     }
-    // role not allowed
+    // every staff role can chat in meetings on the small models, but the
+    // large model only serves writing/analysis roles
+    for role in agents::Role::staff() {
+        assert!(
+            pick(Tier::Low, Tier::Low, role, Seniority::Junior).is_some(),
+            "{role}"
+        );
+    }
     assert_eq!(
         pick(Tier::High, Tier::Low, Role::ArtDirector, Seniority::Senior),
+        Some("qwen3-4b-q4f16")
+    );
+    // role not allowed (non-staff)
+    assert_eq!(
+        pick(Tier::High, Tier::Low, Role::Ceo, Seniority::Senior),
         None
     );
 }
