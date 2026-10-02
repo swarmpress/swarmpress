@@ -82,6 +82,19 @@ export interface OrchestratorStore {
   planJson(company: string): Promise<string>
 }
 
+/** A stored knowledge pack (`site_knowledge`, keyed by commit). */
+export interface SiteKnowledgeRow {
+  commit: string
+  etag: string
+  /** The pack's JSON text, as the server sent it. */
+  pack: string
+  fetchedAt: number
+}
+
+function knowledgeRow(r: { commit_sha: string; etag: string; pack: string; fetched_at: number }): SiteKnowledgeRow {
+  return { commit: String(r.commit_sha), etag: String(r.etag), pack: String(r.pack), fetchedAt: toNumber(r.fetched_at) }
+}
+
 function splitStatements(sql: string): string[] {
   return sql
     .split(';')
@@ -311,6 +324,45 @@ export class CompanyStore implements OrchestratorStore {
     if (rows.length === 0) return null
     const r = rows[0]
     return { step: toNumber(r.step), bytes: toBytes(r.bytes), hash: String(r.hash), createdAt: toNumber(r.created_at) }
+  }
+
+  // ------------------------------------------------------------ site knowledge
+
+  /**
+   * Stores the knowledge pack of `commit` (its JSON text, verbatim) as the
+   * newest, replacing a row of the same commit; keeps the newest `keep`.
+   */
+  async putKnowledge(row: { commit: string; etag: string; pack: string }, keep = 2): Promise<void> {
+    // `fetched_at` orders the rows: strictly increasing, also within one millisecond.
+    const last = await this.driver.all<{ t: number | null }>('SELECT MAX(fetched_at) AS t FROM site_knowledge')
+    const at = Math.max(Date.now(), last[0]?.t == null ? 0 : toNumber(last[0].t) + 1)
+    await this.driver.batch([
+      {
+        sql: 'INSERT OR REPLACE INTO site_knowledge (commit_sha, etag, pack, fetched_at) VALUES (?, ?, ?, ?)',
+        params: [row.commit, row.etag, row.pack, at],
+      },
+      {
+        sql: 'DELETE FROM site_knowledge WHERE commit_sha NOT IN (SELECT commit_sha FROM site_knowledge ORDER BY fetched_at DESC, commit_sha LIMIT ?)',
+        params: [Math.max(1, keep)],
+      },
+    ])
+  }
+
+  /** The newest stored pack (the last one fetched), or null. */
+  async latestKnowledge(): Promise<SiteKnowledgeRow | null> {
+    const rows = await this.driver.all<{ commit_sha: string; etag: string; pack: string; fetched_at: number }>(
+      'SELECT commit_sha, etag, pack, fetched_at FROM site_knowledge ORDER BY fetched_at DESC, commit_sha LIMIT 1',
+    )
+    return rows.length ? knowledgeRow(rows[0]) : null
+  }
+
+  /** The stored pack of `commit`, or null. */
+  async knowledgeAt(commit: string): Promise<SiteKnowledgeRow | null> {
+    const rows = await this.driver.all<{ commit_sha: string; etag: string; pack: string; fetched_at: number }>(
+      'SELECT commit_sha, etag, pack, fetched_at FROM site_knowledge WHERE commit_sha = ?',
+      [commit],
+    )
+    return rows.length ? knowledgeRow(rows[0]) : null
   }
 
   // ------------------------------------------------------------ kv

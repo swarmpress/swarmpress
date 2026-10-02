@@ -7,6 +7,8 @@
  *     (ADR-0045: `acquire`; another executor's live lease leaves this session
  *     read-only, and a session that loses the lease halts)
  *   → restore: the store's snapshot + the log after it, else central sync, else a new company
+ *   → site knowledge (ADR-0061, site-knowledge.ts): the pack at the base head, cached by
+ *     commit, refetched before each standup and after each merge and DeployLanded
  *   → orchestration loop (sim effects → orchestrator-wasm → commands) + events
  *   → checkpoints: locally every game hour, sealed to central sync every game
  *     day and on `pagehide`
@@ -23,7 +25,6 @@
  *                    page load only; the parameter is removed from the URL)
  *   restore=replay   ignore the snapshot and replay the whole log from the seed (the audit path)
  */
-import styleGuide from '../../../../crates/agents/tests/fixtures/style-guide.json'
 import { Sim } from 'swarm-wasm'
 import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResult, type RestoredSim, type SimFactory } from '../catchup/replay'
 import { FakeLlm } from '../llm/fake-llm'
@@ -36,15 +37,20 @@ import { fetchRemote, NEXT_SEGMENT_KEY, SEALED_SEQ_KEY, SyncUploader, toLogged, 
 import type { DataTopic } from '../ui/data-source'
 import { companyStoreOptions, WasmDataSource, type SimOrgApi } from '../ui/wasm-source'
 import { cleanDays, ClockDriver, clockStatus, sessionClockHost, type ClockStatus, type ModelStatus } from './clock-driver'
+import { refetchAfterMerge, refetchOnDeploy, SiteKnowledgeKeeper, SiteOrchestrator, type KnowledgeStatus, type SiteSummary } from './site-knowledge'
 
 export const SCENARIO = 'cinqueterre'
 
-/** The cinqueterre.travel site binding (the style guide is the agents crate's fixture until sites carry their own). */
+/**
+ * The cinqueterre.travel site binding. Its style guide and writer prompt are
+ * the site's own, from the knowledge pack the session fetches
+ * (site-knowledge.ts adds `knowledge_pack`); without a pack the house style
+ * is empty, and standups, drafts and reviews wait for one.
+ */
 const SITE: SiteBindingJson = {
   site_id: 'cinqueterre.travel',
   brand_name: 'Cinque Terre Dispatch',
   language: 'en',
-  style_guide: styleGuide,
   quality_bar: 7,
   // The central server reports the deploy (the GitHub webhook, or SWARMPRESS_SIMULATE_DEPLOY in dev).
   simulate_deploy: false,
@@ -138,6 +144,8 @@ export interface SessionHook {
     pendingDeploys: string[]
     logged: number
     errors: string[]
+    /** The site's knowledge pack (ADR-0061): the one in use, and what the orchestrator is bound to. */
+    knowledge: KnowledgeStatus & { bound: string | null; binding: SiteSummary | null }
   }
   /** `Sim.plan_json()` (the skeleton) parsed. */
   plan(): unknown
@@ -439,16 +447,21 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   )
 
   stage('orchestrator')
-  const calls: GatewayCall[] = []
-  const orchestrator = await createOrchestrator({
-    store,
-    gateway: recordingGateway(
-      centralGateway(client, () => lease.token),
-      calls,
-    ),
-    llm: localLlmBridge(llmFromQuery(location.search, unwiredLlm)),
-    site: SITE,
+  // The site's knowledge pack (ADR-0061): the store's newest (an earlier
+  // session's), then the server's at the base head, before the first
+  // standup. A failed fetch keeps the stored pack (site-knowledge.ts).
+  const knowledge = new SiteKnowledgeKeeper(readOnly ? null : { knowledge: (etag) => client.knowledge(lease.token, etag) }, store, {
+    log,
+    onError: opts.onError,
   })
+  await knowledge.load()
+  if (!readOnly) await knowledge.refresh('start')
+  const calls: GatewayCall[] = []
+  const gateway = refetchAfterMerge(recordingGateway(centralGateway(client, () => lease.token), calls), knowledge)
+  const llm = localLlmBridge(llmFromQuery(location.search, unwiredLlm))
+  // Rebound to a new pack at the next job after it changed; refreshes before every standup.
+  const orchestrator = new SiteOrchestrator({ keeper: knowledge, site: SITE, create: (site) => createOrchestrator({ store, gateway, llm, site }), log })
+  await orchestrator.bind().catch((e) => opts.onError?.(`The orchestrator could not be bound to the site: ${String(e)}`))
   const sources = new Set<SessionDataSource>()
   const loop = new OrchestrationLoop({
     sim,
@@ -484,6 +497,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   }
 
   const received: CentralEvent[] = []
+  const deployRefetch = refetchOnDeploy(knowledge, () => !readOnly)
   const events = new EventStream(client, company.id, store, async (ev) => {
     received.push(ev)
     if (ev.kind === 'DeployLanded' && typeof ev.payload.work_item === 'string') {
@@ -491,6 +505,8 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
         mergedSha: typeof ev.payload.merged_sha === 'string' ? ev.payload.merged_sha : undefined,
         source: typeof ev.payload.source === 'string' ? ev.payload.source : undefined,
       })
+      // The site changed (a merge of this or another device): its pack too.
+      deployRefetch(ev)
     }
     // The inbox keeps old lease events; only the one that names this
     // session's own epoch concerns it (`revoked` checks).
@@ -640,6 +656,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       pendingDeploys: loop.pendingDeploys,
       logged: loop.logged,
       errors: [...loop.errors],
+      knowledge: { ...knowledge.status(), bound: orchestrator.commit, binding: orchestrator.summary() },
     }),
     plan: () => JSON.parse(sim.plan_json()),
     items,
@@ -686,7 +703,9 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     status,
     setModelStatus,
     dataSource: () => {
-      const s = new SessionDataSource(orgApi, { ...companyStoreOptions(store, company, SITE), changeKey: () => `${sim.step()}:${loop.lastSeq}` })
+      // The Inbox's banned-phrase check reads the site's own style guide (the pack's, when the source is made).
+      const site = { style_guide: knowledge.current?.styleGuide ?? undefined }
+      const s = new SessionDataSource(orgApi, { ...companyStoreOptions(store, company, site), changeKey: () => `${sim.step()}:${loop.lastSeq}` })
       sources.add(s)
       return s
     },

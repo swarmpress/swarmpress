@@ -51,12 +51,20 @@ export type Outcome =
   | { JobCompleted: { job_id: number; digest: Digest } }
   | { DeployLanded: { work_item: string } }
 
-/** The site binding JSON `OrchestratorHandle` takes. */
+/**
+ * The site binding JSON `OrchestratorHandle` takes (`orchestrator::SiteBinding::from_json`).
+ * With `knowledge_pack` (the pack JSON text of `GET /api/gateway/knowledge`)
+ * the style guide and the writer prompt are the site's own files and the
+ * binding carries the site's closed world; `style_guide` and `writer_prompt`
+ * are the fallback without a pack (tests, the harness), and without either
+ * the house style is empty.
+ */
 export interface SiteBindingJson {
   site_id: string
   brand_name: string
   language?: string
-  style_guide: unknown
+  knowledge_pack?: string | null
+  style_guide?: unknown
   writer_prompt?: unknown
   quality_bar?: number
   simulate_deploy?: boolean

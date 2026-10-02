@@ -6,10 +6,12 @@ import {
   CentralClient,
   CentralError,
   centralGateway,
+  etagCommit,
   EventStream,
   LEASE_HEADER,
   leaseHeld,
   LeaseKeeper,
+  packCommit,
   STEP_HEADER,
   type Attribution,
   type CentralEvent,
@@ -367,5 +369,49 @@ describe('EventStream', () => {
     expect(s.transport).toBe('poll')
     expect(timers.length).toBe(1)
     s.stop()
+  })
+})
+
+describe('CentralClient.knowledge (GET /api/gateway/knowledge, ADR-0061)', () => {
+  const SHA = '3f2a9c1d5e7b4a6f8091a2b3c4d5e6f708192a3b'
+  const PACK = `{"commit":"${SHA}","files":{},"manifest":{"name":"site"},"pages":[]}`
+
+  it('200: the pack text verbatim, its ETag and commit; the lease header goes along', async () => {
+    const { client, calls } = mock(
+      () => new Response(PACK, { status: 200, headers: { 'content-type': 'application/json', etag: `"${SHA}"`, 'cache-control': 'no-cache' } }),
+    )
+    expect(await client.knowledge('7.lease')).toEqual({ pack: PACK, etag: `"${SHA}"`, commit: SHA })
+    expect(calls[0]).toMatchObject({ method: 'GET', url: 'http://central.test/api/gateway/knowledge' })
+    expect(calls[0].headers[LEASE_HEADER]).toBe('7.lease')
+    expect(calls[0].headers['if-none-match']).toBeUndefined()
+  })
+
+  it('304: not modified, with If-None-Match sent', async () => {
+    const { client, calls } = mock(() => new Response(null, { status: 304, headers: { etag: `"${SHA}"` } }))
+    expect(await client.knowledge('7.lease', `"${SHA}"`)).toBe('not-modified')
+    expect(calls[0].headers['if-none-match']).toBe(`"${SHA}"`)
+  })
+
+  it('a network error rejects as it is; an error status is a CentralError', async () => {
+    const down = new CentralClient({
+      baseUrl: 'http://central.test',
+      fetch: async () => {
+        throw new TypeError('Failed to fetch')
+      },
+    })
+    await expect(down.knowledge('7.lease')).rejects.toThrow('Failed to fetch')
+    const { client } = mock(() => json({ error: 'the files under `content` are over 33554432 bytes' }, 413))
+    const err = await client.knowledge('7.lease').catch((e) => e)
+    expect(err).toBeInstanceOf(CentralError)
+    expect(err.status).toBe(413)
+    expect(err.message).toContain('over 33554432 bytes')
+  })
+
+  it('reads the commit from a weak ETag, or from the pack when there is none', async () => {
+    expect(etagCommit(`W/"${SHA}"`)).toBe(SHA)
+    expect(etagCommit('"not a sha"')).toBeNull()
+    expect(packCommit(PACK)).toBe(SHA)
+    const { client } = mock(() => new Response(PACK, { status: 200 }))
+    expect(await client.knowledge('t')).toEqual({ pack: PACK, etag: `"${SHA}"`, commit: SHA })
   })
 })

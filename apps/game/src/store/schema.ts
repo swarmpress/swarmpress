@@ -83,6 +83,22 @@ CREATE TABLE kv (
 );
 `,
   },
+  {
+    // ADR-0061: the site's knowledge pack (GET /api/gateway/knowledge), one
+    // row per site commit, the pack's JSON text verbatim. The newest is what
+    // the session binds when the network fails.
+    version: 2,
+    name: 'site knowledge',
+    sql: `
+CREATE TABLE site_knowledge (
+  commit_sha TEXT PRIMARY KEY,
+  etag TEXT NOT NULL,
+  pack TEXT NOT NULL,
+  fetched_at INTEGER NOT NULL
+);
+CREATE INDEX site_knowledge_fetched ON site_knowledge (fetched_at);
+`,
+  },
 ]
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version

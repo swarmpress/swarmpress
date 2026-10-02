@@ -6,7 +6,8 @@
  * - companies: create/get, the executor lease with its fencing epoch
  *   (ADR-0045; `LeaseKeeper` renews it and reports its loss);
  * - the content gateway (`centralGateway`: the browser's orchestrator
- *   `Gateway`, with the fencing token in the lease header);
+ *   `Gateway`, with the fencing token in the lease header) and the site's
+ *   knowledge pack (`knowledge`, ETag / 304);
  * - the event inbox (`EventStream`: WebSocket `/ws/events` with a polling
  *   fallback; the cursor is persisted in the company store's kv);
  * - sync: command-log segments and the snapshot.
@@ -176,6 +177,28 @@ export interface SnapshotBlob {
   bytes: Uint8Array
 }
 
+/** A knowledge pack as `GET /api/gateway/knowledge` answered it. */
+export interface KnowledgeFetch {
+  /** The pack's JSON text (`{commit, files, manifest, pages}`), verbatim. */
+  pack: string
+  /** The strong ETag, `"<commit>"`: send it back as `If-None-Match`. */
+  etag: string
+  /** The site commit the pack was built from (the base head). */
+  commit: string
+}
+
+/** The commit an ETag (`"<sha>"`, possibly weak) names. */
+export function etagCommit(etag: string | null | undefined): string | null {
+  const m = /^(?:W\/)?"?([0-9a-fA-F]{7,64})"?$/.exec((etag ?? '').trim())
+  return m ? m[1].toLowerCase() : null
+}
+
+/** `commit` of a pack's JSON text, without parsing the whole pack (it is the first key). */
+export function packCommit(packJson: string): string | null {
+  const m = /^\s*\{\s*"commit"\s*:\s*"([^"]+)"/.exec(packJson)
+  return m ? m[1] : null
+}
+
 export class CentralError extends Error {
   constructor(
     readonly status: number,
@@ -307,6 +330,38 @@ export class CentralClient {
     const body: { number: number; head_sha: string; attribution?: Attribution } = { number, head_sha: headSha }
     if (attribution) body.attribution = attribution
     return this.json('POST', '/api/gateway/merge', { json: body, headers: { [LEASE_HEADER]: token } })
+  }
+
+  /**
+   * `GET /api/gateway/knowledge` (ADR-0061): the knowledge pack of the site at
+   * the head of the company's base branch. `etag` is the ETag of the pack
+   * held (`"<commit>"`); while the head has not moved the server answers 304
+   * and this resolves to `'not-modified'`. Otherwise the pack's JSON text
+   * (kept verbatim: it is what orchestrator-wasm loads), its ETag and the
+   * commit it names. Other statuses throw a `CentralError` (413: the site is
+   * over the snapshot caps; 409/428: the lease is not held).
+   */
+  async knowledge(token: string, etag?: string | null): Promise<KnowledgeFetch | 'not-modified'> {
+    const headers: Record<string, string> = { [LEASE_HEADER]: token }
+    if (etag) headers['if-none-match'] = etag
+    const res = await this.fetchImpl(this.baseUrl + '/api/gateway/knowledge', { method: 'GET', headers, credentials: 'include', cache: 'no-store' })
+    if (res.status === 304) return 'not-modified'
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      let parsed: unknown = text
+      try {
+        parsed = text ? JSON.parse(text) : null
+      } catch {
+        /* not JSON */
+      }
+      const msg = parsed && typeof parsed === 'object' && 'error' in parsed ? String((parsed as { error: unknown }).error) : text || res.statusText
+      throw new CentralError(res.status, `GET /api/gateway/knowledge: ${res.status} ${msg}`, parsed)
+    }
+    const tag = res.headers.get('etag') ?? ''
+    const pack = await res.text()
+    const commit = etagCommit(tag) ?? packCommit(pack)
+    if (!commit) throw new CentralError(res.status, 'GET /api/gateway/knowledge: the answer names no commit', null)
+    return { pack, etag: tag || `"${commit}"`, commit }
   }
 
   // ------------------------------------------------------------ events

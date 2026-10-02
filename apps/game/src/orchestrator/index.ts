@@ -38,7 +38,7 @@ export interface CreateOrchestratorOptions {
   site: SiteBindingJson
 }
 
-export async function createOrchestrator(o: CreateOrchestratorOptions): Promise<OrchestratorLike & { free(): void }> {
+export async function createOrchestrator(o: CreateOrchestratorOptions): Promise<OrchestratorLike & { free(): void; siteSummary(): string }> {
   const m = await loadOrchestratorWasm()
   // The browser's repair loop validates with the validator the Rust side
   // re-checks with, so a value never passes here and fails there unrepaired.

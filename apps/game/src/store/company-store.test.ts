@@ -119,6 +119,42 @@ describe('CompanyStore (memory engine)', () => {
     expect(steps.map((r) => r.step)).toEqual([300, 400])
   })
 
+  it('keeps site knowledge packs by commit, verbatim, the newest two (migration 2)', async () => {
+    const s = await store()
+    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2])
+    expect(await s.latestKnowledge()).toBeNull()
+    // Text kept byte for byte: whitespace, key order and a u64 survive.
+    const pack = (c: string) => `{"commit":"${c}","files":{"content/config/style-guide.json":"{\\n  \\"voice\\": \\"warm\\"\\n}\\n"},"manifest":{"n":18446744073709551615},"pages":[]}`
+    await s.putKnowledge({ commit: 'aaa', etag: '"aaa"', pack: pack('aaa') })
+    expect(await s.latestKnowledge()).toMatchObject({ commit: 'aaa', etag: '"aaa"', pack: pack('aaa') })
+    // Two writes in the same millisecond still order newest last.
+    await s.putKnowledge({ commit: 'bbb', etag: '"bbb"', pack: pack('bbb') })
+    await s.putKnowledge({ commit: 'ccc', etag: '"ccc"', pack: pack('ccc') })
+    const latest = (await s.latestKnowledge())!
+    expect(latest.commit).toBe('ccc')
+    expect(latest.pack).toBe(pack('ccc'))
+    expect(latest.fetchedAt).toBeGreaterThan((await s.knowledgeAt('bbb'))!.fetchedAt)
+    expect(await s.knowledgeAt('aaa')).toBeNull()
+    // Storing a commit again makes it the newest.
+    await s.putKnowledge({ commit: 'bbb', etag: '"bbb"', pack: pack('bbb') })
+    expect((await s.latestKnowledge())!.commit).toBe('bbb')
+    const rows = await s.driver.all<{ n: number }>('SELECT COUNT(*) AS n FROM site_knowledge')
+    expect(Number(rows[0].n)).toBe(2)
+  })
+
+  it('a store of schema 1 gains the site_knowledge table when it opens', async () => {
+    const s = await store()
+    await s.setKv('device.id', 'dev-1')
+    await s.driver.exec('DROP TABLE site_knowledge')
+    await s.driver.run('DELETE FROM schema_migrations WHERE version = 2')
+    expect(await s.schemaVersion()).toBe(1)
+    const again = await CompanyStore.open(s.driver)
+    expect(await again.schemaVersion()).toBe(2)
+    expect(await again.getKv('device.id')).toBe('dev-1')
+    await again.putKnowledge({ commit: 'c', etag: '"c"', pack: '{}' })
+    expect((await again.latestKnowledge())!.pack).toBe('{}')
+  })
+
   it('has a key/value table', async () => {
     const s = await store()
     expect(await s.getKv('events.cursor')).toBeNull()

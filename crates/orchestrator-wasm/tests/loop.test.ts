@@ -133,6 +133,48 @@ describe('orchestrator-wasm under Bun', () => {
     expect(() => new OrchestratorHandle({}, {}, {}, '{"site_id":"x"}')).toThrow(/brand_name|style_guide/)
   })
 
+  // ADR-0061 (K2): the binding takes the knowledge pack; its style guide wins over the binding's.
+  const PACK_COMMIT = '3f2a9c1d5e7b4a6f8091a2b3c4d5e6f708192a3b'
+  const packOf = (styleGuide: unknown) =>
+    JSON.stringify({
+      commit: PACK_COMMIT,
+      files: {
+        'content/config/media-index.json': JSON.stringify({
+          images: [{ id: 'manarola-hero-001', url: 'https://images.unsplash.com/photo-1', tags: { village: 'manarola', category: 'village-overview' } }],
+        }),
+        'content/config/style-guide.json': JSON.stringify(styleGuide, null, 2),
+      },
+      manifest: { name: 'Mini', default_language: 'en', languages: ['en'] },
+      pages: [{ id: 'manarola', path: 'content/pages/manarola.json', page_type: 'village', routes: { en: '/en/manarola' }, titles: { en: 'Manarola' }, status: null }],
+    })
+  const bound = (extra: Record<string, unknown>) => {
+    const { style_guide: _drop, ...site } = JSON.parse(SITE) as Record<string, unknown>
+    return JSON.stringify({ ...site, ...extra })
+  }
+
+  test('a binding from a knowledge pack carries its closed world and runs the loop', async () => {
+    const orch = new OrchestratorHandle(new MemJsStore(), new FakeJsGateway(), scriptedLlm(mvpScript()), bound({ knowledge_pack: packOf(STYLE_GUIDE) }))
+    expect(JSON.parse(orch.siteSummary())).toEqual({
+      site_id: 'cinqueterre.travel',
+      commit: PACK_COMMIT,
+      pages: 1,
+      media: 1,
+      entities: 0,
+      blog_index: false,
+      style_guide: 'pack',
+      writer_prompt: 'absent',
+    })
+    const res = await runMvpLoop(orch, { company: COMPANY })
+    expect(res.mergedSha).toBe('merge-1')
+
+    // Without a pack: the binding's own style guide, else none at all.
+    const fallback = new OrchestratorHandle({}, {}, {}, SITE)
+    expect(JSON.parse(fallback.siteSummary())).toMatchObject({ commit: null, media: null, style_guide: 'binding' })
+    expect(JSON.parse(new OrchestratorHandle({}, {}, {}, bound({})).siteSummary())).toMatchObject({ style_guide: 'absent' })
+    // A broken pack is an error that names it.
+    expect(() => new OrchestratorHandle({}, {}, {}, bound({ knowledge_pack: '{"commit": 1}' }))).toThrow(/knowledge pack/)
+  })
+
   test('standup → draft → review 6 → revision → review 8 → publish', async () => {
     const store = new MemJsStore()
     const gateway = new FakeJsGateway()
