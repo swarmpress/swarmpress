@@ -205,6 +205,21 @@
         "to": "staff-5"
       },
       {
+        "id": "post-15",
+        "type": "artifact",
+        "author": "system",
+        "day": 10,
+        "minute": 951,
+        "text": "PR #31 on drafts/content-5d2c8e1f0a7b3c49",
+        "payload": {
+          "pr": 31,
+          "branch": "drafts/content-5d2c8e1f0a7b3c49",
+          "path": "content/pages/blog/harvest-week-in-manarola.json",
+          "sha": "9f2c1aa7b3e4d5f60718293a4b5c6d7e8f901234",
+          "revision": 1
+        }
+      },
+      {
         "id": "post-12",
         "type": "review",
         "author": "staff-5",

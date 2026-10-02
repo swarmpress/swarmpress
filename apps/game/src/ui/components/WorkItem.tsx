@@ -1,11 +1,11 @@
-import type { ComponentChildren } from 'preact'
 import { useState } from 'preact/hooks'
 import { cmd, NOT_AVAILABLE, PLAN_COMMANDS, type CommandName } from '../commands'
 import { pad2, sentence } from '../format'
 import { commitUrl, publishedPageUrl, pullRequestUrl } from '../links'
 import { PRIORITY_ORDER, type PlanPost, type WorkItemJson } from '../plan-types'
 import { useStore, type OverlayStore } from '../store'
-import { Avatar, Badge, Meter, PersonButton, priorityTone } from './common'
+import { ReadArticleButton } from './ArticlePreview'
+import { Avatar, Badge, External, Meter, PersonButton, priorityTone } from './common'
 
 /**
  * The tooltip of an action whose command the data source does not have
@@ -242,17 +242,6 @@ function PhaseRow({ item, index }: { item: WorkItemJson; index: number }) {
   )
 }
 
-/** A link that opens outside the game, or its text when the address is not known. */
-function External({ href, children }: { href: string | null; children: ComponentChildren }) {
-  return href ? (
-    <a href={href} target="_blank" rel="noopener noreferrer">
-      {children}
-    </a>
-  ) : (
-    <>{children}</>
-  )
-}
-
 /**
  * An artifact: its own URL when the post carries one, else the pull request
  * and (once merged) the commit in the company's site repository, which the
@@ -288,6 +277,7 @@ const POST_LABEL: Record<string, string> = {
   proposal: 'Proposal',
   artifact: 'Artifact',
   performance: 'Content performance',
+  'send-back-note': 'Sent back',
 }
 
 /** `@slug` mentions highlighted. */
@@ -431,6 +421,13 @@ export function ThreadPost({ item, post: p }: { item: WorkItemJson; post: PlanPo
         ) : p.type === 'artifact' && p.artifact ? (
           <p class="small">
             {p.text}: <ArtifactLink a={p.artifact} />
+            {/* A pull request of the page: the article can be read here (the store keeps the latest draft). */}
+            {p.artifact.pr != null && (
+              <>
+                {' '}
+                <ReadArticleButton item={item.id} quiet />
+              </>
+            )}
           </p>
         ) : p.type === 'todo-add' || p.type === 'todo-done' ? (
           <p class="small">{p.todo ? (store.planText.value.todos[p.todo] ?? p.text) : p.text}</p>

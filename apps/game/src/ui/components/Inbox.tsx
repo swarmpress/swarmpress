@@ -1,9 +1,10 @@
-import { useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { cmd, kebab, roleVariant, type SecretaryTask } from '../commands'
 import { countdown, eur, gameTime, sentence } from '../format'
 import { humanRole, noSecretaryReason, REQUIRED_ROLES } from '../rules'
 import { useStore } from '../store'
 import type { Delegation, Priority, TicketJson } from '../types'
+import { ArticleJudgement } from './ArticleJudgement'
 import { Badge, Notice, Panel, PersonButton } from './common'
 
 const PRIORITY_RANK: Record<Priority, number> = { high: 0, medium: 1, low: 2 }
@@ -66,6 +67,13 @@ const slug = (id: string) => kebab(id).replace(/[_\s]+/g, '-')
 const kindInfo = (kind: string): KindInfo | undefined => TICKET_KINDS[slug(kind)]
 export const ticketTitle = (kind: string) => kindInfo(kind)?.label ?? sentence(slug(kind))
 export const optionLabel = (option: string) => OPTION_LABELS[slug(option)] ?? sentence(slug(option))
+
+/** Ticket kinds about an article the CEO judges before answering: the ticket shows it (title, checks, review, preview). */
+const ARTICLE_KINDS = new Set(['publish-approval', 'escalation'])
+/** The option that restarts the draft. With a work item, the CEO can say what to change first. */
+const isSendBack = (option: string) => slug(option) === 'send-back'
+/** A send-back note is short: one issue for the revision, not a second brief. */
+export const SEND_BACK_NOTE_MAX = 600
 
 const DELEGATION: Array<{ id: Delegation; label: string; hint: string }> = [
   { id: 'off', label: 'Off', hint: 'You answer everything' },
@@ -175,6 +183,9 @@ function Ticket({ t }: { t: TicketJson }) {
   const delta = t.deadlineMinute == null ? null : t.deadlineMinute - now
   const info = kindInfo(t.kind)
   const title = ticketTitle(t.kind)
+  const kind = slug(t.kind)
+  /** The Send back option whose note form is open. */
+  const [sendBack, setSendBack] = useState<string | null>(null)
   // What the ticket is about: the work item by its title in the plan text, the money and the role.
   const itemTitle = t.workItem ? store.planText.value.items[t.workItem]?.title || t.workItem : null
   const amount = t.amountEur ? (info?.amount ?? ((a: string) => a))(eur(t.amountEur)) : null
@@ -221,6 +232,7 @@ function Ticket({ t }: { t: TicketJson }) {
         {t.failure && <> · failed: {sentence(slug(t.failure)).toLowerCase()}</>}
       </p>
       {t.summary ? <p class="ticket-summary">{t.summary}</p> : info?.about && <p class="ticket-summary small">{info.about}</p>}
+      {open && t.workItem && ARTICLE_KINDS.has(kind) && <ArticleJudgement item={t.workItem} id={t.id} missing={kind === 'publish-approval'} />}
       {open ? (
         <>
           {delta != null && (
@@ -235,19 +247,25 @@ function Ticket({ t }: { t: TicketJson }) {
             </p>
           )}
           <div class="options" role="group" aria-label={`Answer ${title}`}>
-            {t.options.map((o) => (
-              <button
-                key={o}
-                type="button"
-                class={`btn${o === t.proposedOption ? ' is-proposed' : ''}`}
-                onClick={() => store.run(cmd.answer(t.id, o), `Answered ${t.id}: ${optionLabel(o)}`)}
-              >
-                {optionLabel(o)}
-                {o === t.proposedOption && <span class="small"> (proposed)</span>}
-                {o === t.defaultOption && <span class="sr-only"> (default at deadline)</span>}
-              </button>
-            ))}
+            {t.options.map((o) => {
+              // Send back on a work item asks for a note first; every other option answers at once.
+              const noted = isSendBack(o) && !!t.workItem
+              return (
+                <button
+                  key={o}
+                  type="button"
+                  class={`btn${o === t.proposedOption ? ' is-proposed' : ''}`}
+                  aria-expanded={noted ? sendBack === o : undefined}
+                  onClick={() => (noted ? setSendBack(sendBack === o ? null : o) : void store.run(cmd.answer(t.id, o), `Answered ${t.id}: ${optionLabel(o)}`))}
+                >
+                  {optionLabel(o)}
+                  {o === t.proposedOption && <span class="small"> (proposed)</span>}
+                  {o === t.defaultOption && <span class="sr-only"> (default at deadline)</span>}
+                </button>
+              )
+            })}
           </div>
+          {sendBack && t.workItem && <SendBackNote ticket={t.id} item={t.workItem} option={sendBack} onCancel={() => setSendBack(null)} />}
         </>
       ) : (
         <p class="small">
@@ -263,6 +281,79 @@ function Ticket({ t }: { t: TicketJson }) {
         </p>
       )}
     </article>
+  )
+}
+
+/**
+ * Send back with a note (ADR-0059; docs/design/mvp-pipeline.md §5). The note
+ * is text, so it goes to the work item's thread in the store (a
+ * `send-back-note` post), never into the sim. It is stored before the answer
+ * is sent: the answer restarts the draft, and the revision reads the note as
+ * an issue. If the note cannot be stored, nothing is sent.
+ */
+function SendBackNote({ ticket, item, option, onCancel }: { ticket: string; item: string; option: string; onCancel: () => void }) {
+  const store = useStore()
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  /** The note is in the thread already (a retry after a rejected answer must not post it twice). */
+  const posted = useRef(false)
+  const field = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => field.current?.focus(), [])
+  const text = note.trim()
+  const submit = async () => {
+    setBusy(true)
+    setError(null)
+    if (text && !posted.current) {
+      try {
+        await store.post(item, 'send-back-note', text, { ticket })
+        posted.current = true
+      } catch (e) {
+        setError(`The note could not be saved, so the article was not sent back. ${e instanceof Error ? e.message : String(e)}`)
+        setBusy(false)
+        return
+      }
+    }
+    const r = await store.run(cmd.answer(ticket, option), `Answered ${ticket}: ${optionLabel(option)}`)
+    // Answered: the ticket closes and takes this form with it.
+    if (!r.ok) setBusy(false)
+  }
+  return (
+    <form
+      class="send-back"
+      aria-label="Send back with a note"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (!busy) void submit()
+      }}
+    >
+      <label class="field">
+        <span>What should change? (optional)</span>
+        <textarea
+          ref={field}
+          rows={3}
+          maxLength={SEND_BACK_NOTE_MAX}
+          value={note}
+          disabled={busy || posted.current}
+          onInput={(e) => setNote(e.currentTarget.value)}
+          placeholder="Name the grower in the trenino paragraph."
+        />
+      </label>
+      <p class="small muted">The note is posted to the article’s thread; the writer revises against it.</p>
+      <div class="actions-row">
+        <button type="submit" class="btn" disabled={busy}>
+          {text ? 'Send back with this note' : 'Send back without a note'}
+        </button>
+        <button type="button" class="btn btn-quiet" disabled={busy} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+      {error && (
+        <p class="small error-text" role="alert">
+          {error}
+        </p>
+      )}
+    </form>
   )
 }
 

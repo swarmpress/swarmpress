@@ -120,6 +120,33 @@ export function fakePlanStore(initial: PlanTextWire = {}): PlanTextStore & { row
   }
 }
 
+/**
+ * An artifact record as the orchestrator writes it to the store
+ * (`orchestrator::ArtifactRecord`, serialised by serde): JSON text whose
+ * `brief_ref` is a u64 no JS number holds, so it is spliced into the text.
+ */
+export function artifactRecordJson(briefRef: string, record: Record<string, unknown>): string {
+  return JSON.stringify({ brief_ref: 0, ...record }).replace('"brief_ref":0', `"brief_ref":${briefRef}`)
+}
+
+/**
+ * `fakePlanStore` plus the artifact and brief records of a session's
+ * CompanyStore (`getArtifact`, `getBrief`: JSON text, briefs keyed by the
+ * decimal text of their reference). `artifacts` may be changed by a test, as
+ * a revision job would.
+ */
+export function fakeCompanyStore(initial: PlanTextWire, records: { artifacts?: Record<string, string>; briefs?: Record<string, string> } = {}) {
+  const artifacts = { ...records.artifacts }
+  const briefs = { ...records.briefs }
+  return {
+    ...fakePlanStore(initial),
+    artifacts,
+    briefs,
+    getArtifact: async (_company: string, item: string) => artifacts[item] ?? null,
+    getBrief: async (_company: string, ref: string) => briefs[ref] ?? null,
+  }
+}
+
 /** Mount the overlay over a live source; the returned `cleanup` unmounts it. */
 export function setupLive(sim: SimOrgApi, opts: WasmOptions = {}) {
   const source = new WasmDataSource(sim, opts)

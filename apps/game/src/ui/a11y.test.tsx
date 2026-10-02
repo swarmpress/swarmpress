@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import axe from 'axe-core'
 import { afterEach, describe, expect, it } from 'vitest'
+import golden from '../../../../crates/agents/tests/fixtures/article/page.golden.json'
 import wire from './fixtures/plan-wire.json'
-import { LIVE_ITEM, liveSim, liveTicket, setupLive } from './live-testing'
+import { artifactRecordJson, fakeCompanyStore, LIVE_ITEM, liveSim, liveTicket, setupLive } from './live-testing'
 import { normalizePlanText, type PlanTextWire } from './plan-wire'
 import type { PanelId } from './store'
 import { flush, setup } from './testing'
+import { companyStoreOptions } from './wasm-source'
 
 /**
  * axe-core accessibility checks for every panel and the profile card (ADR-0018).
@@ -16,6 +18,9 @@ async function audit(root: Element) {
   const res = await axe.run(root, {
     rules: { 'color-contrast': { enabled: false } },
     resultTypes: ['violations'],
+    // The article preview's sandboxed frame is opaque to the page, and to axe: its element (title) is
+    // checked, its document (model output, article-preview.test.ts) is not.
+    iframes: false,
   })
   return res.violations.map((v) => `${v.id}: ${v.help}\n  ${v.nodes.map((n) => n.target.join(' ')).join('\n  ')}`)
 }
@@ -115,6 +120,43 @@ describe('axe: no violations', () => {
     await flush()
     expect(document.querySelectorAll('.work-item a[href^="https://github.com/"]').length).toBeGreaterThan(0)
     expect(await audit(c.el), 'work item').toEqual([])
+  })
+
+  it('publish approval: the ticket with its checks and review, the Send back note, the preview dialog (mock and live)', async () => {
+    ctx = setup()
+    ctx.store.panel.value = 'inbox'
+    await flush()
+    await flush()
+    const ticket = document.querySelector<HTMLElement>('article[data-kind="publish-approval"]')!
+    expect(ticket.querySelector('[role="group"][aria-labelledby$="-measured"]')).not.toBeNull()
+    expect(await audit(ctx.el), 'ticket').toEqual([])
+    ;[...ticket.querySelectorAll('button')].find((b) => b.textContent === 'Send back')!.click()
+    await flush()
+    expect(ticket.querySelector('form.send-back')).not.toBeNull()
+    expect(await audit(ctx.el), 'send-back note').toEqual([])
+    ctx.store.openArticle('work-item-1')
+    await flush()
+    expect(document.querySelector('[role="dialog"] iframe[sandbox=""]')).not.toBeNull()
+    expect(await audit(ctx.el), 'preview dialog').toEqual([])
+    ctx.store.closeArticle()
+
+    // Live data: the same ticket with the article from a CompanyStore, and an article the store does not have.
+    const sim = liveSim()
+    sim.state.inbox.tickets.push(liveTicket({ id: 'ticket-90', kind: 'publish-approval', options: ['publish', 'send-back', 'kill', 'defer'], defaultOption: 'defer', workItem: LIVE_ITEM }))
+    sim.state.inbox.tickets.push(liveTicket({ id: 'ticket-91', kind: 'publish-approval', options: ['publish', 'send-back', 'kill', 'defer'], defaultOption: 'defer', workItem: 'work-item-9' }))
+    const store = fakeCompanyStore({}, { artifacts: { [LIVE_ITEM]: artifactRecordJson('1', { page: golden, review: { decision: 'approve', score: 8, notes: 'Good.', issues: [], high_risk: [] }, revision: 1, pr_number: 12 }) } })
+    const c = (live = setupLive(sim, companyStoreOptions(store, { id: 'c1', site_repo: 'swarmpress/cinqueterre.travel' })))
+    await c.store.refresh()
+    c.store.panel.value = 'inbox'
+    await flush()
+    await flush()
+    // The gate and the escalation on the same item show the article; the other gate says its text is missing.
+    expect(c.el.querySelectorAll('.approval')).toHaveLength(2)
+    expect(c.el.querySelectorAll('.approval-missing')).toHaveLength(1)
+    expect(await audit(c.el), 'live inbox').toEqual([])
+    c.store.openArticle(LIVE_ITEM)
+    await flush()
+    expect(await audit(c.el), 'live preview').toEqual([])
   })
 
   it('degraded states (no CFO, no secretary, no data scientist)', async () => {

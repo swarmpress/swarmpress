@@ -115,7 +115,9 @@
       "dependsOn": [],
       "dueDay": 13,
       "publishDay": 14,
-      "tickets": [],
+      "tickets": [
+        "ticket-7"
+      ],
       "languages": [
         "en",
         "it"

@@ -124,6 +124,8 @@ export type PostType =
   | 'artifact'
   /** `ContentPerformance` follow-up from the data scientist (organization.md §6a). */
   | 'performance'
+  /** The CEO's note with a Send back at the publish gate (ADR-0059): what the revision should fix. */
+  | 'send-back-note'
 
 export const POST_TYPES: PostType[] = [
   'comment',
@@ -138,6 +140,7 @@ export const POST_TYPES: PostType[] = [
   'proposal',
   'artifact',
   'performance',
+  'send-back-note',
 ]
 
 export interface PlanPost {

@@ -174,4 +174,33 @@ export function TabPanel({ idPrefix, value, children }: { idPrefix: string; valu
   )
 }
 
-export const priorityTone = (p: string) => (p === 'high' || p === 'urgent' ? 'high' : p === 'medium' || p === 'normal' ? 'medium' : 'low')
+/** Tab focus stays inside an open modal dialog (the profile card, the article preview). */
+export function trapTab(e: KeyboardEvent, root: HTMLElement | null) {
+  if (e.key !== 'Tab' || !root) return
+  const f = Array.from(
+    root.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea, a[href], [tabindex="0"]'),
+  )
+  if (f.length === 0) return
+  const first = f[0]
+  const last = f[f.length - 1]
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault()
+    first.focus()
+  }
+}
+
+/** A link that opens outside the game, or its text when the address is not known. */
+export function External({ href, children }: { href: string | null; children: ComponentChildren }) {
+  return href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  ) : (
+    <>{children}</>
+  )
+}
+
+export const priorityTone =(p: string) => (p === 'high' || p === 'urgent' ? 'high' : p === 'medium' || p === 'normal' ? 'medium' : 'low')

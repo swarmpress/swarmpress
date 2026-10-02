@@ -136,13 +136,13 @@ describe('inbox', () => {
     const p = within(panel(/Inbox/))
     const list = p.getAllByRole('article')
     const titles = list.map((a) => a.querySelector('h4')!.textContent)
-    expect(titles.slice(0, 5)).toEqual(['High risk article', 'Budget overrun', 'Missing role', 'Project proposal', 'Kpi report'])
+    expect(titles.slice(0, 6)).toEqual(['High risk article', 'Budget overrun', 'Publish approval', 'Missing role', 'Project proposal', 'Kpi report'])
     expect(within(list[0]).getByText('via Secretary')).toBeTruthy()
     expect(within(list[0]).getByText('3h 10m left')).toBeTruthy()
     fireEvent.click(within(list[0]).getByRole('button', { name: /^Hold/ }))
     await flush()
     expect(source.current.inbox.tickets.find((x) => x.id === 'ticket-2')).toMatchObject({ status: 'resolved', answer: 'hold' })
-    expect(within(panel(/Inbox/)).getByRole('heading', { name: /Open tickets \(4\)/ })).toBeTruthy()
+    expect(within(panel(/Inbox/)).getByRole('heading', { name: /Open tickets \(5\)/ })).toBeTruthy()
   })
 
   it('disables delegation (policy and Delegate menu) without a secretary, with an explanation', async () => {
@@ -300,9 +300,10 @@ describe('plan', () => {
   it('renders every thread post type distinctly', async () => {
     const { store, source } = await open()
     const all = Object.values(source.planStore.text().posts).flat()
-    // The fixture covers every type but todo-done; add one.
+    // The fixture covers every type but todo-done and the CEO's send-back note; add one of each.
     source.planStore.addPost('work-item-1', { type: 'todo-done', author: 'staff-6', day: 9, minute: 600, text: 'Done', todo: 'todo-1' })
-    expect(new Set([...all.map((p) => p.type), 'todo-done'])).toEqual(new Set(POST_TYPES))
+    source.planStore.addPost('work-item-2', { type: 'send-back-note', author: 'ceo', day: 11, minute: 610, text: 'Name the producers you visited.' })
+    expect(new Set([...all.map((p) => p.type), 'todo-done', 'send-back-note'])).toEqual(new Set(POST_TYPES))
 
     const seen = new Set<string>()
     for (const id of ['work-item-1', 'work-item-2', 'work-item-5', 'work-item-10']) {
@@ -422,7 +423,8 @@ describe('HUD', () => {
   it('feeds cash, runway and open/high ticket counts into the HUD signal', async () => {
     const { hudBusiness } = await import('./hud')
     const { source } = await open()
-    expect(hudBusiness.value).toEqual({ cashEur: 92900.09, runwayDays: 61, booksKept: true, openTickets: 5, highTickets: 2 })
+    // Six open tickets, three of them high (the publish approval, ticket-7, is one).
+    expect(hudBusiness.value).toEqual({ cashEur: 92900.09, runwayDays: 61, booksKept: true, openTickets: 6, highTickets: 3 })
     source.applySync(JSON.stringify({ Fire: { staff: 'staff-7' } }))
     await flush()
     expect(hudBusiness.value?.booksKept).toBe(false)

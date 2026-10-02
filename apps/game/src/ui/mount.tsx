@@ -22,7 +22,8 @@ const isTyping = (t: EventTarget | null) => {
 export function handleShortcut(store: OverlayStore, e: KeyboardEvent): boolean {
   if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return false
   if (e.key === 'Escape') {
-    if (store.profile.value) store.closeProfile()
+    if (store.article.value) store.closeArticle()
+    else if (store.profile.value) store.closeProfile()
     else if (store.selectedItem.value && store.panel.value === 'plan') store.selectedItem.value = null
     else if (store.panel.value) store.panel.value = null
     else return false

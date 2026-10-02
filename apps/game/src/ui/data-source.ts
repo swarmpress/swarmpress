@@ -30,6 +30,61 @@ export interface SiteLinks {
 
 export const NO_SITE_LINKS: SiteLinks = Object.freeze({ repo: null, publicBaseUrl: null })
 
+/**
+ * The editor's latest review of an article, as the orchestrator stored it
+ * (`agents::EditorReview`). It is the editor's judgement, never a measurement.
+ */
+export interface ArticleReview {
+  /** `approve`, `needs_changes` or `reject`, as the editor decided. */
+  decision: string
+  /** 1 to 10. */
+  score: number
+  notes: string
+  issues: string[]
+  /** Risks the editor flagged for the CEO. */
+  highRisk: string[]
+}
+
+/** The brief an article was commissioned with (`agents::Brief`). */
+export interface ArticleBrief {
+  title: string
+  angle: string
+  slug: string | null
+  keywords: string[]
+  /** Target length in words; null when the brief names none. */
+  targetWords: number | null
+}
+
+/**
+ * What the company's store holds about a work item's article: the
+ * orchestrator's latest artifact record (`orchestrator::ArtifactRecord`: page,
+ * review, pull request) joined with its brief record
+ * (`orchestrator::BriefRecord`). Text only; none of it is in the sim.
+ *
+ * `page` is model output. Treat it as untrusted: read it through
+ * article-preview.ts and article-checks.ts, never as markup.
+ */
+export interface ArticleRecord {
+  /** The latest page JSON, as committed to the draft branch; null before the first draft. */
+  page: unknown | null
+  review: ArticleReview | null
+  /** 0 for the first draft; each revision adds one. */
+  revision: number
+  /** Path of the page in the site repository. */
+  path: string | null
+  branch: string | null
+  /** Number of the pull request in the site repository. */
+  pr: number | null
+  /** Head commit of the draft branch: what a Publish merges. */
+  headSha: string | null
+  /** Set once the pull request is merged. */
+  mergedSha: string | null
+  brief: ArticleBrief | null
+  /** Staff ids. */
+  writer: string | null
+  editor: string | null
+}
+
 /** What a data source can do. Fixed for the lifetime of the source. */
 export interface SourceCapabilities {
   /**
@@ -41,6 +96,12 @@ export interface SourceCapabilities {
   /** KPIs exist (tracker + KpiReport). False leaves the Performance panel out of the navigation. */
   performance: boolean
   site: SiteLinks
+  /**
+   * The phrases the site's house style bans (the style guide's
+   * `vocabulary.avoid`), for the measured checks of an article. Absent or
+   * null when the source has no style guide: the check is then not shown.
+   */
+  bannedPhrases?: readonly string[] | null
 }
 
 /**
@@ -72,6 +133,12 @@ export interface GameDataSource {
   getPlan(): Promise<PlanJson>
   /** Plan text: titles, briefs, todo text and work-item threads, keyed by the skeleton's ids. */
   getPlanText(): Promise<PlanText>
+  /**
+   * The article of a work item from the company's store: page JSON, pull
+   * request, latest review and brief. `null` when the store has none (no
+   * draft yet, or a device that restored the sim without its text).
+   */
+  getArticle(item: string): Promise<ArticleRecord | null>
   /** KPIs from the first-party tracker + the latest KpiReport (organization.md §6a). */
   getPerformance(): Promise<PerformanceJson>
   getPersona(slug: string): Promise<Persona | undefined>
@@ -82,7 +149,10 @@ export interface GameDataSource {
   apply(commandJson: string): Promise<CommandResult>
   /** Would the command apply? Never mutates. */
   validate(commandJson: string): Promise<CommandResult>
-  /** Append a CEO comment (or other post) to a work item's thread. Text only, never enters the sim. */
+  /**
+   * Append a CEO post to a work item's thread: a comment, or the note that
+   * goes with a Send back (`send-back-note`). Text only, never enters the sim.
+   */
   appendPost(item: string, post: NewPlanPost): Promise<PlanPost>
   /**
    * Called whenever data may have changed (after `apply`, sim ticks, store

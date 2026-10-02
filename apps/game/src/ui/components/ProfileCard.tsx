@@ -5,26 +5,8 @@ import type { Persona } from '../personas'
 import { allocationTotal, humanRole, MAX_ALLOCATION, maxAllocationFor } from '../rules'
 import { useStore } from '../store'
 import type { StaffJson } from '../types'
-import { Avatar, Badge, Icon, Meter, PersonButton } from './common'
+import { Avatar, Badge, Icon, Meter, PersonButton, trapTab } from './common'
 import { useCandidates } from './Hiring'
-
-/** Tab focus stays inside an open modal dialog. */
-function trapTab(e: KeyboardEvent, root: HTMLElement | null) {
-  if (e.key !== 'Tab' || !root) return
-  const f = Array.from(
-    root.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea, a[href], [tabindex="0"]'),
-  )
-  if (f.length === 0) return
-  const first = f[0]
-  const last = f[f.length - 1]
-  if (e.shiftKey && document.activeElement === first) {
-    e.preventDefault()
-    last.focus()
-  } else if (!e.shiftKey && document.activeElement === last) {
-    e.preventDefault()
-    first.focus()
-  }
-}
 
 export function ProfileCard() {
   const store = useStore()

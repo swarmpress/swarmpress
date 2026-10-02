@@ -1,5 +1,6 @@
 import { ALL_COMMANDS, centsPerDayToEurMonth, kebab, type Command, type CommandResult, type SecretaryTask } from './commands'
-import { NO_SITE_LINKS, type DataTopic, type GameDataSource, type NewPlanPost, type SiteLinks, type SourceCapabilities } from './data-source'
+import { NO_SITE_LINKS, type ArticleRecord, type DataTopic, type GameDataSource, type NewPlanPost, type SiteLinks, type SourceCapabilities } from './data-source'
+import { FIXTURE_ARTICLE_ITEM, FIXTURE_BANNED_PHRASES, fixtureArticle } from './fixtures/article'
 import financeFixture from './fixtures/finance.json'
 import inboxFixture from './fixtures/inbox.json'
 import orgFixture from './fixtures/org.json'
@@ -55,9 +56,16 @@ export interface MockOptions {
   commands?: readonly string[]
   /** Where pull requests and pages live (the fixtures' artifact posts carry their own URLs). */
   site?: Partial<SiteLinks>
+  /** Articles by work item; defaults to the fixture article behind the approval ticket (fixtures/article.ts). */
+  articles?: Record<string, ArticleRecord>
+  /** The house style's banned phrases; defaults to the style-guide fixture's list. `null`: no list. */
+  bannedPhrases?: readonly string[] | null
 }
 
 const SENIORITY: Seniority[] = ['junior', 'mid', 'senior', 'star']
+
+/** Where an answer at the publish gate takes the parked item (sim: `apply_option` for `PublishApproval`). */
+const GATE_ANSWERS: Record<string, WorkItemJson['status']> = { publish: 'scheduled', 'send-back': 'in-progress', kill: 'cancelled' }
 
 export const fixtureState = (): MockState =>
   structuredClone({
@@ -84,10 +92,17 @@ export class MockDataSource implements GameDataSource {
   private listeners = new Set<(topics?: DataTopic[]) => void>()
   private clock: () => number
   private caps: SourceCapabilities
+  private articles: Record<string, ArticleRecord>
 
   constructor(opts: MockOptions = {}) {
     // The mock plays every command and has KPI fixtures.
-    this.caps = { commands: new Set(opts.commands ?? ALL_COMMANDS), performance: true, site: { ...NO_SITE_LINKS, ...opts.site } }
+    this.caps = {
+      commands: new Set(opts.commands ?? ALL_COMMANDS),
+      performance: true,
+      site: { ...NO_SITE_LINKS, ...opts.site },
+      bannedPhrases: opts.bannedPhrases === undefined ? FIXTURE_BANNED_PHRASES : opts.bannedPhrases,
+    }
+    this.articles = opts.articles ?? { [FIXTURE_ARTICLE_ITEM]: fixtureArticle() }
     this.state = { ...fixtureState(), ...structuredClone(opts.state ?? {}) }
     // The fixtures reference the fixture personas (candidates included), not the live catalog.
     this.personas = opts.personas ?? loadFixturePersonas().personas
@@ -120,6 +135,9 @@ export class MockDataSource implements GameDataSource {
   }
   async getPlanText() {
     return this.planStore.text()
+  }
+  async getArticle(item: string) {
+    return this.articles[item] ?? null
   }
   async getPerformance() {
     return this.state.performance
@@ -417,6 +435,10 @@ function reduce(s: MockState, c: Command, personas: Persona[], now: number, text
         const effects = s.plan.items
           .filter((i) => i.tickets.includes(t.id))
           .map((i) => ceoPost(i.id, `Answered ${t.id}: ${option.replace(/-/g, ' ')}.`))
+        // The publish gate (ADR-0059): the answer moves the parked item; Defer leaves it parked.
+        const gated = kebab(t.kind) === 'publish-approval' ? s.plan.items.find((i) => i.id === t.workItem) : undefined
+        const next = GATE_ANSWERS[kebab(option)]
+        if (gated && next) gated.status = next
         return ok(effects)
       }
       case 'Delegate': {

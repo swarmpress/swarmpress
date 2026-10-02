@@ -686,7 +686,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     status,
     setModelStatus,
     dataSource: () => {
-      const s = new SessionDataSource(orgApi, { ...companyStoreOptions(store, company), changeKey: () => `${sim.step()}:${loop.lastSeq}` })
+      const s = new SessionDataSource(orgApi, { ...companyStoreOptions(store, company, SITE), changeKey: () => `${sim.step()}:${loop.lastSeq}` })
       sources.add(s)
       return s
     },

@@ -107,6 +107,24 @@
       "resolvedBy": "secretary",
       "answer": "reshoot",
       "summary": "Francesca asked whether to license a stock photo of Corniglia. Paolo answered 'reshoot' under your Low delegation policy."
+    },
+    {
+      "id": "ticket-7",
+      "kind": "publish-approval",
+      "priority": "high",
+      "project": "project-1",
+      "from": "staff-5",
+      "status": "open",
+      "routedViaSecretary": false,
+      "options": [
+        "publish",
+        "send-back",
+        "kill",
+        "defer"
+      ],
+      "defaultOption": "defer",
+      "workItem": "work-item-1",
+      "deadlineMinute": 17840
     }
   ],
   "secretaryQueue": [

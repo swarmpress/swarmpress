@@ -7,6 +7,9 @@ paths:
   - "apps/game/src/ui/**"
   - "apps/game/e2e/ui.spec.ts"
   - apps/game/src/ui/components/ArticlePreview.tsx
+  - apps/game/src/ui/components/ArticleJudgement.tsx
+  - apps/game/src/ui/article-preview.ts
+  - apps/game/src/ui/article-checks.ts
   - apps/game/src/ui/hud.tsx
 adrs:
   - ADR-0018
@@ -48,6 +51,39 @@ Design: [`docs/design/mvp-pipeline.md`](../../design/mvp-pipeline.md) section 5 
 - **U1:** the `PublishApproval` ticket in the Inbox: title, dek, score, editor notes, measured
   checks shown apart from the editor's opinion, words against target, the pull-request link, and
   `ArticlePreview.tsx` rendering the page blocks in a sandboxed `srcdoc` iframe.
+  How it is built:
+  - Everything comes from the company's store, nothing from the sim. `GameDataSource.getArticle(item)`
+    returns the orchestrator's latest `ArtifactRecord` (page JSON, review, pull request number,
+    branch, head sha, revision) joined with its `BriefRecord` (brief, writer, editor). The brief is
+    found by the record's `brief_ref`, a u64 read from the record's text (`topLevelNumber`) because
+    `JSON.parse` would round it. `store.articleOf(item)` reads it like `check` does: synchronous for
+    rendering, refreshed after every snapshot, and the same object while the record is unchanged.
+  - The ticket (`ArticleJudgement.tsx`, for `publish-approval` and, where an article exists,
+    `escalation`) shows title and dek (hero subtitle, else the SEO description), writer, editor and
+    revisions, then two labelled groups (concept document §20): **Measured checks**
+    (`article-checks.ts`: body words against the brief's `target_words` with a ±25% band, block
+    count, exactly one hero and first, closing note present and last, links, media and media that
+    are not https, unknown block types, banned-phrase hits) and **Editor's opinion** (score,
+    decision, notes, issues, high-risk flags). The banned phrases are the site style guide's
+    `vocabulary.avoid`, which the session binds (`SITE.style_guide`) and passes through
+    `companyStoreOptions`; without a style guide the row is left out and the ticket says so. The
+    pull request links to `company.site_repo`; the head sha it would merge is shown.
+  - When the store has no article (a device that restored the sim without its plan text) the gate
+    says so and points at the pull request; the options stay.
+  - The preview (`ArticlePreview.tsx` over the pure `article-preview.ts`) is a dialog opened by
+    "Read article" from the ticket and from a pull-request post of the work item's thread. The page
+    is model output: every string is HTML-escaped; the two fields the theme prints as HTML
+    (`editorial-hero.title`, `closing-note.content`) are decoded once for display and escaped
+    again; images load only from `https:` URLs; links are named, not linked; an unknown block type
+    is a labelled placeholder; the document has exactly one `<h1>` and its own
+    Content-Security-Policy (`default-src 'none'; img-src https:; style-src 'unsafe-inline'`). It
+    is shown in `<iframe sandbox="" srcdoc>`: no scripts, an opaque origin, no navigation.
+  - Send back on a work item first opens a short note. The note is stored as a plan post through
+    the store's post API (a `status` post with `payload.ui_type: 'send-back-note'`, as comments
+    are) and only then is `AnswerTicket{send-back}` sent; a note that cannot be stored sends
+    nothing. Publish, Kill and Defer answer at once, as before.
+  - The mock company (`?ui=mock`) has a `publish-approval` ticket (`ticket-7`) on `work-item-1`
+    whose article is the agents crate's golden article fixture.
 - **U2:** fixes on live data: ticket text names the article; the false "no secretary" text goes;
   actions the sim lacks are disabled; CEO comments persist; pull-request and page links; empty Plan
   tabs and the Performance panel are hidden; Finance alert labels and a "revenue not modelled" note.

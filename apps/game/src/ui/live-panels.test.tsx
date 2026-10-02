@@ -133,8 +133,12 @@ describe('inbox on live data', () => {
     const unknown = within(inbox().getByRole('article', { name: 'Quantum audit' }))
     expect(unknown.getAllByRole('button').map((b) => b.textContent)).toEqual(['Do it', 'Wait a day (default at deadline)'])
 
-    // Answering sends the option id exactly as the sim named it.
+    // Answering sends the option id exactly as the sim named it. Send back on a work item
+    // first offers a note for the revision (approval.test.tsx); here it goes without one.
     fireEvent.click(gate.getByRole('button', { name: 'Send back' }))
+    await flush()
+    expect(sim.applied).toEqual([])
+    fireEvent.click(gate.getByRole('button', { name: 'Send back without a note' }))
     await flush()
     fireEvent.click(within(inbox().getByRole('article', { name: 'Quantum audit' })).getByRole('button', { name: 'Do it' }))
     await flush()

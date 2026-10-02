@@ -1,4 +1,5 @@
 import { PANELS, StoreContext, useStore, type OverlayStore, type PanelId } from '../store'
+import { ArticlePreview } from './ArticlePreview'
 import { Icon, Panel } from './common'
 import { Finance } from './Finance'
 import { Hiring } from './Hiring'
@@ -90,6 +91,7 @@ function Body() {
       <Toolbar />
       {id && View && (store.ready.value ? <View /> : <Loading id={id} />)}
       <ProfileCard />
+      <ArticlePreview />
       <Toast />
     </>
   )
