@@ -1,5 +1,6 @@
 //! Integration over the real cinqueterre.travel checkout. Ignored by default:
 //! `cargo test -p knowledge --test real_repo -- --ignored --nocapture`.
+//! `CINQUETERRE_REPO` overrides the checkout path.
 
 use content_model::{validate_page_v1, validate_page_v2, SchemaRegistry};
 use knowledge::{DirSource, DuplicateKind, EntityKind, KnowledgeBase, SiteSource, SiteSummary};
@@ -9,7 +10,7 @@ const REPO: &str = "/home/user/cinqueterre.travel";
 #[test]
 #[ignore = "needs the cinqueterre.travel checkout at /home/user/cinqueterre.travel"]
 fn indexes_the_real_site() {
-    let src = DirSource::new(REPO);
+    let src = DirSource::new(std::env::var("CINQUETERRE_REPO").unwrap_or_else(|_| REPO.into()));
     let kb = KnowledgeBase::build(&src).unwrap();
     let audit = kb.audit(&src).unwrap();
     println!("{}", SiteSummary::new(&kb, Some(&audit)));

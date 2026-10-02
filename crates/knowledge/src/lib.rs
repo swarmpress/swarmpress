@@ -16,12 +16,18 @@
 //! page checks ([`KnowledgeBase::check_links`], [`KnowledgeBase::check_media`]).
 //! Misses are typed ([`NeedsPage`], [`NeedsMedia`]) so a pipeline can
 //! commission the missing page or image instead of letting a model invent one.
+//!
+//! [`pack`] turns a tree into one JSON document per commit (the knowledge
+//! pack, ADR-0061) and back into a [`KnowledgeBase`] without a [`SiteSource`],
+//! so an executor that has no checkout (the browser) enforces the same closed
+//! world. Everything but [`DirSource`] works on `wasm32-unknown-unknown`.
 
 pub mod collections;
 pub mod entities;
 pub mod kb;
 pub mod manifest;
 pub mod media;
+pub mod pack;
 pub mod pages;
 pub mod source;
 pub mod summary;
@@ -36,6 +42,7 @@ pub use manifest::{CollectionDef, Region, Section, SiteManifest};
 pub use media::{
     MediaCandidate, MediaEntry, MediaIndex, MediaMatch, MediaQuery, MediaTags, NeedsMedia,
 };
+pub use pack::Pack;
 pub use pages::{normalize_route, Duplicate, DuplicateKind, PageEntry, PageRegistry};
 pub use source::{DirSource, KnowledgeError, MemSource, SiteSource};
 pub use summary::SiteSummary;

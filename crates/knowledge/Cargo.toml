@@ -11,5 +11,10 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 
+# jsonschema (via content-model) pulls ahash -> getrandom 0.3, which needs its
+# JS backend on wasm32-unknown-unknown (same as the orchestrator crate).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
 [lints]
 workspace = true

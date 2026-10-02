@@ -143,23 +143,43 @@ fn escape(seg: &str) -> String {
 impl KnowledgeBase {
     /// Builds every index from a site checkout.
     pub fn build(src: &dyn SiteSource) -> Result<Self, KnowledgeError> {
-        let manifest = SiteManifest::load(src)?;
-        let pages = PageRegistry::build(src)?;
+        let mut kb = Self::from_parts(
+            src.label(),
+            SiteManifest::load(src)?,
+            EntityIndex::load(src)?,
+            MediaIndex::load(src)?,
+            PageRegistry::build(src)?,
+        );
+        kb.collections = CollectionIndex::build(src)?;
+        Ok(kb)
+    }
+
+    /// Assembles a knowledge base from indexes built elsewhere (the knowledge
+    /// pack, [`crate::pack::load`]). The collection index is empty: collection
+    /// references in a checked page report as broken, which is right for
+    /// articles, since they embed no collections.
+    pub fn from_parts(
+        label: impl Into<String>,
+        manifest: SiteManifest,
+        entities: EntityIndex,
+        media: MediaIndex,
+        pages: PageRegistry,
+    ) -> Self {
         let known_langs = manifest
             .languages
             .iter()
             .cloned()
             .chain(pages.count_by_lang().into_keys())
             .collect();
-        Ok(KnowledgeBase {
-            label: src.label(),
+        KnowledgeBase {
+            label: label.into(),
             manifest,
-            entities: EntityIndex::load(src)?,
-            media: MediaIndex::load(src)?,
+            entities,
+            media,
             pages,
-            collections: CollectionIndex::build(src)?,
+            collections: CollectionIndex::default(),
             known_langs,
-        })
+        }
     }
 
     fn is_lang(&self, seg: &str) -> bool {

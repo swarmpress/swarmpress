@@ -6,6 +6,10 @@
 //!   `client-wasm` (the sim) → `crates/client-wasm/pkg`, `orchestrator-wasm`
 //!   (the orchestrator bridge) → `crates/orchestrator-wasm/pkg`. They are
 //!   separate modules with separate size budgets. `--only <crate>` builds one.
+//! - `site-pack <site-dir> [--out <file>] [--commit <sha>]`: build the
+//!   knowledge pack of a local site clone (see [`site_pack`]).
+
+mod site_pack;
 
 use std::{
     env,
@@ -26,8 +30,10 @@ fn main() -> Result<()> {
                 .map(String::as_str);
             wasm(args.iter().any(|a| a == "--release"), only)
         }
+        Some("site-pack") => site_pack::run(&args[1..]),
         _ => {
             eprintln!("usage: cargo xtask wasm [--release] [--only client-wasm|orchestrator-wasm]");
+            eprintln!("       {}", site_pack::USAGE);
             std::process::exit(2);
         }
     }

@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use content_model::text_of;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::source::{KnowledgeError, SiteSource};
@@ -15,16 +15,19 @@ pub const PAGES_DIR: &str = "content/pages";
 /// Other content dirs never hold routed pages.
 const NON_PAGE_DIRS: &[&str] = &["content/pages/", "content/collections/", "content/config/"];
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PageEntry {
     pub id: String,
     /// Repo path of the page file.
     pub path: String,
+    #[serde(default)]
     pub page_type: String,
     /// lang → route (`/en/riomaggiore`), normalized.
     pub routes: BTreeMap<String, String>,
     /// lang → title (plain titles are stored under `en`).
+    #[serde(default)]
     pub titles: BTreeMap<String, String>,
+    #[serde(default)]
     pub status: Option<String>,
 }
 
@@ -194,6 +197,20 @@ impl PageRegistry {
             }
         }
         Ok(reg)
+    }
+
+    /// Rebuilds a registry from a page list (the knowledge pack carries one):
+    /// the id and route lookups and the id/route conflicts are recomputed.
+    /// Entries keep their order, so pass them as [`Self::build`] produced
+    /// them (sorted by path). Stray copies, stray pages and read errors need
+    /// the page files themselves and stay empty.
+    pub fn from_entries(entries: impl IntoIterator<Item = PageEntry>) -> Self {
+        let mut reg = PageRegistry::default();
+        for e in entries {
+            reg.insert(e);
+        }
+        reg.find_conflicts();
+        reg
     }
 
     fn insert(&mut self, e: PageEntry) {
