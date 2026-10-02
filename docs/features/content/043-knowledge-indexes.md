@@ -11,7 +11,13 @@ paths:
   - crates/github/tests/snapshot.rs
   - xtask/src/site_pack.rs
   - crates/orchestrator/src/article.rs
+  - crates/orchestrator/src/site.rs
+  - crates/orchestrator/tests/site.rs
   - crates/server/src/gateway.rs
+  - crates/server/src/site_knowledge.rs
+  - crates/server/tests/knowledge.rs
+  - apps/game/src/session/site-knowledge.ts
+  - apps/game/src/session/site-knowledge.test.ts
 adrs:
   - ADR-0013
   - ADR-0061
@@ -30,9 +36,10 @@ Decisions: [ADR-0013](../../adr/0013-closed-world-knowledge-indexes.md).
 Design: [`docs/design/mvp-pipeline.md`](../../design/mvp-pipeline.md) section 3.
 
 What exists today: `crates/knowledge` builds the indexes from a `SiteSource` and has tests against
-the `cinqueterre-mini` fixture. The crate half of K1 is built: the pack, the repository snapshot
-and `cargo xtask site-pack`. No route serves the pack yet, the orchestrator does not depend on
-`knowledge`, the browser receives no index, and no closed-world check runs in the session path.
+the `cinqueterre-mini` fixture (which carries the real site's `style-guide.json` and
+`writer-prompt.json`, verbatim). K1 and K2 are built: the server serves the pack and enforces the
+closed world on article drafts, the browser caches the pack by commit, and the orchestrator's
+binding is built from it. The Draft and Review jobs do not read the knowledge base yet (P2).
 
 - **K1, built:**
   - `knowledge::pack::{build, load}`. A pack is `{commit, files, manifest, pages}`:
@@ -54,11 +61,26 @@ and `cargo xtask site-pack`. No route serves the pack yet, the orchestrator does
     enumerates its tree. `Snapshot` implements `SiteSource`.
   - `cargo xtask site-pack <site-dir> [--out file] [--commit sha]` builds the pack of a local
     clone. On cinqueterre.travel at `2d5683c` the pack is 384 kB, 48 kB gzipped.
-- **K1, open:** `GET /api/gateway/knowledge` (lease, ETag = base head), which builds the pack
-  from a snapshot of `content/`.
-- **K2:** `knowledge` compiled into `orchestrator`; the browser caches the pack by commit and
-  refetches before each standup and after each merge; `SiteBinding` is built from the real style
-  guide and writer prompt.
+- **K1, built (route):** `GET /api/gateway/knowledge` (session and lease, ETag = the base head,
+  304 on `If-None-Match`, `Cache-Control: no-cache`; `crates/server/src/site_knowledge.rs`)
+  builds the pack from `RepoApi::snapshot(repo, sha, "content")`, caches it with its loaded
+  `KnowledgeBase` per (repo, sha), drops a repo's entries on a merge, and answers 413 for
+  `GitHubError::TooLarge`. The gateway's draft check uses the same knowledge base for the closed
+  world (`KnowledgeBase::closed_world_issues`, 422), off with the article profile.
+- **K2, built:**
+  - `SiteBinding::from_json` (`crates/orchestrator/src/site.rs`, also behind
+    `orchestrator-wasm`'s `site_binding`) takes `knowledge_pack` (the pack JSON), loads it into
+    `SiteBinding.knowledge: Option<SiteKnowledge {commit, kb, blog_index, pack}>`, and takes the
+    style guide and the writer prompt from the pack's `content/config/style-guide.json` and
+    `writer-prompt.json`. Without a pack: the binding's `style_guide` / `writer_prompt` (tests,
+    the harness), else an empty house style. `siteSummary()` reports what it was built from.
+  - The browser (`apps/game/src/session/site-knowledge.ts`) keeps the pack in the store's
+    `site_knowledge` table (migration 2) by commit, fetches it at session start, before each
+    standup job and after each merge and `DeployLanded` with `If-None-Match`, keeps the last
+    good pack when a fetch fails (one toast per failure streak), and rebinds orchestrator-wasm
+    at the next job after the pack changed. Without any pack, standup, draft and review jobs
+    fail loudly. The Inbox's banned-phrase check reads the pack's style guide.
+  - Size: `orchestrator_wasm_bg.wasm` 1,056,510 → 1,109,616 bytes gzip (budget 1,267,200).
 - Unknown link or media ids come back to the model as section-scoped validation errors; an empty
   hero shortlist raises a `NeedsMedia` ticket.
 

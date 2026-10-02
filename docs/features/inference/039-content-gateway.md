@@ -16,6 +16,9 @@ paths:
   - crates/server/tests/close.rs
   - crates/server/src/finalize.rs
   - crates/server/tests/finalise.rs
+  - crates/server/src/site_knowledge.rs
+  - crates/server/tests/knowledge.rs
+  - apps/game/e2e/central-server.mjs
   - crates/server/src/deploys.rs
   - crates/server/tests/deploys.rs
   - crates/server/migrations/0003_deploys.sql
@@ -62,14 +65,19 @@ Planned changes:
 - **Quotas (FEAT-067):** 60 writes per hour and 20 merges per day per company.
 - **MVP (ADR-0061; design in [`docs/design/mvp-pipeline.md`](../../design/mvp-pipeline.md) sections
   3, 4, 7 and 8):**
-  - **K1:** `GET /api/gateway/knowledge`, the knowledge pack.
-  - **G3 (built, except the closed-world half):** for `content/pages/blog/*.json`, `check_draft`
+  - **K1 (built):** `GET /api/gateway/knowledge`, the knowledge pack of the site at the base head
+    (lease; `ETag: "<sha>"`, 304 on a matching `If-None-Match`, `Cache-Control: no-cache`; 413 when
+    the site is over the snapshot caps, 502 for a broken index), cached in memory per (repo, sha)
+    and dropped on a merge (`crates/server/src/site_knowledge.rs`). `SWARMPRESS_FAKE_SITE` seeds the
+    fake's site repos (the e2e uses the `cinqueterre-mini` fixture).
+  - **G3 (built):** for `content/pages/blog/*.json`, `check_draft`
     validates the v2 schema and the article profile (`crates/server/src/article.rs`) and refuses an
     empty slug (422 with `issues`); the draft is refused with 409 when the path exists on base, when
     another open pull request of the company targets it, or when the content id already drafts
-    another path. Links and media are not checked yet: `gateway::check_closed_world` takes an
-    optional knowledge base and gets none until K1 lands. The blog index cannot be drafted (403).
-    Other `content/**` pages are accepted as before.
+    another path. Its links and media must be in the closed world of the knowledge pack at the base
+    head (`KnowledgeBase::closed_world_issues`; 422, one `<pointer>: <message>` issue each); with
+    `SWARMPRESS_ARTICLE_PROFILE=off` (fake GitHub only) that check is off too. The blog index cannot
+    be drafted (403). Other `content/**` pages are accepted as before.
   - **G4 (built):** finalise on merge in the same pull request: verify the reviewed head, merge
     base into the branch (`RepoApi::merge_branch`), set `status: published`, insert the blog-index
     entry as a text edit that keeps every other byte, squash-merge. An interrupted merge is resumed

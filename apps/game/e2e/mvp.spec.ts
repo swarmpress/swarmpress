@@ -240,6 +240,21 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
   expect(gateway[2]).toMatchObject({ number: gateway[0].number, headSha: gateway[1].headSha })
   expect(gateway[2].mergedSha).toMatch(/^[0-9a-f]{7,}$/)
 
+  // ---------------------------------------------------------------- the site's knowledge pack (ADR-0061, K2)
+  // The fake site repo starts as the cinqueterre-mini fixture (e2e/central-server.mjs). The session
+  // fetched its pack at start and before the standup, and bound the orchestrator to it with the site's
+  // own style guide and writer prompt; the merge moved the head, so the pack was fetched again.
+  expect(done.knowledge.bound).toMatch(/^[0-9a-f]{7,}$/)
+  expect(done.knowledge.binding).toMatchObject({ site_id: 'cinqueterre.travel', commit: done.knowledge.bound, media: 20, pages: 9, style_guide: 'pack', writer_prompt: 'pack' })
+  await expect.poll(async () => (await state(page)).knowledge.commit, { timeout: 30_000 }).toBe(gateway[2].mergedSha)
+  const knowledge = (await state(page)).knowledge
+  expect(knowledge).toMatchObject({ source: 'network', error: null })
+  expect(knowledge.refreshes.slice(0, 2)).toEqual([
+    { reason: 'start', result: 'fetched' },
+    { reason: 'standup', result: 'not-modified' },
+  ])
+  expect(knowledge.refreshes).toContainEqual({ reason: 'merge', result: 'fetched' })
+
   // ---------------------------------------------------------------- DeployLanded via the events API
   const events = await session(page, 'events')
   const landed = events.filter((e) => e.kind === 'DeployLanded')
@@ -320,6 +335,9 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
   expect(after.logged).toBe(0)
   expect(after.errors).toEqual([])
   expect(await session(page, 'gateway')).toEqual([])
+  // The pack of the merged head came from the store and was revalidated with its ETag (304).
+  expect(after.knowledge).toMatchObject({ commit: gateway[2].mergedSha, bound: gateway[2].mergedSha, error: null })
+  expect(after.knowledge.refreshes[0]).toEqual({ reason: 'start', result: 'not-modified' })
   expect(reloadErrors).toEqual([])
 
   // ---------------------------------------------------------------- a fresh browser context restores from central sync
