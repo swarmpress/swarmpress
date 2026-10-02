@@ -3,6 +3,7 @@ import { createEngine } from './render/engine'
 import { formatClock } from './render/daylight'
 import { QUALITY, type Quality } from './render/postfx'
 import { createGameScene } from './render/scene'
+import type { GameSession } from './session/session'
 import type { BuildingLayout, RenderState } from './state/render-state'
 import { mountHud } from './ui/hud'
 import { mountOverlay, selectDataSource } from './ui/mount'
@@ -12,11 +13,13 @@ import { mountOverlay, selectDataSource } from './ui/mount'
  *   renderer=webgl     force the WebGL2 fallback
  *   quality=low|medium|high
  *   t=HH:MM            run the sim to this time of day and freeze it (deterministic screenshots)
- *   speed=N            sim steps per 100 ms (offline sandbox fast-forward), default 1 = real time
+ *   speed=N            sim steps per 100 ms of real time (fast-forward), default 1 = real time
  *   facing=0..3        camera angle
  *   seed=N             sim seed, default 42
  *   tz=Area/City       HQ timezone for the real-time wall clocks, default Europe/Rome
  *   ui=mock            CEO overlay on the fixture data source (also mounts it on t= pages)
+ *   central=1          the MVP loop: dev login, company store, central server, orchestrator
+ *                      (src/session/session.ts; also login=, llm=fake, store=, ff=HH:MM)
  * With t=, the loop stops once the scene is ready and 20 frames are drawn
  * (`__simpress.still()` turns true) so screenshots are stable and cheap.
  */
@@ -43,9 +46,16 @@ async function main() {
 
   const { engine, name: renderer } = await createEngine(canvas, params.get('renderer') === 'webgl')
 
-  // Offline sandbox: the browser runs its own sim-core replica. With a server
-  // connection (M2) the same Sim is driven by lockstep frames instead.
-  const sim = Sim.demo(seed)
+  // Offline sandbox (default): the browser runs its own sim-core replica.
+  // `?central=1`: the company's sim, restored from the store or central sync
+  // and driven by the orchestration loop (docs/mvp.md). Loaded lazily so the
+  // offline page never fetches the session, store or orchestrator code.
+  let session: GameSession | null = null
+  if (params.get('central') === '1') {
+    const { startSession } = await import('./session/session')
+    session = await startSession({ params })
+  }
+  const sim = session?.sim ?? Sim.demo(seed)
   const layout = JSON.parse(sim.layout_json()) as BuildingLayout
   const game = createGameScene(engine, canvas, layout, { quality: QUALITY[quality] ?? QUALITY.high, postFx: true })
   if (params.has('facing')) game.iso.setFacing(Number(params.get('facing')))
@@ -88,7 +98,10 @@ async function main() {
   const overlay =
     frozen && !params.has('ui')
       ? null
-      : mountOverlay(document.getElementById('overlay')!, selectDataSource(sim, params, () => sim.day() * 1440 + sim.minute_of_day()))
+      : mountOverlay(
+          document.getElementById('overlay')!,
+          session?.dataSource() ?? selectDataSource(sim, params, () => sim.day() * 1440 + sim.minute_of_day()),
+        )
   // --- end CEO overlay ---
   let acc = 0
   let lastStep = -1n
@@ -98,7 +111,16 @@ async function main() {
     if (!frozen) {
       acc += engine.getDeltaTime()
       while (acc >= 100) {
-        sim.advance(speed)
+        if (session) {
+          // Step boundary: apply job outcomes and landed deploys, then step and drain effects.
+          session.boundary()
+          if (!session.paused) {
+            sim.advance(speed)
+            session.afterAdvance()
+          }
+        } else {
+          sim.advance(speed)
+        }
         acc -= 100
       }
     }
@@ -132,6 +154,7 @@ async function main() {
     frames: () => engine.frameId,
     still: () => still,
     overlay: overlay?.store ?? null,
+    session: session?.hook ?? null,
   }
 }
 
