@@ -1,6 +1,6 @@
 # ADR-0031 — The publishing plan is the shared workspace for CEO and agents
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0059
 **Date:** 2026-10-01
 
 ## Context

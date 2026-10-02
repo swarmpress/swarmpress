@@ -1,6 +1,6 @@
 # ADR-0028 — Organization model: CEO, executive office and departments
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0059
 **Date:** 2026-10-01
 
 ## Context

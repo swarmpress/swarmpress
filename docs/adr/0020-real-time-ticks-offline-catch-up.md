@@ -1,6 +1,6 @@
 # ADR-0020 — Real-time ticks and offline catch-up
 
-**Status:** Superseded in part by [ADR-0038](0038-local-first-the-browser-is-authoritative-for-a-company.md) / [ADR-0039](0039-sqlite-is-the-central-database.md); amended by ADR-0048
+**Status:** Superseded in part by [ADR-0038](0038-local-first-the-browser-is-authoritative-for-a-company.md) / [ADR-0039](0039-sqlite-is-the-central-database.md); amended by ADR-0048, ADR-0060
 **Date:** 2026-10-01
 
 ## Context

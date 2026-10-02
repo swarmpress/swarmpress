@@ -1,6 +1,6 @@
 # ADR-0048 — Executor time and continuity shifts
 
-**Status:** Accepted (amends ADR-0020, ADR-0038, ADR-0025, ADR-0027 and ADR-0036)
+**Status:** Accepted (amends ADR-0020, ADR-0038, ADR-0025, ADR-0027 and ADR-0036); amended by ADR-0060
 **Date:** 2026-10-02
 
 ## Context

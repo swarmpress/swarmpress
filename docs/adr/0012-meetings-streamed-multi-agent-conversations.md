@@ -1,6 +1,6 @@
 # ADR-0012 — Meetings as streamed multi-agent conversations with persisted transcripts
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0062
 **Date:** 2026-10-01
 
 ## Context

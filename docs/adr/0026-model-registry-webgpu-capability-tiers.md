@@ -1,6 +1,6 @@
 # ADR-0026 — Model registry and WebGPU capability tiers
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0057
 **Date:** 2026-10-01
 
 ## Context

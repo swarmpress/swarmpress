@@ -1,6 +1,6 @@
 # ADR-0011 — Orchestrator owns state transitions; LLMs return artifacts
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0058
 **Date:** 2026-10-01
 
 ## Context

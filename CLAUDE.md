@@ -1,6 +1,6 @@
 # swarm.press: development guide
 
-> **Last updated:** 2026-10-02 · **Milestone:** local-first MVP (`docs/mvp.md`) · **Branch:** `main`
+> **Last updated:** 2026-10-02 · **Milestone:** the first real MVP: the owner's company for real (`docs/mvp.md`) · **Branch:** `main`
 > **Legacy:** the TypeScript swarm.press is at tag `legacy-ts` (`git show legacy-ts:<path>`).
 > Don't port legacy files; re-specify the concepts.
 
@@ -14,9 +14,11 @@ fallback).
 - The company is extensible through a JS SDK.
 - The user's own company is the imported, still-live **cinqueterre.travel**.
 
-Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0056; ADR-0038 to 0056 define
-the current architecture; ADR-0044 to 0056 are decided and mostly not built yet). Features and
-their health: `docs/features/` plus Cockpit.
+Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0062; ADR-0038 to 0062 define
+the current architecture; ADR-0044 to 0062 are decided and mostly not built yet). Features and
+their health: `docs/features/` plus Cockpit. The current MVP is `docs/mvp.md` (the owner's
+company for real, on one resident in-browser model); its implementation designs are in
+`docs/design/`.
 
 ## Architecture in one screen (local-first, ADR-0038)
 
@@ -26,7 +28,9 @@ Browser (authoritative for its company)
     Babylon scene ◄ render state ◄ client-wasm (sim-core, deterministic)
     Preact overlay (Inbox, Plan, Staff, Finance, Performance)
     orchestration loop: sim Effect::RequestJob → orchestrator (wasm) → commands back into the sim
-       ├ LocalLlm worker (Transformers.js, WebGPU) for staff jobs
+       ├ LocalLlm: one resident model in a Worker for all staff jobs (ADR-0057; decided, NOT
+       │   wired yet): Ternary-Bonsai-2 via an extracted WebGPU engine; Transformers.js is the
+       │   fallback; no cloud model and no native model server in the MVP
        ├ store: Turso wasm on OPFS (sqlite-wasm fallback), ADR-0041
        └ extensions: JS bundles in a QuickJS-wasm sandbox with a Bun-style API, ADR-0042/0043
         │ HTTPS + WS (dev login / GitHub OAuth, company lease)
@@ -184,7 +188,10 @@ cockpit serve --watch                         # http://127.0.0.1:4747
 |---|---|
 | System, data flow, design rules | `docs/architecture/overview.md` |
 | Sim entities, systems, commands, pipeline stages | `docs/architecture/sim.md` |
-| MVP contract, central HTTP API | `docs/mvp.md`, `crates/server/README.md` |
+| The current MVP: milestones, tracks, increments, what "done" means | `docs/mvp.md` |
+| MVP implementation designs (runtime, pipeline, publish gate, game time, site path, gap analysis) | `docs/design/`, ADR-0057…0062 |
+| Local-inference and agent-loop principles (the owner's concept document) | `docs/reference/browser-agent-studio.md` |
+| Stage 0 contract, central HTTP API | `docs/mvp.md` (Stage 0), `crates/server/README.md` |
 | Local-first, storage, SDK | ADR-0038…0043, `docs/architecture/sdk.md`, `docs/guides/extending.md` |
 | Commercial model, executors, continuity, pricing, assets (decided, not built) | ADR-0044…0056, `docs/architecture/commercial-model.md` |
 | Render state | `docs/architecture/render-state.md` |

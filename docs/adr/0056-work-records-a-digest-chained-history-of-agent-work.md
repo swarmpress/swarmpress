@@ -1,6 +1,6 @@
 # ADR-0056 — Work records: a digest-chained, attributable history of agent work
 
-**Status:** Accepted (amends ADR-0046; refines ADR-0045 and ADR-0009)
+**Status:** Accepted (amends ADR-0046; refines ADR-0045 and ADR-0009); decision 8 narrowed by ADR-0058
 **Date:** 2026-10-02
 
 ## Context

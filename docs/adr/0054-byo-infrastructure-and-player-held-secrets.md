@@ -1,6 +1,6 @@
 # ADR-0054 — Bring your own infrastructure, and player-held secrets
 
-**Status:** Accepted (amends ADR-0038's "secrets never reach the browser" and CLAUDE.md rule 7)
+**Status:** Accepted (amends ADR-0038's "secrets never reach the browser" and CLAUDE.md rule 7); amended by ADR-0057
 **Date:** 2026-10-02
 
 ## Context

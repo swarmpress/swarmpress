@@ -1,6 +1,6 @@
 # ADR-0009 — Site repo canonical; one repo per company in the platform org via a GitHub App
 
-**Status:** Accepted; amended by ADR-0047
+**Status:** Accepted; amended by ADR-0047, ADR-0061
 **Date:** 2026-10-01
 
 ## Context

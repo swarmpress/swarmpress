@@ -76,3 +76,9 @@ Accepted ADRs are never rewritten.
 | [0054](0054-byo-infrastructure-and-player-held-secrets.md) | Bring your own infrastructure, and player-held secrets | Accepted |
 | [0055](0055-leagues-and-the-in-game-currency-symbol.md) | Leagues and the in-game currency symbol | Accepted |
 | [0056](0056-work-records-a-digest-chained-history-of-agent-work.md) | Work records: a digest-chained, attributable history of agent work | Accepted |
+| [0057](0057-strict-in-browser-inference-one-resident-model-on-webgpu.md) | Strict in-browser inference: one resident model on WebGPU | Accepted |
+| [0058](0058-staged-jobs-on-one-resident-model.md) | Staged jobs on one resident model | Accepted |
+| [0059](0059-publish-gate-and-failure-commands.md) | The CEO publish gate, and failures the sim can see | Accepted |
+| [0060](0060-game-time-is-independent-of-gpu-speed.md) | Game time is independent of GPU speed | Accepted |
+| [0061](0061-knowledge-pack-and-gateway-read-finalise-close.md) | Knowledge pack; gateway read, finalise and close; create-only article paths | Accepted |
+| [0062](0062-local-standup-protocol-the-pitch-round.md) | Local standup protocol: the pitch round | Accepted |

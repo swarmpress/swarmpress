@@ -1,6 +1,6 @@
 # ADR-0013 — Closed-world knowledge indexes
 
-**Status:** Accepted; amended by ADR-0050
+**Status:** Accepted; amended by ADR-0050, ADR-0061
 **Date:** 2026-10-01
 
 ## Context

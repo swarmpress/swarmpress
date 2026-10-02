@@ -1,6 +1,6 @@
 # ADR-0024 — Hybrid inference: browser LLMs for staff, Claude for agency/heavy tasks
 
-**Status:** Accepted; amended by ADR-0044
+**Status:** Accepted; amended by ADR-0044, ADR-0057, ADR-0058
 **Date:** 2026-10-01
 
 ## Context
