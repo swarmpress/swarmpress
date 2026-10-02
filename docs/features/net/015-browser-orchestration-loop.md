@@ -10,6 +10,8 @@ paths:
 adrs:
   - ADR-0011
   - ADR-0038
+  - ADR-0058
+  - ADR-0060
 ---
 
 # Browser orchestration loop
@@ -34,3 +36,9 @@ Not there yet: the session has no real local model. Without `?llm=fake` (the scr
 model) every job fails loudly.
 
 Acceptance: the MVP loop in `docs/mvp.md` passes end to end in `apps/game/e2e/mvp.spec.ts`.
+
+MVP increments on this loop (`docs/mvp.md`): the due-step clock hold and earliest-due queue
+(FEAT-080, ADR-0060); stage progress, timeout and cancel (FEAT-032, ADR-0058); the utterance queue
+for speech bubbles (FEAT-025); the deploy watchdog (FEAT-047); the orphan sweeper (FEAT-039); and
+bounded growth with a 7-day soak test (track W: ring buffers for the bridge call log, gateway calls
+and received events; `loop.jobs` capped; no full plan parse per step).

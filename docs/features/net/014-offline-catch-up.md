@@ -13,6 +13,7 @@ adrs:
   - ADR-0036
   - ADR-0038
   - ADR-0048
+  - ADR-0060
 ---
 
 # Offline catch-up: restore and resume
@@ -39,6 +40,9 @@ What exists today (`apps/game/src/catchup/replay.ts`, used by `restore()` in
 
 Still to do: restore from a world snapshot instead of the seed (FEAT-060), central-first
 restore (FEAT-012), and letting the day finish before the company rests.
+
+The host-side clock rules that make game time independent of GPU speed (hold while work is due,
+clamp, rest, hidden tab) are FEAT-080 (ADR-0060).
 
 Acceptance:
 - A restore reproduces the checkpoint hash, or aborts.

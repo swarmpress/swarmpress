@@ -16,6 +16,8 @@ adrs:
 
 # Staff FSM and pathfinding
 
+> **Status note (2026-10-02):** The code exists (`crates/sim-core/src/staff.rs`, `pathfinding.rs`, movement in `world.rs`) and the render state carries poses and paths; the status lags because no test file is linked to this feature yet.
+
 Staff with persona, role, seniority, traits (rigor, speed, creativity, sociability, resilience,
 ambition), skills, morale, fatigue, salary, home desk, assignment, activity, position and path. A
 behaviour FSM driven by day phase and assignment (arrive, sit, work, meet, lunch, overtime, leave)

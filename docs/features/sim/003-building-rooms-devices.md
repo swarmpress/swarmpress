@@ -17,6 +17,8 @@ adrs:
 
 # Building, rooms and devices
 
+> **Status note (2026-10-02):** The code exists (`crates/sim-core/src/building.rs`, `equipment.rs`, room and device commands in `world.rs`) and runs in the 13-person scenario; the status lags because no test file is linked to this feature yet.
+
 Lot, floors, walls, doors and windows on a 1 m grid. Rooms (Newsroom, EditorOffice, MeetingRoom,
 Archive, PhotoStudio, SeoLab, TranslationDesk, DesignStudio, CeoOffice, Kitchen, ServerRoom) with
 level, rect, doors, capacity and derived light (Off/Dim/On). Devices/equipment (Desk, Monitor tier,

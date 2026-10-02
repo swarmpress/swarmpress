@@ -13,11 +13,16 @@ paths:
   - apps/game/src/net/central.ts
   - apps/game/src/net/central.test.ts
   - apps/game/e2e/orchestrator.spec.ts
+  - crates/github/src/content.rs
+  - crates/github/src/api.rs
+  - apps/game/src/orchestration/sweeper.ts
 adrs:
   - ADR-0009
   - ADR-0038
   - ADR-0045
   - ADR-0050
+  - ADR-0061
+  - ADR-0058
 ---
 
 # Content gateway and events inbox
@@ -43,3 +48,14 @@ Planned changes:
 - **Assets (FEAT-075, ADR-0050):** the draft endpoint validates media sidecars; the merge refuses
   if a referenced asset is missing and promotes staged assets before merging.
 - **Quotas (FEAT-067):** 60 writes per hour and 20 merges per day per company.
+- **MVP (ADR-0061; design in [`docs/design/mvp-pipeline.md`](../../design/mvp-pipeline.md) sections
+  3, 4, 7 and 8):**
+  - **K1:** `GET /api/gateway/knowledge`, the knowledge pack.
+  - **G3:** `check_draft` validates the v2 schema and the article profile, checks links and media
+    against the site's indexes, refuses a path that exists on base or is targeted by another open
+    pull request of the company, and refuses an empty slug.
+  - **G4:** finalise on merge in the same pull request: verify the reviewed head, merge base into
+    the branch, set `status: published`, append the blog-index entry, squash-merge.
+  - **G6:** attribution fields; the persona as author of draft commits; trailers on the squash
+    commit.
+  - **G7:** `POST /api/gateway/close` for cancelled items, used by a day-start sweeper.

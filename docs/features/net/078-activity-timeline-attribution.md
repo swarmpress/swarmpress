@@ -12,10 +12,14 @@ paths:
   - crates/server/tests/gateway.rs
   - crates/orchestrator/src/gateway.rs
   - "crates/github/**"
+  - apps/game/src/store/schema.ts
+  - apps/game/src/store/company-store.ts
+  - apps/game/src/orchestrator/bridge.ts
 adrs:
   - ADR-0056
   - ADR-0045
   - ADR-0009
+  - ADR-0058
 ---
 
 # Activity timeline and commit attribution
@@ -34,6 +38,22 @@ hold who did what, in which job and with which model; this feature shows them.
   lease check are unchanged.
 
 Depends on: FEAT-061 (work records), FEAT-013 (read-only mode for the non-holder).
+
+## MVP: the lean version (ADR-0058; increments P5, U4, G6)
+
+Design: [`docs/design/mvp-pipeline.md`](../../design/mvp-pipeline.md) section 8.
+
+The MVP does not wait for work records (FEAT-061):
+
+- **P5:** an `activity` table in the browser store, one row per stage attempt and one per job
+  (staff, role, model, tokens, wall time, game step, result, references), written from orchestrator
+  progress events. Shaped so ADR-0056 work records can absorb it.
+- **U4:** the Activity panel lists jobs newest first with expandable stages, filters by staff, work
+  item and kind, and pins the job in flight; a "Now" strip in the HUD.
+- **G6:** attribution lands before the first live merge. Draft-branch commits carry the persona as
+  author. The squash commit keeps the platform as author (the merge API has no author field) and
+  carries `Co-authored-by` plus provenance trailers; this narrows ADR-0056 decision 8.
+- Revision diffs and following from another device stay with FEAT-061.
 
 ## Acceptance criteria
 

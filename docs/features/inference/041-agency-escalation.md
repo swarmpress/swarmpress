@@ -21,6 +21,9 @@ Executor policy per `JobKind` (`Browser | Claude | BrowserThenClaude`, min tier)
 appears as Agency contractors; escalation after 3 rejections, failing schema repair, weak tier or a
 CEO "send to agency" ticket.
 
+> **MVP note (ADR-0057):** the MVP runs strictly local inference. Agency escalation and the
+> `browser_then_claude` / `claude` executors are out of the MVP, not withdrawn.
+
 Decisions: [ADR-0024](../../adr/0024-hybrid-inference-browser-llms-and-claude.md), [ADR-0010](../../adr/0010-claude-over-raw-http.md).
 
 Increment B5: an Agency job is real spend. It runs through the central LLM proxy (FEAT-064) as

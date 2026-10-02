@@ -19,6 +19,17 @@ in this repo must keep building.
 
 Decisions: [ADR-0023](../../adr/0023-cinqueterre-migration-and-cutover.md), [ADR-0016](../../adr/0016-site-kit-distribution-via-npm.md).
 
+## MVP: the minimum safe subset (increment G1)
+
+Design: [`docs/design/mvp-gap-analysis.md`](../../design/mvp-gap-analysis.md) section B.8.
+
+The MVP needs only step 0 before any agent pull request merges into the live repository: push the
+tag `legacy-final`, pin `deploy.yml`'s monorepo checkout to `391d5de`, run one manual deploy to
+confirm green, record a small baseline, and enable delete-branch-on-merge. It changes the live site
+repository and needs the owner's go. The deploy workflow is unpinned today and no deploy has run
+since `main` was replaced. Steps 1 to 6 are not needed for the MVP; the intent of step 7 (a human
+gate) is ADR-0059.
+
 ## Acceptance criteria
 
 - [ ] Step 0 patch applied and the live deploy is green against `legacy-final`.

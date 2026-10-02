@@ -6,8 +6,12 @@ importance: high
 paths:
   - "apps/game/src/ui/**"
   - "apps/game/e2e/ui.spec.ts"
+  - apps/game/src/ui/components/ArticlePreview.tsx
+  - apps/game/src/ui/hud.tsx
 adrs:
   - ADR-0018
+  - ADR-0059
+  - ADR-0060
 ---
 
 # Overlay UI (CEO management)
@@ -35,6 +39,20 @@ directly. Frozen screenshot pages (`?t=`) don't mount the overlay unless `?ui=` 
 visual baselines are unaffected.
 
 Decisions: [ADR-0018](../../adr/0018-overlay-ui-in-preact.md).
+
+## MVP increments (U1, U2; ADR-0059, ADR-0060)
+
+Design: [`docs/design/mvp-pipeline.md`](../../design/mvp-pipeline.md) section 5 and
+[`docs/design/mvp-gap-analysis.md`](../../design/mvp-gap-analysis.md) section C.
+
+- **U1:** the `PublishApproval` ticket in the Inbox: title, dek, score, editor notes, measured
+  checks shown apart from the editor's opinion, words against target, the pull-request link, and
+  `ArticlePreview.tsx` rendering the page blocks in a sandboxed `srcdoc` iframe.
+- **U2:** fixes on live data: ticket text names the article; the false "no secretary" text goes;
+  actions the sim lacks are disabled; CEO comments persist; pull-request and page links; empty Plan
+  tabs and the Performance panel are hidden; Finance alert labels and a "revenue not modelled" note.
+- **T:** the HUD status chip (Running / Held / Resting / Model loading / Lease lost / Halted), pause
+  and speed buttons, a boot screen (FEAT-080).
 
 ## Acceptance criteria
 

@@ -15,6 +15,8 @@ adrs:
 
 # Staff stats, morale, fatigue and promotion
 
+> **Status note (2026-10-02):** Morale, fatigue and promotion exist in `crates/sim-core/src/world.rs`; there are no skills or XP. The status lags because no test file is linked to this feature yet.
+
 Traits drive sim speed and error rate and render into a work-style paragraph in the prompt.
 Seniority (Junior/Mid/Senior/Star) picks the model. Skill grows from completed stages and editor
 scores; the cap triggers a promotion-request ticket. Fatigue rises with work and doubles after 18:00

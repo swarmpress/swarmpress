@@ -4,9 +4,14 @@ title: "GPU scheduler"
 status: planned
 importance: high
 paths:
-  - apps/game/src/llm/scheduler.ts
+  - apps/game/src/llm/gpu-scheduler.ts
+  - apps/game/src/llm/gpu-scheduler.test.ts
+  - apps/game/src/render/postfx.ts
+  - apps/game/src/main.ts
 adrs:
   - ADR-0027
+  - ADR-0057
+  - ADR-0060
 ---
 
 # GPU scheduler
@@ -15,6 +20,17 @@ Watches frame time; drops one quality tier and caps FPS at 30 while the LLM gene
 idle; optional pause on hidden tabs; enforces the VRAM budget.
 
 Decisions: [ADR-0027](../../adr/0027-gpu-sharing-renderer-and-local-llm.md).
+
+## MVP: renderer hooks (ADR-0057, ADR-0060)
+
+Design: [`docs/design/mvp-runtime.md`](../../design/mvp-runtime.md) ("Coexistence with Babylon").
+
+The scheduler's state machine exists with unit tests, but it has no renderer hook: scene quality is
+fixed at scene creation in `apps/game/src/main.ts`. R8 adds a real `RendererHooks` implementation so
+the scheduler can drop the scene's quality tier while the resident model generates. Two WebGPU
+devices share one GPU (Babylon on the main thread, the engine in the Worker); the lever against
+contention is the engine's decode pipeline depth. Phase A only measures frame times at fixed
+`?quality=` tiers. The status stays `planned` until the hook and its evidence land.
 
 ## Acceptance criteria
 

@@ -19,3 +19,4 @@ Local-first networking (ADR-0038): the central Rust service (`crates/server`, SQ
 | [FEAT-061](061-text-packs-job-ledger.md) | Backup completeness: work records, the projection and the job ledger | planned | critical |
 | [FEAT-062](062-host-package.md) | Shared executor host package (packages/host) | planned | high |
 | [FEAT-078](078-activity-timeline-attribution.md) | Activity timeline and commit attribution | planned | high |
+| [FEAT-080](080-game-time-hold-and-rest.md) | Game time independent of GPU speed: clock hold and rest | planned | high |

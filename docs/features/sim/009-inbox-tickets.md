@@ -14,6 +14,8 @@ adrs:
 
 # Inbox and tickets
 
+> **Status note (2026-10-02):** Tickets, options, defaults, deadlines and delegation exist in `crates/sim-core/src/inbox.rs`; the Inbox panel reads them. The status lags because no test file is linked to this feature yet. ADR-0059 adds the `PublishApproval`, `StandupFailed`, `DeployFailed`, `NeedsMedia` and `NeedsPage` kinds (FEAT-079).
+
 QuestionTickets are the only channel to the CEO. Kinds: pitch, hire (3 candidate cards),
 salary/promotion, resignation, redesign approval, escalation (NEEDS_PAGE / NEEDS_MEDIA / editor
 deadlock), event response, loan. Each has options, a `default_option` and a `deadline_step` so
