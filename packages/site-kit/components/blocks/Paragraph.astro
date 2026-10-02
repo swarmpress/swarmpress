@@ -1,0 +1,11 @@
+---
+/** Fallback: paragraph. */
+import RichText from '../RichText.astro'
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, unknown>; ctx: RenderContext }
+---
+
+<div class="kit-container kit-prose-wrap">
+  <RichText value={block.markdown ?? block.text} ctx={ctx} />
+</div>

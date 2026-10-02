@@ -1,0 +1,13 @@
+---
+/** heading: section headings on the reading measure. */
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const level = [2, 3, 4].includes(block.level) ? block.level : 2
+const H = `h${level}`
+const size = level === 2 ? 'text-3xl md:text-4xl mt-14' : level === 3 ? 'text-2xl mt-10' : 'text-xl mt-8'
+---
+
+<div class="st-container">
+  <H id={block.id} class:list={['st-measure mb-4 scroll-mt-24 font-serif leading-tight', size]}>{ctx.l(block.text)}</H>
+</div>

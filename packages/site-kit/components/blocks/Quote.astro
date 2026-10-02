@@ -1,0 +1,28 @@
+---
+/** Fallback: quote, editor-note, editorial-interlude. */
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const text = ctx.l(block.text ?? block.quote)
+const who = ctx.l(block.attribution ?? block.author)
+const role = ctx.l(block.role)
+const eyebrow = ctx.l(block.badge)
+const title = ctx.l(block.title)
+const avatar = block.type === 'editor-note' ? ctx.media(block.image) : undefined
+---
+
+<section class="kit-container kit-section kit-quote-wrap">
+  {eyebrow && <p class="kit-eyebrow">{eyebrow}</p>}
+  {title && <h2 class="kit-block-title">{title}</h2>}
+  <figure class="kit-quote">
+    <blockquote><p>{text}</p></blockquote>
+    {
+      (who || role) && (
+        <figcaption>
+          {avatar && <img class="kit-avatar" src={avatar.src} alt="" width="48" height="48" loading="lazy" />}
+          <span>{[who, role].filter(Boolean).join(', ')}</span>
+        </figcaption>
+      )
+    }
+  </figure>
+</section>

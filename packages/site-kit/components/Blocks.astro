@@ -1,0 +1,28 @@
+---
+/**
+ * Block dispatcher. Each block renders with `{ block, ctx, index }` through the
+ * registry: theme override → custom `x:` block → kit neutral fallback.
+ */
+import type { RenderContext } from '../src/context'
+import { getRuntime } from '../src/runtime/index'
+
+interface Props {
+  blocks?: { type: string; [k: string]: unknown }[]
+  ctx: RenderContext
+}
+const { blocks = [], ctx } = Astro.props as Props
+const rt = getRuntime()
+const rendered = blocks
+  .filter((b) => b && typeof b.type === 'string')
+  .map((block, index) => ({ block, index, ...rt.resolveBlock(block.type) }))
+---
+
+{
+  rendered.map(({ block, index, component: C, source }) =>
+    C ? (
+      <C block={block} ctx={ctx} index={index} />
+    ) : import.meta.env.DEV ? (
+      <div class="kit-missing" role="note">No renderer for block <code>{block.type}</code> ({source})</div>
+    ) : null,
+  )
+}

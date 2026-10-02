@@ -1,0 +1,32 @@
+---
+/** Collection items as cards (title, image, short text, link to the detail page when it exists). */
+import type { CollectionItemRecord } from '../src/content/load'
+import type { RenderContext } from '../src/context'
+
+interface Props {
+  items: CollectionItemRecord[]
+  ctx: RenderContext
+}
+const { items, ctx } = Astro.props as Props
+const text = (i: CollectionItemRecord) =>
+  ctx.l(i.data.summary ?? i.data.intro ?? i.data.description ?? i.data.shortDescription ?? i.data.blurb)
+const cards = items.map((i) => ({ item: i, title: ctx.itemTitle(i), href: ctx.itemHref(i), image: ctx.itemImage(i), text: text(i) }))
+---
+
+{
+  cards.length === 0 ? (
+    <p class="kit-muted">{ctx.t('collection.empty')}</p>
+  ) : (
+    <ul class="kit-grid" role="list">
+      {cards.map((c) => (
+        <li class="kit-card">
+          {c.image && <img class="kit-card__img" src={c.image.src} alt={c.image.alt ?? ''} loading="lazy" decoding="async" />}
+          <div class="kit-card__body">
+            <h3 class="kit-card__title">{c.href ? <a href={c.href}>{c.title}</a> : c.title}</h3>
+            {c.text && <p class="kit-card__text">{c.text.length > 220 ? c.text.slice(0, 217).trimEnd() + '…' : c.text}</p>}
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}

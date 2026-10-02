@@ -1,0 +1,9 @@
+---
+/** Default CollectionIndex layout: optional page blocks, then the items as cards. */
+import Page from './Page.astro'
+import type { RenderContext } from '../../src/context'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+---
+
+<Page ctx={ctx} />

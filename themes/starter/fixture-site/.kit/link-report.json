@@ -1,0 +1,90 @@
+{
+  "generatedAt": "2026-10-01T20:21:17.255Z",
+  "checked": 34,
+  "broken": [
+    {
+      "file": "content/pages/blog/5-hidden-gelaterias-you-need-to-try.json",
+      "path": "/body/0/sidebar/relatedPosts/0/url",
+      "lang": "en",
+      "href": "/blog/the-ultimate-guide-to-cinque-terres-best-beaches",
+      "resolved": "/en/blog/the-ultimate-guide-to-cinque-terres-best-beaches"
+    },
+    {
+      "file": "content/pages/blog/5-hidden-gelaterias-you-need-to-try.json",
+      "path": "/body/0/sidebar/relatedPosts/0/url",
+      "lang": "de",
+      "href": "/blog/the-ultimate-guide-to-cinque-terres-best-beaches",
+      "resolved": "/de/blog/the-ultimate-guide-to-cinque-terres-best-beaches"
+    },
+    {
+      "file": "content/pages/blog/5-hidden-gelaterias-you-need-to-try.json",
+      "path": "/body/0/sidebar/relatedPosts/0/url",
+      "lang": "fr",
+      "href": "/blog/the-ultimate-guide-to-cinque-terres-best-beaches",
+      "resolved": "/fr/blog/the-ultimate-guide-to-cinque-terres-best-beaches"
+    },
+    {
+      "file": "content/pages/blog/5-hidden-gelaterias-you-need-to-try.json",
+      "path": "/body/0/sidebar/relatedPosts/0/url",
+      "lang": "it",
+      "href": "/blog/the-ultimate-guide-to-cinque-terres-best-beaches",
+      "resolved": "/it/blog/the-ultimate-guide-to-cinque-terres-best-beaches"
+    },
+    {
+      "file": "content/pages/riomaggiore/restaurants.json",
+      "path": "/body/5/actions/0/href",
+      "lang": "en",
+      "href": "/en/itinerary",
+      "resolved": "/en/itinerary"
+    },
+    {
+      "file": "content/pages/riomaggiore/restaurants.json",
+      "path": "/body/5/actions/0/href",
+      "lang": "de",
+      "href": "/de/itinerary",
+      "resolved": "/de/itinerary"
+    },
+    {
+      "file": "content/pages/riomaggiore/restaurants.json",
+      "path": "/body/5/actions/0/href",
+      "lang": "fr",
+      "href": "/fr/itinerary",
+      "resolved": "/fr/itinerary"
+    },
+    {
+      "file": "content/pages/riomaggiore/restaurants.json",
+      "path": "/body/5/actions/0/href",
+      "lang": "it",
+      "href": "/it/itinerary",
+      "resolved": "/it/itinerary"
+    },
+    {
+      "file": "content/pages/riomaggiore.json",
+      "path": "/body/5/actions/0/href",
+      "lang": "en",
+      "href": "/en/itinerary",
+      "resolved": "/en/itinerary"
+    },
+    {
+      "file": "content/pages/riomaggiore.json",
+      "path": "/body/5/actions/0/href",
+      "lang": "de",
+      "href": "/en/itinerary",
+      "resolved": "/en/itinerary"
+    },
+    {
+      "file": "content/pages/riomaggiore.json",
+      "path": "/body/5/actions/0/href",
+      "lang": "fr",
+      "href": "/en/itinerary",
+      "resolved": "/en/itinerary"
+    },
+    {
+      "file": "content/pages/riomaggiore.json",
+      "path": "/body/5/actions/0/href",
+      "lang": "it",
+      "href": "/en/itinerary",
+      "resolved": "/en/itinerary"
+    }
+  ]
+}

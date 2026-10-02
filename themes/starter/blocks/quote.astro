@@ -1,0 +1,15 @@
+---
+/** quote: a large serif pull quote. */
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const who = ctx.l(block.attribution)
+---
+
+<figure class="st-container my-14">
+  <div class="mx-auto max-w-3xl text-center">
+    <span aria-hidden="true" class="block font-serif text-7xl leading-none text-accent/40">“</span>
+    <blockquote class="font-serif text-2xl leading-snug text-balance md:text-3xl">{ctx.l(block.text)}</blockquote>
+    {who && <figcaption class="st-eyebrow mt-5">{who}</figcaption>}
+  </div>
+</figure>

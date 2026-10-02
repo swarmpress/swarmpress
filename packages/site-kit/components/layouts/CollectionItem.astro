@@ -1,0 +1,13 @@
+---
+/** Default CollectionItem layout: a detail page generated from the item's fields. */
+import Blocks from '../Blocks.astro'
+import AutoContent from '../AutoContent.astro'
+import Breadcrumb from '../Breadcrumb.astro'
+import type { RenderContext } from '../../src/context'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+const body = ctx.page?.data.body ?? []
+---
+
+<Breadcrumb ctx={ctx} />
+{body.length > 0 ? <Blocks blocks={body} ctx={ctx} /> : <AutoContent ctx={ctx} heading />}

@@ -1,0 +1,22 @@
+---
+/**
+ * Starter Base layout. Rendered inside the kit's <body>; the kit owns <head>
+ * (SEO, hreflang, tracker). Chrome comes from ctx.components so a site can
+ * swap one piece without forking the layout.
+ */
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { ctx } = Astro.props as { ctx: RenderContext & { components: any } }
+const { Header, Footer } = ctx.components
+---
+
+<a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-fg focus:px-4 focus:py-2 focus:text-bg">
+  {ctx.t('nav.skip')}
+</a>
+<div class="flex min-h-screen flex-col">
+  <Header ctx={ctx} />
+  <main id="main" class="flex-1" tabindex="-1">
+    <slot />
+  </main>
+  <Footer ctx={ctx} />
+</div>

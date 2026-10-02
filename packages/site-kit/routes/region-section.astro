@@ -1,0 +1,13 @@
+---
+/** Injected by @swarm-press/site-kit (route id "region-section"). Do not copy into a theme. */
+import KitPage from '../components/KitPage.astro'
+import { pathsFor } from '../src/runtime/index'
+
+export function getStaticPaths() {
+  return pathsFor('region-section')
+}
+
+const { path } = Astro.props as { path: string }
+---
+
+<KitPage path={path} />

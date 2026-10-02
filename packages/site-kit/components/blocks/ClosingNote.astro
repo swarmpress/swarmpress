@@ -1,0 +1,30 @@
+---
+/** Fallback: closing-note, cta-section. */
+import BlockHeader from './BlockHeader.astro'
+import RichText from '../RichText.astro'
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const raw = Array.isArray(block.actions) ? block.actions : Array.isArray(block.buttons) ? block.buttons : []
+const actions = raw
+  .map((a: any, i: number) => ({ label: ctx.l(a.label ?? a.text), href: ctx.href(a.href ?? a.url), primary: (a.variant ?? (i === 0 ? 'primary' : 'secondary')) === 'primary' }))
+  .filter((a: any) => a.label && a.href)
+---
+
+<section class="kit-section kit-closing">
+  <div class="kit-container">
+    <BlockHeader ctx={ctx} eyebrow={block.badge} title={block.title} subtitle={block.type === 'cta-section' ? block.subtitle : undefined} />
+    <RichText value={block.content} ctx={ctx} />
+    {
+      actions.length > 0 && (
+        <p class="kit-actions">
+          {actions.map((a: any) => (
+            <a class:list={['kit-button', !a.primary && 'kit-button--secondary']} href={a.href}>
+              {a.label}
+            </a>
+          ))}
+        </p>
+      )
+    }
+  </div>
+</section>

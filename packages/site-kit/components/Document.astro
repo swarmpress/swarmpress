@@ -1,0 +1,48 @@
+---
+/**
+ * The kit-owned HTML document. Themes cannot remove anything here: SEO head
+ * (title, description, canonical, hreflang, Open Graph, JSON-LD), the generated
+ * token/Tailwind stylesheet and the first-party tracker tag. The theme's Base
+ * layout renders inside <body>.
+ */
+import 'virtual:site-kit/styles'
+import type { RenderContext } from '../src/context'
+import { getRuntime } from '../src/runtime/index'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+const Base = getRuntime().layouts.Base
+const h = ctx.head
+const ld = (j: unknown) => JSON.stringify(j).replace(/</g, '\\u003c')
+---
+
+<!doctype html>
+<html lang={ctx.lang} dir={ctx.dir}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{h.title}</title>
+    {h.description && <meta name="description" content={h.description} />}
+    {h.robots && <meta name="robots" content={h.robots} />}
+    <link rel="canonical" href={h.canonical} />
+    {h.alternates.map((a) => <link rel="alternate" hreflang={a.hreflang} href={a.href} />)}
+    {h.xDefault && <link rel="alternate" hreflang="x-default" href={h.xDefault} />}
+    <meta property="og:type" content={h.ogType} />
+    <meta property="og:title" content={h.title} />
+    {h.description && <meta property="og:description" content={h.description} />}
+    <meta property="og:url" content={h.canonical} />
+    <meta property="og:site_name" content={h.siteName} />
+    <meta property="og:locale" content={h.ogLocale} />
+    {h.ogImage && <meta property="og:image" content={h.ogImage} />}
+    <meta name="twitter:card" content={h.ogImage ? 'summary_large_image' : 'summary'} />
+    {h.favicon && <link rel="icon" href={h.favicon} />}
+    <meta name="generator" content="@swarm-press/site-kit" />
+    {h.jsonLd.map((j) => <script is:inline type="application/ld+json" set:html={ld(j)} />)}
+    {h.tracker && <script is:inline defer src={h.tracker.src} data-project={h.tracker.project} data-endpoint={h.tracker.endpoint}></script>}
+    <slot name="head" />
+  </head>
+  <body class="kit-body">
+    <Base ctx={ctx}>
+      <slot />
+    </Base>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+---
+/** editorial-intro: badge, pull quote and a two-column reading section with a drop cap. */
+import RichText from '@swarm-press/site-kit/components/RichText.astro'
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const left = block.leftContent ?? block.content
+const right = block.rightContent
+const twoCols = !!ctx.l(right)
+---
+
+<section class="st-container py-14 md:py-20">
+  <div class="mx-auto max-w-5xl">
+    {ctx.l(block.badge) && <p class="st-eyebrow">{ctx.l(block.badge)}</p>}
+    {ctx.l(block.title) && <h2 class="mt-2 font-serif text-3xl md:text-4xl">{ctx.l(block.title)}</h2>}
+    {
+      ctx.l(block.quote) && (
+        <p class="mt-5 max-w-4xl border-l-4 border-accent pl-5 font-serif text-2xl leading-snug text-balance italic md:text-3xl">{ctx.l(block.quote)}</p>
+      )
+    }
+    <div class:list={['st-prose mt-10 grid gap-x-12', twoCols && 'md:grid-cols-2']}>
+      <div class="st-dropcap"><RichText value={left} ctx={ctx} /></div>
+      {twoCols && <div><RichText value={right} ctx={ctx} /></div>}
+    </div>
+  </div>
+</section>

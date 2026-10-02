@@ -1,0 +1,22 @@
+---
+/** Fallback: faq, faq-section (native <details>, no JS). */
+import BlockHeader from './BlockHeader.astro'
+import RichText from '../RichText.astro'
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const items = (Array.isArray(block.items) ? block.items : Array.isArray(block.faqs) ? block.faqs : []).filter((i: any) => i && (i.question || i.q))
+const title = block.title ?? block.heading ?? (block.type === 'faq' ? undefined : ctx.t('faq.title'))
+---
+
+<section class="kit-container kit-section kit-faq">
+  <BlockHeader ctx={ctx} eyebrow={block.eyebrow} title={title} subtitle={block.subtitle} />
+  {
+    items.map((i: any) => (
+      <details class="kit-faq__item">
+        <summary>{ctx.l(i.question ?? i.q)}</summary>
+        <RichText value={i.answer ?? i.a} ctx={ctx} />
+      </details>
+    ))
+  }
+</section>

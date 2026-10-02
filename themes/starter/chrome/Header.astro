@@ -1,0 +1,33 @@
+---
+/** Starter header: masthead, section nav, language switcher, region bar. */
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { ctx } = Astro.props as { ctx: RenderContext & { components: any } }
+const { LanguageSwitcher, RegionNav } = ctx.components
+---
+
+<header class="border-b border-border bg-bg">
+  <div class="st-container flex flex-wrap items-center gap-x-8 gap-y-3 py-4">
+    <a href={ctx.brand.homeHref} class="st-focus mr-auto flex items-center gap-3 text-fg no-underline">
+      {ctx.brand.logo && <img src={ctx.brand.logo.src} alt="" width="36" height="36" class="size-9 rounded-full object-cover" />}
+      <span class="font-serif text-2xl font-bold tracking-tight">{ctx.brand.name}</span>
+    </a>
+    {
+      ctx.nav.sections.length > 0 && (
+        <nav aria-label={ctx.t('nav.menu')} class="order-3 w-full md:order-none md:w-auto">
+          <ul class="flex flex-wrap gap-x-6 gap-y-1 text-sm font-semibold">
+            {ctx.nav.sections.map((s) => (
+              <li>
+                <a href={s.href} aria-current={s.current ? 'page' : undefined} class="st-link aria-[current=page]:text-accent">
+                  {s.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )
+    }
+    <LanguageSwitcher ctx={ctx} />
+  </div>
+  <RegionNav ctx={ctx} />
+</header>

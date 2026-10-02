@@ -1,0 +1,13 @@
+---
+/** Fallback: blog-index. Lists the site's real posts (closed world); the block's intro text frames them. */
+import BlockHeader from './BlockHeader.astro'
+import PostList from '../PostList.astro'
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+---
+
+<section class="kit-container kit-section">
+  <BlockHeader ctx={ctx} title={block.introTitle ?? ctx.title} subtitle={block.introSubtitle} level={1} />
+  <PostList ctx={ctx} />
+</section>

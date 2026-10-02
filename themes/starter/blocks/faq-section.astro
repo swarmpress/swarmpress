@@ -1,0 +1,31 @@
+---
+/** faq-section: an accessible accordion (native <details>, no JavaScript). */
+import RichText from '@swarm-press/site-kit/components/RichText.astro'
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const items = (Array.isArray(block.items) ? block.items : Array.isArray(block.faqs) ? block.faqs : []).filter((i: any) => i?.question)
+const title = ctx.l(block.title ?? block.heading) || ctx.t('faq.title')
+---
+
+<section class="st-container py-14">
+  <div class="mx-auto grid max-w-5xl gap-10 md:grid-cols-[1fr_2fr]">
+    <header>
+      {ctx.l(block.eyebrow) && <p class="st-eyebrow">{ctx.l(block.eyebrow)}</p>}
+      <h2 class="mt-2 font-serif text-3xl md:text-4xl">{title}</h2>
+      {ctx.l(block.subtitle) && <p class="mt-3 text-muted">{ctx.l(block.subtitle)}</p>}
+    </header>
+    <div class="st-faq divide-y divide-border border-y border-border">
+      {
+        items.map((i: any) => (
+          <details class="group py-1">
+            <summary class="st-focus flex cursor-pointer list-none items-center justify-between py-4 text-lg font-semibold">{ctx.l(i.question)}</summary>
+            <div class="pb-5 text-muted [&_p]:mb-3">
+              <RichText value={i.answer} ctx={ctx} />
+            </div>
+          </details>
+        ))
+      }
+    </div>
+  </div>
+</section>

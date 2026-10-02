@@ -1,0 +1,115 @@
+{
+  "slug": "manarola",
+  "seo": {
+    "title": {
+      "en": "Manarola | Cinque Terre Dispatch",
+      "de": "Manarola | Cinque Terre Dispatch",
+      "fr": "Manarola | Cinque Terre Dispatch",
+      "it": "Manarola | Cinque Terre Dispatch"
+    },
+    "description": {
+      "en": "Explore Manarola, the most photogenic village of Cinque Terre. Famous for its vibrant harbor, wine terraces, and the beloved Via dell'Amore.",
+      "de": "Entdecken Sie Manarola, das fotogenste Dorf der Cinque Terre. Berühmt für seinen lebhaften Hafen, Weinterrassen und die beliebte Via dell'Amore.",
+      "fr": "Explorez Manarola, le village le plus photogénique des Cinque Terre. Célèbre pour son port vibrant, ses terrasses viticoles et la Via dell'Amore.",
+      "it": "Esplora Manarola, il villaggio più fotogenico delle Cinque Terre. Famoso per il suo vivace porto, le terrazze vinicole e l'amata Via dell'Amore."
+    }
+  },
+  "hero": {
+    "image": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
+    "imageAlt": {
+      "en": "Manarola at sunset with colorful buildings",
+      "de": "Manarola bei Sonnenuntergang mit bunten Gebäuden",
+      "fr": "Manarola au coucher du soleil avec des bâtiments colorés",
+      "it": "Manarola al tramonto con edifici colorati"
+    },
+    "tagline": {
+      "en": "Cinque Terre",
+      "de": "Cinque Terre",
+      "fr": "Cinque Terre",
+      "it": "Cinque Terre"
+    },
+    "title": {
+      "en": "Manarola",
+      "de": "Manarola",
+      "fr": "Manarola",
+      "it": "Manarola"
+    },
+    "subtitle": {
+      "en": "The most photographed village in Cinque Terre, where ancient vineyards cascade down to a tiny harbor filled with colorful boats.",
+      "de": "Das meistfotografierte Dorf der Cinque Terre, wo uralte Weinberge zu einem kleinen Hafen voller bunter Boote hinabkaskadieren.",
+      "fr": "Le village le plus photographié des Cinque Terre, où d'anciens vignobles descendent en cascade vers un petit port rempli de bateaux colorés.",
+      "it": "Il villaggio più fotografato delle Cinque Terre, dove antichi vigneti scendono a cascata verso un piccolo porto pieno di barche colorate."
+    },
+    "primaryCta": {
+      "label": {
+        "en": "Explore Manarola",
+        "de": "Manarola erkunden",
+        "fr": "Explorer Manarola",
+        "it": "Esplora Manarola"
+      },
+      "href": "#villages"
+    },
+    "secondaryCta": {
+      "label": {
+        "en": "Plan Your Visit",
+        "de": "Ihren Besuch planen",
+        "fr": "Planifier votre visite",
+        "it": "Pianifica la tua visita"
+      },
+      "href": "#plan"
+    }
+  },
+  "intro": {
+    "leadStory": {
+      "title": {
+        "en": "Manarola, The Wine-Maker's Paradise",
+        "de": "Manarola, Das Paradies der Winzer",
+        "fr": "Manarola, Le Paradis des Vignerons",
+        "it": "Manarola, Il Paradiso dei Viticoltori"
+      },
+      "excerpt": {
+        "en": "Manarola enchants with its dramatic cliffs and ancient wine terraces. The village's famous Sciacchetrà wine has been produced here for centuries, while the harbor creates one of Italy's most iconic vistas at sunset.",
+        "de": "Manarola verzaubert mit seinen dramatischen Klippen und alten Weinterrassen. Der berühmte Sciacchetrà-Wein des Dorfes wird hier seit Jahrhunderten produziert.",
+        "fr": "Manarola enchante avec ses falaises dramatiques et ses anciennes terrasses viticoles. Le célèbre vin Sciacchetrà du village est produit ici depuis des siècles.",
+        "it": "Manarola incanta con le sue scogliere drammatiche e le antiche terrazze viticole. Il famoso vino Sciacchetrà del villaggio viene prodotto qui da secoli."
+      },
+      "author": "Marco Bianchi",
+      "date": "Oct 18, 2023",
+      "readTime": "7 min read",
+      "category": "Wine & Culture",
+      "image": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop"
+    },
+    "essentials": {
+      "title": {
+        "en": "Manarola Essentials 2026",
+        "de": "Manarola Essentials 2026",
+        "fr": "Essentiels Manarola 2026",
+        "it": "Essenziali Manarola 2026"
+      },
+      "subtitle": {
+        "en": "Today's atmosphere and real-time details, grounded in Manarola's winemaking heritage",
+        "de": "Heutige Atmosphäre und Echtzeit-Details, verwurzelt in Manarolas Weinbau-Erbe",
+        "fr": "Ambiance du jour et détails en temps réel, ancrés dans le patrimoine viticole de Manarola",
+        "it": "Atmosfera di oggi e dettagli in tempo reale, radicati nel patrimonio viticolo di Manarola"
+      },
+      "today": {
+        "weather": "22°C, partly cloudy",
+        "seaTemp": "20°C",
+        "seaConditions": "Gentle waves",
+        "sunset": "20:45"
+      },
+      "experience": {
+        "crowdRhythm": "Sunset rush, morning calm",
+        "bestFelt": "With a glass of Sciacchetrà",
+        "villageShape": "Terraced and tumbling",
+        "foodWine": "Wine-forward, seafood rich"
+      },
+      "character": {
+        "origins": "Roman-era foundations",
+        "shapedBy": "Wine, waves, wanderers",
+        "rating": "4.8/5",
+        "rememberedFor": "\"The perfect sunset\""
+      }
+    }
+  }
+}

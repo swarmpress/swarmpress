@@ -1,0 +1,22 @@
+---
+/** Starter Article layout: a reading column with an optional title header and the page's blocks. */
+import Blocks from '@swarm-press/site-kit/components/Blocks.astro'
+import Breadcrumb from '@swarm-press/site-kit/components/Breadcrumb.astro'
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+const body = ctx.page?.data.body ?? []
+const hasHeader = body.some((b) => ['blog-article', 'editorial-hero', 'hero', 'hero-section'].includes(b.type))
+---
+
+<Breadcrumb ctx={ctx} />
+<article class="pb-16">
+  {
+    !hasHeader && (
+      <header class="st-container st-measure pt-10 pb-6">
+        <h1 class="font-serif text-4xl leading-tight md:text-5xl">{ctx.title}</h1>
+      </header>
+    )
+  }
+  <Blocks blocks={body} ctx={ctx} />
+</article>
