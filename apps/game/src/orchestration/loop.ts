@@ -115,7 +115,11 @@ export class OrchestrationLoop {
   readonly errors: string[] = []
   /** Commands applied (and logged) by this loop since it started. */
   logged = 0
-  /** Why the loop stopped (a command could not be written to the log); null while it runs. */
+  /**
+   * Why the loop stopped (a command could not be written to the log, or the
+   * session lost the company lease); null while it runs. A halted loop holds
+   * the clock, applies nothing and starts no job.
+   */
   halted: string | null = null
   /** The seq of the last command applied (the log is contiguous from 1). */
   private seq = 0
@@ -141,6 +145,17 @@ export class OrchestrationLoop {
     for (const j of completed) this.completed.add(j)
     for (const w of landed) this.landed.add(w)
     this.seq = lastSeq
+  }
+
+  /**
+   * Stops the loop for good (ADR-0045 decision 10: an executor that loses the
+   * lease halts). Queued jobs stay queued, outcomes that came back are not
+   * applied, and the clock is held. The first reason is kept.
+   */
+  halt(reason: string) {
+    if (this.halted) return
+    this.halted = reason
+    this.log(`halted: ${reason}`)
   }
 
   /** The seq of the last command applied; read it in the same turn as the sim's step and hash for a checkpoint. */
@@ -270,6 +285,8 @@ export class OrchestrationLoop {
       await this.intake
       if (this.running) await this.running
       if (!this.queue.length && !this.ready.length && !this.running) break
+      // A halted loop never drains its queue: what is left stays where it is.
+      if (this.halted && !this.running) break
       await new Promise((r) => setTimeout(r, pollMs))
     }
     await this.writes
@@ -378,7 +395,7 @@ export class OrchestrationLoop {
   private pump() {
     if (this.running) return
     this.running = (async () => {
-      while (this.queue.length) {
+      while (this.queue.length && !this.halted) {
         const jobJson = this.queue[0]
         const rec = this.byId.get((JSON.parse(jobJson) as { job_id: number }).job_id)!
         rec.state = 'running'
@@ -401,6 +418,14 @@ export class OrchestrationLoop {
             break
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e)
+            if (this.halted) {
+              // Halted while the job ran (the lease is gone): it is not this
+              // executor's job any more. No retry, and no failure is reported
+              // to the sim; the next holder runs it.
+              rec.state = 'queued'
+              this.log(`${rec.kind} job ${rec.job_id} stopped (${msg}): ${this.halted}`)
+              return
+            }
             if (attempt < retries) {
               this.log(`${rec.kind} job ${rec.job_id} failed (${msg}); retrying`)
               await new Promise((r) => setTimeout(r, this.o.retryMs ?? 2000))

@@ -234,7 +234,10 @@ pub async fn draft(
     headers: HeaderMap,
     Json(body): Json<DraftBody>,
 ) -> AppResult<Json<Value>> {
-    let company = require_lease(&st, &headers, &user).await?;
+    // Held to the end of the handler: the lease check, the GitHub call and
+    // the bookkeeping are one fenced unit (ADR-0045).
+    let fenced = require_lease(&st, &headers, &user).await?;
+    let company = &fenced.company;
     let message = body.message.trim();
     if message.is_empty() || message.len() > 1000 {
         return Err(AppError::BadRequest("message must be 1-1000 bytes".into()));
@@ -297,7 +300,10 @@ pub async fn merge(
     headers: HeaderMap,
     Json(body): Json<MergeBody>,
 ) -> AppResult<Json<Value>> {
-    let company = require_lease(&st, &headers, &user).await?;
+    // Held to the end of the handler: the lease check, the GitHub call and
+    // the bookkeeping are one fenced unit (ADR-0045).
+    let fenced = require_lease(&st, &headers, &user).await?;
+    let company = &fenced.company;
     let number = i64::try_from(body.number)
         .map_err(|_| AppError::BadRequest("number out of range".into()))?;
     let pr = store::get_pr(&st.db, &company.id, number)

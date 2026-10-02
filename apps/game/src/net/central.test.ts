@@ -8,6 +8,7 @@ import {
   centralGateway,
   EventStream,
   LEASE_HEADER,
+  leaseHeld,
   LeaseKeeper,
   STEP_HEADER,
   type CentralEvent,
@@ -117,40 +118,130 @@ describe('CentralClient', () => {
 })
 
 describe('LeaseKeeper', () => {
-  it('acquires, renews before expiry, reports loss, and releases', async () => {
-    let now = 1_000_000
-    let renewals = 0
-    let held = true
-    const { client, calls } = mock(({ method }) => {
-      if (method === 'DELETE') return new Response(null, { status: 204 })
-      if (!held) return json({ error: 'another device holds this company', holder: 'other', expires_at: now + 5000 }, 409)
-      renewals++
-      return json({ lease_id: 'L1', holder: 'dev-1', expires_at: now + 90_000, renewed: renewals > 1 })
-    })
+  const lease = (over: Record<string, unknown> = {}) => ({
+    epoch: 4,
+    lease_id: 'L1',
+    token: '4.L1',
+    holder: 'dev-1',
+    holder_kind: 'browser',
+    ttl_ms: 90_000,
+    renewed: false,
+    handover_requested: false,
+    handover_by: null,
+    head: { number: 0, digest: null },
+    ...over,
+  })
+  const HELD = { error: 'another executor holds this company', epoch: 9, holder: 'other', holder_kind: 'self', ttl_ms: 5000, handover_requested: false }
+
+  function keeper(handler: Handler, opts: ConstructorParameters<typeof LeaseKeeper>[3] = {}) {
+    const { client, calls } = mock(handler)
     const timers: { fn: () => void; ms: number }[] = []
     const lost = vi.fn()
+    const handover = vi.fn()
     const k = new LeaseKeeper(client, 'co-1', 'dev-1', {
-      now: () => now,
       setTimer: (fn, ms) => timers.push({ fn, ms }),
       clearTimer: () => undefined,
       onLost: lost,
+      onHandoverRequested: handover,
+      ...opts,
     })
-    expect((await k.start()).lease_id).toBe('L1')
-    expect(k.leaseId).toBe('L1')
+    return { k, calls, timers, lost, handover }
+  }
+
+  it('acquires, renews with the fencing token on the relative TTL, reports loss once, and releases', async () => {
+    let held = true
+    const { k, calls, timers, lost } = keeper(({ method, body }) => {
+      if (method === 'DELETE') return new Response(null, { status: 204 })
+      if (!held) return json({ error: 'company lease not held' }, 409)
+      return json(lease({ renewed: (body as { mode: string }).mode === 'renew' }))
+    })
+    const l = await k.start()
+    expect([l.epoch, l.token, k.token, k.held]).toEqual([4, '4.L1', '4.L1', true])
+    // A third of the TTL the server stated; no client clock is involved.
     expect(timers.at(-1)!.ms).toBe(30_000)
-    expect(calls[0].body).toEqual({ device_id: 'dev-1', force: false })
-    now += 30_000
-    await k.renew()
-    expect(renewals).toBe(2)
+    expect(calls[0].body).toEqual({ device_id: 'dev-1', mode: 'acquire', kind: 'browser' })
+    expect(calls[0].headers[LEASE_HEADER]).toBeUndefined()
+
+    expect((await k.renew()).renewed).toBe(true)
+    expect(calls[1].body).toEqual({ device_id: 'dev-1', mode: 'renew' })
+    expect(calls[1].headers[LEASE_HEADER]).toBe('4.L1')
+
     held = false
     await expect(k.renew()).rejects.toBeInstanceOf(CentralError)
     expect(lost).toHaveBeenCalledOnce()
-    expect(() => k.leaseId).toThrow(/not held/)
+    expect(k.held).toBe(false)
+    expect(() => k.token).toThrow(/not held/)
+    // Lost is final for this keeper: no renew goes out any more.
+    const before = calls.length
+    await expect(k.renew()).rejects.toThrow(/not held/)
+    expect(calls.length).toBe(before)
+    expect(lost).toHaveBeenCalledOnce()
+
     held = true
     await k.start()
     await k.stop()
     expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: 'http://central.test/api/companies/co-1/lease' })
-    expect(calls.at(-1)!.headers[LEASE_HEADER]).toBe('L1')
+    expect(calls.at(-1)!.headers[LEASE_HEADER]).toBe('4.L1')
+  })
+
+  it('never forces by default; a held lease rejects with the holder; force is explicit', async () => {
+    const { k, calls, lost } = keeper(({ body }) => ((body as { mode: string }).mode === 'force' ? json(lease({ epoch: 10, token: '10.L2', lease_id: 'L2' })) : json(HELD, 409)))
+    const err = await k.start().catch((e) => e)
+    expect(leaseHeld(err)).toEqual(HELD)
+    expect(k.held).toBe(false)
+    expect(lost).not.toHaveBeenCalled()
+    expect(leaseHeld(new CentralError(409, 'you already own a company', { error: 'x' }))).toBeNull()
+    expect(leaseHeld(new Error('offline'))).toBeNull()
+
+    const forced = keeper(({ body }) => json(lease({ epoch: 10, token: '10.L2', lease_id: 'L2', mode: (body as { mode: string }).mode })), { mode: 'force', kind: 'self' })
+    await forced.k.start()
+    expect(forced.calls[0].body).toEqual({ device_id: 'dev-1', mode: 'force', kind: 'self' })
+    expect(forced.k.token).toBe('10.L2')
+    expect(calls.length).toBe(1)
+  })
+
+  it('keeps the lease through a renew that got no answer, and retries', async () => {
+    let fail: 'network' | '503' | null = null
+    const { k, timers, lost } = keeper(() => {
+      if (fail === 'network') throw new TypeError('fetch failed')
+      if (fail === '503') return json({ error: 'unavailable' }, 503)
+      return json(lease())
+    })
+    await k.start()
+    for (const f of ['network', '503'] as const) {
+      fail = f
+      await expect(k.renew()).rejects.toBeDefined()
+      expect(k.held).toBe(true)
+      expect(k.token).toBe('4.L1')
+      expect(timers.at(-1)!.ms).toBe(5000)
+    }
+    expect(lost).not.toHaveBeenCalled()
+    fail = null
+    await k.renew()
+    expect(timers.at(-1)!.ms).toBe(30_000)
+  })
+
+  it('reports a handover request once, and a revocation only for its own epoch', async () => {
+    let asked = false
+    const { k, lost, handover } = keeper(() => json(lease(asked ? { handover_requested: true, handover_by: 'phone' } : {})))
+    await k.start()
+    await k.renew()
+    expect(handover).not.toHaveBeenCalled()
+    asked = true
+    await k.renew()
+    await k.renew()
+    expect(handover).toHaveBeenCalledOnce()
+    expect(handover).toHaveBeenCalledWith('phone')
+
+    // LeaseRevoked events for older epochs sit in the inbox forever.
+    expect(k.revoked(3, 'tablet')).toBe(false)
+    expect(k.held).toBe(true)
+    expect(k.revoked(4, 'tablet')).toBe(true)
+    expect(k.held).toBe(false)
+    expect(lost).toHaveBeenCalledOnce()
+    expect(String(lost.mock.calls[0][0])).toMatch(/epoch 4.*tablet/)
+    expect(k.revoked(4)).toBe(false)
+    expect(lost).toHaveBeenCalledOnce()
   })
 })
 

@@ -1,7 +1,7 @@
-//! Users, sessions, companies and company leases.
+//! Users, sessions, companies and the company's executor lease.
 
 use anyhow::{Context, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 use super::{new_id, Db};
@@ -32,23 +32,106 @@ pub struct Company {
 
 const COMPANY_COLS: &str = "id, owner_user_id, name, seed, site_repo, site_base_branch, created_at";
 
-/// The device holding a company (ADR-0038).
-#[derive(Clone, Debug, FromRow, Serialize, PartialEq, Eq)]
+/// Who may hold a company's lease (ADR-0045).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExecutorKind {
+    /// A browser tab on the player's device.
+    Browser,
+    /// A runner the player hosts.
+    #[serde(rename = "self")]
+    SelfHosted,
+    /// A managed runner.
+    Cloud,
+}
+
+impl ExecutorKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ExecutorKind::Browser => "browser",
+            ExecutorKind::SelfHosted => "self",
+            ExecutorKind::Cloud => "cloud",
+        }
+    }
+}
+
+/// What a lease request asks for (ADR-0045 decision 3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LeaseMode {
+    /// Extend the presented lease; the epoch is unchanged.
+    Renew,
+    /// Take a free, expired or released lease (or the caller's own); epoch + 1.
+    Acquire,
+    /// Ask the holder to hand over; takes the lease when it is free.
+    Request,
+    /// Take over immediately; epoch + 1.
+    Force,
+}
+
+/// The sealed head of the company's history on the executor row: the number
+/// of its last entry and that entry's digest (`0`, `None` before anything
+/// was sealed). Nothing moves it yet; fenced sync compares and swaps it.
+#[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
+pub struct LogHead {
+    pub number: i64,
+    pub digest: Option<String>,
+}
+
+/// A company's executor lease (ADR-0045): the holder and its fencing epoch.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Lease {
+    /// Monotonic; rises on every change of holder.
+    pub epoch: i64,
     pub lease_id: String,
-    /// The holding device id.
-    #[serde(rename = "holder")]
-    pub device_id: String,
-    /// Unix ms.
+    /// The holder's id (a device id for browsers).
+    pub holder_id: String,
+    pub holder_kind: String,
+    /// Unix ms. Liveness only.
     pub expires_at: i64,
+    /// Who asked this holder to hand over, if anyone.
+    pub handover_by: Option<String>,
+    pub head: LogHead,
+}
+
+impl Lease {
+    /// The fencing token: `<epoch>.<lease_id>`.
+    pub fn token(&self) -> String {
+        format!("{}.{}", self.epoch, self.lease_id)
+    }
+}
+
+/// The holder a new grant displaced.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Revoked {
+    pub epoch: i64,
+    pub holder_id: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LeaseOutcome {
-    /// The caller holds the lease now (`renewed`: it already held it).
-    Granted { lease: Lease, renewed: bool },
-    /// Another device holds an unexpired lease.
-    Held(Lease),
+    /// The caller holds the lease now. `renewed`: the epoch did not change.
+    /// `revoked`: the unreleased lease this grant replaced, if any.
+    Granted {
+        lease: Lease,
+        renewed: bool,
+        revoked: Option<Revoked>,
+    },
+    /// Another executor holds an unexpired lease. `handover_requested`: this
+    /// call recorded a handover request.
+    Held {
+        holder: Lease,
+        handover_requested: bool,
+    },
+    /// A renew whose lease is no longer the company's current one.
+    NotHeld,
+}
+
+/// Split a fencing token `<epoch>.<lease_id>`.
+pub fn parse_lease_token(token: &str) -> Option<(i64, &str)> {
+    let (epoch, lease_id) = token.split_once('.')?;
+    let epoch = epoch.parse::<i64>().ok().filter(|e| *e > 0)?;
+    (!lease_id.is_empty()).then_some((epoch, lease_id))
 }
 
 // ------------------------------------------------------------ users
@@ -223,65 +306,160 @@ pub async fn create_company(
 
 // ------------------------------------------------------------ leases
 
-/// Take or renew the company lease for `device_id` (atomic, `BEGIN IMMEDIATE`).
+#[derive(FromRow)]
+struct ExecutorRow {
+    epoch: i64,
+    holder_kind: Option<String>,
+    holder_id: Option<String>,
+    lease_id: Option<String>,
+    expires_at: Option<i64>,
+    head_number: i64,
+    head_digest: Option<String>,
+    handover_by: Option<String>,
+}
+
+const EXECUTOR_COLS: &str = "epoch, holder_kind, holder_id, lease_id, expires_at, \
+     head_number, head_digest, handover_by";
+
+impl ExecutorRow {
+    fn head(&self) -> LogHead {
+        LogHead {
+            number: self.head_number,
+            digest: self.head_digest.clone(),
+        }
+    }
+
+    /// The lease on this row, if it has not been released.
+    fn lease(&self) -> Option<Lease> {
+        Some(Lease {
+            epoch: self.epoch,
+            lease_id: self.lease_id.clone()?,
+            holder_id: self.holder_id.clone()?,
+            holder_kind: self.holder_kind.clone()?,
+            expires_at: self.expires_at?,
+            handover_by: self.handover_by.clone(),
+            head: self.head(),
+        })
+    }
+}
+
+/// A lease request (see [`lease_op`]).
+pub struct LeaseRequest<'a> {
+    pub mode: LeaseMode,
+    pub holder_id: &'a str,
+    pub kind: ExecutorKind,
+    /// The presented fencing token (`renew` only).
+    pub presented: Option<(i64, &'a str)>,
+    pub now_ms: i64,
+    pub ttl_ms: i64,
+}
+
+/// Renew, acquire, request or force the company lease (atomic,
+/// `BEGIN IMMEDIATE`; ADR-0045 decision 3).
 ///
-/// * no lease, or an expired one → a new lease for this device;
-/// * this device's unexpired lease → renewed (same `lease_id`);
-/// * another device's unexpired lease → [`LeaseOutcome::Held`], unless
-///   `force`, which takes it over with a new `lease_id`.
-pub async fn acquire_lease(
-    db: &Db,
-    company_id: &str,
-    device_id: &str,
-    force: bool,
-    now_ms: i64,
-    ttl_ms: i64,
-) -> Result<LeaseOutcome> {
+/// * `renew`: the presented `<epoch>.<lease_id>` is still the row's lease →
+///   extended, even past expiry; otherwise [`LeaseOutcome::NotHeld`].
+/// * `acquire`: free, expired, released, or held by this same holder → a new
+///   lease at epoch + 1; another holder's unexpired lease →
+///   [`LeaseOutcome::Held`].
+/// * `request`: like `acquire`, but a held lease also records the handover
+///   request, which its holder sees on its next renew.
+/// * `force`: a new lease at epoch + 1, whoever holds it.
+///
+/// The epoch rises on every grant that is not a renew and is never reset.
+pub async fn lease_op(db: &Db, company_id: &str, req: LeaseRequest<'_>) -> Result<LeaseOutcome> {
     let mut tx = db.begin_immediate().await?;
-    let current = sqlx::query_as::<_, Lease>(
-        "SELECT lease_id, device_id, expires_at FROM company_leases WHERE company_id = ?1",
-    )
+    let row = sqlx::query_as::<_, ExecutorRow>(&format!(
+        "SELECT {EXECUTOR_COLS} FROM company_executors WHERE company_id = ?1"
+    ))
     .bind(company_id)
     .fetch_optional(&mut *tx)
     .await
-    .context("load lease")?;
-    let expires_at = now_ms.saturating_add(ttl_ms);
+    .context("load executor")?;
+    let current = row.as_ref().and_then(ExecutorRow::lease);
+    let expires_at = req.now_ms.saturating_add(req.ttl_ms);
+
+    if req.mode == LeaseMode::Renew {
+        let outcome = match (current, req.presented) {
+            (Some(cur), Some((epoch, lease_id)))
+                if cur.epoch == epoch && cur.lease_id == lease_id =>
+            {
+                sqlx::query(
+                    "UPDATE company_executors SET renewed_at = ?2, expires_at = ?3
+                     WHERE company_id = ?1",
+                )
+                .bind(company_id)
+                .bind(req.now_ms)
+                .bind(expires_at)
+                .execute(&mut *tx)
+                .await
+                .context("renew lease")?;
+                LeaseOutcome::Granted {
+                    lease: Lease { expires_at, ..cur },
+                    renewed: true,
+                    revoked: None,
+                }
+            }
+            _ => LeaseOutcome::NotHeld,
+        };
+        tx.commit().await.context("commit lease")?;
+        return Ok(outcome);
+    }
+
+    let held_by_other = current
+        .as_ref()
+        .is_some_and(|cur| cur.expires_at > req.now_ms && cur.holder_id != req.holder_id);
     let outcome = match current {
-        Some(cur) if cur.expires_at > now_ms && cur.device_id == device_id => {
-            sqlx::query(
-                "UPDATE company_leases SET renewed_at = ?2, expires_at = ?3 WHERE company_id = ?1",
-            )
-            .bind(company_id)
-            .bind(now_ms)
-            .bind(expires_at)
-            .execute(&mut *tx)
-            .await
-            .context("renew lease")?;
-            LeaseOutcome::Granted {
-                lease: Lease { expires_at, ..cur },
-                renewed: true,
+        Some(mut holder) if held_by_other && req.mode != LeaseMode::Force => {
+            let handover_requested = req.mode == LeaseMode::Request;
+            if handover_requested {
+                sqlx::query(
+                    "UPDATE company_executors SET handover_by = ?2, handover_deadline = ?3
+                     WHERE company_id = ?1",
+                )
+                .bind(company_id)
+                .bind(req.holder_id)
+                .bind(expires_at)
+                .execute(&mut *tx)
+                .await
+                .context("request handover")?;
+                holder.handover_by = Some(req.holder_id.to_string());
+            }
+            LeaseOutcome::Held {
+                holder,
+                handover_requested,
             }
         }
-        Some(cur) if cur.expires_at > now_ms && !force => LeaseOutcome::Held(cur),
-        _ => {
+        current => {
+            let epoch = row.as_ref().map_or(0, |r| r.epoch).saturating_add(1);
+            let head = row.as_ref().map(ExecutorRow::head).unwrap_or_default();
             let lease = Lease {
+                epoch,
                 lease_id: new_id(),
-                device_id: device_id.to_string(),
+                holder_id: req.holder_id.to_string(),
+                holder_kind: req.kind.as_str().to_string(),
                 expires_at,
+                handover_by: None,
+                head,
             };
             sqlx::query(
-                "INSERT INTO company_leases
-                    (company_id, lease_id, device_id, acquired_at, renewed_at, expires_at)
-                 VALUES (?1, ?2, ?3, ?4, ?4, ?5)
+                "INSERT INTO company_executors
+                    (company_id, epoch, holder_kind, holder_id, lease_id,
+                     acquired_at, renewed_at, expires_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7)
                  ON CONFLICT (company_id) DO UPDATE SET
-                    lease_id = excluded.lease_id, device_id = excluded.device_id,
+                    epoch = excluded.epoch, holder_kind = excluded.holder_kind,
+                    holder_id = excluded.holder_id, lease_id = excluded.lease_id,
                     acquired_at = excluded.acquired_at, renewed_at = excluded.renewed_at,
-                    expires_at = excluded.expires_at",
+                    expires_at = excluded.expires_at,
+                    handover_by = NULL, handover_deadline = NULL",
             )
             .bind(company_id)
+            .bind(lease.epoch)
+            .bind(&lease.holder_kind)
+            .bind(&lease.holder_id)
             .bind(&lease.lease_id)
-            .bind(&lease.device_id)
-            .bind(now_ms)
+            .bind(req.now_ms)
             .bind(expires_at)
             .execute(&mut *tx)
             .await
@@ -289,6 +467,10 @@ pub async fn acquire_lease(
             LeaseOutcome::Granted {
                 lease,
                 renewed: false,
+                revoked: current.map(|cur| Revoked {
+                    epoch: cur.epoch,
+                    holder_id: cur.holder_id,
+                }),
             }
         }
     };
@@ -296,32 +478,49 @@ pub async fn acquire_lease(
     Ok(outcome)
 }
 
-/// The unexpired lease of a company, if any.
-pub async fn active_lease(db: &Db, company_id: &str, now_ms: i64) -> Result<Option<Lease>> {
-    sqlx::query_as::<_, Lease>(
-        "SELECT lease_id, device_id, expires_at FROM company_leases
-         WHERE company_id = ?1 AND expires_at > ?2",
-    )
+/// The company's unreleased lease, expired or not.
+pub async fn current_lease(db: &Db, company_id: &str) -> Result<Option<Lease>> {
+    Ok(sqlx::query_as::<_, ExecutorRow>(&format!(
+        "SELECT {EXECUTOR_COLS} FROM company_executors WHERE company_id = ?1"
+    ))
     .bind(company_id)
-    .bind(now_ms)
     .fetch_optional(&db.reader)
     .await
-    .context("load lease")
+    .context("load executor")?
+    .as_ref()
+    .and_then(ExecutorRow::lease))
 }
 
-/// Release `lease_id` if it is the company's current lease. Returns whether
-/// a lease was released.
-pub async fn release_lease(db: &Db, company_id: &str, lease_id: &str) -> Result<bool> {
-    Ok(
-        sqlx::query("DELETE FROM company_leases WHERE company_id = ?1 AND lease_id = ?2")
-            .bind(company_id)
-            .bind(lease_id)
-            .execute(&db.writer)
-            .await
-            .context("release lease")?
-            .rows_affected()
-            > 0,
+/// The company's lease if `epoch.lease_id` is its current, unexpired one.
+pub async fn fenced_lease(
+    db: &Db,
+    company_id: &str,
+    epoch: i64,
+    lease_id: &str,
+    now_ms: i64,
+) -> Result<Option<Lease>> {
+    Ok(current_lease(db, company_id)
+        .await?
+        .filter(|l| l.epoch == epoch && l.lease_id == lease_id && l.expires_at > now_ms))
+}
+
+/// Release `epoch.lease_id` if it is the company's current lease. The row and
+/// its epoch stay. Returns whether a lease was released.
+pub async fn release_lease(db: &Db, company_id: &str, epoch: i64, lease_id: &str) -> Result<bool> {
+    Ok(sqlx::query(
+        "UPDATE company_executors SET
+            holder_kind = NULL, holder_id = NULL, lease_id = NULL,
+            expires_at = NULL, handover_by = NULL, handover_deadline = NULL
+         WHERE company_id = ?1 AND epoch = ?2 AND lease_id = ?3",
     )
+    .bind(company_id)
+    .bind(epoch)
+    .bind(lease_id)
+    .execute(&db.writer)
+    .await
+    .context("release lease")?
+    .rows_affected()
+        > 0)
 }
 
 #[cfg(test)]
@@ -354,22 +553,54 @@ mod tests {
             vec![c.clone()]
         );
 
-        let LeaseOutcome::Granted { lease, renewed } =
-            acquire_lease(&db, &c.id, "dev-a", false, 1000, 90_000)
+        let req = |mode, holder_id| LeaseRequest {
+            mode,
+            holder_id,
+            kind: ExecutorKind::Browser,
+            presented: None,
+            now_ms: 1000,
+            ttl_ms: 90_000,
+        };
+        let LeaseOutcome::Granted {
+            lease,
+            renewed,
+            revoked,
+        } = lease_op(&db, &c.id, req(LeaseMode::Acquire, "dev-a"))
+            .await
+            .unwrap()
+        else {
+            panic!("granted")
+        };
+        assert!(!renewed);
+        assert_eq!(revoked, None);
+        assert_eq!((lease.epoch, lease.expires_at), (1, 91_000));
+        assert_eq!(
+            parse_lease_token(&lease.token()),
+            Some((1, lease.lease_id.as_str()))
+        );
+        assert_eq!(
+            lease_op(&db, &c.id, req(LeaseMode::Acquire, "dev-b"))
+                .await
+                .unwrap(),
+            LeaseOutcome::Held {
+                holder: lease.clone(),
+                handover_requested: false
+            }
+        );
+        assert!(!release_lease(&db, &c.id, 2, &lease.lease_id).await.unwrap());
+        assert!(release_lease(&db, &c.id, 1, &lease.lease_id).await.unwrap());
+        assert!(current_lease(&db, &c.id).await.unwrap().is_none());
+        // The epoch survives the release.
+        let LeaseOutcome::Granted { lease, .. } =
+            lease_op(&db, &c.id, req(LeaseMode::Acquire, "dev-b"))
                 .await
                 .unwrap()
         else {
             panic!("granted")
         };
-        assert!(!renewed);
-        assert_eq!(lease.expires_at, 91_000);
-        assert_eq!(
-            acquire_lease(&db, &c.id, "dev-b", false, 2000, 90_000)
-                .await
-                .unwrap(),
-            LeaseOutcome::Held(lease.clone())
-        );
-        assert!(release_lease(&db, &c.id, &lease.lease_id).await.unwrap());
-        assert!(active_lease(&db, &c.id, 2000).await.unwrap().is_none());
+        assert_eq!(lease.epoch, 2);
+        assert_eq!(parse_lease_token("nope"), None);
+        assert_eq!(parse_lease_token("0.x"), None);
+        assert_eq!(parse_lease_token("3."), None);
     }
 }

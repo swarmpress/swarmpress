@@ -219,7 +219,8 @@ impl TestServer {
         (cookie, body["id"].as_str().unwrap().to_string())
     }
 
-    /// Take the company lease for `device`; returns the lease id.
+    /// Take the company lease for `device`; returns the fencing token
+    /// (`<epoch>.<lease_id>`, the `x-swarmpress-lease` header value).
     pub async fn lease(&self, cookie: &str, company: &str, device: &str) -> String {
         let (st, body) = self
             .post_json(
@@ -229,7 +230,7 @@ impl TestServer {
             )
             .await;
         assert_eq!(st, 200, "{body}");
-        body["lease_id"].as_str().unwrap().to_string()
+        body["token"].as_str().unwrap().to_string()
     }
 }
 

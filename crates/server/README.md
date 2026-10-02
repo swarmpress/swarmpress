@@ -57,8 +57,9 @@ development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are i
 | `GET /api/me` | `{user, company}`; 401 without a session |
 | `POST /api/companies` | `{name, site_repo?, base_branch?}` → 201 company; 409 when the caller already owns one |
 | `GET /api/companies/me` | the caller's company, or 404 |
-| `POST /api/companies/{id}/lease` | `{device_id, force?}` → `{lease_id, holder, expires_at, renewed}`. The holder renews by posting again (same `lease_id`); another device's unexpired lease answers 409 `{error, holder, expires_at}` unless `force: true` |
-| `DELETE /api/companies/{id}/lease` | with `x-swarmpress-lease`: release (204), 409 if not held |
+| `POST /api/companies/{id}/lease` | `{device_id, mode?, kind?}` → `{epoch, lease_id, token, holder, holder_kind, ttl_ms, renewed, handover_requested, handover_by, head}` (ADR-0045). `mode`: `acquire` (default; a free, expired, released or own lease, epoch + 1), `renew` (with `x-swarmpress-lease`; epoch unchanged, works past expiry if nobody took the lease), `request` (as `acquire`, and a 409 records a handover request and publishes `HandoverRequested`), `force` (takeover, epoch + 1, publishes `LeaseRevoked`). Another executor's unexpired lease answers 409 `{error, epoch, holder, holder_kind, ttl_ms, handover_requested}`. `kind`: `browser` (default) or `self`. The epoch is never reset |
+| `DELETE /api/companies/{id}/lease` | with `x-swarmpress-lease`: release (204), 409 if not held. The epoch stays |
+| `x-swarmpress-lease` | the fencing token `<epoch>.<lease_id>` (the lease reply's `token`). A fenced route answers 428 without it and 409 when the epoch or the lease id is not the company's current, unexpired one. A lease grant and every fenced write hold a per-company mutex, so a takeover waits for an in-flight write to be recorded |
 | `POST /api/gateway/draft` | lease required. `{content_id, path, page, message, work_item?}` → `{number, branch, head_sha, created_pr, committed}` |
 | `POST /api/gateway/merge` | lease required. `{number, head_sha}` → `{merged_sha}`; only PRs this company opened through the gateway; 409 if the head moved |
 | `GET /api/events?after=&limit=` | `{events: [{seq, company_id, kind, payload, created_at}], last_seq}` (oldest first, max 500) |

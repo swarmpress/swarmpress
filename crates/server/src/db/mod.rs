@@ -28,7 +28,7 @@ use sqlx::sqlite::{
 };
 use sqlx::{Sqlite, Transaction};
 
-pub use accounts::{Company, Lease, LeaseOutcome, User};
+pub use accounts::{Company, ExecutorKind, Lease, LeaseMode, LeaseOutcome, LeaseRequest, User};
 
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 

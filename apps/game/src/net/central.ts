@@ -3,9 +3,10 @@
  *
  * - auth: dev login, `me`, logout (cookie session; same origin through the
  *   Vite proxy in dev/preview);
- * - companies: create/get, the device lease (`LeaseKeeper` renews it);
+ * - companies: create/get, the executor lease with its fencing epoch
+ *   (ADR-0045; `LeaseKeeper` renews it and reports its loss);
  * - the content gateway (`centralGateway`: the browser's orchestrator
- *   `Gateway`, with the lease header);
+ *   `Gateway`, with the fencing token in the lease header);
  * - the event inbox (`EventStream`: WebSocket `/ws/events` with a polling
  *   fallback; the cursor is persisted in the company store's kv);
  * - sync: command-log segments and the snapshot.
@@ -49,12 +50,49 @@ export interface CreateCompany {
   base_branch?: string
 }
 
+/** `acquire` takes a free, expired, released or own lease; `request` also asks a holder to hand over; `force` takes over. */
+export type LeaseMode = 'acquire' | 'request' | 'force'
+export type ExecutorKind = 'browser' | 'self'
+
+/** The sealed head of the company's history on its executor row: 0 and null until fenced sync moves it. */
+export interface LogHead {
+  number: number
+  digest: string | null
+}
+
+/** The company's executor lease (ADR-0045). */
 export interface Lease {
+  /** Rises on every change of holder; never on a renew. */
+  epoch: number
   lease_id: string
+  /** The fencing token `<epoch>.<lease_id>`: the `x-swarmpress-lease` header of every fenced write. */
+  token: string
   holder: string
-  /** Unix ms. */
-  expires_at: number
+  holder_kind: ExecutorKind | 'cloud'
+  /** Time left, relative: never compared with the client's clock as a timestamp. */
+  ttl_ms: number
   renewed: boolean
+  /** Another executor asked this holder to hand over. */
+  handover_requested: boolean
+  handover_by: string | null
+  head: LogHead
+}
+
+/** The body of the 409 a held lease answers with. */
+export interface LeaseHeld {
+  error: string
+  epoch: number
+  holder: string
+  holder_kind: string
+  ttl_ms: number
+  handover_requested: boolean
+}
+
+/** The holder info of a "lease held" 409, or null for any other error. */
+export function leaseHeld(e: unknown): LeaseHeld | null {
+  if (!(e instanceof CentralError) || e.status !== 409) return null
+  const b = e.body as Partial<LeaseHeld> | null
+  return b && typeof b.holder === 'string' && typeof b.epoch === 'number' ? (b as LeaseHeld) : null
 }
 
 export interface DraftRequest {
@@ -208,23 +246,35 @@ export class CentralClient {
     }
   }
 
-  /** Acquire or renew (same device) the company lease; 409 → `CentralError` with `{holder, expires_at}`. */
-  acquireLease(companyId: string, deviceId: string, force = false): Promise<Lease> {
-    return this.json('POST', `/api/companies/${encodeURIComponent(companyId)}/lease`, { json: { device_id: deviceId, force } })
+  /**
+   * Take the company lease (epoch + 1). Another executor's unexpired lease
+   * answers 409: a `CentralError` whose body is a `LeaseHeld` (see `leaseHeld`).
+   */
+  acquireLease(companyId: string, deviceId: string, mode: LeaseMode = 'acquire', kind: ExecutorKind = 'browser'): Promise<Lease> {
+    return this.json('POST', `/api/companies/${encodeURIComponent(companyId)}/lease`, { json: { device_id: deviceId, mode, kind } })
   }
 
-  async releaseLease(companyId: string, leaseId: string): Promise<void> {
-    await this.request('DELETE', `/api/companies/${encodeURIComponent(companyId)}/lease`, { headers: { [LEASE_HEADER]: leaseId } })
+  /** Extend the lease `token` names (epoch unchanged); 409 once it was released or taken. */
+  renewLease(companyId: string, deviceId: string, token: string): Promise<Lease> {
+    return this.json('POST', `/api/companies/${encodeURIComponent(companyId)}/lease`, {
+      json: { device_id: deviceId, mode: 'renew' },
+      headers: { [LEASE_HEADER]: token },
+    })
+  }
+
+  async releaseLease(companyId: string, token: string): Promise<void> {
+    await this.request('DELETE', `/api/companies/${encodeURIComponent(companyId)}/lease`, { headers: { [LEASE_HEADER]: token } })
   }
 
   // ------------------------------------------------------------ gateway
 
-  draft(leaseId: string, body: DraftRequest): Promise<DraftResult> {
-    return this.json('POST', '/api/gateway/draft', { json: body, headers: { [LEASE_HEADER]: leaseId } })
+  /** `token`: the lease's fencing token (`Lease.token`). */
+  draft(token: string, body: DraftRequest): Promise<DraftResult> {
+    return this.json('POST', '/api/gateway/draft', { json: body, headers: { [LEASE_HEADER]: token } })
   }
 
-  merge(leaseId: string, number: number, headSha: string): Promise<{ merged_sha: string }> {
-    return this.json('POST', '/api/gateway/merge', { json: { number, head_sha: headSha }, headers: { [LEASE_HEADER]: leaseId } })
+  merge(token: string, number: number, headSha: string): Promise<{ merged_sha: string }> {
+    return this.json('POST', '/api/gateway/merge', { json: { number, head_sha: headSha }, headers: { [LEASE_HEADER]: token } })
   }
 
   // ------------------------------------------------------------ events
@@ -290,23 +340,38 @@ export class CentralClient {
 // ---------------------------------------------------------------- lease keeper
 
 export interface LeaseKeeperOptions {
-  /** Take the lease over from another device. */
-  force?: boolean
-  /** Called when a renewal finds the lease gone (another device took it, or it expired). */
+  /** How `start()` takes the lease. Default `acquire`: never over another executor's live lease. */
+  mode?: LeaseMode
+  kind?: ExecutorKind
+  /**
+   * Called once when the lease is gone for good: a renew was refused (released
+   * or taken by another executor), or `revoked()` was told so. The executor
+   * must halt (ADR-0045 decision 10).
+   */
   onLost?: (e: unknown) => void
-  /** Renew when this fraction of the lease time is left. Default 1/3 of the TTL elapsed. */
+  /** Called when a renew reply first shows that another executor asked this one to hand over. */
+  onHandoverRequested?: (by: string | null) => void
+  /** Renew when this fraction of the lease time has passed. Default 1/3. */
   renewFraction?: number
-  now?: () => number
+  /** Wait before renewing again after a renew that failed without an answer (network). Default 5000 ms. */
+  retryMs?: number
   setTimer?: (fn: () => void, ms: number) => unknown
   clearTimer?: (h: unknown) => void
 }
 
-/** Holds the company lease: acquire, renew in the background, release. */
+/**
+ * Holds the company lease: acquire, renew in the background, release.
+ *
+ * The lease is lost only when the server says so (409 on a renew, or a
+ * `LeaseRevoked` event passed to `revoked()`). A renew that got no answer is
+ * retried: expiry alone does not end a lease, and the server accepts a renew
+ * past expiry as long as nobody else took it.
+ */
 export class LeaseKeeper {
   private lease: Lease | null = null
   private timer: unknown = null
   private stopped = false
-  private now: () => number
+  private handoverSeen = false
   private setTimer: (fn: () => void, ms: number) => unknown
   private clearTimer: (h: unknown) => void
 
@@ -316,54 +381,83 @@ export class LeaseKeeper {
     readonly deviceId: string,
     private opts: LeaseKeeperOptions = {},
   ) {
-    this.now = opts.now ?? Date.now
     this.setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms))
     this.clearTimer = opts.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>))
   }
 
-  /** The current lease id; throws when the lease is not held. */
-  get leaseId(): string {
+  /** The fencing token of the lease held (`<epoch>.<lease_id>`); throws when the lease is not held. */
+  get token(): string {
     if (!this.lease) throw new Error('company lease not held')
-    return this.lease.lease_id
+    return this.lease.token
+  }
+
+  get held(): boolean {
+    return this.lease != null
   }
 
   get current(): Lease | null {
     return this.lease
   }
 
+  /** Takes the lease (`opts.mode`); a held lease rejects with the 409 `CentralError` (see `leaseHeld`). */
   async start(): Promise<Lease> {
     this.stopped = false
-    const l = await this.client.acquireLease(this.companyId, this.deviceId, this.opts.force ?? false)
+    this.handoverSeen = false
+    const l = await this.client.acquireLease(this.companyId, this.deviceId, this.opts.mode ?? 'acquire', this.opts.kind ?? 'browser')
     this.lease = l
-    this.schedule(l)
+    this.schedule(l.ttl_ms * (this.opts.renewFraction ?? 1 / 3))
     return l
   }
 
   /** Renews now (also called by the timer). */
   async renew(): Promise<Lease> {
+    const held = this.lease
+    if (!held) throw new Error('company lease not held')
     try {
-      const l = await this.client.acquireLease(this.companyId, this.deviceId, false)
-      if (this.lease && l.lease_id !== this.lease.lease_id) throw new Error('lease was re-granted under a new id')
+      const l = await this.client.renewLease(this.companyId, this.deviceId, held.token)
+      if (this.lease !== held) return l // lost or stopped while the renew was in flight
       this.lease = l
-      this.schedule(l)
+      this.schedule(l.ttl_ms * (this.opts.renewFraction ?? 1 / 3))
+      if (l.handover_requested && !this.handoverSeen) {
+        this.handoverSeen = true
+        this.opts.onHandoverRequested?.(l.handover_by)
+      }
       return l
     } catch (e) {
-      this.lease = null
-      this.cancel()
-      if (!this.stopped) this.opts.onLost?.(e)
+      // 4xx: the server refused this lease. Anything else got no verdict.
+      if (e instanceof CentralError && e.status >= 400 && e.status < 500) this.lose(e)
+      else if (this.lease === held) this.schedule(this.opts.retryMs ?? 5000)
       throw e
     }
   }
 
-  private schedule(l: Lease) {
+  /**
+   * A `LeaseRevoked` event for `epoch` arrived: if that is the lease held, it
+   * is lost now, without waiting for the next renew.
+   */
+  revoked(epoch: number, by?: string): boolean {
+    if (!this.lease || this.lease.epoch !== epoch) return false
+    this.lose(new Error(`the company lease (epoch ${epoch}) was taken over${by ? ` by ${by}` : ''}`))
+    return true
+  }
+
+  private lose(e: unknown) {
+    if (!this.lease) return
+    this.lease = null
+    this.cancel()
+    if (!this.stopped) this.opts.onLost?.(e)
+  }
+
+  private schedule(afterMs: number) {
     this.cancel()
     if (this.stopped) return
-    const left = Math.max(l.expires_at - this.now(), 0)
-    const ms = Math.max(Math.floor(left * (this.opts.renewFraction ?? 1 / 3)), 1000)
-    this.timer = this.setTimer(() => {
-      this.timer = null
-      this.renew().catch(() => undefined)
-    }, ms)
+    this.timer = this.setTimer(
+      () => {
+        this.timer = null
+        this.renew().catch(() => undefined)
+      },
+      Math.max(Math.floor(afterMs), 1000),
+    )
   }
 
   private cancel() {
@@ -377,7 +471,7 @@ export class LeaseKeeper {
     this.cancel()
     const l = this.lease
     this.lease = null
-    if (release && l) await this.client.releaseLease(this.companyId, l.lease_id).catch(() => undefined)
+    if (release && l) await this.client.releaseLease(this.companyId, l.token).catch(() => undefined)
   }
 }
 
@@ -395,10 +489,11 @@ export interface OrchestratorGateway {
   merge(number: number, headSha: string): Promise<string>
 }
 
-export function centralGateway(client: CentralClient, leaseId: () => string): OrchestratorGateway {
+/** `token`: the current fencing token (`LeaseKeeper.token`; it throws once the lease is lost). */
+export function centralGateway(client: CentralClient, token: () => string): OrchestratorGateway {
   return {
     async openDraft(contentId, path, pageJson, message, workItem) {
-      const r = await client.draft(leaseId(), {
+      const r = await client.draft(token(), {
         content_id: contentId,
         path,
         page: JSON.parse(pageJson),
@@ -408,7 +503,7 @@ export function centralGateway(client: CentralClient, leaseId: () => string): Or
       return { number: r.number, branch: r.branch, head_sha: r.head_sha }
     },
     async merge(number, headSha) {
-      return (await client.merge(leaseId(), number, headSha)).merged_sha
+      return (await client.merge(token(), number, headSha)).merged_sha
     },
   }
 }

@@ -86,7 +86,7 @@ async function connect(login: string): Promise<{ companyId: string; leaseId: str
   await client.devLogin(login)
   company = (await client.myCompany()) ?? (await client.createCompany({ name: `${login} Dispatch` }))
   await store.setKv('company.id', company.id)
-  lease = new LeaseKeeper(client, company.id, await deviceId(), { force: true, onLost: (e) => log(`lease lost: ${e}`) })
+  lease = new LeaseKeeper(client, company.id, await deviceId(), { onLost: (e) => log(`lease lost: ${e}`) })
   const l = await lease.start()
   stream = new EventStream(client, company.id, store, async (ev) => {
     received.push(ev)
@@ -101,7 +101,7 @@ async function connect(login: string): Promise<{ companyId: string; leaseId: str
 async function runLoop(): Promise<LoopReport> {
   if (!company || !lease) throw new Error('connect first')
   const keeper = lease
-  const orch = await createOrchestrator({ store, gateway: centralGateway(client, () => keeper.leaseId), llm: fakeLlm(), site: SITE })
+  const orch = await createOrchestrator({ store, gateway: centralGateway(client, () => keeper.token), llm: fakeLlm(), site: SITE })
   const res = await runMvpLoop(orch, {
     company: company.id,
     onStep: (s) => log(`${s.job.kind} r${s.job.revision} → ${JSON.stringify(s.outcomes)}`),
@@ -162,7 +162,7 @@ async function runSimLoop(): Promise<SimLoopReport> {
   const { default: initSim, Sim } = await import('swarm-wasm')
   await initSim()
   const sim = Sim.scenario('cinqueterre', BigInt(company.seed))
-  const orch = await createOrchestrator({ store, gateway: centralGateway(client, () => keeper.leaseId), llm: fakeLlm(), site: SITE })
+  const orch = await createOrchestrator({ store, gateway: centralGateway(client, () => keeper.token), llm: fakeLlm(), site: SITE })
   const enc = new TextEncoder()
   const report: SimLoopReport = { jobs: [], staff: [], statusBefore: '', statusAfter: '', feed: [], postTypes: [], logged: 0, minute: 0 }
   const apply = async (cmd: string) => {

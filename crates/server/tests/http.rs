@@ -18,7 +18,7 @@ async fn migrations_apply_and_constraints_hold() {
         .collect();
     for t in [
         "companies",
-        "company_leases",
+        "company_executors",
         "events",
         "gateway_prs",
         "sessions",

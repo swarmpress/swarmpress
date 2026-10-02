@@ -1,5 +1,6 @@
 //! Application state, HTTP routes and server bootstrap.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -40,6 +41,8 @@ pub struct AppState {
     pub web_limiter: Arc<RateLimiter<String>>,
     /// Serializes sync blob writes (single process).
     pub sync_lock: Arc<tokio::sync::Mutex<()>>,
+    /// One mutex per company (ADR-0045 decision 5), see [`AppState::company_lock`].
+    company_locks: CompanyLocks,
     /// First-party analytics collector (ADR-0032).
     pub tracker: Arc<Tracker>,
     /// Where nightly analytics signals go.
@@ -74,6 +77,7 @@ impl AppState {
             github,
             web_limiter,
             sync_lock: Arc::new(tokio::sync::Mutex::new(())),
+            company_locks: CompanyLocks::default(),
             tracker,
             signal_sink: Arc::new(PendingSignalSink),
         }
@@ -89,7 +93,28 @@ impl AppState {
     pub fn now_ms(&self) -> i64 {
         i64::try_from(self.clock.now_ms()).unwrap_or(i64::MAX)
     }
+
+    /// The company's mutex. A fenced write holds it across the lease check,
+    /// the external call and the bookkeeping; a lease grant takes it too, so a
+    /// takeover waits until an in-flight side effect has been recorded. This
+    /// relies on the single server process.
+    pub async fn company_lock(&self, company_id: &str) -> tokio::sync::OwnedMutexGuard<()> {
+        let lock = self
+            .company_locks
+            .0
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .entry(company_id.to_string())
+            .or_default()
+            .clone();
+        lock.lock_owned().await
+    }
 }
+
+/// Per-company mutexes. Entries are never removed: one small allocation per
+/// company that ever took a lease.
+#[derive(Clone, Default)]
+struct CompanyLocks(Arc<std::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>);
 
 /// The caller's company, or 404.
 pub async fn require_company(st: &AppState, user_id: &str) -> AppResult<Company> {

@@ -213,10 +213,36 @@ async fn gateway_requires_the_lease() {
         .post_json(
             &format!("/api/companies/{company}/lease"),
             Some(&cookie),
-            json!({ "device_id": "phone", "force": true }),
+            json!({ "device_id": "phone", "mode": "force" }),
         )
         .await;
     assert_eq!(st, 200);
+    // The current lease id under a stale (or a future) epoch is not a lease.
+    let (st, cur) = s
+        .post_json(
+            &format!("/api/companies/{company}/lease"),
+            Some(&cookie),
+            json!({ "device_id": "phone", "mode": "acquire" }),
+        )
+        .await;
+    assert_eq!((st, cur["epoch"].as_i64()), (200, Some(3)), "{cur}");
+    let id = cur["lease_id"].as_str().unwrap();
+    for epoch in [1, 2, 4] {
+        let (st, _) = s
+            .send_json(
+                Method::POST,
+                "/api/gateway/draft",
+                Some(&cookie),
+                &[(LEASE, &format!("{epoch}.{id}"))],
+                Some(body.clone()),
+            )
+            .await;
+        assert_eq!(st, 409, "epoch {epoch}");
+    }
+    assert!(
+        s.fake_github().calls().is_empty(),
+        "a fenced-out call never reaches GitHub"
+    );
     let (st, _) = s
         .send_json(
             Method::POST,
@@ -261,6 +287,94 @@ async fn gateway_requires_the_lease() {
         )
         .await;
     assert_eq!(st, 401);
+}
+
+/// Let a request reach the server and queue on the company mutex.
+async fn until_queued<F: std::future::Future + Unpin>(fut: &mut F) {
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(300), fut)
+            .await
+            .is_err(),
+        "the request must wait for the company mutex"
+    );
+}
+
+#[tokio::test]
+async fn a_takeover_and_a_draft_never_interleave() {
+    // ADR-0045 decision 5: the lease check, the GitHub call and the
+    // bookkeeping of a fenced write are one unit under the company mutex, and
+    // a takeover takes the same mutex. The test holds the mutex itself to
+    // decide the order in which a draft and a takeover run.
+    let s = TestServer::start().await;
+    let (cookie, company) = s.player(1).await;
+    let old = Player {
+        cookie: cookie.clone(),
+        lease: s.lease(&cookie, &company, "laptop").await,
+    };
+    let repo = RepoId::new("swarmpress-sites", "player1-site");
+    let lease_path = format!("/api/companies/{company}/lease");
+    let body = |id: &str| {
+        json!({ "content_id": id, "path": format!("content/pages/en/{id}.json"),
+                "page": page(id), "message": "Draft" })
+    };
+
+    // 1. The draft is in flight first: it completes and is recorded under the
+    //    old epoch; the takeover only then goes through.
+    let gate = s.st.company_lock(&company).await;
+    let mut first = Box::pin(draft(&s, &old, body("a1")));
+    until_queued(&mut first).await;
+    let mut takeover = Box::pin(s.post_json(
+        &lease_path,
+        Some(&cookie),
+        json!({ "device_id": "phone", "mode": "force" }),
+    ));
+    until_queued(&mut takeover).await;
+    drop(gate);
+    let (st, d) = first.await;
+    assert_eq!(st, 200, "{d}");
+    let (st, t) = takeover.await;
+    assert_eq!(st, 200, "{t}");
+    assert_eq!(t["epoch"], 2);
+    assert_eq!(s.fake_github().pr_numbers(&repo).len(), 1);
+    let (st, _) = merge(
+        &s,
+        &Player {
+            cookie: cookie.clone(),
+            lease: t["token"].as_str().unwrap().to_string(),
+        },
+        d["number"].as_u64().unwrap(),
+        d["head_sha"].as_str().unwrap(),
+    )
+    .await;
+    assert_eq!(st, 200, "the new holder sees the recorded PR");
+
+    // 2. The takeover is queued first: the draft that raced it runs after
+    //    it, is refused with 409 and never reaches GitHub.
+    let new = Player {
+        cookie: cookie.clone(),
+        lease: t["token"].as_str().unwrap().to_string(),
+    };
+    s.fake_github().clear_calls();
+    let gate = s.st.company_lock(&company).await;
+    let mut takeover = Box::pin(s.post_json(
+        &lease_path,
+        Some(&cookie),
+        json!({ "device_id": "laptop", "mode": "force" }),
+    ));
+    until_queued(&mut takeover).await;
+    let mut raced = Box::pin(draft(&s, &new, body("a2")));
+    until_queued(&mut raced).await;
+    drop(gate);
+    let (st, t) = takeover.await;
+    assert_eq!((st, t["epoch"].as_i64()), (200, Some(3)), "{t}");
+    let (st, d) = raced.await;
+    assert_eq!(st, 409, "{d}");
+    assert!(
+        s.fake_github().calls().is_empty(),
+        "{:?}",
+        s.fake_github().calls()
+    );
+    assert_eq!(s.fake_github().pr_numbers(&repo).len(), 1);
 }
 
 #[tokio::test]

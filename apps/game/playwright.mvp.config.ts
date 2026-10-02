@@ -13,7 +13,8 @@ const port = Number(process.env.SWARMPRESS_MVP_PORT ?? 4176)
 
 export default defineConfig({
   testDir: 'e2e',
-  testMatch: 'mvp.spec.ts',
+  // takeover.spec.ts (the executor lease, ADR-0045) needs the same two servers.
+  testMatch: ['mvp.spec.ts', 'takeover.spec.ts'],
   timeout: 300_000,
   workers: 1,
   reporter: [['list'], ['json', { outputFile: process.env.PW_JSON ?? 'reports/playwright-mvp.json' }]],

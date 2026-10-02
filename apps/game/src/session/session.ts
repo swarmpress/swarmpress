@@ -4,6 +4,8 @@
  * (`Sim.demo`, no store, no network), which the smoke and visual suites use.
  *
  *   dev login → company (created on first login) → company store (OPFS) → lease
+ *     (ADR-0045: `acquire`; another executor's live lease leaves this session
+ *     read-only, and a session that loses the lease halts)
  *   → restore: the store's log + checkpoint, else central sync, else a new company
  *   → orchestration loop (sim effects → orchestrator-wasm → commands) + events
  *   → checkpoints: locally every game hour, sealed to central sync every game
@@ -15,12 +17,14 @@
  *   llm=fake         the scripted MVP model (src/llm/mvp-script.ts)
  *   store=…          the store engine (src/store)
  *   ff=HH:MM         fast-forward on boot to that time of the current game day
+ *   takeover=1       take the company over from the executor that holds it (this
+ *                    page load only; the parameter is removed from the URL)
  */
 import styleGuide from '../../../../crates/agents/tests/fixtures/style-guide.json'
 import { Sim } from 'swarm-wasm'
 import { parseClock, replay, stepsUntil, type LoggedCommand, type ReplayResult } from '../catchup/replay'
 import { FakeLlm } from '../llm/fake-llm'
-import { CentralClient, centralGateway, EventStream, LeaseKeeper, type CentralEvent, type Company, type OrchestratorGateway } from '../net/central'
+import { CentralClient, centralGateway, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type OrchestratorGateway } from '../net/central'
 import { OrchestrationLoop, type JobRecord } from '../orchestration/loop'
 import { createOrchestrator, jobsFromEffects, llmFromQuery, localLlmBridge, outcomesForSim, type SiteBindingJson } from '../orchestrator'
 import { openCompanyStore, type CompanyStore, type Plan } from '../store'
@@ -77,6 +81,9 @@ export interface SessionInfo {
   fallbackReason: string | null
   crossOriginIsolated: boolean
   leaseId: string | null
+  /** The lease's fencing epoch and token (`<epoch>.<lease_id>`); null while the lease is not held. */
+  epoch: number | null
+  leaseToken: string | null
   events: string
   restored: RestoreInfo
   /** Steps the `ff=` fast-forward ran on boot (0 without it, or when that time had passed). */
@@ -104,6 +111,10 @@ export interface SessionHook {
     /** The clock is held for a standup job close to the sim's meeting timeout, or because the loop halted. */
     holdClock: boolean
     halted: string | null
+    /** Why this session does not run the company (another executor holds the lease, or it was lost); null while it does. */
+    readOnly: string | null
+    /** The executor that asked this one to hand over, if any. */
+    handoverRequestedBy: string | null
     /** The last checkpoint that reached the central server (a sealed log and snapshot). */
     sealed: CheckpointResult | null
     pendingCommands: number
@@ -197,6 +208,41 @@ async function deviceId(store: CompanyStore): Promise<string> {
   const id = `dev-${crypto.randomUUID()}`
   await store.setKv('device.id', id)
   return id
+}
+
+/**
+ * The lease notice (`#lease-notice`, `role="alert"`): why this session is
+ * read-only, or that another device asked to take over. With `takeOver` it
+ * carries the one control that takes the company over here: a reload with
+ * `takeover=1`, which restores from the sealed state under a new epoch.
+ */
+function showLeaseNotice(text: string, takeOver: boolean) {
+  let el = document.getElementById('lease-notice')
+  if (!el) {
+    el = document.createElement('div')
+    el.id = 'lease-notice'
+    el.setAttribute('role', 'alert')
+    el.style.cssText =
+      'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:1000;max-width:min(90vw,640px);' +
+      'padding:10px 14px;border-radius:8px;background:#fff7e0;color:#3a2a00;border:1px solid #d9b34a;' +
+      'font:14px/1.4 system-ui,sans-serif;display:flex;gap:12px;align-items:center;box-shadow:0 4px 16px rgba(0,0,0,.25)'
+    document.body.append(el)
+  }
+  el.dataset.kind = takeOver ? 'read-only' : 'handover'
+  const message = document.createElement('span')
+  message.textContent = takeOver ? `Read-only. ${text}` : text
+  el.replaceChildren(message)
+  if (!takeOver) return
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.textContent = 'Take over here'
+  button.style.cssText = 'font:inherit;padding:4px 10px;border-radius:6px;border:1px solid #8a6d1a;background:#fff;cursor:pointer'
+  button.addEventListener('click', () => {
+    const url = new URL(location.href)
+    url.searchParams.set('takeover', '1')
+    location.assign(url)
+  })
+  el.append(button)
 }
 
 /** The log is `1..n` without holes; anything else is a damaged store or a broken sync. */
@@ -296,12 +342,45 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   const store = await openCompanyStore({ name: `swarmpress-${company.id}.db` })
   await store.setKv('company.id', company.id)
 
-  // The newest device takes the company over (dev/MVP; the lease UI comes later).
+  // One executor runs a company (ADR-0045). This device takes the lease when
+  // it is free, expired, released or its own; another executor's live lease
+  // leaves this session read-only until the player takes over explicitly
+  // (`takeover=1`, which the notice's button sets).
+  const takeover = params.get('takeover') === '1'
+  // (`as`: these are assigned from callbacks, which narrowing cannot see.)
+  let readOnly = null as string | null
+  let handoverBy = null as string | null
+  // Set once the loop and the event stream exist.
+  let halt = null as ((reason: string) => void) | null
+  const goReadOnly = (reason: string) => {
+    if (readOnly) return
+    readOnly = reason
+    log(`read-only: ${reason}`)
+    halt?.(reason)
+    showLeaseNotice(reason, true)
+  }
   const lease = new LeaseKeeper(client, company.id, await deviceId(store), {
-    force: true,
-    onLost: (e) => log(`lease lost: ${String(e)}`),
+    mode: takeover ? 'force' : 'acquire',
+    onLost: (e) => goReadOnly(`This device no longer runs the company: ${e instanceof Error ? e.message : String(e)}.`),
+    onHandoverRequested: (by) => {
+      handoverBy = by ?? 'another device'
+      log(`handover requested by ${handoverBy}`)
+      if (!readOnly) showLeaseNotice(`Another device (${handoverBy}) asked to take over this company.`, false)
+    },
   })
-  await lease.start()
+  try {
+    await lease.start()
+  } catch (e) {
+    const held = leaseHeld(e)
+    if (!held) throw e
+    goReadOnly(`${held.holder_kind === 'browser' ? 'Another device' : 'A runner'} (${held.holder}) is running this company.`)
+  }
+  if (takeover) {
+    // The takeover was this page load's decision, not the next reload's.
+    const url = new URL(location.href)
+    url.searchParams.delete('takeover')
+    history.replaceState(null, '', url)
+  }
 
   const { sim, info: restored, result, lastSeq } = await restore(store, client, company)
   log(`company ${company.id} restored from ${restored.source} at step ${restored.step} (${restored.replayed} commands, ${restored.ms} ms)`)
@@ -310,7 +389,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   const orchestrator = await createOrchestrator({
     store,
     gateway: recordingGateway(
-      centralGateway(client, () => lease.leaseId),
+      centralGateway(client, () => lease.token),
       calls,
     ),
     llm: localLlmBridge(llmFromQuery(location.search, unwiredLlm)),
@@ -330,12 +409,14 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   })
   loop.seed(result.completedJobs, result.landed, lastSeq)
   await loop.loadPendingDeploys()
+  // A read-only session shows the restored world and runs nothing.
+  if (readOnly) loop.halt(readOnly)
   // Jobs requested before the reload that the sim still waits for run again
   // (or reuse their stored outcome, if `run()` had finished).
-  for (const e of result.effects) void loop.enqueueEffects(e, { pendingOnly: true })
+  else for (const e of result.effects) void loop.enqueueEffects(e, { pendingOnly: true })
 
   // Fast-forward (dev and e2e): deterministic stepping, no commands.
-  const ff = parseClock(params.get('ff'))
+  const ff = readOnly ? null : parseClock(params.get('ff'))
   let fastForwarded = 0
   if (ff != null) {
     const n = stepsUntil(sim, ff)
@@ -356,8 +437,20 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
         source: typeof ev.payload.source === 'string' ? ev.payload.source : undefined,
       })
     }
+    // The inbox keeps old lease events; only the one that names this
+    // session's own epoch concerns it (`revoked` checks).
+    if (ev.kind === 'LeaseRevoked' && typeof ev.payload.epoch === 'number') {
+      lease.revoked(ev.payload.epoch, typeof ev.payload.by === 'string' ? ev.payload.by : undefined)
+    }
   })
-  await events.start()
+  // From here on losing the lease halts the session (ADR-0045 decision 10):
+  // no job, no command, no clock, no seal, no event intake.
+  halt = (reason) => {
+    loop.halt(reason)
+    events.stop()
+  }
+  if (readOnly) halt(readOnly)
+  else await events.start()
 
   const sync = new SyncUploader(client, store, company.id)
   let paused = false
@@ -376,6 +469,8 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     const at = capture()
     let local = false
     let central: SealResult | null = null
+    // Only the lease holder writes: a read-only session seals nothing.
+    if (readOnly) return { step: at.step, hash: at.hash, local, central }
     try {
       await checkpointLocal(at)
       local = true
@@ -425,6 +520,8 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       fallbackReason: store.fallbackReason,
       crossOriginIsolated: globalThis.crossOriginIsolated === true,
       leaseId: lease.current?.lease_id ?? null,
+      epoch: lease.current?.epoch ?? null,
+      leaseToken: lease.current?.token ?? null,
       events: events.transport,
       restored,
       fastForwarded,
@@ -438,6 +535,8 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       queued: loop.queued,
       holdClock: loop.holdClock,
       halted: loop.halted,
+      readOnly,
+      handoverRequestedBy: handoverBy,
       sealed: sealed ? { ...sealed } : null,
       pendingCommands: loop.pendingCommands,
       pendingDeploys: loop.pendingDeploys,

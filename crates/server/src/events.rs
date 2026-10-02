@@ -30,6 +30,12 @@ pub mod kinds {
     pub const DEPLOY_LANDED: &str = "DeployLanded";
     /// A deployment of a merged sha failed: `{content_id, work_item, merged_sha, state, source}`.
     pub const DEPLOY_FAILED: &str = "DeployFailed";
+    /// A new grant displaced an unreleased lease (ADR-0045):
+    /// `{epoch, holder, new_epoch, by}`. Only the executor whose epoch is
+    /// `epoch` acts on it; later readers of the inbox ignore it.
+    pub const LEASE_REVOKED: &str = "LeaseRevoked";
+    /// Another executor asked the holder to hand over: `{epoch, holder, by}`.
+    pub const HANDOVER_REQUESTED: &str = "HandoverRequested";
 }
 
 const PAGE: i64 = 500;

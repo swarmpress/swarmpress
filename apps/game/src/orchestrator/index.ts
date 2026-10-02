@@ -5,7 +5,7 @@
  *
  * ```ts
  * const store = await openCompanyStore()
- * const orch = await createOrchestrator({ store, gateway: centralGateway(client, () => lease.leaseId), llm: localLlmBridge(llmFromQuery()), site })
+ * const orch = await createOrchestrator({ store, gateway: centralGateway(client, () => lease.token), llm: localLlmBridge(llmFromQuery()), site })
  * const outcomes = JSON.parse(await orch.run(JSON.stringify(job)))
  * ```
  */

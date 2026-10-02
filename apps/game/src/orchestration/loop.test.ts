@@ -173,6 +173,44 @@ describe('OrchestrationLoop', () => {
     expect(sim.applied).toHaveLength(1)
   })
 
+  it('halt() (the lease is lost) stops everything: no job starts, no outcome is applied, no failure is reported', async () => {
+    let release!: (out: string) => void
+    let reject!: (e: Error) => void
+    const { sim, store, loop, ran } = setup(
+      () =>
+        new Promise<string>((res, rej) => {
+          release = res
+          reject = rej
+        }),
+    )
+    // Job 1 finished before the loss: its outcome is ready, not yet applied.
+    await loop.enqueueEffects(JSON.stringify([job(1, 'draft')]))
+    release(JSON.stringify([completed(1)]))
+    await loop.settled()
+    expect(loop.pendingCommands).toBe(1)
+    // Job 2 is in flight and job 3 queued when the lease goes.
+    await loop.enqueueEffects(JSON.stringify([job(2, 'review'), job(3, 'publish', 1)]))
+    await Promise.resolve()
+    expect(ran).toEqual([1, 2])
+    loop.halt('the company lease was lost')
+    loop.halt('a second reason is ignored')
+    expect(loop.halted).toBe('the company lease was lost')
+    expect(loop.holdClock).toBe(true)
+
+    // The in-flight job fails (its gateway call was fenced out): no retry, and
+    // the sim is not told it failed, because the next holder runs it.
+    reject(new Error('409 company lease not held'))
+    await loop.idle()
+    expect(ran).toEqual([1, 2])
+    expect(loop.jobs.map((j) => j.state)).toEqual(['done', 'queued', 'queued'])
+    expect(loop.errors).toEqual([])
+    loop.boundary()
+    expect(sim.applied).toEqual([])
+    expect(store.log).toEqual([])
+    expect(loop.pendingCommands).toBe(1)
+    expect(loop.apply('"TriageInbox"')).toEqual({ ok: false, reason: 'the session is halted: the company lease was lost' })
+  })
+
   it('rejects a DeployLanded event it could not persist, so the event cursor stays behind it', async () => {
     const { store, loop } = setup(async () => '[]')
     store.failKv = PENDING_DEPLOYS_KEY

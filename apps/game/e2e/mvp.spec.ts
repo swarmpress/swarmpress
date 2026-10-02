@@ -253,11 +253,15 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
   const context = await browser.newContext({ baseURL, viewport: { width: 1280, height: 800 } })
   try {
     const fresh = await context.newPage()
-    const freshErrors = await boot(fresh, gameUrl(engine, login))
+    // The reloaded page still holds the lease, so the new device takes the
+    // company over explicitly (ADR-0045; e2e/takeover.spec.ts covers the handover).
+    const freshErrors = await boot(fresh, gameUrl(engine, login, '&takeover=1'))
     const there = await info(fresh)
     expect(there.companyId).toBe(first.companyId)
     expect(there.leaseId).toBeTruthy()
     expect(there.leaseId).not.toBe(again.leaseId)
+    // One epoch per holder: the first load, its reload, the new device.
+    expect([first.epoch, again.epoch, there.epoch]).toEqual([1, 2, 3])
     expectRestored(there.restored, 'central')
     expect((await items(fresh))[ITEM]).toBe('published')
     expect(await logKinds(fresh)).toEqual(LOGGED)
