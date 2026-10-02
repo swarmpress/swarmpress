@@ -14,8 +14,9 @@ use serde::{Deserialize, Serialize};
 use crate::building::{Door, RoomKind, Window};
 use crate::equipment::EquipmentKind;
 use crate::geom::{PosMm, Side, TileRect};
-use crate::ids::{CandidateId, EquipId, JobId, MeetingId, ProjectId, RoomId, StaffId, TicketId};
+use crate::ids::{CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId};
 use crate::inbox::{DelegationPolicy, SecretaryTaskKind, TicketOption};
+use crate::plan::BriefStub;
 use crate::projects::ProjectStatus;
 
 /// What the player can do.
@@ -178,9 +179,13 @@ pub struct SiteSignals {
 /// Commands only the server may inject.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ServerCommand {
-    /// An LLM job finished. M1: there are no jobs yet, so this is rejected
-    /// loudly with [`crate::Reject::NotSupported`].
-    JobCompleted { job_id: JobId, digest: JobDigest },
+    /// A requested job ([`crate::plan::Effect::RequestJob`]) finished.
+    JobCompleted { job_id: u64, digest: JobDigest },
+    /// A standup's outcome: the briefs it agreed on become work items.
+    /// `job_id` is the standup's job.
+    MeetingOutcome { job_id: u64, briefs: Vec<BriefStub> },
+    /// The deploy carrying a merged work item is live.
+    DeployLanded { work_item: WorkItemId },
     /// One meeting turn: `speaker` talks for a duration derived from `chars`.
     /// The text itself is fetched by reference and never enters the sim.
     Utterance {

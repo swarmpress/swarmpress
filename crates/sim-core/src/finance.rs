@@ -332,6 +332,7 @@ impl World {
                 from: Some(cfo),
                 role: None,
                 amount_cents: amount,
+                work_item: None,
             });
         }
         if self
@@ -345,6 +346,7 @@ impl World {
                 from: Some(cfo),
                 role: None,
                 amount_cents: self.company.cash,
+                work_item: None,
             });
         }
         if self.company.cash < 0
@@ -358,6 +360,7 @@ impl World {
                 from: Some(cfo),
                 role: None,
                 amount_cents: amount,
+                work_item: None,
             });
         }
     }

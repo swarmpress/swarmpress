@@ -47,6 +47,7 @@ use crate::inbox::{
     ExecutiveOffice, SecretaryTask, SecretaryTaskKind, Ticket, TicketKind, TicketSpec,
 };
 use crate::pathfinding::{plan_path, NavGrid, Path};
+use crate::plan::{Effect, JobKind, Plan, STANDUP_TIMEOUT_MINUTES};
 use crate::projects::{Project, ProjectStatus, MONTH_DAYS};
 use crate::staff::{
     persona, salary_for, Activity, Candidate, Role, Schedule, Seniority, Spot, Staff, Traits,
@@ -106,6 +107,8 @@ pub struct Meeting {
     pub end: u16,
     /// Who is expected. Only they walk over.
     pub attendees: BTreeSet<StaffId>,
+    /// The standup's job, while its outcome is awaited.
+    pub job: Option<u64>,
     /// Next expected [`ServerCommand::Utterance`] seq.
     pub next_seq: u32,
     pub speaker: Option<StaffId>,
@@ -175,6 +178,12 @@ pub struct World {
     pub exec: ExecutiveOffice,
     /// Per-project books, month close.
     pub finance: Finance,
+    /// Work items and pending jobs (the publishing plan's skeleton).
+    pub plan: Plan,
+    /// Effects since the last [`World::drain_effects`]. Not state: skipped
+    /// by serde, so outside the hash and snapshots.
+    #[serde(skip)]
+    pub(crate) effects: Vec<Effect>,
     /// Day the praise counter belongs to, and praises given that day.
     pub praise_day: u32,
     pub praises_today: u8,
@@ -225,6 +234,8 @@ impl World {
             secretary_tasks: BTreeMap::new(),
             exec: ExecutiveOffice::default(),
             finance: Finance::default(),
+            plan: Plan::default(),
+            effects: Vec::new(),
             praise_day: 0,
             praises_today: 0,
             ids: IdGen::default(),
@@ -503,6 +514,7 @@ impl World {
                     from,
                     role: None,
                     amount_cents: 0,
+                    work_item: None,
                 });
             }
             Command::SetProjectStatus { project, status } => {
@@ -592,6 +604,7 @@ impl World {
             from: Some(cfo),
             role: self.staff.get(&hired).map(|s| s.role),
             amount_cents: salary * i64::from(MONTH_DAYS),
+            work_item: None,
         });
         if salary * 100 > payroll_before * PAYROLL_SPIKE_PCT {
             self.raise_ticket(TicketSpec {
@@ -600,14 +613,20 @@ impl World {
                 from: Some(cfo),
                 role: self.staff.get(&hired).map(|s| s.role),
                 amount_cents: salary * i64::from(MONTH_DAYS),
+                work_item: None,
             });
         }
     }
 
     fn execute_server(&mut self, cmd: ServerCommand) {
         match cmd {
-            // Rejected by validation in M1 (no jobs exist yet).
-            ServerCommand::JobCompleted { .. } => {}
+            ServerCommand::JobCompleted { job_id, digest } => {
+                self.apply_job_completed(job_id, digest);
+            }
+            ServerCommand::MeetingOutcome { job_id, briefs } => {
+                self.apply_meeting_outcome(job_id, &briefs);
+            }
+            ServerCommand::DeployLanded { work_item } => self.apply_deploy_landed(work_item),
             ServerCommand::Utterance {
                 meeting,
                 speaker,
@@ -878,8 +897,9 @@ impl World {
         // 5. meetings
         self.update_meetings(now);
 
-        // 6. tickets past their deadline
+        // 6. tickets past their deadline; work items whose phase is done
         self.expire_tickets();
+        self.advance_work();
 
         // 7. staff
         self.update_staff(now);
@@ -977,6 +997,7 @@ impl World {
                 start,
                 end,
                 attendees,
+                job: None,
                 next_seq: 0,
                 speaker: None,
                 speak_until: 0,
@@ -1044,16 +1065,24 @@ impl World {
                     continue;
                 }
                 attendees.extend(self.active_with_role(Role::Strategist));
-                if let Some(room) = self.free_meeting_room(day, STANDUP_START, STANDUP_END, None) {
-                    self.open_meeting(
+                // The standup runs until its outcome arrives, at most an hour.
+                let end = STANDUP_START + STANDUP_TIMEOUT_MINUTES;
+                if let Some(room) = self.free_meeting_room(day, STANDUP_START, end, None) {
+                    let staff: Vec<StaffId> = attendees.iter().copied().collect();
+                    let mid = self.open_meeting(
                         MeetingKind::Standup,
                         Some(pid),
                         room,
                         day,
                         STANDUP_START,
-                        STANDUP_END,
+                        end,
                         attendees,
                     );
+                    let job =
+                        self.request_job(JobKind::Standup, pid, None, None, 0, Some(mid), staff);
+                    if let Some(m) = self.meetings.get_mut(&mid) {
+                        m.job = Some(job);
+                    }
                 }
             }
         }
@@ -1118,6 +1147,7 @@ impl World {
 
     fn update_meetings(&mut self, now: Clock) {
         self.schedule_rituals(now);
+        self.time_out_standups();
         let step = self.step;
         let staff = &self.staff;
         self.meetings.retain(|id, m| {

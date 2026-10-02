@@ -335,6 +335,7 @@ fn delegation_low_answers_low_tickets_but_never_high() {
         from: Some(StaffId(5)),
         role: None,
         amount_cents: 0,
+        work_item: None,
     });
     w.apply(Command::SetDelegation {
         policy: DelegationPolicy::LowAndMedium,
@@ -349,6 +350,7 @@ fn delegation_low_answers_low_tickets_but_never_high() {
         from: Some(StaffId(7)),
         role: Some(Role::Writer),
         amount_cents: 2_000_000,
+        work_item: None,
     });
     assert!(w.tickets[&big].is_open());
     // Off: the CEO answers everything
@@ -362,6 +364,7 @@ fn delegation_low_answers_low_tickets_but_never_high() {
         from: Some(StaffId(7)),
         role: Some(Role::Writer),
         amount_cents: 100_000,
+        work_item: None,
     });
     assert!(w.tickets[&low].is_open());
     w.apply(Command::AnswerTicket {

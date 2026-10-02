@@ -408,6 +408,7 @@ impl World {
                         from,
                         role: Some(role),
                         amount_cents: 0,
+                        work_item: None,
                     });
                 }
             }

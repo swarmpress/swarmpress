@@ -19,6 +19,7 @@
 //! - [`projects`]: publications, teams, work routing, missing roles, analytics KPIs
 //! - [`finance`]: per-project ledgers, month close, runway, CFO alerts
 //! - [`inbox`]: tickets, the executive office, secretary triage and delegation
+//! - [`plan`]: work items and the sim ↔ orchestrator job contract (effects)
 //! - [`pathfinding`]: deterministic A* on the tile grid through doors
 //! - [`commands`]: player [`Command`]s and [`ServerCommand`]s
 //! - [`validate`]: `validate(&World, &Command) -> Result<(), Reject>`
@@ -40,6 +41,7 @@ pub mod ids;
 pub mod inbox;
 pub mod pathfinding;
 pub mod personas;
+pub mod plan;
 pub mod projects;
 pub mod render_state;
 pub mod roles;

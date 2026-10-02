@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::clock::{hm, MINUTES_PER_DAY};
 use crate::commands::OvertimePolicy;
-use crate::ids::{JobId, ProjectId, StaffId, TaskId, TicketId};
+use crate::ids::{JobId, ProjectId, StaffId, TaskId, TicketId, WorkItemId};
 use crate::projects::ProjectStatus;
 use crate::roles::Role;
 use crate::world::{MeetingKind, World};
@@ -176,8 +176,9 @@ impl Priority {
 /// A ticket answer. Effects ([`World::resolve_ticket`]):
 /// - `ApproveOverrun`: the project's monthly budget rises by 20%;
 /// - `CutScope`: recorded; scope cuts act on work items (publishing plan);
-/// - `Acknowledge`, `Ignore`, `Retry`, `Kill`: recorded only (no work items
-///   or jobs exist in the sim yet);
+/// - `Acknowledge`, `Ignore`: recorded only;
+/// - `Retry` / `Kill` (escalations about a work item): restart the blocked
+///   phase with a new job / cancel the item;
 /// - `CutCosts`: overtime policy becomes Never;
 /// - `TakeLoan`: the bank loan of the ticket's amount is paid out;
 /// - `ArrangeHiring`: a candidate for the missing role joins today's
@@ -275,6 +276,8 @@ pub struct Ticket {
     pub role: Option<Role>,
     /// Money at stake, cents (financial tickets).
     pub amount_cents: i64,
+    /// The work item an escalation is about.
+    pub work_item: Option<WorkItemId>,
     /// The Secretary's summary (an LLM job, M2). `None` until it exists.
     pub summary_ref: Option<JobId>,
     pub options: Vec<TicketOption>,
@@ -311,6 +314,7 @@ pub struct TicketSpec {
     pub from: Option<StaffId>,
     pub role: Option<Role>,
     pub amount_cents: i64,
+    pub work_item: Option<WorkItemId>,
 }
 
 /// How much of the Inbox the Secretary may answer.
@@ -482,6 +486,7 @@ impl World {
             from: spec.from,
             role: spec.role,
             amount_cents: spec.amount_cents,
+            work_item: spec.work_item,
             summary_ref: None,
             options: spec.kind.options().to_vec(),
             default_option: spec.kind.default_option(),
@@ -585,9 +590,9 @@ impl World {
         t.resolved_by = Some(by);
         t.answer = Some(option);
         t.resolved_step = Some(step);
-        let (project, role, amount) = (t.project, t.role, t.amount_cents);
+        let (project, role, amount, item) = (t.project, t.role, t.amount_cents, t.work_item);
         if feasible {
-            self.apply_option(option, project, role, amount);
+            self.apply_option(option, project, role, amount, item);
         }
         self.prune_tickets();
     }
@@ -598,6 +603,7 @@ impl World {
         project: Option<ProjectId>,
         role: Option<Role>,
         amount: i64,
+        item: Option<WorkItemId>,
     ) {
         match option {
             TicketOption::ApproveOverrun => {
@@ -624,11 +630,17 @@ impl World {
                     self.set_project_status(p, ProjectStatus::Archived);
                 }
             }
-            TicketOption::CutScope
-            | TicketOption::Acknowledge
-            | TicketOption::Ignore
-            | TicketOption::Retry
-            | TicketOption::Kill => {}
+            TicketOption::Retry => {
+                if let Some(id) = item {
+                    self.retry_item(id);
+                }
+            }
+            TicketOption::Kill => {
+                if let Some(id) = item {
+                    self.cancel_item(id);
+                }
+            }
+            TicketOption::CutScope | TicketOption::Acknowledge | TicketOption::Ignore => {}
         }
     }
 

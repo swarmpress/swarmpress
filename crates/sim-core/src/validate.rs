@@ -548,9 +548,11 @@ pub(crate) fn project_capacity(w: &World) -> Result<(), Reject> {
 /// Validates a server-injected command.
 pub fn validate_server(w: &World, cmd: &ServerCommand) -> Result<(), Reject> {
     match cmd {
-        ServerCommand::JobCompleted { .. } => Err(Reject::NotSupported(
-            "LLM jobs arrive in M2; no job can be pending in M1",
-        )),
+        ServerCommand::JobCompleted { job_id, digest } => w.check_job_completed(*job_id, digest),
+        ServerCommand::MeetingOutcome { job_id, briefs } => {
+            w.check_meeting_outcome(*job_id, briefs)
+        }
+        ServerCommand::DeployLanded { work_item } => w.check_deploy_landed(*work_item),
         ServerCommand::Utterance {
             meeting,
             seq,
@@ -896,7 +898,7 @@ mod tests {
             validate_server(
                 &w,
                 &ServerCommand::JobCompleted {
-                    job_id: crate::ids::JobId(1),
+                    job_id: 77,
                     digest: crate::commands::JobDigest {
                         ok: true,
                         score: 8,
@@ -906,7 +908,7 @@ mod tests {
                     }
                 }
             ),
-            Err(Reject::NotSupported(_))
+            Err(Reject::Invalid(_))
         ));
     }
 
