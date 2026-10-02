@@ -1,0 +1,15 @@
+---
+/** Default Page layout: the page's blocks, or generated content when there is no page JSON. */
+import Blocks from '../Blocks.astro'
+import AutoContent from '../AutoContent.astro'
+import Breadcrumb from '../Breadcrumb.astro'
+import type { RenderContext } from '../../src/context'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+const body = ctx.page?.data.body ?? []
+const listing = body.some((b) => ['blog-index', 'collection-with-interludes', 'collection-embed'].includes(b.type))
+---
+
+{ctx.entry.kind !== 'home' && <Breadcrumb ctx={ctx} />}
+{body.length > 0 && <Blocks blocks={body} ctx={ctx} />}
+{(body.length === 0 || (!listing && ['blog-index', 'collection-index'].includes(ctx.entry.kind))) && <AutoContent ctx={ctx} heading={body.length === 0} />}

@@ -1,0 +1,13 @@
+---
+/** paragraph: serif reading text on the measure. */
+import RichText from '@swarm-press/site-kit/components/RichText.astro'
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+---
+
+<div class="st-container">
+  <div class="st-measure st-prose">
+    <RichText value={block.markdown} ctx={ctx} />
+  </div>
+</div>

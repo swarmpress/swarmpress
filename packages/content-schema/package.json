@@ -9,7 +9,7 @@
   "scripts": {
     "export": "tsx scripts/export-json-schema.ts",
     "check": "tsx scripts/export-json-schema.ts --check",
-    "test": "tsx test/block-coverage.test.ts && tsx test/page.test.ts",
+    "test": "tsx test/block-coverage.test.ts && tsx test/page.test.ts && tsx test/v2.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

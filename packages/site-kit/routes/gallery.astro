@@ -1,0 +1,36 @@
+---
+/**
+ * Dev-only block gallery (`/_kit/blocks`): every custom block's example.json
+ * plus the first real use of every core block in the content, rendered with
+ * the current theme. Shows which renderer (theme, custom, kit fallback) is used.
+ */
+import Blocks from '../components/Blocks.astro'
+import Document from '../components/Document.astro'
+import { getRuntime } from '../src/runtime/index'
+
+const rt = getRuntime()
+const lang = rt.site.manifest.defaultLanguage
+const entry = rt.plan.byPath.get(`/${lang}`)!
+const ctx = rt.context(entry)
+const samples = new Map<string, { block: any; from: string }>()
+for (const c of rt.site.customBlocks) if (c.example) samples.set(c.type, { block: c.example, from: `${c.dir}/example.json` })
+for (const p of rt.site.pages) for (const b of p.data.body ?? []) if (b?.type && !samples.has(b.type)) samples.set(b.type, { block: b, from: p.file })
+const list = [...samples.entries()].sort(([a], [b]) => a.localeCompare(b))
+---
+
+<Document ctx={{ ...ctx, head: { ...ctx.head, title: 'Block gallery', robots: 'noindex', jsonLd: [], alternates: [] } }}>
+  <main class="kit-container kit-gallery">
+    <h1>Block gallery</h1>
+    <p>{list.length} block types · theme <code>{rt.theme.name}</code></p>
+    {
+      list.map(([type, s]) => (
+        <section class="kit-gallery__item" id={type}>
+          <header class="kit-gallery__meta">
+            <code>{type}</code> · renderer: <strong>{rt.resolveBlock(type).source}</strong> · <small>{s.from}</small>
+          </header>
+          <Blocks blocks={[s.block]} ctx={ctx} />
+        </section>
+      ))
+    }
+  </main>
+</Document>

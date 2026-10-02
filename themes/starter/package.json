@@ -1,0 +1,21 @@
+{
+  "name": "@swarm-press/theme-starter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Starter theme on @swarm-press/site-kit: a clean, accessible, niche-agnostic editorial magazine. Copy into a site repo's theme/ and let the design department evolve it.",
+  "main": "./theme.config.ts",
+  "exports": {
+    ".": "./theme.config.ts",
+    "./*": "./*"
+  },
+  "scripts": {
+    "build:fixture": "cd fixture-site && astro build",
+    "dev:fixture": "cd fixture-site && astro dev",
+    "check:fixture": "cd fixture-site && kit check"
+  },
+  "dependencies": {
+    "@swarm-press/site-kit": "workspace:*",
+    "astro": "^5.16.5"
+  }
+}

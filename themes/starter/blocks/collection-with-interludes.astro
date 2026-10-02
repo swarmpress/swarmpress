@@ -1,0 +1,67 @@
+---
+/**
+ * collection-with-interludes: a numbered editorial list of collection items
+ * (resolved through ctx — inline items or collectionType + region + slugs)
+ * with dark "interlude" panels between them.
+ */
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+type Entry = { title: string; text: string; note: string; meta: string[]; image?: { src: string; alt?: string }; href?: string }
+let entries: Entry[] = []
+if (Array.isArray(block.items) && block.items.length) {
+  entries = block.items.map((i: any) => ({
+    title: ctx.l(i.name),
+    text: ctx.l(i.intro ?? i.description),
+    note: ctx.l(i.giuliaComment ?? i.signature),
+    meta: [ctx.l(i.category), ctx.l(i.priceRange)].filter(Boolean),
+    image: ctx.media(i.image),
+  }))
+} else if (block.collectionType) {
+  entries = ctx
+    .collectionItems(block.collectionType, { region: block.village ?? ctx.region?.slug, keys: Array.isArray(block.slugs) ? block.slugs : undefined })
+    .map((i) => ({
+      title: ctx.itemTitle(i),
+      text: ctx.l(i.data.intro ?? i.data.summary ?? i.data.description),
+      note: ctx.l(i.data.editor_note ?? i.data.giuliaComment),
+      meta: [ctx.l(i.data.category), ctx.l(i.data.price_range ?? i.data.priceRange)].filter(Boolean),
+      image: ctx.itemImage(i),
+      href: ctx.itemHref(i),
+    }))
+}
+const interludes = new Map<number, any[]>()
+for (const it of Array.isArray(block.interludes) ? block.interludes : []) interludes.set(it.afterIndex, [...(interludes.get(it.afterIndex) ?? []), it])
+---
+
+<section class="st-container py-10">
+  <ol class="mx-auto max-w-5xl space-y-10" role="list">
+    {
+      entries.map((e, i) => (
+        <>
+          <li class="grid gap-6 border-t border-border pt-10 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:gap-10">
+            {e.image ? (
+              <img src={e.image.src} alt={e.image.alt ?? ''} loading="lazy" decoding="async" class="aspect-[4/3] w-full rounded-card object-cover shadow-card" />
+            ) : (
+              <div aria-hidden="true" class="hidden aspect-[4/3] rounded-card bg-surface md:block" />
+            )}
+            <div>
+              <p class="font-serif text-5xl leading-none text-accent/30" aria-hidden="true">{String(i + 1).padStart(2, '0')}</p>
+              <h3 class="mt-2 font-serif text-2xl md:text-3xl">{e.href ? <a href={e.href} class="st-link">{e.title}</a> : e.title}</h3>
+              {e.meta.length > 0 && <p class="mt-1 text-sm text-muted">{e.meta.join(' · ')}</p>}
+              {e.text && <p class="mt-4 text-pretty text-lg leading-relaxed">{e.text}</p>}
+              {e.note && <p class="mt-4 border-l-2 border-accent pl-4 font-serif italic text-muted">{e.note}</p>}
+            </div>
+          </li>
+          {(interludes.get(i) ?? []).map((it: any) => (
+            <li class:list={['rounded-card px-8 py-10 md:px-14', it.type === 'secondary' ? 'bg-accent-soft text-fg' : 'bg-ink text-on-ink']}>
+              {ctx.l(it.badge) && <p class="st-eyebrow opacity-80" style="color:inherit">{ctx.l(it.badge)}</p>}
+              <p class="mt-2 font-serif text-2xl md:text-3xl">{ctx.l(it.title)}</p>
+              <blockquote class="mt-4 max-w-3xl text-lg leading-relaxed opacity-90">{ctx.l(it.quote)}</blockquote>
+            </li>
+          ))}
+        </>
+      ))
+    }
+  </ol>
+  {entries.length === 0 && <p class="text-center text-muted">{ctx.t('collection.empty')}</p>}
+</section>

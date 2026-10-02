@@ -1,0 +1,24 @@
+---
+/** Fallback: gallery. */
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const images = (Array.isArray(block.images) ? block.images : [])
+  .map((im: any) => ({ m: ctx.media(typeof im === 'string' ? im : im.src), alt: ctx.l(im?.alt), caption: ctx.l(im?.caption) }))
+  .filter((x: any) => x.m)
+---
+
+<section class="kit-container kit-section">
+  <ul class="kit-gallery-grid" role="list">
+    {
+      images.map((x: any) => (
+        <li>
+          <figure class="kit-figure">
+            <img src={x.m.src} alt={x.alt || x.m.alt || ''} loading="lazy" decoding="async" />
+            {x.caption && <figcaption>{x.caption}</figcaption>}
+          </figure>
+        </li>
+      ))
+    }
+  </ul>
+</section>

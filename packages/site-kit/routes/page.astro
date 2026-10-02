@@ -1,0 +1,13 @@
+---
+/** Injected by @swarm-press/site-kit (route id "page"). Do not copy into a theme. */
+import KitPage from '../components/KitPage.astro'
+import { pathsFor } from '../src/runtime/index'
+
+export function getStaticPaths() {
+  return pathsFor('page')
+}
+
+const { path } = Astro.props as { path: string }
+---
+
+<KitPage path={path} />

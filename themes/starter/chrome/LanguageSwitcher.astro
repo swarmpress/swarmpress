@@ -1,0 +1,30 @@
+---
+/** Starter language switcher: native language names, current one marked. */
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+---
+
+{
+  ctx.nav.languages.length > 1 && (
+    <nav aria-label={ctx.t('nav.languages')}>
+      <ul class="flex gap-1 text-xs">
+        {ctx.nav.languages.map((l) => (
+          <li>
+            <a
+              href={l.href}
+              hreflang={l.lang}
+              lang={l.lang}
+              aria-current={l.current ? 'true' : undefined}
+              title={l.label}
+              class="st-focus block rounded-full px-2.5 py-1 font-semibold uppercase tracking-wider text-muted no-underline hover:bg-surface aria-[current=true]:bg-fg aria-[current=true]:text-bg"
+            >
+              <span aria-hidden="true">{l.lang}</span>
+              <span class="sr-only">{l.label}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}

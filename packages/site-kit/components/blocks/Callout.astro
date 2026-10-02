@@ -1,0 +1,20 @@
+---
+/** Fallback: callout, newsletter, weather-journal. */
+import RichText from '../RichText.astro'
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const tone = ['info', 'warning', 'success', 'error'].includes(block.style) ? block.style : 'info'
+const title = ctx.l(block.title ?? block.condition)
+const body = block.content ?? block.subtitle ?? block.note
+const list = ctx.list(block.benefits ?? block.recommendations)
+const quote = ctx.l(block.quote)
+---
+
+<aside class:list={['kit-container kit-section kit-callout', `kit-callout--${tone}`]} role="note">
+  {title && <p class="kit-callout__title">{title}</p>}
+  <RichText value={body} ctx={ctx} />
+  {list.length > 0 && <ul class="kit-list">{list.map((i) => <li>{i}</li>)}</ul>}
+  {quote && <blockquote class="kit-quote"><p>{quote}</p></blockquote>}
+  {block.disclaimer && <p class="kit-small kit-muted">{ctx.l(block.disclaimer)}</p>}
+</aside>

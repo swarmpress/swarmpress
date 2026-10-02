@@ -1,0 +1,115 @@
+{
+  "slug": "monterosso",
+  "seo": {
+    "title": {
+      "en": "Monterosso al Mare | Cinque Terre Dispatch",
+      "de": "Monterosso al Mare | Cinque Terre Dispatch",
+      "fr": "Monterosso al Mare | Cinque Terre Dispatch",
+      "it": "Monterosso al Mare | Cinque Terre Dispatch"
+    },
+    "description": {
+      "en": "Discover Monterosso al Mare, the largest Cinque Terre village. Beautiful sandy beaches, excellent restaurants, and the famous lemon groves await.",
+      "de": "Entdecken Sie Monterosso al Mare, das größte Cinque Terre-Dorf. Schöne Sandstrände, ausgezeichnete Restaurants und die berühmten Zitronenhaine erwarten Sie.",
+      "fr": "Découvrez Monterosso al Mare, le plus grand village des Cinque Terre. Belles plages de sable, excellents restaurants et les célèbres citronniers vous attendent.",
+      "it": "Scopri Monterosso al Mare, il villaggio più grande delle Cinque Terre. Belle spiagge sabbiose, ottimi ristoranti e i famosi limoneti ti aspettano."
+    }
+  },
+  "hero": {
+    "image": "https://images.unsplash.com/photo-1612172166035-4ed0327be526?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDQzNDB8MHwxfHNlYXJjaHwxfHxtb250ZXJvc3NvJTIwY2lucXVlJTIwdGVycmUlMjBpdGFseSUyMGNvbG9yZnVsJTIwaG91c2VzfGVufDB8MHx8fDE3NjkzMjczNjF8MA&ixlib=rb-4.1.0&q=80&w=1080",
+    "imageAlt": {
+      "en": "Monterosso beach and old town",
+      "de": "Monterosso Strand und Altstadt",
+      "fr": "Plage de Monterosso et vieille ville",
+      "it": "Spiaggia di Monterosso e centro storico"
+    },
+    "tagline": {
+      "en": "Cinque Terre",
+      "de": "Cinque Terre",
+      "fr": "Cinque Terre",
+      "it": "Cinque Terre"
+    },
+    "title": {
+      "en": "Monterosso",
+      "de": "Monterosso",
+      "fr": "Monterosso",
+      "it": "Monterosso"
+    },
+    "subtitle": {
+      "en": "The largest of the five villages, blessed with sandy beaches, fragrant lemon groves, and the finest restaurants on the Ligurian coast.",
+      "de": "Das größte der fünf Dörfer, gesegnet mit Sandstränden, duftenden Zitronenhainen und den besten Restaurants an der ligurischen Küste.",
+      "fr": "Le plus grand des cinq villages, béni avec des plages de sable, des citronniers parfumés et les meilleurs restaurants de la côte ligure.",
+      "it": "Il più grande dei cinque villaggi, benedetto da spiagge sabbiose, profumati limoneti e i migliori ristoranti della costa ligure."
+    },
+    "primaryCta": {
+      "label": {
+        "en": "Explore Monterosso",
+        "de": "Monterosso erkunden",
+        "fr": "Explorer Monterosso",
+        "it": "Esplora Monterosso"
+      },
+      "href": "#villages"
+    },
+    "secondaryCta": {
+      "label": {
+        "en": "Plan Your Visit",
+        "de": "Ihren Besuch planen",
+        "fr": "Planifier votre visite",
+        "it": "Pianifica la tua visita"
+      },
+      "href": "#plan"
+    }
+  },
+  "intro": {
+    "leadStory": {
+      "title": {
+        "en": "Monterosso, Where Beach Life Begins",
+        "de": "Monterosso, Wo das Strandleben beginnt",
+        "fr": "Monterosso, Où Commence la Vie de Plage",
+        "it": "Monterosso, Dove Inizia la Vita da Spiaggia"
+      },
+      "excerpt": {
+        "en": "Monterosso is where Cinque Terre meets the beach. The only village with real sandy shores, it divides between the historic old town and the modern Fegina quarter, both blessed with excellent restaurants and that famous Ligurian light.",
+        "de": "Monterosso ist, wo Cinque Terre auf den Strand trifft. Das einzige Dorf mit echten Sandstränden, teilt es sich zwischen der historischen Altstadt und dem modernen Viertel Fegina.",
+        "fr": "Monterosso est là où les Cinque Terre rencontrent la plage. Le seul village avec de vraies plages de sable, il se divise entre la vieille ville historique et le quartier moderne de Fegina.",
+        "it": "Monterosso è dove le Cinque Terre incontrano la spiaggia. L'unico villaggio con vere spiagge sabbiose, si divide tra il centro storico e il moderno quartiere di Fegina."
+      },
+      "author": "Sofia Neri",
+      "date": "Oct 25, 2023",
+      "readTime": "8 min read",
+      "category": "Beaches & Life",
+      "image": "https://images.unsplash.com/photo-1612172166035-4ed0327be526?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDQzNDB8MHwxfHNlYXJjaHwxfHxtb250ZXJvc3NvJTIwY2lucXVlJTIwdGVycmUlMjBpdGFseSUyMGNvbG9yZnVsJTIwaG91c2VzfGVufDB8MHx8fDE3NjkzMjczNjF8MA&ixlib=rb-4.1.0&q=80&w=1080"
+    },
+    "essentials": {
+      "title": {
+        "en": "Monterosso Essentials 2026",
+        "de": "Monterosso Essentials 2026",
+        "fr": "Essentiels Monterosso 2026",
+        "it": "Essenziali Monterosso 2026"
+      },
+      "subtitle": {
+        "en": "Today's atmosphere and real-time details, grounded in Monterosso's beach culture",
+        "de": "Heutige Atmosphäre und Echtzeit-Details, verwurzelt in Monterossos Strandkultur",
+        "fr": "Ambiance du jour et détails en temps réel, ancrés dans la culture de plage de Monterosso",
+        "it": "Atmosfera di oggi e dettagli in tempo reale, radicati nella cultura balneare di Monterosso"
+      },
+      "today": {
+        "weather": "25°C, perfect beach day",
+        "seaTemp": "23°C",
+        "seaConditions": "Calm, great for swimming",
+        "sunset": "20:50"
+      },
+      "experience": {
+        "crowdRhythm": "Beach by day, dining by night",
+        "bestFelt": "Sand between your toes",
+        "villageShape": "Split between old and new",
+        "foodWine": "Lemons, anchovies, limoncello"
+      },
+      "character": {
+        "origins": "Monastery roots, 1000 AD",
+        "shapedBy": "Sun, sand, hospitality",
+        "rating": "4.7/5",
+        "rememberedFor": "\"The beach village\""
+      }
+    }
+  }
+}

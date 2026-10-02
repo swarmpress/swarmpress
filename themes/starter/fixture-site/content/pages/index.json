@@ -1,0 +1,248 @@
+{
+  "id": "1e787c50-d4c0-4d9a-9913-cafeafedf4c1",
+  "slug": {
+    "en": "/en",
+    "de": "/de",
+    "fr": "/fr",
+    "it": "/it"
+  },
+  "title": {
+    "en": "Cinque Terre Dispatch | Luxury Travel Guide",
+    "de": "Cinque Terre Dispatch | Exklusiver Reisefuehrer",
+    "fr": "Cinque Terre Dispatch | Guide de Voyage d'Exception",
+    "it": "Cinque Terre Dispatch | Guida di Viaggio Esclusiva"
+  },
+  "page_type": "language_root",
+  "seo": {
+    "title": {
+      "en": "Cinque Terre Dispatch | Luxury Travel Guide",
+      "de": "Cinque Terre Dispatch | Exklusiver Reisefuehrer",
+      "fr": "Cinque Terre Dispatch | Guide de Voyage d'Exception",
+      "it": "Cinque Terre Dispatch | Guida di Viaggio Esclusiva"
+    },
+    "description": {
+      "en": "A journey through the five colorful villages suspended between sea and sky. Discover the Italian Riviera's most romantic destination.",
+      "de": "Eine Reise durch fuenf farbenfrohe Doerfer zwischen Meer und Himmel. Entdecken Sie das romantischste Ziel der italienischen Riviera.",
+      "fr": "Un voyage a travers cinq villages colores suspendus entre mer et ciel. Decouvrez la destination la plus romantique de la Riviera italienne.",
+      "it": "Un viaggio attraverso cinque borghi colorati sospesi tra mare e cielo. Scoprite la destinazione piu romantica della Riviera Ligure."
+    }
+  },
+  "template": "cinque-terre-homepage",
+  "body": [
+    {
+      "type": "editorial-hero",
+      "badge": {
+        "en": "The Dispatch",
+        "de": "Die Depesche",
+        "fr": "La Dépêche",
+        "it": "Il Dispaccio"
+      },
+      "title": {
+        "en": "Five villages between sea and sky",
+        "de": "Fünf Dörfer zwischen Meer und Himmel",
+        "fr": "Cinq villages entre mer et ciel",
+        "it": "Cinque borghi tra mare e cielo"
+      },
+      "subtitle": {
+        "en": "A journey through the five colorful villages suspended between sea and sky. Discover the Italian Riviera's most romantic destination.",
+        "de": "Eine Reise durch fuenf farbenfrohe Doerfer zwischen Meer und Himmel. Entdecken Sie das romantischste Ziel der italienischen Riviera.",
+        "fr": "Un voyage a travers cinq villages colores suspendus entre mer et ciel. Decouvrez la destination la plus romantique de la Riviera italienne.",
+        "it": "Un viaggio attraverso cinque borghi colorati sospesi tra mare e cielo. Scoprite la destinazione piu romantica della Riviera Ligure."
+      },
+      "image": "media:region-image-15344476"
+    },
+    {
+      "type": "editorial-intro",
+      "badge": {
+        "en": "Slow travel",
+        "de": "Langsam reisen",
+        "fr": "Voyager lentement",
+        "it": "Viaggiare lenti"
+      },
+      "quote": {
+        "en": "The coast does not reveal itself to the hurried.",
+        "de": "Die Küste zeigt sich nicht den Eiligen.",
+        "fr": "La côte ne se révèle pas aux pressés.",
+        "it": "La costa non si rivela a chi ha fretta."
+      },
+      "leftContent": {
+        "en": "Most visitors try to see all five villages in a single day. We suggest the opposite: choose one, arrive early, and stay until the last train.\n\nThe terraces, the harbours and the narrow lanes change character with the light.",
+        "de": "Die meisten Besucher wollen alle fünf Dörfer an einem Tag sehen. Wir empfehlen das Gegenteil: Wählen Sie eines, kommen Sie früh und bleiben Sie bis zum letzten Zug.\n\nTerrassen, Häfen und schmale Gassen verändern mit dem Licht ihren Charakter.",
+        "fr": "La plupart des visiteurs veulent voir les cinq villages en une journée. Nous suggérons l'inverse : choisissez-en un, arrivez tôt et restez jusqu'au dernier train.",
+        "it": "Molti visitatori vogliono vedere tutti e cinque i borghi in un giorno. Noi suggeriamo il contrario: sceglietene uno, arrivate presto e restate fino all'ultimo treno."
+      },
+      "rightContent": {
+        "en": "This guide is written by people who live here. Every restaurant, trail and viewpoint has been visited, more than once, in every season.",
+        "de": "Dieser Reiseführer wird von Menschen geschrieben, die hier leben. Jedes Restaurant, jeder Weg und jeder Aussichtspunkt wurde besucht, mehr als einmal, in jeder Jahreszeit.",
+        "fr": "Ce guide est écrit par des gens qui vivent ici.",
+        "it": "Questa guida è scritta da chi vive qui."
+      }
+    },
+    {
+      "type": "x:key-facts",
+      "title": {
+        "en": "At a glance",
+        "de": "Auf einen Blick",
+        "fr": "En bref",
+        "it": "In breve"
+      },
+      "facts": [
+        {
+          "label": {
+            "en": "Villages",
+            "de": "Dörfer",
+            "fr": "Villages",
+            "it": "Borghi"
+          },
+          "value": "5"
+        },
+        {
+          "label": {
+            "en": "Coastline",
+            "de": "Küste",
+            "fr": "Littoral",
+            "it": "Costa"
+          },
+          "value": "18 km"
+        },
+        {
+          "label": {
+            "en": "Best season",
+            "de": "Beste Reisezeit",
+            "fr": "Meilleure saison",
+            "it": "Stagione migliore"
+          },
+          "value": {
+            "en": "May & September",
+            "de": "Mai & September",
+            "fr": "Mai et septembre",
+            "it": "Maggio e settembre"
+          }
+        }
+      ]
+    },
+    {
+      "type": "collection-with-interludes",
+      "collectionType": "restaurants",
+      "village": "riomaggiore",
+      "slugs": [
+        "dau-cila",
+        "rio-bistrot",
+        "fuori-rotta"
+      ],
+      "itemType": "restaurant",
+      "interludes": [
+        {
+          "afterIndex": 0,
+          "type": "primary",
+          "badge": {
+            "en": "Local tip",
+            "de": "Lokaler Tipp",
+            "fr": "Conseil local",
+            "it": "Consiglio locale"
+          },
+          "title": {
+            "en": "Book the harbour tables",
+            "de": "Reservieren Sie am Hafen",
+            "fr": "Réservez au port",
+            "it": "Prenotate sul porto"
+          },
+          "quote": {
+            "en": "Ask for a table by the boats; the light at seven is the reason to come.",
+            "de": "Fragen Sie nach einem Tisch bei den Booten; das Licht um sieben ist der Grund zu kommen.",
+            "fr": "Demandez une table près des bateaux.",
+            "it": "Chiedete un tavolo vicino alle barche."
+          }
+        }
+      ]
+    },
+    {
+      "type": "faq-section",
+      "title": {
+        "en": "Before you go",
+        "de": "Bevor Sie fahren",
+        "fr": "Avant de partir",
+        "it": "Prima di partire"
+      },
+      "items": [
+        {
+          "question": {
+            "en": "How do I travel between the villages?",
+            "de": "Wie reise ich zwischen den Dörfern?",
+            "fr": "Comment voyager entre les villages ?",
+            "it": "Come ci si sposta tra i borghi?"
+          },
+          "answer": {
+            "en": "The regional train connects all five villages every 15–30 minutes. Boats run from spring to autumn.",
+            "de": "Der Regionalzug verbindet alle fünf Dörfer alle 15–30 Minuten. Boote fahren von Frühling bis Herbst.",
+            "fr": "Le train régional relie les cinq villages toutes les 15 à 30 minutes.",
+            "it": "Il treno regionale collega i cinque borghi ogni 15–30 minuti."
+          }
+        },
+        {
+          "question": {
+            "en": "Do I need a park card for the trails?",
+            "de": "Brauche ich eine Karte für die Wanderwege?",
+            "fr": "Faut-il une carte pour les sentiers ?",
+            "it": "Serve una carta per i sentieri?"
+          },
+          "answer": {
+            "en": "Yes, the coastal path requires the Cinque Terre Card; inland trails are free.",
+            "de": "Ja, der Küstenweg erfordert die Cinque Terre Card; die Wege im Hinterland sind frei.",
+            "fr": "Oui, le sentier côtier exige la Cinque Terre Card.",
+            "it": "Sì, il sentiero costiero richiede la Cinque Terre Card."
+          }
+        }
+      ]
+    },
+    {
+      "type": "closing-note",
+      "badge": {
+        "en": "Start here",
+        "de": "Hier beginnen",
+        "fr": "Commencer ici",
+        "it": "Inizia qui"
+      },
+      "title": {
+        "en": "Begin with Riomaggiore",
+        "de": "Beginnen Sie in Riomaggiore",
+        "fr": "Commencez par Riomaggiore",
+        "it": "Iniziate da Riomaggiore"
+      },
+      "content": {
+        "en": "The easternmost village is the natural first stop when you arrive from La Spezia.",
+        "de": "Das östlichste Dorf ist der natürliche erste Halt, wenn Sie aus La Spezia kommen.",
+        "fr": "Le village le plus à l'est est la première étape naturelle depuis La Spezia.",
+        "it": "Il borgo più a est è la prima tappa naturale arrivando da La Spezia."
+      },
+      "actions": [
+        {
+          "label": {
+            "en": "Explore Riomaggiore",
+            "de": "Riomaggiore entdecken",
+            "fr": "Découvrir Riomaggiore",
+            "it": "Scopri Riomaggiore"
+          },
+          "href": "/riomaggiore/",
+          "variant": "primary"
+        },
+        {
+          "label": {
+            "en": "Read the Dispatch",
+            "de": "Die Depesche lesen",
+            "fr": "Lire la Dépêche",
+            "it": "Leggi il Dispaccio"
+          },
+          "href": "/blog/",
+          "variant": "secondary"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "page_type": "language_root"
+  },
+  "status": "published",
+  "created_at": "2025-12-04T13:18:46.911Z",
+  "updated_at": "2026-01-07T12:00:00.000Z"
+}

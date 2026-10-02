@@ -1,0 +1,14 @@
+---
+/** Default Base layout: skip link, header, main, footer. Themes usually replace this. */
+import type { RenderContext } from '../../src/context'
+
+const { ctx } = Astro.props as { ctx: RenderContext & { components: any } }
+const { Header, Footer } = ctx.components
+---
+
+<a class="kit-skip" href="#main">{ctx.t('nav.skip')}</a>
+<Header ctx={ctx} />
+<main id="main" class="kit-main">
+  <slot />
+</main>
+<Footer ctx={ctx} />

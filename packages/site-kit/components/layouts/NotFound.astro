@@ -1,0 +1,9 @@
+---
+/** Default NotFound layout. */
+import AutoContent from '../AutoContent.astro'
+import type { RenderContext } from '../../src/context'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+---
+
+<AutoContent ctx={ctx} heading />

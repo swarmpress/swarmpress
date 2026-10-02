@@ -1,0 +1,31 @@
+---
+/** Default header: brand, sections, regions, language switcher. */
+import type { RenderContext } from '../../src/context'
+
+const { ctx } = Astro.props as { ctx: RenderContext & { components: any } }
+const { LanguageSwitcher, RegionNav } = ctx.components
+---
+
+<header class="kit-header">
+  <div class="kit-container kit-header__bar">
+    <a class="kit-brand" href={ctx.brand.homeHref}>
+      {ctx.brand.logo && <img src={ctx.brand.logo.src} alt="" width="32" height="32" />}
+      <span>{ctx.brand.name}</span>
+    </a>
+    <nav class="kit-nav" aria-label={ctx.t('nav.menu')}>
+      <ul>
+        {
+          ctx.nav.sections.map((s) => (
+            <li>
+              <a href={s.href} aria-current={s.current ? 'page' : undefined}>
+                {s.label}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+    <LanguageSwitcher ctx={ctx} />
+  </div>
+  <RegionNav ctx={ctx} />
+</header>

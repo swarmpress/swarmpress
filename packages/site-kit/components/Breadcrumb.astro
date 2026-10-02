@@ -1,0 +1,18 @@
+---
+import type { RenderContext } from '../src/context'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+const crumbs = ctx.nav.breadcrumb
+---
+
+{
+  crumbs.length > 1 && (
+    <nav class="kit-container kit-breadcrumb" aria-label={ctx.t('nav.breadcrumb')}>
+      <ol>
+        {crumbs.map((c) => (
+          <li>{c.current ? <span aria-current="page">{c.label}</span> : <a href={c.href}>{c.label}</a>}</li>
+        ))}
+      </ol>
+    </nav>
+  )
+}

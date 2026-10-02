@@ -1,0 +1,21 @@
+---
+/** Fallback: editorial-intro, content-section, about. */
+import BlockHeader from './BlockHeader.astro'
+import RichText from '../RichText.astro'
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const quote = ctx.l(block.quote)
+const columns = [block.leftContent ?? block.content ?? block.description, block.rightContent].filter((c) => ctx.l(c))
+const image = ctx.media(block.image)
+---
+
+<section class="kit-container kit-section kit-intro">
+  <BlockHeader ctx={ctx} eyebrow={block.badge ?? block.eyebrow} title={block.title} subtitle={block.subtitle} />
+  {quote && <p class="kit-pullquote">{quote}</p>}
+  <div class:list={['kit-columns', columns.length > 1 && 'kit-columns--2']}>
+    {columns.map((c) => <RichText value={c} ctx={ctx} />)}
+  </div>
+  {image && <img class="kit-intro__img" src={image.src} alt={image.alt ?? ''} loading="lazy" decoding="async" />}
+  {block.editor?.name && <p class="kit-small kit-muted">{[ctx.l(block.editor.name), ctx.l(block.editor.role)].filter(Boolean).join(', ')}</p>}
+</section>

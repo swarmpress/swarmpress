@@ -1,0 +1,546 @@
+{
+  "$schema": "./entity-schema.json",
+  "version": "1.0.0",
+  "lastUpdated": "2026-01-13T08:26:04.484Z",
+  "villages": {
+    "riomaggiore": {
+      "slug": "riomaggiore",
+      "name": {
+        "en": "Riomaggiore",
+        "de": "Riomaggiore",
+        "fr": "Riomaggiore",
+        "it": "Riomaggiore"
+      },
+      "canonicalUrl": {
+        "en": "/en/riomaggiore",
+        "de": "/de/riomaggiore",
+        "fr": "/fr/riomaggiore",
+        "it": "/it/riomaggiore"
+      },
+      "aliases": [
+        "rio",
+        "riomaggiore village",
+        "the easternmost village"
+      ],
+      "coordinates": {
+        "lat": 44.0997,
+        "lng": 9.7378
+      },
+      "position": 1,
+      "character": "vibrant",
+      "keywords": [
+        "colorful houses",
+        "harbor",
+        "cliffs",
+        "easternmost",
+        "pastel"
+      ],
+      "relatedVillages": [
+        "manarola"
+      ],
+      "relatedTrails": [
+        "via-dell-amore",
+        "riomaggiore-manarola"
+      ],
+      "collections": [
+        "restaurants",
+        "accommodations",
+        "sights",
+        "beaches",
+        "hikes",
+        "events"
+      ]
+    },
+    "manarola": {
+      "slug": "manarola",
+      "name": {
+        "en": "Manarola",
+        "de": "Manarola",
+        "fr": "Manarola",
+        "it": "Manarola"
+      },
+      "canonicalUrl": {
+        "en": "/en/manarola",
+        "de": "/de/manarola",
+        "fr": "/fr/manarola",
+        "it": "/it/manarola"
+      },
+      "aliases": [
+        "wine village",
+        "most photographed village"
+      ],
+      "coordinates": {
+        "lat": 44.1068,
+        "lng": 9.7275
+      },
+      "position": 2,
+      "character": "romantic",
+      "keywords": [
+        "wine",
+        "sunset",
+        "sciacchetra",
+        "terraces",
+        "vineyards",
+        "photography"
+      ],
+      "relatedVillages": [
+        "riomaggiore",
+        "corniglia"
+      ],
+      "relatedTrails": [
+        "via-dell-amore",
+        "manarola-corniglia"
+      ],
+      "collections": [
+        "restaurants",
+        "accommodations",
+        "sights",
+        "beaches",
+        "hikes",
+        "events"
+      ]
+    },
+    "corniglia": {
+      "slug": "corniglia",
+      "name": {
+        "en": "Corniglia",
+        "de": "Corniglia",
+        "fr": "Corniglia",
+        "it": "Corniglia"
+      },
+      "canonicalUrl": {
+        "en": "/en/corniglia",
+        "de": "/de/corniglia",
+        "fr": "/fr/corniglia",
+        "it": "/it/corniglia"
+      },
+      "aliases": [
+        "hilltop village",
+        "382 steps",
+        "the quiet one"
+      ],
+      "coordinates": {
+        "lat": 44.1192,
+        "lng": 9.7126
+      },
+      "position": 3,
+      "character": "serene",
+      "keywords": [
+        "hilltop",
+        "steps",
+        "quiet",
+        "authentic",
+        "vineyards",
+        "no sea access"
+      ],
+      "relatedVillages": [
+        "manarola",
+        "vernazza"
+      ],
+      "relatedTrails": [
+        "manarola-corniglia",
+        "corniglia-vernazza"
+      ],
+      "collections": [
+        "restaurants",
+        "accommodations",
+        "sights",
+        "hikes",
+        "events"
+      ]
+    },
+    "vernazza": {
+      "slug": "vernazza",
+      "name": {
+        "en": "Vernazza",
+        "de": "Vernazza",
+        "fr": "Vernazza",
+        "it": "Vernazza"
+      },
+      "canonicalUrl": {
+        "en": "/en/vernazza",
+        "de": "/de/vernazza",
+        "fr": "/fr/vernazza",
+        "it": "/it/vernazza"
+      },
+      "aliases": [
+        "crown jewel",
+        "doria castle",
+        "the perfect village"
+      ],
+      "coordinates": {
+        "lat": 44.1349,
+        "lng": 9.6854
+      },
+      "position": 4,
+      "character": "iconic",
+      "keywords": [
+        "harbor",
+        "castle",
+        "tower",
+        "piazza",
+        "medieval",
+        "romantic"
+      ],
+      "relatedVillages": [
+        "corniglia",
+        "monterosso"
+      ],
+      "relatedTrails": [
+        "corniglia-vernazza",
+        "vernazza-monterosso"
+      ],
+      "collections": [
+        "restaurants",
+        "accommodations",
+        "sights",
+        "beaches",
+        "hikes",
+        "events"
+      ]
+    },
+    "monterosso": {
+      "slug": "monterosso",
+      "name": {
+        "en": "Monterosso al Mare",
+        "de": "Monterosso al Mare",
+        "fr": "Monterosso al Mare",
+        "it": "Monterosso al Mare"
+      },
+      "canonicalUrl": {
+        "en": "/en/monterosso",
+        "de": "/de/monterosso",
+        "fr": "/fr/monterosso",
+        "it": "/it/monterosso"
+      },
+      "aliases": [
+        "monterosso",
+        "beach village",
+        "the largest village",
+        "fegina"
+      ],
+      "coordinates": {
+        "lat": 44.1457,
+        "lng": 9.653
+      },
+      "position": 5,
+      "character": "relaxed",
+      "keywords": [
+        "beach",
+        "sand",
+        "lemons",
+        "limoncello",
+        "old town",
+        "fegina",
+        "largest"
+      ],
+      "relatedVillages": [
+        "vernazza"
+      ],
+      "relatedTrails": [
+        "vernazza-monterosso"
+      ],
+      "collections": [
+        "restaurants",
+        "accommodations",
+        "sights",
+        "beaches",
+        "hikes",
+        "events"
+      ]
+    }
+  },
+  "trails": {
+    "via-dell-amore": {
+      "slug": "via-dell-amore",
+      "name": {
+        "en": "Via dell'Amore",
+        "de": "Via dell'Amore",
+        "fr": "Via dell'Amore",
+        "it": "Via dell'Amore"
+      },
+      "canonicalUrl": {
+        "en": "/en/hikes/via-dell-amore",
+        "de": "/de/hikes/via-dell-amore",
+        "fr": "/fr/hikes/via-dell-amore",
+        "it": "/it/hikes/via-dell-amore"
+      },
+      "aliases": [
+        "path of love",
+        "lovers walk",
+        "lover's path"
+      ],
+      "connectsVillages": [
+        "riomaggiore",
+        "manarola"
+      ],
+      "difficulty": "easy",
+      "duration": "20 minutes",
+      "distance": "1 km",
+      "keywords": [
+        "romantic",
+        "scenic",
+        "easy",
+        "accessible",
+        "famous"
+      ]
+    },
+    "sentiero-azzurro": {
+      "slug": "sentiero-azzurro",
+      "name": {
+        "en": "Sentiero Azzurro (Blue Trail)",
+        "de": "Sentiero Azzurro (Blauer Pfad)",
+        "fr": "Sentiero Azzurro (Sentier Bleu)",
+        "it": "Sentiero Azzurro"
+      },
+      "canonicalUrl": {
+        "en": "/en/hikes/sentiero-azzurro",
+        "de": "/de/hikes/sentiero-azzurro",
+        "fr": "/fr/hikes/sentiero-azzurro",
+        "it": "/it/hikes/sentiero-azzurro"
+      },
+      "aliases": [
+        "blue trail",
+        "SVA",
+        "main trail",
+        "coastal path"
+      ],
+      "connectsVillages": [
+        "riomaggiore",
+        "manarola",
+        "corniglia",
+        "vernazza",
+        "monterosso"
+      ],
+      "difficulty": "moderate",
+      "duration": "5 hours",
+      "distance": "12 km",
+      "keywords": [
+        "coastal",
+        "main trail",
+        "scenic",
+        "famous",
+        "views"
+      ]
+    },
+    "riomaggiore-manarola": {
+      "slug": "riomaggiore-manarola",
+      "name": {
+        "en": "Riomaggiore to Manarola Trail",
+        "de": "Wanderweg Riomaggiore-Manarola",
+        "fr": "Sentier Riomaggiore-Manarola",
+        "it": "Sentiero Riomaggiore-Manarola"
+      },
+      "canonicalUrl": {
+        "en": "/en/hikes/riomaggiore-manarola",
+        "de": "/de/hikes/riomaggiore-manarola",
+        "fr": "/fr/hikes/riomaggiore-manarola",
+        "it": "/it/hikes/riomaggiore-manarola"
+      },
+      "connectsVillages": [
+        "riomaggiore",
+        "manarola"
+      ],
+      "difficulty": "moderate",
+      "duration": "45 minutes",
+      "distance": "2 km"
+    },
+    "manarola-corniglia": {
+      "slug": "manarola-corniglia",
+      "name": {
+        "en": "Manarola to Corniglia Trail",
+        "de": "Wanderweg Manarola-Corniglia",
+        "fr": "Sentier Manarola-Corniglia",
+        "it": "Sentiero Manarola-Corniglia"
+      },
+      "canonicalUrl": {
+        "en": "/en/hikes/manarola-corniglia",
+        "de": "/de/hikes/manarola-corniglia",
+        "fr": "/fr/hikes/manarola-corniglia",
+        "it": "/it/hikes/manarola-corniglia"
+      },
+      "connectsVillages": [
+        "manarola",
+        "corniglia"
+      ],
+      "difficulty": "moderate",
+      "duration": "1 hour",
+      "distance": "3 km"
+    },
+    "corniglia-vernazza": {
+      "slug": "corniglia-vernazza",
+      "name": {
+        "en": "Corniglia to Vernazza Trail",
+        "de": "Wanderweg Corniglia-Vernazza",
+        "fr": "Sentier Corniglia-Vernazza",
+        "it": "Sentiero Corniglia-Vernazza"
+      },
+      "canonicalUrl": {
+        "en": "/en/hikes/corniglia-vernazza",
+        "de": "/de/hikes/corniglia-vernazza",
+        "fr": "/fr/hikes/corniglia-vernazza",
+        "it": "/it/hikes/corniglia-vernazza"
+      },
+      "connectsVillages": [
+        "corniglia",
+        "vernazza"
+      ],
+      "difficulty": "challenging",
+      "duration": "1.5 hours",
+      "distance": "4 km"
+    },
+    "vernazza-monterosso": {
+      "slug": "vernazza-monterosso",
+      "name": {
+        "en": "Vernazza to Monterosso Trail",
+        "de": "Wanderweg Vernazza-Monterosso",
+        "fr": "Sentier Vernazza-Monterosso",
+        "it": "Sentiero Vernazza-Monterosso"
+      },
+      "canonicalUrl": {
+        "en": "/en/hikes/vernazza-monterosso",
+        "de": "/de/hikes/vernazza-monterosso",
+        "fr": "/fr/hikes/vernazza-monterosso",
+        "it": "/it/hikes/vernazza-monterosso"
+      },
+      "connectsVillages": [
+        "vernazza",
+        "monterosso"
+      ],
+      "difficulty": "challenging",
+      "duration": "2 hours",
+      "distance": "3.5 km"
+    }
+  },
+  "transport": {
+    "train": {
+      "slug": "cinque-terre-train",
+      "name": {
+        "en": "Cinque Terre Express",
+        "de": "Cinque Terre Express",
+        "fr": "Cinque Terre Express",
+        "it": "Cinque Terre Express"
+      },
+      "canonicalUrl": {
+        "en": "/en/transport/train",
+        "de": "/de/transport/train",
+        "fr": "/fr/transport/train",
+        "it": "/it/transport/train"
+      },
+      "keywords": [
+        "train",
+        "rail",
+        "trenitalia",
+        "station",
+        "express"
+      ],
+      "stopsAt": [
+        "riomaggiore",
+        "manarola",
+        "corniglia",
+        "vernazza",
+        "monterosso"
+      ]
+    },
+    "ferry": {
+      "slug": "cinque-terre-ferry",
+      "name": {
+        "en": "Cinque Terre Ferry",
+        "de": "Cinque Terre Fähre",
+        "fr": "Ferry Cinque Terre",
+        "it": "Traghetto Cinque Terre"
+      },
+      "canonicalUrl": {
+        "en": "/en/transport/ferry",
+        "de": "/de/transport/ferry",
+        "fr": "/fr/transport/ferry",
+        "it": "/it/transport/ferry"
+      },
+      "keywords": [
+        "ferry",
+        "boat",
+        "sea",
+        "porto venere",
+        "levanto"
+      ],
+      "stopsAt": [
+        "riomaggiore",
+        "manarola",
+        "vernazza",
+        "monterosso"
+      ]
+    }
+  },
+  "categories": [
+    {
+      "slug": "sights",
+      "name": {
+        "en": "Sights & Attractions",
+        "de": "Sehenswürdigkeiten",
+        "fr": "Sites et attractions",
+        "it": "Attrazioni"
+      },
+      "icon": "landmark"
+    },
+    {
+      "slug": "beaches",
+      "name": {
+        "en": "Beaches",
+        "de": "Strände",
+        "fr": "Plages",
+        "it": "Spiagge"
+      },
+      "icon": "umbrella-beach"
+    },
+    {
+      "slug": "hikes",
+      "name": {
+        "en": "Hiking Trails",
+        "de": "Wanderwege",
+        "fr": "Sentiers de randonnée",
+        "it": "Sentieri escursionistici"
+      },
+      "icon": "hiking"
+    },
+    {
+      "slug": "restaurants",
+      "name": {
+        "en": "Restaurants",
+        "de": "Restaurants",
+        "fr": "Restaurants",
+        "it": "Ristoranti"
+      },
+      "icon": "utensils"
+    },
+    {
+      "slug": "accommodations",
+      "name": {
+        "en": "Accommodations",
+        "de": "Unterkünfte",
+        "fr": "Hébergements",
+        "it": "Alloggi"
+      },
+      "icon": "bed"
+    },
+    {
+      "slug": "events",
+      "name": {
+        "en": "Events",
+        "de": "Veranstaltungen",
+        "fr": "Événements",
+        "it": "Eventi"
+      },
+      "icon": "calendar"
+    },
+    {
+      "slug": "transport",
+      "name": {
+        "en": "Transportation",
+        "de": "Verkehrsmittel",
+        "fr": "Transport",
+        "it": "Trasporti"
+      },
+      "icon": "train"
+    }
+  ]
+}

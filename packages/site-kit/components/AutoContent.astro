@@ -1,0 +1,94 @@
+---
+/**
+ * Generated content for routes that have no page JSON (or need a listing):
+ * home, regions, sections, collection indexes and items, the blog index, 404.
+ * Themes can reuse it inside their own layouts.
+ */
+import ItemGrid from './ItemGrid.astro'
+import PostList from './PostList.astro'
+import type { RenderContext } from '../src/context'
+
+interface Props {
+  ctx: RenderContext
+  /** Render the page heading. */
+  heading?: boolean
+}
+const { ctx, heading = true } = Astro.props as Props
+const e = ctx.entry
+const item = ctx.item
+const facts = item
+  ? Object.entries(item.data)
+      .filter(([k, v]) => !['slug', 'id', 'name', 'title', 'image', 'images', 'description', 'summary', 'intro', 'village', 'rank'].includes(k) && v !== null && v !== '' && (typeof v !== 'object' || ctx.pick(v) !== undefined))
+      .map(([k, v]) => [k.replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2'), typeof v === 'object' ? ctx.l(v) : String(v)] as const)
+      .filter(([, v]) => v && v.length < 200)
+      .slice(0, 12)
+  : []
+const itemImage = item ? ctx.itemImage(item) : undefined
+---
+
+<section class="kit-container kit-section kit-auto">
+  {heading && <h1 class="kit-title">{ctx.title}</h1>}
+  {
+    e.kind === 'home' && (
+      <>
+        {ctx.brand.tagline && <p class="kit-lead">{ctx.brand.tagline}</p>}
+        {ctx.nav.regions.length > 0 && (
+          <nav aria-label={ctx.nav.regionsLabel}>
+            <h2>{ctx.nav.regionsLabel}</h2>
+            <ul class="kit-pills">
+              {ctx.nav.regions.map((r) => (
+                <li>
+                  <a href={r.href}>{r.label}</a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
+        <PostList ctx={ctx} limit={6} />
+      </>
+    )
+  }
+  {
+    e.kind === 'region' && ctx.nav.children.length > 0 && (
+      <ul class="kit-pills">
+        {ctx.nav.children.map((c) => (
+          <li>
+            <a href={c.href}>{c.label}</a>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+  {(e.kind === 'collection-index' || ((e.kind === 'section' || e.kind === 'region-section') && e.items)) && <ItemGrid items={e.items ?? []} ctx={ctx} />}
+  {e.kind === 'blog-index' && <PostList ctx={ctx} />}
+  {
+    e.kind === 'collection-item' && item && (
+      <div class="kit-item">
+        {itemImage && <img class="kit-item__img" src={itemImage.src} alt={itemImage.alt ?? ''} decoding="async" />}
+        {ctx.l(item.data.description ?? item.data.summary ?? item.data.intro) && <p class="kit-lead">{ctx.l(item.data.description ?? item.data.summary ?? item.data.intro)}</p>}
+        {facts.length > 0 && (
+          <dl class="kit-facts">
+            {facts.map(([k, v]) => (
+              <>
+                <dt>{k}</dt>
+                <dd>{v}</dd>
+              </>
+            ))}
+          </dl>
+        )}
+      </div>
+    )
+  }
+  {
+    e.kind === 'not-found' && (
+      <>
+        <p class="kit-lead">{ctx.t('notFound.body')}</p>
+        <p>
+          <a class="kit-button" href={ctx.nav.home.href}>
+            {ctx.t('notFound.back')}
+          </a>
+        </p>
+      </>
+    )
+  }
+</section>

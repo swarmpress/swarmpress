@@ -1,0 +1,12 @@
+---
+/** Fallback: list. */
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const items = ctx.list(block.items)
+const L = block.ordered ? 'ol' : 'ul'
+---
+
+<div class="kit-container kit-prose-wrap">
+  <L class="kit-list">{items.map((i) => <li>{i}</li>)}</L>
+</div>

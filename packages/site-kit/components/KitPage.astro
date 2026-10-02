@@ -1,0 +1,15 @@
+---
+/** Renders one planned route entry: kit document shell → theme Base → layout for the entry kind. */
+import Document from './Document.astro'
+import { entryAt, getRuntime } from '../src/runtime/index'
+
+const { path } = Astro.props as { path: string }
+const rt = getRuntime()
+const entry = entryAt(path)
+const ctx = rt.context(entry)
+const Layout = rt.layoutFor(entry)
+---
+
+<Document ctx={ctx}>
+  <Layout ctx={ctx} />
+</Document>

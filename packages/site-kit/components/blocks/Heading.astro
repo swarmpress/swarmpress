@@ -1,0 +1,12 @@
+---
+/** Fallback: heading (h2–h4). */
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const level = [2, 3, 4].includes(block.level) ? block.level : 2
+const H = `h${level}`
+---
+
+<div class="kit-container kit-prose-wrap">
+  <H id={block.id} class="kit-heading">{ctx.l(block.text)}</H>
+</div>

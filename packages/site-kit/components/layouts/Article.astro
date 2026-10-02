@@ -1,0 +1,22 @@
+---
+/** Default Article layout: blog posts and article pages. */
+import Blocks from '../Blocks.astro'
+import Breadcrumb from '../Breadcrumb.astro'
+import type { RenderContext } from '../../src/context'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+const body = ctx.page?.data.body ?? []
+const hasOwnHeader = body.some((b) => ['blog-article', 'editorial-hero', 'hero', 'hero-section', 'itinerary-hero'].includes(b.type))
+---
+
+<Breadcrumb ctx={ctx} />
+<article class="kit-article">
+  {
+    !hasOwnHeader && (
+      <header class="kit-container kit-article__header">
+        <h1>{ctx.title}</h1>
+      </header>
+    )
+  }
+  <Blocks blocks={body} ctx={ctx} />
+</article>

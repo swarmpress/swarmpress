@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "siteId": "broken",
+  "baseUrl": "https://broken.test",
+  "languages": ["en", "de"],
+  "defaultLanguage": "en",
+  "brand": { "name": "Broken Test Site" },
+  "regions": { "label": "Towns", "items": [{ "slug": "alpha", "name": "Alphaville", "order": 1 }] },
+  "themeDir": "theme"
+}

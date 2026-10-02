@@ -1,0 +1,197 @@
+{
+  "$schema": "../../../packages/site-builder/src/schemas/navigation-config.json",
+  "main_nav": [
+    {
+      "title": "Home",
+      "url": "/"
+    },
+    {
+      "title": "Villages",
+      "description": "Explore the five villages of Cinque Terre",
+      "children": [
+        {
+          "title": "Monterosso al Mare",
+          "description": "Sandy beaches and lively nightlife",
+          "url": "/monterosso/"
+        },
+        {
+          "title": "Vernazza",
+          "description": "Picturesque harbor and colorful houses",
+          "url": "/vernazza/"
+        },
+        {
+          "title": "Corniglia",
+          "description": "Hilltop village with panoramic views",
+          "url": "/corniglia/"
+        },
+        {
+          "title": "Manarola",
+          "description": "Famous sunset views and wine terraces",
+          "url": "/manarola/"
+        },
+        {
+          "title": "Riomaggiore",
+          "description": "Historic main street and scenic harbor",
+          "url": "/riomaggiore/"
+        }
+      ]
+    },
+    {
+      "title": "Hiking",
+      "url": "/cinque-terre/hiking/"
+    },
+    {
+      "title": "Restaurants",
+      "url": "/restaurants/"
+    },
+    {
+      "title": "Hotels",
+      "url": "/cinque-terre/hotels/"
+    },
+    {
+      "title": "Getting Here",
+      "url": "/transport/"
+    }
+  ],
+  "footer_nav": [
+    {
+      "title": "Villages",
+      "links": [
+        {
+          "title": "Monterosso al Mare",
+          "url": "/monterosso/"
+        },
+        {
+          "title": "Vernazza",
+          "url": "/vernazza/"
+        },
+        {
+          "title": "Corniglia",
+          "url": "/corniglia/"
+        },
+        {
+          "title": "Manarola",
+          "url": "/manarola/"
+        },
+        {
+          "title": "Riomaggiore",
+          "url": "/riomaggiore/"
+        }
+      ]
+    },
+    {
+      "title": "Plan Your Trip",
+      "links": [
+        {
+          "title": "Getting Here",
+          "url": "/transport/"
+        },
+        {
+          "title": "Hotels & Accommodations",
+          "url": "/cinque-terre/hotels/"
+        },
+        {
+          "title": "Best Restaurants",
+          "url": "/restaurants/"
+        },
+        {
+          "title": "Weather & Best Time",
+          "url": "/cinque-terre/weather/"
+        },
+        {
+          "title": "Hiking Trails",
+          "url": "/cinque-terre/hiking/"
+        }
+      ]
+    },
+    {
+      "title": "Explore",
+      "links": [
+        {
+          "title": "Beaches",
+          "url": "/cinque-terre/beaches/"
+        },
+        {
+          "title": "Boat Tours",
+          "url": "/cinque-terre/boat-tours/"
+        },
+        {
+          "title": "Events & Festivals",
+          "url": "/events/"
+        },
+        {
+          "title": "Culinary Guide",
+          "url": "/culinary/"
+        },
+        {
+          "title": "Things to Do",
+          "url": "/things-to-do/"
+        },
+        {
+          "title": "Village Riomaggiore",
+          "url": "/village/"
+        }
+      ]
+    },
+    {
+      "title": "Resources",
+      "links": [
+        {
+          "title": "Travel Guide",
+          "url": "/cinque-terre/overview/"
+        },
+        {
+          "title": "FAQ",
+          "url": "/cinque-terre/faq/"
+        },
+        {
+          "title": "Maps",
+          "url": "/cinque-terre/maps/"
+        },
+        {
+          "title": "Blog",
+          "url": "/blog/"
+        },
+        {
+          "title": "4-Day Itinerary",
+          "url": "/itinerary/"
+        },
+        {
+          "title": "Meet the Team",
+          "url": "/team/"
+        }
+      ]
+    }
+  ],
+  "social_links": [
+    {
+      "platform": "instagram",
+      "url": "https://www.instagram.com/cinqueterretravel",
+      "label": "Follow us on Instagram"
+    },
+    {
+      "platform": "facebook",
+      "url": "https://www.facebook.com/cinqueterretravel",
+      "label": "Like us on Facebook"
+    }
+  ],
+  "cta_button": {
+    "text": "Plan Your Trip",
+    "url": "/cinque-terre/overview/",
+    "variant": "primary"
+  },
+  "legal_links": [
+    {
+      "title": "Privacy Policy",
+      "url": "/privacy/"
+    },
+    {
+      "title": "Terms of Service",
+      "url": "/terms/"
+    },
+    {
+      "title": "Cookie Policy",
+      "url": "/cookies/"
+    }
+  ]
+}

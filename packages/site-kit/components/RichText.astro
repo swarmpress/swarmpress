@@ -1,0 +1,18 @@
+---
+/**
+ * Localized rich text: plain text becomes paragraphs; legacy HTML passes a
+ * strict allowlist. Never parses Markdown.
+ */
+import type { RenderContext } from '../src/context'
+import { richTextHtml } from '../src/richtext'
+
+interface Props {
+  value: unknown
+  ctx: RenderContext
+  class?: string
+}
+const { value, ctx, class: cls } = Astro.props as Props
+const html = richTextHtml(ctx.l(value), (h) => ctx.href(h))
+---
+
+{html && <div class:list={['kit-prose', cls]} set:html={html} />}

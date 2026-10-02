@@ -1,0 +1,9 @@
+{
+  "type": "x:key-facts",
+  "title": { "en": "At a glance", "de": "Auf einen Blick" },
+  "facts": [
+    { "label": { "en": "Distance", "de": "Strecke" }, "value": "3.5 km" },
+    { "label": { "en": "Walking time", "de": "Gehzeit" }, "value": { "en": "1 h 30 min", "de": "1 Std. 30 Min." } },
+    { "label": { "en": "Best light", "de": "Bestes Licht" }, "value": { "en": "Early evening", "de": "Früher Abend" } }
+  ]
+}

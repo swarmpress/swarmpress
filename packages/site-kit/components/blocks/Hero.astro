@@ -1,0 +1,49 @@
+---
+/** Fallback: hero, hero-section, editorial-hero, itinerary-hero. */
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx, index = 0 } = Astro.props as { block: Record<string, any>; ctx: RenderContext; index?: number }
+const image = ctx.media(block.image ?? block.backgroundImage ?? (Array.isArray(block.images) ? block.images[0] : undefined))
+const title = ctx.l(block.title ?? block.name)
+const eyebrow = ctx.l(block.badge ?? block.eyebrow)
+const subtitle = ctx.l(block.subtitle)
+const buttons: { label: string; href: string; primary: boolean }[] = (Array.isArray(block.buttons) ? block.buttons : []).map((b: any, i: number) => ({
+  label: ctx.l(b.text ?? b.label),
+  href: ctx.href(b.url ?? b.href),
+  primary: (b.variant ?? (i === 0 ? 'primary' : 'secondary')) === 'primary',
+}))
+const facts = ['duration', 'pace', 'effort', 'bestSeason'].map((k) => [k, ctx.l(block[k])] as const).filter(([, v]) => v)
+const H = index === 0 ? 'h1' : 'h2'
+---
+
+<section class:list={['kit-hero', image && 'kit-hero--image']}>
+  {image && <img class="kit-hero__img" src={image.src} alt={image.alt ?? ''} decoding="async" loading={index === 0 ? 'eager' : 'lazy'} fetchpriority={index === 0 ? 'high' : undefined} />}
+  <div class="kit-container kit-hero__body">
+    {eyebrow && <p class="kit-eyebrow">{eyebrow}</p>}
+    {title && <H class="kit-hero__title">{title}</H>}
+    {subtitle && <p class="kit-lead">{subtitle}</p>}
+    {
+      facts.length > 0 && (
+        <dl class="kit-facts kit-facts--inline">
+          {facts.map(([k, v]) => (
+            <div>
+              <dt>{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+        </dl>
+      )
+    }
+    {
+      buttons.length > 0 && (
+        <p class="kit-actions">
+          {buttons.map((b) => (
+            <a class:list={['kit-button', !b.primary && 'kit-button--secondary']} href={b.href}>
+              {b.label}
+            </a>
+          ))}
+        </p>
+      )
+    }
+  </div>
+</section>
