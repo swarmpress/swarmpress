@@ -1,0 +1,581 @@
+{
+  "categories": [
+    "Food & Drink",
+    "Hiking",
+    "Culture",
+    "Beaches",
+    "Getting Around",
+    "Seasonal"
+  ],
+  "constants": {
+    "min_section_words": 60,
+    "section_max_percent": 140,
+    "section_min_percent": 60
+  },
+  "generated_by": "crates/agents/tests/bench_schemas.rs (UPDATE_GOLDEN=1 cargo test -p agents --test bench_schemas)",
+  "hero_aliases": [
+    "M1",
+    "M2",
+    "M3",
+    "M4",
+    "M5",
+    "M6"
+  ],
+  "link_aliases": [
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "L7",
+    "L8"
+  ],
+  "mirrored_checks": "shape, length and plain text (URL, angle bracket) of check_section; not banned phrases, near-duplicates or markup stripping",
+  "moderator": {
+    "id": "staff-4",
+    "name": "Sophia"
+  },
+  "participants": [
+    {
+      "id": "staff-5",
+      "name": "Marco",
+      "role": "editor"
+    },
+    {
+      "id": "staff-1",
+      "name": "Giulia",
+      "role": "writer"
+    },
+    {
+      "id": "staff-2",
+      "name": "Isabella",
+      "role": "writer"
+    }
+  ],
+  "schemas": {
+    "closing": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "maxLength": 1200,
+          "minLength": 40,
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "type": "object"
+    },
+    "moderator": {
+      "additionalProperties": false,
+      "properties": {
+        "done": {
+          "type": "boolean"
+        },
+        "next": {
+          "enum": [
+            "staff-5",
+            "staff-1",
+            "staff-2",
+            ""
+          ],
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "next",
+        "prompt",
+        "done"
+      ],
+      "type": "object"
+    },
+    "outline": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "enum": [
+            "Food & Drink",
+            "Hiking",
+            "Culture",
+            "Beaches",
+            "Getting Around",
+            "Seasonal"
+          ],
+          "type": "string"
+        },
+        "closing_title": {
+          "maxLength": 60,
+          "minLength": 3,
+          "type": "string"
+        },
+        "dek": {
+          "maxLength": 160,
+          "minLength": 40,
+          "type": "string"
+        },
+        "hero": {
+          "enum": [
+            "M1",
+            "M2",
+            "M3",
+            "M4",
+            "M5",
+            "M6"
+          ],
+          "type": "string"
+        },
+        "links": {
+          "items": {
+            "enum": [
+              "L1",
+              "L2",
+              "L3",
+              "L4",
+              "L5",
+              "L6",
+              "L7",
+              "L8"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "type": "array"
+        },
+        "sections": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "heading": {
+                "maxLength": 70,
+                "minLength": 3,
+                "type": "string"
+              },
+              "points": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 4,
+                "minItems": 2,
+                "type": "array"
+              },
+              "words": {
+                "maximum": 350,
+                "minimum": 100,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "heading",
+              "points",
+              "words"
+            ],
+            "type": "object"
+          },
+          "maxItems": 6,
+          "minItems": 3,
+          "type": "array"
+        },
+        "title": {
+          "maxLength": 70,
+          "minLength": 10,
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "dek",
+        "category",
+        "hero",
+        "sections",
+        "closing_title",
+        "links"
+      ],
+      "type": "object"
+    },
+    "review": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "enum": [
+            "approve",
+            "needs_changes",
+            "reject"
+          ],
+          "type": "string"
+        },
+        "high_risk": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "issues": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "fix": {
+                "type": "string"
+              },
+              "problem": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "section": {
+                "enum": [
+                  "title",
+                  "intro",
+                  "s1",
+                  "s2",
+                  "s3",
+                  "s4",
+                  "s5",
+                  "closing",
+                  "whole"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "section",
+              "problem",
+              "fix"
+            ],
+            "type": "object"
+          },
+          "maxItems": 8,
+          "type": "array"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "score": {
+          "maximum": 10,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "decision",
+        "score",
+        "notes",
+        "issues",
+        "high_risk"
+      ],
+      "type": "object"
+    },
+    "section": {
+      "additionalProperties": false,
+      "properties": {
+        "blocks": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "items": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 7,
+                "type": "array"
+              },
+              "text": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "paragraph",
+                  "list",
+                  "tip"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "text",
+              "items"
+            ],
+            "type": "object"
+          },
+          "maxItems": 6,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "blocks"
+      ],
+      "type": "object"
+    }
+  },
+  "section_ids": [
+    "s1",
+    "s2",
+    "s3",
+    "s4",
+    "s5"
+  ],
+  "section_words": 300,
+  "vectors": {
+    "check_section": [
+      {
+        "budget_words": 300,
+        "draft": {
+          "blocks": [
+            {
+              "items": [],
+              "text": "word1x0 word1x1 word1x2 word1x3 word1x4 word1x5 word1x6 word1x7 word1x8 word1x9 word1x10 word1x11 word1x12 word1x13 word1x14 word1x15 word1x16 word1x17 word1x18 word1x19 word1x20 word1x21 word1x22 word1x23 word1x24 word1x25 word1x26 word1x27 word1x28 word1x29 word1x30 word1x31 word1x32 word1x33 word1x34 word1x35 word1x36 word1x37 word1x38 word1x39 word1x40 word1x41 word1x42 word1x43 word1x44 word1x45 word1x46 word1x47 word1x48 word1x49 word1x50 word1x51 word1x52 word1x53 word1x54 word1x55 word1x56 word1x57 word1x58 word1x59 word1x60 word1x61 word1x62 word1x63 word1x64 word1x65 word1x66 word1x67 word1x68 word1x69 word1x70 word1x71 word1x72 word1x73 word1x74 word1x75 word1x76 word1x77 word1x78 word1x79 word1x80 word1x81 word1x82 word1x83 word1x84 word1x85 word1x86 word1x87 word1x88 word1x89 word1x90 word1x91 word1x92 word1x93 word1x94 word1x95 word1x96 word1x97 word1x98 word1x99 word1x100 word1x101 word1x102 word1x103 word1x104 word1x105 word1x106 word1x107 word1x108 word1x109 word1x110 word1x111 word1x112 word1x113 word1x114 word1x115 word1x116 word1x117 word1x118 word1x119 word1x120 word1x121 word1x122 word1x123 word1x124 word1x125 word1x126 word1x127 word1x128 word1x129 word1x130 word1x131 word1x132 word1x133 word1x134 word1x135 word1x136 word1x137 word1x138 word1x139 word1x140 word1x141 word1x142 word1x143 word1x144 word1x145 word1x146 word1x147 word1x148 word1x149 word1x150 word1x151 word1x152 word1x153 word1x154 word1x155 word1x156 word1x157 word1x158 word1x159 word1x160 word1x161 word1x162 word1x163 word1x164 word1x165 word1x166 word1x167 word1x168 word1x169 word1x170 word1x171 word1x172 word1x173 word1x174 word1x175 word1x176 word1x177 word1x178 word1x179 word1x180 word1x181 word1x182 word1x183 word1x184 word1x185 word1x186 word1x187 word1x188 word1x189 word1x190 word1x191 word1x192 word1x193 word1x194 word1x195 word1x196 word1x197 word1x198 word1x199 word1x200 word1x201 word1x202 word1x203 word1x204 word1x205 word1x206 word1x207 word1x208 word1x209 word1x210 word1x211 word1x212 word1x213 word1x214 word1x215 word1x216 word1x217 word1x218 word1x219 word1x220 word1x221 word1x222 word1x223 word1x224 word1x225 word1x226 word1x227 word1x228 word1x229 word1x230 word1x231 word1x232 word1x233 word1x234 word1x235 word1x236 word1x237 word1x238 word1x239 word1x240 word1x241 word1x242 word1x243 word1x244 word1x245 word1x246 word1x247 word1x248 word1x249 word1x250 word1x251 word1x252 word1x253 word1x254 word1x255 word1x256 word1x257 word1x258 word1x259 word1x260 word1x261 word1x262 word1x263 word1x264 word1x265 word1x266 word1x267 word1x268 word1x269 word1x270 word1x271 word1x272 word1x273 word1x274 word1x275 word1x276 word1x277 word1x278 word1x279 word1x280 word1x281 word1x282 word1x283 word1x284 word1x285 word1x286 word1x287 word1x288 word1x289 word1x290 word1x291 word1x292 word1x293 word1x294 word1x295 word1x296 word1x297 word1x298 word1x299",
+              "type": "paragraph"
+            }
+          ]
+        },
+        "kinds": [],
+        "name": "one paragraph inside the band",
+        "section": "s1"
+      },
+      {
+        "budget_words": 300,
+        "draft": {
+          "blocks": [
+            {
+              "items": [],
+              "text": "word2x0 word2x1 word2x2 word2x3 word2x4 word2x5 word2x6 word2x7 word2x8 word2x9 word2x10 word2x11 word2x12 word2x13 word2x14 word2x15 word2x16 word2x17 word2x18 word2x19 word2x20 word2x21 word2x22 word2x23 word2x24 word2x25 word2x26 word2x27 word2x28 word2x29 word2x30 word2x31 word2x32 word2x33 word2x34 word2x35 word2x36 word2x37 word2x38 word2x39 word2x40 word2x41 word2x42 word2x43 word2x44 word2x45 word2x46 word2x47 word2x48 word2x49 word2x50 word2x51 word2x52 word2x53 word2x54 word2x55 word2x56 word2x57 word2x58 word2x59 word2x60 word2x61 word2x62 word2x63 word2x64 word2x65 word2x66 word2x67 word2x68 word2x69 word2x70 word2x71 word2x72 word2x73 word2x74 word2x75 word2x76 word2x77 word2x78 word2x79 word2x80 word2x81 word2x82 word2x83 word2x84 word2x85 word2x86 word2x87 word2x88 word2x89 word2x90 word2x91 word2x92 word2x93 word2x94 word2x95 word2x96 word2x97 word2x98 word2x99 word2x100 word2x101 word2x102 word2x103 word2x104 word2x105 word2x106 word2x107 word2x108 word2x109 word2x110 word2x111 word2x112 word2x113 word2x114 word2x115 word2x116 word2x117 word2x118 word2x119 word2x120 word2x121 word2x122 word2x123 word2x124 word2x125 word2x126 word2x127 word2x128 word2x129 word2x130 word2x131 word2x132 word2x133 word2x134 word2x135 word2x136 word2x137 word2x138 word2x139 word2x140 word2x141 word2x142 word2x143 word2x144 word2x145 word2x146 word2x147 word2x148 word2x149 word2x150 word2x151 word2x152 word2x153 word2x154 word2x155 word2x156 word2x157 word2x158 word2x159 word2x160 word2x161 word2x162 word2x163 word2x164 word2x165 word2x166 word2x167 word2x168 word2x169 word2x170 word2x171 word2x172 word2x173 word2x174 word2x175 word2x176 word2x177 word2x178 word2x179",
+              "type": "paragraph"
+            }
+          ]
+        },
+        "kinds": [],
+        "name": "at the lower edge",
+        "section": "s1"
+      },
+      {
+        "budget_words": 300,
+        "draft": {
+          "blocks": [
+            {
+              "items": [],
+              "text": "word3x0 word3x1 word3x2 word3x3 word3x4 word3x5 word3x6 word3x7 word3x8 word3x9 word3x10 word3x11 word3x12 word3x13 word3x14 word3x15 word3x16 word3x17 word3x18 word3x19 word3x20 word3x21 word3x22 word3x23 word3x24 word3x25 word3x26 word3x27 word3x28 word3x29 word3x30 word3x31 word3x32 word3x33 word3x34 word3x35 word3x36 word3x37 word3x38 word3x39 word3x40 word3x41 word3x42 word3x43 word3x44 word3x45 word3x46 word3x47 word3x48 word3x49 word3x50 word3x51 word3x52 word3x53 word3x54 word3x55 word3x56 word3x57 word3x58 word3x59 word3x60 word3x61 word3x62 word3x63 word3x64 word3x65 word3x66 word3x67 word3x68 word3x69 word3x70 word3x71 word3x72 word3x73 word3x74 word3x75 word3x76 word3x77 word3x78 word3x79 word3x80 word3x81 word3x82 word3x83 word3x84 word3x85 word3x86 word3x87 word3x88 word3x89 word3x90 word3x91 word3x92 word3x93 word3x94 word3x95 word3x96 word3x97 word3x98 word3x99 word3x100 word3x101 word3x102 word3x103 word3x104 word3x105 word3x106 word3x107 word3x108 word3x109 word3x110 word3x111 word3x112 word3x113 word3x114 word3x115 word3x116 word3x117 word3x118 word3x119 word3x120 word3x121 word3x122 word3x123 word3x124 word3x125 word3x126 word3x127 word3x128 word3x129 word3x130 word3x131 word3x132 word3x133 word3x134 word3x135 word3x136 word3x137 word3x138 word3x139 word3x140 word3x141 word3x142 word3x143 word3x144 word3x145 word3x146 word3x147 word3x148 word3x149 word3x150 word3x151 word3x152 word3x153 word3x154 word3x155 word3x156 word3x157 word3x158 word3x159 word3x160 word3x161 word3x162 word3x163 word3x164 word3x165 word3x166 word3x167 word3x168 word3x169 word3x170 word3x171 word3x172 word3x173 word3x174 word3x175 word3x176 word3x177 word3x178",
+              "type": "paragraph"
+            }
+          ]
+        },
+        "kinds": [
+          "too_short"
+        ],
+        "name": "one word under the lower edge",
+        "section": "s1"
+      },
+      {
+        "budget_words": 300,
+        "draft": {
+          "blocks": [
+            {
+              "items": [],
+              "text": "word4x0 word4x1 word4x2 word4x3 word4x4 word4x5 word4x6 word4x7 word4x8 word4x9 word4x10 word4x11 word4x12 word4x13 word4x14 word4x15 word4x16 word4x17 word4x18 word4x19 word4x20 word4x21 word4x22 word4x23 word4x24 word4x25 word4x26 word4x27 word4x28 word4x29 word4x30 word4x31 word4x32 word4x33 word4x34 word4x35 word4x36 word4x37 word4x38 word4x39 word4x40 word4x41 word4x42 word4x43 word4x44 word4x45 word4x46 word4x47 word4x48 word4x49 word4x50 word4x51 word4x52 word4x53 word4x54 word4x55 word4x56 word4x57 word4x58 word4x59 word4x60 word4x61 word4x62 word4x63 word4x64 word4x65 word4x66 word4x67 word4x68 word4x69 word4x70 word4x71 word4x72 word4x73 word4x74 word4x75 word4x76 word4x77 word4x78 word4x79 word4x80 word4x81 word4x82 word4x83 word4x84 word4x85 word4x86 word4x87 word4x88 word4x89 word4x90 word4x91 word4x92 word4x93 word4x94 word4x95 word4x96 word4x97 word4x98 word4x99 word4x100 word4x101 word4x102 word4x103 word4x104 word4x105 word4x106 word4x107 word4x108 word4x109 word4x110 word4x111 word4x112 word4x113 word4x114 word4x115 word4x116 word4x117 word4x118 word4x119 word4x120 word4x121 word4x122 word4x123 word4x124 word4x125 word4x126 word4x127 word4x128 word4x129 word4x130 word4x131 word4x132 word4x133 word4x134 word4x135 word4x136 word4x137 word4x138 word4x139 word4x140 word4x141 word4x142 word4x143 word4x144 word4x145 word4x146 word4x147 word4x148 word4x149 word4x150 word4x151 word4x152 word4x153 word4x154 word4x155 word4x156 word4x157 word4x158 word4x159 word4x160 word4x161 word4x162 word4x163 word4x164 word4x165 word4x166 word4x167 word4x168 word4x169 word4x170 word4x171 word4x172 word4x173 word4x174 word4x175 word4x176 word4x177 word4x178 word4x179 word4x180 word4x181 word4x182 word4x183 word4x184 word4x185 word4x186 word4x187 word4x188 word4x189 word4x190 word4x191 word4x192 word4x193 word4x194 word4x195 word4x196 word4x197 word4x198 word4x199 word4x200 word4x201 word4x202 word4x203 word4x204 word4x205 word4x206 word4x207 word4x208 word4x209 word4x210 word4x211 word4x212 word4x213 word4x214 word4x215 word4x216 word4x217 word4x218 word4x219 word4x220 word4x221 word4x222 word4x223 word4x224 word4x225 word4x226 word4x227 word4x228 word4x229 word4x230 word4x231 word4x232 word4x233 word4x234 word4x235 word4x236 word4x237 word4x238 word4x239 word4x240 word4x241 word4x242 word4x243 word4x244 word4x245 word4x246 word4x247 word4x248 word4x249 word4x250 word4x251 word4x252 word4x253 word4x254 word4x255 word4x256 word4x257 word4x258 word4x259 word4x260 word4x261 word4x262 word4x263 word4x264 word4x265 word4x266 word4x267 word4x268 word4x269 word4x270 word4x271 word4x272 word4x273 word4x274 word4x275 word4x276 word4x277 word4x278 word4x279 word4x280 word4x281 word4x282 word4x283 word4x284 word4x285 word4x286 word4x287 word4x288 word4x289 word4x290 word4x291 word4x292 word4x293 word4x294 word4x295 word4x296 word4x297 word4x298 word4x299 word4x300 word4x301 word4x302 word4x303 word4x304 word4x305 word4x306 word4x307 word4x308 word4x309 word4x310 word4x311 word4x312 word4x313 word4x314 word4x315 word4x316 word4x317 word4x318 word4x319 word4x320 word4x321 word4x322 word4x323 word4x324 word4x325 word4x326 word4x327 word4x328 word4x329 word4x330 word4x331 word4x332 word4x333 word4x334 word4x335 word4x336 word4x337 word4x338 word4x339 word4x340 word4x341 word4x342 word4x343 word4x344 word4x345 word4x346 word4x347 word4x348 word4x349 word4x350 word4x351 word4x352 word4x353 word4x354 word4x355 word4x356 word4x357 word4x358 word4x359 word4x360 word4x361 word4x362 word4x363 word4x364 word4x365 word4x366 word4x367 word4x368 word4x369 word4x370 word4x371 word4x372 word4x373 word4x374 word4x375 word4x376 word4x377 word4x378 word4x379 word4x380 word4x381 word4x382 word4x383 word4x384 word4x385 word4x386 word4x387 word4x388 word4x389 word4x390 word4x391 word4x392 word4x393 word4x394 word4x395 word4x396 word4x397 word4x398 word4x399",
+              "type": "paragraph"
+            },
+            {
+              "items": [
+                "twenty words here",
+                "word5x0 word5x1 word5x2 word5x3 word5x4 word5x5 word5x6 word5x7 word5x8 word5x9 word5x10 word5x11 word5x12 word5x13 word5x14 word5x15 word5x16"
+              ],
+              "text": "",
+              "type": "list"
+            }
+          ]
+        },
+        "kinds": [],
+        "name": "at the upper edge",
+        "section": "s2"
+      },
+      {
+        "budget_words": 300,
+        "draft": {
+          "blocks": [
+            {
+              "items": [],
+              "text": "word6x0 word6x1 word6x2 word6x3 word6x4 word6x5 word6x6 word6x7 word6x8 word6x9 word6x10 word6x11 word6x12 word6x13 word6x14 word6x15 word6x16 word6x17 word6x18 word6x19 word6x20 word6x21 word6x22 word6x23 word6x24 word6x25 word6x26 word6x27 word6x28 word6x29 word6x30 word6x31 word6x32 word6x33 word6x34 word6x35 word6x36 word6x37 word6x38 word6x39 word6x40 word6x41 word6x42 word6x43 word6x44 word6x45 word6x46 word6x47 word6x48 word6x49 word6x50 word6x51 word6x52 word6x53 word6x54 word6x55 word6x56 word6x57 word6x58 word6x59 word6x60 word6x61 word6x62 word6x63 word6x64 word6x65 word6x66 word6x67 word6x68 word6x69 word6x70 word6x71 word6x72 word6x73 word6x74 word6x75 word6x76 word6x77 word6x78 word6x79 word6x80 word6x81 word6x82 word6x83 word6x84 word6x85 word6x86 word6x87 word6x88 word6x89 word6x90 word6x91 word6x92 word6x93 word6x94 word6x95 word6x96 word6x97 word6x98 word6x99 word6x100 word6x101 word6x102 word6x103 word6x104 word6x105 word6x106 word6x107 word6x108 word6x109 word6x110 word6x111 word6x112 word6x113 word6x114 word6x115 word6x116 word6x117 word6x118 word6x119 word6x120 word6x121 word6x122 word6x123 word6x124 word6x125 word6x126 word6x127 word6x128 word6x129 word6x130 word6x131 word6x132 word6x133 word6x134 word6x135 word6x136 word6x137 word6x138 word6x139 word6x140 word6x141 word6x142 word6x143 word6x144 word6x145 word6x146 word6x147 word6x148 word6x149 word6x150 word6x151 word6x152 word6x153 word6x154 word6x155 word6x156 word6x157 word6x158 word6x159 word6x160 word6x161 word6x162 word6x163 word6x164 word6x165 word6x166 word6x167 word6x168 word6x169 word6x170 word6x171 word6x172 word6x173 word6x174 word6x175 word6x176 word6x177 word6x178 word6x179 word6x180 word6x181 word6x182 word6x183 word6x184 word6x185 word6x186 word6x187 word6x188 word6x189 word6x190 word6x191 word6x192 word6x193 word6x194 word6x195 word6x196 word6x197 word6x198 word6x199 word6x200 word6x201 word6x202 word6x203 word6x204 word6x205 word6x206 word6x207 word6x208 word6x209 word6x210 word6x211 word6x212 word6x213 word6x214 word6x215 word6x216 word6x217 word6x218 word6x219 word6x220 word6x221 word6x222 word6x223 word6x224 word6x225 word6x226 word6x227 word6x228 word6x229 word6x230 word6x231 word6x232 word6x233 word6x234 word6x235 word6x236 word6x237 word6x238 word6x239 word6x240 word6x241 word6x242 word6x243 word6x244 word6x245 word6x246 word6x247 word6x248 word6x249 word6x250 word6x251 word6x252 word6x253 word6x254 word6x255 word6x256 word6x257 word6x258 word6x259 word6x260 word6x261 word6x262 word6x263 word6x264 word6x265 word6x266 word6x267 word6x268 word6x269 word6x270 word6x271 word6x272 word6x273 word6x274 word6x275 word6x276 word6x277 word6x278 word6x279 word6x280 word6x281 word6x282 word6x283 word6x284 word6x285 word6x286 word6x287 word6x288 word6x289 word6x290 word6x291 word6x292 word6x293 word6x294 word6x295 word6x296 word6x297 word6x298 word6x299 word6x300 word6x301 word6x302 word6x303 word6x304 word6x305 word6x306 word6x307 word6x308 word6x309 word6x310 word6x311 word6x312 word6x313 word6x314 word6x315 word6x316 word6x317 word6x318 word6x319 word6x320 word6x321 word6x322 word6x323 word6x324 word6x325 word6x326 word6x327 word6x328 word6x329 word6x330 word6x331 word6x332 word6x333 word6x334 word6x335 word6x336 word6x337 word6x338 word6x339 word6x340 word6x341 word6x342 word6x343 word6x344 word6x345 word6x346 word6x347 word6x348 word6x349 word6x350 word6x351 word6x352 word6x353 word6x354 word6x355 word6x356 word6x357 word6x358 word6x359 word6x360 word6x361 word6x362 word6x363 word6x364 word6x365 word6x366 word6x367 word6x368 word6x369 word6x370 word6x371 word6x372 word6x373 word6x374 word6x375 word6x376 word6x377 word6x378 word6x379 word6x380 word6x381 word6x382 word6x383 word6x384 word6x385 word6x386 word6x387 word6x388 word6x389 word6x390 word6x391 word6x392 word6x393 word6x394 word6x395 word6x396 word6x397 word6x398 word6x399 word6x400 word6x401 word6x402 word6x403 word6x404 word6x405 word6x406 word6x407 word6x408 word6x409 word6x410 word6x411 word6x412 word6x413 word6x414 word6x415 word6x416 word6x417 word6x418 word6x419 word6x420",
+              "type": "paragraph"
+            }
+          ]
+        },
+        "kinds": [
+          "too_long"
+        ],
+        "name": "one word over the upper edge",
+        "section": "s2"
+      },
+      {
+        "budget_words": 300,
+        "draft": {
+          "blocks": [
+            {
+              "items": [
+                "first item"
+              ],
+              "text": "stray text",
+              "type": "list"
+            },
+            {
+              "items": [
+                "stray item"
+              ],
+              "text": "word7x0 word7x1 word7x2 word7x3 word7x4 word7x5 word7x6 word7x7 word7x8 word7x9 word7x10 word7x11 word7x12 word7x13 word7x14 word7x15 word7x16 word7x17 word7x18 word7x19 word7x20 word7x21 word7x22 word7x23 word7x24 word7x25 word7x26 word7x27 word7x28 word7x29 word7x30 word7x31 word7x32 word7x33 word7x34 word7x35 word7x36 word7x37 word7x38 word7x39 word7x40 word7x41 word7x42 word7x43 word7x44 word7x45 word7x46 word7x47 word7x48 word7x49 word7x50 word7x51 word7x52 word7x53 word7x54 word7x55 word7x56 word7x57 word7x58 word7x59 word7x60 word7x61 word7x62 word7x63 word7x64 word7x65 word7x66 word7x67 word7x68 word7x69 word7x70 word7x71 word7x72 word7x73 word7x74 word7x75 word7x76 word7x77 word7x78 word7x79 word7x80 word7x81 word7x82 word7x83 word7x84 word7x85 word7x86 word7x87 word7x88 word7x89 word7x90 word7x91 word7x92 word7x93 word7x94 word7x95 word7x96 word7x97 word7x98 word7x99 word7x100 word7x101 word7x102 word7x103 word7x104 word7x105 word7x106 word7x107 word7x108 word7x109 word7x110 word7x111 word7x112 word7x113 word7x114 word7x115 word7x116 word7x117 word7x118 word7x119 word7x120 word7x121 word7x122 word7x123 word7x124 word7x125 word7x126 word7x127 word7x128 word7x129 word7x130 word7x131 word7x132 word7x133 word7x134 word7x135 word7x136 word7x137 word7x138 word7x139 word7x140 word7x141 word7x142 word7x143 word7x144 word7x145 word7x146 word7x147 word7x148 word7x149 word7x150 word7x151 word7x152 word7x153 word7x154 word7x155 word7x156 word7x157 word7x158 word7x159 word7x160 word7x161 word7x162 word7x163 word7x164 word7x165 word7x166 word7x167 word7x168 word7x169 word7x170 word7x171 word7x172 word7x173 word7x174 word7x175 word7x176 word7x177 word7x178 word7x179 word7x180 word7x181 word7x182 word7x183 word7x184 word7x185 word7x186 word7x187 word7x188 word7x189 word7x190 word7x191 word7x192 word7x193 word7x194 word7x195 word7x196 word7x197 word7x198 word7x199 word7x200 word7x201 word7x202 word7x203 word7x204 word7x205 word7x206 word7x207 word7x208 word7x209 word7x210 word7x211 word7x212 word7x213 word7x214 word7x215 word7x216 word7x217 word7x218 word7x219 word7x220 word7x221 word7x222 word7x223 word7x224 word7x225 word7x226 word7x227 word7x228 word7x229 word7x230 word7x231 word7x232 word7x233 word7x234 word7x235 word7x236 word7x237 word7x238 word7x239 word7x240 word7x241 word7x242 word7x243 word7x244 word7x245 word7x246 word7x247 word7x248 word7x249",
+              "type": "paragraph"
+            }
+          ]
+        },
+        "kinds": [
+          "shape",
+          "shape"
+        ],
+        "name": "a list with text and a paragraph with items",
+        "section": "s3"
+      },
+      {
+        "budget_words": 300,
+        "draft": {
+          "blocks": [
+            {
+              "items": [],
+              "text": "word8x0 word8x1 word8x2 word8x3 word8x4 word8x5 word8x6 word8x7 word8x8 word8x9 word8x10 word8x11 word8x12 word8x13 word8x14 word8x15 word8x16 word8x17 word8x18 word8x19 word8x20 word8x21 word8x22 word8x23 word8x24 word8x25 word8x26 word8x27 word8x28 word8x29 word8x30 word8x31 word8x32 word8x33 word8x34 word8x35 word8x36 word8x37 word8x38 word8x39 word8x40 word8x41 word8x42 word8x43 word8x44 word8x45 word8x46 word8x47 word8x48 word8x49 word8x50 word8x51 word8x52 word8x53 word8x54 word8x55 word8x56 word8x57 word8x58 word8x59 word8x60 word8x61 word8x62 word8x63 word8x64 word8x65 word8x66 word8x67 word8x68 word8x69 word8x70 word8x71 word8x72 word8x73 word8x74 word8x75 word8x76 word8x77 word8x78 word8x79 word8x80 word8x81 word8x82 word8x83 word8x84 word8x85 word8x86 word8x87 word8x88 word8x89 word8x90 word8x91 word8x92 word8x93 word8x94 word8x95 word8x96 word8x97 word8x98 word8x99 word8x100 word8x101 word8x102 word8x103 word8x104 word8x105 word8x106 word8x107 word8x108 word8x109 word8x110 word8x111 word8x112 word8x113 word8x114 word8x115 word8x116 word8x117 word8x118 word8x119 word8x120 word8x121 word8x122 word8x123 word8x124 word8x125 word8x126 word8x127 word8x128 word8x129 word8x130 word8x131 word8x132 word8x133 word8x134 word8x135 word8x136 word8x137 word8x138 word8x139 word8x140 word8x141 word8x142 word8x143 word8x144 word8x145 word8x146 word8x147 word8x148 word8x149 word8x150 word8x151 word8x152 word8x153 word8x154 word8x155 word8x156 word8x157 word8x158 word8x159 word8x160 word8x161 word8x162 word8x163 word8x164 word8x165 word8x166 word8x167 word8x168 word8x169 word8x170 word8x171 word8x172 word8x173 word8x174 word8x175 word8x176 word8x177 word8x178 word8x179 word8x180 word8x181 word8x182 word8x183 word8x184 word8x185 word8x186 word8x187 word8x188 word8x189 word8x190 word8x191 word8x192 word8x193 word8x194 word8x195 word8x196 word8x197 word8x198 word8x199 word8x200 word8x201 word8x202 word8x203 word8x204 word8x205 word8x206 word8x207 word8x208 word8x209 word8x210 word8x211 word8x212 word8x213 word8x214 word8x215 word8x216 word8x217 word8x218 word8x219 word8x220 word8x221 word8x222 word8x223 word8x224 word8x225 word8x226 word8x227 word8x228 word8x229 word8x230 word8x231 word8x232 word8x233 word8x234 word8x235 word8x236 word8x237 word8x238 word8x239 word8x240 word8x241 word8x242 word8x243 word8x244 word8x245 word8x246 word8x247 word8x248 word8x249",
+              "type": "paragraph"
+            },
+            {
+              "items": [],
+              "text": "",
+              "type": "list"
+            },
+            {
+              "items": [],
+              "text": "",
+              "type": "tip"
+            }
+          ]
+        },
+        "kinds": [
+          "shape",
+          "shape"
+        ],
+        "name": "an empty list and an empty tip",
+        "section": "s3"
+      },
+      {
+        "budget_words": 100,
+        "draft": {
+          "blocks": [
+            {
+              "items": [],
+              "text": "word9x0 word9x1 word9x2 word9x3 word9x4 word9x5 word9x6 word9x7 word9x8 word9x9 word9x10 word9x11 word9x12 word9x13 word9x14 word9x15 word9x16 word9x17 word9x18 word9x19 word9x20 word9x21 word9x22 word9x23 word9x24 word9x25 word9x26 word9x27 word9x28 word9x29 word9x30 word9x31 word9x32 word9x33 word9x34 word9x35 word9x36 word9x37 word9x38 word9x39 word9x40 word9x41 word9x42 word9x43 word9x44 word9x45 word9x46 word9x47 word9x48 word9x49 word9x50 word9x51 word9x52 word9x53 word9x54 word9x55 word9x56 word9x57 word9x58 word9x59 word9x60 word9x61 word9x62 word9x63 word9x64 word9x65 word9x66 word9x67 word9x68 word9x69 word9x70 word9x71 word9x72 word9x73 word9x74 word9x75 word9x76 word9x77 word9x78 word9x79",
+              "type": "paragraph"
+            },
+            {
+              "items": [],
+              "text": "Bring water for the climb.",
+              "type": "tip"
+            },
+            {
+              "items": [
+                "one",
+                "two"
+              ],
+              "text": "",
+              "type": "list"
+            }
+          ]
+        },
+        "kinds": [
+          "shape",
+          "shape"
+        ],
+        "name": "a tip and a list in the intro",
+        "section": "intro"
+      },
+      {
+        "budget_words": 300,
+        "draft": {
+          "blocks": [
+            {
+              "items": [],
+              "text": "word10x0 word10x1 word10x2 word10x3 word10x4 word10x5 word10x6 word10x7 word10x8 word10x9 word10x10 word10x11 word10x12 word10x13 word10x14 word10x15 word10x16 word10x17 word10x18 word10x19 word10x20 word10x21 word10x22 word10x23 word10x24 word10x25 word10x26 word10x27 word10x28 word10x29 word10x30 word10x31 word10x32 word10x33 word10x34 word10x35 word10x36 word10x37 word10x38 word10x39 word10x40 word10x41 word10x42 word10x43 word10x44 word10x45 word10x46 word10x47 word10x48 word10x49 word10x50 word10x51 word10x52 word10x53 word10x54 word10x55 word10x56 word10x57 word10x58 word10x59 word10x60 word10x61 word10x62 word10x63 word10x64 word10x65 word10x66 word10x67 word10x68 word10x69 word10x70 word10x71 word10x72 word10x73 word10x74 word10x75 word10x76 word10x77 word10x78 word10x79 word10x80 word10x81 word10x82 word10x83 word10x84 word10x85 word10x86 word10x87 word10x88 word10x89 word10x90 word10x91 word10x92 word10x93 word10x94 word10x95 word10x96 word10x97 word10x98 word10x99 word10x100 word10x101 word10x102 word10x103 word10x104 word10x105 word10x106 word10x107 word10x108 word10x109 word10x110 word10x111 word10x112 word10x113 word10x114 word10x115 word10x116 word10x117 word10x118 word10x119 word10x120 word10x121 word10x122 word10x123 word10x124 word10x125 word10x126 word10x127 word10x128 word10x129 word10x130 word10x131 word10x132 word10x133 word10x134 word10x135 word10x136 word10x137 word10x138 word10x139 word10x140 word10x141 word10x142 word10x143 word10x144 word10x145 word10x146 word10x147 word10x148 word10x149 word10x150 word10x151 word10x152 word10x153 word10x154 word10x155 word10x156 word10x157 word10x158 word10x159 word10x160 word10x161 word10x162 word10x163 word10x164 word10x165 word10x166 word10x167 word10x168 word10x169 word10x170 word10x171 word10x172 word10x173 word10x174 word10x175 word10x176 word10x177 word10x178 word10x179 word10x180 word10x181 word10x182 word10x183 word10x184 word10x185 word10x186 word10x187 word10x188 word10x189 word10x190 word10x191 word10x192 word10x193 word10x194 word10x195 word10x196 word10x197 word10x198 word10x199 word10x200 word10x201 word10x202 word10x203 word10x204 word10x205 word10x206 word10x207 word10x208 word10x209 word10x210 word10x211 word10x212 word10x213 word10x214 word10x215 word10x216 word10x217 word10x218 word10x219 word10x220 word10x221 word10x222 word10x223 word10x224 word10x225 word10x226 word10x227 word10x228 word10x229 word10x230 word10x231 word10x232 word10x233 word10x234 word10x235 word10x236 word10x237 word10x238 word10x239 word10x240 word10x241 word10x242 word10x243 word10x244 word10x245 word10x246 word10x247 word10x248 word10x249 see https://example.org/trails today",
+              "type": "paragraph"
+            },
+            {
+              "items": [],
+              "text": "Allow <two> hours.",
+              "type": "tip"
+            }
+          ]
+        },
+        "kinds": [
+          "not_plain_text",
+          "not_plain_text"
+        ],
+        "name": "a URL and an angle bracket",
+        "section": "s4"
+      },
+      {
+        "budget_words": 300,
+        "draft": {
+          "blocks": []
+        },
+        "kinds": [
+          "shape"
+        ],
+        "name": "no blocks",
+        "section": "s5"
+      },
+      {
+        "budget_words": 0,
+        "draft": {
+          "blocks": [
+            {
+              "items": [],
+              "text": "Short.",
+              "type": "paragraph"
+            }
+          ]
+        },
+        "kinds": [],
+        "name": "no budget skips the length check",
+        "section": "s5"
+      }
+    ],
+    "word_count": [
+      {
+        "text": "",
+        "words": 0
+      },
+      {
+        "text": "   ",
+        "words": 0
+      },
+      {
+        "text": "one",
+        "words": 1
+      },
+      {
+        "text": "two  words",
+        "words": 2
+      },
+      {
+        "text": "tabs\tand\nnewlines count as spaces",
+        "words": 6
+      },
+      {
+        "text": "Sciacchetrà è un vino dolce, raro.",
+        "words": 6
+      },
+      {
+        "text": "a-b c—d e/f",
+        "words": 3
+      }
+    ]
+  }
+}
