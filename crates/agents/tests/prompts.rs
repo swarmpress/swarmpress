@@ -222,7 +222,7 @@ fn site_layer_from_writer_prompt_json() {
 #[test]
 fn resolved_writer_prompt_snapshot() {
     let site = cinqueterre_site();
-    let persona = Persona::builtin("Isabella").unwrap();
+    let persona = Persona::builtin("isabella").unwrap();
     let agent = PromptLayer::from_persona(&persona, "en");
     let runtime =
         vars(json!({"block_docs": "- paragraph: { markdown }\n- heading: { text, level }"}));
@@ -261,7 +261,7 @@ fn writer_prompt_without_block_docs_fails_loudly() {
 #[test]
 fn resolved_editor_prompt_snapshot() {
     let site = cinqueterre_site();
-    let persona = Persona::builtin("Marco").unwrap();
+    let persona = Persona::builtin("marco").unwrap();
     let agent = PromptLayer::from_persona(&persona, "en");
     let r = resolve(
         &templates::editor(),

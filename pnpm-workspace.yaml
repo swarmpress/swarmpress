@@ -1,6 +1,8 @@
 packages:
   - 'apps/game'
   - 'packages/content-schema'
+  - 'packages/site-kit'
+  - 'themes/*'
   - 'packages/tracker'
   # Extension SDK (ADR-0042): SDK, QuickJS sandbox, the `simpress` runner, examples.
   - 'packages/sdk'

@@ -1,0 +1,75 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "kenji"
+id = 104
+name = "Kenji Watanabe"
+pronouns = "he/him"
+age = 33
+hometown = "Osaka, Japan (lives in Milan)"
+department = "photo-video"
+role = "video-producer"
+title = "Video Producer"
+seniority = "mid"
+salary_eur_month = 3800
+languages = ["ja (native)", "en (C1)", "it (B2)"]
+affinities = ["video", "short-form-video", "drone", "boat-tours", "sunset", "documentary"]
+pitch = "Documentary-trained shooter and editor who makes 60-second films that feel like a place."
+birthday = "08-08"
+bio = '''
+I'm Kenji. I studied film in Tokyo, came to Milan for a fashion production job, and stayed for
+the light and the trains. I shoot and edit short documentaries: no drone swoop without a reason,
+no music louder than the sea. I want to make videos that people watch with the sound on.'''
+
+[cv]
+education = [
+  { years = "2011–2015", what = "BA Film Production", where = "Nihon University College of Art, Tokyo" },
+]
+experience = [
+  { years = "2015–2019", role = "Assistant director, then editor", org = "Documentary production house, Tokyo", highlights = [
+    "Edited a 12-part TV series on Japanese coastal towns",
+  ] },
+  { years = "2019–2023", role = "Video producer", org = "Fashion content studio, Milan", highlights = [
+    "Produced 200+ short videos for brand social channels",
+    "Ran small crews on location in Liguria and on Lake Como",
+  ] },
+  { years = "2023–present", role = "Freelance video producer", org = "Tourism boards and hotels in northern Italy", highlights = [
+    "Shot and edited a 20-episode vertical-video series on Italian ferries",
+  ] },
+]
+skills = ["documentary shooting", "video editing (DaVinci Resolve)", "drone operation (EU A2 licence)", "sound recording", "short-form storytelling"]
+awards = []
+
+[life]
+hobbies = ["night photography of train stations", "making ramen from scratch", "playing bass in a jazz trio"]
+interests = ["Italian neorealist cinema", "sound design", "public transport", "ceramics"]
+quirks = ["Records ambient sound everywhere, even at lunch", "Bows slightly when he agrees with a point"]
+likes = ["blue hour", "quiet harbours", "clean audio", "trofie al pesto"]
+dislikes = ["shaky gimbal shots", "stock music", "vertical video without a story", "loud drones over villages"]
+work_style = "Plans shots on index cards, shoots little and well, edits overnight; communicates with rough cuts rather than words."
+values = ["patience makes the shot", "sound matters as much as image"]
+
+[traits]
+rigor = 70
+speed = 60
+creativity = 85
+sociability = 50
+resilience = 70
+ambition = 65
+
+[family]
+household = "Lives alone in Milan; his parents and sister are in Osaka."
+key_people = ["sister Aiko, a nurse", "his jazz trio"]
+
+[traditions]
+new_year = "Oshogatsu: makes ozoni soup and visits a temple if he is home"
+obon = "Calls his family and lights incense for his grandparents"
+hanami = "Picnics under the cherry trees in a Milan park each spring"
+birthday = "A long ramen night with friends"
+
+[world]
+news_interest = "low"
+topics = ["film festivals", "public transport", "Japanese baseball", "music"]
+tone_on_current_events = "quiet and polite, prefers to listen and ask questions"
+
+[appearance]
+palette = "#1c2833"
+description = "Black bucket hat, black tee, a small mirrorless camera on a wrist strap, headphones around his neck."

@@ -13,9 +13,17 @@ use crate::equipment::{
     seat_pos, EquipmentKind, MAX_ITEMS_PER_ROOM, SEAT_CLEARANCE_MM, WALL_CLEARANCE_MM,
 };
 use crate::geom::{PosMm, Side, TileRect, TILE_MM};
-use crate::ids::{CandidateId, EquipId, MeetingId, RoomId, StaffId};
-use crate::staff::Spot;
-use crate::world::{World, MAX_STAFF};
+use crate::ids::{CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId};
+use crate::inbox::{SecretaryTaskKind, MAX_MEETING_ATTENDEES, MAX_SECRETARY_QUEUE};
+use crate::projects::{valid_domain, valid_name, valid_slug, ProjectStatus};
+use crate::roles::Role;
+use crate::staff::{Seniority, Spot, Staff};
+use crate::world::{World, MAX_STAFF, PRAISES_PER_DAY};
+
+/// Highest daily salary `SetSalary` accepts, cents (€100 000 a day).
+pub const MAX_SALARY_CENTS_PER_DAY: i64 = 10_000_000;
+/// Highest monthly project budget, cents (€100 million).
+pub const MAX_BUDGET_CENTS: i64 = 10_000_000_000;
 
 /// Largest tile coordinate accepted in a command.
 pub const MAX_COORD_TILES: i32 = 10_000;
@@ -69,6 +77,16 @@ pub enum Reject {
     OutOfOrder { expected: u32, got: u32 },
     #[error("not supported yet: {0}")]
     NotSupported(&'static str),
+    #[error("unknown {0}")]
+    UnknownProject(ProjectId),
+    #[error("unknown {0}")]
+    UnknownTicket(TicketId),
+    #[error("{staff} would be allocated {total}% (max 100%)")]
+    OverAllocated { staff: StaffId, total: u16 },
+    #[error("company level {level} allows {limit} project(s)")]
+    ProjectLimit { level: u8, limit: usize },
+    #[error("there is no Executive Secretary to delegate to")]
+    NoSecretary,
 }
 
 /// Validates any input.
@@ -280,9 +298,16 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
             funds(w, price(w, cmd))
         }
         Command::Hire { candidate } => {
-            w.candidates
+            let c = w
+                .candidates
                 .get(candidate)
                 .ok_or(Reject::UnknownCandidate(*candidate))?;
+            if c.role == Role::Cfo && w.exec.cfo.is_some() {
+                return Err(Reject::Occupied("the company already has a CFO"));
+            }
+            if c.role == Role::Secretary && w.exec.secretary.is_some() {
+                return Err(Reject::Occupied("the company already has a Secretary"));
+            }
             if w.company.hiring_frozen() {
                 return Err(Reject::HiringFrozen);
             }
@@ -309,15 +334,225 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
             }
         }
         Command::SetPolicy(_) => Ok(()),
+        Command::Promote { staff } => {
+            let s = active_staff(w, *staff)?;
+            match s.seniority.promoted() {
+                None => Err(Reject::Invalid("already a star")),
+                Some(Seniority::Star) if w.company.level < 5 => {
+                    Err(Reject::Invalid("star contracts unlock at company level 5"))
+                }
+                Some(_) => Ok(()),
+            }
+        }
+        Command::SetSalary {
+            staff,
+            cents_per_day,
+        } => {
+            active_staff(w, *staff)?;
+            if !(1..=MAX_SALARY_CENTS_PER_DAY).contains(cents_per_day) {
+                return Err(Reject::Invalid("salary is 1 cent to €100 000 a day"));
+            }
+            Ok(())
+        }
+        Command::AssignToProject {
+            staff,
+            project,
+            allocation_pct,
+        } => {
+            let s = active_staff(w, *staff)?;
+            let p = open_project(w, *project)?;
+            if s.role.is_executive() {
+                return Err(Reject::Invalid(
+                    "the executive office is not staffed on projects",
+                ));
+            }
+            if *allocation_pct == 0 || *allocation_pct > 100 {
+                return Err(Reject::Invalid("allocation is 1..=100%"));
+            }
+            let others: u16 = s
+                .projects
+                .iter()
+                .filter(|(pid, _)| **pid != p.id)
+                .map(|(_, pct)| u16::from(*pct))
+                .sum();
+            let total = others + u16::from(*allocation_pct);
+            if total > 100 {
+                return Err(Reject::OverAllocated {
+                    staff: *staff,
+                    total,
+                });
+            }
+            Ok(())
+        }
+        Command::RemoveFromProject { staff, project } => {
+            let s = w.staff.get(staff).ok_or(Reject::UnknownStaff(*staff))?;
+            w.projects
+                .get(project)
+                .ok_or(Reject::UnknownProject(*project))?;
+            if !s.projects.contains_key(project) {
+                return Err(Reject::Invalid("not on that project's team"));
+            }
+            Ok(())
+        }
+        Command::SetProjectLead { project, staff } => {
+            open_project(w, *project)?;
+            let s = active_staff(w, *staff)?;
+            if s.allocation(*project) == 0 {
+                return Err(Reject::Invalid("the lead must be on the project's team"));
+            }
+            Ok(())
+        }
+        Command::CreateProject { slug, name, domain } => {
+            if !valid_slug(slug) {
+                return Err(Reject::Invalid(
+                    "slug: 1..=48 lowercase letters, digits and dashes",
+                ));
+            }
+            if !valid_name(name) {
+                return Err(Reject::Invalid("name: 1..=64 printable characters"));
+            }
+            if !valid_domain(domain) {
+                return Err(Reject::Invalid(
+                    "domain: a lowercase host name like amalfi.travel",
+                ));
+            }
+            if w.projects.values().any(|p| p.slug == *slug) {
+                return Err(Reject::Occupied("a project with that slug exists"));
+            }
+            if w.projects
+                .values()
+                .any(|p| p.is_open() && p.domain == *domain)
+            {
+                return Err(Reject::Occupied("a project already runs that domain"));
+            }
+            project_capacity(w)
+        }
+        Command::SetProjectStatus { project, status } => {
+            let p = w
+                .projects
+                .get(project)
+                .ok_or(Reject::UnknownProject(*project))?;
+            if !p.status.can_become(*status) {
+                return Err(Reject::Invalid("that status change is not allowed"));
+            }
+            Ok(())
+        }
+        Command::SetProjectBudget {
+            project,
+            monthly_cents,
+        } => {
+            open_project(w, *project)?;
+            if !(0..=MAX_BUDGET_CENTS).contains(monthly_cents) {
+                return Err(Reject::Invalid("budget is €0 to €100 million a month"));
+            }
+            Ok(())
+        }
+        Command::AnswerTicket { ticket, option } => {
+            let t = w
+                .tickets
+                .get(ticket)
+                .ok_or(Reject::UnknownTicket(*ticket))?;
+            if !t.is_open() {
+                return Err(Reject::Invalid("the ticket is already closed"));
+            }
+            if !t.options.contains(option) {
+                return Err(Reject::Invalid("not an option of this ticket"));
+            }
+            w.option_feasible(*ticket, *option).map_err(Reject::Invalid)
+        }
+        Command::Delegate { task } => {
+            if w.exec.secretary.is_none() {
+                return Err(Reject::NoSecretary);
+            }
+            if w.pending_tasks() >= MAX_SECRETARY_QUEUE {
+                return Err(Reject::Limit("the Secretary's queue is full"));
+            }
+            match task {
+                SecretaryTaskKind::TriageInbox => Ok(()),
+                SecretaryTaskKind::ScheduleMeeting { attendees, project } => {
+                    if attendees.is_empty() || attendees.len() > MAX_MEETING_ATTENDEES {
+                        return Err(Reject::Invalid("a meeting has 1..=12 attendees"));
+                    }
+                    for (i, a) in attendees.iter().enumerate() {
+                        active_staff(w, *a)?;
+                        if attendees[..i].contains(a) {
+                            return Err(Reject::Invalid("duplicate attendee"));
+                        }
+                    }
+                    if w.building.meeting_rooms().is_empty() {
+                        return Err(Reject::Invalid("there is no meeting room"));
+                    }
+                    if let Some(p) = project {
+                        open_project(w, *p)?;
+                    }
+                    Ok(())
+                }
+                SecretaryTaskKind::PrepareBriefing { project }
+                | SecretaryTaskKind::ArrangeHiring { project, .. } => {
+                    if let Some(p) = project {
+                        open_project(w, *p)?;
+                    }
+                    Ok(())
+                }
+                SecretaryTaskKind::DraftReply { ticket } => {
+                    let t = w
+                        .tickets
+                        .get(ticket)
+                        .ok_or(Reject::UnknownTicket(*ticket))?;
+                    if !t.is_open() {
+                        return Err(Reject::Invalid("the ticket is already closed"));
+                    }
+                    Ok(())
+                }
+                SecretaryTaskKind::FollowUp { staff, .. } => active_staff(w, *staff).map(|_| ()),
+            }
+        }
+        Command::SetDelegation { .. } => Ok(()),
+        Command::Praise { staff } => {
+            active_staff(w, *staff)?;
+            if w.praises_today >= PRAISES_PER_DAY {
+                return Err(Reject::Limit("praise (3 a day)"));
+            }
+            Ok(())
+        }
     }
+}
+
+fn active_staff(w: &World, id: StaffId) -> Result<&Staff, Reject> {
+    let s = w.staff.get(&id).ok_or(Reject::UnknownStaff(id))?;
+    if s.leaving_for_good {
+        return Err(Reject::Invalid("already leaving"));
+    }
+    Ok(s)
+}
+
+fn open_project(w: &World, id: ProjectId) -> Result<&crate::projects::Project, Reject> {
+    let p = w.projects.get(&id).ok_or(Reject::UnknownProject(id))?;
+    if p.status == ProjectStatus::Archived {
+        return Err(Reject::Invalid("the project is archived"));
+    }
+    Ok(p)
+}
+
+/// Room for one more open project at the company's level.
+pub(crate) fn project_capacity(w: &World) -> Result<(), Reject> {
+    if w.open_projects() >= w.project_limit() {
+        return Err(Reject::ProjectLimit {
+            level: w.company.level,
+            limit: w.project_limit(),
+        });
+    }
+    Ok(())
 }
 
 /// Validates a server-injected command.
 pub fn validate_server(w: &World, cmd: &ServerCommand) -> Result<(), Reject> {
     match cmd {
-        ServerCommand::JobCompleted { .. } => Err(Reject::NotSupported(
-            "LLM jobs arrive in M2; no job can be pending in M1",
-        )),
+        ServerCommand::JobCompleted { job_id, digest } => w.check_job_completed(*job_id, digest),
+        ServerCommand::MeetingOutcome { job_id, briefs } => {
+            w.check_meeting_outcome(*job_id, briefs)
+        }
+        ServerCommand::DeployLanded { work_item } => w.check_deploy_landed(*work_item),
         ServerCommand::Utterance {
             meeting,
             seq,
@@ -349,6 +584,21 @@ pub fn validate_server(w: &World, cmd: &ServerCommand) -> Result<(), Reject> {
             Ok(())
         }
         ServerCommand::SiteSignals(_) => Ok(()),
+        ServerCommand::AnalyticsSignals {
+            project,
+            day,
+            engagement_pm,
+            ..
+        } => {
+            open_project(w, *project)?;
+            if *day > w.clock().day {
+                return Err(Reject::Invalid("analytics for a day that has not happened"));
+            }
+            if *engagement_pm > 1000 {
+                return Err(Reject::Invalid("engagement is 0..=1000 permille"));
+            }
+            Ok(())
+        }
     }
 }
 
@@ -367,7 +617,20 @@ pub(crate) fn price(w: &World, cmd: &Command) -> i64 {
             .staff
             .get(staff)
             .map_or(0, |s| s.salary * crate::economy::SEVERANCE_DAYS),
-        Command::Demolish(_) | Command::SetPolicy(_) => 0,
+        Command::Demolish(_)
+        | Command::SetPolicy(_)
+        | Command::Promote { .. }
+        | Command::SetSalary { .. }
+        | Command::AssignToProject { .. }
+        | Command::RemoveFromProject { .. }
+        | Command::SetProjectLead { .. }
+        | Command::CreateProject { .. }
+        | Command::SetProjectStatus { .. }
+        | Command::SetProjectBudget { .. }
+        | Command::AnswerTicket { .. }
+        | Command::Delegate { .. }
+        | Command::SetDelegation { .. }
+        | Command::Praise { .. } => 0,
     }
 }
 
@@ -476,7 +739,8 @@ fn overlaps(w: &World, room: RoomId, kind: EquipmentKind, pos: PosMm) -> bool {
 mod tests {
     use super::*;
     use crate::building::{Door, Window};
-    use crate::scenarios::demo_office;
+    use crate::inbox::{DelegationPolicy, TicketOption};
+    use crate::scenarios::{demo_office, DEMO_PROJECT};
 
     #[test]
     fn grown_lot_strips() {
@@ -489,102 +753,101 @@ mod tests {
         assert_eq!(s, TileRect::new(0, -2, 16, 2));
     }
 
+    fn place(kind: RoomKind, rect: TileRect, doors: Vec<Door>, windows: Vec<Window>) -> Command {
+        Command::PlaceRoom {
+            kind,
+            rect,
+            floor: 0,
+            doors,
+            windows,
+        }
+    }
+
     #[test]
     fn rejects_overlap_and_out_of_lot() {
         let w = demo_office(1);
-        let place = |rect| Command::PlaceRoom {
-            kind: RoomKind::Kitchen,
-            rect,
-            floor: 0,
-            doors: vec![],
-            windows: vec![],
-        };
+        let kitchen = |rect| place(RoomKind::Kitchen, rect, vec![], vec![]);
         assert_eq!(
-            validate(&w, &place(TileRect::new(8, 6, 3, 3))),
+            validate(&w, &kitchen(TileRect::new(8, 6, 3, 3))),
             Err(Reject::Overlap)
         );
         assert_eq!(
-            validate(&w, &place(TileRect::new(15, 8, 3, 3))),
+            validate(&w, &kitchen(TileRect::new(22, 14, 3, 3))),
             Err(Reject::OutOfLot)
         );
         assert!(matches!(
-            validate(&w, &place(TileRect::new(i32::MAX, 0, 3, 3))),
+            validate(&w, &kitchen(TileRect::new(i32::MAX, 0, 3, 3))),
             Err(Reject::OutOfLot)
         ));
     }
 
-    #[test]
-    fn rejects_unreachable_room() {
+    fn east_annex() -> World {
         let mut w = demo_office(1);
         w.apply(Command::BuyFloorSpace {
             side: Side::East,
             tiles: 4,
         })
         .unwrap();
-        let sealed = Command::PlaceRoom {
-            kind: RoomKind::Kitchen,
-            rect: TileRect::new(17, 1, 3, 3),
-            floor: 0,
-            doors: vec![],
-            windows: vec![],
-        };
+        w
+    }
+
+    #[test]
+    fn rejects_unreachable_room() {
+        let w = east_annex();
+        let sealed = place(
+            RoomKind::Archive,
+            TileRect::new(25, 1, 3, 3),
+            vec![],
+            vec![],
+        );
         assert!(matches!(validate(&w, &sealed), Err(Reject::Unreachable(_))));
-        let open = Command::PlaceRoom {
-            kind: RoomKind::Kitchen,
-            rect: TileRect::new(16, 5, 4, 5),
-            floor: 0,
-            doors: vec![Door {
+        let open = place(
+            RoomKind::Archive,
+            TileRect::new(24, 4, 4, 4),
+            vec![Door {
                 side: Side::West,
-                at: 1,
+                at: 2,
             }],
-            windows: vec![Window {
+            vec![Window {
                 side: Side::East,
                 at_mm: 1000,
                 width_mm: 2000,
             }],
-        };
+        );
         assert_eq!(validate(&w, &open), Ok(()));
     }
 
     #[test]
     fn rejects_interior_windows_and_street_doors() {
-        let w = demo_office(1);
-        let mut b = w.clone();
-        b.apply(Command::BuyFloorSpace {
-            side: Side::East,
-            tiles: 4,
-        })
-        .unwrap();
-        let interior_window = Command::PlaceRoom {
-            kind: RoomKind::Kitchen,
-            rect: TileRect::new(16, 5, 3, 5),
-            floor: 0,
-            doors: vec![Door {
+        let w = east_annex();
+        let interior_window = place(
+            RoomKind::Archive,
+            TileRect::new(24, 4, 3, 4),
+            vec![Door {
                 side: Side::West,
-                at: 1,
+                at: 2,
             }],
-            windows: vec![Window {
+            vec![Window {
                 side: Side::East,
                 at_mm: 0,
                 width_mm: 1000,
             }],
-        };
+        );
         assert!(matches!(
-            validate(&b, &interior_window),
+            validate(&w, &interior_window),
             Err(Reject::Invalid(_))
         ));
-        let street_door = Command::PlaceRoom {
-            kind: RoomKind::Kitchen,
-            rect: TileRect::new(16, 5, 4, 5),
-            floor: 0,
-            doors: vec![Door {
+        let street_door = place(
+            RoomKind::Archive,
+            TileRect::new(24, 4, 4, 4),
+            vec![Door {
                 side: Side::East,
                 at: 1,
             }],
-            windows: vec![],
-        };
+            vec![],
+        );
         assert!(matches!(
-            validate(&b, &street_door),
+            validate(&w, &street_door),
             Err(Reject::Invalid(_))
         ));
     }
@@ -592,13 +855,12 @@ mod tests {
     #[test]
     fn prerequisites() {
         let mut w = demo_office(1);
-        let locked = Command::PlaceRoom {
-            kind: RoomKind::DesignStudio,
-            rect: TileRect::new(0, 0, 3, 3),
-            floor: 0,
-            doors: vec![],
-            windows: vec![],
-        };
+        let locked = place(
+            RoomKind::TranslationDesk,
+            TileRect::new(0, 0, 3, 3),
+            vec![],
+            vec![],
+        );
         assert!(matches!(validate(&w, &locked), Err(Reject::Locked { .. })));
         let upper = Command::PlaceRoom {
             kind: RoomKind::Kitchen,
@@ -608,7 +870,11 @@ mod tests {
             windows: vec![],
         };
         assert!(matches!(validate(&w, &upper), Err(Reject::NotSupported(_))));
-        // every demo desk is taken
+        // remove the three spare desks: no desk for a hire
+        for desk in w.free_desks() {
+            w.apply(Command::Demolish(DemolishTarget::Equipment(desk)))
+                .unwrap();
+        }
         let first = *w.candidates.keys().next().unwrap();
         assert_eq!(
             validate(&w, &Command::Hire { candidate: first }),
@@ -621,7 +887,7 @@ mod tests {
                 &Command::PlaceEquipment {
                     kind: EquipmentKind::Plant,
                     placement: Placement::Floor {
-                        pos: PosMm::new(8_000, 8_000),
+                        pos: PosMm::new(2_000, 14_000),
                         rot: 0
                     }
                 }
@@ -632,7 +898,7 @@ mod tests {
             validate_server(
                 &w,
                 &ServerCommand::JobCompleted {
-                    job_id: crate::ids::JobId(1),
+                    job_id: 77,
                     digest: crate::commands::JobDigest {
                         ok: true,
                         score: 8,
@@ -642,7 +908,7 @@ mod tests {
                     }
                 }
             ),
-            Err(Reject::NotSupported(_))
+            Err(Reject::Invalid(_))
         ));
     }
 
@@ -674,7 +940,7 @@ mod tests {
                 &Command::PlaceEquipment {
                     kind: EquipmentKind::Desk,
                     placement: Placement::Floor {
-                        pos: PosMm::new(2_600, 3_100),
+                        pos: PosMm::new(1_600, 1_600),
                         rot: 0
                     }
                 }
@@ -686,19 +952,313 @@ mod tests {
             validate(&w, &Command::Demolish(DemolishTarget::Equipment(desk))),
             Err(Reject::Occupied(_))
         ));
-        // free spot is fine
+        // free spot in the meeting room is fine
         assert_eq!(
             validate(
                 &w,
                 &Command::PlaceEquipment {
                     kind: EquipmentKind::Desk,
                     placement: Placement::Floor {
-                        pos: PosMm::new(7_500, 3_000),
+                        pos: PosMm::new(1_500, 14_000),
                         rot: 0
                     }
                 }
             ),
             Ok(())
+        );
+        // a camera rig only goes into the photo studio
+        assert!(matches!(
+            validate(
+                &w,
+                &Command::PlaceEquipment {
+                    kind: EquipmentKind::CameraRig,
+                    placement: Placement::Floor {
+                        pos: PosMm::new(1_500, 14_000),
+                        rot: 0
+                    }
+                }
+            ),
+            Err(Reject::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn staffing_rules() {
+        let w = demo_office(1);
+        let assign = |staff, pct| Command::AssignToProject {
+            staff: StaffId(staff),
+            project: DEMO_PROJECT,
+            allocation_pct: pct,
+        };
+        // re-allocating the same project replaces, it does not add
+        assert_eq!(validate(&w, &assign(1, 60)), Ok(()));
+        assert_eq!(
+            validate(&w, &assign(1, 0)),
+            Err(Reject::Invalid("allocation is 1..=100%"))
+        );
+        assert_eq!(
+            validate(&w, &assign(1, 101)),
+            Err(Reject::Invalid("allocation is 1..=100%"))
+        );
+        // the CFO is not staffed on projects
+        assert!(matches!(
+            validate(&w, &assign(7, 10)),
+            Err(Reject::Invalid(_))
+        ));
+        assert_eq!(
+            validate(&w, &assign(99, 10)),
+            Err(Reject::UnknownStaff(StaffId(99)))
+        );
+        assert_eq!(
+            validate(
+                &w,
+                &Command::AssignToProject {
+                    staff: StaffId(1),
+                    project: ProjectId(9),
+                    allocation_pct: 10
+                }
+            ),
+            Err(Reject::UnknownProject(ProjectId(9)))
+        );
+        // the lead must be on the team; the strategist is not
+        assert!(matches!(
+            validate(
+                &w,
+                &Command::SetProjectLead {
+                    project: DEMO_PROJECT,
+                    staff: StaffId(9)
+                }
+            ),
+            Err(Reject::Invalid(_))
+        ));
+        assert!(matches!(
+            validate(
+                &w,
+                &Command::RemoveFromProject {
+                    staff: StaffId(9),
+                    project: DEMO_PROJECT
+                }
+            ),
+            Err(Reject::Invalid(_))
+        ));
+        assert!(matches!(
+            validate(
+                &w,
+                &Command::SetProjectBudget {
+                    project: DEMO_PROJECT,
+                    monthly_cents: -1
+                }
+            ),
+            Err(Reject::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn over_allocation_is_rejected() {
+        let mut w = demo_office(1);
+        let p2 = w.add_project("amalfi", "Amalfi", "amalfi.travel", ProjectStatus::Active);
+        let assign = |project, pct| Command::AssignToProject {
+            staff: StaffId(1),
+            project,
+            allocation_pct: pct,
+        };
+        assert_eq!(
+            validate(&w, &assign(p2, 1)),
+            Err(Reject::OverAllocated {
+                staff: StaffId(1),
+                total: 101
+            })
+        );
+        w.apply(assign(DEMO_PROJECT, 70)).unwrap();
+        assert_eq!(validate(&w, &assign(p2, 30)), Ok(()));
+        assert!(matches!(
+            validate(&w, &assign(p2, 31)),
+            Err(Reject::OverAllocated { total: 101, .. })
+        ));
+    }
+
+    #[test]
+    fn project_portfolio_rules() {
+        let mut w = demo_office(1);
+        let create = |slug: &str, domain: &str| Command::CreateProject {
+            slug: slug.into(),
+            name: "Amalfi Dispatch".into(),
+            domain: domain.into(),
+        };
+        assert!(matches!(
+            validate(&w, &create("Bad Slug", "amalfi.travel")),
+            Err(Reject::Invalid(_))
+        ));
+        assert!(matches!(
+            validate(&w, &create("amalfi", "localhost")),
+            Err(Reject::Invalid(_))
+        ));
+        assert!(matches!(
+            validate(&w, &create("cinqueterre-travel", "x.travel")),
+            Err(Reject::Occupied(_))
+        ));
+        assert!(matches!(
+            validate(&w, &create("x", "cinqueterre.travel")),
+            Err(Reject::Occupied(_))
+        ));
+        // level 3: two projects
+        w.apply(create("amalfi", "amalfi.travel")).unwrap();
+        assert_eq!(
+            validate(&w, &create("capri", "capri.travel")),
+            Err(Reject::ProjectLimit { level: 3, limit: 2 })
+        );
+        w.company.level = 2;
+        assert_eq!(
+            validate(&w, &create("capri", "capri.travel")),
+            Err(Reject::ProjectLimit { level: 2, limit: 1 })
+        );
+        w.company.level = 4;
+        assert_eq!(validate(&w, &create("capri", "capri.travel")), Ok(()));
+        let status = |status| Command::SetProjectStatus {
+            project: ProjectId(2),
+            status,
+        };
+        assert!(matches!(
+            validate(&w, &status(ProjectStatus::Paused)),
+            Err(Reject::Invalid(_))
+        ));
+        assert_eq!(validate(&w, &status(ProjectStatus::Active)), Ok(()));
+        w.apply(status(ProjectStatus::Archived)).unwrap();
+        assert!(matches!(
+            validate(&w, &status(ProjectStatus::Active)),
+            Err(Reject::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn people_rules() {
+        let mut w = demo_office(1);
+        // Alessia is mid: promote to senior; star needs level 5
+        assert_eq!(
+            validate(&w, &Command::Promote { staff: StaffId(12) }),
+            Ok(())
+        );
+        assert!(matches!(
+            validate(&w, &Command::Promote { staff: StaffId(1) }),
+            Err(Reject::Invalid(_))
+        ));
+        w.company.level = 5;
+        assert_eq!(
+            validate(&w, &Command::Promote { staff: StaffId(1) }),
+            Ok(())
+        );
+        let salary = |c| Command::SetSalary {
+            staff: StaffId(1),
+            cents_per_day: c,
+        };
+        assert!(matches!(validate(&w, &salary(0)), Err(Reject::Invalid(_))));
+        assert_eq!(validate(&w, &salary(20_000)), Ok(()));
+        for _ in 0..PRAISES_PER_DAY {
+            w.apply(Command::Praise { staff: StaffId(2) }).unwrap();
+        }
+        assert_eq!(
+            validate(&w, &Command::Praise { staff: StaffId(2) }),
+            Err(Reject::Limit("praise (3 a day)"))
+        );
+    }
+
+    #[test]
+    fn inbox_rules() {
+        let mut w = demo_office(1);
+        assert_eq!(
+            validate(
+                &w,
+                &Command::AnswerTicket {
+                    ticket: TicketId(1),
+                    option: TicketOption::Approve
+                }
+            ),
+            Err(Reject::UnknownTicket(TicketId(1)))
+        );
+        w.apply(Command::CreateProject {
+            slug: "amalfi".into(),
+            name: "Amalfi".into(),
+            domain: "amalfi.travel".into(),
+        })
+        .unwrap();
+        let t = *w.tickets.keys().next().unwrap();
+        assert!(matches!(
+            validate(
+                &w,
+                &Command::AnswerTicket {
+                    ticket: t,
+                    option: TicketOption::TakeLoan
+                }
+            ),
+            Err(Reject::Invalid(_))
+        ));
+        w.apply(Command::AnswerTicket {
+            ticket: t,
+            option: TicketOption::Approve,
+        })
+        .unwrap();
+        assert!(matches!(
+            validate(
+                &w,
+                &Command::AnswerTicket {
+                    ticket: t,
+                    option: TicketOption::Approve
+                }
+            ),
+            Err(Reject::Invalid(_))
+        ));
+        // delegation needs a secretary
+        let delegate = Command::Delegate {
+            task: SecretaryTaskKind::TriageInbox,
+        };
+        assert_eq!(validate(&w, &delegate), Ok(()));
+        let bad_meeting = Command::Delegate {
+            task: SecretaryTaskKind::ScheduleMeeting {
+                attendees: vec![StaffId(1), StaffId(1)],
+                project: None,
+            },
+        };
+        assert!(matches!(
+            validate(&w, &bad_meeting),
+            Err(Reject::Invalid(_))
+        ));
+        w.apply(Command::Fire { staff: StaffId(8) }).unwrap();
+        assert_eq!(validate(&w, &delegate), Err(Reject::NoSecretary));
+        assert_eq!(
+            validate(
+                &w,
+                &Command::SetDelegation {
+                    policy: DelegationPolicy::Low
+                }
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn analytics_signals_rules() {
+        let w = demo_office(1);
+        let sig = |project, day, engagement_pm| ServerCommand::AnalyticsSignals {
+            project,
+            day,
+            sessions: 10,
+            visitors: 8,
+            pageviews: 20,
+            engagement_pm,
+            top_pages_digest: 0,
+        };
+        assert_eq!(validate_server(&w, &sig(DEMO_PROJECT, 0, 500)), Ok(()));
+        assert!(matches!(
+            validate_server(&w, &sig(DEMO_PROJECT, 1, 500)),
+            Err(Reject::Invalid(_))
+        ));
+        assert!(matches!(
+            validate_server(&w, &sig(DEMO_PROJECT, 0, 1001)),
+            Err(Reject::Invalid(_))
+        ));
+        assert_eq!(
+            validate_server(&w, &sig(ProjectId(5), 0, 500)),
+            Err(Reject::UnknownProject(ProjectId(5)))
         );
     }
 }

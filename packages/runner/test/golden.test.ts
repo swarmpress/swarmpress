@@ -35,6 +35,6 @@ describe("golden hashes under the Bun runner", () => {
   });
 
   test("the runner loads the proto version the SDK speaks", async () => {
-    expect((await loadSim()).version()).toMatch(/proto v2$/);
+    expect((await loadSim()).version()).toMatch(/proto v3$/);
   });
 });

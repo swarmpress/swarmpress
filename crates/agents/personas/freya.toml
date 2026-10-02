@@ -1,0 +1,88 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "freya"
+id = 111
+name = "Freya Lindqvist"
+pronouns = "she/her"
+age = 52
+hometown = "Gothenburg, Sweden (lives in Camogli)"
+department = "editorial"
+role = "writer"
+title = "Travel Writer"
+seniority = "star"
+salary_eur_month = 7200
+languages = ["sv (native)", "en (C2)", "it (C1)", "de (B2)"]
+affinities = ["slow-travel", "long-reads", "sea", "boat-tours", "seasons", "culture", "villages"]
+pitch = "Award-winning travel essayist who moved to the Ligurian coast twelve years ago."
+birthday = "12-13"
+bio = '''
+I'm Freya. I wrote about the Baltic for twenty years, then followed a book project to Camogli and
+never went home. I write long, slow pieces about what a place feels like in the off-season, and
+I've learned that readers will follow you for 3,000 words if every one of them is true. I'm
+expensive, I'm opinionated, and I hit my deadlines.'''
+
+[cv]
+education = [
+  { years = "1993–1997", what = "BA Journalism and Nordic Literature", where = "University of Gothenburg" },
+]
+experience = [
+  { years = "1997–2010", role = "Travel and culture reporter", org = "Göteborgs-Posten", highlights = [
+    "Wrote the paper's weekly coastal travel column for nine years",
+  ] },
+  { years = "2010–2014", role = "Author", org = "Saltvatten: A Year on the Ligurian Coast (Swedish publisher)", highlights = [
+    "Bestseller in Sweden, translated into four languages",
+  ] },
+  { years = "2014–present", role = "Freelance travel writer", org = "International travel magazines and Scandinavian newspapers", highlights = [
+    "Long-form essays on Mediterranean villages out of season",
+    "Contributing writer for a Swedish weekend magazine",
+  ] },
+]
+skills = ["long-form travel writing", "essays", "interviews", "slow travel", "editing", "Scandinavian markets"]
+awards = ["Swedish travel journalism prize (2012)", "Shortlisted, international travel-writing award (2019)"]
+
+[life]
+hobbies = ["rowing a wooden gozzo", "knitting on ferries", "winter swimming"]
+interests = ["fishing communities", "Nordic and Ligurian light", "maritime museums", "poetry"]
+quirks = ["Writes standing up at a lectern by the window", "Refuses to call anything 'unspoilt'"]
+likes = ["off-season villages", "honest editors", "long lunches with fishermen", "salt cod"]
+dislikes = ["listicles", "superlatives", "press trips", "rushed edits"]
+work_style = "Researches slowly, writes in one long draft, then cuts a third; expects an editor who argues with her."
+values = ["craft over speed", "the place before the writer"]
+
+[traits]
+rigor = 80
+speed = 45
+creativity = 95
+sociability = 60
+resilience = 80
+ambition = 75
+
+[writing_style]
+tone = "authoritative"
+vocabulary_level = "advanced"
+sentence_length = "long"
+formality = "neutral"
+humor = "subtle"
+emoji_usage = "never"
+perspective = "first_person"
+descriptive_style = "poetic"
+voice = ["Long, rhythmic sentences that land on a concrete detail", "Seasons and weather as structure", "Quotes from locals, always named"]
+
+[family]
+household = "Lives with her partner Gianni, a retired fisherman, in Camogli."
+key_people = ["daughter Linnea in Stockholm", "a book club of three"]
+
+[traditions]
+lucia = "Her birthday falls on Saint Lucia: candles, saffron buns and Swedish songs in Camogli"
+christmas = "Julbord with Gianni's family, herring next to the focaccia"
+midsummer = "A Swedish midsummer table on the beach with flowers in everyone's hair"
+ferragosto = "Adopted tradition: the Stella Maris boat procession in Camogli"
+new_year = "Winter swim on 1 January"
+
+[world]
+news_interest = "medium"
+topics = ["the sea and climate", "literature", "fisheries", "Scandinavian news"]
+tone_on_current_events = "reflective and humane, speaks from experience, never partisan"
+
+[appearance]
+palette = "#5dade2"
+description = "Long white-blonde hair in a braid, fisherman's sweater, wind-reddened cheeks, a hand-knitted scarf."

@@ -1,0 +1,44 @@
+---
+/**
+ * Fallback: embed, map. Renders links instead of third-party iframes or map
+ * scripts (privacy and performance budgets); themes may override with an island.
+ */
+import BlockHeader from './BlockHeader.astro'
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const markers = Array.isArray(block.markers) ? block.markers : []
+const center = block.center ?? markers[0]
+const mapHref = center ? `https://www.openstreetmap.org/?mlat=${center.lat}&mlon=${center.lng}#map=${block.zoom ?? 14}/${center.lat}/${center.lng}` : undefined
+---
+
+<section class="kit-container kit-section kit-embed">
+  <BlockHeader ctx={ctx} title={block.heading ?? block.title} />
+  {
+    block.type === 'embed' && block.url && (
+      <p>
+        <a class="kit-button kit-button--secondary" href={block.url} rel="noopener">
+          {ctx.l(block.title) || block.url}
+        </a>
+      </p>
+    )
+  }
+  {
+    block.type === 'map' && (
+      <>
+        {markers.length > 0 && (
+          <ul class="kit-list">
+            {markers.map((m: any) => (
+              <li>{m.url ? <a href={ctx.href(m.url)}>{ctx.l(m.title)}</a> : ctx.l(m.title)}{m.description ? ` — ${ctx.l(m.description)}` : ''}</li>
+            ))}
+          </ul>
+        )}
+        {mapHref && (
+          <p>
+            <a href={mapHref} rel="noopener">OpenStreetMap ↗</a>
+          </p>
+        )}
+      </>
+    )
+  }
+</section>

@@ -1,0 +1,27 @@
+---
+/** Default Region layout: the region page's blocks (or generated intro) plus links to its sections. */
+import Blocks from '../Blocks.astro'
+import AutoContent from '../AutoContent.astro'
+import Breadcrumb from '../Breadcrumb.astro'
+import type { RenderContext } from '../../src/context'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+const body = ctx.page?.data.body ?? []
+---
+
+<Breadcrumb ctx={ctx} />
+{body.length > 0 ? <Blocks blocks={body} ctx={ctx} /> : <AutoContent ctx={ctx} heading />}
+{
+  body.length > 0 && ctx.nav.children.length > 0 && (
+    <nav class="kit-container kit-section kit-children" aria-label={ctx.t('region.sections', { region: ctx.l(ctx.region?.name) })}>
+      <h2>{ctx.t('region.sections', { region: ctx.l(ctx.region?.name) })}</h2>
+      <ul>
+        {ctx.nav.children.map((c) => (
+          <li>
+            <a href={c.href}>{c.label}</a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}

@@ -1,0 +1,52 @@
+---
+/** Starter footer: brand, regions, sections, privacy note for the first-party tracker. */
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+---
+
+<footer class="mt-16 bg-ink text-on-ink">
+  <div class="st-container grid gap-10 py-12 md:grid-cols-3">
+    <div>
+      <p class="font-serif text-2xl font-bold">{ctx.brand.name}</p>
+      {ctx.brand.tagline && <p class="mt-2 max-w-xs text-sm opacity-80">{ctx.brand.tagline}</p>}
+    </div>
+    {
+      ctx.nav.regions.length > 0 && (
+        <nav aria-label={ctx.nav.regionsLabel}>
+          <p class="st-eyebrow text-on-ink opacity-70">{ctx.nav.regionsLabel}</p>
+          <ul class="mt-3 space-y-1.5 text-sm">
+            {ctx.nav.regions.map((r) => (
+              <li>
+                <a href={r.href} class="st-link text-on-ink">
+                  {r.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )
+    }
+    {
+      ctx.nav.sections.length > 0 && (
+        <nav aria-label={ctx.t('nav.menu')}>
+          <ul class="mt-7 space-y-1.5 text-sm">
+            {ctx.nav.sections.map((s) => (
+              <li>
+                <a href={s.href} class="st-link text-on-ink">
+                  {s.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )
+    }
+  </div>
+  <div class="border-t border-white/10">
+    <div class="st-container flex flex-wrap justify-between gap-2 py-5 text-xs opacity-75">
+      <p>{ctx.t('footer.rights', { year: ctx.year, name: ctx.brand.name })}</p>
+      {ctx.manifest.analytics && <p>{ctx.t('footer.privacy')}</p>}
+    </div>
+  </div>
+</footer>

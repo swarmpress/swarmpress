@@ -1,0 +1,31 @@
+---
+/** Blog posts in the current language as cards. */
+import type { RenderContext } from '../src/context'
+
+interface Props {
+  ctx: RenderContext
+  limit?: number
+}
+const { ctx, limit } = Astro.props as Props
+const posts = ctx.posts().slice(0, limit ?? Infinity)
+---
+
+{
+  posts.length > 0 && (
+    <ul class="kit-grid" role="list">
+      {posts.map((p) => (
+        <li class="kit-card">
+          {p.image && <img class="kit-card__img" src={p.image.src} alt={p.image.alt ?? ''} loading="lazy" decoding="async" />}
+          <div class="kit-card__body">
+            {p.category && <p class="kit-eyebrow">{p.category}</p>}
+            <h3 class="kit-card__title">
+              <a href={p.href}>{p.title}</a>
+            </h3>
+            {p.excerpt && <p class="kit-card__text">{p.excerpt.length > 200 ? p.excerpt.slice(0, 197).trimEnd() + '…' : p.excerpt}</p>}
+            {(p.author || p.date) && <p class="kit-muted kit-small">{[p.author && ctx.t('blog.by', { author: p.author }), p.date].filter(Boolean).join(' · ')}</p>}
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}

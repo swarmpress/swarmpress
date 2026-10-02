@@ -1,0 +1,30 @@
+---
+/** Starter region bar: the manifest's regions in order, each with its colour as an underline. */
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+---
+
+{
+  ctx.nav.regions.length > 0 && (
+    <nav aria-label={ctx.nav.regionsLabel} class="border-t border-border bg-surface">
+      <div class="st-container flex items-center gap-6 overflow-x-auto py-2.5 text-sm">
+        <span class="st-eyebrow shrink-0">{ctx.nav.regionsLabel}</span>
+        <ul class="flex gap-5">
+          {ctx.nav.regions.map((r) => (
+            <li class="shrink-0">
+              <a
+                href={r.href}
+                aria-current={r.current ? 'page' : undefined}
+                class="st-focus border-b-2 pb-0.5 text-fg no-underline aria-[current=page]:font-bold"
+                style={`border-color:${r.color ?? 'transparent'}`}
+              >
+                {r.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </nav>
+  )
+}

@@ -90,9 +90,46 @@ impl CompanyPrompt {
     }
 }
 
-/// The built-in company templates.
+/// The built-in company templates (`crates/agents/prompts/<id>.md`). Every
+/// [`crate::JobKind`] names one via [`crate::JobKind::template_id`].
 pub mod templates {
     use super::CompanyPrompt;
+
+    macro_rules! builtin_templates {
+        ($($fn_name:ident => $id:literal),+ $(,)?) => {
+            /// Every built-in template, `(id, source)`.
+            pub const ALL: &[(&str, &str)] = &[
+                $(($id, include_str!(concat!("../prompts/", $id, ".md")))),+
+            ];
+            $(
+                #[doc = concat!("`prompts/", $id, ".md`")]
+                pub fn $fn_name() -> CompanyPrompt {
+                    by_id($id).expect(concat!("prompts/", $id, ".md"))
+                }
+            )+
+        };
+    }
+
+    builtin_templates! {
+        writer => "writer",
+        editor => "editor",
+        editor_in_chief => "editor_in_chief",
+        meeting_speaker => "meeting_speaker",
+        qa_coherence => "qa_coherence",
+        translator => "translator",
+        analyst => "analyst",
+        art_director => "art_director",
+        web_developer => "web_developer",
+        strategist => "strategist",
+        data_scientist => "data_scientist",
+        editorial_board => "editorial_board",
+        photo_desk => "photo_desk",
+        it_engineer => "it_engineer",
+        seo_marketing => "seo_marketing",
+        cfo => "cfo",
+        secretary => "secretary",
+        candidate_generation => "candidate_generation",
+    }
 
     pub const WRITER: &str = include_str!("../prompts/writer.md");
     pub const EDITOR: &str = include_str!("../prompts/editor.md");
@@ -100,20 +137,14 @@ pub mod templates {
     pub const MEETING_SPEAKER: &str = include_str!("../prompts/meeting_speaker.md");
     pub const QA_COHERENCE: &str = include_str!("../prompts/qa_coherence.md");
 
-    pub fn writer() -> CompanyPrompt {
-        CompanyPrompt::parse(WRITER).expect("prompts/writer.md")
-    }
-    pub fn editor() -> CompanyPrompt {
-        CompanyPrompt::parse(EDITOR).expect("prompts/editor.md")
-    }
-    pub fn editor_in_chief() -> CompanyPrompt {
-        CompanyPrompt::parse(EDITOR_IN_CHIEF).expect("prompts/editor_in_chief.md")
-    }
-    pub fn meeting_speaker() -> CompanyPrompt {
-        CompanyPrompt::parse(MEETING_SPEAKER).expect("prompts/meeting_speaker.md")
-    }
-    pub fn qa_coherence() -> CompanyPrompt {
-        CompanyPrompt::parse(QA_COHERENCE).expect("prompts/qa_coherence.md")
+    /// A built-in template by id; `None` if there is no such file. Panics
+    /// only if a built-in file fails to parse (covered by tests).
+    pub fn by_id(id: &str) -> Option<CompanyPrompt> {
+        ALL.iter().find(|(i, _)| *i == id).map(|(i, src)| {
+            let t = CompanyPrompt::parse(src).unwrap_or_else(|e| panic!("prompts/{i}.md: {e}"));
+            assert_eq!(t.id, *i, "prompts/{i}.md front matter id");
+            t
+        })
     }
 }
 
@@ -173,21 +204,26 @@ impl PromptLayer {
     pub fn from_persona(p: &Persona, language: &str) -> Self {
         let mut v = Vars::new();
         v.insert("agent_name".into(), Value::String(p.name.clone()));
-        v.insert("agent_role".into(), Value::String(p.display_role.clone()));
+        v.insert("agent_role".into(), Value::String(p.title.clone()));
         v.insert(
             "persona_block".into(),
             Value::String(format_persona_for_prompt(p, language)),
         );
         v.insert(
             "writing_style_block".into(),
-            Value::String(format_writing_style_for_prompt(&p.writing_style)),
+            Value::String(
+                p.writing_style
+                    .as_ref()
+                    .map(format_writing_style_for_prompt)
+                    .unwrap_or_default(),
+            ),
         );
         v.insert(
             "work_style".into(),
             Value::String(format_work_style(&p.traits, p.seniority)),
         );
         Self {
-            source: format!("agent:{}", p.name.to_lowercase()),
+            source: format!("agent:{}", p.slug),
             variables: v,
             ..Default::default()
         }

@@ -1,0 +1,81 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "chloe"
+id = 103
+name = "Chloé Marchand"
+pronouns = "she/her"
+age = 44
+hometown = "Lyon, France"
+department = "photo-video"
+role = "photo-editor"
+title = "Photo Editor"
+seniority = "senior"
+salary_eur_month = 5000
+languages = ["fr (native)", "en (C1)", "it (C1)"]
+affinities = ["photo-selection", "photo-briefs", "captions", "alt-text", "media-index", "visual-consistency"]
+pitch = "Twenty years choosing the one right picture; builds photo briefs photographers love."
+birthday = "05-05"
+bio = '''
+I'm Chloé. I've spent my career choosing pictures: for a daily paper, then for travel magazines
+in Paris. I believe a page has one photo that carries it and several that only decorate it, and
+my job is to know which is which. I write briefs before shoots, I keep the archive honest, and
+I won't publish a picture without a caption that tells the truth about it.'''
+
+[cv]
+education = [
+  { years = "2000–2004", what = "Licence then Master in Art History", where = "Université Lumière Lyon 2" },
+  { years = "2005", what = "Photojournalism certificate", where = "Centre de formation des journalistes (CFJ), Paris" },
+]
+experience = [
+  { years = "2005–2012", role = "Picture desk editor", org = "Le Progrès, Lyon (regional daily)", highlights = [
+    "Picked front-page photos on deadline six days a week",
+  ] },
+  { years = "2012–2022", role = "Photo editor", org = "Travel magazine group, Paris", highlights = [
+    "Commissioned 300+ shoots across the Mediterranean",
+    "Introduced an alt-text standard across three titles",
+  ] },
+  { years = "2022–present", role = "Freelance photo editor and archive consultant", org = "Tourism boards in France and Italy", highlights = [
+    "Rebuilt a 40,000-image regional archive with consistent captions and rights data",
+  ] },
+]
+skills = ["photo selection", "photo briefs", "captions and alt text", "image rights", "archive management", "colour consistency"]
+awards = ["Visa pour l'Image picture-editor jury member (2019)"]
+
+[life]
+hobbies = ["printing cyanotypes", "climbing in the Calanques", "collecting old postcards of the Riviera"]
+interests = ["the history of photojournalism", "image ethics", "Mediterranean light", "Italian cinema"]
+quirks = ["Squints at every screen as if it were a contact sheet", "Has strong opinions about crop ratios"]
+likes = ["natural light", "honest captions", "a well-kept archive", "café crème"]
+dislikes = ["stock-photo smiles", "over-saturated sunsets", "missing photo credits", "HDR"]
+work_style = "Decisive: shortlists fast, explains each choice in a sentence, and writes the brief before anyone touches a camera."
+values = ["one strong picture beats five pretty ones", "captions tell the truth"]
+
+[traits]
+rigor = 80
+speed = 70
+creativity = 80
+sociability = 60
+resilience = 75
+ambition = 60
+
+[relationships]
+friends = ["francesca"]
+
+[family]
+household = "Lives with her wife Maud, a teacher, in Marseille."
+key_people = ["father in Lyon", "a picture-editor friend network she still calls 'the desk'"]
+
+[traditions]
+christmas = "Réveillon with oysters in Lyon"
+epiphany = "Galette des rois and fights over the crown"
+new_year = "Dinner with friends and a sea swim on 1 January"
+bastille_day = "Fireworks over the Vieux-Port"
+birthday = "A day of climbing and a long dinner"
+
+[world]
+news_interest = "medium"
+topics = ["photojournalism", "exhibitions", "climbing", "French and Italian cinema"]
+tone_on_current_events = "reflective and visual, talks about the images in the news more than the arguments"
+
+[appearance]
+palette = "#922b21"
+description = "Short grey-streaked hair, striped Breton top, red-framed glasses, a loupe on a string around her neck."

@@ -1,0 +1,22 @@
+---
+/** Default region navigation (manifest regions, in order). */
+import type { RenderContext } from '../../src/context'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+---
+
+{
+  ctx.nav.regions.length > 0 && (
+    <nav class="kit-regions" aria-label={ctx.nav.regionsLabel}>
+      <ul class="kit-container">
+        {ctx.nav.regions.map((r) => (
+          <li>
+            <a href={r.href} aria-current={r.current ? 'page' : undefined} style={r.color ? `--region-color:${r.color}` : undefined}>
+              {r.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}

@@ -1,0 +1,511 @@
+{
+ "$schema": "./media-schema.json",
+ "version": "1.0.0",
+ "lastUpdated": "2026-01-13T08:26:04.479Z",
+ "images": [
+  {
+   "id": "riomaggiore-hero-001",
+   "url": "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
+   "tags": {
+    "village": "riomaggiore",
+    "category": "sights",
+    "subcategory": "village-overview",
+    "timeOfDay": "daylight",
+    "season": "all",
+    "mood": "vibrant"
+   },
+   "alt": {
+    "en": "Riomaggiore colorful houses on the cliff",
+    "de": "Riomaggiore bunte Häuser an der Klippe",
+    "fr": "Maisons colorées de Riomaggiore sur la falaise",
+    "it": "Case colorate di Riomaggiore sulla scogliera"
+   },
+   "license": "unsplash",
+   "photographer": "Unknown",
+   "dimensions": {
+    "width": 2670,
+    "height": 1780
+   },
+   "usedIn": [
+    "riomaggiore.json:hero",
+    "riomaggiore.json:leadStory"
+   ]
+  },
+  {
+   "id": "manarola-hero-001",
+   "url": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop",
+   "tags": {
+    "village": "manarola",
+    "category": "sights",
+    "subcategory": "village-overview",
+    "timeOfDay": "sunset",
+    "season": "all",
+    "mood": "romantic"
+   },
+   "alt": {
+    "en": "Manarola at sunset with colorful buildings",
+    "de": "Manarola bei Sonnenuntergang mit bunten Gebäuden",
+    "fr": "Manarola au coucher du soleil avec des bâtiments colorés",
+    "it": "Manarola al tramonto con edifici colorati"
+   },
+   "license": "unsplash",
+   "photographer": "Unknown",
+   "dimensions": {
+    "width": 2574,
+    "height": 1716
+   },
+   "usedIn": [
+    "manarola.json:hero",
+    "manarola.json:leadStory"
+   ]
+  },
+  {
+   "id": "corniglia-hero-001",
+   "url": "https://images.unsplash.com/photo-1529260830199-42c24126f198?q=80&w=2676&auto=format&fit=crop",
+   "tags": {
+    "village": "corniglia",
+    "category": "sights",
+    "subcategory": "village-overview",
+    "timeOfDay": "daylight",
+    "season": "all",
+    "mood": "serene"
+   },
+   "alt": {
+    "en": "Corniglia perched high on the cliffs",
+    "de": "Corniglia hoch auf den Klippen thronend",
+    "fr": "Corniglia perchée sur les falaises",
+    "it": "Corniglia arroccata sulle scogliere"
+   },
+   "license": "unsplash",
+   "photographer": "Unknown",
+   "dimensions": {
+    "width": 2676,
+    "height": 1784
+   },
+   "usedIn": [
+    "corniglia.json:hero"
+   ]
+  },
+  {
+   "id": "corniglia-leadstory-001",
+   "url": "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?q=80&w=2670&auto=format&fit=crop",
+   "tags": {
+    "village": "corniglia",
+    "category": "sights",
+    "subcategory": "streets",
+    "timeOfDay": "daylight",
+    "season": "all",
+    "mood": "authentic"
+   },
+   "alt": {
+    "en": "Corniglia village streets and architecture",
+    "de": "Corniglia Dorfstraßen und Architektur",
+    "fr": "Rues et architecture du village de Corniglia",
+    "it": "Strade e architettura del villaggio di Corniglia"
+   },
+   "license": "unsplash",
+   "photographer": "Unknown",
+   "dimensions": {
+    "width": 2670,
+    "height": 1780
+   },
+   "usedIn": [
+    "corniglia.json:leadStory"
+   ]
+  },
+  {
+   "id": "vernazza-hero-001",
+   "url": "https://images.unsplash.com/photo-1499678329028-101435549a4e?q=80&w=2670&auto=format&fit=crop",
+   "tags": {
+    "village": "vernazza",
+    "category": "sights",
+    "subcategory": "harbor",
+    "timeOfDay": "daylight",
+    "season": "all",
+    "mood": "iconic"
+   },
+   "alt": {
+    "en": "Vernazza harbor with colorful buildings",
+    "de": "Vernazza Hafen mit bunten Gebäuden",
+    "fr": "Port de Vernazza avec des bâtiments colorés",
+    "it": "Porto di Vernazza con edifici colorati"
+   },
+   "license": "unsplash",
+   "photographer": "Unknown",
+   "dimensions": {
+    "width": 2670,
+    "height": 1780
+   },
+   "usedIn": [
+    "vernazza.json:hero"
+   ]
+  },
+  {
+   "id": "vernazza-leadstory-001",
+   "url": "https://images.unsplash.com/photo-1592345279419-959d784e8aad?q=80&w=2670&auto=format&fit=crop",
+   "tags": {
+    "village": "vernazza",
+    "category": "sights",
+    "subcategory": "tower",
+    "timeOfDay": "daylight",
+    "season": "all",
+    "mood": "historic"
+   },
+   "alt": {
+    "en": "Vernazza medieval tower and harbor view",
+    "de": "Vernazza mittelalterlicher Turm und Hafenblick",
+    "fr": "Tour médiévale de Vernazza et vue sur le port",
+    "it": "Torre medievale di Vernazza e vista sul porto"
+   },
+   "license": "unsplash",
+   "photographer": "Unknown",
+   "dimensions": {
+    "width": 2670,
+    "height": 1780
+   },
+   "usedIn": [
+    "vernazza.json:leadStory"
+   ]
+  },
+  {
+   "id": "monterosso-hero-001",
+   "url": "https://images.unsplash.com/photo-1538681105587-85640961bf8b?q=80&w=2670&auto=format&fit=crop",
+   "tags": {
+    "village": "monterosso",
+    "category": "beaches",
+    "subcategory": "beach-overview",
+    "timeOfDay": "daylight",
+    "season": "summer",
+    "mood": "relaxed"
+   },
+   "alt": {
+    "en": "Monterosso beach and old town",
+    "de": "Monterosso Strand und Altstadt",
+    "fr": "Plage de Monterosso et vieille ville",
+    "it": "Spiaggia di Monterosso e centro storico"
+   },
+   "license": "unsplash",
+   "photographer": "Unknown",
+   "dimensions": {
+    "width": 2670,
+    "height": 1780
+   },
+   "usedIn": [
+    "monterosso.json:hero",
+    "monterosso.json:leadStory"
+   ]
+  },
+  {
+   "id": "corniglia-hero-15292608",
+   "url": "https://images.unsplash.com/photo-1529260830199-42c24126f198?q=80&w=2676&auto=format&fit=crop",
+   "tags": {
+    "village": "corniglia",
+    "category": "sights",
+    "subcategory": "village-overview",
+    "season": "all"
+   },
+   "alt": {
+    "en": "Corniglia perched high on the cliffs",
+    "de": "Corniglia hoch auf den Klippen thronend",
+    "fr": "Corniglia perchée sur les falaises",
+    "it": "Corniglia arroccata sulle scogliere"
+   },
+   "license": "unsplash",
+   "usedIn": [
+    "villages/villages/corniglia.json:hero"
+   ]
+  },
+  {
+   "id": "region-image-15344476",
+   "url": "https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&q=80&w=2000",
+   "tags": {
+    "village": "region",
+    "category": "sights",
+    "season": "all"
+   },
+   "license": "unsplash",
+   "usedIn": [
+    "pages/pages/weather.json:image",
+    "pages/pages/team.json:image",
+    "pages/pages/sights.json:image",
+    "pages/pages/itinerary.json:image",
+    "pages/pages/cinque-terre/weather.json:image",
+    "pages/pages/cinque-terre/village.json:image",
+    "pages/pages/cinque-terre/things-to-do-editorial.json:image",
+    "pages/pages/cinque-terre/sights-editorial.json:image",
+    "pages/pages/cinque-terre/itinerary.json:image"
+   ]
+  },
+  {
+   "id": "region-image-14996783",
+   "url": "https://images.unsplash.com/photo-1499678329028-101435549a4e?auto=format&fit=crop&q=80&w=2000",
+   "tags": {
+    "village": "region",
+    "category": "sights",
+    "season": "all"
+   },
+   "license": "unsplash",
+   "usedIn": [
+    "pages/pages/weather.json:image",
+    "pages/pages/sights.json:image",
+    "pages/pages/culinary.json:image",
+    "pages/pages/cinque-terre/weather.json:image",
+    "pages/pages/cinque-terre/village.json:image",
+    "pages/pages/cinque-terre/things-to-do-editorial.json:image",
+    "pages/pages/cinque-terre/sights-editorial.json:image",
+    "pages/pages/cinque-terre/itinerary.json:image",
+    "pages/pages/cinque-terre/culinary.json:image"
+   ]
+  },
+  {
+   "id": "vernazza-image-o1dvyz",
+   "url": "https://images.unsplash.com/photo-1544828237-b63b6409fd74?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDQzNDB8MHwxfHNlYXJjaHwxfHxjaW5xdWUlMjB0ZXJyZSUyMGl0YWx5JTIwY29sb3JmdWwlMjB2aWxsYWdlfGVufDB8MHx8fDE3NjkzMjczNTF8MA&ixlib=rb-4.1.0&q=80&w=1080",
+   "tags": {
+    "village": "vernazza",
+    "category": "sights",
+    "season": "all"
+   },
+   "license": "unknown",
+   "usedIn": [
+    "pages/pages/vernazza.json:image",
+    "pages/pages/vernazza/things-to-do.json:image",
+    "pages/pages/vernazza/overview.json:image",
+    "pages/pages/vernazza/getting-here.json:image"
+   ]
+  },
+  {
+   "id": "manarola-image-15660501",
+   "url": "https://images.unsplash.com/photo-1566050191421-b4ef6a14ca10?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDQzNDB8MHwxfHNlYXJjaHwxfHxtYW5hcm9sYSUyMHdpbmUlMjB2aW5leWFyZCUyMGNpbnF1ZSUyMHRlcnJlfGVufDB8MHx8fDE3NjU4ODM1MTl8MA&ixlib=rb-4.1.0&q=80&w=1200",
+   "tags": {
+    "village": "manarola",
+    "category": "sights",
+    "season": "all"
+   },
+   "license": "unsplash",
+   "usedIn": [
+    "pages/pages/manarola.json:image"
+   ]
+  },
+  {
+   "id": "region-image-14985031",
+   "url": "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop",
+   "tags": {
+    "village": "region",
+    "category": "sights",
+    "season": "all"
+   },
+   "license": "unsplash",
+   "usedIn": [
+    "pages/pages/events.json:image",
+    "pages/pages/blog-index.json:image",
+    "pages/pages/blog/the-ultimate-guide-to-cinque-terres-best-beaches.json:image",
+    "pages/pages/blog/5-hidden-gelaterias-you-need-to-try.json:image",
+    "pages/pages/cinque-terre/blog-index.json:image"
+   ]
+  },
+  {
+   "id": "region-image-15660737",
+   "url": "https://images.unsplash.com/photo-1611892440504-42a792e24d32?q=80&w=2670&auto=format&fit=crop",
+   "tags": {
+    "village": "region",
+    "category": "sights",
+    "season": "all"
+   },
+   "license": "unsplash",
+   "usedIn": [
+    "pages/pages/blog-index.json:image",
+    "pages/pages/cinque-terre/blog-index.json:image"
+   ]
+  },
+  {
+   "id": "region-image-15154447",
+   "url": "https://images.unsplash.com/photo-1515444744559-7be63e1600de?q=80&w=2670&auto=format&fit=crop",
+   "tags": {
+    "village": "region",
+    "category": "sights",
+    "season": "all"
+   },
+   "license": "unsplash",
+   "usedIn": [
+    "pages/pages/accommodations.json:image"
+   ]
+  },
+  {
+   "id": "riomaggiore-image-15339297",
+   "url": "https://images.unsplash.com/photo-1533929736458-ca588d08c8be?q=80&w=2670&auto=format&fit=crop",
+   "tags": {
+    "village": "riomaggiore",
+    "category": "sights",
+    "season": "all"
+   },
+   "license": "unsplash",
+   "usedIn": [
+    "pages/pages/riomaggiore/weather.json:image",
+    "pages/pages/riomaggiore/things-to-do.json:image",
+    "pages/pages/riomaggiore/sights.json:image",
+    "pages/pages/riomaggiore/overview.json:image",
+    "pages/pages/riomaggiore/maps.json:image",
+    "pages/pages/riomaggiore/insights.json:image",
+    "pages/pages/riomaggiore/blog.json:image"
+   ]
+  },
+  {
+   "id": "riomaggiore-image-15063772",
+   "url": "https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?q=80&w=2670&auto=format&fit=crop",
+   "tags": {
+    "village": "riomaggiore",
+    "category": "sights",
+    "season": "all"
+   },
+   "license": "unsplash",
+   "usedIn": [
+    "pages/pages/riomaggiore/weather.json:image",
+    "pages/pages/riomaggiore/things-to-do.json:image",
+    "pages/pages/riomaggiore/sights.json:image",
+    "pages/pages/riomaggiore/overview.json:image",
+    "pages/pages/riomaggiore/insights.json:image",
+    "pages/pages/riomaggiore/blog.json:image",
+    "pages/pages/riomaggiore/agriturismi.json:image"
+   ]
+  },
+  {
+   "id": "manarola-image-14907509",
+   "url": "https://images.unsplash.com/photo-1490750967868-88aa4486c946?q=80&w=2670&auto=format&fit=crop",
+   "tags": {
+    "village": "manarola",
+    "category": "sights",
+    "season": "all"
+   },
+   "license": "unsplash",
+   "usedIn": [
+    "pages/pages/manarola/weather.json:image",
+    "pages/pages/manarola/agriturismi.json:image"
+   ]
+  },
+  {
+   "id": "monterosso-image-15804951",
+   "url": "https://images.unsplash.com/photo-1580495173000-b5b56e4eab00?q=80&w=2670&auto=format&fit=crop",
+   "tags": {
+    "village": "monterosso",
+    "category": "sights",
+    "season": "all"
+   },
+   "license": "unsplash",
+   "usedIn": [
+    "pages/pages/monterosso/weather.json:image"
+   ]
+  },
+  {
+   "id": "monterosso-image-15907369",
+   "url": "https://images.unsplash.com/photo-1590736969955-71cc94901144?q=80&w=2670&auto=format&fit=crop",
+   "tags": {
+    "village": "monterosso",
+    "category": "sights",
+    "season": "all"
+   },
+   "license": "unsplash",
+   "usedIn": [
+    "pages/pages/monterosso/weather.json:image",
+    "pages/pages/monterosso/things-to-do.json:image",
+    "pages/pages/monterosso/boat-tours.json:image",
+    "pages/pages/monterosso/beaches.json:image"
+   ]
+  }
+ ],
+ "categories": [
+  "sights",
+  "beaches",
+  "trails",
+  "food",
+  "accommodations",
+  "transport",
+  "events",
+  "culture"
+ ],
+ "subcategories": {
+  "sights": [
+   "village-overview",
+   "harbor",
+   "tower",
+   "church",
+   "streets",
+   "viewpoint"
+  ],
+  "beaches": [
+   "beach-overview",
+   "swimming",
+   "rocks",
+   "marina"
+  ],
+  "trails": [
+   "sentiero-azzurro",
+   "via-dell-amore",
+   "mountain-path",
+   "vineyard-trail"
+  ],
+  "food": [
+   "restaurant",
+   "wine",
+   "gelato",
+   "market",
+   "cooking"
+  ],
+  "accommodations": [
+   "hotel-exterior",
+   "hotel-interior",
+   "pool",
+   "terrace",
+   "room"
+  ],
+  "transport": [
+   "train",
+   "boat",
+   "station",
+   "ferry"
+  ],
+  "events": [
+   "festival",
+   "concert",
+   "fireworks",
+   "market"
+  ],
+  "culture": [
+   "church-interior",
+   "museum",
+   "art",
+   "traditional"
+  ]
+ },
+ "villages": [
+  "riomaggiore",
+  "manarola",
+  "corniglia",
+  "vernazza",
+  "monterosso"
+ ],
+ "moods": [
+  "vibrant",
+  "romantic",
+  "serene",
+  "iconic",
+  "historic",
+  "authentic",
+  "relaxed",
+  "dramatic"
+ ],
+ "timeOfDay": [
+  "sunrise",
+  "daylight",
+  "golden-hour",
+  "sunset",
+  "blue-hour",
+  "night"
+ ],
+ "seasons": [
+  "spring",
+  "summer",
+  "autumn",
+  "winter",
+  "all"
+ ]
+}

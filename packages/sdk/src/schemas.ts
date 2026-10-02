@@ -200,40 +200,102 @@ export type Manifest = z.infer<typeof ManifestSchema>;
 
 // ---------------------------------------------------------------- personas (crates/agents/src/personas.rs)
 
-export const AGENT_ROLES = [
-  "editor_in_chief",
-  "writer",
-  "editor",
-  "qa",
-  "art_director",
-  "frontend_dev",
-  "seo",
-  "linker",
-  "researcher",
-  "media",
-  "translator",
-  "chatter",
-  "critic",
+/** Persona schema version (`agents::personas::SCHEMA_VERSION`). */
+export const PERSONA_SCHEMA_VERSION = 2;
+
+/** Staff role → department (`agents::Role::department`, organization.md §2). */
+export const ROLE_DEPARTMENTS = {
+  cfo: "executive-office",
+  secretary: "executive-office",
+  strategist: "strategy",
+  analyst: "strategy",
+  "data-scientist": "strategy",
+  "editor-in-chief": "editorial",
+  editor: "editorial",
+  writer: "editorial",
+  translator: "editorial",
+  "fact-checker": "editorial",
+  "photo-editor": "photo-video",
+  photographer: "photo-video",
+  "video-producer": "photo-video",
+  "art-director": "web-development",
+  "web-developer": "web-development",
+  "ux-designer": "web-development",
+  "it-engineer": "it-operations",
+  "dev-ops": "it-operations",
+  "seo-specialist": "seo-marketing",
+  "marketing-manager": "seo-marketing",
+  "social-media-manager": "seo-marketing",
+} as const;
+export type AgentRole = keyof typeof ROLE_DEPARTMENTS;
+/** Every staff role (`agents::Role::staff()`, kebab-case), in org-chart order. */
+export const AGENT_ROLES = Object.keys(ROLE_DEPARTMENTS) as [AgentRole, ...AgentRole[]];
+export const DEPARTMENTS = [
+  "executive-office",
+  "strategy",
+  "editorial",
+  "photo-video",
+  "web-development",
+  "it-operations",
+  "seo-marketing",
 ] as const;
 export const SENIORITIES = ["junior", "mid", "senior", "star"] as const;
 
 const Trait = Int.min(0).max(100);
+const Text = z.string().min(1);
+const Texts = (min: number) => z.array(Text).min(min);
+const MonthDay = z.string().regex(/^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/, "MM-DD");
 
 /**
- * Exactly the shape of `agents::Persona` (serde, deny_unknown_fields), so a
- * pack persona deserializes into the Rust type unchanged. TOML files use the
- * same keys as `crates/agents/personas/*.toml`.
+ * Exactly the shape of `agents::Persona` v2 (serde, deny_unknown_fields;
+ * organization.md §3), so a pack persona deserializes into the Rust type
+ * unchanged. TOML files use the same keys as `crates/agents/personas/*.toml`.
+ * Mirrors `agents::personas::persona_json_schema()`; a Rust test
+ * (`crates/agents/tests/personas.rs`) fails when the committed
+ * `schemas/persona.schema.json` drifts from it in keys or enums. The host
+ * still runs the full Rust validation on load (salary within the role's
+ * band, CV year ranges, non-partisan `world`, relationship targets).
  */
 export const PersonaSchema = z
   .object({
-    name: z.string().min(1).max(40),
-    display_role: z.string().min(1),
+    slug: z.string().regex(/^[a-z][a-z0-9-]{1,31}$/, "2–32 chars of a-z, 0-9 and '-'"),
+    id: Int.min(1).max(65535),
+    name: Text,
+    pronouns: z.string().regex(/^[^/\n]+\/[^\n]+$/, 'stated like "she/her"'),
+    age: Int.min(18).max(80),
+    hometown: Text,
+    department: z.enum(DEPARTMENTS),
     role: z.enum(AGENT_ROLES),
+    title: Text,
     seniority: z.enum(SENIORITIES),
-    expertise: z.array(z.string().min(1)),
-    persona: z.string().min(1),
-    background: z.string().min(1),
-    voice_characteristics: z.array(z.string().min(1)),
+    salary_eur_month: Int.min(1),
+    languages: Texts(1),
+    affinities: Texts(1),
+    pitch: Text.max(160),
+    birthday: MonthDay,
+    name_day: MonthDay.optional(),
+    bio: Text,
+    cv: z
+      .object({
+        education: z.array(z.object({ years: Text, what: Text, where: Text }).strict()).min(1),
+        experience: z
+          .array(z.object({ years: Text, role: Text, org: Text, highlights: Texts(1) }).strict())
+          .min(2),
+        skills: Texts(1),
+        awards: Texts(0).default([]),
+      })
+      .strict(),
+    life: z
+      .object({
+        hobbies: Texts(1),
+        interests: Texts(1),
+        quirks: Texts(1),
+        likes: Texts(1),
+        dislikes: Texts(1),
+        work_style: Text,
+        values: Texts(2).max(4),
+      })
+      .strict(),
     traits: z
       .object({ rigor: Trait, speed: Trait, creativity: Trait, sociability: Trait, resilience: Trait, ambition: Trait })
       .strict(),
@@ -247,22 +309,43 @@ export const PersonaSchema = z
         emoji_usage: z.string().optional(),
         perspective: z.string().optional(),
         descriptive_style: z.string().optional(),
+        voice: Texts(0).optional(),
+        preferences: z
+          .object({
+            opening_style: Text,
+            structure_preference: Text,
+            closing_style: Text,
+            favorite_topics: Texts(0),
+            avoid_topics: Texts(0),
+          })
+          .strict()
+          .optional(),
+        sample_phrases: z
+          .record(z.string().regex(/^[a-z]{2}$/), Texts(1))
+          .refine((p) => Object.keys(p).length === 0 || Array.isArray(p.en), "sample_phrases.en is required (fallback)")
+          .optional(),
       })
+      .strict()
+      .optional(),
+    relationships: z.object({ friends: Texts(0).optional(), friction: Texts(0).optional() }).strict().optional(),
+    family: z.object({ household: Text, key_people: Texts(0).default([]) }).strict(),
+    traditions: z
+      .record(z.string().regex(/^[a-z][a-z0-9_]*$/, "snake_case occasion"), Text)
+      .refine((t) => Object.keys(t).length >= 2, "traditions needs at least 2 occasions"),
+    world: z
+      .object({ news_interest: z.enum(["low", "medium", "high"]), topics: Texts(1), tone_on_current_events: Text })
       .strict(),
-    content_preferences: z
-      .object({
-        opening_style: z.string(),
-        structure_preference: z.string(),
-        closing_style: z.string(),
-        favorite_topics: z.array(z.string()),
-        avoid_topics: z.array(z.string()),
-      })
-      .strict(),
-    sample_phrases: z
-      .record(z.string().regex(/^[a-z]{2}$/), z.array(z.string().min(1)))
-      .refine((p) => Array.isArray(p.en) && p.en.length > 0, "sample_phrases.en is required"),
+    appearance: z.object({ palette: z.string().regex(/^#[0-9a-fA-F]{6}$/, "#rrggbb"), description: Text }).strict(),
   })
-  .strict();
+  .strict()
+  .refine((p) => ROLE_DEPARTMENTS[p.role] === p.department, {
+    message: "department must be the role's department",
+    path: ["department"],
+  })
+  .refine((p) => p.writing_style !== undefined || !["writer", "editor", "editor-in-chief"].includes(p.role), {
+    message: "writers and editors need writing_style",
+    path: ["writing_style"],
+  });
 export type Persona = z.infer<typeof PersonaSchema>;
 
 // ---------------------------------------------------------------- happenings (authored event cards)
@@ -270,7 +353,7 @@ export type Persona = z.infer<typeof PersonaSchema>;
 /** Who a primitive involves: everyone, anyone, a role, or a persona by name. */
 const Selector = z
   .string()
-  .regex(/^(all|any|role:[a-z_]+|persona:[A-Za-z][A-Za-z' -]{0,39})$/, "all | any | role:<role> | persona:<name>");
+  .regex(/^(all|any|role:[a-z][a-z_-]*|persona:[A-Za-z][A-Za-z' -]{0,39})$/, "all | any | role:<role> | persona:<name>");
 const Place = Slug.describe("a room kind, e.g. newsroom, meeting-room, kitchen");
 const Permille30 = Int.min(-30).max(30).describe("permille; |delta| ≤ 30 ‰ per beat (day-director §3)");
 const EMOTES = ["laugh", "cheer", "think", "surprise", "applause", "phone_call", "wave", "sigh"] as const;

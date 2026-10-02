@@ -1,0 +1,29 @@
+---
+/** editorial-hero: full-bleed image, badge, headline and standfirst. */
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { block, ctx, index = 0 } = Astro.props as { block: Record<string, any>; ctx: RenderContext; index?: number }
+const image = ctx.media(block.image)
+const H = index === 0 ? 'h1' : 'h2'
+---
+
+<section class="relative isolate flex min-h-[62vh] items-end overflow-hidden bg-ink text-on-ink md:min-h-[72vh]">
+  {
+    image && (
+      <img
+        src={image.src}
+        alt={image.alt ?? ''}
+        class="absolute inset-0 -z-10 size-full object-cover"
+        decoding="async"
+        loading={index === 0 ? 'eager' : 'lazy'}
+        fetchpriority={index === 0 ? 'high' : undefined}
+      />
+    )
+  }
+  <div class="absolute inset-0 -z-10 bg-gradient-to-t from-black/75 via-black/30 to-black/5"></div>
+  <div class="st-container pb-12 pt-32 md:pb-20">
+    {ctx.l(block.badge) && <p class="st-eyebrow mb-4 inline-block rounded-full bg-white/15 px-3 py-1 text-white backdrop-blur-sm">{ctx.l(block.badge)}</p>}
+    <H class="max-w-4xl font-serif text-4xl leading-[1.05] font-bold text-balance md:text-6xl lg:text-7xl">{ctx.l(block.title)}</H>
+    {ctx.l(block.subtitle) && <p class="mt-5 max-w-2xl text-lg text-pretty text-white/90 md:text-xl">{ctx.l(block.subtitle)}</p>}
+  </div>
+</section>

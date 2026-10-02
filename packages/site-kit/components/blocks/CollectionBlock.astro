@@ -1,0 +1,76 @@
+---
+/**
+ * Fallback: collection-embed, collection-with-interludes. Items come inline
+ * (`items`) or from the site's collections (`collectionType` + `village`/`slugs`),
+ * resolved through ctx — themes never read collection files.
+ */
+import BlockHeader from './BlockHeader.astro'
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+type Card = { title: string; text: string; image?: { src: string; alt?: string }; href?: string; meta: string[] }
+let cards: Card[] = []
+if (Array.isArray(block.items) && block.items.length) {
+  cards = block.items.map((i: any) => ({
+    title: ctx.l(i.title ?? i.name),
+    text: ctx.l(i.summary ?? i.intro ?? i.description),
+    image: ctx.media(i.image),
+    href: i.url ? ctx.href(i.url) : undefined,
+    meta: [ctx.l(i.category), ctx.l(i.priceRange), ctx.l(i.date)].filter(Boolean),
+  }))
+} else if (block.collectionType) {
+  const items = ctx.collectionItems(block.collectionType, { region: block.village ?? ctx.region?.slug, keys: Array.isArray(block.slugs) ? block.slugs : undefined })
+  cards = items.map((i) => ({
+    title: ctx.itemTitle(i),
+    text: ctx.l(i.data.summary ?? i.data.intro ?? i.data.description),
+    image: ctx.itemImage(i),
+    href: ctx.itemHref(i),
+    meta: [ctx.l(i.data.category), ctx.l(i.data.priceRange ?? i.data.price_range)].filter(Boolean),
+  }))
+}
+const interludes = new Map<number, any[]>()
+for (const it of Array.isArray(block.interludes) ? block.interludes : []) {
+  interludes.set(it.afterIndex, [...(interludes.get(it.afterIndex) ?? []), it])
+}
+const heading = block.heading ?? block.displayName
+const viewAll = block.showViewAll && block.viewAllUrl ? ctx.href(block.viewAllUrl) : undefined
+---
+
+<section class="kit-container kit-section kit-collection">
+  <BlockHeader ctx={ctx} title={heading} />
+  <ol class="kit-stack" role="list">
+    {
+      cards.map((c, i) => (
+        <>
+          <li class="kit-card kit-card--row">
+            {c.image && <img class="kit-card__img" src={c.image.src} alt={c.image.alt ?? ''} loading="lazy" decoding="async" />}
+            <div class="kit-card__body">
+              <h3 class="kit-card__title">{c.href ? <a href={c.href}>{c.title}</a> : c.title}</h3>
+              {c.meta.length > 0 && <p class="kit-small kit-muted">{c.meta.join(' · ')}</p>}
+              {c.text && <p class="kit-card__text">{c.text}</p>}
+            </div>
+          </li>
+          {(interludes.get(i) ?? []).map((it: any) => (
+            <li class="kit-interlude" role="note">
+              {it.badge && <p class="kit-eyebrow">{ctx.l(it.badge)}</p>}
+              <p class="kit-interlude__title">{ctx.l(it.title)}</p>
+              <blockquote>
+                <p>{ctx.l(it.quote)}</p>
+              </blockquote>
+            </li>
+          ))}
+        </>
+      ))
+    }
+  </ol>
+  {cards.length === 0 && <p class="kit-muted">{ctx.t('collection.empty')}</p>}
+  {
+    viewAll && (
+      <p>
+        <a class="kit-button kit-button--secondary" href={viewAll}>
+          {ctx.t('collection.viewAll')}
+        </a>
+      </p>
+    )
+  }
+</section>

@@ -8,6 +8,11 @@
 //! - every command either validates and applies, or is rejected by both
 //!   `validate` and `apply` with the same reason, leaving the world untouched
 //! - nobody ever fails to find a path (connectivity is validated)
+//! - organization: allocations never exceed 100%; the executive office only
+//!   names active people in those roles; project leads are on their team;
+//!   per-project ledgers plus overhead sum to the company ledger; every open
+//!   ticket is still before its deadline (so tickets always resolve by it);
+//!   the Secretary never answers a High or over-threshold ticket
 
 use proptest::prelude::*;
 use proptest::sample::select;
@@ -17,9 +22,19 @@ use sim_core::commands::{
     AutonomyPolicy, Command, DemolishTarget, Input, JobDigest, OvertimePolicy, Placement, Policy,
     ServerCommand, SiteSignals,
 };
+use sim_core::economy::LedgerKind;
 use sim_core::equipment::EquipmentKind;
+use sim_core::finance::CostBreakdown;
 use sim_core::geom::{PosMm, Side, TileRect};
-use sim_core::ids::{CandidateId, EquipId, JobId, MeetingId, RoomId, StaffId};
+use sim_core::ids::{
+    CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId,
+};
+use sim_core::inbox::{
+    DelegationPolicy, FollowUpTopic, Priority, ResolvedBy, SecretaryTaskKind, TicketOption,
+};
+use sim_core::plan::{BriefStub, PhaseState, WorkItemKind, WorkItemStatus, MAX_REVISIONS};
+use sim_core::projects::ProjectStatus;
+use sim_core::roles::Role;
 use sim_core::scenarios::demo_office_with_config;
 use sim_core::staff::Spot;
 use sim_core::{validate_input, SimConfig, World};
@@ -99,6 +114,115 @@ fn command() -> impl Strategy<Value = Command> {
         }),
         1 => (1u32..10).prop_map(|s| Command::Fire { staff: StaffId(s) }),
         1 => policy().prop_map(Command::SetPolicy),
+        3 => org_command(),
+    ]
+}
+
+fn staff_id() -> impl Strategy<Value = StaffId> {
+    (1u32..18).prop_map(StaffId)
+}
+
+fn project_id() -> impl Strategy<Value = ProjectId> {
+    (1u32..4).prop_map(ProjectId)
+}
+
+fn ticket_option() -> impl Strategy<Value = TicketOption> {
+    select(vec![
+        TicketOption::ApproveOverrun,
+        TicketOption::CutScope,
+        TicketOption::Acknowledge,
+        TicketOption::CutCosts,
+        TicketOption::TakeLoan,
+        TicketOption::ArrangeHiring,
+        TicketOption::Ignore,
+        TicketOption::Approve,
+        TicketOption::Reject,
+        TicketOption::Retry,
+        TicketOption::Kill,
+    ])
+}
+
+fn delegate_task() -> impl Strategy<Value = SecretaryTaskKind> {
+    prop_oneof![
+        Just(SecretaryTaskKind::TriageInbox),
+        (
+            prop::collection::vec(staff_id(), 0..5),
+            prop::option::of(project_id())
+        )
+            .prop_map(|(attendees, project)| SecretaryTaskKind::ScheduleMeeting {
+                attendees,
+                project
+            }),
+        prop::option::of(project_id())
+            .prop_map(|project| SecretaryTaskKind::PrepareBriefing { project }),
+        (1u32..20).prop_map(|t| SecretaryTaskKind::DraftReply {
+            ticket: TicketId(t)
+        }),
+        (select(Role::ALL.to_vec()), prop::option::of(project_id()))
+            .prop_map(|(role, project)| SecretaryTaskKind::ArrangeHiring { role, project }),
+        (
+            staff_id(),
+            select(vec![FollowUpTopic::Morale, FollowUpTopic::Salary])
+        )
+            .prop_map(|(staff, topic)| SecretaryTaskKind::FollowUp { staff, topic }),
+    ]
+}
+
+fn org_command() -> impl Strategy<Value = Command> {
+    prop_oneof![
+        staff_id().prop_map(|staff| Command::Promote { staff }),
+        (staff_id(), -10i64..60_000).prop_map(|(staff, cents_per_day)| Command::SetSalary {
+            staff,
+            cents_per_day
+        }),
+        (staff_id(), project_id(), 0u8..110).prop_map(|(staff, project, allocation_pct)| {
+            Command::AssignToProject {
+                staff,
+                project,
+                allocation_pct,
+            }
+        }),
+        (staff_id(), project_id())
+            .prop_map(|(staff, project)| Command::RemoveFromProject { staff, project }),
+        (project_id(), staff_id())
+            .prop_map(|(project, staff)| Command::SetProjectLead { project, staff }),
+        select(vec![
+            ("amalfi", "amalfi.travel"),
+            ("capri", "capri.travel"),
+            ("cinqueterre-travel", "x.travel"),
+            ("Bad", "bad"),
+        ])
+        .prop_map(|(slug, domain)| Command::CreateProject {
+            slug: slug.into(),
+            name: "A Publication".into(),
+            domain: domain.into(),
+        }),
+        (
+            project_id(),
+            select(vec![
+                ProjectStatus::Proposed,
+                ProjectStatus::Active,
+                ProjectStatus::Paused,
+                ProjectStatus::Archived
+            ])
+        )
+            .prop_map(|(project, status)| Command::SetProjectStatus { project, status }),
+        (project_id(), -1i64..10_000_000).prop_map(|(project, monthly_cents)| {
+            Command::SetProjectBudget {
+                project,
+                monthly_cents,
+            }
+        }),
+        ((1u32..20).prop_map(TicketId), ticket_option())
+            .prop_map(|(ticket, option)| Command::AnswerTicket { ticket, option }),
+        delegate_task().prop_map(|task| Command::Delegate { task }),
+        select(vec![
+            DelegationPolicy::Off,
+            DelegationPolicy::Low,
+            DelegationPolicy::LowAndMedium
+        ])
+        .prop_map(|policy| Command::SetDelegation { policy }),
+        staff_id().prop_map(|staff| Command::Praise { staff }),
     ]
 }
 
@@ -119,11 +243,34 @@ fn server_command() -> impl Strategy<Value = ServerCommand> {
                 ..SiteSignals::default()
             })
         }),
-        (1u32..5).prop_map(|j| ServerCommand::JobCompleted {
-            job_id: JobId(j),
+        (project_id(), 0u32..4, 0u32..5_000, 0u16..1_200).prop_map(
+            |(project, day, sessions, engagement_pm)| ServerCommand::AnalyticsSignals {
+                project,
+                day,
+                sessions,
+                visitors: sessions / 2,
+                pageviews: sessions * 3,
+                engagement_pm,
+                top_pages_digest: u64::from(sessions),
+            }
+        ),
+        (1u32..5).prop_map(|w| ServerCommand::DeployLanded {
+            work_item: WorkItemId(w),
+        }),
+        (1u64..8, 1u32..14, 1u32..14).prop_map(|(j, wr, ed)| ServerCommand::MeetingOutcome {
+            job_id: j,
+            briefs: vec![BriefStub {
+                kind: WorkItemKind::Article,
+                writer: StaffId(wr),
+                editor: StaffId(ed),
+                brief_ref: j,
+            }],
+        }),
+        (1u64..12, any::<bool>(), 0u8..11).prop_map(|(j, ok, score)| ServerCommand::JobCompleted {
+            job_id: j,
             digest: JobDigest {
-                ok: true,
-                score: 7,
+                ok,
+                score,
                 words: 800,
                 qa_defects: 0,
                 artifact_sha: [7; 16],
@@ -163,6 +310,15 @@ enum Action {
         pick: usize,
         chars: u32,
     },
+    /// Answer an open ticket with one of its own options.
+    Answer {
+        pick: usize,
+        option: usize,
+    },
+    /// Fire someone from the starting company (CFO, Secretary, photographer…).
+    FireKey {
+        pick: usize,
+    },
 }
 
 fn action() -> impl Strategy<Value = Action> {
@@ -172,6 +328,8 @@ fn action() -> impl Strategy<Value = Action> {
             .prop_map(|(kind, z, w, d, door)| Action::Room { kind, z, w, d, door }),
         1 => (0i32..4, 0i32..4, 0u8..4).prop_map(|(gx, gz, rot)| Action::Desk { gx, gz, rot }),
         1 => (0usize..8, 1u32..300).prop_map(|(pick, chars)| Action::Speak { pick, chars }),
+        2 => (0usize..16, 0usize..4).prop_map(|(pick, option)| Action::Answer { pick, option }),
+        1 => (0usize..5).prop_map(|pick| Action::FireKey { pick }),
     ]
 }
 
@@ -207,6 +365,23 @@ fn resolve(w: &World, a: Action) -> Input {
                     at_mm: 500,
                     width_mm: 1_000,
                 }],
+            })
+        }
+        Action::Answer { pick, option } => {
+            let open: Vec<_> = w.tickets.values().filter(|t| t.is_open()).collect();
+            match open.get(pick % open.len().max(1)) {
+                Some(t) => Input::Player(Command::AnswerTicket {
+                    ticket: t.id,
+                    option: t.options[option % t.options.len()],
+                }),
+                None => Input::Player(Command::Praise { staff: StaffId(1) }),
+            }
+        }
+        Action::FireKey { pick } => {
+            // CFO, Secretary, photographer, data scientist, strategist
+            let key = [7, 8, 6, 13, 9][pick % 5];
+            Input::Player(Command::Fire {
+                staff: StaffId(key),
             })
         }
         Action::Desk { gx, gz, rot } => Input::Player(Command::PlaceEquipment {
@@ -268,6 +443,113 @@ fn check(w: &World) {
         );
     }
     assert_eq!(w.nav_failures, 0, "everyone can always find a path");
+    check_org(w);
+}
+
+fn ledger_total(w: &World, k: LedgerKind) -> i64 {
+    w.ledger.totals.get(&k).copied().unwrap_or(0)
+}
+
+fn check_org(w: &World) {
+    for s in w.staff.values() {
+        assert!(
+            s.allocated_pct() <= 100,
+            "{} allocated {}%",
+            s.id,
+            s.allocated_pct()
+        );
+        if s.role.is_executive() {
+            assert!(
+                s.projects.is_empty(),
+                "executives are not staffed on projects"
+            );
+        }
+        for p in s.projects.keys() {
+            assert!(
+                w.projects.get(p).is_some_and(|p| p.is_open()),
+                "allocation on a closed project"
+            );
+        }
+    }
+    for (slot, role) in [(w.exec.cfo, Role::Cfo), (w.exec.secretary, Role::Secretary)] {
+        if let Some(id) = slot {
+            let s = &w.staff[&id];
+            assert!(s.is_active() && s.role == role);
+        }
+    }
+    for p in w.projects.values() {
+        if let Some(lead) = p.lead {
+            assert!(w.staff[&lead].allocation(p.id) > 0, "lead off the team");
+        }
+    }
+    assert!(w.open_projects() <= w.project_limit().max(1));
+    // per-project ledgers + overhead == company ledger
+    let mut sum: CostBreakdown = w.finance.overhead_total;
+    for p in w.projects.values() {
+        sum.add(&p.ledger.total);
+    }
+    assert_eq!(sum.salaries, -ledger_total(w, LedgerKind::Salaries));
+    assert_eq!(sum.overtime, -ledger_total(w, LedgerKind::Overtime));
+    assert_eq!(sum.rent, -ledger_total(w, LedgerKind::Rent));
+    assert_eq!(sum.upkeep, -ledger_total(w, LedgerKind::Upkeep));
+    assert_eq!(sum.revenue, ledger_total(w, LedgerKind::Revenue));
+    for t in w.tickets.values() {
+        if t.is_open() {
+            assert!(t.deadline_step > w.step, "{} open past its deadline", t.id);
+            assert!(t.options.contains(&t.default_option));
+        } else {
+            assert!(t.resolved_step.is_some_and(|s| s <= t.deadline_step));
+            assert!(t.answer.is_some_and(|a| t.options.contains(&a)));
+        }
+        if t.resolved_by == Some(ResolvedBy::Secretary) {
+            assert_ne!(
+                t.priority,
+                Priority::High,
+                "the Secretary answered a High ticket"
+            );
+            assert!(!t.over_threshold());
+            assert!(t.routed_via_secretary);
+        }
+    }
+    if w.exec.secretary.is_none() {
+        assert_eq!(w.pending_tasks(), 0);
+    }
+    check_plan(w);
+}
+
+/// The job contract: revisions are capped, blocked items are escalated,
+/// working phases wait on a pending job, pending jobs point at live work.
+fn check_plan(w: &World) {
+    for item in w.plan.items.values() {
+        assert!(
+            item.revision <= MAX_REVISIONS,
+            "{} over the revision cap",
+            item.id
+        );
+        if item.status == WorkItemStatus::Blocked {
+            assert!(
+                !item.tickets.is_empty(),
+                "{} blocked without a ticket",
+                item.id
+            );
+        }
+        if let Some(p) = item.phase() {
+            if p.state == PhaseState::Working && p.result.is_none() {
+                let job = p.job.expect("a working phase has a job");
+                assert!(
+                    w.plan.jobs.contains_key(&job),
+                    "{} waits on no job",
+                    item.id
+                );
+            }
+        }
+    }
+    for j in w.plan.jobs.values() {
+        assert!(j.job_id <= w.plan.jobs_requested);
+        if let Some(id) = j.work_item {
+            assert!(!w.plan.items[&id].status.is_closed());
+        }
+    }
 }
 
 fn run_steps(w: &mut World, n: u32) {

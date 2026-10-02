@@ -1,0 +1,7 @@
+{
+ "type": "cinqueterre_restaurants",
+ "display_name": "Cinque Terre Restaurants",
+ "singular_name": "Restaurant",
+ "description": "Restaurant data for Cinque Terre villages",
+ "title_field": "name"
+}

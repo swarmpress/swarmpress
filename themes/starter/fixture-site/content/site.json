@@ -1,0 +1,13 @@
+{
+ "id": "cinqueterre-travel",
+ "name": "Cinque Terre Travel Guide",
+ "description": "The ultimate travel resource for Cinque Terre, featuring comprehensive guides to all five villages, hiking trails, restaurants, hotels, weather information, and local culture.",
+ "version": "1.0.0",
+ "locales": [
+  "en",
+  "de",
+  "it",
+  "fr"
+ ],
+ "defaultLocale": "en"
+}

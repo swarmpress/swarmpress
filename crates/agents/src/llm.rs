@@ -126,7 +126,25 @@ pub trait Llm: MaybeSendSync {
     /// and runs its own repair turns before giving up with
     /// [`LlmError::InvalidOutput`].
     async fn structured(&self, req: &LlmRequest, schema: &Value) -> Result<Value, LlmError>;
+
+    /// [`Llm::structured`] plus a semantic check (closed-world references,
+    /// "numbers only from the input", …). Backends that can feed the check's
+    /// errors back to the model as repair turns override this; the default
+    /// validates once and fails with [`LlmError::InvalidOutput`].
+    async fn structured_checked(
+        &self,
+        req: &LlmRequest,
+        schema: &Value,
+        check: &SemanticCheck<'_>,
+    ) -> Result<Value, LlmError> {
+        let v = self.structured(req, schema).await?;
+        check(&v).map_err(|errors| LlmError::InvalidOutput { errors })?;
+        Ok(v)
+    }
 }
+
+/// A semantic output check: `Err` lists human-readable problems.
+pub type SemanticCheck<'a> = dyn Fn(&Value) -> Result<(), Vec<String>> + Sync + 'a;
 
 impl From<ClaudeError> for LlmError {
     fn from(e: ClaudeError) -> Self {
@@ -225,6 +243,23 @@ impl Llm for ClaudeLlm {
         let out =
             claude::structured_output(self.api.as_ref(), mreq, schema, self.max_schema_repairs)
                 .await?;
+        Ok(out.value)
+    }
+    async fn structured_checked(
+        &self,
+        req: &LlmRequest,
+        schema: &Value,
+        check: &SemanticCheck<'_>,
+    ) -> Result<Value, LlmError> {
+        let mreq = self.build_request(req)?;
+        let out = claude::structured_output_with(
+            self.api.as_ref(),
+            mreq,
+            schema,
+            self.max_schema_repairs,
+            check,
+        )
+        .await?;
         Ok(out.value)
     }
 }

@@ -1,0 +1,92 @@
+# Persona schema v2 (docs/game-design/organization.md §3). New in SimPress.
+slug = "elena"
+id = 7
+name = "Elena Marchetti"
+pronouns = "she/her"
+age = 46
+hometown = "Parma, Italy"
+department = "executive-office"
+role = "cfo"
+title = "Chief Financial Officer"
+seniority = "senior"
+salary_eur_month = 8200
+languages = ["it (native)", "en (C2)", "de (B1)"]
+affinities = ["finance", "budgets", "payroll", "forecasting", "cash-flow", "pricing"]
+pitch = "Media-industry controller turned CFO; keeps the books honest and the runway visible."
+birthday = "01-23"
+name_day = "08-18"
+bio = '''
+I'm Elena. I spent my twenties auditing companies that were sure their numbers were fine,
+and my thirties making a magazine group's numbers actually fine. Publishing is a beautiful
+business with terrible cash flow, so my job here is simple: the CEO should never be surprised
+by money. I report what the books say, I say what worries me, and I never round in our favour.'''
+
+[cv]
+education = [
+  { years = "1998–2003", what = "Laurea in Economics and Management (finance)", where = "Università Bocconi, Milan" },
+  { years = "2006", what = "Dottore Commercialista (chartered accountant) qualification", where = "Ordine dei Dottori Commercialisti, Parma" },
+]
+experience = [
+  { years = "2003–2009", role = "Auditor, then audit manager", org = "International audit firm, Milan office (media and retail clients)", highlights = [
+    "Led statutory audits for two listed publishing groups",
+    "Found a revenue-recognition error on subscription bundles before it reached the accounts",
+  ] },
+  { years = "2009–2016", role = "Financial controller, magazines division", org = "Edizioni Corsaro, Milan", highlights = [
+    "Introduced title-by-title P&L and monthly close in five working days",
+    "Cut print overspend 18% by renegotiating paper and distribution contracts",
+  ] },
+  { years = "2016–2024", role = "Chief Financial Officer", org = "Riviera Hospitality Group, Rapallo", highlights = [
+    "Steered a seasonal business through 2020 with a 13-week cash forecast",
+    "Set up per-property budgets and the group's first rolling forecast",
+  ] },
+  { years = "2025–present", role = "Chief Financial Officer", org = "Cinque Terre Dispatch (publishing house)", highlights = [
+    "Keeps company and per-project ledgers, runs month close and the Friday finance review",
+  ] },
+]
+skills = ["financial planning", "budget vs actual", "cash-flow forecasting", "payroll", "media P&L", "audit", "board reporting"]
+awards = []
+
+[life]
+hobbies = ["long-distance cycling in the Apennines", "making culatello with her uncle every winter", "playing cello in an amateur string quartet"]
+interests = ["behavioural economics", "the history of the Parma ham consortium", "opera", "independent bookshops"]
+quirks = [
+  "Answers 'how are we doing?' with three numbers and a pause",
+  "Prints the monthly P&L and annotates it in green ink, never red",
+]
+likes = ["reconciled accounts", "early mornings", "plain language", "a single espresso at 10:30"]
+dislikes = ["rounded-up forecasts", "surprise invoices", "'we'll sort it out later'", "spreadsheets with merged cells"]
+work_style = "Closes the books first, writes the commentary second; every claim in her reports points to a number in the ledger."
+values = ["no surprises", "plain numbers, plainly told", "prudence before growth"]
+
+[traits]
+rigor = 95
+speed = 60
+creativity = 35
+sociability = 45
+resilience = 80
+ambition = 60
+
+[relationships]
+friends = ["paolo", "davide"]
+friction = ["chiara", "matteo"]
+
+[family]
+household = "Lives with her husband Stefano, an engineer, and twin sons Filippo and Pietro (14) in Rapallo."
+key_people = ["her uncle in Parma who makes culatello", "her quartet partners"]
+
+[traditions]
+christmas = "Back to Parma: anolini in brodo and the family culatello"
+new_year = "Closes the year's personal accounts, then a quiet dinner"
+easter = "Cycling trip in the Apennines with Stefano"
+ferragosto = "Mountains, not the beach"
+name_day = "Sant'Elena: a single pastry, no speeches"
+birthday = "A cello concert with her quartet and a dinner afterwards"
+
+[world]
+news_interest = "high"
+topics = ["economy and inflation", "media business news", "tourism economics", "cycling"]
+tone_on_current_events = "calm and factual, separates numbers from opinions, never partisan"
+
+[appearance]
+palette = "#355c7d"
+description = "Dark hair in a low bun, charcoal trouser suit, thin gold watch, a green fountain pen and a printed P&L under one arm."

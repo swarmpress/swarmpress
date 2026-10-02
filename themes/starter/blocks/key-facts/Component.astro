@@ -1,0 +1,24 @@
+---
+/** x:key-facts — custom block example: label/value pairs in a definition list. */
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const facts = (Array.isArray(block.facts) ? block.facts : []).map((f: any) => ({ label: ctx.l(f.label), value: ctx.l(f.value) }))
+const title = ctx.l(block.title)
+---
+
+<aside class="st-container my-10" aria-label={title || undefined}>
+  <div class="st-measure rounded-card border border-border bg-surface px-6 py-5 shadow-card">
+    {title && <p class="st-eyebrow">{title}</p>}
+    <dl class="mt-3 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+      {
+        facts.map((f: any) => (
+          <div>
+            <dt class="text-xs font-semibold tracking-wide text-muted uppercase">{f.label}</dt>
+            <dd class="mt-0.5 font-serif text-xl">{f.value}</dd>
+          </div>
+        ))
+      }
+    </dl>
+  </div>
+</aside>

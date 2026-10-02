@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../packages/site-kit/schema/site-manifest.schema.json",
+  "schemaVersion": 1,
+  "siteId": "cinqueterre-fixture",
+  "baseUrl": "https://cinqueterre.travel",
+  "base": "/",
+  "domain": "cinqueterre.travel",
+  "languages": ["en", "de", "it", "fr"],
+  "defaultLanguage": "en",
+  "brand": {
+    "name": "Cinque Terre Dispatch",
+    "tagline": {
+      "en": "Slow travel stories from the five villages",
+      "de": "Geschichten vom langsamen Reisen aus den fünf Dörfern",
+      "it": "Storie di viaggio lento dai cinque borghi",
+      "fr": "Récits de voyage lent depuis les cinq villages"
+    },
+    "logo": "media:region-image-15344476",
+    "voiceRef": "content/config/writer-prompt.json"
+  },
+  "regions": {
+    "label": { "en": "Villages", "de": "Dörfer", "it": "Borghi", "fr": "Villages" },
+    "items": [
+      { "slug": "riomaggiore", "name": "Riomaggiore", "order": 1, "color": "#c2410c", "geo": { "lat": 44.0997, "lng": 9.7378 }, "entityRef": "riomaggiore" },
+      { "slug": "manarola", "name": "Manarola", "order": 2, "color": "#0e7490", "geo": { "lat": 44.1068, "lng": 9.7275 }, "entityRef": "manarola" },
+      { "slug": "corniglia", "name": "Corniglia", "order": 3, "color": "#4d7c0f", "geo": { "lat": 44.1192, "lng": 9.7126 }, "entityRef": "corniglia" },
+      { "slug": "vernazza", "name": "Vernazza", "order": 4, "color": "#b91c1c", "geo": { "lat": 44.1349, "lng": 9.6854 }, "entityRef": "vernazza" },
+      { "slug": "monterosso", "name": "Monterosso al Mare", "order": 5, "color": "#a16207", "geo": { "lat": 44.1457, "lng": 9.653 }, "entityRef": "monterosso" }
+    ]
+  },
+  "sections": [
+    { "slug": "blog", "label": { "en": "Stories", "de": "Geschichten", "it": "Storie", "fr": "Récits" }, "perRegion": false },
+    { "slug": "restaurants", "label": { "en": "Restaurants", "de": "Restaurants", "it": "Ristoranti", "fr": "Restaurants" }, "collection": "restaurants", "perRegion": true },
+    { "slug": "hikes", "label": { "en": "Hikes", "de": "Wanderungen", "it": "Escursioni", "fr": "Randonnées" }, "collection": "hikes", "perRegion": true }
+  ],
+  "collections": [
+    {
+      "type": "restaurants",
+      "dir": "content/collections/restaurants",
+      "label": { "en": "Restaurants", "de": "Restaurants", "it": "Ristoranti", "fr": "Restaurants" },
+      "detailRoute": true,
+      "itemKey": "slug",
+      "regionField": "village"
+    },
+    {
+      "type": "hikes",
+      "dir": "content/collections/hikes",
+      "label": { "en": "Hikes", "de": "Wanderungen", "it": "Escursioni", "fr": "Randonnées" },
+      "detailRoute": false,
+      "itemKey": "slug"
+    }
+  ],
+  "routes": { "blogIndex": "blog" },
+  "analytics": { "endpoint": "https://play.simpress.dev", "projectKey": "cinqueterre-fixture" },
+  "screenshotPages": ["/", "/riomaggiore/", "/blog/"],
+  "themeDir": ".."
+}

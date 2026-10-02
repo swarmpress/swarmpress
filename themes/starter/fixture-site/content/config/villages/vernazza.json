@@ -1,0 +1,115 @@
+{
+  "slug": "vernazza",
+  "seo": {
+    "title": {
+      "en": "Vernazza | Cinque Terre Dispatch",
+      "de": "Vernazza | Cinque Terre Dispatch",
+      "fr": "Vernazza | Cinque Terre Dispatch",
+      "it": "Vernazza | Cinque Terre Dispatch"
+    },
+    "description": {
+      "en": "Experience Vernazza, often called the crown jewel of Cinque Terre. Medieval towers, a natural harbor, and the iconic waterfront piazza await.",
+      "de": "Erleben Sie Vernazza, oft als Kronjuwel der Cinque Terre bezeichnet. Mittelalterliche Türme, ein Naturhafen und die ikonische Piazza am Wasser erwarten Sie.",
+      "fr": "Découvrez Vernazza, souvent appelée le joyau des Cinque Terre. Tours médiévales, port naturel et l'emblématique piazza en bord de mer vous attendent.",
+      "it": "Vivi Vernazza, spesso chiamata il gioiello della corona delle Cinque Terre. Torri medievali, un porto naturale e l'iconica piazza sul lungomare ti aspettano."
+    }
+  },
+  "hero": {
+    "image": "https://images.unsplash.com/photo-1499678329028-101435549a4e?q=80&w=2670&auto=format&fit=crop",
+    "imageAlt": {
+      "en": "Vernazza harbor with colorful buildings",
+      "de": "Vernazza Hafen mit bunten Gebäuden",
+      "fr": "Port de Vernazza avec des bâtiments colorés",
+      "it": "Porto di Vernazza con edifici colorati"
+    },
+    "tagline": {
+      "en": "Cinque Terre",
+      "de": "Cinque Terre",
+      "fr": "Cinque Terre",
+      "it": "Cinque Terre"
+    },
+    "title": {
+      "en": "Vernazza",
+      "de": "Vernazza",
+      "fr": "Vernazza",
+      "it": "Vernazza"
+    },
+    "subtitle": {
+      "en": "The crown jewel of Cinque Terre, where medieval towers guard a perfect natural harbor. The waterfront piazza is Italy's most romantic gathering place.",
+      "de": "Das Kronjuwel der Cinque Terre, wo mittelalterliche Türme einen perfekten Naturhafen bewachen. Die Piazza am Wasser ist Italiens romantischster Treffpunkt.",
+      "fr": "Le joyau des Cinque Terre, où des tours médiévales gardent un port naturel parfait. La piazza en bord de mer est le lieu de rassemblement le plus romantique d'Italie.",
+      "it": "Il gioiello della corona delle Cinque Terre, dove torri medievali custodiscono un perfetto porto naturale. La piazza sul lungomare è il luogo di ritrovo più romantico d'Italia."
+    },
+    "primaryCta": {
+      "label": {
+        "en": "Explore Vernazza",
+        "de": "Vernazza erkunden",
+        "fr": "Explorer Vernazza",
+        "it": "Esplora Vernazza"
+      },
+      "href": "#villages"
+    },
+    "secondaryCta": {
+      "label": {
+        "en": "Plan Your Visit",
+        "de": "Ihren Besuch planen",
+        "fr": "Planifier votre visite",
+        "it": "Pianifica la tua visita"
+      },
+      "href": "#plan"
+    }
+  },
+  "intro": {
+    "leadStory": {
+      "title": {
+        "en": "Vernazza, Where History Meets the Sea",
+        "de": "Vernazza, Wo Geschichte auf das Meer trifft",
+        "fr": "Vernazza, Où l'Histoire Rencontre la Mer",
+        "it": "Vernazza, Dove la Storia Incontra il Mare"
+      },
+      "excerpt": {
+        "en": "Vernazza captivates with its medieval charm and natural harbor. Once a maritime power, its Doria Castle still watches over the village, while the piazza fills each evening with locals and travelers sharing wine and stories.",
+        "de": "Vernazza fasziniert mit seinem mittelalterlichen Charme und Naturhafen. Einst eine Seemacht, wacht sein Doria-Schloss noch immer über das Dorf.",
+        "fr": "Vernazza captive par son charme médiéval et son port naturel. Ancienne puissance maritime, son château Doria veille toujours sur le village.",
+        "it": "Vernazza affascina con il suo fascino medievale e il porto naturale. Un tempo potenza marittima, il suo Castello Doria veglia ancora sul villaggio."
+      },
+      "author": "Luca Verdi",
+      "date": "Oct 22, 2023",
+      "readTime": "9 min read",
+      "category": "History & Culture",
+      "image": "https://images.unsplash.com/photo-1592345279419-959d784e8aad?q=80&w=2670&auto=format&fit=crop"
+    },
+    "essentials": {
+      "title": {
+        "en": "Vernazza Essentials 2026",
+        "de": "Vernazza Essentials 2026",
+        "fr": "Essentiels Vernazza 2026",
+        "it": "Essenziali Vernazza 2026"
+      },
+      "subtitle": {
+        "en": "Today's atmosphere and real-time details, grounded in Vernazza's maritime legacy",
+        "de": "Heutige Atmosphäre und Echtzeit-Details, verwurzelt in Vernazzas maritimem Erbe",
+        "fr": "Ambiance du jour et détails en temps réel, ancrés dans l'héritage maritime de Vernazza",
+        "it": "Atmosfera di oggi e dettagli in tempo reale, radicati nell'eredità marittima di Vernazza"
+      },
+      "today": {
+        "weather": "24°C, sunny",
+        "seaTemp": "22°C",
+        "seaConditions": "Perfect for swimming",
+        "sunset": "20:48"
+      },
+      "experience": {
+        "crowdRhythm": "Busy but magical",
+        "bestFelt": "Evening on the piazza",
+        "villageShape": "Embracing the harbor",
+        "foodWine": "Anchovies, pesto, prosecco"
+      },
+      "character": {
+        "origins": "11th Century maritime",
+        "shapedBy": "Trade, towers, tradition",
+        "rating": "4.9/5",
+        "rememberedFor": "\"The perfect village\""
+      }
+    }
+  }
+}

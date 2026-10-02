@@ -1,0 +1,22 @@
+---
+/** callout: an aside with a tone (info, warning, success, error). */
+import RichText from '@swarm-press/site-kit/components/RichText.astro'
+import type { RenderContext } from '@swarm-press/site-kit'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const tone: Record<string, string> = {
+  info: 'border-accent bg-accent-soft',
+  warning: 'border-amber-700 bg-amber-50',
+  success: 'border-emerald-700 bg-emerald-50',
+  error: 'border-red-700 bg-red-50',
+}
+---
+
+<div class="st-container my-8">
+  <aside role="note" class:list={['st-measure rounded-card border-l-4 px-6 py-5', tone[block.style] ?? tone.info]}>
+    {ctx.l(block.title) && <p class="font-semibold">{ctx.l(block.title)}</p>}
+    <div class="mt-1 [&_p]:mb-2">
+      <RichText value={block.content} ctx={ctx} />
+    </div>
+  </aside>
+</div>

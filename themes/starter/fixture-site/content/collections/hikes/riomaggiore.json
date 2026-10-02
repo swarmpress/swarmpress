@@ -1,0 +1,142 @@
+[
+ {
+  "slug": "riomaggiore-hidden-gardens-trail",
+  "name": {
+   "de": "Riomaggiore Versteckte Gärten und Geheimwege Wanderung",
+   "en": "Riomaggiore Hidden Gardens and Secret Paths Trail",
+   "fr": "Sentier Jardins Cachés et Chemins Secrets Riomaggiore",
+   "it": "Sentiero Giardini Nascosti e Sentieri Segreti Riomaggiore"
+  },
+  "rank": 18
+ },
+ {
+  "slug": "riomaggiore-local-food-walking-tour",
+  "name": {
+   "de": "Riomaggiore Lokale Küche und Markt Rundgang",
+   "en": "Riomaggiore Local Food and Market Walking Tour",
+   "fr": "Tour à Pied Cuisine Locale et Marché Riomaggiore",
+   "it": "Tour a Piedi Cibo Locale e Mercato Riomaggiore"
+  },
+  "rank": 17
+ },
+ {
+  "slug": "riomaggiore-sunset-photography-tour",
+  "name": {
+   "de": "Riomaggiore Sonnenuntergang Fotografie Wanderweg",
+   "en": "Riomaggiore Sunset Photography Trail",
+   "fr": "Sentier Photographie Coucher de Soleil Riomaggiore",
+   "it": "Sentiero Fotografia Tramonto Riomaggiore"
+  },
+  "rank": 16
+ },
+ {
+  "slug": "riomaggiore-swimming-spots-tour",
+  "name": {
+   "de": "Riomaggiore Schwimmplätze und Küstentour",
+   "en": "Riomaggiore Swimming Spots and Coastal Tour",
+   "fr": "Tour Spots de Baignade et Côtier de Riomaggiore",
+   "it": "Tour Punti di Nuoto e Costiero di Riomaggiore"
+  },
+  "rank": 15
+ },
+ {
+  "slug": "riomaggiore-sciacchetra-wine-trail",
+  "name": {
+   "de": "Sciacchetrà Weinerbe Wanderweg von Riomaggiore",
+   "en": "Sciacchetrà Wine Heritage Trail from Riomaggiore",
+   "fr": "Sentier Patrimoine Vinicole Sciacchetrà depuis Riomaggiore",
+   "it": "Sentiero del Patrimonio Vinicolo Sciacchetrà da Riomaggiore"
+  },
+  "rank": 14
+ },
+ {
+  "slug": "riomaggiore-corniglia-high-trail",
+  "name": {
+   "de": "Riomaggiore nach Corniglia Hoher Bergweg",
+   "en": "Riomaggiore to Corniglia High Mountain Trail",
+   "fr": "Sentier Haute Montagne Riomaggiore-Corniglia",
+   "it": "Sentiero Alto Montano Riomaggiore-Corniglia"
+  },
+  "rank": 13
+ },
+ {
+  "slug": "riomaggiore-nessun-dorma-trail",
+  "name": {
+   "de": "Nessun Dorma Panoramaterrasse Wanderweg von Riomaggiore",
+   "en": "Nessun Dorma Panoramic Terrace Trail from Riomaggiore",
+   "fr": "Sentier Terrasse Panoramique Nessun Dorma depuis Riomaggiore",
+   "it": "Sentiero Terrazza Panoramica Nessun Dorma da Riomaggiore"
+  },
+  "rank": 12
+ },
+ {
+  "slug": "riomaggiore-cemetery-sunrise-hike",
+  "name": {
+   "de": "Riomaggiore Friedhof Sonnenaufgang Aussichtspunkt Wanderung",
+   "en": "Riomaggiore Cemetery Sunrise Viewpoint Hike",
+   "fr": "Randonnée Point de Vue Lever de Soleil Cimetière Riomaggiore",
+   "it": "Escursione Alba Punto Panoramico Cimitero Riomaggiore"
+  },
+  "rank": 11
+ },
+ {
+  "slug": "riomaggiore-marina-promenade",
+  "name": {
+   "de": "Riomaggiore Marina und Hafen Promenade",
+   "en": "Riomaggiore Marina and Harbor Promenade",
+   "fr": "Promenade Marina et Port de Riomaggiore",
+   "it": "Passeggiata Marina e Porto di Riomaggiore"
+  },
+  "rank": 10
+ },
+ {
+  "slug": "riomaggiore-groppo-mountain-trail",
+  "name": {
+   "de": "Riomaggiore nach Groppo Bergdorf Wanderweg",
+   "en": "Riomaggiore to Groppo Mountain Village Trail",
+   "fr": "Sentier Riomaggiore au Village Montagnard de Groppo",
+   "it": "Sentiero Riomaggiore-Groppo Villaggio Montano"
+  },
+  "rank": 9
+ },
+ {
+  "slug": "riomaggiore-vineyard-terraces",
+  "name": {
+   "de": "Riomaggiore Weinberg-Terrassen Wanderweg",
+   "en": "Riomaggiore Vineyard Terraces Trail",
+   "fr": "Sentier des Terrasses de Vignobles de Riomaggiore",
+   "it": "Sentiero delle Terrazze Vinicole di Riomaggiore"
+  },
+  "rank": 7
+ },
+ {
+  "slug": "riomaggiore-castle-walk",
+  "name": {
+   "de": "Riomaggiore Schloss und Dorf Historischer Spaziergang",
+   "en": "Riomaggiore Castle and Village Historical Walk",
+   "fr": "Promenade Historique Château et Village de Riomaggiore",
+   "it": "Passeggiata Storica Castello e Villaggio di Riomaggiore"
+  },
+  "rank": 6
+ },
+ {
+  "slug": "riomaggiore-colle-del-telegrafo",
+  "name": {
+   "de": "Riomaggiore zum Colle del Telegrafo Höhenweg",
+   "en": "Riomaggiore to Colle del Telegrafo High Route",
+   "fr": "Riomaggiore au Colle del Telegrafo Route Haute",
+   "it": "Riomaggiore al Colle del Telegrafo via Alta"
+  },
+  "rank": 5
+ },
+ {
+  "slug": "riomaggiore-to-porto-venere",
+  "name": {
+   "de": "Riomaggiore nach Porto Venere Küstenweg",
+   "en": "Riomaggiore to Porto Venere Coastal Trail",
+   "fr": "Sentier Côtier Riomaggiore à Porto Venere",
+   "it": "Sentiero Costiero Riomaggiore-Porto Venere"
+  },
+  "rank": 3
+ }
+]

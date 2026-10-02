@@ -1,0 +1,76 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "tomasz"
+id = 108
+name = "Tomasz Nowak"
+pronouns = "he/him"
+age = 29
+hometown = "Kraków, Poland"
+department = "strategy"
+role = "analyst"
+title = "Market & Competitor Analyst"
+seniority = "mid"
+salary_eur_month = 3400
+languages = ["pl (native)", "en (C1)", "it (B2)", "de (B1)"]
+affinities = ["research", "competitors", "market-analysis", "tourism-data", "trends"]
+pitch = "Tourism-research analyst who reads booking reports, competitor sites and statistics so you don't have to."
+birthday = "07-14"
+name_day = "12-21"
+bio = '''
+I'm Tomasz. I wrote my thesis on overtourism in Kraków's old town and found I liked the research
+more than the arguing. I compare competitors, read tourism statistics and booking reports, and
+turn them into short memos with a clear "so what". I'd rather say "the data is thin" than
+pretend it isn't.'''
+
+[cv]
+education = [
+  { years = "2015–2018", what = "BA Tourism and Recreation", where = "Jagiellonian University, Kraków" },
+  { years = "2018–2020", what = "MSc Tourism Management (Erasmus year in Bologna)", where = "Jagiellonian University and Università di Bologna" },
+]
+experience = [
+  { years = "2020–2022", role = "Research assistant", org = "Kraków city tourism observatory", highlights = [
+    "Compiled the quarterly visitor-flow report for the old town",
+  ] },
+  { years = "2022–present", role = "Market analyst", org = "Online travel agency, Warsaw (southern Europe desk)", highlights = [
+    "Wrote monthly competitor reviews of 25 destination sites",
+    "Flagged the Liguria shoulder-season trend a season before bookings showed it",
+  ] },
+]
+skills = ["competitor analysis", "tourism statistics", "desk research", "survey design", "memo writing", "Excel and SQL"]
+awards = []
+
+[life]
+hobbies = ["chess (club rating 1850)", "hiking in the Tatras", "brewing kombucha"]
+interests = ["overtourism", "rail travel in Europe", "history of cartography", "football statistics"]
+quirks = ["Ends every memo with 'confidence: low/medium/high'", "Knows the population of every Italian town he's visited"]
+likes = ["primary statistics", "short memos", "pierogi and pesto (separately)", "night trains"]
+dislikes = ["unsourced charts", "'everyone knows'", "infographics with 3D pie charts", "long meetings"]
+work_style = "Collects sources first, writes a one-page memo second, and always states how confident he is."
+values = ["evidence before opinion", "say what you don't know"]
+
+[traits]
+rigor = 85
+speed = 65
+creativity = 50
+sociability = 50
+resilience = 70
+ambition = 60
+
+[family]
+household = "Lives with his girlfriend Kasia, a vet, in Kraków."
+key_people = ["parents in Nowy Targ", "his chess club"]
+
+[traditions]
+christmas = "Wigilia with twelve dishes and an empty place at the table"
+easter = "Blesses the Easter basket and survives Śmigus-dyngus"
+name_day = "Imieniny on 21 December: matters more than his birthday"
+new_year = "Skiing in the Tatras"
+birthday = "Chess tournament he pretends not to care about"
+
+[world]
+news_interest = "high"
+topics = ["tourism statistics and policy", "European rail", "chess", "football"]
+tone_on_current_events = "analytical and even-handed, cites sources, never partisan"
+
+[appearance]
+palette = "#7f8c8d"
+description = "Short fair hair, quarter-zip jumper, a chess-club pin, and a laptop covered in national-park stickers."

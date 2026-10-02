@@ -1,0 +1,17 @@
+---
+/** Fallback: image. */
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const m = ctx.media(block.src)
+const caption = ctx.l(block.caption)
+---
+
+{
+  m && (
+    <figure class="kit-container kit-figure">
+      <img src={m.src} alt={ctx.l(block.alt) || m.alt || ''} width={block.width ?? m.width} height={block.height ?? m.height} loading="lazy" decoding="async" />
+      {caption && <figcaption>{caption}</figcaption>}
+    </figure>
+  )
+}

@@ -1,0 +1,27 @@
+---
+/** Eyebrow / title / subtitle shared by the neutral renderers. */
+import type { RenderContext } from '../../src/context'
+
+interface Props {
+  ctx: RenderContext
+  eyebrow?: unknown
+  title?: unknown
+  subtitle?: unknown
+  level?: 1 | 2 | 3
+}
+const { ctx, eyebrow, title, subtitle, level = 2 } = Astro.props as Props
+const e = ctx.l(eyebrow)
+const t = ctx.l(title)
+const s = ctx.l(subtitle)
+const H = `h${level}`
+---
+
+{
+  (e || t || s) && (
+    <header class="kit-block-header">
+      {e && <p class="kit-eyebrow">{e}</p>}
+      {t && <H class="kit-block-title">{t}</H>}
+      {s && <p class="kit-lead">{s}</p>}
+    </header>
+  )
+}

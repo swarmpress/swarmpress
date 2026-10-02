@@ -12,9 +12,16 @@ pub use sim_core::commands::{
     AutonomyPolicy, Command, DemolishTarget, Input, JobDigest, OvertimePolicy, Placement, Policy,
     ServerCommand, SiteSignals,
 };
+pub use sim_core::inbox::{DelegationPolicy, FollowUpTopic, SecretaryTaskKind, TicketOption};
+pub use sim_core::projects::ProjectStatus;
+pub use sim_core::roles::{Department, Role};
 
+/// v3: organization commands (projects, staffing, Inbox, delegation), the
+/// job contract (`ServerCommand::{MeetingOutcome, JobCompleted{job_id: u64},
+/// DeployLanded}`),
+/// `ServerCommand::AnalyticsSignals`, the extended `Role` set.
 /// v2: command frames (M1 sim commands).
-pub const PROTO_VERSION: u16 = 2;
+pub const PROTO_VERSION: u16 = 3;
 
 /// First frame the server sends after a client connects.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,7 +77,7 @@ pub fn decode<'a, T: Deserialize<'a>>(bytes: &'a [u8]) -> Result<T, postcard::Er
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sim_core::ids::{MeetingId, StaffId};
+    use sim_core::ids::{MeetingId, ProjectId, StaffId, TicketId};
 
     #[test]
     fn hello_round_trips() {
@@ -116,6 +123,47 @@ mod tests {
             command: Command::Fire { staff: StaffId(4) },
         };
         assert_eq!(decode::<ClientFrame>(&encode(&c).unwrap()).unwrap(), c);
+        let org = [
+            Command::AssignToProject {
+                staff: StaffId(1),
+                project: ProjectId(1),
+                allocation_pct: 60,
+            },
+            Command::AnswerTicket {
+                ticket: TicketId(2),
+                option: TicketOption::ArrangeHiring,
+            },
+            Command::Delegate {
+                task: SecretaryTaskKind::ArrangeHiring {
+                    role: Role::Photographer,
+                    project: Some(ProjectId(1)),
+                },
+            },
+            Command::SetDelegation {
+                policy: DelegationPolicy::LowAndMedium,
+            },
+        ];
+        for command in org {
+            let c = ClientFrame::Command {
+                client_seq: 2,
+                command,
+            };
+            assert_eq!(decode::<ClientFrame>(&encode(&c).unwrap()).unwrap(), c);
+        }
+        let a = ServerFrame::Inputs(vec![Stamped {
+            step: 99,
+            seq: 0,
+            input: Input::Server(ServerCommand::AnalyticsSignals {
+                project: ProjectId(1),
+                day: 2,
+                sessions: 10,
+                visitors: 8,
+                pageviews: 30,
+                engagement_pm: 500,
+                top_pages_digest: 1,
+            }),
+        }]);
+        assert_eq!(decode::<ServerFrame>(&encode(&a).unwrap()).unwrap(), a);
     }
 
     #[test]

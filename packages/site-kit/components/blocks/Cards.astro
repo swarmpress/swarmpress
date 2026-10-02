@@ -1,0 +1,64 @@
+---
+/**
+ * Generic fallback for list-shaped blocks (village-selector, places-to-stay,
+ * featured-carousel, trending-now, latest-stories, curated-escapes, eat-drink,
+ * highlights, audio-guides, practical-advice, feature-section, stats-section,
+ * team-grid, airports-overview, itinerary-days, village-intro, weather-live):
+ * a header plus one card per item, using the item's own fields.
+ */
+import BlockHeader from './BlockHeader.astro'
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const TITLE = ['name', 'title', 'label', 'question', 'day']
+const TEXT = ['description', 'desc', 'blurb', 'excerpt', 'dek', 'bio', 'special', 'perspective', 'summary', 'condition', 'note', 'answer']
+const META = ['value', 'price', 'duration', 'distance', 'time', 'role', 'category', 'type', 'date', 'readTime', 'code', 'rhythm']
+const first = (o: any, keys: string[]) => keys.map((k) => o?.[k]).find((v) => v !== undefined && v !== null && v !== '')
+const listKey = Object.keys(block).find((k) => Array.isArray(block[k]) && block[k].length > 0 && typeof block[k][0] === 'object' && !Array.isArray(block[k][0]))
+const lead = block.leadStory ? [block.leadStory] : []
+const raw: any[] = [...lead, ...(listKey ? block[listKey] : [])]
+const cards = raw.map((it) => {
+  const titleRaw = first(it, TITLE)
+  return {
+    title: typeof titleRaw === 'number' ? String(titleRaw) : ctx.l(titleRaw),
+    text: ctx.l(first(it, TEXT)),
+    meta: META.map((k) => (typeof it?.[k] === 'number' ? String(it[k]) : ctx.l(it?.[k])))
+      .filter(Boolean)
+      .slice(0, 3),
+    image: ctx.media(first(it, ['image', 'avatar', 'src'])),
+    href: first(it, ['url', 'href']) ? ctx.href(first(it, ['url', 'href'])) : undefined,
+    list: ctx.list(it?.moments ?? it?.hobbies),
+  }
+})
+const viewAll = block.viewAllUrl ? ctx.href(block.viewAllUrl) : undefined
+---
+
+<section class="kit-container kit-section kit-cards">
+  <BlockHeader ctx={ctx} eyebrow={block.eyebrow} title={block.title ?? block.village} subtitle={block.subtitle} />
+  {
+    cards.length > 0 && (
+      <ul class="kit-grid" role="list">
+        {cards.map((c) => (
+          <li class="kit-card">
+            {c.image && <img class="kit-card__img" src={c.image.src} alt={c.image.alt ?? ''} loading="lazy" decoding="async" />}
+            <div class="kit-card__body">
+              {c.meta.length > 0 && <p class="kit-small kit-muted">{c.meta.join(' · ')}</p>}
+              {c.title && <h3 class="kit-card__title">{c.href ? <a href={c.href}>{c.title}</a> : c.title}</h3>}
+              {c.text && <p class="kit-card__text">{c.text}</p>}
+              {c.list.length > 0 && <ul class="kit-list kit-small">{c.list.map((i) => <li>{i}</li>)}</ul>}
+            </div>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+  {
+    viewAll && (
+      <p>
+        <a class="kit-button kit-button--secondary" href={viewAll}>
+          {ctx.t('collection.viewAll')}
+        </a>
+      </p>
+    )
+  }
+</section>

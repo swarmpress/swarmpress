@@ -53,7 +53,9 @@ World
 ├─ staff:     BTreeMap<StaffId, Staff { persona, role, seniority, traits, skills, morale, fatigue,
 │                                       salary_cents, home_desk, assignment, activity, pos, path, pose }>
 ├─ projects:  BTreeMap<ProjectId, Project { kind, stage, owner, revisions, deadline_step, … }>
-├─ jobs:      BTreeMap<JobId, Job { kind, project, executor, state, requested_step }>
+├─ plan:      Plan { items: BTreeMap<WorkItemId, WorkItem>, jobs: BTreeMap<u64, PendingJob>,
+│                     jobs_requested, standup_days, feed }        (crates/sim-core/src/plan.rs)
+├─ effects:   Vec<Effect>  (outbox; #[serde(skip)], outside the hash and snapshots)
 ├─ meetings:  BTreeMap<MeetingId, Meeting { kind, room, attendees, agenda, seq, speaker }>
 ├─ inbox:     BTreeMap<TicketId, Ticket { kind, options, default_option, deadline_step, state }>
 ├─ events:    EventDeck { scheduled, cooldowns }
@@ -84,24 +86,74 @@ The room kinds, equipment, staff traits and project kinds are described in the g
 
 ## Commands and effects
 
-- **`ClientCommand`** (player): `PlaceDevice`, `RemoveDevice`, `BuildRoom`, `Hire`, `Fire`,
-  `SetPolicy`, `AnswerTicket{ticket, option}`, `AssignStaff`, `PraiseStaff`, `SendToAgency`.
-  - Each is validated by `validate_command(&World, &cmd) -> Result<(), Reject>`, which is shared
-    by the client (to give instant feedback) and the server (authoritatively).
-- **`ServerCommand`** (facts from outside):
-  - `JobCompleted{job_id, digest{ok, score, words, qa_defects, artifact_sha}}`
-  - `JobFailed{job_id, reason}`
+- **`Command`** (player): building (`BuyFloorSpace`, `PlaceRoom`, `PlaceEquipment`, `Demolish`),
+  people (`Hire`, `Fire`, `Promote`, `SetSalary`, `Praise`), projects (`AssignToProject`,
+  `RemoveFromProject`, `SetProjectLead`, `CreateProject`, `SetProjectStatus`,
+  `SetProjectBudget`), `SetPolicy`, the Inbox (`AnswerTicket{ticket, option}`, `Delegate`,
+  `SetDelegation`).
+- **`ServerCommand`** (facts from outside the sim; in the local-first build, ADR-0038, they are
+  produced by the browser's orchestrator and applied as local commands):
+  - `MeetingOutcome{job_id, briefs: Vec<BriefStub{kind, writer, editor, brief_ref}>}`
+  - `JobCompleted{job_id: u64, digest: JobDigest{ok, score, words, qa_defects, artifact_sha: [u8; 16]}}`
+  - `DeployLanded{work_item}`
   - `Utterance{meeting, seq, speaker, chars}`
-  - `DeployLanded{project, sha}`
-  - `SiteSignals{…}`
-  - `AgencyVisit{…}`
-- **`Effect`** (outputs, executed by the server *after* the transition commits):
-  - `RequestJob{job_id, kind, executor, inputs}`
-  - `OpenTicket{…}`
-  - `RequestMerge{project}`
-  - `StartMeeting{…}`
+  - `SiteSignals{…}`, `AnalyticsSignals{…}`
+- Both are validated by the shared `validate_input(&World, &Input) -> Result<(), Reject>`
+  (`validate` for player commands, `validate_server` for server commands); `World::apply_input`
+  runs it first, so a rejected input never changes the world.
+- **`Effect`** (outputs, drained with `World::drain_effects()` after stepping):
+  - `RequestJob{job_id: u64, kind: JobKind, project, work_item: Option<WorkItemId>,
+    brief_ref: Option<u64>, revision: u8, meeting: Option<MeetingId>, staff: Vec<StaffId>}`
+    with `JobKind = Standup | Brief | Draft | Review | Publish` (`Brief` is reserved).
 
-  Effects are idempotent, keyed by `job_id` or `project`.
+  Effects are an outbox, not state: they are `#[serde(skip)]`, so draining (or not) never
+  moves the hash. Job ids are sequential per world (`plan.jobs_requested`), hence
+  deterministic and idempotency keys for the executor.
+
+## Job contract (MVP)
+
+The article loop of [docs/mvp.md](../mvp.md). The sim owns every transition (ADR-0011); the
+orchestrator (`crates/orchestrator`) runs exactly the job it is given and reports a typed outcome.
+Text never enters the sim: a brief is an opaque `brief_ref`, a result a `JobDigest`.
+
+```text
+09:00 standup ─► RequestJob(Standup, team) ─► MeetingOutcome{briefs}
+   (no outcome within 60 game minutes: the standup ends, the job is dropped)
+   └─► per brief: WorkItem(article) in Draft ─► RequestJob(Draft, writer, revision 0)
+Draft   ─► JobCompleted{ok}               ─► RequestJob(Review, editor, same revision)
+Review  ─► JobCompleted{score ≥ bar (7)}  ─► RequestJob(Publish, IT engineer|DevOps|web dev|editor)
+        ─► JobCompleted{score < bar}      ─► revision + 1 ─► RequestJob(Draft, writer, revision n)
+           after 3 revisions               ─► Blocked + Escalation ticket
+Publish ─► JobCompleted{ok}               ─► Scheduled (merged, awaiting the deploy)
+DeployLanded{work_item}                   ─► Published, project live_pages + 1, feed entry
+any JobCompleted{ok: false}               ─► Blocked + Escalation ticket
+```
+
+- **Standups.** One `RequestJob(Standup)` per active project with a non-empty team per game day
+  (`plan.standup_days` guards against a second one when the meeting ends early). `staff` is the
+  team plus the strategists. The meeting stays open until the outcome arrives, at most an hour.
+- **Briefs.** `MeetingOutcome` is valid only for a pending standup job, with at most 8 briefs;
+  the writer must be a writer, editor, editor-in-chief or translator on the project's team, the
+  editor an editor or editor-in-chief on the team, and nobody reviews their own draft.
+- **Phases.** A work item has phases Draft → Review → Publish. A phase ends at
+  `max(min time, job result)`: Draft 2 h, Review 1 h, Publish 15 min (game time), so the office
+  shows the work even when an executor answers at once.
+- **Results.** `JobCompleted` is valid only for a pending, non-standup job, once (the job leaves
+  `plan.jobs`), with `score ≤ 10`. `DeployLanded` is valid only for a `Scheduled` item.
+- **Escalation.** A blocked item raises a `TicketKind::Escalation` QuestionTicket (priority
+  High, options `Retry | Kill`, `default_option = Kill`, a `deadline_step`). `Retry` restarts the
+  blocked phase with a new job; `Kill` (also the default on expiry) cancels the item and drops its
+  pending jobs. The Secretary never answers it (High).
+- **Statuses** (publishing-plan.md §1): `Planned`, `InProgress` (draft), `InReview`, `Approved`
+  (publishing), `Scheduled`, `Published`, `Blocked`, `Cancelled`.
+- **Boundary.** `client-wasm` exposes `drain_effects_json()` (the orchestrator's `JobRequest`
+  field names), `apply_command_json()` for player and server commands (the orchestrator's
+  `Outcome` JSON as is), `plan_json()` and `Sim.scenario("cinqueterre", seed)`; see
+  `crates/client-wasm/README.md`.
+- **Evidence.** `crates/sim-core/tests/job_contract.rs` walks the whole loop (standup → outcome →
+  draft → review 6 → revision → review 8 → publish → `DeployLanded` → Published), the revision
+  cap, failed jobs and retries; the proptests check the plan invariants; the golden script runs
+  the contract too.
 
 ## Pipeline stages
 

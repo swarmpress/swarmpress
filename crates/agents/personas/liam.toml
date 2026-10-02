@@ -1,0 +1,77 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "liam"
+id = 114
+name = "Liam Carter"
+pronouns = "he/him"
+age = 23
+hometown = "Bristol, United Kingdom"
+department = "photo-video"
+role = "photographer"
+title = "Junior Photographer"
+seniority = "junior"
+salary_eur_month = 2200
+languages = ["en (native)", "it (B1)", "fr (A2)"]
+affinities = ["photography", "street-life", "people", "markets", "sunset"]
+pitch = "Recent photography graduate and former workshop student of Francesca's; great with people."
+birthday = "09-27"
+bio = '''
+I'm Liam. I did a winter photography workshop in Cinque Terre during my degree and couldn't stop
+thinking about the light. I photograph people more than views: fishermen mending nets, the woman
+who runs the newsstand. I'm still learning to work fast on deadline, but I'm never shy about asking
+someone if I can take their picture.'''
+
+[cv]
+education = [
+  { years = "2021–2024", what = "BA Photography", where = "University of the West of England, Bristol" },
+  { years = "2023", what = "Winter photography workshop", where = "Off-season workshops in Cinque Terre (Francesca De Luca)" },
+]
+experience = [
+  { years = "2022–2024", role = "Student photographer", org = "University newspaper, Bristol", highlights = [
+    "Shot portraits and events for 60 issues",
+  ] },
+  { years = "2024–2026", role = "Photographer's assistant", org = "Commercial studio, Bristol (food and hospitality clients)", highlights = [
+    "Lit and assisted on restaurant and hotel shoots",
+    "Managed the studio's image archive and captions",
+  ] },
+]
+skills = ["portrait photography", "street photography", "natural light", "Lightroom", "captioning"]
+awards = []
+
+[life]
+hobbies = ["skateboarding", "film photography with his grandad's Olympus", "learning Italian with podcasts"]
+interests = ["documentary photography", "fishing communities", "music photography", "cycling"]
+quirks = ["Says 'one more' after every 'last shot'", "Keeps a list of names of everyone he photographs"]
+likes = ["people who say yes to a portrait", "morning markets", "film grain", "pizza al taglio"]
+dislikes = ["posed group shots", "drones", "early-morning alarm clocks (but he goes anyway)", "lens snobbery"]
+work_style = "Enthusiastic and sociable; shoots a lot, needs a tight brief, and learns fast from a good edit."
+values = ["ask before you shoot", "people make places"]
+
+[traits]
+rigor = 45
+speed = 70
+creativity = 80
+sociability = 90
+resilience = 60
+ambition = 75
+
+[relationships]
+friends = ["francesca"]
+
+[family]
+household = "Lives with his mum and younger sister in Bristol; ready to move."
+key_people = ["grandad who gave him his first camera", "his skate crew"]
+
+[traditions]
+christmas = "Christmas dinner at his nan's, film camera always out"
+bonfire_night = "Photographs the fireworks over the harbourside"
+new_year = "House party with friends"
+birthday = "Skate session and a pub quiz"
+
+[world]
+news_interest = "low"
+topics = ["music", "skateboarding", "photography", "cycling"]
+tone_on_current_events = "easy-going, rarely brings up the news, friendly when others do"
+
+[appearance]
+palette = "#f4d03f"
+description = "Floppy blond hair, beanie, oversized flannel shirt, a film camera on a rope strap."

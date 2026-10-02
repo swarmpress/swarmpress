@@ -2,11 +2,11 @@
   "about": "World hashes after N game days (N x steps_per_day steps from a fresh world). The ONE shared fixture for determinism evidence: asserted natively and in wasm by crates/client-wasm/tests/runner_golden.rs, and under the Bun runner by packages/runner/test/golden.test.ts. When sim-core changes the world on purpose, regenerate with: for each case, bun packages/runner/src/cli.ts run --seed S --days N --world W --json (sim.final.hash), then run both tests.",
   "steps_per_day": 12000,
   "cases": [
-    { "world": "demo", "seed": "42", "days": 0, "hash": "0x1c2ebfaa9053162a" },
-    { "world": "demo", "seed": "42", "days": 1, "hash": "0xcec6deeee83d247b" },
-    { "world": "demo", "seed": "42", "days": 3, "hash": "0xdbfd36859f7a0288" },
-    { "world": "demo", "seed": "7", "days": 2, "hash": "0xc7e728107602612e" },
-    { "world": "demo", "seed": "18446744073709551615", "days": 1, "hash": "0x9310c16983c32e4c" },
-    { "world": "empty", "seed": "42", "days": 1, "hash": "0x20e6e1ac7d3bf0ce" }
+    { "world": "demo", "seed": "42", "days": 0, "hash": "0x4066511c4c8cd9cc" },
+    { "world": "demo", "seed": "42", "days": 1, "hash": "0xba24a8258533c449" },
+    { "world": "demo", "seed": "42", "days": 3, "hash": "0xa85ccdf99eea04fa" },
+    { "world": "demo", "seed": "7", "days": 2, "hash": "0x6388360d267a8295" },
+    { "world": "demo", "seed": "18446744073709551615", "days": 1, "hash": "0xed74e663b6782960" },
+    { "world": "empty", "seed": "42", "days": 1, "hash": "0x7284689c5c3ed252" }
   ]
 }

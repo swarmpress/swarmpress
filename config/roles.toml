@@ -3,77 +3,134 @@
 # Loaded by `agents::RolesConfig` (embedded at build time via include_str!,
 # overridable at runtime with RolesConfig::from_toml_str).
 #
+# Role and job names are kebab-case, matching the sim's `Role` and the wire
+# JSON (docs/game-design/organization.md §2, §9).
+#
 # [roles.*]   Claude (Agency) model + effort per role (plan, Subsystems 3).
 #             Applies to Claude-executed jobs. Staff jobs run on the local
-#             browser model tier (plan D); see config/models.toml.
+#             browser model tier (plan D); see config/models.toml. Every staff
+#             role needs a profile.
 # [seniority] Staff seniority overrides the role's Claude model (plan A):
 #             Junior -> haiku, Mid -> sonnet, Senior/Star -> opus.
-# [jobs.*]    Executor policy per JobKind: browser | claude | browser_then_claude,
-#             the minimum device tier for browser execution, the role whose
-#             prompt/profile runs the job, and the output token budget.
+# [jobs.*]    Executor policy per JobKind (ADR-0024): browser | claude |
+#             browser_then_claude, the minimum device tier for browser
+#             execution, the role whose prompt/profile runs the job, `also`
+#             (other roles that may perform it when the project team has nobody
+#             in `role`), and the output token budget.
 #
 # Effort is always sent explicitly (output_config.effort); valid values:
 # low | medium | high | xhigh | max. Thinking is adaptive on these models and
 # is never configured here.
 
-[roles.editor_in_chief]
+# --- Executive Office -------------------------------------------------------
+
+[roles.cfo]
+model = "claude-sonnet-5-5"
+effort = "medium"
+
+[roles.secretary]
+model = "claude-sonnet-5-5"
+effort = "low"
+
+# --- Strategy ---------------------------------------------------------------
+
+[roles.strategist]
 model = "claude-opus-5-5"
 effort = "high"
+web_search = true
 
-[roles.writer]
-model = "claude-opus-5-5"
+[roles.analyst]
+model = "claude-sonnet-5-5"
 effort = "medium"
+web_search = true
+
+[roles.data-scientist]
+model = "claude-sonnet-5-5"
+effort = "medium"
+
+# --- Editorial --------------------------------------------------------------
+
+[roles.editor-in-chief]
+model = "claude-opus-5-5"
+effort = "high"
 
 [roles.editor]
 model = "claude-opus-5-5"
 effort = "medium"
 
-[roles.art_director]
+[roles.writer]
 model = "claude-opus-5-5"
-effort = "high"
-vision = true
-
-[roles.frontend_dev]
-model = "claude-opus-5-5"
-effort = "high"
-vision = true
-
-[roles.seo]
-model = "claude-sonnet-5-5"
-effort = "medium"
-web_search = true
-
-[roles.linker]
-model = "claude-sonnet-5-5"
-effort = "medium"
-web_search = true
-
-[roles.researcher]
-model = "claude-sonnet-5-5"
-effort = "medium"
-web_search = true
-
-[roles.media]
-model = "claude-haiku-4-5"
-effort = "low"
-
-[roles.chatter]
-model = "claude-sonnet-5-5"
-effort = "low"
-
-# Not in the plan's table; chosen to match comparable roles.
-[roles.qa]
-model = "claude-sonnet-5-5"
 effort = "medium"
 
 [roles.translator]
 model = "claude-sonnet-5-5"
 effort = "medium"
 
-[roles.critic]
+# Legacy `qa` (QaAnalyst): runs the QA coherence review.
+[roles.fact-checker]
+model = "claude-sonnet-5-5"
+effort = "medium"
+
+# --- Photo & Video ----------------------------------------------------------
+
+# Legacy `media` (MediaEditor).
+[roles.photo-editor]
+model = "claude-haiku-4-5"
+effort = "low"
+
+[roles.photographer]
+model = "claude-haiku-4-5"
+effort = "low"
+
+[roles.video-producer]
+model = "claude-haiku-4-5"
+effort = "low"
+
+# --- Web Development --------------------------------------------------------
+
+[roles.art-director]
+model = "claude-opus-5-5"
+effort = "high"
+vision = true
+
+# Legacy `frontend_dev`.
+[roles.web-developer]
+model = "claude-opus-5-5"
+effort = "high"
+vision = true
+
+# Legacy `critic` (design critique).
+[roles.ux-designer]
 model = "claude-sonnet-5-5"
 effort = "medium"
 vision = true
+
+# --- IT & Operations --------------------------------------------------------
+
+[roles.it-engineer]
+model = "claude-sonnet-5-5"
+effort = "medium"
+
+[roles.dev-ops]
+model = "claude-sonnet-5-5"
+effort = "medium"
+
+# --- SEO & Marketing --------------------------------------------------------
+
+# Legacy `seo` and `linker` (internal linking is SEO work now).
+[roles.seo-specialist]
+model = "claude-sonnet-5-5"
+effort = "medium"
+web_search = true
+
+[roles.marketing-manager]
+model = "claude-sonnet-5-5"
+effort = "medium"
+web_search = true
+
+[roles.social-media-manager]
+model = "claude-haiku-4-5"
+effort = "low"
 
 [seniority]
 junior = "claude-haiku-4-5"
@@ -82,43 +139,53 @@ senior = "claude-opus-5-5"
 star = "claude-opus-5-5"
 
 # ---------------------------------------------------------------------------
-# Job executors (plan D). Tiers: low < mid < high.
+# Job executors (plan D, ADR-0024). Tiers: low < mid < high.
+# Browser: chatter, triage, briefings, drafts. Claude: business cases, site
+# changes, research with web search, candidate generation, theme work.
 # ---------------------------------------------------------------------------
+
+# --- Editorial pipeline and meetings ----------------------------------------
 
 [jobs.standup]
 executor = "browser"
 min_tier = "low"
-role = "editor_in_chief"
+role = "editor-in-chief"
+also = ["editor"]
 max_tokens = 1024
 
 [jobs.brief]
 executor = "browser_then_claude"
 min_tier = "mid"
-role = "editor_in_chief"
+role = "editor-in-chief"
+also = ["editor"]
 max_tokens = 2048
 
 [jobs.draft]
 executor = "browser_then_claude"
 min_tier = "mid"
 role = "writer"
+also = ["editor", "editor-in-chief", "photographer"]
 max_tokens = 16000
 
 [jobs.revise]
 executor = "browser_then_claude"
 min_tier = "mid"
 role = "writer"
+also = ["editor", "editor-in-chief", "photographer"]
 max_tokens = 16000
 
-[jobs.edit_review]
+[jobs.edit-review]
 executor = "browser_then_claude"
 min_tier = "mid"
 role = "editor"
+also = ["editor-in-chief"]
 max_tokens = 4096
 
-[jobs.qa_coherence]
+[jobs.qa-coherence]
 executor = "browser_then_claude"
 min_tier = "mid"
-role = "qa"
+role = "fact-checker"
+also = ["editor"]
 max_tokens = 4096
 
 [jobs.translate]
@@ -129,25 +196,182 @@ max_tokens = 16000
 
 [jobs.research]
 executor = "claude"
-role = "researcher"
+role = "analyst"
+also = ["strategist", "data-scientist"]
 max_tokens = 8000
 
-[jobs.art_direction]
+# --- Design (Agency work) ---------------------------------------------------
+
+[jobs.art-direction]
 executor = "claude"
-role = "art_director"
+role = "art-director"
 max_tokens = 8000
 
-[jobs.theme_code]
+[jobs.theme-code]
 executor = "claude"
-role = "frontend_dev"
+role = "web-developer"
 max_tokens = 32000
 
-[jobs.visual_review]
+[jobs.visual-review]
 executor = "claude"
-role = "art_director"
+role = "art-director"
+also = ["ux-designer"]
 max_tokens = 4096
 
-[jobs.critic_review]
+[jobs.critic-review]
 executor = "claude"
-role = "critic"
+role = "ux-designer"
+also = ["art-director"]
 max_tokens = 4096
+
+# --- Strategy ---------------------------------------------------------------
+
+[jobs.strategy-pitch]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "strategist"
+also = ["editor-in-chief"]
+max_tokens = 3000
+
+[jobs.project-business-case]
+executor = "claude"
+role = "strategist"
+max_tokens = 6000
+
+[jobs.weekly-plan]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "strategist"
+also = ["editor-in-chief"]
+max_tokens = 4096
+
+# --- Data science (organization.md §6a) --------------------------------------
+
+[jobs.kpi-report]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "data-scientist"
+also = ["analyst"]
+max_tokens = 4096
+
+[jobs.content-performance]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "data-scientist"
+also = ["analyst"]
+max_tokens = 1500
+
+[jobs.experiment-readout]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "data-scientist"
+also = ["analyst"]
+max_tokens = 3000
+
+# --- Editorial board --------------------------------------------------------
+
+[jobs.plan-schedule]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "editor-in-chief"
+also = ["editor"]
+max_tokens = 4096
+
+# --- Photo & Video ----------------------------------------------------------
+
+[jobs.photo-selection]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "photo-editor"
+also = ["photographer"]
+max_tokens = 2048
+
+[jobs.photo-brief]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "photo-editor"
+also = ["photographer", "video-producer"]
+max_tokens = 2048
+
+# --- Web Development, IT & Operations ----------------------------------------
+
+[jobs.site-change]
+executor = "claude"
+role = "web-developer"
+also = ["ux-designer"]
+max_tokens = 16000
+
+[jobs.ops-check]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "it-engineer"
+also = ["dev-ops"]
+max_tokens = 3000
+
+# --- SEO & Marketing --------------------------------------------------------
+
+[jobs.seo-plan]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "seo-specialist"
+max_tokens = 4096
+
+[jobs.marketing-plan]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "marketing-manager"
+also = ["seo-specialist"]
+max_tokens = 4096
+
+[jobs.newsletter]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "marketing-manager"
+also = ["seo-specialist", "social-media-manager"]
+max_tokens = 3000
+
+# --- Executive Office -------------------------------------------------------
+
+[jobs.finance-report]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "cfo"
+max_tokens = 3000
+
+[jobs.hiring-affordability]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "cfo"
+max_tokens = 1500
+
+[jobs.secretary-triage]
+executor = "browser"
+min_tier = "low"
+role = "secretary"
+max_tokens = 1024
+
+[jobs.ceo-briefing]
+executor = "browser"
+min_tier = "mid"
+role = "secretary"
+max_tokens = 2048
+
+[jobs.draft-reply]
+executor = "browser"
+min_tier = "low"
+role = "secretary"
+max_tokens = 1024
+
+[jobs.thread-summary]
+executor = "browser"
+min_tier = "low"
+role = "secretary"
+max_tokens = 1500
+
+# --- Hiring -----------------------------------------------------------------
+
+[jobs.candidate-generation]
+executor = "claude"
+role = "strategist"
+also = ["secretary"]
+max_tokens = 6000

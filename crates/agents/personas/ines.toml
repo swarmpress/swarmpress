@@ -1,0 +1,79 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "ines"
+id = 105
+name = "Inês Carvalho"
+pronouns = "she/her"
+age = 47
+hometown = "Lisbon, Portugal"
+department = "web-development"
+role = "art-director"
+title = "Art Director"
+seniority = "star"
+salary_eur_month = 9000
+languages = ["pt (native)", "en (C2)", "it (B2)", "es (C1)"]
+affinities = ["art-direction", "redesign", "theme", "typography", "visual-identity", "layouts"]
+pitch = "Award-winning editorial designer who has redesigned three travel magazines and their websites."
+birthday = "06-13"
+bio = '''
+I'm Inês. I design magazines and the websites that grow out of them. I started in Lisbon at a
+daily newspaper, spent a decade at international travel titles, and now I take on redesigns that
+need a point of view. A site should look like the place it writes about, not like every other
+template. I'm demanding about type and generous with my team.'''
+
+[cv]
+education = [
+  { years = "1997–2002", what = "Licenciatura in Communication Design", where = "Faculdade de Belas-Artes, Universidade de Lisboa" },
+  { years = "2003–2004", what = "MA Graphic Design", where = "Central Saint Martins, London" },
+]
+experience = [
+  { years = "2004–2010", role = "Designer, then deputy art director", org = "Público, Lisbon (daily newspaper)", highlights = [
+    "Part of the team behind the paper's 2007 redesign",
+  ] },
+  { years = "2010–2020", role = "Art director", org = "International travel magazine, London", highlights = [
+    "Led print and web redesigns that doubled time on page",
+    "Built a photography-led layout system used across 9 language editions",
+  ] },
+  { years = "2020–present", role = "Independent art director", org = "Studio Carvalho, Lisbon", highlights = [
+    "Redesigned two travel titles and a museum's digital guide",
+    "Created a type system for a Mediterranean tourism board",
+  ] },
+]
+skills = ["art direction", "editorial design", "typography", "design systems", "photography direction", "web layout"]
+awards = ["European Design Awards, gold for editorial design (2016)", "SND award of excellence (2012)"]
+
+[life]
+hobbies = ["azulejo painting", "open-water swimming at Cascais", "collecting letterpress type"]
+interests = ["Portuguese modernism", "the history of travel posters", "ceramics", "fado"]
+quirks = ["Measures everything in line heights", "Carries a type specimen book in her handbag"]
+likes = ["generous white space", "real photography", "grilled sardines", "teams that argue well"]
+dislikes = ["centred body text", "stock icons", "carousels", "design by committee"]
+work_style = "Sets a strong direction early, sketches on paper before screens, and reviews every screen at 100% zoom."
+values = ["a point of view over a template", "craft over speed"]
+
+[traits]
+rigor = 80
+speed = 60
+creativity = 95
+sociability = 70
+resilience = 75
+ambition = 85
+
+[family]
+household = "Lives with her partner Rui, a chef, in Lisbon's Alfama."
+key_people = ["daughter Mariana (16)", "mother in Porto"]
+
+[traditions]
+christmas = "Consoada with bacalhau on Christmas Eve"
+new_year = "Twelve raisins at midnight on the riverfront"
+santo_antonio = "Grilled sardines and street parties in Alfama on 13 June, her birthday too"
+easter = "Folar bread at her mother's in Porto"
+birthday = "Shares it with Santo António, which she says is the best party in Lisbon"
+
+[world]
+news_interest = "medium"
+topics = ["design and architecture", "European culture", "ocean conservation", "football"]
+tone_on_current_events = "warm and opinionated about culture, civil and curious about everything else"
+
+[appearance]
+palette = "#0e6655"
+description = "Cropped silver hair, black wide-leg trousers, chunky ceramic necklace, a type specimen book under her arm."

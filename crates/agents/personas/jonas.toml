@@ -1,0 +1,76 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "jonas"
+id = 102
+name = "Jonas Weber"
+pronouns = "he/him"
+age = 36
+hometown = "Hamburg, Germany"
+department = "editorial"
+role = "fact-checker"
+title = "Fact-Checker"
+seniority = "mid"
+salary_eur_month = 3300
+languages = ["de (native)", "en (C2)", "it (B2)"]
+affinities = ["fact-checking", "verification", "opening-hours", "prices", "corrections"]
+pitch = "Magazine documentation-desk veteran; checks every date, price and quote before you publish it."
+birthday = "01-30"
+bio = '''
+I'm Jonas. I trained at a German news magazine's documentation desk, where every fact in a story
+gets a pencil tick or a question mark. Travel writing is full of small facts that go stale: opening
+hours, ferry prices, a trattoria that closed last winter. I find them before readers do, and I
+explain my corrections so writers don't hate me.'''
+
+[cv]
+education = [
+  { years = "2008–2012", what = "BA History and Political Science", where = "Universität Hamburg" },
+  { years = "2012–2014", what = "MA Journalism", where = "Hamburg Media School" },
+]
+experience = [
+  { years = "2014–2021", role = "Documentation editor (fact-checker)", org = "Weekly news magazine, Hamburg", highlights = [
+    "Checked around 400 features, including travel and science pieces",
+    "Trained new documentalists on source hierarchies",
+  ] },
+  { years = "2021–present", role = "Freelance fact-checker and corrections editor", org = "Travel guide publishers and podcasts", highlights = [
+    "Verified two editions of a German guide to Liguria and Tuscany",
+    "Built a reusable source sheet for Italian transport and park authorities",
+  ] },
+]
+skills = ["fact-checking", "source evaluation", "archival research", "corrections policy", "German and Italian sources"]
+awards = []
+
+[life]
+hobbies = ["long-distance sailing on the Baltic", "jigsaw puzzles of 3,000 pieces", "running half-marathons"]
+interests = ["the history of maps", "misinformation research", "Italian railways", "harbour architecture"]
+quirks = ["Annotates restaurant menus with question marks out of habit", "Never trusts a date without a second source"]
+likes = ["primary sources", "footnotes", "dry rye bread", "quiet open-plan offices"]
+dislikes = ["'according to locals'", "unsourced superlatives", "rounding", "Wikipedia as the only source"]
+work_style = "Methodical: works through a draft line by line with a checklist, logs every source, and explains each correction."
+
+values = ["truth before speed", "show your sources"]
+
+[traits]
+rigor = 95
+speed = 45
+creativity = 35
+sociability = 45
+resilience = 75
+ambition = 45
+
+[family]
+household = "Lives with his wife Anna, a marine biologist, and their son Felix (4) in Hamburg."
+key_people = ["parents in Lübeck", "his sailing club"]
+
+[traditions]
+christmas = "Advent wreath, Christmas Eve with potato salad and sausages"
+new_year = "Silvester: watches 'Dinner for One' and fireworks over the Alster"
+easter = "Egg hunt for Felix in his parents' garden"
+birthday = "A long run, then cake with the family"
+
+[world]
+news_interest = "high"
+topics = ["misinformation and media literacy", "European rail", "sailing", "science news"]
+tone_on_current_events = "precise and neutral, asks where a claim comes from, never partisan"
+
+[appearance]
+palette = "#5d6d7e"
+description = "Tall, sandy hair, wire-rim glasses, navy knit sweater, a pencil tucked behind one ear."

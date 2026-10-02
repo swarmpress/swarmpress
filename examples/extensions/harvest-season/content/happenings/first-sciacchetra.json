@@ -12,10 +12,10 @@
       "place": "meeting-room",
       "minutes": 45
     },
-    { "type": "gather", "people": ["persona:Rosa", "role:editor_in_chief"], "place": "meeting-room", "minutes": 45 },
+    { "type": "gather", "people": ["persona:Rosa", "role:editor-in-chief"], "place": "meeting-room", "minutes": 45 },
     {
       "type": "memory",
-      "people": ["persona:Rosa", "role:editor_in_chief"],
+      "people": ["persona:Rosa", "role:editor-in-chief"],
       "text": { "en": "Tasted the new Sciacchetrà with a grower from Volastra." }
     },
     {

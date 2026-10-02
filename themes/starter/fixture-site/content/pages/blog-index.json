@@ -1,0 +1,197 @@
+{
+  "id": "blog-index",
+  "slug": {
+    "en": "/en/blog",
+    "de": "/de/blog",
+    "fr": "/fr/blog",
+    "it": "/it/blog"
+  },
+  "title": {
+    "en": "The Dispatch | Stories & Guides from Cinque Terre"
+  },
+  "page_type": "blog-index",
+  "seo": {
+    "title": {
+      "en": "The Dispatch | Stories & Guides from Cinque Terre"
+    },
+    "description": {
+      "en": "Slow journalism for a fast-moving coastline. Curated stories, local secrets, and seasonal guides from the five villages."
+    }
+  },
+  "template": "cinque-terre-blog-index",
+  "body": [
+    {
+      "type": "blog-index",
+      "introTitle": "The Dispatch",
+      "introSubtitle": "Slow Journalism for a Fast-Moving Coastline.",
+      "categories": [
+        "All Stories",
+        "Guides",
+        "Food & Drink",
+        "Culture",
+        "Photography",
+        "Hotels"
+      ],
+      "stories": [
+        {
+          "id": 1,
+          "slug": "the-ultimate-guide-to-cinque-terres-best-beaches",
+          "title": "The Ultimate Guide to Cinque Terre's Best Beaches",
+          "excerpt": "From the sandy shores of Monterosso to the hidden rocky coves of Riomaggiore, we explore the most pristine swimming spots in the Italian Riviera.",
+          "author": "Giulia Rossi",
+          "date": "Oct 15, 2023",
+          "readTime": "8 min read",
+          "category": "Guides",
+          "image": "https://images.unsplash.com/photo-1534445867742-43195f401b6c?q=80&w=2670&auto=format&fit=crop",
+          "isLead": true
+        },
+        {
+          "id": 2,
+          "slug": "5-hidden-gelaterias-you-need-to-try",
+          "title": "5 Hidden Gelaterias You Need to Try",
+          "excerpt": "Skip the tourist traps and find the real deal. Our local experts reveal where to find the creamiest artisanal gelato in the five villages.",
+          "author": "Marco Bianchi",
+          "date": "Oct 14, 2023",
+          "readTime": "4 min read",
+          "category": "Food & Drink",
+          "image": "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 3,
+          "slug": "a-photographers-guide-to-manarola-at-sunset",
+          "title": "A Photographer's Guide to Manarola at Sunset",
+          "excerpt": "Capturing the perfect golden hour shot in Manarola requires timing and positioning. Here are the best angles and secret spots.",
+          "author": "Elena Moretti",
+          "date": "Oct 12, 2023",
+          "readTime": "6 min read",
+          "category": "Photography",
+          "image": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop"
+        },
+        {
+          "id": 4,
+          "slug": "hiking-the-blue-trail-what-to-expect",
+          "title": "Hiking the Blue Trail: What to Expect",
+          "excerpt": "Everything you need to know about the Sentiero Azzurro, from difficulty levels and closures to the most scenic stops along the way.",
+          "author": "Luca Verdi",
+          "date": "Oct 10, 2023",
+          "readTime": "10 min read",
+          "category": "Guides",
+          "image": "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 5,
+          "slug": "where-to-stay-hotel-vs-airbnb",
+          "title": "Where to Stay: Hotel vs. Airbnb",
+          "excerpt": "Choosing the right accommodation can make or break your trip. We weigh the pros and cons for every type of traveler.",
+          "author": "Sofia Neri",
+          "date": "Oct 08, 2023",
+          "readTime": "5 min read",
+          "category": "Hotels",
+          "image": "https://images.unsplash.com/photo-1611892440504-42a792e24d32?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 6,
+          "slug": "day-trip-to-portovenere",
+          "title": "Day Trip to Portovenere",
+          "excerpt": "Often called the 'sixth village', Portovenere offers a more tranquil but equally stunning experience. Here's why you should visit.",
+          "author": "Giulia Rossi",
+          "date": "Oct 05, 2023",
+          "readTime": "7 min read",
+          "category": "Guides",
+          "image": "https://images.unsplash.com/photo-1538681105587-85640961bf8b?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 7,
+          "slug": "the-perfect-first-timer-itinerary",
+          "title": "The Perfect First-Timer Itinerary",
+          "excerpt": "How to see the best of the five villages in just 3 days, from sunrise hikes to sunset aperitivos.",
+          "author": "Giulia Rossi",
+          "date": "Jan 20, 2026",
+          "readTime": "12 min read",
+          "category": "Guides",
+          "image": "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 8,
+          "slug": "best-time-to-visit-and-when-to-skip",
+          "title": "Best Time to Visit (and When to Skip)",
+          "excerpt": "Avoid the crowds and find the perfect weather with this month-by-month guide to Cinque Terre.",
+          "author": "Marco Bianchi",
+          "date": "Jan 18, 2026",
+          "readTime": "8 min read",
+          "category": "Guides",
+          "image": "https://images.unsplash.com/photo-1538681105587-85640961bf8b?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 9,
+          "slug": "local-train-and-ferry-cheatsheet",
+          "title": "Local Train & Ferry Cheatsheet",
+          "excerpt": "Master the logistics of moving between villages with this complete transportation guide.",
+          "author": "Giulia Rossi",
+          "date": "Jan 15, 2026",
+          "readTime": "7 min read",
+          "category": "Guides",
+          "image": "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=2574&auto=format&fit=crop"
+        },
+        {
+          "id": 10,
+          "slug": "the-ultimate-guide-to-cinque-terre-wines",
+          "title": "The Ultimate Guide to Cinque Terre Wines",
+          "excerpt": "From crisp whites to rare Sciacchetrà, discover the ancient winemaking traditions of the Ligurian coast.",
+          "author": "Marco Bianchi",
+          "date": "Jan 12, 2026",
+          "readTime": "8 min read",
+          "category": "Food & Drink",
+          "image": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2632&auto=format&fit=crop"
+        },
+        {
+          "id": 11,
+          "slug": "hidden-gems-corniglias-quiet-streets",
+          "title": "Hidden Gems: Corniglia's Quiet Streets",
+          "excerpt": "Why the least-visited village might be the most rewarding, and what secrets await those who climb.",
+          "author": "Sofia Neri",
+          "date": "Jan 10, 2026",
+          "readTime": "5 min read",
+          "category": "Culture",
+          "image": "https://images.unsplash.com/photo-1498503182468-3b51cbb6cb24?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 12,
+          "slug": "packing-list-what-to-bring-for-a-fall-trip",
+          "title": "Packing List: What to Bring for a Fall Trip",
+          "excerpt": "Essential items for visiting Cinque Terre in September, October, and November.",
+          "author": "Giulia Rossi",
+          "date": "Jan 8, 2026",
+          "readTime": "6 min read",
+          "category": "Guides",
+          "image": "https://images.unsplash.com/photo-1515444744559-7be63e1600de?q=80&w=2670&auto=format&fit=crop"
+        },
+        {
+          "id": 13,
+          "slug": "local-festivals-in-november",
+          "title": "Local Festivals in November",
+          "excerpt": "Discover the cultural celebrations that make visiting in the off-season special.",
+          "author": "Marco Bianchi",
+          "date": "Jan 5, 2026",
+          "readTime": "4 min read",
+          "category": "Culture",
+          "image": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=2632&auto=format&fit=crop"
+        }
+      ],
+      "newsletterTitle": "Get the Dispatch in Your Inbox.",
+      "newsletterSubtitle": "Join 15,000+ lovers of the Italian Riviera. No spam, just curated stories, local secrets, and seasonal guides delivered once a month."
+    }
+  ],
+  "metadata": {
+    "page_type": "blog-index",
+    "blogIndex": {
+      "description": "We don't just list places; we tell their stories. From the salt-crusted traditions of the local fishermen to the quietest corners of the high trails, welcome to our curated chronicle of life in the five villages.",
+      "newsletter": {
+        "disclaimer": "By subscribing, you agree to our Privacy Policy and Terms of Service."
+      }
+    }
+  },
+  "status": "published",
+  "created_at": "2026-01-05T12:00:00.000Z",
+  "updated_at": "2026-01-05T12:00:00.000Z"
+}

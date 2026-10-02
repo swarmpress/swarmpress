@@ -1,0 +1,22 @@
+---
+/** Default language switcher: links to this page's translations (or that language's home). */
+import type { RenderContext } from '../../src/context'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+---
+
+{
+  ctx.nav.languages.length > 1 && (
+    <nav class="kit-langs" aria-label={ctx.t('nav.languages')}>
+      <ul>
+        {ctx.nav.languages.map((l) => (
+          <li>
+            <a href={l.href} hreflang={l.lang} lang={l.lang} aria-current={l.current ? 'true' : undefined}>
+              {l.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}

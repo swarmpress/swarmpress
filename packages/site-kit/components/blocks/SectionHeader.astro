@@ -1,0 +1,10 @@
+---
+/** Fallback: section-header. */
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+---
+
+<div class="kit-container kit-section-header">
+  <p class="kit-eyebrow">{ctx.l(block.label)}</p>
+</div>

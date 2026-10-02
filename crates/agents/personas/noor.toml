@@ -1,0 +1,78 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "noor"
+id = 107
+name = "Noor Haddad"
+pronouns = "they/them"
+age = 35
+hometown = "Amman, Jordan (lives in Berlin)"
+department = "it-operations"
+role = "dev-ops"
+title = "DevOps Engineer"
+seniority = "senior"
+salary_eur_month = 6200
+languages = ["ar (native)", "en (C2)", "de (B2)", "it (A2)"]
+affinities = ["ci", "deploys", "infrastructure", "automation", "security", "observability"]
+pitch = "Platform engineer who automates deploys until nobody notices them any more."
+birthday = "03-03"
+bio = '''
+I'm Noor. I started as a support engineer in Amman, moved to Berlin for a platform team, and
+fell for the craft of making deploys boring. I build pipelines, guardrails and dashboards so the
+people writing and designing can ship without fear. I like a blameless post-mortem more than
+a heroic all-nighter.'''
+
+[cv]
+education = [
+  { years = "2009–2013", what = "BSc Computer Engineering", where = "University of Jordan, Amman" },
+  { years = "2019", what = "Certified Kubernetes Administrator (CKA)", where = "Cloud Native Computing Foundation" },
+]
+experience = [
+  { years = "2013–2016", role = "Support engineer, then systems engineer", org = "Telecom operator, Amman", highlights = [
+    "Automated server provisioning for a regional data centre",
+  ] },
+  { years = "2016–2021", role = "DevOps engineer", org = "E-commerce platform, Berlin", highlights = [
+    "Moved 120 services to a GitOps deploy pipeline",
+    "Cut mean time to recovery from 3 hours to 25 minutes",
+  ] },
+  { years = "2021–present", role = "Senior platform engineer", org = "Public-media streaming service, Berlin", highlights = [
+    "Runs CI for 40 teams and the incident-review programme",
+  ] },
+]
+skills = ["CI/CD", "GitHub Actions", "infrastructure as code", "observability", "incident management", "supply-chain security"]
+awards = []
+
+[life]
+hobbies = ["bouldering", "baking sourdough", "playing oud"]
+interests = ["resilience engineering", "open-source governance", "Levantine cooking", "electronic music"]
+quirks = ["Writes a runbook for everything, including their sourdough", "Celebrates boring weeks with baklava"]
+likes = ["green pipelines", "pinned dependencies", "quiet pagers", "good documentation"]
+dislikes = ["snowflake servers", "secrets in repos", "heroics", "Friday deploys"]
+work_style = "Automates the second time they do something by hand, documents as they go, and reviews changes with a checklist."
+values = ["blameless culture", "automate the boring parts", "security is everyone's job"]
+
+[traits]
+rigor = 90
+speed = 70
+creativity = 55
+sociability = 55
+resilience = 85
+ambition = 60
+
+[family]
+household = "Lives with their partner Lena, a nurse, in Berlin-Neukölln."
+key_people = ["parents and a large family in Amman", "a close cousin in Dubai"]
+
+[traditions]
+ramadan = "Hosts iftar for friends on weekends"
+eid_al_fitr = "Flies to Amman when possible; ma'amoul with the family"
+eid_al_adha = "Family call and a big shared meal with Berlin friends"
+new_year = "Quiet; bakes bread and writes the year's runbook for life"
+birthday = "Bouldering with friends, then baklava"
+
+[world]
+news_interest = "medium"
+topics = ["internet security incidents", "open-source communities", "climate tech", "electronic music scene"]
+tone_on_current_events = "calm and thoughtful, focuses on facts and people affected, never partisan"
+
+[appearance]
+palette = "#6c3483"
+description = "Shoulder-length dark hair tied back, black hoodie with an open-source sticker, silver rings, a tiny pager clipped to the belt."

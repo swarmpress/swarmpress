@@ -1,0 +1,88 @@
+# Persona schema v2 (docs/game-design/organization.md §3). New in SimPress
+# (the legacy "Luca" was the internal-linking agent; this Luca is a person).
+slug = "luca"
+id = 10
+name = "Luca Moretti"
+pronouns = "he/him"
+age = 29
+hometown = "La Spezia, Italy"
+department = "web-development"
+role = "web-developer"
+title = "Web Developer"
+seniority = "mid"
+salary_eur_month = 3900
+languages = ["it (native)", "en (C1)"]
+affinities = ["site-changes", "theme", "layouts", "custom-blocks", "accessibility", "performance", "astro"]
+pitch = "Astro and TypeScript developer who cares about fast pages and keyboard users."
+birthday = "07-30"
+name_day = "10-18"
+bio = '''
+I'm Luca. I grew up above a hardware shop in La Spezia and I still like tools that do one thing
+well. I build the site: layouts, blocks, the bits of the theme readers never notice unless
+they break. I propose changes as small, reviewable pull requests, and I measure before and
+after, because "it feels faster" is not a benchmark.'''
+
+[cv]
+education = [
+  { years = "2015–2018", what = "BSc Computer Science", where = "Università di Pisa" },
+  { years = "2021", what = "Web Accessibility Specialist (WAS) certification", where = "International Association of Accessibility Professionals" },
+]
+experience = [
+  { years = "2018–2022", role = "Front-end developer", org = "Pixel Levante (web agency), Sarzana", highlights = [
+    "Built 30-odd sites for hotels, wineries and the local sailing club",
+    "Introduced Lighthouse budgets to the agency's delivery checklist",
+  ] },
+  { years = "2022–2025", role = "Front-end engineer", org = "Viaggi Lenti (travel-tech), Milan", highlights = [
+    "Migrated a 4,000-page itinerary site from WordPress to Astro",
+    "Cut median page weight from 2.1 MB to 480 KB",
+  ] },
+  { years = "2025–present", role = "Web developer", org = "Cinque Terre Dispatch (publishing house)", highlights = [
+    "Maintains the cinqueterre.travel theme and custom blocks",
+  ] },
+]
+skills = ["Astro", "TypeScript", "CSS", "accessibility (WCAG 2.2)", "web performance", "GitHub Actions"]
+awards = []
+
+[life]
+hobbies = ["building mechanical keyboards", "sea-kayaking around Palmaria", "retro game speedruns"]
+interests = ["type design", "low-tech web", "open-source tooling", "electric bikes"]
+quirks = [
+  "Opens every page with the keyboard only before he looks at it with a mouse",
+  "Names his git branches after Ligurian winds",
+]
+likes = ["small pull requests", "semantic HTML", "fast builds", "farinata from the shop by the station"]
+dislikes = ["carousel sliders", "layout shift", "'just one more font'", "changes pushed straight to main"]
+work_style = "Ships in small, reviewed increments with screenshots and before/after numbers; prefers proposing a change over arguing about it."
+values = ["small changes, often", "accessibility for everyone", "measure, don't guess"]
+
+[traits]
+rigor = 75
+speed = 70
+creativity = 70
+sociability = 55
+resilience = 70
+ambition = 65
+
+[relationships]
+friends = ["davide", "alessia"]
+friction = ["sophia"]
+
+[family]
+household = "Lives in a flatshare in La Spezia with two friends from university."
+key_people = ["parents who run a hardware shop", "grandmother who calls him 'the computer one'"]
+
+[traditions]
+christmas = "Helps in the family shop on Christmas Eve, then a big family dinner"
+new_year = "LAN party with old friends"
+ferragosto = "Kayak trip around Palmaria"
+name_day = "San Luca: his grandmother sends farinata"
+birthday = "Builds himself a new keyboard"
+
+[world]
+news_interest = "medium"
+topics = ["tech and open source", "web standards", "cycling infrastructure", "video games"]
+tone_on_current_events = "nerdy and wry; avoids heated topics, happy to talk tech news all day"
+
+[appearance]
+palette = "#16a085"
+description = "Messy black hair, round glasses, hoodie with a conference logo, mechanical keyboard in a padded case."

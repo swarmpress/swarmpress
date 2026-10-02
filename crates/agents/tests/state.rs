@@ -65,7 +65,7 @@ fn content_table() -> Vec<(CS, CE, CS, Vec<Role>)> {
             CS::Approved,
             CE::ReadyForPublish,
             CS::Scheduled,
-            vec![Seo, System],
+            vec![SeoSpecialist, System],
         ),
         (
             CS::Scheduled,
@@ -83,7 +83,7 @@ fn content_all_pairs_all_roles() {
     let mut legal = 0;
     for &from in CS::ALL {
         for &event in CE::ALL {
-            for role in Role::ALL {
+            for &role in Role::ALL {
                 let got = content_transition(from, event, &actor(role));
                 let expected = table.iter().find(|(f, e, _, _)| *f == from && *e == event);
                 match (expected, got) {
@@ -225,7 +225,7 @@ fn task_all_pairs() {
     for &from in TS::ALL {
         for &event in TE::ALL {
             let row = table.iter().find(|r| r.0 == from && r.1 == event);
-            for role in Role::ALL {
+            for &role in Role::ALL {
                 // non-assignee
                 let a = Actor::new(role, "someone-else");
                 let got = task_transition(from, event, &a, Some("assigned-one"));
@@ -264,7 +264,7 @@ fn ticket_all_pairs_and_originator_rule() {
             KS::Open,
             KE::AnswerProvided,
             KS::Answered,
-            vec![Ceo, EditorInChief, System],
+            vec![Ceo, EditorInChief, Secretary, System],
         ),
         (KS::Answered, KE::AgentAcknowledged, KS::Closed, vec![Ceo]),
         (KS::Open, KE::InvalidTicket, KS::Closed, vec![Ceo]),
@@ -272,7 +272,7 @@ fn ticket_all_pairs_and_originator_rule() {
     for &from in KS::ALL {
         for &event in KE::ALL {
             let row = table.iter().find(|r| r.0 == from && r.1 == event);
-            for role in Role::ALL {
+            for &role in Role::ALL {
                 let got = ticket_transition(from, event, &Actor::new(role, "x"), Some("opener"));
                 match row {
                     _ if TicketMachine::is_terminal(from) => {

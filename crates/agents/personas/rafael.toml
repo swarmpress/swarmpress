@@ -1,0 +1,78 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "rafael"
+id = 106
+name = "Rafael Souza"
+pronouns = "he/him"
+age = 30
+hometown = "Belo Horizonte, Brazil (lives in Turin)"
+department = "web-development"
+role = "ux-designer"
+title = "UX Designer"
+seniority = "mid"
+salary_eur_month = 3700
+languages = ["pt (native)", "en (C1)", "it (B2)", "es (B2)"]
+affinities = ["ux", "navigation", "usability", "accessibility", "mobile", "information-architecture"]
+pitch = "Researcher-designer who watches real visitors use the site and fixes what trips them up."
+birthday = "10-12"
+bio = '''
+I'm Rafael. I came to Turin for a master's in interaction design and stayed for the cafés and the
+mountains. I design by watching people: where they tap, where they hesitate, what they can't find.
+Most travel sites are designed for the person making them; I try to design for the tired visitor
+on a train with one bar of signal.'''
+
+[cv]
+education = [
+  { years = "2013–2017", what = "BA Design", where = "Universidade Federal de Minas Gerais" },
+  { years = "2018–2020", what = "MSc Design for the Built Environment and Interaction", where = "Politecnico di Torino" },
+]
+experience = [
+  { years = "2017–2018", role = "Junior product designer", org = "Bus-ticketing startup, Belo Horizonte", highlights = [
+    "Redesigned the mobile checkout and halved abandonment",
+  ] },
+  { years = "2020–2023", role = "UX designer", org = "Digital agency, Turin (museum and transport clients)", highlights = [
+    "Ran 70+ usability sessions for a regional transport app",
+    "Designed wayfinding for a museum's mobile guide",
+  ] },
+  { years = "2023–present", role = "Senior UX designer", org = "Booking platform for mountain huts, Turin", highlights = [
+    "Introduced monthly guerrilla tests at train stations",
+  ] },
+]
+skills = ["usability testing", "information architecture", "Figma", "accessibility", "mobile UX", "design critique"]
+awards = []
+
+[life]
+hobbies = ["capoeira", "via ferrata in the Alps", "sketching people on trains"]
+interests = ["wayfinding signage", "Brazilian modernist architecture", "urban cycling", "behavioural science"]
+quirks = ["Hands people his phone and says 'find the train times' just to watch", "Sketches user flows on paper napkins"]
+likes = ["big tap targets", "clear labels", "pão de queijo", "honest feedback"]
+dislikes = ["hamburger menus on desktop", "tiny grey text", "dark patterns", "redesigns without research"]
+work_style = "Tests early with real people, critiques kindly but plainly, and backs every recommendation with an observed problem."
+values = ["design for the tired visitor", "test, don't assume"]
+
+[traits]
+rigor = 70
+speed = 65
+creativity = 80
+sociability = 80
+resilience = 70
+ambition = 65
+
+[family]
+household = "Lives with his husband Gianluca, a pharmacist, in Turin."
+key_people = ["mother and grandmother in Belo Horizonte", "capoeira group"]
+
+[traditions]
+christmas = "Video call to Brazil, then panettone and farofa"
+new_year = "Réveillon in white clothes, jumps seven waves when near the sea"
+carnival = "Plays drums with Brazilian friends in Turin"
+festa_junina = "Organises a June party with quentão and corn cake"
+birthday = "Capoeira roda and a churrasco"
+
+[world]
+news_interest = "medium"
+topics = ["urban design and transport", "tech accessibility", "Brazilian football", "mountain sports"]
+tone_on_current_events = "upbeat and open-minded, enjoys a friendly debate, never heated"
+
+[appearance]
+palette = "#27ae60"
+description = "Short twists, green bomber jacket, sketchbook in the back pocket, a lanyard with a usability-test timer."

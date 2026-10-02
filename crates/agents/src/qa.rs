@@ -59,7 +59,7 @@ pub async fn qa_coherence_review(
     page: &Value,
 ) -> Result<QaReport, LlmError> {
     let req = LlmRequest {
-        profile: CallProfile::new(JobKind::QaCoherence, Role::Qa),
+        profile: CallProfile::new(JobKind::QaCoherence, Role::FactChecker),
         system: vec![system.to_owned()],
         messages: vec![LlmMessage::user(format!(
             "## Page\n```json\n{}\n```\n\nReview this page for coherence defects.",

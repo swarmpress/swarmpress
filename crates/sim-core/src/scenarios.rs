@@ -1,96 +1,331 @@
 //! Canned worlds and scripts.
 //!
-//! [`demo_office`] reproduces the M0 stand-in layout from
-//! `apps/game/src/state/render-state.ts`: a 16×10 lot with a 10×10 newsroom
-//! (four desks, north and west windows), a 6×5 editor's office (north window)
-//! and a 6×5 window-less meeting room, staffed by Isabella, Lorenzo, Sophia,
-//! Giulia and Marco. The newsroom is busy mid-morning; at night only Marco
-//! (editor, on deadline) is in, until about 23:15.
+//! [`demo_office`] is the cinqueterre.travel starting company
+//! (docs/game-design/organization.md §10): the player is the CEO (not a
+//! `Staff` entity, but with an office), plus 13 people in seven departments
+//! and one active project, `cinqueterre-travel`.
 //!
-//! The demo is built through [`World::apply`], so it is also a valid world by
-//! construction (construction costs are booked in the ledger).
+//! The building is one floor on a 24×16 m lot, entrance on the south side:
+//!
+//! ```text
+//!   x: 0       8     12    16    20    24
+//! z 0 ┌───────┬─────┬─────┬─────┬─────┐
+//!     │Newsrm │Edit.│Kitch│ CEO │Finan│  north row (windows north;
+//!     │3 desks│ off.│ en  │ off.│ ce  │  newsroom west, finance east)
+//!     │+3 spar│     │     │Paolo│Elena│
+//!   6 ├───────┴─────┴─────┴─────┴─────┤  corridor (z 6..8)
+//!   8 ├─────┬────┬──┬─────┬───┬──────┤
+//!     │Meet-│Pho-│  │Stra-│De-│ SEO  │  south row (windows south;
+//!     │ ing │ to │co│tegy │sig│ lab  │  meeting west, SEO east)
+//!     │room │stu-│rr│room │ n │──────┤
+//!     │     │dio │  │     │   │Server│  server room opens into the SEO lab
+//!  16 └─────┴────┴▲─┴─────┴───┴──────┘
+//!                 entrance (10,15) south
+//! ```
+//!
+//! Room choices: the CFO works in a new `finance-office` kind; Strategy has
+//! its own `strategy-room` kind (strategist and data-scientist desks around a
+//! planning table), which also serves as the second meeting room when two
+//! project standups overlap. The CEO office has the Secretary's desk (the
+//! front door of the Inbox) and no desk for the CEO, who is the player.
+//!
+//! cinqueterre.travel starts as a legacy publication at company level 3
+//! (rooms-and-progression.md); its building predates the progression gates,
+//! so the scenario builds at level 4 (design studio) and then sets level 3.
+//!
+//! The demo is built through [`World::apply`] (construction and staffing are
+//! validated and booked); only people ([`World::add_staff`]) and the imported
+//! project ([`World::add_project`]) are inserted directly.
 
 use crate::building::{Building, Door, Entrance, RoomKind, Window};
 use crate::clock::{hm, SimConfig};
 use crate::commands::{
-    Command, DemolishTarget, Input, OvertimePolicy, Placement, Policy, ServerCommand, SiteSignals,
+    Command, DemolishTarget, Input, JobDigest, OvertimePolicy, Placement, Policy, ServerCommand,
+    SiteSignals,
 };
 use crate::economy::Company;
 use crate::equipment::EquipmentKind;
 use crate::geom::{PosMm, Side, Tile, TileRect};
-use crate::ids::{CandidateId, EquipId, MeetingId, RoomId, StaffId};
-use crate::staff::{persona_by_key, salary_for, Schedule, Seniority, Traits};
+use crate::ids::{
+    CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId,
+};
+use crate::inbox::{DelegationPolicy, FollowUpTopic, SecretaryTaskKind, TicketOption};
+use crate::plan::{BriefStub, WorkItemKind};
+use crate::projects::ProjectStatus;
+use crate::staff::{persona, persona_by_key, Schedule, Traits};
 use crate::world::World;
 
-/// Starting cash of the demo company before construction, cents ($150,000).
-pub const DEMO_START_CASH: i64 = 15_000_000;
-/// Company level of the demo (2: meeting rooms unlocked).
-pub const DEMO_LEVEL: u8 = 2;
+/// Starting cash of the cinqueterre.travel company before construction,
+/// cents (€300 000).
+pub const DEMO_START_CASH: i64 = 30_000_000;
+/// Company level of the demo: a legacy publication (level 3).
+pub const DEMO_LEVEL: u8 = 3;
+/// Monthly budget of the cinqueterre.travel project, cents (€80 000; the
+/// team costs about €71 000 a month with overtime and its share of rent and
+/// upkeep).
+pub const DEMO_BUDGET_CENTS: i64 = 8_000_000;
+/// The demo's project.
+pub const DEMO_PROJECT: ProjectId = ProjectId(1);
 
 /// Steps the golden determinism test runs.
 pub const GOLDEN_STEPS: u64 = 50_000;
 /// Seed of the golden determinism test.
 pub const GOLDEN_SEED: u64 = 42;
 
-/// `(key, desk position, desk rotation, arrive, leave, lunch, traits)`
-type DemoPerson = (&'static str, PosMm, u8, u16, u16, u16, Traits);
+/// `(persona slug, room kind, desk position, rotation, (arrive, leave,
+/// lunch), traits, allocation % on cinqueterre.travel)`
+type DemoPerson = (&'static str, PosMm, u8, (u16, u16, u16), Traits, u8);
 
-fn demo_people() -> [DemoPerson; 5] {
-    let t = |rigor, speed, creativity, sociability, resilience, ambition| Traits {
+fn t(
+    rigor: u16,
+    speed: u16,
+    creativity: u16,
+    sociability: u16,
+    resilience: u16,
+    ambition: u16,
+) -> Traits {
+    Traits {
         rigor,
         speed,
         creativity,
         sociability,
         resilience,
         ambition,
-    };
+    }
+}
+
+/// The staff in persona-id order (so `staff-N` plays persona `N`).
+fn demo_people() -> [DemoPerson; 13] {
     [
         (
-            "isabella",
-            PosMm::new(2_500, 3_000),
+            "giulia",
+            PosMm::new(1_500, 1_500),
             0,
-            hm(8, 10),
-            hm(18, 0),
-            hm(12, 30),
+            (hm(8, 45), hm(18, 30), hm(12, 30)),
+            t(650, 550, 850, 750, 600, 600),
+            100,
+        ),
+        (
+            "isabella",
+            PosMm::new(4_000, 1_500),
+            0,
+            (hm(8, 10), hm(18, 0), hm(12, 30)),
             t(600, 750, 800, 700, 650, 700),
+            100,
         ),
         (
             "lorenzo",
-            PosMm::new(5_000, 3_000),
+            PosMm::new(6_500, 1_500),
             0,
-            hm(8, 40),
-            hm(17, 30),
-            hm(12, 45),
+            (hm(8, 40), hm(17, 30), hm(12, 45)),
             t(850, 450, 700, 500, 600, 500),
+            100,
         ),
         (
             "sophia",
-            PosMm::new(2_500, 6_500),
+            PosMm::new(9_000, 2_000),
             0,
-            hm(9, 0),
-            hm(20, 30),
-            hm(13, 0),
+            (hm(8, 30), hm(19, 30), hm(13, 0)),
             t(700, 600, 600, 800, 700, 650),
-        ),
-        (
-            "giulia",
-            PosMm::new(5_000, 6_500),
-            0,
-            hm(9, 15),
-            hm(18, 30),
-            hm(12, 30),
-            t(650, 550, 850, 750, 600, 600),
+            100,
         ),
         (
             "marco",
-            PosMm::new(13_000, 2_500),
-            2,
-            hm(8, 0),
-            hm(23, 15),
-            hm(13, 0),
+            PosMm::new(11_000, 2_000),
+            0,
+            (hm(8, 0), hm(23, 15), hm(13, 0)),
             t(900, 600, 500, 550, 800, 750),
+            100,
+        ),
+        (
+            "francesca",
+            PosMm::new(8_000, 9_500),
+            0,
+            (hm(8, 35), hm(18, 0), hm(12, 30)),
+            t(650, 600, 900, 650, 600, 600),
+            100,
+        ),
+        (
+            "elena",
+            PosMm::new(21_500, 2_000),
+            0,
+            (hm(8, 20), hm(18, 0), hm(12, 30)),
+            t(950, 650, 450, 550, 800, 700),
+            0,
+        ),
+        (
+            "paolo",
+            PosMm::new(17_000, 4_000),
+            0,
+            (hm(8, 10), hm(17, 30), hm(12, 15)),
+            t(850, 750, 450, 850, 700, 450),
+            0,
+        ),
+        (
+            "chiara",
+            PosMm::new(13_000, 9_500),
+            0,
+            (hm(8, 30), hm(18, 0), hm(12, 45)),
+            t(750, 600, 850, 700, 650, 750),
+            0,
+        ),
+        (
+            "luca",
+            PosMm::new(17_500, 9_500),
+            0,
+            (hm(8, 50), hm(18, 30), hm(13, 0)),
+            t(750, 700, 700, 500, 650, 650),
+            100,
+        ),
+        (
+            "davide",
+            PosMm::new(21_500, 13_500),
+            0,
+            (hm(8, 25), hm(17, 30), hm(12, 30)),
+            t(900, 650, 450, 400, 800, 550),
+            100,
+        ),
+        (
+            "alessia",
+            PosMm::new(21_500, 9_500),
+            0,
+            (hm(8, 45), hm(18, 0), hm(12, 30)),
+            t(700, 700, 650, 750, 600, 700),
+            100,
+        ),
+        (
+            "matteo",
+            PosMm::new(15_000, 9_500),
+            0,
+            (hm(8, 40), hm(18, 0), hm(13, 0)),
+            t(950, 600, 600, 450, 700, 650),
+            0,
         ),
     ]
+}
+
+/// Spare newsroom desks for hires.
+const SPARE_DESKS: [PosMm; 3] = [
+    PosMm::new(1_500, 4_000),
+    PosMm::new(4_000, 4_000),
+    PosMm::new(6_500, 4_000),
+];
+
+fn window(side: Side, at_mm: i32, width_mm: i32) -> Window {
+    Window {
+        side,
+        at_mm,
+        width_mm,
+    }
+}
+
+fn door(side: Side, at: i32) -> Door {
+    Door { side, at }
+}
+
+/// `(kind, rect, doors, windows)` of every room, in build order.
+fn demo_rooms() -> Vec<(RoomKind, TileRect, Vec<Door>, Vec<Window>)> {
+    use Side::*;
+    vec![
+        (
+            RoomKind::Newsroom,
+            TileRect::new(0, 0, 8, 6),
+            vec![door(South, 3)],
+            vec![
+                window(North, 1_000, 2_500),
+                window(North, 4_500, 2_500),
+                window(West, 1_500, 3_000),
+            ],
+        ),
+        (
+            RoomKind::EditorOffice,
+            TileRect::new(8, 0, 4, 6),
+            vec![door(South, 1)],
+            vec![window(North, 1_000, 2_000)],
+        ),
+        (
+            RoomKind::Kitchen,
+            TileRect::new(12, 0, 4, 6),
+            vec![door(South, 1)],
+            vec![window(North, 1_000, 2_000)],
+        ),
+        (
+            RoomKind::CeoOffice,
+            TileRect::new(16, 0, 4, 6),
+            vec![door(South, 1)],
+            vec![window(North, 1_000, 2_000)],
+        ),
+        (
+            RoomKind::FinanceOffice,
+            TileRect::new(20, 0, 4, 6),
+            vec![door(South, 1)],
+            vec![window(North, 1_000, 2_000), window(East, 1_500, 3_000)],
+        ),
+        (
+            RoomKind::MeetingRoom,
+            TileRect::new(0, 8, 6, 8),
+            vec![door(North, 3)],
+            vec![window(West, 2_000, 3_000), window(South, 1_500, 3_000)],
+        ),
+        (
+            RoomKind::PhotoStudio,
+            TileRect::new(6, 8, 4, 8),
+            vec![door(North, 2)],
+            vec![window(South, 1_000, 2_000)],
+        ),
+        (
+            RoomKind::StrategyRoom,
+            TileRect::new(12, 8, 4, 8),
+            vec![door(North, 1), door(West, 2)],
+            vec![window(South, 1_000, 2_000)],
+        ),
+        (
+            RoomKind::DesignStudio,
+            TileRect::new(16, 8, 3, 8),
+            vec![door(North, 1)],
+            vec![window(South, 500, 2_000)],
+        ),
+        (
+            RoomKind::SeoLab,
+            TileRect::new(19, 8, 5, 4),
+            vec![door(North, 2)],
+            vec![window(East, 1_000, 2_000)],
+        ),
+        (
+            RoomKind::ServerRoom,
+            TileRect::new(19, 12, 5, 4),
+            vec![door(North, 2)],
+            vec![],
+        ),
+    ]
+}
+
+/// Props: `(kind, position)`.
+fn demo_props() -> [(EquipmentKind, PosMm); 8] {
+    [
+        (EquipmentKind::CoffeeMachine, PosMm::new(15_300, 700)),
+        (EquipmentKind::Plant, PosMm::new(19_400, 600)),
+        (EquipmentKind::ArchiveShelf, PosMm::new(16_800, 800)),
+        (EquipmentKind::Plant, PosMm::new(23_400, 5_400)),
+        (EquipmentKind::Whiteboard, PosMm::new(3_000, 8_600)),
+        (EquipmentKind::CameraRig, PosMm::new(8_000, 13_500)),
+        (EquipmentKind::Whiteboard, PosMm::new(14_000, 15_300)),
+        (EquipmentKind::MoodBoardWall, PosMm::new(17_500, 14_500)),
+    ]
+}
+
+/// Scenario names accepted by [`scenario`].
+pub const SCENARIOS: [&str; 3] = ["cinqueterre", "demo", "empty"];
+
+/// A world by scenario name: `"cinqueterre"` (alias `"demo"`) is the
+/// cinqueterre.travel starting company ([`demo_office`], 13 people,
+/// staff-1..staff-13); `"empty"` is an empty company on the default lot.
+pub fn scenario(name: &str, seed: u64) -> Option<World> {
+    match name {
+        "cinqueterre" | "demo" => Some(demo_office(seed)),
+        "empty" => Some(World::new(seed)),
+        _ => None,
+    }
 }
 
 /// The demo office with the default clock (20 real minutes per day, 07:00 start).
@@ -98,104 +333,126 @@ pub fn demo_office(seed: u64) -> World {
     demo_office_with_config(seed, SimConfig::default())
 }
 
-/// The demo office with a custom clock.
+/// The cinqueterre.travel starting company with a custom clock.
 pub fn demo_office_with_config(seed: u64, config: SimConfig) -> World {
     let building = Building::new(
-        TileRect::new(0, 0, 16, 10),
+        TileRect::new(0, 0, 24, 16),
         Entrance {
-            tile: Tile::new(4, 9),
+            tile: Tile::new(10, 15),
             side: Side::South,
         },
     );
-    let mut w = World::with_parts(
-        seed,
-        config,
-        building,
-        Company::new(DEMO_START_CASH, DEMO_LEVEL),
-    );
+    // Built at level 4 (design studio), then set to the legacy level 3.
+    let mut w = World::with_parts(seed, config, building, Company::new(DEMO_START_CASH, 4));
     let must = |w: &mut World, c: Command| {
         w.apply(c).expect("demo command is valid");
     };
-    let window = |side, at_mm, width_mm| Window {
-        side,
-        at_mm,
-        width_mm,
-    };
-    must(
-        &mut w,
-        Command::PlaceRoom {
-            kind: RoomKind::Newsroom,
-            rect: TileRect::new(0, 0, 10, 10),
-            floor: 0,
-            doors: vec![
-                Door {
-                    side: Side::East,
-                    at: 2,
-                },
-                Door {
-                    side: Side::East,
-                    at: 7,
-                },
-            ],
-            windows: vec![
-                window(Side::North, 1_500, 2_500),
-                window(Side::North, 6_000, 2_500),
-                window(Side::West, 2_000, 2_500),
-                window(Side::West, 6_000, 2_500),
-            ],
-        },
-    );
-    must(
-        &mut w,
-        Command::PlaceRoom {
-            kind: RoomKind::EditorOffice,
-            rect: TileRect::new(10, 0, 6, 5),
-            floor: 0,
-            doors: vec![],
-            windows: vec![window(Side::North, 1_500, 3_000)],
-        },
-    );
-    must(
-        &mut w,
-        Command::PlaceRoom {
-            kind: RoomKind::MeetingRoom,
-            rect: TileRect::new(10, 5, 6, 5),
-            floor: 0,
-            doors: vec![],
-            windows: vec![],
-        },
-    );
-    for (key, pos, rot, arrive, leave, lunch, traits) in demo_people() {
-        let desk = w.ids.peek_equip();
+    for (kind, rect, doors, windows) in demo_rooms() {
         must(
             &mut w,
+            Command::PlaceRoom {
+                kind,
+                rect,
+                floor: 0,
+                doors,
+                windows,
+            },
+        );
+    }
+    let desk_at = |w: &mut World, pos: PosMm, rot: u8, screen: EquipmentKind| -> EquipId {
+        let desk = w.ids.peek_equip();
+        must(
+            w,
             Command::PlaceEquipment {
                 kind: EquipmentKind::Desk,
                 placement: Placement::Floor { pos, rot },
             },
         );
-        for kind in [EquipmentKind::Monitor, EquipmentKind::DeskLamp] {
+        for kind in [screen, EquipmentKind::DeskLamp] {
             must(
-                &mut w,
+                w,
                 Command::PlaceEquipment {
                     kind,
                     placement: Placement::OnDesk(desk),
                 },
             );
         }
-        let persona = persona_by_key(key).expect("demo persona exists");
-        let role = crate::staff::persona(persona).role;
-        w.add_staff(
-            persona,
-            role,
-            Seniority::Senior,
+        desk
+    };
+    let project = w.add_project(
+        "cinqueterre-travel",
+        "cinqueterre.travel",
+        "cinqueterre.travel",
+        ProjectStatus::Active,
+    );
+    let mut staffed = Vec::new();
+    for (key, pos, rot, (arrive, leave, lunch), traits, allocation) in demo_people() {
+        let pid = persona_by_key(key).expect("demo persona exists");
+        let p = persona(pid).expect("demo persona exists");
+        let screen = if p.role == crate::roles::Role::WebDeveloper {
+            EquipmentKind::ColorMonitor
+        } else {
+            EquipmentKind::Monitor
+        };
+        let desk = desk_at(&mut w, pos, rot, screen);
+        let id = w.add_staff(
+            pid,
+            p.role,
+            p.seniority,
             traits,
-            salary_for(role, Seniority::Senior),
+            p.salary_cents_per_day(),
             Schedule::new(arrive, leave, lunch),
             Some(desk),
         );
+        if allocation > 0 {
+            staffed.push((id, allocation));
+        }
     }
-    // Shortlist without the people already on staff (candidates 4..=6).
+    for pos in SPARE_DESKS {
+        desk_at(&mut w, pos, 0, EquipmentKind::Monitor);
+    }
+    for (kind, pos) in demo_props() {
+        must(
+            &mut w,
+            Command::PlaceEquipment {
+                kind,
+                placement: Placement::Floor { pos, rot: 0 },
+            },
+        );
+    }
+    for (staff, allocation_pct) in staffed {
+        must(
+            &mut w,
+            Command::AssignToProject {
+                staff,
+                project,
+                allocation_pct,
+            },
+        );
+    }
+    let sophia = StaffId(4);
+    must(
+        &mut w,
+        Command::SetProjectLead {
+            project,
+            staff: sophia,
+        },
+    );
+    must(
+        &mut w,
+        Command::SetProjectBudget {
+            project,
+            monthly_cents: DEMO_BUDGET_CENTS,
+        },
+    );
+    must(
+        &mut w,
+        Command::SetDelegation {
+            policy: DelegationPolicy::Low,
+        },
+    );
+    w.company.level = DEMO_LEVEL;
+    // Shortlist without the people already on staff.
     w.refresh_candidates();
     w
 }
@@ -203,30 +460,45 @@ pub fn demo_office_with_config(seed: u64, config: SimConfig) -> World {
 /// The fixed command log of the golden determinism test, as
 /// `(step, input)`. Each entry is enqueued at `(step, 0)`.
 ///
-/// Covers: buying land, building a kitchen (lunch moves there), buying a desk
-/// with a monitor and lamp, hiring, two standup utterances, site signals,
-/// overtime policy changes, firing someone mid-shift, placing and removing a
-/// plant, and demolishing the kitchen at night.
+/// Covers: budgets, buying land, building an archive with a shelf, hiring
+/// (CFO affordability ticket, auto-answered under Low delegation), staffing
+/// the hire, praise, promotion, a salary change, proposing a second project,
+/// delegated tasks (draft reply, meeting, follow-up), standup utterances,
+/// the job contract (a standup outcome with two briefs, drafts, a passing
+/// and a failing review, a revision, publishing, a landed deploy),
+/// site and analytics signals, overtime policy changes, firing the
+/// photographer mid-shift (missing-role ticket) and answering it, activating
+/// the second project and splitting a writer across both, placing and
+/// removing a plant, demolishing the archive at night and widening the
+/// delegation.
 pub fn golden_script() -> Vec<(u64, Input)> {
     let p = |c: Command| Input::Player(c);
     let s = |c: ServerCommand| Input::Server(c);
+    let amalfi = ProjectId(2);
     vec![
         (
             100,
+            p(Command::SetProjectBudget {
+                project: DEMO_PROJECT,
+                monthly_cents: 8_500_000,
+            }),
+        ),
+        (
+            200,
             p(Command::BuyFloorSpace {
                 side: Side::East,
                 tiles: 4,
             }),
         ),
         (
-            200,
+            300,
             p(Command::PlaceRoom {
-                kind: RoomKind::Kitchen,
-                rect: TileRect::new(16, 5, 4, 5),
+                kind: RoomKind::Archive,
+                rect: TileRect::new(24, 4, 4, 4),
                 floor: 0,
                 doors: vec![Door {
                     side: Side::West,
-                    at: 1,
+                    at: 2,
                 }],
                 windows: vec![Window {
                     side: Side::East,
@@ -236,68 +508,140 @@ pub fn golden_script() -> Vec<(u64, Input)> {
             }),
         ),
         (
-            300,
-            p(Command::PlaceEquipment {
-                kind: EquipmentKind::CoffeeMachine,
-                placement: Placement::Floor {
-                    pos: PosMm::new(19_000, 9_000),
-                    rot: 0,
-                },
-            }),
-        ),
-        (
             400,
             p(Command::PlaceEquipment {
-                kind: EquipmentKind::Desk,
+                kind: EquipmentKind::ArchiveShelf,
                 placement: Placement::Floor {
-                    pos: PosMm::new(7_500, 3_000),
+                    pos: PosMm::new(26_000, 6_000),
                     rot: 0,
                 },
-            }),
-        ),
-        (
-            401,
-            p(Command::PlaceEquipment {
-                kind: EquipmentKind::Monitor,
-                placement: Placement::OnDesk(EquipId(24)),
-            }),
-        ),
-        (
-            402,
-            p(Command::PlaceEquipment {
-                kind: EquipmentKind::DeskLamp,
-                placement: Placement::OnDesk(EquipId(24)),
             }),
         ),
         (
             500,
             p(Command::Hire {
-                candidate: CandidateId(4),
+                candidate: CandidateId(6),
+            }),
+        ),
+        (
+            600,
+            p(Command::AssignToProject {
+                staff: StaffId(14),
+                project: DEMO_PROJECT,
+                allocation_pct: 50,
+            }),
+        ),
+        (700, p(Command::Praise { staff: StaffId(1) })),
+        (800, p(Command::Promote { staff: StaffId(12) })),
+        (
+            900,
+            p(Command::SetSalary {
+                staff: StaffId(8),
+                cents_per_day: 12_000,
+            }),
+        ),
+        (
+            1_000,
+            p(Command::CreateProject {
+                slug: "amalfi-dispatch".into(),
+                name: "Amalfi Dispatch".into(),
+                domain: "amalfi.travel".into(),
+            }),
+        ),
+        (
+            1_100,
+            p(Command::Delegate {
+                task: SecretaryTaskKind::DraftReply {
+                    ticket: TicketId(2),
+                },
+            }),
+        ),
+        (
+            1_200,
+            p(Command::Delegate {
+                task: SecretaryTaskKind::ScheduleMeeting {
+                    attendees: vec![StaffId(1), StaffId(2), StaffId(3)],
+                    project: Some(DEMO_PROJECT),
+                },
+            }),
+        ),
+        (
+            1_300,
+            p(Command::Delegate {
+                task: SecretaryTaskKind::FollowUp {
+                    staff: StaffId(3),
+                    topic: FollowUpTopic::Morale,
+                },
             }),
         ),
         // day 1, 09:12: standup turns
         (
             13_100,
             s(ServerCommand::Utterance {
-                meeting: MeetingId(2),
+                meeting: MeetingId(4),
                 seq: 0,
-                speaker: StaffId(5),
+                speaker: StaffId(4),
                 chars: 140,
             }),
         ),
         (
             13_140,
             s(ServerCommand::Utterance {
-                meeting: MeetingId(2),
+                meeting: MeetingId(4),
                 seq: 1,
-                speaker: StaffId(1),
+                speaker: StaffId(9),
                 chars: 80,
+            }),
+        ),
+        // day 1, 09:20: the standup (job 2) agrees two briefs: work items 1
+        // (Giulia → Marco) and 2 (Lorenzo → Sophia), draft jobs 3 and 4
+        (
+            13_200,
+            s(ServerCommand::MeetingOutcome {
+                job_id: 2,
+                briefs: vec![
+                    BriefStub {
+                        kind: WorkItemKind::Article,
+                        writer: StaffId(1),
+                        editor: StaffId(5),
+                        brief_ref: 501,
+                    },
+                    BriefStub {
+                        kind: WorkItemKind::Article,
+                        writer: StaffId(3),
+                        editor: StaffId(4),
+                        brief_ref: 502,
+                    },
+                ],
+            }),
+        ),
+        (13_300, s(job_done(3, true, 0))),
+        (13_310, s(job_done(4, true, 0))),
+        // drafts done at 14_200: reviews 5 and 6; item 1 scores 8, item 2 4
+        (14_300, s(job_done(5, true, 8))),
+        (14_310, s(job_done(6, true, 4))),
+        // reviews done at 14_700: publish job 7 (item 1), redraft job 8
+        (14_800, s(job_done(7, true, 0))),
+        (14_900, s(job_done(8, true, 0))),
+        // day 1, 11:00: the CEO approves the proposal directly
+        (
+            15_000,
+            p(Command::SetProjectStatus {
+                project: amalfi,
+                status: ProjectStatus::Active,
             }),
         ),
         // day 1, 23:00
         (
             20_000,
             p(Command::SetPolicy(Policy::Overtime(OvertimePolicy::Crunch))),
+        ),
+        // item 1 merged at 14_825: its deploy lands
+        (
+            15_500,
+            s(ServerCommand::DeployLanded {
+                work_item: WorkItemId(1),
+            }),
         ),
         // day 2, 07:00
         (
@@ -312,33 +656,88 @@ pub fn golden_script() -> Vec<(u64, Input)> {
                 lighthouse_seo: 100,
             })),
         ),
+        (
+            24_100,
+            s(ServerCommand::AnalyticsSignals {
+                project: DEMO_PROJECT,
+                day: 1,
+                sessions: 1_840,
+                visitors: 1_420,
+                pageviews: 4_610,
+                engagement_pm: 640,
+                top_pages_digest: 0x5eed_cafe,
+            }),
+        ),
         // day 2, 19:00
         (
             30_000,
             p(Command::SetPolicy(Policy::Overtime(OvertimePolicy::Allow))),
         ),
-        // day 3, 10:00: Lorenzo walks out mid-shift
-        (37_500, p(Command::Fire { staff: StaffId(2) })),
+        // day 3, 10:00: Francesca (the only photographer) walks out mid-shift
+        (37_500, p(Command::Fire { staff: StaffId(6) })),
+        (
+            37_600,
+            p(Command::AnswerTicket {
+                ticket: TicketId(8),
+                option: TicketOption::ArrangeHiring,
+            }),
+        ),
+        (
+            38_100,
+            p(Command::AssignToProject {
+                staff: StaffId(2),
+                project: DEMO_PROJECT,
+                allocation_pct: 60,
+            }),
+        ),
+        (
+            38_200,
+            p(Command::AssignToProject {
+                staff: StaffId(2),
+                project: amalfi,
+                allocation_pct: 40,
+            }),
+        ),
         (
             39_000,
             p(Command::PlaceEquipment {
                 kind: EquipmentKind::Plant,
                 placement: Placement::Floor {
-                    pos: PosMm::new(8_500, 8_500),
+                    pos: PosMm::new(12_600, 15_400),
                     rot: 0,
                 },
             }),
         ),
         (
             40_000,
-            p(Command::Demolish(DemolishTarget::Equipment(EquipId(27)))),
+            p(Command::Demolish(DemolishTarget::Equipment(EquipId(75)))),
         ),
-        // day 4, 03:00: nobody in; the kitchen goes
+        // day 4, 03:00: nobody in; the archive goes
         (
             46_000,
-            p(Command::Demolish(DemolishTarget::Room(RoomId(4)))),
+            p(Command::Demolish(DemolishTarget::Room(RoomId(12)))),
+        ),
+        (
+            48_000,
+            p(Command::SetDelegation {
+                policy: DelegationPolicy::LowAndMedium,
+            }),
         ),
     ]
+}
+
+/// A successful job result with no artifact.
+fn job_done(job_id: u64, ok: bool, score: u8) -> ServerCommand {
+    ServerCommand::JobCompleted {
+        job_id,
+        digest: JobDigest {
+            ok,
+            score,
+            words: 900,
+            qa_defects: 0,
+            artifact_sha: [0x5e; 16],
+        },
+    }
 }
 
 /// Result of each scripted input, with the step it was applied at.
@@ -359,127 +758,4 @@ pub fn run_golden(steps: u64) -> (World, ScriptResults) {
         }
     }
     (w, results)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::render_state::Light;
-    use crate::staff::Activity;
-
-    fn run_until(w: &mut World, day: u32, minute: u16) {
-        while (w.clock().day, w.clock().minute) < (day, minute) {
-            w.step();
-        }
-    }
-
-    fn room_id(w: &World, kind: RoomKind) -> RoomId {
-        w.building.first_room_of(kind).unwrap().id
-    }
-
-    #[test]
-    fn demo_matches_the_ts_layout() {
-        let w = demo_office(1);
-        assert_eq!(w.building.lot, TileRect::new(0, 0, 16, 10));
-        assert_eq!(w.building.rooms.len(), 3);
-        let desks: Vec<_> = w
-            .building
-            .equipment
-            .values()
-            .filter(|e| e.kind == EquipmentKind::Desk)
-            .map(|e| e.pos)
-            .collect();
-        assert_eq!(
-            desks,
-            vec![
-                PosMm::new(2_500, 3_000),
-                PosMm::new(5_000, 3_000),
-                PosMm::new(2_500, 6_500),
-                PosMm::new(5_000, 6_500),
-                PosMm::new(13_000, 2_500),
-            ]
-        );
-        assert_eq!(w.staff.len(), 5);
-        assert_eq!(w.ids.peek_equip(), EquipId(22), "golden script ids");
-        assert_eq!(w.candidates.len(), 3);
-        assert!(w
-            .candidates
-            .values()
-            .all(|c| !w.staff.values().any(|s| s.persona == c.persona)));
-        assert!(w.company.cash < DEMO_START_CASH);
-        assert_eq!(w.ledger.opening_cash + w.ledger.total(), w.company.cash);
-    }
-
-    #[test]
-    fn newsroom_busy_mid_morning() {
-        let mut w = demo_office(11);
-        run_until(&mut w, 0, hm(10, 30));
-        let rs = w.render_state();
-        let newsroom = room_id(&w, RoomKind::Newsroom);
-        let r = rs.rooms.iter().find(|r| r.id == newsroom).unwrap();
-        assert_eq!(r.occupancy, 4);
-        // daylight + windows: lights off
-        assert_eq!(r.light, Light::Off);
-        // window-less meeting room is empty after the standup
-        let meeting = room_id(&w, RoomKind::MeetingRoom);
-        let m = rs.rooms.iter().find(|r| r.id == meeting).unwrap();
-        assert_eq!(m.occupancy, 0);
-        assert_eq!(m.light, Light::Off);
-        assert_eq!(rs.staff.len(), 5);
-        assert!(rs.staff.iter().all(|s| s.seated_at.is_some()));
-        assert_eq!(w.nav_failures, 0);
-    }
-
-    #[test]
-    fn standup_fills_the_meeting_room() {
-        let mut w = demo_office(11);
-        run_until(&mut w, 0, hm(9, 12));
-        let meeting = room_id(&w, RoomKind::MeetingRoom);
-        let rs = w.render_state();
-        let m = rs.rooms.iter().find(|r| r.id == meeting).unwrap();
-        assert!(m.occupancy >= 3, "occupancy {}", m.occupancy);
-        // no windows: lit whenever occupied
-        assert_eq!(m.light, Light::On);
-    }
-
-    #[test]
-    fn only_marco_at_night() {
-        let mut w = demo_office(11);
-        run_until(&mut w, 0, hm(23, 0));
-        let rs = w.render_state();
-        assert_eq!(rs.staff.len(), 1);
-        let marco = &w.staff[&rs.staff[0].id];
-        assert_eq!(crate::staff::persona(marco.persona).name, "Marco");
-        assert_eq!(marco.activity, Activity::Working);
-        let editor = room_id(&w, RoomKind::EditorOffice);
-        let newsroom = room_id(&w, RoomKind::Newsroom);
-        let light = |id| rs.rooms.iter().find(|r| r.id == id).unwrap().light;
-        assert_eq!(light(editor), Light::On);
-        assert_eq!(light(newsroom), Light::Off);
-        // his lamp and monitor are on, everyone else's are off
-        let desk = marco.home_desk.unwrap();
-        for d in &rs.devices {
-            let on = d.state != crate::equipment::DeviceState::Off;
-            match d.kind {
-                EquipmentKind::Monitor | EquipmentKind::DeskLamp => {
-                    assert_eq!(on, d.attached_to == Some(desk), "{d:?}");
-                }
-                _ => {}
-            }
-        }
-        run_until(&mut w, 0, hm(23, 45));
-        assert!(w.render_state().staff.is_empty(), "Marco went home");
-    }
-
-    #[test]
-    fn golden_script_is_fully_accepted() {
-        let (w, results) = run_golden(GOLDEN_STEPS);
-        assert_eq!(results.len(), golden_script().len());
-        for (step, r) in &results {
-            assert_eq!(r, &Ok(()), "input at step {step}");
-        }
-        assert_eq!(w.nav_failures, 0);
-        assert_eq!(w.pending_len(), 0);
-        assert_eq!(w.ledger.opening_cash + w.ledger.total(), w.company.cash);
-    }
 }

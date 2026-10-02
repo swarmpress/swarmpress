@@ -1,0 +1,9 @@
+---
+/** `/404` — the host-level not-found page (GitHub Pages serves /404.html), in the default language. */
+import config from 'virtual:site-kit/config'
+import KitPage from '../components/KitPage.astro'
+
+const path = `/${config.manifest.defaultLanguage}/404`
+---
+
+<KitPage path={path} />

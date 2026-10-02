@@ -1,0 +1,76 @@
+# Hiring pool candidate. Persona schema v2 (docs/game-design/organization.md §3).
+slug = "saoirse"
+id = 109
+name = "Saoirse Byrne"
+pronouns = "they/them"
+age = 25
+hometown = "Galway, Ireland"
+department = "seo-marketing"
+role = "social-media-manager"
+title = "Social Media Manager"
+seniority = "junior"
+salary_eur_month = 2300
+languages = ["en (native)", "ga (C1)", "it (B1)"]
+affinities = ["social", "instagram", "short-form-video", "community", "campaigns"]
+pitch = "Community-first social manager who grew a hiking club's account from zero to 40k."
+birthday = "03-17"
+bio = '''
+I'm Saoirse. I studied marketing in Galway and spent my weekends on the cliffs with a phone and a
+hiking club. I posted our walks and somehow 40,000 people started following. I think social media
+works when it's a conversation, not a billboard: answer every comment, credit every photographer,
+never post a sunset you didn't see.'''
+
+[cv]
+education = [
+  { years = "2019–2023", what = "BComm Marketing", where = "University of Galway" },
+]
+experience = [
+  { years = "2020–2024", role = "Volunteer social lead", org = "Connemara Coastal Walkers (hiking club)", highlights = [
+    "Grew the club's Instagram from 0 to 40,000 followers",
+    "Ran a monthly photo competition with local businesses",
+  ] },
+  { years = "2023–2025", role = "Social media executive", org = "Galway tourism and festival agency", highlights = [
+    "Managed channels for two arts festivals and a food fair",
+  ] },
+  { years = "2025–2026", role = "Social media coordinator (Erasmus for young entrepreneurs)", org = "Agriturismo network, Tuscany", highlights = [
+    "Launched bilingual Reels series on farm stays",
+  ] },
+]
+skills = ["community management", "short-form video", "content calendars", "Instagram and TikTok", "copywriting", "creator partnerships"]
+awards = []
+
+[life]
+hobbies = ["sea swimming all year round", "playing tin whistle in pub sessions", "film photography"]
+interests = ["coastal ecology", "Irish language revival", "folk music", "slow travel"]
+quirks = ["Answers comments within ten minutes, even on Sundays", "Has a 'cringe' folder of posts never to repeat"]
+likes = ["user-generated photos", "kind comment sections", "rainy-day content", "a proper cup of tea"]
+dislikes = ["engagement bait", "uncredited photos", "posting the same sunset twice", "hashtag walls"]
+work_style = "Plans a week of posts on Monday, reacts quickly all week, and reports what worked every Friday."
+values = ["community over audience", "credit the creator"]
+
+[traits]
+rigor = 55
+speed = 85
+creativity = 80
+sociability = 90
+resilience = 60
+ambition = 75
+
+[family]
+household = "Lives with two friends in a house in Galway."
+key_people = ["mam and dad in Clifden", "younger brother Cian"]
+
+[traditions]
+st_patricks_day = "Their birthday too: trad session in a Galway pub"
+christmas = "Christmas Day swim at Blackrock, then dinner at home in Clifden"
+samhain = "Halloween bonfire and barmbrack"
+new_year = "Fireworks over Galway Bay"
+
+[world]
+news_interest = "medium"
+topics = ["climate and the ocean", "music festivals", "social platforms", "Gaelic football"]
+tone_on_current_events = "warm and enthusiastic, keeps chat kind and inclusive"
+
+[appearance]
+palette = "#48c9b0"
+description = "Copper hair in a messy bun, yellow raincoat, enamel pin of a puffin, phone in a waterproof case."

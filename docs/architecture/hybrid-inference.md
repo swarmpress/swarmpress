@@ -1,5 +1,15 @@
 # Hybrid inference
 
+> **Local-first update ([ADR-0038](../adr/0038-local-first-the-browser-is-authoritative-for-a-company.md)):**
+> there is no server job queue or browser-worker protocol any more.
+> - The browser drains the sim's job effects and runs them through the wasm `orchestrator` with
+>   local LLMs.
+> - Artifacts are validated in the browser by the same Rust validators, then again at the
+>   central gateway (PathPolicy, schema).
+> - Text is kept in the browser store, not in Postgres.
+>
+> The model tiers, GPU sharing and the Agency below still apply.
+
 **In-browser LLMs run the staff; Claude does the heavy agentic work.**
 
 Decisions: [ADR-0024](../adr/0024-hybrid-inference-browser-llms-and-claude.md),

@@ -1,0 +1,13 @@
+---
+/** Default footer, with the privacy note the first-party tracker requires (ADR-0032). */
+import type { RenderContext } from '../../src/context'
+
+const { ctx } = Astro.props as { ctx: RenderContext }
+---
+
+<footer class="kit-footer">
+  <div class="kit-container">
+    <p>{ctx.t('footer.rights', { year: ctx.year, name: ctx.brand.name })}</p>
+    {ctx.manifest.analytics && <p class="kit-small kit-muted">{ctx.t('footer.privacy')}</p>}
+  </div>
+</footer>

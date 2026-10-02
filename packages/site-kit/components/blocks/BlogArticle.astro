@@ -1,0 +1,67 @@
+---
+/** Fallback: blog-article (also tolerates the legacy `post` wrapper until `kit migrate` runs). */
+import RichText from '../RichText.astro'
+import type { RenderContext } from '../../src/context'
+
+const { block, ctx } = Astro.props as { block: Record<string, any>; ctx: RenderContext }
+const b = block.post && typeof block.post === 'object' ? { ...block.post, ...block, ...block.post } : block
+const hero = ctx.media(b.heroImage ?? b.image)
+const author = b.author && typeof b.author === 'object' && 'name' in b.author ? ctx.l(b.author.name) : ctx.l(b.author)
+const meta = [author && ctx.t('blog.by', { author }), ctx.l(b.date), ctx.l(b.readTime)].filter(Boolean)
+const items: any[] = Array.isArray(b.content)
+  ? b.content
+  : b.content && typeof b.content === 'object'
+    ? [
+        ...(b.content.intro ? [{ type: 'paragraph', text: b.content.intro }] : []),
+        ...(b.content.sections ?? []).flatMap((s: any) => [{ type: 'heading', level: 2, text: s.title }, { type: 'paragraph', text: s.text }]),
+        ...(b.content.quote ? [{ type: 'quote', text: b.content.quote.text }] : []),
+      ]
+    : []
+const takeaways = ctx.list(b.sidebar?.keyTakeaways)
+const related = Array.isArray(b.sidebar?.relatedPosts) ? b.sidebar.relatedPosts : []
+---
+
+<article class="kit-article">
+  <header class="kit-container kit-article__header">
+    {ctx.l(b.category) && <p class="kit-eyebrow">{ctx.l(b.category)}</p>}
+    <h1>{ctx.l(b.title) || ctx.title}</h1>
+    {ctx.l(b.subtitle) && <p class="kit-lead">{ctx.l(b.subtitle)}</p>}
+    {meta.length > 0 && <p class="kit-small kit-muted">{meta.join(' · ')}</p>}
+  </header>
+  {hero && <img class="kit-article__hero" src={hero.src} alt={hero.alt ?? ''} decoding="async" fetchpriority="high" />}
+  <div class="kit-container kit-prose-wrap">
+    {
+      items.map((x) => {
+        const H = `h${[2, 3, 4].includes(x.level) ? x.level : 2}`
+        if (x.type === 'heading') return <H>{ctx.l(x.text)}</H>
+        if (x.type === 'quote') return <blockquote class="kit-quote"><p>{ctx.l(x.text)}</p></blockquote>
+        if (x.type === 'list') return <ul class="kit-list">{ctx.list(x.items).map((i) => <li>{i}</li>)}</ul>
+        if (x.type === 'image') {
+          const m = ctx.media(x.src)
+          return m ? <figure class="kit-figure"><img src={m.src} alt={ctx.l(x.alt) || m.alt || ''} loading="lazy" decoding="async" />{ctx.l(x.caption) && <figcaption>{ctx.l(x.caption)}</figcaption>}</figure> : null
+        }
+        return <RichText value={x.text} ctx={ctx} />
+      })
+    }
+    {
+      takeaways.length > 0 && (
+        <aside class="kit-callout kit-callout--info">
+          <ul class="kit-list">{takeaways.map((t) => <li>{t}</li>)}</ul>
+        </aside>
+      )
+    }
+    {
+      related.length > 0 && (
+        <nav class="kit-related">
+          <ul class="kit-list">
+            {related.map((r: any) => (
+              <li>
+                <a href={ctx.href(r.url)}>{ctx.l(r.title)}</a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )
+    }
+  </div>
+</article>
