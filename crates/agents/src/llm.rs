@@ -97,8 +97,24 @@ pub enum LlmError {
 /// Receives streamed text deltas.
 pub type DeltaSink<'a> = &'a mut (dyn FnMut(&str) + Send);
 
-#[async_trait]
-pub trait Llm: Send + Sync {
+/// `Send + Sync` on native targets; nothing on wasm32, where the browser's
+/// local models are JS objects (not `Send`) and everything runs on one thread.
+#[cfg(not(target_arch = "wasm32"))]
+pub trait MaybeSendSync: Send + Sync {}
+#[cfg(not(target_arch = "wasm32"))]
+impl<T: Send + Sync + ?Sized> MaybeSendSync for T {}
+/// `Send + Sync` on native targets; nothing on wasm32, where the browser's
+/// local models are JS objects (not `Send`) and everything runs on one thread.
+#[cfg(target_arch = "wasm32")]
+pub trait MaybeSendSync {}
+#[cfg(target_arch = "wasm32")]
+impl<T: ?Sized> MaybeSendSync for T {}
+
+/// An LLM backend. Its futures are `Send` on native targets and `?Send` on
+/// wasm32 (implementations use the same `cfg_attr` pair as this trait).
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+pub trait Llm: MaybeSendSync {
     /// Free text (meeting turns, chatter). Deltas stream into `on_delta`.
     async fn generate(
         &self,
@@ -193,7 +209,8 @@ impl ClaudeLlm {
     }
 }
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Llm for ClaudeLlm {
     async fn generate(
         &self,
@@ -311,7 +328,8 @@ impl FakeLlm {
     }
 }
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Llm for FakeLlm {
     async fn generate(
         &self,

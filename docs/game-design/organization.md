@@ -44,7 +44,7 @@ approves what matters, and delegates the rest.
 | Department | Roles (sim `Role`) | Typical rooms | What they produce |
 |---|---|---|---|
 | Executive Office | `Cfo`, `Secretary` | CEO office, Finance office | Budgets, forecasts, payroll, briefings, triage, scheduling |
-| Strategy | `Strategist`, `Analyst`, `DataScientist` | Meeting room, Strategy room | Content strategy, editorial calendar, market/competitor analysis, project proposals; **KPIs from Google Analytics** (§6a) |
+| Strategy | `Strategist`, `Analyst`, `DataScientist` | Meeting room, Strategy room | Content strategy, editorial calendar, market/competitor analysis, project proposals; **KPIs from our own tracker** (§6a) |
 | Editorial | `EditorInChief`, `Editor`, `Writer`, `Translator`, `FactChecker` | Newsroom, Editor office, Translation desk | Articles, pages, collections, reviews, translations |
 | Photo & Video | `PhotoEditor`, `Photographer`, `VideoProducer` | Photo studio | Shoots (real assets later), photo selection from the media index, captions/alt text |
 | Web Development | `ArtDirector`, `WebDeveloper`, `UxDesigner` | Design studio | Site theme, layouts, custom blocks (agent-authored themes, ADR-0015) |
@@ -228,47 +228,48 @@ commentary.
   reports; the CEO flies blind, and the HUD shows "books not kept". You can
   run the company without one, but you'll feel it.
 
-## 6a. Data Scientist: KPIs from Google Analytics
+## 6a. Data Scientist: KPIs from our own tracker
 
 The Data Scientist is a person in Strategy (persona, desk in the Strategy room)
 who owns **measurement**. Real traffic from each project's site comes back into
-the game through this role.
+the game through this role, measured by the platform's **own first-party
+tracker** (ADR-0032), not Google Analytics.
 
-- **Ingestion (server, deterministic code):**
-  - A nightly `AnalyticsSync` job per project calls the **Google Analytics 4
-    Data API** (`properties/{id}:runReport`) for the project's GA4 property.
-  - Metrics: sessions, users, page views, engagement rate, average engagement
-    time, conversions/key events.
-  - Dimensions: date, page path, language, source/medium, country.
-  - Results are stored as `analytics_daily` rows (per project, per day, per
-    page and language).
-  - Credentials: a Google service account with Viewer access on the property;
-    per-project `ga4_property_id` (ADR-0032).
-- **Into the sim:** a compact, server-issued
-  `Cmd::AnalyticsSignals { project, day, sessions, users, pageviews, engagement_pm, top_pages_digest }`.
+- **Collection (platform code):**
+  - A tiny cookieless script, shipped in every theme by the site-kit, beacons
+    `pageview`, `engagement` (visible time), `scroll` depth and `outbound`
+    clicks to the central server (`POST /t/e`).
+  - Each event carries the project key, page path, language, referrer domain
+    and UTM tags.
+  - No cookies, no user ids, no stored IPs. Unique visitors are counted with a
+    daily rotating salt that is then destroyed.
+  - Raw events are kept 7 days at most. An hourly rollup writes
+    `analytics_daily` (project × day × page × language × source).
+- **Into the sim:** a nightly, server-issued
+  `Cmd::AnalyticsSignals { project, day, sessions, visitors, pageviews, engagement_pm, top_pages_digest }`.
   Integer, deterministic for every replica. It feeds:
   - **Goals** progress (for example "40k monthly readers");
   - the audience model, blended at no more than 30% with the sim's own
-    estimate (ADR-0021) so real traffic is a bonus, not the decider;
+    estimate (ADR-0021);
   - per-project revenue attribution (audience × CPM) in the CFO's ledgers.
-- **Data Scientist jobs (LLM; numbers only from the data, same validator rule
-  as the CFO):**
-  - `KpiReport`: a weekly report to the CEO (Monday, before the editorial
-    board). Headline KPIs vs last week and vs goals, top and bottom pages,
-    language split, traffic sources, anomalies, and 3 recommendations.
+- **Data Scientist jobs (LLM; numbers only from the aggregates, same validator
+  rule as the CFO; raw events never reach a model):**
+  - `KpiReport`: a weekly report to the CEO (Monday 09:30 KPI review, before
+    the editorial board). Headline KPIs vs last week and vs goals, top and
+    bottom pages, language split, traffic sources, anomalies, and 3
+    recommendations.
   - `ContentPerformance`: posted into each published work item's thread at its
-    follow-up date ("+14 days: 1,240 views, 62% engaged; outperforms the
-    harvest workstream median"). This is the plan's `followup` field.
-  - `ExperimentReadout`: when a redesign or SEO change ships, a before/after
-    comparison on the affected pages.
+    follow-up date ("+14 days: 1,240 views, 62% engaged").
+  - `ExperimentReadout`: before/after on the affected pages when a redesign or
+    SEO change ships.
 - **Effects on play:**
-  - Strategy's pitches and the Monday board use the KPI report as input.
+  - Strategy's pitches and the Monday board use the KPI report.
   - Underperforming items become `update` work items.
   - The leaderboard can show verified audience.
-- **Without a Data Scientist,** or without GA access, the game runs on
-  SiteAudit facts and the sim's audience estimate only. Goals tied to
-  analytics show "not measured", and there are no KPI reports. Without GA
-  credentials the HUD says "analytics not connected" instead of failing.
+- **Without a Data Scientist,** or before the tracker has data, the game runs
+  on SiteAudit facts and the sim's estimate. Goals tied to analytics show "not
+  measured yet", there are no KPI reports, and the HUD says "tracker: no data
+  yet".
 
 ## 7. Executive Secretary: delegation
 

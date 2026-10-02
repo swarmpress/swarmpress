@@ -1,0 +1,71 @@
+{
+  "$schema": "../../../../packages/sdk/schemas/scenario.schema.json",
+  "name": "draft → publish → status against a recorded Ghost Admin API",
+  "seed": 1,
+  "days": 0,
+  "publish": {
+    "credential": { "ref": "cred_ghost_demo", "secret": "recorded-admin-jwt" },
+    "draft": {
+      "contentId": "page-vernazza-getting-there",
+      "path": "content/pages/vernazza-getting-there.json",
+      "message": "Ferries cancelled today: take the train to Vernazza.",
+      "page": {
+        "id": "vernazza-getting-there",
+        "slug": { "en": "vernazza-getting-there" },
+        "title": { "en": "Getting to Vernazza" },
+        "page_type": "guide",
+        "body": [
+          { "type": "heading", "level": 2, "text": "By train" },
+          { "type": "paragraph", "markdown": "The Cinque Terre Express stops at Vernazza <every> few minutes." },
+          { "type": "list", "ordered": false, "items": ["Buy the ticket before boarding", "Validate it"] },
+          { "type": "quote", "text": "Trains beat boats on a rough day.", "attribution": "Rosa" }
+        ]
+      }
+    },
+    "server": [
+      {
+        "method": "POST",
+        "url": "https://demo.ghost.io/ghost/api/admin/posts/?source=html",
+        "expectHeaders": { "authorization": "Ghost recorded-admin-jwt", "accept-version": "v5.0" },
+        "expectBody": {
+          "posts": [
+            {
+              "title": "Getting to Vernazza",
+              "slug": "vernazza-getting-there",
+              "status": "draft",
+              "html": "<h2>By train</h2>\n<p>The Cinque Terre Express stops at Vernazza &lt;every&gt; few minutes.</p>\n<ul><li>Buy the ticket before boarding</li><li>Validate it</li></ul>\n<blockquote><p>Trains beat boats on a rough day.</p><cite>Rosa</cite></blockquote>"
+            }
+          ]
+        },
+        "status": 201,
+        "body": {
+          "posts": [
+            { "id": "6710a1f2e4b0c1", "uuid": "a1b2c3d4-0000-4000-8000-000000000001", "status": "draft", "updated_at": "2026-10-01T07:05:00.000Z" }
+          ]
+        }
+      },
+      {
+        "method": "PUT",
+        "url": "https://demo.ghost.io/ghost/api/admin/posts/6710a1f2e4b0c1/",
+        "expectHeaders": { "authorization": "Ghost recorded-admin-jwt" },
+        "expectBody": { "posts": [{ "status": "published", "updated_at": "2026-10-01T07:05:00.000Z" }] },
+        "body": {
+          "posts": [
+            { "id": "6710a1f2e4b0c1", "uuid": "a1b2c3d4-0000-4000-8000-000000000001", "status": "published", "updated_at": "2026-10-01T07:06:00.000Z" }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "url": "https://demo.ghost.io/ghost/api/admin/posts/6710a1f2e4b0c1/",
+        "expectHeaders": { "authorization": "Ghost recorded-admin-jwt" },
+        "body": {
+          "posts": [
+            { "id": "6710a1f2e4b0c1", "uuid": "a1b2c3d4-0000-4000-8000-000000000001", "status": "published", "updated_at": "2026-10-01T07:06:00.000Z" }
+          ]
+        }
+      }
+    ],
+    "expect": { "state": "deployed", "ref": "6710a1f2e4b0c1" }
+  }
+}

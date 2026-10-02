@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../packages/sdk/schemas/scenario.schema.json",
+  "name": "seed 42: the machine breaks on days 0 and 2 and is repaired at 10:00",
+  "seed": 42,
+  "days": 4,
+  "rules": {
+    "expect": {
+      "commands": [
+        { "day": 0, "step": 0, "hook": "onDayStart", "command": { "type": "DeviceFault", "device_kind": "coffee-machine", "day": 0 } },
+        { "day": 0, "step": 0, "hook": "onDayStart", "command": { "type": "MoodBeat", "people": "all", "delta_permille": -20, "reason": "coffee-machine-broke" } },
+        { "day": 0, "step": 1500, "hook": "onStep", "command": { "type": "DeviceRepaired", "device_kind": "coffee-machine", "day": 0 } },
+        { "day": 2, "step": 24000, "hook": "onDayStart", "command": { "type": "DeviceFault", "device_kind": "coffee-machine", "day": 2 } },
+        { "day": 2, "step": 24000, "hook": "onDayStart", "command": { "type": "MoodBeat", "people": "all", "delta_permille": -20, "reason": "coffee-machine-broke" } },
+        { "day": 2, "step": 25500, "hook": "onStep", "command": { "type": "DeviceRepaired", "device_kind": "coffee-machine", "day": 2 } }
+      ]
+    }
+  }
+}

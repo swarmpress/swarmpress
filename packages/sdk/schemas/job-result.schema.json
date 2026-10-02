@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://simpress.dev/sdk/0.1.0/job-result.schema.json",
+  "title": "job-result",
+  "type": "object",
+  "properties": {
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content": {}
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "digest": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "words": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "qa_defects": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "artifact_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "ok",
+        "score",
+        "words",
+        "qa_defects",
+        "artifact_sha"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "artifact",
+    "digest"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,31 @@
+[package]
+name = "orchestrator"
+description = "SimPress orchestrator: runs sim job requests (standup, draft, review, publish) through agents, a Store and a content Gateway; wasm-compatible (no tokio, no database)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+agents = { path = "../agents" }
+content-schema.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+async-trait = "0.1"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+
+# Native only: the adapter over the GitHub client (reqwest/tokio are not wasm).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+github = { path = "../github" }
+
+# jsonschema (via content-schema and claude) pulls ahash -> getrandom 0.3, which
+# needs its JS backend on wasm32-unknown-unknown.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+jsonschema = { version = "0.33", default-features = false }
+
+[lints]
+workspace = true

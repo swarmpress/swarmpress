@@ -3,81 +3,161 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
-use rand::RngCore;
-use serde::Deserialize;
-use sqlx::PgPool;
+use github::{Clock, SystemClock};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
-use crate::actor::{ActorSpawner, Registry};
 use crate::auth::{self, CurrentUser};
 use crate::config::Config;
-use crate::db;
+use crate::db::{accounts, Company, Db};
 use crate::error::{AppError, AppResult};
-use crate::jobs::{self, ArtifactValidator, ClaudeExecutor, JobNotifier, JobQueue};
-use crate::store::PgStore;
-use crate::ws;
+use crate::events::{self, EventHub};
+use crate::gateway::{self, RepoBackend};
+use crate::tracker::{self, AnalyticsSignalSink, PendingSignalSink, RateLimiter, Tracker};
+use crate::{companies, sync, web, webhooks};
 
 #[derive(Clone)]
 pub struct AppState {
     pub cfg: Arc<Config>,
-    pub pool: PgPool,
-    pub registry: Arc<Registry>,
-    pub jobs: JobQueue,
-    pub notifier: JobNotifier,
-    pub validator: Arc<dyn ArtifactValidator>,
+    pub db: Db,
+    /// Wall clock (unix ms); tests inject a `github::ManualClock`.
+    pub clock: Arc<dyn Clock>,
     pub http: reqwest::Client,
+    /// Offline event inbox fan-out.
+    pub events: EventHub,
+    /// Content gateway backend (fake or real GitHub).
+    pub github: Arc<RepoBackend>,
+    /// Per-user limiter for `/web/fetch`.
+    pub web_limiter: Arc<RateLimiter<String>>,
+    /// Serializes sync blob writes (single process).
+    pub sync_lock: Arc<tokio::sync::Mutex<()>>,
+    /// First-party analytics collector (ADR-0032).
+    pub tracker: Arc<Tracker>,
+    /// Where nightly analytics signals go.
+    pub signal_sink: Arc<dyn AnalyticsSignalSink>,
 }
 
 impl AppState {
-    pub fn new(
+    pub fn new(cfg: Config, db: Db) -> Result<Self> {
+        let github = Arc::new(RepoBackend::from_mode(&cfg.github_mode)?);
+        Ok(Self::with_parts(cfg, db, Arc::new(SystemClock), github))
+    }
+
+    pub fn with_parts(
         cfg: Config,
-        pool: PgPool,
-        spawner: Arc<dyn ActorSpawner>,
-        notifier: JobNotifier,
-        validator: Arc<dyn ArtifactValidator>,
+        db: Db,
+        clock: Arc<dyn Clock>,
+        github: Arc<RepoBackend>,
     ) -> Self {
-        let store = Arc::new(PgStore::new(pool.clone()));
-        let registry = Arc::new(Registry::new(
-            pool.clone(),
-            store,
-            spawner,
-            cfg.actor.clone(),
-        ));
-        let jobs = JobQueue::new(pool.clone(), cfg.job_retry);
         let http = reqwest::Client::builder()
             .user_agent(concat!("simpress-server/", env!("CARGO_PKG_VERSION")))
             .timeout(std::time::Duration::from_secs(20))
             .build()
             .expect("http client");
+        let tracker = Arc::new(Tracker::new(cfg.tracker.clone()));
+        let web_limiter = Arc::new(RateLimiter::new(cfg.web.rate_per_min, cfg.web.burst));
         Self {
             cfg: Arc::new(cfg),
-            pool,
-            registry,
-            jobs,
-            notifier,
-            validator,
+            db,
+            clock,
             http,
+            events: EventHub::default(),
+            github,
+            web_limiter,
+            sync_lock: Arc::new(tokio::sync::Mutex::new(())),
+            tracker,
+            signal_sink: Arc::new(PendingSignalSink),
         }
+    }
+
+    /// Replace the (pending-only) analytics signal sink.
+    pub fn with_signal_sink(mut self, sink: Arc<dyn AnalyticsSignalSink>) -> Self {
+        self.signal_sink = sink;
+        self
+    }
+
+    /// Now, in unix milliseconds.
+    pub fn now_ms(&self) -> i64 {
+        i64::try_from(self.clock.now_ms()).unwrap_or(i64::MAX)
     }
 }
 
+/// The caller's company, or 404.
+pub async fn require_company(st: &AppState, user_id: &str) -> AppResult<Company> {
+    accounts::company_for_user(&st.db, user_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("create a company first".into()))
+}
+
 pub fn router(st: AppState) -> Router {
+    let sync_limit = DefaultBodyLimit::max(st.cfg.sync_max_bytes);
+    // JSON page (256 KiB) plus envelope.
+    let gateway_limit = DefaultBodyLimit::max(st.cfg.max_page_bytes * 2 + 16 * 1024);
     let mut r = Router::new()
         .route("/healthz", get(healthz))
+        // auth
         .route("/auth/github/login", get(auth::login))
         .route("/auth/github/callback", get(auth::callback))
+        .route("/auth/dev/login", post(auth::dev_login))
         .route("/auth/logout", post(auth::logout))
         .route("/api/me", get(me))
-        .route("/api/companies", get(list_companies).post(create_company))
-        .route("/ws", get(ws::ws_handler));
+        // companies and leases
+        .route("/api/companies", post(companies::create))
+        .route("/api/companies/me", get(companies::me))
+        .route(
+            "/api/companies/{id}/lease",
+            post(companies::lease).delete(companies::release),
+        )
+        // content gateway
+        .route(
+            "/api/gateway/draft",
+            post(gateway::draft).layer(gateway_limit),
+        )
+        .route("/api/gateway/merge", post(gateway::merge))
+        // events
+        .route("/api/events", get(events::list))
+        .route("/ws/events", get(events::ws))
+        .route(
+            "/webhooks/github",
+            post(webhooks::github).layer(DefaultBodyLimit::max(1024 * 1024)),
+        )
+        // sync
+        .route("/api/sync/{company}/log", get(sync::list_segments))
+        .route(
+            "/api/sync/{company}/log/{segment}",
+            put(sync::put_segment)
+                .get(sync::get_segment)
+                .layer(sync_limit),
+        )
+        .route(
+            "/api/sync/{company}/snapshot",
+            put(sync::put_snapshot)
+                .get(sync::get_snapshot)
+                .layer(sync_limit),
+        )
+        // web access
+        .route("/web/fetch", get(web::fetch))
+        .route("/web/firecrawl/{*rest}", post(web::firecrawl))
+        // tracker
+        .route(
+            "/api/projects",
+            get(tracker::list_projects).post(tracker::post_project),
+        )
+        .route("/api/analytics", get(tracker::get_analytics))
+        .route("/t/s.js", get(tracker::script))
+        .route(
+            "/t/e",
+            post(tracker::collect)
+                .options(tracker::preflight)
+                .layer(DefaultBodyLimit::max(8 * 1024)),
+        );
     if let Some(dir) = &st.cfg.static_dir {
         if dir.is_dir() {
             let index = dir.join("index.html");
@@ -90,10 +170,10 @@ pub fn router(st: AppState) -> Router {
 }
 
 async fn healthz(State(st): State<AppState>) -> impl IntoResponse {
-    match sqlx::query("SELECT 1").execute(&st.pool).await {
-        Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))),
+    match st.db.ping().await {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))),
         Err(e) => {
-            tracing::error!(error = %e, "healthz: database unreachable");
+            tracing::error!(error = %e, "healthz: database unavailable");
             (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(serde_json::json!({ "status": "db_unavailable" })),
@@ -106,54 +186,10 @@ async fn me(
     State(st): State<AppState>,
     CurrentUser(user): CurrentUser,
 ) -> AppResult<Json<serde_json::Value>> {
-    let company = db::company_for_user(&st.pool, user.id).await?;
+    let company = accounts::company_for_user(&st.db, &user.id).await?;
     Ok(Json(
         serde_json::json!({ "user": user, "company": company }),
     ))
-}
-
-async fn list_companies(
-    State(st): State<AppState>,
-    CurrentUser(user): CurrentUser,
-) -> AppResult<Json<Vec<db::Company>>> {
-    Ok(Json(
-        db::company_for_user(&st.pool, user.id)
-            .await?
-            .into_iter()
-            .collect(),
-    ))
-}
-
-#[derive(Deserialize)]
-struct CreateCompany {
-    name: String,
-}
-
-async fn create_company(
-    State(st): State<AppState>,
-    CurrentUser(user): CurrentUser,
-    Json(body): Json<CreateCompany>,
-) -> AppResult<(StatusCode, Json<db::Company>)> {
-    let name = body.name.trim();
-    if name.is_empty() || name.chars().count() > 80 {
-        return Err(AppError::BadRequest("name must be 1-80 characters".into()));
-    }
-    let seed = rand::rngs::OsRng.next_u64();
-    match db::create_company(
-        &st.pool,
-        user.id,
-        name,
-        seed,
-        st.cfg.default_day_real_minutes,
-    )
-    .await?
-    {
-        Some(c) => {
-            tracing::info!(company_id = %c.id, user_id = %user.id, "company created");
-            Ok((StatusCode::CREATED, Json(c)))
-        }
-        None => Err(AppError::Conflict("you already own a company".into())),
-    }
 }
 
 /// Background tasks owned by a running server.
@@ -169,40 +205,41 @@ impl Background {
     }
 }
 
-/// Start the job notifier, lease reaper and Claude pool for `st`.
-pub fn spawn_background(
-    st: &AppState,
-    claude: Arc<dyn ClaudeExecutor>,
-    notifier_task: Option<JoinHandle<()>>,
-) -> Background {
-    let mut tasks: Vec<JoinHandle<()>> = notifier_task.into_iter().collect();
-    tasks.push(jobs::spawn_reaper(
-        st.jobs.clone(),
-        st.cfg.job_reap_interval,
-    ));
-    tasks.push(jobs::spawn_claude_pool(
-        st.jobs.clone(),
-        claude,
-        st.notifier.clone(),
-        st.cfg.claude_concurrency,
-        st.cfg.job_lease,
-        std::time::Duration::from_secs(5),
-    ));
+/// Start the hourly maintenance: tracker rollup, nightly signals and
+/// retention, and expired-session cleanup.
+pub fn spawn_background(st: &AppState) -> Background {
+    let mut tasks = vec![tracker::spawn_maintenance(st)];
+    let st2 = st.clone();
+    tasks.push(tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(3600));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tick.tick().await;
+            match accounts::delete_expired_sessions(&st2.db, st2.now_ms()).await {
+                Ok(n) if n > 0 => tracing::info!(deleted = n, "expired sessions removed"),
+                Ok(_) => {}
+                Err(e) => tracing::error!(error = ?e, "session cleanup failed"),
+            }
+        }
+    }));
     Background { tasks }
 }
 
-/// Serve until `shutdown` resolves, then stop company actors cleanly.
+/// Serve until `shutdown` resolves.
 pub async fn serve(
     listener: TcpListener,
     st: AppState,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> Result<()> {
-    let registry = st.registry.clone();
     let app = router(st);
     tracing::info!(addr = %listener.local_addr()?, "simpress server listening");
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown)
-        .await?;
-    registry.shutdown_all().await;
+    // Connect info gives the tracker collector the peer IP (rate limiting and
+    // the salted visitor hash; never stored).
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown)
+    .await?;
     Ok(())
 }

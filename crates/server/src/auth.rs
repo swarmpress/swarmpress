@@ -5,18 +5,21 @@
 //!   upsert the user, create a session row (sha256 of the token) and set the
 //!   `simpress_session` cookie (HttpOnly, SameSite=Lax, Secure on https).
 //! - `/auth/logout` (POST): delete the session and clear the cookie.
+//! - `/auth/dev/login` (POST `{login}`): development sign-in without GitHub,
+//!   only when `SIMPRESS_DEV_AUTH=1` (404 otherwise).
 
 use axum::extract::{FromRequestParts, Query, State};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::response::Redirect;
+use axum::Json;
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use rand::RngCore;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 use crate::app::AppState;
-use crate::db::{self, User};
+use crate::db::{accounts, User};
 use crate::error::{AppError, AppResult};
 
 pub const SESSION_COOKIE: &str = "simpress_session";
@@ -156,24 +159,76 @@ pub async fn callback(
         .await
         .map_err(|e| AppError::BadGateway(format!("GitHub /user body: {e}")))?;
 
-    let u = db::upsert_github_user(
-        &st.pool,
+    let u = accounts::upsert_github_user(
+        &st.db,
         user.id,
         &user.login,
         user.name.as_deref(),
         user.avatar_url.as_deref(),
+        st.now_ms(),
     )
     .await?;
-    let token = random_token();
-    db::create_session(&st.pool, &session_id_hash(&token), u.id, st.cfg.session_ttl).await?;
     tracing::info!(user_id = %u.id, login = %u.login, "signed in");
-
-    let ttl = i64::try_from(st.cfg.session_ttl.as_secs()).unwrap_or(i64::MAX / 4);
-    let jar = jar
-        .remove(Cookie::build(STATE_COOKIE).path("/auth"))
-        .add(cookie(&st, SESSION_COOKIE, token, "/", ttl));
+    let jar = start_session(
+        &st,
+        jar.remove(Cookie::build(STATE_COOKIE).path("/auth")),
+        &u,
+    )
+    .await?;
     let home = format!("{}/", st.cfg.public_url.trim_end_matches('/'));
     Ok((jar, Redirect::to(&home)))
+}
+
+/// Create a session row for `user` and add the session cookie to `jar`.
+async fn start_session(st: &AppState, jar: CookieJar, user: &User) -> AppResult<CookieJar> {
+    let token = random_token();
+    let ttl_ms = i64::try_from(st.cfg.session_ttl.as_millis()).unwrap_or(i64::MAX / 4);
+    accounts::create_session(
+        &st.db,
+        &session_id_hash(&token),
+        &user.id,
+        st.now_ms(),
+        ttl_ms,
+    )
+    .await?;
+    let ttl = i64::try_from(st.cfg.session_ttl.as_secs()).unwrap_or(i64::MAX / 4);
+    Ok(jar.add(cookie(st, SESSION_COOKIE, token, "/", ttl)))
+}
+
+#[derive(Deserialize)]
+pub struct DevLogin {
+    login: String,
+}
+
+/// Dev logins are GitHub-shaped names: 1-39 of `[A-Za-z0-9_-]`.
+pub fn valid_dev_login(login: &str) -> bool {
+    !login.is_empty()
+        && login.len() <= 39
+        && login
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+}
+
+/// `POST /auth/dev/login {login}`: create or fetch the dev user and sign in.
+/// 404 unless `SIMPRESS_DEV_AUTH=1`.
+pub async fn dev_login(
+    State(st): State<AppState>,
+    jar: CookieJar,
+    Json(body): Json<DevLogin>,
+) -> AppResult<(CookieJar, Json<serde_json::Value>)> {
+    if !st.cfg.dev_auth {
+        return Err(AppError::NotFound("dev login is disabled".into()));
+    }
+    let login = body.login.trim();
+    if !valid_dev_login(login) {
+        return Err(AppError::BadRequest(
+            "login must be 1-39 letters, digits, '-' or '_'".into(),
+        ));
+    }
+    let user = accounts::upsert_dev_user(&st.db, login, st.now_ms()).await?;
+    tracing::info!(user_id = %user.id, login = %user.login, "dev sign-in");
+    let jar = start_session(&st, jar, &user).await?;
+    Ok((jar, Json(serde_json::json!({ "user": user }))))
 }
 
 pub async fn logout(
@@ -181,7 +236,7 @@ pub async fn logout(
     jar: CookieJar,
 ) -> AppResult<(CookieJar, StatusCode)> {
     if let Some(c) = jar.get(SESSION_COOKIE) {
-        db::delete_session(&st.pool, &session_id_hash(c.value())).await?;
+        accounts::delete_session(&st.db, &session_id_hash(c.value())).await?;
     }
     let jar = jar.remove(Cookie::build(SESSION_COOKIE).path("/"));
     Ok((jar, StatusCode::NO_CONTENT))
@@ -201,7 +256,7 @@ impl FromRequestParts<AppState> for CurrentUser {
     async fn from_request_parts(parts: &mut Parts, st: &AppState) -> Result<Self, Self::Rejection> {
         let jar = CookieJar::from_headers(&parts.headers);
         let token = jar.get(SESSION_COOKIE).ok_or(AppError::Unauthorized)?;
-        let user = db::session_user(&st.pool, &session_id_hash(token.value()))
+        let user = accounts::session_user(&st.db, &session_id_hash(token.value()), st.now_ms())
             .await?
             .ok_or(AppError::Unauthorized)?;
         Ok(CurrentUser(user))
@@ -220,6 +275,16 @@ mod tests {
         assert_eq!(a.len(), 64);
         assert_ne!(session_id_hash(&a), a);
         assert_eq!(session_id_hash(&a), session_id_hash(&a));
+    }
+
+    #[test]
+    fn dev_logins() {
+        assert!(valid_dev_login("ada"));
+        assert!(valid_dev_login("ada_lovelace-1"));
+        assert!(!valid_dev_login(""));
+        assert!(!valid_dev_login("a b"));
+        assert!(!valid_dev_login(&"x".repeat(40)));
+        assert!(!valid_dev_login("../etc"));
     }
 
     #[test]

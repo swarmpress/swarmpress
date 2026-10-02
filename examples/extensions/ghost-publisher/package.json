@@ -1,0 +1,14 @@
+{
+  "name": "@simpress-examples/ghost-publisher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Example publish target: page JSON to a Ghost Admin API post",
+  "scripts": {
+    "check": "bun ../../../packages/runner/src/cli.ts check .",
+    "test": "bun ../../../packages/runner/src/cli.ts test ."
+  },
+  "devDependencies": {
+    "@simpress/sdk": "workspace:*"
+  }
+}

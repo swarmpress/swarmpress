@@ -91,6 +91,15 @@ describe('game scene (NullEngine)', () => {
     expect(enabled).toEqual(['marco'])
   })
 
+  it('hangs a real-time wall clock on a window-free exterior wall and sets its hands', () => {
+    expect(game.clockCount).toBe(1) // the newsroom; the meeting room has no exterior wall
+    game.setClock(new Date(Date.UTC(2026, 0, 1, 14, 0, 0)), 'Europe/Rome') // 15:00 in Rome
+    const hour = game.scene.getTransformNodeByName('clock-newsroom-hour-pivot')!
+    const minute = game.scene.getTransformNodeByName('clock-newsroom-minute-pivot')!
+    expect(hour.rotation.z).toBeCloseTo(-Math.PI / 2)
+    expect(minute.rotation.z).toBeCloseTo(0)
+  })
+
   it('creates shadows on medium quality and none on low', () => {
     expect(game.lighting.shadows).not.toBeNull()
     const low = createGameScene(engine, null, DEMO_BUILDING, { quality: QUALITY.low, postFx: false })

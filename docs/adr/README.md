@@ -51,4 +51,15 @@ Accepted ADRs are never rewritten.
 | [0029](0029-a-company-runs-several-projects-each-with-its-own-team.md) | A company runs several projects, each with its own team | Accepted |
 | [0030](0030-personas-are-a-data-catalog-with-cv-hobbies-and-interests.md) | Personas are a data catalog with CV, hobbies and interests | Accepted |
 | [0031](0031-the-publishing-plan-is-the-shared-workspace-for-ceo-and-agents.md) | The publishing plan is the shared workspace for CEO and agents | Accepted |
-| [0032](0032-real-traffic-from-google-analytics-via-the-data-scientist.md) | Real traffic from Google Analytics, owned by the data scientist | Accepted |
+| [0032](0032-first-party-analytics-tracker-owned-by-the-data-scientist.md) | First-party analytics tracker, owned by the data scientist | Accepted |
+| [0033](0033-credits-a-closed-loop-platform-currency-separate-from-in-game-cash.md) | Credits: a closed-loop platform currency, separate from in-game cash | Accepted |
+| [0034](0034-living-personas-memories-relationships-and-recorded-conversations.md) | Living personas: memories, relationships and recorded conversations | Accepted |
+| [0035](0035-the-real-world-enters-through-a-world-context-service.md) | The real world enters through a World Context Service | Accepted |
+| [0036](0036-a-day-director-thread-steers-each-day-within-sim-bounds.md) | A Day Director thread steers each day, within sim bounds | Accepted |
+| [0037](0037-extraordinary-unscripted-happenings-composed-from-safe-primitives.md) | Extraordinary, unscripted happenings, composed from safe primitives | Accepted |
+| [0038](0038-local-first-the-browser-is-authoritative-for-a-company.md) | Local-first: the browser is authoritative for a company | Accepted |
+| [0039](0039-sqlite-is-the-central-database.md) | SQLite is the central database | Accepted |
+| [0040](0040-web-access-for-local-models-fetch-proxy-and-firecrawl.md) | Web access for local models: fetch proxy and Firecrawl | Accepted |
+| [0041](0041-turso-in-the-browser-one-sqlite-dialect-everywhere.md) | Turso in the browser; one SQLite dialect everywhere | Accepted |
+| [0042](0042-extension-sdk-and-the-headless-bun-runner.md) | Extension SDK and the headless Bun runner | Accepted |
+| [0043](0043-extension-points-context-publish-challenges-self-authored-props.md) | Extension points: context providers, publish targets, challenges, staff-authored extensions, prop packs | Accepted |

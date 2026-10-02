@@ -1,6 +1,6 @@
 [package]
 name = "testkit"
-description = "Shared test helpers for SimPress crates: test DB setup, fake GitHub OAuth, WS test client, world builders"
+description = "Shared test helpers for SimPress crates: fake GitHub OAuth, WS test client, world builders"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -19,7 +19,6 @@ tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = "0.26"
 futures = "0.3"
 wiremock = "0.6"
-sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls"] }
 
 [lints]
 workspace = true

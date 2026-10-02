@@ -1,0 +1,14 @@
+{
+  "name": "@simpress-examples/ligurian-ferries",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Example context provider: ferry cancellations as facts and happenings",
+  "scripts": {
+    "check": "bun ../../../packages/runner/src/cli.ts check .",
+    "test": "bun ../../../packages/runner/src/cli.ts test ."
+  },
+  "devDependencies": {
+    "@simpress/sdk": "workspace:*"
+  }
+}

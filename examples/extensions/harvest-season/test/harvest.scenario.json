@@ -1,0 +1,8 @@
+{
+  "$schema": "../../../../packages/sdk/schemas/scenario.schema.json",
+  "name": "harvest pack loads and the world replays for 2 days",
+  "seed": 42,
+  "days": 2,
+  "expect": { "hash": "replay", "day": 2 },
+  "content": { "expect": { "personas": 1, "happenings": 2, "prompt_layers": 1 } }
+}
