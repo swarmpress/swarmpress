@@ -19,12 +19,9 @@ use crate::building::RoomKind;
 use crate::clock::{DayPhase, DESK_LAMP_ON};
 use crate::equipment::{DeviceState, EquipmentKind};
 use crate::geom::{PosMm, TileRect};
-use crate::ids::{EquipId, PersonaId, RoomId, StaffId};
+use crate::ids::{EquipId, MeetingId, PersonaId, RoomId, StaffId, WorkItemId};
 use crate::staff::{Activity, Pose, Role, Spot};
 use crate::world::World;
-
-/// Steps per pose cycle for seated workers (they pause typing now and then).
-const TYPING_CYCLE_STEPS: u64 = 600;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Light {
@@ -87,6 +84,23 @@ pub struct StaffRender {
     pub seated_at: Option<EquipId>,
     pub fatigue: u16,
     pub morale: u16,
+    /// The work item whose active phase this person works on
+    /// ([`World::busy_with`]). At a desk it shows as [`Pose::Type`].
+    pub work_item: Option<WorkItemId>,
+}
+
+/// A speech bubble: who is talking in a meeting, and for how long. The text
+/// never enters the sim; the client fetches it by `(meeting, seq)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BubbleRender {
+    pub meeting: MeetingId,
+    /// The turn's `ServerCommand::Utterance` seq.
+    pub seq: u32,
+    pub speaker: StaffId,
+    pub started_step: u64,
+    /// The bubble is up until this step (exclusive).
+    pub until_step: u64,
+    pub chars: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,6 +115,8 @@ pub struct RenderState {
     pub devices: Vec<DeviceRender>,
     /// People on site only.
     pub staff: Vec<StaffRender>,
+    /// One per meeting with a turn in progress, in meeting-id order.
+    pub bubbles: Vec<BubbleRender>,
 }
 
 impl World {
@@ -211,6 +227,7 @@ pub fn render_state(w: &World) -> RenderState {
     let staff = on_site
         .iter()
         .map(|s| {
+            let work_item = w.busy_with(s.id);
             let pose = if s.path.is_some() {
                 Pose::Walk
             } else {
@@ -221,13 +238,10 @@ pub fn render_state(w: &World) -> RenderState {
                             _ => Pose::Listen,
                         }
                     }
-                    (Activity::Working, _) => {
-                        // one cycle in five: a pause (`%` keeps MSRV 1.85)
-                        match (w.step / TYPING_CYCLE_STEPS + u64::from(s.id.0)) % 5 {
-                            0 => Pose::Sit,
-                            _ => Pose::Type,
-                        }
-                    }
+                    // Typing means a job: someone at their desk types while
+                    // a phase of theirs is being worked on, and sits otherwise.
+                    (Activity::Working, _) if work_item.is_some() => Pose::Type,
+                    (Activity::Working, _) => Pose::Sit,
                     (Activity::Lunch, Some(Spot::KitchenSeat { .. })) => Pose::Sit,
                     _ => Pose::Idle,
                 }
@@ -247,7 +261,24 @@ pub fn render_state(w: &World) -> RenderState {
                 seated_at: s.seated_at(),
                 fatigue: s.fatigue,
                 morale: s.morale,
+                work_item,
             }
+        })
+        .collect();
+
+    let bubbles = w
+        .meetings
+        .values()
+        .filter_map(|m| {
+            let speaker = m.speaker?;
+            Some(BubbleRender {
+                meeting: m.id,
+                seq: m.next_seq.saturating_sub(1),
+                speaker,
+                started_step: m.speak_from,
+                until_step: m.speak_until,
+                chars: m.speak_chars,
+            })
         })
         .collect();
 
@@ -261,6 +292,7 @@ pub fn render_state(w: &World) -> RenderState {
         rooms,
         devices,
         staff,
+        bubbles,
     }
 }
 

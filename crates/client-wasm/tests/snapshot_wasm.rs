@@ -16,7 +16,7 @@ use sim_core::World;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::wasm_bindgen_test;
 
-const GOLDEN_HASH: u64 = 0x591f_2064_16aa_2764;
+const GOLDEN_HASH: u64 = 0x39d9_8696_fe53_cdc4;
 const GOLDEN: &str = include_str!("../../../packages/runner/test/fixtures/golden.json");
 
 /// The scripted 50,000-step run with commands, jobs and queued inputs,
@@ -114,6 +114,57 @@ fn a_sim_from_a_snapshot_reissues_the_pending_job_as_the_same_json() {
         draft.contains("18446744073709551610"),
         "the brief ref keeps all its digits: {draft}"
     );
+}
+
+/// The publish gate (FEAT-079, ADR-0059): an article that passed its review
+/// waits for the CEO with no job pending, so a sim restored there re-issues
+/// nothing; the CEO's `Publish` then requests the same job in both sims.
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[cfg_attr(not(target_arch = "wasm32"), test)]
+fn a_sim_restored_at_the_publish_gate_reissues_nothing() {
+    let done = |job: u64, score: u8| {
+        format!(
+            r#"{{"JobCompleted":{{"job_id":{job},"digest":{{"ok":true,"score":{score},"words":900,"qa_defects":0,"artifact_sha":null}}}}}}"#
+        )
+    };
+    let mut sim = Sim::scenario("cinqueterre", 11).unwrap();
+    sim.advance(1_000); // 09:00: the standup (job 1)
+    sim.apply_command_json(
+        r#"{"MeetingOutcome":{"job_id":1,"briefs":[{"writer":"staff-1","editor":"staff-5","brief_ref":7}]}}"#,
+    )
+    .unwrap();
+    sim.apply_command_json(&done(2, 0)).unwrap(); // the draft
+    sim.advance(1_000);
+    sim.apply_command_json(&done(3, 8)).unwrap(); // the review: 8 ≥ 7
+    sim.advance(500);
+    sim.drain_effects_json();
+    let plan = sim.plan_json(None);
+    assert!(plan.contains("\"awaitingApproval\":true"), "{plan}");
+    assert!(plan.contains("\"jobs\":[]"), "{plan}");
+    assert_eq!(sim.next_due_step(), None);
+
+    let mut back = Sim::from_snapshot(&sim.snapshot()).unwrap();
+    assert_eq!(back.hash(), sim.hash());
+    assert_eq!(
+        back.reissue_pending_jobs(),
+        0,
+        "nothing is pending at the gate"
+    );
+    assert_eq!(back.pending_effects(), 0);
+    assert_eq!(back.drain_effects_json(), "[]");
+    assert_eq!(back.hash(), sim.hash());
+
+    // ticket-1 is the approval: the standup was answered, nothing else is open
+    let yes = r#"{"AnswerTicket":{"ticket":"ticket-1","option":"publish"}}"#;
+    back.apply_command_json(yes).unwrap();
+    sim.apply_command_json(yes).unwrap();
+    let request = back.drain_effects_json();
+    assert!(request.contains("\"kind\":\"publish\""), "{request}");
+    assert_eq!(request, sim.drain_effects_json());
+    assert_eq!(back.hash(), sim.hash());
+    let mut again = Sim::from_snapshot(&back.snapshot()).unwrap();
+    assert_eq!(again.reissue_pending_jobs(), 1);
+    assert_eq!(again.drain_effects_json(), request);
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]

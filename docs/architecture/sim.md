@@ -56,8 +56,10 @@ World
 ├─ plan:      Plan { items: BTreeMap<WorkItemId, WorkItem>, jobs: BTreeMap<u64, PendingJob>,
 │                     jobs_requested, standup_days, feed }        (crates/sim-core/src/plan.rs)
 ├─ effects:   Vec<Effect>  (outbox; #[serde(skip)], outside the hash and snapshots)
-├─ meetings:  BTreeMap<MeetingId, Meeting { kind, room, attendees, agenda, seq, speaker }>
-├─ inbox:     BTreeMap<TicketId, Ticket { kind, options, default_option, deadline_step, state }>
+├─ meetings:  BTreeMap<MeetingId, Meeting { kind, room, attendees, job, next_seq, speaker,
+│                                           speak_from, speak_until, speak_chars }>
+├─ inbox:     BTreeMap<TicketId, Ticket { kind, options, default_option, deadline_step, state,
+│                                         work_item, failure }>
 ├─ events:    EventDeck { scheduled, cooldowns }
 └─ ledger:    Ledger { entries (double-entry, cents) }
 ```
@@ -95,7 +97,10 @@ The room kinds, equipment, staff traits and project kinds are described in the g
   produced by the browser's orchestrator and applied as local commands):
   - `MeetingOutcome{job_id, briefs: Vec<BriefStub{kind, writer, editor, brief_ref}>}`
   - `JobCompleted{job_id: u64, digest: JobDigest{ok, score, words, qa_defects, artifact_sha: [u8; 16]}}`
-  - `DeployLanded{work_item}`
+  - `JobFailed{job_id: u64, reason: JobFailure}` with `JobFailure = Model | InvalidOutput |
+    NeedsMedia | NeedsPage | Timeout | Cancelled | Infrastructure` (an enum: the executor's error
+    text stays outside the sim)
+  - `DeployLanded{work_item}`, `DeployFailed{work_item}`
   - `Utterance{meeting, seq, speaker, chars}`
   - `SiteSignals{…}`, `AnalyticsSignals{…}`
 - Both are validated by the shared `validate_input(&World, &Input) -> Result<(), Reject>`
@@ -165,34 +170,77 @@ Text never enters the sim: a brief is an opaque `brief_ref`, a result a `JobDige
 
 ```text
 09:00 standup ─► RequestJob(Standup, team) ─► MeetingOutcome{briefs}
-   (no outcome within 60 game minutes: the standup ends, the job is dropped)
+   (JobFailed, or no outcome within 60 game minutes: the standup ends, the job is
+    dropped, and a StandupFailed ticket is raised)
    └─► per brief: WorkItem(article) in Draft ─► RequestJob(Draft, writer, revision 0)
 Draft   ─► JobCompleted{ok}               ─► RequestJob(Review, editor, same revision)
-Review  ─► JobCompleted{score ≥ bar (7)}  ─► RequestJob(Publish, IT engineer|DevOps|web dev|editor)
+Review  ─► JobCompleted{score ≥ bar (7)}  ─► the publish gate (below)
         ─► JobCompleted{score < bar}      ─► revision + 1 ─► RequestJob(Draft, writer, revision n)
            after 3 revisions               ─► Blocked + Escalation ticket
+gate    ─► ApproveAll (default)           ─► Approved, Publish stays Pending, PublishApproval ticket
+        ─► ApproveMajor                   ─► Publish when score ≥ 9 and revision 0, else the ticket
+        ─► Autonomous                     ─► Publish
+ticket  ─► Publish                        ─► RequestJob(Publish, IT engineer|DevOps|web dev|editor)
+        ─► SendBack                       ─► revision + 1 ─► RequestJob(Draft, writer, revision n)
+        ─► Kill                           ─► Cancelled
+        ─► Defer (default, and on expiry) ─► still parked; a fresh ticket at the next 08:30
 Publish ─► JobCompleted{ok}               ─► Scheduled (merged, awaiting the deploy)
 DeployLanded{work_item}                   ─► Published, project live_pages + 1, feed entry
-any JobCompleted{ok: false}               ─► Blocked + Escalation ticket
+DeployFailed{work_item}                   ─► Blocked + DeployFailed ticket
+JobCompleted{ok: false} │ JobFailed       ─► Blocked + Escalation, NeedsMedia or NeedsPage ticket
 ```
 
 - **Standups.** One `RequestJob(Standup)` per active project with a non-empty team per game day
   (`plan.standup_days` guards against a second one when the meeting ends early). `staff` is the
   team plus the strategists. The meeting stays open until the outcome arrives, at most an hour.
+  A standup that fails (`JobFailed`) or is not answered within the hour ends with a
+  `StandupFailed` ticket (rule 11): `Retry` opens a standup now, for an hour, with a new job;
+  `Skip`, the default, lets the day pass.
 - **Briefs.** `MeetingOutcome` is valid only for a pending standup job, with at most 8 briefs;
   the writer must be a writer, editor, editor-in-chief or translator on the project's team, the
   editor an editor or editor-in-chief on the team, and nobody reviews their own draft.
+- **Work in progress.** Two invariants are enforced where work items are created
+  (`check_meeting_outcome`), so nothing has to be undone later:
+  - a project never has more than `WIP_LIMIT` (3) open items. Open is everything not Published
+    or Cancelled: parked, blocked and merged-but-not-deployed items count;
+  - a writer has at most one item in the writing loop, hence at most one active draft. An item
+    keeps its writer from its first draft until it is past the gate, because a failed review or
+    a `SendBack` restarts Draft.
+
+  A `MeetingOutcome` that breaks either is refused as a whole and the standup stays pending. An
+  absent CEO therefore stops new commissions and loses nothing.
 - **Phases.** A work item has phases Draft → Review → Publish. A phase ends at
   `max(min time, job result)`: Draft 2 h, Review 1 h, Publish 15 min (game time), so the office
   shows the work even when an executor answers at once.
 - **Results.** `JobCompleted` is valid only for a pending, non-standup job, once (the job leaves
-  `plan.jobs`), with `score ≤ 10`. `DeployLanded` is valid only for a `Scheduled` item.
-- **Escalation.** A blocked item raises a `TicketKind::Escalation` QuestionTicket (priority
-  High, options `Retry | Kill`, `default_option = Kill`, a `deadline_step`). `Retry` restarts the
-  blocked phase with a new job; `Kill` (also the default on expiry) cancels the item and drops its
-  pending jobs. The Secretary never answers it (High).
+  `plan.jobs`), with `score ≤ 10`. `JobFailed` is valid for any pending job, once. `DeployLanded`
+  and `DeployFailed` are valid only for a `Scheduled` item.
+- **The publish gate** (ADR-0059). `company.policies.autonomy` (`SetPolicy(Autonomy(…))`,
+  default `ApproveAll`) decides what a passing review leads to. Under `ApproveAll` the item
+  becomes `Approved`, its Publish phase stays `Pending`, no job is requested, and a
+  `PublishApproval` ticket is raised. The ticket is High and CEO-only (`TicketKind::ceo_only`),
+  so the Secretary never answers it under any delegation policy; its default is `Defer`, so
+  neither expiry nor the default ever publishes. `raise_morning_approvals` raises a fresh ticket
+  for every parked item without an open one when the clock crosses 08:30 (after that step's
+  expiries, so an unanswered morning ticket is replaced the next morning without a gap).
+  `SendBack` is refused once the item has used its 3 revisions. An item already parked stays
+  parked when the policy changes.
+- **Failures.** A work-item job that fails blocks the item and raises the ticket its reason
+  calls for: `NeedsMedia` and `NeedsPage` for those two reasons (rule 5), `Escalation`
+  otherwise; the ticket carries the reason (`Ticket.failure`). A failed deploy blocks the merged
+  item with a `DeployFailed` ticket: `Retry` requests the Publish job again (the executor's
+  merge is idempotent), `Acknowledge` puts the item back to `Scheduled`, to land with the next
+  deploy that carries it.
+- **Escalation.** `TicketKind::Escalation` is High, with options `Retry | Kill`. `Retry`
+  restarts the blocked phase with a new job; `Kill` cancels the item and drops its pending jobs.
+  An item's first escalation defaults to `Retry` (a transient failure is the common case with a
+  local model), any later one to `Kill` (`WorkItem.escalations` counts them).
 - **Statuses** (publishing-plan.md §1): `Planned`, `InProgress` (draft), `InReview`, `Approved`
-  (publishing), `Scheduled`, `Published`, `Blocked`, `Cancelled`.
+  (parked at the gate, or publishing), `Scheduled`, `Published`, `Blocked`, `Cancelled`.
+- **Views for the host.** `World::job_due_step` and `World::next_due_step` give the step at
+  which a pending job is due: a work-item job at its phase's minimum-done step, a standup 30
+  game minutes after its request (ADR-0060). They are derived, never stored, and the sim does
+  not wait on them. `World::busy_with` says which item a person works on.
 - **Boundary.** `client-wasm` exposes `drain_effects_json()` (the orchestrator's `JobRequest`
   field names), `apply_command_json()` for player and server commands (the orchestrator's
   `Outcome` JSON as is), `plan_json()` and `Sim.scenario("cinqueterre", seed)`; see

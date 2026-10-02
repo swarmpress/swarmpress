@@ -192,8 +192,8 @@ impl Sim {
 
     /// Parses a JSON command and applies it now: a player [`Command`] or a
     /// [`ServerCommand`] (orchestrator results `MeetingOutcome`,
-    /// `JobCompleted`, `DeployLanded`; signals; utterances), told apart by
-    /// the variant name. Both go through the shared validation
+    /// `JobCompleted`, `JobFailed`; deploy notices `DeployLanded`,
+    /// `DeployFailed`; signals; utterances), told apart by the variant name. Both go through the shared validation
     /// (`sim_core::validate_input`). `Err` carries the reason. Shapes: README.
     pub fn apply_command_json(&mut self, json: &str) -> Result<(), String> {
         let input = parse_input(json)?;
@@ -241,17 +241,28 @@ impl Sim {
     pub fn plan_json(&self, project: Option<String>) -> String {
         json::plan(&self.world, project.as_deref()).to_string()
     }
+
+    /// The earliest step at which a pending job is due (ADR-0060): a
+    /// work-item job when its phase's minimum time has passed, a standup 30
+    /// game minutes after it was requested. `undefined` with no pending job.
+    /// A view for the host's clock: it is not state and never moves the
+    /// hash. Per job it is `jobs[].dueStep` in [`Sim::plan_json`].
+    pub fn next_due_step(&self) -> Option<u64> {
+        self.world.next_due_step()
+    }
 }
 
 /// `ServerCommand` variant names: a JSON command with one of these tags is a
 /// server command, anything else a player command.
-const SERVER_VARIANTS: [&str; 6] = [
+const SERVER_VARIANTS: [&str; 8] = [
     "JobCompleted",
     "MeetingOutcome",
     "DeployLanded",
     "Utterance",
     "SiteSignals",
     "AnalyticsSignals",
+    "JobFailed",
+    "DeployFailed",
 ];
 
 fn tag(v: &Value) -> Option<&str> {
@@ -652,8 +663,31 @@ mod tests {
         assert_eq!(item["phases"][0]["state"], "working");
         assert_eq!(item["phases"][0]["estimateMinutes"], 120);
         assert_eq!(plan["jobs"][0]["id"], 2);
+        // the due step of the pending draft: its phase's minimum (2 game hours)
+        let drafted_at = sim.step();
+        assert_eq!(plan["jobs"][0]["requestedStep"], drafted_at);
+        assert_eq!(plan["jobs"][0]["dueStep"], drafted_at + 1_000);
+        assert_eq!(plan["nextDueStep"], drafted_at + 1_000);
+        assert_eq!(sim.next_due_step(), Some(drafted_at + 1_000));
+        // work in progress: one open item, its writer is not free
+        let wip = &plan["wip"][0];
+        assert_eq!(wip["project"], "project-1");
+        assert_eq!(wip["limit"], 3);
+        assert_eq!(wip["open"], 1);
+        assert_eq!(wip["room"], 2);
+        assert_eq!(wip["awaitingApproval"], 0);
+        assert_eq!(wip["inWritingLoop"], 1);
+        let free: Vec<&str> = wip["freeWriters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s.as_str().unwrap())
+            .collect();
+        assert!(!free.contains(&"staff-1"), "{free:?}");
+        assert!(free.contains(&"staff-2"), "{free:?}");
         let other: Value = serde_json::from_str(&sim.plan_json(Some("project-9".into()))).unwrap();
         assert!(other["items"].as_array().unwrap().is_empty());
+        assert!(other["wip"].as_array().unwrap().is_empty());
 
         // JobCompleted with the orchestrator's Digest (hex sha or null)
         assert!(sim
@@ -673,7 +707,45 @@ mod tests {
         sim.apply_command_json(&done(&redraft, 0, "null")).unwrap();
         let review = run_until(&mut sim, "review");
         sim.apply_command_json(&done(&review, 8, "null")).unwrap();
-        let publish = run_until(&mut sim, "publish");
+        // The publish gate (ADR-0059): under the default policy the item is
+        // parked and the Inbox asks the CEO. No Publish job is requested.
+        sim.advance(600);
+        assert_eq!(sim.pending_effects(), 0, "no job before the CEO's yes");
+        assert_eq!(sim.next_due_step(), None, "nothing is pending at the gate");
+        let plan: Value = serde_json::from_str(&sim.plan_json(None)).unwrap();
+        assert_eq!(plan["items"][0]["status"], "approved");
+        assert_eq!(plan["items"][0]["awaitingApproval"], true);
+        assert_eq!(plan["items"][0]["currentPhase"], "publish");
+        assert_eq!(plan["items"][0]["phases"][2]["state"], "pending");
+        assert!(plan["jobs"].as_array().unwrap().is_empty());
+        assert!(plan["nextDueStep"].is_null());
+        assert_eq!(plan["wip"][0]["awaitingApproval"], 1);
+        let org: Value = serde_json::from_str(&sim.org_json()).unwrap();
+        assert_eq!(org["policies"]["autonomy"], "approve-all");
+        assert_eq!(org["policies"]["qualityBar"], 7);
+        let inbox: Value = serde_json::from_str(&sim.inbox_json()).unwrap();
+        let t = inbox["tickets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["kind"] == "publish-approval")
+            .expect("the approval ticket");
+        assert_eq!(t["status"], "open");
+        assert_eq!(t["priority"], "high");
+        assert_eq!(t["workItem"], "work-item-1");
+        assert_eq!(t["from"], "staff-5");
+        assert_eq!(
+            t["options"],
+            serde_json::json!(["publish", "send-back", "kill", "defer"])
+        );
+        assert_eq!(t["defaultOption"], "defer");
+        assert!(t["failure"].is_null());
+        let yes = serde_json::json!({"AnswerTicket": {"ticket": t["id"], "option": "publish"}})
+            .to_string();
+        assert_eq!(sim.validate_command_json(&yes), None);
+        sim.apply_command_json(&yes).unwrap();
+        let publish = drain(&mut sim).remove(0);
+        assert_eq!(publish["kind"], "publish");
         assert_eq!(publish["staff"][0]["role"], "it-engineer");
         sim.apply_command_json(&done(&publish, 0, "null")).unwrap();
         sim.advance(200);
@@ -691,6 +763,198 @@ mod tests {
         assert!(sim
             .apply_server_command_json(r#"{"Praise":{"staff":"staff-1"}}"#)
             .is_err());
+    }
+
+    /// ADR-0059 through the JSON boundary: `JobFailed` and `DeployFailed`
+    /// are server commands, their tickets and options show in `inbox_json`,
+    /// answers go through `AnswerTicket`, and the due step of a pending
+    /// standup is in `plan_json` and `next_due_step`.
+    #[test]
+    fn failure_commands_and_their_tickets_through_json() {
+        fn drain(sim: &mut Sim) -> Vec<Value> {
+            serde_json::from_str::<Value>(&sim.drain_effects_json())
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .clone()
+        }
+        fn open_ticket(sim: &Sim, kind: &str) -> Value {
+            let inbox: Value = serde_json::from_str(&sim.inbox_json()).unwrap();
+            inbox["tickets"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["kind"] == kind && t["status"] == "open")
+                .unwrap_or_else(|| panic!("no open {kind} ticket: {inbox}"))
+                .clone()
+        }
+        fn answer(sim: &mut Sim, ticket: &Value, option: &str) {
+            let cmd =
+                serde_json::json!({"AnswerTicket": {"ticket": ticket["id"], "option": option}})
+                    .to_string();
+            assert_eq!(sim.validate_command_json(&cmd), None, "{cmd}");
+            sim.apply_command_json(&cmd).unwrap();
+        }
+        let mut sim = Sim::demo(3);
+        assert_eq!(sim.next_due_step(), None);
+        sim.advance(1_000); // 09:00
+        let standup = drain(&mut sim).remove(0);
+        assert_eq!(standup["kind"], "standup");
+        // a standup is due 30 game minutes (250 steps) after its request
+        assert_eq!(sim.next_due_step(), Some(1_250));
+        let plan: Value = serde_json::from_str(&sim.plan_json(None)).unwrap();
+        assert_eq!(plan["jobs"][0]["kind"], "standup");
+        assert_eq!(plan["jobs"][0]["dueStep"], 1_250);
+        assert_eq!(plan["nextDueStep"], 1_250);
+
+        // JobFailed: by slug or by variant name, only for a pending job
+        assert!(sim
+            .validate_command_json(r#"{"JobFailed":{"job_id":99,"reason":"model"}}"#)
+            .unwrap()
+            .contains("no pending job"));
+        assert!(sim
+            .apply_server_command_json(r#"{"JobFailed":{"job_id":1,"reason":"because"}}"#)
+            .unwrap_err()
+            .contains("bad server command"));
+        let failed = r#"{"JobFailed":{"job_id":1,"reason":"infrastructure"}}"#;
+        assert_eq!(sim.validate_command_json(failed), None);
+        sim.apply_server_command_json(failed).unwrap();
+        assert!(sim.apply_command_json(failed).is_err(), "a job fails once");
+        assert_eq!(sim.next_due_step(), None);
+        let t = open_ticket(&sim, "standup-failed");
+        assert_eq!(t["priority"], "high");
+        assert_eq!(t["project"], "project-1");
+        assert_eq!(t["failure"], "infrastructure");
+        assert_eq!(t["options"], serde_json::json!(["retry", "skip"]));
+        assert_eq!(t["defaultOption"], "skip");
+
+        // Retry: the standup is requested again; it commissions an article
+        answer(&mut sim, &t, "retry");
+        let again = drain(&mut sim).remove(0);
+        assert_eq!(again["kind"], "standup");
+        assert_eq!(again["job_id"], 2);
+        sim.apply_command_json(
+            r#"{"MeetingOutcome":{"job_id":2,"briefs":[{"brief_ref":7,"writer":"staff-1","editor":"staff-5"}]}}"#,
+        )
+        .unwrap();
+        let draft = drain(&mut sim).remove(0);
+        assert_eq!(draft["job_id"], 3);
+        // the draft has no media: blocked, with a needs-media ticket
+        sim.apply_command_json(r#"{"JobFailed":{"job_id":3,"reason":"NeedsMedia"}}"#)
+            .unwrap();
+        let plan: Value = serde_json::from_str(&sim.plan_json(None)).unwrap();
+        assert_eq!(plan["items"][0]["status"], "blocked");
+        assert_eq!(plan["wip"][0]["blocked"], 1);
+        let t = open_ticket(&sim, "needs-media");
+        assert_eq!(t["workItem"], "work-item-1");
+        assert_eq!(t["failure"], "needs-media");
+        assert_eq!(t["options"], serde_json::json!(["retry", "kill"]));
+        assert_eq!(t["defaultOption"], "kill");
+        answer(&mut sim, &t, "retry");
+        let draft = drain(&mut sim).remove(0);
+        assert_eq!(draft["kind"], "draft");
+        assert_eq!(draft["job_id"], 4);
+        // a timeout: the item's first escalation, which defaults to retry
+        sim.apply_command_json(r#"{"JobFailed":{"job_id":4,"reason":"timeout"}}"#)
+            .unwrap();
+        let t = open_ticket(&sim, "escalation");
+        assert_eq!(t["failure"], "timeout");
+        assert_eq!(t["defaultOption"], "retry");
+        let plan: Value = serde_json::from_str(&sim.plan_json(None)).unwrap();
+        assert_eq!(plan["items"][0]["escalations"], 1);
+        answer(&mut sim, &t, "retry");
+        let draft = drain(&mut sim).remove(0);
+
+        // through the gate under `autonomous` to a merged item, then the
+        // deploy fails
+        sim.apply_command_json(r#"{"SetPolicy":{"Autonomy":"autonomous"}}"#)
+            .unwrap();
+        let done = |job: &Value, score: u8| {
+            serde_json::json!({"JobCompleted": {"job_id": job["job_id"], "digest":
+                {"ok": true, "score": score, "words": 900, "qa_defects": 0, "artifact_sha": null}}})
+            .to_string()
+        };
+        let failed = r#"{"DeployFailed":{"work_item":"work-item-1"}}"#;
+        assert!(sim
+            .validate_command_json(failed)
+            .unwrap()
+            .contains("not merged"));
+        sim.apply_command_json(&done(&draft, 0)).unwrap();
+        sim.advance(1_000);
+        let review = drain(&mut sim).remove(0);
+        sim.apply_command_json(&done(&review, 8)).unwrap();
+        sim.advance(500);
+        let publish = drain(&mut sim).remove(0);
+        assert_eq!(publish["kind"], "publish");
+        sim.apply_command_json(&done(&publish, 0)).unwrap();
+        sim.advance(125);
+        assert_eq!(sim.validate_command_json(failed), None);
+        sim.apply_server_command_json(failed).unwrap();
+        let plan: Value = serde_json::from_str(&sim.plan_json(None)).unwrap();
+        assert_eq!(plan["items"][0]["status"], "blocked");
+        let t = open_ticket(&sim, "deploy-failed");
+        assert_eq!(t["workItem"], "work-item-1");
+        assert_eq!(t["options"], serde_json::json!(["retry", "acknowledge"]));
+        assert_eq!(t["defaultOption"], "acknowledge");
+        answer(&mut sim, &t, "retry");
+        let publish = drain(&mut sim).remove(0);
+        assert_eq!(publish["kind"], "publish");
+        // player commands are not server commands
+        assert!(sim
+            .apply_server_command_json(r#"{"AnswerTicket":{"ticket":"ticket-1","option":"skip"}}"#)
+            .is_err());
+    }
+
+    /// Speech bubbles and who works on what, in `render_state_json`.
+    #[test]
+    fn render_state_json_carries_bubbles_and_work_items() {
+        let mut sim = Sim::demo(1);
+        sim.advance(1_090); // 09:10: the standup sits
+        let v: Value = serde_json::from_str(&sim.render_state_json()).unwrap();
+        assert!(v["bubbles"].as_array().unwrap().is_empty());
+        let meeting = v["meetings"][0]["id"].as_str().unwrap().to_string();
+        assert_eq!(v["meetings"][0]["job"], 1);
+        let speaker = v["staff"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["pose"] == "listen")
+            .expect("someone is seated")["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let at = sim.step();
+        sim.apply_command_json(
+            &serde_json::json!({"Utterance": {"meeting": meeting, "seq": 0, "speaker": speaker, "chars": 90}})
+                .to_string(),
+        )
+        .unwrap();
+        let v: Value = serde_json::from_str(&sim.render_state_json()).unwrap();
+        assert_eq!(
+            v["bubbles"],
+            serde_json::json!([{
+                "meeting": meeting, "seq": 0, "speaker": speaker,
+                "startedStep": at, "untilStep": at + 70, "chars": 90,
+            }])
+        );
+        // the outcome puts a writer to work: her work item, and she types
+        sim.apply_command_json(
+            r#"{"MeetingOutcome":{"job_id":1,"briefs":[{"brief_ref":7,"writer":"staff-1","editor":"staff-5"}]}}"#,
+        )
+        .unwrap();
+        sim.advance(400);
+        let v: Value = serde_json::from_str(&sim.render_state_json()).unwrap();
+        assert!(
+            v["bubbles"].as_array().unwrap().is_empty(),
+            "the turn is over"
+        );
+        let staff = v["staff"].as_array().unwrap();
+        let giulia = staff.iter().find(|s| s["id"] == "staff-1").unwrap();
+        assert_eq!(giulia["workItem"], "work-item-1");
+        assert_eq!(giulia["pose"], "type");
+        let marco = staff.iter().find(|s| s["id"] == "staff-5").unwrap();
+        assert!(marco["workItem"].is_null());
+        assert_ne!(marco["pose"], "type");
     }
 
     #[test]

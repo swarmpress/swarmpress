@@ -278,7 +278,8 @@ The plumbing MVP. Its acceptance test is `apps/game/e2e/mvp.spec.ts`, run with
 game page (`/?central=1`) against the real server with dev login, the in-memory fake GitHub,
 simulated deploys and the scripted `?llm=fake` model, on both store engines (turso, sqlite). It
 covers dev login and company founding, fast-forward to 09:00, standup → draft PR → review 6 →
-revision → review 8 → merge, `DeployLanded` through the events API, the Plan thread, a reload
+revision → review 8 → the CEO's approval in the Inbox (the publish gate, ADR-0059, since
+increment S) → merge, `DeployLanded` through the events API, the Plan thread, a reload
 restored from OPFS, and a fresh browser context restored from central sync. Health is derived
 from that evidence by Cockpit, not declared here.
 
@@ -301,7 +302,8 @@ Draft phase ─ RequestJob(Draft) ─ orchestrator: page JSON, validate (content
                                                                    content/** on drafts/*) → GitHub
    └─ plan: minutes, artifact, handoff posts (Turso)               (FakeGitHub in tests/dev)
 Review phase ─ RequestJob(Review) ─ verdict/score → plan review post
-   └─ JobCompleted{score} → sim: <7 revise, ≥7 publish
+   └─ JobCompleted{score} → sim: <7 revise, ≥7 the publish gate
+Gate (ApproveAll) ─ item parked, PublishApproval ticket ─ CEO answers Publish in the Inbox
 Publish ─ RequestJob(Publish) ─ gateway: merge ─────────────────► POST /api/gateway/merge → squash merge
                                                                    deployment_status webhook (or simulated
                                                                    in dev) → offline/online event inbox
@@ -317,8 +319,9 @@ reload / new device: restore from OPFS or sync (world snapshot + the log after i
 
 - `Effect::RequestJob { job_id, kind, project, work_item, brief_ref, revision, staff }`, drained
   with `World::drain_effects()`.
-- Results come back as `ServerCommand::{MeetingOutcome, JobCompleted, DeployLanded}`
-  (ADR-0059 adds `JobFailed` and `DeployFailed`).
+- Results come back as `ServerCommand::{MeetingOutcome, JobCompleted, DeployLanded}`, and
+  since increment S (ADR-0059, FEAT-079) `JobFailed{job_id, reason}` and
+  `DeployFailed{work_item}`. The sim accepts both; no executor sends them yet (P4, P6, G5).
 
 In the browser these are *local* commands that the client applies at the next step boundary and
 appends to the command log. "Server command" just means "not a player command".

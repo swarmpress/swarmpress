@@ -270,6 +270,55 @@ fn month_close_after_thirty_days() {
     assert_eq!(w.finance.closes[1].first_day, 30);
 }
 
+/// Guard for the MVP's first week (docs/design/mvp-pipeline.md section 7,
+/// track W): the owner's company earns nothing in the sim yet, so a week of
+/// play must not bury the Inbox under CFO alerts. On the real clock, with the
+/// starting company untouched: seven game days, no revenue, and no financial
+/// ticket of any kind. The design computed about 59 days of runway from the
+/// constants; the measured figure is printed and bounded here.
+#[test]
+fn a_week_without_revenue_raises_no_finance_tickets() {
+    let mut w = demo_office(1);
+    assert!(w.exec.cfo.is_some(), "the CFO watches (no CFO, no alerts)");
+    let at_start = w.runway_days().expect("the company burns cash");
+    for day in 1..=7u32 {
+        run_days(&mut w, 1);
+        let financial: Vec<_> = w
+            .tickets
+            .values()
+            .filter(|t| t.kind.is_financial())
+            .map(|t| (t.id, t.kind))
+            .collect();
+        assert!(financial.is_empty(), "day {day}: {financial:?}");
+        assert!(!w.project_over_budget(DEMO_PROJECT), "day {day}");
+    }
+    assert_eq!(w.clock().day, 7);
+    let revenue = w
+        .ledger
+        .totals
+        .get(&sim_core::economy::LedgerKind::Revenue)
+        .copied()
+        .unwrap_or(0);
+    assert_eq!(revenue, 0, "no revenue in the sim yet");
+    assert!(w.company.cash > 0);
+    assert_eq!(w.company.loan, None);
+    let after = w.runway_days().expect("still burning");
+    println!(
+        "runway: {at_start} days at the start, {after} days after a week; cash {} cents, burn {} cents a day",
+        w.company.cash,
+        w.daily_burn_cents()
+    );
+    // well clear of the 30-day alert for the whole week
+    assert!(at_start > 40, "{at_start}");
+    assert!(after > 40, "{after}");
+    // the tickets that did come are the standups nobody answered
+    assert!(w
+        .tickets
+        .values()
+        .all(|t| t.kind == TicketKind::StandupFailed));
+    assert_eq!(tickets_of(&w, TicketKind::StandupFailed).len(), 7);
+}
+
 #[test]
 fn firing_the_photographer_opens_a_missing_role_ticket() {
     let mut w = demo_office(2);

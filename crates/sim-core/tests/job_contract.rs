@@ -2,8 +2,10 @@
 //! "Job contract"), walked end to end on the cinqueterre.travel company:
 //!
 //! standup → MeetingOutcome → draft → review 6 → revision → review 8 →
-//! publish → DeployLanded → Published; plus the revision cap (Blocked + a
-//! QuestionTicket), failed jobs, retries and rejections.
+//! the CEO's yes at the publish gate → publish → DeployLanded → Published;
+//! plus the revision cap (Blocked + a QuestionTicket), failed jobs, retries
+//! and rejections. The gate itself, the failure commands and their tickets
+//! are in `tests/publish_gate.rs` (FEAT-079, ADR-0059).
 
 use sim_core::clock::SimConfig;
 use sim_core::commands::{Command, JobDigest, ServerCommand};
@@ -235,11 +237,31 @@ fn the_whole_article_loop() {
         (WorkItemStatus::InProgress, 1, Some(6))
     );
 
-    // Draft ok → Review of revision 1 → 8 ≥ 7 → Publish
+    // Draft ok → Review of revision 1 → 8 ≥ 7 → the publish gate (ADR-0059):
+    // under the default policy the item is parked and the CEO is asked
     complete(&mut w, redraft.job_id, true, 0);
     let review2 = step_until_job(&mut w, JobKind::Review, 200);
     assert_eq!(review2.revision, 1);
     complete(&mut w, review2.job_id, true, 8);
+    for _ in 0..40 {
+        w.step();
+        assert!(
+            drain(&mut w).is_empty(),
+            "no Publish job before the CEO's yes"
+        );
+    }
+    assert_eq!(w.plan.items[&id].status, WorkItemStatus::Approved);
+    assert!(w.plan.items[&id].awaiting_approval());
+    let ticket = *w.plan.items[&id]
+        .tickets
+        .last()
+        .expect("the approval ticket");
+    assert_eq!(w.tickets[&ticket].kind, TicketKind::PublishApproval);
+    w.apply(Command::AnswerTicket {
+        ticket,
+        option: TicketOption::Publish,
+    })
+    .unwrap();
     let publish = step_until_job(&mut w, JobKind::Publish, 200);
     assert_eq!(publish.work_item, Some(id));
     assert_eq!(publish.staff, vec![DAVIDE]);
@@ -262,7 +284,7 @@ fn the_whole_article_loop() {
     let item = &w.plan.items[&id];
     assert_eq!(item.status, WorkItemStatus::Published);
     assert_eq!(item.published_step, Some(w.step));
-    assert!(item.tickets.is_empty());
+    assert_eq!(item.tickets, vec![ticket], "only the approval");
     assert_eq!(w.projects[&DEMO_PROJECT].kpis.live_pages, pages + 1);
     assert!(w
         .plan
@@ -301,8 +323,10 @@ fn revision_cap_blocks_with_a_ticket() {
     let t = &w.tickets[&item.tickets[0]];
     assert_eq!(t.kind, TicketKind::Escalation);
     assert_eq!(t.work_item, Some(id));
-    assert_eq!(t.default_option, TicketOption::Kill);
-    assert!(t.options.contains(&TicketOption::Retry));
+    // an item's first escalation defaults to Retry (tests/publish_gate.rs
+    // follows the default and the second escalation's Kill)
+    assert_eq!(t.default_option, TicketOption::Retry);
+    assert!(t.options.contains(&TicketOption::Kill));
     assert!(t.deadline_step > w.step);
     assert!(t.is_open(), "High tickets are never auto-answered");
     assert!(w
@@ -310,11 +334,13 @@ fn revision_cap_blocks_with_a_ticket() {
         .feed
         .iter()
         .any(|f| f.kind == FeedKind::Blocked && f.work_item == id));
-    // past the deadline the default (Kill) cancels the item
-    let deadline = t.deadline_step;
-    while w.step <= deadline {
-        w.step();
-    }
+    // the CEO kills it: cancelled, nothing pending
+    let ticket = t.id;
+    w.apply(Command::AnswerTicket {
+        ticket,
+        option: TicketOption::Kill,
+    })
+    .unwrap();
     assert_eq!(w.plan.items[&id].status, WorkItemStatus::Cancelled);
     assert!(w.plan.jobs.values().all(|j| j.work_item != Some(id)));
 }
@@ -327,7 +353,7 @@ fn a_failed_job_blocks_and_retry_restarts_the_phase() {
     assert_eq!(w.plan.items[&id].status, WorkItemStatus::Blocked);
     let ticket = w.plan.items[&id].tickets[0];
     assert_eq!(w.tickets[&ticket].kind, TicketKind::Escalation);
-    assert_eq!(w.tickets[&ticket].default_option, TicketOption::Kill);
+    assert_eq!(w.tickets[&ticket].default_option, TicketOption::Retry);
     // the CEO retries: a fresh Draft job for the same revision
     w.apply(Command::AnswerTicket {
         ticket,
@@ -381,6 +407,11 @@ fn unanswered_standups_time_out() {
         !w.plan.jobs.contains_key(&standup.job_id),
         "dropped after an hour"
     );
+    // … loudly: a StandupFailed ticket (tests/publish_gate.rs)
+    assert!(w
+        .tickets
+        .values()
+        .any(|t| t.is_open() && t.kind == TicketKind::StandupFailed));
     assert!(w
         .apply_server(ServerCommand::MeetingOutcome {
             job_id: standup.job_id,

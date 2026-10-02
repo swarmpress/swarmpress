@@ -128,6 +128,10 @@ describe('settles', () => {
     expect(settles(OUTCOME)).toEqual({ job: 1 })
     expect(settles(DONE(7))).toEqual({ job: 7 })
     expect(settles(LANDED)).toEqual({ landed: 'work-item-1' })
+    // A reported failure settles its job too (ADR-0059): it is not run again after a reload.
+    expect(settles('{"JobFailed":{"job_id":9,"reason":"timeout"}}')).toEqual({ job: 9 })
+    // A failed deploy lands nothing: the item waits for a retry or the next deploy.
+    expect(settles('{"DeployFailed":{"work_item":"work-item-1"}}')).toEqual({})
   })
 
   it('is empty for CEO commands and unit variants', () => {
@@ -296,6 +300,7 @@ const built = existsSync(`${PKG}client_wasm.js`)
 
 type RealSim = RestorableSim & {
   pending_effects(): number
+  inbox_json(): string
   plan_json(project?: string): string
   validate_command_json(json: string): string | undefined
   snapshot(): Uint8Array
@@ -376,7 +381,21 @@ function record(seed = SEED): Recording {
   apply(done(next('review', 'review1'), 6))
   apply(done(next('draft', 'redraft'), 0))
   apply(done(next('review', 'review2'), 8))
-  const publish = next('publish')
+  // The publish gate (ADR-0059): the approved item parks, with no job, until the CEO answers its ticket.
+  const approval = (): string | undefined =>
+    (JSON.parse(sim.inbox_json()) as { tickets: { id: string; kind: string; status: string }[] }).tickets.find(
+      (t) => t.kind === 'publish-approval' && t.status === 'open',
+    )?.id
+  for (let i = 0; i < 2_000 && !approval(); i++) {
+    sim.advance(1)
+    if (sim.pending_effects() > 0) throw new Error(`a job was requested before the CEO approved: ${sim.drain_effects_json()}`)
+  }
+  sim.advance(25)
+  mark('parked') // nothing is pending here
+  apply(JSON.stringify({ AnswerTicket: { ticket: approval(), option: 'publish' } }))
+  const [publish] = drain()
+  if (publish?.kind !== 'publish') throw new Error(`expected a publish job after the approval, got ${JSON.stringify(publish)}`)
+  jobs.publish = publish.job_id
   mark('publishRequested')
   apply(done(publish, 0))
   sim.advance(200)
@@ -403,8 +422,19 @@ describe.skipIf(!built)('replay over the real sim (client-wasm)', () => {
     rec = record()
   })
 
-  it('the recorded run is a real one: eight commands, the article ends up published', () => {
-    expect(rec.log.map((c) => c.kind)).toEqual(['Praise', 'MeetingOutcome', 'JobCompleted', 'JobCompleted', 'JobCompleted', 'JobCompleted', 'JobCompleted', 'DeployLanded'])
+  it('the recorded run is a real one: nine commands, the article ends up published', () => {
+    // The CEO's `Publish` answer at the gate (ADR-0059) is a logged command like any other.
+    expect(rec.log.map((c) => c.kind)).toEqual([
+      'Praise',
+      'MeetingOutcome',
+      'JobCompleted',
+      'JobCompleted',
+      'JobCompleted',
+      'JobCompleted',
+      'AnswerTicket',
+      'JobCompleted',
+      'DeployLanded',
+    ])
     expect(rec.log[0].step).toBe(rec.log[1].step)
     expect(rec.final.hash).not.toBe(rec.marks.start.hash)
   })
@@ -685,6 +715,23 @@ describe.skipIf(!built)('restoreSim over the real sim (client-wasm)', () => {
     const r = restoreSim(sims, input(rec.marks.start, []))
     expect(r.result.effects).toEqual([])
     expect(r.result.applied).toBe(0)
+  })
+
+  it('a snapshot of an item parked at the publish gate re-issues nothing, and a replay leaves nothing to run (ADR-0059)', () => {
+    const m = rec.marks.parked
+    expect(status(wasm.Sim.from_snapshot(m.world))).toBe('approved')
+    const r = restoreSim(sims, input(m, upTo(rec, m)))
+    expect(r.result.hash).toBe(m.hash)
+    expect(r.result.effects).toEqual([])
+    expect(r.sim.pending_effects()).toBe(0)
+    // From the seed the same holds: every job requested so far is settled by the log, and no publish was asked for.
+    const replayed = restoreSim(sims, { ...input(m, upTo(rec, m)), forceReplay: true })
+    const asked = requested(replayed.result)
+    expect(asked.some((e) => e.kind === 'publish')).toBe(false)
+    expect(asked.filter((e) => !replayed.result.completedJobs.has(e.job_id))).toEqual([])
+    // The CEO's answer is what requests the publish job, in the restored sim as in the original.
+    r.sim.apply_command_json(rec.log[m.seq].json)
+    expect((JSON.parse(r.sim.drain_effects_json()) as Effect[]).map((e) => [e.job_id, e.kind])).toEqual([[rec.jobs.publish, 'publish']])
   })
 
   it('refuses a damaged snapshot instead of falling back to a replay', () => {

@@ -552,7 +552,10 @@ pub fn validate_server(w: &World, cmd: &ServerCommand) -> Result<(), Reject> {
         ServerCommand::MeetingOutcome { job_id, briefs } => {
             w.check_meeting_outcome(*job_id, briefs)
         }
-        ServerCommand::DeployLanded { work_item } => w.check_deploy_landed(*work_item),
+        ServerCommand::DeployLanded { work_item } | ServerCommand::DeployFailed { work_item } => {
+            w.check_deploy_landed(*work_item)
+        }
+        ServerCommand::JobFailed { job_id, .. } => w.check_job_failed(*job_id),
         ServerCommand::Utterance {
             meeting,
             seq,

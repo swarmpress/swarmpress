@@ -78,12 +78,20 @@ test('the sim drives the loop: effects → orchestrator-wasm → outcomes, Deplo
   // The sim staffs a draft with its writer only and a review with its editor only.
   expect(r.staff[1]).toEqual(['writer'])
   expect(r.staff[2]).toEqual(['editor'])
+  // The publish gate (ADR-0059): after the passing review the item is parked
+  // as `approved` with a ticket for the CEO, and no publish job has run. The
+  // harness answers `Publish`; only then does the sim request the publish job.
+  expect(r.gate).toEqual({
+    jobs: ['standup:0', 'draft:0', 'review:0', 'draft:1', 'review:1'],
+    status: 'approved',
+    options: ['publish', 'send-back', 'kill', 'defer'],
+  })
   expect(r.statusBefore).toBe('scheduled')
   expect(r.statusAfter).toBe('published')
   expect(r.feed).toContainEqual({ kind: 'published', workItem: 'work-item-1' })
   expect(r.postTypes).toEqual(POST_TYPES)
-  // MeetingOutcome + 5 JobCompleted + DeployLanded, in the command log.
-  expect(r.logged).toBe(7)
+  // MeetingOutcome + 4 JobCompleted + AnswerTicket + JobCompleted (publish) + DeployLanded, in the command log.
+  expect(r.logged).toBe(8)
   expect(errors).toEqual([])
 })
 

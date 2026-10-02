@@ -1,6 +1,6 @@
 //! Inputs to the simulation. Player [`Command`]s come from the CEO's client;
-//! [`ServerCommand`]s are injected by the authoritative server (job results,
-//! meeting utterances, nightly site audit). Both are applied in `(step, seq)`
+//! [`ServerCommand`]s are injected by the authoritative server (job results
+//! and failures, deploy notices, meeting utterances, nightly site audit). Both are applied in `(step, seq)`
 //! order, see [`crate::world::World::enqueue`].
 //!
 //! Wire encoding is postcard; `protocol` re-exports these types. The browser
@@ -146,11 +146,82 @@ pub enum OvertimePolicy {
     Crunch,
 }
 
+/// Who decides that an approved article is published (ADR-0059). After a
+/// review at or above the quality bar:
+/// - `ApproveAll` (the default): the item is parked and a `PublishApproval`
+///   ticket asks the CEO;
+/// - `ApproveMajor`: published without asking only at a score of
+///   [`crate::plan::AUTO_PUBLISH_SCORE`] or above with no revision, otherwise
+///   the ticket;
+/// - `Autonomous`: published without asking.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum AutonomyPolicy {
+    #[serde(alias = "approve-all")]
     ApproveAll,
+    #[serde(alias = "approve-major")]
     ApproveMajor,
+    #[serde(alias = "autonomous")]
     Autonomous,
+}
+
+impl AutonomyPolicy {
+    pub const fn slug(self) -> &'static str {
+        match self {
+            AutonomyPolicy::ApproveAll => "approve-all",
+            AutonomyPolicy::ApproveMajor => "approve-major",
+            AutonomyPolicy::Autonomous => "autonomous",
+        }
+    }
+}
+
+/// Why a job failed ([`ServerCommand::JobFailed`]). A closed set: the
+/// executor's error text stays outside the sim.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum JobFailure {
+    /// The model failed or produced nothing usable.
+    #[serde(alias = "model")]
+    Model,
+    /// The output did not validate, after the repairs allowed.
+    #[serde(alias = "invalid-output")]
+    InvalidOutput,
+    /// The closed world has no media for the job (rule 5).
+    #[serde(alias = "needs-media")]
+    NeedsMedia,
+    /// The closed world has no page the job must link to (rule 5).
+    #[serde(alias = "needs-page")]
+    NeedsPage,
+    /// The executor's wall-clock limit, or the sim's own standup timeout.
+    #[serde(alias = "timeout")]
+    Timeout,
+    #[serde(alias = "cancelled")]
+    Cancelled,
+    /// Store, gateway or network.
+    #[serde(alias = "infrastructure")]
+    Infrastructure,
+}
+
+impl JobFailure {
+    pub const ALL: [JobFailure; 7] = [
+        JobFailure::Model,
+        JobFailure::InvalidOutput,
+        JobFailure::NeedsMedia,
+        JobFailure::NeedsPage,
+        JobFailure::Timeout,
+        JobFailure::Cancelled,
+        JobFailure::Infrastructure,
+    ];
+
+    pub const fn slug(self) -> &'static str {
+        match self {
+            JobFailure::Model => "model",
+            JobFailure::InvalidOutput => "invalid-output",
+            JobFailure::NeedsMedia => "needs-media",
+            JobFailure::NeedsPage => "needs-page",
+            JobFailure::Timeout => "timeout",
+            JobFailure::Cancelled => "cancelled",
+            JobFailure::Infrastructure => "infrastructure",
+        }
+    }
 }
 
 /// Digest of a finished LLM job. Text never enters the sim.
@@ -211,6 +282,14 @@ pub enum ServerCommand {
         /// Digest of the day's top-pages table (the table stays server-side).
         top_pages_digest: u64,
     },
+    /// A requested job failed (ADR-0059). A standup ends and a
+    /// `StandupFailed` ticket is raised; a work item is blocked with a
+    /// `NeedsMedia`, `NeedsPage` or `Escalation` ticket. The reason is an
+    /// enum: no text enters the sim.
+    JobFailed { job_id: u64, reason: JobFailure },
+    /// The deploy carrying a merged (`Scheduled`) work item failed: the item
+    /// is blocked and a `DeployFailed` ticket raised.
+    DeployFailed { work_item: WorkItemId },
 }
 
 /// Anything that can be applied to a world.
@@ -338,6 +417,22 @@ mod tests {
         });
         let bytes = postcard::to_allocvec(&a).unwrap();
         assert_eq!(postcard::from_bytes::<Input>(&bytes).unwrap(), a);
+        for reason in JobFailure::ALL {
+            let f = Input::Server(ServerCommand::JobFailed { job_id: 9, reason });
+            let bytes = postcard::to_allocvec(&f).unwrap();
+            assert_eq!(postcard::from_bytes::<Input>(&bytes).unwrap(), f);
+            // the slug and the variant name both parse
+            let by_slug: JobFailure =
+                serde_json::from_str(&format!("\"{}\"", reason.slug())).unwrap();
+            assert_eq!(by_slug, reason);
+            let json = serde_json::to_string(&reason).unwrap();
+            assert_eq!(serde_json::from_str::<JobFailure>(&json).unwrap(), reason);
+        }
+        let d = Input::Server(ServerCommand::DeployFailed {
+            work_item: WorkItemId(3),
+        });
+        let bytes = postcard::to_allocvec(&d).unwrap();
+        assert_eq!(postcard::from_bytes::<Input>(&bytes).unwrap(), d);
     }
 
     #[test]
@@ -374,5 +469,38 @@ mod tests {
         );
         let c: Command = serde_json::from_str(r#"{"Fire":{"staff":6}}"#).unwrap();
         assert_eq!(c, Command::Fire { staff: StaffId(6) });
+        let c: Command =
+            serde_json::from_str(r#"{"AnswerTicket":{"ticket":"ticket-4","option":"send-back"}}"#)
+                .unwrap();
+        assert_eq!(
+            c,
+            Command::AnswerTicket {
+                ticket: TicketId(4),
+                option: TicketOption::SendBack
+            }
+        );
+        let c: Command =
+            serde_json::from_str(r#"{"SetPolicy":{"Autonomy":"approve-major"}}"#).unwrap();
+        assert_eq!(
+            c,
+            Command::SetPolicy(Policy::Autonomy(AutonomyPolicy::ApproveMajor))
+        );
+        let s: ServerCommand =
+            serde_json::from_str(r#"{"JobFailed":{"job_id":7,"reason":"needs-media"}}"#).unwrap();
+        assert_eq!(
+            s,
+            ServerCommand::JobFailed {
+                job_id: 7,
+                reason: JobFailure::NeedsMedia
+            }
+        );
+        let s: ServerCommand =
+            serde_json::from_str(r#"{"DeployFailed":{"work_item":"work-item-2"}}"#).unwrap();
+        assert_eq!(
+            s,
+            ServerCommand::DeployFailed {
+                work_item: WorkItemId(2)
+            }
+        );
     }
 }

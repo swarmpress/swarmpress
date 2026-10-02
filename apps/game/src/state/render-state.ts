@@ -55,6 +55,27 @@ export interface StaffRender {
   seatedAt?: string | null
   pose?: Pose
   activity?: string
+  /**
+   * The work item whose active phase this person works on (`work-item-1`),
+   * or null. Seated at the desk with one is the `type` pose, without `sit`.
+   */
+  workItem?: string | null
+}
+
+/**
+ * A speech bubble: who is talking in a meeting, and for how long. The words
+ * are not in the sim (CLAUDE.md rule 2): fetch them from the transcript by
+ * the meeting (its job) and `seq`.
+ */
+export interface BubbleRender {
+  meeting: string
+  /** The turn's number within the meeting, from 0. */
+  seq: number
+  speaker: string
+  startedStep: number
+  /** The bubble is up until this step. */
+  untilStep: number
+  chars: number
 }
 
 export interface RenderState {
@@ -67,6 +88,8 @@ export interface RenderState {
   /** Desk id → desk lamp on. */
   deskLamps: Record<string, boolean>
   staff: StaffRender[]
+  /** One per meeting with a turn in progress (absent in the hand-written fixture). */
+  bubbles?: BubbleRender[]
 }
 
 export const DEMO_BUILDING: BuildingLayout = {

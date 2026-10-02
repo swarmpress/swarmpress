@@ -17,6 +17,6 @@ The deterministic sim core (`crates/sim-core`): building, staff, projects, econo
 | [FEAT-006](006-projects-pipeline-stages.md) | Projects and pipeline stages | planned | critical |
 | [FEAT-007](007-economy-ledger.md) | Economy and ledger | planned | high |
 | [FEAT-008](008-events-deck.md) | Events deck | planned | normal |
-| [FEAT-009](009-inbox-tickets.md) | Inbox and tickets | planned | high |
+| [FEAT-009](009-inbox-tickets.md) | Inbox and tickets | in-progress | high |
 | [FEAT-010](010-progression-failure.md) | Progression, unlocks and failure states | planned | normal |
-| [FEAT-079](079-publish-gate-failure-commands.md) | CEO publish gate and failure commands | planned | critical |
+| [FEAT-079](079-publish-gate-failure-commands.md) | CEO publish gate and failure commands | in-progress | critical |

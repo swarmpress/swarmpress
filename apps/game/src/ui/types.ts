@@ -181,6 +181,10 @@ export interface TicketJson {
   answer?: string | null
   /** UI extension: the option the secretary proposes. */
   proposedOption?: string | null
+  /** The work item the ticket is about: escalations, the publish gate (`publish-approval`), failures. */
+  workItem?: string | null
+  /** Why the job behind the ticket failed (sim `JobFailure` slug: `timeout`, `needs-media`, …). */
+  failure?: string | null
 }
 
 export interface SecretaryTaskJson {

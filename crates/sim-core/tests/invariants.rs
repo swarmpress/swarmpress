@@ -12,15 +12,19 @@
 //!   names active people in those roles; project leads are on their team;
 //!   per-project ledgers plus overhead sum to the company ledger; every open
 //!   ticket is still before its deadline (so tickets always resolve by it);
-//!   the Secretary never answers a High or over-threshold ticket
+//!   the Secretary never answers a High or over-threshold ticket, and never
+//!   the publish gate, whose default never publishes
+//! - the plan (ADR-0059): open items per project stay within the
+//!   work-in-progress limit; a writer has at most one active draft; an item
+//!   parked at the publish gate has no pending job
 
 use proptest::prelude::*;
 use proptest::sample::select;
 
 use sim_core::building::{Door, RoomKind, Window};
 use sim_core::commands::{
-    AutonomyPolicy, Command, DemolishTarget, Input, JobDigest, OvertimePolicy, Placement, Policy,
-    ServerCommand, SiteSignals,
+    AutonomyPolicy, Command, DemolishTarget, Input, JobDigest, JobFailure, OvertimePolicy,
+    Placement, Policy, ServerCommand, SiteSignals,
 };
 use sim_core::economy::LedgerKind;
 use sim_core::equipment::EquipmentKind;
@@ -30,9 +34,13 @@ use sim_core::ids::{
     CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId,
 };
 use sim_core::inbox::{
-    DelegationPolicy, FollowUpTopic, Priority, ResolvedBy, SecretaryTaskKind, TicketOption,
+    DelegationPolicy, FollowUpTopic, Priority, ResolvedBy, SecretaryTaskKind, TicketKind,
+    TicketOption,
 };
-use sim_core::plan::{BriefStub, PhaseState, WorkItemKind, WorkItemStatus, MAX_REVISIONS};
+use sim_core::plan::{
+    BriefStub, JobKind, PhaseKind, PhaseState, WorkItemKind, WorkItemStatus, MAX_REVISIONS,
+    WIP_LIMIT,
+};
 use sim_core::projects::ProjectStatus;
 use sim_core::roles::Role;
 use sim_core::scenarios::demo_office_with_config;
@@ -139,6 +147,10 @@ fn ticket_option() -> impl Strategy<Value = TicketOption> {
         TicketOption::Reject,
         TicketOption::Retry,
         TicketOption::Kill,
+        TicketOption::Publish,
+        TicketOption::SendBack,
+        TicketOption::Defer,
+        TicketOption::Skip,
     ])
 }
 
@@ -275,6 +287,11 @@ fn server_command() -> impl Strategy<Value = ServerCommand> {
                 qa_defects: 0,
                 artifact_sha: [7; 16],
             },
+        }),
+        (1u64..12, select(JobFailure::ALL.to_vec()))
+            .prop_map(|(job_id, reason)| ServerCommand::JobFailed { job_id, reason }),
+        (1u32..5).prop_map(|w| ServerCommand::DeployFailed {
+            work_item: WorkItemId(w),
         }),
     ]
 }
@@ -507,8 +524,20 @@ fn check_org(w: &World) {
                 Priority::High,
                 "the Secretary answered a High ticket"
             );
+            assert_ne!(
+                t.kind,
+                TicketKind::PublishApproval,
+                "the Secretary answered the publish gate"
+            );
             assert!(!t.over_threshold());
             assert!(t.routed_via_secretary);
+        }
+        if t.kind == TicketKind::PublishApproval && t.resolved_by == Some(ResolvedBy::Default) {
+            assert_eq!(
+                t.answer,
+                Some(TicketOption::Defer),
+                "the default of the publish gate never publishes"
+            );
         }
     }
     if w.exec.secretary.is_none() {
@@ -518,8 +547,62 @@ fn check_org(w: &World) {
 }
 
 /// The job contract: revisions are capped, blocked items are escalated,
-/// working phases wait on a pending job, pending jobs point at live work.
+/// working phases wait on a pending job, pending jobs point at live work;
+/// and ADR-0059: a project's open items stay within the work-in-progress
+/// limit, a writer has at most one item in the writing loop (so at most one
+/// active draft), and an item parked at the publish gate has no job.
 fn check_plan(w: &World) {
+    for p in w.projects.keys() {
+        assert!(
+            w.open_items(*p) <= WIP_LIMIT,
+            "{p} has {} open items (limit {WIP_LIMIT})",
+            w.open_items(*p)
+        );
+    }
+    let mut writers: Vec<StaffId> = Vec::new();
+    let mut drafting: Vec<StaffId> = Vec::new();
+    for item in w.plan.items.values() {
+        if item.in_writing_loop() {
+            let writer = item.writer().expect("an article has a writer");
+            assert!(
+                !writers.contains(&writer),
+                "{writer} has two items in the writing loop"
+            );
+            writers.push(writer);
+        }
+        if !item.status.is_closed() {
+            if let Some(p) = item.phase().filter(|p| p.kind == PhaseKind::Draft) {
+                let writer = p.assignee.expect("a draft has a writer");
+                assert!(
+                    !drafting.contains(&writer),
+                    "{writer} has two active drafts"
+                );
+                drafting.push(writer);
+            }
+        }
+        if item.awaiting_approval() {
+            assert!(
+                w.plan.jobs.values().all(|j| j.work_item != Some(item.id)),
+                "{} is parked at the gate with a pending job",
+                item.id
+            );
+            assert!(
+                !item.tickets.is_empty(),
+                "{} is parked without ever asking the CEO",
+                item.id
+            );
+        }
+    }
+    for j in w.plan.jobs.values() {
+        if j.kind == JobKind::Publish {
+            let item = &w.plan.items[&j.work_item.expect("a publish job has an item")];
+            assert!(
+                !item.awaiting_approval(),
+                "{} publishes while it waits for approval",
+                item.id
+            );
+        }
+    }
     for item in w.plan.items.values() {
         assert!(
             item.revision <= MAX_REVISIONS,

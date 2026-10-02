@@ -4,7 +4,8 @@
 // `?llm=fake` model:
 //
 //   dev login → company founded → fast-forward to 09:00
-//   → standup → draft PR → review 6 → revision → review 8 → merge
+//   → standup → draft PR → review 6 → revision → review 8
+//   → the publish gate: the CEO answers the approval ticket in the Inbox → merge
 //   → DeployLanded via the events API → item published
 //   → the Plan panel shows the thread
 //   → a reload restores everything from OPFS
@@ -22,8 +23,8 @@ const TITLE = 'Harvest week in Manarola'
 const JOBS = ['standup:0', 'draft:0', 'review:0', 'draft:1', 'review:1', 'publish:1']
 /** The thread of the work item, oldest first (src/llm/mvp-script.ts MVP_POST_TYPES). */
 const POST_TYPES = ['minutes', 'artifact', 'handoff', 'review', 'artifact', 'handoff', 'review', 'artifact', 'status']
-/** MeetingOutcome + 5 JobCompleted + DeployLanded. */
-const LOGGED = ['MeetingOutcome', 'JobCompleted', 'JobCompleted', 'JobCompleted', 'JobCompleted', 'JobCompleted', 'DeployLanded']
+/** MeetingOutcome + 4 JobCompleted + the CEO's approval at the publish gate (ADR-0059) + JobCompleted (publish) + DeployLanded. */
+const LOGGED = ['MeetingOutcome', 'JobCompleted', 'JobCompleted', 'JobCompleted', 'JobCompleted', 'AnswerTicket', 'JobCompleted', 'DeployLanded']
 
 
 const gameUrl = (engine: string, login: string, extra = '') =>
@@ -74,8 +75,42 @@ const postTypes = async (page: Page) => ((await session(page, 'planText')).posts
 const logKinds = async (page: Page) => (await session(page, 'commandLog')).map((c) => c.kind)
 
 interface SimPlan {
-  items: { id: string; status: string }[]
+  items: { id: string; status: string; awaitingApproval?: boolean }[]
+  jobs: { id: number; kind: string }[]
   feed: { kind: string; workItem: string }[]
+}
+
+/**
+ * The publish gate (ADR-0059, FEAT-079): the approved article waits for the
+ * CEO, who answers the `publish-approval` ticket in the Inbox panel. Nothing
+ * was merged before the click. The clock is paused while the CEO reads.
+ */
+async function approveInInbox(page: Page, shot: string) {
+  await session(page, 'pause')
+  await session(page, 'idle')
+  const parked = await state(page)
+  expect(parked.errors).toEqual([])
+  // standup, draft, review 6, revision, review 8: no publish job, and the sim waits for none.
+  expect(parked.jobs.map((j) => `${j.kind}:${j.revision}`)).toEqual(JOBS.slice(0, 5))
+  expect((await simJson<SimPlan>(page, 'plan_json')).jobs).toEqual([])
+  expect((await session(page, 'gateway')).map((c) => c.op)).toEqual(['draft', 'draft'])
+  expect(await logKinds(page)).toEqual(LOGGED.slice(0, 5))
+
+  await page.getByRole('navigation', { name: 'CEO tools' }).getByRole('button', { name: /^Inbox/ }).click()
+  const inbox = page.getByRole('region', { name: 'Inbox', exact: true })
+  await expect(inbox).toBeVisible()
+  const ticket = inbox.getByRole('article', { name: 'Publish approval', exact: true })
+  await expect(ticket).toHaveCount(1)
+  await expect(ticket).toContainText(ITEM)
+  const options = inbox.getByRole('group', { name: 'Answer Publish approval' })
+  await expect(options.getByRole('button')).toHaveText([/^Publish/, /^Send back/, /^Kill/, /^Defer/])
+  await page.screenshot({ path: `test-results/mvp/${shot}.png` })
+  await options.getByRole('button', { name: /^Publish/ }).click()
+  // Answered: the ticket has no options any more, and the command is in the log.
+  await expect(options).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  expect(await logKinds(page)).toEqual(LOGGED.slice(0, 6))
+  await session(page, 'resume')
 }
 
 /** The Plan panel: open the work item and check its thread, as the CEO sees it. */
@@ -131,7 +166,20 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
   expect(early.minute).toBeGreaterThanOrEqual(9 * 60)
   expect(early.step).toBeGreaterThanOrEqual(1000)
 
-  // ---------------------------------------------------------------- the loop, driven by the sim
+  // ---------------------------------------------------------------- the loop, driven by the sim, up to the publish gate
+  await expect
+    .poll(
+      async () => {
+        const s = await state(page)
+        if (s.errors.length) throw new Error(`the loop failed: ${s.errors.join('; ')}`)
+        return (await simJson<SimPlan>(page, 'plan_json')).items.find((i) => i.id === ITEM)?.awaitingApproval ?? false
+      },
+      { timeout: 180_000, intervals: [500] },
+    )
+    .toBe(true)
+  await approveInInbox(page, `${engine}-inbox-approval`)
+
+  // ---------------------------------------------------------------- approved: merge, deploy, published
   await expect
     .poll(
       async () => {

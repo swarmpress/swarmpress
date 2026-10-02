@@ -6,19 +6,32 @@
 //!
 //! ```text
 //! 09:00 standup ─► Effect::RequestJob(Standup, team) ─► ServerCommand::MeetingOutcome{briefs}
-//!   (no outcome within 60 game minutes: the standup ends with no briefs)
+//!   (JobFailed, or no outcome within 60 game minutes: the standup ends
+//!    with no briefs and a StandupFailed ticket)
 //!   └─► WorkItem(article): Draft(writer) → Review(editor) → Publish
 //! Draft   ─► RequestJob(Draft, writer)   ─► JobCompleted{ok}            ─► Review
-//! Review  ─► RequestJob(Review, editor)  ─► JobCompleted{score ≥ bar}   ─► Publish
+//! Review  ─► RequestJob(Review, editor)  ─► JobCompleted{score ≥ bar}   ─► the publish gate
 //!                                           score < bar: revise (≤ 3), then Blocked + ticket
+//! gate (company.policies.autonomy, ADR-0059):
+//!   ApproveAll   ─► Approved, Publish stays Pending, PublishApproval ticket
+//!   ApproveMajor ─► Publish at once when score ≥ 9 and revision 0, else the ticket
+//!   Autonomous   ─► Publish at once
+//!   ticket: Publish ─► Publish │ SendBack ─► revision + 1, Draft │ Kill ─► Cancelled
+//!           Defer (the default, also on expiry) ─► stays parked; a fresh ticket at 08:30
 //! Publish ─► RequestJob(Publish)         ─► JobCompleted{ok}            ─► Scheduled
 //! ServerCommand::DeployLanded{work_item} ─► Published, live_pages + 1, feed spotlight
-//! any JobCompleted{ok: false}            ─► Blocked + escalation ticket
+//! ServerCommand::DeployFailed{work_item} ─► Blocked + DeployFailed ticket
+//! JobCompleted{ok: false} │ JobFailed    ─► Blocked + ticket (Escalation, NeedsMedia, NeedsPage)
 //! ```
 //!
 //! A phase completes at `max(min time, job done)`: drafts take at least 2
 //! game hours, reviews 1, publishing 15 minutes, so the office shows the work
 //! even when an executor answers instantly.
+//!
+//! Commissions are bounded where they are made (`MeetingOutcome`): a project
+//! never has more than [`WIP_LIMIT`] open items, parked ones included, and a
+//! writer never more than one item in the writing loop. An absent CEO
+//! therefore stops new commissions and loses nothing.
 //!
 //! Effects are an outbox, not state: [`World::drain_effects`] hands them to
 //! the executor after each step. They are skipped by serde, so they are not
@@ -33,20 +46,32 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::commands::JobDigest;
+use crate::clock::{Clock, BRIEFING_TIME};
+use crate::commands::{AutonomyPolicy, JobDigest, JobFailure};
 use crate::ids::{MeetingId, ProjectId, StaffId, TicketId, WorkItemId};
-use crate::inbox::{TicketKind, TicketSpec};
+use crate::inbox::{TicketKind, TicketOption, TicketSpec};
 use crate::roles::Role;
 use crate::world::World;
 
 /// A standup waits this long for its outcome, game minutes.
 pub const STANDUP_TIMEOUT_MINUTES: u16 = 60;
+/// A standup's job is due this long after it was requested, game minutes
+/// (ADR-0060; a view for the host's clock, see [`World::job_due_step`]).
+pub const STANDUP_DUE_MINUTES: u16 = 30;
 /// Failed reviews before an item is blocked and escalated.
 pub const MAX_REVISIONS: u8 = 3;
 /// Briefs one standup may create.
 pub const MAX_BRIEFS_PER_STANDUP: usize = 8;
+/// Open work items a project may have at once, parked ones included
+/// (ADR-0059). A standup that would exceed it is refused.
+pub const WIP_LIMIT: usize = 3;
+/// Under `AutonomyPolicy::ApproveMajor` a first draft with at least this
+/// review score is published without asking the CEO.
+pub const AUTO_PUBLISH_SCORE: u8 = 9;
 /// Feed entries kept.
 pub const FEED_KEPT: usize = 32;
+/// Ticket ids kept on a work item (the newest ones).
+pub const ITEM_TICKETS_KEPT: usize = 16;
 
 /// What a job is for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -304,9 +329,14 @@ pub struct WorkItem {
     pub current: usize,
     /// The standup that created it.
     pub meeting: Option<MeetingId>,
+    /// Tickets raised about it, oldest first (the newest
+    /// [`ITEM_TICKETS_KEPT`]).
     pub tickets: Vec<TicketId>,
     /// Last review score.
     pub last_score: Option<u8>,
+    /// `Escalation` tickets raised about it so far: the first defaults to
+    /// `Retry`, any later one to `Kill`.
+    pub escalations: u8,
     pub created_step: u64,
     pub published_step: Option<u64>,
 }
@@ -314,6 +344,44 @@ pub struct WorkItem {
 impl WorkItem {
     pub fn phase(&self) -> Option<&Phase> {
         self.phases.get(self.current)
+    }
+
+    /// Who drafts it.
+    pub fn writer(&self) -> Option<StaffId> {
+        self.phases
+            .iter()
+            .find(|p| p.kind == PhaseKind::Draft)
+            .and_then(|p| p.assignee)
+    }
+
+    /// Passed its review and parked at the publish gate: `Approved`, with
+    /// the Publish phase not started. No job is pending for it.
+    pub fn awaiting_approval(&self) -> bool {
+        self.status == WorkItemStatus::Approved
+            && self
+                .phase()
+                .is_some_and(|p| p.kind == PhaseKind::Publish && p.state == PhaseState::Pending)
+    }
+
+    /// Open and not past the gate: a failed review or a `SendBack` can still
+    /// restart its Draft, so its writer is not free for another item.
+    pub fn in_writing_loop(&self) -> bool {
+        !self.status.is_closed()
+            && self
+                .phases
+                .iter()
+                .any(|p| p.kind == PhaseKind::Publish && p.state == PhaseState::Pending)
+    }
+
+    /// A new revision: Draft and Review start over.
+    fn reopen_for_revision(&mut self) {
+        self.revision += 1;
+        for p in &mut self.phases {
+            if p.kind != PhaseKind::Publish {
+                p.state = PhaseState::Pending;
+                p.result = None;
+            }
+        }
     }
 }
 
@@ -498,14 +566,7 @@ impl World {
         let Some(job) = self.plan.jobs.remove(&job_id) else {
             return;
         };
-        // the standup ends now
-        let now = self.clock();
-        if let Some(m) = job.meeting.and_then(|m| self.meetings.get_mut(&m)) {
-            if m.is_active(now) {
-                m.end = now.minute.max(m.start);
-            }
-            m.job = None;
-        }
+        self.end_standup(&job);
         for b in briefs {
             self.plan.next_item += 1;
             let id = WorkItemId(self.plan.next_item);
@@ -528,12 +589,82 @@ impl World {
                 meeting: job.meeting,
                 tickets: Vec::new(),
                 last_score: None,
+                escalations: 0,
                 created_step: self.step,
                 published_step: None,
             };
             self.plan.items.insert(id, item);
             self.start_phase(id, 0);
         }
+    }
+
+    /// The standup of `job` ends now (its outcome or its failure arrived).
+    fn end_standup(&mut self, job: &PendingJob) {
+        let now = self.clock();
+        if let Some(m) = job.meeting.and_then(|m| self.meetings.get_mut(&m)) {
+            if m.is_active(now) {
+                m.end = now.minute.max(m.start);
+            }
+            m.job = None;
+        }
+    }
+
+    /// A standup produced nothing: tell the CEO (rule 11). `Retry` opens a
+    /// standup again, `Skip` (the default) lets the day pass.
+    fn raise_standup_failed(&mut self, project: ProjectId, failure: JobFailure) {
+        let from = self.projects.get(&project).and_then(|p| p.lead);
+        self.raise_ticket_with(
+            TicketSpec {
+                kind: TicketKind::StandupFailed,
+                project: Some(project),
+                from,
+                role: None,
+                amount_cents: 0,
+                work_item: None,
+            },
+            None,
+            Some(failure),
+        );
+    }
+
+    /// Open items of a project: everything not published or cancelled,
+    /// parked and blocked ones included.
+    pub fn open_items(&self, project: ProjectId) -> usize {
+        self.plan
+            .items
+            .values()
+            .filter(|i| i.project == project && !i.status.is_closed())
+            .count()
+    }
+
+    /// The item that keeps `staff` in the writing loop as its writer, if any
+    /// (at most one: `MeetingOutcome` refuses a second).
+    pub fn writing(&self, staff: StaffId) -> Option<WorkItemId> {
+        self.plan
+            .items
+            .values()
+            .find(|i| i.in_writing_loop() && i.writer() == Some(staff))
+            .map(|i| i.id)
+    }
+
+    /// The step at which a pending job is due: the minimum-done step of the
+    /// phase a work-item job works on, or [`STANDUP_DUE_MINUTES`] after a
+    /// standup's request. A view for the host's clock (ADR-0060): the sim
+    /// itself never waits on it, and it is not part of the hash.
+    pub fn job_due_step(&self, job: &PendingJob) -> u64 {
+        if job.kind == JobKind::Standup {
+            return job.requested_step + self.minutes_to_steps(STANDUP_DUE_MINUTES);
+        }
+        job.work_item
+            .and_then(|id| self.plan.items.get(&id))
+            .and_then(|i| i.phases.iter().find(|p| p.job == Some(job.job_id)))
+            .and_then(|p| p.min_done_step)
+            .unwrap_or(job.requested_step)
+    }
+
+    /// The earliest [`World::job_due_step`] of the pending jobs.
+    pub fn next_due_step(&self) -> Option<u64> {
+        self.plan.jobs.values().map(|j| self.job_due_step(j)).min()
     }
 
     /// Starts phase `index` of an item: state, timers, job.
@@ -602,12 +733,44 @@ impl World {
         }
         // a failed job blocks at once; successes wait for the minimum time
         if !digest.ok {
-            self.block_item(id);
+            self.block_item(id, TicketKind::Escalation, None);
         }
     }
 
-    /// Blocks an item and escalates it to the CEO.
-    fn block_item(&mut self, id: WorkItemId) {
+    /// A job failed (validated by the caller): a standup ends with a
+    /// `StandupFailed` ticket, a work item is blocked with the ticket its
+    /// reason calls for.
+    pub(crate) fn apply_job_failed(&mut self, job_id: u64, reason: JobFailure) {
+        let Some(job) = self.plan.jobs.remove(&job_id) else {
+            return;
+        };
+        match (job.kind, job.work_item) {
+            (JobKind::Standup, _) => {
+                self.end_standup(&job);
+                self.raise_standup_failed(job.project, reason);
+            }
+            (_, Some(id)) => {
+                let kind = match reason {
+                    JobFailure::NeedsMedia => TicketKind::NeedsMedia,
+                    JobFailure::NeedsPage => TicketKind::NeedsPage,
+                    _ => TicketKind::Escalation,
+                };
+                self.block_item(id, kind, Some(reason));
+            }
+            (_, None) => {}
+        }
+    }
+
+    /// The deploy that carries a merged item failed (validated by the
+    /// caller): blocked, with a `DeployFailed` ticket.
+    pub(crate) fn apply_deploy_failed(&mut self, id: WorkItemId) {
+        self.block_item(id, TicketKind::DeployFailed, None);
+    }
+
+    /// Blocks an item's current phase and raises a ticket of `kind` about
+    /// it. An item's first `Escalation` defaults to `Retry` (a transient
+    /// failure is the common case), any later one to `Kill`.
+    fn block_item(&mut self, id: WorkItemId, kind: TicketKind, failure: Option<JobFailure>) {
         let step = self.step;
         let Some(item) = self.plan.items.get_mut(&id) else {
             return;
@@ -617,6 +780,14 @@ impl World {
         if let Some(p) = item.phases.get_mut(current) {
             p.state = PhaseState::Blocked;
         }
+        let default = (kind == TicketKind::Escalation).then(|| {
+            item.escalations = item.escalations.saturating_add(1);
+            if item.escalations == 1 {
+                TicketOption::Retry
+            } else {
+                TicketOption::Kill
+            }
+        });
         let (project, owner) = (item.project, item.owner);
         self.push_feed(FeedEntry {
             step,
@@ -624,20 +795,134 @@ impl World {
             project,
             work_item: id,
         });
+        let ticket = self.raise_ticket_with(
+            TicketSpec {
+                kind,
+                project: Some(project),
+                from: owner,
+                role: None,
+                amount_cents: 0,
+                work_item: Some(id),
+            },
+            default,
+            failure,
+        );
+        self.note_ticket(id, ticket);
+    }
+
+    /// Records a ticket on the item it is about, keeping the newest
+    /// [`ITEM_TICKETS_KEPT`] (a parked item gets one every morning).
+    fn note_ticket(&mut self, id: WorkItemId, ticket: TicketId) {
+        if let Some(item) = self.plan.items.get_mut(&id) {
+            item.tickets.push(ticket);
+            if item.tickets.len() > ITEM_TICKETS_KEPT {
+                item.tickets.remove(0);
+            }
+        }
+    }
+
+    /// Parks an item that passed its review at the publish gate: `Approved`,
+    /// the Publish phase (`index`) not started, a ticket for the CEO.
+    fn park_for_approval(&mut self, id: WorkItemId, index: usize) {
+        let Some(item) = self.plan.items.get_mut(&id) else {
+            return;
+        };
+        if item.phases.get(index).map(|p| p.kind) != Some(PhaseKind::Publish) {
+            return;
+        }
+        item.current = index;
+        item.status = WorkItemStatus::Approved;
+        self.raise_publish_approval(id);
+    }
+
+    /// Asks the CEO whether a parked item may be published.
+    fn raise_publish_approval(&mut self, id: WorkItemId) {
+        let Some((project, owner)) = self.plan.items.get(&id).map(|i| (i.project, i.owner)) else {
+            return;
+        };
         let ticket = self.raise_ticket(TicketSpec {
-            kind: TicketKind::Escalation,
+            kind: TicketKind::PublishApproval,
             project: Some(project),
             from: owner,
             role: None,
             amount_cents: 0,
             work_item: Some(id),
         });
-        if let Some(item) = self.plan.items.get_mut(&id) {
-            item.tickets.push(ticket);
+        self.note_ticket(id, ticket);
+    }
+
+    /// When the clock crosses 08:30: every parked item without an open
+    /// approval ticket (deferred, or its ticket expired) goes back on the
+    /// CEO's desk. Runs after the day's expiries, so a ticket raised at
+    /// 08:30 and never answered is replaced the next morning without a gap.
+    pub(crate) fn raise_morning_approvals(&mut self, before: Clock, now: Clock) {
+        let crossed =
+            now.minute >= BRIEFING_TIME && (before.day != now.day || before.minute < BRIEFING_TIME);
+        if !crossed {
+            return;
+        }
+        let asked: Vec<WorkItemId> = self
+            .tickets
+            .values()
+            .filter(|t| t.is_open() && t.kind == TicketKind::PublishApproval)
+            .filter_map(|t| t.work_item)
+            .collect();
+        let parked: Vec<WorkItemId> = self
+            .plan
+            .items
+            .values()
+            .filter(|i| i.awaiting_approval() && !asked.contains(&i.id))
+            .map(|i| i.id)
+            .collect();
+        for id in parked {
+            self.raise_publish_approval(id);
         }
     }
 
-    /// Escalation answers: `Retry` restarts the blocked phase with a new
+    /// `PublishApproval` answer `Publish`: the Publish phase starts.
+    pub(crate) fn publish_item(&mut self, id: WorkItemId) {
+        let Some(item) = self.plan.items.get(&id) else {
+            return;
+        };
+        if item.awaiting_approval() {
+            let current = item.current;
+            self.start_phase(id, current);
+        }
+    }
+
+    /// `PublishApproval` answer `SendBack`: a new revision, Draft restarts.
+    /// (The CEO's note is a store post the revision job reads.)
+    pub(crate) fn send_back_item(&mut self, id: WorkItemId) {
+        let Some(item) = self.plan.items.get_mut(&id) else {
+            return;
+        };
+        if !item.awaiting_approval() || item.revision >= MAX_REVISIONS {
+            return;
+        }
+        item.reopen_for_revision();
+        self.start_phase(id, 0);
+    }
+
+    /// `DeployFailed` answer `Acknowledge` (also its default): the merge
+    /// stands, so the item is `Scheduled` again and lands with the next
+    /// deploy that carries it.
+    pub(crate) fn await_next_deploy(&mut self, id: WorkItemId) {
+        let Some(item) = self.plan.items.get_mut(&id) else {
+            return;
+        };
+        let current = item.current;
+        let publishing = item
+            .phases
+            .get(current)
+            .is_some_and(|p| p.kind == PhaseKind::Publish);
+        if item.status != WorkItemStatus::Blocked || !publishing {
+            return;
+        }
+        item.status = WorkItemStatus::Scheduled;
+        item.phases[current].state = PhaseState::Done;
+    }
+
+    /// `Retry` on an item's ticket restarts the blocked phase with a new
     /// job, `Kill` cancels the item.
     pub(crate) fn retry_item(&mut self, id: WorkItemId) {
         let Some(item) = self.plan.items.get(&id) else {
@@ -703,8 +988,11 @@ impl World {
             })
             .collect();
         let bar = self.company.policies.quality_bar;
+        let autonomy = self.company.policies.autonomy;
         enum Next {
             Phase(usize),
+            /// The publish gate: park before phase `usize` and ask the CEO.
+            Gate(usize),
             Block,
             Wait,
         }
@@ -719,17 +1007,22 @@ impl World {
                 PhaseKind::Review => {
                     item.last_score = Some(result.score);
                     if result.score >= bar {
-                        Next::Phase(current + 1)
+                        let unasked = match autonomy {
+                            AutonomyPolicy::ApproveAll => false,
+                            AutonomyPolicy::ApproveMajor => {
+                                result.score >= AUTO_PUBLISH_SCORE && item.revision == 0
+                            }
+                            AutonomyPolicy::Autonomous => true,
+                        };
+                        if unasked {
+                            Next::Phase(current + 1)
+                        } else {
+                            Next::Gate(current + 1)
+                        }
                     } else if item.revision >= MAX_REVISIONS {
                         Next::Block
                     } else {
-                        item.revision += 1;
-                        for p in &mut item.phases {
-                            if p.kind != PhaseKind::Publish {
-                                p.state = PhaseState::Pending;
-                                p.result = None;
-                            }
-                        }
+                        item.reopen_for_revision();
                         Next::Phase(0)
                     }
                 }
@@ -740,27 +1033,38 @@ impl World {
             };
             match next {
                 Next::Phase(i) => self.start_phase(id, i),
-                Next::Block => self.block_item(id),
+                Next::Gate(i) => self.park_for_approval(id, i),
+                Next::Block => self.block_item(id, TicketKind::Escalation, None),
                 Next::Wait => {}
             }
         }
     }
 
-    /// Ends standups whose outcome never came: no briefs, the job is dropped.
+    /// Ends standups whose outcome never came: no briefs, the job is
+    /// dropped, and a `StandupFailed` ticket says so (rule 11).
     pub(crate) fn time_out_standups(&mut self) {
         let now = self.clock();
-        let meetings = &self.meetings;
-        self.plan.jobs.retain(|_, j| {
-            j.kind != JobKind::Standup
-                || j.meeting
-                    .and_then(|m| meetings.get(&m))
-                    .is_some_and(|m| m.is_active(now))
-        });
-        let jobs = &self.plan.jobs;
-        for m in self.meetings.values_mut() {
-            if m.job.is_some_and(|j| !jobs.contains_key(&j)) {
-                m.job = None;
+        let timed_out: Vec<(u64, ProjectId)> = self
+            .plan
+            .jobs
+            .values()
+            .filter(|j| {
+                j.kind == JobKind::Standup
+                    && !j
+                        .meeting
+                        .and_then(|m| self.meetings.get(&m))
+                        .is_some_and(|m| m.is_active(now))
+            })
+            .map(|j| (j.job_id, j.project))
+            .collect();
+        for (job, project) in timed_out {
+            self.plan.jobs.remove(&job);
+            for m in self.meetings.values_mut() {
+                if m.job == Some(job) {
+                    m.job = None;
+                }
             }
+            self.raise_standup_failed(project, JobFailure::Timeout);
         }
     }
 
@@ -795,7 +1099,11 @@ impl World {
         if briefs.len() > MAX_BRIEFS_PER_STANDUP {
             return Err(Reject::Limit("briefs per standup"));
         }
-        for b in briefs {
+        // Parked items count: an absent CEO stops new commissions.
+        if self.open_items(job.project) + briefs.len() > WIP_LIMIT {
+            return Err(Reject::Limit("work in progress (open items per project)"));
+        }
+        for (n, b) in briefs.iter().enumerate() {
             let on_team = |s: StaffId, ok: fn(Role) -> bool| {
                 self.staff
                     .get(&s)
@@ -814,8 +1122,25 @@ impl World {
             if b.writer == b.editor {
                 return Err(Reject::Invalid("nobody reviews their own draft"));
             }
+            // One active draft per writer: an item keeps its writer until it
+            // is past the gate (a failed review or a SendBack restarts Draft).
+            if self.writing(b.writer).is_some() || briefs[..n].iter().any(|o| o.writer == b.writer)
+            {
+                return Err(Reject::Occupied(
+                    "the writer already has an item in the writing loop",
+                ));
+            }
         }
         Ok(())
+    }
+
+    /// Validates a job failure (pure): any pending job may fail, once.
+    pub(crate) fn check_job_failed(&self, job_id: u64) -> Result<(), crate::Reject> {
+        self.plan
+            .jobs
+            .get(&job_id)
+            .map(|_| ())
+            .ok_or(crate::Reject::Invalid("no pending job with that id"))
     }
 
     /// Validates a job result (pure).
@@ -839,7 +1164,8 @@ impl World {
         Ok(())
     }
 
-    /// Validates a deploy notice (pure).
+    /// Validates a deploy notice, landed or failed (pure): the item must be
+    /// merged and waiting for its deploy.
     pub(crate) fn check_deploy_landed(&self, id: WorkItemId) -> Result<(), crate::Reject> {
         use crate::Reject;
         let item = self

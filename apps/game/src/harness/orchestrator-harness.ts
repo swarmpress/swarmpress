@@ -138,6 +138,12 @@ export interface SimLoopReport {
   postTypes: string[]
   logged: number
   minute: number
+  /**
+   * The publish gate (ADR-0059): the jobs that had run when the approved
+   * article was parked for the CEO, and the options of its ticket. The
+   * harness then answers `Publish`.
+   */
+  gate: { jobs: string[]; status: string; options: string[] } | null
 }
 
 function fakeLlm() {
@@ -152,7 +158,8 @@ function fakeLlm() {
  * The MVP loop driven by the sim (client-wasm): `Sim.scenario('cinqueterre')`
  * steps until its effects request jobs; each runs through orchestrator-wasm
  * and its outcomes go back as server commands (and into the command log).
- * The deploy is the server's: DeployLanded arrives through the events API
+ * The approved article waits at the publish gate until the harness, as the
+ * CEO, answers its ticket with `Publish`. The deploy is the server's: DeployLanded arrives through the events API
  * and is applied to the sim, which publishes the item.
  */
 async function runSimLoop(): Promise<SimLoopReport> {
@@ -164,16 +171,27 @@ async function runSimLoop(): Promise<SimLoopReport> {
   const sim = Sim.scenario('cinqueterre', BigInt(company.seed))
   const orch = await createOrchestrator({ store, gateway: centralGateway(client, () => keeper.token), llm: fakeLlm(), site: SITE })
   const enc = new TextEncoder()
-  const report: SimLoopReport = { jobs: [], staff: [], statusBefore: '', statusAfter: '', feed: [], postTypes: [], logged: 0, minute: 0 }
+  const report: SimLoopReport = { jobs: [], staff: [], statusBefore: '', statusAfter: '', feed: [], postTypes: [], logged: 0, minute: 0, gate: null }
   const apply = async (cmd: string) => {
     sim.apply_command_json(cmd)
     await store.appendCommands([{ step: Number(sim.step()), kind: Object.keys(JSON.parse(cmd))[0], payload: enc.encode(cmd) }])
     report.logged++
   }
   const item = () => (JSON.parse(sim.plan_json()).items as { id: string; status: string }[]).find((i) => i.id === 'work-item-1')
+  const approval = () =>
+    (JSON.parse(sim.inbox_json()) as { tickets: { id: string; kind: string; status: string; options: string[] }[] }).tickets.find(
+      (t) => t.kind === 'publish-approval' && t.status === 'open',
+    )
   let published = false
   for (let i = 0; i < 2000 && !published; i++) {
     sim.advance(10)
+    // The publish gate (ADR-0059): the sim parks the approved article and asks
+    // the CEO; no Publish job exists until the answer. The harness is the CEO.
+    const ticket = approval()
+    if (ticket) {
+      report.gate = { jobs: [...report.jobs], status: item()?.status ?? '', options: ticket.options }
+      await apply(JSON.stringify({ AnswerTicket: { ticket: ticket.id, option: 'publish' } }))
+    }
     for (const jobJson of await jobsFromEffects(sim.drain_effects_json(), companyId)) {
       const job = JSON.parse(jobJson) as JobRequest
       report.jobs.push(`${job.kind}:${job.revision}`)

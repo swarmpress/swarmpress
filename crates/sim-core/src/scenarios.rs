@@ -40,8 +40,8 @@
 use crate::building::{Building, Door, Entrance, RoomKind, Window};
 use crate::clock::{hm, SimConfig};
 use crate::commands::{
-    Command, DemolishTarget, Input, JobDigest, OvertimePolicy, Placement, Policy, ServerCommand,
-    SiteSignals,
+    AutonomyPolicy, Command, DemolishTarget, Input, JobDigest, JobFailure, OvertimePolicy,
+    Placement, Policy, ServerCommand, SiteSignals,
 };
 use crate::economy::Company;
 use crate::equipment::EquipmentKind;
@@ -465,7 +465,11 @@ pub fn demo_office_with_config(seed: u64, config: SimConfig) -> World {
 /// the hire, praise, promotion, a salary change, proposing a second project,
 /// delegated tasks (draft reply, meeting, follow-up), standup utterances,
 /// the job contract (a standup outcome with two briefs, drafts, a passing
-/// and a failing review, a revision, publishing, a landed deploy),
+/// and a failing review, a revision), the publish gate (ADR-0059: an
+/// approval answered `Publish`, a failed deploy retried and landed, an
+/// approval under `ApproveMajor` deferred, re-raised at 08:30 and sent
+/// back), failures (a failed standup retried, a draft without media, a
+/// draft that timed out, standups nobody answered),
 /// site and analytics signals, overtime policy changes, firing the
 /// photographer mid-shift (missing-role ticket) and answering it, activating
 /// the second project and splitting a writer across both, placing and
@@ -620,7 +624,17 @@ pub fn golden_script() -> Vec<(u64, Input)> {
         // drafts done at 14_200: reviews 5 and 6; item 1 scores 8, item 2 4
         (14_300, s(job_done(5, true, 8))),
         (14_310, s(job_done(6, true, 4))),
-        // reviews done at 14_700: publish job 7 (item 1), redraft job 8
+        // reviews done at 14_700. Item 1 passed: under ApproveAll it is
+        // parked with a PublishApproval ticket (4) and no Publish job. Item 2
+        // failed: redraft job 7.
+        // The CEO says yes: publish job 8.
+        (
+            14_750,
+            p(Command::AnswerTicket {
+                ticket: TicketId(4),
+                option: TicketOption::Publish,
+            }),
+        ),
         (14_800, s(job_done(7, true, 0))),
         (14_900, s(job_done(8, true, 0))),
         // day 1, 11:00: the CEO approves the proposal directly
@@ -631,17 +645,50 @@ pub fn golden_script() -> Vec<(u64, Input)> {
                 status: ProjectStatus::Active,
             }),
         ),
-        // day 1, 23:00
+        // item 1 merged at 14_901, but its deploy fails: blocked, ticket 10.
+        // Retry: publish job 9, merged again at 15_326.
         (
-            20_000,
-            p(Command::SetPolicy(Policy::Overtime(OvertimePolicy::Crunch))),
+            15_100,
+            s(ServerCommand::DeployFailed {
+                work_item: WorkItemId(1),
+            }),
         ),
-        // item 1 merged at 14_825: its deploy lands
+        (
+            15_200,
+            p(Command::AnswerTicket {
+                ticket: TicketId(10),
+                option: TicketOption::Retry,
+            }),
+        ),
+        (15_300, s(job_done(9, true, 0))),
+        // this time the deploy lands
         (
             15_500,
             s(ServerCommand::DeployLanded {
                 work_item: WorkItemId(1),
             }),
+        ),
+        // item 2's redraft is done at 15_700: review job 10. Under
+        // ApproveMajor a 9 would publish a first draft unasked, but this is
+        // revision 1: parked at 16_200 with ticket 11, which the CEO defers.
+        (
+            15_750,
+            p(Command::SetPolicy(Policy::Autonomy(
+                AutonomyPolicy::ApproveMajor,
+            ))),
+        ),
+        (15_800, s(job_done(10, true, 9))),
+        (
+            16_300,
+            p(Command::AnswerTicket {
+                ticket: TicketId(11),
+                option: TicketOption::Defer,
+            }),
+        ),
+        // day 1, 23:00
+        (
+            20_000,
+            p(Command::SetPolicy(Policy::Overtime(OvertimePolicy::Crunch))),
         ),
         // day 2, 07:00
         (
@@ -666,6 +713,62 @@ pub fn golden_script() -> Vec<(u64, Input)> {
                 pageviews: 4_610,
                 engagement_pm: 640,
                 top_pages_digest: 0x5eed_cafe,
+            }),
+        ),
+        // day 2, 08:30 (24_750): item 2 is still parked, so a fresh
+        // PublishApproval ticket (12) is raised.
+        // day 2, 09:00: the standup (job 11) fails: the meeting ends, ticket
+        // 13. Retry: a standup from 09:12 (job 12), which agrees one brief:
+        // work item 3 (Isabella → Marco), draft job 13.
+        (
+            25_050,
+            s(ServerCommand::JobFailed {
+                job_id: 11,
+                reason: JobFailure::Infrastructure,
+            }),
+        ),
+        (
+            25_100,
+            p(Command::AnswerTicket {
+                ticket: TicketId(13),
+                option: TicketOption::Retry,
+            }),
+        ),
+        (
+            25_150,
+            s(ServerCommand::MeetingOutcome {
+                job_id: 12,
+                briefs: vec![BriefStub {
+                    kind: WorkItemKind::Article,
+                    writer: StaffId(2),
+                    editor: StaffId(5),
+                    brief_ref: 503,
+                }],
+            }),
+        ),
+        // the CEO sends item 2 back: revision 2, draft job 14
+        (
+            25_200,
+            p(Command::AnswerTicket {
+                ticket: TicketId(12),
+                option: TicketOption::SendBack,
+            }),
+        ),
+        // item 3 has no media: blocked with a NeedsMedia ticket (14), killed
+        // by default two days later. Item 2's draft times out: blocked with
+        // its first Escalation (15), retried by default a day later (37_400).
+        (
+            25_300,
+            s(ServerCommand::JobFailed {
+                job_id: 13,
+                reason: JobFailure::NeedsMedia,
+            }),
+        ),
+        (
+            25_400,
+            s(ServerCommand::JobFailed {
+                job_id: 14,
+                reason: JobFailure::Timeout,
             }),
         ),
         // day 2, 19:00

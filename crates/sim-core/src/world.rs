@@ -17,7 +17,10 @@
 //!    briefing task; the Secretary's queue
 //! 5. meetings: open the day's rhythm (09:00 project standups, Monday 09:30
 //!    KPI review, Friday 16:00 finance review), close finished meetings
-//! 6. tickets: apply the default of every ticket past its deadline
+//! 6. tickets: apply the default of every ticket past its deadline; when
+//!    the clock crosses 08:30, raise a fresh approval ticket for every item
+//!    parked at the publish gate without one; then work items whose phase
+//!    is done move on
 //! 7. staff: move along paths, then decide (FSM) and plan new paths
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -109,11 +112,17 @@ pub struct Meeting {
     pub attendees: BTreeSet<StaffId>,
     /// The standup's job, while its outcome is awaited.
     pub job: Option<u64>,
-    /// Next expected [`ServerCommand::Utterance`] seq.
+    /// Next expected [`ServerCommand::Utterance`] seq. While someone speaks,
+    /// the turn on screen is `next_seq - 1`.
     pub next_seq: u32,
     pub speaker: Option<StaffId>,
+    /// Step at which `speaker` started the current turn.
+    pub speak_from: u64,
     /// Step until which `speaker` is talking.
     pub speak_until: u64,
+    /// Length of the current turn, characters (the text itself stays in the
+    /// store; the bubble fetches it by meeting and seq).
+    pub speak_chars: u32,
 }
 
 impl Meeting {
@@ -627,16 +636,20 @@ impl World {
                 self.apply_meeting_outcome(job_id, &briefs);
             }
             ServerCommand::DeployLanded { work_item } => self.apply_deploy_landed(work_item),
+            ServerCommand::JobFailed { job_id, reason } => self.apply_job_failed(job_id, reason),
+            ServerCommand::DeployFailed { work_item } => self.apply_deploy_failed(work_item),
             ServerCommand::Utterance {
                 meeting,
                 speaker,
                 chars,
                 ..
             } => {
-                let until = self.step + utterance_steps(chars);
+                let from = self.step;
                 if let Some(m) = self.meetings.get_mut(&meeting) {
                     m.speaker = Some(speaker);
-                    m.speak_until = until;
+                    m.speak_from = from;
+                    m.speak_until = from + utterance_steps(chars);
+                    m.speak_chars = chars;
                     m.next_seq += 1;
                 }
             }
@@ -897,8 +910,10 @@ impl World {
         // 5. meetings
         self.update_meetings(now);
 
-        // 6. tickets past their deadline; work items whose phase is done
+        // 6. tickets past their deadline; at 08:30 parked items go back on
+        //    the CEO's desk; work items whose phase is done
         self.expire_tickets();
+        self.raise_morning_approvals(before, now);
         self.advance_work();
 
         // 7. staff
@@ -1000,7 +1015,9 @@ impl World {
                 job: None,
                 next_seq: 0,
                 speaker: None,
+                speak_from: 0,
                 speak_until: 0,
+                speak_chars: 0,
             },
         );
         id
@@ -1040,6 +1057,94 @@ impl World {
             .collect()
     }
 
+    /// Who sits in a project's standup: its active team plus the
+    /// strategists. Empty when the project has no team.
+    fn standup_team(&self, project: ProjectId) -> BTreeSet<StaffId> {
+        let mut team: BTreeSet<StaffId> = self
+            .project_team(project)
+            .into_keys()
+            .filter(|s| self.staff.get(s).is_some_and(|s| s.is_active()))
+            .collect();
+        if !team.is_empty() {
+            team.extend(self.active_with_role(Role::Strategist));
+        }
+        team
+    }
+
+    /// A standup from `start` on `day`: at most an hour, never past midnight.
+    fn standup_end(start: u16) -> u16 {
+        (start + STANDUP_TIMEOUT_MINUTES).min(hm(24, 0))
+    }
+
+    /// Opens a project's standup at `start` and requests its job. Does
+    /// nothing without a team or a free meeting room.
+    fn open_standup(&mut self, project: ProjectId, day: u32, start: u16) {
+        let attendees = self.standup_team(project);
+        let end = Self::standup_end(start);
+        let Some(room) = (!attendees.is_empty())
+            .then(|| self.free_meeting_room(day, start, end, None))
+            .flatten()
+        else {
+            return;
+        };
+        let staff: Vec<StaffId> = attendees.iter().copied().collect();
+        let mid = self.open_meeting(
+            MeetingKind::Standup,
+            Some(project),
+            room,
+            day,
+            start,
+            end,
+            attendees,
+        );
+        self.plan.standup_days.insert(project, day);
+        let job = self.request_job(JobKind::Standup, project, None, None, 0, Some(mid), staff);
+        if let Some(m) = self.meetings.get_mut(&mid) {
+            m.job = Some(job);
+        }
+    }
+
+    /// Whether a `StandupFailed` ticket's `Retry` can open a standup for
+    /// `project` now (pure).
+    pub(crate) fn standup_possible(&self, project: ProjectId) -> Result<(), &'static str> {
+        let active = self
+            .projects
+            .get(&project)
+            .is_some_and(|p| p.status == ProjectStatus::Active);
+        if !active {
+            return Err("the project is not active");
+        }
+        if self
+            .plan
+            .jobs
+            .values()
+            .any(|j| j.kind == JobKind::Standup && j.project == project)
+        {
+            return Err("a standup of this project is already running");
+        }
+        if self.standup_team(project).is_empty() {
+            return Err("the project has no team");
+        }
+        let now = self.clock();
+        let end = Self::standup_end(now.minute);
+        if self
+            .free_meeting_room(now.day, now.minute, end, None)
+            .is_none()
+        {
+            return Err("no meeting room is free");
+        }
+        Ok(())
+    }
+
+    /// `StandupFailed` answer `Retry`: the standup is held again, starting
+    /// now, with a new job.
+    pub(crate) fn retry_standup(&mut self, project: ProjectId) {
+        if self.standup_possible(project).is_ok() {
+            let now = self.clock();
+            self.open_standup(project, now.day, now.minute);
+        }
+    }
+
     /// The daily rhythm (organization.md §8).
     fn schedule_rituals(&mut self, now: Clock) {
         let day = now.day;
@@ -1058,35 +1163,8 @@ impl World {
                 {
                     continue;
                 }
-                let mut attendees: BTreeSet<StaffId> = self
-                    .project_team(pid)
-                    .into_keys()
-                    .filter(|s| self.staff.get(s).is_some_and(|s| s.is_active()))
-                    .collect();
-                if attendees.is_empty() {
-                    continue;
-                }
-                attendees.extend(self.active_with_role(Role::Strategist));
                 // The standup runs until its outcome arrives, at most an hour.
-                let end = STANDUP_START + STANDUP_TIMEOUT_MINUTES;
-                if let Some(room) = self.free_meeting_room(day, STANDUP_START, end, None) {
-                    let staff: Vec<StaffId> = attendees.iter().copied().collect();
-                    let mid = self.open_meeting(
-                        MeetingKind::Standup,
-                        Some(pid),
-                        room,
-                        day,
-                        STANDUP_START,
-                        end,
-                        attendees,
-                    );
-                    self.plan.standup_days.insert(pid, day);
-                    let job =
-                        self.request_job(JobKind::Standup, pid, None, None, 0, Some(mid), staff);
-                    if let Some(m) = self.meetings.get_mut(&mid) {
-                        m.job = Some(job);
-                    }
-                }
+                self.open_standup(pid, day, STANDUP_START);
             }
         }
         let office: Vec<StaffId> = self

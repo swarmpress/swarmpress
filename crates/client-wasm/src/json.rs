@@ -12,7 +12,7 @@ use sim_core::finance::CostBreakdown;
 use sim_core::geom::PosMm;
 use sim_core::ids::{PersonaId, ProjectId, StaffId};
 use sim_core::inbox::TicketKind;
-use sim_core::plan::{Effect, PhaseKind};
+use sim_core::plan::{can_draft, Effect, PhaseKind, WorkItemStatus, WIP_LIMIT};
 use sim_core::projects::{ProjectStatus, MONTH_DAYS};
 use sim_core::render_state::{Light, RenderState};
 use sim_core::roles::Department;
@@ -234,6 +234,7 @@ pub fn render_state(w: &World, rs: &RenderState) -> Value {
                 "activity": s.activity.slug(),
                 "seatedAt": s.seated_at.map(|d| d.to_string()),
                 "meeting": meeting,
+                "workItem": opt_id(s.work_item),
                 "fatigue": s.fatigue,
                 "morale": s.morale,
                 "path": s.path.as_ref().map(|path| json!({
@@ -260,6 +261,22 @@ pub fn render_state(w: &World, rs: &RenderState) -> Value {
                 "active": m.is_active(w.clock()),
                 "attendees": m.attendees.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
                 "speaker": opt_id(m.speaker),
+                "job": m.job,
+            })
+        })
+        .collect();
+
+    let bubbles: Vec<Value> = rs
+        .bubbles
+        .iter()
+        .map(|b| {
+            json!({
+                "meeting": b.meeting.to_string(),
+                "seq": b.seq,
+                "speaker": b.speaker.to_string(),
+                "startedStep": b.started_step,
+                "untilStep": b.until_step,
+                "chars": b.chars,
             })
         })
         .collect();
@@ -268,6 +285,7 @@ pub fn render_state(w: &World, rs: &RenderState) -> Value {
         "step": rs.step,
         "weekday": weekday_slug(w.clock().weekday()),
         "meetings": meetings,
+        "bubbles": bubbles,
         "day": rs.day,
         "minute": rs.minute,
         "phase": phase_slug(rs.phase),
@@ -418,6 +436,10 @@ pub fn org(w: &World) -> Value {
             "secretary": opt_id(w.exec.secretary),
             "delegation": w.exec.delegation.slug(),
         },
+        "policies": {
+            "autonomy": w.company.policies.autonomy.slug(),
+            "qualityBar": w.company.policies.quality_bar,
+        },
         "departments": departments,
         "staff": staff,
         "projects": projects,
@@ -539,6 +561,7 @@ pub fn inbox(w: &World) -> Value {
                 "role": t.role.map(|r| r.slug()),
                 "amountEur": eur(t.amount_cents),
                 "workItem": opt_id(t.work_item),
+                "failure": t.failure.map(|f| f.slug()),
                 "status": t.status.slug(),
                 "routedViaSecretary": t.routed_via_secretary,
                 "options": t.options.iter().map(|o| o.slug()).collect::<Vec<_>>(),
@@ -650,6 +673,8 @@ pub fn plan(w: &World, project: Option<&str>) -> Value {
                 "revision": i.revision,
                 "lastScore": i.last_score,
                 "currentPhase": i.phase().map(|p| p.kind.slug()),
+                "awaitingApproval": i.awaiting_approval(),
+                "escalations": i.escalations,
                 "phases": phases,
                 "todos": [],
                 "dependsOn": [],
@@ -674,6 +699,41 @@ pub fn plan(w: &World, project: Option<&str>) -> Value {
                 "workItem": opt_id(j.work_item),
                 "meeting": opt_id(j.meeting),
                 "requestedMinute": minute_of_step(w, j.requested_step),
+                "requestedStep": j.requested_step,
+                "dueStep": w.job_due_step(j),
+            })
+        })
+        .collect();
+    // Work in progress per project (ADR-0059): what a standup may still
+    // commission. `MeetingOutcome` is refused beyond `room` or for a writer
+    // who is not free.
+    let wip: Vec<Value> = w
+        .projects
+        .values()
+        .filter(|p| p.is_open() && wanted(p.id))
+        .map(|p| {
+            let mine = || w.plan.items.values().filter(|i| i.project == p.id);
+            let open = w.open_items(p.id);
+            let free_writers: Vec<String> = w
+                .project_team(p.id)
+                .into_keys()
+                .filter(|s| {
+                    w.staff
+                        .get(s)
+                        .is_some_and(|st| st.is_active() && can_draft(st.role))
+                        && w.writing(*s).is_none()
+                })
+                .map(|s| s.to_string())
+                .collect();
+            json!({
+                "project": p.id.to_string(),
+                "limit": WIP_LIMIT,
+                "open": open,
+                "room": WIP_LIMIT.saturating_sub(open),
+                "awaitingApproval": mine().filter(|i| i.awaiting_approval()).count(),
+                "blocked": mine().filter(|i| i.status == WorkItemStatus::Blocked).count(),
+                "inWritingLoop": mine().filter(|i| i.in_writing_loop()).count(),
+                "freeWriters": free_writers,
             })
         })
         .collect();
@@ -696,6 +756,8 @@ pub fn plan(w: &World, project: Option<&str>) -> Value {
         "workstreams": [],
         "items": items,
         "jobs": jobs,
+        "nextDueStep": w.next_due_step(),
+        "wip": wip,
         "feed": feed,
     })
 }

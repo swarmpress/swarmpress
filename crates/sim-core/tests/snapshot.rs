@@ -6,8 +6,9 @@
 //! wasm32, `packages/runner/test/snapshot.test.ts` under Bun.
 
 use sim_core::clock::SimConfig;
-use sim_core::commands::{JobDigest, ServerCommand};
+use sim_core::commands::{Command, JobDigest, ServerCommand};
 use sim_core::ids::StaffId;
+use sim_core::inbox::{TicketKind, TicketOption};
 use sim_core::plan::{BriefStub, Effect, JobKind, WorkItemKind, WorkItemStatus};
 use sim_core::scenarios::{
     demo_office, demo_office_with_config, golden_script, run_golden, GOLDEN_SEED, GOLDEN_STEPS,
@@ -21,7 +22,11 @@ use sim_core::World;
 /// world it names. The last row is the current one. A world format is never
 /// reused: a sim change that moves the golden hash gets a new row and a bumped
 /// [`WORLD_FORMAT`] (see `world_format_names_the_current_world`).
-const WORLD_FORMATS: &[(u32, u64)] = &[(1, 0x591f_2064_16aa_2764)];
+const WORLD_FORMATS: &[(u32, u64)] = &[
+    (1, 0x591f_2064_16aa_2764),
+    // FEAT-079, ADR-0059: the publish gate and the failure commands
+    (2, 0x39d9_8696_fe53_cdc4),
+];
 
 /// The golden hash of the current world format.
 const GOLDEN_HASH: u64 = WORLD_FORMATS[WORLD_FORMATS.len() - 1].1;
@@ -53,7 +58,8 @@ fn golden_through_snapshots(every: u64) -> (World, usize) {
     }
     let mut restores = 0;
     for _ in 0..GOLDEN_STEPS {
-        if w.step > 0 && w.step.is_multiple_of(every) {
+        // (`%` instead of `is_multiple_of` keeps MSRV 1.85)
+        if w.step > 0 && matches!(w.step % every, 0) {
             w = restored(&w);
             restores += 1;
         }
@@ -70,7 +76,7 @@ fn golden_run_through_snapshots_matches_the_uninterrupted_run() {
     let (w, restores) = golden_through_snapshots(7_919);
     assert_eq!(restores, 6);
     assert_eq!(w.hash(), GOLDEN_HASH, "got {:#018x}", w.hash());
-    assert_eq!(w.plan.items.len(), 2);
+    assert_eq!(w.plan.items.len(), 3);
     assert_eq!(
         w.plan.items.values().next().map(|i| i.status),
         Some(WorkItemStatus::Published)
@@ -280,9 +286,34 @@ fn a_restored_world_reissues_exactly_the_pending_job() {
     ));
     assert_reissues(&mut w, &review2);
 
-    // score 8: publish
+    // score 8: parked at the publish gate (ADR-0059). No job is pending
+    // there, so a restored world re-issues nothing.
     complete(&mut w, job_id(&review2), 8);
-    let publish = step_until_effect(&mut w, 400);
+    while !w.plan.items.values().any(|i| i.awaiting_approval()) {
+        w.step();
+        assert!(
+            w.effects().is_empty(),
+            "no Publish job before the CEO's yes"
+        );
+    }
+    assert_eq!(w.reissue_pending_jobs(), 0);
+    let mut parked = restored(&w);
+    assert_eq!(parked.reissue_pending_jobs(), 0);
+    assert!(parked.effects().is_empty());
+    assert_eq!(parked.hash(), w.hash());
+    // the CEO says yes: publish
+    let ticket = w
+        .tickets
+        .values()
+        .find(|t| t.is_open() && t.kind == TicketKind::PublishApproval)
+        .expect("the approval ticket")
+        .id;
+    w.apply(Command::AnswerTicket {
+        ticket,
+        option: TicketOption::Publish,
+    })
+    .unwrap();
+    let publish = effects(&w).remove(0);
     assert!(matches!(
         &publish,
         Effect::RequestJob {
@@ -309,15 +340,16 @@ fn a_restored_world_reissues_exactly_the_pending_job() {
 fn several_pending_jobs_come_back_in_job_id_order() {
     let mut w = fast(3);
     let standup = step_until_effect(&mut w, 400);
-    let brief = |brief_ref| BriefStub {
+    // three writers: a writer has one item at a time (ADR-0059)
+    let brief = |writer, brief_ref| BriefStub {
         kind: WorkItemKind::Article,
-        writer: GIULIA,
+        writer: StaffId(writer),
         editor: MARCO,
         brief_ref,
     };
     w.apply_server(ServerCommand::MeetingOutcome {
         job_id: job_id(&standup),
-        briefs: vec![brief(11), brief(12), brief(13)],
+        briefs: vec![brief(1, 11), brief(2, 12), brief(3, 13)],
     })
     .unwrap();
     let originals: Vec<Effect> = w

@@ -13,6 +13,12 @@
 //! arrive untriaged (priority is still computed by rule) and `Delegate` is
 //! rejected.
 //!
+//! The publish gate and the failure tickets (ADR-0059) are all High, so they
+//! always reach the CEO: `PublishApproval` (whose default, `Defer`, never
+//! publishes, and which the Secretary may never answer by rule as well),
+//! `StandupFailed`, `DeployFailed`, `NeedsMedia` and `NeedsPage`. What an
+//! option does is decided by the ticket's kind, not by the option alone.
+//!
 //! Delegated tasks ([`SecretaryTaskKind`]) queue FIFO; one runs at a time for
 //! its duration in game minutes. Text parts (summaries, briefings, drafts)
 //! are LLM jobs that arrive with the job queue (M2); the sim effects below
@@ -23,8 +29,9 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 use crate::clock::{hm, MINUTES_PER_DAY};
-use crate::commands::OvertimePolicy;
+use crate::commands::{JobFailure, OvertimePolicy};
 use crate::ids::{JobId, ProjectId, StaffId, TaskId, TicketId, WorkItemId};
+use crate::plan::MAX_REVISIONS;
 use crate::projects::ProjectStatus;
 use crate::roles::Role;
 use crate::world::{MeetingKind, World};
@@ -60,10 +67,25 @@ pub enum TicketKind {
     ProjectProposal,
     #[serde(alias = "escalation")]
     Escalation,
+    /// An article passed its review and waits for the CEO's yes (ADR-0059).
+    #[serde(alias = "publish-approval")]
+    PublishApproval,
+    /// A standup's job failed or timed out: no briefs that day.
+    #[serde(alias = "standup-failed")]
+    StandupFailed,
+    /// The deploy carrying a merged article failed.
+    #[serde(alias = "deploy-failed")]
+    DeployFailed,
+    /// A job needs media the site's index does not have (rule 5).
+    #[serde(alias = "needs-media")]
+    NeedsMedia,
+    /// A job needs a page the site does not have (rule 5).
+    #[serde(alias = "needs-page")]
+    NeedsPage,
 }
 
 impl TicketKind {
-    pub const ALL: [TicketKind; 8] = [
+    pub const ALL: [TicketKind; 13] = [
         TicketKind::BudgetOverrun,
         TicketKind::RunwayLow,
         TicketKind::PayrollSpike,
@@ -72,6 +94,11 @@ impl TicketKind {
         TicketKind::HireAffordability,
         TicketKind::ProjectProposal,
         TicketKind::Escalation,
+        TicketKind::PublishApproval,
+        TicketKind::StandupFailed,
+        TicketKind::DeployFailed,
+        TicketKind::NeedsMedia,
+        TicketKind::NeedsPage,
     ];
 
     pub const fn slug(self) -> &'static str {
@@ -84,23 +111,41 @@ impl TicketKind {
             TicketKind::HireAffordability => "hire-affordability",
             TicketKind::ProjectProposal => "project-proposal",
             TicketKind::Escalation => "escalation",
+            TicketKind::PublishApproval => "publish-approval",
+            TicketKind::StandupFailed => "standup-failed",
+            TicketKind::DeployFailed => "deploy-failed",
+            TicketKind::NeedsMedia => "needs-media",
+            TicketKind::NeedsPage => "needs-page",
         }
     }
 
     /// Priority by rule (§7): High for legal, financial alarms, high-risk
     /// and critical blockers; Medium for strategy and resourcing; Low for
     /// information. A new publication is a big bet (RACI: the CEO is
-    /// accountable), so proposals are High and never delegated.
+    /// accountable), so proposals are High and never delegated. Publishing
+    /// to the live site is the CEO's call, and every failure is something
+    /// the CEO must see (ADR-0059): those are High too.
     pub const fn priority(self) -> Priority {
         match self {
             TicketKind::BudgetOverrun
             | TicketKind::RunwayLow
             | TicketKind::LoanOffer
             | TicketKind::ProjectProposal
-            | TicketKind::Escalation => Priority::High,
+            | TicketKind::Escalation
+            | TicketKind::PublishApproval
+            | TicketKind::StandupFailed
+            | TicketKind::DeployFailed
+            | TicketKind::NeedsMedia
+            | TicketKind::NeedsPage => Priority::High,
             TicketKind::PayrollSpike | TicketKind::MissingRole => Priority::Medium,
             TicketKind::HireAffordability => Priority::Low,
         }
+    }
+
+    /// Only the CEO answers it, whatever its priority and the delegation
+    /// policy: nothing reaches the live site on the Secretary's word.
+    pub const fn ceo_only(self) -> bool {
+        matches!(self, TicketKind::PublishApproval)
     }
 
     /// Carries money; delegation stops at the threshold.
@@ -127,10 +172,16 @@ impl TicketKind {
             TicketKind::HireAffordability => &[Acknowledge, CutCosts],
             TicketKind::ProjectProposal => &[Approve, Reject],
             TicketKind::Escalation => &[Retry, Kill],
+            TicketKind::PublishApproval => &[Publish, SendBack, Kill, Defer],
+            TicketKind::StandupFailed => &[Retry, Skip],
+            TicketKind::DeployFailed => &[Retry, Acknowledge],
+            TicketKind::NeedsMedia | TicketKind::NeedsPage => &[Retry, Kill],
         }
     }
 
-    /// Applied when the deadline passes.
+    /// Applied when the deadline passes. An item's first `Escalation`
+    /// overrides this with `Retry` (see [`World::raise_ticket_with`]). The
+    /// default of a `PublishApproval` never publishes.
     pub const fn default_option(self) -> TicketOption {
         match self {
             TicketKind::BudgetOverrun => TicketOption::CutScope,
@@ -140,14 +191,23 @@ impl TicketKind {
             TicketKind::LoanOffer => TicketOption::CutCosts,
             TicketKind::MissingRole => TicketOption::ArrangeHiring,
             TicketKind::ProjectProposal => TicketOption::Reject,
-            TicketKind::Escalation => TicketOption::Kill,
+            TicketKind::Escalation | TicketKind::NeedsMedia | TicketKind::NeedsPage => {
+                TicketOption::Kill
+            }
+            TicketKind::PublishApproval => TicketOption::Defer,
+            TicketKind::StandupFailed => TicketOption::Skip,
+            TicketKind::DeployFailed => TicketOption::Acknowledge,
         }
     }
 
-    /// Game days until the default applies.
+    /// Game days until the default applies. Missing media or a missing page
+    /// needs work on the site itself, so those wait two days.
     pub const fn deadline_days(self) -> u64 {
         match self {
-            TicketKind::MissingRole | TicketKind::ProjectProposal => 2,
+            TicketKind::MissingRole
+            | TicketKind::ProjectProposal
+            | TicketKind::NeedsMedia
+            | TicketKind::NeedsPage => 2,
             _ => 1,
         }
     }
@@ -173,17 +233,28 @@ impl Priority {
     }
 }
 
-/// A ticket answer. Effects ([`World::resolve_ticket`]):
-/// - `ApproveOverrun`: the project's monthly budget rises by 20%;
+/// A ticket answer. What an option does depends on the ticket's kind
+/// ([`World::resolve_ticket`]):
+/// - `ApproveOverrun` (budget overrun): the project's monthly budget rises
+///   by 20%;
 /// - `CutScope`: recorded; scope cuts act on work items (publishing plan);
-/// - `Acknowledge`, `Ignore`: recorded only;
-/// - `Retry` / `Kill` (escalations about a work item): restart the blocked
-///   phase with a new job / cancel the item;
+/// - `Acknowledge`, `Ignore`, `Skip`, `Defer`: recorded only. On a
+///   `DeployFailed` ticket `Acknowledge` puts the item back to `Scheduled`
+///   (merged, waiting for the next deploy that carries it); a deferred
+///   `PublishApproval` leaves the item parked and a fresh ticket is raised
+///   at the next 08:30;
+/// - `Retry` / `Kill` (`Escalation`, `NeedsMedia`, `NeedsPage`): restart the
+///   blocked phase with a new job / cancel the item. `Retry` on
+///   `DeployFailed` requests the Publish job again; on `StandupFailed` it
+///   opens a standup now and requests its job;
+/// - `Publish` / `SendBack` / `Kill` (`PublishApproval`): start the Publish
+///   phase / restart Draft with the revision incremented / cancel the item;
 /// - `CutCosts`: overtime policy becomes Never;
 /// - `TakeLoan`: the bank loan of the ticket's amount is paid out;
 /// - `ArrangeHiring`: a candidate for the missing role joins today's
 ///   shortlist;
-/// - `Approve` / `Reject`: the proposed project becomes Active / Archived.
+/// - `Approve` / `Reject` (project proposal): the proposed project becomes
+///   Active / Archived.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum TicketOption {
     #[serde(alias = "approve-overrun")]
@@ -208,6 +279,14 @@ pub enum TicketOption {
     Retry,
     #[serde(alias = "kill")]
     Kill,
+    #[serde(alias = "publish")]
+    Publish,
+    #[serde(alias = "send-back")]
+    SendBack,
+    #[serde(alias = "defer")]
+    Defer,
+    #[serde(alias = "skip")]
+    Skip,
 }
 
 impl TicketOption {
@@ -224,6 +303,10 @@ impl TicketOption {
             TicketOption::Reject => "reject",
             TicketOption::Retry => "retry",
             TicketOption::Kill => "kill",
+            TicketOption::Publish => "publish",
+            TicketOption::SendBack => "send-back",
+            TicketOption::Defer => "defer",
+            TicketOption::Skip => "skip",
         }
     }
 }
@@ -276,8 +359,11 @@ pub struct Ticket {
     pub role: Option<Role>,
     /// Money at stake, cents (financial tickets).
     pub amount_cents: i64,
-    /// The work item an escalation is about.
+    /// The work item the ticket is about (escalations, approvals, failures).
     pub work_item: Option<WorkItemId>,
+    /// Why the job behind the ticket failed (`ServerCommand::JobFailed`, or
+    /// `Timeout` for a standup the sim timed out).
+    pub failure: Option<JobFailure>,
     /// The Secretary's summary (an LLM job, M2). `None` until it exists.
     pub summary_ref: Option<JobId>,
     pub options: Vec<TicketOption>,
@@ -315,6 +401,17 @@ pub struct TicketSpec {
     pub role: Option<Role>,
     pub amount_cents: i64,
     pub work_item: Option<WorkItemId>,
+}
+
+/// What an answer acts on (the parts of a ticket [`World::resolve_ticket`]
+/// hands to the effect).
+#[derive(Clone, Copy)]
+struct TicketAbout {
+    kind: TicketKind,
+    project: Option<ProjectId>,
+    role: Option<Role>,
+    amount: i64,
+    item: Option<WorkItemId>,
 }
 
 /// How much of the Inbox the Secretary may answer.
@@ -474,10 +571,25 @@ impl World {
     /// Opens a ticket: rules set priority, options, default and deadline;
     /// the Secretary (if any) triages and, under delegation, answers it.
     pub fn raise_ticket(&mut self, spec: TicketSpec) -> TicketId {
+        self.raise_ticket_with(spec, None, None)
+    }
+
+    /// [`World::raise_ticket`] with a default other than the kind's (it must
+    /// be one of the kind's options, else the kind's default stays) and the
+    /// failure the ticket reports.
+    pub(crate) fn raise_ticket_with(
+        &mut self,
+        spec: TicketSpec,
+        default: Option<TicketOption>,
+        failure: Option<JobFailure>,
+    ) -> TicketId {
         let id = self.ids.ticket();
         let days = spec.kind.deadline_days();
         let deadline = self.step + days * self.config.steps_per_day();
         let triaged = self.exec.secretary.is_some();
+        let default_option = default
+            .filter(|d| spec.kind.options().contains(d))
+            .unwrap_or(spec.kind.default_option());
         let t = Ticket {
             id,
             kind: spec.kind,
@@ -487,10 +599,11 @@ impl World {
             role: spec.role,
             amount_cents: spec.amount_cents,
             work_item: spec.work_item,
+            failure,
             summary_ref: None,
             options: spec.kind.options().to_vec(),
-            default_option: spec.kind.default_option(),
-            proposed_option: triaged.then(|| spec.kind.default_option()),
+            default_option,
+            proposed_option: triaged.then_some(default_option),
             reply_drafted: false,
             created_step: self.step,
             deadline_step: deadline,
@@ -505,12 +618,14 @@ impl World {
         id
     }
 
-    /// Whether the Secretary may answer this ticket now.
+    /// Whether the Secretary may answer this ticket now. Never a High one,
+    /// never a CEO-only kind (the publish gate), under any delegation policy.
     pub fn secretary_may_answer(&self, t: &Ticket) -> bool {
         self.exec.secretary.is_some()
             && t.is_open()
             && t.routed_via_secretary
             && t.priority != Priority::High
+            && !t.kind.ceo_only()
             && !t.over_threshold()
             && self.exec.delegation.covers(t.priority)
     }
@@ -552,8 +667,8 @@ impl World {
         option: TicketOption,
     ) -> Result<(), &'static str> {
         let t = self.tickets.get(&id).ok_or("unknown ticket")?;
-        match option {
-            TicketOption::Approve => {
+        match (t.kind, option) {
+            (TicketKind::ProjectProposal, TicketOption::Approve) => {
                 let p = t
                     .project
                     .and_then(|p| self.projects.get(&p))
@@ -563,10 +678,27 @@ impl World {
                 }
                 Ok(())
             }
-            TicketOption::TakeLoan if self.company.loan.is_some() => {
+            (_, TicketOption::TakeLoan) if self.company.loan.is_some() => {
                 Err("a loan is already outstanding")
             }
-            TicketOption::TakeLoan if t.amount_cents <= 0 => Err("nothing to borrow"),
+            (_, TicketOption::TakeLoan) if t.amount_cents <= 0 => Err("nothing to borrow"),
+            (TicketKind::PublishApproval, TicketOption::Publish | TicketOption::SendBack) => {
+                let item = t
+                    .work_item
+                    .and_then(|i| self.plan.items.get(&i))
+                    .ok_or("the ticket has no work item")?;
+                if !item.awaiting_approval() {
+                    return Err("the item is not waiting for approval");
+                }
+                if option == TicketOption::SendBack && item.revision >= MAX_REVISIONS {
+                    return Err("the item has no revision left: publish it or kill it");
+                }
+                Ok(())
+            }
+            (TicketKind::StandupFailed, TicketOption::Retry) => {
+                let project = t.project.ok_or("the ticket has no project")?;
+                self.standup_possible(project)
+            }
             _ => Ok(()),
         }
     }
@@ -590,57 +722,78 @@ impl World {
         t.resolved_by = Some(by);
         t.answer = Some(option);
         t.resolved_step = Some(step);
-        let (project, role, amount, item) = (t.project, t.role, t.amount_cents, t.work_item);
+        let about = TicketAbout {
+            kind: t.kind,
+            project: t.project,
+            role: t.role,
+            amount: t.amount_cents,
+            item: t.work_item,
+        };
         if feasible {
-            self.apply_option(option, project, role, amount, item);
+            self.apply_option(about, option);
         }
         self.prune_tickets();
     }
 
-    fn apply_option(
-        &mut self,
-        option: TicketOption,
-        project: Option<ProjectId>,
-        role: Option<Role>,
-        amount: i64,
-        item: Option<WorkItemId>,
-    ) {
-        match option {
-            TicketOption::ApproveOverrun => {
-                if let Some(p) = project.and_then(|p| self.projects.get_mut(&p)) {
-                    p.budget_monthly_cents += p.budget_monthly_cents / 5;
+    /// The effect of an answer. Dispatches on the ticket's kind first: the
+    /// same option means different things on different tickets (`Retry` on
+    /// an escalation restarts a phase, on a failed standup it opens a
+    /// meeting), and an option a kind does not offer does nothing.
+    fn apply_option(&mut self, t: TicketAbout, option: TicketOption) {
+        use TicketOption as O;
+        match t.kind {
+            TicketKind::BudgetOverrun => {
+                if option == O::ApproveOverrun {
+                    if let Some(p) = t.project.and_then(|p| self.projects.get_mut(&p)) {
+                        p.budget_monthly_cents += p.budget_monthly_cents / 5;
+                    }
                 }
             }
-            TicketOption::CutCosts => {
-                self.company.policies.overtime = OvertimePolicy::Never;
+            TicketKind::RunwayLow | TicketKind::PayrollSpike | TicketKind::HireAffordability => {
+                if option == O::CutCosts {
+                    self.company.policies.overtime = OvertimePolicy::Never;
+                }
             }
-            TicketOption::TakeLoan => self.take_loan(amount),
-            TicketOption::ArrangeHiring => {
-                if let Some(r) = role {
+            TicketKind::LoanOffer => match option {
+                O::TakeLoan => self.take_loan(t.amount),
+                O::CutCosts => self.company.policies.overtime = OvertimePolicy::Never,
+                _ => {}
+            },
+            TicketKind::MissingRole => {
+                if let (O::ArrangeHiring, Some(r)) = (option, t.role) {
                     self.add_candidate_for_role(r);
                 }
             }
-            TicketOption::Approve => {
-                if let Some(p) = project {
-                    self.set_project_status(p, ProjectStatus::Active);
+            TicketKind::ProjectProposal => match (option, t.project) {
+                (O::Approve, Some(p)) => self.set_project_status(p, ProjectStatus::Active),
+                (O::Reject, Some(p)) => self.set_project_status(p, ProjectStatus::Archived),
+                _ => {}
+            },
+            TicketKind::Escalation | TicketKind::NeedsMedia | TicketKind::NeedsPage => {
+                match (option, t.item) {
+                    (O::Retry, Some(id)) => self.retry_item(id),
+                    (O::Kill, Some(id)) => self.cancel_item(id),
+                    _ => {}
                 }
             }
-            TicketOption::Reject => {
-                if let Some(p) = project {
-                    self.set_project_status(p, ProjectStatus::Archived);
+            TicketKind::DeployFailed => match (option, t.item) {
+                (O::Retry, Some(id)) => self.retry_item(id),
+                (O::Acknowledge, Some(id)) => self.await_next_deploy(id),
+                _ => {}
+            },
+            TicketKind::PublishApproval => match (option, t.item) {
+                (O::Publish, Some(id)) => self.publish_item(id),
+                (O::SendBack, Some(id)) => self.send_back_item(id),
+                (O::Kill, Some(id)) => self.cancel_item(id),
+                // Defer: the item stays parked; `raise_morning_approvals`
+                // puts it back on the CEO's desk at the next 08:30.
+                _ => {}
+            },
+            TicketKind::StandupFailed => {
+                if let (O::Retry, Some(p)) = (option, t.project) {
+                    self.retry_standup(p);
                 }
             }
-            TicketOption::Retry => {
-                if let Some(id) = item {
-                    self.retry_item(id);
-                }
-            }
-            TicketOption::Kill => {
-                if let Some(id) = item {
-                    self.cancel_item(id);
-                }
-            }
-            TicketOption::CutScope | TicketOption::Acknowledge | TicketOption::Ignore => {}
         }
     }
 
@@ -858,6 +1011,69 @@ mod tests {
         assert_eq!(TicketKind::BudgetOverrun.priority(), Priority::High);
         assert_eq!(TicketKind::HireAffordability.priority(), Priority::Low);
         assert_eq!(TicketKind::MissingRole.priority(), Priority::Medium);
+        // slugs are unique and parse back (the JSON views and commands use them)
+        let mut slugs: Vec<&str> = TicketKind::ALL.iter().map(|k| k.slug()).collect();
+        slugs.sort_unstable();
+        slugs.dedup();
+        assert_eq!(slugs.len(), TicketKind::ALL.len());
+        for k in TicketKind::ALL {
+            let back: TicketKind = serde_json::from_str(&format!("\"{}\"", k.slug())).unwrap();
+            assert_eq!(back, k);
+            for o in k.options() {
+                let back: TicketOption =
+                    serde_json::from_str(&format!("\"{}\"", o.slug())).unwrap();
+                assert_eq!(back, *o);
+            }
+        }
+    }
+
+    /// ADR-0059: the gate and every failure reach the CEO; the default of a
+    /// publish approval never publishes.
+    #[test]
+    fn gate_and_failure_tickets() {
+        use TicketKind::*;
+        assert_eq!(
+            PublishApproval.options(),
+            &[
+                TicketOption::Publish,
+                TicketOption::SendBack,
+                TicketOption::Kill,
+                TicketOption::Defer
+            ]
+        );
+        assert_eq!(PublishApproval.default_option(), TicketOption::Defer);
+        assert_eq!(PublishApproval.deadline_days(), 1);
+        assert!(PublishApproval.ceo_only());
+        assert_eq!(
+            StandupFailed.options(),
+            &[TicketOption::Retry, TicketOption::Skip]
+        );
+        assert_eq!(StandupFailed.default_option(), TicketOption::Skip);
+        assert_eq!(StandupFailed.deadline_days(), 1);
+        assert_eq!(
+            DeployFailed.options(),
+            &[TicketOption::Retry, TicketOption::Acknowledge]
+        );
+        assert_eq!(DeployFailed.default_option(), TicketOption::Acknowledge);
+        for k in [NeedsMedia, NeedsPage] {
+            assert_eq!(k.options(), &[TicketOption::Retry, TicketOption::Kill]);
+            assert_eq!(k.default_option(), TicketOption::Kill);
+            assert_eq!(k.deadline_days(), 2);
+        }
+        for k in [
+            PublishApproval,
+            StandupFailed,
+            DeployFailed,
+            NeedsMedia,
+            NeedsPage,
+            Escalation,
+        ] {
+            assert_eq!(k.priority(), Priority::High, "{k:?}");
+            assert!(!k.is_financial());
+        }
+        // Escalation's rule default stays the conservative one; an item's
+        // first escalation overrides it (tests/publish_gate.rs).
+        assert_eq!(Escalation.default_option(), TicketOption::Kill);
     }
 
     #[test]

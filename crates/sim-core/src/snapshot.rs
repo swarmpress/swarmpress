@@ -41,7 +41,14 @@ pub const SNAPSHOT_FORMAT: u16 = 1;
 /// change needed in `src`; `tests/snapshot.rs`
 /// (`world_format_names_the_current_world`) fails until it is done and says
 /// what else to update.
-pub const WORLD_FORMAT: u32 = 1;
+///
+/// - 1: the first snapshot format (FEAT-060).
+/// - 2: the publish gate and the failure commands (FEAT-079, ADR-0059):
+///   `Meeting.speak_from/speak_chars`, `Ticket.failure`,
+///   `WorkItem.escalations`, new ticket kinds and options, and new rules (a
+///   standup nobody answers raises a ticket; a passing review parks the item
+///   under `ApproveAll`).
+pub const WORLD_FORMAT: u32 = 2;
 /// Bytes before the body.
 pub const HEADER_LEN: usize = 42;
 

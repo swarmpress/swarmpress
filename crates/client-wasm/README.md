@@ -41,6 +41,7 @@ export class Sim {
   drain_effects_json(): string           // JSON RequestJob[] since the last drain (job contract)
   pending_effects(): number              // effects waiting to be drained
   plan_json(project?: string): string    // publishing plan skeleton (publishing-plan.md §7)
+  next_due_step(): bigint | undefined    // earliest due step of a pending job (ADR-0060); a view, not state
   render_state(): Uint8Array             // postcard sim_core::RenderState (mm)
   render_state_json(): string            // JSON, metres, TS RenderState shape
   layout_json(): string                  // JSON, metres, TS BuildingLayout shape
@@ -55,9 +56,13 @@ export class Sim {
 `id/persona/name/color/role/department/x/z/seatedAt`) plus `phase`, `weekday`,
 `daylight`, `rooms[]` (light `off|dim|on`, occupancy), `devices[]`,
 `meetings[]` (`id, kind: standup|kpi-review|finance-review|scheduled,
-project, room, day, start, end, active, attendees[], speaker`) and per-person
-`pose`, `activity`, `path {waypoints, startStep, speed}` (metres per step) for
-interpolation.
+project, room, day, start, end, active, attendees[], speaker, job` (the
+standup's job id while its outcome is awaited)), `bubbles[]` (one per meeting
+with a turn in progress: `meeting, seq, speaker, startedStep, untilStep,
+chars`; the text is not in the sim, fetch it by meeting/job and `seq`) and
+per-person `pose`, `activity`, `workItem` (the item whose active phase the
+person works on; at a desk that is the `type` pose, otherwise `sit`),
+`path {waypoints, startStep, speed}` (metres per step) for interpolation.
 
 `layout_json()` gives `width`, `depth`, `originX`, `originZ`, `wallHeight`,
 `entrance` and `rooms[]` with `windows`, `doors`, `desks` (with `rot` in
@@ -78,9 +83,32 @@ visitors7d, pageviews7d, engagementRate}` (`connected: false` = "tracker: no
 data yet"); finance `dayOfMonth`, `overhead`, `booksUnkept`,
 `revenueStubbed`, `loan`, `lastClose` (the latest month-close P&L) and per
 project `revenueEstimateEurMonth`, `month` (breakdown); tickets `role`,
-`amountEur`, `proposedOption`, `replyDrafted`, `answer`, `resolvedBy`
-(`ceo|secretary|default`), `createdMinute`, `deadlineStep`; queue entries
-`dueMinute`. `deadlineMinute` / `createdMinute` / `dueMinute` are absolute
+`amountEur`, `workItem`, `failure` (why the job behind the ticket failed:
+`model|invalid-output|needs-media|needs-page|timeout|cancelled|
+infrastructure`, else `null`), `proposedOption`, `replyDrafted`, `answer`,
+`resolvedBy` (`ceo|secretary|default`), `createdMinute`, `deadlineStep`;
+queue entries `dueMinute`; org `policies {autonomy:
+approve-all|approve-major|autonomous, qualityBar}`.
+
+Ticket kinds and their options (the default is applied at the deadline):
+
+| `kind` | `options` | default | days |
+|---|---|---|---|
+| `budget-overrun` | `approve-overrun`, `cut-scope` | `cut-scope` | 1 |
+| `runway-low`, `payroll-spike`, `hire-affordability` | `acknowledge`, `cut-costs` | `acknowledge` | 1 |
+| `loan-offer` | `take-loan`, `cut-costs` | `cut-costs` | 1 |
+| `missing-role` | `arrange-hiring`, `ignore` | `arrange-hiring` | 2 |
+| `project-proposal` | `approve`, `reject` | `reject` | 2 |
+| `escalation` | `retry`, `kill` | `retry` for an item's first, `kill` after | 1 |
+| `publish-approval` | `publish`, `send-back`, `kill`, `defer` | `defer` | 1 |
+| `standup-failed` | `retry`, `skip` | `skip` | 1 |
+| `deploy-failed` | `retry`, `acknowledge` | `acknowledge` | 1 |
+| `needs-media`, `needs-page` | `retry`, `kill` | `kill` | 2 |
+
+`publish-approval`, `standup-failed`, `deploy-failed`, `needs-media`,
+`needs-page` and `escalation` are `high` priority: the Secretary never answers
+them. A deferred or expired `publish-approval` leaves the item parked; a fresh
+ticket is raised when the clock next passes 08:30. `deadlineMinute` / `createdMinute` / `dueMinute` are absolute
 game minutes since day 0, 00:00. `persona` is the catalog slug; unknown
 persona ids render as `persona-<n>`.
 
@@ -114,22 +142,51 @@ The results go back through `apply_command_json` as server commands, in the
 orchestrator's `Outcome` JSON (see "Server commands" below). Then:
 
 - `MeetingOutcome` creates one work item per brief in its Draft phase and
-  requests a Draft job for the writer (`kind` defaults to `article`);
+  requests a Draft job for the writer (`kind` defaults to `article`). It is
+  refused when the project would have more than 3 open items (`limit reached:
+  work in progress …`; parked and blocked items count) or when a writer
+  already has an item that is not past the publish gate (`occupied: the
+  writer already has an item in the writing loop`);
 - `JobCompleted` on a Draft (`ok`) → Review job for the editor once the
   draft's minimum time (2 game hours) has passed; on a Review, score ≥ the
-  quality bar (7) → Publish job (IT engineer, DevOps or web developer);
-  lower → a new Draft with `revision + 1`, at most 3 revisions, then the item
-  is `blocked` with an `escalation` ticket (options `retry | kill`, default
-  `kill`, a deadline); `ok: false` on any job → `blocked` plus the ticket.
+  quality bar (7) → **the publish gate** (below); lower → a new Draft with
+  `revision + 1`, at most 3 revisions, then the item is `blocked` with an
+  `escalation` ticket; `ok: false` on any job → `blocked` plus the ticket.
   A finished Publish leaves the item `scheduled` (merged, awaiting the deploy);
-- `DeployLanded` → `published`.
+- `JobFailed{job_id, reason}`: a standup ends and a `standup-failed` ticket is
+  raised (the same ticket the sim raises itself when a standup's outcome has
+  not arrived after 60 game minutes); a work-item job blocks the item with a
+  `needs-media`, `needs-page` or `escalation` ticket carrying the `failure`;
+- `DeployLanded` → `published`; `DeployFailed` (also only for a `scheduled`
+  item) → `blocked` with a `deploy-failed` ticket: `retry` requests the
+  Publish job again, `acknowledge` puts the item back to `scheduled`.
+
+**The publish gate** (ADR-0059). What happens after a passing review depends
+on `policies.autonomy`:
+
+- `approve-all` (the default): the item is `approved`, its Publish phase
+  stays `pending` (`awaitingApproval: true`), **no Publish job is requested**
+  and a `publish-approval` ticket is raised. `AnswerTicket` with `publish`
+  starts the Publish phase (the job is in the next `drain_effects_json()`),
+  `send-back` restarts Draft with `revision + 1` (refused at revision 3),
+  `kill` cancels, `defer` (the default) changes nothing;
+- `approve-major`: a first draft (revision 0) with a score of 9 or 10 is
+  published without asking, anything else gets the ticket;
+- `autonomous`: the Publish job is requested at once.
 
 `plan_json(project?)` follows publishing-plan.md §7 (`goals` and
 `workstreams` are empty until they exist in the sim) and adds per item
-`briefRef`, `revision`, `lastScore`, `currentPhase`, `createdDay`, `meeting`,
-per phase `job` and `score` (reviews), plus `jobs[]` (pending: `id, kind,
-project, workItem, meeting, requestedMinute`) and `feed[]` (`kind:
-published|blocked, project, workItem, minute`). Items: `id: "work-item-1"`,
+`briefRef`, `revision`, `lastScore`, `currentPhase`, `awaitingApproval`,
+`escalations`, `createdDay`, `meeting`, per phase `job` and `score` (reviews),
+plus `jobs[]` (pending: `id, kind, project, workItem, meeting,
+requestedMinute, requestedStep, dueStep`), `nextDueStep` (the earliest
+`dueStep`, `null` with no pending job; the same as `next_due_step()`),
+`wip[]` (per open project: `project, limit, open, room, awaitingApproval,
+blocked, inWritingLoop, freeWriters[]`: what a standup may still commission)
+and `feed[]` (`kind: published|blocked, project, workItem, minute`).
+`dueStep` is the step at which the job's phase minimum has elapsed (for a
+standup: its request + 30 game minutes). It is a view for the host's clock
+(ADR-0060): the sim never waits on it and it is not part of the hash. Items: `id: "work-item-1"`,
 `status` (`planned|in-progress|in-review|approved|scheduled|published|
 blocked|cancelled`), phases `draft|review|publish` with `state
 pending|working|done|blocked` and `progress` 0..1.
@@ -177,10 +234,11 @@ Every command, with an example:
 {"SetProjectBudget":{"project":"project-1","monthly_cents":8000000}}
 // policies
 {"SetPolicy":{"Overtime":"Crunch"}}        // Never | Allow | Crunch
-{"SetPolicy":{"Autonomy":"ApproveMajor"}}  // ApproveAll | ApproveMajor | Autonomous
+{"SetPolicy":{"Autonomy":"ApproveMajor"}}  // ApproveAll | ApproveMajor | Autonomous (or approve-all | approve-major | autonomous)
 {"SetPolicy":{"QualityBar":8}}             // 5..=10
 // inbox and delegation
 {"AnswerTicket":{"ticket":"ticket-3","option":"arrange-hiring"}}
+{"AnswerTicket":{"ticket":"ticket-4","option":"publish"}}   // the publish gate: publish | send-back | kill | defer
 {"SetDelegation":{"policy":"low"}}         // off | low | low-and-medium
 {"Delegate":{"task":"TriageInbox"}}
 {"Delegate":{"task":{"ScheduleMeeting":{"attendees":["staff-1","staff-2"],"project":"project-1"}}}}
@@ -201,7 +259,9 @@ digest's `artifact_sha` may be a hex string (its first 16 bytes are kept),
 {"JobCompleted":{"job_id":2,"digest":{"ok":true,"score":0,"words":930,"qa_defects":0,
                  "artifact_sha":"0123456789abcdef0123456789abcdef01234567"}}}
 {"JobCompleted":{"job_id":3,"digest":{"ok":true,"score":8,"words":0,"qa_defects":1,"artifact_sha":null}}}
+{"JobFailed":{"job_id":4,"reason":"timeout"}}  // model | invalid-output | needs-media | needs-page | timeout | cancelled | infrastructure
 {"DeployLanded":{"work_item":"work-item-1"}}
+{"DeployFailed":{"work_item":"work-item-1"}}
 {"SiteSignals":{"live_pages":61,"languages":4,"broken_links":3,"media_count":338,
                 "lighthouse_performance":91,"lighthouse_accessibility":96,"lighthouse_seo":100}}
 {"AnalyticsSignals":{"project":"project-1","day":1,"sessions":1840,"visitors":1420,

@@ -47,7 +47,7 @@ export interface ReplayResult {
   applied: number
   /** Every non-empty `drain_effects_json()` array seen during the replay, in order. */
   effects: string[]
-  /** Job ids whose outcome (`MeetingOutcome` / `JobCompleted`) is in the log. */
+  /** Job ids whose outcome (`MeetingOutcome` / `JobCompleted` / `JobFailed`) is in the log. */
   completedJobs: Set<number>
   /** Work items with a logged `DeployLanded`. */
   landed: Set<string>
@@ -60,10 +60,10 @@ export function commandKind(json: string): string {
   return m[1] ?? m[2]
 }
 
-/** What a logged outcome command settles: the job it completes, or the work item it lands. */
+/** What a logged outcome command settles: the job it completes (or reports as failed, ADR-0059), or the work item it lands. */
 export function settles(json: string): { job?: number; landed?: string } {
   const kind = commandKind(json)
-  if (kind !== 'MeetingOutcome' && kind !== 'JobCompleted' && kind !== 'DeployLanded') return {}
+  if (kind !== 'MeetingOutcome' && kind !== 'JobCompleted' && kind !== 'JobFailed' && kind !== 'DeployLanded') return {}
   // Only small fields are read; u64 brief refs may lose precision here and are ignored.
   const body = (JSON.parse(json) as Record<string, { job_id?: number; work_item?: string }>)[kind]
   if (kind === 'DeployLanded') return { landed: body.work_item }

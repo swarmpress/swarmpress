@@ -71,11 +71,15 @@ Site repos build with @swarm-press/site-kit + an agent-authored theme on GitHub 
 2. **Text never enters the sim.** LLM output, transcripts and page bodies stay in the store and
    the site repo. They enter the sim only as commands carrying digests:
    `JobCompleted{digest{ok, score, words, qa_defects, artifact_sha}}`, `MeetingOutcome{briefs}`,
-   `DeployLanded{work_item}`.
+   `JobFailed{job_id, reason}` (the reason is an enum), `DeployLanded{work_item}`,
+   `DeployFailed{work_item}`, `Utterance{meeting, seq, speaker, chars}`.
 3. **The orchestrator owns transitions; LLMs return artifacts.**
    - No LLM tool or extension can approve, merge, publish or change a stage.
    - The sim's state machine decides: the editor approves at a score of 7 or above, with at most
-     3 revisions, then Blocked with a ticket.
+     3 revisions, then Blocked with a ticket. An approved article then waits at the CEO's publish
+     gate under `AutonomyPolicy` (ADR-0059): with the default `ApproveAll` it is published only
+     on the CEO's `Publish` answer to a `PublishApproval` ticket, which the Secretary can never
+     answer and whose default never publishes.
 4. **Transition first, then the side effect.** The sim emits `Effect::RequestJob` as part of the
    transition. The orchestrator then does the GitHub and LLM work idempotently, keyed by job id,
    and the results come back as commands appended to the command log.

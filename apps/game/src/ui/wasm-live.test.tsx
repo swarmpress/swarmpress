@@ -36,6 +36,7 @@ type RealSim = SimOrgApi & {
   hash(): bigint
   pending_effects(): number
   drain_effects_json(): string
+  next_due_step(): bigint | undefined
   free(): void
 }
 type WasmModule = {
@@ -435,5 +436,75 @@ describe.skipIf(!built)('WasmDataSource over the real sim', () => {
     expect(await s.apply(toJson(cmd.praise('staff-1')))).toEqual({ ok: true })
     expect(reads).toBe(12)
     off()
+  })
+
+  /**
+   * The publish gate (ADR-0059, FEAT-079): an article that passed its review
+   * shows in the Inbox as a `publish-approval` ticket; nothing is published
+   * until the CEO clicks Publish there.
+   */
+  it('shows the publish approval in the Inbox and publishes only on the CEO’s click', async () => {
+    const sim = wasm.Sim.demo(42n)
+    const drain = () => JSON.parse(sim.drain_effects_json()) as { job_id: number; kind: string; work_item: string | null }[]
+    const done = (job_id: number, score: number) =>
+      JSON.stringify({ JobCompleted: { job_id, digest: { ok: true, score, words: 900, qa_defects: 0, artifact_sha: null } } })
+    expect(sim.next_due_step()).toBeUndefined()
+    sim.advance(1000) // 09:00: the standup
+    const [standup] = drain()
+    // The view the clock hold reads (ADR-0060): a standup is due 30 game minutes (250 steps) after its request.
+    expect(sim.next_due_step()).toBe(1250n)
+    expect((JSON.parse(sim.plan_json!()) as { jobs: { kind: string; dueStep: number }[] }).jobs).toMatchObject([{ kind: 'standup', dueStep: 1250 }])
+    sim.apply_command_json(JSON.stringify({ MeetingOutcome: { job_id: standup.job_id, briefs: [{ brief_ref: 7, writer: 'staff-1', editor: 'staff-5' }] } }))
+    const [draft] = drain()
+    sim.apply_command_json(done(draft.job_id, 0))
+    sim.advance(1000)
+    const [review] = drain()
+    sim.apply_command_json(done(review.job_id, 8))
+    sim.advance(600)
+    expect(drain(), 'no job at the gate').toEqual([])
+    expect(sim.next_due_step()).toBeUndefined()
+
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    const h = mountOverlay(el, new WasmDataSource(sim))
+    dispose = () => {
+      h.dispose()
+      el.remove()
+    }
+    await h.store.refresh()
+    h.store.panel.value = 'inbox'
+    await flush()
+    const inbox = within(screen.getByRole('region', { name: /Inbox/ }))
+    const ticket = within(inbox.getByRole('heading', { name: 'Publish approval' }).closest('article')!)
+    expect(ticket.getByText(/passed its review and waits for your approval/)).toBeTruthy()
+    expect(ticket.getByText(/work-item-1/)).toBeTruthy()
+    const options = within(ticket.getByRole('group', { name: 'Answer Publish approval' }))
+    expect(options.getAllByRole('button').map((b) => b.textContent?.replace(/\s*\(.*$/, '').trim())).toEqual(['Publish', 'Send back', 'Kill', 'Defer'])
+    expect(options.getByRole('button', { name: /^Defer/ }).textContent).toContain('default at deadline')
+
+    options.getByRole('button', { name: /^Publish/ }).click()
+    await flush()
+    await h.store.refresh()
+    await flush()
+    // The click is the `AnswerTicket{Publish}` command: now the sim asks for the Publish job.
+    expect(drain().map((e) => [e.kind, e.work_item])).toEqual([['publish', 'work-item-1']])
+    expect(within(screen.getByRole('region', { name: /Inbox/ })).queryByRole('group', { name: 'Answer Publish approval' })).toBeNull()
+    const approval = (await h.store.source.getInbox()).tickets.find((t) => t.kind === 'publish-approval')
+    expect(approval).toMatchObject({ status: 'answered', answer: 'publish', resolvedBy: 'ceo', workItem: 'work-item-1' })
+  })
+
+  it('shows a failed standup with its reason and its Retry and Skip options', async () => {
+    // Half a day in, nobody answered the 09:00 standup: the sim raised the ticket itself.
+    const h = mountOverlay(document.body.appendChild(document.createElement('div')), new WasmDataSource(demo()))
+    dispose = () => h.dispose()
+    await h.store.refresh()
+    h.store.panel.value = 'inbox'
+    await flush()
+    const inbox = within(screen.getByRole('region', { name: /Inbox/ }))
+    const ticket = within(inbox.getByRole('heading', { name: 'Standup failed' }).closest('article')!)
+    expect(ticket.getByText(/failed: timeout/)).toBeTruthy()
+    expect(ticket.getByText(/The standup produced no briefs/)).toBeTruthy()
+    const options = within(ticket.getByRole('group', { name: 'Answer Standup failed' }))
+    expect(options.getAllByRole('button').map((b) => b.textContent?.replace(/\s*\(.*$/, '').trim())).toEqual(['Retry', 'Skip'])
   })
 })
