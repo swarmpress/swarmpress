@@ -205,7 +205,8 @@ describe.skipIf(!built)('game time is independent of GPU speed (real sim)', () =
     const draftAt = fast.c.job('draft')!.step
     expect(fast.c.job('standup')!.step).toBe(1000)
     for (const r of runs) {
-      expect(r.c.loop.dueOrigin).toBe('host')
+      // The due step is the sim's own view (`Sim.next_due_step`, `plan_json` `dueStep`).
+      expect(r.c.loop.dueOrigin).toBe('sim')
       expect(r.c.loop.errors).toEqual([])
       expect(r.c.job('draft')!.step).toBe(draftAt)
       expect(r.c.loop.jobs.find((j) => j.kind === 'draft')).toMatchObject({ due_step: draftAt + DRAFT_STEPS, who: 'Giulia', state: 'done' })

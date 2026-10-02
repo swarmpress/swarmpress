@@ -125,10 +125,10 @@ describe('inbox on live data', () => {
     await flush()
     const inbox = () => within(panel(/Inbox/))
 
-    const gate = within(inbox().getByRole('article', { name: 'Approve for publishing' }))
+    const gate = within(inbox().getByRole('article', { name: 'Publish approval' }))
     expect(gate.getByRole('button', { name: TITLE })).toBeTruthy()
     expect(gate.getAllByRole('button').map((b) => b.textContent)).toEqual([TITLE, 'Publish', 'Send back', 'Kill', 'Defer (default at deadline)'])
-    expect(inbox().getByRole('article', { name: 'Approve for publishing' }).querySelector('.ticket-deadline')!.textContent).toMatch(/if unanswered: Defer$/)
+    expect(inbox().getByRole('article', { name: 'Publish approval' }).querySelector('.ticket-deadline')!.textContent).toMatch(/if unanswered: Defer$/)
 
     const unknown = within(inbox().getByRole('article', { name: 'Quantum audit' }))
     expect(unknown.getAllByRole('button').map((b) => b.textContent)).toEqual(['Do it', 'Wait a day (default at deadline)'])
@@ -156,13 +156,13 @@ describe('inbox on live data', () => {
 
   it('has friendly labels for the new ticket kinds and their options, in either spelling', () => {
     expect(['PublishApproval', 'StandupFailed', 'DeployFailed', 'NeedsMedia', 'NeedsPage'].map(ticketTitle)).toEqual([
-      'Approve for publishing',
+      'Publish approval',
       'Standup failed',
       'Deploy failed',
       'Media needed',
       'Page needed',
     ])
-    expect(['publish-approval', 'standup_failed', 'needs-media'].map(ticketTitle)).toEqual(['Approve for publishing', 'Standup failed', 'Media needed'])
+    expect(['publish-approval', 'standup_failed', 'needs-media'].map(ticketTitle)).toEqual(['Publish approval', 'Standup failed', 'Media needed'])
     expect(['Publish', 'SendBack', 'send-back', 'Kill', 'Defer', 'Retry', 'Skip', 'Acknowledge', 'approve-overrun'].map(optionLabel)).toEqual([
       'Publish',
       'Send back',

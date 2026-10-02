@@ -43,7 +43,7 @@ const TICKET_KINDS: Record<string, KindInfo> = {
   'hire-affordability': { label: 'Hire affordability', about: 'The CFO looked at whether the company can afford a hire.', amount: (a) => `${a} a month` },
   'project-proposal': { label: 'Project proposal', about: 'A new publication is proposed.' },
   // The publish gate and failure tickets (ADR-0059, ADR-0062).
-  'publish-approval': { label: 'Approve for publishing', about: 'This article passed its review and waits for your approval. Publish merges it into the live site. Defer asks again at 08:30.' },
+  'publish-approval': { label: 'Publish approval', about: 'This article passed its review and waits for your approval. Publish merges it into the live site. Defer asks again at 08:30.' },
   'standup-failed': { label: 'Standup failed', about: 'The standup produced no briefs. Retry holds it again now. Skip lets the day pass.' },
   'deploy-failed': { label: 'Deploy failed', about: 'The article is merged, but its deploy failed. Retry publishes it again. Acknowledge waits for the next deploy.' },
   'needs-media': { label: 'Media needed', about: 'The site has no media that fits this article. Retry once media is added, or kill the article.' },
@@ -217,7 +217,6 @@ function Ticket({ t }: { t: TicketJson }) {
       )}
       <p class="small muted">
         {t.id} · {store.projectName(t.project)}
-        {t.workItem && <> · {t.workItem}</>}
         {t.from && <> · from {store.nameOf(t.from)}</>}
         {t.failure && <> · failed: {sentence(slug(t.failure)).toLowerCase()}</>}
       </p>

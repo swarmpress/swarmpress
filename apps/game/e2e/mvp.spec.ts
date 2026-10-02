@@ -101,7 +101,8 @@ async function approveInInbox(page: Page, shot: string) {
   await expect(inbox).toBeVisible()
   const ticket = inbox.getByRole('article', { name: 'Publish approval', exact: true })
   await expect(ticket).toHaveCount(1)
-  await expect(ticket).toContainText(ITEM)
+  // The ticket names the article (its title comes from the store, not the sim).
+  await expect(ticket).toContainText(TITLE)
   const options = inbox.getByRole('group', { name: 'Answer Publish approval' })
   await expect(options.getByRole('button')).toHaveText([/^Publish/, /^Send back/, /^Kill/, /^Defer/])
   await page.screenshot({ path: `test-results/mvp/${shot}.png` })

@@ -165,7 +165,7 @@ export interface TicketJson {
   /** Option ids as the sim names them; sent back verbatim in `AnswerTicket`. Open-ended like `kind`. */
   options: string[]
   defaultOption: string | null
-  /** Sim: the work item the ticket is about (escalations, publish approvals). */
+  /** Sim: the work item the ticket is about: escalations, the publish gate (`publish-approval`), failures. */
   workItem?: string | null
   /** Sim: money at stake in euros (`amount_cents`); 0 when the ticket carries none. */
   amountEur?: number
@@ -181,8 +181,6 @@ export interface TicketJson {
   answer?: string | null
   /** UI extension: the option the secretary proposes. */
   proposedOption?: string | null
-  /** The work item the ticket is about: escalations, the publish gate (`publish-approval`), failures. */
-  workItem?: string | null
   /** Why the job behind the ticket failed (sim `JobFailure` slug: `timeout`, `needs-media`, …). */
   failure?: string | null
 }
