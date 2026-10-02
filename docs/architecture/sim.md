@@ -110,6 +110,53 @@ The room kinds, equipment, staff traits and project kinds are described in the g
   moves the hash. Job ids are sequential per world (`plan.jobs_requested`), hence
   deterministic and idempotency keys for the executor.
 
+## Snapshots
+
+`crates/sim-core/src/snapshot.rs` (FEAT-060, ADR-0046). A snapshot is the whole world as bytes,
+so a restore costs the commands logged after it instead of a replay from the seed.
+
+```text
+0   magic            4  "SPWS"
+4   snapshot format  2  SNAPSHOT_FORMAT (1)
+6   world format     4  WORLD_FORMAT    (the sim build that wrote the body)
+10  day_real_minutes 8  SimConfig
+18  start_minute     8  SimConfig
+26  step             8
+34  hash             8  World::hash
+42  body                postcard(World): the bytes World::hash is taken over
+```
+
+All integers are little endian. The 13-person cinqueterre company is about 2 KB.
+
+- **`World::snapshot()`** writes it. **`World::from_snapshot(bytes, expect_config)`** refuses
+  anything it cannot vouch for: short input, a wrong magic, another snapshot or world format, an
+  unexpected config, a body that does not hash to the header's hash or does not decode exactly,
+  a header whose step or config is not the world's, and a world that does not hash back. Nothing
+  is restored on an error and there is no fallback inside the sim.
+- **`WORLD_FORMAT`** names the world's encoding and step rules. postcard is not self-describing,
+  so a snapshot is only safe to load into the build that wrote it. Bump the constant by one
+  whenever the golden hash changes; `tests/snapshot.rs` (`world_format_names_the_current_world`)
+  fails until that is done and lists what else to update. `PROTO_VERSION` is the wire protocol
+  and is a separate number.
+- **Effects are not in a snapshot** (they are an outbox, `#[serde(skip)]`). A restored world has
+  none. **`World::reissue_pending_jobs()`** emits the request of every job in `plan.jobs` again,
+  in job-id order, with the original job ids. Nothing extra is stored for this: the brief and
+  the revision are on the work item, the assignee on the phase that holds the job, the team on
+  the standup's meeting. It skips jobs whose effect is still waiting to be drained and never
+  changes the hash.
+- **Boundary.** `client-wasm` exposes `Sim.snapshot()`, `Sim.from_snapshot(bytes)`,
+  `Sim.reissue_pending_jobs()` and `Sim.seed()`. The browser wraps the bytes in a
+  `swarmpress.snapshot.v1` record with the step, hash, seed and log position
+  (`apps/game/src/sync/segments.ts`) and restores with `restoreSim`
+  (`apps/game/src/catchup/replay.ts`): snapshot, check against the record, re-issue, then replay
+  only the commands after `lastSeq`. Replay from the seed remains for records without a world,
+  for new companies and as the audit path (`?restore=replay`).
+- **Evidence.** `crates/sim-core/tests/snapshot.rs` (the golden script rebuilt from a snapshot
+  six times, re-issue for every job kind, refusals), `crates/client-wasm/tests/snapshot_wasm.rs`
+  (the same natively and under wasm32), `packages/runner/test/snapshot.test.ts` (Bun),
+  `apps/game/src/catchup/replay.test.ts` (`restoreSim` over the real sim), and
+  `crates/sim-core/benches/restore.rs` (snapshot restore against replay from the seed).
+
 ## Job contract (MVP)
 
 The article loop of [docs/mvp.md](../mvp.md). The sim owns every transition (ADR-0011); the

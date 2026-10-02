@@ -2,8 +2,9 @@
  * Sealing and restoring through the central sync API (FEAT-012).
  *
  * `seal()` uploads the command-log entries not sent yet as the next immutable
- * segment, then the checkpoint. `fetchRemote()` is the other direction, for a
- * device whose store is empty. Progress lives in the store's kv
+ * segment, then the snapshot record (the world bytes when the caller has
+ * them, FEAT-060; else a checkpoint). `fetchRemote()` is the other direction,
+ * for a device whose store is empty. Progress lives in the store's kv
  * (`sync.sealed_seq`, `sync.next_segment`), so segments are numbered once per
  * company even across reloads.
  *
@@ -18,7 +19,14 @@
  */
 import type { LoggedCommand } from '../catchup/replay'
 import type { StoredCommand } from '../store/company-store'
-import { commandText, decodeCheckpoint, decodeSegment, encodeCheckpoint, encodeSegment, mergeSegments, type Checkpoint } from './segments'
+import { commandText, decodeSegment, decodeSnapshot, encodeCheckpoint, encodeSegment, encodeSnapshot, mergeSegments, type Checkpoint } from './segments'
+
+/** What a seal is given: where the world is, and (to make it a snapshot) the world itself. */
+export type SealPoint = Omit<Checkpoint, 'format' | 'lastSeq'> & {
+  lastSeq?: number
+  /** `Sim.snapshot()` bytes captured at exactly `step`; without them a legacy checkpoint is uploaded. */
+  world?: Uint8Array | null
+}
 
 export interface SyncClient {
   putLogSegment(companyId: string, segment: number, bytes: Uint8Array): Promise<{ status: number }>
@@ -70,13 +78,15 @@ export class SyncUploader {
    * ends exactly at the checkpoint's step and its hash can be checked. Without
    * it, everything in the log is sealed.
    */
-  seal(checkpoint: Omit<Checkpoint, 'format' | 'lastSeq'> & { lastSeq?: number }): Promise<SealResult> {
+  seal(checkpoint: SealPoint): Promise<SealResult> {
     const run = this.chain.then(() => this.sealNow(checkpoint))
     this.chain = run.catch(() => undefined)
     return run
   }
 
-  private async sealNow(cp: Omit<Checkpoint, 'format' | 'lastSeq'> & { lastSeq?: number }): Promise<SealResult> {
+  private async sealNow(cp: SealPoint): Promise<SealResult> {
+    // A world is only the world at `lastSeq` when the caller said which seq that is.
+    if (cp.world && cp.lastSeq == null) throw new Error('sync: a snapshot needs the log position (lastSeq) it was captured at')
     const log = await this.store.commandsAfter(-1)
     let segment: number | null = null
     let commands = 0
@@ -100,7 +110,8 @@ export class SyncUploader {
       segment = p.segment
     }
     const sealed = (Number(await this.store.getKv(SEALED_SEQ_KEY)) || 0)
-    await this.client.putSnapshot(this.companyId, cp.step, encodeCheckpoint({ ...cp, lastSeq: cp.lastSeq ?? sealed }))
+    const point = { scenario: cp.scenario, seed: cp.seed, step: cp.step, hash: cp.hash, lastSeq: cp.lastSeq ?? sealed }
+    await this.client.putSnapshot(this.companyId, cp.step, cp.world ? encodeSnapshot(point, cp.world) : encodeCheckpoint(point))
     return { segment, commands, step: cp.step }
   }
 
@@ -148,6 +159,10 @@ export class SyncUploader {
 export interface RemoteState {
   commands: LoggedCommand[]
   checkpoint: Checkpoint | null
+  /** The world bytes of the remote snapshot record (null for a legacy checkpoint, or without a record). */
+  world: Uint8Array | null
+  /** The record as the server holds it, to keep as this device's local snapshot. */
+  record: Uint8Array | null
   segments: number
 }
 
@@ -163,7 +178,8 @@ export async function fetchRemote(client: SyncClient, companyId: string): Promis
     if (!bytes) throw new Error(`sync: log segment ${n} is listed by the server but missing`)
     segments.push(decodeSegment(bytes))
   }
-  const checkpoint = snap ? decodeCheckpoint(snap.bytes) : null
+  const record = snap ? decodeSnapshot(snap.bytes) : null
+  const checkpoint = record?.checkpoint ?? null
   const commands = mergeSegments(segments)
   commands.forEach((c, i) => {
     if (c.seq !== i + 1) throw new Error(`sync: the remote log has a gap (command #${i + 1} is missing, found #${c.seq})`)
@@ -171,5 +187,5 @@ export async function fetchRemote(client: SyncClient, companyId: string): Promis
   if (checkpoint && commands.length < checkpoint.lastSeq) {
     throw new Error(`sync: the remote log ends at command #${commands.length}, the checkpoint needs #${checkpoint.lastSeq}`)
   }
-  return { commands, checkpoint, segments: list.length ? list[list.length - 1] + 1 : 0 }
+  return { commands, checkpoint, world: record?.world ?? null, record: snap?.bytes ?? null, segments: list.length ? list[list.length - 1] + 1 : 0 }
 }

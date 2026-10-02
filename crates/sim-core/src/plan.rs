@@ -21,9 +21,10 @@
 //! even when an executor answers instantly.
 //!
 //! Effects are an outbox, not state: [`World::drain_effects`] hands them to
-//! the server actor after each step (replicas drain and drop them). They are
-//! skipped by serde, so they are not part of the hash or of snapshots; only
-//! the job counter and the pending-job table are.
+//! the executor after each step. They are skipped by serde, so they are not
+//! part of the hash or of snapshots; only the job counter and the pending-job
+//! table are. A world restored from a snapshot gets the open requests back
+//! with [`World::reissue_pending_jobs`].
 //!
 //! Text (briefs, drafts, minutes) never enters the sim: a brief is an opaque
 //! server-side `brief_ref`.
@@ -388,6 +389,61 @@ impl World {
     /// Effects waiting to be drained.
     pub fn effects(&self) -> &[Effect] {
         &self.effects
+    }
+
+    /// The request of a pending job, rebuilt from state. Everything a
+    /// [`Effect::RequestJob`] carries beyond the [`PendingJob`] row is still
+    /// in the world while the job is pending: the brief and the revision on
+    /// the work item, the assignee on the phase that holds the job, the team
+    /// on the standup's meeting.
+    fn job_effect(&self, job: &PendingJob) -> Effect {
+        let item = job.work_item.and_then(|id| self.plan.items.get(&id));
+        let staff: Vec<StaffId> = match job.kind {
+            JobKind::Standup => job
+                .meeting
+                .and_then(|m| self.meetings.get(&m))
+                .map(|m| m.attendees.iter().copied().collect())
+                .unwrap_or_default(),
+            _ => item
+                .and_then(|i| i.phases.iter().find(|p| p.job == Some(job.job_id)))
+                .and_then(|p| p.assignee)
+                .into_iter()
+                .collect(),
+        };
+        Effect::RequestJob {
+            job_id: job.job_id,
+            kind: job.kind,
+            project: job.project,
+            work_item: job.work_item,
+            brief_ref: item.and_then(|i| i.brief_ref),
+            revision: item.map_or(0, |i| i.revision),
+            meeting: job.meeting,
+            staff,
+        }
+    }
+
+    /// Emits the request of every pending job again, in job-id order, except
+    /// those whose effect is still waiting to be drained. For a world that
+    /// lost its outbox: effects are not part of a snapshot, so a restored
+    /// world would otherwise wait forever for jobs nobody was asked to run.
+    /// The job ids are the original ones. Not a state change: the hash stays.
+    /// Returns how many requests were emitted.
+    pub fn reissue_pending_jobs(&mut self) -> usize {
+        let queued: Vec<u64> = self
+            .effects
+            .iter()
+            .map(|Effect::RequestJob { job_id, .. }| *job_id)
+            .collect();
+        let again: Vec<Effect> = self
+            .plan
+            .jobs
+            .values()
+            .filter(|j| !queued.contains(&j.job_id))
+            .map(|j| self.job_effect(j))
+            .collect();
+        let n = again.len();
+        self.effects.extend(again);
+        n
     }
 
     /// Requests a job: records it as pending and emits the effect.

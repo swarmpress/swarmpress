@@ -22,6 +22,9 @@
 # The shared golden fixture (packages/runner/test/fixtures/golden.json): native = wasm = Bun.
 - match: { classname: client-wasm, title: "runner_golden_hashes_match" }
   features: [FEAT-001, FEAT-055]
+# World snapshots through the facade (crates/client-wasm/tests/snapshot_wasm.rs).
+- match: { classname: client-wasm, title: "snapshot" }
+  features: [FEAT-060, FEAT-001]
 - match: { classname: client-wasm }
   features: [FEAT-001, FEAT-023]
 # agents unit tests in src/ (persona year ranges, the "never invent numbers" scanner).

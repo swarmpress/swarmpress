@@ -64,6 +64,36 @@ impl Sim {
             })
     }
 
+    /// The whole world as bytes (`sim_core::snapshot`: a 42-byte header and
+    /// the postcard world, FEAT-060). Effects waiting to be drained are not
+    /// part of it.
+    pub fn snapshot(&self) -> Vec<u8> {
+        self.world.snapshot()
+    }
+
+    /// Rebuilds a sim from [`Sim::snapshot`] bytes. Throws on anything that
+    /// is not a snapshot of this sim build, on damaged bytes, and when the
+    /// rebuilt world does not hash to the hash the snapshot was taken at. The
+    /// sim has no pending effects: [`Sim::reissue_pending_jobs`] brings the
+    /// open job requests back.
+    pub fn from_snapshot(bytes: &[u8]) -> Result<Sim, String> {
+        sim_core::World::from_snapshot(bytes, None)
+            .map(|world| Sim { world })
+            .map_err(|e| format!("bad snapshot: {e}"))
+    }
+
+    /// Emits the request of every job the sim still waits for again (same job
+    /// ids), unless it is already waiting to be drained. For a sim restored
+    /// from a snapshot. Never changes the hash. Returns how many were emitted.
+    pub fn reissue_pending_jobs(&mut self) -> u32 {
+        u32::try_from(self.world.reissue_pending_jobs()).unwrap_or(u32::MAX)
+    }
+
+    /// The seed the world was created with.
+    pub fn seed(&self) -> u64 {
+        self.world.seed
+    }
+
     /// Advances one fixed step (100 ms).
     pub fn tick(&mut self) {
         self.world.step();

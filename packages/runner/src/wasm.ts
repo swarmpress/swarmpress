@@ -18,6 +18,12 @@ export interface WasmSim {
   cash_cents(): bigint;
   advance(steps: number): void;
   render_state_json(): string;
+  /** The seed the world was created with. */
+  seed(): bigint;
+  /** The whole world as bytes (`sim_core::snapshot`, FEAT-060); pending effects are not part of it. */
+  snapshot(): Uint8Array;
+  /** Re-emits the requests of jobs still pending (for a sim made by `fromSnapshot`). */
+  reissue_pending_jobs(): number;
   free(): void;
 }
 
@@ -25,6 +31,8 @@ export interface SimModule {
   version(): string;
   demo(seed: bigint): WasmSim;
   empty(seed: bigint): WasmSim;
+  /** A sim from `WasmSim.snapshot()` bytes. Throws unless they are an intact snapshot of this sim build. */
+  fromSnapshot(bytes: Uint8Array): WasmSim;
   pkgDir: string;
 }
 
@@ -70,6 +78,7 @@ export function loadSim(): Promise<SimModule> {
       version: () => version,
       demo: (seed: bigint) => mod.Sim.demo(seed) as WasmSim,
       empty: (seed: bigint) => new mod.Sim(seed) as WasmSim,
+      fromSnapshot: (bytes: Uint8Array) => mod.Sim.from_snapshot(bytes) as WasmSim,
       pkgDir: dir,
     };
   })();

@@ -20,6 +20,10 @@ export class Sim {
   constructor(seed: bigint)              // empty company on the default lot
   static demo(seed: bigint): Sim         // the cinqueterre.travel starting company (13 staff)
   static scenario(name: string, seed: bigint): Sim  // "cinqueterre" (= demo) | "empty"; throws otherwise
+  static from_snapshot(bytes: Uint8Array): Sim      // a world from snapshot(); throws unless it is this build's and intact
+  snapshot(): Uint8Array                 // the whole world (42-byte header + postcard World), without pending effects
+  reissue_pending_jobs(): number         // re-emit the requests of jobs still pending (after from_snapshot)
+  seed(): bigint
   tick(): void                           // one 100 ms step
   advance(steps: number): void
   step(): bigint
@@ -98,6 +102,13 @@ pass it to `Orchestrator::run`, which ignores `effect` and `meeting`):
 `kind` is `standup | draft | review | publish` (`brief` is reserved).
 Effects are not world state: draining (or not) never moves the hash. Every
 replica must drain after stepping, or the queue grows.
+
+Because effects are not state they are not in a snapshot either. A sim from
+`Sim.from_snapshot(bytes)` has none; `reissue_pending_jobs()` rebuilds the
+requests of the jobs the sim still waits for (same job ids, same fields), and
+the next `drain_effects_json()` returns them. `from_snapshot` checks the
+snapshot format, the sim build (`sim_core::snapshot::WORLD_FORMAT`) and the
+hash, and throws `bad snapshot: …` on any mismatch; nothing is restored then.
 
 The results go back through `apply_command_json` as server commands, in the
 orchestrator's `Outcome` JSON (see "Server commands" below). Then:

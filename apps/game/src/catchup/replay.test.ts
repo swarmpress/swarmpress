@@ -1,14 +1,31 @@
-// Restore by replay (FEAT-014, ADR-0038). Two layers:
+// Restoring a sim (FEAT-014, FEAT-060, ADR-0038, ADR-0046). Three layers:
 // - the replay driver against a small deterministic fake sim (always runs);
 // - the real client-wasm sim: the same seed plus the same command log gives
-//   the same `World::hash` (CLAUDE.md rule 1). Needs `cargo xtask wasm`;
-//   skipped without crates/client-wasm/pkg.
+//   the same `World::hash` (CLAUDE.md rule 1);
+// - `restoreSim` over the real sim: a snapshot plus the commands after it is
+//   the same world as a replay from the seed, and bad snapshots are refused.
+// The real-sim layers need `cargo xtask wasm`; skipped without
+// crates/client-wasm/pkg.
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { decodeSegment, encodeSegment, mergeSegments } from '../sync/segments'
-import { commandKind, parseClock, replay, settles, stepsUntil, type LoggedCommand, type ReplayResult, type ReplaySim } from './replay'
+import {
+  commandKind,
+  parseClock,
+  replay,
+  restoreSim,
+  settledBy,
+  settles,
+  stepsUntil,
+  type LoggedCommand,
+  type ReplayResult,
+  type ReplaySim,
+  type RestorableSim,
+  type RestorePoint,
+  type SimFactory,
+} from './replay'
 
 // ------------------------------------------------------------------ fake sim
 
@@ -276,14 +293,15 @@ describe('stepsUntil', () => {
 const PKG = resolve(process.cwd(), '../../crates/client-wasm/pkg') + '/'
 const built = existsSync(`${PKG}client_wasm.js`)
 
-type RealSim = ReplaySim & {
+type RealSim = RestorableSim & {
   pending_effects(): number
   plan_json(project?: string): string
   validate_command_json(json: string): string | undefined
+  snapshot(): Uint8Array
 }
 type WasmModule = {
   initSync(m: { module: BufferSource }): unknown
-  Sim: { scenario(name: string, seed: bigint): RealSim }
+  Sim: { scenario(name: string, seed: bigint): RealSim; from_snapshot(bytes: Uint8Array): RealSim }
 }
 let wasm: WasmModule
 
@@ -298,6 +316,8 @@ interface Mark {
   hash: string
   /** Log length when the mark was taken. */
   seq: number
+  /** `Sim.snapshot()` there. */
+  world: Uint8Array
 }
 interface Recording {
   log: LoggedCommand[]
@@ -325,7 +345,7 @@ function record(seed = SEED): Recording {
     sim.apply_command_json(json)
     log.push({ seq: log.length + 1, step: Number(sim.step()), kind: commandKind(json), json })
   }
-  const mark = (name: string): Mark => (marks[name] = { name, step: Number(sim.step()), hash: sim.hash().toString(), seq: log.length })
+  const mark = (name: string): Mark => (marks[name] = { name, step: Number(sim.step()), hash: sim.hash().toString(), seq: log.length, world: sim.snapshot() })
   const drain = () => JSON.parse(sim.drain_effects_json()) as Effect[]
   const next = (kind: string, name = kind): Effect => {
     for (let i = 0; i < 20_000; i++) {
@@ -523,5 +543,196 @@ describe.skipIf(!built)('replay over the real sim (client-wasm)', () => {
     expect(sim.day()).toBe(wasm.Sim.scenario(SCENARIO, SEED).day())
     expect(stepsUntil(sim, target)).toBe(0)
     expect(stepsUntil(sim, target - 1)).toBe(0)
+  })
+})
+
+// ------------------------------------------------------------------ restore from a snapshot (FEAT-060)
+
+describe('settledBy', () => {
+  it('names the jobs and deploys a log settles without running it', () => {
+    const log = logOf([10, PRAISE], [10, OUTCOME], [20, DONE(2)], [30, TRIAGE], [40, DONE(3)], [50, LANDED])
+    const s = settledBy(log)
+    expect([...s.completedJobs]).toEqual([1, 2, 3])
+    expect(s.landed).toEqual(new Set(['work-item-1']))
+    expect(settledBy([])).toEqual({ completedJobs: new Set(), landed: new Set() })
+  })
+})
+
+describe.skipIf(!built)('restoreSim over the real sim (client-wasm)', () => {
+  let rec: Recording
+  /** Counts what the restore asked of the host. */
+  let made: { fromSeed: number; fromSnapshot: number }
+  let sims: SimFactory<RealSim>
+
+  beforeAll(async () => {
+    wasm = (await import(/* @vite-ignore */ pathToFileURL(`${PKG}client_wasm.js`).href)) as WasmModule
+    wasm.initSync({ module: readFileSync(`${PKG}client_wasm_bg.wasm`) })
+    rec = record()
+  })
+  beforeEach(() => {
+    made = { fromSeed: 0, fromSnapshot: 0 }
+    sims = {
+      fromSeed: (scenario, seed) => (made.fromSeed++, wasm.Sim.scenario(scenario, seed)),
+      fromSnapshot: (world) => (made.fromSnapshot++, wasm.Sim.from_snapshot(world)),
+    }
+  })
+
+  const point = (m: Mark): RestorePoint => ({ scenario: SCENARIO, seed: SEED.toString(), step: m.step, hash: m.hash, lastSeq: m.seq })
+  const input = (m: Mark, commands = rec.log) => ({ scenario: SCENARIO, seed: SEED, commands, point: point(m), world: m.world })
+  /** Runs a restored sim on to the recording's final step. */
+  const finish = (sim: RealSim) => {
+    sim.advance(rec.final.step - Number(sim.step()))
+    return sim.hash().toString()
+  }
+
+  it('a snapshot is small and the same bytes for the same run', () => {
+    const again = record()
+    for (const name of Object.keys(rec.marks)) expect(Array.from(again.marks[name].world)).toEqual(Array.from(rec.marks[name].world))
+    expect(rec.final.world.length).toBeLessThan(16 * 1024)
+  })
+
+  it('from every point of the run: snapshot + the commands after it ends in the hash of the uninterrupted run', () => {
+    for (const m of Object.values(rec.marks)) {
+      const r = restoreSim(sims, input(m))
+      expect(r.fromSnapshot, m.name).toBe(true)
+      expect(r.verified, m.name).toBe(true)
+      // Only the commands after the snapshot were replayed …
+      expect(r.result.applied, m.name).toBe(rec.log.length - m.seq)
+      // … and the result is the world of the uninterrupted run.
+      expect(finish(r.sim), m.name).toBe(rec.final.hash)
+    }
+    expect(made).toEqual({ fromSeed: 0, fromSnapshot: Object.keys(rec.marks).length })
+  })
+
+  it('gives exactly what a replay from the seed gives (step, hash, settled jobs, landed items)', () => {
+    for (const m of [rec.marks.briefed, rec.marks.drafting, rec.marks.publishRequested, rec.marks.scheduled]) {
+      const fromSnapshot = restoreSim(sims, input(m))
+      const fromSeed = restoreSim(sims, { ...input(m), forceReplay: true })
+      expect(fromSeed.fromSnapshot).toBe(false)
+      expect(fromSeed.verified).toBe(true)
+      expect(fromSeed.result.applied).toBe(rec.log.length)
+      expect({ step: fromSnapshot.result.step, hash: fromSnapshot.result.hash }).toEqual({ step: fromSeed.result.step, hash: fromSeed.result.hash })
+      expect(fromSnapshot.result.completedJobs).toEqual(fromSeed.result.completedJobs)
+      expect(fromSnapshot.result.landed).toEqual(fromSeed.result.landed)
+    }
+  })
+
+  it('with nothing logged after it, the snapshot alone is the restore: no command is replayed, no step is run', () => {
+    const m = rec.final
+    const r = restoreSim(sims, input(m))
+    expect(r.result).toMatchObject({ step: m.step, hash: m.hash, applied: 0 })
+    expect(Number(r.sim.step())).toBe(m.step)
+    expect(made).toEqual({ fromSeed: 0, fromSnapshot: 1 })
+    expect(status(r.sim)).toBe('published')
+  })
+
+  it('a job pending at the snapshot is re-issued with its job id, and only that one', () => {
+    const m = rec.marks.publishRequested
+    const r = restoreSim(sims, input(m, upTo(rec, m)))
+    expect(r.result.hash).toBe(m.hash)
+    const asked = requested(r.result)
+    expect(asked.map((e) => [e.job_id, e.kind, e.work_item])).toEqual([[rec.jobs.publish, 'publish', 'work-item-1']])
+    // The same request a replay from the seed leaves outstanding.
+    const replayed = restoreSim(sims, { ...input(m, upTo(rec, m)), forceReplay: true })
+    expect(requested(replayed.result).filter((e) => !replayed.result.completedJobs.has(e.job_id))).toEqual(asked)
+    expect(asked.every((e) => !r.result.completedJobs.has(e.job_id))).toBe(true)
+    // Its outcome applies to the restored sim as it did to the original.
+    r.sim.apply_command_json(rec.log[m.seq].json)
+    expect(r.sim.pending_effects()).toBe(0)
+  })
+
+  it('a job pending at the snapshot whose outcome is in the tail is re-issued and reported as settled', () => {
+    // `drafting`: the draft was answered, the review is not requested yet; `briefed`: the draft job is pending.
+    const m = rec.marks.briefed
+    const r = restoreSim(sims, input(m))
+    const first = requested(r.result)[0]
+    expect([first.job_id, first.kind]).toEqual([rec.jobs.draft, 'draft'])
+    expect(r.result.completedJobs.has(rec.jobs.draft)).toBe(true)
+    // Every job of the run is settled by the log, so a caller re-runs none of them.
+    expect(requested(r.result).filter((e) => !r.result.completedJobs.has(e.job_id))).toEqual([])
+  })
+
+  it('an idle snapshot re-issues nothing', () => {
+    const r = restoreSim(sims, input(rec.marks.start, []))
+    expect(r.result.effects).toEqual([])
+    expect(r.result.applied).toBe(0)
+  })
+
+  it('refuses a damaged snapshot instead of falling back to a replay', () => {
+    const m = rec.marks.scheduled
+    const damaged = m.world.slice()
+    damaged[damaged.length - 3] ^= 0x20
+    expect(() => restoreSim(sims, { ...input(m), world: damaged })).toThrow(/the snapshot at step \d+ cannot be restored: bad snapshot: the snapshot is corrupt/)
+    expect(made.fromSeed).toBe(0)
+  })
+
+  it('refuses a snapshot of another sim build', () => {
+    const m = rec.marks.scheduled
+    const other = m.world.slice()
+    other[6] += 1 // the world format in the header
+    expect(() => restoreSim(sims, { ...input(m), world: other })).toThrow(/cannot be restored: bad snapshot: the snapshot was written by sim build \d+, this is sim build \d+/)
+    expect(() => restoreSim(sims, { ...input(m), world: new TextEncoder().encode('{"format":"swarmpress.checkpoint.v1"}') })).toThrow(/bad snapshot/)
+    expect(made.fromSeed).toBe(0)
+  })
+
+  it('refuses a snapshot that is not the world its record describes', () => {
+    const m = rec.marks.scheduled
+    // an intact snapshot of another moment
+    expect(() => restoreSim(sims, { ...input(m), world: rec.marks.drafting.world })).toThrow(/the snapshot is not the world its record describes/)
+    // a record with a wrong hash
+    expect(() => restoreSim(sims, { ...input(m), point: { ...point(m), hash: '1' } })).toThrow(/not the world its record describes/)
+    // another company's world (same scenario, another seed)
+    const stranger = wasm.Sim.scenario(SCENARIO, 8n)
+    stranger.advance(m.step)
+    const theirs: RestorePoint = { ...point(m), hash: stranger.hash().toString() }
+    expect(() => restoreSim(sims, { ...input(m), point: theirs, world: stranger.snapshot() })).toThrow(/not the world its record describes/)
+  })
+
+  it('refuses a record of another seed and a log shorter than the record needs, before touching the sim', () => {
+    const m = rec.marks.scheduled
+    expect(() => restoreSim(sims, { ...input(m), seed: 8n })).toThrow(/the checkpoint's seed 7 is not the company's seed 8/)
+    expect(() => restoreSim(sims, input(m, rec.log.slice(0, m.seq - 1)))).toThrow(new RegExp(`the command log ends at #${m.seq - 1}, the checkpoint needs #${m.seq}`))
+    expect(made).toEqual({ fromSeed: 0, fromSnapshot: 0 })
+  })
+
+  it('a legacy checkpoint (no world) is restored by replay from the seed, and still verified', () => {
+    const m = rec.marks.scheduled
+    const r = restoreSim(sims, { ...input(m), world: null })
+    expect(r.fromSnapshot).toBe(false)
+    expect(r.verified).toBe(true)
+    expect(r.result.applied).toBe(rec.log.length)
+    expect(finish(r.sim)).toBe(rec.final.hash)
+    expect(() => restoreSim(sims, { ...input(m), world: null, point: { ...point(m), hash: '1' } })).toThrow(/replay desync at the checkpoint/)
+    expect(made.fromSnapshot).toBe(0)
+  })
+
+  it('without a record, a new company starts from the seed', () => {
+    const r = restoreSim(sims, { scenario: SCENARIO, seed: SEED, commands: [] })
+    expect(r).toMatchObject({ fromSnapshot: false, verified: null })
+    expect(r.result).toMatchObject({ step: 0, hash: rec.marks.start.hash, applied: 0 })
+  })
+
+  it('the restore does not grow with history: a snapshot after ten game days restores without stepping', () => {
+    const sim = fresh()
+    const perDay = Number(sim.steps_per_day())
+    for (let d = 0; d < 10; d++) sim.advance(perDay)
+    sim.drain_effects_json()
+    const late: RestorePoint = { scenario: SCENARIO, seed: SEED.toString(), step: Number(sim.step()), hash: sim.hash().toString(), lastSeq: 0 }
+    const world = sim.snapshot()
+
+    const t0 = performance.now()
+    const quick = restoreSim(sims, { scenario: SCENARIO, seed: SEED, commands: [], point: late, world })
+    const snapshotMs = performance.now() - t0
+    const t1 = performance.now()
+    const slow = restoreSim(sims, { scenario: SCENARIO, seed: SEED, commands: [], point: late, world, forceReplay: true })
+    const replayMs = performance.now() - t1
+
+    expect(quick.result.hash).toBe(slow.result.hash)
+    expect(quick.result.step).toBe(10 * perDay)
+    // Generous bounds (no flakiness on a busy CI box): the snapshot restore is
+    // a decode, far below the 120,000 steps the replay has to run.
+    expect(snapshotMs).toBeLessThan(250)
+    expect(snapshotMs).toBeLessThan(replayMs)
+    console.info(`restore after 10 game days (${10 * perDay} steps): snapshot ${snapshotMs.toFixed(1)} ms, replay from seed ${replayMs.toFixed(1)} ms`)
   })
 })

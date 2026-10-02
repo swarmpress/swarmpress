@@ -198,13 +198,15 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
   const remote = await page.evaluate(async (company) => {
     const list = (await (await fetch(`/api/sync/${company}/log`)).json()) as { segments: { segment: number }[] }
     const segment = (await (await fetch(`/api/sync/${company}/log/0`)).json()) as { commands: { seq: number; kind: string }[] }
-    const snapshot = (await (await fetch(`/api/sync/${company}/snapshot`)).json()) as { step: number; hash: string; lastSeq: number }
-    return { segments: list.segments.map((x) => x.segment), kinds: segment.commands.map((c) => c.kind), seqs: segment.commands.map((c) => c.seq), snapshot }
+    const { world, ...snapshot } = (await (await fetch(`/api/sync/${company}/snapshot`)).json()) as { format: string; step: number; hash: string; lastSeq: number; world: string }
+    return { segments: list.segments.map((x) => x.segment), kinds: segment.commands.map((c) => c.kind), seqs: segment.commands.map((c) => c.seq), snapshot, worldChars: world.length }
   }, first.companyId)
   expect(remote.segments).toEqual([0])
   expect(remote.kinds).toEqual(LOGGED)
   expect(remote.seqs).toEqual(LOGGED.map((_, i) => i + 1))
-  expect(remote.snapshot).toMatchObject({ step: sealed.step, hash: sealed.hash, lastSeq: LOGGED.length })
+  // The record carries the world itself (base64 of `Sim.snapshot()`), not just where it was.
+  expect(remote.snapshot).toMatchObject({ format: 'swarmpress.snapshot.v1', step: sealed.step, hash: sealed.hash, lastSeq: LOGGED.length })
+  expect(remote.worldChars).toBeGreaterThan(1000)
   expect((await state(page)).errors).toEqual([])
   expect(errors).toEqual([])
   // A restore lands on a checkpoint taken between the publish and the pause (the
@@ -213,8 +215,10 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
     [sealed.step, sealed.hash],
     [done.step, done.hash],
   ])
+  // The checkpoint is a world snapshot (FEAT-060): the sim is rebuilt from it and
+  // nothing is replayed, because every logged command is before the snapshot.
   const expectRestored = (r: typeof first.restored, source: string) => {
-    expect(r).toMatchObject({ source, replayed: LOGGED.length, verified: true })
+    expect(r).toMatchObject({ source, snapshot: true, replayed: 0, verified: true })
     expect(r.checkpoint).toEqual({ step: r.step, hash: r.hash })
     expect(r.step).toBeGreaterThanOrEqual(sealed.step)
     expect(r.step).toBeLessThanOrEqual(done.step)

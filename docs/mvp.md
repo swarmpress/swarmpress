@@ -308,7 +308,7 @@ Publish ─ RequestJob(Publish) ─ gateway: merge ─────────�
    ◄──────────────────────────── event: DeployLanded{work_item} ◄─ GET /api/events (+ push channel)
    └─ ServerCommand::DeployLanded → item Published; plan status post; CEO feed
 sync: append log segment + snapshot ───────────────────────────► PUT /api/sync/{company}/… (blobs on disk)
-reload / new device: restore from OPFS or sync by replay to the checkpoint, merge inbox events (ADR-0048)
+reload / new device: restore from OPFS or sync (world snapshot + the log after it), merge inbox events (ADR-0048)
 ```
 
 ### Contracts (still current)

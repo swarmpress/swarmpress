@@ -30,16 +30,18 @@ tickets resolve to their default at the deadline. A director (ADR-0036) is optio
 
 What exists today (`apps/game/src/catchup/replay.ts`, used by `restore()` in
 `apps/game/src/session/session.ts`):
-- client-wasm exports no world snapshot yet, so restore is a **replay**: the sim is created from
-  the scenario and seed, and the command log is applied at the logged steps, from the browser
-  store or, if that is empty, from central sync (FEAT-012).
-- The replay stops at the last checkpoint's step and compares the world hash with the
-  checkpoint's.
+- Restore starts from the newest world snapshot (FEAT-060): the sim is rebuilt from its bytes,
+  checked against the record's step, hash and seed, and only the commands logged after it are
+  applied at their logged steps. The record comes from the browser store or, if that is empty,
+  from central sync (FEAT-012).
+- A record without a world (written before FEAT-060) is restored by **replay**: the sim is
+  created from the scenario and seed, the whole log is applied, and the world hash is compared
+  with the checkpoint's at its step. `?restore=replay` forces this path as an audit.
 - Jobs whose outcome is not in the log are queued again. Central events after the stored cursor
   are applied at the next step boundary.
 
-Still to do: restore from a world snapshot instead of the seed (FEAT-060), central-first
-restore (FEAT-012), and letting the day finish before the company rests.
+Still to do: central-first restore (FEAT-012), and letting the day finish before the company
+rests.
 
 The host-side clock rules that make game time independent of GPU speed (hold while work is due,
 clamp, rest, hidden tab) are FEAT-080 (ADR-0060).

@@ -331,7 +331,7 @@ artifact = "site-kit-playwright"
 branch = "main"
 
 # ---------------------------------------------------------------- benchmarks
-# Criterion: sim-core step and pathfinding (`cargo bench -p sim-core`).
+# Criterion: sim-core step, pathfinding and restore (`cargo bench -p sim-core`).
 [[evidence]]
 id = "swarmpress/criterion"
 title = "criterion (sim-core)"
@@ -339,7 +339,7 @@ format = "criterion"
 kind = "benchmark"
 path = [".cockpit/evidence/swarmpress__criterion/**/estimates.json", "target/criterion/**/new/estimates.json"]
 component = "sim"
-features = ["FEAT-001"]
+features = ["FEAT-001", "FEAT-060"]
 [evidence.github]
 repo = "swarmpress/swarmpress"
 workflow = "ci.yml"

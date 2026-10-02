@@ -27,6 +27,7 @@
 //! - [`render_state`]: the sim → renderer contract (ADR-0007)
 //! - [`world`]: the [`World`] itself, `apply` and `step`
 //! - [`scenarios`]: canned worlds (`demo_office`) and the golden script
+//! - [`snapshot`]: the world as bytes, for restores that do not replay from the seed
 
 #![forbid(unsafe_code)]
 
@@ -46,6 +47,7 @@ pub mod projects;
 pub mod render_state;
 pub mod roles;
 pub mod scenarios;
+pub mod snapshot;
 pub mod staff;
 pub mod validate;
 pub mod world;
@@ -53,5 +55,6 @@ pub mod world;
 pub use clock::{Clock, DayPhase, SimConfig, MINUTES_PER_DAY, STEPS_PER_SECOND};
 pub use commands::{Command, Input, ServerCommand};
 pub use render_state::RenderState;
+pub use snapshot::{SnapshotError, SnapshotHeader};
 pub use validate::{validate, validate_input, validate_server, Reject};
 pub use world::{CmdReceipt, StepReport, World};

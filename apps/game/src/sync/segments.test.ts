@@ -1,6 +1,7 @@
-// Wire formats of the central sync (FEAT-012): command-log segments and the
-// replay checkpoint. Segments are immutable on the server (an identical PUT
-// answers 200, different bytes 409), so the encoding must be byte-stable.
+// Wire formats of the central sync (FEAT-012, FEAT-060): command-log segments,
+// the snapshot record and the legacy replay checkpoint. Segments are immutable
+// on the server (an identical PUT answers 200, different bytes 409), so the
+// encoding must be byte-stable.
 import { describe, expect, it } from 'vitest'
 import type { LoggedCommand } from '../catchup/replay'
 import {
@@ -9,10 +10,15 @@ import {
   commandText,
   decodeCheckpoint,
   decodeSegment,
+  decodeSnapshot,
   encodeCheckpoint,
   encodeSegment,
+  encodeSnapshot,
+  fromBase64,
   mergeSegments,
   SEGMENT_FORMAT,
+  SNAPSHOT_FORMAT,
+  toBase64,
   type Checkpoint,
 } from './segments'
 
@@ -125,6 +131,70 @@ describe('checkpoints', () => {
     expect(() => decodeCheckpoint(bytes('{"format":"swarmpress.checkpoint.v0","step":1}'))).toThrow(/unknown checkpoint format "swarmpress.checkpoint.v0"/)
     expect(() => decodeCheckpoint(encodeSegment([PRAISE]))).toThrow(/unknown checkpoint format/)
     expect(() => decodeCheckpoint(bytes('not json'))).toThrow()
+  })
+})
+
+describe('snapshot records', () => {
+  const CP: Omit<Checkpoint, 'format'> = { scenario: 'cinqueterre', seed: BIG_REF, step: 36000, hash: '9223372036854775809', lastSeq: 7 }
+  // Every byte value, and more than one base64 chunk (0x8000 bytes).
+  const WORLD = Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 + (i >> 8)) & 0xff)
+
+  it('carries the world bytes with the checkpoint fields, and round-trips both', () => {
+    const back = decodeSnapshot(encodeSnapshot(CP, WORLD))
+    expect(back.checkpoint).toEqual({ format: SNAPSHOT_FORMAT, ...CP })
+    expect(back.world).toBeInstanceOf(Uint8Array)
+    expect(back.world!.length).toBe(WORLD.length)
+    expect(Array.from(back.world!)).toEqual(Array.from(WORLD))
+  })
+
+  it('has a stable encoding (swarmpress.snapshot.v1): the checkpoint fields, then the world as base64', () => {
+    expect(SNAPSHOT_FORMAT).toBe('swarmpress.snapshot.v1')
+    expect(text(encodeSnapshot({ scenario: 'cinqueterre', seed: '7', step: 60, hash: '42', lastSeq: 3 }, Uint8Array.of(0x53, 0x50, 0x57, 0x53, 0xff)))).toBe(
+      '{"format":"swarmpress.snapshot.v1","scenario":"cinqueterre","seed":"7","step":60,"hash":"42","lastSeq":3,"world":"U1BXU/8="}',
+    )
+  })
+
+  it('encodes the same snapshot to the same bytes, whatever extra fields the caller object carries', () => {
+    const a = encodeSnapshot(CP, WORLD)
+    const noisy = { lastSeq: CP.lastSeq, hash: CP.hash, step: CP.step, seed: CP.seed, scenario: CP.scenario, world: WORLD, format: 'x' } as unknown as Omit<Checkpoint, 'format'>
+    expect(Array.from(encodeSnapshot(noisy, WORLD))).toEqual(Array.from(a))
+    expect(Array.from(encodeCheckpoint(noisy))).toEqual(Array.from(encodeCheckpoint(CP)))
+  })
+
+  it('reads a legacy checkpoint as a record without a world', () => {
+    expect(decodeSnapshot(encodeCheckpoint(CP))).toEqual({ checkpoint: { format: CHECKPOINT_FORMAT, ...CP }, world: null })
+  })
+
+  it('decodeCheckpoint reads the checkpoint fields of a snapshot record too', () => {
+    expect(decodeCheckpoint(encodeSnapshot(CP, WORLD))).toEqual({ format: SNAPSHOT_FORMAT, ...CP })
+  })
+
+  it('a snapshot record stays readable as plain JSON (step, hash, lastSeq)', () => {
+    const doc = JSON.parse(text(encodeSnapshot(CP, WORLD)))
+    expect(doc).toMatchObject({ step: 36000, hash: '9223372036854775809', lastSeq: 7 })
+    expect(typeof doc.world).toBe('string')
+  })
+
+  it('refuses a snapshot record without a world, with a damaged world, and an empty world', () => {
+    expect(() => decodeSnapshot(bytes('{"format":"swarmpress.snapshot.v1","scenario":"c","seed":"7","step":1,"hash":"2","lastSeq":0}'))).toThrow(/malformed snapshot: no world/)
+    expect(() => decodeSnapshot(bytes('{"format":"swarmpress.snapshot.v1","scenario":"c","seed":"7","step":1,"hash":"2","lastSeq":0,"world":""}'))).toThrow(/no world/)
+    expect(() => decodeSnapshot(bytes('{"format":"swarmpress.snapshot.v1","scenario":"c","seed":"7","step":1,"hash":"2","lastSeq":0,"world":"%%%"}'))).toThrow(/not base64/)
+    expect(() => encodeSnapshot(CP, new Uint8Array())).toThrow(/needs the world bytes/)
+  })
+
+  it('refuses unknown formats and malformed fields like a checkpoint does', () => {
+    expect(() => decodeSnapshot(bytes('{"format":"swarmpress.snapshot.v2","world":"AA=="}'))).toThrow(/unknown checkpoint format "swarmpress.snapshot.v2"/)
+    expect(() => decodeSnapshot(encodeSegment([PRAISE]))).toThrow(/unknown checkpoint format/)
+    expect(() => decodeSnapshot(bytes('{"format":"swarmpress.snapshot.v1","scenario":"c","seed":7,"step":1,"hash":"2","lastSeq":0,"world":"AA=="}'))).toThrow(/malformed checkpoint/)
+    expect(() => decodeSnapshot(bytes('null'))).toThrow(/unknown checkpoint format/)
+    expect(() => decodeSnapshot(bytes('not json'))).toThrow()
+  })
+
+  it('base64 is the standard padded alphabet, both ways', () => {
+    expect(toBase64(new Uint8Array())).toBe('')
+    expect(toBase64(Uint8Array.of(0xfb, 0xff))).toBe('+/8=')
+    expect(Array.from(fromBase64('+/8='))).toEqual([0xfb, 0xff])
+    expect(Array.from(fromBase64(toBase64(WORLD)))).toEqual(Array.from(WORLD))
   })
 })
 

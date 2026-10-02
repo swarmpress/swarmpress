@@ -6,7 +6,7 @@
  *   dev login → company (created on first login) → company store (OPFS) → lease
  *     (ADR-0045: `acquire`; another executor's live lease leaves this session
  *     read-only, and a session that loses the lease halts)
- *   → restore: the store's log + checkpoint, else central sync, else a new company
+ *   → restore: the store's snapshot + the log after it, else central sync, else a new company
  *   → orchestration loop (sim effects → orchestrator-wasm → commands) + events
  *   → checkpoints: locally every game hour, sealed to central sync every game
  *     day and on `pagehide`
@@ -19,16 +19,17 @@
  *   ff=HH:MM         fast-forward on boot to that time of the current game day
  *   takeover=1       take the company over from the executor that holds it (this
  *                    page load only; the parameter is removed from the URL)
+ *   restore=replay   ignore the snapshot and replay the whole log from the seed (the audit path)
  */
 import styleGuide from '../../../../crates/agents/tests/fixtures/style-guide.json'
 import { Sim } from 'swarm-wasm'
-import { parseClock, replay, stepsUntil, type LoggedCommand, type ReplayResult } from '../catchup/replay'
+import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResult, type RestoredSim, type SimFactory } from '../catchup/replay'
 import { FakeLlm } from '../llm/fake-llm'
 import { CentralClient, centralGateway, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type OrchestratorGateway } from '../net/central'
 import { OrchestrationLoop, type JobRecord } from '../orchestration/loop'
 import { createOrchestrator, jobsFromEffects, llmFromQuery, localLlmBridge, outcomesForSim, type SiteBindingJson } from '../orchestrator'
 import { openCompanyStore, type CompanyStore, type Plan } from '../store'
-import { commandBytes, decodeCheckpoint, encodeCheckpoint, type Checkpoint } from '../sync/segments'
+import { commandBytes, decodeSnapshot, encodeSnapshot, type Checkpoint } from '../sync/segments'
 import { fetchRemote, NEXT_SEGMENT_KEY, SEALED_SEQ_KEY, SyncUploader, toLogged, type SealResult } from '../sync/uploader'
 import type { DataTopic } from '../ui/data-source'
 import { companyStoreOptions, WasmDataSource, type SimOrgApi } from '../ui/wasm-source'
@@ -53,11 +54,13 @@ export interface RestoreInfo {
   source: RestoreSource
   step: number
   hash: string
-  /** Commands replayed from the log. */
+  /** The sim was rebuilt from a world snapshot (FEAT-060); false when the whole log was replayed from the seed. */
+  snapshot: boolean
+  /** Commands replayed from the log: with a snapshot only those logged after it, else all of them. */
   replayed: number
-  /** The checkpoint the replay targeted (null for a new company). */
+  /** The snapshot (or legacy checkpoint) the restore started from or targeted (null for a new company). */
   checkpoint: { step: number; hash: string } | null
-  /** Replay hash == checkpoint hash at the checkpoint's step (null without a checkpoint; a mismatch aborts the restore). */
+  /** The sim's hash == the record's hash at the record's step (null without a record; a mismatch aborts the restore). */
   verified: boolean | null
   ms: number
 }
@@ -252,64 +255,63 @@ function assertContiguous(commands: LoggedCommand[], where: string) {
   })
 }
 
-async function restore(store: CompanyStore, client: CentralClient, company: Company): Promise<{ sim: Sim; info: RestoreInfo; result: ReplayResult; lastSeq: number }> {
+/** client-wasm's `Sim` as the restore's sim factory. */
+const SIMS: SimFactory<Sim> = {
+  fromSeed: (scenario, seed) => Sim.scenario(scenario, seed),
+  fromSnapshot: (world) => Sim.from_snapshot(world),
+}
+
+/**
+ * Restores the company's sim: from this device's store, else from central
+ * sync, else a new company. With a snapshot record the sim is rebuilt from
+ * the world bytes and only the commands logged after it are replayed
+ * (FEAT-060); a legacy checkpoint, or `forceReplay` (`?restore=replay`, the
+ * audit path), replays the whole log from the seed.
+ */
+async function restore(
+  store: CompanyStore,
+  client: CentralClient,
+  company: Company,
+  opts: { forceReplay?: boolean } = {},
+): Promise<{ sim: Sim; info: RestoreInfo; result: ReplayResult; lastSeq: number }> {
   const t0 = performance.now()
   let source: RestoreSource = 'opfs'
   let commands: LoggedCommand[] = (await store.commandsAfter(-1)).map(toLogged)
   const local = await store.latestSnapshot()
-  let cp: Checkpoint | null = local ? decodeCheckpoint(local.bytes) : null
+  const record = local ? decodeSnapshot(local.bytes) : null
+  let cp: Checkpoint | null = record?.checkpoint ?? null
+  let world: Uint8Array | null = record?.world ?? null
   if (!commands.length && !cp) {
     const remote = await fetchRemote(client, company.id)
     if (remote) {
       source = 'central'
       commands = remote.commands
       cp = remote.checkpoint
+      world = remote.world
       // The store becomes this device's copy of the log; what came from central is sealed already.
       await store.appendCommands(commands.map((c) => ({ seq: c.seq, step: c.step, kind: c.kind, payload: commandBytes(c.json) })))
       await store.setKv(SEALED_SEQ_KEY, String(commands.length ? commands[commands.length - 1].seq : 0))
       await store.setKv(NEXT_SEGMENT_KEY, String(remote.segments))
-      if (cp) await store.putSnapshot(cp.step, encodeCheckpoint(cp), cp.hash)
+      if (cp && remote.record) await store.putSnapshot(cp.step, remote.record, cp.hash)
     } else source = 'new'
   }
   // A restore that cannot be trusted stops here (the page shows the error) instead of running on a wrong world.
   assertContiguous(commands, `restore from ${source}`)
-  if (cp && cp.seed !== String(company.seed)) throw new Error(`checkpoint seed ${cp.seed} is not the company's seed ${company.seed}`)
-  if (cp && commands.length < cp.lastSeq) {
-    throw new Error(`restore from ${source}: the command log ends at #${commands.length}, the checkpoint needs #${cp.lastSeq}`)
+  let restored: RestoredSim<Sim>
+  try {
+    restored = restoreSim(SIMS, { scenario: SCENARIO, seed: BigInt(company.seed), commands, point: cp, world, forceReplay: opts.forceReplay })
+  } catch (e) {
+    throw new Error(`restore from ${source}: ${e instanceof Error ? e.message : String(e)}`)
   }
-  const sim = Sim.scenario(cp?.scenario ?? SCENARIO, BigInt(company.seed))
-  // First to the checkpoint (the commands it covers, then its step), where the
-  // hash is checked; then the commands logged after it.
-  const covered = cp ? commands.filter((c) => c.seq <= cp.lastSeq) : []
-  let result = replay(sim, covered, cp?.step ?? 0)
-  let verified: boolean | null = null
-  if (cp) {
-    verified = result.step === cp.step && result.hash === cp.hash
-    if (!verified) {
-      throw new Error(
-        `restore from ${source}: replay desync at the checkpoint (step ${result.step} hash ${result.hash}, checkpoint step ${cp.step} hash ${cp.hash})`,
-      )
-    }
-  }
-  const later = commands.slice(covered.length)
-  if (later.length) {
-    const more = replay(sim, later)
-    result = {
-      step: more.step,
-      hash: more.hash,
-      applied: result.applied + more.applied,
-      effects: [...result.effects, ...more.effects],
-      completedJobs: new Set([...result.completedJobs, ...more.completedJobs]),
-      landed: new Set([...result.landed, ...more.landed]),
-    }
-  }
+  const { sim, result } = restored
   const info: RestoreInfo = {
     source,
     step: result.step,
     hash: result.hash,
+    snapshot: restored.fromSnapshot,
     replayed: result.applied,
     checkpoint: cp ? { step: cp.step, hash: cp.hash } : null,
-    verified,
+    verified: restored.verified,
     ms: Math.round(performance.now() - t0),
   }
   return { sim, info, result, lastSeq: commands.length }
@@ -382,8 +384,10 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     history.replaceState(null, '', url)
   }
 
-  const { sim, info: restored, result, lastSeq } = await restore(store, client, company)
-  log(`company ${company.id} restored from ${restored.source} at step ${restored.step} (${restored.replayed} commands, ${restored.ms} ms)`)
+  const { sim, info: restored, result, lastSeq } = await restore(store, client, company, { forceReplay: params.get('restore') === 'replay' })
+  log(
+    `company ${company.id} restored from ${restored.source} at step ${restored.step} (${restored.snapshot ? 'snapshot + ' : ''}${restored.replayed} commands replayed, ${restored.ms} ms)`,
+  )
 
   const calls: GatewayCall[] = []
   const orchestrator = await createOrchestrator({
@@ -459,14 +463,19 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   // Step, hash and log position are read in one synchronous turn: commands
   // applied later are not part of this checkpoint.
   const capture = () => ({ step: Number(sim.step()), hash: sim.hash().toString(), lastSeq: loop.lastSeq })
-  const checkpointLocal = async (at = capture()) => {
+  // A checkpoint is a snapshot: the world bytes are taken in the same turn as
+  // the step, hash and log position they belong to (FEAT-060).
+  const captureWorld = () => ({ ...capture(), world: sim.snapshot() })
+  const checkpointLocal = async (at = captureWorld()) => {
     await loop.flush()
     if (loop.halted) throw new Error(`no checkpoint: ${loop.halted}`)
-    await store.putSnapshot(at.step, encodeCheckpoint({ scenario: SCENARIO, seed: String(company.seed), ...at }), at.hash)
+    const { world, ...point } = at
+    // The store keeps the newest three (company-store.ts `putSnapshot`).
+    await store.putSnapshot(at.step, encodeSnapshot({ scenario: SCENARIO, seed: String(company.seed), ...point }, world), at.hash)
     return at
   }
   async function checkpoint(): Promise<CheckpointResult> {
-    const at = capture()
+    const at = captureWorld()
     let local = false
     let central: SealResult | null = null
     // Only the lease holder writes: a read-only session seals nothing.

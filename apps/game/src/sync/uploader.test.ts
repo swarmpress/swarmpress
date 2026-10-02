@@ -7,7 +7,7 @@ import { commandKind, type LoggedCommand } from '../catchup/replay'
 import { CentralClient, CentralError, STEP_HEADER } from '../net/central'
 import { CompanyStore } from '../store'
 import { MemorySqliteDriver } from '../store/sqlite-driver'
-import { CHECKPOINT_FORMAT, commandBytes, decodeCheckpoint, decodeSegment, encodeCheckpoint, encodeSegment } from './segments'
+import { CHECKPOINT_FORMAT, commandBytes, decodeCheckpoint, decodeSegment, decodeSnapshot, encodeCheckpoint, encodeSegment, encodeSnapshot, SNAPSHOT_FORMAT } from './segments'
 import { fetchRemote, NEXT_SEGMENT_KEY, SEALED_SEQ_KEY, SyncUploader, toLogged, type SyncStore } from './uploader'
 
 const BASE = 'http://central.test'
@@ -95,6 +95,8 @@ async function log(store: CompanyStore, ...cmds: [step: number, json: string][])
 
 const localLog = async (store: CompanyStore): Promise<LoggedCommand[]> => (await store.commandsAfter(-1)).map(toLogged)
 const cp = (step: number) => ({ scenario: 'cinqueterre', seed: '7', step, hash: String(1_000_000 + step) })
+/** Stand-in for `Sim.snapshot()` bytes: the uploader never looks inside. */
+const WORLD = Uint8Array.from({ length: 2100 }, (_, i) => (i * 7) & 0xff)
 
 const PRAISE = '{"Praise":{"staff":"staff-1"}}'
 const OUTCOME = '{"MeetingOutcome":{"job_id":1,"briefs":[{"brief_ref":18446744073709551615,"writer":"staff-1","editor":"staff-5"}]}}'
@@ -126,6 +128,38 @@ describe('SyncUploader.seal', () => {
     expect(decodeCheckpoint(snap.body!)).toEqual({ format: CHECKPOINT_FORMAT, scenario: 'cinqueterre', seed: '7', step: 600, hash: '1000600', lastSeq: 2 })
     expect(await store.getKv(SEALED_SEQ_KEY)).toBe('2')
     expect(await store.getKv(NEXT_SEGMENT_KEY)).toBe('1')
+  })
+
+  it('with the world bytes, uploads a snapshot record (swarmpress.snapshot.v1) instead of a checkpoint (FEAT-060)', async () => {
+    const { store, srv, up } = await setup()
+    await log(store, [540, PRAISE], [540, OUTCOME])
+
+    expect(await up.seal({ ...cp(600), lastSeq: 2, world: WORLD })).toEqual({ segment: 0, commands: 2, step: 600 })
+
+    expect(srv.calls.map((c) => `${c.method} ${c.path}`)).toEqual([`PUT /api/sync/${CO}/log/0`, `PUT /api/sync/${CO}/snapshot`])
+    const snap = srv.calls[1]
+    expect(snap.headers[STEP_HEADER]).toBe('600')
+    const record = decodeSnapshot(snap.body!)
+    expect(record.checkpoint).toEqual({ format: SNAPSHOT_FORMAT, scenario: 'cinqueterre', seed: '7', step: 600, hash: '1000600', lastSeq: 2 })
+    expect(Array.from(record.world!)).toEqual(Array.from(WORLD))
+    // Byte-stable: the record is exactly what encodeSnapshot writes.
+    expect(Array.from(snap.body!)).toEqual(Array.from(encodeSnapshot({ ...cp(600), lastSeq: 2 }, WORLD)))
+  })
+
+  it('a snapshot covers the log up to its lastSeq only: later commands wait for the next seal', async () => {
+    const { store, srv, up } = await setup()
+    await log(store, [540, PRAISE], [540, OUTCOME], [700, TRIAGE])
+    expect(await up.seal({ ...cp(600), lastSeq: 2, world: WORLD })).toEqual({ segment: 0, commands: 2, step: 600 })
+    expect(decodeSegment(srv.puts('log')[0].body!).map((c) => c.seq)).toEqual([1, 2])
+    expect(decodeSnapshot(srv.snapshots.get(CO)!.bytes).checkpoint.lastSeq).toBe(2)
+    expect(await up.seal({ ...cp(800), lastSeq: 3, world: WORLD })).toEqual({ segment: 1, commands: 1, step: 800 })
+  })
+
+  it('refuses a world without the log position it was captured at, before the snapshot is uploaded', async () => {
+    const { store, srv, up } = await setup()
+    await log(store, [540, PRAISE])
+    await expect(up.seal({ ...cp(600), world: WORLD })).rejects.toThrow(/a snapshot needs the log position/)
+    expect(srv.puts('snapshot')).toHaveLength(0)
   })
 
   it('sends the segment in the stable wire encoding (so a re-send is byte-identical)', async () => {
@@ -399,8 +433,26 @@ describe('fetchRemote', () => {
     expect(await fetchRemote(client, CO)).toEqual({
       commands: [],
       checkpoint: { format: CHECKPOINT_FORMAT, scenario: 'cinqueterre', seed: '7', step: 60, hash: '1000060', lastSeq: 0 },
+      // A legacy checkpoint: no world; the record is kept as the server holds it.
+      world: null,
+      record: encodeCheckpoint({ scenario: 'cinqueterre', seed: '7', step: 60, hash: '1000060', lastSeq: 0 }),
       segments: 0,
     })
+  })
+
+  it('gives a fresh device the world of the snapshot record, and the record itself to keep (FEAT-060)', async () => {
+    const { store, client, up } = await setup()
+    await log(store, [540, PRAISE], [540, OUTCOME])
+    await up.seal({ ...cp(600), lastSeq: 2, world: WORLD })
+    await log(store, [700, TRIAGE])
+    await up.seal({ ...cp(600), lastSeq: 2, world: WORLD }) // the tail is not sealed: the snapshot is at #2
+
+    const remote = (await fetchRemote(client, CO))!
+    expect(remote.checkpoint).toEqual({ format: SNAPSHOT_FORMAT, scenario: 'cinqueterre', seed: '7', step: 600, hash: '1000600', lastSeq: 2 })
+    expect(Array.from(remote.world!)).toEqual(Array.from(WORLD))
+    expect(Array.from(remote.record!)).toEqual(Array.from(encodeSnapshot({ ...cp(600), lastSeq: 2 }, WORLD)))
+    expect(decodeSnapshot(remote.record!).world).toEqual(remote.world)
+    expect(remote.commands.map((c) => c.seq)).toEqual([1, 2])
   })
 
   it('lets the restored device continue sealing where the first one stopped', async () => {

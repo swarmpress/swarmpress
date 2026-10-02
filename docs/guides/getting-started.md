@@ -98,7 +98,8 @@ Where to look:
   calls), `.events()`, `await .planText()`, `await .checkpoint()`.
 
 Reload and a second device:
-- A reload restores the company from the browser store by replaying its command log.
+- A reload restores the company from the browser store: the newest world snapshot, then the
+  commands logged after it. `&restore=replay` replays the whole log from the seed instead.
 - The log is sealed to central sync once per game day and on `pagehide`, or on demand with
   `await __swarmpress.session.checkpoint()`. A fresh browser profile with the same `login` then
   restores from central sync. It takes the lease over from the first one.
