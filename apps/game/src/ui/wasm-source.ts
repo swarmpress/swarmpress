@@ -66,6 +66,15 @@ export function toResult(v: unknown): CommandResult {
   return { ok: true }
 }
 
+/**
+ * Plan text from the browser's CompanyStore (apps/game/src/store), which
+ * implements the orchestrator's `Store::plan_json` contract. Typed
+ * structurally so the overlay does not depend on the store module.
+ */
+export const planTextFromStore =
+  (store: { planJson(company: string): Promise<string> }, company: string) => async (): Promise<PlanTextWire> =>
+    JSON.parse(await store.planJson(company)) as PlanTextWire
+
 const EMPTY_PERFORMANCE: PerformanceJson = { asOfDay: 0, projects: [], report: null }
 
 export interface WasmOptions {
@@ -75,7 +84,10 @@ export interface WasmOptions {
    * the server's plan endpoint), in the orchestrator wire shape.
    */
   planText?: () => Promise<PlanTextWire | PlanText>
-  /** Persist a CEO post; defaults to an in-memory store (offline sandbox). */
+  /**
+   * Persist a CEO post; defaults to an in-memory list next to the store's
+   * text (the CompanyStore only accepts the orchestrator's post types).
+   */
   appendPost?: (item: string, post: NewPlanPost) => Promise<PlanPost>
   /** KPIs come from the tracker + KpiReport, not the sim. */
   performance?: () => Promise<PerformanceJson>

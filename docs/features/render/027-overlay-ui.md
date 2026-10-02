@@ -27,9 +27,10 @@ Preact DOM overlay over the dollhouse (ADR-0018). The CEO's instruments:
 - **HUD**: cash, runway, open/high tickets.
 
 Data comes through the async `GameDataSource` interface (`apps/game/src/ui/data-source.ts`):
-`MockDataSource` (fixtures + in-memory rules, `?ui=mock`) today, `WasmDataSource`
-(feature-detected `Sim.org_json/finance_json/inbox_json/plan_json/apply_command_json`) once the
-sim exports them. Every action is a JSON command (`commands.ts`); nothing mutates the replica
+`MockDataSource` (fixtures + in-memory rules, `?ui=mock`) and `WasmDataSource`
+(feature-detected `Sim.org_json/finance_json/inbox_json/plan_json/apply_command_json`, the default
+now that client-wasm exports them; plan text from the CompanyStore via `planTextFromStore`).
+Every action is a JSON command (`commands.ts`); nothing mutates the replica
 directly. Frozen screenshot pages (`?t=`) don't mount the overlay unless `?ui=` is given, so the
 visual baselines are unaffected.
 
