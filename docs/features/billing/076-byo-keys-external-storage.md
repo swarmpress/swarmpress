@@ -30,7 +30,7 @@ Depends on: FEAT-075 for external storage; FEAT-063 for unattended use.
 
 ## Acceptance criteria
 
-- [ ] The key is absent from sync segments, snapshots, text packs and the sandbox's globals.
+- [ ] The key is absent from sync segments, snapshots, work records and the sandbox's globals.
 - [ ] A job with a player key places no hold and writes no ledger entry.
 - [ ] An external asset whose bytes do not match the sidecar hash blocks the merge.
 - [ ] Removing the key returns jobs to the local model or the managed route, never silently.

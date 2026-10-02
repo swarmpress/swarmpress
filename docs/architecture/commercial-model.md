@@ -36,7 +36,7 @@ Exactly one executor is authoritative for a company at a time: a browser, a self
 or a managed runner. One central row per company is the coordinator. It holds the holder, a
 monotonic **epoch**, the head of the sealed command log, the next wake and the active run.
 
-- Every write carries `epoch.lease_id`: gateway calls, log segments, snapshots, text packs, the
+- Every write carries `epoch.lease_id`: gateway calls, segments of work records, snapshots, the
   job ledger and paid spend. A stale epoch is refused.
 - A segment upload is a compare-and-swap on the log head, so two executors cannot both append
   from the same position. The sealed log wins; an orphaned local tail is discarded.
@@ -50,21 +50,30 @@ monotonic **epoch**, the head of the sealed command log, the next wake and the a
 ## 3. Durable backup and the state-repo mirror
 
 ADR: [0046](../adr/0046-durable-backup-snapshots-text-packs-state-repo-mirror.md),
+[0056](../adr/0056-work-records-a-digest-chained-history-of-agent-work.md),
 [0047](../adr/0047-player-owned-repositories.md)
 
-A backup must restore a company with full fidelity on another device or runner. That takes
-more than the command log:
+A backup must restore a company with full fidelity on another device or runner, and the agents'
+work must be watchable as it happens. The unit of history is the **work record**: one per
+completed job, holding the commands, the text the job wrote, who did it (staff member, job,
+model) and the digest of the record before it. The store's tables are a projection rebuilt from
+the chain.
 
 ```
-manifest.json            scenario, seed, sim build, config, epoch, head, cursors, extensions
-log/NNNNNN.json          immutable command-log segments
-snap/<step>.bin          world snapshots (last three, plus one a week)
-text/<gen>/NNNNNN.jsonl  changed rows of briefs, artifacts, transcripts, plan items and posts
+log/NNNNNN.jsonl     write-once segments of work records, each naming its predecessor's digest
+base/<record>.bin    world snapshot plus the projection's rows (last three, plus one a week)
+point/<record>.json  scenario, seed, sim build, config, head record, cursors, extensions
 ```
+
+Nothing in the tree is overwritten; the latest point is the highest key. The head moves by one
+compare-and-swap, checked with the lease epoch.
 
 The central service stays the primary backup, because only it can fence writes atomically. The
-same tree is mirrored, server-side, to a private **state repository** that the player owns. The
-player also owns the site repository: the GitHub App is installed on their account.
+same history is mirrored, server-side, to a private **state repository** that the player owns:
+one git commit per record, authored as the staff persona, with provenance trailers. The gateway
+writes the same attribution on site-repository commits. An Activity timeline in the game reads
+the same records. The player also owns the site repository: the GitHub App is installed on
+their account.
 
 ## 4. Executor time and continuity
 
@@ -175,14 +184,15 @@ validated with promotional credits only.
 | # | Increment |
 |---|---|
 | A1 | Epoch lease; a session halts on loss |
-| A2 | Head compare-and-swap, fenced sync, central-first restore |
+| A2 | Head compare-and-swap on the record head, fenced sync, central-first restore |
 | A3 | World snapshot and pending-job re-issue |
-| A4 | Text packs, job ledger, post dedupe |
+| A4 | Work records and the projection, job ledger |
 | A5 | Extract the shared host package |
 | A6 | Self-hosted continuity runner |
 | A7 | Model proxy and memo cache |
 | A8 | Coordinator and managed runs |
-| A9 | State-repository mirror |
+| A9 | State-repository mirror, one git commit per record |
+| A10 | Activity timeline and gateway commit attribution |
 
 **Track B — money**
 

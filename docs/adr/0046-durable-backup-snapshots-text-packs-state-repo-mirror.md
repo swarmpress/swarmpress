@@ -1,6 +1,6 @@
 # ADR-0046 — Durable backup: world snapshots, text packs and a state-repo mirror
 
-**Status:** Accepted (amends ADR-0041, ADR-0039 and CLAUDE.md rule 6)
+**Status:** Accepted (amends ADR-0041, ADR-0039 and CLAUDE.md rule 6); amended by ADR-0056 (decisions 2, 4 and 6)
 **Date:** 2026-10-02
 
 ## Context

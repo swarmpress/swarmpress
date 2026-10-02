@@ -14,8 +14,8 @@ fallback).
 - The company is extensible through a JS SDK.
 - The user's own company is the imported, still-live **cinqueterre.travel**.
 
-Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0055; ADR-0038 to 0055 define
-the current architecture; ADR-0044 to 0055 are decided and mostly not built yet). Features and
+Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0056; ADR-0038 to 0056 define
+the current architecture; ADR-0044 to 0056 are decided and mostly not built yet). Features and
 their health: `docs/features/` plus Cockpit.
 
 ## Architecture in one screen (local-first, ADR-0038)
@@ -81,13 +81,14 @@ Site repos build with @swarm-press/site-kit + an agent-authored theme on GitHub 
 6. **One source of truth per entity.**
    - Content lives in the site repo, which the player owns (ADR-0047). Asset bytes live in object
      storage; each asset's sidecar lives in the site repo (ADR-0050).
-   - Company state lives in the executor's command log and snapshots, synced centrally as
-     immutable segments.
-   - Plan text, transcripts and artifacts live in the executor's store, with a synced backup
-     copy (text packs, ADR-0046).
+   - Company state is the executor's chain of work records (commands plus the text each job
+     wrote, with attribution) and its snapshots, synced centrally as write-once segments
+     (ADR-0056).
+   - Plan text, transcripts and artifacts are text records in that chain; the store's tables
+     are a projection rebuilt from it.
    - Accounts, leases and epochs, the log head, the job ledger, events and the billing ledger
      live in central SQLite.
-   - Asset storage, text packs, the job ledger and the billing ledger are decided and not built
+   - Asset storage, work records, the job ledger and the billing ledger are decided and not built
      yet (build order in `docs/architecture/commercial-model.md`).
 7. **The lease-holding executor is authoritative for its company.**
    - An executor is a browser or a runner. Only the lease holder writes, and the lease epoch
@@ -185,7 +186,7 @@ cockpit serve --watch                         # http://127.0.0.1:4747
 | Sim entities, systems, commands, pipeline stages | `docs/architecture/sim.md` |
 | MVP contract, central HTTP API | `docs/mvp.md`, `crates/server/README.md` |
 | Local-first, storage, SDK | ADR-0038…0043, `docs/architecture/sdk.md`, `docs/guides/extending.md` |
-| Commercial model, executors, continuity, pricing, assets (decided, not built) | ADR-0044…0055, `docs/architecture/commercial-model.md` |
+| Commercial model, executors, continuity, pricing, assets (decided, not built) | ADR-0044…0056, `docs/architecture/commercial-model.md` |
 | Render state | `docs/architecture/render-state.md` |
 | Roles, personas, prompts, pipelines, meetings, QA | `docs/architecture/agents.md` |
 | Local LLMs and the Agency | `docs/architecture/hybrid-inference.md` |

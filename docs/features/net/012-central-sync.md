@@ -53,7 +53,7 @@ last-writer-wins. A2 fences them and makes a forked log impossible.
 - **Central-first restore:** `restore()` fetches the central head first. Local state wins only if
   `local.sealed_seq == head_seq` and the sha matches; otherwise the log tables are rebuilt from
   central. This fixes the stale device that overrode newer state.
-- `SyncClient` grows to v2 (head, CAS headers). Text packs and the manifest come with FEAT-061,
+- `SyncClient` grows to v2 (head, CAS headers). Work records and points come with FEAT-061 (ADR-0056),
   the world snapshot with FEAT-060, the state-repo mirror with FEAT-066.
 
 Acceptance (A2):

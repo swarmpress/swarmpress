@@ -27,7 +27,7 @@ Depends on: FEAT-072.
 
 - [ ] Entered figures do not change the world hash, in-game cash, reputation or score.
 - [ ] A CSV import with a malformed row reports the row and imports nothing.
-- [ ] Figures are absent from central sync unless text packs are enabled for that table.
+- [ ] Figures are absent from central sync unless that table is included in work records.
 
 ## Evidence
 

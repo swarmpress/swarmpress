@@ -75,3 +75,4 @@ Accepted ADRs are never rewritten.
 | [0053](0053-extension-placement-and-limits.md) | Extension placement and limits | Accepted |
 | [0054](0054-byo-infrastructure-and-player-held-secrets.md) | Bring your own infrastructure, and player-held secrets | Accepted |
 | [0055](0055-leagues-and-the-in-game-currency-symbol.md) | Leagues and the in-game currency symbol | Accepted |
+| [0056](0056-work-records-a-digest-chained-history-of-agent-work.md) | Work records: a digest-chained, attributable history of agent work | Accepted |
