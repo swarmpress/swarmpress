@@ -7,5 +7,5 @@ export default defineConfig({
       'orchestrator-wasm': fileURLToPath(new URL('../../crates/orchestrator-wasm/pkg/orchestrator_wasm.js', import.meta.url)),
     },
   },
-  test: { include: ['src/**/*.test.ts'] },
+  test: { include: ['src/**/*.test.ts', 'src/**/*.test.tsx'] },
 })

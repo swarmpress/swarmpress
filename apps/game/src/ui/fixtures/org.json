@@ -1,0 +1,383 @@
+{
+  "ceo": {
+    "name": "You"
+  },
+  "executive": {
+    "cfo": "staff-7",
+    "secretary": "staff-8",
+    "delegation": "low"
+  },
+  "departments": [
+    {
+      "id": "executive-office",
+      "name": "Executive Office",
+      "head": null,
+      "members": [
+        "staff-7",
+        "staff-8"
+      ]
+    },
+    {
+      "id": "strategy",
+      "name": "Strategy",
+      "head": "staff-9",
+      "members": [
+        "staff-9",
+        "staff-13"
+      ]
+    },
+    {
+      "id": "editorial",
+      "name": "Editorial",
+      "head": "staff-4",
+      "members": [
+        "staff-1",
+        "staff-2",
+        "staff-3",
+        "staff-4",
+        "staff-5"
+      ]
+    },
+    {
+      "id": "photo-video",
+      "name": "Photo & Video",
+      "head": "staff-6",
+      "members": [
+        "staff-6"
+      ]
+    },
+    {
+      "id": "web-development",
+      "name": "Web Development",
+      "head": "staff-10",
+      "members": [
+        "staff-10"
+      ]
+    },
+    {
+      "id": "it-operations",
+      "name": "IT & Operations",
+      "head": "staff-11",
+      "members": [
+        "staff-11"
+      ]
+    },
+    {
+      "id": "seo-marketing",
+      "name": "SEO & Marketing",
+      "head": "staff-12",
+      "members": [
+        "staff-12"
+      ]
+    }
+  ],
+  "staff": [
+    {
+      "id": "staff-1",
+      "persona": "giulia",
+      "role": "writer",
+      "department": "editorial",
+      "seniority": "senior",
+      "salaryEurMonth": 4200,
+      "morale": 0.71,
+      "fatigue": 0.16,
+      "activity": "writing",
+      "projects": [
+        {
+          "project": "project-1",
+          "allocation": 80
+        }
+      ]
+    },
+    {
+      "id": "staff-2",
+      "persona": "isabella",
+      "role": "writer",
+      "department": "editorial",
+      "seniority": "mid",
+      "salaryEurMonth": 3400,
+      "morale": 0.78,
+      "fatigue": 0.22,
+      "activity": "researching",
+      "projects": [
+        {
+          "project": "project-1",
+          "allocation": 100
+        }
+      ]
+    },
+    {
+      "id": "staff-3",
+      "persona": "lorenzo",
+      "role": "writer",
+      "department": "editorial",
+      "seniority": "senior",
+      "salaryEurMonth": 4000,
+      "morale": 0.58,
+      "fatigue": 0.31,
+      "activity": "writing",
+      "projects": [
+        {
+          "project": "project-1",
+          "allocation": 100
+        }
+      ]
+    },
+    {
+      "id": "staff-4",
+      "persona": "sophia",
+      "role": "editor-in-chief",
+      "department": "editorial",
+      "seniority": "star",
+      "salaryEurMonth": 6800,
+      "morale": 0.82,
+      "fatigue": 0.28,
+      "activity": "meeting",
+      "projects": [
+        {
+          "project": "project-1",
+          "allocation": 100
+        }
+      ]
+    },
+    {
+      "id": "staff-5",
+      "persona": "marco",
+      "role": "editor",
+      "department": "editorial",
+      "seniority": "senior",
+      "salaryEurMonth": 4800,
+      "morale": 0.66,
+      "fatigue": 0.42,
+      "activity": "reviewing",
+      "projects": [
+        {
+          "project": "project-1",
+          "allocation": 100
+        }
+      ]
+    },
+    {
+      "id": "staff-6",
+      "persona": "francesca",
+      "role": "photographer",
+      "department": "photo-video",
+      "seniority": "mid",
+      "salaryEurMonth": 3600,
+      "morale": 0.74,
+      "fatigue": 0.35,
+      "activity": "shooting",
+      "projects": [
+        {
+          "project": "project-1",
+          "allocation": 100
+        }
+      ]
+    },
+    {
+      "id": "staff-7",
+      "persona": "elena",
+      "role": "cfo",
+      "department": "executive-office",
+      "seniority": "senior",
+      "salaryEurMonth": 6200,
+      "morale": 0.69,
+      "fatigue": 0.18,
+      "activity": "working",
+      "projects": []
+    },
+    {
+      "id": "staff-8",
+      "persona": "paolo",
+      "role": "secretary",
+      "department": "executive-office",
+      "seniority": "mid",
+      "salaryEurMonth": 2900,
+      "morale": 0.8,
+      "fatigue": 0.24,
+      "activity": "triaging",
+      "projects": []
+    },
+    {
+      "id": "staff-9",
+      "persona": "chiara",
+      "role": "strategist",
+      "department": "strategy",
+      "seniority": "senior",
+      "salaryEurMonth": 4600,
+      "morale": 0.75,
+      "fatigue": 0.2,
+      "activity": "planning",
+      "projects": []
+    },
+    {
+      "id": "staff-10",
+      "persona": "luca",
+      "role": "web-developer",
+      "department": "web-development",
+      "seniority": "mid",
+      "salaryEurMonth": 4100,
+      "morale": 0.72,
+      "fatigue": 0.38,
+      "activity": "coding",
+      "projects": [
+        {
+          "project": "project-1",
+          "allocation": 100
+        }
+      ]
+    },
+    {
+      "id": "staff-11",
+      "persona": "davide",
+      "role": "it-engineer",
+      "department": "it-operations",
+      "seniority": "senior",
+      "salaryEurMonth": 4300,
+      "morale": 0.61,
+      "fatigue": 0.47,
+      "activity": "fixing links",
+      "projects": [
+        {
+          "project": "project-1",
+          "allocation": 100
+        }
+      ]
+    },
+    {
+      "id": "staff-12",
+      "persona": "alessia",
+      "role": "seo-specialist",
+      "department": "seo-marketing",
+      "seniority": "mid",
+      "salaryEurMonth": 3700,
+      "morale": 0.77,
+      "fatigue": 0.19,
+      "activity": "keyword research",
+      "projects": [
+        {
+          "project": "project-1",
+          "allocation": 100
+        }
+      ]
+    },
+    {
+      "id": "staff-13",
+      "persona": "matteo",
+      "role": "data-scientist",
+      "department": "strategy",
+      "seniority": "senior",
+      "salaryEurMonth": 4900,
+      "morale": 0.73,
+      "fatigue": 0.21,
+      "activity": "analysing",
+      "projects": []
+    }
+  ],
+  "projects": [
+    {
+      "id": "project-1",
+      "slug": "cinqueterre-travel",
+      "name": "cinqueterre.travel",
+      "domain": "cinqueterre.travel",
+      "status": "active",
+      "lead": "staff-4",
+      "team": [
+        {
+          "staff": "staff-1",
+          "allocation": 80
+        },
+        {
+          "staff": "staff-2",
+          "allocation": 100
+        },
+        {
+          "staff": "staff-3",
+          "allocation": 100
+        },
+        {
+          "staff": "staff-4",
+          "allocation": 100
+        },
+        {
+          "staff": "staff-5",
+          "allocation": 100
+        },
+        {
+          "staff": "staff-6",
+          "allocation": 100
+        },
+        {
+          "staff": "staff-10",
+          "allocation": 100
+        },
+        {
+          "staff": "staff-11",
+          "allocation": 100
+        },
+        {
+          "staff": "staff-12",
+          "allocation": 100
+        }
+      ],
+      "budgetEurMonth": 45000,
+      "missingRoles": [
+        "translator"
+      ],
+      "analytics": {
+        "connected": true,
+        "sessions7d": 3981,
+        "visitors7d": 3264,
+        "pageviews7d": 9170,
+        "engagementRate": 0.58
+      }
+    },
+    {
+      "id": "project-2",
+      "slug": "lunigiana-slow-guide",
+      "name": "Lunigiana Slow Guide",
+      "domain": "lunigiana.travel",
+      "status": "proposed",
+      "lead": null,
+      "team": [],
+      "budgetEurMonth": 18000,
+      "missingRoles": [
+        "editor",
+        "writer",
+        "photographer",
+        "web-developer"
+      ],
+      "analytics": {
+        "connected": false,
+        "sessions7d": 0,
+        "visitors7d": 0,
+        "pageviews7d": 0,
+        "engagementRate": 0
+      }
+    }
+  ],
+  "company": {
+    "level": 2,
+    "maxProjects": 1
+  },
+  "candidates": [
+    {
+      "id": "candidate-100",
+      "persona": "tommaso",
+      "askingEurMonth": 3500,
+      "affordability": "Affordable: +6% payroll; runway drops from 61 to 57 days."
+    },
+    {
+      "id": "candidate-101",
+      "persona": "anna",
+      "askingEurMonth": 2700,
+      "affordability": "Affordable and fills the missing translator role on cinqueterre.travel."
+    },
+    {
+      "id": "candidate-102",
+      "persona": "riccardo",
+      "askingEurMonth": 5200,
+      "affordability": "Payroll +9%; runway drops to 54 days. Only worth it with a sponsorship plan."
+    }
+  ]
+}

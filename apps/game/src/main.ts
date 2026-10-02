@@ -5,6 +5,7 @@ import { QUALITY, type Quality } from './render/postfx'
 import { createGameScene } from './render/scene'
 import type { BuildingLayout, RenderState } from './state/render-state'
 import { mountHud } from './ui/hud'
+import { mountOverlay, selectDataSource } from './ui/mount'
 
 /**
  * URL parameters (also used by the e2e and visual tests):
@@ -15,6 +16,7 @@ import { mountHud } from './ui/hud'
  *   facing=0..3        camera angle
  *   seed=N             sim seed, default 42
  *   tz=Area/City       HQ timezone for the real-time wall clocks, default Europe/Rome
+ *   ui=mock            CEO overlay on the fixture data source (also mounts it on t= pages)
  * With t=, the loop stops once the scene is ready and 20 frames are drawn
  * (`__simpress.still()` turns true) so screenshots are stable and cheap.
  */
@@ -78,6 +80,16 @@ async function main() {
   })
 
   const hud = mountHud(document.getElementById('ui')!)
+
+  // --- CEO management overlay (ADR-0018, docs/game-design/organization.md) ---
+  // Uses the sim's organization API when it exists (feature-detected), else
+  // fixtures; `?ui=mock` forces the fixtures. Frozen screenshot pages (?t=)
+  // stay overlay-free unless they ask for it with ?ui=.
+  const overlay =
+    frozen && !params.has('ui')
+      ? null
+      : mountOverlay(document.getElementById('overlay')!, selectDataSource(sim, params, () => sim.day() * 1440 + sim.minute_of_day()))
+  // --- end CEO overlay ---
   let acc = 0
   let lastStep = -1n
   let stillFrames = 0
@@ -119,6 +131,7 @@ async function main() {
     ready: () => game.scene.isReady(),
     frames: () => engine.frameId,
     still: () => still,
+    overlay: overlay?.store ?? null,
   }
 }
 

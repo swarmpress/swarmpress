@@ -1,0 +1,472 @@
+{
+  "items": {
+    "work-item-1": {
+      "title": "Harvest week in Manarola",
+      "brief": "Angle: the grape harvest on the Volastra terraces, from the monorail to the cantina. Audience: September/October visitors who want to see the harvest. Must cover: dates, how to join a harvest visit, Sciacchetrà, what to wear on the terraces."
+    },
+    "work-item-2": {
+      "title": "Sciacchetrà: the wine you climb for",
+      "brief": "Angle: why the region's dessert wine is so rare. Must cover: drying the grapes, 8 producers to visit, the Groppo festival."
+    },
+    "work-item-3": {
+      "title": "Vernazza village guide refresh",
+      "brief": "Refresh the Vernazza village page: new restaurants, updated ferry times, harbour photos; fix outdated parking advice."
+    },
+    "work-item-4": {
+      "title": "Corniglia village guide refresh",
+      "brief": "Refresh the Corniglia page: the Lardarina steps, bus to the station, viewpoints."
+    },
+    "work-item-5": {
+      "title": "Fix 147 broken internal links",
+      "brief": "Repair every broken internal link from the day-8 SiteAudit. Redirect retired /villages/ paths; replace dead restaurant links."
+    },
+    "work-item-6": {
+      "title": "Index 83 missing images",
+      "brief": "Add the 83 images missing from the media index with alt text and licences; replace unlicensed stock."
+    },
+    "work-item-7": {
+      "title": "Redesign v2: village page template",
+      "brief": "New village template: larger photography, sticky 'today' box (weather, sea, ferries), essentials above the fold on mobile."
+    },
+    "work-item-8": {
+      "title": "Harvest week in Manarola (DE)",
+      "brief": "German edition of the harvest piece after the EN version is published."
+    },
+    "work-item-9": {
+      "title": "Autumn keyword plan",
+      "brief": "Keyword clusters for the harvest season; recommend new pages and internal links."
+    },
+    "work-item-10": {
+      "title": "Last light on Sentiero Azzurro",
+      "brief": "Sunset walk from Monterosso to Vernazza: timing, viewpoints, the way back."
+    },
+    "work-item-11": {
+      "title": "October newsletter",
+      "brief": "Harvest dates, the Groppo festival, the new Manarola piece."
+    },
+    "work-item-12": {
+      "title": "Manarola restaurants (research)",
+      "brief": "Refresh the Manarola restaurants collection: verify openings, prices and booking."
+    }
+  },
+  "todos": {
+    "todo-1": "Three photos of the Volastra terraces at golden hour",
+    "todo-2": "Confirm Sciacchetrà harvest dates with the cantina",
+    "todo-3": "Link from the Manarola village page",
+    "todo-4": "List the 8 producers open to visitors",
+    "todo-5": "Photograph drying grapes (appassimento)",
+    "todo-6": "Check the 2026 ferry timetable",
+    "todo-7": "Export the broken-link list",
+    "todo-8": "Replace 35 dead restaurant links",
+    "todo-9": "Review the redirect map",
+    "todo-10": "Decide stock vs reshoot for 20 images",
+    "todo-11": "Mood board",
+    "todo-12": "Mobile wireframe for the 'today' box",
+    "todo-13": "Internal-link plan for the harvest cluster"
+  },
+  "workstreams": {
+    "ws-1": {
+      "title": "Autumn harvest season",
+      "description": "The wine harvest window (09-01 to 11-30): articles, a newsletter and translations, starting four weeks ahead."
+    },
+    "ws-2": {
+      "title": "Village guides refresh",
+      "description": "Bring the five village guides and their collections up to date for the autumn."
+    },
+    "ws-3": {
+      "title": "Site health — 147 broken links",
+      "description": "Fix items from the knowledge audit: 147 broken internal links, 83 images missing from the index, 18 duplicate routes."
+    },
+    "ws-4": {
+      "title": "Redesign v2",
+      "description": "A new village page template with the 'today' box."
+    }
+  },
+  "goals": {
+    "goal-1": {
+      "title": "Grow cinqueterre.travel to 40k monthly readers"
+    },
+    "goal-2": {
+      "title": "Raise average quality score to 8"
+    },
+    "goal-3": {
+      "title": "Zero broken internal links"
+    }
+  },
+  "posts": {
+    "work-item-1": [
+      {
+        "id": "post-1",
+        "type": "status",
+        "author": "system",
+        "day": 6,
+        "minute": 545,
+        "text": "Status: backlog → in-progress",
+        "from": "backlog",
+        "toStatus": "in-progress"
+      },
+      {
+        "id": "post-2",
+        "type": "minutes",
+        "author": "staff-4",
+        "day": 6,
+        "minute": 555,
+        "text": "Standup: Giulia takes the Manarola harvest piece; Francesca shoots Volastra on Thursday morning.",
+        "meeting": "Daily standup",
+        "attendees": [
+          "staff-4",
+          "staff-1",
+          "staff-5",
+          "staff-6",
+          "staff-12"
+        ]
+      },
+      {
+        "id": "post-3",
+        "type": "todo-add",
+        "author": "staff-1",
+        "day": 6,
+        "minute": 602,
+        "text": "Added a todo",
+        "todo": "todo-2"
+      },
+      {
+        "id": "post-4",
+        "type": "comment",
+        "author": "staff-1",
+        "day": 7,
+        "minute": 700,
+        "text": "Called the Cantina Cinque Terre: harvest starts on the 14th on the Volastra terraces. @francesca the light is best before 8."
+      },
+      {
+        "id": "post-5",
+        "type": "handoff",
+        "author": "staff-1",
+        "day": 8,
+        "minute": 970,
+        "text": "Draft is in (1,450 words). Need 2 harvest photos: the monorail with crates and hands on the vines.",
+        "to": "staff-6"
+      },
+      {
+        "id": "post-6",
+        "type": "artifact",
+        "author": "system",
+        "day": 9,
+        "minute": 750,
+        "text": "Photo set uploaded",
+        "artifact": {
+          "label": "12 photos · Volastra harvest",
+          "path": "media/2026/volastra-harvest/"
+        }
+      },
+      {
+        "id": "post-7",
+        "type": "handoff",
+        "author": "staff-6",
+        "day": 9,
+        "minute": 765,
+        "text": "Picked 3 of 12, alt text written. Over to SEO.",
+        "to": "staff-12"
+      },
+      {
+        "id": "post-8",
+        "type": "comment",
+        "author": "staff-12",
+        "day": 9,
+        "minute": 920,
+        "text": "Keywords added: primary 'Cinque Terre grape harvest', secondary 'Manarola vendemmia', 'Sciacchetrà'. Linked from the Manarola village page and the wine collection."
+      },
+      {
+        "id": "post-9",
+        "type": "handoff",
+        "author": "staff-12",
+        "day": 9,
+        "minute": 925,
+        "text": "SEO done, ready for review.",
+        "to": "staff-5"
+      },
+      {
+        "id": "post-10",
+        "type": "review",
+        "author": "staff-5",
+        "day": 10,
+        "minute": 605,
+        "text": "Lovely voice but the practical box is missing: dates, how to book a harvest visit, what to wear. The intro is 3 paragraphs too long.",
+        "verdict": "changes",
+        "score": 6
+      },
+      {
+        "id": "post-11",
+        "type": "handoff",
+        "author": "staff-1",
+        "day": 10,
+        "minute": 950,
+        "text": "Revised: cut the intro, added the practical box with booking info.",
+        "to": "staff-5"
+      },
+      {
+        "id": "post-12",
+        "type": "review",
+        "author": "staff-5",
+        "day": 11,
+        "minute": 520,
+        "text": "Much tighter. Approve.",
+        "verdict": "approve",
+        "score": 8
+      },
+      {
+        "id": "post-13",
+        "type": "status",
+        "author": "system",
+        "day": 11,
+        "minute": 521,
+        "text": "Status: in-review → approved",
+        "from": "in-review",
+        "toStatus": "approved"
+      },
+      {
+        "id": "post-14",
+        "type": "proposal",
+        "author": "staff-9",
+        "day": 11,
+        "minute": 545,
+        "text": "The harvest piece will do well; let's follow it with a 3-issue harvest newsletter series (one per village with vineyards).",
+        "proposal": {
+          "title": "Harvest newsletter series (3 issues)",
+          "kind": "newsletter",
+          "workstream": "ws-1"
+        },
+        "accepted": false
+      }
+    ],
+    "work-item-2": [
+      {
+        "id": "post-20",
+        "type": "minutes",
+        "author": "staff-4",
+        "day": 9,
+        "minute": 550,
+        "text": "Standup: Giulia starts the Sciacchetrà piece; Chiara wants it live before the harvest festival.",
+        "meeting": "Daily standup",
+        "attendees": [
+          "staff-4",
+          "staff-1",
+          "staff-9"
+        ]
+      },
+      {
+        "id": "post-21",
+        "type": "question",
+        "author": "staff-1",
+        "day": 10,
+        "minute": 660,
+        "text": "Do we have the festival dates confirmed for Groppo? The comune site still shows last year's.",
+        "answeredBy": "staff-9"
+      },
+      {
+        "id": "post-22",
+        "type": "comment",
+        "author": "staff-9",
+        "day": 10,
+        "minute": 695,
+        "text": "@giulia confirmed by phone: 24–26 October. I've added it to the calendar."
+      },
+      {
+        "id": "post-23",
+        "type": "decision",
+        "author": "staff-4",
+        "day": 10,
+        "minute": 720,
+        "text": "We cut the producer list to 8 and link the rest from the wine collection."
+      }
+    ],
+    "work-item-5": [
+      {
+        "id": "post-30",
+        "type": "artifact",
+        "author": "system",
+        "day": 8,
+        "minute": 120,
+        "text": "SiteAudit: 147 broken internal links, 18 duplicate routes",
+        "artifact": {
+          "label": "SiteAudit report",
+          "path": "reports/site-audit-day-8.json"
+        }
+      },
+      {
+        "id": "post-31",
+        "type": "comment",
+        "author": "staff-11",
+        "day": 8,
+        "minute": 600,
+        "text": "Most breaks are old /villages/ paths. A redirect map fixes ~110; the rest need content edits."
+      },
+      {
+        "id": "post-32",
+        "type": "status",
+        "author": "system",
+        "day": 8,
+        "minute": 605,
+        "text": "Status: planned → in-progress",
+        "from": "planned",
+        "toStatus": "in-progress"
+      },
+      {
+        "id": "post-33",
+        "type": "artifact",
+        "author": "system",
+        "day": 10,
+        "minute": 1032,
+        "text": "PR opened",
+        "artifact": {
+          "label": "PR #41 · redirect map (112 links)",
+          "url": "https://github.com/swarmpress/cinqueterre.travel/pull/41"
+        }
+      },
+      {
+        "id": "post-34",
+        "type": "question",
+        "author": "staff-11",
+        "day": 11,
+        "minute": 530,
+        "text": "35 links point to restaurant pages that no longer exist. Remove the links or ask Giulia for replacements?",
+        "ticket": null
+      }
+    ],
+    "work-item-6": [
+      {
+        "id": "post-40",
+        "type": "question",
+        "author": "staff-6",
+        "day": 10,
+        "minute": 840,
+        "text": "83 images are missing from the media index; 20 are stock photos with unknown licences. Buy licences or reshoot?",
+        "ticket": "ticket-6"
+      },
+      {
+        "id": "post-41",
+        "type": "decision",
+        "author": "staff-8",
+        "day": 11,
+        "minute": 480,
+        "text": "Answered on your behalf (Low delegation): reshoot."
+      }
+    ],
+    "work-item-7": [
+      {
+        "id": "post-50",
+        "type": "comment",
+        "author": "staff-10",
+        "day": 7,
+        "minute": 660,
+        "text": "Mood board for the village template is up; going for bigger photos and a sticky 'today' box with weather and ferries."
+      },
+      {
+        "id": "post-51",
+        "type": "artifact",
+        "author": "system",
+        "day": 7,
+        "minute": 665,
+        "text": "Mood board",
+        "artifact": {
+          "label": "Mood board · village page v2",
+          "path": "design/redesign-v2/moodboard.png"
+        }
+      },
+      {
+        "id": "post-52",
+        "type": "comment",
+        "author": "staff-4",
+        "day": 8,
+        "minute": 570,
+        "text": "Love the 'today' box. Keep the essentials above the fold on mobile."
+      }
+    ],
+    "work-item-8": [
+      {
+        "id": "post-60",
+        "type": "status",
+        "author": "system",
+        "day": 11,
+        "minute": 420,
+        "text": "Blocked: no translator on the cinqueterre.travel team",
+        "from": "planned",
+        "toStatus": "blocked"
+      },
+      {
+        "id": "post-61",
+        "type": "question",
+        "author": "system",
+        "day": 11,
+        "minute": 421,
+        "text": "Who translates this into German?",
+        "ticket": "ticket-1"
+      }
+    ],
+    "work-item-10": [
+      {
+        "id": "post-70",
+        "type": "artifact",
+        "author": "system",
+        "day": 1,
+        "minute": 840,
+        "text": "Merged and deployed",
+        "artifact": {
+          "label": "Live: /en/blog/last-light-on-sentiero-azzurro/",
+          "url": "https://cinqueterre.travel/en/blog/last-light-on-sentiero-azzurro/"
+        }
+      },
+      {
+        "id": "post-71",
+        "type": "performance",
+        "author": "staff-13",
+        "day": 11,
+        "minute": 540,
+        "text": "+10 days: outperforms the harvest workstream median by 38%. Most readers arrive from search on 'Sentiero Azzurro sunset'; 71% scroll to the end.",
+        "metrics": {
+          "window": "+10 days",
+          "views": 1240,
+          "engagedPct": 62,
+          "scrollDepthPct": 71,
+          "outboundClicks": 86,
+          "vsMedianPct": 38
+        }
+      }
+    ],
+    "work-item-9": [
+      {
+        "id": "post-80",
+        "type": "comment",
+        "author": "staff-12",
+        "day": 9,
+        "minute": 600,
+        "text": "Clustered 46 harvest keywords into 5 topics; 2 of them have no page yet."
+      },
+      {
+        "id": "post-81",
+        "type": "proposal",
+        "author": "staff-12",
+        "day": 9,
+        "minute": 605,
+        "text": "New item: a 'Cinque Terre wine trail' page to own the 'wine hike' cluster (2.4k searches/month).",
+        "proposal": {
+          "title": "Cinque Terre wine trail page",
+          "kind": "article",
+          "workstream": "ws-1"
+        },
+        "accepted": false
+      }
+    ],
+    "work-item-12": [
+      {
+        "id": "post-90",
+        "type": "handoff",
+        "author": "staff-1",
+        "day": 10,
+        "minute": 1020,
+        "text": "Researched 14 Manarola restaurants; kept 9.",
+        "to": "staff-5"
+      }
+    ]
+  }
+}

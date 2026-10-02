@@ -1,0 +1,126 @@
+{
+  "delegation": "low",
+  "nowMinute": 16400,
+  "tickets": [
+    {
+      "id": "ticket-1",
+      "kind": "missing-role",
+      "priority": "medium",
+      "project": "project-1",
+      "from": "staff-4",
+      "status": "open",
+      "routedViaSecretary": true,
+      "options": [
+        "arrange-hiring",
+        "use-agency",
+        "ignore"
+      ],
+      "defaultOption": "use-agency",
+      "proposedOption": "arrange-hiring",
+      "deadlineMinute": 16920,
+      "summary": "cinqueterre.travel has no translator. The German edition of 'Harvest week in Manarola' is blocked. Sophia asks whether to hire (Anna Kowalska is in the pool) or send translations to the Agency."
+    },
+    {
+      "id": "ticket-2",
+      "kind": "high-risk-article",
+      "priority": "high",
+      "project": "project-1",
+      "from": "staff-5",
+      "status": "open",
+      "routedViaSecretary": true,
+      "options": [
+        "approve",
+        "hold",
+        "kill"
+      ],
+      "defaultOption": "hold",
+      "proposedOption": "hold",
+      "deadlineMinute": 16590,
+      "summary": "Lorenzo's piece on the Via dell'Amore reopening quotes an ongoing court case about the 2012 landslide. Marco scored it 8 but flags legal risk. Approve, hold for legal review, or kill."
+    },
+    {
+      "id": "ticket-3",
+      "kind": "budget-overrun",
+      "priority": "high",
+      "project": "project-1",
+      "from": "staff-7",
+      "status": "open",
+      "routedViaSecretary": true,
+      "options": [
+        "approve-overrun",
+        "cut-scope"
+      ],
+      "defaultOption": "cut-scope",
+      "proposedOption": "cut-scope",
+      "deadlineMinute": 17820,
+      "summary": "Elena: cinqueterre.travel is 8% over its €45,000 monthly budget (€48,600 spent). Most of the overrun is Agency fees for the broken-link sweep. Approve the overrun or cut Agency scope for the rest of the month."
+    },
+    {
+      "id": "ticket-4",
+      "kind": "kpi-report",
+      "priority": "low",
+      "project": "project-1",
+      "from": "staff-13",
+      "status": "open",
+      "routedViaSecretary": true,
+      "options": [
+        "acknowledge"
+      ],
+      "defaultOption": "acknowledge",
+      "proposedOption": "acknowledge",
+      "deadlineMinute": 16860,
+      "summary": "Matteo's weekly KPI report is ready: sessions up 14% week on week, German readers up 31%. Three recommendations attached."
+    },
+    {
+      "id": "ticket-5",
+      "kind": "project-proposal",
+      "priority": "medium",
+      "project": "project-2",
+      "from": "staff-9",
+      "status": "open",
+      "routedViaSecretary": true,
+      "options": [
+        "approve",
+        "defer",
+        "reject"
+      ],
+      "defaultOption": "defer",
+      "proposedOption": "defer",
+      "deadlineMinute": 19320,
+      "summary": "Chiara proposes a second publication, Lunigiana Slow Guide, with a €18,000 monthly budget. It needs company level 3 to launch; she suggests approving it now so the team can start research."
+    },
+    {
+      "id": "ticket-6",
+      "kind": "photo-licence",
+      "priority": "low",
+      "project": "project-1",
+      "from": "staff-6",
+      "status": "resolved",
+      "routedViaSecretary": true,
+      "options": [
+        "buy-licence",
+        "reshoot"
+      ],
+      "defaultOption": "reshoot",
+      "proposedOption": "reshoot",
+      "deadlineMinute": 16320,
+      "resolvedBy": "secretary",
+      "answer": "reshoot",
+      "summary": "Francesca asked whether to license a stock photo of Corniglia. Paolo answered 'reshoot' under your Low delegation policy."
+    }
+  ],
+  "secretaryQueue": [
+    {
+      "id": "task-1",
+      "kind": "prepare-briefing",
+      "status": "done",
+      "detail": "Morning briefing, day 12"
+    },
+    {
+      "id": "task-2",
+      "kind": "schedule-meeting",
+      "status": "working",
+      "detail": "Budget review with Elena and Sophia, Friday 16:00"
+    }
+  ]
+}

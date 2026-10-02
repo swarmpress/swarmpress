@@ -1,0 +1,300 @@
+{
+  "asOfDay": 10,
+  "projects": [
+    {
+      "project": "project-1",
+      "connected": true,
+      "days": [
+        -19,
+        -18,
+        -17,
+        -16,
+        -15,
+        -14,
+        -13,
+        -12,
+        -11,
+        -10,
+        -9,
+        -8,
+        -7,
+        -6,
+        -5,
+        -4,
+        -3,
+        -2,
+        -1,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "daily": {
+        "sessions": [
+          420,
+          465,
+          480,
+          457,
+          416,
+          451,
+          469,
+          455,
+          503,
+          518,
+          492,
+          448,
+          486,
+          505,
+          491,
+          541,
+          556,
+          527,
+          479,
+          520,
+          542,
+          526,
+          579,
+          594,
+          562,
+          511,
+          555,
+          579,
+          562,
+          618
+        ],
+        "visitors": [
+          344,
+          381,
+          394,
+          375,
+          341,
+          370,
+          385,
+          373,
+          412,
+          425,
+          403,
+          367,
+          399,
+          414,
+          403,
+          444,
+          456,
+          432,
+          393,
+          426,
+          444,
+          431,
+          475,
+          487,
+          461,
+          419,
+          455,
+          475,
+          461,
+          507
+        ],
+        "pageviews": [
+          1003,
+          1072,
+          1070,
+          1005,
+          934,
+          1060,
+          1134,
+          1088,
+          1159,
+          1152,
+          1081,
+          1007,
+          1143,
+          1221,
+          1171,
+          1244,
+          1237,
+          1159,
+          1079,
+          1224,
+          1311,
+          1256,
+          1332,
+          1320,
+          1235,
+          1150,
+          1306,
+          1401,
+          1339,
+          1419
+        ],
+        "engagementRate": [
+          0.55,
+          0.582,
+          0.599,
+          0.593,
+          0.567,
+          0.532,
+          0.506,
+          0.501,
+          0.518,
+          0.551,
+          0.583,
+          0.599,
+          0.593,
+          0.566,
+          0.532,
+          0.506,
+          0.501,
+          0.519,
+          0.552,
+          0.583,
+          0.6,
+          0.592,
+          0.565,
+          0.531,
+          0.506,
+          0.501,
+          0.52,
+          0.553,
+          0.584,
+          0.6
+        ]
+      },
+      "last7": {
+        "sessions": 3981,
+        "visitors": 3264,
+        "pageviews": 9170,
+        "engagementRate": 0.58,
+        "scrollDepth": 0.64,
+        "outboundClicks": 212
+      },
+      "prev7": {
+        "sessions": 3729,
+        "visitors": 3058,
+        "pageviews": 8598,
+        "engagementRate": 0.55,
+        "scrollDepth": 0.61,
+        "outboundClicks": 188
+      },
+      "last30": {
+        "sessions": 15307,
+        "visitors": 12552,
+        "pageviews": 35312,
+        "engagementRate": 0.56,
+        "scrollDepth": 0.62,
+        "outboundClicks": 874
+      },
+      "topPages": [
+        {
+          "path": "/en/blog/last-light-on-sentiero-azzurro/",
+          "views": 1240,
+          "engagementRate": 0.62
+        },
+        {
+          "path": "/en/manarola/",
+          "views": 1105,
+          "engagementRate": 0.58
+        },
+        {
+          "path": "/en/vernazza/",
+          "views": 980,
+          "engagementRate": 0.55
+        },
+        {
+          "path": "/de/monterosso/",
+          "views": 640,
+          "engagementRate": 0.61
+        },
+        {
+          "path": "/en/hikes/sentiero-azzurro/",
+          "views": 610,
+          "engagementRate": 0.66
+        }
+      ],
+      "bottomPages": [
+        {
+          "path": "/en/corniglia/restaurants/",
+          "views": 12,
+          "engagementRate": 0.21
+        },
+        {
+          "path": "/fr/riomaggiore/",
+          "views": 18,
+          "engagementRate": 0.3
+        },
+        {
+          "path": "/en/practical/parking/",
+          "views": 25,
+          "engagementRate": 0.28
+        }
+      ],
+      "languages": [
+        {
+          "lang": "en",
+          "share": 0.64
+        },
+        {
+          "lang": "de",
+          "share": 0.21
+        },
+        {
+          "lang": "it",
+          "share": 0.1
+        },
+        {
+          "lang": "fr",
+          "share": 0.05
+        }
+      ],
+      "sources": [
+        {
+          "source": "search / organic",
+          "share": 0.58
+        },
+        {
+          "source": "(direct)",
+          "share": 0.17
+        },
+        {
+          "source": "instagram / social",
+          "share": 0.11
+        },
+        {
+          "source": "newsletter / email",
+          "share": 0.08
+        },
+        {
+          "source": "other",
+          "share": 0.06
+        }
+      ]
+    },
+    {
+      "project": "project-2",
+      "connected": false
+    }
+  ],
+  "report": {
+    "author": "staff-13",
+    "week": 2,
+    "day": 11,
+    "project": "project-1",
+    "headline": "Sessions up 14% week on week; German readers up 31% after the Monterosso DE page.",
+    "observations": [
+      "The Sentiero Azzurro sunset piece is our top page for the second week (1,240 views, 62% engaged).",
+      "Corniglia restaurants gets 12 views a week and 21% engagement: thin content, two broken links.",
+      "Instagram referrals doubled after Francesca's harvest reel, but bounce fast (38% engaged)."
+    ],
+    "recommendations": [
+      "Prioritise the German edition of the harvest piece; DE readers convert to newsletter at 2x the EN rate.",
+      "Merge the Corniglia restaurants page into the village guide refresh (work-item-4).",
+      "Add a newsletter sign-up block to the Instagram landing pages."
+    ]
+  }
+}
