@@ -48,6 +48,18 @@ describe('game scene (NullEngine)', () => {
     expect(news.lights.length + news.layout.desks.length + 2).toBeLessThanOrEqual(MAX_LIGHTS_PER_MATERIAL)
   })
 
+  it('keeps a crowded room (more desks than the light budget) within budget at night', () => {
+    const news = DEMO_BUILDING.rooms.find((r) => r.id === 'newsroom')!
+    const desks = Array.from({ length: 7 }, (_, i) => ({ ...news.desks[0], id: `crowd-${i}`, x: news.x + 1 + i, z: news.z + 1 }))
+    const crowded = { ...DEMO_BUILDING, rooms: DEMO_BUILDING.rooms.map((r) => (r.id === 'newsroom' ? { ...r, desks } : r)) }
+    const g = createGameScene(engine, null, crowded, { quality: QUALITY.low, postFx: false })
+    const floor = g.office.rooms.get('newsroom')!.floor
+    const on = g.scene.lights.filter((l) => l.includedOnlyMeshes.length === 0 || l.includedOnlyMeshes.includes(floor))
+    expect(on.length).toBeLessThanOrEqual(MAX_LIGHTS_PER_MATERIAL)
+    // the floor still gets the sun and the sky
+    expect(on.filter((l) => l.includedOnlyMeshes.length === 0).length).toBeGreaterThanOrEqual(2)
+  })
+
   it('scopes room lights to the room instead of the whole building', () => {
     const news = game.office.rooms.get('newsroom')!
     const editorDesk = game.scene.getMeshByName('desk-desk-ed')!

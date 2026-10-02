@@ -34,8 +34,14 @@ export function createGameScene(
   opts: SceneOptions,
 ): GameScene {
   const scene = new Scene(engine)
-  const center = new Vector3(layout.width / 2, 0, layout.depth / 2)
-  const iso = createIsoCamera(scene, canvas, center.clone())
+  // Aim at half wall height: walls rise above the footprint only at the back,
+  // so a ground-level target would push the far wall tops off screen.
+  const center = new Vector3(layout.width / 2, layout.wallHeight / 2, layout.depth / 2)
+  const iso = createIsoCamera(scene, canvas, center.clone(), {
+    width: layout.width,
+    depth: layout.depth,
+    height: layout.wallHeight,
+  })
   const office = buildOffice(scene, layout)
   const lighting = createLighting(scene, office, { shadows: opts.quality.shadows, shadowMapSize: opts.quality.shadowMapSize })
   const clocks = buildWallClocks(scene, layout)

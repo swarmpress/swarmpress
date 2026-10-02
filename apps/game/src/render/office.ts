@@ -81,6 +81,11 @@ function pbr(scene: Scene, name: string, albedo: Color3, roughness: number, meta
 }
 
 /** Merge fixtures into at most `n` light positions (row-major chunks, centroid each). */
+/** Sun + sky + one lamp per desk + at least one ceiling light fit on the floor. */
+export function lampsLightFloor(deskCount: number): boolean {
+  return 2 + deskCount + 1 <= MAX_LIGHTS_PER_MATERIAL
+}
+
 export function groupFixtures(fixtures: Array<{ x: number; z: number }>, n: number): Array<{ x: number; z: number }> {
   if (fixtures.length <= n) return fixtures.map((f) => ({ x: f.x, z: f.z }))
   const sorted = [...fixtures].sort((a, b) => a.z - b.z || a.x - b.x)
@@ -234,8 +239,12 @@ export function buildOffice(scene: Scene, layout: BuildingLayout): OfficeHandles
     }
     // The sim decides where fixtures are; how many point lights represent
     // them is a rendering budget decision (ADR-0006): sun + sky + one lamp per
-    // desk + ceiling lights must stay within MAX_LIGHTS_PER_MATERIAL.
-    const ceilingBudget = Math.max(1, MAX_LIGHTS_PER_MATERIAL - 2 - room.desks.length)
+    // desk + ceiling lights must stay within MAX_LIGHTS_PER_MATERIAL. In a room
+    // with too many desks for that, desk lamps stop lighting the shared floor
+    // (only their desk and sitter), so the floor keeps sun, sky and ceiling.
+    const ceilingBudget = lampsLightFloor(room.desks.length)
+      ? MAX_LIGHTS_PER_MATERIAL - 2 - room.desks.length
+      : MAX_LIGHTS_PER_MATERIAL - 2
     for (const [i, group] of groupFixtures(room.ceilingLights, ceilingBudget).entries()) {
       const light = new PointLight(`ceiling-${room.id}-${i}`, new Vector3(group.x, H - 0.3, group.z), scene)
       light.diffuse = new Color3(1.0, 0.95, 0.86)
@@ -283,7 +292,10 @@ export function buildOffice(scene: Scene, layout: BuildingLayout): OfficeHandles
     for (const w of walls) if (overlaps(w.mesh, h.layout)) h.scope.push(w.mesh)
     for (const l of h.lights) l.includedOnlyMeshes = [...h.scope]
   }
-  for (const d of desks.values()) d.lamp.includedOnlyMeshes = [...d.meshes, rooms.get(d.roomId)!.floor]
+  for (const d of desks.values()) {
+    const room = rooms.get(d.roomId)!
+    d.lamp.includedOnlyMeshes = lampsLightFloor(room.layout.desks.length) ? [...d.meshes, room.floor] : [...d.meshes]
+  }
 
   return {
     root,

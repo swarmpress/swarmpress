@@ -1,5 +1,5 @@
 import { ArcRotateCamera, Camera, PointerEventTypes, Scene, Vector3 } from '@babylonjs/core'
-import { clampZoom, DEFAULT_FACING, ISO_ALPHAS, ISO_BETA, orthoExtents } from './camera-math'
+import { clampZoom, DEFAULT_FACING, fitZoom, ISO_ALPHAS, ISO_BETA, orthoExtents } from './camera-math'
 
 export interface IsoCamera {
   camera: ArcRotateCamera
@@ -16,14 +16,25 @@ export interface IsoCamera {
  * Orthographic isometric camera (ADR-0005). Fixed elevation, four snapped
  * rotations (Q/E), wheel zoom, drag to pan.
  */
-export function createIsoCamera(scene: Scene, canvas: HTMLCanvasElement | null, target: Vector3): IsoCamera {
+export function createIsoCamera(
+  scene: Scene,
+  canvas: HTMLCanvasElement | null,
+  target: Vector3,
+  /** Building size to frame initially (`fitZoom`); omitted = the legacy fixed zoom. */
+  frame?: { width: number; depth: number; height: number },
+): IsoCamera {
   const camera = new ArcRotateCamera('iso', ISO_ALPHAS[DEFAULT_FACING], ISO_BETA, 60, target, scene)
   camera.mode = Camera.ORTHOGRAPHIC_CAMERA
   camera.minZ = 0.1
   camera.maxZ = 200
   camera.inputs.clear()
 
-  let zoom = 9 // half-height of the view in metres
+  const initialAspect = () => {
+    const engine = scene.getEngine()
+    return engine.getRenderWidth() / Math.max(1, engine.getRenderHeight())
+  }
+  // half-height of the view in metres
+  let zoom = frame ? fitZoom(frame.width, frame.depth, frame.height, initialAspect()) : 9
   let facingIndex = DEFAULT_FACING
   let targetAlpha = camera.alpha
 
