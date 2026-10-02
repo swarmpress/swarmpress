@@ -67,7 +67,7 @@ development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are i
 | `DELETE /api/companies/{id}/lease` | with `x-swarmpress-lease`: release (204), 409 if not held. The epoch stays |
 | `x-swarmpress-lease` | the fencing token `<epoch>.<lease_id>` (the lease reply's `token`). A fenced route answers 428 without it and 409 when the epoch or the lease id is not the company's current, unexpired one. A lease grant and every fenced write hold a per-company mutex, so a takeover waits for an in-flight write to be recorded |
 | `POST /api/gateway/draft` | lease required. `{content_id, path, page, message, work_item?, attribution?}` → `{number, branch, head_sha, created_pr, committed}`. An article (`content/pages/blog/*.json`) that breaks the schema or the article profile answers 422 `{error, issues: [..]}`; a path that exists on the base branch, a second open pull request for the path, or a second path for the content id answers 409 |
-| `POST /api/gateway/merge` | lease required. `{number, head_sha, attribution?}` → `{merged_sha}`; only PRs this company opened through the gateway; 409 if the head moved |
+| `POST /api/gateway/merge` | lease required. `{number, head_sha, attribution?}` → `{merged_sha, finalized?}`; only PRs this company opened through the gateway; 409 if the head moved or the PR was closed. An article is finalised in the same pull request first (see "Finalise on merge") and the reply carries `finalized: {index: "added" \| "present" \| "absent" \| "skipped"}`. The merge is then `pending` until its deployment is observed |
 | `POST /api/gateway/close` | lease required. `{number}` → `{number, closed: true, already_closed, branch_deleted}`: close a pull request this company opened through the gateway, without merging, and delete its `drafts/` branch (for cancelled work). 404 for any other pull request, 409 for a merged one. Idempotent: closing again answers `already_closed: true` and calls nothing; a close that failed half-way is completed by the next one |
 | `GET /api/gateway/deploy-status?number=` (or `?work_item=`) | session required, no lease. What became of one of the company's gateway pull requests: `{number, content_id, work_item, path, state, merged_sha, merged_at, landed_at, closed_at, detail, checked_at, now}` with `state` one of `open`, `closed`, `pending`, `landed`, `failed`, `unknown`. Instants are unix ms on the server's clock (`now`). Reads the record only. 400 unless exactly one key is given, 404 for an unknown pull request |
 | `GET /api/events?after=&limit=` | `{events: [{seq, company_id, kind, payload, created_at}], last_seq}` (oldest first, max 500) |
@@ -120,6 +120,63 @@ the server, whatever the browser checked (`src/article.rs`,
 `content/pages/blog-index.json` cannot be drafted at all (403): only the merge
 writes it. Every other `content/**` page is accepted as before: a JSON object,
 no schema check, and a draft may change a page that exists on the base branch.
+
+#### Finalise on merge (ADR-0061 decision 6)
+
+Merging a pull request whose path is `content/pages/blog/*.json` makes the
+branch publishable first, in the same pull request, under the company lock and
+a per-repository lock (`gateway::finalize_and_merge`, pure parts in
+`src/finalize.rs`):
+
+1. The branch head must be the reviewed `head_sha`. (Or the head an earlier,
+   interrupted attempt of this same merge left behind, recorded as
+   `gateway_prs.final_head`: the attempt is then resumed.) Anything else
+   answers 409 and nothing is written.
+2. The base branch is merged into the draft branch (GitHub's Merges API).
+3. The page is written with `status: "published"` and `updated_at`.
+4. `content/pages/blog-index.json` gets one story entry derived from the page,
+   on top of what the branch now has from the base.
+5. The pull request is squash-merged at the new head.
+
+The story list is never touched before step 4, so two pull requests opened
+from the same base both merge and the list holds both entries. The entry
+mirrors the existing ones, in their key order:
+
+```json
+{
+  "id": 14,
+  "slug": "harvest-week-in-manarola",
+  "title": "Harvest Week in Manarola",
+  "excerpt": "Seven days among the terraces above Manarola.",
+  "author": "Giulia Rossi",
+  "date": "Oct 2, 2026",
+  "readTime": "4 min read",
+  "category": "Culture",
+  "image": "https://images.unsplash.com/photo-..."
+}
+```
+
+| Field | From |
+|---|---|
+| `id` | the highest `id` in the list plus one |
+| `slug` | the file stem |
+| `title` | the page's `title.en` (else the hero's title, unescaped) |
+| `excerpt` | the hero's `subtitle` (the dek); else `seo.description.en`; else the first paragraph, cut at 200 characters |
+| `author` | `metadata.author` (a string, or `{name}`); else the merge attribution's `name`; else the list block's `title` (the publication) |
+| `date` | the day of the merge, UTC, as `Oct 2, 2026` |
+| `readTime` | the words of headings, paragraphs, lists, callouts and the closing note at 200 a minute, at least `1 min read` |
+| `category` | the hero's `badge`; else `metadata.category`; else the list's first category after "All Stories" |
+| `image` | the hero's `image` |
+
+The file is edited as text: the entry is inserted after the last story with
+the indentation of its neighbours, and every other byte stays as it is. A slug
+that is already listed is left alone (`present`); a repository without the
+file is published without an entry (`absent`); a page with no hero image, or a
+path that is not a canonical article path, is not listed (`skipped`; only
+possible with the article profile off); a file that is not JSON or has no
+`blog-index` block with `stories` blocks the merge with 409.
+
+Pages outside the blog merge exactly as before: no finalise, no `finalized`.
 
 #### Attribution (ADR-0056 decision 8, as narrowed by ADR-0058)
 
@@ -239,6 +296,7 @@ Migrations (`migrations/`, applied at startup):
 | `companies` | Company create/read, lease acquire/renew/release, `require_lease`. |
 | `gateway` | `RepoBackend` (fake, token, App, unconfigured), draft and merge handlers, `PathPolicy` checks, the site checks for articles, the closed-world extension point. |
 | `article` | The blog-article profile (pure): schema v2, block set and order, slug, the two HTML fields. |
+| `finalize` | Finalise on merge, the pure half: the published page, the story entry derived from it, and the text edit that adds it to the blog index. |
 | `events` | `EventHub` (tokio broadcast), `publish`, `/api/events`, `/ws/events`. |
 | `webhooks` | GitHub webhook receiver (`github::webhooks::WebhookHandler` + SQLite dedupe); `deployment_status` feeds `deploys`. |
 | `deploys` | Deploy observation: check-run verdicts, the plan for a repository's merges, the land and fail transitions with their events, the poller (real GitHub only), `GET /api/gateway/deploy-status`. |
@@ -268,6 +326,7 @@ cargo clippy -p server -p testkit --all-targets -- -D warnings
 | `tests/attribution.rs` | The persona is the author of draft commits and the platform the committer; the squash commit carries `Co-authored-by` and the trailers, with the platform as author; the executor defaults to the lease holder; every malformed attribution answers 400 on draft and merge and reaches GitHub with nothing; without attribution nothing changes. |
 | `tests/close.rs` | `POST /api/gateway/close`: the pull request is closed and its branch deleted once; closing again calls nothing; foreign and hand-made pull requests answer 404 and are untouched; merged ones answer 409; the lease is required; a closed one cannot be merged and frees its path; an interrupted close is completed. |
 | `tests/deploys.rs` | The poller's round against the fake GitHub and the manual clock: a success lands the merge, a failure emits one `DeployFailed` and a re-run lands it, a burst of merges with one deployment lands all at or before it (poller and webhook), a superseded merge fails with the deployment that replaced it, a merge nobody deployed times out; `deploy-status` (states, scoping); the poller does not run with the fake or with simulated deploys; simulated deploys with a real GitHub refuse to start; the background task against a wiremock GitHub. |
+| `tests/finalise.rs` | Finalise on merge: the page on the base branch is `published`; the story entry has the key order and types of a real entry and the rest of the file keeps its bytes; two pull requests from the same base both merge and the list holds both; a moved head is refused before anything is written; an interrupted merge is resumed, also after another merge moved the list; a repeated merge answers from the record; a site without a list; a broken list blocks the merge; pages outside the blog merge untouched. |
 | `tests/events.rs` | Polling with `after`/`limit`, per-company scoping, WebSocket backlog + live push. |
 | `tests/sync.rs` | Segment immutability (201/200/409), list, bytes on disk, snapshot with step, owner-only access. |
 | `tests/web.rs` | SSRF refusals and bad URLs, per-user 429, Firecrawl 501, HTML reduction, JSON, redirects, 415 and 413 against a local wiremock. |
@@ -286,5 +345,13 @@ The collector serves `assets/tracker.min.js`, a committed build of
 - `POST /web/firecrawl/*` answers 501 until credits ship (wave 3).
 - The fetch proxy does not read robots.txt or cache yet (ADR-0040 asks for both).
 - `SWARMPRESS_GITHUB=fake` keeps repos in memory only.
+- Article drafts are not checked against the site's link and media indexes yet:
+  `gateway::check_closed_world` has no knowledge base until the knowledge pack lands.
+- The gateway has only been run against the in-memory GitHub and wiremock. Three GitHub
+  behaviours it relies on are taken from the documentation and not verified against the real
+  API: the Contents API's `author` field with the committer left out, the Merges API for
+  bringing the base into a draft branch (201/204/409), and the check runs a superseded or
+  cancelled deploy run leaves on its commit.
+- A deployment of a commit the gateway did not merge lands nothing by itself.
 - `PendingSignalSink` leaves nightly analytics signals `pending`; delivering them to the
   browser (as inbox events) is still to come.

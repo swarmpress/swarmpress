@@ -9,6 +9,8 @@
 //!   device lease
 //! - [`gateway`]: content PRs on the player's behalf (`PathPolicy`)
 //! - [`article`]: the blog-article profile the gateway enforces on drafts
+//! - [`finalize`]: what a merge adds to an article: the published page and
+//!   its entry in the story list
 //! - [`events`]: the offline event inbox (poll + WebSocket push)
 //! - [`webhooks`]: GitHub `deployment_status` → `DeployLanded` / `DeployFailed`
 //! - [`deploys`]: what became of a merge: the poller for servers without a
@@ -28,6 +30,7 @@ pub mod db;
 pub mod deploys;
 pub mod error;
 pub mod events;
+pub mod finalize;
 pub mod gateway;
 pub mod sync;
 pub mod tracker;

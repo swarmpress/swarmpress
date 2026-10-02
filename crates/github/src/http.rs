@@ -924,4 +924,28 @@ impl RepoApi for HttpGitHub {
             _ => r.into_result().map(|_| true),
         }
     }
+
+    async fn merge_branch(
+        &self,
+        repo: &RepoId,
+        base: &str,
+        head: &str,
+        message: &str,
+    ) -> Result<Option<String>> {
+        let url = self.repo_url(repo, &["merges"])?;
+        let body = json!({ "base": base, "head": head, "commit_message": message });
+        let r = self.send(Method::POST, url, Some(&body)).await?;
+        match r.status {
+            // Nothing to merge: `base` already contains `head`.
+            204 => Ok(None),
+            409 => Err(GitHubError::Conflict(format!(
+                "merging {head} into {base}: {}",
+                message_of(&r.text())
+            ))),
+            _ => {
+                let m: WireMerge = r.into_result()?.json()?;
+                Ok(Some(m.sha))
+            }
+        }
+    }
 }

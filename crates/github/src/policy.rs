@@ -381,4 +381,17 @@ impl RepoApi for GuardedRepo {
         self.policy.check_admin(self.actor, "delete_branch")?;
         self.inner.delete_branch(repo, branch).await
     }
+
+    async fn merge_branch(
+        &self,
+        repo: &RepoId,
+        base: &str,
+        head: &str,
+        message: &str,
+    ) -> Result<Option<String>> {
+        // A merge brings every path of `head` onto `base`, whatever the
+        // actor may write itself: bot only, like the other merges.
+        self.policy.check_admin(self.actor, "merge_branch")?;
+        self.inner.merge_branch(repo, base, head, message).await
+    }
 }

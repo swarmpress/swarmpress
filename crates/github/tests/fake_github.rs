@@ -815,3 +815,143 @@ async fn delete_branch_closes_its_open_pull_request() {
     // The name can be used again.
     f.create_branch(&repo(), "drafts/a", "main").await.unwrap();
 }
+
+#[tokio::test]
+async fn merge_branch_brings_the_base_into_a_draft() {
+    let f = fake();
+    f.create_branch(&repo(), "drafts/a", "main").await.unwrap();
+    // Up to date: nothing to merge, no commit.
+    let before = f.branch_head(&repo(), "drafts/a");
+    assert_eq!(
+        f.merge_branch(&repo(), "drafts/a", "main", "m")
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(f.branch_head(&repo(), "drafts/a"), before);
+
+    // The draft adds a file; main moves on with another one.
+    f.put_file(&repo(), &put("drafts/a", "content/a.json", "A", None))
+        .await
+        .unwrap();
+    let draft_head = f.branch_head(&repo(), "drafts/a").unwrap();
+    f.put_file(&repo(), &put("main", "content/m.json", "M", None))
+        .await
+        .unwrap();
+    let main_head = f.branch_head(&repo(), "main").unwrap();
+    let merged = f
+        .merge_branch(&repo(), "drafts/a", "main", "Merge main into drafts/a")
+        .await
+        .unwrap()
+        .expect("a merge commit");
+    assert_eq!(
+        f.branch_head(&repo(), "drafts/a").as_deref(),
+        Some(merged.as_str())
+    );
+    assert_eq!(
+        f.branch_head(&repo(), "main"),
+        Some(main_head.clone()),
+        "main is untouched"
+    );
+    let c = f.get_commit(&repo(), &merged).await.unwrap();
+    assert_eq!(c.parents, vec![draft_head, main_head.clone()]);
+    assert_eq!(c.message, "Merge main into drafts/a");
+    assert_eq!(
+        f.file_text(&repo(), "drafts/a", "content/a.json")
+            .as_deref(),
+        Some("A")
+    );
+    assert_eq!(
+        f.file_text(&repo(), "drafts/a", "content/m.json")
+            .as_deref(),
+        Some("M")
+    );
+    // Merged: asking again does nothing, by name or by sha.
+    assert_eq!(
+        f.merge_branch(&repo(), "drafts/a", "main", "m")
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        f.merge_branch(&repo(), "drafts/a", &main_head, "m")
+            .await
+            .unwrap(),
+        None
+    );
+
+    // The pull request then merges cleanly and carries only the draft's file.
+    let pr = f.create_pr(&repo(), &new_pr("drafts/a")).await.unwrap();
+    assert_eq!(pr.mergeable, Some(true));
+    let squash = f
+        .merge_pr(&repo(), pr.number, &MergeOptions::default())
+        .await
+        .unwrap();
+    let c = f.get_commit(&repo(), &squash.sha).await.unwrap();
+    let changed: Vec<&str> = c.files.iter().map(|x| x.path.as_str()).collect();
+    assert_eq!(changed, vec!["content/a.json"]);
+}
+
+#[tokio::test]
+async fn merge_branch_conflicts_and_missing_refs() {
+    let f = fake();
+    f.create_branch(&repo(), "drafts/a", "main").await.unwrap();
+    // Both sides change the same file differently.
+    let readme = f
+        .get_file(&repo(), "main", "README.md")
+        .await
+        .unwrap()
+        .unwrap();
+    f.put_file(
+        &repo(),
+        &put("drafts/a", "README.md", "draft\n", Some(&readme.sha)),
+    )
+    .await
+    .unwrap();
+    f.put_file(
+        &repo(),
+        &put("main", "README.md", "main\n", Some(&readme.sha)),
+    )
+    .await
+    .unwrap();
+    let before = f.branch_head(&repo(), "drafts/a");
+    let e = f
+        .merge_branch(&repo(), "drafts/a", "main", "m")
+        .await
+        .unwrap_err();
+    assert!(e.is_conflict(), "{e}");
+    assert_eq!(
+        f.branch_head(&repo(), "drafts/a"),
+        before,
+        "nothing was written"
+    );
+
+    // Once the draft's copy equals main's, the merge goes through.
+    let mine = f
+        .get_file(&repo(), "drafts/a", "README.md")
+        .await
+        .unwrap()
+        .unwrap();
+    f.put_file(
+        &repo(),
+        &put("drafts/a", "README.md", "main\n", Some(&mine.sha)),
+    )
+    .await
+    .unwrap();
+    assert!(f
+        .merge_branch(&repo(), "drafts/a", "main", "m")
+        .await
+        .unwrap()
+        .is_some());
+
+    assert!(f
+        .merge_branch(&repo(), "drafts/nope", "main", "m")
+        .await
+        .unwrap_err()
+        .is_not_found());
+    assert!(f
+        .merge_branch(&repo(), "drafts/a", "nope", "m")
+        .await
+        .unwrap_err()
+        .is_not_found());
+}

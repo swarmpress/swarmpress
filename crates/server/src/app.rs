@@ -43,6 +43,8 @@ pub struct AppState {
     pub sync_lock: Arc<tokio::sync::Mutex<()>>,
     /// One mutex per company (ADR-0045 decision 5), see [`AppState::company_lock`].
     company_locks: CompanyLocks,
+    /// One mutex per site repository, see [`AppState::repo_lock`].
+    repo_locks: CompanyLocks,
     /// First-party analytics collector (ADR-0032).
     pub tracker: Arc<Tracker>,
     /// Where nightly analytics signals go.
@@ -79,6 +81,7 @@ impl AppState {
             web_limiter,
             sync_lock: Arc::new(tokio::sync::Mutex::new(())),
             company_locks: CompanyLocks::default(),
+            repo_locks: CompanyLocks::default(),
             tracker,
             signal_sink: Arc::new(PendingSignalSink),
         }
@@ -100,20 +103,35 @@ impl AppState {
     /// takeover waits until an in-flight side effect has been recorded. This
     /// relies on the single server process.
     pub async fn company_lock(&self, company_id: &str) -> tokio::sync::OwnedMutexGuard<()> {
+        self.company_locks.lock(company_id).await
+    }
+
+    /// The mutex of a site repository (`owner/name`, compared without case).
+    /// Finalising an article reads the base branch's story list, rewrites it
+    /// on the draft branch and squash-merges: two merges into one repository
+    /// must not interleave, also when two companies are bound to it. Taken
+    /// after the company lock, never before it.
+    pub async fn repo_lock(&self, repo: &str) -> tokio::sync::OwnedMutexGuard<()> {
+        self.repo_locks.lock(&repo.to_ascii_lowercase()).await
+    }
+}
+
+impl CompanyLocks {
+    async fn lock(&self, key: &str) -> tokio::sync::OwnedMutexGuard<()> {
         let lock = self
-            .company_locks
             .0
             .lock()
             .unwrap_or_else(|p| p.into_inner())
-            .entry(company_id.to_string())
+            .entry(key.to_string())
             .or_default()
             .clone();
         lock.lock_owned().await
     }
 }
 
-/// Per-company mutexes. Entries are never removed: one small allocation per
-/// company that ever took a lease.
+/// Mutexes by key (a company id, a repository name). Entries are never
+/// removed: one small allocation per company that ever took a lease and per
+/// repository that ever merged an article.
 #[derive(Clone, Default)]
 struct CompanyLocks(Arc<std::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>);
 

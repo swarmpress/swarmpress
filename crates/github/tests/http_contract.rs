@@ -1016,3 +1016,69 @@ async fn delete_branch_deletes_the_ref_and_tolerates_a_missing_one() {
         Err(GitHubError::Validation(_))
     ));
 }
+
+#[tokio::test]
+async fn merge_branch_posts_to_the_merges_api() {
+    let h = harness().await;
+    let merge_sha = "a".repeat(40);
+    // 201: a merge commit was created on the base.
+    Mock::given(method("POST"))
+        .and(path("/repos/acme/site/merges"))
+        .and(body_partial_json(json!({
+            "base": "drafts/content-x",
+            "head": "main",
+            "commit_message": "Merge main into drafts/content-x"
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "sha": merge_sha,
+            "commit": { "message": "Merge main into drafts/content-x" },
+            "parents": [{ "sha": "p1" }, { "sha": "p2" }]
+        })))
+        .expect(1)
+        .mount(&h.server)
+        .await;
+    // 204: the base already contains the head.
+    Mock::given(method("POST"))
+        .and(path("/repos/acme/site/merges"))
+        .and(body_partial_json(json!({ "base": "drafts/up-to-date" })))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&h.server)
+        .await;
+    // 409: merge conflict.
+    Mock::given(method("POST"))
+        .and(path("/repos/acme/site/merges"))
+        .and(body_partial_json(json!({ "base": "drafts/conflicting" })))
+        .respond_with(
+            ResponseTemplate::new(409).set_body_json(json!({ "message": "Merge conflict" })),
+        )
+        .mount(&h.server)
+        .await;
+    // 404: the base (or the head) does not exist.
+    Mock::given(method("POST"))
+        .and(path("/repos/acme/site/merges"))
+        .and(body_partial_json(json!({ "base": "drafts/gone" })))
+        .respond_with(
+            ResponseTemplate::new(404).set_body_json(json!({ "message": "Base does not exist" })),
+        )
+        .mount(&h.server)
+        .await;
+
+    let site = repo();
+    let merge = |base: &'static str| h.gh.merge_branch(&site, base, "main", "m");
+    assert_eq!(
+        h.gh.merge_branch(
+            &repo(),
+            "drafts/content-x",
+            "main",
+            "Merge main into drafts/content-x"
+        )
+        .await
+        .unwrap(),
+        Some(merge_sha)
+    );
+    assert_eq!(merge("drafts/up-to-date").await.unwrap(), None);
+    let e = merge("drafts/conflicting").await.unwrap_err();
+    assert!(e.is_conflict(), "{e}");
+    assert!(e.to_string().contains("Merge conflict"), "{e}");
+    assert!(merge("drafts/gone").await.unwrap_err().is_not_found());
+}

@@ -99,4 +99,17 @@ pub trait RepoApi: Send + Sync {
     /// Delete `branch`. `Ok(false)` when it did not exist. GitHub closes
     /// the open pull requests whose head it was.
     async fn delete_branch(&self, repo: &RepoId, branch: &str) -> Result<bool>;
+
+    /// Merge `head` (a branch name or a commit sha) into the branch `base`
+    /// with a merge commit (the Merges API). `Ok(Some(sha))` is the new
+    /// head of `base`; `Ok(None)` when `base` already contains `head`.
+    /// `Conflict` when the two cannot be merged automatically; `NotFound`
+    /// when either does not exist.
+    async fn merge_branch(
+        &self,
+        repo: &RepoId,
+        base: &str,
+        head: &str,
+        message: &str,
+    ) -> Result<Option<String>>;
 }

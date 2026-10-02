@@ -80,6 +80,8 @@ pub async fn upsert_pr(db: &Db, pr: &NewGatewayPr<'_>, now_ms: i64) -> Result<()
             content_id = excluded.content_id,
             work_item = COALESCE(excluded.work_item, gateway_prs.work_item),
             path = excluded.path, branch = excluded.branch,
+            final_head = CASE WHEN excluded.head_sha = gateway_prs.head_sha
+                              THEN gateway_prs.final_head END,
             head_sha = excluded.head_sha, updated_at = excluded.updated_at",
     )
     .bind(pr.company_id)
@@ -148,6 +150,20 @@ pub async fn open_prs_for_content(
     .fetch_all(&db.writer)
     .await
     .context("open gateway PRs of a content id")
+}
+
+/// Record the branch head the gateway's finalise step just produced for the
+/// reviewed head `head_sha`. A new draft (another `head_sha`) forgets it
+/// ([`upsert_pr`]).
+pub async fn set_final_head(db: &Db, company_id: &str, number: i64, sha: &str) -> Result<()> {
+    sqlx::query("UPDATE gateway_prs SET final_head = ?3 WHERE company_id = ?1 AND number = ?2")
+        .bind(company_id)
+        .bind(number)
+        .bind(sha)
+        .execute(&db.writer)
+        .await
+        .context("record finalised head")?;
+    Ok(())
 }
 
 /// Record that an unmerged pull request was closed (the first time counts).

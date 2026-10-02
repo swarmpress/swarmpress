@@ -264,3 +264,28 @@ async fn only_the_bot_deletes_branches() {
     let bot = GuardedRepo::new(f.clone(), BOT);
     assert!(bot.delete_branch(&r, "drafts/content-1").await.unwrap());
 }
+
+#[tokio::test]
+async fn only_the_bot_merges_branches() {
+    let (f, r) = setup();
+    f.create_branch(&r, "drafts/content-1", "main")
+        .await
+        .unwrap();
+    f.clear_calls();
+    for actor in [CONTENT, DESIGN] {
+        let g = GuardedRepo::new(f.clone(), actor);
+        assert!(matches!(
+            g.merge_branch(&r, "drafts/content-1", "main", "m").await,
+            Err(GitHubError::PolicyDenied { .. })
+        ));
+    }
+    assert!(f.calls().is_empty(), "{:?}", f.calls());
+    let bot = GuardedRepo::new(f.clone(), BOT);
+    assert_eq!(
+        bot.merge_branch(&r, "drafts/content-1", "main", "m")
+            .await
+            .unwrap(),
+        None,
+        "nothing to merge: the branch is at main"
+    );
+}

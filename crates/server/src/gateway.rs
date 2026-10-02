@@ -39,6 +39,14 @@
 //! [`check_closed_world`], which has no knowledge base until the knowledge
 //! pack lands. `content/pages/blog-index.json` cannot be drafted (403): the
 //! merge writes it. Every other `content/**` page is accepted as before.
+//!
+//! Merging an article finalises it first, in the same pull request
+//! (ADR-0061 decision 6, [`finalize_and_merge`]): the reviewed head is
+//! verified, the base branch is merged into the draft branch, the page is
+//! written with `status: "published"`, the story list gets its entry
+//! ([`crate::finalize`]), and the pull request is squash-merged at the new
+//! head. The reply then carries `finalized: {index}`. Pages outside the blog
+//! merge as they always did.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -50,21 +58,23 @@ use axum::Json;
 use github::content::page_bytes;
 use github::provenance::with_trailers;
 use github::{
-    ActorKind, AppAuth, ContentRepo, FakeGitHub, GitHubError, GuardedRepo, HttpGitHub, PathPolicy,
-    PrState, Provenance, RepoApi, RepoId, StaticToken,
+    ActorKind, AppAuth, ContentRepo, FakeGitHub, GitHubError, GuardedRepo, HttpGitHub, MergeMethod,
+    MergeOptions, MergeResult, PathPolicy, PrState, Provenance, PutFile, RepoApi, RepoId,
+    StaticToken,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::app::AppState;
-use crate::article::{self, check_article_profile};
+use crate::article::{self, check_article_profile, BLOG_INDEX_PATH};
 use crate::auth::CurrentUser;
 use crate::companies::require_lease;
 use crate::config::GithubMode;
-use crate::db::gateway::{self as store, Land, NewGatewayPr};
+use crate::db::gateway::{self as store, GatewayPr, Land, NewGatewayPr};
 use crate::db::Lease;
 use crate::deploys;
 use crate::error::{AppError, AppResult};
+use crate::finalize::{self, IndexEdit};
 
 /// Where repo operations go.
 pub enum RepoBackend {
@@ -549,6 +559,21 @@ pub async fn merge(
             "PR #{number} was closed; it cannot be merged"
         )));
     }
+    let is_article = article::is_article_path(&pr.path);
+    if is_article {
+        // A finalised branch no longer ends at the reviewed head, so GitHub
+        // cannot say whether a repeated merge names what was merged: the
+        // record can.
+        if let Some(sha) = &pr.merged_sha {
+            if pr.head_sha != body.head_sha {
+                return Err(AppError::Conflict(format!(
+                    "PR #{number} was merged at the reviewed head {}, not {}",
+                    pr.head_sha, body.head_sha
+                )));
+            }
+            return Ok(Json(json!({ "merged_sha": sha })));
+        }
+    }
     let repo = parse_repo(&company.site_repo)
         .ok_or_else(|| AppError::Conflict("the company's site repo binding is invalid".into()))?;
     // The server merges as the platform bot: the browser only asks for PRs
@@ -561,10 +586,27 @@ pub async fn merge(
     let trailers = who
         .as_ref()
         .map(|p| p.squash_trailers(&p.author(&company.id, &st.cfg.staff_email_domain)));
-    let merged = content
-        .merge_draft_with(body.number, &body.head_sha, trailers.as_deref())
-        .await
-        .map_err(gh_error)?;
+    let (merged, index) = if is_article {
+        // Two merges into one repository must not interleave while the
+        // story list is rebuilt on the branch.
+        let _repo_guard = st.repo_lock(&company.site_repo).await;
+        let (merged, index) = finalize_and_merge(
+            &st,
+            &content,
+            &pr,
+            &body.head_sha,
+            trailers.as_deref(),
+            who.as_ref().map(|p| p.name.as_str()),
+        )
+        .await?;
+        (merged, Some(index))
+    } else {
+        let merged = content
+            .merge_draft_with(body.number, &body.head_sha, trailers.as_deref())
+            .await
+            .map_err(gh_error)?;
+        (merged, None)
+    };
     // The merge is `pending` from here: its deployment is awaited. The
     // webhook, the poller or (fake GitHub only) the simulation lands it.
     store::set_merged(&st.db, &company.id, number, &merged.sha, st.now_ms()).await?;
@@ -583,7 +625,257 @@ pub async fn merge(
         )
         .await?;
     }
-    Ok(Json(json!({ "merged_sha": merged.sha })))
+    let mut reply = json!({ "merged_sha": merged.sha });
+    if let Some(index) = index {
+        reply["finalized"] = json!({ "index": index.as_str() });
+    }
+    Ok(Json(reply))
+}
+
+/// What the finalise step did to the story list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IndexOutcome {
+    /// The article's entry was appended.
+    Added,
+    /// The slug was already listed.
+    Present,
+    /// The site has no `content/pages/blog-index.json`.
+    Absent,
+    /// The page has nothing to list (no hero, no hero image, or a path that
+    /// is not a canonical article path): only possible for a draft written
+    /// with the article profile off.
+    Skipped,
+}
+
+impl IndexOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            IndexOutcome::Added => "added",
+            IndexOutcome::Present => "present",
+            IndexOutcome::Absent => "absent",
+            IndexOutcome::Skipped => "skipped",
+        }
+    }
+}
+
+/// One Contents-API write by the platform itself (no persona). Returns the
+/// new head of `branch`.
+async fn platform_put(
+    content: &ContentRepo,
+    branch: &str,
+    path: &str,
+    bytes: Vec<u8>,
+    message: String,
+    expected_sha: Option<String>,
+) -> AppResult<String> {
+    content
+        .api()
+        .put_file(
+            content.repo(),
+            &PutFile {
+                branch: branch.to_string(),
+                path: path.to_string(),
+                content: bytes,
+                message,
+                expected_sha,
+                author: None,
+            },
+        )
+        .await
+        .map(|w| w.commit_sha)
+        .map_err(gh_error)
+}
+
+/// Finalise an article's pull request and squash-merge it, in the same pull
+/// request (ADR-0061 decision 6). The caller holds the company lock and the
+/// repository lock.
+///
+/// 1. The branch head must be the reviewed sha, or the head this function
+///    itself produced for that reviewed sha in an earlier attempt
+///    (`gateway_prs.final_head`): then the attempt is resumed. Anything
+///    else is a head somebody moved: 409, and nothing is written.
+/// 2. The base branch is merged into the draft branch. The branch only ever
+///    added one new file, so this cannot conflict, except on the story list
+///    when a resumed attempt had already written it and the base's list
+///    moved since: the branch's list is then reset to the base's and the
+///    merge repeated.
+/// 3. The page is written with `status: "published"` and `updated_at`.
+/// 4. The story list gets the article's entry, on top of what the branch now
+///    has from the base. It is never touched before this point, so two open
+///    pull requests cannot conflict on it.
+/// 5. The pull request is squash-merged at the new head.
+///
+/// Every head the function produces is recorded before the next step, so a
+/// failure anywhere leaves a branch the next attempt recognises as its own.
+async fn finalize_and_merge(
+    st: &AppState,
+    content: &ContentRepo,
+    pr: &GatewayPr,
+    reviewed: &str,
+    trailers: Option<&str>,
+    author_fallback: Option<&str>,
+) -> AppResult<(MergeResult, IndexOutcome)> {
+    let (api, repo, base) = (content.api(), content.repo(), content.base_branch());
+    let number = u64::try_from(pr.number).unwrap_or_default();
+    let branch = pr.branch.as_str();
+    let on_github = api.get_pr(repo, number).await.map_err(gh_error)?;
+
+    // 1. Merge what was reviewed, and nothing else.
+    let own_head = (pr.head_sha == reviewed)
+        .then_some(pr.final_head.as_deref())
+        .flatten();
+    if on_github.head_sha != reviewed && Some(on_github.head_sha.as_str()) != own_head {
+        return Err(AppError::Conflict(format!(
+            "PR #{number} head is {}, not the reviewed {reviewed}",
+            on_github.head_sha
+        )));
+    }
+    if on_github.merged {
+        // The squash went through and its bookkeeping was lost.
+        let sha = on_github.merge_commit_sha.ok_or_else(|| {
+            AppError::BadGateway(format!("PR #{number} is merged without a merge commit"))
+        })?;
+        return Ok((MergeResult { sha }, IndexOutcome::Present));
+    }
+    if on_github.state == PrState::Closed {
+        return Err(AppError::Conflict(format!("PR #{number} is closed")));
+    }
+    if on_github.head_ref != branch {
+        return Err(AppError::Conflict(format!(
+            "PR #{number} is on {}, not {branch}",
+            on_github.head_ref
+        )));
+    }
+    let mut head = on_github.head_sha.clone();
+
+    // 2. Bring the base in.
+    let merge_message = format!("Merge {base} into {branch}");
+    let merged_base = match api.merge_branch(repo, branch, base, &merge_message).await {
+        Err(GitHubError::Conflict(_)) => {
+            let on_base = api
+                .get_file(repo, base, BLOG_INDEX_PATH)
+                .await
+                .map_err(gh_error)?;
+            let on_branch = api
+                .get_file(repo, branch, BLOG_INDEX_PATH)
+                .await
+                .map_err(gh_error)?;
+            match (on_base, on_branch) {
+                (Some(theirs), Some(ours)) if theirs.content != ours.content => {
+                    head = platform_put(
+                        content,
+                        branch,
+                        BLOG_INDEX_PATH,
+                        theirs.content,
+                        format!("Reset the story list to {base}"),
+                        Some(ours.sha),
+                    )
+                    .await?;
+                    store::set_final_head(&st.db, &pr.company_id, pr.number, &head).await?;
+                }
+                _ => {
+                    return Err(AppError::Conflict(format!(
+                        "{base} cannot be merged into {branch}: the branches conflict"
+                    )))
+                }
+            }
+            api.merge_branch(repo, branch, base, &merge_message)
+                .await
+                .map_err(gh_error)?
+        }
+        other => other.map_err(gh_error)?,
+    };
+    if let Some(sha) = merged_base {
+        head = sha;
+        store::set_final_head(&st.db, &pr.company_id, pr.number, &head).await?;
+    }
+
+    // 3. Publish the page.
+    let now = finalize::instant(st.now_ms());
+    let file = api
+        .get_file(repo, branch, &pr.path)
+        .await
+        .map_err(gh_error)?
+        .ok_or_else(|| AppError::Conflict(format!("{} is not on {branch}", pr.path)))?;
+    let page: Value = serde_json::from_slice(&file.content)
+        .map_err(|e| AppError::Conflict(format!("{} on {branch} is not JSON: {e}", pr.path)))?;
+    let published = finalize::published_page(&page, now);
+    let title = on_github.title.as_str();
+    let published_bytes = page_bytes(&published).map_err(gh_error)?;
+    // A resumed attempt within the same millisecond has nothing to write.
+    if published_bytes != file.content {
+        head = platform_put(
+            content,
+            branch,
+            &pr.path,
+            published_bytes,
+            format!("Publish: {title}"),
+            Some(file.sha),
+        )
+        .await?;
+        store::set_final_head(&st.db, &pr.company_id, pr.number, &head).await?;
+    }
+
+    // 4. List the story.
+    let slug = article::article_slug(&pr.path).filter(|s| article::is_valid_slug(s));
+    let listed = api
+        .get_file(repo, branch, BLOG_INDEX_PATH)
+        .await
+        .map_err(gh_error)?;
+    let index = match (listed, slug) {
+        (None, _) => IndexOutcome::Absent,
+        (Some(_), None) => IndexOutcome::Skipped,
+        (Some(index), Some(slug)) => {
+            match finalize::story_of(&published, slug, author_fallback, now) {
+                Err(why) => {
+                    tracing::warn!(company_id = %pr.company_id, number, %why, "article not listed");
+                    IndexOutcome::Skipped
+                }
+                Ok(story) => {
+                    let text = std::str::from_utf8(&index.content).map_err(|_| {
+                        AppError::Conflict(format!("the blog index {BLOG_INDEX_PATH} is not UTF-8"))
+                    })?;
+                    match finalize::add_story(text, &story) {
+                        Err(why) => {
+                            return Err(AppError::Conflict(format!(
+                                "the blog index {BLOG_INDEX_PATH} cannot take the story: {why}"
+                            )))
+                        }
+                        Ok(IndexEdit::Present) => IndexOutcome::Present,
+                        Ok(IndexEdit::Added { text, .. }) => {
+                            head = platform_put(
+                                content,
+                                branch,
+                                BLOG_INDEX_PATH,
+                                text.into_bytes(),
+                                format!("List: {title}"),
+                                Some(index.sha),
+                            )
+                            .await?;
+                            store::set_final_head(&st.db, &pr.company_id, pr.number, &head).await?;
+                            IndexOutcome::Added
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    // 5. Squash at exactly the head this function left.
+    let merged = api
+        .merge_pr(
+            repo,
+            number,
+            &MergeOptions {
+                method: MergeMethod::Squash,
+                expected_head_sha: Some(head),
+                commit_title: Some(format!("{title} (#{number})")),
+                commit_message: trailers.map(String::from),
+            },
+        )
+        .await
+        .map_err(gh_error)?;
+    Ok((merged, index))
 }
 
 #[derive(Deserialize)]

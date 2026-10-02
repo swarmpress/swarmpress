@@ -14,6 +14,11 @@ paths:
   - crates/server/tests/articles.rs
   - crates/server/tests/attribution.rs
   - crates/server/tests/close.rs
+  - crates/server/src/finalize.rs
+  - crates/server/tests/finalise.rs
+  - crates/server/src/deploys.rs
+  - crates/server/tests/deploys.rs
+  - crates/server/migrations/0003_deploys.sql
   - crates/github/src/provenance.rs
   - crates/github/tests/content_repo.rs
   - crates/orchestrator/src/gateway.rs
@@ -65,8 +70,11 @@ Planned changes:
     another path. Links and media are not checked yet: `gateway::check_closed_world` takes an
     optional knowledge base and gets none until K1 lands. The blog index cannot be drafted (403).
     Other `content/**` pages are accepted as before.
-  - **G4:** finalise on merge in the same pull request: verify the reviewed head, merge base into
-    the branch, set `status: published`, append the blog-index entry, squash-merge.
+  - **G4 (built):** finalise on merge in the same pull request: verify the reviewed head, merge
+    base into the branch (`RepoApi::merge_branch`), set `status: published`, insert the blog-index
+    entry as a text edit that keeps every other byte, squash-merge. An interrupted merge is resumed
+    (`gateway_prs.final_head`). Pages outside the blog merge as before. The entry's shape and the
+    rules are in `crates/server/README.md` ("Finalise on merge").
   - **G6 (built on the server and in the gateway types; the orchestrator does not send it yet):**
     draft and merge take an optional `attribution`; the persona is the git author of draft commits
     with the platform as committer; the squash commit carries `Co-authored-by` and the trailers

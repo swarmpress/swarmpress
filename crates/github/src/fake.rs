@@ -1087,4 +1087,43 @@ impl RepoApi for FakeGitHub {
         }
         Ok(true)
     }
+
+    async fn merge_branch(
+        &self,
+        repo: &RepoId,
+        base: &str,
+        head: &str,
+        message: &str,
+    ) -> Result<Option<String>> {
+        let mut s = self.enter("merge_branch")?;
+        let r = s.repo(repo)?;
+        let base_sha = r
+            .branches
+            .get(base)
+            .cloned()
+            .ok_or_else(|| nf(format!("base branch {base}")))?;
+        let head_sha = s
+            .resolve(r, head)
+            .ok_or_else(|| nf(format!("head {head}")))?;
+        if s.ancestors(&base_sha).contains(&head_sha) {
+            return Ok(None);
+        }
+        // Three-way: what `head` changed since the merge base, onto `base`.
+        if s.has_conflict(&base_sha, &head_sha) {
+            return Err(GitHubError::Conflict(format!(
+                "Merge conflict merging {head} into {base}"
+            )));
+        }
+        let (changes, _) = s.changes(&base_sha, &head_sha);
+        let mut tree = s.tree(&base_sha);
+        for (p, b) in changes {
+            match b {
+                Some(b) => tree.insert(p, b),
+                None => tree.remove(&p),
+            };
+        }
+        let sha = s.new_commit(message, vec![base_sha, head_sha], tree);
+        s.repo_mut(repo)?.branches.insert(base.into(), sha.clone());
+        Ok(Some(sha))
+    }
 }
