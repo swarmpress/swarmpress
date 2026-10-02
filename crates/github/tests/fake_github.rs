@@ -26,6 +26,7 @@ fn put(branch: &str, path: &str, content: &str, sha: Option<&str>) -> PutFile {
         content: content.as_bytes().to_vec(),
         message: format!("write {path}"),
         expected_sha: sha.map(String::from),
+        author: None,
     }
 }
 
@@ -704,4 +705,83 @@ async fn injected_failures_and_call_log() {
     ));
     f.get_repo(&repo()).await.unwrap();
     assert_eq!(f.calls(), vec!["get_repo", "get_repo"]);
+}
+
+// ---- gateway additions (ADR-0056 decision 8, ADR-0061) ----------------------
+
+fn giulia() -> CommitAuthor {
+    CommitAuthor {
+        name: "Giulia Rossi".into(),
+        email: "staff-1@staff.swarm.press".into(),
+    }
+}
+
+#[tokio::test]
+async fn commits_record_the_author_and_the_platform_commits() {
+    let f = fake();
+    let platform = FakeGitHub::platform_identity();
+    f.create_branch(&repo(), "drafts/a", "main").await.unwrap();
+    let attributed = f
+        .put_file(
+            &repo(),
+            &PutFile {
+                author: Some(giulia()),
+                ..put("drafts/a", "content/a.json", "A", None)
+            },
+        )
+        .await
+        .unwrap();
+    let c = f.get_commit(&repo(), &attributed.commit_sha).await.unwrap();
+    assert_eq!(c.author, Some(giulia()));
+    assert_eq!(c.committer, Some(platform.clone()));
+
+    // Without an author the platform is both.
+    let plain = f
+        .put_file(&repo(), &put("drafts/a", "content/b.json", "B", None))
+        .await
+        .unwrap();
+    let c = f.get_commit(&repo(), &plain.commit_sha).await.unwrap();
+    assert_eq!(c.author, Some(platform.clone()));
+    assert_eq!(c.committer, Some(platform.clone()));
+
+    // A squash merge has no author of its own: the merge API takes none.
+    let pr = f.create_pr(&repo(), &new_pr("drafts/a")).await.unwrap();
+    let trailer = "Co-authored-by: Giulia Rossi <staff-1@staff.swarm.press>";
+    let merged = f
+        .merge_pr(
+            &repo(),
+            pr.number,
+            &MergeOptions {
+                commit_message: Some(trailer.into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let c = f.get_commit(&repo(), &merged.sha).await.unwrap();
+    assert_eq!(c.author, Some(platform));
+    assert!(
+        c.message.ends_with(&format!("\n\n{trailer}")),
+        "{}",
+        c.message
+    );
+}
+
+#[tokio::test]
+async fn the_author_is_not_part_of_the_fake_sha() {
+    async fn script(author: Option<CommitAuthor>) -> String {
+        let f = fake();
+        f.create_branch(&repo(), "drafts/a", "main").await.unwrap();
+        f.put_file(
+            &repo(),
+            &PutFile {
+                author,
+                ..put("drafts/a", "content/a.json", "A", None)
+            },
+        )
+        .await
+        .unwrap()
+        .commit_sha
+    }
+    assert_eq!(script(None).await, script(Some(giulia())).await);
 }

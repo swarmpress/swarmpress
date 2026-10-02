@@ -80,12 +80,26 @@ pub struct BranchInfo {
     pub sha: String,
 }
 
+/// A git identity (the author or the committer of a commit).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommitAuthor {
+    pub name: String,
+    pub email: String,
+}
+
 /// Write one file on a branch.
 ///
 /// `expected_sha`:
 /// * `None` — create-only; fails with `Conflict` if the file already exists.
 /// * `Some(sha)` — update; fails with `Conflict` unless the current blob sha
 ///   on the branch equals `sha`.
+///
+/// `author`:
+/// * `None` — the authenticated identity (the token's user or the App) is
+///   both author and committer.
+/// * `Some(a)` — `a` is the git author; the authenticated identity stays the
+///   committer (ADR-0056 decision 8: the staff persona writes, swarm.press
+///   commits).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PutFile {
     pub branch: String,
@@ -93,6 +107,7 @@ pub struct PutFile {
     pub content: Vec<u8>,
     pub message: String,
     pub expected_sha: Option<String>,
+    pub author: Option<CommitAuthor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,6 +151,10 @@ pub struct CommitInfo {
     pub message: String,
     pub parents: Vec<String>,
     pub files: Vec<ChangedFile>,
+    /// The git author, when the API reports one.
+    pub author: Option<CommitAuthor>,
+    /// The git committer, when the API reports one.
+    pub committer: Option<CommitAuthor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

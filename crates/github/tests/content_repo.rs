@@ -72,6 +72,7 @@ async fn read_page_rejects_non_json() {
             content: b"not json".to_vec(),
             message: "m".into(),
             expected_sha: None,
+            author: None,
         },
     )
     .await
@@ -330,4 +331,73 @@ async fn design_branch_flow_is_idempotent() {
         .commit_design_files("spring-refresh", &bad, "m")
         .await
         .is_err());
+}
+
+// ---- gateway additions (ADR-0056 decision 8, ADR-0061) ----------------------
+
+#[tokio::test]
+async fn drafts_carry_the_author_and_the_squash_commit_the_trailers() {
+    let (f, r) = setup();
+    let agent = content_repo(&f, &r, ActorKind::ContentAgent);
+    let bot = content_repo(&f, &r, ActorKind::PlatformBot);
+    let p = Provenance {
+        staff_id: "staff-1".into(),
+        name: "Giulia Rossi".into(),
+        job_id: Some("12".into()),
+        job_kind: Some("draft".into()),
+        reviewed_by: Some("Marco Bianchi".into()),
+        ..Default::default()
+    };
+    let author = p.author("co-9", provenance::DEFAULT_EMAIL_DOMAIN);
+    let message = provenance::with_trailers("Draft: Last light", &p.draft_trailers());
+
+    let d = agent
+        .open_draft_as("x1", PAGE_PATH, &page("v1"), &message, Some(&author))
+        .await
+        .unwrap();
+    assert_eq!(
+        d.pr.title, "Draft: Last light",
+        "the first line titles the PR"
+    );
+    let c = f.get_commit(&r, &d.pr.head_sha).await.unwrap();
+    assert_eq!(c.author.as_ref(), Some(&author));
+    assert_eq!(c.committer, Some(FakeGitHub::platform_identity()));
+    assert_eq!(c.message, "Draft: Last light\n\nJob: 12\nJob-Kind: draft");
+
+    // Unchanged bytes make no commit, whoever asks.
+    let other = CommitAuthor {
+        name: "Isabella Conti".into(),
+        email: "staff-2@staff.swarm.press".into(),
+    };
+    let again = agent
+        .open_draft_as("x1", PAGE_PATH, &page("v1"), &message, Some(&other))
+        .await
+        .unwrap();
+    assert_eq!(again.commit_sha, None);
+    assert_eq!(again.pr.head_sha, d.pr.head_sha);
+
+    let trailers = p.squash_trailers(&author);
+    let merged = bot
+        .merge_draft_with(d.pr.number, &d.pr.head_sha, Some(&trailers))
+        .await
+        .unwrap();
+    let c = f.get_commit(&r, &merged.sha).await.unwrap();
+    assert_eq!(c.author, Some(FakeGitHub::platform_identity()));
+    assert_eq!(
+        c.message,
+        format!(
+            "Draft: Last light (#{})\n\nJob: 12\nJob-Kind: draft\nReviewed-by: Marco Bianchi\n\
+             Co-authored-by: Giulia Rossi <staff-1+co-9@staff.swarm.press>",
+            d.pr.number
+        )
+    );
+
+    // The plain calls are the `None` case of the new ones.
+    let d2 = agent
+        .open_draft("x2", "content/pages/blog/x2.json", &page("v1"), "Draft")
+        .await
+        .unwrap();
+    let c = f.get_commit(&r, &d2.pr.head_sha).await.unwrap();
+    assert_eq!(c.author, c.committer);
+    assert_eq!(c.message, "Draft");
 }

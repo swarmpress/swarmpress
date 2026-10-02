@@ -418,6 +418,26 @@ struct WireCommit {
 #[derive(Deserialize)]
 struct WireCommitInner {
     message: String,
+    #[serde(default)]
+    author: Option<WireIdentity>,
+    #[serde(default)]
+    committer: Option<WireIdentity>,
+}
+
+/// `commit.author` / `commit.committer` of a commit object.
+#[derive(Deserialize)]
+struct WireIdentity {
+    name: Option<String>,
+    email: Option<String>,
+}
+
+impl WireIdentity {
+    fn into_author(self) -> Option<CommitAuthor> {
+        Some(CommitAuthor {
+            name: self.name?,
+            email: self.email?,
+        })
+    }
 }
 
 #[derive(Deserialize)]
@@ -564,6 +584,8 @@ impl RepoApi for HttpGitHub {
         Ok(CommitInfo {
             sha: c.sha,
             message: c.commit.message,
+            author: c.commit.author.and_then(WireIdentity::into_author),
+            committer: c.commit.committer.and_then(WireIdentity::into_author),
             parents: c.parents.into_iter().map(|p| p.sha).collect(),
             files: c
                 .files
@@ -677,6 +699,12 @@ impl RepoApi for HttpGitHub {
         });
         if let Some(sha) = &req.expected_sha {
             body["sha"] = json!(sha);
+        }
+        if let Some(author) = &req.author {
+            // `committer` is left out on purpose: GitHub then uses the
+            // authenticated identity, so the commit reads "persona authored,
+            // swarm.press committed".
+            body["author"] = json!({ "name": author.name, "email": author.email });
         }
         let r = self.send(Method::PUT, url, Some(&body)).await?;
         if r.status == 409 {

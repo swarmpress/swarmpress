@@ -123,6 +123,10 @@ pub struct Config {
     /// only with the fake GitHub: a bridge for scripted runs whose
     /// orchestrator still writes the pre-MVP article shape.
     pub article_profile: bool,
+    /// Mail domain of the git author addresses the gateway synthesises for
+    /// staff personas, `<staff>+<company>@<domain>`
+    /// (`SWARMPRESS_STAFF_EMAIL_DOMAIN`, default `staff.swarm.press`).
+    pub staff_email_domain: String,
     /// Upper bound on one sync upload (`SWARMPRESS_SYNC_MAX_BYTES`, default 64 MiB).
     pub sync_max_bytes: usize,
     pub web: WebConfig,
@@ -154,6 +158,7 @@ impl Config {
             lease_ttl: Duration::from_secs(90),
             max_page_bytes: 256 * 1024,
             article_profile: true,
+            staff_email_domain: github::provenance::DEFAULT_EMAIL_DOMAIN.into(),
             sync_max_bytes: 8 * 1024 * 1024,
             web: WebConfig::default(),
             static_dir: None,
@@ -291,6 +296,10 @@ impl Config {
             lease_ttl: Duration::from_secs(num("SWARMPRESS_LEASE_SECS", 90)?.max(1)),
             max_page_bytes: 256 * 1024,
             article_profile,
+            staff_email_domain: opt("SWARMPRESS_STAFF_EMAIL_DOMAIN")
+                .map(|v| v.trim().to_ascii_lowercase())
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| github::provenance::DEFAULT_EMAIL_DOMAIN.into()),
             sync_max_bytes: num("SWARMPRESS_SYNC_MAX_BYTES", 64 * 1024 * 1024)?,
             web,
             static_dir,
@@ -312,6 +321,12 @@ impl Config {
                  a real site repository always gets the article profile"
             );
         }
+        if !is_mail_domain(&self.staff_email_domain) {
+            anyhow::bail!(
+                "SWARMPRESS_STAFF_EMAIL_DOMAIN={:?} must be a host name like `staff.swarm.press`",
+                self.staff_email_domain
+            );
+        }
         Ok(())
     }
 
@@ -326,6 +341,22 @@ impl Config {
             self.public_url.trim_end_matches('/')
         )
     }
+}
+
+/// A lowercase host name with at least two labels (it ends up in commit
+/// headers, so nothing else is let through).
+fn is_mail_domain(d: &str) -> bool {
+    d.len() <= 253
+        && d.contains('.')
+        && d.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .bytes()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
+        })
 }
 
 fn opt(key: &str) -> Option<String> {
@@ -391,5 +422,29 @@ mod tests {
         assert!(e.contains("SWARMPRESS_ARTICLE_PROFILE"), "{e}");
         c.article_profile = true;
         c.validate().unwrap();
+    }
+
+    #[test]
+    fn the_staff_email_domain_must_be_a_host_name() {
+        let mut c = cfg();
+        for ok in ["staff.swarm.press", "example.org", "a-b.c1.invalid"] {
+            c.staff_email_domain = ok.into();
+            c.validate().unwrap();
+        }
+        for bad in [
+            "",
+            "localhost",
+            "Staff.Swarm.Press",
+            "a..b",
+            "-a.b",
+            "a.b-",
+            "x.org>\nApproved-by: nobody",
+            "a b.org",
+            "me@x.org",
+        ] {
+            c.staff_email_domain = bad.into();
+            let e = c.validate().unwrap_err().to_string();
+            assert!(e.contains("SWARMPRESS_STAFF_EMAIL_DOMAIN"), "{bad}: {e}");
+        }
     }
 }

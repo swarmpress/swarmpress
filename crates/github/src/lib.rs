@@ -14,6 +14,8 @@
 //! * [`ContentRepo`] — idempotent draft/merge/theme-branch flows.
 //! * [`snapshot`] — all text files under a prefix at one commit, as a
 //!   [`knowledge::SiteSource`] (the knowledge pack is built from it).
+//! * [`provenance`] — who wrote a commit: the persona as author, the
+//!   trailers of the squash commit, validation of client-supplied values.
 //! * [`revert`] — open a revert PR for a squash commit (rollback path).
 
 pub mod api;
@@ -24,6 +26,7 @@ pub mod error;
 pub mod fake;
 pub mod http;
 pub mod policy;
+pub mod provenance;
 pub mod ratelimit;
 pub mod revert;
 pub mod snapshot;
@@ -38,6 +41,7 @@ pub use error::{GitHubError, Result};
 pub use fake::{git_blob_sha, FakeGitHub};
 pub use http::{HttpGitHub, DEFAULT_API_BASE};
 pub use policy::{ActorKind, GuardedRepo, PathPolicy};
+pub use provenance::Provenance;
 pub use ratelimit::{Governor, GovernorConfig, GovernorPool, RateLimitInfo};
 pub use revert::open_revert_pr;
 pub use snapshot::{Snapshot, SnapshotLimits};

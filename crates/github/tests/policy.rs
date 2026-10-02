@@ -115,6 +115,7 @@ fn put(branch: &str, path: &str) -> PutFile {
         content: b"x".to_vec(),
         message: "m".into(),
         expected_sha: None,
+        author: None,
     }
 }
 

@@ -12,6 +12,10 @@ paths:
   - crates/server/tests/events.rs
   - crates/server/src/article.rs
   - crates/server/tests/articles.rs
+  - crates/server/tests/attribution.rs
+  - crates/github/src/provenance.rs
+  - crates/github/tests/content_repo.rs
+  - crates/orchestrator/src/gateway.rs
   - apps/game/src/net/central.ts
   - apps/game/src/net/central.test.ts
   - apps/game/e2e/orchestrator.spec.ts
@@ -62,6 +66,10 @@ Planned changes:
     Other `content/**` pages are accepted as before.
   - **G4:** finalise on merge in the same pull request: verify the reviewed head, merge base into
     the branch, set `status: published`, append the blog-index entry, squash-merge.
-  - **G6:** attribution fields; the persona as author of draft commits; trailers on the squash
-    commit.
+  - **G6 (built on the server and in the gateway types; the orchestrator does not send it yet):**
+    draft and merge take an optional `attribution`; the persona is the git author of draft commits
+    with the platform as committer; the squash commit carries `Co-authored-by` and the trailers
+    `Job`, `Job-Kind`, `Work-Item`, `Model`, `Executor`, `Reviewed-by`, `Approved-by`. The author's
+    email is synthesised by the server; a malformed attribution answers 400. `Gateway::open_draft_as`
+    and `merge_as` carry it in the orchestrator; `centralGateway` passes it as a trailing argument.
   - **G7:** `POST /api/gateway/close` for cancelled items, used by a day-start sweeper.

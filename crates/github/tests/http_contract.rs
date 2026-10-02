@@ -321,6 +321,7 @@ async fn put_file_sends_base64_branch_and_sha() {
                 content: b"{}\n".to_vec(),
                 message: "Draft x".into(),
                 expected_sha: Some("old-sha".into()),
+                author: None,
             },
         )
         .await
@@ -356,6 +357,7 @@ async fn put_file_conflicts_map_to_conflict() {
                     content: vec![],
                     message: "m".into(),
                     expected_sha: None,
+                    author: None,
                 },
             )
             .await
@@ -858,4 +860,116 @@ async fn exhausted_remaining_on_success_blocks_next_call() {
     assert!(h.sleeper.sleeps().is_empty());
     h.gh.get_repo(&repo()).await.unwrap();
     assert_eq!(h.sleeper.sleeps(), vec![Duration::from_secs(11)]);
+}
+
+// ---- gateway additions (ADR-0056 decision 8, ADR-0061) ----------------------
+
+fn body_of(req: &Request) -> serde_json::Value {
+    serde_json::from_slice(&req.body).unwrap_or(serde_json::Value::Null)
+}
+
+#[tokio::test]
+async fn put_file_sends_the_author_and_leaves_the_committer_to_the_token() {
+    let h = harness().await;
+    Mock::given(method("PUT"))
+        .and(path("/repos/acme/site/contents/content/pages/blog/x.json"))
+        .and(body_partial_json(json!({
+            "message": "Draft x\n\nJob: 12",
+            "branch": "drafts/content-x",
+            "author": { "name": "Giulia Rossi", "email": "staff-1+co-9@staff.swarm.press" }
+        })))
+        .and(|req: &Request| body_of(req).get("committer").is_none())
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "content": { "sha": "new-blob" },
+            "commit": { "sha": "new-commit" }
+        })))
+        .expect(1)
+        .mount(&h.server)
+        .await;
+    let w =
+        h.gh.put_file(
+            &repo(),
+            &PutFile {
+                branch: "drafts/content-x".into(),
+                path: "content/pages/blog/x.json".into(),
+                content: b"{}\n".to_vec(),
+                message: "Draft x\n\nJob: 12".into(),
+                expected_sha: None,
+                author: Some(CommitAuthor {
+                    name: "Giulia Rossi".into(),
+                    email: "staff-1+co-9@staff.swarm.press".into(),
+                }),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(w.commit_sha, "new-commit");
+}
+
+#[tokio::test]
+async fn put_file_without_an_author_sends_neither_identity() {
+    let h = harness().await;
+    Mock::given(method("PUT"))
+        .and(path("/repos/acme/site/contents/content/a.json"))
+        .and(|req: &Request| {
+            let b = body_of(req);
+            b.get("author").is_none() && b.get("committer").is_none()
+        })
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "content": { "sha": "b" },
+            "commit": { "sha": "c" }
+        })))
+        .expect(1)
+        .mount(&h.server)
+        .await;
+    h.gh.put_file(
+        &repo(),
+        &PutFile {
+            branch: "drafts/content-x".into(),
+            path: "content/a.json".into(),
+            content: vec![],
+            message: "m".into(),
+            expected_sha: None,
+            author: None,
+        },
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn get_commit_maps_author_and_committer() {
+    let h = harness().await;
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/site/commits/abc"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "sha": "abc",
+            "commit": {
+                "message": "Draft x",
+                "author": { "name": "Giulia Rossi", "email": "staff-1+co-9@staff.swarm.press", "date": "2026-10-02T09:30:00Z" },
+                "committer": { "name": "swarmpress[bot]", "email": "bot@users.noreply.github.com", "date": "2026-10-02T09:30:00Z" }
+            },
+            "parents": []
+        })))
+        .mount(&h.server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/site/commits/bare"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "sha": "bare",
+            "commit": { "message": "m", "author": { "name": null, "email": null } }
+        })))
+        .mount(&h.server)
+        .await;
+    let c = h.gh.get_commit(&repo(), "abc").await.unwrap();
+    assert_eq!(
+        c.author,
+        Some(CommitAuthor {
+            name: "Giulia Rossi".into(),
+            email: "staff-1+co-9@staff.swarm.press".into()
+        })
+    );
+    assert_eq!(c.committer.unwrap().name, "swarmpress[bot]");
+    let bare = h.gh.get_commit(&repo(), "bare").await.unwrap();
+    assert_eq!((bare.author, bare.committer), (None, None));
 }

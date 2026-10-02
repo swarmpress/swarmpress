@@ -31,6 +31,8 @@ struct FakeCommit {
     message: String,
     parents: Vec<String>,
     tree: Tree,
+    /// `None`: the platform identity ([`FakeGitHub::platform_identity`]).
+    author: Option<CommitAuthor>,
 }
 
 #[derive(Debug, Clone)]
@@ -119,6 +121,19 @@ impl State {
     }
 
     fn new_commit(&mut self, message: &str, parents: Vec<String>, tree: Tree) -> String {
+        self.new_commit_by(message, parents, tree, None)
+    }
+
+    /// A commit with an explicit git author (`None`: the platform identity).
+    /// The author is not part of the fake sha, so attributed and plain runs
+    /// of the same script produce the same shas.
+    fn new_commit_by(
+        &mut self,
+        message: &str,
+        parents: Vec<String>,
+        tree: Tree,
+        author: Option<CommitAuthor>,
+    ) -> String {
         self.commit_counter += 1;
         let mut h = Sha1::new();
         h.update(format!("commit {}\n", self.commit_counter).as_bytes());
@@ -133,6 +148,7 @@ impl State {
                 message: message.into(),
                 parents,
                 tree,
+                author,
             },
         );
         sha
@@ -293,6 +309,17 @@ impl FakeGitHub {
             }
         }
         Ok(s)
+    }
+
+    /// The identity GitHub would commit as: the token's user or the App. It
+    /// is the committer of every fake commit, and the author of every commit
+    /// written without an explicit one (squash merges always: the merge API
+    /// has no author field).
+    pub fn platform_identity() -> CommitAuthor {
+        CommitAuthor {
+            name: "swarmpress[bot]".into(),
+            email: "swarmpress[bot]@users.noreply.github.com".into(),
+        }
     }
 
     // ---- test controls -------------------------------------------------
@@ -569,9 +596,12 @@ impl RepoApi for FakeGitHub {
             }
         }
         files.sort_by(|a, b| a.0.cmp(&b.0));
+        let platform = FakeGitHub::platform_identity();
         Ok(CommitInfo {
             sha: full,
             message: c.message.clone(),
+            author: Some(c.author.clone().unwrap_or_else(|| platform.clone())),
+            committer: Some(platform),
             parents: c.parents.clone(),
             files: files
                 .into_iter()
@@ -728,7 +758,7 @@ impl RepoApi for FakeGitHub {
         }
         let blob = s.put_blob(&req.content);
         tree.insert(path, blob.clone());
-        let commit = s.new_commit(&req.message, vec![head], tree);
+        let commit = s.new_commit_by(&req.message, vec![head], tree, req.author.clone());
         s.repo_mut(repo)?
             .branches
             .insert(req.branch.clone(), commit.clone());

@@ -147,12 +147,15 @@ impl ContentRepo {
 
     /// Write `bytes` at `path` on `branch` unless already identical.
     /// Retries on optimistic-concurrency conflicts by re-reading the sha.
+    /// `author` is the git author of the commit (`None`: the authenticated
+    /// identity).
     async fn upsert_file(
         &self,
         branch: &str,
         path: &str,
         bytes: &[u8],
         message: &str,
+        author: Option<&CommitAuthor>,
     ) -> Result<Option<String>> {
         let mut attempt = 0;
         loop {
@@ -166,6 +169,7 @@ impl ContentRepo {
                 content: bytes.to_vec(),
                 message: message.to_string(),
                 expected_sha: current.map(|c| c.sha),
+                author: author.cloned(),
             };
             match self.api.put_file(&self.repo, &req).await {
                 Ok(w) => return Ok(Some(w.commit_sha)),
@@ -215,11 +219,28 @@ impl ContentRepo {
         page_json: &Value,
         message: &str,
     ) -> Result<DraftPr> {
+        self.open_draft_as(content_id, path, page_json, message, None)
+            .await
+    }
+
+    /// [`ContentRepo::open_draft`] with the git author of the draft commit
+    /// (the staff persona; `None`: the authenticated identity). The PR is
+    /// titled by the first line of `message`, so trailers may follow it.
+    pub async fn open_draft_as(
+        &self,
+        content_id: &str,
+        path: &str,
+        page_json: &Value,
+        message: &str,
+        author: Option<&CommitAuthor>,
+    ) -> Result<DraftPr> {
         let branch = Self::draft_branch(content_id)?;
         let path = normalize_path(path)?;
         let bytes = page_bytes(page_json)?;
         let (_, created_branch) = self.ensure_branch(&branch).await?;
-        let commit_sha = self.upsert_file(&branch, &path, &bytes, message).await?;
+        let commit_sha = self
+            .upsert_file(&branch, &path, &bytes, message, author)
+            .await?;
         let title = message.lines().next().unwrap_or(message);
         let body = format!("Draft for content `{content_id}`.\n\nPage: `{path}`");
         let (mut pr, created_pr) = self.ensure_pr(&branch, title, &body).await?;
@@ -244,6 +265,20 @@ impl ContentRepo {
         pr_number: u64,
         expected_head_sha: &str,
     ) -> Result<MergeResult> {
+        self.merge_draft_with(pr_number, expected_head_sha, None)
+            .await
+    }
+
+    /// [`ContentRepo::merge_draft`] with the body of the squash commit
+    /// (the provenance trailers; `None`: GitHub's default body). The squash
+    /// commit's author is always the authenticated identity: the merge API
+    /// has no author field.
+    pub async fn merge_draft_with(
+        &self,
+        pr_number: u64,
+        expected_head_sha: &str,
+        commit_message: Option<&str>,
+    ) -> Result<MergeResult> {
         let pr = self.api.get_pr(&self.repo, pr_number).await?;
         if pr.merged {
             if pr.head_sha != expected_head_sha {
@@ -265,7 +300,7 @@ impl ContentRepo {
                     method: MergeMethod::Squash,
                     expected_head_sha: Some(expected_head_sha.to_string()),
                     commit_title: Some(format!("{} (#{pr_number})", pr.title)),
-                    commit_message: None,
+                    commit_message: commit_message.map(String::from),
                 },
             )
             .await
@@ -293,7 +328,10 @@ impl ContentRepo {
         let mut last = None;
         for (path, bytes) in files {
             let path = normalize_path(path)?;
-            if let Some(sha) = self.upsert_file(&branch, &path, bytes, message).await? {
+            if let Some(sha) = self
+                .upsert_file(&branch, &path, bytes, message, None)
+                .await?
+            {
                 last = Some(sha);
             }
         }

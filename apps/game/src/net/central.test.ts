@@ -11,6 +11,7 @@ import {
   leaseHeld,
   LeaseKeeper,
   STEP_HEADER,
+  type Attribution,
   type CentralEvent,
   type WebSocketLike,
 } from './central'
@@ -85,7 +86,47 @@ describe('CentralClient', () => {
     })
     expect(await gw.merge(3, 'abc')).toBe('def')
     expect(calls[1]).toMatchObject({ url: 'http://central.test/api/gateway/merge', body: { number: 3, head_sha: 'abc' } })
+    // Without attribution the merge body is exactly what it always was.
+    expect(calls[1].body).toEqual({ number: 3, head_sha: 'abc' })
     expect(calls[1].headers[LEASE_HEADER]).toBe('lease-9')
+  })
+
+  it('passes attribution through the orchestrator gateway, as an object or as JSON text', async () => {
+    const { client, calls } = mock(({ url }) =>
+      url.endsWith('/draft')
+        ? json({ number: 3, branch: 'drafts/content-c1', head_sha: 'abc', created_pr: true, committed: true })
+        : json({ merged_sha: 'def' }),
+    )
+    const gw = centralGateway(client, () => 'lease-9')
+    const writer: Attribution = {
+      staff_id: 'staff-1',
+      persona: 'giulia',
+      name: 'Giulia Rossi',
+      role: 'writer',
+      job_id: 12,
+      job_kind: 'draft',
+      revision: 0,
+      work_item: 'work-item-1',
+      model: 'ternary-bonsai-2-27b',
+    }
+    // The wasm side hands over JSON text.
+    await gw.openDraft('c1', 'content/pages/blog/a.json', '{"id":"c1"}', 'Draft: A', 'work-item-1', JSON.stringify(writer))
+    expect(calls[0].body).toEqual({
+      content_id: 'c1',
+      path: 'content/pages/blog/a.json',
+      page: { id: 'c1' },
+      message: 'Draft: A',
+      work_item: 'work-item-1',
+      attribution: writer,
+    })
+    const publish = { ...writer, job_id: 14, job_kind: 'publish', reviewed_by: 'Marco Bianchi', approved_by: 'ada' }
+    expect(await gw.merge(3, 'abc', publish)).toBe('def')
+    expect(calls[1].body).toEqual({ number: 3, head_sha: 'abc', attribution: publish })
+    // null, undefined and '' all mean "no attribution".
+    await gw.openDraft('c1', 'content/pages/blog/a.json', '{"id":"c1"}', 'Draft: A', null, null)
+    await gw.openDraft('c1', 'content/pages/blog/a.json', '{"id":"c1"}', 'Draft: A', null, '')
+    await gw.merge(3, 'abc', null)
+    for (const c of calls.slice(2)) expect(c.body).not.toHaveProperty('attribution')
   })
 
   it('syncs log segments and snapshots as raw bytes', async () => {

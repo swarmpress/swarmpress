@@ -540,6 +540,7 @@ async fn fake_snapshot_enumerates_the_tree_at_a_ref() {
                 content,
                 message: format!("write {path}"),
                 expected_sha: None,
+                author: None,
             },
         )
         .await

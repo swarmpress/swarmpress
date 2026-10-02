@@ -16,6 +16,16 @@
 //! only, platform files refused) and must be a `.json` page object of at
 //! most 256 KiB; `..`, absolute paths, backslashes and NUL are refused.
 //!
+//! Both take an optional `attribution` (ADR-0056 decision 8, as narrowed by
+//! ADR-0058): the staff persona becomes the git author of the draft commit,
+//! with the token's or the App's identity as committer, and the squash
+//! commit names it in `Co-authored-by` next to the trailers `Job`,
+//! `Job-Kind`, `Work-Item`, `Model`, `Executor`, `Reviewed-by` and
+//! `Approved-by`. The squash commit's own author cannot be set: the merge
+//! API has no author field. The author's email is synthesised from the
+//! staff id and the company (`github::provenance`), never taken from the
+//! client; a malformed attribution is a 400.
+//!
 //! Articles (`content/pages/blog/*.json`, ADR-0061 decisions 4 and 5) are
 //! validated here and not only in the browser: the v2 page schema and the
 //! article profile ([`crate::article`], 422 with `issues`), and against the
@@ -34,9 +44,10 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::Json;
 use github::content::page_bytes;
+use github::provenance::with_trailers;
 use github::{
     ActorKind, AppAuth, ContentRepo, FakeGitHub, GitHubError, GuardedRepo, HttpGitHub, PathPolicy,
-    RepoApi, RepoId, StaticToken,
+    Provenance, RepoApi, RepoId, StaticToken,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -47,6 +58,7 @@ use crate::auth::CurrentUser;
 use crate::companies::require_lease;
 use crate::config::GithubMode;
 use crate::db::gateway::{self as store, NewGatewayPr};
+use crate::db::Lease;
 use crate::error::{AppError, AppResult};
 use crate::events::{self, kinds};
 
@@ -379,6 +391,32 @@ pub struct DraftBody {
     /// The sim work item this content belongs to (echoed in `DeployLanded`).
     #[serde(default)]
     pub work_item: Option<String>,
+    /// Who wrote the page, in which job ([`attribution_of`]).
+    #[serde(default)]
+    pub attribution: Option<Value>,
+}
+
+/// The validated `attribution` of a gateway request (ADR-0056 decision 8, as
+/// narrowed by ADR-0058 decision 10): `{staff_id, name, persona?, role?,
+/// job_id?, job_kind?, revision?, work_item?, model?, executor?,
+/// reviewed_by?, approved_by?}`. Absent or `null` is `None`: the request
+/// behaves as it did before attribution existed. Anything malformed (an
+/// unknown field, a value that is not one line or is too long) is a 400.
+///
+/// Without an `executor` the lease holder stands in: the server knows who
+/// holds the company.
+fn attribution_of(raw: Option<&Value>, lease: &Lease) -> AppResult<Option<Provenance>> {
+    let Some(raw) = raw.filter(|v| !v.is_null()) else {
+        return Ok(None);
+    };
+    let mut who = Provenance::from_json(raw).map_err(AppError::BadRequest)?;
+    if who.executor.is_none() {
+        who.executor = Some(format!(
+            "{} {} epoch {}",
+            lease.holder_kind, lease.holder_id, lease.epoch
+        ));
+    }
+    Ok(Some(who))
 }
 
 /// `POST /api/gateway/draft`
@@ -401,6 +439,7 @@ pub async fn draft(
             return Err(AppError::BadRequest("work_item must be 1-100 bytes".into()));
         }
     }
+    let who = attribution_of(body.attribution.as_ref(), &fenced.lease)?;
     let checked = check_draft(
         &body.content_id,
         &body.path,
@@ -428,8 +467,23 @@ pub async fn draft(
     }
     let guarded: Arc<dyn RepoApi> = Arc::new(GuardedRepo::new(api, ActorKind::ContentAgent));
     let content = ContentRepo::new(guarded, repo, company.site_base_branch.clone());
+    // The persona is the git author of the draft commit; the committer stays
+    // the token's or the App's identity. The email is synthesised here.
+    let author = who
+        .as_ref()
+        .map(|p| p.author(&company.id, &st.cfg.staff_email_domain));
+    let commit_message = match &who {
+        Some(p) => with_trailers(message, &p.draft_trailers()),
+        None => message.to_string(),
+    };
     let dr = content
-        .open_draft(&body.content_id, &path, &body.page, message)
+        .open_draft_as(
+            &body.content_id,
+            &path,
+            &body.page,
+            &commit_message,
+            author.as_ref(),
+        )
         .await
         .map_err(gh_error)?;
     let number = i64::try_from(dr.pr.number).unwrap_or(i64::MAX);
@@ -461,6 +515,10 @@ pub async fn draft(
 pub struct MergeBody {
     pub number: u64,
     pub head_sha: String,
+    /// The article's author (`staff_id`, `name`), the job that publishes it,
+    /// and who reviewed and approved it ([`attribution_of`]).
+    #[serde(default)]
+    pub attribution: Option<Value>,
 }
 
 /// `POST /api/gateway/merge`
@@ -476,6 +534,7 @@ pub async fn merge(
     let company = &fenced.company;
     let number = i64::try_from(body.number)
         .map_err(|_| AppError::BadRequest("number out of range".into()))?;
+    let who = attribution_of(body.attribution.as_ref(), &fenced.lease)?;
     let pr = store::get_pr(&st.db, &company.id, number)
         .await?
         .ok_or_else(|| {
@@ -487,8 +546,14 @@ pub async fn merge(
     // the gateway itself opened, at the exact head that was reviewed.
     let api = st.github.api_for(&repo).await?;
     let content = ContentRepo::new(api, repo, company.site_base_branch.clone());
+    // The merge API has no author field: the squash commit's author stays
+    // the token's or the App's identity. The persona is a co-author, named
+    // in the trailers with the job's provenance.
+    let trailers = who
+        .as_ref()
+        .map(|p| p.squash_trailers(&p.author(&company.id, &st.cfg.staff_email_domain)));
     let merged = content
-        .merge_draft(body.number, &body.head_sha)
+        .merge_draft_with(body.number, &body.head_sha, trailers.as_deref())
         .await
         .map_err(gh_error)?;
     let first_time = pr.merged_sha.is_none();

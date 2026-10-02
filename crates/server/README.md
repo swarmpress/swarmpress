@@ -41,6 +41,7 @@ development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are i
 | `GITHUB_WEBHOOK_SECRET` | | `POST /webhooks/github` (503 when unset) |
 | `SWARMPRESS_SIMULATE_DEPLOY` | on with `fake`, else off | emit `DeployLanded` right after a gateway merge |
 | `SWARMPRESS_ARTICLE_PROFILE` | `enforce` | the article profile on drafts under `content/pages/blog/`. `off` is a bridge for scripted runs whose orchestrator still writes the pre-MVP article shape: it is accepted only with `SWARMPRESS_GITHUB=fake` (a startup error otherwise), and the site checks (create-only path, one open pull request per path) stay on |
+| `SWARMPRESS_STAFF_EMAIL_DOMAIN` | `staff.swarm.press` | mail domain of the git author addresses synthesised for staff personas (`<staff>+<company>@<domain>`); a host name. Choose it before the first live merge: the site's history is not rewritten |
 | `SWARMPRESS_LEASE_SECS` | 90 | company lease length |
 | `SWARMPRESS_SYNC_MAX_BYTES` | 67108864 | largest sync upload |
 | `SWARMPRESS_WEB_FETCH_RATE_PER_MIN`, `SWARMPRESS_WEB_FETCH_BURST` | 30, 10 | per-user token bucket for `/web/fetch` |
@@ -61,8 +62,8 @@ development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are i
 | `POST /api/companies/{id}/lease` | `{device_id, mode?, kind?}` → `{epoch, lease_id, token, holder, holder_kind, ttl_ms, renewed, handover_requested, handover_by, head}` (ADR-0045). `mode`: `acquire` (default; a free, expired, released or own lease, epoch + 1), `renew` (with `x-swarmpress-lease`; epoch unchanged, works past expiry if nobody took the lease), `request` (as `acquire`, and a 409 records a handover request and publishes `HandoverRequested`), `force` (takeover, epoch + 1, publishes `LeaseRevoked`). Another executor's unexpired lease answers 409 `{error, epoch, holder, holder_kind, ttl_ms, handover_requested}`. `kind`: `browser` (default) or `self`. The epoch is never reset |
 | `DELETE /api/companies/{id}/lease` | with `x-swarmpress-lease`: release (204), 409 if not held. The epoch stays |
 | `x-swarmpress-lease` | the fencing token `<epoch>.<lease_id>` (the lease reply's `token`). A fenced route answers 428 without it and 409 when the epoch or the lease id is not the company's current, unexpired one. A lease grant and every fenced write hold a per-company mutex, so a takeover waits for an in-flight write to be recorded |
-| `POST /api/gateway/draft` | lease required. `{content_id, path, page, message, work_item?}` → `{number, branch, head_sha, created_pr, committed}`. An article (`content/pages/blog/*.json`) that breaks the schema or the article profile answers 422 `{error, issues: [..]}`; a path that exists on the base branch, a second open pull request for the path, or a second path for the content id answers 409 |
-| `POST /api/gateway/merge` | lease required. `{number, head_sha}` → `{merged_sha}`; only PRs this company opened through the gateway; 409 if the head moved |
+| `POST /api/gateway/draft` | lease required. `{content_id, path, page, message, work_item?, attribution?}` → `{number, branch, head_sha, created_pr, committed}`. An article (`content/pages/blog/*.json`) that breaks the schema or the article profile answers 422 `{error, issues: [..]}`; a path that exists on the base branch, a second open pull request for the path, or a second path for the content id answers 409 |
+| `POST /api/gateway/merge` | lease required. `{number, head_sha, attribution?}` → `{merged_sha}`; only PRs this company opened through the gateway; 409 if the head moved |
 | `GET /api/events?after=&limit=` | `{events: [{seq, company_id, kind, payload, created_at}], last_seq}` (oldest first, max 500) |
 | `GET /ws/events?after=` | WebSocket (cookie auth): backlog after `after`, then live events, one JSON text frame each |
 | `POST /webhooks/github` | HMAC-verified (`X-Hub-Signature-256`), deduped by `X-GitHub-Delivery`. `deployment_status` success → `DeployLanded`, failure/error → `DeployFailed`, in every company bound to the repo |
@@ -113,6 +114,44 @@ the server, whatever the browser checked (`src/article.rs`,
 `content/pages/blog-index.json` cannot be drafted at all (403): only the merge
 writes it. Every other `content/**` page is accepted as before: a JSON object,
 no schema check, and a draft may change a page that exists on the base branch.
+
+#### Attribution (ADR-0056 decision 8, as narrowed by ADR-0058)
+
+Draft and merge take an optional `attribution` object. Without it (or with
+`null`) both behave exactly as before.
+
+```json
+{ "staff_id": "staff-1", "name": "Giulia Rossi", "persona": "giulia", "role": "writer",
+  "job_id": 12, "job_kind": "draft", "revision": 0, "work_item": "work-item-1",
+  "model": "ternary-bonsai-2-27b", "executor": "browser laptop epoch 3",
+  "reviewed_by": "Marco Bianchi", "approved_by": "ada" }
+```
+
+| Field | Rule |
+|---|---|
+| `staff_id` (required) | 1–64 of `[A-Za-z0-9._:-]` |
+| `name` (required), `reviewed_by`, `approved_by` | one line, 1–100 characters, no `<` or `>` |
+| `persona`, `role`, `job_kind` | 1–64 of `[A-Za-z0-9._:-]` |
+| `job_id` | a non-negative integer, or 1–64 of `[A-Za-z0-9._:-]` |
+| `revision` | an integer from 0 to 1000 |
+| `work_item` | 1–100 of `[A-Za-z0-9._:-]` |
+| `model`, `executor` | one line, 1–120 characters. Without `executor` the lease holder stands in: `<kind> <holder> epoch <n>` |
+
+An unknown field, a wrong type, a line break or a control character answers
+400, before anything reaches GitHub. There is no email field: the server
+synthesises `<staff_id>+<company id>@<SWARMPRESS_STAFF_EMAIL_DOMAIN>`.
+
+- **Draft:** the commit on the draft branch has the persona as git author
+  (`name`, the synthesised address). The committer is left to GitHub, which
+  uses the authenticated identity: the token's user or the App. The commit
+  message is the request's `message`, a blank line, then the trailers `Job`,
+  `Job-Kind`, `Work-Item`, `Model`, `Executor`. The pull request is titled by
+  the first line of `message`.
+- **Merge:** `staff_id` and `name` name the article's author. The squash
+  commit's body is the trailers `Job`, `Job-Kind`, `Work-Item`, `Model`,
+  `Executor`, `Reviewed-by`, `Approved-by` and
+  `Co-authored-by: <name> <address>`. Its git author is the token's user or
+  the App and cannot be changed: GitHub's merge API has no author field.
 
 ### Web fetch rules (ADR-0040)
 
@@ -173,6 +212,7 @@ cargo clippy -p server -p testkit --all-targets -- -D warnings
 | `tests/lease.rs` | Acquire, renew, conflict (409 with holder), force takeover, expiry, configurable TTL, release, ownership. |
 | `tests/gateway.rs` | Draft + revision + merge against FakeGitHub, stale-head 409, idempotent merge, one simulated `DeployLanded`, PathPolicy rejections (nothing written), lease required (428/409, takeover, expiry), merging only own PRs, `deployment_status` webhook (bad HMAC, dedupe, success, failure, other repos). |
 | `tests/articles.rs` | Articles through the gateway: a valid fixture drafts; each profile violation answers 422 with its issue and writes nothing; an existing slug, a second open pull request for the path and a second path for the content id answer 409; the blog index cannot be drafted; other content is untouched; the profile switch. |
+| `tests/attribution.rs` | The persona is the author of draft commits and the platform the committer; the squash commit carries `Co-authored-by` and the trailers, with the platform as author; the executor defaults to the lease holder; every malformed attribution answers 400 on draft and merge and reaches GitHub with nothing; without attribution nothing changes. |
 | `tests/events.rs` | Polling with `after`/`limit`, per-company scoping, WebSocket backlog + live push. |
 | `tests/sync.rs` | Segment immutability (201/200/409), list, bytes on disk, snapshot with step, owner-only access. |
 | `tests/web.rs` | SSRF refusals and bad URLs, per-user 429, Firecrawl 501, HTML reduction, JSON, redirects, 415 and 413 against a local wiremock. |

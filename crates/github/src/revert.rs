@@ -130,6 +130,7 @@ async fn restore_path(
                     content: w.content,
                     message: message.into(),
                     expected_sha: cur.map(|c| c.sha),
+                    author: None,
                 },
             )
             .await

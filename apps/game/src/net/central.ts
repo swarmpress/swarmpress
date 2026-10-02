@@ -95,12 +95,42 @@ export function leaseHeld(e: unknown): LeaseHeld | null {
   return b && typeof b.holder === 'string' && typeof b.epoch === 'number' ? (b as LeaseHeld) : null
 }
 
+/**
+ * Who did the work behind a gateway commit, and in which job (ADR-0056
+ * decision 8, as narrowed by ADR-0058). The server writes the persona as git
+ * author of draft commits and as `Co-authored-by` plus provenance trailers on
+ * the squash commit; it synthesises the author's email itself. Every value is
+ * one line; a malformed attribution is refused with 400.
+ *
+ * On a merge, `staff_id`/`name` name the article's author (the writer), and
+ * `reviewed_by`/`approved_by` the editor and the CEO.
+ */
+export interface Attribution {
+  /** The sim's staff id, e.g. `staff-1` (`[A-Za-z0-9._:-]`, at most 64). */
+  staff_id: string
+  /** The persona's display name: the git author name (at most 100, no `<` or `>`). */
+  name: string
+  /** Persona catalog slug, e.g. `giulia`. */
+  persona?: string | null
+  role?: string | null
+  job_id?: number | string | null
+  job_kind?: string | null
+  revision?: number | null
+  work_item?: string | null
+  model?: string | null
+  /** Defaults to the lease holder (`<kind> <holder> epoch <n>`) on the server. */
+  executor?: string | null
+  reviewed_by?: string | null
+  approved_by?: string | null
+}
+
 export interface DraftRequest {
   content_id: string
   path: string
   page: unknown
   message: string
   work_item?: string | null
+  attribution?: Attribution | null
 }
 
 export interface DraftResult {
@@ -273,8 +303,10 @@ export class CentralClient {
     return this.json('POST', '/api/gateway/draft', { json: body, headers: { [LEASE_HEADER]: token } })
   }
 
-  merge(token: string, number: number, headSha: string): Promise<{ merged_sha: string }> {
-    return this.json('POST', '/api/gateway/merge', { json: { number, head_sha: headSha }, headers: { [LEASE_HEADER]: token } })
+  merge(token: string, number: number, headSha: string, attribution?: Attribution | null): Promise<{ merged_sha: string }> {
+    const body: { number: number; head_sha: string; attribution?: Attribution } = { number, head_sha: headSha }
+    if (attribution) body.attribution = attribution
+    return this.json('POST', '/api/gateway/merge', { json: body, headers: { [LEASE_HEADER]: token } })
   }
 
   // ------------------------------------------------------------ events
@@ -477,7 +509,14 @@ export class LeaseKeeper {
 
 // ---------------------------------------------------------------- gateway (orchestrator)
 
-/** The orchestrator-wasm `OrchestratorGateway` over the central gateway. */
+/**
+ * The orchestrator-wasm `OrchestratorGateway` over the central gateway.
+ *
+ * `attribution` is the optional last argument of both calls: an `Attribution`
+ * or its JSON text (the wasm side passes text, as it does for the page).
+ * Left out, null or empty, the request is exactly what it was before
+ * attribution existed.
+ */
 export interface OrchestratorGateway {
   openDraft(
     contentId: string,
@@ -485,25 +524,34 @@ export interface OrchestratorGateway {
     pageJson: string,
     message: string,
     workItem: string | null,
+    attribution?: Attribution | string | null,
   ): Promise<{ number: number; branch: string; head_sha: string }>
-  merge(number: number, headSha: string): Promise<string>
+  merge(number: number, headSha: string, attribution?: Attribution | string | null): Promise<string>
+}
+
+function attributionOf(a: Attribution | string | null | undefined): Attribution | null {
+  if (a == null || a === '') return null
+  return typeof a === 'string' ? (JSON.parse(a) as Attribution) : a
 }
 
 /** `token`: the current fencing token (`LeaseKeeper.token`; it throws once the lease is lost). */
 export function centralGateway(client: CentralClient, token: () => string): OrchestratorGateway {
   return {
-    async openDraft(contentId, path, pageJson, message, workItem) {
-      const r = await client.draft(token(), {
+    async openDraft(contentId, path, pageJson, message, workItem, attribution) {
+      const body: DraftRequest = {
         content_id: contentId,
         path,
         page: JSON.parse(pageJson),
         message,
         work_item: workItem,
-      })
+      }
+      const who = attributionOf(attribution)
+      if (who) body.attribution = who
+      const r = await client.draft(token(), body)
       return { number: r.number, branch: r.branch, head_sha: r.head_sha }
     },
-    async merge(number, headSha) {
-      return (await client.merge(token(), number, headSha)).merged_sha
+    async merge(number, headSha, attribution) {
+      return (await client.merge(token(), number, headSha, attributionOf(attribution))).merged_sha
     },
   }
 }
