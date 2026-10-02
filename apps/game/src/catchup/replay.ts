@@ -174,18 +174,26 @@ export interface RestoredSim<S> {
   verified: boolean | null
 }
 
+/** A seed as the sim holds it: 64 bits, unsigned (wasm-bindgen wraps a negative BigInt the same way). */
+const u64 = (x: bigint) => BigInt.asUintN(64, x)
+
 /**
- * A record's seed text names `seed` when it is the same integer. The browser
- * reads a company's u64 seed from JSON as a number, and records have always
- * printed it with `String(number)` (the shortest text that reads back as that
- * double, "12345678901234567000"), which is not the integer the sim was
- * seeded with (`BigInt(number)`, 12345678901234567168): such a text names the
- * seed when it reads back as the same double.
+ * A record's seed text names `seed` when it is the same 64-bit integer.
+ *
+ * Two things make a plain text comparison wrong. The browser reads a
+ * company's seed from JSON as a number, and records have always printed it
+ * with `String(number)` (the shortest text that reads back as that double,
+ * "12345678901234567000"), which is not the integer the sim was seeded with
+ * (`BigInt(number)`, 12345678901234567168): such a text names the seed when
+ * it reads back as the same double. And the central server stores the seed
+ * as a signed 64-bit integer, so it can arrive negative, while the sim's
+ * seed is the same bits unsigned.
  */
 export function sameSeed(text: string, seed: bigint): boolean {
-  if (text === seed.toString()) return true
+  if (!/^-?\d+$/.test(text)) return false
+  if (u64(BigInt(text)) === u64(seed)) return true
   const n = Number(text)
-  return /^\d+$/.test(text) && Number.isInteger(n) && BigInt(n) === seed
+  return Number.isInteger(n) && u64(BigInt(n)) === u64(seed)
 }
 
 /**
@@ -211,9 +219,9 @@ export function restoreSim<S extends RestorableSim>(make: SimFactory<S>, input: 
     } catch (e) {
       throw new Error(`the snapshot at step ${point.step} cannot be restored: ${String(e)}`)
     }
-    // The world must be the company's (its seed, exactly) and the one the record describes (step and hash).
+    // The world must be the company's (its seed, bit for bit) and the one the record describes (step and hash).
     const at = { step: Number(sim.step()), hash: sim.hash().toString(), seed: sim.seed() }
-    if (at.step !== point.step || at.hash !== point.hash || at.seed !== input.seed) {
+    if (at.step !== point.step || at.hash !== point.hash || u64(at.seed) !== u64(input.seed)) {
       throw new Error(
         `the snapshot is not the world its record describes (snapshot: step ${at.step} hash ${at.hash} seed ${at.seed}; record: step ${point.step} hash ${point.hash}, company seed ${input.seed})`,
       )

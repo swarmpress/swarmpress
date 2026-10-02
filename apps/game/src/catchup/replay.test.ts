@@ -572,6 +572,19 @@ describe('sameSeed', () => {
     expect(sameSeed('18446744073709551616', 18446744073709551615n)).toBe(false)
     for (const junk of ['', ' 7', '7.0', '7e0', '-7', '0x7', 'NaN']) expect(sameSeed(junk, 7n), junk).toBe(false)
   })
+
+  it('treats a seed as 64 bits: the server sends it signed, the sim holds it unsigned', () => {
+    // What the central server sent for a real company (an i64 column), as JSON.parse reads it.
+    const n = -2590857001025110500
+    const company = BigInt(n) // -2590857001025110528n: what session.ts seeds the sim with
+    const inSim = BigInt.asUintN(64, company) // 15855887072684441088n: what Sim.seed() returns
+    expect(sameSeed(String(n), company)).toBe(true) // the record's text against the company's seed
+    expect(sameSeed(String(n), inSim)).toBe(true)
+    expect(sameSeed(company.toString(), inSim)).toBe(true)
+    expect(sameSeed(inSim.toString(), company)).toBe(true)
+    expect(sameSeed('-2590857001025119999', company)).toBe(false)
+    expect(sameSeed('-1', 18446744073709551615n)).toBe(true)
+  })
 })
 
 describe.skipIf(!built)('restoreSim over the real sim (client-wasm)', () => {
@@ -714,24 +727,30 @@ describe.skipIf(!built)('restoreSim over the real sim (client-wasm)', () => {
   it('a real company seed (a u64 the browser holds as a number) restores from its record, snapshot or replay', () => {
     // The server draws a u64; `JSON.parse` gives the browser a double, the sim is seeded with
     // `BigInt(double)`, and the record prints `String(double)`: two different texts for one seed.
-    const asNumber = 12345678901234567890
-    const seed = BigInt(asNumber)
-    expect(String(asNumber)).not.toBe(seed.toString())
-    const sim = wasm.Sim.scenario(SCENARIO, seed)
-    sim.advance(1500)
-    sim.drain_effects_json()
-    const at = { scenario: SCENARIO, step: Number(sim.step()), hash: sim.hash().toString(), lastSeq: 0 }
-    for (const text of [String(asNumber), seed.toString()]) {
-      const fromSnapshot = restoreSim(sims, { scenario: SCENARIO, seed, commands: [], point: { ...at, seed: text }, world: sim.snapshot() })
-      expect(fromSnapshot).toMatchObject({ fromSnapshot: true, verified: true })
-      expect(fromSnapshot.sim.seed()).toBe(seed)
-      const replayed = restoreSim(sims, { scenario: SCENARIO, seed, commands: [], point: { ...at, seed: text } })
-      expect(replayed).toMatchObject({ fromSnapshot: false, verified: true })
+    // The second is negative: the central server keeps the seed in a signed 64-bit column.
+    for (const asNumber of [12345678901234567890, -2590857001025110500]) {
+      const seed = BigInt(asNumber) // what session.ts passes to Sim.scenario and to restoreSim
+      expect(String(asNumber)).not.toBe(seed.toString())
+      const sim = wasm.Sim.scenario(SCENARIO, seed)
+      expect(sim.seed()).toBe(BigInt.asUintN(64, seed))
+      sim.advance(1500)
+      sim.drain_effects_json()
+      const at = { scenario: SCENARIO, step: Number(sim.step()), hash: sim.hash().toString(), lastSeq: 0 }
+      for (const text of [String(asNumber), seed.toString()]) {
+        const fromSnapshot = restoreSim(sims, { scenario: SCENARIO, seed, commands: [], point: { ...at, seed: text }, world: sim.snapshot() })
+        expect(fromSnapshot, text).toMatchObject({ fromSnapshot: true, verified: true })
+        expect(fromSnapshot.sim.seed()).toBe(sim.seed())
+        const replayed = restoreSim(sims, { scenario: SCENARIO, seed, commands: [], point: { ...at, seed: text } })
+        expect(replayed, text).toMatchObject({ fromSnapshot: false, verified: true })
+      }
+      // Another company's record is still refused, and so is another company's world.
+      expect(() => restoreSim(sims, { scenario: SCENARIO, seed, commands: [], point: { ...at, seed: '12345678901234569999' }, world: sim.snapshot() })).toThrow(
+        /the checkpoint's seed 12345678901234569999 is not the company's seed -?\d+/,
+      )
+      expect(() => restoreSim(sims, { scenario: SCENARIO, seed: seed + 4096n, commands: [], point: { ...at, seed: (seed + 4096n).toString() }, world: sim.snapshot() })).toThrow(
+        /not the world its record describes/,
+      )
     }
-    // Another company's record is still refused.
-    expect(() => restoreSim(sims, { scenario: SCENARIO, seed, commands: [], point: { ...at, seed: '12345678901234569999' }, world: sim.snapshot() })).toThrow(
-      /the checkpoint's seed 12345678901234569999 is not the company's seed 12345678901234567168/,
-    )
   })
 
   it('a legacy checkpoint (no world) is restored by replay from the seed, and still verified', () => {
