@@ -159,8 +159,9 @@ function fakeLlm() {
  * steps until its effects request jobs; each runs through orchestrator-wasm
  * and its outcomes go back as server commands (and into the command log).
  * The approved article waits at the publish gate until the harness, as the
- * CEO, answers its ticket with `Publish`. The deploy is the server's: DeployLanded arrives through the events API
- * and is applied to the sim, which publishes the item.
+ * CEO, answers its ticket with `Publish`. The deploy is the server's:
+ * DeployLanded arrives through the events API and is applied to the sim,
+ * which publishes the item.
  */
 async function runSimLoop(): Promise<SimLoopReport> {
   if (!company || !lease) throw new Error('connect first')

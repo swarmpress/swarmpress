@@ -255,6 +255,15 @@ function assertContiguous(commands: LoggedCommand[], where: string) {
   })
 }
 
+/**
+ * The seed the company's sim runs on, as the sim itself reports it
+ * (`Sim.seed()`): an unsigned 64-bit integer. The server sends the seed's bits
+ * as a JSON number, which may be negative and is a double; this is the one
+ * conversion, used for the sim and for the text in snapshot records, so a
+ * record always names the seed its world was made with.
+ */
+const simSeed = (company: Company): bigint => BigInt.asUintN(64, BigInt(company.seed))
+
 /** client-wasm's `Sim` as the restore's sim factory. */
 const SIMS: SimFactory<Sim> = {
   fromSeed: (scenario, seed) => Sim.scenario(scenario, seed),
@@ -299,7 +308,7 @@ async function restore(
   assertContiguous(commands, `restore from ${source}`)
   let restored: RestoredSim<Sim>
   try {
-    restored = restoreSim(SIMS, { scenario: SCENARIO, seed: BigInt(company.seed), commands, point: cp, world, forceReplay: opts.forceReplay })
+    restored = restoreSim(SIMS, { scenario: SCENARIO, seed: simSeed(company), commands, point: cp, world, forceReplay: opts.forceReplay })
   } catch (e) {
     throw new Error(`restore from ${source}: ${e instanceof Error ? e.message : String(e)}`)
   }
@@ -471,7 +480,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     if (loop.halted) throw new Error(`no checkpoint: ${loop.halted}`)
     const { world, ...point } = at
     // The store keeps the newest three (company-store.ts `putSnapshot`).
-    await store.putSnapshot(at.step, encodeSnapshot({ scenario: SCENARIO, seed: String(company.seed), ...point }, world), at.hash)
+    await store.putSnapshot(at.step, encodeSnapshot({ scenario: SCENARIO, seed: simSeed(company).toString(), ...point }, world), at.hash)
     return at
   }
   async function checkpoint(): Promise<CheckpointResult> {
@@ -483,7 +492,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     try {
       await checkpointLocal(at)
       local = true
-      central = await sync.seal({ scenario: SCENARIO, seed: String(company.seed), ...at })
+      central = await sync.seal({ scenario: SCENARIO, seed: simSeed(company).toString(), ...at })
     } catch (e) {
       loop.errors.push(`checkpoint failed: ${String(e)}`)
       console.error(`[session] checkpoint failed: ${String(e)}`)

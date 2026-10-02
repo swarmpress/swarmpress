@@ -58,8 +58,7 @@ fn golden_through_snapshots(every: u64) -> (World, usize) {
     }
     let mut restores = 0;
     for _ in 0..GOLDEN_STEPS {
-        // (`%` instead of `is_multiple_of` keeps MSRV 1.85)
-        if w.step > 0 && matches!(w.step % every, 0) {
+        if w.step > 0 && w.step.is_multiple_of(every) {
             w = restored(&w);
             restores += 1;
         }
