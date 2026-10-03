@@ -581,9 +581,9 @@ async fn every_rendered_prompt_fits_the_context_for_a_1500_word_article() {
     let llm = Arc::new(fake_writer::fake_writer([]));
     let store: Arc<dyn Store> = Arc::new(MemStore::new());
     put_brief(store.as_ref(), 1500).await;
-    // A 1,500-word article estimates at about 2,800 tokens of reading text:
-    // one review call at the default bar. A lower bar exercises the review
-    // part by part too.
+    // A 1,500-word article estimates close to the default bar of 3,000
+    // tokens of reading text (which side depends on the text); a lower bar
+    // makes sure the review is read part by part here.
     let site = SiteBinding::from_json(&binding_json(
         &mini_pack_json(),
         json!({"review_single_tokens": 2000}),
