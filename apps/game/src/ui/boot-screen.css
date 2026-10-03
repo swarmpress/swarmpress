@@ -39,3 +39,7 @@
 .boot-screen.is-card[data-collapsed='true'] .boot-stages, .boot-screen.is-card[data-collapsed='true'] .boot-message { display: none; }
 .boot-card-toggle { align-self: flex-end; margin-top: -30px; padding: 2px 8px; border: 1px solid #5b6070; border-radius: 6px; background: transparent; color: #c9ccd4;
                     font: 12px/1.4 system-ui, sans-serif; cursor: pointer; }
+.boot-binding { width: min(320px, 70vw); margin: 0; font-size: 13px; color: #c9ccd4; overflow-wrap: anywhere; }
+.boot-binding[hidden] { display: none; }
+.boot-binding code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: #e8e6e3; }
+.boot-binding-note { display: block; margin-top: 4px; color: #e3b864; }

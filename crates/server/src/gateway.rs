@@ -298,6 +298,23 @@ pub fn parse_repo(full: &str) -> Option<RepoId> {
     (ok(owner) && ok(name)).then(|| RepoId::new(owner, name))
 }
 
+/// The company's site repository, which every gateway call writes to or
+/// reads from: 409 when the stored binding is not `owner/name`, 403 when it
+/// is not (or no longer) on `SWARMPRESS_ALLOWED_SITE_REPOS`. The list is
+/// checked on every call, not only when the binding is made, so a company
+/// bound before the list changed cannot write outside it.
+pub fn company_repo(st: &AppState, company: &crate::db::Company) -> AppResult<RepoId> {
+    let repo = parse_repo(&company.site_repo)
+        .ok_or_else(|| AppError::Conflict("the company's site repo binding is invalid".into()))?;
+    if !st.cfg.site_repo_allowed(&company.site_repo) {
+        return Err(AppError::Forbidden(format!(
+            "{repo} is not in SWARMPRESS_ALLOWED_SITE_REPOS: the gateway does not touch it \
+             (rebind the company with PATCH /api/companies/me, or add the repository to the list)"
+        )));
+    }
+    Ok(repo)
+}
+
 /// What [`check_draft`] enforces besides the path policy.
 #[derive(Clone, Copy, Debug)]
 pub struct DraftRules {
@@ -559,8 +576,7 @@ pub async fn draft(
         },
     )?;
     let path = checked.path;
-    let repo = parse_repo(&company.site_repo)
-        .ok_or_else(|| AppError::Conflict("the company's site repo binding is invalid".into()))?;
+    let repo = company_repo(&st, company)?;
     let api = st.github.api_for(&repo).await?;
     if checked.article {
         check_against_site(
@@ -669,8 +685,7 @@ pub async fn merge(
             return Ok(Json(json!({ "merged_sha": sha })));
         }
     }
-    let repo = parse_repo(&company.site_repo)
-        .ok_or_else(|| AppError::Conflict("the company's site repo binding is invalid".into()))?;
+    let repo = company_repo(&st, company)?;
     // The server merges as the platform bot: the browser only asks for PRs
     // the gateway itself opened, at the exact head that was reviewed.
     let api = st.github.api_for(&repo).await?;
@@ -1027,8 +1042,7 @@ pub async fn close(
     PathPolicy::default()
         .check_branch(ActorKind::ContentAgent, &pr.branch)
         .map_err(gh_error)?;
-    let repo = parse_repo(&company.site_repo)
-        .ok_or_else(|| AppError::Conflict("the company's site repo binding is invalid".into()))?;
+    let repo = company_repo(&st, company)?;
     // Closing and deleting a branch are platform operations: the browser
     // names a number, the server decides what that touches.
     let api = st.github.api_for(&repo).await?;

@@ -2,6 +2,8 @@ import { render } from 'preact'
 import { signal } from '@preact/signals'
 import { SPEEDS, type ClockStatus } from '../session/clock-driver'
 import { eurCompact } from './format'
+import { repoUrl } from './links'
+import { siteBindingText, type SiteBindingView } from './site-binding'
 import './hud.css'
 
 export interface HudState {
@@ -59,6 +61,8 @@ export const hudClock = signal<HudClock | null>(null)
 export const hudToasts = signal<HudToast[]>([])
 /** The last loop error, kept on the chip until the player dismisses it. */
 export const hudAlert = signal<string | null>(null)
+/** The repository the company writes to (G2); the session sets it, null on the offline page. */
+export const hudSite = signal<SiteBindingView | null>(null)
 
 export const TOAST_MS = 10_000
 const MAX_TOASTS = 3
@@ -118,6 +122,29 @@ export function StatusChip({ status, alert, onDismissAlert }: { status: ClockSta
           !
         </button>
       )}
+    </span>
+  )
+}
+
+/**
+ * The company's site binding (G2): the repository and base branch the gateway
+ * writes to, read only, linked to the repository. Marked when the server's
+ * default for new companies has moved elsewhere since.
+ */
+export function SiteChip({ site }: { site: SiteBindingView }) {
+  const url = repoUrl({ repo: site.repo, publicBaseUrl: null })
+  const label = `${site.repo} · ${site.baseBranch}`
+  return (
+    <span class={`hud-site${site.serverDefault ? ' is-warn' : ''}`} title={siteBindingText(site)} data-repo={site.repo}>
+      <span class="hud-label">Writes to</span>{' '}
+      {url ? (
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          {label}
+        </a>
+      ) : (
+        label
+      )}
+      {site.serverDefault && <span class="sr-only"> (the server's default is now {site.serverDefault.repo})</span>}
     </span>
   )
 }
@@ -194,6 +221,7 @@ function Hud({ controls }: { controls: HudControls | null }) {
   const b = hudBusiness.value
   const c = hudClock.value
   const toasts = hudToasts.value
+  const site = hudSite.value
   return (
     <>
       <div class={c ? 'hud has-clock' : 'hud'} role="status" aria-live="off">
@@ -204,6 +232,7 @@ function Hud({ controls }: { controls: HudControls | null }) {
         {c && controls && <ClockControls clock={c} controls={controls} />}
         {c && controls && c.unattendedDays != null && <UnattendedDays days={c.unattendedDays} controls={controls} label="Unattended days" />}
         {b && <HudBusinessStats b={b} />}
+        {site && <SiteChip site={site} />}
         <span class="hud-meta">
           {s.renderer} · {s.fps} fps · {s.version}
         </span>

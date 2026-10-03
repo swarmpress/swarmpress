@@ -40,15 +40,44 @@ export interface Company {
   created_at: number
 }
 
+/** Which repository and base branch a company's gateway writes to. */
+export interface SiteBinding {
+  /** `owner/name`. */
+  site_repo: string
+  base_branch: string
+}
+
 export interface Me {
   user: CentralUser
   company: Company | null
+  /**
+   * The binding the owner configured on the server for new companies
+   * (`SWARMPRESS_DEFAULT_SITE_REPO`, `SWARMPRESS_DEFAULT_BASE_BRANCH`). Never
+   * from the URL: a write target is the server's configuration. Absent from
+   * servers before increment G2.
+   */
+  default_binding?: SiteBinding | null
 }
 
 export interface CreateCompany {
   name: string
   site_repo?: string
   base_branch?: string
+}
+
+/**
+ * The signed-in player's company, founded on first use (G2). The founding
+ * request names its binding explicitly: the repository and base branch the
+ * owner configured on the server (`me.default_binding`), so the write target
+ * is a deliberate choice of the server's owner and never a URL parameter.
+ * The server checks it against `SWARMPRESS_ALLOWED_SITE_REPOS` either way.
+ */
+export async function companyFor(client: CentralClient, me: Me, name: string): Promise<Company> {
+  if (me.company) return me.company
+  const existing = await client.myCompany()
+  if (existing) return existing
+  const b = me.default_binding
+  return client.createCompany(b ? { name, site_repo: b.site_repo, base_branch: b.base_branch } : { name })
 }
 
 /** `acquire` takes a free, expired, released or own lease; `request` also asks a holder to hand over; `force` takes over. */

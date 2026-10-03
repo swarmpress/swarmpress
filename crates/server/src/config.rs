@@ -5,10 +5,20 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use serde::Serialize;
 
+use crate::gateway::parse_repo;
 use crate::tracker::TrackerConfig;
 
 pub const DEFAULT_DATABASE_URL: &str = "sqlite://data/swarmpress.db?mode=rwc";
+
+/// Which repository and base branch a company's content gateway writes to.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct SiteBinding {
+    /// `owner/name`.
+    pub site_repo: String,
+    pub base_branch: String,
+}
 
 /// GitHub OAuth app settings. The base URLs are configurable so tests can
 /// point them at a fake provider (wiremock).
@@ -142,8 +152,23 @@ pub struct Config {
     /// starts with a `README.md` only, which gives an empty knowledge pack.
     pub fake_site: Option<PathBuf>,
     /// Owner for site repos of companies created without an explicit repo
-    /// (`GITHUB_SITES_ORG`, default `swarmpress-sites`).
+    /// when no default repo is configured (`GITHUB_SITES_ORG`, default
+    /// `swarmpress-sites`): `{org}/{login}-site`.
     pub sites_org: String,
+    /// The site repository a new company is bound to
+    /// (`SWARMPRESS_DEFAULT_SITE_REPO`, `owner/name`): the owner's choice,
+    /// applied at company creation. Without it the default is
+    /// `{GITHUB_SITES_ORG}/{login}-site`.
+    pub default_site_repo: Option<String>,
+    /// The base branch of a new company's binding
+    /// (`SWARMPRESS_DEFAULT_BASE_BRANCH`, default `main`).
+    pub default_base_branch: String,
+    /// The only repositories a company may be bound to
+    /// (`SWARMPRESS_ALLOWED_SITE_REPOS`, comma-separated `owner/name`,
+    /// compared without case), at creation, at a rebind and on every gateway
+    /// call. Required with a real GitHub (a startup error when empty); empty
+    /// with the fake GitHub means any repository.
+    pub allowed_site_repos: Vec<String>,
     /// `X-Hub-Signature-256` secret for `POST /webhooks/github`.
     pub webhook_secret: Option<String>,
     /// Emit `DeployLanded` right after a gateway merge (`SWARMPRESS_SIMULATE_DEPLOY`,
@@ -192,6 +217,9 @@ impl Config {
             github_mode: GithubMode::Fake,
             fake_site: None,
             sites_org: "swarmpress-sites".into(),
+            default_site_repo: None,
+            default_base_branch: "main".into(),
+            allowed_site_repos: Vec::new(),
             webhook_secret: Some("test-webhook-secret".into()),
             simulate_deploy: true,
             deploys: DeployWatchConfig::default(),
@@ -335,6 +363,16 @@ impl Config {
             sites_org: opt("GITHUB_SITES_ORG")
                 .filter(|v| !v.is_empty())
                 .unwrap_or_else(|| "swarmpress-sites".into()),
+            default_site_repo: opt("SWARMPRESS_DEFAULT_SITE_REPO")
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            default_base_branch: opt("SWARMPRESS_DEFAULT_BASE_BRANCH")
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| "main".into()),
+            allowed_site_repos: opt("SWARMPRESS_ALLOWED_SITE_REPOS")
+                .map(|v| split_list(&v))
+                .unwrap_or_default(),
             webhook_secret: opt("GITHUB_WEBHOOK_SECRET").filter(|v| !v.is_empty()),
             simulate_deploy,
             deploys: {
@@ -400,7 +438,74 @@ impl Config {
                 self.staff_email_domain
             );
         }
+        if real && self.dev_auth && !self.bind.ip().is_loopback() {
+            anyhow::bail!(
+                "SWARMPRESS_DEV_AUTH=1 with a real GitHub is only allowed on a loopback address: \
+                 SWARMPRESS_BIND={} would let anyone who reaches it sign in and write to the \
+                 site repository. Bind to 127.0.0.1, or sign in with GitHub instead",
+                self.bind
+            );
+        }
+        self.validate_site_binding(real)
+    }
+
+    /// The repository rules (G2): every allow-list entry and the default
+    /// binding are well formed, the default is on the list, and a real GitHub
+    /// has a list at all.
+    fn validate_site_binding(&self, real: bool) -> Result<()> {
+        for entry in &self.allowed_site_repos {
+            if parse_repo(entry).is_none() {
+                anyhow::bail!("SWARMPRESS_ALLOWED_SITE_REPOS: {entry:?} is not `owner/name`");
+            }
+        }
+        if real && self.allowed_site_repos.is_empty() {
+            anyhow::bail!(
+                "SWARMPRESS_ALLOWED_SITE_REPOS is required with a real GitHub \
+                 (SWARMPRESS_GITHUB unset or `real`): list the repositories a company may write \
+                 to, comma-separated `owner/name`, so that a typo can never write to another \
+                 one. For development use SWARMPRESS_GITHUB=fake"
+            );
+        }
+        if let Some(repo) = &self.default_site_repo {
+            if parse_repo(repo).is_none() {
+                anyhow::bail!("SWARMPRESS_DEFAULT_SITE_REPO={repo:?} is not `owner/name`");
+            }
+            if !self.site_repo_allowed(repo) {
+                anyhow::bail!(
+                    "SWARMPRESS_DEFAULT_SITE_REPO={repo:?} is not in SWARMPRESS_ALLOWED_SITE_REPOS"
+                );
+            }
+        }
+        if github::policy::validate_branch_name(&self.default_base_branch).is_err() {
+            anyhow::bail!(
+                "SWARMPRESS_DEFAULT_BASE_BRANCH={:?} is not a valid branch name",
+                self.default_base_branch
+            );
+        }
         Ok(())
+    }
+
+    /// Whether a company may be bound to `repo` (`owner/name`): it is on
+    /// `SWARMPRESS_ALLOWED_SITE_REPOS` (without case), or the list is empty
+    /// (the fake GitHub only; a real GitHub refuses to start without one).
+    pub fn site_repo_allowed(&self, repo: &str) -> bool {
+        self.allowed_site_repos.is_empty()
+            || self
+                .allowed_site_repos
+                .iter()
+                .any(|r| r.eq_ignore_ascii_case(repo))
+    }
+
+    /// The binding a new company of `login` gets when the request names
+    /// none: `SWARMPRESS_DEFAULT_SITE_REPO` on `SWARMPRESS_DEFAULT_BASE_BRANCH`,
+    /// else `{GITHUB_SITES_ORG}/{login}-site`.
+    pub fn default_binding(&self, login: &str) -> SiteBinding {
+        SiteBinding {
+            site_repo: self.default_site_repo.clone().unwrap_or_else(|| {
+                format!("{}/{}-site", self.sites_org, login.to_ascii_lowercase())
+            }),
+            base_branch: self.default_base_branch.clone(),
+        }
     }
 
     /// Cookies get `Secure` when the public origin is https.
@@ -434,6 +539,15 @@ fn is_mail_domain(d: &str) -> bool {
 
 fn opt(key: &str) -> Option<String> {
     std::env::var(key).ok()
+}
+
+/// A comma-separated list: entries trimmed, empty ones dropped.
+fn split_list(v: &str) -> Vec<String> {
+    v.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect()
 }
 
 fn flag(key: &str, default: bool) -> Result<bool> {
@@ -471,17 +585,121 @@ mod tests {
         }
     }
 
+    /// The test config with an allow-list, so it stays valid when a test
+    /// switches it to a real GitHub.
     fn cfg() -> Config {
-        Config::for_tests(
+        let mut c = Config::for_tests(
             "sqlite::memory:",
             PathBuf::from("data"),
             GithubOAuthConfig::github("id", "secret"),
-        )
+        );
+        c.allowed_site_repos = vec!["owner/site".into()];
+        c
     }
 
     #[test]
     fn the_test_config_is_valid() {
         cfg().validate().unwrap();
+    }
+
+    #[test]
+    fn a_real_github_needs_an_allow_list() {
+        let mut c = cfg();
+        c.allowed_site_repos.clear();
+        c.validate().expect("the fake GitHub takes any repository");
+        assert!(c.site_repo_allowed("anyone/anything"));
+        c.simulate_deploy = false;
+        for mode in [real(Some("tok")), real(None)] {
+            c.github_mode = mode;
+            let e = c.validate().unwrap_err().to_string();
+            assert!(e.contains("SWARMPRESS_ALLOWED_SITE_REPOS"), "{e}");
+        }
+        c.allowed_site_repos = split_list(" drietsch/cinqueterre.travel , ,Sandbox/Live-Test ");
+        assert_eq!(
+            c.allowed_site_repos,
+            ["drietsch/cinqueterre.travel", "Sandbox/Live-Test"]
+        );
+        c.validate().unwrap();
+        // Compared without case, as GitHub does; nothing else gets through.
+        assert!(c.site_repo_allowed("Drietsch/CinqueTerre.travel"));
+        assert!(c.site_repo_allowed("sandbox/live-test"));
+        assert!(!c.site_repo_allowed("swarmpress/cinqueterre.travel"));
+        assert!(!c.site_repo_allowed("drietsch/cinqueterre.travel2"));
+        // A malformed entry stops the server, fake or real.
+        for bad in ["noslash", "a/b/c", "a/..", "/b"] {
+            c.allowed_site_repos = vec![bad.into()];
+            let e = c.validate().unwrap_err().to_string();
+            assert!(e.contains("SWARMPRESS_ALLOWED_SITE_REPOS"), "{bad}: {e}");
+        }
+        c.github_mode = GithubMode::Fake;
+        c.allowed_site_repos = vec!["noslash".into()];
+        assert!(c.validate().is_err());
+    }
+
+    #[test]
+    fn the_default_binding_comes_from_the_owner_and_must_be_allowed() {
+        let mut c = cfg();
+        c.allowed_site_repos.clear();
+        assert_eq!(
+            c.default_binding("Ada"),
+            SiteBinding {
+                site_repo: "swarmpress-sites/ada-site".into(),
+                base_branch: "main".into(),
+            }
+        );
+        c.default_site_repo = Some("drietsch/cinqueterre.travel".into());
+        c.default_base_branch = "rehearsal".into();
+        c.validate().unwrap();
+        assert_eq!(
+            c.default_binding("ada"),
+            SiteBinding {
+                site_repo: "drietsch/cinqueterre.travel".into(),
+                base_branch: "rehearsal".into(),
+            }
+        );
+        // On the list or the server does not start.
+        c.allowed_site_repos = vec!["drietsch/other".into()];
+        let e = c.validate().unwrap_err().to_string();
+        assert!(
+            e.contains("SWARMPRESS_DEFAULT_SITE_REPO") && e.contains("not in"),
+            "{e}"
+        );
+        c.allowed_site_repos = vec!["Drietsch/CinqueTerre.Travel".into()];
+        c.validate().unwrap();
+        c.default_site_repo = Some("not a repo".into());
+        let e = c.validate().unwrap_err().to_string();
+        assert!(e.contains("SWARMPRESS_DEFAULT_SITE_REPO"), "{e}");
+        c.default_site_repo = None;
+        for bad in ["", "a..b", "a b", "x.lock", "/main"] {
+            c.default_base_branch = bad.into();
+            let e = c.validate().unwrap_err().to_string();
+            assert!(e.contains("SWARMPRESS_DEFAULT_BASE_BRANCH"), "{bad:?}: {e}");
+        }
+    }
+
+    #[test]
+    fn dev_auth_with_a_real_github_is_loopback_only() {
+        let mut c = cfg();
+        c.simulate_deploy = false;
+        c.dev_auth = true;
+        for open in ["0.0.0.0:8080", "192.168.1.20:8080", "[::]:8080"] {
+            c.bind = open.parse().unwrap();
+            c.github_mode = GithubMode::Fake;
+            c.validate().expect("the fake GitHub writes nothing real");
+            c.github_mode = real(Some("tok"));
+            let e = c.validate().unwrap_err().to_string();
+            assert!(
+                e.contains("SWARMPRESS_DEV_AUTH") && e.contains("loopback"),
+                "{open}: {e}"
+            );
+            c.dev_auth = false;
+            c.validate().expect("GitHub sign-in may listen anywhere");
+            c.dev_auth = true;
+        }
+        for local in ["127.0.0.1:8080", "[::1]:8080", "127.0.0.2:9000"] {
+            c.bind = local.parse().unwrap();
+            c.validate().unwrap();
+        }
     }
 
     #[test]

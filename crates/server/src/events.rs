@@ -41,6 +41,12 @@ pub mod kinds {
     pub const LEASE_REVOKED: &str = "LeaseRevoked";
     /// Another executor asked the holder to hand over: `{epoch, holder, by}`.
     pub const HANDOVER_REQUESTED: &str = "HandoverRequested";
+    /// The company was bound to another site repository or base branch
+    /// (`PATCH /api/companies/me`): `{from: {site_repo, base_branch}, to:
+    /// {site_repo, base_branch}, by, epoch, retired}`. `by` is the player's
+    /// login, `epoch` the lease that made the change, `retired` how many
+    /// settled gateway pull requests of the old repository were retired.
+    pub const SITE_REBOUND: &str = "SiteRebound";
 }
 
 const PAGE: i64 = 500;

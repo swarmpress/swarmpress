@@ -32,7 +32,7 @@
  */
 import { Sim } from 'swarm-wasm'
 import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResult, type RestoredSim, type SimFactory } from '../catchup/replay'
-import { CentralClient, centralGateway, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type OrchestratorGateway } from '../net/central'
+import { CentralClient, centralGateway, companyFor, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type OrchestratorGateway } from '../net/central'
 import { OrchestrationLoop, type JobRecord } from '../orchestration/loop'
 import { createOrchestrator, jobsFromEffects, loadRustValidator, localLlmBridge, outcomesForSim, type SiteBindingJson } from '../orchestrator'
 import { openCompanyStore, type CompanyStore, type Plan } from '../store'
@@ -41,6 +41,9 @@ import { fetchRemote, NEXT_SEGMENT_KEY, SEALED_SEQ_KEY, SyncUploader, toLogged, 
 import type { DataTopic } from '../ui/data-source'
 import { mountModelCard } from '../ui/model-card'
 import { companyStoreOptions, WasmDataSource, type SimOrgApi } from '../ui/wasm-source'
+import { showBootBinding } from '../ui/boot-screen'
+import { hudSite } from '../ui/hud'
+import { siteBindingView } from '../ui/site-binding'
 import { cleanDays, ClockDriver, clockStatus, sessionClockHost, type ClockStatus, type ModelStatus } from './clock-driver'
 import { openModelRuntime, type ModelRuntime, type ModelRuntimeInfo } from './model-runtime'
 import { refetchAfterMerge, refetchOnDeploy, SiteKnowledgeKeeper, SiteOrchestrator, type KnowledgeStatus, type SiteSummary } from './site-knowledge'
@@ -399,7 +402,12 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
 
   stage('login')
   const me = await signIn(client, login)
-  const company = me.company ?? (await client.myCompany()) ?? (await client.createCompany({ name: `${login} Dispatch` }))
+  // Founded with the binding the server's owner configured (G2), never one from the URL;
+  // which repository the company writes to is on screen from here on (boot screen, then the HUD).
+  const company = await companyFor(client, me, `${login} Dispatch`)
+  const binding = siteBindingView(company, me.default_binding)
+  showBootBinding(binding)
+  hudSite.value = binding
   // One database per company: the command log and checkpoints are the company's.
   stage('store')
   const store = await openCompanyStore({ name: `swarmpress-${company.id}.db` })

@@ -160,7 +160,10 @@ pub fn router(st: AppState) -> Router {
         .route("/api/me", get(me))
         // companies and leases
         .route("/api/companies", post(companies::create))
-        .route("/api/companies/me", get(companies::me))
+        .route(
+            "/api/companies/me",
+            get(companies::me).patch(companies::rebind),
+        )
         .route(
             "/api/companies/{id}/lease",
             post(companies::lease).delete(companies::release),
@@ -252,14 +255,21 @@ async fn healthz(State(st): State<AppState>) -> impl IntoResponse {
     }
 }
 
+/// `GET /api/me` → `{user, company, default_binding}`. `default_binding` is
+/// the repository and base branch the owner configured for new companies
+/// (`SWARMPRESS_DEFAULT_SITE_REPO`, `SWARMPRESS_DEFAULT_BASE_BRANCH`): the
+/// game passes it explicitly when it founds the company, and shows it next
+/// to the company's own binding.
 async fn me(
     State(st): State<AppState>,
     CurrentUser(user): CurrentUser,
 ) -> AppResult<Json<serde_json::Value>> {
     let company = accounts::company_for_user(&st.db, &user.id).await?;
-    Ok(Json(
-        serde_json::json!({ "user": user, "company": company }),
-    ))
+    Ok(Json(serde_json::json!({
+        "user": user,
+        "company": company,
+        "default_binding": st.cfg.default_binding(&user.login),
+    })))
 }
 
 /// Background tasks owned by a running server.

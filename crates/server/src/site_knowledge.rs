@@ -44,7 +44,7 @@ use crate::app::AppState;
 use crate::auth::CurrentUser;
 use crate::companies::require_lease;
 use crate::error::{AppError, AppResult};
-use crate::gateway::{gh_error, parse_repo};
+use crate::gateway::{company_repo, gh_error};
 
 /// Packs kept in memory. The real site's pack is about 384 kB of JSON plus
 /// its loaded indexes, so the cache holds a few MB at most; with one company
@@ -214,8 +214,7 @@ pub async fn knowledge(
     // side effect to fence, so the company lock is not held across the
     // snapshot download: a takeover does not wait for it.
     let company = require_lease(&st, &headers, &user).await?.company.clone();
-    let repo = parse_repo(&company.site_repo)
-        .ok_or_else(|| AppError::Conflict("the company's site repo binding is invalid".into()))?;
+    let repo = company_repo(&st, &company)?;
     let api = st.github.api_for(&repo).await?;
     let sha = base_head(api.as_ref(), &repo, &company.site_base_branch).await?;
     let mut out = HeaderMap::new();

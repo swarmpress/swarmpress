@@ -556,6 +556,8 @@ async fn simulated_deploys_with_a_real_github_refuse_to_start() {
         app_id: None,
         app_private_key_path: None,
     };
+    // A real GitHub needs an allow-list (G2; tests/binding.rs).
+    cfg.allowed_site_repos = vec!["swarmpress-sites/player1-site".into()];
     // `for_tests` has simulated deploys on: with a real GitHub that would
     // report every merge as live.
     assert!(cfg.simulate_deploy);

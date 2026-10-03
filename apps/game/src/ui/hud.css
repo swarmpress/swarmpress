@@ -48,3 +48,11 @@
               pointer-events: none !important; }
 .hud-toast { padding: 8px 14px; border-radius: 8px; background: #141824; border: 1px solid rgba(255, 138, 128, 0.7); color: #ffd0cb; font-size: 13px; line-height: 1.4;
              box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); overflow-wrap: anywhere; }
+
+/* The company's site binding (G2): which repository the gateway writes to. */
+.hud-site { display: inline-flex; align-items: baseline; gap: 4px; max-width: 40ch; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-site .hud-label { opacity: 0.75; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+.hud-site a { color: #e8e6e3; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-decoration: none; overflow: hidden; text-overflow: ellipsis; }
+.hud-site a:hover { text-decoration: underline; }
+.hud-site a:focus-visible { outline: 2px solid #e3b864; outline-offset: 2px; }
+.hud-site.is-warn a { color: #e3b864; }

@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
+use super::events::{insert_event_in, Event};
 use super::{new_id, Db};
 
 #[derive(Clone, Debug, FromRow, Serialize, PartialEq, Eq)]
@@ -302,6 +303,126 @@ pub async fn create_company(
     .fetch_optional(&db.writer)
     .await
     .context("create company")
+}
+
+/// What [`rebind_company`] did.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Rebind {
+    /// The company is bound to the new repository and branch. `retired`:
+    /// gateway pull requests of the old repository moved to
+    /// `gateway_prs_retired`; `event`: the inbox event, stored in the same
+    /// transaction (announce it after the commit).
+    Rebound {
+        company: Company,
+        retired: u64,
+        event: Event,
+    },
+    /// Already bound to that repository (compared without case) and branch:
+    /// nothing was written.
+    Unchanged(Company),
+    /// Refused: gateway pull requests of the company are still open, or
+    /// merged with their deployment still pending (numbers, ascending).
+    Busy { open: Vec<i64>, pending: Vec<i64> },
+}
+
+/// Bind the company to `site_repo` on `site_base_branch` (`PATCH
+/// /api/companies/me`), atomically (`BEGIN IMMEDIATE`):
+///
+/// - refused ([`Rebind::Busy`]) while a gateway pull request of the company
+///   is open or merged with its deployment `pending`;
+/// - when the repository changes, the company's settled gateway pull
+///   requests move to `gateway_prs_retired` (pull request numbers are only
+///   unique within one repository);
+/// - the inbox event `kind` (`payload` gets `retired` added) is stored with
+///   the change.
+pub async fn rebind_company(
+    db: &Db,
+    company_id: &str,
+    site_repo: &str,
+    site_base_branch: &str,
+    kind: &str,
+    mut payload: serde_json::Value,
+    now_ms: i64,
+) -> Result<Rebind> {
+    let mut tx = db.begin_immediate().await?;
+    let current = sqlx::query_as::<_, Company>(&format!(
+        "SELECT {COMPANY_COLS} FROM companies WHERE id = ?1"
+    ))
+    .bind(company_id)
+    .fetch_one(&mut *tx)
+    .await
+    .context("load company")?;
+    let same_repo = current.site_repo.eq_ignore_ascii_case(site_repo);
+    if same_repo && current.site_base_branch == site_base_branch {
+        tx.commit().await.context("commit rebind")?;
+        return Ok(Rebind::Unchanged(current));
+    }
+    let numbers = |cond: &'static str| {
+        format!("SELECT number FROM gateway_prs WHERE company_id = ?1 AND {cond} ORDER BY number")
+    };
+    let open: Vec<i64> = sqlx::query_scalar(&numbers("merged_sha IS NULL AND closed_at IS NULL"))
+        .bind(company_id)
+        .fetch_all(&mut *tx)
+        .await
+        .context("open gateway PRs")?;
+    let pending: Vec<i64> = sqlx::query_scalar(&numbers(
+        "merged_sha IS NOT NULL AND landed_at IS NULL AND deploy_state = 'pending'",
+    ))
+    .bind(company_id)
+    .fetch_all(&mut *tx)
+    .await
+    .context("pending gateway merges")?;
+    if !open.is_empty() || !pending.is_empty() {
+        // Nothing was written: dropping the transaction rolls it back.
+        return Ok(Rebind::Busy { open, pending });
+    }
+    let retired = if same_repo {
+        0
+    } else {
+        sqlx::query(
+            "INSERT INTO gateway_prs_retired
+                (company_id, site_repo, site_base_branch, number, content_id, work_item, path,
+                 branch, head_sha, merged_sha, merged_at, landed_at, deploy_state, deploy_detail,
+                 deploy_checked_at, closed_at, final_head, created_at, updated_at, retired_at)
+             SELECT company_id, ?2, ?3, number, content_id, work_item, path,
+                 branch, head_sha, merged_sha, merged_at, landed_at, deploy_state, deploy_detail,
+                 deploy_checked_at, closed_at, final_head, created_at, updated_at, ?4
+               FROM gateway_prs WHERE company_id = ?1",
+        )
+        .bind(company_id)
+        .bind(&current.site_repo)
+        .bind(&current.site_base_branch)
+        .bind(now_ms)
+        .execute(&mut *tx)
+        .await
+        .context("retire gateway PRs")?;
+        sqlx::query("DELETE FROM gateway_prs WHERE company_id = ?1")
+            .bind(company_id)
+            .execute(&mut *tx)
+            .await
+            .context("drop retired gateway PRs")?
+            .rows_affected()
+    };
+    let company = sqlx::query_as::<_, Company>(&format!(
+        "UPDATE companies SET site_repo = ?2, site_base_branch = ?3 WHERE id = ?1
+         RETURNING {COMPANY_COLS}"
+    ))
+    .bind(company_id)
+    .bind(site_repo)
+    .bind(site_base_branch)
+    .fetch_one(&mut *tx)
+    .await
+    .context("rebind company")?;
+    if let Some(obj) = payload.as_object_mut() {
+        obj.insert("retired".into(), retired.into());
+    }
+    let event = insert_event_in(&mut *tx, company_id, kind, &payload, now_ms).await?;
+    tx.commit().await.context("commit rebind")?;
+    Ok(Rebind::Rebound {
+        company,
+        retired,
+        event,
+    })
 }
 
 // ------------------------------------------------------------ leases

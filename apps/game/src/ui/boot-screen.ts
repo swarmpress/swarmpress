@@ -15,6 +15,7 @@
  * Plain DOM, no framework: it has to be up before anything else is loaded.
  */
 import './boot-screen.css'
+import { siteBindingText, type SiteBindingView } from './site-binding'
 
 export interface BootStage {
   id: string
@@ -62,6 +63,8 @@ export interface BootScreen {
    * button, or with `actions` instead of it.
    */
   fail(error: unknown, opts?: { actions?: BootAction[] }): void
+  /** The repository the company writes to (G2): shown under the stages from the moment the company is known. */
+  binding(view: SiteBindingView): void
   /** Boot finished: the screen leaves. */
   done(): void
   readonly el: HTMLElement
@@ -82,6 +85,17 @@ export interface BootScreenOptions {
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
+
+/** The screen that is up, for `showBootBinding`; null once boot is done. */
+let mounted: BootScreen | null = null
+
+/**
+ * Shows the company's site binding on the boot screen, if one is up. The
+ * session calls it as soon as the company is known; main.ts owns the screen.
+ */
+export function showBootBinding(view: SiteBindingView) {
+  mounted?.binding(view)
+}
 
 function buttons(actions: BootAction[]): HTMLElement {
   const row = document.createElement('div')
@@ -136,7 +150,12 @@ export function mountBootScreen(parent: HTMLElement, stages: BootStage[], opts: 
   message.className = 'boot-error'
   message.hidden = true
 
-  el.append(title, progress, list, note, message)
+  // Which repository the company writes to; filled in once the company is known.
+  const site = document.createElement('p')
+  site.className = 'boot-binding'
+  site.hidden = true
+
+  el.append(title, progress, list, site, note, message)
   parent.append(el)
 
   let active = -1
@@ -145,7 +164,7 @@ export function mountBootScreen(parent: HTMLElement, stages: BootStage[], opts: 
     if (li) li.dataset.state = state
   }
 
-  return {
+  const screen: BootScreen = {
     el,
     stage(id) {
       const index = stages.findIndex((s) => s.id === id)
@@ -200,8 +219,28 @@ export function mountBootScreen(parent: HTMLElement, stages: BootStage[], opts: 
       message.replaceChildren(text, buttons(actions))
       message.hidden = false
     },
+    binding(view) {
+      const repo = document.createElement('code')
+      repo.textContent = view.repo
+      const branch = document.createElement('code')
+      branch.textContent = view.baseBranch
+      site.replaceChildren('Writes to ', repo, ' · base ', branch)
+      site.title = siteBindingText(view)
+      site.dataset.repo = view.repo
+      if (view.serverDefault) {
+        const note = document.createElement('span')
+        note.className = 'boot-binding-note'
+        note.textContent = `Server default: ${view.serverDefault.repo} (${view.serverDefault.baseBranch}). This company was bound before it changed.`
+        site.append(note)
+        site.dataset.mismatch = 'true'
+      } else delete site.dataset.mismatch
+      site.hidden = false
+    },
     done() {
+      if (mounted === screen) mounted = null
       el.remove()
     },
   }
+  mounted = screen
+  return screen
 }

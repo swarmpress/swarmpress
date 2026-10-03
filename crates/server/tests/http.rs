@@ -21,6 +21,7 @@ async fn migrations_apply_and_constraints_hold() {
         "company_executors",
         "events",
         "gateway_prs",
+        "gateway_prs_retired",
         "sessions",
         "sync_segments",
         "sync_snapshots",
@@ -366,6 +367,118 @@ async fn serves_static_client_with_spa_fallback() {
     // API routes are not shadowed.
     assert_eq!(get("/api/me").await.unwrap().status(), 401);
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// The single-origin run (G2, `scripts/run-local.sh`): the built game and the
+/// API on one origin, `SWARMPRESS_PUBLIC_URL` pointing at the server itself.
+/// A fixture shaped like `vite build`'s output: the page, a hashed module, a
+/// worker and a wasm file. Every file of the client is cross-origin isolated
+/// (the page needs it for Turso's shared memory, a worker for its own
+/// isolation), a deep link with the game's parameters falls back to the
+/// page, wasm has its MIME type, and a dev login on that origin is a session
+/// the API on the same origin accepts.
+#[tokio::test]
+async fn single_origin_serves_the_built_client_and_the_api() {
+    let dist = common::temp_dir("dist");
+    std::fs::create_dir_all(dist.join("assets")).unwrap();
+    std::fs::write(
+        dist.join("index.html"),
+        r#"<!doctype html><html><head><script type="module" src="/assets/index-Bx3k.js"></script></head><body><div id="stage"></div></body></html>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dist.join("assets/index-Bx3k.js"),
+        "import('./session-9a.js')",
+    )
+    .unwrap();
+    std::fs::write(
+        dist.join("assets/sqlite-worker-77.js"),
+        "self.onmessage = () => {}",
+    )
+    .unwrap();
+    std::fs::write(
+        dist.join("assets/client_wasm_bg-4f.wasm"),
+        b"\0asm\x01\0\0\0",
+    )
+    .unwrap();
+    let d2 = dist.clone();
+    // The public URL is the server's own origin, as run-local.sh sets it.
+    let origin = "http://localhost:8080";
+    let s = TestServer::start_with(Opts {
+        tweak: Box::new(move |c| {
+            c.static_dir = Some(d2);
+            c.public_url = origin.into();
+        }),
+    })
+    .await;
+    // GitHub sign-in comes back to that origin, not to Vite's.
+    assert_eq!(
+        s.st.cfg.oauth_redirect_uri(),
+        "http://localhost:8080/auth/github/callback"
+    );
+
+    let isolated = |r: &reqwest::Response, what: &str| {
+        let h = r.headers();
+        assert_eq!(h["cross-origin-opener-policy"], "same-origin", "{what}");
+        assert_eq!(
+            h["cross-origin-embedder-policy"], "credentialless",
+            "{what}"
+        );
+    };
+    for (path, body_has, mime) in [
+        ("/", "index-Bx3k.js", "text/html"),
+        (
+            "/?central=1&llm=fake&ff=09:00",
+            "index-Bx3k.js",
+            "text/html",
+        ),
+        ("/play/deep/link?central=1", "index-Bx3k.js", "text/html"),
+        ("/assets/index-Bx3k.js", "session-9a.js", "javascript"),
+        ("/assets/sqlite-worker-77.js", "onmessage", "javascript"),
+    ] {
+        let r = s.http.get(s.url(path)).send().await.unwrap();
+        assert_eq!(r.status(), 200, "{path}");
+        isolated(&r, path);
+        let ct = r.headers()["content-type"].to_str().unwrap().to_string();
+        assert!(ct.contains(mime), "{path}: {ct}");
+        assert!(r.text().await.unwrap().contains(body_has), "{path}");
+    }
+    let r = s
+        .http
+        .get(s.url("/assets/client_wasm_bg-4f.wasm"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    isolated(&r, "wasm");
+    assert_eq!(r.headers()["content-type"], "application/wasm");
+    assert_eq!(r.bytes().await.unwrap().as_ref(), b"\0asm\x01\0\0\0");
+
+    // The API answers on the same origin; the game page does not shadow it.
+    let (st, h) = s.get_json("/healthz", None).await;
+    assert_eq!((st, h["status"].as_str()), (200, Some("ok")));
+    assert_eq!(s.get_json("/api/me", None).await.0, 401);
+    let res = s
+        .http
+        .post(s.url("/auth/dev/login"))
+        .header("origin", origin)
+        .json(&json!({ "login": "ceo" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let set = set_cookie_header(&res, "swarmpress_session").unwrap();
+    assert!(
+        set.contains("Path=/") && !set.contains("Secure"),
+        "http origin: {set}"
+    );
+    let cookie = cookie_pair(&res, "swarmpress_session").unwrap();
+    let (st, me) = s.get_json("/api/me", Some(&cookie)).await;
+    assert_eq!(st, 200, "{me}");
+    assert_eq!(me["user"]["login"], "ceo");
+    // The binding the page shows before it founds the company.
+    assert!(me["default_binding"]["site_repo"].is_string(), "{me}");
+    let _ = std::fs::remove_dir_all(dist);
 }
 
 #[tokio::test]

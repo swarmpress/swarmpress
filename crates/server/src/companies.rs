@@ -2,8 +2,17 @@
 //!
 //! - `POST /api/companies {name, site_repo?, base_branch?}` → 201 company, or
 //!   409 when the caller already owns one. Without `site_repo` the company is
-//!   bound to `{GITHUB_SITES_ORG}/{login}-site`.
+//!   bound to the owner's default (`SWARMPRESS_DEFAULT_SITE_REPO`, else
+//!   `{GITHUB_SITES_ORG}/{login}-site`), without `base_branch` to
+//!   `SWARMPRESS_DEFAULT_BASE_BRANCH` (`main`). A repository that is not on
+//!   `SWARMPRESS_ALLOWED_SITE_REPOS` is refused with 403.
 //! - `GET /api/companies/me` → the caller's company (404 without one).
+//! - `PATCH /api/companies/me {site_repo?, base_branch?}` → the company bound
+//!   to another repository or base branch ([`rebind`]): lease required, 403
+//!   outside the allow-list, 409 while gateway pull requests are open or a
+//!   merge's deployment is pending, a `SiteRebound` inbox event. Nothing
+//!   checks yet that the player owns the repository (ADR-0047's
+//!   installation check, a later increment).
 //! - `POST /api/companies/{id}/lease {device_id, mode?, kind?}` →
 //!   `{epoch, lease_id, token, holder, holder_kind, ttl_ms, renewed,
 //!   handover_requested, handover_by, head}`. One executor holds a company at
@@ -35,6 +44,7 @@ use serde_json::json;
 
 use crate::app::{require_company, AppState};
 use crate::auth::CurrentUser;
+use crate::db::accounts::Rebind;
 use crate::db::{
     accounts, Company, ExecutorKind, Lease, LeaseMode, LeaseOutcome, LeaseRequest, User,
 };
@@ -62,19 +72,16 @@ pub async fn create(
     if name.is_empty() || name.chars().count() > 80 {
         return Err(AppError::BadRequest("name must be 1-80 characters".into()));
     }
+    let default = st.cfg.default_binding(&user.login);
     let site_repo = match body.site_repo.as_deref().map(str::trim) {
         Some(r) if !r.is_empty() => r.to_string(),
-        _ => format!(
-            "{}/{}-site",
-            st.cfg.sites_org,
-            user.login.to_ascii_lowercase()
-        ),
+        _ => default.site_repo,
     };
-    let repo = parse_repo(&site_repo)
-        .ok_or_else(|| AppError::BadRequest("site_repo must be `owner/name`".into()))?;
-    let base = body.base_branch.as_deref().unwrap_or("main").trim();
-    github::policy::validate_branch_name(base)
-        .map_err(|_| AppError::BadRequest("base_branch is not a valid branch name".into()))?;
+    let base = match body.base_branch.as_deref().map(str::trim) {
+        Some(b) if !b.is_empty() => b.to_string(),
+        _ => default.base_branch,
+    };
+    let repo = checked_binding(&st, &site_repo, &base)?;
     let seed = rand::rngs::OsRng.next_u64();
     match accounts::create_company(
         &st.db,
@@ -82,17 +89,34 @@ pub async fn create(
         name,
         seed,
         &repo.to_string(),
-        base,
+        &base,
         st.now_ms(),
     )
     .await?
     {
         Some(c) => {
-            tracing::info!(company_id = %c.id, user_id = %user.id, repo = %c.site_repo, "company created");
+            tracing::info!(company_id = %c.id, user_id = %user.id, repo = %c.site_repo,
+                base = %c.site_base_branch, "company created");
             Ok((StatusCode::CREATED, Json(c)))
         }
         None => Err(AppError::Conflict("you already own a company".into())),
     }
+}
+
+/// A binding a company may have: `owner/name` (400 otherwise), a valid
+/// branch name (400), and a repository on `SWARMPRESS_ALLOWED_SITE_REPOS`
+/// (403). Returns the repository in its canonical `owner/name` form.
+fn checked_binding(st: &AppState, site_repo: &str, base: &str) -> AppResult<github::RepoId> {
+    let repo = parse_repo(site_repo)
+        .ok_or_else(|| AppError::BadRequest("site_repo must be `owner/name`".into()))?;
+    github::policy::validate_branch_name(base)
+        .map_err(|_| AppError::BadRequest("base_branch is not a valid branch name".into()))?;
+    if !st.cfg.site_repo_allowed(site_repo) {
+        return Err(AppError::Forbidden(format!(
+            "{repo} is not in SWARMPRESS_ALLOWED_SITE_REPOS: a company cannot be bound to it"
+        )));
+    }
+    Ok(repo)
 }
 
 pub async fn me(
@@ -100,6 +124,122 @@ pub async fn me(
     CurrentUser(user): CurrentUser,
 ) -> AppResult<Json<Company>> {
     Ok(Json(require_company(&st, &user.id).await?))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RebindBody {
+    #[serde(default)]
+    pub site_repo: Option<String>,
+    #[serde(default)]
+    pub base_branch: Option<String>,
+}
+
+/// `PATCH /api/companies/me {site_repo?, base_branch?}`: bind the caller's
+/// company to another site repository or base branch. A missing field keeps
+/// its current value; at least one is required (400).
+///
+/// - A fenced write: the lease is required (428 without it, 409 when stale),
+///   and the company lock is held across it.
+/// - The binding is checked as at creation: `owner/name` and a valid branch
+///   (400), on `SWARMPRESS_ALLOWED_SITE_REPOS` (403).
+/// - 409 while gateway pull requests of the company are open (close them
+///   with `POST /api/gateway/close` or merge them) or a merge's deployment is
+///   still pending: their bookkeeping belongs to the old repository.
+/// - When the repository changes, the company's settled gateway pull
+///   requests are retired (`gateway_prs_retired`): numbers are only unique
+///   within one repository.
+/// - Recorded in the inbox: `SiteRebound {from, to, by, epoch, retired}`.
+///   Unchanged answers 200 with the company and records nothing.
+///
+/// Nothing checks that the player owns the repository; that is the
+/// installation check of ADR-0047, a later increment. The allow-list is the
+/// guard until then.
+pub async fn rebind(
+    State(st): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    headers: HeaderMap,
+    Json(body): Json<RebindBody>,
+) -> AppResult<Json<Company>> {
+    let fenced = require_lease(&st, &headers, &user).await?;
+    let company = &fenced.company;
+    let trimmed = |v: &Option<String>| {
+        v.as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(String::from)
+    };
+    let (site_repo, base) = match (trimmed(&body.site_repo), trimmed(&body.base_branch)) {
+        (None, None) => {
+            return Err(AppError::BadRequest(
+                "name a site_repo or a base_branch to bind the company to".into(),
+            ))
+        }
+        (repo, base) => (
+            repo.unwrap_or_else(|| company.site_repo.clone()),
+            base.unwrap_or_else(|| company.site_base_branch.clone()),
+        ),
+    };
+    let repo = checked_binding(&st, &site_repo, &base)?.to_string();
+    let payload = json!({
+        "from": { "site_repo": company.site_repo, "base_branch": company.site_base_branch },
+        "to": { "site_repo": repo, "base_branch": base },
+        "by": user.login,
+        "epoch": fenced.lease.epoch,
+    });
+    match accounts::rebind_company(
+        &st.db,
+        &company.id,
+        &repo,
+        &base,
+        kinds::SITE_REBOUND,
+        payload,
+        st.now_ms(),
+    )
+    .await?
+    {
+        Rebind::Unchanged(c) => Ok(Json(c)),
+        Rebind::Busy { open, pending } => {
+            let list = |n: &[i64]| {
+                n.iter()
+                    .map(|n| format!("#{n}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            let mut why = Vec::new();
+            if !open.is_empty() {
+                why.push(format!(
+                    "pull requests {} are open (merge them, or close them with POST /api/gateway/close)",
+                    list(&open)
+                ));
+            }
+            if !pending.is_empty() {
+                why.push(format!(
+                    "the deployments of {} are still pending",
+                    list(&pending)
+                ));
+            }
+            Err(AppError::Conflict(format!(
+                "{} stays bound to {} on {}: {}",
+                company.name,
+                company.site_repo,
+                company.site_base_branch,
+                why.join("; ")
+            )))
+        }
+        Rebind::Rebound {
+            company: rebound,
+            retired,
+            event,
+        } => {
+            tracing::warn!(company_id = %rebound.id, user = %user.login,
+                from = %company.site_repo, from_base = %company.site_base_branch,
+                to = %rebound.site_repo, to_base = %rebound.site_base_branch, retired,
+                "company rebound to another site repository");
+            events::announce(&st, event);
+            Ok(Json(rebound))
+        }
+    }
 }
 
 /// The caller's company when it is `id`: 404 if no such company, 403 if it
