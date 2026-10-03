@@ -9,14 +9,15 @@
 swarm.press is a browser **management sim / digital dollhouse**. Each player is the CEO of an AI
 publishing house, shown as a detailed isometric 3D building (Babylon.js on WebGPU only, ADR-0064;
 the WebGL2 fallback is still in the code until its removal increment). The office is to be drawn
-in bricks with live information surfaces (ADR-0063; decided, a spike first).
+in bricks from a construction kit that players and staff build with, with live information
+surfaces (ADR-0063, ADR-0065; decided, kit core and a spike first).
 - The staff are LLM agents with persistent personas. Their meetings play out as speech bubbles,
   and their work produces **one real website per player**.
 - The company is extensible through a JS SDK.
 - The user's own company is the imported, still-live **cinqueterre.travel**.
 
-Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0064; ADR-0038 to 0064 define
-the current architecture; ADR-0044 to 0064 are decided and mostly not built yet). Features and
+Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0065; ADR-0038 to 0065 define
+the current architecture; ADR-0044 to 0065 are decided and mostly not built yet). Features and
 their health: `docs/features/` plus Cockpit. The current MVP is `docs/mvp.md` (the owner's
 company for real, on one resident in-browser model); its implementation designs are in
 `docs/design/`.
@@ -195,7 +196,7 @@ cockpit serve --watch                         # http://127.0.0.1:4747
 | Sim entities, systems, commands, pipeline stages | `docs/architecture/sim.md` |
 | The current MVP: milestones, tracks, increments, what "done" means | `docs/mvp.md` |
 | MVP implementation designs (runtime, pipeline, publish gate, game time, site path, gap analysis) | `docs/design/`, ADR-0057…0062 |
-| Brick office and information surfaces (concept, design, prototype) | `docs/reference/brick-office.md`, `docs/design/brick-office.md`, ADR-0063, ADR-0064 |
+| Brick office, construction kit, information surfaces (concept, designs, prototype) | `docs/reference/brick-office.md`, `docs/design/construction-kit.md`, `docs/design/brick-office.md`, ADR-0063…0065 |
 | Local-inference and agent-loop principles (the owner's concept document) | `docs/reference/browser-agent-studio.md` |
 | Stage 0 contract, central HTTP API | `docs/mvp.md` (Stage 0), `crates/server/README.md` |
 | Local-first, storage, SDK | ADR-0038…0043, `docs/architecture/sdk.md`, `docs/guides/extending.md` |

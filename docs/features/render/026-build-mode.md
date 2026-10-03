@@ -8,12 +8,16 @@ paths:
   - "apps/game/e2e/build*.spec.ts"
 adrs:
   - ADR-0003
+  - ADR-0065
   - ADR-0005
 ---
 
 # Build mode and placement
 
-> **ADR-0063:** placement happens on the brick office's stud grid at object level (whole prefabs); brick-by-brick editing is deferred.
+> **ADR-0065:** build mode is the construction kit for players (after the MVP): place, move, turn and
+> configure designs on the stud grid; edit designs brick by brick in a design editor (one command
+> per committed design); rooms from templates; a sandbox or an economic mode per company. Design:
+> [`docs/design/construction-kit.md`](../../design/construction-kit.md) section 6.
 
 Picking on the grid, ghost previews, placement validated in wasm with `validate_command`, confirmed
 by the server command.

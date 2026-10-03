@@ -1,6 +1,6 @@
 # ADR-0063 — The brick office and live information surfaces
 
-**Status:** Accepted (amends ADR-0006, ADR-0007 and ADR-0018; supersedes in part ADR-0017); rollout gated by the spike in FEAT-081
+**Status:** Accepted (amends ADR-0006, ADR-0007 and ADR-0018; supersedes in part ADR-0017); rollout gated by the spike in FEAT-081; amended by ADR-0065 (the construction kit)
 **Date:** 2026-10-03
 
 ## Context

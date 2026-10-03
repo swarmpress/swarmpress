@@ -24,3 +24,4 @@ The Babylon.js client (`apps/game`): engine, camera, cutaway, lighting, characte
 | [FEAT-029](029-asset-pipeline.md) | Asset pipeline | planned | normal |
 | [FEAT-081](081-brick-office.md) | Brick office renderer (spike first) | planned | high |
 | [FEAT-082](082-information-surfaces.md) | Live information surfaces | planned | high |
+| [FEAT-083](083-construction-kit-core.md) | Construction kit core: parts, designs and the kit compiler | planned | high |

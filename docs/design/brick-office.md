@@ -3,7 +3,12 @@
 > **Status:** design, 2026-10-03. Decisions: [ADR-0063](../adr/0063-brick-office-and-live-information-surfaces.md)
 > and [ADR-0064](../adr/0064-webgpu-only.md). Concept: [`docs/reference/brick-office.md`](../reference/brick-office.md).
 > Features: FEAT-081 (brick office renderer, starting with the spike), FEAT-082 (information
-> surfaces), FEAT-017 (WebGPU only). Nothing here is built yet. Numbers marked *target* are
+> surfaces), FEAT-017 (WebGPU only).
+>
+> **Amended by [ADR-0065](../adr/0065-the-construction-kit.md):** the bricks come from a construction
+> kit (parts, designs, a deterministic compiler) that the renderer, players and staff share; see
+> [`docs/design/construction-kit.md`](construction-kit.md). Where this document says "prefab", read
+> "shipped kit design"; brickification (section 3) is the kit compiler's job. Nothing here is built yet. Numbers marked *target* are
 > proposals until the spike measures them.
 
 ## 1. What changes and what stays
