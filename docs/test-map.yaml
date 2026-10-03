@@ -47,3 +47,11 @@
 # The staged article's unit tests in src/article.rs (section ids, sentence splitting, media URLs).
 - match: { classname: agents, title: "article::tests::" }
   features: [FEAT-032]
+# The site binding rules in crates/server/src/config.rs (increment G2): the allow-list a real
+# GitHub requires, the owner's default binding, dev login on loopback only in real mode.
+- match: { classname: server, title: "config::tests::a_real_github_needs_an_allow_list" }
+  features: [FEAT-046]
+- match: { classname: server, title: "config::tests::the_default_binding_comes_from_the_owner" }
+  features: [FEAT-046, FEAT-048]
+- match: { classname: server, title: "config::tests::dev_auth_with_a_real_github_is_loopback_only" }
+  features: [FEAT-046]

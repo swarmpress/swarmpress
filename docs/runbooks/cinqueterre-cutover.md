@@ -3,6 +3,8 @@
 This runbook moves the live cinqueterre.travel site from "built from the swarmpress monorepo" to
 "site-kit plus an agent-authored theme, operated by the game", **without the live site ever
 breaking** ([ADR-0023](../adr/0023-cinqueterre-migration-and-cutover.md)). Feature: FEAT-050.
+Agent pull requests reach a fork of the site first: [the fork rehearsal](fork-rehearsal.md)
+applies step 0 to the fork, and ends with the checklist for the first live article.
 
 ## Where we start
 

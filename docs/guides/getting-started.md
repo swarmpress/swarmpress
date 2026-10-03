@@ -54,9 +54,11 @@ Environment variables (see `.env.example` for all of them):
 | `DATABASE_URL` | server (sqlx/SQLite), default `sqlite://data/swarmpress.db?mode=rwc` |
 | `SWARMPRESS_DATA_DIR` | sync blobs (command-log segments, snapshots), default `./data` |
 | `SWARMPRESS_DEV_AUTH`, `SWARMPRESS_GITHUB`, `SWARMPRESS_SIMULATE_DEPLOY` | dev login, fake GitHub, simulated deploys |
+| `SWARMPRESS_STATIC_DIR`, `SWARMPRESS_PUBLIC_URL` | the built game the server serves, and the origin players open (the server's own: `http://localhost:8080`) |
+| `SWARMPRESS_DEFAULT_SITE_REPO`, `SWARMPRESS_DEFAULT_BASE_BRANCH`, `SWARMPRESS_ALLOWED_SITE_REPOS` | which repository a new company writes to, and the only ones any company may (required with a real GitHub) |
 | `GITHUB_TOKEN` or `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY_PATH`, `GITHUB_WEBHOOK_SECRET` | content gateway, deploy webhooks |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` | GitHub sign-in |
-| `GITHUB_SITES_ORG` | owner of default site repos |
+| `GITHUB_SITES_ORG` | owner of default site repos when no default repository is set |
 
 ## One article, from standup to published (the MVP loop)
 
@@ -113,6 +115,49 @@ Limits of the fake modes:
   server, delete `./data`, and use a new `login=` (or clear the site data in the browser).
 
 The automated version of this run is `apps/game/e2e/mvp.spec.ts`.
+
+## The built game on one origin (no Vite)
+
+The way the owner runs the company (increment G2): `pnpm build` writes the game to
+`apps/game/dist`, and the server serves it next to the API on one origin, cross-origin isolated
+(COOP `same-origin`, COEP `credentialless`) with a fallback to the page for deep links. Nothing
+is proxied, so `/webhooks` and `/t` work too.
+
+```sh
+cp .env.example .env              # once; SWARMPRESS_PUBLIC_URL is the server's own http://localhost:8080
+scripts/run-local.sh --build      # checks, prints the binding, pnpm build, builds and starts the server
+# then open http://localhost:8080/?central=1&llm=fake&ff=09:00
+```
+
+`scripts/run-local.sh` (see `--help`) loads `.env` (or `--env FILE`), checks the prerequisites
+(cargo, curl; with `--build` pnpm, node, `node_modules` and wasm-bindgen 0.2.100; without it a
+built `apps/game/dist`) and the settings the server would refuse, and prints:
+
+- the URL to open;
+- whether GitHub is the fake (nothing leaves the machine) or real;
+- the repository a new company writes to (`SWARMPRESS_DEFAULT_SITE_REPO`, base branch) and the
+  allow-list;
+- every company already in the database with its own binding, marked when it is outside the
+  allow-list or not the default.
+
+With a real GitHub it asks before it starts (`--yes` skips the question) and refuses the live
+site's repository without `--live-site`. `--check` starts the server, checks the page's
+isolation headers, the deep-link fallback and the API on the same origin, and stops it again.
+
+The game shows the same binding: on the boot screen from the moment the company is known
+("Writes to owner/name · base main"), then in the HUD, linked to the repository. It is read
+only. A company keeps the binding it was founded with; `scripts/rebind-company.sh owner/name`
+moves it (`PATCH /api/companies/me`, with the company lease, refused while its pull requests are
+open), and the game shows the new one after a reload.
+
+## Against a real repository
+
+Token mode (`SWARMPRESS_GITHUB=real`, `GITHUB_TOKEN`, `SWARMPRESS_ALLOWED_SITE_REPOS`) writes
+real pull requests. Start from `.env.rehearsal.example` and follow
+[the fork rehearsal](../runbooks/fork-rehearsal.md): a fork of the site under your account
+first, the live repository only for the first live article (Milestone C). The token's
+permissions and the settings the server refuses in real mode are in `crates/server/README.md`
+("Token mode").
 
 ## Everyday commands
 

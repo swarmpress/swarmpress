@@ -249,12 +249,16 @@ impl Config {
                 .filter(|v| !v.is_empty())
                 .unwrap_or_else(|| "data".into()),
         );
-        let bind = opt("SWARMPRESS_BIND")
+        let bind: SocketAddr = opt("SWARMPRESS_BIND")
             .unwrap_or_else(|| "127.0.0.1:8080".into())
             .parse()
             .context("SWARMPRESS_BIND must be host:port")?;
-        let public_url =
-            opt("SWARMPRESS_PUBLIC_URL").unwrap_or_else(|| "http://localhost:5173".into());
+        // The server's own origin: it serves the built game itself
+        // (SWARMPRESS_STATIC_DIR). `pnpm dev` with GitHub sign-in through
+        // Vite sets http://localhost:5173.
+        let public_url = opt("SWARMPRESS_PUBLIC_URL")
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| format!("http://localhost:{}", bind.port()));
 
         let mut github = GithubOAuthConfig::github(
             opt("GITHUB_OAUTH_CLIENT_ID").unwrap_or_default(),

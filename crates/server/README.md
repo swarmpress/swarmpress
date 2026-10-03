@@ -22,6 +22,36 @@ Sync blobs go under `SWARMPRESS_DATA_DIR` (default `./data`). For local
 development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are in
 `.env.example`).
 
+The built game on the server's own origin (increment G2), with the
+prerequisites and the binding checked and printed first:
+
+```bash
+scripts/run-local.sh --build            # pnpm build, then the server serving apps/game/dist
+open 'http://localhost:8080/?central=1&llm=fake&ff=09:00'
+scripts/run-local.sh --check            # start, check COOP/COEP + SPA fallback + API, stop
+```
+
+### Token mode (the MVP: a real repository from the owner's machine)
+
+`SWARMPRESS_GITHUB=real` with `GITHUB_TOKEN` writes to GitHub with that token.
+The server refuses to start in real mode without `SWARMPRESS_ALLOWED_SITE_REPOS`,
+with `SWARMPRESS_SIMULATE_DEPLOY`, `SWARMPRESS_FAKE_SITE` or
+`SWARMPRESS_ARTICLE_PROFILE=off`, and with `SWARMPRESS_DEV_AUTH=1` on a bind
+address that is not loopback. `.env.rehearsal.example` holds a complete
+configuration; `docs/runbooks/fork-rehearsal.md` walks through a rehearsal on a
+fork.
+
+The token: a fine-grained personal access token whose repository access is the
+site repository only, with **Contents: read and write** (draft branches, page
+commits, the Merges API, branch deletion, the repository tarball for the
+knowledge pack), **Pull requests: read and write** (open, merge, close),
+**Actions: read** (the deploy poller's check runs) and **Metadata: read**
+(always included). These are taken from GitHub's documentation and have not
+been verified against the API by this project; a 403 in the server log names
+the call that needs more. Whether the check-runs endpoint the poller reads is
+covered by Actions: read for a fine-grained token is the least certain of
+them: if the poller logs 403, merges stay `pending` and time out.
+
 ## Environment
 
 | Variable | Default | Notes |
@@ -29,16 +59,19 @@ development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are i
 | `DATABASE_URL` | `sqlite://data/swarmpress.db?mode=rwc` | `sqlite::memory:` works for throwaway runs |
 | `SWARMPRESS_DATA_DIR` | `data` | sync blobs (`sync/{company}/log/*.bin`, `snapshot.bin`) |
 | `SWARMPRESS_BIND` | `127.0.0.1:8080` | |
-| `SWARMPRESS_PUBLIC_URL` | `http://localhost:5173` | OAuth redirect base; `https` makes cookies `Secure` |
+| `SWARMPRESS_PUBLIC_URL` | `http://localhost:<bind port>` | the origin players open: OAuth redirect base; `https` makes cookies `Secure`. The server serves the built game itself, so this is its own address; set `http://localhost:5173` for GitHub sign-in through `pnpm dev` |
 | `SWARMPRESS_STATIC_DIR` | `apps/game/dist` | built client served at `/` (empty = off) |
 | `SWARMPRESS_SESSION_TTL_SECS` | 2592000 | |
-| `SWARMPRESS_DEV_AUTH` | off | `1` enables `POST /auth/dev/login`. Never in production |
+| `SWARMPRESS_DEV_AUTH` | off | `1` enables `POST /auth/dev/login`. Never in production. With a real GitHub a startup error unless `SWARMPRESS_BIND` is a loopback address |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` | | GitHub sign-in (`GITHUB_OAUTH_AUTHORIZE_URL`, `GITHUB_OAUTH_TOKEN_URL`, `GITHUB_API_URL` override endpoints) |
-| `SWARMPRESS_GITHUB` | real | `fake` = in-memory `github::FakeGitHub` (repos created on demand; state is lost on restart) |
+| `SWARMPRESS_GITHUB` | real | `fake` = in-memory `github::FakeGitHub` (repos created on demand; state is lost on restart). Unset or `real` needs `SWARMPRESS_ALLOWED_SITE_REPOS` |
+| `SWARMPRESS_DEFAULT_SITE_REPO` | | `owner/name` a new company is bound to (the game passes it explicitly when it founds the company, from `GET /api/me`'s `default_binding`). Without it `{GITHUB_SITES_ORG}/{login}-site`. A startup error when malformed or not on the allow-list |
+| `SWARMPRESS_DEFAULT_BASE_BRANCH` | `main` | base branch of a new company's binding |
+| `SWARMPRESS_ALLOWED_SITE_REPOS` | | comma-separated `owner/name` (compared without case): the only repositories a company may be bound to (creation, rebind: 403) or the gateway may touch (draft, merge, close, knowledge: 403, checked on every call). Required with a real GitHub (a startup error when empty or malformed); empty with the fake = any |
 | `SWARMPRESS_FAKE_SITE` | | a directory: every site repo the fake creates on demand starts with its files (all text files under it, at their paths relative to it; hidden entries left out), so the knowledge pack is a real site's. `apps/game/e2e/central-server.mjs` sets it to `crates/knowledge/tests/fixtures/cinqueterre-mini`. Without it a fake repo holds a `README.md` only (an empty pack). A startup error with a real GitHub |
-| `GITHUB_TOKEN` | | real gateway with a static token |
+| `GITHUB_TOKEN` | | real gateway with a static token (token mode, above: the permissions it needs) |
 | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH` | | real gateway as the GitHub App (installation per repo). Without a token or App, gateway calls answer 503 |
-| `GITHUB_SITES_ORG` | `swarmpress-sites` | owner of the default site repo `{org}/{login}-site` |
+| `GITHUB_SITES_ORG` | `swarmpress-sites` | owner of the default site repo `{org}/{login}-site` when `SWARMPRESS_DEFAULT_SITE_REPO` is unset |
 | `GITHUB_WEBHOOK_SECRET` | | `POST /webhooks/github` (503 when unset) |
 | `SWARMPRESS_SIMULATE_DEPLOY` | on with `fake`, else off | emit `DeployLanded` right after a gateway merge. A startup error with a real GitHub: it would report every merge as live |
 | `SWARMPRESS_DEPLOY_POLL_SECS` | 30 | deploy poller interval (real GitHub only; at least 5) |
@@ -61,9 +94,10 @@ development set `SWARMPRESS_DEV_AUTH=1` and `SWARMPRESS_GITHUB=fake` (both are i
 | `GET /auth/github/login`, `GET /auth/github/callback` | GitHub OAuth web flow (state cookie, code exchange, `/user`), sets `swarmpress_session` (HttpOnly, SameSite=Lax, Secure on https) |
 | `POST /auth/dev/login` | `{login}` (1–39 of `[A-Za-z0-9_-]`) creates or fetches the dev user and signs in; 404 unless `SWARMPRESS_DEV_AUTH=1` |
 | `POST /auth/logout` | deletes the session, clears the cookie |
-| `GET /api/me` | `{user, company}`; 401 without a session |
-| `POST /api/companies` | `{name, site_repo?, base_branch?}` → 201 company; 409 when the caller already owns one |
+| `GET /api/me` | `{user, company, default_binding: {site_repo, base_branch}}`; 401 without a session. `default_binding` is what a new company of this user gets (`SWARMPRESS_DEFAULT_SITE_REPO`, `SWARMPRESS_DEFAULT_BASE_BRANCH`) |
+| `POST /api/companies` | `{name, site_repo?, base_branch?}` → 201 company; 409 when the caller already owns one. Without `site_repo`/`base_branch` the default binding; 400 for a malformed repository or branch, 403 for a repository outside `SWARMPRESS_ALLOWED_SITE_REPOS`. The game sends the default binding explicitly |
 | `GET /api/companies/me` | the caller's company, or 404 |
+| `PATCH /api/companies/me` | `{site_repo?, base_branch?}` (at least one; a missing one keeps its value) → the rebound company. Lease required (428, 409 when stale). 400 malformed, 403 outside the allow-list, 409 while a gateway pull request of the company is open (merge it or `POST /api/gateway/close`) or a merge's deploy is `pending`. A change of repository retires the company's settled gateway pull requests to `gateway_prs_retired` (numbers are only unique per repository). Recorded in the inbox as `SiteRebound {from, to, by, epoch, retired}` in the same transaction; the same binding again answers 200 and records nothing. `scripts/rebind-company.sh` does the sign-in, lease and release around it. Nothing checks yet that the player owns the repository (ADR-0047's installation check is a later increment): the allow-list is the guard |
 | `POST /api/companies/{id}/lease` | `{device_id, mode?, kind?}` → `{epoch, lease_id, token, holder, holder_kind, ttl_ms, renewed, handover_requested, handover_by, head}` (ADR-0045). `mode`: `acquire` (default; a free, expired, released or own lease, epoch + 1), `renew` (with `x-swarmpress-lease`; epoch unchanged, works past expiry if nobody took the lease), `request` (as `acquire`, and a 409 records a handover request and publishes `HandoverRequested`), `force` (takeover, epoch + 1, publishes `LeaseRevoked`). Another executor's unexpired lease answers 409 `{error, epoch, holder, holder_kind, ttl_ms, handover_requested}`. `kind`: `browser` (default) or `self`. The epoch is never reset |
 | `DELETE /api/companies/{id}/lease` | with `x-swarmpress-lease`: release (204), 409 if not held. The epoch stays |
 | `x-swarmpress-lease` | the fencing token `<epoch>.<lease_id>` (the lease reply's `token`). A fenced route answers 428 without it and 409 when the epoch or the lease id is not the company's current, unexpired one. A lease grant and every fenced write hold a per-company mutex, so a takeover waits for an in-flight write to be recorded |
@@ -99,7 +133,10 @@ through `github::GuardedRepo` + `PathPolicy`: only `content/**`, only on
 `.github/**`, ...); paths with `..`, a leading `/`, empty segments,
 backslashes or NUL are refused (400), paths outside `content/` are refused
 (403), and the page must be a JSON object in a `.json` file of at most
-256 KiB (413). Merges are squash merges at the exact reviewed head.
+256 KiB (413). Merges are squash merges at the exact reviewed head. Every
+gateway route (draft, merge, close, knowledge) answers 403 before it touches
+GitHub when the company's repository is not on `SWARMPRESS_ALLOWED_SITE_REPOS`
+(`gateway::company_repo`), also for a company bound before the list changed.
 
 #### Articles (ADR-0061)
 
@@ -303,15 +340,16 @@ Migrations (`migrations/`, applied at startup):
 | `0001_init.sql` | accounts, companies, events, gateway pull requests, webhook deliveries, sync, tracker |
 | `0002_executor.sql` | `company_executors`: the executor lease with its fencing epoch (ADR-0045) |
 | `0003_deploys.sql` | on `gateway_prs`: `merged_at`, `landed_at`, `deploy_state`, `deploy_detail`, `deploy_checked_at` (deploy observation), `closed_at` (`POST /api/gateway/close`), `final_head` (finalise on merge). Pull requests merged before it get `deploy_state = 'unknown'` |
+| `0004_site_binding.sql` | `gateway_prs_retired`: a company's settled gateway pull requests of a repository it was rebound away from (`PATCH /api/companies/me`), with that repository and base branch and `retired_at` |
 
 ## Modules
 
 | Module | What it does |
 |---|---|
-| `config` | Environment config. |
-| `db` | `Db` (writer/reader pools, migrations, `begin_immediate`) and the repositories: `accounts` (users, sessions, companies, leases), `events`, `gateway` (gateway PRs, webhook deliveries), `sync`, `tracker`. |
+| `config` | Environment config, the combinations refused at startup, the site binding rules (`default_binding`, `site_repo_allowed`). |
+| `db` | `Db` (writer/reader pools, migrations, `begin_immediate`) and the repositories: `accounts` (users, sessions, companies and their rebind, leases), `events`, `gateway` (gateway PRs, webhook deliveries), `sync`, `tracker`. |
 | `auth` | GitHub OAuth, dev login, session rows keyed by sha256(token), the `CurrentUser` extractor. |
-| `companies` | Company create/read, lease acquire/renew/release, `require_lease`. |
+| `companies` | Company create/read/rebind, lease acquire/renew/release, `require_lease`. |
 | `gateway` | `RepoBackend` (fake with its optional seed, token, App, unconfigured), draft and merge handlers, `PathPolicy` checks, the site checks for articles, the closed world (`ClosedWorld` for `KnowledgeBase`). |
 | `site_knowledge` | `GET /api/gateway/knowledge`, `If-None-Match`, the pack cache (`KnowledgeCache`) the draft check shares. |
 | `article` | The blog-article profile (pure): schema v2, block set and order, slug, the two HTML fields. |
@@ -337,8 +375,9 @@ cargo clippy -p server -p testkit --all-targets -- -D warnings
 
 | Suite | Covers |
 |---|---|
-| unit (`src/**`) | DB pools (WAL, FKs, read-only readers, `BEGIN IMMEDIATE`), accounts and leases, dev-login validation, gateway path policy and repo parsing, the article profile (every violation), config combinations refused at startup, SSRF IP/URL checks (incl. resolving `localhost`), HTML → text, tracker helpers. |
-| `tests/http.rs` | Schema, healthz, OAuth flow (state/code errors, cookie attributes, hashed sessions, logout, expiry via the manual clock), dev login on and off, one company per user, repo binding, static/SPA serving. |
+| unit (`src/**`) | DB pools (WAL, FKs, read-only readers, `BEGIN IMMEDIATE`), accounts and leases, dev-login validation, gateway path policy and repo parsing, the article profile (every violation), config combinations refused at startup (the allow-list in real mode, the default binding on it, dev login off loopback in real mode), SSRF IP/URL checks (incl. resolving `localhost`), HTML → text, tracker helpers. |
+| `tests/http.rs` | Schema, healthz, OAuth flow (state/code errors, cookie attributes, hashed sessions, logout, expiry via the manual clock), dev login on and off, one company per user, repo binding, static/SPA serving, the single-origin run (a `vite build`-shaped client and the API on one origin: COOP/COEP on every file, the SPA fallback for deep links with the game's parameters, wasm MIME, a dev-login session on that origin). |
+| `tests/binding.rs` | The site binding (G2): the owner's default applied at creation and returned by `/api/me`; the allow-list at creation, at a rebind and on every gateway route (403, nothing reaches GitHub); `PATCH /api/companies/me` needs the session and the current lease, refuses while a pull request is open or a deploy pending, records `SiteRebound`, retires the old repository's pull requests (the new repository's #1 is a fresh record); a base-branch change keeps them; real mode refuses to start without an allow-list, with a default off it, and with dev login off loopback. |
 | `tests/lease.rs` | Acquire, renew, conflict (409 with holder), force takeover, expiry, configurable TTL, release, ownership. |
 | `tests/gateway.rs` | Draft + revision + merge against FakeGitHub, stale-head 409, idempotent merge, one simulated `DeployLanded`, PathPolicy rejections (nothing written), lease required (428/409, takeover, expiry), merging only own PRs, `deployment_status` webhook (bad HMAC, dedupe, success, failure, other repos). |
 | `tests/articles.rs` | Articles through the gateway: a valid fixture drafts; each profile violation answers 422 with its issue and writes nothing; an existing slug, a second open pull request for the path and a second path for the content id answer 409; the blog index cannot be drafted; other content is untouched; the profile switch. |
@@ -371,7 +410,13 @@ The collector serves `assets/tracker.min.js`, a committed build of
   behaviours it relies on are taken from the documentation and not verified against the real
   API: the Contents API's `author` field with the committer left out, the Merges API for
   bringing the base into a draft branch (201/204/409), and the check runs a superseded or
-  cancelled deploy run leaves on its commit.
+  cancelled deploy run leaves on its commit. The first two are what
+  `crates/github/tests/live_repo.rs` checks against a sandbox repository when the owner runs
+  it (`crates/github/README.md`); it has not been run yet. So are the token permissions above.
+- Any signed-in player can bind a company to any repository on the allow-list: there is no
+  check that the player owns it (ADR-0047's installation check, a later increment). On the
+  owner's machine the allow-list holds the owner's own repositories.
+- A rebind does not tell an open game tab: it shows the old binding until it is reloaded.
 - A deployment of a commit the gateway did not merge lands nothing by itself.
 - `PendingSignalSink` leaves nightly analytics signals `pending`; delivering them to the
   browser (as inbox events) is still to come.

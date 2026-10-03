@@ -20,9 +20,11 @@ At M0 there is no server in production.
 |---|---|
 | `DATABASE_URL` | default `sqlite://data/swarmpress.db?mode=rwc` |
 | `SWARMPRESS_DATA_DIR` | sync blobs; default `./data` |
-| `SWARMPRESS_DEV_AUTH` | `1` enables `POST /auth/dev/login`. **Never in production** |
-| `SWARMPRESS_GITHUB` | `fake` = in-memory FakeGitHub for the content gateway; anything else = real GitHub |
-| `GITHUB_TOKEN` or `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY_PATH` | content gateway credentials. Missing → gateway answers 503 |
+| `SWARMPRESS_DEV_AUTH` | `1` enables `POST /auth/dev/login`. **Never in production**; with a real GitHub refused at startup unless the bind address is loopback |
+| `SWARMPRESS_GITHUB` | `fake` = in-memory FakeGitHub for the content gateway; unset or `real` = real GitHub, which requires `SWARMPRESS_ALLOWED_SITE_REPOS` |
+| `SWARMPRESS_ALLOWED_SITE_REPOS` | comma-separated `owner/name`: the only repositories a company may be bound to or the gateway may touch (403 otherwise). Required with a real GitHub |
+| `SWARMPRESS_DEFAULT_SITE_REPO`, `SWARMPRESS_DEFAULT_BASE_BRANCH` | the binding of a new company (must be on the allow-list) |
+| `GITHUB_TOKEN` or `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY_PATH` | content gateway credentials. Missing → gateway answers 503. Token permissions: `crates/server/README.md` ("Token mode") |
 | `GITHUB_WEBHOOK_SECRET` | `POST /webhooks/github` (`deployment_status` → `DeployLanded`) |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` | OAuth sign-in |
 | `GITHUB_SITES_ORG` | owner of default site repos (`{org}/{login}-site`) |

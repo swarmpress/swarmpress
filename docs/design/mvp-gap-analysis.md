@@ -294,6 +294,11 @@ Branch names: the orchestrator's ids are `content-{hex}`, so branches are
   `CreateCompany` in `apps/game/src/net/central.ts:48` already has the optional field.
 - **No ownership check.** Any signed-in user can bind any `owner/name`. Acceptable only because
   the bind is `127.0.0.1`.
+- **Since G2:** the session passes the server owner's binding (`SWARMPRESS_DEFAULT_SITE_REPO`,
+  `SWARMPRESS_DEFAULT_BASE_BRANCH`, returned by `/api/me` as `default_binding`);
+  `SWARMPRESS_ALLOWED_SITE_REPOS` is required in real mode and checked at creation, at a rebind
+  and on every gateway call; `PATCH /api/companies/me` rebinds with the lease; the game shows the
+  binding on the boot screen and in the HUD. The ownership check is still open (ADR-0047).
 
 ### B.4 Deploy feedback
 
@@ -401,6 +406,9 @@ Yes, with defects (all addressed in [mvp-pipeline.md](mvp-pipeline.md) §4):
 - The client only does dev login (`session.ts:185-192`); nothing references `/auth/github`. A
   real run needs `SWARMPRESS_DEV_AUTH=1`, on loopback only.
 - The Vite proxy lacks `/webhooks` and `/t`.
+- **Since G2:** `scripts/run-local.sh` runs the built client on the server's origin and prints
+  the binding first; `SWARMPRESS_PUBLIC_URL` defaults to the server's own address, and
+  `.env.example` sets `:8080`. Dev login with a real GitHub is refused off loopback at startup.
 
 ### B.10 Safety rails
 
@@ -576,5 +584,5 @@ script exhausting after one article.
 - The FEAT-046 criterion "one commit per PR update (tree API)" is not what the code does (one
   Contents-API commit per file).
 - `.env.example` sets `SWARMPRESS_PUBLIC_URL` to `:5173` while enabling static serving on
-  `:8080`.
+  `:8080`. (Fixed in G2.)
 - `legacy-final` does not exist; only `legacy-ts` does.
