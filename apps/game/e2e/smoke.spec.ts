@@ -48,7 +48,16 @@ test('people walk smoothly between sim steps and open their profile on click', a
   await page.clock.install()
   await boot(page, '/?renderer=webgl&quality=low&speed=10')
   await page.waitForFunction(() => (window as unknown as { __swarmpress: Hook }).__swarmpress.people().some((p) => p.walking), null, { timeout: 120_000 })
-  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100)
+  // pauseAt must name a future instant; on a loaded runner the page's clock can pass a small
+  // margin before the call lands, so retry with a growing one.
+  for (let margin = 250; ; margin *= 2) {
+    try {
+      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + margin)
+      break
+    } catch (e) {
+      if (margin >= 8000 || !String(e).includes('fast-forward to the past')) throw e
+    }
+  }
   // Wait, in fake time, until the sim is stepping again and someone is still walking: on a slow
   // CI runner the first frames after the pause can all land in the same sim slice.
   const stepNow = () => page.evaluate(() => Number((window as unknown as { __swarmpress: Hook }).__swarmpress.sim.step()))
