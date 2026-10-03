@@ -1,0 +1,24 @@
+{
+  "$schema": "../schema/design.schema.json",
+  "format": "swarmpress.design.v1",
+  "id": "whiteboard",
+  "name": "Whiteboard",
+  "footprint": [20, 8],
+  "height": 76,
+  "params": {
+    "frame": { "type": "colour", "default": "grey-light" }
+  },
+  "ops": [
+    { "op": "mirror", "axis": "x", "ops": [
+      { "op": "box", "at": [0, 0, 0], "size": [2, 8, 2], "part": "brick", "colour": "grey-dark" },
+      { "op": "box", "at": [0, 3, 2], "size": [2, 2, 72], "part": "brick", "colour": "$frame" }
+    ] },
+    { "op": "box", "at": [2, 4, 30], "size": [16, 2, 2], "part": "brick", "colour": "$frame" },
+    { "op": "part", "part": "board-16x16", "at": [2, 4, 32], "colour": "white", "surface": "whiteboard" },
+    { "op": "box", "at": [0, 3, 74], "size": [20, 2, 2], "part": "brick", "colour": "grey-dark" },
+    { "op": "part", "part": "tile-1x2", "at": [4, 5, 32], "turn": 1, "colour": "red" },
+    { "op": "part", "part": "tile-1x2", "at": [7, 5, 32], "turn": 1, "colour": "blue" },
+    { "op": "part", "part": "tile-1x2", "at": [10, 5, 32], "turn": 1, "colour": "black" }
+  ],
+  "provenance": { "kind": "kit" }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "../schema/design.schema.json",
+  "format": "swarmpress.design.v1",
+  "id": "book-row",
+  "name": "Row of books",
+  "footprint": [8, 5],
+  "height": 12,
+  "ops": [
+    { "op": "box", "at": [0, 0, 0], "size": [1, 5, 11], "part": "brick", "colour": "red" },
+    { "op": "box", "at": [1, 0, 0], "size": [1, 5, 9], "part": "brick", "colour": "navy" },
+    { "op": "box", "at": [2, 0, 0], "size": [1, 5, 12], "part": "brick", "colour": "forest" },
+    { "op": "box", "at": [3, 0, 0], "size": [1, 5, 10], "part": "brick", "colour": "sand" },
+    { "op": "box", "at": [4, 0, 0], "size": [1, 5, 11], "part": "brick", "colour": "yellow" },
+    { "op": "box", "at": [5, 0, 0], "size": [1, 5, 12], "part": "brick", "colour": "plum" },
+    { "op": "box", "at": [6, 0, 0], "size": [1, 5, 9], "part": "brick", "colour": "white" },
+    { "op": "box", "at": [7, 0, 0], "size": [1, 5, 11], "part": "brick", "colour": "red-dark" }
+  ],
+  "provenance": { "kind": "kit" }
+}

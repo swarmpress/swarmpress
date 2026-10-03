@@ -1,0 +1,18 @@
+{
+  "$schema": "../schema/design.schema.json",
+  "format": "swarmpress.design.v1",
+  "id": "paper-stack",
+  "name": "Paper stack",
+  "footprint": [3, 5],
+  "height": "$count + 1",
+  "params": {
+    "count": { "type": "int", "min": 1, "max": 12, "default": 3 }
+  },
+  "ops": [
+    { "op": "repeat", "count": "$count", "step": [0, 0, 1], "ops": [
+      { "op": "part", "part": "paper-3x5", "at": [0, 0, 0], "colour": "white" }
+    ] },
+    { "op": "part", "part": "tile-1x2", "at": [1, 1, "$count"], "colour": "black" }
+  ],
+  "provenance": { "kind": "kit" }
+}

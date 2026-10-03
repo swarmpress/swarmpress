@@ -1,0 +1,17 @@
+{
+  "$schema": "../schema/design.schema.json",
+  "format": "swarmpress.design.v1",
+  "id": "mug",
+  "name": "Mug",
+  "footprint": [2, 1],
+  "height": 4,
+  "params": {
+    "colour": { "type": "colour", "default": "white" }
+  },
+  "ops": [
+    { "op": "part", "part": "round-brick-1x1", "at": [0, 0, 0], "colour": "$colour" },
+    { "op": "part", "part": "round-tile-1x1", "at": [0, 0, 3], "colour": "chocolate" },
+    { "op": "part", "part": "plate-1x1", "at": [1, 0, 1], "colour": "$colour" }
+  ],
+  "provenance": { "kind": "kit" }
+}

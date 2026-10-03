@@ -50,6 +50,7 @@ Site repos build with @swarm-press/site-kit + an agent-authored theme on GitHub 
 | `crates/orchestrator` | wasm-compatible job runner: `Orchestrator<Store, Gateway>`, MemStore/FakeGateway/GithubGateway |
 | `crates/agents` | roles, personas, prompt layering, meetings, `draft_step`/`review_step`, `Llm` trait |
 | `crates/claude` | Messages API client (feature `http`; pure parts compile to wasm) |
+| `crates/kit`, `kit/` | construction kit (ADR-0065): part catalogue, palette, design format and hash, the deterministic compiler (bricks per colour, studs, summary), room shells; data, schemas and shipped designs in `kit/`; `crates/kit-wasm` is its wasm facade |
 | `crates/server` | central service (axum, sqlx-sqlite) |
 | `crates/{content-schema,knowledge,github,protocol,testkit}` | page validation, indexes, GitHub client and fakes, wire types, test helpers |
 | `apps/game` | Babylon client, overlay UI, local LLM runtime |

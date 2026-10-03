@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarm.press/schema/kit/mapping.schema.json",
+  "title": "swarmpress.kit-mapping.v1",
+  "description": "Which shipped design draws each sim equipment kind (by its slug), which desk port each desk attachment goes on, and the chair, table and table seat the renderer draws (ADR-0065 decision 4: the sim keeps its equipment kinds in the MVP).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "equipment", "desk_ports", "desk_seat", "table", "table_seat"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "format": { "const": "swarmpress.kit-mapping.v1" },
+    "equipment": { "type": "object", "additionalProperties": { "$ref": "#/$defs/id" } },
+    "desk_ports": { "type": "object", "additionalProperties": { "$ref": "#/$defs/id" } },
+    "desk_seat": { "$ref": "#/$defs/id" },
+    "table": { "$ref": "#/$defs/id" },
+    "table_seat": { "$ref": "#/$defs/id" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$" }
+  }
+}

@@ -1447,6 +1447,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "kit"
+version = "0.2.0"
+dependencies = [
+ "criterion",
+ "jsonschema",
+ "proptest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sim-core",
+]
+
+[[package]]
+name = "kit-wasm"
+version = "0.2.0"
+dependencies = [
+ "kit",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "knowledge"
 version = "0.2.0"
 dependencies = [

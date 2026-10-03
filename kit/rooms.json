@@ -1,0 +1,71 @@
+{
+  "$schema": "./schema/rooms.schema.json",
+  "format": "swarmpress.rooms.v1",
+  "styles": {
+    "newsroom": {
+      "floor": { "kind": "planks", "colours": ["caramel", "cork", "honey", "caramel"] },
+      "base": "grey-light", "wall": "white", "wainscot": "sand", "rail": "chocolate", "cap": "grey-light",
+      "skirting": "chocolate", "frame": "chocolate", "window": "black", "door": "navy"
+    },
+    "editor-office": {
+      "floor": { "kind": "planks", "colours": ["chocolate", "caramel", "chocolate", "cork"] },
+      "base": "grey-light", "wall": "white", "wainscot": "sage", "rail": "chocolate", "cap": "grey-light",
+      "skirting": "chocolate", "frame": "chocolate", "window": "black", "door": "forest"
+    },
+    "meeting-room": {
+      "floor": { "kind": "carpet", "field": "denim", "border": "navy" },
+      "base": "grey-light", "wall": "white", "wainscot": "grey-light", "rail": "grey-dark", "cap": "grey-light",
+      "skirting": "grey-dark", "frame": "grey-dark", "window": "black", "door": "navy"
+    },
+    "archive": {
+      "floor": { "kind": "planks", "colours": ["cork", "caramel", "cork", "honey"] },
+      "base": "grey-light", "wall": "sand", "wainscot": "cork", "rail": "chocolate", "cap": "grey-light",
+      "skirting": "chocolate", "frame": "chocolate", "window": "black", "door": "chocolate"
+    },
+    "photo-studio": {
+      "floor": { "kind": "plain", "colour": "grey-light" },
+      "base": "grey-light", "wall": "white", "wainscot": "white", "rail": "grey-light", "cap": "grey-light",
+      "skirting": "grey-dark", "frame": "grey-dark", "window": "black", "door": "black"
+    },
+    "seo-lab": {
+      "floor": { "kind": "carpet", "field": "grey-dark", "border": "black" },
+      "base": "grey-light", "wall": "white", "wainscot": "denim", "rail": "navy", "cap": "grey-light",
+      "skirting": "navy", "frame": "navy", "window": "black", "door": "navy"
+    },
+    "translation-desk": {
+      "floor": { "kind": "planks", "colours": ["honey", "sand", "honey", "caramel"] },
+      "base": "grey-light", "wall": "white", "wainscot": "olive", "rail": "chocolate", "cap": "grey-light",
+      "skirting": "chocolate", "frame": "chocolate", "window": "black", "door": "olive"
+    },
+    "design-studio": {
+      "floor": { "kind": "plain", "colour": "white" },
+      "base": "grey-light", "wall": "white", "wainscot": "terracotta", "rail": "black", "cap": "grey-light",
+      "skirting": "black", "frame": "black", "window": "black", "door": "terracotta"
+    },
+    "ceo-office": {
+      "floor": { "kind": "planks", "colours": ["chocolate", "chocolate", "caramel", "chocolate"] },
+      "base": "grey-light", "wall": "sand", "wainscot": "forest", "rail": "brass", "cap": "grey-light",
+      "skirting": "chocolate", "frame": "chocolate", "window": "black", "door": "red-dark"
+    },
+    "kitchen": {
+      "floor": { "kind": "checker", "colours": ["white", "black"] },
+      "base": "grey-light", "wall": "white", "wainscot": "sage", "rail": "white", "cap": "grey-light",
+      "skirting": "grey-dark", "frame": "grey-dark", "window": "black", "door": "sage"
+    },
+    "server-room": {
+      "floor": { "kind": "checker", "colours": ["grey-light", "grey-dark"] },
+      "base": "grey-dark", "wall": "grey-light", "wainscot": "grey-dark", "rail": "black", "cap": "grey-dark",
+      "skirting": "black", "frame": "black", "window": "black", "door": "grey-dark"
+    },
+    "finance-office": {
+      "floor": { "kind": "planks", "colours": ["caramel", "honey", "caramel", "chocolate"] },
+      "base": "grey-light", "wall": "white", "wainscot": "denim", "rail": "chocolate", "cap": "grey-light",
+      "skirting": "chocolate", "frame": "chocolate", "window": "black", "door": "navy"
+    },
+    "strategy-room": {
+      "floor": { "kind": "carpet", "field": "sage", "border": "forest" },
+      "base": "grey-light", "wall": "white", "wainscot": "plum", "rail": "chocolate", "cap": "grey-light",
+      "skirting": "chocolate", "frame": "chocolate", "window": "black", "door": "plum"
+    }
+  }
+}

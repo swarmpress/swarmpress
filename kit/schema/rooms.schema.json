@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarm.press/schema/kit/rooms.schema.json",
+  "title": "swarmpress.rooms.v1",
+  "description": "Room shell style per sim room kind slug: floor, walls, rail, cap, skirting, frames, windows and doors (colour ids from the palette).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "styles"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "format": { "const": "swarmpress.rooms.v1" },
+    "styles": { "type": "object", "additionalProperties": { "$ref": "#/$defs/style" } }
+  },
+  "$defs": {
+    "colour": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$" },
+    "floor": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "colours"],
+          "properties": { "kind": { "const": "planks" }, "colours": { "type": "array", "items": { "$ref": "#/$defs/colour" }, "minItems": 4, "maxItems": 4 } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "colours"],
+          "properties": { "kind": { "const": "checker" }, "colours": { "type": "array", "items": { "$ref": "#/$defs/colour" }, "minItems": 2, "maxItems": 2 } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "field", "border"],
+          "properties": { "kind": { "const": "carpet" }, "field": { "$ref": "#/$defs/colour" }, "border": { "$ref": "#/$defs/colour" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "colour"],
+          "properties": { "kind": { "const": "plain" }, "colour": { "$ref": "#/$defs/colour" } }
+        }
+      ]
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["floor", "base", "wall", "wainscot", "rail", "cap", "skirting", "frame", "window", "door"],
+      "properties": {
+        "floor": { "$ref": "#/$defs/floor" },
+        "base": { "$ref": "#/$defs/colour" },
+        "wall": { "$ref": "#/$defs/colour" },
+        "wainscot": { "$ref": "#/$defs/colour" },
+        "rail": { "$ref": "#/$defs/colour" },
+        "cap": { "$ref": "#/$defs/colour" },
+        "skirting": { "$ref": "#/$defs/colour" },
+        "frame": { "$ref": "#/$defs/colour" },
+        "window": { "$ref": "#/$defs/colour" },
+        "door": { "$ref": "#/$defs/colour" }
+      }
+    }
+  }
+}

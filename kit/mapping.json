@@ -1,0 +1,25 @@
+{
+  "$schema": "./schema/mapping.schema.json",
+  "format": "swarmpress.kit-mapping.v1",
+  "equipment": {
+    "desk": "desk",
+    "monitor": "monitor",
+    "desk-lamp": "desk-lamp",
+    "ceiling-light": "ceiling-light",
+    "whiteboard": "whiteboard",
+    "archive-shelf": "archive-shelf",
+    "coffee-machine": "coffee-machine",
+    "plant": "plant",
+    "camera-rig": "camera-rig",
+    "color-monitor": "color-monitor",
+    "mood-board-wall": "mood-board-wall"
+  },
+  "desk_ports": {
+    "monitor": "screen",
+    "color-monitor": "screen",
+    "desk-lamp": "lamp"
+  },
+  "desk_seat": "chair",
+  "table": "meeting-table",
+  "table_seat": "stool"
+}

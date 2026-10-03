@@ -1,10 +1,14 @@
 ---
 id: FEAT-083
 title: "Construction kit core: parts, designs and the kit compiler"
-status: planned
+status: in-progress
 importance: high
 paths:
   - "crates/kit/**"
+  - "crates/kit/tests/**"
+  - "crates/kit/benches/**"
+  - "crates/kit-wasm/**"
+  - "crates/kit-wasm/tests/**"
   - "kit/**"
   - "apps/game/src/render/bricks/**"
 adrs:

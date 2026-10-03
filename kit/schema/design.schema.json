@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarm.press/schema/kit/design.schema.json",
+  "title": "swarmpress.design.v1",
+  "description": "A construction-kit design: a closed brick script over catalogue parts and other designs (docs/design/construction-kit.md §2.2). Coordinates are [x, z, y]: x and z in studs (6.25 cm), y in plates (2.5 cm). Integers may be expressions over the design's int parameters: + - * and parentheses only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "id", "name", "footprint", "height", "ops", "provenance"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "format": { "const": "swarmpress.design.v1" },
+    "id": { "$ref": "#/$defs/id" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "mount": { "enum": ["floor", "surface", "ceiling"] },
+    "footprint": { "type": "array", "items": { "$ref": "#/$defs/num" }, "minItems": 2, "maxItems": 2 },
+    "height": { "$ref": "#/$defs/num" },
+    "params": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z_][a-z0-9_]{0,31}$" },
+      "additionalProperties": { "$ref": "#/$defs/param" }
+    },
+    "ops": { "$ref": "#/$defs/ops" },
+    "ports": { "type": "array", "items": { "$ref": "#/$defs/port" } },
+    "tags": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parts"],
+      "properties": { "parts": { "type": "integer", "minimum": 0 } }
+    },
+    "provenance": { "$ref": "#/$defs/provenance" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$" },
+    "num": {
+      "description": "An integer, or an expression: integers, $param, + - * and parentheses.",
+      "oneOf": [
+        { "type": "integer" },
+        { "type": "string", "pattern": "^[0-9$a-z_+*() \\t-]{1,256}$" }
+      ]
+    },
+    "num3": { "type": "array", "items": { "$ref": "#/$defs/num" }, "minItems": 3, "maxItems": 3 },
+    "ref": {
+      "description": "An id, or $param naming an enum or colour parameter.",
+      "type": "string",
+      "pattern": "^(\\$[a-z_][a-z0-9_]{0,31}|[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?)$"
+    },
+    "param": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "min", "max", "default"],
+          "properties": { "type": { "const": "int" }, "min": { "type": "integer" }, "max": { "type": "integer" }, "default": { "type": "integer" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "values", "default"],
+          "properties": { "type": { "const": "enum" }, "values": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/id" } }, "default": { "$ref": "#/$defs/id" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "default"],
+          "properties": { "type": { "const": "colour" }, "default": { "$ref": "#/$defs/id" }, "allowed": { "type": "array", "items": { "$ref": "#/$defs/id" } } }
+        }
+      ]
+    },
+    "ops": { "type": "array", "items": { "$ref": "#/$defs/op" } },
+    "op": {
+      "oneOf": [
+        { "$ref": "#/$defs/box" },
+        { "$ref": "#/$defs/fill" },
+        { "$ref": "#/$defs/part" },
+        { "$ref": "#/$defs/use" },
+        { "$ref": "#/$defs/mirror" },
+        { "$ref": "#/$defs/repeat" }
+      ]
+    },
+    "region": {
+      "type": "object",
+      "required": ["op", "at", "size", "part"],
+      "properties": {
+        "at": { "$ref": "#/$defs/num3" },
+        "size": { "$ref": "#/$defs/num3" },
+        "colour": { "$ref": "#/$defs/ref" },
+        "shape": { "enum": ["box", "disc"] }
+      }
+    },
+    "box": {
+      "description": "A region of brick material; overwrites. part 'empty' clears.",
+      "allOf": [{ "$ref": "#/$defs/region" }],
+      "unevaluatedProperties": false,
+      "properties": { "op": { "const": "box" }, "part": { "enum": ["brick", "plate", "tile", "empty"] } }
+    },
+    "fill": {
+      "description": "A region of brick material; fills empty cells only.",
+      "allOf": [{ "$ref": "#/$defs/region" }],
+      "unevaluatedProperties": false,
+      "properties": { "op": { "const": "fill" }, "part": { "enum": ["brick", "plate", "tile"] } }
+    },
+    "part": {
+      "type": "object", "additionalProperties": false, "required": ["op", "part", "at"],
+      "properties": {
+        "op": { "const": "part" },
+        "part": { "$ref": "#/$defs/ref" },
+        "at": { "$ref": "#/$defs/num3" },
+        "turn": { "$ref": "#/$defs/num" },
+        "colour": { "$ref": "#/$defs/ref" },
+        "surface": { "$ref": "#/$defs/id" }
+      }
+    },
+    "use": {
+      "type": "object", "additionalProperties": false, "required": ["op", "design", "at"],
+      "properties": {
+        "op": { "const": "use" },
+        "design": { "$ref": "#/$defs/ref" },
+        "at": { "$ref": "#/$defs/num3" },
+        "turn": { "$ref": "#/$defs/num" },
+        "params": { "type": "object", "additionalProperties": { "oneOf": [{ "type": "integer" }, { "type": "string" }] } },
+        "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+    "mirror": {
+      "type": "object", "additionalProperties": false, "required": ["op", "axis", "ops"],
+      "properties": { "op": { "const": "mirror" }, "axis": { "enum": ["x", "z"] }, "ops": { "$ref": "#/$defs/ops" } }
+    },
+    "repeat": {
+      "type": "object", "additionalProperties": false, "required": ["op", "count", "step", "ops"],
+      "properties": { "op": { "const": "repeat" }, "count": { "$ref": "#/$defs/num" }, "step": { "$ref": "#/$defs/num3" }, "ops": { "$ref": "#/$defs/ops" } }
+    },
+    "port": {
+      "type": "object", "additionalProperties": false, "required": ["id", "at", "accepts"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "at": { "$ref": "#/$defs/num3" },
+        "accepts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/id" } },
+        "turn": { "$ref": "#/$defs/num" }
+      }
+    },
+    "provenance": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "kit" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "player"], "properties": { "kind": { "const": "player" }, "player": { "type": "string" } } },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "staff", "job", "model"],
+          "properties": { "kind": { "const": "staff" }, "staff": { "type": "string" }, "job": { "type": "string" }, "model": { "type": "string" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "pack"],
+          "properties": { "kind": { "const": "pack" }, "pack": { "type": "string" }, "version": { "type": "string" } }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "../schema/design.schema.json",
+  "format": "swarmpress.design.v1",
+  "id": "mood-board-wall",
+  "name": "Mood board wall",
+  "footprint": [34, 8],
+  "height": 86,
+  "ops": [
+    { "op": "mirror", "axis": "x", "ops": [
+      { "op": "box", "at": [0, 0, 0], "size": [2, 8, 2], "part": "brick", "colour": "black" },
+      { "op": "box", "at": [0, 3, 2], "size": [1, 2, 82], "part": "brick", "colour": "black" }
+    ] },
+    { "op": "box", "at": [1, 4, 38], "size": [32, 2, 2], "part": "brick", "colour": "chocolate" },
+    { "op": "part", "part": "board-32x16", "at": [1, 4, 40], "colour": "cork", "surface": "mood-board" },
+    { "op": "box", "at": [0, 3, 84], "size": [34, 2, 2], "part": "brick", "colour": "black" },
+    { "op": "part", "part": "paper-2x3", "at": [4, 5, 40], "colour": "sand" },
+    { "op": "part", "part": "paper-1x2", "at": [10, 5, 40], "colour": "red" },
+    { "op": "part", "part": "paper-2x3", "at": [16, 5, 40], "colour": "denim" },
+    { "op": "part", "part": "paper-1x2", "at": [24, 5, 40], "colour": "yellow" }
+  ],
+  "provenance": { "kind": "kit" }
+}

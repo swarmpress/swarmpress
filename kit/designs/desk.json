@@ -1,0 +1,36 @@
+{
+  "$schema": "../schema/design.schema.json",
+  "format": "swarmpress.design.v1",
+  "id": "desk",
+  "name": "Desk",
+  "footprint": ["2 * $half", 12],
+  "height": 36,
+  "params": {
+    "half": { "type": "int", "min": 10, "max": 16, "default": 12 },
+    "top": { "type": "colour", "default": "sand" },
+    "frame": { "type": "colour", "default": "grey-dark" }
+  },
+  "ops": [
+    { "op": "mirror", "axis": "x", "ops": [
+      { "op": "box", "at": [1, 0, 0], "size": [2, 12, 2], "part": "brick", "colour": "$frame" },
+      { "op": "box", "at": [1, 5, 2], "size": [2, 2, 24], "part": "brick", "colour": "$frame" },
+      { "op": "box", "at": [1, 1, 26], "size": [2, 10, 2], "part": "brick", "colour": "$frame" }
+    ] },
+    { "op": "box", "at": [3, 0, 12], "size": ["2 * $half - 6", 1, 16], "part": "brick", "colour": "$frame" },
+    { "op": "box", "at": [0, 0, 28], "size": ["2 * $half", 12, 1], "part": "plate", "colour": "$top" },
+    { "op": "box", "at": [0, 0, 29], "size": ["2 * $half", 12, 1], "part": "tile", "colour": "$top" },
+    { "op": "box", "at": [0, 11, 29], "size": ["2 * $half", 1, 1], "part": "tile", "colour": "caramel" },
+    { "op": "use", "design": "desk-pedestal", "at": ["2 * $half - 10", 1, 0], "name": "pedestal" },
+    { "op": "use", "design": "paper-stack", "at": [3, 5, 30], "params": { "count": 3 }, "name": "manuscript" },
+    { "op": "use", "design": "mug", "at": ["2 * $half - 8", 7, 30], "params": { "colour": "white" } },
+    { "op": "part", "part": "round-brick-1x1", "at": [4, 2, 30], "colour": "grey-dark" },
+    { "op": "part", "part": "round-tile-1x1", "at": [4, 2, 33], "colour": "yellow" }
+  ],
+  "ports": [
+    { "id": "screen", "at": ["$half", 3, 30], "accepts": ["screen"] },
+    { "id": "lamp", "at": ["2 * $half - 3", 3, 30], "accepts": ["light"] },
+    { "id": "seat", "at": ["$half", 18, 0], "accepts": ["seat"] }
+  ],
+  "tags": ["workstation"],
+  "provenance": { "kind": "kit" }
+}

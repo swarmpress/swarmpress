@@ -1,0 +1,30 @@
+{
+  "$schema": "../schema/design.schema.json",
+  "format": "swarmpress.design.v1",
+  "id": "meeting-table",
+  "name": "Round meeting table",
+  "footprint": ["2 * $r", "2 * $r"],
+  "height": 30,
+  "params": {
+    "r": { "type": "int", "min": 8, "max": 20, "default": 12 },
+    "top": { "type": "colour", "default": "caramel" }
+  },
+  "ops": [
+    { "op": "box", "at": ["$r - 6", "$r - 6", 0], "size": [12, 12, 2], "part": "brick", "colour": "grey-dark", "shape": "disc" },
+    { "op": "box", "at": ["$r - 2", "$r - 2", 2], "size": [4, 4, 26], "part": "brick", "colour": "grey-dark" },
+    { "op": "box", "at": [0, 0, 28], "size": ["2 * $r", "2 * $r", 1], "part": "plate", "colour": "$top", "shape": "disc" },
+    { "op": "box", "at": [0, 0, 29], "size": ["2 * $r", "2 * $r", 1], "part": "tile", "colour": "$top", "shape": "disc" }
+  ],
+  "ports": [
+    { "id": "seat-w", "at": ["$r - 19", "$r", 0], "accepts": ["seat"], "turn": 3 },
+    { "id": "seat-e", "at": ["$r + 19", "$r", 0], "accepts": ["seat"], "turn": 1 },
+    { "id": "seat-n", "at": ["$r", "$r - 16", 0], "accepts": ["seat"], "turn": 2 },
+    { "id": "seat-s", "at": ["$r", "$r + 16", 0], "accepts": ["seat"] },
+    { "id": "seat-nw", "at": ["$r - 14", "$r - 13", 0], "accepts": ["seat"], "turn": 2 },
+    { "id": "seat-ne", "at": ["$r + 14", "$r - 13", 0], "accepts": ["seat"], "turn": 2 },
+    { "id": "seat-sw", "at": ["$r - 14", "$r + 13", 0], "accepts": ["seat"] },
+    { "id": "seat-se", "at": ["$r + 14", "$r + 13", 0], "accepts": ["seat"] }
+  ],
+  "tags": ["table"],
+  "provenance": { "kind": "kit" }
+}

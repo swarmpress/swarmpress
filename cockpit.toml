@@ -69,6 +69,10 @@ component = "content"
 packages = ["protocol", "client-wasm"]
 id = "net/nextest"
 component = "net"
+[[evidence.split]]
+packages = ["kit", "kit-wasm"]
+id = "kit/nextest"
+component = "render"
 
 # Split targets: the workspace report above routes these crates' cases here. Their own paths
 # only hold artifacts pulled under their id (none today: CI uploads one workspace report).
@@ -121,6 +125,13 @@ format = "junit"
 kind = "unit"
 path = ".cockpit/evidence/net__nextest/**/*.xml"
 component = "net"
+[[evidence]]
+id = "kit/nextest"
+title = "cargo nextest: construction kit (compiler, splitter, hashes, shipped designs, summary contract) and kit-wasm"
+format = "junit"
+kind = "unit"
+path = ".cockpit/evidence/kit__nextest/**/*.xml"
+component = "render"
 
 # ---------------------------------------------------------------- wasm (wasm-bindgen-test)
 # Golden determinism in wasm, under node and headless Chromium:

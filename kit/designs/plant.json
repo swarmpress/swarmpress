@@ -1,0 +1,24 @@
+{
+  "$schema": "../schema/design.schema.json",
+  "format": "swarmpress.design.v1",
+  "id": "plant",
+  "name": "Potted plant",
+  "footprint": [8, 8],
+  "height": "$size",
+  "params": {
+    "size": { "type": "int", "min": 40, "max": 72, "default": 56 },
+    "leaves": { "type": "colour", "default": "green" },
+    "pot": { "type": "colour", "default": "terracotta" }
+  },
+  "ops": [
+    { "op": "box", "at": [1, 1, 0], "size": [6, 6, 10], "part": "brick", "colour": "$pot", "shape": "disc" },
+    { "op": "box", "at": [0, 0, 10], "size": [8, 8, 2], "part": "brick", "colour": "$pot", "shape": "disc" },
+    { "op": "box", "at": [1, 1, 12], "size": [6, 6, 1], "part": "tile", "colour": "chocolate", "shape": "disc" },
+    { "op": "box", "at": [3, 3, 13], "size": [2, 2, "$size - 33"], "part": "brick", "colour": "chocolate" },
+    { "op": "box", "at": [1, 1, "$size - 24"], "size": [6, 6, 6], "part": "plate", "colour": "forest", "shape": "disc" },
+    { "op": "box", "at": [0, 0, "$size - 18"], "size": [8, 8, 8], "part": "plate", "colour": "$leaves", "shape": "disc" },
+    { "op": "box", "at": [1, 1, "$size - 10"], "size": [6, 6, 6], "part": "plate", "colour": "leaf", "shape": "disc" },
+    { "op": "box", "at": [2, 2, "$size - 4"], "size": [4, 4, 4], "part": "plate", "colour": "$leaves", "shape": "disc" }
+  ],
+  "provenance": { "kind": "kit" }
+}

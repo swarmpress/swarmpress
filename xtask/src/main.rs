@@ -4,8 +4,9 @@
 //! - `wasm [--release]`: build the wasm crates for wasm32 and run wasm-bindgen
 //!   on each into its `pkg/` (consumed by `apps/game`, Bun tests and the runner):
 //!   `client-wasm` (the sim) → `crates/client-wasm/pkg`, `orchestrator-wasm`
-//!   (the orchestrator bridge) → `crates/orchestrator-wasm/pkg`. They are
-//!   separate modules with separate size budgets. `--only <crate>` builds one.
+//!   (the orchestrator bridge) → `crates/orchestrator-wasm/pkg`, `kit-wasm`
+//!   (the construction kit compiler, ADR-0065) → `crates/kit-wasm/pkg`. They
+//!   are separate modules with separate size budgets. `--only <crate>` builds one.
 //! - `site-pack <site-dir> [--out <file>] [--commit <sha>]`: build the
 //!   knowledge pack of a local site clone (see [`site_pack`]).
 
@@ -32,7 +33,9 @@ fn main() -> Result<()> {
         }
         Some("site-pack") => site_pack::run(&args[1..]),
         _ => {
-            eprintln!("usage: cargo xtask wasm [--release] [--only client-wasm|orchestrator-wasm]");
+            eprintln!(
+                "usage: cargo xtask wasm [--release] [--only client-wasm|orchestrator-wasm|kit-wasm]"
+            );
             eprintln!("       {}", site_pack::USAGE);
             std::process::exit(2);
         }
@@ -71,6 +74,7 @@ fn run(cmd: &mut Command) -> Result<()> {
 const WASM_CRATES: &[(&str, &str)] = &[
     ("client-wasm", "client_wasm"),
     ("orchestrator-wasm", "orchestrator_wasm"),
+    ("kit-wasm", "kit_wasm"),
 ];
 
 fn wasm(release: bool, only: Option<&str>) -> Result<()> {

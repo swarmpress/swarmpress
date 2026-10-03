@@ -1,0 +1,28 @@
+[package]
+name = "kit"
+description = "The construction kit (ADR-0065): part catalogue, design format and hash, and the deterministic brick compiler shared by the renderer, players and staff"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+
+[dev-dependencies]
+proptest = "1"
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+# The data files under kit/ are checked against their JSON Schemas in tests only:
+# the crate validates them with typed parsing and its own rules at run time.
+jsonschema = { version = "0.33", default-features = false }
+# The demo office's layout, for room shells and the room benchmark (read only).
+sim-core.workspace = true
+
+[[bench]]
+name = "compile"
+harness = false
+
+[lints]
+workspace = true

@@ -1,0 +1,20 @@
+{
+  "$schema": "../schema/design.schema.json",
+  "format": "swarmpress.design.v1",
+  "id": "monitor",
+  "name": "Monitor",
+  "mount": "surface",
+  "footprint": [10, 4],
+  "height": 22,
+  "params": {
+    "casing": { "type": "colour", "default": "black" }
+  },
+  "ops": [
+    { "op": "box", "at": [3, 1, 0], "size": [4, 3, 1], "part": "plate", "colour": "grey-dark" },
+    { "op": "box", "at": [4, 1, 1], "size": [2, 1, 6], "part": "brick", "colour": "grey-dark" },
+    { "op": "box", "at": [0, 1, 7], "size": [10, 1, 15], "part": "brick", "colour": "$casing" },
+    { "op": "part", "part": "screen-10x6", "at": [0, 2, 7], "colour": "screen-blue", "surface": "monitor" }
+  ],
+  "tags": ["screen"],
+  "provenance": { "kind": "kit" }
+}

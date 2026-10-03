@@ -1,0 +1,22 @@
+{
+  "$schema": "../schema/design.schema.json",
+  "format": "swarmpress.design.v1",
+  "id": "desk-lamp",
+  "name": "Desk lamp",
+  "mount": "surface",
+  "footprint": [2, 4],
+  "height": 17,
+  "params": {
+    "shade": { "type": "colour", "default": "yellow" }
+  },
+  "ops": [
+    { "op": "part", "part": "round-plate-2x2", "at": [0, 0, 0], "colour": "black" },
+    { "op": "repeat", "count": 5, "step": [0, 0, 3], "ops": [
+      { "op": "part", "part": "round-brick-1x1", "at": [0, 0, 1], "colour": "black" }
+    ] },
+    { "op": "box", "at": [0, 0, 16], "size": [1, 4, 1], "part": "plate", "colour": "black" },
+    { "op": "part", "part": "lamp-head-2x2", "at": [0, 2, 13], "colour": "$shade" }
+  ],
+  "tags": ["light"],
+  "provenance": { "kind": "kit" }
+}
