@@ -13,6 +13,8 @@ adrs:
 
 # Build mode and placement
 
+> **ADR-0063:** placement happens on the brick office's stud grid at object level (whole prefabs); brick-by-brick editing is deferred.
+
 Picking on the grid, ghost previews, placement validated in wasm with `validate_command`, confirmed
 by the server command.
 

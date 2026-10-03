@@ -1,6 +1,6 @@
 # ADR-0007 — Sim→renderer render-state contract
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0063 (information surfaces)
 **Date:** 2026-10-01
 
 ## Context

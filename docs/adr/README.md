@@ -23,7 +23,7 @@ Accepted ADRs are never rewritten.
 | [0001](0001-greenfield-rebuild-legacy-tag.md) | Greenfield rebuild, legacy tag | Accepted |
 | [0002](0002-rust-server-and-sim-core-wasm-client.md) | Rust server and sim core, wasm client | Accepted |
 | [0003](0003-deterministic-lockstep-server-authority.md) | Deterministic lockstep with server authority, command log and snapshots | Superseded in part |
-| [0004](0004-babylonjs-webgpu-webgl2-fallback.md) | Babylon.js with WebGPU, WebGL2 fallback | Accepted |
+| [0004](0004-babylonjs-webgpu-webgl2-fallback.md) | Babylon.js with WebGPU, WebGL2 fallback | Superseded in part by ADR-0064 |
 | [0005](0005-orthographic-iso-dollhouse-camera-and-cutaway.md) | Orthographic iso dollhouse camera and cutaway | Accepted |
 | [0006](0006-baked-gi-dynamic-lights-day-night.md) | Baked static GI plus dynamic gameplay lights; lighting as sim state; day/night | Accepted |
 | [0007](0007-sim-renderer-render-state-contract.md) | Sim→renderer render-state contract | Accepted |
@@ -36,7 +36,7 @@ Accepted ADRs are never rewritten.
 | [0014](0014-content-model-json-blocks-localizedstring.md) | Content model: JSON blocks, LocalizedString, core plus custom block schemas | Accepted |
 | [0015](0015-agent-authored-themes-on-site-kit.md) | Agent-authored themes on a platform site kit with a PR and visual-review gate | Accepted |
 | [0016](0016-site-kit-distribution-via-npm.md) | Site-kit distribution via npm; remove MONOREPO_PAT | Accepted |
-| [0017](0017-asset-pipeline-cc0-blender-gltf.md) | Asset pipeline: CC0 kits, Blender bake, glTF/KTX2 | Accepted |
+| [0017](0017-asset-pipeline-cc0-blender-gltf.md) | Asset pipeline: CC0 kits, Blender bake, glTF/KTX2 | Superseded in part by ADR-0063 |
 | [0018](0018-overlay-ui-in-preact.md) | Overlay UI in Preact | Accepted |
 | [0019](0019-auth-github-oauth-cookie-sessions.md) | Auth: GitHub OAuth and cookie sessions | Accepted |
 | [0020](0020-real-time-ticks-offline-catch-up.md) | Real-time ticks and offline catch-up | Superseded in part |
@@ -82,3 +82,5 @@ Accepted ADRs are never rewritten.
 | [0060](0060-game-time-is-independent-of-gpu-speed.md) | Game time is independent of GPU speed | Accepted |
 | [0061](0061-knowledge-pack-and-gateway-read-finalise-close.md) | Knowledge pack; gateway read, finalise and close; create-only article paths | Accepted |
 | [0062](0062-local-standup-protocol-the-pitch-round.md) | Local standup protocol: the pitch round | Accepted |
+| [0063](0063-brick-office-and-live-information-surfaces.md) | The brick office and live information surfaces | Accepted |
+| [0064](0064-webgpu-only.md) | WebGPU only | Accepted |

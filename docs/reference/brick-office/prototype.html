@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Publishing House Office — Brick Build · Babylon.js 9</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#ead6c0;font:13px/1.3 system-ui,-apple-system,"Helvetica Neue",Helvetica,sans-serif;color:#2b2722;transition:background .4s}
+  body[data-mode="day"]{background:#efe9df} body[data-mode="night"]{background:#141924;color:#d9dde6}
+  #c{position:fixed;inset:0;width:100%;height:100%;outline:none;touch-action:none}
+  .bar{position:fixed;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  #ui{top:16px;left:16px} #dlbar{bottom:16px;right:16px}
+  .seg{display:flex;background:rgba(255,255,255,.88);border-radius:999px;padding:3px;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  button{font:inherit;border:0;cursor:pointer;color:#2b2722;background:transparent;padding:7px 14px;border-radius:999px}
+  .seg button[aria-pressed="true"]{background:#2b2722;color:#fff}
+  .pill{background:rgba(255,255,255,.88);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  .pill[aria-pressed="true"]{background:#2b2722;color:#fff}
+  button:disabled{opacity:.5;cursor:default}
+  #hint{position:fixed;left:16px;bottom:18px;opacity:.6;pointer-events:none}
+  #status{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;font-size:14px;opacity:.75}
+  #dlbar #status2{opacity:.7}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/babylonjs@9.28.0/babylon.js"></script>
+</head>
+<body data-mode="golden">
+<canvas id="c"></canvas>
+<div id="ui" class="bar">
+  <div class="seg" id="mode"><button data-m="day">Day</button><button data-m="golden">Golden hour</button><button data-m="night">Night</button></div>
+  <button id="lamps" class="pill" aria-pressed="true">Lamps</button>
+  <button id="tilt" class="pill" aria-pressed="false">Tilt-shift</button>
+</div>
+<div id="hint">Drag to orbit · scroll to zoom · right-drag to pan</div>
+<div id="status">Building bricks…</div>
+<div id="dlbar" class="bar"><button id="dl" class="pill">Download GLB</button></div>
+<script>
+setTimeout(() => {
+
+// ===== brick units (m). 1 stud = 6.25 cm, 1 plate = 2.5 cm of the real room =====
+const S = 0.008, PH = 0.0032, G = 0.0002, GY = 0.00012, STUD_R = 0.0024, STUD_H = 0.0017;
+let seed = 23;
+const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const pick = a => a[Math.floor(rnd() * a.length)];
+const COLORS = {
+  white: ['#f2f0ea'], light_bluish_gray: ['#a3a8ab'], dark_bluish_gray: ['#5f625d'], black: ['#1d2328'],
+  red: ['#c4281c'], dark_red: ['#7b1e1a'], blue: ['#1e5aa8'], dark_blue: ['#1b2e55'], tan: ['#dec69b'],
+  dark_tan: ['#9b8c6c'], nougat: ['#cf9a6c'], medium_nougat: ['#b07c50'], reddish_brown: ['#5e3220'],
+  green: ['#2a7a46'], dark_green: ['#1f4a35'], bright_green: ['#58ab41'], sand_green: ['#789081'],
+  sand_blue: ['#6074a1'], olive_green: ['#9b9a5a'], dark_purple: ['#3f3364'], orange: ['#e07a1f'],
+  yellow: ['#f5c518'], dark_orange: ['#a35a24'], pearl_gold: ['#c09442', { metal: 0.65, rough: 0.3 }],
+  trans_clear: ['#e8f2f4', { alpha: 0.22, rough: 0.04 }],
+  screen_blue: ['#1d3346', { emissive: '#3d6f91', ei: 1.0, rough: 0.15 }],
+  screen_white: ['#e9eef2', { emissive: '#c9d8e6', ei: 0.55, rough: 0.15 }],
+  bulb: ['#fff6dc', { emissive: '#ffd9a0', ei: 3 }],
+};
+const CN = Object.keys(COLORS), CI = {}; CN.forEach((n, i) => CI[n] = i);
+const BOOKS = ['red', 'dark_blue', 'dark_green', 'tan', 'white', 'black', 'dark_red', 'yellow', 'medium_nougat', 'blue', 'sand_green', 'sand_blue', 'olive_green', 'dark_purple', 'orange', 'reddish_brown', 'white', 'dark_blue'];
+
+// ===== tiny column-major mat4 =====
+const I4 = () => [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+function mul(a, b) { const r = new Array(16); for (let c = 0; c < 4; c++) for (let w = 0; w < 4; w++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + w] * b[c * 4 + k]; r[c * 4 + w] = s; } return r; }
+const tr = (x, y, z) => [1,0,0,0, 0,1,0,0, 0,0,1,0, x,y,z,1];
+const sc = (x, y, z) => [x,0,0,0, 0,y,0,0, 0,0,z,0, 0,0,0,1];
+const rx = t => { const c = Math.cos(t), s = Math.sin(t); return [1,0,0,0, 0,c,s,0, 0,-s,c,0, 0,0,0,1]; };
+const ry = t => { const c = Math.cos(t), s = Math.sin(t); return [c,0,-s,0, 0,1,0,0, s,0,c,0, 0,0,0,1]; };
+const rz = t => { const c = Math.cos(t), s = Math.sin(t); return [c,s,0,0, -s,c,0,0, 0,0,1,0, 0,0,0,1]; };
+const xp = (m, x, y, z) => [m[0]*x + m[4]*y + m[8]*z + m[12], m[1]*x + m[5]*y + m[9]*z + m[13], m[2]*x + m[6]*y + m[10]*z + m[14]];
+const xd = (m, x, y, z) => [m[0]*x + m[4]*y + m[8]*z, m[1]*x + m[5]*y + m[9]*z, m[2]*x + m[6]*y + m[10]*z];
+function nmat(m) {
+  const a = m[0], b = m[4], c = m[8], d = m[1], e = m[5], f = m[9], g = m[2], h = m[6], i = m[10];
+  const c0 = e*i - f*h, c1 = -(d*i - f*g), c2 = d*h - e*g, det = a*c0 + b*c1 + c*c2;
+  return [c0, c1, c2, -(b*i - c*h), a*i - c*g, -(a*h - b*g), b*f - c*e, -(a*f - c*d), a*e - b*d].map(v => v / det);
+}
+
+// ===== geometry (CCW, right-handed, y-up) =====
+const FACES = [[[1,0,0],[0,1,0],[0,0,1]], [[-1,0,0],[0,0,1],[0,1,0]], [[0,1,0],[0,0,1],[1,0,0]], [[0,-1,0],[1,0,0],[0,0,1]], [[0,0,1],[1,0,0],[0,1,0]], [[0,0,-1],[0,1,0],[1,0,0]]];
+function boxG(w, h, d, cx, cy, cz) {
+  const p = [], n = [], ix = [], H = [w / 2, h / 2, d / 2], C0 = [cx, cy, cz];
+  for (const [N, U, V] of FACES) {
+    const base = p.length / 3;
+    for (const [su, sv] of [[-1,-1],[1,-1],[1,1],[-1,1]]) { for (let k = 0; k < 3; k++) p.push(C0[k] + (N[k] + su * U[k] + sv * V[k]) * H[k]); n.push(N[0], N[1], N[2]); }
+    ix.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+  return { p, n, i: ix };
+}
+function cylG(rt, rb, h, seg, cx, cy, cz, caps = 3) {
+  const p = [], n = [], ix = [], hh = h / 2, sl = (rb - rt) / h, Ln = Math.hypot(1, sl);
+  for (let s = 0; s <= seg; s++) {
+    const t = s / seg * Math.PI * 2, si = Math.sin(t), co = Math.cos(t);
+    p.push(cx + rb * si, cy - hh, cz + rb * co); n.push(si / Ln, sl / Ln, co / Ln);
+    p.push(cx + rt * si, cy + hh, cz + rt * co); n.push(si / Ln, sl / Ln, co / Ln);
+  }
+  for (let s = 0; s < seg; s++) { const A = s * 2; ix.push(A, A + 2, A + 3, A, A + 3, A + 1); }
+  for (const [on, y, ny, r] of [[caps & 1, hh, 1, rt], [caps & 2, -hh, -1, rb]]) {
+    if (!on || r <= 0) continue;
+    const c0 = p.length / 3; p.push(cx, cy + y, cz); n.push(0, ny, 0);
+    for (let s = 0; s <= seg; s++) { const t = s / seg * Math.PI * 2; p.push(cx + r * Math.sin(t), cy + y, cz + r * Math.cos(t)); n.push(0, ny, 0); }
+    for (let s = 0; s < seg; s++) ny > 0 ? ix.push(c0, c0 + 1 + s, c0 + 2 + s) : ix.push(c0, c0 + 2 + s, c0 + 1 + s);
+  }
+  return { p, n, i: ix };
+}
+function merge(list) { const o = { p: [], n: [], i: [] }; for (const g of list) { const base = o.p.length / 3; o.p.push(...g.p); o.n.push(...g.n); for (const k of g.i) o.i.push(base + k); } return o; }
+function xform(g, m) {
+  const N = nmat(m), o = { p: [], n: [], i: g.i.slice() };
+  for (let k = 0; k < g.p.length; k += 3) {
+    o.p.push(...xp(m, g.p[k], g.p[k + 1], g.p[k + 2]));
+    const a = g.n[k], b = g.n[k + 1], c = g.n[k + 2];
+    const x = N[0]*a + N[1]*b + N[2]*c, y = N[3]*a + N[4]*b + N[5]*c, z = N[6]*a + N[7]*b + N[8]*c, l = Math.hypot(x, y, z) || 1;
+    o.n.push(x / l, y / l, z / l);
+  }
+  return o;
+}
+function bbox(g) { const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9]; for (let k = 0; k < g.p.length; k += 3) for (let j = 0; j < 3; j++) { mn[j] = Math.min(mn[j], g.p[k + j]); mx[j] = Math.max(mx[j], g.p[k + j]); } return { min: mn, max: mx }; }
+const ROTM = { up: null, front: rx(Math.PI / 2), right: rz(-Math.PI / 2) };
+const geoCache = new Map();
+function partGeo(kind, w, l, h, orient = 'up') {
+  const key = [kind, w, l, h, orient].join('|');
+  if (geoCache.has(key)) return geoCache.get(key);
+  const bh = h * PH, list = [], r = w * S / 2 - G / 2, studBox = kind === 'brick' || kind === 'plate';
+  if (studBox || kind === 'tile' || kind === 'baseplate') list.push(boxG(w * S - G, bh, l * S - G, w * S / 2, bh / 2, l * S / 2));
+  else if (kind === 'round' || kind === 'round_tile') list.push(cylG(r, r, bh, 32, w * S / 2, bh / 2, l * S / 2));
+  else if (kind === 'cone') list.push(cylG(Math.max(STUD_R, r * 0.45), r, bh, 32, w * S / 2, bh / 2, l * S / 2));
+  if ((studBox || kind === 'round' || kind === 'cone') && w >= 1) {
+    if (!studBox && w <= 2.5) list.push(cylG(STUD_R, STUD_R, STUD_H, 16, w * S / 2, bh + STUD_H / 2, l * S / 2, 1));
+    else for (let i = 0; i < Math.floor(w); i++) for (let j = 0; j < Math.floor(l); j++) {
+      const cx = (i + 0.5) * S, cz = (j + 0.5) * S;
+      if (kind === 'round' && Math.hypot(cx - w * S / 2, cz - l * S / 2) + STUD_R > r) continue;
+      list.push(cylG(STUD_R, STUD_R, STUD_H, 16, cx, bh + STUD_H / 2, cz, 1));
+    }
+  }
+  let g = merge(list);
+  if (ROTM[orient]) { g = xform(g, ROTM[orient]); const bb = bbox(g); g = xform(g, tr(-bb.min[0], -bb.min[1], -bb.min[2])); }
+  g.bb = bbox(g); g.key = key;
+  geoCache.set(key, g);
+  return g;
+}
+
+// ===== voxel world + object transforms =====
+const NX = 128, NY = 118, NZ = 96;
+const VC = new Uint8Array(NX * NY * NZ), VS = new Uint16Array(NX * NY * NZ);
+const vid = (x, y, z) => (y * NZ + z) * NX + x;
+const sections = [{ name: 'room_structure', parent: -1 }];
+const stack = [{ map: (a, b) => [a, b], mat: I4(), oy: 0, sec: 0 }];
+const top = () => stack[stack.length - 1];
+function obj(name, x, y, z, w, d, rot, fn) {
+  const p = top();
+  const lm = [(a, b) => [x + a, z + b], (a, b) => [x + b, z + w - a], (a, b) => [x + w - a, z + d - b], (a, b) => [x + d - b, z + a]][rot];
+  const off = [[x, z], [x, z + w], [x + w, z + d], [x + d, z]][rot];
+  const lmat = mul(tr(off[0] * S, y * PH, off[1] * S), ry(rot * Math.PI / 2));
+  const sec = sections.length; sections.push({ name, parent: p.sec });
+  stack.push({ map: (a, b) => { const q = lm(a, b); return p.map(q[0], q[1]); }, mat: mul(p.mat, lmat), oy: p.oy + y, sec });
+  fn(); stack.pop();
+}
+function B(u, y, v, w, h, d, color, tileTop = false) {
+  const t = top(), ci = color ? CI[color] + 1 : 0;
+  for (let a = u; a < u + w; a++) for (let b = v; b < v + d; b++) {
+    const q = t.map(a + 0.5, b + 0.5), X = Math.floor(q[0]), Z = Math.floor(q[1]);
+    if (X < 0 || X >= NX || Z < 0 || Z >= NZ) continue;
+    for (let yy = y; yy < y + h; yy++) {
+      const Y = t.oy + yy; if (Y < 0 || Y >= NY) continue;
+      const i = vid(X, Y, Z);
+      VC[i] = ci ? (ci | (tileTop && yy === y + h - 1 ? 128 : 0)) : 0; VS[i] = t.sec;
+    }
+  }
+}
+const T = (u, y, v, w, d, c) => B(u, y, v, w, 1, d, c, true);
+function D(cu, cv, r, y, h, color, tileTop = false) {
+  for (let a = Math.floor(cu - r); a < Math.ceil(cu + r); a++) for (let b = Math.floor(cv - r); b < Math.ceil(cv + r); b++)
+    if ((a + 0.5 - cu) ** 2 + (b + 0.5 - cv) ** 2 <= r * r) B(a, y, b, 1, h, 1, color, tileTop);
+}
+const parts = [];
+function P(kind, u, y, v, w, l, h, color, orient = 'up', o = {}) {
+  const t = top(), g = partGeo(kind, w, l, h, orient);
+  let m = tr(u * S, y * PH, v * S);
+  if (o.rx || o.ry || o.rz) {
+    const cx = (g.bb.min[0] + g.bb.max[0]) / 2, cz = (g.bb.min[2] + g.bb.max[2]) / 2;
+    m = mul(m, mul(tr(cx, 0, cz), mul(mul(rx(o.rx || 0), mul(ry(o.ry || 0), rz(o.rz || 0))), tr(-cx, 0, -cz))));
+  }
+  if (o.s) m = mul(m, sc(o.s[0], o.s[1], o.s[2]));
+  parts.push({ kind, w, l, h, color, geo: g, mat: mul(t.mat, m), sec: t.sec });
+}
+const LIGHTS = [];
+function L(name, u, y, v, type, o = {}) {
+  const t = top(), d = o.dir || [0, -1, 0];
+  LIGHTS.push({ ...o, name, type, p: xp(t.mat, u * S, y * PH, v * S), d: xd(t.mat, d[0], d[1], d[2]) });
+}
+
+// ================= ROOM =================
+const FL = 2, WT = 108;
+obj('baseplates', 0, 0, 0, NX, NZ, 0, () => { for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) P('baseplate', i * 32, 0, j * 32, 32, 32, 1, 'light_bluish_gray'); });
+obj('plank_floor', 0, 0, 0, NX, NZ, 0, () => {
+  const WOOD = ['medium_nougat', 'dark_tan', 'nougat', 'medium_nougat'];
+  for (let z = 2; z < NZ; z++) for (let x = 2; x < NX; x++) {
+    const s = Math.floor((x + (z * 7) % 20) / 20);
+    T(x, 1, z, 1, 1, WOOD[(((z * 92821) ^ (s * 40503)) >>> 0) % 4]);
+  }
+});
+const WINS = [[16, 46], [82, 112]];
+obj('walls', 0, 0, 0, NX, NZ, 0, () => {
+  B(0, 1, 0, NX, WT - 1, 2, 'white'); B(0, 1, 2, 2, WT - 1, NZ - 2, 'white');
+  B(0, 1, 0, NX, 37, 2, 'tan'); B(0, 1, 2, 2, 37, NZ - 2, 'tan');
+  B(0, 38, 0, NX, 2, 2, 'reddish_brown'); B(0, 38, 2, 2, 2, NZ - 2, 'reddish_brown');
+  for (let k = 0; k < 8; k++) B(4 + k * 16, 10, 1, 12, 22, 1, 'dark_tan');
+  for (let k = 0; k < 4; k++) B(1, 10, 6 + k * 16, 1, 22, 12, 'dark_tan');
+  T(0, WT, 0, NX, 2, 'light_bluish_gray'); T(0, WT, 2, 2, NZ - 2, 'light_bluish_gray');
+  B(2, 2, 2, NX - 2, 3, 1, 'reddish_brown', true); B(2, 2, 3, 1, 3, NZ - 3, 'reddish_brown', true);
+  B(2, 38, 2, NX - 2, 1, 1, 'reddish_brown', true); B(2, 38, 3, 1, 1, NZ - 3, 'reddish_brown', true);
+  for (const [a, b] of WINS) B(a, 40, 0, b - a, 60, 2, null);
+  B(0, 2, 76, 2, 84, 16, null); B(2, 2, 74, 1, 88, 20, null);
+  T(0, 1, 76, 2, 16, 'reddish_brown');
+  obj('radiator', 20, 0, 2, 22, 2, 0, () => {
+    for (let u = 0; u < 22; u++) u % 2 ? B(u, 10, 0, 1, 20, 1, 'white', true) : B(u, 8, 0, 1, 24, 2, 'white', true);
+    for (const u of [0.2, 20.8]) P('round_tile', u, 2, 0.6, 1, 1, 6, 'light_bluish_gray');
+    P('round_tile', 21.2, 26, 0.7, 0.8, 0.8, 3, 'white');
+  });
+});
+WINS.forEach(([x0, x1], wi) => obj('window_' + (wi + 1), x0, 0, 0, 30, 4, 0, () => {
+  B(0, 40, 0, 30, 2, 1, 'black'); B(0, 98, 0, 30, 2, 1, 'black'); B(0, 82, 0, 30, 2, 1, 'black');
+  B(0, 40, 0, 1, 60, 1, 'black'); B(29, 40, 0, 1, 60, 1, 'black'); B(14, 40, 0, 2, 60, 1, 'black');
+  for (const [px, pw] of [[1, 13], [16, 13]]) {
+    P('tile', px, 42, 0.3, pw, 16, 1, 'trans_clear', 'front');
+    P('tile', px, 84, 0.3, pw, 5.6, 1, 'trans_clear', 'front');
+  }
+  for (const hx of [12.6, 16.6]) P('tile', hx, 60, 1, 0.4, 1.4, 1, 'light_bluish_gray', 'front');
+  B(-2, 38, 1, 34, 2, 3, 'white', true);
+  // curtains with pleats + rod
+  for (const [cu, cw] of [[-6, 6], [30, 6]]) for (let k = 0; k < cw; k++) {
+    B(cu + k, 30, 2, 1, 72, k % 2 ? 1 : 2, 'sand_green', true);
+    B(cu + k, 30, 2, 1, 2, 2, 'olive_green');
+  }
+  B(-8, 103, 3, 46, 1, 1, 'black');
+  for (const bu of [-7, 36]) B(bu, 103, 2, 1, 2, 1, 'black');
+  for (const fu of [-8.8, 37.9]) P('round', fu, 102.5, 3, 1, 1, 2, 'pearl_gold', 'right');
+}));
+obj('door', 0, 0, 76, 3, 16, 0, () => {
+  B(0, 2, 0, 1, 84, 16, 'dark_blue');
+  B(1, 2, 0, 1, 84, 2, 'dark_blue'); B(1, 2, 14, 1, 84, 2, 'dark_blue'); B(1, 2, 7, 1, 84, 2, 'dark_blue');
+  B(1, 2, 0, 1, 6, 16, 'dark_blue'); B(1, 40, 0, 1, 4, 16, 'dark_blue'); B(1, 80, 0, 1, 6, 16, 'dark_blue');
+  B(2, 2, -2, 1, 84, 2, 'reddish_brown'); B(2, 2, 16, 1, 84, 2, 'reddish_brown');
+  B(2, 86, -2, 1, 4, 20, 'reddish_brown', true);
+  B(2, 2, -2, 1, 6, 2, 'dark_tan'); B(2, 2, 16, 1, 6, 2, 'dark_tan');
+  P('round', 2, 43, 13, 1, 1, 1, 'pearl_gold', 'right');
+  P('plate', 2.4, 44.5, 10.8, 0.5, 2.6, 1, 'pearl_gold', 'right');
+  P('tile', 2, 36, 13.25, 1, 0.5, 1, 'pearl_gold', 'right');
+  P('tile', 1, 44, -3.2, 1.2, 0.8, 1, 'white', 'right');
+  P('tile', 1.4, 44.8, -3, 0.5, 0.4, 0.5, 'light_bluish_gray', 'right');
+  obj('wall_clock', 0, 0, 0, 3, 16, 0, () => {
+    P('round_tile', 2, 90.5, 5, 6, 6, 1, 'black', 'right');
+    P('round_tile', 2.4, 91.75, 5.5, 5, 5, 1, 'white', 'right');
+    for (const [dy, dz, h, l] of [[11.5, 0, 0.4, 0.2], [-11.5, 0, 0.4, 0.2], [0, 2.1, 0.2, 0.4], [0, -2.1, 0.2, 0.4]])
+      P('tile', 2.8, 97.6 + dy / 2.5 * 1.6 - h * 1.25, 7.9 + dz - l / 2, h, l, 0.5, 'black', 'right');
+    P('tile', 2.85, 98, 7.85, 2, 0.3, 0.4, 'black', 'right');
+    P('tile', 2.95, 97.6, 8, 0.25, 1.6, 0.4, 'red', 'right');
+    P('round_tile', 2.8, 97.4, 7.7, 0.6, 0.6, 1, 'pearl_gold', 'right');
+  });
+});
+
+// ================= LIBRARY SHELVING =================
+obj('library_shelving', 2, FL, 4, 8, 54, 0, () => {
+  const rb = 'reddish_brown', BOARDS = [3, 18, 33, 48, 63, 78], UP = [0, 18, 36, 53];
+  B(0, 0, 0, 1, 94, 54, 'medium_nougat');
+  B(1, 0, 0, 4, 3, 54, rb);
+  for (const v of UP) B(1, 0, v, 5, 92, 1, rb);
+  for (const b of BOARDS) B(1, b, 0, 5, 1, 54, rb, true);
+  B(1, 92, 0, 5, 1, 54, rb); B(0, 93, -1, 7, 2, 56, rb, true);
+  for (const v of UP) P('tile', 6, 4, v + 0.1, 35, 0.8, 0.6, 'medium_nougat', 'right');
+  for (const b of BOARDS) for (let bay = 0; bay < 3; bay++) shelfRow(b + 1, UP[bay] + 1, UP[bay + 1], b === 78 ? 13 : 14);
+  function shelfRow(y, vs, ve, gap) {
+    let z = vs + 0.05, series = 0, sc = null, sh = 0, sd = 0, decor = false;
+    const book = (c, hgt, dep, th) => {
+      hgt = Math.min(hgt, (gap - 0.5) / 2.5);
+      const tz = th * 0.4; if (z + tz > ve - 0.05) { z = ve; return; }
+      P('tile', 5.9 - dep, y, z, dep, hgt, th, c, 'front');
+      if (rnd() < 0.45) {
+        const bc = ['black', 'dark_blue', 'dark_red', 'dark_green', 'dark_purple'].includes(c) ? pick(['pearl_gold', 'white', 'tan']) : pick(['black', 'white', 'dark_red']);
+        P('tile', 5.88, y + hgt * 2.5 * (0.62 + rnd() * 0.2), z + 0.03, 0.12, 0.28, th * 0.85, bc, 'front');
+        if (rnd() < 0.5) P('tile', 5.88, y + 1.2, z + 0.03, 0.12, 0.2, th * 0.85, bc, 'front');
+      }
+      z += tz + 0.015;
+    };
+    while (z < ve - 0.3) {
+      if (series > 0) { book(sc, sh, sd, 1.0); series--; continue; }
+      const r = rnd();
+      if (r < 0.05) { z += 0.4 + rnd() * 0.8; continue; }
+      if (r < 0.11 && ve - z > 3.6) {
+        let yy = y; const n = 2 + Math.floor(rnd() * 4);
+        for (let k = 0; k < n; k++) { const hh = 0.8 + rnd() * 0.9; P('tile', 1.3 + rnd() * 0.4, yy, z + 0.15, 4.2, 3.0, hh, pick(BOOKS), 'up', { ry: (rnd() - 0.5) * 0.15 }); yy += hh; }
+        z += 3.5; continue;
+      }
+      if (r < 0.15 && !decor && ve - z > 2.8) { decor = true; decorItem(y, z); z += 2.8; continue; }
+      if (r < 0.24) { series = 3 + Math.floor(rnd() * 5); sc = pick(BOOKS); sh = 3.6 + rnd() * 1.6; sd = 3.8 + rnd() * 0.8; continue; }
+      book(pick(BOOKS), 3.3 + rnd() * 2.1, 3.3 + rnd() * 1.3, 0.6 + rnd() * 1.4);
+    }
+  }
+  function decorItem(y, z) {
+    const k = Math.floor(rnd() * 4);
+    if (k === 0) { P('round_tile', 2.6, y, z + 0.4, 2, 2, 9, pick(['white', 'sand_blue', 'dark_green', 'dark_orange'])); P('round_tile', 3.1, y + 9, z + 0.9, 1, 1, 2, 'white'); }
+    else if (k === 1) { P('tile', 4.4, y, z + 0.4, 2.4, 2, 1, 'black', 'right', { rz: -0.12 }); P('tile', 4.82, y + 1, z + 0.6, 1.8, 1.6, 0.3, pick(['sand_blue', 'sand_green', 'tan']), 'right', { rz: -0.12 }); }
+    else if (k === 2) { P('round_tile', 2.8, y, z + 0.5, 1.6, 1.6, 1, 'black'); P('round_tile', 3.4, y + 1, z + 1.1, 0.4, 0.4, 4, 'pearl_gold'); P('cone', 2.9, y + 5, z + 0.6, 1.4, 1.4, 4, 'pearl_gold'); }
+    else { for (const dz of [0.3, 2.2]) { P('tile', 2, y, z + dz, 3.8, 0.3, 1, 'black'); P('tile', 2, y + 1, z + dz, 0.4, 2.4, 0.3, 'black', 'front'); } }
+  }
+  // box files + hanging plant + art books on top
+  ['black', 'dark_red', 'black', 'sand_blue'].forEach((c, k) => { B(1, 95, 28 + k, 5, 12, 1, c, true); P('tile', 6, 101, 28.15 + k, 1.2, 0.7, 0.4, 'white', 'right'); });
+  for (let k = 0; k < 4; k++) P('tile', 1.4 + k * 0.1, 95 + k * 1.2, 40.5, 4.6, 5.4, 1.2, ['dark_blue', 'white', 'red', 'black'][k], 'up', { ry: (k - 1.5) * 0.06 });
+  P('round_tile', 2, 95, 6, 3, 3, 7, 'dark_orange'); P('round_tile', 2.3, 102, 6.3, 2.4, 2.4, 0.5, 'reddish_brown');
+  for (let k = 0; k < 14; k++) {
+    const t = k / 13;
+    P('plate', 4.4 + Math.min(t * 6, 1.8), 102.5 - k * 2.6 + (k < 2 ? 2 : 0), 6.6 + Math.sin(k * 1.3) * 1.1, 1.2, 1.2, 1, k % 3 ? 'green' : 'bright_green', 'up', { ry: k * 0.9, rx: 0.5 });
+  }
+  for (let bay = 0; bay < 3; bay++) obj('shelf_lamp_' + (bay + 1), 0, 0, 0, 10, 54, 0, () => {
+    const mid = (UP[bay] + UP[bay + 1]) / 2;
+    P('tile', 7, 93, mid - 0.5, 0.8, 1, 1, 'pearl_gold', 'right');
+    P('tile', 7, 94, mid - 0.2, 2.2, 0.4, 0.6, 'pearl_gold');
+    P('round_tile', 8.6, 91.4, mid - 3, 1.4, 1.4, 15, 'pearl_gold', 'front');
+    P('tile', 8.9, 91.2, mid - 2.7, 0.8, 5.4, 0.3, 'bulb');
+    L('shelf_light_' + (bay + 1), 9.3, 90.8, mid, 'spot', { dir: [-0.6, -1, 0], angle: 2.0, I: 0.01 });
+  });
+});
+
+// ================= PROOF WALL + FRAMED COVERS =================
+obj('proof_wall', 53, 0, 2, 22, 2, 0, () => {
+  B(0, 44, 0, 22, 42, 1, 'reddish_brown', true);
+  B(1, 46, 0, 20, 38, 1, 'medium_nougat');
+  for (let r = 0; r < 2; r++) for (let c = 0; c < 5; c++) {
+    if (r === 1 && c === 3) continue;
+    const x = 1.5 + c * 3.85 + (rnd() - 0.5) * 0.2, y = 49 + r * 15 + (rnd() - 0.5) * 0.6, img = rnd() < 0.45;
+    P('tile', x, y, 1, 3.4, 4.8, 0.5, rnd() < 0.2 ? 'tan' : 'white', 'front', { rz: (rnd() - 0.5) * 0.05 });
+    P('tile', x + 0.3, y + 10.2, 1.2, 2.8, 0.3, 0.3, 'black', 'front');
+    const lines = img ? 4 : 8;
+    for (let k = 0; k < lines; k++) P('tile', x + 0.3, y + 9.2 - k * 1.0, 1.2, k === lines - 1 ? 1.6 : 2.8, 0.13, 0.25, 'dark_bluish_gray', 'front');
+    if (img) P('tile', x + 0.3, y + 0.8, 1.2, 2.8, 1.7, 0.25, pick(['dark_blue', 'red', 'yellow', 'dark_green', 'sand_blue']), 'front');
+    if (rnd() < 0.4) P('tile', x + 1.6, y + 5 + rnd() * 3, 1.3, 1.2, 0.12, 0.2, 'red', 'front', { rz: (rnd() - 0.5) * 0.6 });
+    P('round', x + 1.4, y + 11.1, 1.2, 0.6, 0.6, 1.2, pick(['red', 'yellow', 'blue']), 'front');
+  }
+  for (let k = 0; k < 8; k++) P('tile', 1.6 + k * 2.4, 79, 1, 1.6, 1.6, 0.3, ['yellow', 'sand_blue', 'yellow', 'orange', 'white', 'yellow', 'bright_green', 'sand_blue'][k], 'front', { rz: (rnd() - 0.5) * 0.15 });
+  P('tile', 13, 55, 1.1, 3.4, 4.8, 0.5, 'yellow', 'front', { rz: 0.04 });
+  P('tile', 13.4, 64, 1.3, 2.6, 0.5, 0.3, 'black', 'front');
+  P('tile', 3, 62.5, 1.3, 13, 0.06, 0.2, 'red', 'front', { rz: 0.18 });
+  [[2, 'red', 'pearl_gold'], [8.25, 'dark_blue', 'white'], [14.5, 'dark_green', 'tan']].forEach(([fx, c, t], k) => obj('framed_cover_' + (k + 1), fx, 0, 0, 6, 2, 0, () => {
+    P('tile', 0, 89, 0, 5.5, 5.8, 1, 'black', 'front');
+    P('tile', 0.4, 90, 0.4, 4.7, 5.0, 0.5, 'white', 'front');
+    P('tile', 1.15, 91.4, 0.6, 3.2, 4.0, 0.5, c, 'front');
+    P('tile', 1.5, 99.4, 0.8, 2.5, 0.5, 0.3, t, 'front');
+    P('tile', 1.5, 92.4, 0.8, 2.5, 0.25, 0.3, t, 'front');
+    P('round_tile', 2.25, 94.4, 0.8, 1, 1, 0.3, t, 'front');
+  }));
+  obj('picture_light', 0, 0, 0, 22, 4, 0, () => {
+    for (const mx of [6, 15]) { P('tile', mx, 104, 0, 1, 1.4, 1, 'pearl_gold', 'front'); P('tile', mx + 0.3, 105, 0.4, 0.4, 2, 0.6, 'pearl_gold'); }
+    P('round_tile', 2, 103.8, 2.0, 1.2, 1.2, 45, 'pearl_gold', 'right');
+    P('tile', 2.5, 103.5, 2.2, 17, 0.8, 0.3, 'bulb');
+    L('picture_light', 11, 103, 2.7, 'spot', { dir: [0, -1, -0.45], angle: 2.3, I: 0.012 });
+  });
+});
+
+// ================= PROOF PRESS =================
+obj('proof_press', 84, FL, 2, 26, 14, 0, () => {
+  const dk = 'dark_bluish_gray';
+  B(1, 0, 0, 24, 2, 12, 'black');
+  B(1, 2, 0, 24, 28, 12, dk);
+  for (let r = 0; r < 6; r++) for (let c = 0; c < 2; c++) {
+    const x = 1.5 + c * 11.6, y = 2.6 + r * 4.5;
+    P('tile', x, y, 12, 11, 1.5, 1, 'reddish_brown', 'front');
+    P('tile', x + 4, y + 2.4, 12.4, 3, 0.35, 1, 'pearl_gold', 'front');
+    P('tile', x + 4.9, y + 0.8, 12.4, 1.2, 0.5, 0.4, 'white', 'front');
+  }
+  B(0, 30, 0, 26, 1, 12, 'light_bluish_gray'); T(0, 31, 0, 26, 12, 'light_bluish_gray');
+  for (const fu of [6, 19]) {
+    for (let yy = 0; yy < 22; yy++) { const sh = Math.floor(yy / 6); B(fu, 32 + yy, 1 + sh, 1, 1, 10 - 2 * sh, dk); }
+    B(fu, 54, 4, 1, 2, 4, dk, true);
+  }
+  B(7, 32, 1, 12, 2, 2, 'black'); B(7, 32, 9, 12, 2, 2, 'black');
+  P('round', 7, 38, 3, 6, 6, 30, 'light_bluish_gray', 'right');
+  P('round_tile', 6.9, 44, 5.4, 1.2, 1.2, 31, dk, 'right');
+  P('round_tile', 20.2, 35.5, 2, 8, 8, 1, 'pearl_gold', 'right');
+  P('round_tile', 20.6, 38, 3, 6, 6, 1, dk, 'right');
+  for (let k = 0; k < 4; k++) P('tile', 20.75, 45, 2.2, 0.4, 7.6, 1, 'pearl_gold', 'right', { rx: k * Math.PI / 4 });
+  P('round_tile', 21.1, 44.25, 5.5, 1, 1, 2, 'pearl_gold', 'right');
+  P('round', 21.2, 53.5, 5.6, 0.8, 0.8, 9, 'reddish_brown', 'right');
+  P('round_tile', 1.2, 32, 3, 4.5, 4.5, 1, 'black');
+  P('round_tile', 1.4, 33, 3.2, 4.1, 4.1, 0.3, 'dark_blue');
+  P('round', 1.6, 34, 2, 1, 1, 10, 'black', 'right');
+  for (let k = 0; k < 4; k++) P('tile', 21.4 + k * 0.08, 32 + k * 0.6, 4 + k * 0.05, 4, 5.2, 0.6, k === 3 ? 'white' : 'tan', 'up', { ry: (k - 2) * 0.04 });
+  P('tile', 21.8, 34.4, 5.6, 3.2, 0.3, 0.2, 'black'); for (let k = 0; k < 4; k++) P('tile', 21.8, 34.4, 6.2 + k * 0.5, 3.2, 0.1, 0.2, 'dark_bluish_gray');
+  P('tile', 0.6, 32, 9, 4, 2, 1.5, dk); for (let k = 0; k < 8; k++) P('tile', 0.8 + k * 0.45, 33.5, 9.2, 0.35, 1.6, 0.6, 'pearl_gold');
+});
+
+// ================= DESKS + CHAIRS =================
+function chair(c) {
+  P('round_tile', 3, 1, 3, 2, 2, 2, 'black');
+  for (let k = 0; k < 5; k++) {
+    const a = k * Math.PI * 2 / 5 + 0.3, cx = 4 + Math.sin(a) * 1.9, cz = 4 + Math.cos(a) * 1.9;
+    P('plate', cx - 0.5, 1, cz - 1.9, 1, 3.8, 1, 'black', 'up', { ry: a });
+    P('round_tile', 4 + Math.sin(a) * 3.5 - 0.45, 0, 4 + Math.cos(a) * 3.5 - 0.45, 0.9, 0.9, 1, 'black');
+  }
+  P('round_tile', 3.6, 3, 3.6, 0.8, 0.8, 10, 'light_bluish_gray');
+  P('round_tile', 3.25, 3, 3.25, 1.5, 1.5, 4, 'black');
+  B(1, 13, 1, 6, 1, 6, 'black'); B(3, 12, 3, 2, 1, 2, 'black');
+  B(0, 14, 0, 8, 3, 7, c, true); B(0, 14, 0, 1, 3, 1, null); B(7, 14, 0, 1, 3, 1, null);
+  T(1, 16, 0, 6, 1, c);
+  B(3, 12, 7, 2, 10, 1, 'black');
+  B(0, 22, 7, 8, 20, 1, c, true); B(0, 40, 7, 1, 2, 1, null); B(7, 40, 7, 1, 2, 1, null);
+  B(1, 24, 6, 6, 7, 1, c, true);
+  for (const u of [0, 7]) { B(u, 17, 3, 1, 8, 1, 'black'); B(u, 25, 1, 1, 1, 5, 'black', true); }
+  P('plate', 1.5, 13, 0.6, 1, 0.5, 1, 'black');
+}
+function desk(i) {
+  const dk = 'dark_bluish_gray', lg = 'light_bluish_gray', Y = 30;
+  for (const u of [1, 23]) { B(u, 0, 0, 2, 2, 13, dk); B(u, 2, 5, 2, 24, 2, dk); B(u, 26, 1, 2, 2, 11, dk); }
+  B(3, 12, 0, 20, 16, 1, dk);
+  B(0, 28, 0, 26, 1, 13, 'tan'); B(0, 29, 0, 26, 1, 13, 'tan', true);
+  T(0, 29, 12, 26, 1, 'medium_nougat');
+  obj('pedestal', 16, 0, 1, 7, 11, 0, () => {
+    B(0, 1, 0, 7, 25, 11, lg);
+    for (const [y0, y1] of [[1.3, 9.6], [10, 18.3], [18.7, 25.8]]) {
+      P('tile', 0.1, y0, 11, 6.8, (y1 - y0) / 2.5, 1, 'white', 'front');
+      P('tile', 2.3, y1 - 2.2, 11.4, 2.4, 0.3, 1, dk, 'front');
+    }
+    for (const [a, b] of [[0.2, 0.2], [5.8, 0.2], [0.2, 9.8], [5.8, 9.8]]) P('round_tile', a, 0, b, 1, 1, 1, 'black');
+  });
+  obj('monitor', 0, 0, 0, 26, 13, 0, () => {
+    B(9, Y, 2, 6, 1, 3, dk, true); B(11, Y + 1, 2, 2, 10, 1, dk);
+    B(6, Y + 9, 1, 12, 16, 2, 'black', true); B(8, Y + 12, 0, 8, 10, 1, 'black');
+    P('tile', 6.35, Y + 9.8, 3, 11.3, 5.7, 0.3, 'screen_blue', 'front');
+    L('monitor_glow', 12, Y + 16, 5.5, 'point', { I: 0.0012, color: '#a9cbe8', range: 0.18, kind: 'screen' });
+    P('tile', 6.5, Y + 22.5, 3.12, 11, 0.45, 0.25, lg, 'front');
+    P('tile', 6.5, Y + 10.2, 3.12, 1.5, 4.9, 0.25, 'dark_blue', 'front');
+    for (let k = 0; k < 4; k++) P('tile', 6.75, Y + 19.5 - k * 2, 3.2, 1, 0.3, 0.2, 'sand_blue', 'front');
+    for (let k = 0; k < 2; k++) {
+      const px = 8.5 + k * 4.6, img = (i + k) % 2 === 1;
+      P('tile', px, Y + 10.4, 3.12, 4.2, 4.7, 0.25, 'screen_white', 'front');
+      const lines = img ? 6 : 8;
+      for (let j = 0; j < lines; j++) P('tile', px + 0.35, Y + 20.5 - j * 1.2, 3.24, j === lines - 1 ? 2 : 3.5, j === 0 ? 0.3 : 0.14, 0.2, j === 0 ? 'black' : dk, 'front');
+      if (img) P('tile', px + 0.35, Y + 11, 3.24, 3.5, 1.2, 0.2, pick(['red', 'yellow', 'dark_green', 'sand_blue', 'orange']), 'front');
+    }
+    P('tile', 16.7, Y + 8.4, 3.05, 1.1, 1.1, 0.15, i % 2 ? 'yellow' : 'orange', 'front', { rz: 0.12 });
+    P('tile', 5.4, Y + 17, 2.6, 1.1, 1.1, 0.15, 'yellow', 'front', { rz: -0.1 });
+  });
+  B(8, Y, 6, 8, 1, 3, dk);
+  for (let a = 0; a < 8; a++) for (let b = 0; b < 3; b++) T(8 + a, Y + 1, 6 + b, 1, 1, (a + b) % 2 ? 'white' : lg);
+  T(18, Y, 6, 4, 4, 'dark_blue');
+  P('round_tile', 19.5, Y + 1, 7.3, 1, 1, 1, 'white', 'up', { s: [1, 1, 1.4] });
+  obj('manuscript', 0, 0, 0, 6, 12, 0, () => {
+    const n = 3 + (i % 3) * 2;
+    for (let k = 0; k < n; k++) P('tile', 1.2 + (rnd() - 0.5) * 0.3, Y + k, 6.4 + (rnd() - 0.5) * 0.3, 3.4, 4.8, 1, k % 3 === 2 ? 'tan' : 'white', 'up', { ry: (rnd() - 0.5) * 0.1 });
+    P('tile', 2.4, Y + n, 6.2, 1, 0.8, 1, 'black');
+    for (let k = 0; k < 6; k++) P('tile', 1.5, Y + n, 7.6 + k * 0.55, 2.6, 0.1, 0.15, 'dark_bluish_gray');
+    P('tile', 2.2, Y + n + 0.1, 8.8, 1.5, 0.15, 0.2, 'red', 'up', { ry: 0.4 });
+    P('round_tile', 4.3, Y + n, 9.5, 0.25, 0.25, 0.3, 'red', 'up', { s: [1, 1, 12] });
+  });
+  const mc = ['white', 'red', 'sand_blue', 'yellow'][i];
+  obj('mug', 0, 0, 0, 26, 13, 0, () => {
+    P('round_tile', 20.6, Y, 2.2, 1.3, 1.3, 3, mc);
+    P('round_tile', 20.7, Y + 2.95, 2.3, 1.1, 1.1, 0.1, 'reddish_brown');
+    P('plate', 21.85, Y + 0.8, 2.65, 0.45, 0.4, 1.6, mc);
+  });
+  obj('pen_cup', 0, 0, 0, 26, 13, 0, () => {
+    P('round_tile', 5, Y, 1.5, 1.3, 1.3, 4, dk);
+    for (const [c, x, z] of [['yellow', 5.3, 1.8], ['red', 5.8, 2.1], ['blue', 5.4, 2.4], ['black', 5.9, 1.7]]) P('round_tile', x, Y + 1, z, 0.25, 0.25, 5.5 + rnd(), c);
+  });
+  if (i % 2 === 0) obj('desk_lamp', 0, 0, 0, 26, 13, 0, () => {
+    P('round_tile', 0.4, Y, 0.4, 2.4, 2.4, 1, 'black');
+    P('round_tile', 1.25, Y + 1, 1.25, 0.7, 0.7, 14, 'black');
+    P('round_tile', 1.1, Y + 15, 1.1, 1, 1, 1, 'black');
+    P('tile', 1.3, Y + 15.4, 1.6, 0.6, 5.4, 0.8, 'black');
+    P('cone', 0.6, Y + 11.4, 5.6, 2, 2, 4, i === 0 ? 'yellow' : 'red');
+    P('round_tile', 1.1, Y + 11, 6.1, 1, 1, 0.4, 'bulb');
+    L('desk_lamp_light', 1.6, Y + 10.6, 6.6, 'spot', { dir: [0, -1, 0.15], angle: 2.1, I: 0.007 });
+  });
+  else obj('phone', 0, 0, 0, 26, 13, 0, () => {
+    B(1, Y, 1, 3, 1, 4, 'black', true);
+    P('tile', 1.1, Y + 1, 1.2, 0.9, 3.6, 1, 'black');
+    P('tile', 2.3, Y + 1, 1.6, 1.4, 2.2, 0.3, 'dark_bluish_gray');
+    for (let k = 0; k < 9; k++) P('tile', 2.4 + (k % 3) * 0.45, Y + 1.3, 1.8 + Math.floor(k / 3) * 0.6, 0.3, 0.4, 0.2, 'white');
+  });
+  if (i % 2) ['dark_green', 'dark_red', 'sand_blue'].forEach((c, k) => P('tile', 22.4 + k * 0.1, Y + k * 1.4, 5.8, 3, 4.2, 1.4, c, 'up', { ry: (k - 1) * 0.12 }));
+  if (i === 1 || i === 2) obj('succulent', 0, 0, 0, 26, 13, 0, () => {
+    const ux = i === 1 ? 23 : 23.2, vz = i === 1 ? 1 : 6.5;
+    P('round_tile', ux, Y, vz, 2, 2, 3, 'white');
+    for (let k = 0; k < 7; k++) P('plate', ux + 0.6 + Math.sin(k * 2.4) * 0.45, Y + 3 + (k % 3) * 0.6, vz + 0.2 + Math.cos(k * 2.4) * 0.45, 0.8, 1.6, 1, k % 2 ? 'sand_green' : 'green', 'up', { ry: k * 2.4, rx: 0.5 });
+  });
+  obj('chair', 7, 0, 10, 8, 8, 0, () => chair(i % 2 ? 'dark_blue' : 'red'));
+}
+obj('editorial_pod', 0, 0, 0, NX, NZ, 0, () => {
+  obj('area_rug', 52, 0, 24, 62, 52, 0, () => {
+    for (let u = 0; u < 62; u++) for (let v = 0; v < 52; v++) {
+      const e = Math.min(u, 61 - u, v, 51 - v);
+      const c = e < 2 ? 'dark_red' : e === 3 ? 'tan' : e === 4 ? 'dark_red' : ((Math.abs(u - 31) + Math.abs(v - 26)) % 8 === 0 ? 'dark_tan' : 'tan');
+      T(u, 2, v, 1, 1, c);
+    }
+    for (let v = 1; v < 51; v += 1.4) for (const u of [-0.6, 62.1]) P('tile', u, 2, v, 0.5, 0.3, 0.3, 'white');
+  });
+  obj('desk_1', 58, 3, 36, 26, 13, 2, () => desk(0));
+  obj('desk_2', 84, 3, 36, 26, 13, 2, () => desk(1));
+  obj('desk_3', 58, 3, 50, 26, 13, 0, () => desk(2));
+  obj('desk_4', 84, 3, 50, 26, 13, 0, () => desk(3));
+  obj('divider_screen', 0, 0, 0, NX, NZ, 0, () => {
+    B(58, 3, 49, 52, 43, 1, 'dark_blue'); T(58, 46, 49, 52, 1, 'tan');
+    for (const x of [57, 110]) B(x, 3, 48, 1, 44, 3, 'dark_bluish_gray', true);
+    for (let k = 0; k < 6; k++) P('tile', 62 + k * 8 + rnd() * 2, 38 + rnd() * 3, 50, 1.6, 1.6, 0.2, pick(['yellow', 'orange', 'sand_blue', 'white']), 'front', { rz: (rnd() - 0.5) * 0.2 });
+    for (let k = 0; k < 5; k++) P('tile', 64 + k * 9 + rnd() * 2, 38 + rnd() * 3, 48.95, 1.6, 1.6, 0.2, pick(['yellow', 'white', 'bright_green']), 'front', { rz: (rnd() - 0.5) * 0.2 });
+  });
+});
+
+// ================= LAYOUT TABLE =================
+obj('layout_table', 16, FL, 62, 32, 16, 0, () => {
+  const rb = 'reddish_brown', Y = 34;
+  for (const [u, v] of [[0, 0], [30, 0], [0, 14], [30, 14]]) B(u, 0, v, 2, 32, 2, rb);
+  B(2, 28, 0, 28, 4, 1, rb); B(2, 28, 15, 28, 4, 1, rb); B(0, 28, 2, 1, 4, 12, rb); B(31, 28, 2, 1, 4, 12, rb);
+  B(2, 6, 1, 28, 1, 14, 'medium_nougat', true);
+  B(0, 32, 0, 32, 1, 16, 'tan'); T(0, 33, 0, 32, 16, 'tan');
+  T(0, 33, 0, 32, 1, 'medium_nougat'); T(0, 33, 15, 32, 1, 'medium_nougat'); T(0, 33, 1, 1, 14, 'medium_nougat'); T(31, 33, 1, 1, 14, 'medium_nougat');
+  T(2, Y, 2, 15, 11, 'dark_green');
+  for (let k = 0; k < 5; k++) P('tile', 2, Y + 1, 2.1 + k * 2.6, 15, 0.06, 0.15, 'bright_green');
+  for (let k = 0; k < 7; k++) P('tile', 2.1 + k * 2.4, Y + 1, 2, 0.06, 11, 0.15, 'bright_green');
+  for (const [sx, sz, sy] of [[2.8, 2.8, 1.2], [9.4, 6.6, 1.6], [18.5, 2.5, 0]]) {
+    P('tile', sx, Y + sy, sz, 6.8, 4.8, 0.4, 'white');
+    P('tile', sx + 3.37, Y + sy + 0.4, sz, 0.06, 4.8, 0.1, 'light_bluish_gray');
+    for (let pg = 0; pg < 2; pg++) {
+      const px = sx + 0.35 + pg * 3.4, img = rnd() < 0.6;
+      P('tile', px, Y + sy + 0.4, sz + 0.4, 2.7, 0.25, 0.15, 'black');
+      for (let j = 0; j < (img ? 3 : 7); j++) P('tile', px, Y + sy + 0.4, sz + 0.95 + j * 0.45, 2.7, 0.1, 0.12, 'dark_bluish_gray');
+      if (img) P('tile', px, Y + sy + 0.4, sz + 2.4, 2.7, 2, 0.15, pick(['dark_blue', 'red', 'yellow', 'sand_green', 'orange']));
+    }
+  }
+  P('tile', 3, Y + 1.4, 13.3, 12, 0.5, 0.25, 'light_bluish_gray', 'up', { ry: 0.02 });
+  for (let k = 0; k < 24; k++) P('tile', 3.2 + k * 0.5, Y + 1.65, 13.3, 0.04, k % 4 ? 0.12 : 0.22, 0.05, 'black', 'up', { ry: 0.02 });
+  P('tile', 17, Y + 1.5, 13, 2.2, 0.25, 0.4, 'light_bluish_gray', 'up', { ry: 0.4 });
+  P('tile', 18.6, Y + 1.5, 13.6, 0.8, 0.25, 0.4, 'orange', 'up', { ry: 0.4 });
+  ['red', 'white', 'dark_blue', 'yellow'].forEach((c, k) => P('tile', 19.5 + k * 0.15, Y + k * 0.8, 8.6 + k * 0.1, 3.4, 4.8, 0.8, c, 'up', { ry: (k - 1.5) * 0.12 }));
+  for (let k = 0; k < 7; k++) { const a = -0.9 + k * 0.25; P('tile', 27.4 + Math.sin(a) * 2 - 0.5, Y + k * 0.2, 9 + Math.cos(a) * 2 - 2, 1, 4, 0.2, BOOKS[k * 2], 'up', { ry: a }); }
+  P('round_tile', 27.1, Y + 1.5, 8.7, 0.6, 0.6, 0.4, 'pearl_gold');
+  P('round_tile', 23.5, Y, 12, 1.5, 1.5, 2, 'black'); P('round_tile', 23.65, Y + 2, 12.15, 1.2, 1.2, 0.3, 'trans_clear');
+  P('round_tile', 29, Y, 2, 1.5, 1.5, 4, 'white');
+  for (const [c, x, z] of [['red', 29.3, 2.3], ['black', 29.8, 2.6], ['blue', 29.4, 2.9]]) P('round_tile', x, Y + 1, z, 0.25, 0.25, 6, c);
+  P('tile', 25.5, Y, 4.5, 3.4, 4.8, 1.2, 'yellow', 'front');
+  P('tile', 27.6, Y, 4.6, 3.4, 4.8, 1.2, 'yellow', 'front', { rz: -0.25 });
+  for (let k = 0; k < 6; k++) P('tile', 25.2, Y + k * 0.9, 11.8, 3.4, 2.6, 0.9, k % 2 ? 'white' : 'yellow');
+  obj('architect_lamp', 29, 0, 13, 3, 3, 0, () => {
+    B(1, 30, 2, 2, 4, 1, 'black');
+    P('round_tile', 1.2, Y, 1.2, 0.6, 0.6, 18, 'black');
+    P('round_tile', 1, Y + 18, 1, 1, 1, 1, 'black');
+    P('tile', -5.5, Y + 18.4, 1.2, 7, 0.6, 0.8, 'black');
+    P('cone', -6.6, Y + 13.6, 0.5, 2.2, 2.2, 4.8, 'red');
+    P('round_tile', -6, Y + 13.2, 1.1, 1, 1, 0.4, 'bulb');
+    L('architect_lamp_light', -5.5, Y + 12.8, 1.6, 'spot', { angle: 2.1, I: 0.008 });
+  });
+  for (let k = 0; k < 3; k++) { B(3 + k * 7, 7, 3, 6, 10, 10, 'dark_tan', true); T(3 + k * 7, 16, 3, 6, 1, 'tan'); P('tile', 4.4 + k * 7, 9, 13, 3, 1.4, 0.4, 'white', 'front'); }
+  for (let k = 0; k < 5; k++) B(24, 7 + k, 4, 5, 1, 7, k % 2 ? 'tan' : 'white', true);
+});
+[[20, 'stool_1'], [34, 'stool_2']].forEach(([x, n]) => obj(n, x, FL, 55, 6, 6, 0, () => {
+  D(3, 3, 2.6, 0, 1, 'black', true);
+  P('round_tile', 2.6, 1, 2.6, 0.8, 0.8, 23, 'light_bluish_gray');
+  B(1, 10, 1, 4, 1, 1, 'dark_bluish_gray', true); B(1, 10, 4, 4, 1, 1, 'dark_bluish_gray', true);
+  B(1, 10, 2, 1, 1, 2, 'dark_bluish_gray', true); B(4, 10, 2, 1, 1, 2, 'dark_bluish_gray', true);
+  B(2, 23, 2, 2, 1, 2, 'black');
+  D(3, 3, 3, 24, 2, 'reddish_brown', true);
+}));
+
+// ================= FILING + PRINTER + WHITEBOARD =================
+obj('filing_and_printer', 2, FL, 60, 8, 15, 0, () => {
+  const lg = 'light_bluish_gray', dk = 'dark_bluish_gray';
+  B(0, 0, 0, 7, 52, 7, lg, true);
+  for (let k = 0; k < 4; k++) {
+    P('tile', 7, 0.8 + k * 12.8, 0.3, 4.8, 6.4, 1, lg, 'right');
+    P('tile', 7.4, 0.8 + k * 12.8 + 8.6, 2.2, 0.4, 2, 1, dk, 'right');
+    P('tile', 7.4, 0.8 + k * 12.8 + 10.2, 2.7, 0.5, 1, 0.5, 'white', 'right');
+  }
+  B(0, 0, 8, 7, 28, 7, dk, true);
+  for (const z of [8.2, 11.6]) { P('tile', 7, 1, z, 10.6, 3.2, 1, lg, 'right'); P('tile', 7.4, 14, z + (z > 9 ? 0.3 : 2.6), 2, 0.3, 1, dk, 'right'); }
+  B(0, 28, 8, 6, 9, 7, 'white'); T(0, 37, 8, 6, 7, lg);
+  B(3, 33, 9, 3, 2, 5, null);
+  P('tile', 3.2, 33, 9.4, 2.6, 4.2, 0.5, 'white');
+  T(4, 37, 13, 2, 2, 'black'); P('tile', 4.3, 38, 13.3, 1.2, 0.8, 0.3, 'screen_blue');
+  P('tile', 6, 29, 9, 1.2, 5, 1, lg, 'right');
+  for (let k = 0; k < 3; k++) P('tile', 1 + k * 0.1, 38 + k, 9.2, 3.4, 4.8, 1, 'white', 'up', { ry: k * 0.05 });
+  // whiteboard
+  B(0, 58, 0, 1, 34, 15, lg, true); B(0, 60, 1, 1, 30, 13, 'white');
+  for (let k = 1; k < 5; k++) P('tile', 1, 60 + k * 6, 1, 0.08, 13, 0.15, 'dark_bluish_gray', 'right');
+  for (let k = 1; k < 6; k++) P('tile', 1, 60, 1 + k * 2.2, 12, 0.06, 0.15, 'dark_bluish_gray', 'right');
+  for (let k = 0; k < 14; k++) P('tile', 1, 61 + Math.floor(rnd() * 5) * 6, 1.3 + Math.floor(rnd() * 6) * 2.2, 1.6, 1.6, 0.3, pick(['yellow', 'orange', 'sand_blue', 'bright_green', 'red']), 'right');
+  B(1, 58, 2, 1, 1, 11, lg, true);
+  for (const [c, z] of [['red', 3], ['blue', 5], ['black', 7.5]]) P('tile', 1.15, 59, z, 0.3, 1.6, 0.6, c);
+});
+obj('coat_stand', 4, FL, 92, 3, 3, 0, () => {
+  D(1.5, 1.5, 1.6, 0, 1, 'black', true);
+  B(1, 1, 1, 1, 70, 1, 'reddish_brown', true);
+  for (let k = 0; k < 4; k++) P('tile', 1.5 + Math.sin(k * 1.57) * 0.9 - 0.15, 66, 1.5 + Math.cos(k * 1.57) * 0.9 - 0.15, 0.3, 0.3, 3, 'pearl_gold');
+  B(0, 40, 0, 3, 24, 1, 'dark_blue'); B(0, 40, 2, 3, 24, 1, 'dark_blue'); B(0, 40, 1, 1, 24, 1, 'dark_blue'); B(2, 40, 1, 1, 24, 1, 'dark_blue');
+  B(0, 64, 0, 3, 2, 3, 'dark_blue', true);
+  B(1, 46, 3, 1, 18, 1, 'red', true);
+  P('round', 0.2, 71, 0.2, 2.6, 2.6, 4, 'black'); P('round_tile', -0.3, 71, -0.3, 3.6, 3.6, 0.6, 'black');
+});
+
+// ================= READING NOOK =================
+obj('reading_nook', 16, FL, 4, 30, 26, 0, () => {
+  obj('nook_rug', 0, 0, 0, 30, 26, 0, () => {
+    for (let u = 1; u < 29; u++) for (let v = 1; v < 26; v++) {
+      const e = Math.min(u - 1, 28 - u, v - 1, 25 - v);
+      T(u, 0, v, 1, 1, e === 0 ? 'dark_blue' : e === 2 ? 'dark_blue' : (Math.floor(v / 2) % 2 ? 'white' : 'sand_blue'));
+    }
+  });
+  obj('armchair', 8, 1, 6, 14, 14, 0, () => {
+    for (const [a, b] of [[0.5, 0.5], [12.5, 0.5], [0.5, 12.5], [12.5, 12.5]]) P('round_tile', a, 0, b, 1, 1, 3, 'reddish_brown');
+    B(0, 3, 0, 14, 7, 14, 'dark_red');
+    B(0, 10, 0, 14, 22, 4, 'dark_red', true); B(0, 30, 0, 1, 2, 4, null); B(13, 30, 0, 1, 2, 4, null); T(0, 29, 0, 1, 4, 'dark_red'); T(13, 29, 0, 1, 4, 'dark_red');
+    B(0, 10, 4, 3, 10, 10, 'dark_red', true); B(11, 10, 4, 3, 10, 10, 'dark_red', true);
+    B(3, 10, 4, 8, 4, 10, 'red', true);
+    B(3, 14, 4, 8, 14, 2, 'red', true);
+    B(4, 14, 6, 4, 7, 1, 'tan', true);
+    for (let k = 0; k < 6; k++) P('round_tile', 4.2 + (k % 3) * 2.4, 18 + Math.floor(k / 3) * 6, 6, 0.6, 0.6, 0.6, 'dark_red', 'front');
+    P('tile', 8.4, 14, 5.8, 4, 4, 0.8, 'sand_green', 'up', { ry: 0.3 });
+    P('tile', 3.2, 14, 9.5, 3.4, 4.8, 1.4, 'dark_blue', 'up', { ry: -0.4 });
+  });
+  obj('ottoman', 10, 1, 21, 8, 5, 0, () => {
+    for (const [a, b] of [[0.2, 0.2], [6.8, 0.2], [0.2, 3.8], [6.8, 3.8]]) P('round_tile', a, 0, b, 1, 1, 2, 'reddish_brown');
+    B(0, 2, 0, 8, 8, 5, 'dark_red', true);
+    P('round_tile', 3.7, 10, 2.2, 0.6, 0.6, 0.4, 'dark_red');
+  });
+  obj('side_table', 2, 1, 6, 6, 6, 0, () => {
+    D(3, 3, 2.4, 0, 1, 'black', true);
+    P('round_tile', 2.6, 1, 2.6, 0.8, 0.8, 21, 'black');
+    D(3, 3, 3, 22, 2, 'reddish_brown', true);
+    ['dark_green', 'tan', 'red'].forEach((c, k) => P('tile', 1.2 + k * 0.1, 24 + k * 1.2, 1.4, 3.4, 3, 1.2, c, 'up', { ry: (k - 1) * 0.15 }));
+    P('round_tile', 3.6, 24, 4, 1.3, 1.3, 3, 'white'); P('round_tile', 3.7, 26.95, 4.1, 1.1, 1.1, 0.1, 'reddish_brown');
+    P('round_tile', 1.4, 27.6, 1.6, 0.9, 0.9, 0.3, 'black'); P('round_tile', 2.4, 27.6, 1.6, 0.9, 0.9, 0.3, 'black');
+  });
+  obj('arc_floor_lamp', 24, 1, 4, 5, 5, 0, () => {
+    D(2.5, 2.5, 2.2, 0, 2, 'black', true);
+    B(2, 2, 2, 1, 62, 1, 'black');
+    B(1, 63, 2, 1, 2, 1, 'black'); B(-3, 65, 2, 5, 1, 1, 'black', true);
+    P('cone', -5.2, 58, 1.2, 3.6, 3.6, 7, 'white');
+    P('round_tile', -4.2, 57.6, 2.2, 1.6, 1.6, 0.4, 'bulb');
+    L('arc_lamp_light', -3.4, 57.2, 3, 'spot', { angle: 2.3, I: 0.05, shadows: true });
+  });
+});
+
+// ================= PLANTS =================
+function bigPlant(c, hTop) {
+  D(c, c, 3, 0, 12, 'dark_orange'); D(c, c, 3.5, 11, 2, 'dark_orange', true); D(c, c, 2.6, 12, 1, 'reddish_brown', true);
+  B(Math.floor(c), 13, Math.floor(c), 1, hTop - 18, 1, 'reddish_brown');
+  for (let k = 0; k < 56; k++) {
+    const t = k / 55, h = 24 + t * (hTop - 26), ang = k * 2.39996;
+    const rad = 0.6 + 4 * Math.sin(Math.PI * Math.min(1, (h - 20) / (hTop - 18)));
+    const cx = c + Math.sin(ang) * rad, cz = c + Math.cos(ang) * rad;
+    const big = rnd() < 0.6;
+    P('plate', cx - (big ? 1 : 0.5), h, cz - 1.5, big ? 2 : 1, 3, 1, pick(['green', 'bright_green', 'dark_green', 'green']), 'up', { ry: ang, rx: -0.3 - rnd() * 0.3 });
+  }
+}
+obj('plant_fiddle_leaf', 9, FL, 4, 7, 7, 0, () => bigPlant(3.5, 72));
+obj('plant_corner', 118, FL, 4, 7, 7, 0, () => bigPlant(3.5, 64));
+obj('plant_snake', 48, FL, 84, 4, 4, 0, () => {
+  B(0, 0, 0, 4, 10, 4, 'white', true); T(1, 9, 1, 2, 2, 'reddish_brown');
+  for (let k = 0; k < 11; k++) P('tile', 1.2 + rnd() * 1.2, 10, 1.4 + rnd() * 1.2, 0.8, 3.5 + rnd() * 3.5, 0.5, k % 3 ? 'dark_green' : 'sand_green', 'front', { ry: rnd() * Math.PI, rz: (rnd() - 0.5) * 0.35 });
+});
+
+// ================= SHIPPING CORNER =================
+function carton(w, d, h, fragile) {
+  B(0, 0, 0, w, h, d, 'dark_tan', true);
+  T(0, h - 1, Math.floor(d / 2), w, 1, 'tan');
+  P('tile', Math.floor(w / 2) - 0.5, 0, d, 1, h / 2.5, 0.2, 'tan', 'front');
+  P('tile', 0.6, 2, d, 2.4, 1.6, 0.3, 'white', 'front');
+  for (let k = 0; k < 3; k++) P('tile', 0.8, 4.4 - k * 0.6, d + 0.1, 2, 0.08, 0.1, 'black', 'front');
+  if (fragile) P('tile', w - 2.2, 4, d, 1.6, 1, 0.3, 'red', 'front');
+}
+obj('shipping_corner', 98, FL, 76, 30, 20, 0, () => {
+  obj('pallet', 6, 0, 3, 16, 14, 0, () => {
+    for (const v of [0, 6, 12]) B(0, 0, v, 16, 2, 2, 'medium_nougat');
+    for (let k = 0; k < 8; k++) B(k * 2, 2, 0, 1, 1, 14, 'nougat', true);
+    obj('carton_1', 0, 3, 0, 8, 7, 0, () => carton(8, 7, 12, true));
+    obj('carton_2', 8, 3, 0, 8, 7, 0, () => carton(8, 7, 12, false));
+    obj('carton_3', 0, 3, 7, 8, 7, 0, () => carton(8, 7, 12, false));
+    obj('carton_4', 8, 3, 7, 8, 7, 0, () => carton(8, 7, 12, true));
+    obj('carton_5', 1, 15, 1, 7, 8, 1, () => carton(8, 7, 12, false));
+    obj('carton_6', 9, 15, 6, 8, 7, 0, () => carton(7, 7, 10, false));
+  });
+  obj('open_carton', 23, 0, 3, 6, 6, 0, () => {
+    B(0, 0, 0, 6, 10, 1, 'dark_tan', true); B(0, 0, 5, 6, 10, 1, 'dark_tan', true); B(0, 0, 1, 1, 10, 4, 'dark_tan', true); B(5, 0, 1, 1, 10, 4, 'dark_tan', true); B(1, 0, 1, 4, 1, 4, 'dark_tan');
+    for (let k = 0; k < 7; k++) P('tile', 1.1, 1, 1.15 + k * 0.52, 3.6, 4.4, 1.2, k % 3 === 2 ? 'dark_red' : 'yellow', 'front');
+    P('tile', 0, 9.6, -2.4, 6, 2.6, 0.4, 'dark_tan', 'up', { rx: -0.5 });
+    P('tile', 0, 9.6, 5.8, 6, 2.6, 0.4, 'dark_tan', 'up', { rx: 0.5 });
+  });
+  obj('book_stacks', 23, 0, 11, 6, 8, 0, () => {
+    for (const [u, v, n, c] of [[0.3, 0.3, 12, 'yellow'], [3.3, 0.3, 9, 'dark_red'], [0.3, 4.2, 7, 'dark_blue']]) {
+      for (let k = 0; k < n; k++) P('tile', u + (rnd() - 0.5) * 0.15, k * 1.1, v + (rnd() - 0.5) * 0.15, 2.6, 3.6, 1.1, k % 2 ? c : 'white', 'up', { ry: (rnd() - 0.5) * 0.05 });
+    }
+  });
+  obj('hand_truck', 1, 0, 6, 4, 4, 0, () => {
+    T(0, 0, 0, 4, 2, 'light_bluish_gray');
+    B(0, 0, 2, 1, 44, 1, 'red', true); B(3, 0, 2, 1, 44, 1, 'red', true);
+    for (const y of [10, 22, 34]) B(1, y, 2, 2, 1, 1, 'red', true);
+    B(0, 44, 2, 4, 1, 1, 'black', true); B(0, 44, 3, 1, 1, 1, 'black', true); B(3, 44, 3, 1, 1, 1, 'black', true);
+    for (const u of [-0.6, 4.1]) { P('round', u, 0, 2.2, 3, 3, 1.25, 'black', 'right'); P('round_tile', u + (u < 0 ? -0.2 : 0.5), 2.5, 3.2, 1, 1, 0.5, 'light_bluish_gray', 'right'); }
+    P('round_tile', -0.4, 3.25, 3.4, 0.6, 0.6, 12, 'dark_bluish_gray', 'right');
+  });
+  P('round_tile', 3, 0, 15, 2, 2, 2, 'tan'); P('round_tile', 3.6, 0, 15.6, 0.8, 0.8, 2.05, 'dark_tan');
+});
+
+// ================= DECOMPOSE VOXELS INTO BRICKS =================
+const mk = (list, h) => { const o = []; for (const [a, b] of list) { o.push([a, b, h]); if (a !== b) o.push([b, a, h]); } return o; };
+const BR = [[1, 1], [1, 2], [1, 3], [1, 4], [1, 6], [1, 8], [2, 2], [2, 3], [2, 4], [2, 6], [2, 8]];
+const PLT = [...BR, [4, 4], [4, 6], [4, 8], [6, 6], [6, 8], [8, 8]];
+const TL = [[1, 1], [1, 2], [1, 3], [1, 4], [1, 6], [1, 8], [2, 2], [2, 3], [2, 4]];
+const vol = c => c[0] * c[1] * c[2];
+const CS = [...mk(BR, 3), ...mk(PLT, 1)].sort((a, b) => vol(b) - vol(a));
+const CT = mk(TL, 1).sort((a, b) => vol(b) - vol(a));
+const used = new Uint8Array(VC.length), bricks = [];
+for (let y = 0; y < NY; y++) for (let z = 0; z < NZ; z++) for (let x = 0; x < NX; x++) {
+  const i = vid(x, y, z), key = VC[i];
+  if (!key || used[i]) continue;
+  const sec = VS[i], tile = key & 128, par = Math.floor(y / 3) % 2;
+  const same = j => VC[j] === key && VS[j] === sec;
+  const sx = x === 0 || !same(vid(x - 1, y, z)), sz = z === 0 || !same(vid(x, y, z - 1));
+  let best = null, bv = 0, bp = -1;
+  for (const c of tile ? CT : CS) {
+    const vv = vol(c); if (best && vv < bv) break;
+    if (par && ((sx && c[0] > 4) || (sz && c[1] > 4))) continue;
+    if (x + c[0] > NX || z + c[1] > NZ || y + c[2] > NY) continue;
+    let ok = true;
+    for (let dy = 0; dy < c[2] && ok; dy++) for (let a = 0; a < c[0] && ok; a++) for (let b = 0; b < c[1]; b++) { const j = vid(x + a, y + dy, z + b); if (!same(j) || used[j]) { ok = false; break; } }
+    if (!ok) continue;
+    const pref = ((y % 2 === 0) === (c[0] >= c[1])) ? 1 : 0;
+    if (!best || pref > bp) { best = c; bv = vv; bp = pref; }
+  }
+  const [fw, fl, h] = best;
+  for (let dy = 0; dy < h; dy++) for (let a = 0; a < fw; a++) for (let b = 0; b < fl; b++) used[vid(x + a, y + dy, z + b)] = 1;
+  bricks.push({ x, y, z, fw, fl, h, color: CN[(key & 127) - 1], tile: !!tile, sec });
+}
+for (const b of bricks) {
+  b.mask = [];
+  if (b.tile) continue;
+  for (let a = 0; a < b.fw; a++) for (let c = 0; c < b.fl; c++) {
+    const yy = b.y + b.h;
+    b.mask.push(yy >= NY || !VC[vid(b.x + a, yy, b.z + c)] ? 1 : 0);
+  }
+}
+
+
+
+// ================= BABYLON.JS 9 SCENE =================
+const canvas = document.getElementById('c');
+const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, antialias: true }, true);
+engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2));
+const scene = new BABYLON.Scene(engine);
+scene.useRightHandedSystem = true;
+scene.environmentTexture = BABYLON.CubeTexture.CreateFromPrefilteredData('https://assets.babylonjs.com/environments/environmentSpecular.env', scene);
+const OFF = [-NX * S / 2, 0, -NZ * S / 2];
+const root = new BABYLON.TransformNode('publishing_house_bricks', scene);
+root.position.set(OFF[0], OFF[1], OFF[2]);
+
+const hex = h => BABYLON.Color3.FromHexString(h);
+function makeMat(name, sc_) {
+  const [h, o = {}] = COLORS[name], m = new BABYLON.PBRMaterial(name, sc_);
+  m.albedoColor = hex(h).toLinearSpace(); m.metallic = o.metal ?? 0; m.roughness = o.rough ?? 0.36;
+  if (o.alpha) { m.alpha = o.alpha; m.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND; }
+  if (o.emissive) { m.emissiveColor = hex(o.emissive).toLinearSpace(); m.emissiveIntensity = o.ei ?? 1; }
+  m.maxSimultaneousLights = 16;
+  m.sideOrientation = BABYLON.Material.CounterClockWiseSideOrientation; // geometry is authored CCW
+  return m;
+}
+const MAT = {}; CN.forEach(n => MAT[n] = makeMat(n, scene));
+function toVD(g) { const vd = new BABYLON.VertexData(); vd.positions = Float32Array.from(g.p); vd.normals = Float32Array.from(g.n); vd.indices = Uint32Array.from(g.i); return vd; }
+function meshFrom(name, g, mat, parent) { const m = new BABYLON.Mesh(name, scene); toVD(g).applyToMesh(m, false); m.material = mat; m.parent = parent; m.receiveShadows = true; return m; }
+
+// bricks: one thin-instanced box + one thin-instanced stud per colour
+const unitBox = boxG(1, 1, 1, 0, 0, 0), studG = cylG(STUD_R, STUD_R, STUD_H, 12, 0, 0, 0, 1);
+const byColor = {};
+for (const b of bricks) {
+  const e = byColor[b.color] ??= { boxes: [], studs: [] };
+  e.boxes.push(b);
+  let k = 0;
+  if (!b.tile) for (let a = 0; a < b.fw; a++) for (let c = 0; c < b.fl; c++) if (b.mask[k++]) e.studs.push((b.x + a + 0.5) * S, (b.y + b.h) * PH + STUD_H / 2, (b.z + c + 0.5) * S);
+}
+const shown = [];
+for (const [color, e] of Object.entries(byColor)) {
+  const buf = new Float32Array(e.boxes.length * 16);
+  e.boxes.forEach((b, n) => buf.set([b.fw * S - G, 0, 0, 0, 0, b.h * PH - GY, 0, 0, 0, 0, b.fl * S - G, 0, (b.x + b.fw / 2) * S, (b.y + b.h / 2) * PH, (b.z + b.fl / 2) * S, 1], n * 16));
+  const bm = meshFrom('bricks_' + color, unitBox, MAT[color], root);
+  bm.thinInstanceSetBuffer('matrix', buf, 16, true); bm.thinInstanceRefreshBoundingInfo(false); bm.alwaysSelectAsActiveMesh = true; shown.push(bm);
+  if (e.studs.length) {
+    const sb = new Float32Array(e.studs.length / 3 * 16);
+    for (let n = 0; n < e.studs.length / 3; n++) sb.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, e.studs[n * 3], e.studs[n * 3 + 1], e.studs[n * 3 + 2], 1], n * 16);
+    const sm = meshFrom('studs_' + color, studG, MAT[color], root);
+    sm.thinInstanceSetBuffer('matrix', sb, 16, true); sm.thinInstanceRefreshBoundingInfo(false); sm.alwaysSelectAsActiveMesh = true; shown.push(sm);
+  }
+}
+// detail parts: baked into one mesh per colour
+const acc = {};
+for (const p of parts) {
+  const a = acc[p.color] ??= { p: [], n: [], i: [] }, base = a.p.length / 3, m = p.mat, N = nmat(m), g = p.geo;
+  for (let k = 0; k < g.p.length; k += 3) {
+    const q = xp(m, g.p[k], g.p[k + 1], g.p[k + 2]); a.p.push(q[0], q[1], q[2]);
+    const nx = g.n[k], ny = g.n[k + 1], nz = g.n[k + 2];
+    const x = N[0]*nx + N[1]*ny + N[2]*nz, y = N[3]*nx + N[4]*ny + N[5]*nz, z = N[6]*nx + N[7]*ny + N[8]*nz, l = Math.hypot(x, y, z) || 1;
+    a.n.push(x / l, y / l, z / l);
+  }
+  for (const idx of g.i) a.i.push(base + idx);
+}
+for (const [color, a] of Object.entries(acc)) { const m = meshFrom('detail_' + color, a, MAT[color], root); m.alwaysSelectAsActiveMesh = true; shown.push(m); }
+const casters = shown.filter(m => !/trans_clear|bulb/.test(m.name));
+
+// ground that blends into the backdrop and catches shadows
+const ground = BABYLON.MeshBuilder.CreateGround('ground', { width: 14, height: 14 }, scene);
+ground.position.y = -0.0004;
+const groundMat = new BABYLON.BackgroundMaterial('ground_mat', scene);
+groundMat.shadowLevel = 0.62; groundMat.useRGBColor = false; groundMat.enableNoise = true;
+ground.material = groundMat; ground.receiveShadows = true;
+
+// ---------- lights ----------
+const hemi = new BABYLON.HemisphericLight('sky_fill', new BABYLON.Vector3(0.2, 1, 0.4), scene);
+const sun = new BABYLON.DirectionalLight('sun', new BABYLON.Vector3(0.3, -1, 0.8), scene);
+sun.autoCalcShadowZBounds = true;
+const sunSG = new BABYLON.ShadowGenerator(4096, sun);
+sunSG.usePercentageCloserFiltering = true; sunSG.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
+sunSG.bias = 0.0006; sunSG.normalBias = 0.0025;
+casters.forEach(m => sunSG.addShadowCaster(m, false));
+const lamps = [], lampSG = [];
+for (const d of LIGHTS) {
+  const pos = new BABYLON.Vector3(d.p[0] + OFF[0], d.p[1], d.p[2] + OFF[2]);
+  const light = d.type === 'spot'
+    ? new BABYLON.SpotLight(d.name, pos, new BABYLON.Vector3(d.d[0], d.d[1], d.d[2]).normalize(), d.angle ?? 2.0, d.exp ?? 1.5, scene)
+    : new BABYLON.PointLight(d.name, pos, scene);
+  const c = hex(d.color || '#ffcf94'); light.diffuse = c; light.specular = c.scale(0.6);
+  light.range = d.range ?? 1.4; light.intensity = 0;
+  lamps.push({ light, base: (d.I ?? 0.006) * (d.kind === 'screen' ? 4 : 22), kind: d.kind || 'lamp' });
+  if (d.shadows) {
+    const sg = new BABYLON.ShadowGenerator(1024, light);
+    sg.usePercentageCloserFiltering = true; sg.filteringQuality = BABYLON.ShadowGenerator.QUALITY_MEDIUM; sg.bias = 0.0008; sg.normalBias = 0.002; light.shadowMinZ = 0.005; light.shadowMaxZ = 1.2;
+    casters.forEach(m => sg.addShadowCaster(m, false)); lampSG.push(sg);
+  }
+}
+const glow = new BABYLON.GlowLayer('glow', scene, { mainTextureSamples: 4, blurKernelSize: 48 });
+glow.addExcludedMesh(ground);
+
+// ---------- camera + post ----------
+const cam = new BABYLON.ArcRotateCamera('camera', Math.PI / 4, 1.0, 2.25, new BABYLON.Vector3(0, 0.11, 0), scene);
+cam.fov = 0.5; cam.minZ = 0.02; cam.maxZ = 40;
+cam.lowerRadiusLimit = 0.12; cam.upperRadiusLimit = 6; cam.upperBetaLimit = 1.48;
+cam.wheelDeltaPercentage = 0.02; cam.pinchDeltaPercentage = 0.01; cam.panningSensibility = 1800;
+cam.attachControl(canvas, true);
+if (BABYLON.SSAO2RenderingPipeline && BABYLON.SSAO2RenderingPipeline.IsSupported) {
+  const ssao = new BABYLON.SSAO2RenderingPipeline('ssao', scene, { ssaoRatio: 0.75, blurRatio: 1 }, [cam], true);
+  ssao.radius = 0.006; ssao.totalStrength = 0.75; ssao.base = 0.25; ssao.samples = 16; ssao.maxZ = 8; ssao.minZAspect = 0.4; ssao.expensiveBlur = true;
+}
+const pipe = new BABYLON.DefaultRenderingPipeline('post', true, scene, [cam]);
+pipe.samples = 4;
+pipe.imageProcessingEnabled = true;
+pipe.imageProcessing.toneMappingEnabled = true;
+pipe.imageProcessing.toneMappingType = BABYLON.ImageProcessingConfiguration.TONEMAPPING_KHR_PBR_NEUTRAL ?? BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
+pipe.imageProcessing.contrast = 1.08;
+pipe.bloomEnabled = true; pipe.bloomThreshold = 0.85; pipe.bloomWeight = 0.3; pipe.bloomKernel = 64; pipe.bloomScale = 0.5;
+scene.onBeforeRenderObservable.add(() => { if (pipe.depthOfFieldEnabled) pipe.depthOfField.focusDistance = cam.radius * 1000; });
+
+// ---------- time of day ----------
+const MODES = {
+  day:    { bg: '#efe9df', sun: [0.3, -1, 0.8],   sunI: 1.9, sunC: '#fff3df', hemiI: 0.55, hemiC: '#ffffff', hemiG: '#d8cdbb', env: 0.6,  lamps: false, exposure: 1.0,  glow: 0.45 },
+  golden: { bg: '#ead6c0', sun: [0.65, -0.95, 0.75],  sunI: 2.1, sunC: '#ffad62', hemiI: 0.25, hemiC: '#ffd9b5', hemiG: '#7d6655', env: 0.28, lamps: true,  exposure: 1.05, glow: 0.7 },
+  night:  { bg: '#141924', sun: [-0.35, -0.6, 1], sunI: 0.3, sunC: '#8ea6dc', hemiI: 0.08, hemiC: '#7f95c7', hemiG: '#1a1d27', env: 0.07, lamps: true,  exposure: 1.3,  glow: 1.0 },
+};
+let mode = 'golden', lampsOn = true, shadowsSettled = false;
+const refreshShadows = () => { sunSG.getShadowMap().resetRefreshCounter(); lampSG.forEach(sg => sg.getShadowMap().resetRefreshCounter()); };
+function setLamps(on) {
+  lampsOn = on;
+  for (const l of lamps) l.light.intensity = l.kind === 'screen' ? l.base * (mode === 'day' ? 0.5 : 1) : on ? l.base : 0;
+  MAT.bulb.emissiveIntensity = on ? 3 : 0.08;
+  refreshShadows(); syncUI();
+}
+function applyMode(name) {
+  mode = name; const M = MODES[name];
+  const bg = hex(M.bg);
+  scene.clearColor = BABYLON.Color4.FromColor3(bg.toLinearSpace(), 1);
+  groundMat.primaryColor = bg;
+  sun.direction = new BABYLON.Vector3(...M.sun).normalize(); sun.position = sun.direction.scale(-3);
+  sun.intensity = M.sunI; sun.diffuse = hex(M.sunC); sun.specular = hex(M.sunC);
+  hemi.intensity = M.hemiI; hemi.diffuse = hex(M.hemiC); hemi.groundColor = hex(M.hemiG);
+  scene.environmentIntensity = M.env;
+  pipe.imageProcessing.exposure = M.exposure;
+  pipe.imageProcessing.vignetteEnabled = name === 'night'; pipe.imageProcessing.vignetteWeight = 1.2;
+  glow.intensity = M.glow;
+  document.body.dataset.mode = name;
+  try { localStorage.setItem('phob-mode', name); } catch (e) {}
+  setLamps(M.lamps);
+}
+function setTilt(on) {
+  if (on) { pipe.depthOfFieldBlurLevel = BABYLON.DepthOfFieldEffectBlurLevel.High; }
+  pipe.depthOfFieldEnabled = on;
+  if (on) { pipe.depthOfField.focalLength = 160; pipe.depthOfField.fStop = 1.4; }
+  syncUI();
+}
+function syncUI() {
+  document.querySelectorAll('#mode button').forEach(b => b.setAttribute('aria-pressed', b.dataset.m === mode));
+  document.getElementById('lamps').setAttribute('aria-pressed', lampsOn);
+  document.getElementById('tilt').setAttribute('aria-pressed', !!pipe.depthOfFieldEnabled);
+}
+document.querySelectorAll('#mode button').forEach(b => b.onclick = () => applyMode(b.dataset.m));
+document.getElementById('lamps').onclick = () => setLamps(!lampsOn);
+document.getElementById('tilt').onclick = () => setTilt(!pipe.depthOfFieldEnabled);
+let saved = null; try { saved = localStorage.getItem('phob-mode'); } catch (e) {}
+applyMode(MODES[saved] ? saved : 'golden');
+
+scene.executeWhenReady(() => setTimeout(() => {
+  sunSG.getShadowMap().refreshRate = BABYLON.RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+  lampSG.forEach(sg => sg.getShadowMap().refreshRate = BABYLON.RenderTargetTexture.REFRESHRATE_RENDER_ONCE);
+  refreshShadows();
+  document.getElementById('status').textContent = '';
+}, 400));
+let frames = 0;
+engine.runRenderLoop(() => { scene.render(); if (++frames === 3) document.getElementById('status').textContent = ''; });
+addEventListener('resize', () => engine.resize());
+window.__scene = scene; window.__engine = engine; window.__cam = cam;
+window.__counts = { bricks: bricks.length, parts: parts.length, lights: LIGHTS.length };
+
+// ---------- GLB export: one named node per brick, grouped by object ----------
+const loadScript = src => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+function brickExportGeo(b) {
+  const list = [boxG(b.fw * S - G, b.h * PH - GY, b.fl * S - G, b.fw * S / 2, b.h * PH / 2, b.fl * S / 2)];
+  let k = 0;
+  for (let a = 0; a < b.fw; a++) for (let c = 0; c < b.fl; c++) if (b.mask[k++]) list.push(cylG(STUD_R, STUD_R, STUD_H, 12, (a + 0.5) * S, b.h * PH + STUD_H / 2, (c + 0.5) * S, 1));
+  return merge(list);
+}
+const fmt = n => String(Math.round(n * 100) / 100).replace('.', '_');
+async function exportGLB() {
+  const btn = document.getElementById('dl'), st = document.getElementById('status');
+  btn.disabled = true; st.textContent = 'Preparing GLB…';
+  await new Promise(r => setTimeout(r, 30));
+  try {
+    if (!BABYLON.GLTF2Export) await loadScript('https://cdn.jsdelivr.net/npm/babylonjs-serializers@9.28.0/babylonjs.serializers.min.js').catch(() => loadScript('https://cdn.babylonjs.com/serializers/babylonjs.serializers.min.js'));
+    const xs = new BABYLON.Scene(engine); xs.useRightHandedSystem = true;
+    const xm = {}; CN.forEach(n => xm[n] = makeMat(n, xs));
+    const top = new BABYLON.TransformNode('publishing_house_bricks', xs);
+    const base = new BABYLON.TransformNode('brick_build', xs); base.parent = top; base.position.set(OFF[0], OFF[1], OFF[2]);
+    const groups = sections.map(s => new BABYLON.TransformNode(s.name, xs));
+    sections.forEach((s, i) => groups[i].parent = s.parent < 0 ? base : groups[s.parent]);
+    const geoms = new Map();
+    const geomFor = (key, build) => { let g = key && geoms.get(key); if (!g) { g = new BABYLON.Geometry('geo_' + geoms.size, xs, toVD(build()), false); if (key) geoms.set(key, g); } return g; };
+    let n = 0;
+    for (const b of bricks) {
+      const full = b.mask.every(v => v), none = !b.mask.some(v => v);
+      const m = new BABYLON.Mesh((b.tile ? 'tile' : b.h === 3 ? 'brick' : 'plate') + '_' + Math.min(b.fw, b.fl) + 'x' + Math.max(b.fw, b.fl) + '_' + b.color + '_' + (n++), xs);
+      geomFor(full || none ? [b.fw, b.fl, b.h, full ? 'F' : 'N'].join('|') : null, () => brickExportGeo(b)).applyToMesh(m);
+      m.material = xm[b.color]; m.position.set(b.x * S, b.y * PH, b.z * S); m.parent = groups[b.sec];
+    }
+    const scl = new BABYLON.Vector3(), q = new BABYLON.Quaternion(), pos = new BABYLON.Vector3();
+    for (const p of parts) {
+      const label = p.kind === 'plate' && p.h === 3 ? 'brick' : p.kind;
+      const m = new BABYLON.Mesh(label + '_' + fmt(p.w) + 'x' + fmt(p.l) + (p.h !== 1 ? 'x' + fmt(p.h) : '') + '_' + p.color + '_' + (n++), xs);
+      geomFor(p.geo.key, () => p.geo).applyToMesh(m);
+      BABYLON.Matrix.FromArray(p.mat).decompose(scl, q, pos);
+      m.scaling.copyFrom(scl); m.rotationQuaternion = q.clone(); m.position.copyFrom(pos);
+      m.material = xm[p.color]; m.parent = groups[p.sec];
+    }
+    st.textContent = 'Writing GLB…';
+    await new Promise(r => setTimeout(r, 30));
+    const glb = await BABYLON.GLTF2Export.GLBAsync(xs, 'publishing-house-office-bricks');
+    glb.downloadFiles();
+    xs.dispose();
+    st.textContent = '';
+  } catch (err) { console.error(err); st.textContent = 'Export failed — see console'; }
+  btn.disabled = false;
+}
+document.getElementById('dl').onclick = exportGLB;
+
+}, 30);
+</script>
+</body>
+</html>

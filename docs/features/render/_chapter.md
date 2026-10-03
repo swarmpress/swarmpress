@@ -9,7 +9,7 @@ The Babylon.js client (`apps/game`): engine, camera, cutaway, lighting, characte
 
 | Feature | Title | Status | Importance |
 |---|---|---|---|
-| [FEAT-017](017-engine-fallback.md) | WebGPU engine and WebGL2 fallback | in-progress | critical |
+| [FEAT-017](017-engine-fallback.md) | WebGPU engine (WebGPU only, ADR-0064) | in-progress | critical |
 | [FEAT-018](018-iso-camera.md) | Orthographic isometric camera | in-progress | high |
 | [FEAT-019](019-dollhouse-cutaway.md) | Dollhouse cutaway | in-progress | high |
 | [FEAT-020](020-office-scene.md) | Office scene construction | in-progress | high |
@@ -22,3 +22,5 @@ The Babylon.js client (`apps/game`): engine, camera, cutaway, lighting, characte
 | [FEAT-027](027-overlay-ui.md) | Overlay UI (Inbox, Feed, Staff, Build, HUD) | planned | high |
 | [FEAT-028](028-visual-regression.md) | Visual regression baselines | planned | high |
 | [FEAT-029](029-asset-pipeline.md) | Asset pipeline | planned | normal |
+| [FEAT-081](081-brick-office.md) | Brick office renderer (spike first) | planned | high |
+| [FEAT-082](082-information-surfaces.md) | Live information surfaces | planned | high |

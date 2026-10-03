@@ -14,6 +14,8 @@ adrs:
 
 # Asset pipeline
 
+> **Superseded in part by ADR-0063:** rooms and props are procedural bricks (FEAT-081), so the CC0 kits and Blender bake are no longer on the critical path.
+
 CC0 kits → Blender room modules and props on a 1 m grid → Cycles lightmap (UV2) + AO bake → glTF
 with KTX2/Basis and meshopt, driven by `assets/manifest.toml`.
 

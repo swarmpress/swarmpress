@@ -1,6 +1,6 @@
 # ADR-0018 — Overlay UI in Preact
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0063 (surfaces open panels)
 **Date:** 2026-10-01
 
 ## Context

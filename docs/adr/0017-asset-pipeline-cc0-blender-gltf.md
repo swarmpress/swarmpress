@@ -1,6 +1,6 @@
 # ADR-0017 — Asset pipeline: CC0 kits, Blender bake, glTF/KTX2
 
-**Status:** Accepted
+**Status:** Accepted; superseded in part by ADR-0063 (rooms and props are procedural bricks)
 **Date:** 2026-10-01
 
 ## Context

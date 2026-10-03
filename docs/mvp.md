@@ -194,6 +194,8 @@ the labelled mode.
 | U3 | Staff visibly moving: interpolation along `path`, facing, seated poses, name labels, corridor floor, doors, what each person is working on, click to open | M |
 | U4 | Activity panel and a "Now" strip in the HUD | M |
 | U5 | Speech bubbles: transcript row per turn, `Utterance` commands at step boundaries, Preact bubble layer | M |
+| U6 | Brick office spike (ADR-0063, FEAT-081): two rooms in bricks and two live surfaces behind `?office=bricks`, measured idle and while generating; decides whether the brick office is the MVP's office | M |
+| U7 | WebGPU only (ADR-0064, FEAT-017): remove the WebGL2 fallback, a no-WebGPU screen, all browser tests and baselines on SwiftShader WebGPU | M |
 
 ### W — a week without stalls — [design §7](design/mvp-pipeline.md)
 

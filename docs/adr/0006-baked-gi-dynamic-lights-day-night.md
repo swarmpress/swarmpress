@@ -1,6 +1,6 @@
 # ADR-0006 — Baked static GI plus dynamic gameplay lights; lighting as sim state; day/night
 
-**Status:** Accepted
+**Status:** Accepted; amended by ADR-0063, ADR-0064
 **Date:** 2026-10-01
 
 ## Context

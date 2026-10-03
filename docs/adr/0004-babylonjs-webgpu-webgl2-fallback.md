@@ -1,6 +1,6 @@
 # ADR-0004 — Babylon.js with WebGPU, WebGL2 fallback
 
-**Status:** Accepted
+**Status:** Accepted; superseded in part by ADR-0064 (WebGPU only)
 **Date:** 2026-10-01
 
 ## Context

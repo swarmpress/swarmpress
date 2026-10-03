@@ -17,11 +17,11 @@ The legacy TypeScript code is reachable at the git tag `legacy-ts`.
 | [Game design](game-design/overview.md) | Time, staff, rooms and progression, economy, events and inbox, leaderboard |
 | [Guides](guides/getting-started.md) | Getting started, testing (Cockpit evidence), asset pipeline, contributing |
 | [Runbooks](runbooks/operations.md) | Operations, and the [cinqueterre cutover](runbooks/cinqueterre-cutover.md) |
-| [ADRs](adr/README.md) | ADR-0001 to ADR-0062, the decisions and the alternatives we rejected |
+| [ADRs](adr/README.md) | ADR-0001 to ADR-0064, the decisions and the alternatives we rejected |
 | [Features](features/) | FEAT-001 onwards, one file per feature, read by Cockpit to derive health |
 | [MVP](mvp.md) | The current MVP: the owner's company for real, on one resident in-browser model |
-| [Design](design/mvp-runtime.md) | Implementation designs for the MVP: [runtime](design/mvp-runtime.md), [pipeline, gate, time and site path](design/mvp-pipeline.md), [gap analysis](design/mvp-gap-analysis.md) |
-| [Reference](reference/browser-agent-studio.md) | The owner's concept document, [Browser Agent Studio](reference/browser-agent-studio.md): the source of the local-inference and agent-loop principles (ADR-0057) |
+| [Design](design/mvp-runtime.md) | Implementation designs for the MVP: [runtime](design/mvp-runtime.md), [pipeline, gate, time and site path](design/mvp-pipeline.md), [gap analysis](design/mvp-gap-analysis.md), [brick office](design/brick-office.md) |
+| [Reference](reference/browser-agent-studio.md) | The owner's concept document, [Browser Agent Studio](reference/browser-agent-studio.md): the source of the local-inference and agent-loop principles (ADR-0057); the [brick office](reference/brick-office.md) concept with its prototype (ADR-0063) |
 
 ### Architecture
 

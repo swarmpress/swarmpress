@@ -1,6 +1,6 @@
 # ADR-0005 — Orthographic iso dollhouse camera and cutaway
 
-**Status:** Accepted
+**Status:** Accepted; see ADR-0063 (surfaces and zoom; the camera stays)
 **Date:** 2026-10-01
 
 ## Context

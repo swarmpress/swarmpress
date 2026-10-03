@@ -1,5 +1,10 @@
 # Lighting and rendering
 
+> **Decided, not built yet:** the renderer becomes WebGPU only
+> ([ADR-0064](../adr/0064-webgpu-only.md)), and the office is to be drawn in bricks with live
+> information surfaces ([ADR-0063](../adr/0063-brick-office-and-live-information-surfaces.md),
+> [design](../design/brick-office.md)). This page describes the renderer as built today.
+
 The client renders the company as a detailed, lit digital dollhouse with Babylon.js. WebGPU is
 preferred and WebGL2 is the fallback. Lighting is gameplay information, so it always comes from
 the sim.
