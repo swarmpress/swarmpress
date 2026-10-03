@@ -26,8 +26,8 @@ fn every_shipped_design_compiles_within_budget() {
         assert!(s.height <= c.bounds[2], "{id}: built above its height");
         assert_eq!(c.hash, kit.design_hash(id).unwrap());
         lines.push(format!(
-            "{id:16} parts {:5} studs {:5} height {:3} cost {:6} caps {:?}",
-            s.parts, s.studs, s.height, s.cost, s.capabilities
+            "{id:16} footprint {:2}x{:<2} parts {:5} studs {:5} height {:3} cost {:6} caps {:?}",
+            c.bounds[0], c.bounds[1], s.parts, s.studs, s.height, s.cost, s.capabilities
         ));
     }
     println!("{}", lines.join("\n"));

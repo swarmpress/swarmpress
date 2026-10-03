@@ -216,7 +216,7 @@ fn the_desk_seat_port_is_where_the_sim_seats_people() {
 #[test]
 fn print_the_contract_table() {
     let kit = Kit::shipped();
-    println!("| what | design | mount | capabilities | seats | lights | storage | screens | surfaces | ports | parts | footprint (cm) | sim footprint (cm) |");
+    println!("| what | design | mount | capabilities | seats | work surface | lights | storage | screens | surfaces | ports | parts | footprint (cm) | sim footprint (cm) |");
     for e in &CONTRACT {
         let id = design_for(kit, e.what);
         let s = summary_of(kit, &id);
@@ -231,11 +231,12 @@ fn print_the_contract_table() {
             .map(|p| format!("{}:{}", p.id, p.accepts.join("+")))
             .collect();
         println!(
-            "| {} | {id} | {:?} | {} | {} | {} | {} | {} | {} | {} | {} | {} × {} | {sim} |",
+            "| {} | {id} | {:?} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} × {} | {sim} |",
             e.what,
             s.mount,
             s.capabilities.join(", "),
             s.seats,
+            s.work_surface,
             s.lights,
             s.storage,
             s.screens,
