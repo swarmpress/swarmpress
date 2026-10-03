@@ -49,10 +49,10 @@ jobs:
         with:
           tool: wasm-bindgen-cli@${{ env.WASM_BINDGEN_VERSION }}
       - run: cargo xtask wasm --release
-      - name: wasm-bindgen-test (node)
+      - name: wasm-bindgen-test (node; sim and construction kit goldens)
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
-        run: cargo test -p client-wasm --target wasm32-unknown-unknown
+        run: cargo test -p client-wasm -p kit-wasm --target wasm32-unknown-unknown
       - name: wasm size budget (gzip <= 400 KiB)
         run: |
           size=$(gzip -9 -c crates/client-wasm/pkg/client_wasm_bg.wasm | wc -c)
@@ -79,6 +79,20 @@ jobs:
                            "determinism": "deterministic", "direction": "lower_is_better", "budget": { "max": 1267200 } } ] }
           JSON
           test "$size" -le 1267200
+      # The construction kit compiler (ADR-0065) is its own module for the renderer:
+      # measured 213,527 bytes gzip on 2026-10-03, budget = measured + 25%.
+      - name: kit-wasm size budget (gzip <= 266,909 bytes)
+        run: |
+          size=$(gzip -9 -c crates/kit-wasm/pkg/kit_wasm_bg.wasm | wc -c)
+          echo "kit_wasm_bg.wasm gzip: $size bytes"
+          mkdir -p artifacts/bench
+          cat > artifacts/bench/bundle-size-kit-wasm.json <<JSON
+          { "schema": "cockpit.benchmark.v1", "name": "kit-wasm-size", "component": "render",
+            "provenance": { "commit": "${{ github.sha }}", "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)" },
+            "metrics": [ { "name": "kit_wasm_bg.wasm gzip", "unit": "bytes", "value": $size,
+                           "determinism": "deterministic", "direction": "lower_is_better", "budget": { "max": 266909 } } ] }
+          JSON
+          test "$size" -le 266909
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
