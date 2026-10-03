@@ -18,7 +18,7 @@
 //! the Draft and Review jobs) with the stage store around them.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::article::{
     section_digest, HeroOption, LinkOption, Outline, SectionBlockKind, SectionDraft, SectionId,
@@ -713,15 +713,11 @@ pub fn retitle_prompt(
 
 /// Schema of the `retitle#0` stage.
 pub fn retitle_schema() -> Value {
-    json!({
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["title", "dek"],
-        "properties": {
-            "title": {"type": "string", "minLength": 10, "maxLength": 70},
-            "dek": {"type": "string", "minLength": 40, "maxLength": 160}
-        }
-    })
+    crate::article::schema_text(
+        r#"{"type":"object","additionalProperties":false,"required":["title","dek"],"properties":{
+ "title":{"type":"string","minLength":10,"maxLength":70},
+ "dek":{"type":"string","minLength":40,"maxLength":160}}}"#,
+    )
 }
 
 /// The `retitle#0` result.
@@ -842,27 +838,15 @@ pub fn review_summary_prompt(
 
 /// Schema of a `review_section#i` stage.
 pub fn section_review_schema() -> Value {
-    json!({
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["score", "notes", "issues"],
-        "properties": {
-            "score": {"type": "integer", "minimum": 1, "maximum": 10},
-            "notes": {"type": "string"},
-            "issues": {
-                "type": "array", "maxItems": 4,
-                "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": ["problem", "fix"],
-                    "properties": {
-                        "problem": {"type": "string", "minLength": 1},
-                        "fix": {"type": "string"}
-                    }
-                }
-            }
-        }
-    })
+    crate::article::schema_text(
+        r#"{"type":"object","additionalProperties":false,"required":["score","notes","issues"],"properties":{
+ "score":{"type":"integer","minimum":1,"maximum":10},
+ "notes":{"type":"string"},
+ "issues":{"type":"array","maxItems":4,"items":{"type":"object","additionalProperties":false,
+  "required":["problem","fix"],"properties":{
+   "problem":{"type":"string","minLength":1},
+   "fix":{"type":"string"}}}}}}"#,
+    )
 }
 
 /// One issue of a section review.

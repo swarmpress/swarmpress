@@ -153,6 +153,51 @@ fn string_enum(values: &[String]) -> Value {
     json!({"type": "string", "enum": values})
 }
 
+/// A built-in schema from its JSON text. The schemas are kept as text, not
+/// `json!` expressions: in the browser's orchestrator-wasm module a string
+/// costs a fraction of the code that builds the same value.
+pub(crate) fn schema_text(text: &str) -> Value {
+    serde_json::from_str(text).unwrap_or(Value::Null)
+}
+
+const OUTLINE_SCHEMA: &str = r#"{"type":"object","additionalProperties":false,
+"required":["title","dek","category","hero","sections","closing_title","links"],
+"properties":{
+ "title":{"type":"string","minLength":10,"maxLength":70},
+ "dek":{"type":"string","minLength":40,"maxLength":160},
+ "category":{"type":"string","minLength":1,"maxLength":40},
+ "hero":{"type":"string","minLength":1,"maxLength":0},
+ "sections":{"type":"array","minItems":3,"maxItems":6,"items":{"type":"object","additionalProperties":false,
+  "required":["heading","points","words"],"properties":{
+   "heading":{"type":"string","minLength":3,"maxLength":70},
+   "points":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"string","minLength":1}},
+   "words":{"type":"integer","minimum":100,"maximum":350}}}},
+ "closing_title":{"type":"string","minLength":3,"maxLength":60},
+ "links":{"type":"array","maxItems":0,"items":{"type":"string"}}}}"#;
+
+const SECTION_SCHEMA: &str = r#"{"type":"object","additionalProperties":false,"required":["blocks"],"properties":{
+ "blocks":{"type":"array","minItems":1,"maxItems":6,"items":{"type":"object","additionalProperties":false,
+  "required":["type","text","items"],"properties":{
+   "type":{"type":"string","enum":["paragraph","list","tip"]},
+   "text":{"type":"string"},
+   "items":{"type":"array","maxItems":7,"items":{"type":"string","minLength":1}}}}}}}"#;
+
+const CLOSING_SCHEMA: &str = r#"{"type":"object","additionalProperties":false,"required":["content"],"properties":{
+ "content":{"type":"string","minLength":40,"maxLength":1200}}}"#;
+
+const REVIEW_SCHEMA: &str = r#"{"type":"object","additionalProperties":false,
+"required":["decision","score","notes","issues","high_risk"],
+"properties":{
+ "decision":{"type":"string","enum":["approve","needs_changes","reject"]},
+ "score":{"type":"integer","minimum":1,"maximum":10},
+ "notes":{"type":"string"},
+ "issues":{"type":"array","maxItems":8,"items":{"type":"object","additionalProperties":false,
+  "required":["section","problem","fix"],"properties":{
+   "section":{"type":"string"},
+   "problem":{"type":"string","minLength":1},
+   "fix":{"type":"string"}}}},
+ "high_risk":{"type":"array","items":{"type":"string"}}}}"#;
+
 /// Schema of the `outline#0` stage.
 ///
 /// `hero_aliases` and `link_aliases` are the shortlist aliases (`M1`…, `L1`…)
@@ -165,87 +210,31 @@ pub fn outline_schema(
     link_aliases: &[String],
     categories: &[String],
 ) -> Value {
-    let hero = if hero_aliases.is_empty() {
-        json!({"type": "string", "minLength": 1, "maxLength": 0})
-    } else {
-        string_enum(hero_aliases)
-    };
-    let links = if link_aliases.is_empty() {
-        json!({"type": "array", "maxItems": 0, "items": {"type": "string"}})
-    } else {
-        json!({"type": "array", "maxItems": 2, "items": string_enum(link_aliases)})
-    };
-    let category = if categories.is_empty() {
-        json!({"type": "string", "minLength": 1, "maxLength": 40})
-    } else {
-        string_enum(categories)
-    };
-    json!({
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["title", "dek", "category", "hero", "sections", "closing_title", "links"],
-        "properties": {
-            "title": {"type": "string", "minLength": 10, "maxLength": 70},
-            "dek": {"type": "string", "minLength": 40, "maxLength": 160},
-            "category": category,
-            "hero": hero,
-            "sections": {
-                "type": "array", "minItems": 3, "maxItems": 6,
-                "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": ["heading", "points", "words"],
-                    "properties": {
-                        "heading": {"type": "string", "minLength": 3, "maxLength": 70},
-                        "points": {"type": "array", "minItems": 2, "maxItems": 4,
-                                   "items": {"type": "string", "minLength": 1}},
-                        "words": {"type": "integer", "minimum": 100, "maximum": 350}
-                    }
-                }
-            },
-            "closing_title": {"type": "string", "minLength": 3, "maxLength": 60},
-            "links": links
-        }
-    })
+    let mut schema = schema_text(OUTLINE_SCHEMA);
+    let props = &mut schema["properties"];
+    if !hero_aliases.is_empty() {
+        props["hero"] = string_enum(hero_aliases);
+    }
+    if !link_aliases.is_empty() {
+        props["links"]["maxItems"] = json!(2);
+        props["links"]["items"] = string_enum(link_aliases);
+    }
+    if !categories.is_empty() {
+        props["category"] = string_enum(categories);
+    }
+    schema
 }
 
 /// Schema of a `section#i` stage (and of the intro, `section#0`): one flat
 /// block shape instead of `anyOf`. [`check_section`] enforces what the shape
 /// cannot say (a list has items and no text, and so on).
 pub fn section_schema() -> Value {
-    json!({
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["blocks"],
-        "properties": {
-            "blocks": {
-                "type": "array", "minItems": 1, "maxItems": 6,
-                "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": ["type", "text", "items"],
-                    "properties": {
-                        "type": {"type": "string", "enum": ["paragraph", "list", "tip"]},
-                        "text": {"type": "string"},
-                        "items": {"type": "array", "maxItems": 7,
-                                  "items": {"type": "string", "minLength": 1}}
-                    }
-                }
-            }
-        }
-    })
+    schema_text(SECTION_SCHEMA)
 }
 
 /// Schema of the `closing#0` stage: the text of the closing note.
 pub fn closing_schema() -> Value {
-    json!({
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["content"],
-        "properties": {
-            "content": {"type": "string", "minLength": 40, "maxLength": 1200}
-        }
-    })
+    schema_text(CLOSING_SCHEMA)
 }
 
 /// Schema of the review stage. `section_ids` are the body sections of the
@@ -255,30 +244,9 @@ pub fn review_schema(section_ids: &[String]) -> Value {
     let mut targets = vec!["title".to_string(), "intro".to_string()];
     targets.extend(section_ids.iter().cloned());
     targets.extend(["closing".to_string(), "whole".to_string()]);
-    json!({
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["decision", "score", "notes", "issues", "high_risk"],
-        "properties": {
-            "decision": {"type": "string", "enum": ["approve", "needs_changes", "reject"]},
-            "score": {"type": "integer", "minimum": 1, "maximum": 10},
-            "notes": {"type": "string"},
-            "issues": {
-                "type": "array", "maxItems": 8,
-                "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": ["section", "problem", "fix"],
-                    "properties": {
-                        "section": string_enum(&targets),
-                        "problem": {"type": "string", "minLength": 1},
-                        "fix": {"type": "string"}
-                    }
-                }
-            },
-            "high_risk": {"type": "array", "items": {"type": "string"}}
-        }
-    })
+    let mut schema = schema_text(REVIEW_SCHEMA);
+    schema["properties"]["issues"]["items"]["properties"]["section"] = string_enum(&targets);
+    schema
 }
 
 // ---------------------------------------------------------------------------

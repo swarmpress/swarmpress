@@ -31,10 +31,9 @@ use std::collections::BTreeSet;
 
 use agents::article::{
     assemble_page, check_closing, check_outline, check_section, closing_schema, closing_words,
-    intro_words, normalize_outline_words, outline_schema, page_reading_text, reading_text,
-    resolve_aliases, review_schema, section_ids, section_schema, ArticleInput, ArticleParts,
-    Closing, Outline, ReviewIssue, SectionBudget, SectionDraft, SectionId, SectionedReview,
-    THEME_LANGUAGES,
+    intro_words, normalize_outline_words, outline_schema, reading_text, resolve_aliases,
+    review_schema, section_ids, section_schema, ArticleInput, ArticleParts, Closing, Outline,
+    ReviewIssue, SectionBudget, SectionDraft, SectionId, SectionedReview, THEME_LANGUAGES,
 };
 use agents::article_prompts::{
     closing_prompt, digest_of, fix_prompt, last_paragraph, outline_prompt, retitle_prompt,
@@ -55,8 +54,7 @@ use crate::gateway::Gateway;
 use crate::run::{corrupt, failed, invalid, persona, Orchestrator, Result};
 use crate::store::{ArtifactRecord, StageRow, Store, StoredParts};
 use crate::{
-    Digest, JobFailure, JobKind, JobRequest, Outcome, ProgressEvent, ProgressState, SiteBinding,
-    StaffRef,
+    Digest, JobFailure, JobKind, JobRequest, Outcome, ProgressState, SiteBinding, StaffRef,
 };
 
 /// Repair turns one part may use.
@@ -91,6 +89,23 @@ pub(crate) enum Halt {
 
 type Step<T> = std::result::Result<T, Halt>;
 
+/// What a failed call reports in its progress event.
+#[inline(never)]
+fn failure_detail(f: &RepairFailed) -> Value {
+    json!({"error": f.error.to_string(), "calls": f.calls, "no_progress": f.no_progress})
+}
+
+impl Halt {
+    /// A short label for the job's failed event.
+    fn label(&self) -> &'static str {
+        match self {
+            Halt::Llm(_) => "model",
+            Halt::Invalid { .. } => "invalid-output",
+            Halt::NeedsMedia => "needs-media",
+        }
+    }
+}
+
 fn halt_of(f: RepairFailed, stage: &str) -> Halt {
     match f.error {
         LlmError::InvalidOutput { errors, .. } => Halt::Invalid {
@@ -121,6 +136,7 @@ struct Key {
 }
 
 impl Key {
+    #[inline(never)]
     fn new(stage: &'static str, index: u32, total: u32, input: &[&str]) -> Self {
         let index_text = index.to_string();
         let mut parts = vec![stage, index_text.as_str()];
@@ -133,6 +149,7 @@ impl Key {
         }
     }
 
+    #[inline(never)]
     fn of(
         stage: &'static str,
         index: u32,
@@ -257,6 +274,7 @@ pub fn measured_checks(
 impl<S: Store, G: Gateway> Orchestrator<S, G> {
     // ------------------------------------------------------------ progress
 
+    #[inline(never)]
     fn emit(
         &self,
         cx: &Cx<'_>,
@@ -266,25 +284,10 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         state: ProgressState,
         detail: Value,
     ) {
-        let Some(p) = self.progress.as_ref() else {
-            return;
-        };
-        p.report(&ProgressEvent {
-            job_id: cx.req.job_id,
-            kind: cx.req.kind,
-            revision: cx.req.revision,
-            work_item: cx.req.work_item.clone(),
-            staff: Some(cx.worker.id.clone()),
-            persona: Some(cx.worker.persona.clone()),
-            role: Some(cx.worker.role.clone()),
-            stage: stage.to_string(),
-            index,
-            total,
-            state,
-            detail,
-        });
+        self.report(cx.req, Some(&cx.worker), stage, index, total, state, detail);
     }
 
+    #[inline(never)]
     fn emit_job(&self, cx: &Cx<'_>, state: ProgressState, detail: Value) {
         self.emit(cx, "job", 0, 1, state, detail);
     }
@@ -458,7 +461,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                     index,
                     total,
                     ProgressState::Failed,
-                    json!({"error": f.error.to_string(), "calls": f.calls, "no_progress": f.no_progress}),
+                    failure_detail(&f),
                 );
                 Ok(Err(halt_of(f, stage)))
             }
@@ -515,7 +518,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 index,
                 total,
                 ProgressState::Failed,
-                json!({"error": f.error.to_string(), "calls": f.calls, "no_progress": f.no_progress}),
+                failure_detail(&f),
             );
             halt_of(f, "section")
         };
@@ -711,11 +714,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 }
             }
         };
-        self.emit_job(
-            cx,
-            ProgressState::Failed,
-            json!({"halt": format!("{halt:?}")}),
-        );
+        self.emit_job(cx, ProgressState::Failed, json!({"halt": halt.label()}));
         Ok(vec![outcome])
     }
 
@@ -1282,30 +1281,13 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 req.revision, cx.item
             ))
         })?;
-        let review = match (&art.sectioned_review, &art.review) {
-            (Some(r), _) => r.clone(),
-            (None, Some(r)) => SectionedReview {
-                decision: r.decision,
-                score: r.score,
-                notes: r.notes.clone(),
-                issues: r
-                    .issues
-                    .iter()
-                    .map(|i| ReviewIssue {
-                        section: SectionId::Whole,
-                        problem: i.clone(),
-                        fix: String::new(),
-                    })
-                    .collect(),
-                high_risk: r.high_risk.clone(),
-            },
-            (None, None) => {
-                return Err(invalid(format!(
-                    "revision {} of {} without a review",
-                    req.revision, cx.item
-                )))
-            }
-        };
+        // Stored parts come with a staged review (its issues tagged by part).
+        let review = art.sectioned_review.clone().ok_or_else(|| {
+            invalid(format!(
+                "revision {} of {} without a review of its parts",
+                req.revision, cx.item
+            ))
+        })?;
         let mut issues = review.issues.clone();
         if let Some(note) = self.send_back_note(cx).await? {
             issues.extend(send_back_issues(&note));
@@ -1530,17 +1512,17 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             json!({"predecessor": predecessor}),
         );
 
-        let parts = art.parts.as_ref().map(StoredParts::to_parts);
-        let (reading, n) = match &parts {
-            Some(p) => (reading_text(p), p.sections.len()),
-            None => {
-                let text = page_reading_text(&page);
-                let n = text.lines().filter(|l| l.starts_with("[s")).count();
-                (text, n)
-            }
-        };
+        // The editor reads the parts of a staged draft (a page from before
+        // ADR-0058 has none, and could not be revised either).
+        let stored = art.parts.clone().ok_or_else(|| {
+            invalid(format!(
+                "review of {item} without the parts of a staged draft"
+            ))
+        })?;
+        let parts = stored.to_parts();
+        let (reading, n) = (reading_text(&parts), parts.sections.len());
         let ids = section_ids(n);
-        let checks = measured_checks(&self.site, &brief, &page, parts.as_ref());
+        let checks = measured_checks(&self.site, &brief, &page, Some(&parts));
         let frame = ReviewFrame {
             brief: &brief,
             revision: req.revision,
@@ -1553,116 +1535,113 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         let ok = |_: &Value| -> std::result::Result<(), Vec<String>> { Ok(()) };
         let schema = review_schema(&ids);
 
-        let review: SectionedReview = match (&parts, &art.parts) {
-            (Some(parts), Some(stored)) if estimate > self.site.review_single_tokens => {
-                // review_section#i for the intro, each section and the closing, then the summary.
-                let total = u32::try_from(n).unwrap_or(u32::MAX);
-                let mut list: Vec<(SectionId, String, String)> = Vec::new();
-                for s in &stored.sections {
-                    let draft = SectionDraft {
-                        blocks: s.blocks.clone(),
-                    };
-                    let heading = if s.id == SectionId::Intro {
-                        "Introduction".to_string()
-                    } else {
-                        s.heading.clone()
-                    };
-                    list.push((s.id, heading, section_text(&draft)));
-                }
-                list.push((
-                    SectionId::Closing,
-                    parts.outline.closing_title.clone(),
-                    parts.closing.content.clone(),
-                ));
-                let mut scores: Vec<(SectionId, u8)> = Vec::new();
-                let mut tagged: Vec<ReviewIssue> = Vec::new();
-                let section_schema = section_review_schema();
-                for (id, heading, text) in &list {
-                    let prompt =
-                        review_section_prompt(profile, &cx.system, &frame, *id, n, heading, text);
-                    let index = part_index(*id, n);
-                    match self
-                        .structured_stage::<SectionReview>(
-                            cx_ref(&cx),
-                            "review_section",
-                            index,
-                            total,
-                            &prompt,
-                            &section_schema,
-                            &ok,
-                            &mut budget,
-                        )
-                        .await?
-                    {
-                        Ok(r) => {
-                            scores.push((*id, r.score));
-                            tagged.extend(r.issues.into_iter().map(|i| ReviewIssue {
-                                section: *id,
-                                problem: i.problem,
-                                fix: i.fix,
-                            }));
-                        }
-                        Err(h) => return self.halted(&cx, h).await,
-                    }
-                }
-                let digests: Vec<(SectionId, String)> = stored
-                    .sections
-                    .iter()
-                    .map(|s| (s.id, s.digest.clone()))
-                    .collect();
-                let prompt = review_summary_prompt(profile, &cx.system, &frame, &digests, &scores);
-                let mut summary: SectionedReview = match self
-                    .structured_stage(
-                        cx_ref(&cx),
-                        "review_summary",
-                        0,
-                        1,
-                        &prompt,
-                        &schema,
-                        &ok,
-                        &mut budget,
-                    )
-                    .await?
-                {
-                    Ok(r) => r,
-                    Err(h) => return self.halted(&cx, h).await,
+        let review: SectionedReview = if estimate > self.site.review_single_tokens {
+            // review_section#i for the intro, each section and the closing, then the summary.
+            let total = u32::try_from(n).unwrap_or(u32::MAX);
+            let mut list: Vec<(SectionId, String, String)> = Vec::new();
+            for s in &stored.sections {
+                let draft = SectionDraft {
+                    blocks: s.blocks.clone(),
                 };
-                for issue in tagged {
-                    if !summary
-                        .issues
-                        .iter()
-                        .any(|i| i.section == issue.section && i.problem == issue.problem)
-                    {
-                        summary.issues.push(issue);
-                    }
-                }
-                summary.issues.sort_by_key(|i| i.section);
-                // Any part far under the bar forces changes, whatever the summary says.
-                let floor = self.site.quality_bar.saturating_sub(2);
-                if scores.iter().any(|(_, s)| *s < floor) {
-                    summary.decision = ReviewDecision::NeedsChanges;
-                    summary.score = summary.score.min(self.site.quality_bar.saturating_sub(1));
-                }
-                summary
+                let heading = if s.id == SectionId::Intro {
+                    "Introduction".to_string()
+                } else {
+                    s.heading.clone()
+                };
+                list.push((s.id, heading, section_text(&draft)));
             }
-            _ => {
-                let prompt = review_prompt(profile, &cx.system, &frame, &reading);
+            list.push((
+                SectionId::Closing,
+                parts.outline.closing_title.clone(),
+                parts.closing.content.clone(),
+            ));
+            let mut scores: Vec<(SectionId, u8)> = Vec::new();
+            let mut tagged: Vec<ReviewIssue> = Vec::new();
+            let section_schema = section_review_schema();
+            for (id, heading, text) in &list {
+                let prompt =
+                    review_section_prompt(profile, &cx.system, &frame, *id, n, heading, text);
+                let index = part_index(*id, n);
                 match self
-                    .structured_stage(
+                    .structured_stage::<SectionReview>(
                         cx_ref(&cx),
-                        "review",
-                        0,
-                        1,
+                        "review_section",
+                        index,
+                        total,
                         &prompt,
-                        &schema,
+                        &section_schema,
                         &ok,
                         &mut budget,
                     )
                     .await?
                 {
-                    Ok(r) => r,
+                    Ok(r) => {
+                        scores.push((*id, r.score));
+                        tagged.extend(r.issues.into_iter().map(|i| ReviewIssue {
+                            section: *id,
+                            problem: i.problem,
+                            fix: i.fix,
+                        }));
+                    }
                     Err(h) => return self.halted(&cx, h).await,
                 }
+            }
+            let digests: Vec<(SectionId, String)> = stored
+                .sections
+                .iter()
+                .map(|s| (s.id, s.digest.clone()))
+                .collect();
+            let prompt = review_summary_prompt(profile, &cx.system, &frame, &digests, &scores);
+            let mut summary: SectionedReview = match self
+                .structured_stage(
+                    cx_ref(&cx),
+                    "review_summary",
+                    0,
+                    1,
+                    &prompt,
+                    &schema,
+                    &ok,
+                    &mut budget,
+                )
+                .await?
+            {
+                Ok(r) => r,
+                Err(h) => return self.halted(&cx, h).await,
+            };
+            for issue in tagged {
+                if !summary
+                    .issues
+                    .iter()
+                    .any(|i| i.section == issue.section && i.problem == issue.problem)
+                {
+                    summary.issues.push(issue);
+                }
+            }
+            summary.issues.sort_by_key(|i| i.section);
+            // Any part far under the bar forces changes, whatever the summary says.
+            let floor = self.site.quality_bar.saturating_sub(2);
+            if scores.iter().any(|(_, s)| *s < floor) {
+                summary.decision = ReviewDecision::NeedsChanges;
+                summary.score = summary.score.min(self.site.quality_bar.saturating_sub(1));
+            }
+            summary
+        } else {
+            let prompt = review_prompt(profile, &cx.system, &frame, &reading);
+            match self
+                .structured_stage(
+                    cx_ref(&cx),
+                    "review",
+                    0,
+                    1,
+                    &prompt,
+                    &schema,
+                    &ok,
+                    &mut budget,
+                )
+                .await?
+            {
+                Ok(r) => r,
+                Err(h) => return self.halted(&cx, h).await,
             }
         };
 
@@ -1681,11 +1660,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             text.push_str(&format!("\n- {i}"));
         }
         let key = format!("{}:review:0", req.job_id);
-        let issues_json: Vec<Value> = review
-            .issues
-            .iter()
-            .map(|i| json!({"section": i.section, "problem": i.problem, "fix": i.fix}))
-            .collect();
+        let issues_json = serde_json::to_value(&review.issues).map_err(corrupt)?;
         self.post(
             req,
             item,
@@ -1697,9 +1672,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             Some(&key),
         )
         .await?;
-        let words = parts
-            .as_ref()
-            .map_or_else(|| crate::article::word_count(&page), ArticleParts::words);
+        let words = parts.words();
         self.emit_job(
             &cx,
             ProgressState::Done,

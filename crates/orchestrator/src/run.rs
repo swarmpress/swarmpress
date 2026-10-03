@@ -214,6 +214,22 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         state: crate::ProgressState,
         detail: Value,
     ) {
+        self.report(req, who, "job", 0, 1, state, detail);
+    }
+
+    /// Hands one [`crate::ProgressEvent`] to the progress sink, if any.
+    #[inline(never)]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn report(
+        &self,
+        req: &JobRequest,
+        who: Option<&StaffRef>,
+        stage: &str,
+        index: u32,
+        total: u32,
+        state: crate::ProgressState,
+        detail: Value,
+    ) {
         if let Some(p) = self.progress.as_ref() {
             p.report(&crate::ProgressEvent {
                 job_id: req.job_id,
@@ -223,9 +239,9 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 staff: who.map(|s| s.id.clone()),
                 persona: who.map(|s| s.persona.clone()),
                 role: who.map(|s| s.role.clone()),
-                stage: "job".into(),
-                index: 0,
-                total: 1,
+                stage: stage.to_string(),
+                index,
+                total,
                 state,
                 detail,
             });
