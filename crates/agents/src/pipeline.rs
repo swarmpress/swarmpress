@@ -272,11 +272,12 @@ impl Run<'_> {
                 system: vec![self.staff.writer_system.clone()],
                 messages: messages.clone(),
                 max_tokens: self.cfg.draft_max_tokens,
+                reasoning_tokens: None,
             };
             self.calls += 1;
             let page = match self.llm.structured(&req, &self.cfg.page_schema).await {
                 Ok(p) => p,
-                Err(LlmError::InvalidOutput { errors }) => return DraftResult::Invalid(errors),
+                Err(LlmError::InvalidOutput { errors, .. }) => return DraftResult::Invalid(errors),
                 Err(e) => return DraftResult::Failed(e),
             };
             match self.validator.validate(&page) {
@@ -310,12 +311,11 @@ impl Run<'_> {
                 bar = self.cfg.approve_threshold,
             ))],
             max_tokens: self.cfg.review_max_tokens,
+            reasoning_tokens: None,
         };
         self.calls += 1;
         let v = self.llm.structured(&req, &review_schema()).await?;
-        serde_json::from_value(v).map_err(|e| LlmError::InvalidOutput {
-            errors: vec![format!("review: {e}")],
-        })
+        serde_json::from_value(v).map_err(|e| LlmError::invalid(vec![format!("review: {e}")]))
     }
 
     fn finish(self, outcome: PipelineOutcome) -> PipelineRun {

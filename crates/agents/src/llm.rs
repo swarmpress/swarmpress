@@ -70,7 +70,14 @@ pub struct LlmRequest {
     pub system: Vec<String>,
     /// Conversation; must end with a user message (no prefill).
     pub messages: Vec<LlmMessage>,
+    /// Answer budget.
     pub max_tokens: u32,
+    /// Cap on reasoning before the answer, on top of `max_tokens` (ADR-0058:
+    /// a staged call reserves both in the model's context). `Some(0)` asks
+    /// for an answer without reasoning (repair turns); `None` leaves it to
+    /// the backend. Backends without a reasoning switch ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, Serialize, Deserialize)]
@@ -85,13 +92,29 @@ pub enum LlmError {
     #[error("output truncated at max_tokens")]
     Truncated { partial: String },
     /// Structured output still invalid after the backend's repair turns.
+    /// `answer` is the last answer without its reasoning, when the backend
+    /// has it: what a repair turn quotes back ([`structured_with_repair`]).
     #[error("invalid structured output: {errors:?}")]
-    InvalidOutput { errors: Vec<String> },
+    InvalidOutput {
+        errors: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        answer: Option<String>,
+    },
     /// No executor available (e.g. no capable browser); retry later.
     #[error("backend unavailable: {0}")]
     Unavailable(String),
     #[error("backend error: {0}")]
     Backend(String),
+}
+
+impl LlmError {
+    /// [`LlmError::InvalidOutput`] without an answer to quote.
+    pub fn invalid(errors: Vec<String>) -> Self {
+        LlmError::InvalidOutput {
+            errors,
+            answer: None,
+        }
+    }
 }
 
 /// Receives streamed text deltas.
@@ -138,7 +161,10 @@ pub trait Llm: MaybeSendSync {
         check: &SemanticCheck<'_>,
     ) -> Result<Value, LlmError> {
         let v = self.structured(req, schema).await?;
-        check(&v).map_err(|errors| LlmError::InvalidOutput { errors })?;
+        check(&v).map_err(|errors| LlmError::InvalidOutput {
+            errors,
+            answer: Some(v.to_string()),
+        })?;
         Ok(v)
     }
 }
@@ -159,7 +185,14 @@ impl From<ClaudeError> for LlmError {
             ClaudeError::MaxTokens { partial } => LlmError::Truncated {
                 partial: partial.text(),
             },
-            ClaudeError::SchemaValidation { errors, .. } => LlmError::InvalidOutput { errors },
+            ClaudeError::SchemaValidation {
+                errors,
+                last_output,
+                ..
+            } => LlmError::InvalidOutput {
+                errors,
+                answer: Some(strip_reasoning(&last_output)),
+            },
             other => LlmError::Backend(other.to_string()),
         }
     }
@@ -264,6 +297,219 @@ impl Llm for ClaudeLlm {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Repair turns (ADR-0058 decision 4)
+// ---------------------------------------------------------------------------
+
+/// Characters of a previous answer a repair turn quotes back, at most.
+pub const REPAIR_QUOTE_CHARS: usize = 6000;
+/// Problems a repair turn lists, at most (each cut to [`REPAIR_ERROR_CHARS`]).
+pub const REPAIR_MAX_ERRORS: usize = 12;
+pub const REPAIR_ERROR_CHARS: usize = 300;
+
+/// The answer without the model's reasoning: `<think>…</think>` blocks are
+/// removed, and an unterminated `<think>` drops everything after it (the
+/// model never left its reasoning).
+pub fn strip_reasoning(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    loop {
+        let lower = rest.to_ascii_lowercase();
+        let Some(open) = lower.find("<think>") else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..open]);
+        match lower[open..].find("</think>") {
+            Some(close) => rest = &rest[open + close + "</think>".len()..],
+            None => break,
+        }
+    }
+    out.trim().to_string()
+}
+
+fn cut_chars(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let cut: String = text.chars().take(max).collect();
+    format!("{cut} […]")
+}
+
+/// What a repair turn quotes back: the answer without its reasoning, cut to
+/// [`REPAIR_QUOTE_CHARS`].
+pub fn repair_quote(answer: &str) -> String {
+    let stripped = strip_reasoning(answer);
+    let n = stripped.chars().count();
+    if n <= REPAIR_QUOTE_CHARS {
+        return stripped;
+    }
+    let cut: String = stripped.chars().take(REPAIR_QUOTE_CHARS).collect();
+    format!("{cut}\n[… cut: the previous answer was {n} characters long]")
+}
+
+/// The user turn of a repair: the problems, each on one line, capped.
+pub fn repair_turn(errors: &[String]) -> String {
+    let mut s = String::from(
+        "Your previous answer did not pass the checks. Fix every problem below and reply with the complete corrected JSON only.\n\nProblems:\n",
+    );
+    for e in errors.iter().take(REPAIR_MAX_ERRORS) {
+        s.push_str("- ");
+        s.push_str(&cut_chars(e.trim(), REPAIR_ERROR_CHARS));
+        s.push('\n');
+    }
+    if errors.len() > REPAIR_MAX_ERRORS {
+        s.push_str(&format!(
+            "- … and {} more\n",
+            errors.len() - REPAIR_MAX_ERRORS
+        ));
+    }
+    s
+}
+
+/// The request of a repair turn. It starts again from the original request
+/// (never from an earlier repair turn), so its size is bounded: the original
+/// messages, the previous answer stripped of its reasoning and capped
+/// ([`repair_quote`]), and the problems ([`repair_turn`]). Without an answer
+/// to quote, the problems are appended to the last user message. Reasoning
+/// is off: the model has thought about the task already.
+pub fn repair_request(req: &LlmRequest, answer: Option<&str>, errors: &[String]) -> LlmRequest {
+    let mut out = req.clone();
+    out.reasoning_tokens = Some(0);
+    let turn = repair_turn(errors);
+    match answer.map(repair_quote).filter(|a| !a.is_empty()) {
+        Some(quote) => {
+            out.messages.push(LlmMessage::assistant(quote));
+            out.messages.push(LlmMessage::user(turn));
+        }
+        None => match out.messages.last_mut() {
+            Some(last) if last.role == LlmRole::User => {
+                last.text = format!("{}\n\n{turn}", last.text);
+            }
+            _ => out.messages.push(LlmMessage::user(turn)),
+        },
+    }
+    out
+}
+
+/// A structured answer that passed its checks.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Repaired {
+    pub value: Value,
+    /// Model calls made: 1 plus the repair turns.
+    pub calls: u32,
+    pub repairs: u32,
+}
+
+/// A structured call that did not produce a value that passes its checks.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RepairFailed {
+    /// [`LlmError::InvalidOutput`] with the last problems (and answer) when
+    /// the repairs ran out or made no progress; any other error as the
+    /// backend reported it (a refusal or truncation is never repaired here).
+    pub error: LlmError,
+    pub calls: u32,
+    pub repairs: u32,
+    /// A repair turn gave back the same answer as before: the loop stopped.
+    pub no_progress: bool,
+}
+
+impl RepairFailed {
+    /// The problems of an invalid answer (empty for other errors).
+    pub fn errors(&self) -> &[String] {
+        match &self.error {
+            LlmError::InvalidOutput { errors, .. } => errors,
+            _ => &[],
+        }
+    }
+}
+
+/// [`Llm::structured`] with semantic `check`s and at most `max` repair turns
+/// (ADR-0058 decision 4; `docs/design/mvp-pipeline.md` §1 "Repair loop in
+/// Rust").
+///
+/// Schema problems the backend could not repair ([`LlmError::InvalidOutput`]
+/// from the browser bridge) and problems `check` finds are handled alike: a
+/// repair turn ([`repair_request`]) quotes the answer back without its
+/// reasoning, capped, with the problems. An answer that does not change after
+/// a repair turn stops the loop (no progress). Refusals, truncation and
+/// backend errors are returned at once.
+pub async fn structured_with_repair(
+    llm: &dyn Llm,
+    req: &LlmRequest,
+    schema: &Value,
+    check: &SemanticCheck<'_>,
+    max: u32,
+) -> Result<Repaired, RepairFailed> {
+    let mut calls = 0;
+    let mut previous: Option<String> = None;
+    let mut errors: Vec<String> = Vec::new();
+    for attempt in 0..=max {
+        let request = if attempt == 0 {
+            req.clone()
+        } else {
+            repair_request(req, previous.as_deref(), &errors)
+        };
+        calls += 1;
+        let answer = match llm.structured(&request, schema).await {
+            Ok(value) => match check(&value) {
+                Ok(()) => {
+                    return Ok(Repaired {
+                        value,
+                        calls,
+                        repairs: attempt,
+                    })
+                }
+                Err(problems) => {
+                    errors = problems;
+                    Some(value.to_string())
+                }
+            },
+            Err(LlmError::InvalidOutput {
+                errors: problems,
+                answer,
+            }) => {
+                errors = problems;
+                answer.map(|a| strip_reasoning(&a))
+            }
+            Err(error) => {
+                return Err(RepairFailed {
+                    error,
+                    calls,
+                    repairs: attempt,
+                    no_progress: false,
+                })
+            }
+        };
+        let stuck = attempt > 0 && answer.is_some() && answer == previous;
+        previous = answer;
+        if stuck {
+            return Err(RepairFailed {
+                error: LlmError::InvalidOutput {
+                    errors,
+                    answer: previous,
+                },
+                calls,
+                repairs: attempt,
+                no_progress: true,
+            });
+        }
+    }
+    Err(RepairFailed {
+        error: LlmError::InvalidOutput {
+            errors,
+            answer: previous,
+        },
+        calls,
+        repairs: max,
+        no_progress: false,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// FakeLlm
+// ---------------------------------------------------------------------------
+
 /// A scripted reply for [`FakeLlm`].
 #[derive(Debug, Clone)]
 pub enum FakeReply {
@@ -279,14 +525,30 @@ pub struct RecordedCall {
     pub schema: Option<Value>,
 }
 
+/// Answers a [`FakeLlm`] call once its script is used up: the request and,
+/// for a structured call, the schema. `crate::fake_writer` is one.
+pub type FakeResponder = dyn Fn(&LlmRequest, Option<&Value>) -> FakeReply + Send + Sync;
+
 /// Scripted [`Llm`]. `structured` validates the scripted JSON against the
 /// schema and returns [`LlmError::InvalidOutput`] if it doesn't conform (as
-/// a backend that exhausted its repairs would). An exhausted script is an
-/// error.
-#[derive(Debug, Default)]
+/// a backend that exhausted its repairs would). Scripted replies come first;
+/// then the responder answers, if there is one. An exhausted script without
+/// a responder is an error.
+#[derive(Default)]
 pub struct FakeLlm {
     script: Mutex<VecDeque<FakeReply>>,
     calls: Mutex<Vec<RecordedCall>>,
+    responder: Option<Box<FakeResponder>>,
+}
+
+impl std::fmt::Debug for FakeLlm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FakeLlm")
+            .field("remaining", &self.remaining())
+            .field("calls", &self.calls.lock().unwrap().len())
+            .field("responder", &self.responder.is_some())
+            .finish()
+    }
 }
 
 impl FakeLlm {
@@ -294,6 +556,18 @@ impl FakeLlm {
         Self {
             script: Mutex::new(script.into_iter().collect()),
             calls: Mutex::default(),
+            responder: None,
+        }
+    }
+
+    /// A script, then `responder` for every call after it.
+    pub fn with_responder(
+        script: impl IntoIterator<Item = FakeReply>,
+        responder: impl Fn(&LlmRequest, Option<&Value>) -> FakeReply + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            responder: Some(Box::new(responder)),
+            ..Self::new(script)
         }
     }
 
@@ -320,11 +594,14 @@ impl FakeLlm {
             schema: schema.cloned(),
         });
         let n = self.calls.lock().unwrap().len();
-        self.script
-            .lock()
-            .unwrap()
-            .pop_front()
-            .ok_or_else(|| LlmError::Backend(format!("FakeLlm script exhausted at call #{n}")))
+        let scripted = self.script.lock().unwrap().pop_front();
+        match (scripted, &self.responder) {
+            (Some(reply), _) => Ok(reply),
+            (None, Some(responder)) => Ok(responder(req, schema)),
+            (None, None) => Err(LlmError::Backend(format!(
+                "FakeLlm script exhausted at call #{n}"
+            ))),
+        }
     }
 }
 
@@ -354,7 +631,10 @@ impl Llm for FakeLlm {
         let value = match self.next(req, Some(schema))? {
             FakeReply::Json(v) => v,
             FakeReply::Text(t) => {
-                claude::extract_json(&t).map_err(|e| LlmError::InvalidOutput { errors: vec![e] })?
+                claude::extract_json(&strip_reasoning(&t)).map_err(|e| LlmError::InvalidOutput {
+                    errors: vec![e],
+                    answer: Some(strip_reasoning(&t)),
+                })?
             }
             FakeReply::Error(e) => return Err(e),
         };
@@ -362,7 +642,10 @@ impl Llm for FakeLlm {
             .map_err(|e| LlmError::Backend(format!("bad schema: {e}")))?;
         validator
             .validate(&value)
-            .map_err(|errors| LlmError::InvalidOutput { errors })?;
+            .map_err(|errors| LlmError::InvalidOutput {
+                errors,
+                answer: Some(value.to_string()),
+            })?;
         Ok(value)
     }
 }

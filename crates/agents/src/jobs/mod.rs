@@ -129,11 +129,10 @@ pub async fn run_structured<T: DeserializeOwned>(
         system: vec![ctx.system.to_owned()],
         messages: vec![LlmMessage::user(user)],
         max_tokens: policy.max_tokens,
+        reasoning_tokens: None,
     };
     let v = llm.structured_checked(&req, schema, check).await?;
-    serde_json::from_value(v).map_err(|e| LlmError::InvalidOutput {
-        errors: vec![format!("{kind}: {e}")],
-    })
+    serde_json::from_value(v).map_err(|e| LlmError::invalid(vec![format!("{kind}: {e}")]))
 }
 
 /// A check that always passes.

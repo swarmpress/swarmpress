@@ -231,6 +231,7 @@ pub async fn run_meeting(
                 t = render_transcript(spec, &transcript),
             ))],
             max_tokens: 512,
+            reasoning_tokens: None,
         };
         calls += 1;
         let decision: ModeratorDecision = parse(
@@ -268,6 +269,7 @@ pub async fn run_meeting(
                 prompt = decision.prompt,
             ))],
             max_tokens: spec.max_tokens_per_turn,
+            reasoning_tokens: None,
         };
         calls += 1;
         let speaker_id = speaker.id.clone();
@@ -303,6 +305,7 @@ pub async fn run_meeting(
             t = render_transcript(spec, &transcript),
         ))],
         max_tokens: spec.max_tokens_outcome,
+        reasoning_tokens: None,
     };
     calls += 1;
     let outcome: MeetingOutcome = parse(

@@ -78,7 +78,7 @@ async fn finance_report_uses_only_input_numbers() {
         "cinqueterre.travel is 12% over plan at €48,000.",
     ))]);
     match finance_report(&bad, ctx, &data).await.unwrap_err() {
-        LlmError::InvalidOutput { errors } => {
+        LlmError::InvalidOutput { errors, .. } => {
             assert_eq!(errors.len(), 2, "{errors:?}");
             assert!(errors[0].contains("\"12\""));
             assert!(errors[1].contains("\"48,000\""));
@@ -196,7 +196,7 @@ async fn secretary_triage_follows_the_rubric() {
     // a financial ticket triaged Low violates the rubric floor
     let low = FakeLlm::new([FakeReply::Json(triage("low", "cut-scope"))]);
     match secretary_triage(&low, ctx, &t).await.unwrap_err() {
-        LlmError::InvalidOutput { errors } => assert!(errors[0].contains("must be high")),
+        LlmError::InvalidOutput { errors, .. } => assert!(errors[0].contains("must be high")),
         e => panic!("{e:?}"),
     }
     // an invented option fails the schema
@@ -286,7 +286,7 @@ async fn kpi_report_numbers_and_pages_come_from_the_tables() {
         page,
     ))]);
     match kpi_report(&bad, ctx, &input).await.unwrap_err() {
-        LlmError::InvalidOutput { errors } => {
+        LlmError::InvalidOutput { errors, .. } => {
             assert_eq!(errors.len(), 1);
             assert!(errors[0].contains("2,500"));
         }
@@ -295,7 +295,7 @@ async fn kpi_report_numbers_and_pages_come_from_the_tables() {
     // an invented page is rejected
     let bad = FakeLlm::new([FakeReply::Json(kpi("62% scroll depth", "/en/vernazza/"))]);
     match kpi_report(&bad, ctx, &input).await.unwrap_err() {
-        LlmError::InvalidOutput { errors } => {
+        LlmError::InvalidOutput { errors, .. } => {
             assert!(errors[0].contains("not in the analytics tables"))
         }
         e => panic!("{e:?}"),
@@ -377,7 +377,7 @@ async fn candidate_generation_validates_as_a_persona() {
             .await
             .unwrap_err()
         {
-            LlmError::InvalidOutput { errors } => {
+            LlmError::InvalidOutput { errors, .. } => {
                 assert!(
                     errors.iter().any(|e| e.contains(needle)),
                     "{needle}: {errors:?}"

@@ -346,7 +346,11 @@ impl Llm for JsLlm {
         let value = match (v.get("value"), v.get("text")) {
             (Some(value), _) => value.clone(),
             (None, Some(Value::String(t))) => {
-                claude::extract_json(t).map_err(|e| LlmError::InvalidOutput { errors: vec![e] })?
+                let answer = agents::strip_reasoning(t);
+                claude::extract_json(&answer).map_err(|e| LlmError::InvalidOutput {
+                    errors: vec![e],
+                    answer: Some(answer.clone()),
+                })?
             }
             _ => return Err(LlmError::Backend("structured answer has no value".into())),
         };
@@ -354,7 +358,10 @@ impl Llm for JsLlm {
         claude::SchemaValidator::new(schema)
             .map_err(|e| LlmError::Backend(format!("bad schema: {e}")))?
             .validate(&value)
-            .map_err(|errors| LlmError::InvalidOutput { errors })?;
+            .map_err(|errors| LlmError::InvalidOutput {
+                errors,
+                answer: Some(value.to_string()),
+            })?;
         Ok(value)
     }
 }

@@ -66,9 +66,8 @@ pub async fn qa_coherence_review(
             serde_json::to_string_pretty(page).unwrap_or_default()
         ))],
         max_tokens: 4096,
+        reasoning_tokens: None,
     };
     let v = llm.structured(&req, &qa_schema()).await?;
-    serde_json::from_value(v).map_err(|e| LlmError::InvalidOutput {
-        errors: vec![format!("qa report: {e}")],
-    })
+    serde_json::from_value(v).map_err(|e| LlmError::invalid(vec![format!("qa report: {e}")]))
 }

@@ -236,7 +236,7 @@ fn resolved_writer_prompt_snapshot() {
     assert_eq!(
         r.resolution_path,
         [
-            "company:writer@1.0.0",
+            "company:writer@2.0.0",
             "site:cinqueterre@1.0.0",
             "agent:isabella",
             "runtime"

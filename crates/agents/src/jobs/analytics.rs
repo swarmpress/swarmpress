@@ -202,9 +202,7 @@ pub async fn kpi_report(
     ctx: JobCtx<'_>,
     input: &AnalyticsInput,
 ) -> Result<KpiReport, LlmError> {
-    input
-        .validate()
-        .map_err(|errors| LlmError::InvalidOutput { errors })?;
+    input.validate().map_err(LlmError::invalid)?;
     let check = |out: &Value| analytics_check(out, input, &["top_pages", "bottom_pages"]);
     run_structured(
         llm,
@@ -259,10 +257,7 @@ pub async fn content_performance(
     ctx: JobCtx<'_>,
     input: &ContentPerformanceInput,
 ) -> Result<ContentPerformance, LlmError> {
-    input
-        .analytics
-        .validate()
-        .map_err(|errors| LlmError::InvalidOutput { errors })?;
+    input.analytics.validate().map_err(LlmError::invalid)?;
     let data = serde_json::to_value(input).unwrap_or(Value::Null);
     let check = |out: &Value| check_number_provenance(out, &data, PROVENANCE_SKIP);
     run_structured(
@@ -337,7 +332,7 @@ pub async fn experiment_readout(
     let mut errors = input.before.validate().err().unwrap_or_default();
     errors.extend(input.after.validate().err().unwrap_or_default());
     if !errors.is_empty() {
-        return Err(LlmError::InvalidOutput { errors });
+        return Err(LlmError::invalid(errors));
     }
     let data = serde_json::to_value(input).unwrap_or(Value::Null);
     let check = |out: &Value| check_number_provenance(out, &data, PROVENANCE_SKIP);

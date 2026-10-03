@@ -22,11 +22,17 @@
 //! - [`article`]: the staged article (ADR-0058): stage schemas and typed
 //!   results, plain-text rules, per-section checks, deterministic assembly
 //!   of the page and the editor's reading text.
+//! - [`article_prompts`]: the stage prompts of the staged article, built to
+//!   fit the model's context ([`article_prompts::LlmProfile`]).
+//! - [`fake_writer`]: a deterministic, brief-driven stand-in for the model
+//!   in the staged article (tests and the harness).
 //! - [`qa`]: the QA coherence review.
 
 #![recursion_limit = "256"]
 
 pub mod article;
+pub mod article_prompts;
+pub mod fake_writer;
 pub mod house_style;
 pub mod jobs;
 pub mod llm;
@@ -43,8 +49,8 @@ pub mod state;
 
 pub use house_style::StyleGuide;
 pub use llm::{
-    CallProfile, ClaudeLlm, FakeLlm, FakeReply, Llm, LlmError, LlmMessage, LlmRequest,
-    MaybeSendSync,
+    strip_reasoning, structured_with_repair, CallProfile, ClaudeLlm, FakeLlm, FakeReply, Llm,
+    LlmError, LlmMessage, LlmRequest, MaybeSendSync, RepairFailed, Repaired,
 };
 pub use meetings::{
     run_meeting, MeetingEvent, MeetingOutcome, MeetingResult, MeetingSpec, Participant,
