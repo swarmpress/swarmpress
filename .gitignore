@@ -95,3 +95,6 @@ packages/sandbox/.build-*/
 apps/game/public/vendor/
 # Chrome profile of the gated Bonsai e2e (caches the model weights).
 apps/game/.bonsai-profile/
+
+# Local clone of the live site repository (docs/runbooks/fork-rehearsal.md); its own repo.
+/cinqueterre.travel/
