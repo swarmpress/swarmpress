@@ -1,7 +1,7 @@
 ---
 id: FEAT-037
 title: "LocalLlm worker and adapters"
-status: planned
+status: in-progress
 importance: high
 paths:
   - "apps/game/src/llm/**"
