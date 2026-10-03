@@ -49,6 +49,15 @@ test('people walk smoothly between sim steps and open their profile on click', a
   await boot(page, '/?renderer=webgl&quality=low&speed=10')
   await page.waitForFunction(() => (window as unknown as { __swarmpress: Hook }).__swarmpress.people().some((p) => p.walking), null, { timeout: 120_000 })
   await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100)
+  // Wait, in fake time, until the sim is stepping again and someone is still walking: on a slow
+  // CI runner the first frames after the pause can all land in the same sim slice.
+  const stepNow = () => page.evaluate(() => Number((window as unknown as { __swarmpress: Hook }).__swarmpress.sim.step()))
+  const before = await stepNow()
+  for (let i = 0; i < 240; i++) {
+    await page.clock.runFor(16)
+    if ((await stepNow()) > before && (await people(page)).some((p) => p.walking)) break
+  }
+  expect(await stepNow(), 'the sim advances in fake time').toBeGreaterThan(before)
   // the walker with the longest way to go
   const walking = (await people(page)).filter((p) => p.walking)
   expect(walking.length).toBeGreaterThan(0)
