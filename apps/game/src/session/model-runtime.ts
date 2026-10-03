@@ -424,8 +424,10 @@ class SessionModelRuntime implements ModelRuntime {
   }
 
   private async startNow(): Promise<void> {
-    if (this.phase === 'scripted' || this.phase === 'read-only' || this.phase === 'blocked' && !this.choice) return
-    const id = this.choice!.id
+    if (this.phase === 'scripted' || this.phase === 'read-only') return
+    // No backend could be chosen (an unknown `?llm=`, a stored value of another build): nothing to start.
+    if (!this.choice) return this.setPhase('blocked', this.error)
+    const id = this.choice.id
     if (BACKENDS[id].runsIn === 'worker' && this.o.lock !== null && !this.lock) {
       // One resident model per origin: ask before anything is loaded.
       this.lock = (this.o.lock ?? electResident)()

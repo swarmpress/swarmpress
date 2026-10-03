@@ -145,6 +145,9 @@ describe('backend selection', () => {
     await rt.start()
     expect(rt.info()).toMatchObject({ phase: 'blocked', backend: null })
     expect(rt.status()).toEqual({ state: 'none', detail: '?llm=claude: unknown backend (use fake, bonsai, chrome, transformers)' })
+    // "Try again" cannot choose a backend for the player either.
+    await rt.retry()
+    expect(rt.info()).toMatchObject({ phase: 'blocked', error: '?llm=claude: unknown backend (use fake, bonsai, chrome, transformers)' })
     expect(s.opened).toEqual([])
   })
 
