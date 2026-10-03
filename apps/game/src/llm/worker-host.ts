@@ -20,9 +20,12 @@ export interface WorkerHostOptions {
    */
   deltaBatchMs?: number
   now?: () => number
+  /** Honour the test hooks (`destroyDevice`). Off unless the page started the worker in debug mode. */
+  debug?: boolean
 }
 
 type Benchable = LocalLlm & { bench?: (req: BenchRequest) => Promise<BenchResult> }
+type Destroyable = LocalLlm & { destroyDevice?: () => Promise<void> }
 
 const adapterKind = (spec: ModelSpec): AdapterKind => spec.adapter ?? 'transformers'
 
@@ -158,6 +161,17 @@ export function createWorkerHost(
       case 'resetSession':
         try {
           await llm?.resetSession?.()
+          send({ type: 'result', id: msg.id, value: null })
+        } catch (e) {
+          fail(msg.id, e)
+        }
+        break
+      case 'destroyDevice':
+        try {
+          if (!options.debug) throw new Error('destroyDevice is a test hook; this worker was not started in debug mode')
+          const destroy = (llm as Destroyable | null)?.destroyDevice
+          if (!llm || !destroy) throw new Error('this adapter has no GPU device to destroy')
+          await destroy.call(llm)
           send({ type: 'result', id: msg.id, value: null })
         } catch (e) {
           fail(msg.id, e)

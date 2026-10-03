@@ -19,17 +19,18 @@ import { PrefixLedger, type LedgerPlan } from './prefix-ledger'
 import { IncrementalDecoder, JsonBalance, mergeSystem, systemPrefixIds, templateArgs, thinkCloseIds } from './think'
 import type { UpstreamBenchmark, UpstreamCache, UpstreamLoadProgress, UpstreamModule, UpstreamSession } from './upstream'
 import { applyStop, runStructured, streamFromGenerate } from '../../structured'
-import type {
-  ChatMessage,
-  FinishReason,
-  GenerateOptions,
-  GenerateResult,
-  JsonSchema,
-  LoadProgress,
-  LocalLlm,
-  RuntimeCapabilities,
-  StructuredOptions,
-  ThinkingMode,
+import {
+  LlmUnavailableError,
+  type ChatMessage,
+  type FinishReason,
+  type GenerateOptions,
+  type GenerateResult,
+  type JsonSchema,
+  type LoadProgress,
+  type LocalLlm,
+  type RuntimeCapabilities,
+  type StructuredOptions,
+  type ThinkingMode,
 } from '../../types'
 
 export const BONSAI_BACKEND = 'bonsai-kernels'
@@ -146,7 +147,8 @@ export async function verifyRemoteFile(model: BonsaiModel, f: typeof fetch = fet
   }
 }
 
-function mapProgress(modelId: string, total: number, p: UpstreamLoadProgress, last: LoadProgress | null): LoadProgress {
+/** The engine's progress event as a `LoadProgress` (one file, "weights"; `last` carries the total into the GPU phase). */
+export function mapProgress(modelId: string, total: number, p: UpstreamLoadProgress, last: LoadProgress | null): LoadProgress {
   const file = 'weights'
   if (p.status === 'ready') {
     return { modelId, phase: 'ready', files: { [file]: { loaded: total, total } }, loaded: total, total, fraction: 1, message: p.message }
@@ -154,7 +156,17 @@ function mapProgress(modelId: string, total: number, p: UpstreamLoadProgress, la
   if (p.status === 'weights' && p.kind === 'bytes' && typeof p.loaded === 'number') {
     const t = typeof p.total === 'number' && p.total > 0 ? p.total : total
     const loaded = Math.min(p.loaded, t)
-    return { modelId, phase: 'download', files: { [file]: { loaded, total: t } }, loaded, total: t, fraction: t > 0 ? loaded / t : 0, message: p.message }
+    return {
+      modelId,
+      phase: 'download',
+      files: { [file]: { loaded, total: t } },
+      loaded,
+      total: t,
+      fraction: t > 0 ? loaded / t : 0,
+      message: p.message,
+      // Whether these bytes came from the engine's cache: a warm start reads, a cold one downloads.
+      ...(typeof p.fromCache === 'boolean' ? { fromCache: p.fromCache } : {}),
+    }
   }
   if (p.status === 'weights') {
     // Uploading tensors, compiling kernels, tuning: the bytes are there, the GPU is not ready.
@@ -208,9 +220,17 @@ export class BonsaiLlm implements LocalLlm {
   private session: UpstreamSession | null = null
   private model: BonsaiModel | null = null
   private ledger: PrefixLedger
+  /** Where the calls of a session that is no longer loaded record what they do (nobody reads it). */
+  private staleLedger: PrefixLedger | null = null
   /** Serialises calls: one resident model, one turn at a time. */
   private chain: Promise<unknown> = Promise.resolve()
+  /** Calls queued or running, so a device loss can reject them all (see `abandon`). */
+  private calls = new Set<{ reject(e: Error): void }>()
+  /** Bumped when the device is lost: a call of an older epoch never runs, and its result is nobody's. */
+  private epoch = 0
   private lost: string | null = null
+  /** The session whose device the test hook destroyed: its `destroyed` loss is a loss, not our own dispose. */
+  private destroying: UpstreamSession | null = null
   private readonly now: () => number
 
   constructor(private o: BonsaiLlmOptions) {
@@ -220,6 +240,7 @@ export class BonsaiLlm implements LocalLlm {
 
   async load(modelId: string, onProgress?: (p: LoadProgress) => void): Promise<void> {
     if (this.modelId === modelId && this.session && !this.lost) return
+    // After a device loss the queue was already abandoned, so this never waits for a hung generation.
     await this.dispose()
     const model = this.o.resolve(modelId)
     const f = this.o.fetch
@@ -260,58 +281,110 @@ export class BonsaiLlm implements LocalLlm {
     const lost = session.runtime?.host?.device?.lost
     if (!lost || typeof lost.then !== 'function') return
     void lost.then((info) => {
-      // Our own dispose destroys the device; that is not a loss.
-      if (this.session !== session || info?.reason === 'destroyed') return
+      if (this.session !== session) return
+      // Our own dispose destroys the device; that is not a loss. The test hook's destroy is.
+      const byHook = this.destroying === session
+      if (info?.reason === 'destroyed' && !byHook) return
       this.lost = info?.message || info?.reason || 'the GPU device was lost'
       this.o.onEvent?.({ kind: 'device-lost', message: this.lost })
+      this.abandon(`the GPU device was lost (${this.lost}); the call was discarded`)
     })
   }
 
+  /**
+   * After a device loss nothing queued can run and the running generation may
+   * never return (its GPU work is gone). Every call is rejected as
+   * unavailable, and the queue starts afresh, so `load()` (which disposes
+   * first) and later calls never wait for the hung one. If the hung call ever
+   * settles, its result goes nowhere and it no longer touches the ledger of a
+   * newer session (`ledgerFor`).
+   */
+  private abandon(reason: string): void {
+    this.epoch++
+    const err = new LlmUnavailableError(reason)
+    for (const c of this.calls) c.reject(err)
+    this.calls.clear()
+    this.chain = Promise.resolve()
+  }
+
+  /** Runs `fn` after every earlier call; one resident model, one turn at a time. */
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    const epoch = this.epoch
+    const entry = { reject: (_e: Error) => undefined as void }
+    const out = new Promise<T>((resolve, reject) => {
+      entry.reject = reject
+      const run = this.chain.then(() => {
+        if (epoch !== this.epoch) throw new LlmUnavailableError('the GPU device was lost before the call ran')
+        return fn()
+      })
+      this.chain = run.catch(() => undefined)
+      run.then(resolve, reject)
+    })
+    this.calls.add(entry)
+    const forget = () => this.calls.delete(entry)
+    out.then(forget, forget)
+    return out
+  }
+
+  /**
+   * The prefix ledger of `session`: the live one while `session` is the loaded
+   * session, otherwise a throwaway one, so a call abandoned on a lost device
+   * that settles after a reload cannot corrupt what the new session's ledger knows.
+   */
+  private ledgerFor(session: UpstreamSession): PrefixLedger {
+    return session === this.session ? this.ledger : (this.staleLedger ??= new PrefixLedger({ maxSnapshots: 0 }))
+  }
+
   private need(): { session: UpstreamSession; model: BonsaiModel } {
-    if (this.lost) throw new Error(`the GPU device was lost (${this.lost}); reload the model`)
+    if (this.lost) throw new LlmUnavailableError(`the GPU device was lost (${this.lost}); reload the model`)
     if (!this.session || !this.model) throw new Error('no model loaded')
     return { session: this.session, model: this.model }
   }
 
   generate(messages: ChatMessage[], opts: GenerateOptions = {}): Promise<GenerateResult> {
-    const run = this.chain.then(() => this.generateNow(messages, opts))
-    this.chain = run.catch(() => undefined)
-    return run
+    return this.serial(() => this.generateNow(messages, opts))
   }
 
-  /** Bring the cache to hold as much of `promptIds` as can be reused; returns how many tokens that is. */
-  private async applyPlan(session: UpstreamSession, promptIds: number[], prefixLength: number): Promise<number> {
+  /**
+   * Bring the cache to hold as much of `promptIds` as can be reused. `cached`
+   * is how many tokens it holds afterwards; `primed` how many of them this
+   * call prefilled itself to prime the system prefix.
+   */
+  private async applyPlan(session: UpstreamSession, promptIds: number[], prefixLength: number): Promise<{ cached: number; primed: number }> {
     const cache = session.generationState.cache
-    const plan: LedgerPlan = this.ledger.plan(promptIds, prefixLength, cache.get_seq_length())
+    const ledger = this.ledgerFor(session)
+    const plan: LedgerPlan = ledger.plan(promptIds, prefixLength, cache.get_seq_length())
+    const primeNow = async () => {
+      this.resetCache(session)
+      ledger.count('prime')
+      const n = await this.prime(session, promptIds.slice(0, plan.cached))
+      return { cached: n, primed: n }
+    }
     switch (plan.kind) {
       case 'continue':
         break
       case 'rewind':
         cache.truncate(plan.cached)
-        this.ledger.rewound()
+        ledger.rewound()
         break
       case 'import': {
         this.resetCache(session)
         const ok = (await cache.importPrefixSnapshot?.(plan.snapshot)) === true && cache.get_seq_length() === plan.cached
         if (ok) {
-          this.ledger.primed(promptIds.slice(0, plan.cached))
+          ledger.primed(promptIds.slice(0, plan.cached))
           break
         }
         // The snapshot no longer fits this cache: prefill the prefix instead.
-        this.resetCache(session)
-        this.ledger.count('prime')
-        return this.prime(session, promptIds.slice(0, plan.cached))
+        return primeNow()
       }
       case 'prime':
-        this.resetCache(session)
-        this.ledger.count('prime')
-        return this.prime(session, promptIds.slice(0, plan.cached))
+        return primeNow()
       case 'reset':
         this.resetCache(session)
         break
     }
-    this.ledger.count(plan.kind)
-    return plan.cached
+    ledger.count(plan.kind)
+    return { cached: plan.cached, primed: 0 }
   }
 
   /** Prefill a system prefix on an empty cache, make it the rewind point, snapshot it. */
@@ -327,13 +400,13 @@ export class BonsaiLlm implements LocalLlm {
     }
     await cache.captureRewindPoint()
     const snapshot = (await cache.exportPrefixSnapshot?.()) ?? null
-    this.ledger.primed(prefix, snapshot && snapshot.length === prefix.length ? snapshot : null)
+    this.ledgerFor(session).primed(prefix, snapshot && snapshot.length === prefix.length ? snapshot : null)
     return prefix.length
   }
 
   private resetCache(session: UpstreamSession): void {
     session.resetCache()
-    this.ledger.cleared()
+    this.ledgerFor(session).cleared()
   }
 
   /** One stream call; counts cache state afterwards through the ledger. */
@@ -365,15 +438,16 @@ export class BonsaiLlm implements LocalLlm {
   private settle(session: UpstreamSession, sequence: number[], abandoned: boolean): number {
     const cache = session.generationState.cache
     const safe = !abandoned || typeof cache.mutableStateCheckpoint === 'function' || (session.decodePipelineDepth ?? 2) <= 1
-    if (safe && this.ledger.commit(sequence, cache.get_seq_length())) return cache.get_seq_length()
+    if (safe && this.ledgerFor(session).commit(sequence, cache.get_seq_length())) return cache.get_seq_length()
     return this.fallBack(session, cache)
   }
 
   private fallBack(session: UpstreamSession, cache: UpstreamCache): number {
-    const r = this.ledger.rewindLength
+    const ledger = this.ledgerFor(session)
+    const r = ledger.rewindLength
     if (r > 0 && (cache.canTruncateTo?.(r) ?? false)) {
       cache.truncate(r)
-      this.ledger.rewound()
+      ledger.rewound()
       return r
     }
     this.resetCache(session)
@@ -404,7 +478,9 @@ export class BonsaiLlm implements LocalLlm {
         throw new Error(`the prompt is too long for the context window (${promptIds.length} tokens; the window is ${cache.maxLength})`)
       }
 
-      const cached = await this.applyPlan(session, promptIds, sysIds.length)
+      const planStarted = this.now()
+      const { cached, primed } = await this.applyPlan(session, promptIds, sysIds.length)
+      // Priming the system prefix is a prefill of its own; it is reported apart (`primeMs`), not hidden.
       const prefillStarted = this.now()
 
       /** Every token prefilled or generated, in order. */
@@ -525,6 +601,8 @@ export class BonsaiLlm implements LocalLlm {
           ttftMs: turn.firstTokenAt ? turn.firstTokenAt - started : 0,
           reasoningTokens: turn.reasoning,
           cachedPromptTokens: cached,
+          primeMs: primed > 0 ? prefillStarted - planStarted : 0,
+          primedTokens: primed,
         },
       }
     } catch (e) {
@@ -532,7 +610,7 @@ export class BonsaiLlm implements LocalLlm {
       try {
         this.resetCache(session)
       } catch {
-        this.ledger.cleared()
+        this.ledgerFor(session).cleared()
       }
       const message = e instanceof Error ? e.message : String(e)
       if (/device.*lost|GPUDevice/i.test(message)) this.o.onEvent?.({ kind: 'gpu-error', message })
@@ -551,7 +629,7 @@ export class BonsaiLlm implements LocalLlm {
   }
 
   async structured<T>(messages: ChatMessage[], schema: JsonSchema, opts: StructuredOptions = {}): Promise<T> {
-    return (await runStructured<T>((m, o) => this.generate(m, o), messages, schema, { stopOnJsonEnd: true, ...opts })).value
+    return (await runStructured<T>((m, o) => this.generate(m, o), messages, schema, { ...opts, stopOnJsonEnd: opts.stopOnJsonEnd ?? true })).value
   }
 
   async capabilities(): Promise<RuntimeCapabilities> {
@@ -613,11 +691,23 @@ export class BonsaiLlm implements LocalLlm {
     this.ledger.dropSnapshots()
   }
 
+  /**
+   * Test hook (the worker honours it only in debug mode, see worker-host.ts):
+   * destroys the model's GPU device the way a loss would take it. The loss is
+   * reported and handled like a real one: `device-lost`, every call rejected
+   * as unavailable, and the model must be loaded again.
+   */
+  async destroyDevice(): Promise<void> {
+    const session = this.session
+    const device = session?.runtime?.host?.device
+    if (!session || !device || typeof device.destroy !== 'function') throw new Error('no GPU device to destroy (no model is loaded)')
+    this.destroying = session
+    device.destroy()
+  }
+
   /** Fixed-prompt benchmark; `ids` are the raw generated tokens (EOS is not a stop here). */
   bench(req: BonsaiBenchRequest): Promise<BonsaiBenchResult> {
-    const run = this.chain.then(() => this.benchNow(req))
-    this.chain = run.catch(() => undefined)
-    return run
+    return this.serial(() => this.benchNow(req))
   }
 
   private async benchNow(req: BonsaiBenchRequest): Promise<BonsaiBenchResult> {
@@ -627,10 +717,10 @@ export class BonsaiLlm implements LocalLlm {
     if (ids.length === 0) throw new Error('bench needs messages or ids')
     const depth = session.decodePipelineDepth
     if (req.mode === 'upstream') {
-      this.ledger.cleared()
+      this.ledgerFor(session).cleared()
       const r: UpstreamBenchmark = await session.benchmarkFixedTokenIds(ids, req.maxNewTokens, {})
       // benchmarkFixedTokenIds leaves an empty cache.
-      this.ledger.cleared()
+      this.ledgerFor(session).cleared()
       return { mode: 'upstream', promptTokens: ids.length, ttftMs: r.ttftMs, decodeTps: r.decodeTps, tokens: r.tokens, ids: r.ids, depth }
     }
     const release = session.acquireGenerationLease()
@@ -666,12 +756,14 @@ export class BonsaiLlm implements LocalLlm {
   }
 
   async dispose(): Promise<void> {
+    // Waits for the call in flight, except after a device loss: `abandon` emptied the queue then.
     await this.chain.catch(() => undefined)
     const s = this.session
     this.session = null
     this.model = null
     this.modelId = null
     this.lost = null
+    this.destroying = null
     this.ledger.cleared()
     this.ledger.dropSnapshots()
     try {

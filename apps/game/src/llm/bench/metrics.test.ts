@@ -80,6 +80,14 @@ describe('rates', () => {
     expect(prefillRate(null)).toBeNull()
   })
 
+  it('a call that primed the system prefix counts that prefill too (reported apart by the adapter)', () => {
+    // 700 primed in 700 ms, then 700 more in 350 ms: 1400 tokens in 1050 ms.
+    const primed = usage({ promptTokens: 1400, cachedPromptTokens: 700, prefillMs: 350, primeMs: 700, primedTokens: 700 })
+    expect(prefillRate(primed)).toBeCloseTo((1400 * 1000) / 1050, 6)
+    // Nothing primed: the prime time is not added, whatever it says.
+    expect(prefillRate(usage({ promptTokens: 1400, cachedPromptTokens: 700, prefillMs: 350, primeMs: 0, primedTokens: 0 }))).toBe(2000)
+  })
+
   it('decode counts reasoning and answer tokens, and needs enough of them', () => {
     expect(decodeRate(usage({ completionTokens: 10, reasoningTokens: MIN_DECODE_TOKENS - 10, tokensPerSec: 21 }))).toBe(21)
     expect(decodeRate(usage({ completionTokens: MIN_DECODE_TOKENS - 1, reasoningTokens: 0 }))).toBeNull()

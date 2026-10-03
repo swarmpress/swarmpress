@@ -31,6 +31,7 @@ import { DEFAULT_REGISTRY } from '../registry.default'
 import { bonsaiManifest } from '../runtime/bonsai/manifest'
 import { compareIds, EQUIVALENCE_PROMPTS, EQUIVALENCE_TOKENS, goldenKey } from '../runtime/bonsai/equivalence'
 import type { UpstreamDeviceInfo } from '../runtime/bonsai/upstream'
+import { cachedWeightBytes } from '../runtime/bonsai/weight-cache'
 import type { LocalLlm, RuntimeCapabilities, ThinkingMode, Validator } from '../types'
 import { loadRustValidator } from '../../orchestrator'
 import { BENCH_FAKE_MODEL, BenchFakeLlm } from './fake'
@@ -104,44 +105,11 @@ interface Wiring {
   factories: BackendFactories
   modelId: string
   model: ModelPins | null
-  /** The backend's device-loss test hook, when it has one. */
+  /** The backend's device-loss test hook, when it has one (the scripted backend; Bonsai with `loss=hook`). */
   loseDevice?: () => void
   /** Upstream equivalence in the worker. */
   equivalence?: (llm: LocalLlm) => Promise<EquivalenceRecord | null>
   inferStart: (probe: RuntimeCapabilities | null) => Promise<'cold' | 'warm' | 'unknown'>
-}
-
-/** Sum of the cached weight bytes the engine holds for `revision`, without creating its database when it is absent. */
-async function cachedWeightBytes(revision: string): Promise<{ bytes: number; chunks: number } | null> {
-  const idb = globalThis.indexedDB as (IDBFactory & { databases?: () => Promise<{ name?: string }[]> }) | undefined
-  if (!idb?.databases) return null
-  const names = (await idb.databases()).map((d) => d.name)
-  if (!names.includes('gguf-cache-v1')) return { bytes: 0, chunks: 0 }
-  const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const req = idb.open('gguf-cache-v1')
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-  try {
-    if (!db.objectStoreNames.contains('chunks')) return { bytes: 0, chunks: 0 }
-    const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
-      const req = db.transaction('chunks', 'readonly').objectStore('chunks').getAllKeys()
-      req.onsuccess = () => resolve(req.result)
-      req.onerror = () => reject(req.error)
-    })
-    let bytes = 0
-    let parsed = 0
-    for (const k of keys) {
-      if (Array.isArray(k) && typeof k[0] === 'string' && typeof k[1] === 'number' && typeof k[2] === 'number') {
-        parsed++
-        if (k[0].includes(revision)) bytes += k[2] - k[1]
-      }
-    }
-    // Keys of another shape: the count is all that can be said.
-    return parsed === keys.length ? { bytes, chunks: keys.length } : { bytes: NaN, chunks: keys.length }
-  } finally {
-    db.close()
-  }
 }
 
 function wire(backend: BackendId, onEvent: (kind: string, message: string) => void, config: BenchConfig, getFake: () => BenchFakeLlm | null, setFake: (f: BenchFakeLlm) => void, suite: ReturnType<typeof buildSuite>): Wiring {
@@ -176,10 +144,14 @@ function wire(backend: BackendId, onEvent: (kind: string, message: string) => vo
     case 'bonsai': {
       const modelId = BACKENDS[backend].modelId!
       const overrides = config.context !== null || config.pipelineDepth !== null
+      // `loss=hook`: the worker runs with its test hooks, so the run can destroy the model's device from the page.
+      const hook = config.deviceLoss === 'hook'
+      let client: LlmClient | null = null
       const spawn = () =>
-        LlmClient.spawn({
+        (client = LlmClient.spawn({
           registry: DEFAULT_REGISTRY,
           onEvent: (e) => onEvent(e.kind, e.message),
+          debug: hook,
           ...(overrides
             ? {
                 resolveSpec: (id: string): ModelSpec | undefined => {
@@ -192,12 +164,20 @@ function wire(backend: BackendId, onEvent: (kind: string, message: string) => vo
                 },
               }
             : {}),
-        })
+        }))
       const pins = backend === 'bonsai' ? bonsaiPins(modelId) : null
       return {
         modelId,
         model: pins ? { ...pins, context: config.context ?? pins.context } : null,
         factories: { [backend]: spawn },
+        // The Bonsai adapter destroys its GPU device on the worker's debug command (the other adapters have none).
+        ...(hook && backend === 'bonsai'
+          ? {
+              loseDevice: () => {
+                void (client as LlmClient | null)?.destroyDevice().catch((e: unknown) => onEvent('gpu-error', `the device-loss hook failed: ${(e as Error)?.message ?? String(e)}`))
+              },
+            }
+          : {}),
         ...(backend === 'bonsai'
           ? {
               equivalence: async (llm: LocalLlm): Promise<EquivalenceRecord | null> => {

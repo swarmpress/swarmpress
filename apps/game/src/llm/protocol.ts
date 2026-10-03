@@ -79,6 +79,12 @@ export type ToWorker =
   | { type: 'probe'; id: number; spec?: ModelSpec }
   | { type: 'bench'; id: number; request: BenchRequest }
   | { type: 'resetSession'; id: number }
+  /**
+   * Test hook: destroy the adapter's GPU device as a loss would. Honoured only
+   * by a worker started in debug mode (`LlmClient.spawn({ debug: true })`);
+   * any other worker answers with an error and changes nothing.
+   */
+  | { type: 'destroyDevice'; id: number }
 
 export interface WireError {
   name: string

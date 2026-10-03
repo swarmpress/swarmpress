@@ -7,8 +7,15 @@
  *
  * Adapters are imported lazily, one chunk each: the Bonsai worker never loads
  * Transformers.js or onnxruntime-web, and the other way round.
+ *
+ * Every adapter fetches through `localOnlyFetch` (ADR-0057): this site's own
+ * files and model weights from the Hugging Face Hub, nothing else.
+ *
+ * The worker's name ends in `:debug` when the page asked for the test hooks
+ * (`LlmClient.spawn({ debug: true })`); only then is `destroyDevice` honoured.
  */
 import { FakeLlm } from './fake-llm'
+import { localOnlyFetch } from './local-only'
 import type { Endpoint, ModelSpec } from './protocol'
 import type { LocalLlm } from './types'
 import { createWorkerHost, type HostContext } from './worker-host'
@@ -22,6 +29,8 @@ const spec = (id: string): ModelSpec => {
   if (!s) throw new Error(`unknown model spec ${id}`)
   return s
 }
+
+const guardedFetch = localOnlyFetch(fetch.bind(self), self.location.origin)
 
 async function build(first: ModelSpec, host: HostContext): Promise<LocalLlm> {
   if (first.adapter === 'fake') return new FakeLlm({ script: first.fakeScript, perTokenMs: first.fakePerTokenMs ?? 20 })
@@ -42,6 +51,8 @@ async function build(first: ModelSpec, host: HostContext): Promise<LocalLlm> {
           decodePipelineDepth: s.decodePipelineDepth,
         }
       },
+      // The engine module, the Hub's metadata check and the weights all go through the guard.
+      fetch: guardedFetch,
       onEvent: (e) => host.emit(e.kind, e.message),
     })
   }
@@ -58,9 +69,9 @@ async function build(first: ModelSpec, host: HostContext): Promise<LocalLlm> {
       return { hfRepo: s.hfRepo, dtype: s.dtype, device: s.device, sizeBytes: s.sizeBytes }
     },
     wasmPaths: { mjs: abs(ort.ortMjsUrl), wasm: abs(ort.ortWasmUrl) },
-    fetch: first.fixture === 'tiny-random-llama' ? tinyModelFetch(fetch.bind(self)) : undefined,
+    fetch: first.fixture === 'tiny-random-llama' ? localOnlyFetch(tinyModelFetch(fetch.bind(self)), self.location.origin) : guardedFetch,
   })
 }
 
 // Token deltas are merged into one message per 50 ms so streaming does not flood the main thread.
-createWorkerHost(self as unknown as Endpoint, build, (s) => specs.set(s.id, s), { deltaBatchMs: 50 })
+createWorkerHost(self as unknown as Endpoint, build, (s) => specs.set(s.id, s), { deltaBatchMs: 50, debug: /:debug$/.test(self.name) })

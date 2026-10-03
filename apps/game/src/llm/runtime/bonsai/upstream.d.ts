@@ -16,6 +16,8 @@ export interface UpstreamLoadProgress {
   total?: number | null
   fraction?: number
   message?: string
+  /** Set on byte events: the chunk was read from the engine's IndexedDB cache rather than fetched. */
+  fromCache?: boolean
 }
 
 export interface UpstreamLoadOptions {

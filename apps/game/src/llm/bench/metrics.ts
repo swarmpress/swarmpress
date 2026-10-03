@@ -298,11 +298,18 @@ export const MIN_PREFILL_TOKENS = 64
 /** Fewest generated tokens for a decode rate to mean anything. */
 export const MIN_DECODE_TOKENS = 16
 
-/** Prompt tokens a generation prefilled per second, or null when the adapter does not time prefill. */
+/**
+ * Prompt tokens a generation prefilled per second, or null when the adapter
+ * does not time prefill. A call that primed the system prefix itself counts
+ * those tokens and that time too (`primedTokens`, `primeMs`): the adapter
+ * reports them apart from the prefill of the rest of the prompt.
+ */
 export function prefillRate(u: Usage | null): number | null {
   if (!u || u.prefillMs === undefined || u.prefillMs <= 0) return null
-  const fresh = u.promptTokens - (u.cachedPromptTokens ?? 0)
-  return fresh >= MIN_PREFILL_TOKENS ? (fresh * 1000) / u.prefillMs : null
+  const primed = u.primedTokens ?? 0
+  const fresh = u.promptTokens - (u.cachedPromptTokens ?? 0) + primed
+  const ms = u.prefillMs + (primed > 0 ? (u.primeMs ?? 0) : 0)
+  return fresh >= MIN_PREFILL_TOKENS ? (fresh * 1000) / ms : null
 }
 
 /** Tokens a generation decoded per second (reasoning and answer), or null when it generated too few. */

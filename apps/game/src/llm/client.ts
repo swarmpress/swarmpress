@@ -41,6 +41,8 @@ export interface LlmClientOptions {
   onProgress?: (p: LoadProgress) => void
   /** The worker lost its GPU device or hit a GPU error; the model must be loaded again. */
   onEvent?: (e: { kind: RuntimeEventKind; message: string }) => void
+  /** Start the worker with its test hooks on (`destroyDevice`). Tests and the qualification harness only. */
+  debug?: boolean
 }
 
 export class LlmWorkerError extends Error {
@@ -69,7 +71,8 @@ export class LlmClient implements LocalLlm {
 
   /** Spawn the module worker (Vite bundles worker.ts as its own chunk). */
   static spawn(o: LlmClientOptions = {}): LlmClient {
-    const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module', name: 'swarmpress-llm' })
+    // The name carries the debug flag: the worker reads it before the first message (worker.ts).
+    const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module', name: o.debug ? 'swarmpress-llm:debug' : 'swarmpress-llm' })
     const client = new LlmClient(worker as unknown as Endpoint, o)
     client.terminate = () => worker.terminate()
     worker.addEventListener('error', (e) => client.failAll(new Error(`LLM worker crashed: ${e.message}`)))
@@ -194,8 +197,9 @@ export class LlmClient implements LocalLlm {
     return streamFromGenerate((m, o) => this.generate(m, o), messages, opts)
   }
 
+  /** Structured calls stop as soon as the answer's JSON value is complete, unless `stopOnJsonEnd: false` (as `BonsaiLlm.structured`). */
   async structured<T>(messages: ChatMessage[], schema: JsonSchema, opts: StructuredOptions = {}): Promise<T> {
-    return (await runStructured<T>((m, o) => this.generate(m, o), messages, schema, opts)).value
+    return (await runStructured<T>((m, o) => this.generate(m, o), messages, schema, { ...opts, stopOnJsonEnd: opts.stopOnJsonEnd ?? true })).value
   }
 
   /**
@@ -215,6 +219,11 @@ export class LlmClient implements LocalLlm {
   /** Drop the worker's cached prompt state. */
   async resetSession(): Promise<void> {
     await this.call({ type: 'resetSession', id: this.nextId++ })
+  }
+
+  /** Test hook: the worker destroys its GPU device as a loss would. Refused unless spawned with `debug: true`. */
+  async destroyDevice(): Promise<void> {
+    await this.call({ type: 'destroyDevice', id: this.nextId++ })
   }
 
   /** Unload the model (frees GPU memory) but keep the worker. */

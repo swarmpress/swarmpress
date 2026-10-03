@@ -165,9 +165,13 @@ export class FakeSession implements UpstreamSession {
   readonly thinkOpenTokenId: number
   readonly thinkCloseTokenId: number
   readonly decodePipelineDepth: number
-  readonly runtime: { host: { device: { lost: Promise<{ reason?: string; message?: string }> }; memory: { liveBytes: number; peakBytes: number } } }
+  readonly runtime: {
+    host: { device: { lost: Promise<{ reason?: string; message?: string }>; destroy(): void }; memory: { liveBytes: number; peakBytes: number } }
+  }
   loseDevice: (message: string, reason?: string) => void = () => undefined
   destroyed = false
+  /** `device.destroy()` was called (the device-loss test hook, or a real dispose would). */
+  deviceDestroyed = false
   /** Every stream request, in order. */
   readonly streams: { suffix: string; maxNewTokens: number; stopOnEos: boolean; yielded: number }[] = []
   /** Every prompt rendered, in order. */
@@ -188,7 +192,12 @@ export class FakeSession implements UpstreamSession {
     const lost = new Promise<{ reason?: string; message?: string }>((resolve) => {
       this.loseDevice = (message, reason = 'unknown') => resolve({ reason, message })
     })
-    this.runtime = { host: { device: { lost }, memory: { liveBytes: 1, peakBytes: 2 } } }
+    // Like WebGPU: destroying the device resolves `lost` with the reason "destroyed".
+    const destroy = () => {
+      this.deviceDestroyed = true
+      this.loseDevice('Device was destroyed.', 'destroyed')
+    }
+    this.runtime = { host: { device: { lost, destroy }, memory: { liveBytes: 1, peakBytes: 2 } } }
   }
 
   get contextLength(): number {
@@ -329,17 +338,26 @@ export class FakeSession implements UpstreamSession {
   }
 }
 
-/** An engine module whose `load` hands out `session` and records the options. */
-export function fakeEngine(session: FakeSession): UpstreamModule & { loads: { modelId: string | null; opts: UpstreamLoadOptions }[] } {
+/**
+ * An engine module whose `load` hands out `session` (or the next of several
+ * sessions, one per load) and records the options. `fromCache` is what its
+ * byte events say about where the bytes came from.
+ */
+export function fakeEngine(
+  session: FakeSession | (() => FakeSession),
+  o: { fromCache?: boolean } = {},
+): UpstreamModule & { loads: { modelId: string | null; opts: UpstreamLoadOptions }[] } {
   const loads: { modelId: string | null; opts: UpstreamLoadOptions }[] = []
+  const next = typeof session === 'function' ? session : () => session
   const TernaryBonsai2: UpstreamEngine = {
     async checkAvailability() {
       return { ok: true }
     },
     async load(modelId = null, opts = {}) {
       loads.push({ modelId, opts })
+      const session = next()
       opts.onProgress?.({ status: 'init', message: 'Requesting WebGPU device' })
-      opts.onProgress?.({ status: 'weights', kind: 'bytes', loaded: 50, total: 100, message: 'Streaming weights' })
+      opts.onProgress?.({ status: 'weights', kind: 'bytes', loaded: 50, total: 100, message: 'Streaming weights', fromCache: o.fromCache ?? false })
       opts.onProgress?.({ status: 'weights', kind: 'tensors', loaded: 1, total: 2, message: 'Uploading to GPU' })
       opts.onProgress?.({ status: 'ready', message: 'Ready', fraction: 1 })
       if (opts.chatTemplateArgs) session.chatTemplateArgs = { ...opts.chatTemplateArgs }

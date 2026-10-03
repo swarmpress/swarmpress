@@ -3,11 +3,11 @@
 // GPU and no engine: the real engine is exercised by e2e/bonsai*.spec.ts
 // (gated by BONSAI_E2E=1).
 import { describe, expect, it } from 'vitest'
-import { BonsaiLlm, importVerifiedEngine, partialStop, shimEngineGlobals, verifyRemoteFile, type BonsaiModel, type RuntimeEvent } from './bonsai-llm'
+import { BonsaiLlm, importVerifiedEngine, mapProgress, partialStop, shimEngineGlobals, verifyRemoteFile, type BonsaiModel, type RuntimeEvent } from './bonsai-llm'
 import { sha256Hex } from './extract'
 import { fakeEngine, FakeSession, IM_START, THINK_CLOSE, type FakeResponse, type FakeSessionOptions } from './testing/fake-session'
 import { StructuredOutputError } from '../../structured'
-import type { ChatMessage, LoadProgress } from '../../types'
+import { isUnavailableError, LlmUnavailableError, type ChatMessage, type LoadProgress } from '../../types'
 
 const MODEL: BonsaiModel = {
   hfRepo: 'prism-ml/Ternary-Bonsai-2-27B-gguf',
@@ -60,6 +60,20 @@ describe('BonsaiLlm.load', () => {
     // Loading the same model again does nothing.
     await llm.load('ternary-bonsai-2-27b')
     expect(engine.loads).toHaveLength(1)
+  })
+
+  it("carries the engine's fromCache flag through to the progress events", async () => {
+    // A cold start downloads; the fake engine of setup() says so.
+    const { progress } = await setup([])
+    expect(progress[1]).toMatchObject({ phase: 'download', fromCache: false })
+    // A warm start reads the bytes from the browser cache.
+    const warm = new BonsaiLlm({ resolve: () => MODEL, importEngine: async () => fakeEngine(new FakeSession(), { fromCache: true }), skipRemoteCheck: true })
+    const seen: LoadProgress[] = []
+    await warm.load('ternary-bonsai-2-27b', (p) => seen.push(p))
+    expect(seen.filter((p) => p.phase === 'download' && p.loaded > 0).map((p) => p.fromCache)).toEqual([true])
+    // Events that do not say leave it out rather than guessing.
+    expect(mapProgress('m', 100, { status: 'weights', kind: 'bytes', loaded: 10, total: 100 }, null)).not.toHaveProperty('fromCache')
+    expect(mapProgress('m', 100, { status: 'weights', kind: 'bytes', loaded: 10, total: 100, fromCache: true }, null)).toMatchObject({ loaded: 10, fraction: 0.1, fromCache: true })
   })
 
   it('reports capabilities: WebGPU, no constrained output, prefix reuse, the context', async () => {
@@ -227,10 +241,14 @@ describe('BonsaiLlm prefix reuse', () => {
     const first = await llm.generate(ask('First question.'))
     const prefix = session.tokenizer.encode(`${IM_START}system\n${SYSTEM}<|im_end|>\n`).ids.length
     expect(first.usage.cachedPromptTokens).toBe(prefix)
+    // This call prefilled the prefix itself: reported apart from the prefill of the rest.
+    expect(first.usage.primedTokens).toBe(prefix)
+    expect(first.usage.primeMs).toBeGreaterThanOrEqual(0)
     expect(llm.ledgerStats()).toMatchObject({ primes: 1, rewinds: 0, snapshots: 1, rewind: prefix })
     const second = await llm.generate(ask('Second question.'))
     expect(second.text).toBe('two')
     expect(second.usage.cachedPromptTokens).toBe(prefix)
+    expect(second.usage).toMatchObject({ primedTokens: 0, primeMs: 0 })
     expect(llm.ledgerStats()).toMatchObject({ primes: 1, rewinds: 1 })
     // The second call prefilled only what follows the system block.
     expect(session.streams.at(-1)!.suffix.startsWith(`${IM_START}user\nSecond question.`)).toBe(true)
@@ -359,6 +377,57 @@ describe('BonsaiLlm device loss', () => {
     await llm.dispose()
     expect(session.destroyed).toBe(true)
     expect(llm.modelId).toBeNull()
+  })
+
+  it('a lost device with a hung generation: every call is rejected as unavailable, and the reload does not wait for the hung one', async () => {
+    // The first session's GPU work stops returning once the device is gone: its stream never yields again.
+    let hang = false
+    const never = new Promise<void>(() => undefined)
+    const first = new FakeSession({ script: [{ answer: 'never seen' }], perToken: async () => (hang ? never : undefined) })
+    const second = new FakeSession({ script: [{ answer: 'back again' }] })
+    const sessions = [first, second]
+    const engine = fakeEngine(() => sessions.shift()!)
+    const events: RuntimeEvent[] = []
+    const llm = new BonsaiLlm({ resolve: () => MODEL, importEngine: async () => engine, skipRemoteCheck: true, onEvent: (e) => events.push(e) })
+    await llm.load('ternary-bonsai-2-27b')
+
+    hang = true
+    const running = llm.generate(ask('A long draft.')).catch((e) => e)
+    const queued = llm.generate(ask('Next in line.')).catch((e) => e)
+    const benchQueued = llm.bench({ messages: ask('ids'), maxNewTokens: 2, mode: 'adapter' }).catch((e) => e)
+    await new Promise((r) => setTimeout(r, 0))
+    first.loseDevice('GPU process crashed')
+    // The in-flight call is discarded, the queued ones never run.
+    for (const e of [await running, await queued, await benchQueued]) {
+      expect(isUnavailableError(e)).toBe(true)
+      expect(e).toBeInstanceOf(LlmUnavailableError)
+    }
+    expect(events).toEqual([{ kind: 'device-lost', message: 'GPU process crashed' }])
+    await expect(llm.generate(ask('during the loss'))).rejects.toThrow(/GPU device was lost.*reload/)
+
+    // The reload disposes the lost session without waiting for the hung generation, and the model answers again.
+    await llm.load('ternary-bonsai-2-27b')
+    expect(first.destroyed).toBe(true)
+    expect(engine.loads).toHaveLength(2)
+    expect((await llm.generate(ask('Are you back?'))).text).toBe('back again')
+    expectLedgerMatchesCache(llm, second)
+  })
+
+  it('the destroyDevice test hook is reported as a device loss, unlike our own dispose', async () => {
+    const { llm, session, events } = await setup([{ answer: 'x' }])
+    await llm.destroyDevice()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(session.deviceDestroyed).toBe(true)
+    expect(events).toEqual([{ kind: 'device-lost', message: 'Device was destroyed.' }])
+    await expect(llm.generate(ask('hi'))).rejects.toBeInstanceOf(LlmUnavailableError)
+    // The engine's own dispose destroys the device too (reason "destroyed"); that is not a loss.
+    const other = await setup([{ answer: 'still here' }])
+    other.session.runtime.host.device.destroy()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(other.events).toEqual([])
+    expect((await other.llm.generate(ask('there?'))).text).toBe('still here')
+    await other.llm.dispose()
+    await expect(other.llm.destroyDevice()).rejects.toThrow(/no GPU device to destroy/)
   })
 
   it('resets the cache when a stream throws, and the next call works', async () => {

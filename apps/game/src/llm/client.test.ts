@@ -9,7 +9,7 @@ import { LlmClient } from './client'
 import { FakeLlm } from './fake-llm'
 import type { Endpoint, ModelSpec } from './protocol'
 import { DEFAULT_REGISTRY } from './registry.default'
-import type { LoadProgress, LocalLlm } from './types'
+import { isUnavailableError, LlmUnavailableError, type LoadProgress, type LocalLlm } from './types'
 import { createWorkerHost } from './worker-host'
 
 const channels: MessageChannel[] = []
@@ -215,6 +215,42 @@ describe('LlmClient RPC specifics', () => {
     await new Promise((r) => setTimeout(r, 10))
     expect(events).toEqual([{ kind: 'device-lost', message: 'GPU process crashed' }])
     expect(client.modelId).toBeNull()
+  })
+
+  it('structured calls stop at the end of the JSON value by default, as BonsaiLlm does', async () => {
+    const fake = new FakeLlm({ script: ['{"a": 1}', '{"a": 2}', '{"a": 3}'] })
+    const { client } = connect(fake)
+    await client.load('qwen3-0.6b-q4f16')
+    const schema = { type: 'object', required: ['a'], properties: { a: { type: 'number' } } }
+    await client.structured([{ role: 'user', content: 'x' }], schema)
+    // An explicit undefined (the bridge passes the policy's value through) is still the default.
+    await client.structured([{ role: 'user', content: 'y' }], schema, { stopOnJsonEnd: undefined })
+    await client.structured([{ role: 'user', content: 'z' }], schema, { stopOnJsonEnd: false })
+    expect(fake.calls.map((c) => c.opts.stopOnJsonEnd)).toEqual([true, true, false])
+  })
+
+  it('destroyDevice is a test hook: refused unless the worker runs in debug mode', async () => {
+    const destroyed: number[] = []
+    const make = () => Object.assign(new FakeLlm(), { destroyDevice: async () => void destroyed.push(1) })
+    for (const debug of [false, true]) {
+      const ch = new MessageChannel()
+      channels.push(ch)
+      createWorkerHost(ch.port2 as unknown as Endpoint, make, undefined, { debug })
+      const client = new LlmClient(ch.port1 as unknown as Endpoint, { registry: DEFAULT_REGISTRY })
+      await client.load('qwen3-0.6b-q4f16')
+      if (debug) await expect(client.destroyDevice()).resolves.toBeUndefined()
+      else await expect(client.destroyDevice()).rejects.toThrow(/test hook; this worker was not started in debug mode/)
+    }
+    expect(destroyed).toEqual([1])
+  })
+
+  it('an unavailable model keeps its error name across the worker boundary', async () => {
+    const fake = new FakeLlm({ script: [new LlmUnavailableError('the GPU device was lost; the call was discarded')] })
+    const { client } = connect(fake)
+    await client.load('qwen3-0.6b-q4f16')
+    const err = await client.generate([{ role: 'user', content: 'x' }]).catch((e) => e)
+    expect(isUnavailableError(err)).toBe(true)
+    expect(err.message).toMatch(/discarded/)
   })
 
   it('merges token deltas that arrive within the batch window', async () => {

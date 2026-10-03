@@ -32,6 +32,14 @@ export interface Usage {
   reasoningTokens?: number
   /** Prompt tokens that were already in the model's cache (not prefilled again). */
   cachedPromptTokens?: number
+  /**
+   * Time this call spent priming the reusable system prefix (prefilling it on
+   * an empty cache before the rest of the prompt), ms; 0 when the prefix was
+   * reused. Reported apart from `prefillMs`, which times the rest of the prompt.
+   */
+  primeMs?: number
+  /** Prompt tokens prefilled while priming (they are counted in `cachedPromptTokens`, since the rest of the prompt found them cached). */
+  primedTokens?: number
 }
 
 export interface GenerateResult {
@@ -82,6 +90,8 @@ export interface LoadProgress {
   fraction: number
   /** What the runtime is doing ("Streaming weights", "Compiling kernels"), when it says. */
   message?: string
+  /** The bytes of this event came from the browser's cache, not the network (when the runtime says). */
+  fromCache?: boolean
 }
 
 export type JsonSchema = Record<string, unknown>
@@ -161,3 +171,17 @@ export class LlmCancelledError extends Error {
     this.name = 'LlmCancelledError'
   }
 }
+
+/**
+ * The model is gone (the GPU device was lost, or the model moved to another
+ * tab): the call produced nothing that may be used. Its name survives the
+ * worker boundary (`LlmWorkerError` keeps it), so both sides test it by name.
+ */
+export class LlmUnavailableError extends Error {
+  constructor(message = 'the model is not available') {
+    super(message)
+    this.name = 'LlmUnavailableError'
+  }
+}
+
+export const isUnavailableError = (e: unknown): boolean => (e as { name?: unknown } | null)?.name === 'LlmUnavailableError'
