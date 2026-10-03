@@ -265,3 +265,16 @@ fn a_broken_pack_or_site_file_is_an_error_that_names_it() {
         .unwrap();
     assert!(e.contains("brand_name"), "{e}");
 }
+
+/// The browser's tests (vitest, Bun) bind the orchestrator to this pack; it
+/// must be the one the tree gives. Regenerate with
+/// `cargo xtask site-pack crates/knowledge/tests/fixtures/cinqueterre-mini --commit 3f2a9c1d5e7b4a6f8091a2b3c4d5e6f708192a3b --out apps/game/src/orchestrator/fixtures/cinqueterre-mini.pack.json`.
+#[test]
+fn the_pack_fixture_of_the_browser_tests_is_the_trees() {
+    let committed: Value = serde_json::from_str(include_str!(
+        "../../../apps/game/src/orchestrator/fixtures/cinqueterre-mini.pack.json"
+    ))
+    .unwrap();
+    let built: Value = serde_json::from_str(&mini_pack_json()).unwrap();
+    assert_eq!(committed, built);
+}

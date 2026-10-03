@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import golden from '../../../../crates/agents/tests/fixtures/article/page.golden.json'
 import styleGuide from '../../../../crates/agents/tests/fixtures/style-guide.json'
-import { mvpScript } from '../llm/mvp-script'
+import { legacyMvpPage } from '../llm/mvp-script'
 import { bannedHits, bodyWords, measureArticle, phraseCount, WORD_TOLERANCE } from './article-checks'
 
 /** Measured checks (increment U1, ADR-0059): numbers counted from the page, the same every time. */
 const BANNED = styleGuide.vocabulary.avoid
-const simplePage = () => structuredClone((mvpScript().find((r) => 'json' in r && typeof r.json === 'object' && r.json !== null && 'body' in r.json) as { json: Record<string, unknown> }).json)
+const simplePage = (): Record<string, unknown> => structuredClone(legacyMvpPage('We climbed to the terraces at seven, before the sun reached the vines.'))
 
 describe('measureArticle', () => {
   it('counts the golden article: body words against the target, blocks, hero, closing note, links, media, banned phrases', () => {

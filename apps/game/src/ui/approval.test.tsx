@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import brief from '../../../../crates/agents/tests/fixtures/article/brief.json'
 import golden from '../../../../crates/agents/tests/fixtures/article/page.golden.json'
 import styleGuide from '../../../../crates/agents/tests/fixtures/style-guide.json'
-import { mvpScript } from '../llm/mvp-script'
+import { legacyMvpPage } from '../llm/mvp-script'
 import { PREVIEW_LABEL } from './components/ArticlePreview'
 import { SEND_BACK_NOTE_MAX } from './components/Inbox'
 import { artifactRecordJson, fakeCompanyStore, LIVE_ITEM, LIVE_TICKET, liveSim, liveTicket, setupLive, type LiveSim } from './live-testing'
@@ -127,7 +127,7 @@ describe('the publish-approval ticket on live data', () => {
   })
 
   it('flags what the measurements find: words off target, banned phrases, a missing hero and closing note', async () => {
-    const page = structuredClone(mvpScript().find((r) => 'json' in r && typeof r.json === 'object' && r.json !== null && 'body' in r.json)!) as { json: { body: Array<Record<string, unknown>> } }
+    const page = { json: structuredClone(legacyMvpPage('We climbed to the terraces at seven, before the sun reached the vines.')) as { body: Array<Record<string, unknown>> } }
     page.json.body[1].markdown = 'A stunning hidden gem, truly stunning.'
     const store = companyStore(artifact({ page: page.json, review: { decision: 'approve', score: 7, notes: 'Fine.', issues: [], high_risk: ['Quotes a pending court case.'] } }))
     await openInbox(gatedSim(), store)

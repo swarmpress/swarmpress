@@ -4,9 +4,9 @@
  * loop driver (the sim's part, until the sim emits `Effect::RequestJob`).
  * Runs in the browser, under Node (vitest) and under Bun.
  */
-import type { ChatMessage, LocalLlm, ThinkingMode, Validator } from '../llm/types'
-import { StructuredOutputError, StructuredTruncatedError, trimToSentence } from '../llm/structured'
-import type { MvpReply } from '../llm/mvp-script'
+import type { ChatMessage, LocalLlm, ThinkingMode, Usage, Validator } from '../llm/types'
+import { MAX_REPAIR_CHARS, repairQuote, StructuredOutputError, StructuredTruncatedError, trimToSentence } from '../llm/structured'
+import type { MvpCall, MvpReply } from '../llm/mvp-script'
 import { MVP_TEAM } from '../llm/mvp-script'
 
 // ---------------------------------------------------------------- shapes
@@ -45,11 +45,37 @@ export interface BriefOut {
   editor: string
 }
 
+/** `orchestrator::JobFailure`: why a job cannot finish (the sim's names). */
+export type JobFailure = 'Model' | 'InvalidOutput' | 'NeedsMedia' | 'NeedsPage' | 'Timeout' | 'Cancelled' | 'Infrastructure'
+
 /** `orchestrator::Outcome` (externally tagged). */
 export type Outcome =
   | { MeetingOutcome: { job_id: number; briefs: BriefOut[] } }
   | { JobCompleted: { job_id: number; digest: Digest } }
+  | { JobFailed: { job_id: number; reason: JobFailure } }
   | { DeployLanded: { work_item: string } }
+
+/**
+ * `orchestrator::ProgressEvent` (ADR-0058 decision 8: counts, never a
+ * percentage): one stage of a job. `stage` is `job` for the job as a whole,
+ * else `context`, `outline`, `section` (index 0 is the intro, 1…total the
+ * body sections), `closing`, `fix`, `retitle`, `revise`, `review`,
+ * `review_section`, `review_summary` or `commit`.
+ */
+export interface ProgressEvent {
+  job_id: number
+  kind: JobKind
+  revision: number
+  work_item: string | null
+  staff: string | null
+  persona: string | null
+  role: string | null
+  stage: string
+  index: number
+  total: number
+  state: 'started' | 'done' | 'reused' | 'failed'
+  detail: Record<string, unknown> | null
+}
 
 /**
  * The site binding JSON `OrchestratorHandle` takes (`orchestrator::SiteBinding::from_json`).
@@ -69,6 +95,12 @@ export interface SiteBindingJson {
   quality_bar?: number
   simulate_deploy?: boolean
   standup_max_turns?: number
+  /** The model's budget for staged jobs: `local` (default), `fake`, or `{context_tokens, reasoning_tokens, chars_per_token}`. */
+  llm_profile?: 'local' | 'fake' | { context_tokens: number; reasoning_tokens: number; chars_per_token: number }
+  /** The longest review (estimated tokens) read in one call; longer ones are read part by part. */
+  review_single_tokens?: number
+  /** What follows " | " in an article's `seo.title` (default: the brand name). */
+  seo_suffix?: string
 }
 
 /** What `OrchestratorHandle` needs from the wasm module. */
@@ -81,7 +113,10 @@ export interface LlmRequestJson {
   profile: unknown
   system: string[]
   messages: { role: 'user' | 'assistant'; text: string }[]
+  /** The answer budget. */
   max_tokens: number
+  /** Reasoning allowed on top of `max_tokens` (a staged call reserves both); 0 = answer directly (repair turns). */
+  reasoning_tokens?: number
 }
 
 export interface LlmCall {
@@ -126,9 +161,18 @@ export interface CallPolicy {
  * calls may reason first, within a cap of half their answer budget (at most
  * 2048 tokens). A short pick whose schema is an object is forced to start at
  * `{`. Structured calls stop as soon as their root JSON value is complete.
+ *
+ * A staged call (ADR-0058) says its reasoning allowance itself
+ * (`reasoning_tokens`, reserved in its context budget): 0 answers directly,
+ * more reasons within exactly that cap. A repair turn (the request quotes an
+ * earlier answer) answers directly.
  */
 export function defaultCallPolicy(call: LlmCall): CallPolicy {
   if (call.kind === 'generate') return { thinking: 'off' }
+  const direct: CallPolicy = { thinking: 'off', stopOnJsonEnd: true, ...(call.schema?.type === 'object' ? { answerPrefix: '{' } : {}) }
+  const allowance = call.request.reasoning_tokens
+  if (call.request.messages.some((m) => m.role === 'assistant')) return direct
+  if (typeof allowance === 'number') return allowance > 0 ? { thinking: 'medium', reasoningBudget: allowance, stopOnJsonEnd: true } : direct
   const max = call.request.max_tokens
   if (max <= 600) {
     return { thinking: 'off', stopOnJsonEnd: true, ...(call.schema?.type === 'object' ? { answerPrefix: '{' } : {}) }
@@ -144,11 +188,49 @@ export function rustValidator(validateJson: (schemaJson: string, valueJson: stri
   }
 }
 
+/** What one bridged call cost (the host's activity log, ADR-0058 decision 9). */
+export interface LlmCallRecord {
+  kind: 'generate' | 'structured'
+  /** The LocalLlm's model id, when it has one. */
+  model: string | null
+  /** Summed over the model turns of the call (a structured call may repair). */
+  promptTokens: number
+  completionTokens: number
+  reasoningTokens: number
+  /** Model turns (1 + the LocalLlm's own repair turns). */
+  turns: number
+  wallMs: number
+  ok: boolean
+}
+
 export interface LocalLlmBridgeOptions {
   validate?: Validator
   policy?: (call: LlmCall) => CallPolicy
   /** Calls kept in `calls` (prompts are large); older ones are dropped. Default 200. */
   maxCalls?: number
+  /** Hears what every call cost (also settable later as `onCall`). */
+  onCall?: (rec: LlmCallRecord) => void
+}
+
+/**
+ * The LocalLlm with its `generate` metered: every model turn (also those a
+ * structured call makes inside the adapter) adds its usage to `sink`. A
+ * Proxy, so the adapter's own `structured` (which calls `this.generate`)
+ * goes through the meter too.
+ */
+function metered(llm: LocalLlm, sink: (u: Usage) => void): LocalLlm {
+  return new Proxy(llm, {
+    get(target, prop, receiver) {
+      if (prop === 'generate') {
+        return async (messages: ChatMessage[], opts?: Parameters<LocalLlm['generate']>[1]) => {
+          const r = await target.generate.call(receiver, messages, opts)
+          sink(r.usage)
+          return r
+        }
+      }
+      return Reflect.get(target, prop, receiver)
+    },
+  })
 }
 
 /**
@@ -161,13 +243,19 @@ export interface LocalLlmBridgeOptions {
  * its last complete sentence and returned (`truncated: true`). Only a turn
  * with no complete sentence at all is `Truncated`.
  */
-export function localLlmBridge(llm: LocalLlm, opts: LocalLlmBridgeOptions = {}): OrchestratorLlm & { calls: LlmCall[] } {
+export function localLlmBridge(
+  local: LocalLlm,
+  opts: LocalLlmBridgeOptions = {},
+): OrchestratorLlm & { calls: LlmCall[]; onCall?: (rec: LlmCallRecord) => void } {
   const calls: LlmCall[] = []
   const maxCalls = opts.maxCalls ?? 200
   const policy = opts.policy ?? defaultCallPolicy
   let validate = opts.validate
-  return {
+  let turn: Usage[] = []
+  const llm = metered(local, (u) => turn.push(u))
+  const bridge = {
     calls,
+    onCall: opts.onCall,
     useValidator(v: Validator) {
       validate = v
     },
@@ -175,39 +263,78 @@ export function localLlmBridge(llm: LocalLlm, opts: LocalLlmBridgeOptions = {}):
       const call = JSON.parse(requestJson) as LlmCall
       calls.push(call)
       if (calls.length > maxCalls) calls.splice(0, calls.length - maxCalls)
-      const messages = toChatMessages(call.request)
-      const maxTokens = call.request.max_tokens
-      const p = policy(call)
-      try {
-        if (call.kind === 'generate') {
-          const r = await llm.generate(messages, { maxTokens, thinking: p.thinking, reasoningBudget: p.reasoningBudget })
-          if (r.finishReason === 'length') {
-            const text = trimToSentence(r.text)
-            if (!text) return JSON.stringify({ error: { Truncated: { partial: r.text } } })
-            return JSON.stringify({ text, truncated: true })
-          }
-          return JSON.stringify({ text: r.text })
-        }
-        const value = await llm.structured(messages, call.schema ?? {}, {
-          maxTokens,
-          thinking: p.thinking,
-          reasoningBudget: p.reasoningBudget,
-          answerPrefix: p.answerPrefix,
-          stopOnJsonEnd: p.stopOnJsonEnd,
-          ...(validate ? { validate } : {}),
-        })
-        return JSON.stringify({ value })
-      } catch (e) {
-        if (e instanceof StructuredTruncatedError) return JSON.stringify({ error: { Truncated: { partial: e.lastText } } })
-        if (e instanceof StructuredOutputError) return JSON.stringify({ error: { InvalidOutput: { errors: e.errors } } })
-        return JSON.stringify({ error: { Backend: e instanceof Error ? e.message : String(e) } })
-      }
+      const started = performance.now()
+      turn = []
+      const out = await answer(call)
+      const usage = turn
+      bridge.onCall?.({
+        kind: call.kind,
+        model: local.modelId ?? null,
+        promptTokens: usage.reduce((a, u) => a + u.promptTokens, 0),
+        completionTokens: usage.reduce((a, u) => a + u.completionTokens, 0),
+        reasoningTokens: usage.reduce((a, u) => a + (u.reasoningTokens ?? 0), 0),
+        turns: usage.length,
+        wallMs: Math.round(performance.now() - started),
+        ok: !out.startsWith('{"error"'),
+      })
+      return out
     },
+  }
+  async function answer(call: LlmCall): Promise<string> {
+    const messages = toChatMessages(call.request)
+    const maxTokens = call.request.max_tokens
+    const p = policy(call)
+    try {
+      if (call.kind === 'generate') {
+        const r = await llm.generate(messages, { maxTokens, thinking: p.thinking, reasoningBudget: p.reasoningBudget })
+        if (r.finishReason === 'length') {
+          const text = trimToSentence(r.text)
+          if (!text) return JSON.stringify({ error: { Truncated: { partial: r.text } } })
+          return JSON.stringify({ text, truncated: true })
+        }
+        return JSON.stringify({ text: r.text })
+      }
+      const value = await llm.structured(messages, call.schema ?? {}, {
+        maxTokens,
+        thinking: p.thinking,
+        reasoningBudget: p.reasoningBudget,
+        answerPrefix: p.answerPrefix,
+        stopOnJsonEnd: p.stopOnJsonEnd,
+        ...(validate ? { validate } : {}),
+      })
+      return JSON.stringify({ value })
+    } catch (e) {
+      if (e instanceof StructuredTruncatedError) return JSON.stringify({ error: { Truncated: { partial: e.lastText } } })
+      // The last answer goes back too, without its reasoning and capped:
+      // what agents::structured_with_repair quotes in its repair turn.
+      if (e instanceof StructuredOutputError) {
+        const quoted = repairQuote(e.lastText, null, MAX_REPAIR_CHARS)
+        return JSON.stringify({ error: { InvalidOutput: { errors: e.errors, ...(quoted ? { answer: quoted } : {}) } } })
+      }
+      return JSON.stringify({ error: { Backend: e instanceof Error ? e.message : String(e) } })
+    }
+  }
+  return bridge
+}
+
+/** The fake model's view of a bridged call (`mvp-script.ts`). */
+export function mvpCallOf(call: LlmCall): MvpCall {
+  return {
+    system: call.request.system.join('\n\n'),
+    prompt: call.request.messages.find((m) => m.role === 'user')?.text ?? '',
+    schema: (call.schema as Record<string, unknown> | undefined) ?? null,
   }
 }
 
-/** A scripted `OrchestratorLlm` (no LocalLlm in between), recording calls. */
-export function scriptedLlm(script: MvpReply[]): OrchestratorLlm & { calls: LlmCall[]; remaining(): number } {
+/**
+ * A scripted `OrchestratorLlm` (no LocalLlm in between), recording calls:
+ * replies from `script` first, then from `model` (the brief-driven fake,
+ * `createMvpModel()`), if given.
+ */
+export function scriptedLlm(
+  script: MvpReply[],
+  model?: { answer(call: MvpCall): MvpReply },
+): OrchestratorLlm & { calls: LlmCall[]; remaining(): number } {
   const queue = [...script]
   const calls: LlmCall[] = []
   return {
@@ -216,7 +343,7 @@ export function scriptedLlm(script: MvpReply[]): OrchestratorLlm & { calls: LlmC
     async complete(requestJson: string): Promise<string> {
       const call = JSON.parse(requestJson) as LlmCall
       calls.push(call)
-      const next = queue.shift()
+      const next = queue.shift() ?? model?.answer(mvpCallOf(call))
       if (!next) return JSON.stringify({ error: { Backend: `script exhausted at call #${calls.length}` } })
       if (call.kind === 'generate') return JSON.stringify({ text: 'text' in next ? next.text : JSON.stringify(next.json) })
       return JSON.stringify('json' in next ? { value: next.json } : { text: next.text })

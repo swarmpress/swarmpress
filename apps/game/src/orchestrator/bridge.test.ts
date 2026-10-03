@@ -5,23 +5,28 @@
 import { readFile } from 'node:fs/promises'
 import { beforeAll, describe, expect, it } from 'vitest'
 import init, { OrchestratorHandle, validateJson } from 'orchestrator-wasm'
-import styleGuide from '../../../../crates/agents/tests/fixtures/style-guide.json'
 import { FakeLlm } from '../llm/fake-llm'
-import { MVP_POST_TYPES, MVP_REVIEW_NOTE } from '../llm/mvp-script'
+import { MVP_POST_TYPES, MVP_REVIEW_NOTE, MVP_REVISION_LINE } from '../llm/mvp-script'
 import { CompanyStore } from '../store/company-store'
 import { MemorySqliteDriver } from '../store/sqlite-driver'
+import miniPack from './fixtures/cinqueterre-mini.pack.json'
 import { fakeMvpLlm, llmModeFromQuery } from './index'
-import { defaultCallPolicy, localLlmBridge, runMvpLoop, rustValidator, toChatMessages, type SiteBindingJson } from './bridge'
+import { defaultCallPolicy, localLlmBridge, runMvpLoop, rustValidator, toChatMessages, type LlmCallRecord, type ProgressEvent, type SiteBindingJson } from './bridge'
 
+/** The binding over the knowledge crate's cinqueterre-mini pack (the staged draft needs the site's closed world). */
 const SITE: SiteBindingJson = {
   site_id: 'cinqueterre.travel',
   brand_name: 'Cinque Terre Dispatch',
   language: 'en',
-  style_guide: styleGuide,
   quality_bar: 7,
   simulate_deploy: true,
   standup_max_turns: 4,
+  seo_suffix: 'The Dispatch',
+  knowledge_pack: JSON.stringify(miniPack),
 }
+
+/** The `## Task:` line of a bridged call (empty for the standup's). */
+const task = (c: { request: { messages: { text: string }[] } }) => /^## Task: (.*)/.exec(c.request.messages[0]?.text ?? '')?.[1] ?? ''
 
 function fakeGateway() {
   const prs: { branch: string; head: string; merged: string | null; workItem: string | null; page: string }[] = []
@@ -51,29 +56,40 @@ beforeAll(async () => {
 })
 
 describe('orchestrator-wasm with the browser store and the fake LocalLlm', () => {
-  it('runs standup → publish and leaves the plan thread in the store', async () => {
+  it('runs standup → publish in stages and leaves the plan thread, stage rows and progress in the store', async () => {
     const store = await CompanyStore.open(await MemorySqliteDriver.open())
     const local = fakeMvpLlm()
-    const llm = localLlmBridge(local)
+    const usage: LlmCallRecord[] = []
+    const llm = localLlmBridge(local, { onCall: (c) => usage.push(c) })
     const gateway = fakeGateway()
     const orch = new OrchestratorHandle(store, gateway, llm, JSON.stringify(SITE))
+    const events: ProgressEvent[] = []
+    orch.setProgress((json: string) => events.push(JSON.parse(json) as ProgressEvent))
 
     const res = await runMvpLoop(orch, { company: 'c1' })
     expect(res.steps.map((s) => s.job.kind)).toEqual(['standup', 'draft', 'review', 'draft', 'review', 'publish'])
     expect(res.steps[5].outcomes[1]).toEqual({ DeployLanded: { work_item: 'work-item-1' } })
-    expect(llm.calls.map((c) => c.kind)).toEqual([
-      'structured',
-      'generate',
-      'structured',
-      'structured',
-      'structured',
-      'structured',
-      'structured',
-      'structured',
+    // The standup (moderator, pitch, moderator, outcome), then the staged jobs (ADR-0058).
+    expect(llm.calls.map((c) => c.kind)).toEqual(['structured', 'generate', 'structured', ...Array(10).fill('structured')])
+    expect(llm.calls.slice(4).map(task)).toEqual([
+      'outline',
+      'intro',
+      'section s1 of 3',
+      'section s2 of 3',
+      'section s3 of 3',
+      'closing',
+      'review',
+      'revise s2',
+      'review',
     ])
-    expect(llm.calls[6].request.messages[0].text).toContain(MVP_REVIEW_NOTE)
+    // The revision rewrites the part the review names, with its note.
+    expect(llm.calls[11].request.messages[0].text).toContain(MVP_REVIEW_NOTE)
+    expect(llm.calls[4].request.reasoning_tokens).toBe(2048)
     // FakeLlm saw the system layers as a system message.
     expect(local.calls[0].messages[0].role).toBe('system')
+    // Every call was metered (the activity record's tokens and model).
+    expect(usage).toHaveLength(llm.calls.length)
+    expect(usage.every((u) => u.model === 'fake-mvp' && u.turns === 1 && u.ok && u.promptTokens > 0)).toBe(true)
 
     const plan = await store.plan('c1')
     expect(plan.items['work-item-1'].title).toBe('Harvest week in Manarola')
@@ -81,17 +97,63 @@ describe('orchestrator-wasm with the browser store and the fake LocalLlm', () =>
     expect(await store.transcripts('c1')).toHaveLength(1)
     expect(await store.getArtifact('c1', 'work-item-1')).toContain(`"brief_ref":${res.briefRef}`)
     expect(gateway.prs[0].workItem).toBe('work-item-1')
-    expect(gateway.prs[0].page).toContain('Maria and her sons')
+    const page = JSON.parse(gateway.prs[0].page)
+    expect(JSON.stringify(page)).toContain(MVP_REVISION_LINE)
+    expect(page.body[0].type).toBe('editorial-hero')
+    expect(page.body.at(-1).type).toBe('closing-note')
+    expect(Object.keys(page.slug).sort()).toEqual(['de', 'en', 'fr', 'it'])
+    // The draft's stages are in the store, keyed by job.
+    const draftJob = res.steps[1].job.job_id
+    expect((await store.stages('c1', draftJob)).map((r) => `${r.stage}#${r.index}`)).toEqual([
+      'closing#0',
+      'context#0',
+      'outline#0',
+      'section#0',
+      'section#1',
+      'section#2',
+      'section#3',
+    ])
+    // Progress as counts: "section 2 of 3".
+    expect(events.find((e) => e.stage === 'section' && e.index === 2 && e.state === 'started')).toMatchObject({
+      job_id: draftJob,
+      kind: 'draft',
+      total: 3,
+      staff: 'staff-1',
+      persona: 'giulia',
+    })
+    expect(events.filter((e) => e.stage === 'job').map((e) => `${e.kind}:${e.state}`)).toEqual([
+      'draft:started',
+      'draft:done',
+      'review:started',
+      'review:done',
+      'draft:started',
+      'draft:done',
+      'review:started',
+      'review:done',
+    ])
+
+    // A re-run of the draft job calls no model and posts nothing.
+    const n = llm.calls.length
+    const posts = plan.posts['work-item-1'].length
+    await orch.run(JSON.stringify(res.steps[1].job))
+    expect(llm.calls.length).toBe(n)
+    expect((await store.plan('c1')).posts['work-item-1']).toHaveLength(posts)
   })
 
-  it('maps LocalLlm failures onto agents::LlmError', async () => {
+  it('maps LocalLlm failures onto agents::LlmError, with the answer stripped of its reasoning', async () => {
     const llm = localLlmBridge(fakeMvpLlm())
     const req = { profile: {}, system: ['s'], messages: [{ role: 'user' as const, text: 'hi' }], max_tokens: 50 }
-    // The first scripted reply is JSON; as a structured answer with an incompatible schema it fails validation.
+    // Not a call the fake knows: it answers free text, which is no JSON value at all.
     const bad = JSON.parse(
       await llm.complete(JSON.stringify({ kind: 'structured', request: req, schema: { type: 'object', required: ['nope'] } })),
     )
     expect(bad.error.InvalidOutput.errors.length).toBeGreaterThan(0)
+    expect(typeof bad.error.InvalidOutput.answer).toBe('string')
+    const thinking = new FakeLlm({ responder: () => '<think>a long thought about the terraces</think>{"wrong": 1}' })
+    const out = JSON.parse(
+      await localLlmBridge(thinking).complete(JSON.stringify({ kind: 'structured', request: req, schema: { type: 'object', required: ['nope'] } })),
+    )
+    expect(out.error.InvalidOutput.answer).toBe('{"wrong": 1}')
     expect(toChatMessages(req)).toEqual([
       { role: 'system', content: 's' },
       { role: 'user', content: 'hi' },
@@ -194,6 +256,17 @@ describe('localLlmBridge policy and truncation', () => {
     expect(out.error.Truncated.partial).toContain('The terraces')
     expect(local.calls).toHaveLength(2)
     expect(local.calls[1].opts.thinking).toBe('off')
+  })
+
+  it('a staged call brings its own reasoning allowance; a repair turn answers directly', () => {
+    const staged = (reasoning_tokens: number, assistant = false) => ({
+      kind: 'structured' as const,
+      request: { ...request(900), reasoning_tokens, messages: [{ role: 'user' as const, text: '## Task: section s1 of 3' }, ...(assistant ? [{ role: 'assistant' as const, text: '{}' }, { role: 'user' as const, text: 'fix' }] : [])] },
+      schema: { type: 'object' },
+    })
+    expect(defaultCallPolicy(staged(2048))).toEqual({ thinking: 'medium', reasoningBudget: 2048, stopOnJsonEnd: true })
+    expect(defaultCallPolicy(staged(0))).toEqual({ thinking: 'off', stopOnJsonEnd: true, answerPrefix: '{' })
+    expect(defaultCallPolicy(staged(2048, true))).toEqual({ thinking: 'off', stopOnJsonEnd: true, answerPrefix: '{' })
   })
 
   it('short structured picks answer directly from "{"; larger calls may reason within a cap', async () => {

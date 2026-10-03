@@ -34,8 +34,9 @@ import { Sim } from 'swarm-wasm'
 import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResult, type RestoredSim, type SimFactory } from '../catchup/replay'
 import { CentralClient, centralGateway, companyFor, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type OrchestratorGateway } from '../net/central'
 import { OrchestrationLoop, type JobRecord } from '../orchestration/loop'
-import { createOrchestrator, jobsFromEffects, loadRustValidator, localLlmBridge, outcomesForSim, type SiteBindingJson } from '../orchestrator'
-import { openCompanyStore, type CompanyStore, type Plan } from '../store'
+import { ActivityRecorder, heldByText } from '../orchestration/activity'
+import { createOrchestrator, jobsFromEffects, loadRustValidator, localLlmBridge, outcomesForSim, type ProgressEvent, type SiteBindingJson } from '../orchestrator'
+import { openCompanyStore, type ActivityRow, type CompanyStore, type Plan } from '../store'
 import { commandBytes, decodeSnapshot, encodeSnapshot, type Checkpoint } from '../sync/segments'
 import { fetchRemote, NEXT_SEGMENT_KEY, SEALED_SEQ_KEY, SyncUploader, toLogged, type SealResult } from '../sync/uploader'
 import type { DataTopic } from '../ui/data-source'
@@ -155,6 +156,8 @@ export interface SessionHook {
     errors: string[]
     /** The site's knowledge pack (ADR-0061): the one in use, and what the orchestrator is bound to. */
     knowledge: KnowledgeStatus & { bound: string | null; binding: SiteSummary | null }
+    /** The stage of the job in flight (ADR-0058 progress event), if any. */
+    progress: ProgressEvent | null
   }
   /** `Sim.plan_json()` (the skeleton) parsed. */
   plan(): unknown
@@ -164,6 +167,8 @@ export interface SessionHook {
   planText(): Promise<Plan>
   /** The command log in the store (seq, step and kind of every logged command). */
   commandLog(): Promise<{ seq: number; step: number; kind: string }[]>
+  /** The activity record in the store (FEAT-078): a row per stage attempt and per job. */
+  activity(): Promise<ActivityRow[]>
   gateway(): GatewayCall[]
   events(): CentralEvent[]
   /** Pauses the sim clock (jobs keep running; outcomes still apply at boundaries). Time only: nothing else changes. */
@@ -484,8 +489,16 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     log: (line) => log(`model: ${line}`),
   })
   const llm = localLlmBridge(models.llm)
+  // The activity record and the chip's "section 3 of 5": progress events plus the bridge's usage (ADR-0058).
+  const activity = new ActivityRecorder({ store, companyId: company.id, clock: () => ({ step: Number(sim.step()), day: sim.day(), minute: sim.minute_of_day() }), log })
+  llm.onCall = (call) => activity.call(call)
   // Rebound to a new pack at the next job after it changed; refreshes before every standup.
-  const orchestrator = new SiteOrchestrator({ keeper: knowledge, site: SITE, create: (site) => createOrchestrator({ store, gateway, llm, site }), log })
+  const orchestrator = new SiteOrchestrator({
+    keeper: knowledge,
+    site: SITE,
+    create: (site) => createOrchestrator({ store, gateway, llm, site, onProgress: (e) => activity.progress(e) }),
+    log,
+  })
   await orchestrator.bind().catch((e) => opts.onError?.(`The orchestrator could not be bound to the site: ${String(e)}`))
   const sources = new Set<SessionDataSource>()
   const loop = new OrchestrationLoop({
@@ -629,7 +642,8 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   )
   const heldBy = () => {
     const job = loop.heldFor
-    return job ? `${job.who ? `${job.who} · ` : ''}${job.kind}` : null
+    // "Giulia · draft · section 3 of 5" while a stage runs (counts, never a percentage).
+    return job ? heldByText(job, activity.label(job.job_id)) : null
   }
   const status = () => clockStatus({ hold: clock.hold, phase: clock.state.phase, halted: loop.halted, leaseLost: readOnly, model, heldBy: heldBy() })
   const setModelStatus = (next: ModelStatus) => {
@@ -685,6 +699,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       logged: loop.logged,
       errors: [...loop.errors],
       knowledge: { ...knowledge.status(), bound: orchestrator.commit, binding: orchestrator.summary() },
+      progress: activity.current(),
     }),
     plan: () => JSON.parse(sim.plan_json()),
     items,
@@ -692,6 +707,10 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     commandLog: async () => {
       await loop.flush()
       return (await store.commandsAfter(-1)).map((c) => ({ seq: c.seq, step: c.step, kind: c.kind }))
+    },
+    activity: async () => {
+      await activity.flush()
+      return store.activity(company.id)
     },
     gateway: () => calls.map((c) => ({ ...c })),
     events: () => [...received],

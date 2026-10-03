@@ -3,7 +3,10 @@
  *
  * - The orchestrator's text store (`OrchestratorStore`, the JSON contract of
  *   `orchestrator::Store`): briefs, artifacts, transcripts, plan items and
- *   posts, and the plan view (`planJson`).
+ *   posts (deduplicated by their `dedupe` key), the plan view (`planJson`)
+ *   and the stage results of staged jobs (`getStage`/`putStage`, ADR-0058).
+ * - The activity record (`putActivity`/`activity`, FEAT-078): one row per
+ *   stage attempt and one per job.
  * - The sim's command log and snapshots (`appendCommands`, `commandsAfter`,
  *   `putSnapshot`, `latestSnapshot`).
  * - A small key/value table (event cursor, device id, ...).
@@ -80,6 +83,37 @@ export interface OrchestratorStore {
   setItemText(company: string, item: string, title: string | null, brief: string | null): Promise<void>
   appendPost(company: string, item: string, postJson: string): Promise<string>
   planJson(company: string): Promise<string>
+  /** A stage result `{input_hash, value}` as JSON text, or null. */
+  getStage(company: string, jobId: number, stage: string, index: number): Promise<string | null>
+  /** Stores `{input_hash, value}` unless the key has a row (first write wins); returns the stored row as JSON text. */
+  putStage(company: string, jobId: number, stage: string, index: number, rowJson: string): Promise<string>
+}
+
+/**
+ * One row of the activity record (ADR-0058 decision 9): a stage attempt
+ * (`stage` = the stage, `attempt` from 1) or the job (`stage: 'job'`).
+ * `detail` holds errors, repairs, words, score, pull request, branch and sha.
+ */
+export interface ActivityRow {
+  job_id: number
+  stage: string
+  idx: number
+  attempt: number
+  kind: string
+  revision: number
+  work_item: string | null
+  staff: string | null
+  role: string | null
+  persona: string | null
+  model: string | null
+  tokens_in: number
+  tokens_out: number
+  wall_ms: number
+  game_step: number | null
+  day: number | null
+  minute: number | null
+  result: string
+  detail: Record<string, unknown>
 }
 
 /** A stored knowledge pack (`site_knowledge`, keyed by commit). */
@@ -221,6 +255,11 @@ export class CompanyStore implements OrchestratorStore {
     ])
   }
 
+  /**
+   * Appends a post; returns its id. A post with a `dedupe` key the company
+   * already has is not written again: the existing post's id is returned
+   * (the post and its key are written in one transaction).
+   */
   async appendPost(company: string, item: string, postJson: string): Promise<string> {
     const post = JSON.parse(postJson) as Record<string, unknown>
     if (post === null || typeof post !== 'object' || Array.isArray(post)) throw new Error('post must be a JSON object')
@@ -230,18 +269,144 @@ export class CompanyStore implements OrchestratorStore {
     }
     delete post.id
     delete post.item
-    const r = await this.driver.run('INSERT INTO plan_posts (company, item, type, post, created_at) VALUES (?, ?, ?, ?, ?)', [
-      company,
-      item,
-      type,
-      JSON.stringify(post),
-      Date.now(),
-    ])
-    return `post-${r.lastInsertRowid}`
+    const dedupe = typeof post.dedupe === 'string' && post.dedupe ? post.dedupe : null
+    if (!dedupe) {
+      const r = await this.driver.run('INSERT INTO plan_posts (company, item, type, post, created_at) VALUES (?, ?, ?, ?, ?)', [
+        company,
+        item,
+        type,
+        JSON.stringify(post),
+        Date.now(),
+      ])
+      return `post-${r.lastInsertRowid}`
+    }
+    for (let attempt = 0; ; attempt++) {
+      const have = await this.driver.all<{ post_id: number }>('SELECT post_id FROM post_dedupe WHERE company = ? AND dedupe = ?', [company, dedupe])
+      if (have.length) return `post-${toNumber(have[0].post_id)}`
+      const next = await this.driver.all<{ n: number | null }>('SELECT MAX(id) AS n FROM plan_posts')
+      const id = (next[0]?.n == null ? 0 : toNumber(next[0].n)) + 1
+      try {
+        await this.driver.batch([
+          { sql: 'INSERT INTO plan_posts (id, company, item, type, post, created_at) VALUES (?, ?, ?, ?, ?, ?)', params: [id, company, item, type, JSON.stringify(post), Date.now()] },
+          { sql: 'INSERT INTO post_dedupe (company, dedupe, post_id) VALUES (?, ?, ?)', params: [company, dedupe, id] },
+        ])
+        return `post-${id}`
+      } catch (e) {
+        // Another write took the id (or the key) in between: look again.
+        if (attempt >= 3) throw e
+      }
+    }
   }
 
   async planJson(company: string): Promise<string> {
     return JSON.stringify(await this.plan(company))
+  }
+
+  async getStage(company: string, jobId: number, stage: string, index: number): Promise<string | null> {
+    const rows = await this.driver.all<{ input_hash: string; value: string }>(
+      'SELECT input_hash, value FROM job_stages WHERE company = ? AND job_id = ? AND stage = ? AND idx = ?',
+      [company, jobId, stage, index],
+    )
+    // The value stays JSON text (no JS parse): `{"input_hash": …, "value": <stored text>}`.
+    return rows.length ? `{"input_hash":${JSON.stringify(String(rows[0].input_hash))},"value":${String(rows[0].value)}}` : null
+  }
+
+  async putStage(company: string, jobId: number, stage: string, index: number, rowJson: string): Promise<string> {
+    const row = JSON.parse(rowJson) as { input_hash?: unknown; value?: unknown }
+    if (typeof row.input_hash !== 'string' || !('value' in row)) throw new Error('a stage row is {input_hash, value}')
+    // The value is kept as the text it came in (a JS parse would round a u64):
+    // orchestrator-wasm writes `{"input_hash":"…","value":…}`.
+    const prefix = `{"input_hash":${JSON.stringify(row.input_hash)},"value":`
+    const value = rowJson.startsWith(prefix) && rowJson.endsWith('}') ? rowJson.slice(prefix.length, -1) : JSON.stringify(row.value)
+    await this.driver.run(
+      'INSERT OR IGNORE INTO job_stages (company, job_id, stage, idx, input_hash, value, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [company, jobId, stage, index, row.input_hash, value, Date.now()],
+    )
+    return (await this.getStage(company, jobId, stage, index))!
+  }
+
+  /** Stage keys stored for a job, in key order (tests and diagnostics). */
+  async stages(company: string, jobId: number): Promise<{ stage: string; index: number; inputHash: string }[]> {
+    const rows = await this.driver.all<{ stage: string; idx: number; input_hash: string }>(
+      'SELECT stage, idx, input_hash FROM job_stages WHERE company = ? AND job_id = ? ORDER BY stage, idx',
+      [company, jobId],
+    )
+    return rows.map((r) => ({ stage: String(r.stage), index: toNumber(r.idx), inputHash: String(r.input_hash) }))
+  }
+
+  /** Deletes the stage rows of the given jobs (the week-long run prunes finished jobs, docs/mvp.md W). */
+  async deleteStages(company: string, jobIds: number[]): Promise<void> {
+    for (const id of jobIds) await this.driver.run('DELETE FROM job_stages WHERE company = ? AND job_id = ?', [company, id])
+  }
+
+  // ------------------------------------------------------------ activity (FEAT-078)
+
+  /**
+   * Writes one activity row. `replace` overwrites a row with the same
+   * (job, stage, index, attempt); `keep` leaves an existing one (a reused
+   * stage never overwrites the attempt that produced it).
+   */
+  async putActivity(company: string, row: ActivityRow, mode: 'replace' | 'keep' = 'replace'): Promise<void> {
+    const verb = mode === 'keep' ? 'INSERT OR IGNORE' : 'INSERT OR REPLACE'
+    await this.driver.run(
+      `${verb} INTO activity (company, job_id, stage, idx, attempt, kind, revision, work_item, staff, role, persona, model, tokens_in, tokens_out, wall_ms, game_step, day, minute, result, detail, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        company,
+        row.job_id,
+        row.stage,
+        row.idx,
+        row.attempt,
+        row.kind,
+        row.revision,
+        row.work_item,
+        row.staff,
+        row.role,
+        row.persona,
+        row.model,
+        Math.round(row.tokens_in),
+        Math.round(row.tokens_out),
+        Math.round(row.wall_ms),
+        row.game_step,
+        row.day,
+        row.minute,
+        row.result,
+        JSON.stringify(row.detail ?? {}),
+        Date.now(),
+      ],
+    )
+  }
+
+  /** The activity record, oldest job first, the job row after its stage rows. `jobId` limits it to one job. */
+  async activity(company: string, jobId?: number): Promise<ActivityRow[]> {
+    const rows = await this.driver.all<Record<string, unknown>>(
+      `SELECT job_id, stage, idx, attempt, kind, revision, work_item, staff, role, persona, model, tokens_in, tokens_out, wall_ms, game_step, day, minute, result, detail
+       FROM activity WHERE company = ?${jobId == null ? '' : ' AND job_id = ?'} ORDER BY job_id, id`,
+      jobId == null ? [company] : [company, jobId],
+    )
+    const num = (v: unknown) => (v == null ? null : toNumber(v as number))
+    const str = (v: unknown) => (v == null ? null : String(v))
+    return rows.map((r) => ({
+      job_id: toNumber(r.job_id as number),
+      stage: String(r.stage),
+      idx: toNumber(r.idx as number),
+      attempt: toNumber(r.attempt as number),
+      kind: String(r.kind),
+      revision: toNumber(r.revision as number),
+      work_item: str(r.work_item),
+      staff: str(r.staff),
+      role: str(r.role),
+      persona: str(r.persona),
+      model: str(r.model),
+      tokens_in: toNumber(r.tokens_in as number),
+      tokens_out: toNumber(r.tokens_out as number),
+      wall_ms: toNumber(r.wall_ms as number),
+      game_step: num(r.game_step),
+      day: num(r.day),
+      minute: num(r.minute),
+      result: String(r.result),
+      detail: JSON.parse(String(r.detail)) as Record<string, unknown>,
+    }))
   }
 
   // ------------------------------------------------------------ plan / transcripts (reads)

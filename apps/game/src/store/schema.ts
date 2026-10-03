@@ -99,6 +99,61 @@ CREATE TABLE site_knowledge (
 CREATE INDEX site_knowledge_fetched ON site_knowledge (fetched_at);
 `,
   },
+  {
+    // ADR-0058 (FEAT-032, FEAT-078): the staged jobs' stage results (keyed by
+    // job, stage and index; first write wins), the dedupe keys of plan posts
+    // (a re-run job never posts twice) and the lean activity record (one row
+    // per stage attempt and one per job, shaped for ADR-0056 work records).
+    // New tables only: no ALTER of a shipped table.
+    version: 3,
+    name: 'staged jobs and activity',
+    sql: `
+CREATE TABLE job_stages (
+  company TEXT NOT NULL,
+  job_id INTEGER NOT NULL,
+  stage TEXT NOT NULL,
+  idx INTEGER NOT NULL,
+  input_hash TEXT NOT NULL,
+  value TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (company, job_id, stage, idx)
+);
+
+CREATE TABLE post_dedupe (
+  company TEXT NOT NULL,
+  dedupe TEXT NOT NULL,
+  post_id INTEGER NOT NULL,
+  PRIMARY KEY (company, dedupe)
+);
+
+CREATE TABLE activity (
+  id INTEGER PRIMARY KEY,
+  company TEXT NOT NULL,
+  job_id INTEGER NOT NULL,
+  stage TEXT NOT NULL,
+  idx INTEGER NOT NULL,
+  attempt INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  work_item TEXT,
+  staff TEXT,
+  role TEXT,
+  persona TEXT,
+  model TEXT,
+  tokens_in INTEGER NOT NULL,
+  tokens_out INTEGER NOT NULL,
+  wall_ms INTEGER NOT NULL,
+  game_step INTEGER,
+  day INTEGER,
+  minute INTEGER,
+  result TEXT NOT NULL,
+  detail TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX activity_key ON activity (company, job_id, stage, idx, attempt);
+CREATE INDEX activity_job ON activity (company, job_id, id);
+`,
+  },
 ]
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version

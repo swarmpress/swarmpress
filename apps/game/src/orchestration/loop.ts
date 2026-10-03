@@ -655,12 +655,17 @@ export class OrchestrationLoop {
 
   private summarize(rec: JobRecord, outcomesJson: string) {
     // Small fields only; u64 brief refs in MeetingOutcome are not read here.
-    for (const o of JSON.parse(outcomesJson) as Record<string, { digest?: { ok: boolean; score: number } }>[]) {
+    for (const o of JSON.parse(outcomesJson) as Record<string, { digest?: { ok: boolean; score: number }; reason?: string }>[]) {
       const d = o.JobCompleted?.digest
       if (d) {
         rec.ok = d.ok
         rec.score = d.score
       } else if (o.MeetingOutcome) rec.ok = true
+      else if (o.JobFailed) {
+        // ADR-0059: the sim blocks the item with the ticket the reason calls for (e.g. NeedsMedia).
+        rec.ok = false
+        rec.error = `failed: ${o.JobFailed.reason ?? 'unknown'}`
+      }
     }
   }
 }

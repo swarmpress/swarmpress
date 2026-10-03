@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import golden from '../../../../crates/agents/tests/fixtures/article/page.golden.json'
-import { mvpScript } from '../llm/mvp-script'
+import { legacyMvpPage } from '../llm/mvp-script'
 import { articleHtml, articleSummary, decodeEntities, escapeHtml, httpsImageUrl, localized, PREVIEW_CSP } from './article-preview'
 
 /**
@@ -28,10 +28,9 @@ function expectInert(doc: Document) {
   for (const img of doc.querySelectorAll('img')) expect(img.getAttribute('src')).toMatch(/^https:\/\//)
 }
 
-/** The page the scripted MVP model writes: the older, simple shape (no hero). */
+/** The page the scripted MVP model wrote before the staged article: the older, simple shape (no hero). */
 const simplePage = () => {
-  const reply = mvpScript().find((r) => 'json' in r && typeof r.json === 'object' && r.json !== null && 'body' in r.json) as { json: Record<string, unknown> }
-  return structuredClone(reply.json)
+  return structuredClone(legacyMvpPage('We climbed to the terraces at seven, before the sun reached the vines.')) as Record<string, unknown>
 }
 
 describe('the golden article (the shape the orchestrator assembles)', () => {

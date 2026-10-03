@@ -2,7 +2,7 @@
 // same migrations and SQL the turso and sqlite engines run in the browser
 // (both are exercised by e2e/orchestrator.spec.ts).
 import { describe, expect, it } from 'vitest'
-import { CompanyStore, MIGRATIONS, PLAN_POSTS_PER_ITEM, SCHEMA_VERSION, storeChoiceFromQuery } from './index'
+import { CompanyStore, MIGRATIONS, PLAN_POSTS_PER_ITEM, SCHEMA_VERSION, storeChoiceFromQuery, type ActivityRow } from './index'
 import { MemorySqliteDriver } from './sqlite-driver'
 
 async function store() {
@@ -121,7 +121,7 @@ describe('CompanyStore (memory engine)', () => {
 
   it('keeps site knowledge packs by commit, verbatim, the newest two (migration 2)', async () => {
     const s = await store()
-    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2])
+    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3])
     expect(await s.latestKnowledge()).toBeNull()
     // Text kept byte for byte: whitespace, key order and a u64 survive.
     const pack = (c: string) => `{"commit":"${c}","files":{"content/config/style-guide.json":"{\\n  \\"voice\\": \\"warm\\"\\n}\\n"},"manifest":{"n":18446744073709551615},"pages":[]}`
@@ -142,17 +142,112 @@ describe('CompanyStore (memory engine)', () => {
     expect(Number(rows[0].n)).toBe(2)
   })
 
-  it('a store of schema 1 gains the site_knowledge table when it opens', async () => {
+  it('a store of schema 1 gains the site_knowledge, stage and activity tables when it opens', async () => {
     const s = await store()
     await s.setKv('device.id', 'dev-1')
-    await s.driver.exec('DROP TABLE site_knowledge')
-    await s.driver.run('DELETE FROM schema_migrations WHERE version = 2')
+    for (const t of ['site_knowledge', 'job_stages', 'post_dedupe', 'activity']) await s.driver.exec(`DROP TABLE ${t}`)
+    await s.driver.run('DELETE FROM schema_migrations WHERE version >= 2')
     expect(await s.schemaVersion()).toBe(1)
     const again = await CompanyStore.open(s.driver)
-    expect(await again.schemaVersion()).toBe(2)
+    expect(await again.schemaVersion()).toBe(3)
     expect(await again.getKv('device.id')).toBe('dev-1')
     await again.putKnowledge({ commit: 'c', etag: '"c"', pack: '{}' })
     expect((await again.latestKnowledge())!.pack).toBe('{}')
+    expect(await again.putStage('c1', 1, 'outline', 0, '{"input_hash":"h","value":{}}')).toBe('{"input_hash":"h","value":{}}')
+  })
+
+  it('a store of schema 2 gains the stage, dedupe and activity tables and keeps its posts (migration 3)', async () => {
+    const s = await store()
+    await s.appendPost('c1', 'w1', JSON.stringify({ type: 'status', author: 'ceo', text: 'before' }))
+    for (const t of ['job_stages', 'post_dedupe', 'activity']) await s.driver.exec(`DROP TABLE ${t}`)
+    await s.driver.run('DELETE FROM schema_migrations WHERE version = 3')
+    expect(await s.schemaVersion()).toBe(2)
+    const again = await CompanyStore.open(s.driver)
+    expect(await again.schemaVersion()).toBe(3)
+    const id = await again.appendPost('c1', 'w1', JSON.stringify({ type: 'status', author: 'system', text: 'after', dedupe: '7:status:0' }))
+    expect(id).toBe('post-2')
+    expect((await again.plan('c1')).posts.w1.map((p) => p.text)).toEqual(['before', 'after'])
+  })
+
+  it('keeps stage results by (company, job, stage, index), first write wins, values verbatim', async () => {
+    const s = await store()
+    expect(await s.getStage('c1', 7, 'section', 2)).toBeNull()
+    // A u64 in a value is not rounded: the value stays JSON text.
+    const first = '{"input_hash":"abc","value":{"blocks":[],"n":9007199254740993}}'
+    expect(await s.putStage('c1', 7, 'section', 2, first)).toBe('{"input_hash":"abc","value":{"blocks":[],"n":9007199254740993}}')
+    // A second write of the key keeps the first.
+    expect(await s.putStage('c1', 7, 'section', 2, '{"input_hash":"zzz","value":{"blocks":[1]}}')).toBe(first)
+    expect(await s.getStage('c1', 7, 'section', 2)).toBe(first)
+    // Other keys are their own.
+    await s.putStage('c1', 7, 'section', 3, '{"input_hash":"d","value":[]}')
+    await s.putStage('c1', 8, 'section', 2, '{"input_hash":"e","value":null}')
+    await s.putStage('c2', 7, 'section', 2, '{"input_hash":"f","value":"x"}')
+    expect(await s.getStage('c2', 7, 'section', 2)).toBe('{"input_hash":"f","value":"x"}')
+    expect(await s.stages('c1', 7)).toEqual([
+      { stage: 'section', index: 2, inputHash: 'abc' },
+      { stage: 'section', index: 3, inputHash: 'd' },
+    ])
+    await expect(s.putStage('c1', 1, 'x', 0, '{"value":1}')).rejects.toThrow(/input_hash/)
+    await s.deleteStages('c1', [7])
+    expect(await s.stages('c1', 7)).toEqual([])
+    expect(await s.getStage('c1', 8, 'section', 2)).not.toBeNull()
+  })
+
+  it('writes a post with a dedupe key once (a re-run job never posts twice)', async () => {
+    const s = await store()
+    const post = (text: string, dedupe?: string) => JSON.stringify({ type: 'artifact', author: 'system', text, payload: {}, ...(dedupe ? { dedupe } : {}) })
+    const a = await s.appendPost('c1', 'w1', post('PR #1', '2:artifact:0'))
+    const b = await s.appendPost('c1', 'w1', post('PR #1 again', '2:artifact:0'))
+    expect(b).toBe(a)
+    // The same key in another company is another post; posts without a key always append.
+    await s.appendPost('c2', 'w1', post('PR #1', '2:artifact:0'))
+    await s.appendPost('c1', 'w1', post('comment'))
+    await s.appendPost('c1', 'w1', post('comment'))
+    const plan = await s.plan('c1')
+    expect(plan.posts.w1.map((p) => p.text)).toEqual(['PR #1', 'comment', 'comment'])
+    expect(plan.posts.w1[0]).toMatchObject({ id: a, dedupe: '2:artifact:0' })
+    expect((await s.plan('c2')).posts.w1).toHaveLength(1)
+  })
+
+  it('keeps activity rows: replace by key, keep an existing attempt, read back in job order', async () => {
+    const s = await store()
+    const row = (over: Partial<ActivityRow>): ActivityRow => ({
+      job_id: 2,
+      stage: 'section',
+      idx: 1,
+      attempt: 1,
+      kind: 'draft',
+      revision: 0,
+      work_item: 'work-item-1',
+      staff: 'staff-1',
+      role: 'writer',
+      persona: 'giulia',
+      model: 'fake-mvp',
+      tokens_in: 900,
+      tokens_out: 240,
+      wall_ms: 1200,
+      game_step: 1100,
+      day: 0,
+      minute: 552,
+      result: 'done',
+      detail: { words: 150 },
+      ...over,
+    })
+    await s.putActivity('c1', row({}))
+    await s.putActivity('c1', row({ stage: 'job', idx: 0, tokens_in: 4000, detail: { pr: 1, branch: 'drafts/content-x', sha: 'abc' } }))
+    // A reused stage never overwrites the attempt that produced it; a re-run job row replaces.
+    await s.putActivity('c1', row({ result: 'reused', tokens_in: 0 }), 'keep')
+    await s.putActivity('c1', row({ stage: 'job', idx: 0, tokens_in: 4100, detail: { pr: 1 } }))
+    await s.putActivity('c1', row({ job_id: 1, kind: 'standup', stage: 'job', idx: 0 }))
+    const rows = await s.activity('c1')
+    expect(rows.map((r) => [r.job_id, r.stage, r.result, r.tokens_in])).toEqual([
+      [1, 'job', 'done', 900],
+      [2, 'section', 'done', 900],
+      [2, 'job', 'done', 4100],
+    ])
+    expect(rows[1]).toEqual(row({}))
+    expect(await s.activity('c1', 2)).toHaveLength(2)
+    expect(await s.activity('c2')).toEqual([])
   })
 
   it('has a key/value table', async () => {

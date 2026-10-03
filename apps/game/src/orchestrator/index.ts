@@ -13,8 +13,8 @@ import type { OrchestratorGateway } from '../net/central'
 import type { OrchestratorStore } from '../store/company-store'
 import { FakeLlm } from '../llm/fake-llm'
 import type { LocalLlm, Validator } from '../llm/types'
-import { mvpScriptText } from '../llm/mvp-script'
-import { rustValidator, type OrchestratorLike, type OrchestratorLlm, type SiteBindingJson } from './bridge'
+import { createMvpModel, mvpCallFromMessages } from '../llm/mvp-script'
+import { rustValidator, type OrchestratorLike, type OrchestratorLlm, type ProgressEvent, type SiteBindingJson } from './bridge'
 
 export * from './bridge'
 
@@ -36,6 +36,8 @@ export interface CreateOrchestratorOptions {
   gateway: OrchestratorGateway
   llm: OrchestratorLlm
   site: SiteBindingJson
+  /** Hears every stage of every job (ADR-0058): the HUD chip and the activity log. */
+  onProgress?: (event: ProgressEvent) => void
 }
 
 export async function createOrchestrator(o: CreateOrchestratorOptions): Promise<OrchestratorLike & { free(): void; siteSummary(): string }> {
@@ -43,7 +45,10 @@ export async function createOrchestrator(o: CreateOrchestratorOptions): Promise<
   // The browser's repair loop validates with the validator the Rust side
   // re-checks with, so a value never passes here and fails there unrepaired.
   o.llm.useValidator?.(rustValidator(m.validateJson))
-  return new m.OrchestratorHandle(o.store, o.gateway, o.llm, JSON.stringify(o.site))
+  const handle = new m.OrchestratorHandle(o.store, o.gateway, o.llm, JSON.stringify(o.site))
+  const listener = o.onProgress
+  if (listener) handle.setProgress((json: string) => listener(JSON.parse(json) as ProgressEvent))
+  return handle
 }
 
 /** The Rust schema validator as a `Validator` (loads orchestrator-wasm). */
@@ -73,15 +78,21 @@ export function llmModeFromQuery(search: string): LlmMode {
 }
 
 /**
- * The scripted LocalLlm of `?llm=fake`: the MVP script (standup 4 replies,
- * draft, review 6, revision draft, review 8) as model text, so e2e runs are
- * deterministic. Once the script is exhausted every call fails loudly.
+ * The scripted LocalLlm of `?llm=fake` (src/llm/mvp-script.ts): a
+ * brief-driven fake that answers every standup and every stage of the staged
+ * Draft and Review jobs from the call itself, deterministically (review 6,
+ * then 8 after the revision). `modelId` is `fake-mvp`.
  */
 export function fakeMvpLlm(): FakeLlm {
-  return new FakeLlm({
-    script: mvpScriptText(),
-    responder: (_m, _o, call) => new Error(`?llm=fake: the MVP script has no reply for call #${call + 1}`),
+  const model = createMvpModel()
+  const llm = new FakeLlm({
+    responder: (messages) => {
+      const reply = model.answer(mvpCallFromMessages(messages))
+      return 'text' in reply ? reply.text : JSON.stringify(reply.json)
+    },
   })
+  llm.modelId = 'fake-mvp'
+  return llm
 }
 
 /** The LocalLlm for the current page: `?llm=fake` or `fallback` (the real model runtime, ADR-0024). */
