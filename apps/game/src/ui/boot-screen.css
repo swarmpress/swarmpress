@@ -18,3 +18,24 @@
 .boot-reload { padding: 6px 14px; border: 0; border-radius: 8px; background: #e3b864; color: #1b1f2a; font: 600 14px/1.2 system-ui, sans-serif; cursor: pointer; }
 .boot-reload:focus-visible { outline: 2px solid #e8e6e3; outline-offset: 2px; }
 .boot-screen[data-state='error'] .boot-progress { display: none; }
+.boot-stages li[data-state='skipped'] { color: #8d929e; }
+.boot-stages li[data-state='skipped']::before { content: '–'; }
+.boot-stage-note { margin-left: auto; padding-left: 8px; font-size: 12px; font-weight: 400; color: #a9adb8; text-align: right; overflow-wrap: anywhere; }
+.boot-message { width: min(560px, 86vw); }
+.boot-message[hidden] { display: none; }
+.boot-message-text { margin: 0 0 10px; color: #e8e6e3; overflow-wrap: anywhere; }
+.boot-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.boot-secondary { padding: 6px 14px; border: 1px solid #5b6070; border-radius: 8px; background: transparent; color: #e8e6e3; font: 500 14px/1.2 system-ui, sans-serif; cursor: pointer; }
+.boot-secondary:focus-visible { outline: 2px solid #e8e6e3; outline-offset: 2px; }
+
+/* The local model's startup (ui/model-card.ts): a card in the bottom right corner; the office stays usable. */
+.boot-screen.is-card { inset: auto 16px 16px auto; width: min(380px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; z-index: 1500;
+                       align-items: stretch; justify-content: flex-start; gap: 10px; padding: 14px 16px; border-radius: 12px;
+                       background: rgba(27, 31, 42, 0.94); border: 1px solid #3a3f4d; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35); }
+.boot-screen.is-card .boot-title { font-size: 18px; }
+.boot-screen.is-card .boot-progress, .boot-screen.is-card .boot-stages, .boot-screen.is-card .boot-message, .boot-screen.is-card .boot-error { width: 100%; }
+.boot-screen.is-card .boot-stages li { font-size: 13px; }
+.boot-screen.is-card .boot-message-text, .boot-screen.is-card .boot-error-text { font-size: 13px; line-height: 1.45; }
+.boot-screen.is-card[data-collapsed='true'] .boot-stages, .boot-screen.is-card[data-collapsed='true'] .boot-message { display: none; }
+.boot-card-toggle { align-self: flex-end; margin-top: -30px; padding: 2px 8px; border: 1px solid #5b6070; border-radius: 6px; background: transparent; color: #c9ccd4;
+                    font: 12px/1.4 system-ui, sans-serif; cursor: pointer; }

@@ -63,6 +63,38 @@ describe('boot screen', () => {
     expect(states().restore).toBe('failed')
   })
 
+  it('as a card: notes per stage, a message with buttons, and an error with actions of its own', () => {
+    const stages = [
+      { id: 'probe', label: 'Check WebGPU' },
+      { id: 'download', label: 'Download the weights' },
+      { id: 'load', label: 'Load onto the GPU' },
+    ]
+    const card = mountBootScreen(document.body, stages, { id: 'model-startup', title: 'Ternary Bonsai 2', label: 'Local model', variant: 'card', failPrefix: '' })
+    expect(card.el.id).toBe('model-startup')
+    expect(card.el.classList.contains('is-card')).toBe(true)
+    expect(card.el.querySelector('h2')!.textContent).toBe('Ternary Bonsai 2')
+    card.mark('probe', 'done', 'WebGPU ready')
+    card.mark('download', 'active', 'downloading 36% (2.1 GB of 5.9 GB)')
+    expect(states()).toEqual({ probe: 'done', download: 'active', load: 'pending' })
+    expect(document.querySelector('li[data-stage="download"] .boot-stage-note')!.textContent).toBe('downloading 36% (2.1 GB of 5.9 GB)')
+    expect((document.querySelector('progress') as HTMLProgressElement).value).toBe(1)
+    const start = vi.fn()
+    card.prompt('The model runs in this browser.', [{ label: 'Start the model', primary: true, run: start }, { label: 'Not now', run: () => undefined }])
+    const message = document.querySelector('.boot-message') as HTMLElement
+    expect(message.hidden).toBe(false)
+    expect([...message.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Start the model', 'Not now'])
+    ;(message.querySelector('button') as HTMLButtonElement).click()
+    expect(start).toHaveBeenCalledTimes(1)
+    card.prompt(null)
+    expect(message.hidden).toBe(true)
+    const reload = vi.fn()
+    card.fail('The GPU device was lost.', { actions: [{ label: 'Reload the model', primary: true, run: reload }] })
+    expect(document.querySelector('.boot-error-text')!.textContent).toBe('The GPU device was lost.')
+    expect(states().download).toBe('failed')
+    ;(document.querySelector('.boot-error button') as HTMLButtonElement).click()
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
   it('shows an error that is not an Error, and one before any stage', () => {
     const boot = mountBootScreen(document.body, DEMO_STAGES)
     boot.fail('unknown scenario "x"')

@@ -2,6 +2,7 @@ import init, { Sim, version } from 'swarm-wasm'
 import { createEngine } from './render/engine'
 import { formatClock } from './render/daylight'
 import { QUALITY, type Quality } from './render/postfx'
+import { frameDue, isQuality, rendererHooks } from './render/quality'
 import { createGameScene } from './render/scene'
 import { ClockDriver, clockStatus, type ClockHost } from './session/clock-driver'
 import type { GameSession } from './session/session'
@@ -69,9 +70,15 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   boot.stage('scene')
   const sim = session?.sim ?? Sim.demo(seed)
   const layout = JSON.parse(sim.layout_json()) as BuildingLayout
-  const game = createGameScene(engine, canvas, layout, { quality: QUALITY[quality] ?? QUALITY.high, postFx: true })
+  const tier: Quality = isQuality(quality) ? quality : 'high'
+  const game = createGameScene(engine, canvas, layout, { quality: QUALITY[tier], postFx: true })
   if (params.has('facing')) game.iso.setFacing(Number(params.get('facing')))
   game.iso.snap()
+  // GPU sharing with the local model (ADR-0057, FEAT-040): while it generates, the scene drops
+  // a tier, pauses SSAO and bloom, and draws at most `fpsCap` frames a second; then it comes back.
+  let fpsCap: number | null = null
+  let lastDraw = 0
+  session?.models.attachRenderer(rendererHooks(game, tier, (fps) => (fpsCap = fps)))
 
   if (renderer === 'webgpu') {
     engine.onContextLostObservable.addOnce(() => {
@@ -175,7 +182,7 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   if (!frozen) {
     game.setOccluders(() => {
       const c = canvas.getBoundingClientRect()
-      return Array.from(document.querySelectorAll('.hud, .hud-card, .toolbar, .panel'), (el) => {
+      return Array.from(document.querySelectorAll('.hud, .hud-card, .toolbar, .panel, #model-startup'), (el) => {
         const r = el.getBoundingClientRect()
         return { left: r.left - c.left, top: r.top - c.top, right: r.right - c.left, bottom: r.bottom - c.top }
       })
@@ -189,14 +196,19 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   engine.runRenderLoop(() => {
     // Wall time since the last tick, clamped: per 100 ms slice a step boundary
     // (job outcomes and landed deploys are applied), then the steps the clock allows.
-    clock?.tickAt(performance.now())
+    const now = performance.now()
+    clock?.tickAt(now)
     const step = sim.step()
     if (step !== lastStep) {
       game.update(JSON.parse(sim.render_state_json()) as RenderState)
       lastStep = step
     }
     game.setClock(frozenInstant ?? new Date(), frozenInstant ? 'UTC' : timeZone)
-    game.scene.render()
+    // The clock always ticks; under the generation cap only the drawing waits.
+    if (frameDue(now, lastDraw, fpsCap)) {
+      game.scene.render()
+      lastDraw = now
+    }
     hud.set({
       clock: formatClock(sim.minute_of_day()),
       day: sim.day(),

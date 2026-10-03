@@ -19,6 +19,11 @@
  *   central=1        turn the session on
  *   login=NAME       dev login (default `ceo`; needs SWARMPRESS_DEV_AUTH=1 on the server)
  *   llm=fake         the scripted MVP model (src/llm/mvp-script.ts)
+ *   llm=bonsai|chrome|transformers
+ *                    the local model backend for this page load (ADR-0057; without it the
+ *                    company's stored choice, else Bonsai). session/model-runtime.ts starts it;
+ *                    the clock holds until it is ready
+ *   llmdebug=1       the model worker's test hooks (`hook.destroyModelDevice()`)
  *   store=…          the store engine (src/store)
  *   ff=HH:MM         fast-forward on boot to that time of the current game day
  *   takeover=1       take the company over from the executor that holds it (this
@@ -27,16 +32,17 @@
  */
 import { Sim } from 'swarm-wasm'
 import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResult, type RestoredSim, type SimFactory } from '../catchup/replay'
-import { FakeLlm } from '../llm/fake-llm'
 import { CentralClient, centralGateway, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type OrchestratorGateway } from '../net/central'
 import { OrchestrationLoop, type JobRecord } from '../orchestration/loop'
-import { createOrchestrator, jobsFromEffects, llmFromQuery, localLlmBridge, outcomesForSim, type SiteBindingJson } from '../orchestrator'
+import { createOrchestrator, jobsFromEffects, loadRustValidator, localLlmBridge, outcomesForSim, type SiteBindingJson } from '../orchestrator'
 import { openCompanyStore, type CompanyStore, type Plan } from '../store'
 import { commandBytes, decodeSnapshot, encodeSnapshot, type Checkpoint } from '../sync/segments'
 import { fetchRemote, NEXT_SEGMENT_KEY, SEALED_SEQ_KEY, SyncUploader, toLogged, type SealResult } from '../sync/uploader'
 import type { DataTopic } from '../ui/data-source'
+import { mountModelCard } from '../ui/model-card'
 import { companyStoreOptions, WasmDataSource, type SimOrgApi } from '../ui/wasm-source'
 import { cleanDays, ClockDriver, clockStatus, sessionClockHost, type ClockStatus, type ModelStatus } from './clock-driver'
+import { openModelRuntime, type ModelRuntime, type ModelRuntimeInfo } from './model-runtime'
 import { refetchAfterMerge, refetchOnDeploy, SiteKnowledgeKeeper, SiteOrchestrator, type KnowledgeStatus, type SiteSummary } from './site-knowledge'
 
 export const SCENARIO = 'cinqueterre'
@@ -166,6 +172,12 @@ export interface SessionHook {
   startNextDay(): void
   /** What the model backend reports; only `ready` lets the clock run. */
   setModelStatus(status: ModelStatus): void
+  /** The local model runtime: backend, phase, startup stages, losses (session/model-runtime.ts). */
+  llm(): ModelRuntimeInfo
+  /** Loads the model again after a device loss (the card's "Reload the model"). */
+  reloadModel(): Promise<void>
+  /** Test hook, only with `?llmdebug=1`: the worker destroys the model's GPU device as a loss would. */
+  destroyModelDevice(): Promise<void>
   /** Waits until queued jobs ran and their outcomes are applied and logged. */
   idle(): Promise<void>
   /** Local checkpoint + sealed segment and checkpoint on the central server. */
@@ -189,6 +201,8 @@ export interface GameSession {
   status(): ClockStatus
   /** The model backend reports its state here; only `ready` lets the clock run (`?llm=fake` is ready). */
   setModelStatus(status: ModelStatus): void
+  /** The local model runtime; main.ts attaches the scene's renderer hooks to it (GPU sharing). */
+  models: ModelRuntime
   /** The overlay's data source: the sim (commands logged through the loop) plus the store's plan text. */
   dataSource(): WasmDataSource
 }
@@ -230,14 +244,6 @@ export interface SessionOptions {
 
 /** kv key of the "unattended days" setting (host policy; never in the sim or the command log). */
 export const UNATTENDED_DAYS_KEY = 'clock.unattended_days'
-
-/** A LocalLlm that fails loudly: the real model runtime is not wired into the session yet (use `?llm=fake`). */
-function unwiredLlm(): FakeLlm {
-  return new FakeLlm({
-    script: [],
-    responder: () => new Error('the local model runtime is not wired into the game session yet; use ?llm=fake'),
-  })
-}
 
 async function signIn(client: CentralClient, login: string) {
   const me = await client.me()
@@ -458,7 +464,18 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   if (!readOnly) await knowledge.refresh('start')
   const calls: GatewayCall[] = []
   const gateway = refetchAfterMerge(recordingGateway(centralGateway(client, () => lease.token), calls), knowledge)
-  const llm = localLlmBridge(llmFromQuery(location.search, unwiredLlm))
+  // The local model (ADR-0057): the backend is chosen here (`?llm=`, else the company's stored
+  // choice, else Bonsai); it starts once the clock exists (below). `?llm=fake` is the scripted model.
+  const models = await openModelRuntime({
+    search: location.search,
+    companyId: company.id,
+    store,
+    readOnly: !!readOnly,
+    validate: () => loadRustValidator(),
+    debug: params.get('llmdebug') === '1',
+    log: (line) => log(`model: ${line}`),
+  })
+  const llm = localLlmBridge(models.llm)
   // Rebound to a new pack at the next job after it changed; refreshes before every standup.
   const orchestrator = new SiteOrchestrator({ keeper: knowledge, site: SITE, create: (site) => createOrchestrator({ store, gateway, llm, site }), log })
   await orchestrator.bind().catch((e) => opts.onError?.(`The orchestrator could not be bound to the site: ${String(e)}`))
@@ -581,11 +598,10 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     void checkpoint()
   })
 
-  // The clock (ADR-0060). The model backend reports through `setModelStatus`;
-  // the scripted `?llm=fake` model is ready at once, and no other model is
-  // wired into the session yet (`unwiredLlm`), so the clock holds without it.
-  let model: ModelStatus =
-    params.get('llm') === 'fake' ? { state: 'ready', detail: 'scripted model' } : { state: 'none', detail: 'no local model is wired in yet; use ?llm=fake' }
+  // The clock (ADR-0060). The model runtime reports through `setModelStatus`:
+  // the scripted `?llm=fake` model is ready at once; a real backend holds the
+  // clock until its startup's qualification turn passed (session/model-runtime.ts).
+  let model: ModelStatus = models.status()
   const speed = Number(params.get('speed') ?? 1)
   // The "unattended days" setting is host policy: it lives in the kv, not in the sim.
   let savedDays = cleanDays(Number((await store.getKv(UNATTENDED_DAYS_KEY)) ?? 0))
@@ -613,6 +629,10 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     clock.refresh()
   }
   clock.refresh()
+  // The model starts in the background: the office opens at once, the card and the chip show the stages.
+  models.onChange(() => setModelStatus(models.status()))
+  mountModelCard(models)
+  void models.start()
 
   const items = (): Record<string, string> =>
     Object.fromEntries((JSON.parse(sim.plan_json()) as { items: { id: string; status: string }[] }).items.map((i) => [i.id, i.status]))
@@ -673,6 +693,9 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     setUnattendedDays: (n) => clock.setUnattendedDays(n),
     startNextDay: () => clock.startNextDay(),
     setModelStatus,
+    llm: () => models.info(),
+    reloadModel: () => models.reload(),
+    destroyModelDevice: () => models.destroyDevice(),
     idle: () => loop.idle(),
     checkpoint,
     errors: () => [...loop.errors],
@@ -702,6 +725,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     clock,
     status,
     setModelStatus,
+    models,
     dataSource: () => {
       // The Inbox's banned-phrase check reads the site's own style guide (the pack's, when the source is made).
       const site = { style_guide: knowledge.current?.styleGuide ?? undefined }
