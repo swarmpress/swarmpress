@@ -18,6 +18,13 @@
 //!   `github::ContentRepo`; the browser uses an HTTP gateway to the central
 //!   service.
 //! - The LLM is the agents crate's [`agents::Llm`].
+//! - [`Progress`] (optional) hears what a job is doing, stage by stage
+//!   ([`ProgressEvent`]): the browser's HUD and activity log (ADR-0058).
+//!
+//! The Draft and Review jobs run in bounded stages (ADR-0058, `staged`):
+//! each stage is one model call that fits the model's context
+//! ([`agents::article_prompts::LlmProfile`]) and is stored by
+//! `(company, job, stage, index)`, so a re-run job repeats no completed call.
 //!
 //! Async traits are `Send` on native targets and `?Send` on wasm32, matching
 //! [`agents::Llm`] (see [`agents::MaybeSendSync`]).
@@ -26,8 +33,10 @@ mod article;
 mod gateway;
 mod run;
 mod site;
+mod staged;
 mod store;
 
+pub use agents::article_prompts::LlmProfile;
 pub use article::{
     article_context, article_schema, blog_categories, brief_entities, brief_ref_for, entity_facts,
     hero_shortlist, link_shortlist, related_titles, site_validator, site_validator_v2, slugify,
@@ -39,11 +48,18 @@ pub use gateway::GithubGateway;
 pub use gateway::{DraftPr, FakeGateway, FakePr, Gateway, GatewayError};
 pub use run::{Orchestrator, OrchestratorError, SiteBinding};
 pub use site::{ConfigSource, SiteKnowledge, STYLE_GUIDE_PATH, WRITER_PROMPT_PATH};
+pub use staged::{
+    measured_checks, send_back_issues, stage_hash, JOB_REPAIRS, REVIEW_SINGLE_TOKENS,
+    SECTION_REPAIRS,
+};
 pub use store::{
-    ArtifactRecord, BriefRecord, MemStore, Store, StoreError, PLAN_POSTS_PER_ITEM, POST_TYPES,
+    ArtifactRecord, BriefRecord, MemStore, StageRow, Store, StoreError, StoredParts, StoredSection,
+    PLAN_POSTS_PER_ITEM, POST_TYPES,
 };
 
+use agents::MaybeSendSync;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// The jobs of the MVP article loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -105,10 +121,91 @@ pub struct BriefOut {
 /// Alias used by the sim-side contract (docs/mvp.md).
 pub type BriefStub = BriefOut;
 
+/// Why a job failed (`ServerCommand::JobFailed`; the names are the sim's
+/// `JobFailure`, which also accepts the kebab-case slugs). The executor's
+/// error text stays outside the sim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum JobFailure {
+    Model,
+    InvalidOutput,
+    /// The closed world has no media for the job (rule 5): an empty hero
+    /// shortlist.
+    NeedsMedia,
+    NeedsPage,
+    Timeout,
+    Cancelled,
+    Infrastructure,
+}
+
 /// What a job reports; each becomes a `ServerCommand` for the sim.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Outcome {
-    MeetingOutcome { job_id: u64, briefs: Vec<BriefOut> },
-    JobCompleted { job_id: u64, digest: Digest },
-    DeployLanded { work_item: String },
+    MeetingOutcome {
+        job_id: u64,
+        briefs: Vec<BriefOut>,
+    },
+    JobCompleted {
+        job_id: u64,
+        digest: Digest,
+    },
+    /// The job cannot finish; the sim blocks the item with the ticket the
+    /// reason calls for (`NeedsMedia`, `NeedsPage`, else `Escalation`).
+    JobFailed {
+        job_id: u64,
+        reason: JobFailure,
+    },
+    DeployLanded {
+        work_item: String,
+    },
+}
+
+/// Where a stage is ([`ProgressEvent::state`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProgressState {
+    /// The stage (or the job, `stage: "job"`) began.
+    Started,
+    /// Finished; `detail` says what came out.
+    Done,
+    /// Taken from the stage store: no model call.
+    Reused,
+    Failed,
+}
+
+/// What a job is doing, as counts (ADR-0058 decision 8: "writing section 3
+/// of 5", never a percentage).
+///
+/// `stage` is `job` for the job as a whole, else one of `context`,
+/// `outline`, `section` (index 0 is the intro, 1…`total` the body
+/// sections), `closing`, `fix`, `retitle`, `revise`, `review`,
+/// `review_section`, `review_summary` or `commit`. `index`/`total` count
+/// within the stage. `detail` carries what an activity record keeps: words,
+/// repairs, errors, score, PR, branch, sha.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProgressEvent {
+    pub job_id: u64,
+    pub kind: JobKind,
+    pub revision: u8,
+    pub work_item: Option<String>,
+    /// Sim id of who does the stage.
+    pub staff: Option<String>,
+    pub persona: Option<String>,
+    pub role: Option<String>,
+    pub stage: String,
+    pub index: u32,
+    pub total: u32,
+    pub state: ProgressState,
+    #[serde(default)]
+    pub detail: Value,
+}
+
+/// Hears [`ProgressEvent`]s ([`Orchestrator::with_progress`]).
+pub trait Progress: MaybeSendSync {
+    fn report(&self, event: &ProgressEvent);
+}
+
+impl<F: Fn(&ProgressEvent) + MaybeSendSync> Progress for F {
+    fn report(&self, event: &ProgressEvent) {
+        self(event)
+    }
 }

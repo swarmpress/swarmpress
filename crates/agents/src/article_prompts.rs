@@ -498,6 +498,7 @@ impl SectionSpec {
         let (lo, hi) = bounds(self.words);
         let what = match self.id {
             SectionId::Intro => "## The introduction\n".to_string(),
+            SectionId::Closing => format!("## The closing note\nHeading: {}\n", self.heading),
             _ => format!("## This section\nHeading: {}\n", self.heading),
         };
         let mut s = what;
@@ -601,21 +602,28 @@ pub fn fix_prompt(
     system: &str,
     brief: &Brief,
     spec: &SectionSpec,
-    draft: &SectionDraft,
+    current: &str,
     problems: &[String],
 ) -> StagePrompt {
     let task = format!("fix {}", spec.id);
-    let mut c = Composer::new(profile, system, task, section_answer(spec.words));
+    let closing = spec.id == SectionId::Closing;
+    let answer = if closing {
+        CLOSING_ANSWER
+    } else {
+        section_answer(spec.words)
+    };
+    let mut c = Composer::new(profile, system, task, answer);
     c.required(
         "instructions",
-        "Rewrite this part so that it passes the checks below. Keep what is good; change only what the problems name. Answer with the complete part.",
+        if closing {
+            "Rewrite the closing note so that it passes the checks below. Keep what is good; change only what the problems name. Answer `{\"content\": \"…\"}`."
+        } else {
+            "Rewrite this part so that it passes the checks below. Keep what is good; change only what the problems name. Answer with the complete part."
+        },
     );
     c.required("brief", brief_part(brief));
     c.required("section", spec.part());
-    c.required(
-        "current",
-        format!("## Your part\n{}\n", section_text(draft)),
-    );
+    c.required("current", format!("## Your part\n{current}\n"));
     let mut s = String::from("## Problems\n");
     for p in problems {
         s.push_str(&format!("- {p}\n"));
@@ -762,12 +770,10 @@ pub fn review_prompt(
     reading: &str,
 ) -> StagePrompt {
     let mut c = Composer::new(profile, system, "review".into(), REVIEW_ANSWER);
+    c.required("frame", review_head(frame));
     c.required(
         "instructions",
-        format!(
-            "Review this draft against the brief, the editorial standards and the house style. {}Tag every issue with the part it concerns: title, intro, s1 … sN, closing, or whole (at most one whole).",
-            review_head(frame)
-        ),
+        "Review this draft against the brief, the editorial standards and the house style. Tag every issue with the part it concerns: title, intro, s1 … sN, closing, or whole (at most one whole).",
     );
     c.required("brief", brief_part(frame.brief));
     c.required("checks", checks_part(frame.checks));
@@ -790,12 +796,10 @@ pub fn review_section_prompt(
         other => format!("review section {other}"),
     };
     let mut c = Composer::new(profile, system, task, REVIEW_SECTION_ANSWER);
+    c.required("frame", review_head(frame));
     c.required(
         "instructions",
-        format!(
-            "Review this one part of a longer draft. {}Score it from 1 to 10 and list its issues (at most four), each with a fix.",
-            review_head(frame)
-        ),
+        "Review this one part of a longer draft. Score it from 1 to 10 and list its issues (at most four), each with a fix.",
     );
     c.required("brief", brief_part(frame.brief));
     c.required("part", format!("## [{id}] {heading}\n{text}\n"));
@@ -816,12 +820,10 @@ pub fn review_summary_prompt(
         "review summary".into(),
         REVIEW_SUMMARY_ANSWER,
     );
+    c.required("frame", review_head(frame));
     c.required(
         "instructions",
-        format!(
-            "You reviewed this draft part by part. Decide on the whole: score, decision, notes, and issues for the title, the closing or the whole (the part reviews keep their own). {}",
-            review_head(frame)
-        ),
+        "You reviewed this draft part by part. Decide on the whole: score, decision, notes, and issues for the title, the closing or the whole (the part reviews keep their own).",
     );
     c.required("brief", brief_part(frame.brief));
     c.required("checks", checks_part(frame.checks));

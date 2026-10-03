@@ -4,12 +4,16 @@
 //! The trait speaks `serde_json::Value` and strings so that a JS bridge
 //! (`crates/orchestrator-wasm`, over the browser's CompanyStore) can implement
 //! it without sharing Rust types.
-//! The shapes are [`BriefRecord`], [`ArtifactRecord`] and the plan post shape
-//! documented on [`Store::append_post`].
+//! The shapes are [`BriefRecord`], [`ArtifactRecord`], [`StageRow`] and the
+//! plan post shape documented on [`Store::append_post`].
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
+use agents::article::{
+    ArticleParts, Closing, HeroOption, Outline, SectionBlock, SectionDraft, SectionId,
+    SectionedReview,
+};
 use agents::pipeline::EditorReview;
 use agents::{Brief, MaybeSendSync};
 use async_trait::async_trait;
@@ -74,6 +78,121 @@ pub struct ArtifactRecord {
     /// Set once the PR is merged; publishing again is a no-op.
     #[serde(default)]
     pub merged_sha: Option<String>,
+    /// What the writer wrote, part by part (ADR-0058): a revision rewrites
+    /// only the parts the editor names and assembles the rest unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parts: Option<StoredParts>,
+    /// The latest review with its issues tagged by part; `review` is its
+    /// untagged form.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sectioned_review: Option<SectionedReview>,
+    /// The id of the latest job of each kind (`draft`, `review`) that worked
+    /// on the item, recorded when it starts: a retried phase (a new job id)
+    /// adopts the stages its predecessor stored ([`Store::get_stage`]).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub last_job: BTreeMap<String, u64>,
+}
+
+/// One part of an article as the artifact record keeps it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredSection {
+    /// `intro`, `s1`, …
+    pub id: SectionId,
+    /// The outline's heading (empty for the intro).
+    pub heading: String,
+    pub blocks: Vec<SectionBlock>,
+    /// What later parts and the editor's summary are told about it.
+    pub digest: String,
+    pub words: u32,
+}
+
+/// The parts of an article (`ArtifactRecord.parts`): the outline, the intro
+/// and sections, the closing, the chosen hero and the shortlists the outline
+/// chose from (so a revision assembles the same page around a changed part,
+/// whatever the site's indexes say by then).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredParts {
+    pub outline: Outline,
+    /// The intro first, then `s1`…`sN`.
+    pub sections: Vec<StoredSection>,
+    pub closing: Closing,
+    pub hero: HeroOption,
+    pub context: crate::article::ArticleContext,
+}
+
+impl StoredParts {
+    /// The record of `parts` (digests and word counts computed here).
+    pub fn new(
+        parts: &ArticleParts,
+        hero: HeroOption,
+        context: crate::article::ArticleContext,
+    ) -> Self {
+        let mut sections = vec![StoredSection {
+            id: SectionId::Intro,
+            heading: String::new(),
+            blocks: parts.intro.blocks.clone(),
+            digest: agents::article_prompts::digest_of(
+                &parts.outline,
+                SectionId::Intro,
+                &parts.intro,
+            ),
+            words: parts.intro.words(),
+        }];
+        for (i, (draft, outline)) in parts
+            .sections
+            .iter()
+            .zip(&parts.outline.sections)
+            .enumerate()
+        {
+            let id = SectionId::Section(u8::try_from(i + 1).unwrap_or(u8::MAX));
+            sections.push(StoredSection {
+                id,
+                heading: outline.heading.clone(),
+                blocks: draft.blocks.clone(),
+                digest: agents::article_prompts::digest_of(&parts.outline, id, draft),
+                words: draft.words(),
+            });
+        }
+        Self {
+            outline: parts.outline.clone(),
+            sections,
+            closing: parts.closing.clone(),
+            hero,
+            context,
+        }
+    }
+
+    /// Back to the parts the page is assembled from.
+    pub fn to_parts(&self) -> ArticleParts {
+        let draft = |s: &StoredSection| SectionDraft {
+            blocks: s.blocks.clone(),
+        };
+        let intro = self
+            .sections
+            .iter()
+            .find(|s| s.id == SectionId::Intro)
+            .map(draft)
+            .unwrap_or(SectionDraft { blocks: Vec::new() });
+        ArticleParts {
+            outline: self.outline.clone(),
+            intro,
+            sections: self
+                .sections
+                .iter()
+                .filter(|s| matches!(s.id, SectionId::Section(_)))
+                .map(draft)
+                .collect(),
+            closing: self.closing.clone(),
+        }
+    }
+}
+
+/// A stored stage result ([`Store::put_stage`]): the input hash it was
+/// computed from and its value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StageRow {
+    pub input_hash: String,
+    pub value: Value,
 }
 
 /// The orchestrator's storage. All methods are keyed by `company`.
@@ -136,9 +255,11 @@ pub trait Store: MaybeSendSync {
     ) -> Result<(), StoreError>;
 
     /// Append a post to an item's thread and return its id. `post` is
-    /// `{type, author, to?, text, payload}` with `type` one of
-    /// [`POST_TYPES`]; the store adds `id` and `item` (and, if it knows the
-    /// game clock, `day`/`minute`).
+    /// `{type, author, to?, text, payload, dedupe?, job_id?}` with `type` one
+    /// of [`POST_TYPES`]; the store adds `id` and `item` (and, if it knows
+    /// the game clock, `day`/`minute`). A post with a `dedupe` key that the
+    /// company already has is not written again: the existing post's id is
+    /// returned (a re-run job never posts twice).
     async fn append_post(
         &self,
         company: &str,
@@ -151,6 +272,27 @@ pub trait Store: MaybeSendSync {
     /// posts: {id: [post, ...]}}`, posts oldest first, at most
     /// [`PLAN_POSTS_PER_ITEM`] per item.
     async fn plan_json(&self, company: &str) -> Result<Value, StoreError>;
+
+    /// A stage result of a job (ADR-0058 decision 7), keyed
+    /// `(company, job_id, stage, index)`.
+    async fn get_stage(
+        &self,
+        company: &str,
+        job_id: u64,
+        stage: &str,
+        index: u32,
+    ) -> Result<Option<StageRow>, StoreError>;
+
+    /// Stores a stage result unless the key has one: the first write wins,
+    /// and the stored row is returned.
+    async fn put_stage(
+        &self,
+        company: &str,
+        job_id: u64,
+        stage: &str,
+        index: u32,
+        row: StageRow,
+    ) -> Result<StageRow, StoreError>;
 }
 
 macro_rules! forward_store {
@@ -198,6 +340,25 @@ macro_rules! forward_store {
             async fn plan_json(&self, c: &str) -> Result<Value, StoreError> {
                 (**self).plan_json(c).await
             }
+            async fn get_stage(
+                &self,
+                c: &str,
+                j: u64,
+                s: &str,
+                i: u32,
+            ) -> Result<Option<StageRow>, StoreError> {
+                (**self).get_stage(c, j, s, i).await
+            }
+            async fn put_stage(
+                &self,
+                c: &str,
+                j: u64,
+                s: &str,
+                i: u32,
+                r: StageRow,
+            ) -> Result<StageRow, StoreError> {
+                (**self).put_stage(c, j, s, i, r).await
+            }
         }
     };
 }
@@ -214,6 +375,10 @@ struct Company {
     /// item → (title, brief)
     items: BTreeMap<String, (String, String)>,
     posts: BTreeMap<String, Vec<Value>>,
+    /// dedupe key → post id
+    dedupe: BTreeMap<String, String>,
+    /// (job_id, stage, index) → row
+    stages: BTreeMap<(u64, String, u32), StageRow>,
 }
 
 #[derive(Debug, Default)]
@@ -240,6 +405,11 @@ impl MemStore {
             next_post,
         } = &mut *g;
         f(companies.entry(company.to_string()).or_default(), next_post)
+    }
+
+    /// Stage keys of a company, `(job_id, stage, index)` in order.
+    pub fn stages(&self, company: &str) -> Vec<(u64, String, u32)> {
+        self.with(company, |c, _| c.stages.keys().cloned().collect())
     }
 
     /// Every transcript line of a company, `[{job_id, seq, speaker, text}]`
@@ -367,11 +537,18 @@ impl Store for MemStore {
             Some(t) if POST_TYPES.contains(&t) => {}
             other => return Err(StoreError(format!("unknown post type {other:?}"))),
         }
+        let dedupe = obj.get("dedupe").and_then(Value::as_str).map(String::from);
         Ok(self.with(company, |c, next| {
+            if let Some(id) = dedupe.as_ref().and_then(|k| c.dedupe.get(k)) {
+                return id.clone();
+            }
             *next += 1;
             let id = format!("post-{next}");
             obj.insert("id".into(), json!(id));
             obj.insert("item".into(), json!(item));
+            if let Some(k) = dedupe {
+                c.dedupe.insert(k, id.clone());
+            }
             c.posts
                 .entry(item.to_string())
                 .or_default()
@@ -396,6 +573,34 @@ impl Store for MemStore {
                 })
                 .collect();
             json!({"items": items, "todos": {}, "workstreams": {}, "goals": {}, "posts": posts})
+        }))
+    }
+
+    async fn get_stage(
+        &self,
+        company: &str,
+        job_id: u64,
+        stage: &str,
+        index: u32,
+    ) -> Result<Option<StageRow>, StoreError> {
+        Ok(self.with(company, |c, _| {
+            c.stages.get(&(job_id, stage.to_string(), index)).cloned()
+        }))
+    }
+
+    async fn put_stage(
+        &self,
+        company: &str,
+        job_id: u64,
+        stage: &str,
+        index: u32,
+        row: StageRow,
+    ) -> Result<StageRow, StoreError> {
+        Ok(self.with(company, |c, _| {
+            c.stages
+                .entry((job_id, stage.to_string(), index))
+                .or_insert(row)
+                .clone()
         }))
     }
 }

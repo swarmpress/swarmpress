@@ -7,8 +7,15 @@
 //! { "site_id": "cinqueterre.travel", "brand_name": "Cinque Terre Dispatch",
 //!   "language": "en", "quality_bar": 7, "simulate_deploy": false, "standup_max_turns": 4,
 //!   "knowledge_pack": "<the pack JSON text of GET /api/gateway/knowledge>",
-//!   "style_guide": { ... }, "writer_prompt": { ... } }
+//!   "style_guide": { ... }, "writer_prompt": { ... },
+//!   "llm_profile": "local" | "fake" | { "context_tokens": 16384, "reasoning_tokens": 2048, "chars_per_token": 3 },
+//!   "review_single_tokens": 3000, "seo_suffix": "The Dispatch" }
 //! ```
+//!
+//! `llm_profile` is the model's budget for the staged jobs (ADR-0058,
+//! default `local`); `review_single_tokens` the longest review read in one
+//! call ([`crate::REVIEW_SINGLE_TOKENS`]); `seo_suffix` what follows `" | "`
+//! in an article's `seo.title` (default: the brand name).
 //!
 //! `knowledge_pack` (JSON text, or the pack object) is the site at one
 //! commit: it is loaded with [`knowledge::pack::load`] into the binding's
@@ -21,6 +28,7 @@
 
 use std::sync::Arc;
 
+use agents::article_prompts::LlmProfile;
 use agents::prompts::SiteContext;
 use agents::StyleGuide;
 use knowledge::pack::{self, Pack, BLOG_INDEX_PATH};
@@ -28,7 +36,7 @@ use knowledge::KnowledgeBase;
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use crate::article::site_validator;
+use crate::article::{site_validator, site_validator_v2};
 use crate::run::SiteBinding;
 
 /// The site's house style, carried by the pack.
@@ -155,6 +163,29 @@ impl SiteBinding {
             format!("{what}: {e}")
         })?;
 
+        let llm = match present(v, "llm_profile") {
+            None => LlmProfile::default(),
+            Some(Value::String(name)) => LlmProfile::preset(name)
+                .ok_or_else(|| format!("site.llm_profile {name:?} is not `local` or `fake`"))?,
+            Some(obj) => {
+                serde_json::from_value(obj.clone()).map_err(|e| format!("site.llm_profile: {e}"))?
+            }
+        };
+        let article_guidance = writer_prompt
+            .as_ref()
+            .and_then(|w| w.pointer("/page_prompts/blog_article/writing_prompt"))
+            .and_then(Value::as_str)
+            .map(String::from);
+        let validator_v2 = knowledge
+            .as_ref()
+            .map(|k| site_validator_v2(&context, k.kb.clone()));
+
+        let seo_suffix = v
+            .get("seo_suffix")
+            .and_then(Value::as_str)
+            .unwrap_or(&brand_name)
+            .to_string();
+
         let small = |k: &str, d: u64| v.get(k).and_then(Value::as_u64).unwrap_or(d);
         Ok(SiteBinding {
             brand_name,
@@ -173,6 +204,15 @@ impl SiteBinding {
                 .unwrap_or(false),
             standup_max_turns: u32::try_from(small("standup_max_turns", 4))
                 .map_err(|e| e.to_string())?,
+            validator_v2,
+            llm,
+            review_single_tokens: u32::try_from(small(
+                "review_single_tokens",
+                u64::from(crate::REVIEW_SINGLE_TOKENS),
+            ))
+            .map_err(|e| e.to_string())?,
+            seo_suffix,
+            article_guidance,
             knowledge,
             style_source,
             writer_prompt_source,

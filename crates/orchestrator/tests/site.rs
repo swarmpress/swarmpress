@@ -125,7 +125,7 @@ fn a_binding_from_the_pack_carries_the_sites_style_guide_writer_prompt_and_close
 async fn standup_and_draft_run_on_a_pack_binding() {
     use std::sync::Arc;
 
-    use agents::{FakeLlm, FakeReply};
+    use agents::FakeReply;
     use orchestrator::{
         FakeGateway, JobKind, JobRequest, MemStore, Orchestrator, Outcome, StaffRef,
     };
@@ -152,7 +152,8 @@ async fn standup_and_draft_run_on_a_pack_binding() {
         revision: 0,
         staff: team.clone(),
     };
-    let llm = Arc::new(FakeLlm::new(vec![
+    // A scripted standup; the staged draft is answered by the fake writer.
+    let llm = Arc::new(agents::fake_writer::fake_writer(vec![
         FakeReply::Json(json!({"next": "staff-1", "prompt": "Giulia?", "done": false})),
         FakeReply::Text("The harvest starts Monday on the Manarola terraces.".into()),
         FakeReply::Json(json!({"next": "staff-1", "prompt": "", "done": true})),
@@ -160,16 +161,6 @@ async fn standup_and_draft_run_on_a_pack_binding() {
             "briefs": [{"title": "Harvest week in Manarola", "angle": "A day with the pickers",
                         "assignee": "staff-1", "keywords": ["manarola"], "target_words": 600}],
             "decisions": [], "escalations": []
-        })),
-        FakeReply::Json(json!({
-            "id": "x", "slug": {"en": "/en/blog/x"}, "title": {"en": "Harvest week in Manarola"},
-            "page_type": "blog-article",
-            "seo": {"title": "Harvest week in Manarola", "description": "On the terraces."},
-            "body": [
-                {"type": "heading", "level": 2, "text": "On the terraces"},
-                {"type": "paragraph", "markdown": "Maria and her sons have picked these terraces for thirty years."},
-                {"type": "callout", "style": "info", "content": "Ask before you walk in."}
-            ]
         })),
     ]));
     let site = binding(json!({"knowledge_pack": mini_pack_json()})).unwrap();

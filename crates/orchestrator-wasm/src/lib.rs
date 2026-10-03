@@ -9,6 +9,7 @@
 //! import init, { OrchestratorHandle } from 'orchestrator-wasm'
 //! await init()
 //! const orch = new OrchestratorHandle(store, gateway, llm, JSON.stringify(site))
+//! orch.setProgress((eventJson) => hud.progress(JSON.parse(eventJson)))   // optional
 //! const outcomes = JSON.parse(await orch.run(JSON.stringify(jobRequest)))
 //! ```
 //!
@@ -37,8 +38,8 @@ use agents::{Llm, LlmError, LlmRequest};
 use async_trait::async_trait;
 use js_sys::{Array, Function, Promise, Reflect, JSON};
 use orchestrator::{
-    DraftPr, Gateway, GatewayError, JobRequest, Orchestrator, Outcome, SiteBinding, Store,
-    StoreError,
+    DraftPr, Gateway, GatewayError, JobRequest, Orchestrator, Outcome, Progress, ProgressEvent,
+    SiteBinding, StageRow, Store, StoreError,
 };
 use serde_json::{json, Value};
 use wasm_bindgen::prelude::*;
@@ -59,7 +60,22 @@ export interface OrchestratorStore {
   /** Returns the new post id. */
   appendPost(company: string, item: string, postJson: string): Promise<string> | string
   planJson(company: string): Promise<string | object> | string | object
+  /** A stage result `{input_hash, value}` of a job (ADR-0058), or null. */
+  getStage(company: string, jobId: number, stage: string, index: number):
+    Promise<string | object | null> | string | object | null
+  /** Stores `rowJson` (`{input_hash, value}`) unless the key has a row (first write wins); returns the stored row. */
+  putStage(company: string, jobId: number, stage: string, index: number, rowJson: string):
+    Promise<string | object> | string | object
 }
+
+/**
+ * A stage of a job, as counts (`orchestrator::ProgressEvent`, JSON text):
+ * `{job_id, kind, revision, work_item, staff, persona, role, stage, index, total, state, detail}`
+ * with `state` one of `started`, `done`, `reused`, `failed` and `stage` one of `job`,
+ * `context`, `outline`, `section` (index 0 is the intro), `closing`, `fix`, `retitle`,
+ * `revise`, `review`, `review_section`, `review_summary`, `commit`.
+ */
+export type OrchestratorProgress = (eventJson: string) => void
 
 /** Repo operations (the browser's is the central gateway client). */
 export interface OrchestratorGateway {
@@ -232,6 +248,61 @@ impl Store for JsStore {
         self.call_json("planJson", &[s(c)])
             .await?
             .ok_or_else(|| StoreError("planJson returned nothing".into()))
+    }
+
+    async fn get_stage(
+        &self,
+        c: &str,
+        job_id: u64,
+        stage: &str,
+        index: u32,
+    ) -> Result<Option<StageRow>, StoreError> {
+        #[allow(clippy::cast_precision_loss)]
+        let job = JsValue::from_f64(job_id as f64);
+        self.call_json("getStage", &[s(c), job, s(stage), JsValue::from(index)])
+            .await?
+            .map(|v| serde_json::from_value(v).map_err(|e| StoreError(format!("getStage: {e}"))))
+            .transpose()
+    }
+
+    async fn put_stage(
+        &self,
+        c: &str,
+        job_id: u64,
+        stage: &str,
+        index: u32,
+        row: StageRow,
+    ) -> Result<StageRow, StoreError> {
+        #[allow(clippy::cast_precision_loss)]
+        let job = JsValue::from_f64(job_id as f64);
+        let text = serde_json::to_string(&row).map_err(|e| StoreError(e.to_string()))?;
+        let stored = self
+            .call_json(
+                "putStage",
+                &[s(c), job, s(stage), JsValue::from(index), s(&text)],
+            )
+            .await?;
+        match stored {
+            Some(v) => serde_json::from_value(v).map_err(|e| StoreError(format!("putStage: {e}"))),
+            None => Ok(row),
+        }
+    }
+}
+
+// ---------------------------------------------------------------- Progress
+
+/// [`Progress`] over the JS function set with `setProgress` (none: silent).
+/// A throwing listener is ignored: progress never fails a job.
+struct JsProgress(Rc<RefCell<Option<Function>>>);
+
+impl Progress for JsProgress {
+    fn report(&self, event: &ProgressEvent) {
+        let Some(f) = self.0.borrow().clone() else {
+            return;
+        };
+        if let Ok(text) = serde_json::to_string(event) {
+            let _ = f.call1(&JsValue::NULL, &JsValue::from_str(&text));
+        }
     }
 }
 
@@ -508,6 +579,7 @@ pub fn version() -> String {
 pub struct OrchestratorHandle {
     orch: Rc<Orchestrator<JsStore, JsGateway>>,
     work_item: Rc<RefCell<Option<String>>>,
+    progress: Rc<RefCell<Option<Function>>>,
 }
 
 #[wasm_bindgen]
@@ -529,10 +601,33 @@ impl OrchestratorHandle {
         };
         #[allow(clippy::arc_with_non_send_sync)] // wasm32: one thread
         let llm: Arc<dyn Llm> = Arc::new(JsLlm(llm));
+        let progress = Rc::new(RefCell::new(None));
+        #[allow(clippy::arc_with_non_send_sync)] // wasm32: one thread
+        let sink: Arc<dyn Progress> = Arc::new(JsProgress(progress.clone()));
         Ok(OrchestratorHandle {
-            orch: Rc::new(Orchestrator::new(JsStore(store), gateway, llm, site)),
+            orch: Rc::new(
+                Orchestrator::new(JsStore(store), gateway, llm, site).with_progress(sink),
+            ),
             work_item,
+            progress,
         })
+    }
+
+    /// Hears every stage of every job (`OrchestratorProgress`: one
+    /// `ProgressEvent` as JSON text per call); `null` stops it.
+    #[wasm_bindgen(js_name = setProgress)]
+    pub fn set_progress(&self, listener: JsValue) -> Result<(), JsError> {
+        let f = if listener.is_null() || listener.is_undefined() {
+            None
+        } else {
+            Some(
+                listener
+                    .dyn_into::<Function>()
+                    .map_err(|_| JsError::new("setProgress takes a function or null"))?,
+            )
+        };
+        *self.progress.borrow_mut() = f;
+        Ok(())
     }
 
     /// What the site binding was built from, as JSON text:

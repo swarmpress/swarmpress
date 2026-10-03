@@ -1,58 +1,32 @@
 //! The MVP article loop through the orchestrator (docs/mvp.md), with the sim's
 //! side played by the test: standup → work item → draft PR → review 6 →
 //! revision → review 8 → publish (squash merge) → deploy landed.
-//! MemStore + FakeLlm, with FakeGateway and with GithubGateway(FakeGitHub).
+//! MemStore + FakeLlm (a scripted standup, then the brief-driven fake writer
+//! for the staged Draft and Review jobs, ADR-0058), with FakeGateway and with
+//! GithubGateway(FakeGitHub). The site binding is the `cinqueterre-mini`
+//! knowledge pack, so the article is checked against the site's closed world.
 
 use std::sync::Arc;
 
-use agents::prompts::SiteContext;
-use agents::{FakeLlm, FakeReply, StyleGuide};
+use agents::fake_writer::{self, REVIEW_NOTE, REVISION_LINE};
+use agents::{FakeLlm, FakeReply};
 use github::{FakeGitHub, RepoId};
 use orchestrator::{
-    site_validator, ConfigSource, Digest, FakeGateway, Gateway, GithubGateway, JobKind, JobRequest,
-    MemStore, Orchestrator, Outcome, SiteBinding, StaffRef, Store,
+    Digest, FakeGateway, Gateway, GithubGateway, JobKind, JobRequest, LlmProfile, MemStore,
+    Orchestrator, Outcome, StaffRef, Store,
 };
 use serde_json::{json, Value};
 
-const COMPANY: &str = "company-1";
+mod common;
+use common::{site, team, COMPANY};
+
 const PATH: &str = "content/pages/blog/harvest-week-in-manarola.json";
 
-fn team() -> Vec<StaffRef> {
-    [
-        ("staff-4", "sophia", "editor-in-chief"),
-        ("staff-5", "marco", "editor"),
-        ("staff-1", "giulia", "writer"),
-        ("staff-2", "isabella", "writer"),
-    ]
-    .into_iter()
-    .map(|(id, persona, role)| StaffRef {
-        id: id.into(),
-        persona: persona.into(),
-        role: role.into(),
-    })
-    .collect()
-}
-
-fn page(paragraph: &str) -> Value {
-    json!({
-        "id": "ignored-by-orchestrator", "slug": {"en": "/en/blog/x"}, "title": {"en": "Harvest week in Manarola"},
-        "page_type": "blog-article",
-        "seo": {"title": "Harvest week in Manarola", "description": "Picking Sciacchetrà grapes on the terraces."},
-        "body": [
-            {"type": "heading", "level": 2, "text": "On the terraces"},
-            {"type": "paragraph", "markdown": paragraph},
-            {"type": "callout", "style": "info", "content": "The harvest moves with the weather; check before you go."}
-        ]
-    })
-}
-
-fn review(decision: &str, score: u8, notes: &str) -> Value {
-    json!({"decision": decision, "score": score, "notes": notes, "issues": [], "high_risk": []})
-}
-
-fn script() -> Vec<FakeReply> {
+/// The scripted standup (moderator picks Giulia, Giulia pitches, moderator
+/// closes, outcome with one brief); every later call is answered by the
+/// brief-driven fake writer.
+fn standup() -> Vec<FakeReply> {
     vec![
-        // standup: moderator picks Giulia, Giulia pitches, moderator closes, outcome
         FakeReply::Json(json!({"next": "staff-1", "prompt": "Giulia, your pitch?", "done": false})),
         FakeReply::Text(
             "The Sciacchetrà harvest starts Monday; I want to be on the Manarola terraces.".into(),
@@ -63,37 +37,22 @@ fn script() -> Vec<FakeReply> {
                         "assignee": "staff-1", "keywords": ["sciacchetrà", "manarola harvest"], "target_words": 600}],
             "decisions": ["Giulia covers the harvest"], "escalations": []
         })),
-        // draft 0, review 6, draft 1 (revision), review 8
-        FakeReply::Json(page(
-            "We climbed to the terraces at seven, before the sun reached the vines.",
-        )),
-        FakeReply::Json(review("needs_changes", 6, "Tell us who the pickers are.")),
-        FakeReply::Json(page(
-            "Maria and her sons have picked these terraces for thirty years; we joined them at seven.",
-        )),
-        FakeReply::Json(review("approve", 8, "Now it has people in it.")),
     ]
 }
 
-fn style() -> StyleGuide {
-    StyleGuide::from_json_str(include_str!("../../agents/tests/fixtures/style-guide.json")).unwrap()
+fn fake() -> FakeLlm {
+    fake_writer::fake_writer(standup())
 }
 
-fn site() -> SiteBinding {
-    let context = SiteContext::new("cinqueterre.travel", style(), None).unwrap();
-    SiteBinding {
-        site_id: "cinqueterre.travel".into(),
-        brand_name: "Cinque Terre Dispatch".into(),
-        language: "en".into(),
-        validator: site_validator(&context),
-        context,
-        quality_bar: 7,
-        simulate_deploy: true,
-        standup_max_turns: 4,
-        knowledge: None,
-        style_source: ConfigSource::Binding,
-        writer_prompt_source: ConfigSource::Absent,
-    }
+/// The `## Task:` line of a recorded call.
+fn task(call: &agents::llm::RecordedCall) -> String {
+    call.request
+        .messages
+        .first()
+        .and_then(|m| m.text.lines().next())
+        .and_then(|l| l.strip_prefix("## Task: "))
+        .unwrap_or("")
+        .to_string()
 }
 
 fn job(job_id: u64, kind: JobKind, brief_ref: Option<u64>, revision: u8) -> JobRequest {
@@ -156,7 +115,7 @@ fn fake_github() -> (GithubGateway, Gh) {
 }
 
 async fn full_loop<G: Gateway>(gateway: G, repo: &dyn Repo) -> Orchestrator<MemStore, G> {
-    let llm = Arc::new(FakeLlm::new(script()));
+    let llm = Arc::new(fake());
     let orch = Orchestrator::new(MemStore::new(), gateway, llm.clone(), site());
 
     // 09:00 standup → one brief for Giulia, edited by Marco
@@ -217,9 +176,26 @@ async fn full_loop<G: Gateway>(gateway: G, repo: &dyn Repo) -> Orchestrator<MemS
         .await
         .unwrap();
     assert!(completed(&out).ok);
-    let revise_prompt = &llm.calls()[6].request.messages[0].text;
+    // The staged calls: the draft in stages, one review, a revision of the
+    // one part the review names (ADR-0058).
+    let tasks: Vec<String> = llm.calls().iter().skip(4).map(task).collect();
+    assert_eq!(
+        tasks,
+        [
+            "outline",
+            "intro",
+            "section s1 of 3",
+            "section s2 of 3",
+            "section s3 of 3",
+            "closing",
+            "review",
+            "revise s2"
+        ],
+        "{tasks:?}"
+    );
+    let revise_prompt = &llm.calls()[11].request.messages[0].text;
     assert!(
-        revise_prompt.contains("Tell us who the pickers are."),
+        revise_prompt.contains(REVIEW_NOTE),
         "revision sees the review"
     );
 
@@ -231,6 +207,10 @@ async fn full_loop<G: Gateway>(gateway: G, repo: &dyn Repo) -> Orchestrator<MemS
     )
     .clone();
     assert_eq!(d.score, 8);
+    // Every call fits the resident model's context.
+    for call in llm.calls() {
+        assert!(LlmProfile::LOCAL.fits(&call.request), "{}", task(&call));
+    }
 
     // Publish: squash-merge, then the (simulated) deploy lands.
     let out = orch
@@ -252,10 +232,20 @@ async fn full_loop<G: Gateway>(gateway: G, repo: &dyn Repo) -> Orchestrator<MemS
         json!("/en/blog/harvest-week-in-manarola")
     );
     assert!(
-        live.to_string().contains("Maria and her sons"),
+        live.to_string().contains(REVISION_LINE),
         "the revised draft is what shipped"
     );
-    content_schema::validate_page(&live).unwrap();
+    // The article shape for the frozen theme, valid in the site's closed world.
+    let validator = orch.site().validator_v2.clone().unwrap();
+    assert_eq!(validator.check(&live), vec![]);
+    let body = live["body"].as_array().unwrap();
+    assert_eq!(body[0]["type"], json!("editorial-hero"));
+    assert_eq!(body.last().unwrap()["type"], json!("closing-note"));
+    assert_eq!(live["slug"].as_object().unwrap().len(), 4);
+    assert!(live["seo"]["title"]["en"]
+        .as_str()
+        .unwrap()
+        .ends_with(" | The Dispatch"));
 
     // Publishing again is idempotent (no second merge, same sha).
     let again = orch
@@ -285,7 +275,13 @@ async fn full_loop<G: Gateway>(gateway: G, repo: &dyn Repo) -> Orchestrator<MemS
     assert_eq!(posts[3]["author"], json!("staff-5"));
     assert_eq!(posts[3]["payload"]["verdict"], json!("changes"));
     assert_eq!(posts[6]["payload"]["verdict"], json!("approve"));
+    assert_eq!(
+        posts[3]["payload"]["issues"],
+        json!([{"section": "s2", "problem": REVIEW_NOTE, "fix": fake_writer::REVIEW_FIX}]),
+        "the review's issues are tagged by part"
+    );
     assert_eq!(llm.remaining(), 0, "every scripted call was used");
+    assert_eq!(llm.calls().len(), 4 + 6 + 1 + 1 + 1);
     orch
 }
 
@@ -307,13 +303,12 @@ async fn standup_to_published_article_over_github_gateway() {
 }
 
 async fn refused<G: Gateway>(gateway: G, repo: &dyn Repo) {
-    let mut s = script();
-    s.truncate(4);
+    let mut s = standup();
     s.push(FakeReply::Error(agents::LlmError::Refusal {
         category: Some("other".into()),
         explanation: None,
     }));
-    let llm = Arc::new(FakeLlm::new(s));
+    let llm = Arc::new(fake_writer::fake_writer(s));
     let orch = Orchestrator::new(MemStore::new(), gateway, llm, site());
     let out = orch.run(&job(1, JobKind::Standup, None, 0)).await.unwrap();
     let brief_ref = match &out[0] {
@@ -354,7 +349,7 @@ async fn refused_draft_over_github_gateway() {
 
 #[tokio::test]
 async fn review_before_draft_is_an_invalid_job() {
-    let llm = Arc::new(FakeLlm::new(script()));
+    let llm = Arc::new(fake());
     let orch = Orchestrator::new(MemStore::new(), FakeGateway::new(), llm, site());
     let out = orch.run(&job(1, JobKind::Standup, None, 0)).await.unwrap();
     let Outcome::MeetingOutcome { briefs, .. } = &out[0] else {
@@ -376,7 +371,7 @@ async fn review_before_draft_is_an_invalid_job() {
 /// side's persona from the brief record.
 #[tokio::test]
 async fn sim_shaped_staffing_runs_the_whole_loop() {
-    let llm = Arc::new(FakeLlm::new(script()));
+    let llm = Arc::new(fake());
     let gw = Arc::new(FakeGateway::new());
     let orch = Orchestrator::new(MemStore::new(), gw.clone(), llm, site());
     let out = orch.run(&job(1, JobKind::Standup, None, 0)).await.unwrap();

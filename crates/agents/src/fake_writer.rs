@@ -47,22 +47,27 @@ pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
         .trim();
     let p = Prompt(prompt);
     let words = p.number("Words: about ");
+    // The second half of a section written in two halves starts elsewhere in
+    // the sentence pool, so the halves do not repeat each other.
+    let shift = task
+        .split_once(" part ")
+        .map_or(0, |(_, rest)| leading_number(rest).saturating_sub(1) * 2);
     let empty = json!({});
     let schema = schema.unwrap_or(&empty);
     let value = if task == "outline" {
         outline(&p, schema)
     } else if task == "intro" || task.starts_with("intro part") {
-        section_json(&p, 0, words, false)
+        section_json(&p, 0, shift, words, false)
     } else if let Some(rest) = task.strip_prefix("section s") {
-        section_json(&p, leading_number(rest), words, false)
+        section_json(&p, leading_number(rest), shift, words, false)
     } else if task == "closing" {
         json!({"content": closing_text(&p, closing_words(p.number("Target length: about ")))})
     } else if let Some(rest) = task.strip_prefix("fix ") {
-        section_json(&p, section_index(rest), words, false)
+        section_json(&p, section_index(rest), 0, words, false)
     } else if task == "revise closing" {
         json!({"content": format!("{REVISION_LINE} {}", closing_text(&p, closing_words(p.number("Target length: about "))))})
     } else if let Some(rest) = task.strip_prefix("revise ") {
-        section_json(&p, section_index(rest), words, true)
+        section_json(&p, section_index(rest), 0, words, true)
     } else if task == "retitle" {
         let (title, dek) = title_and_dek(&p);
         json!({"title": title, "dek": dek})
@@ -227,33 +232,52 @@ fn outline(p: &Prompt<'_>, schema: &Value) -> Value {
     })
 }
 
-/// Sentence templates: `{a}` is what the part is about, `{b}` one of its
-/// points; `{A}`/`{B}` the same, capitalised.
-const SENTENCES: [&str; 24] = [
-    "Start with {a}, because everything else here follows from it.",
-    "{A} is easiest to understand early in the day, before the paths get busy.",
-    "Locals talk about {b} as part of ordinary life, not as a show for visitors.",
-    "If you only have an hour, spend it on {b} and leave the rest for another visit.",
-    "The details matter more than the view, and small signs of {a} are everywhere once you look.",
-    "Ask at a family-run shop about {b}; people are generous with directions and advice.",
-    "Wear shoes with grip, carry water and expect steps wherever {a} takes you.",
-    "Timetables and opening hours change with the season, so check them on the day.",
-    "{B} changes with the weather, which is part of its appeal and part of the planning.",
-    "There is no need to rush, since {a} rewards a slow pace and a second look.",
-    "Many visitors walk past {b} without noticing, then wish they had stopped.",
-    "Morning light is soft on the terraces, and the quiet makes {a} easier to follow.",
-    "A good plan leaves room for a coffee, a bench and a conversation about {b}.",
-    "The traditional way of doing things is still visible in {a} if you know where to look.",
-    "Bring a little cash, since smaller places do not always take cards.",
-    "Respect private land and working areas, because {b} is a livelihood and not a backdrop.",
-    "On busy days the trains fill quickly, so travel early or late when you can.",
-    "What you notice first about {a} is the scale, with everything built by hand and close together.",
-    "Seasonal rhythms shape {b}, and the calendar here is set by harvests and the sea.",
-    "Take a moment to listen, because the sounds of {a} say as much as any sign.",
-    "Keep the afternoon free for {b}, when the light turns warm and the crowds thin.",
-    "Nothing here needs a ticket, only a willingness to climb and to look closely.",
-    "The best way to remember {a} is to write down one small detail before you leave.",
-    "People who return year after year say {b} is the reason they keep coming back.",
+/// A sentence is an opener, a subject (what the part is about, or one of its
+/// points or the brief's keywords), a middle and a closer, each picked with
+/// its own stride from pools of coprime sizes (11, 13, 12), so no two
+/// paragraphs of an article say the same thing in
+/// the same words (the near-duplicate check, `agents::article`).
+const OPENERS: [&str; 11] = [
+    "Early in the day,",
+    "On a quiet weekday,",
+    "After the first train,",
+    "In the late afternoon,",
+    "When the light turns warm,",
+    "Before the paths fill,",
+    "On a wet morning,",
+    "Between two trains,",
+    "Once the boats are in,",
+    "On the walk down,",
+    "After a slow lunch,",
+];
+const MIDDLES: [&str; 13] = [
+    "is easiest to understand",
+    "rewards a little patience",
+    "shows how the village works",
+    "makes more sense with a local at your side",
+    "feels close and unhurried",
+    "asks for good shoes and water",
+    "changes with the season",
+    "is part of ordinary life here",
+    "is worth a second look",
+    "says more than any sign",
+    "keeps its own slow rhythm",
+    "is best seen on foot",
+    "tells you where you are",
+];
+const CLOSERS: [&str; 12] = [
+    "and nobody minds a question.",
+    "so give it time.",
+    "even for people who have seen it before.",
+    "if you keep to the path.",
+    "and the rest of the day can wait.",
+    "before the crowds arrive.",
+    "which is why people come back.",
+    "so check the timetable first.",
+    "and it costs nothing to look.",
+    "while the village goes about its work.",
+    "long after the photographs are taken.",
+    "as long as you respect the people working there.",
 ];
 
 const CLOSING: [&str; 6] = [
@@ -265,28 +289,13 @@ const CLOSING: [&str; 6] = [
     "Come back in another season and the same places will show you something new.",
 ];
 
-fn capitalise(s: &str) -> String {
-    let mut c = s.chars();
-    c.next()
-        .map(|f| f.to_uppercase().chain(c).collect())
-        .unwrap_or_default()
-}
-
-fn fill(template: &str, a: &str, b: &str) -> String {
-    template
-        .replace("{A}", &capitalise(a))
-        .replace("{B}", &capitalise(b))
-        .replace("{a}", a)
-        .replace("{b}", b)
-}
-
 fn count(s: &str) -> u32 {
     u32::try_from(s.split_whitespace().count()).unwrap_or(u32::MAX)
 }
 
 /// About `words` words in paragraphs of four sentences, deterministic for
-/// `(index, a, b)`.
-fn paragraphs(index: u32, words: u32, a: &str, b: &str, lead: Option<&str>) -> Vec<String> {
+/// `(start, subjects)`; `start` numbers the paragraphs within the article.
+fn paragraphs(start: u32, words: u32, subjects: &[String], lead: Option<&str>) -> Vec<String> {
     let goal = words.max(20);
     let mut out: Vec<String> = Vec::new();
     let mut total = 0;
@@ -295,11 +304,21 @@ fn paragraphs(index: u32, words: u32, a: &str, b: &str, lead: Option<&str>) -> V
         total += count(lead);
         current.push(lead.to_string());
     }
+    let n = subjects.len().max(1);
     let mut p = 0u32;
     let mut k = 0u32;
     while total < goal.saturating_sub(4) {
-        let base = (index * 11 + p * 4) as usize;
-        let sentence = fill(SENTENCES[(base + k as usize) % SENTENCES.len()], a, b);
+        let g = (start + p) as usize;
+        let k_ = k as usize;
+        let subject = subjects
+            .get((g + k_) % n)
+            .map_or("the village", String::as_str);
+        let sentence = format!(
+            "{} {subject} {} {}",
+            OPENERS[(g * 5 + k_) % OPENERS.len()],
+            MIDDLES[(g * 7 + k_ * 5) % MIDDLES.len()],
+            CLOSERS[(g * 11 + k_ * 7) % CLOSERS.len()],
+        );
         total += count(&sentence);
         current.push(sentence);
         k += 1;
@@ -316,28 +335,26 @@ fn paragraphs(index: u32, words: u32, a: &str, b: &str, lead: Option<&str>) -> V
     out
 }
 
-fn section_json(p: &Prompt<'_>, index: u32, words: u32, revised: bool) -> Value {
+fn section_json(p: &Prompt<'_>, index: u32, variant: u32, words: u32, revised: bool) -> Value {
     let words = if words == 0 { 120 } else { words };
     let kws = keywords(p);
     let points = p.list("Points: ", ";");
-    let (a, b) = if index == 0 {
-        (
-            p.field("Title: ").to_lowercase(),
-            kws.first().cloned().unwrap_or_default(),
-        )
+    let mut subjects: Vec<String> = if index == 0 {
+        vec![p.field("Title: ").to_lowercase()]
     } else {
-        let heading = p.field("Heading: ").to_lowercase();
-        let a = points.first().cloned().unwrap_or(heading);
-        let b = points
-            .get(1)
-            .cloned()
-            .unwrap_or_else(|| kws[index as usize % kws.len()].clone());
-        (a.to_lowercase(), b.to_lowercase())
+        let mut v = points.clone();
+        if v.is_empty() {
+            v.push(p.field("Heading: ").to_string());
+        }
+        v
     };
+    subjects.extend(kws.iter().cloned());
+    let subjects: Vec<String> = subjects.into_iter().map(|x| x.to_lowercase()).collect();
+    let b = subjects.get(1).cloned().unwrap_or_default();
     let lead = revised.then_some(REVISION_LINE);
     let tip = index == 2;
     let body_words = if tip { words.saturating_sub(20) } else { words };
-    let mut blocks: Vec<Value> = paragraphs(index, body_words, &a, &b, lead)
+    let mut blocks: Vec<Value> = paragraphs(index * 9 + variant * 100, body_words, &subjects, lead)
         .into_iter()
         .map(|t| json!({"type": "paragraph", "text": t, "items": []}))
         .collect();

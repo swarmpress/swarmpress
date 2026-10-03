@@ -2,22 +2,20 @@
 
 use std::sync::Arc;
 
-use agents::pipeline::{
-    draft_step, review_step, DraftInput, DraftStep, EditorReview, PageValidator, PipelineConfig,
-    ReviewDecision,
-};
+use agents::article_prompts::{LlmProfile, STAGE_BLOCK_DOCS};
+use agents::pipeline::PageValidator;
 use agents::prompts::{resolve, templates, PromptLayer, SiteContext, Vars};
 use agents::{
     run_meeting, Brief, CompanyPrompt, Llm, LlmError, MeetingEvent, MeetingSpec, Participant,
-    Persona, Role, Staffing,
+    Persona, Role,
 };
 use serde_json::{json, Value};
 
-use crate::article::{article_schema, brief_ref_for, slugify, word_count, ARTICLE_BLOCK_DOCS};
+use crate::article::{brief_ref_for, slugify, SiteValidatorV2};
 use crate::gateway::{Gateway, GatewayError};
 use crate::site::{ConfigSource, SiteKnowledge};
 use crate::store::{ArtifactRecord, BriefRecord, Store, StoreError};
-use crate::{BriefOut, Digest, JobKind, JobRequest, Outcome, StaffRef};
+use crate::{BriefOut, Digest, JobKind, JobRequest, Outcome, Progress, StaffRef};
 
 /// Infrastructure failures. Agent failures (refusals, invalid output) are not
 /// errors: they come back as `ok: false` digests with a `status` post.
@@ -39,13 +37,13 @@ pub enum OrchestratorError {
     Corrupt(String),
 }
 
-type Result<T> = std::result::Result<T, OrchestratorError>;
+pub(crate) type Result<T> = std::result::Result<T, OrchestratorError>;
 
-fn invalid(msg: impl Into<String>) -> OrchestratorError {
+pub(crate) fn invalid(msg: impl Into<String>) -> OrchestratorError {
     OrchestratorError::Invalid(msg.into())
 }
 
-fn corrupt(e: serde_json::Error) -> OrchestratorError {
+pub(crate) fn corrupt(e: serde_json::Error) -> OrchestratorError {
     OrchestratorError::Corrupt(e.to_string())
 }
 
@@ -60,17 +58,32 @@ pub struct SiteBinding {
     pub brand_name: String,
     pub language: String,
     pub context: SiteContext,
+    /// The schema-v1 page validator of the single-call draft (kept for the
+    /// legacy pipeline; the staged Draft job uses [`Self::validator_v2`]).
     pub validator: Arc<dyn PageValidator>,
+    /// The staged article's validator (`site_validator_v2`): schema v2,
+    /// article profile, house style and the closed world of
+    /// [`Self::knowledge`]. `None` without a knowledge pack.
+    pub validator_v2: Option<Arc<SiteValidatorV2>>,
+    /// The model's budget: every staged call fits its context (ADR-0058).
+    pub llm: LlmProfile,
+    /// A review whose reading text and checks are estimated at no more than
+    /// this many tokens is one call; a longer one is read part by part.
+    pub review_single_tokens: u32,
+    /// After `" | "` in an article's `seo.title`.
+    pub seo_suffix: String,
+    /// The site's guidance for articles (`writer-prompt.json`
+    /// `page_prompts.blog_article.writing_prompt`), given to the outline.
+    pub article_guidance: Option<String>,
     /// Approval bar (the sim applies it; also shown to the editor).
     pub quality_bar: u8,
     /// Test and dev: report `DeployLanded` right after the merge instead of
     /// waiting for the site repo's `deployment_status` webhook.
     pub simulate_deploy: bool,
     pub standup_max_turns: u32,
-    /// The site's knowledge pack, loaded (ADR-0061). `None` without a pack
-    /// (tests, the harness). The Draft and Review jobs do not read it yet;
-    /// the staged Draft job (P2) builds its `context#0` from it with
-    /// [`crate::article_context`].
+    /// The site's knowledge pack, loaded (ADR-0061). The staged Draft job
+    /// builds its `context#0` from it ([`crate::article_context`]) and
+    /// validates against it; without a pack a Draft job is an invalid job.
     pub knowledge: Option<SiteKnowledge>,
     /// Where [`SiteContext::style_guide`] came from.
     pub style_source: ConfigSource,
@@ -81,10 +94,11 @@ pub struct SiteBinding {
 /// Runs sim jobs. Generic over where text lives ([`Store`]) and how the repo
 /// is reached ([`Gateway`]); the LLM is the agents crate's [`Llm`].
 pub struct Orchestrator<S: Store, G: Gateway> {
-    store: S,
-    gateway: G,
-    llm: Arc<dyn Llm>,
-    site: SiteBinding,
+    pub(crate) store: S,
+    pub(crate) gateway: G,
+    pub(crate) llm: Arc<dyn Llm>,
+    pub(crate) site: SiteBinding,
+    pub(crate) progress: Option<Arc<dyn Progress>>,
 }
 
 fn role_of(r: &str) -> Option<Role> {
@@ -97,7 +111,7 @@ fn role_of(r: &str) -> Option<Role> {
 }
 
 /// Builtin persona by catalog slug ("giulia") or name ("Giulia").
-fn persona(slug: &str) -> Result<Persona> {
+pub(crate) fn persona(slug: &str) -> Result<Persona> {
     let mut chars = slug.chars();
     let name: String = chars
         .next()
@@ -108,7 +122,7 @@ fn persona(slug: &str) -> Result<Persona> {
         .ok_or_else(|| OrchestratorError::Prompt(format!("unknown persona {slug}")))
 }
 
-fn failed(job_id: u64) -> Outcome {
+pub(crate) fn failed(job_id: u64) -> Outcome {
     Outcome::JobCompleted {
         job_id,
         digest: Digest {
@@ -128,7 +142,14 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             gateway,
             llm,
             site,
+            progress: None,
         }
+    }
+
+    /// Reports every stage of every job to `progress` ([`crate::ProgressEvent`]).
+    pub fn with_progress(mut self, progress: Arc<dyn Progress>) -> Self {
+        self.progress = Some(progress);
+        self
     }
 
     pub fn store(&self) -> &S {
@@ -149,20 +170,25 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     pub async fn run(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
         match req.kind {
             JobKind::Standup => self.standup(req).await,
-            JobKind::Draft => self.draft(req).await,
-            JobKind::Review => self.review(req).await,
+            JobKind::Draft => self.staged_draft(req).await,
+            JobKind::Review => self.staged_review(req).await,
             JobKind::Publish => self.publish(req).await,
         }
     }
 
     // ------------------------------------------------------------ prompts
 
-    fn system_prompt(&self, company: &CompanyPrompt, p: &Persona, extra: Vars) -> Result<String> {
+    pub(crate) fn system_prompt(
+        &self,
+        company: &CompanyPrompt,
+        p: &Persona,
+        extra: Vars,
+    ) -> Result<String> {
         let agent = PromptLayer::from_persona(p, &self.site.language);
         let mut runtime = Vars::new();
         runtime.insert("brand_name".into(), json!(self.site.brand_name));
         runtime.insert("approve_threshold".into(), json!(self.site.quality_bar));
-        runtime.insert("block_docs".into(), json!(ARTICLE_BLOCK_DOCS));
+        runtime.insert("block_docs".into(), json!(STAGE_BLOCK_DOCS));
         runtime.extend(extra);
         let site = self.site.context.variables_only();
         let layer = if company.id == "writer" {
@@ -191,25 +217,6 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         })
     }
 
-    fn staffing(&self, writer: &StaffRef, editor: &StaffRef) -> Result<Staffing> {
-        let w = persona(&writer.persona)?;
-        let e = persona(&editor.persona)?;
-        Ok(Staffing {
-            writer_id: writer.id.clone(),
-            writer_seniority: Some(w.seniority),
-            writer_system: self.system_prompt(&templates::writer(), &w, Vars::new())?,
-            editor_id: editor.id.clone(),
-            editor_seniority: Some(e.seniority),
-            editor_system: self.system_prompt(&templates::editor(), &e, Vars::new())?,
-        })
-    }
-
-    fn pipeline_config(&self) -> PipelineConfig {
-        let mut cfg = PipelineConfig::new(article_schema());
-        cfg.approve_threshold = self.site.quality_bar;
-        cfg
-    }
-
     // ------------------------------------------------------------ lookups
 
     fn find<'a>(&self, req: &'a JobRequest, role: &str) -> Option<&'a StaffRef> {
@@ -218,7 +225,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
 
     /// Staff member `id` from the job, else as recorded with the brief, else
     /// anyone in the job with `fallback_role`.
-    fn staff_by_id(
+    pub(crate) fn staff_by_id(
         &self,
         req: &JobRequest,
         rec: &BriefRecord,
@@ -234,13 +241,13 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             .ok_or_else(|| invalid(format!("job {} has no {fallback_role}", req.job_id)))
     }
 
-    fn work_item<'a>(&self, req: &'a JobRequest) -> Result<&'a str> {
+    pub(crate) fn work_item<'a>(&self, req: &'a JobRequest) -> Result<&'a str> {
         req.work_item
             .as_deref()
             .ok_or_else(|| invalid(format!("job {} has no work item", req.job_id)))
     }
 
-    async fn load_brief(&self, req: &JobRequest) -> Result<BriefRecord> {
+    pub(crate) async fn load_brief(&self, req: &JobRequest) -> Result<BriefRecord> {
         let brief_ref = req
             .brief_ref
             .ok_or_else(|| invalid(format!("job {} has no brief_ref", req.job_id)))?;
@@ -252,7 +259,11 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         serde_json::from_value(v).map_err(corrupt)
     }
 
-    async fn load_artifact(&self, req: &JobRequest, item: &str) -> Result<Option<ArtifactRecord>> {
+    pub(crate) async fn load_artifact(
+        &self,
+        req: &JobRequest,
+        item: &str,
+    ) -> Result<Option<ArtifactRecord>> {
         self.store
             .get_artifact(&req.company_id, item)
             .await?
@@ -260,15 +271,22 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             .transpose()
     }
 
-    async fn save_artifact(&self, req: &JobRequest, item: &str, a: &ArtifactRecord) -> Result<()> {
+    pub(crate) async fn save_artifact(
+        &self,
+        req: &JobRequest,
+        item: &str,
+        a: &ArtifactRecord,
+    ) -> Result<()> {
         let v = serde_json::to_value(a).map_err(corrupt)?;
         Ok(self.store.put_artifact(&req.company_id, item, v).await?)
     }
 
     // ------------------------------------------------------------ plan posts
 
+    /// Appends a post. `dedupe` names it within the company: a re-run job
+    /// that posts it again writes nothing ([`Store::append_post`]).
     #[allow(clippy::too_many_arguments)]
-    async fn post(
+    pub(crate) async fn post(
         &self,
         req: &JobRequest,
         item: &str,
@@ -277,27 +295,34 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         to: Option<&str>,
         text: &str,
         payload: Value,
+        dedupe: Option<&str>,
     ) -> Result<String> {
-        let mut post = json!({"type": kind, "author": author, "text": text, "payload": payload});
+        let mut post = json!({"type": kind, "author": author, "text": text, "payload": payload, "job_id": req.job_id});
         if let Some(to) = to {
             post["to"] = json!(to);
+        }
+        if let Some(key) = dedupe {
+            post["dedupe"] = json!(key);
         }
         Ok(self.store.append_post(&req.company_id, item, post).await?)
     }
 
-    async fn system_post(
+    /// A `system` post, deduplicated by `"{job}:{kind}:{n}"`.
+    pub(crate) async fn system_post(
         &self,
         req: &JobRequest,
         item: &str,
         kind: &str,
+        n: u32,
         text: &str,
         payload: Value,
     ) -> Result<String> {
-        self.post(req, item, kind, "system", None, text, payload)
+        let key = format!("{}:{kind}:{n}", req.job_id);
+        self.post(req, item, kind, "system", None, text, payload, Some(&key))
             .await
     }
 
-    async fn report_llm_failure(
+    pub(crate) async fn report_llm_failure(
         &self,
         req: &JobRequest,
         item: &str,
@@ -307,6 +332,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             req,
             item,
             "status",
+            0,
             "A model call failed; the item is blocked until the CEO decides.",
             json!({"error": error.to_string()}),
         )
@@ -419,237 +445,6 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         }])
     }
 
-    async fn draft(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
-        let item = self.work_item(req)?;
-        let rec = self.load_brief(req).await?;
-        let brief = &rec.brief;
-        let writer = self.staff_by_id(req, &rec, &rec.writer, "writer")?;
-        let editor = self.staff_by_id(req, &rec, &rec.editor, "editor")?;
-        let staffing = self.staffing(&writer, &editor)?;
-        let cfg = self.pipeline_config();
-        let brief_ref = req.brief_ref.unwrap_or_default();
-
-        // First time this item is seen: attach the brief to it in the plan.
-        if self
-            .store
-            .claim_brief(&req.company_id, brief_ref, item)
-            .await?
-        {
-            self.store
-                .set_item_text(
-                    &req.company_id,
-                    item,
-                    Some(&brief.title),
-                    Some(&brief.angle),
-                )
-                .await?;
-            let excerpt: Vec<String> = rec
-                .minutes
-                .iter()
-                .filter_map(|u| {
-                    Some(format!(
-                        "{}: {}",
-                        u.get("speaker")?.as_str()?,
-                        u.get("text")?.as_str()?
-                    ))
-                })
-                .take(12)
-                .collect();
-            self.system_post(
-                req,
-                item,
-                "minutes",
-                &excerpt.join("\n"),
-                json!({"job": rec.job_id, "brief": brief}),
-            )
-            .await?;
-        }
-
-        let previous = self.load_artifact(req, item).await?;
-        let input = match (req.revision, &previous) {
-            (0, _) => DraftInput::Fresh,
-            (
-                _,
-                Some(ArtifactRecord {
-                    page: Some(page),
-                    review: Some(review),
-                    ..
-                }),
-            ) => DraftInput::Revision {
-                page: page.clone(),
-                review: review.clone(),
-            },
-            (n, _) => {
-                return Err(invalid(format!(
-                    "revision {n} of {item} without a previous page and review"
-                )))
-            }
-        };
-
-        let step = draft_step(
-            self.llm.as_ref(),
-            self.site.validator.as_ref(),
-            brief,
-            &staffing,
-            &cfg,
-            &input,
-        )
-        .await;
-        let mut page = match step {
-            DraftStep::Ok { page, .. } => page,
-            DraftStep::Invalid { errors, .. } => {
-                self.system_post(
-                    req,
-                    item,
-                    "status",
-                    "The draft could not be made valid; escalating.",
-                    json!({"errors": errors}),
-                )
-                .await?;
-                return Ok(vec![failed(req.job_id)]);
-            }
-            DraftStep::Failed { error, .. } => {
-                self.report_llm_failure(req, item, &error).await?;
-                return Ok(vec![failed(req.job_id)]);
-            }
-        };
-        // The orchestrator owns ids and routes: the page lives at its real path.
-        let lang = self.site.language.clone();
-        page["id"] = json!(brief.content_id);
-        page["slug"] = json!({ lang.clone(): format!("/{lang}/blog/{}", brief.slug) });
-        page["status"] = json!("draft");
-
-        let path = brief.page_path();
-        let message = if req.revision == 0 {
-            format!("Draft: {}", brief.title)
-        } else {
-            format!("Revision {}: {}", req.revision, brief.title)
-        };
-        let pr = self
-            .gateway
-            .open_draft(&brief.content_id, &path, &page, &message)
-            .await?;
-
-        let mut art = previous.unwrap_or_default();
-        art.brief_ref = brief_ref;
-        art.page = Some(page.clone());
-        art.revision = req.revision;
-        art.path = Some(path.clone());
-        art.branch = Some(pr.branch.clone());
-        art.pr_number = Some(pr.number);
-        art.head_sha = Some(pr.head_sha.clone());
-        self.save_artifact(req, item, &art).await?;
-
-        let words = word_count(&page);
-        self.system_post(
-            req,
-            item,
-            "artifact",
-            &format!("PR #{} on {} ({} words)", pr.number, pr.branch, words),
-            json!({"pr": pr.number, "branch": pr.branch, "path": path, "sha": pr.head_sha, "revision": req.revision}),
-        )
-        .await?;
-        let handoff = if req.revision == 0 {
-            format!(
-                "First draft of \"{}\" is in PR #{} for review.",
-                brief.title, pr.number
-            )
-        } else {
-            format!(
-                "Revision {} addresses the review; PR #{} updated.",
-                req.revision, pr.number
-            )
-        };
-        self.post(
-            req,
-            item,
-            "handoff",
-            &writer.id,
-            Some(&editor.id),
-            &handoff,
-            json!({}),
-        )
-        .await?;
-        Ok(vec![Outcome::JobCompleted {
-            job_id: req.job_id,
-            digest: Digest {
-                ok: true,
-                score: 0,
-                words,
-                qa_defects: 0,
-                artifact_sha: Some(pr.head_sha),
-            },
-        }])
-    }
-
-    async fn review(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
-        let item = self.work_item(req)?;
-        let rec = self.load_brief(req).await?;
-        let writer = self.staff_by_id(req, &rec, &rec.writer, "writer")?;
-        let editor = self.staff_by_id(req, &rec, &rec.editor, "editor")?;
-        let staffing = self.staffing(&writer, &editor)?;
-        let mut art = self
-            .load_artifact(req, item)
-            .await?
-            .ok_or_else(|| invalid(format!("review of {item} before any draft")))?;
-        let page = art
-            .page
-            .clone()
-            .ok_or_else(|| invalid(format!("review of {item} without a page")))?;
-
-        let review: EditorReview = match review_step(
-            self.llm.as_ref(),
-            &rec.brief,
-            &staffing,
-            &self.pipeline_config(),
-            &page,
-            usize::from(req.revision),
-        )
-        .await
-        {
-            Ok(r) => r,
-            Err(error) => {
-                self.report_llm_failure(req, item, &error).await?;
-                return Ok(vec![failed(req.job_id)]);
-            }
-        };
-        art.review = Some(review.clone());
-        self.save_artifact(req, item, &art).await?;
-
-        let verdict = match review.decision {
-            ReviewDecision::Approve if review.score >= self.site.quality_bar => "approve",
-            ReviewDecision::Reject => "reject",
-            _ => "changes",
-        };
-        let mut text = review.notes.clone();
-        for i in &review.issues {
-            text.push_str(&format!("\n- {i}"));
-        }
-        self.post(
-            req,
-            item,
-            "review",
-            &editor.id,
-            None,
-            &text,
-            json!({"verdict": verdict, "score": review.score}),
-        )
-        .await?;
-        // High-risk flags and rejections are reported as not-ok: the sim blocks
-        // the item and opens a ticket for the CEO.
-        let ok = review.high_risk.is_empty() && review.decision != ReviewDecision::Reject;
-        Ok(vec![Outcome::JobCompleted {
-            job_id: req.job_id,
-            digest: Digest {
-                ok,
-                score: review.score,
-                words: word_count(&page),
-                qa_defects: u16::try_from(review.issues.len()).unwrap_or(u16::MAX),
-                artifact_sha: None,
-            },
-        }])
-    }
-
     async fn publish(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
         let item = self.work_item(req)?.to_string();
         let mut art = self
@@ -673,6 +468,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                     req,
                     &item,
                     "artifact",
+                    0,
                     &format!("PR #{pr} merged ({})", &sha[..sha.len().min(7)]),
                     json!({"pr": pr, "merged_sha": sha}),
                 )
@@ -692,7 +488,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         }];
         if self.site.simulate_deploy {
             if fresh {
-                self.system_post(req, &item, "status", "Deployed (simulated).", json!({}))
+                self.system_post(req, &item, "status", 0, "Deployed (simulated).", json!({}))
                     .await?;
             }
             out.push(Outcome::DeployLanded { work_item: item });
