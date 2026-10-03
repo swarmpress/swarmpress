@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { electLeader, lockName, type ChannelLike, type LockManagerLike } from './leader'
+import { electLeader, electResident, lockName, RESIDENT_LOCK, type ChannelLike, type LeadershipChange, type LockManagerLike } from './leader'
+import { channelHub as sharedHub, FakeLocks as SharedLocks, flushMicrotasks } from './testing/fake-locks'
 
 /** In-memory navigator.locks: exclusive FIFO per name, honours AbortSignal for queued requests. */
 class FakeLocks implements LockManagerLike {
@@ -123,6 +124,61 @@ describe('leader election with Web Locks', () => {
     await flush()
     expect(b.isLeader).toBe(false)
     expect(c.isLeader).toBe(true)
+  })
+})
+
+describe('the resident model lock (one model per origin, ADR-0057)', () => {
+  it('is one origin-wide lock: tabs of different companies contend for it', async () => {
+    const locks = new SharedLocks()
+    const hub = sharedHub()
+    const a = electResident({ tabId: 'A', locks, createChannel: hub })
+    expect(await a.settled()).toBe(true)
+    expect(a.isLeader).toBe(true)
+    expect(locks.held(RESIDENT_LOCK)).toBe(true)
+    // A second tab (whatever company it shows) learns at once that the model is elsewhere, and waits in line.
+    const b = electResident({ tabId: 'B', locks, createChannel: hub })
+    expect(await b.settled()).toBe(false)
+    expect(b.isLeader).toBe(false)
+    await flushMicrotasks()
+    expect(b.leaderTabId).toBe('A')
+    expect(locks.waiting(RESIDENT_LOCK)).toBe(1)
+    // When A closes, B gets the lock without asking again.
+    const became = b.whenLeader()
+    await a.release()
+    await became
+    expect(b.isLeader).toBe(true)
+  })
+
+  it('a takeover steals the lock; the tab that had it is told and waits in line again', async () => {
+    const locks = new SharedLocks()
+    const hub = sharedHub()
+    const a = electResident({ tabId: 'A', locks, createChannel: hub })
+    await a.settled()
+    const b = electResident({ tabId: 'B', locks, createChannel: hub })
+    await b.settled()
+    const aChanges: LeadershipChange[] = []
+    a.onChange((e) => aChanges.push(e))
+    expect(b.canTakeOver).toBe(true)
+    await b.takeOver()
+    await flushMicrotasks()
+    expect(b.isLeader).toBe(true)
+    expect(a.isLeader).toBe(false)
+    expect(aChanges.filter((e) => e.stolen)).toHaveLength(1)
+    // A is back in line (B's own waiting request was withdrawn before the steal), and gets it when B closes.
+    expect(locks.waiting(RESIDENT_LOCK)).toBe(1)
+    const back = a.whenLeader()
+    await b.release()
+    await back
+    expect(a.isLeader).toBe(true)
+  })
+
+  it('without Web Locks there is no takeover; a solo tab holds it', async () => {
+    const solo = electResident({ tabId: 'S', locks: null, createChannel: null })
+    expect(solo.canTakeOver).toBe(false)
+    expect(await solo.settled()).toBe(true)
+    await solo.takeOver()
+    expect(solo.isLeader).toBe(true)
+    expect(() => electLeader({ lockName: 'x' })).toThrow(/needs a companyId/)
   })
 })
 

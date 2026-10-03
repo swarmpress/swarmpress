@@ -17,6 +17,13 @@
  *     live tab with the smallest id claims; on a split-brain the larger id
  *     steps down.
  *   - neither → "solo": this tab is the leader.
+ *
+ * The resident model (ADR-0057, `electResident`): model residency is per
+ * origin, not per company, so one origin-wide lock (`RESIDENT_LOCK`) decides
+ * which tab may load the model. It tries the lock first (`tryFirst`), so a
+ * tab knows at once that another tab has the model, then waits in line; the
+ * player can take the model over (`takeOver`, a Web Locks steal), and the tab
+ * that had it is told (`stolen`) and frees it.
  */
 
 export interface LeaderStatus {
@@ -30,6 +37,8 @@ export interface LeaderStatus {
 export interface LeadershipChange {
   isLeader: boolean
   leaderTabId: string | null
+  /** This tab held the lock and another tab took it over. */
+  stolen?: boolean
 }
 
 export interface LeaderHandle {
@@ -37,6 +46,8 @@ export interface LeaderHandle {
   readonly mechanism: 'web-locks' | 'broadcast' | 'solo'
   readonly isLeader: boolean
   readonly leaderTabId: string | null
+  /** The lock can be taken from the tab that holds it (Web Locks only). */
+  readonly canTakeOver: boolean
   onChange(fn: (e: LeadershipChange) => void): () => void
   /** Status published by the leader (received in every tab, including the leader). */
   onStatus(fn: (s: LeaderStatus) => void): () => void
@@ -44,11 +55,22 @@ export interface LeaderHandle {
   publishStatus(s: Omit<LeaderStatus, 'tabId' | 'at'>): void
   /** Resolves once this tab is the leader. */
   whenLeader(): Promise<void>
+  /**
+   * Resolves once the first attempt decided: true when this tab got the lock
+   * at once, false when another tab holds it (this tab then waits in line).
+   */
+  settled(): Promise<boolean>
+  /** Take the lock from the tab that holds it; that tab's handle reports `stolen` and waits in line again. */
+  takeOver(): Promise<void>
   release(): Promise<void>
 }
 
 export interface LockManagerLike {
-  request(name: string, options: { mode?: 'exclusive' | 'shared'; signal?: AbortSignal }, cb: (lock: unknown) => Promise<unknown>): Promise<unknown>
+  request(
+    name: string,
+    options: { mode?: 'exclusive' | 'shared'; signal?: AbortSignal; ifAvailable?: boolean; steal?: boolean },
+    cb: (lock: unknown) => Promise<unknown>,
+  ): Promise<unknown>
 }
 
 export interface ChannelLike {
@@ -64,7 +86,17 @@ interface Timers {
 }
 
 export interface ElectOptions {
-  companyId: string
+  /** Names the lock and channel per company (`lockName(companyId)`), unless `lockName`/`channelName` say otherwise. */
+  companyId?: string
+  /** The Web Lock's name; wins over `companyId`. */
+  lockName?: string
+  /** The status channel's name; wins over `companyId`. */
+  channelName?: string
+  /**
+   * Web Locks: try the lock without waiting first (`ifAvailable`), so
+   * `settled()` says at once whether another tab holds it; then wait in line.
+   */
+  tryFirst?: boolean
   tabId?: string
   /** Defaults to navigator.locks; pass null to force the fallback. */
   locks?: LockManagerLike | null
@@ -84,6 +116,15 @@ type Msg =
 
 export const lockName = (companyId: string) => `swarmpress-llm-worker:${companyId}`
 export const channelName = (companyId: string) => `swarmpress-llm-status:${companyId}`
+
+/** The origin-wide lock of the resident model: one tab of this origin holds the model, whatever company it shows. */
+export const RESIDENT_LOCK = 'swarmpress-llm-resident'
+export const RESIDENT_CHANNEL = 'swarmpress-llm-resident-status'
+
+/** Leadership over the origin's one resident model (ADR-0057). */
+export function electResident(opts: Omit<ElectOptions, 'companyId' | 'lockName' | 'channelName' | 'tryFirst'> = {}): LeaderHandle {
+  return electLeader({ ...opts, lockName: RESIDENT_LOCK, channelName: RESIDENT_CHANNEL, tryFirst: true })
+}
 
 function randomId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `tab-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`
@@ -115,16 +156,29 @@ export function electLeader(opts: ElectOptions): LeaderHandle {
   let isLeader = false
   let leaderTabId: string | null = null
   let released = false
-  const channel = createChannel ? createChannel(channelName(opts.companyId)) : null
+  if (opts.companyId === undefined && (opts.lockName === undefined || opts.channelName === undefined)) {
+    throw new Error('electLeader needs a companyId, or both a lockName and a channelName')
+  }
+  const theLock = opts.lockName ?? lockName(opts.companyId!)
+  const channel = createChannel ? createChannel(opts.channelName ?? channelName(opts.companyId!)) : null
   const mechanism: LeaderHandle['mechanism'] = locks ? 'web-locks' : channel ? 'broadcast' : 'solo'
 
+  let settledAs: boolean | null = null
+  const settledWaiters: Array<(v: boolean) => void> = []
+  const settle = (free: boolean) => {
+    if (settledAs !== null) return
+    settledAs = free
+    settledWaiters.splice(0).forEach((r) => r(free))
+  }
+
   const post = (m: Msg) => channel?.postMessage(m)
-  const setLeader = (leader: boolean, leaderId: string | null) => {
-    if (leader === isLeader && leaderId === leaderTabId) return
+  const setLeader = (leader: boolean, leaderId: string | null, stolen = false) => {
+    if (leader === isLeader && leaderId === leaderTabId && !stolen) return
     isLeader = leader
     leaderTabId = leaderId
     if (leader) leaderWaiters.splice(0).forEach((r) => r())
-    for (const l of changeListeners) l({ isLeader, leaderTabId })
+    const e: LeadershipChange = stolen ? { isLeader, leaderTabId, stolen: true } : { isLeader, leaderTabId }
+    for (const l of changeListeners) l(e)
   }
 
   // ---- heartbeat fallback state
@@ -136,7 +190,11 @@ export function electLeader(opts: ElectOptions): LeaderHandle {
     if (released) return
     switch (m.t) {
       case 'leader':
-        if (m.tabId !== tabId && mechanism === 'web-locks') setLeader(false, m.tabId)
+        // Another tab holds the lock now; if this tab held it, it was taken over.
+        if (m.tabId !== tabId && mechanism === 'web-locks') {
+          if (holding) lostLock(m.tabId)
+          else setLeader(false, m.tabId)
+        }
         break
       case 'who':
         if (isLeader) post({ t: 'leader', tabId })
@@ -182,22 +240,53 @@ export function electLeader(opts: ElectOptions): LeaderHandle {
       setLeader(true, tabId)
       post({ t: 'hb', tabId, leader: true })
     } else setLeader(false, null)
+    settle(isLeader)
   }
 
   // ---- Web Locks path
   let releaseLock: (() => void) | null = null
-  const abort = typeof AbortController === 'function' ? new AbortController() : null
+  /** This tab holds the lock (it may have been stolen without the tab having been told yet). */
+  let holding = false
+  /** The waiting request, aborted on release() and before a takeover. */
+  let queued: AbortController | null = null
+
+  /** The lock is granted: hold it until release() (or until another tab steals it). */
+  const hold = async (lock: unknown) => {
+    if (lock === null || released) return
+    settle(true)
+    holding = true
+    setLeader(true, tabId)
+    post({ t: 'leader', tabId })
+    await new Promise<void>((r) => (releaseLock = r))
+  }
+
+  /** Another tab took the lock: this tab is told, frees what it held, and waits in line again. */
+  const lostLock = (newLeader: string | null) => {
+    if (!holding || released) return
+    holding = false
+    releaseLock = null
+    setLeader(false, newLeader, true)
+    queue()
+  }
+
+  // A rejected request: aborted by release() or a takeover from this tab (nothing to do), or stolen while held.
+  const onRequestEnded = () => lostLock(null)
+
+  const queue = () => {
+    queued = typeof AbortController === 'function' ? new AbortController() : null
+    locks!.request(theLock, { mode: 'exclusive', signal: queued?.signal }, hold).catch(onRequestEnded)
+  }
+
   if (mechanism === 'web-locks') {
-    locks!
-      .request(lockName(opts.companyId), { mode: 'exclusive', signal: abort?.signal }, async () => {
-        if (released) return
-        setLeader(true, tabId)
-        post({ t: 'leader', tabId })
-        await new Promise<void>((r) => (releaseLock = r))
-      })
-      .catch(() => {
-        /* aborted on release() */
-      })
+    if (opts.tryFirst) {
+      locks!
+        .request(theLock, { mode: 'exclusive', ifAvailable: true }, async (lock) => {
+          settle(lock !== null)
+          if (lock !== null) return hold(lock)
+          if (!released) queue()
+        })
+        .catch(onRequestEnded)
+    } else queue()
     post({ t: 'who', tabId })
   } else if (mechanism === 'broadcast') {
     hbTimer = timers.setInterval(() => {
@@ -207,11 +296,13 @@ export function electLeader(opts: ElectOptions): LeaderHandle {
     post({ t: 'hb', tabId, leader: false })
   } else {
     setLeader(true, tabId)
+    settle(true)
   }
 
   return {
     tabId,
     mechanism,
+    canTakeOver: mechanism === 'web-locks',
     get isLeader() {
       return isLeader
     },
@@ -235,14 +326,33 @@ export function electLeader(opts: ElectOptions): LeaderHandle {
     whenLeader() {
       return isLeader ? Promise.resolve() : new Promise<void>((r) => leaderWaiters.push(r))
     },
+    settled() {
+      return settledAs !== null ? Promise.resolve(settledAs) : new Promise<boolean>((r) => settledWaiters.push(r))
+    },
+    async takeOver() {
+      if (mechanism !== 'web-locks' || released || holding) return
+      // Leave the line first, or the waiting request would be granted again after this tab lets go.
+      queued?.abort()
+      queued = null
+      await new Promise<void>((granted) => {
+        locks!
+          .request(theLock, { mode: 'exclusive', steal: true }, (lock) => {
+            const held = hold(lock)
+            granted()
+            return held
+          })
+          .catch(onRequestEnded)
+      })
+    },
     async release() {
       if (released) return
       released = true
       if (hbTimer !== null) timers.clearInterval(hbTimer)
       post({ t: 'bye', tabId })
+      holding = false
       setLeader(false, null)
       if (releaseLock) (releaseLock as () => void)()
-      else abort?.abort()
+      queued?.abort()
       channel?.close()
     },
   }
