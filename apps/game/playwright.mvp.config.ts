@@ -13,8 +13,9 @@ const port = Number(process.env.SWARMPRESS_MVP_PORT ?? 4176)
 
 export default defineConfig({
   testDir: 'e2e',
-  // takeover.spec.ts (the executor lease, ADR-0045) needs the same two servers.
-  testMatch: ['mvp.spec.ts', 'takeover.spec.ts'],
+  // takeover.spec.ts (the executor lease, ADR-0045) needs the same two servers, and so does
+  // mvp-bonsai.spec.ts (the game page on the real model; gated by BONSAI_E2E=1, project `bonsai`).
+  testMatch: ['mvp.spec.ts', 'takeover.spec.ts', 'mvp-bonsai.spec.ts'],
   timeout: 300_000,
   workers: 1,
   reporter: [['list'], ['json', { outputFile: process.env.PW_JSON ?? 'reports/playwright-mvp.json' }]],
@@ -44,7 +45,9 @@ export default defineConfig({
   ],
   projects: [
     // The project name is the `?store=` engine.
-    { name: 'turso' },
-    { name: 'sqlite' },
+    { name: 'turso', testIgnore: 'mvp-bonsai.spec.ts' },
+    { name: 'sqlite', testIgnore: 'mvp-bonsai.spec.ts' },
+    // The real local model (ADR-0057, R8): installed Chrome, headed, persistent profile. Skipped without BONSAI_E2E=1.
+    { name: 'bonsai', testMatch: 'mvp-bonsai.spec.ts' },
   ],
 })

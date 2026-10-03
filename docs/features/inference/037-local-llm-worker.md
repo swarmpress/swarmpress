@@ -12,6 +12,11 @@ paths:
   - apps/game/scripts/bonsai-runtime.mjs
   - apps/game/bonsai.html
   - apps/game/src/harness/bonsai-harness.ts
+  - apps/game/src/session/model-runtime.ts
+  - apps/game/src/session/model-runtime.test.ts
+  - apps/game/src/ui/model-card.ts
+  - apps/game/src/ui/model-card.test.ts
+  - apps/game/e2e/mvp-bonsai.spec.ts
   - apps/game/playwright.bonsai.config.ts
   - apps/game/e2e/bonsai-fixture.ts
   - apps/game/e2e/bonsai.spec.ts
@@ -41,9 +46,10 @@ Decisions: [ADR-0024](../../adr/0024-hybrid-inference-browser-llms-and-claude.md
 
 Design: [`docs/design/mvp-runtime.md`](../../design/mvp-runtime.md). Track R of `docs/mvp.md`.
 
-The worker, client, protocol, the Transformers.js adapter and the fake exist with unit tests, but
-nothing wires them into the game session (`unwiredLlm()` in `apps/game/src/session/session.ts`),
-so the status stays `planned` until R2 lands with its evidence.
+R8 wires the runtime into the game session (`apps/game/src/session/model-runtime.ts`; the old
+`unwiredLlm()` is gone): `?llm=bonsai|chrome|transformers`, else the company's stored choice, else
+Bonsai; `?llm=fake` stays the scripted model. The real model has not been run in the game yet: the
+gated e2e (`e2e/mvp-bonsai.spec.ts`, `BONSAI_E2E=1`) and the go/no-go report of R7 are the owner's.
 
 - **R1:** extraction tooling for the Ternary-Bonsai-2 WebGPU engine: `runtime/bonsai/extract.ts`,
   `runtime.lock.json`, `upstream.d.ts`, `scripts/bonsai-runtime.mjs` into a git-ignored folder. The
@@ -57,7 +63,14 @@ so the status stays `planned` until R2 lands with its evidence.
   silently.
 - **R6–R7:** qualification harness (`bench.html`, `src/llm/bench/*`) and the benchmark report under
   `docs/qualification/`. How to run it: `docs/runbooks/model-qualification.md`.
-- **R8:** session wiring, startup flow, origin-wide resident lock.
+- **R8:** session wiring (`session/model-runtime.ts`), the startup of §22 (`llm/startup.ts`: explain
+  once, probe WebGPU and limits, storage estimate and persistence, verify, download with bytes and
+  `fromCache`, load, warm-up, a qualification turn that must validate; only then is the model
+  ready and the clock runs), the origin-wide resident lock (`electResident`: a second tab waits
+  and offers to take over), device loss (status `lost`, the call in flight discarded and run again
+  after the reload; `BonsaiLlm` no longer hangs its reload on a lost generation), the model card
+  (`ui/model-card.ts`), a debug-only `destroyDevice` worker command, and `localOnlyFetch`: a
+  backend fetches only this origin and GET/HEAD weight downloads from the Hugging Face Hub.
 - `job-runner.ts` (the retired offer/claim protocol) is deleted.
 
 ## Acceptance criteria

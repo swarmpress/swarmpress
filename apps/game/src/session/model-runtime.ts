@@ -431,7 +431,7 @@ class SessionModelRuntime implements ModelRuntime {
       this.lock = (this.o.lock ?? electResident)()
       this.lock.onChange((e) => {
         if (e.stolen) void this.lostToAnotherTab()
-        else if (e.isLeader && this.phase === 'elsewhere') void this.start()
+        else if (e.isLeader) void this.resumeAsLeader()
       })
       const free = await this.lock.settled()
       if (!free && !this.lock.isLeader) {
@@ -567,6 +567,12 @@ class SessionModelRuntime implements ModelRuntime {
     this.stage = null
     this.log(`the GPU device was lost (${message}); the model must be reloaded`)
     this.setPhase('lost', message)
+  }
+
+  /** The lock came (back) to this tab: start here, after a startup that was cut short has wound down. */
+  private async resumeAsLeader() {
+    await this.running?.catch(() => undefined)
+    if (this.phase === 'elsewhere' && this.lock?.isLeader && !this.disposed) await this.start()
   }
 
   /** Another tab took the model over: free it here and wait in line. */

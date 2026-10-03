@@ -69,8 +69,11 @@ bench() { pnpm exec playwright test -c playwright.bonsai.config.ts --project=bon
 - Run 5 needs the GPU process to crash. The spec opens `chrome://gpucrash` in a second tab; whether
   automation is allowed to open that page is not verified. If nothing happens, open
   `chrome://gpucrash` in the test's Chrome window yourself: the page waits three minutes.
-  The Bonsai backend has no test hook to destroy its device from the page, so `BENCH_LOSS=hook`
-  only works with the scripted backend.
+  `BENCH_LOSS=hook` destroys the model's GPU device from the page instead: the harness then starts
+  the worker in debug mode, and the worker's `destroyDevice` command (honoured only in that mode)
+  destroys the Bonsai engine's device the way a loss would take it. It works for the scripted and
+  the Bonsai backends; a destroyed device is not a GPU-process crash, so the manual step stays the
+  one that measures that.
 - Run 6 defines a "full-suite run" as every fixture at a tenth of its prompts (one staged article,
   five sections, and so on): 20 passes of the whole suite would take days. That is a choice of this
   harness, not of the design; say so when you read the row.
@@ -169,6 +172,41 @@ row:
 
 Steps 2 to 4 need a new manifest under `apps/game/src/llm/runtime/bonsai/manifest/` (and, for 4,
 a new adapter); they are not a setting of this harness.
+
+## The game on the real model (increment R8)
+
+The game page runs on the backend the URL names (`?llm=bonsai|chrome|transformers`), else the
+company's stored choice, else Bonsai; `?llm=fake` is the scripted model of the e2e suites. A backend
+that cannot run on the device blocks with a notice and is never swapped for another one; the notice
+offers the other local backends as an explicit choice for the company (it applies on the next page
+load, without `?llm=`).
+
+```sh
+pnpm --filter @swarm-press/game bonsai:runtime      # once: the pinned engine into apps/game/public/vendor/bonsai/ (git-ignored)
+cp .env.example .env && set -a && . ./.env && set +a
+cargo run -p server --bin swarmpress-server        # the central server on 127.0.0.1:8080 (docs/guides/getting-started.md)
+pnpm dev                                           # in a second terminal; then open in Chrome:
+# http://localhost:5173/?central=1&llm=bonsai&ff=09:00
+```
+
+- The office opens at once with the clock held ("Model loading" on the HUD chip). A card in the
+  bottom right corner shows the stages: about the model (the first time on this browser: what runs
+  where and the download size; nothing is fetched before "Start the model"), check WebGPU, check
+  storage (free space, what is cached, whether the browser granted persistence), verify, download
+  (bytes; "reading the browser cache" on a warm start), load onto the GPU, warm-up, and a
+  qualification turn (one structured action that must validate with the game's validator). Only
+  then is the model ready and the clock runs.
+- The weights are cached **per origin** (scheme, host and port): the dev server, `vite preview`, the
+  harness and the single-origin server each download them once.
+- One model per browser: a second tab of the same origin does not load another one. It says "the
+  model is running in another tab", runs no model work (its clock holds) and offers "Take over
+  here"; the first tab then frees its model and waits in line.
+- A lost GPU device holds the clock ("GPU device lost: reload the model"); the call in flight is
+  discarded and runs again after "Reload the model". `?llmdebug=1` turns on the test hook
+  `__swarmpress.session.destroyModelDevice()`.
+- Gated e2e (never in CI): `BONSAI_E2E=1 pnpm --filter @swarm-press/game exec playwright test -c playwright.mvp.config.ts --project=bonsai`
+  boots `/?central=1&llm=bonsai` against the MVP suite's servers in installed Chrome and waits for
+  the model to become ready.
 
 ## The scripted backend (CI-safe)
 

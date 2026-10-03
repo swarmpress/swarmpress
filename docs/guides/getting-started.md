@@ -76,7 +76,8 @@ What the parameters do (`apps/game/src/session/session.ts`):
 | Parameter | Effect |
 |---|---|
 | `central=1` | Dev login, company (created on first login), lease, company store, restore, orchestration loop, sync. |
-| `llm=fake` | The scripted model (`apps/game/src/llm/mvp-script.ts`): one standup, a draft, a review scoring 6, a revision, a review scoring 8. Required today: the session has no real local model yet, and without this every job fails with an error that says so. |
+| `llm=fake` | The scripted model (`apps/game/src/llm/mvp-script.ts`): one standup, a draft, a review scoring 6, a revision, a review scoring 8. Ready at once; the e2e suites use it. |
+| `llm=bonsai\|chrome\|transformers` | A real local model, in this browser (ADR-0057; `apps/game/src/session/model-runtime.ts`). Without `llm=` the company's stored choice, else Bonsai. The office opens at once and the clock holds until the model has started (a card shows the stages; about 6 GB to download the first time for Bonsai). How to set it up: [the qualification runbook](../runbooks/model-qualification.md#the-game-on-the-real-model-increment-r8). |
 | `ff=HH:MM` | Fast-forward on boot to that time of the current game day. The day starts at 07:00 and the standup is at 09:00, so `ff=09:00` skips the wait. It does nothing if that time has already passed. |
 | `login=NAME` | Dev login name, default `ceo`. A new name gives a new company and a new store. |
 | `store=turso\|sqlite\|memory` | Store engine, default auto (Turso wasm on OPFS, else sqlite-wasm). |
