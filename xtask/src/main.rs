@@ -105,10 +105,14 @@ fn wasm(release: bool, only: Option<&str>) -> Result<()> {
     for (pkg, stem) in &crates {
         let wasm = target.join(format!("wasm32-unknown-unknown/{dir}/{stem}.wasm"));
         let out = root.join(format!("crates/{pkg}/pkg"));
-        run(Command::new("wasm-bindgen")
-            .arg(&wasm)
-            .args(["--target", "web", "--out-dir"])
-            .arg(&out))
+        let mut bindgen = Command::new("wasm-bindgen");
+        bindgen.arg(&wasm).args(["--target", "web"]);
+        if release {
+            // Function names (the `name` section) are about a third of the raw module and only
+            // help stack traces; debug builds keep them.
+            bindgen.args(["--remove-name-section", "--remove-producers-section"]);
+        }
+        run(bindgen.arg("--out-dir").arg(&out))
         .context(
             "wasm-bindgen CLI 0.2.100 is required: cargo install wasm-bindgen-cli --version 0.2.100",
         )?;
