@@ -48,5 +48,24 @@ export function createPostFx(scene: Scene, camera: Camera, quality: QualitySetti
     ssao.samples = 16
     ssao.maxZ = 100
   }
-  return { pipeline, ssao }
+  let ssaoOn = ssao !== null
+  return {
+    pipeline,
+    ssao,
+    /**
+     * Switch to `q` while the page runs (the GPU scheduler lowers the tier
+     * while the local model generates, ADR-0057): bloom, MSAA and SSAO follow
+     * it. SSAO can only come back if the configured tier created it.
+     */
+    apply(q: QualitySettings) {
+      pipeline.samples = q.msaaSamples
+      pipeline.fxaaEnabled = q.msaaSamples <= 1
+      pipeline.bloomEnabled = q.bloom
+      if (!ssao || q.ssao === ssaoOn) return
+      const manager = scene.postProcessRenderPipelineManager
+      if (q.ssao) manager.attachCamerasToRenderPipeline(ssao.name, camera)
+      else manager.detachCamerasFromRenderPipeline(ssao.name, camera)
+      ssaoOn = q.ssao
+    },
+  }
 }

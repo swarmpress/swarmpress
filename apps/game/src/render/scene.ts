@@ -51,6 +51,12 @@ export interface GameScene {
   people(): PersonOnScreen[]
   /** The building and the labels drawn over it are ready (shaders compiled, textures uploaded). */
   isReady(): boolean
+  /**
+   * Change the quality while the page runs (the GPU scheduler's renderer
+   * hooks, render/quality.ts): shadows on or off, bloom, MSAA and SSAO.
+   * The shadow map's size stays what the page started with.
+   */
+  setQuality(q: QualitySettings): void
 }
 
 export interface SceneOptions {
@@ -89,7 +95,7 @@ export function createGameScene(
   }
   const clocks = buildWallClocks(scene, layout)
   const staff = createStaffLayer(scene, iso.camera, office, lighting, layout, { dev: opts.dev ?? true, maxLights: MAX_LIGHTS_PER_MATERIAL })
-  if (opts.postFx) createPostFx(scene, iso.camera, opts.quality)
+  const postFx = opts.postFx ? createPostFx(scene, iso.camera, opts.quality) : null
 
   let facedAlpha = Number.NaN
   const updateCutaway = () => {
@@ -144,5 +150,10 @@ export function createGameScene(
     },
     people: () => staff.onScreen(),
     isReady: () => scene.isReady() && staff.labels.scene.isReady(),
+    setQuality: (q) => {
+      // Shadows can only come back if the page started with them (the generator exists).
+      scene.shadowsEnabled = q.shadows
+      postFx?.apply(q)
+    },
   }
 }
