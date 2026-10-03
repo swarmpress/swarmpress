@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use agents::article_prompts::{LlmProfile, STAGE_BLOCK_DOCS};
-use agents::pipeline::PageValidator;
 use agents::prompts::{resolve, templates, PromptLayer, SiteContext, Vars};
 use agents::{
     run_meeting, Brief, CompanyPrompt, Llm, LlmError, MeetingEvent, MeetingSpec, Participant,
@@ -58,9 +57,6 @@ pub struct SiteBinding {
     pub brand_name: String,
     pub language: String,
     pub context: SiteContext,
-    /// The schema-v1 page validator of the single-call draft (kept for the
-    /// legacy pipeline; the staged Draft job uses [`Self::validator_v2`]).
-    pub validator: Arc<dyn PageValidator>,
     /// The staged article's validator (`site_validator_v2`): schema v2,
     /// article profile, house style and the closed world of
     /// [`Self::knowledge`]. `None` without a knowledge pack.
@@ -169,10 +165,70 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     /// failures are reported as `ok: false`.
     pub async fn run(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
         match req.kind {
-            JobKind::Standup => self.standup(req).await,
+            JobKind::Standup => {
+                let who = self
+                    .find(req, "editor-in-chief")
+                    .or_else(|| self.find(req, "editor"));
+                self.report_job(req, who, crate::ProgressState::Started, json!({}));
+                let out = self.standup(req).await;
+                self.report_outcome(req, who, &out);
+                out
+            }
             JobKind::Draft => self.staged_draft(req).await,
             JobKind::Review => self.staged_review(req).await,
-            JobKind::Publish => self.publish(req).await,
+            JobKind::Publish => {
+                let who = req.staff.first();
+                self.report_job(req, who, crate::ProgressState::Started, json!({}));
+                let out = self.publish(req).await;
+                self.report_outcome(req, who, &out);
+                out
+            }
+        }
+    }
+
+    /// The job-level progress event of a job without stages (standup, publish).
+    fn report_outcome(&self, req: &JobRequest, who: Option<&StaffRef>, out: &Result<Vec<Outcome>>) {
+        let (state, detail) = match out {
+            Ok(o) => {
+                let detail = match o.first() {
+                    Some(Outcome::MeetingOutcome { briefs, .. }) => json!({"briefs": briefs.len()}),
+                    Some(Outcome::JobCompleted { digest, .. }) => {
+                        json!({"ok": digest.ok, "merged_sha": digest.artifact_sha})
+                    }
+                    _ => json!({}),
+                };
+                (crate::ProgressState::Done, detail)
+            }
+            Err(e) => (
+                crate::ProgressState::Failed,
+                json!({"error": e.to_string()}),
+            ),
+        };
+        self.report_job(req, who, state, detail);
+    }
+
+    pub(crate) fn report_job(
+        &self,
+        req: &JobRequest,
+        who: Option<&StaffRef>,
+        state: crate::ProgressState,
+        detail: Value,
+    ) {
+        if let Some(p) = self.progress.as_ref() {
+            p.report(&crate::ProgressEvent {
+                job_id: req.job_id,
+                kind: req.kind,
+                revision: req.revision,
+                work_item: req.work_item.clone(),
+                staff: who.map(|s| s.id.clone()),
+                persona: who.map(|s| s.persona.clone()),
+                role: who.map(|s| s.role.clone()),
+                stage: "job".into(),
+                index: 0,
+                total: 1,
+                state,
+                detail,
+            });
         }
     }
 

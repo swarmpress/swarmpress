@@ -294,6 +294,15 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     /// The stored result of a stage, from this job or adopted from its
     /// predecessor; `None` when it must run.
     async fn reuse<T: DeserializeOwned>(&self, cx: &Cx<'_>, key: &Key) -> Result<Option<T>> {
+        self.reuse_value(cx, key)
+            .await?
+            .map(|v| serde_json::from_value(v).map_err(corrupt))
+            .transpose()
+    }
+
+    /// [`Self::reuse`] without the type (one copy of the store logic in the
+    /// wasm module, not one per stage type).
+    async fn reuse_value(&self, cx: &Cx<'_>, key: &Key) -> Result<Option<Value>> {
         let company = &cx.req.company_id;
         let mut found = None;
         if let Some(row) = self
@@ -325,7 +334,6 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         let Some((row, adopted)) = found else {
             return Ok(None);
         };
-        let value: T = serde_json::from_value(row.value).map_err(corrupt)?;
         self.emit(
             cx,
             key.stage,
@@ -334,7 +342,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             ProgressState::Reused,
             json!({"adopted_from": adopted}),
         );
-        Ok(Some(value))
+        Ok(Some(row.value))
     }
 
     /// Stores a stage result (first write wins) and reports it done.
@@ -345,9 +353,14 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         value: &T,
         detail: Value,
     ) -> Result<()> {
+        let value = serde_json::to_value(value).map_err(corrupt)?;
+        self.keep_value(cx, key, value, detail).await
+    }
+
+    async fn keep_value(&self, cx: &Cx<'_>, key: &Key, value: Value, detail: Value) -> Result<()> {
         let row = StageRow {
             input_hash: key.hash.clone(),
-            value: serde_json::to_value(value).map_err(corrupt)?,
+            value,
         };
         self.store
             .put_stage(&cx.req.company_id, cx.req.job_id, key.stage, key.index, row)
@@ -386,7 +399,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     /// A structured stage: reused when stored, else one call (with repairs),
     /// then stored.
     #[allow(clippy::too_many_arguments)]
-    async fn structured_stage<T: Serialize + DeserializeOwned>(
+    async fn structured_stage<T: DeserializeOwned>(
         &self,
         cx: &Cx<'_>,
         stage: &'static str,
@@ -397,22 +410,46 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         check: &SemanticCheck<'_>,
         budget: &mut u32,
     ) -> Result<Step<T>> {
+        Ok(
+            match self
+                .structured_value(cx, stage, index, total, prompt, schema, check, budget)
+                .await?
+            {
+                Ok(v) => Ok(serde_json::from_value(v).map_err(corrupt)?),
+                Err(h) => Err(h),
+            },
+        )
+    }
+
+    /// [`Self::structured_stage`] without the type: the answer as it passed
+    /// its schema and checks.
+    #[allow(clippy::too_many_arguments)]
+    async fn structured_value(
+        &self,
+        cx: &Cx<'_>,
+        stage: &'static str,
+        index: u32,
+        total: u32,
+        prompt: &StagePrompt,
+        schema: &Value,
+        check: &SemanticCheck<'_>,
+        budget: &mut u32,
+    ) -> Result<Step<Value>> {
         let key = Key::of(stage, index, total, prompt, schema);
-        if let Some(v) = self.reuse(cx, &key).await? {
+        if let Some(v) = self.reuse_value(cx, &key).await? {
             return Ok(Ok(v));
         }
         self.emit(cx, stage, index, total, ProgressState::Started, json!({}));
         match self.call(cx, prompt, schema, check, budget).await {
             Ok(r) => {
-                let value: T = serde_json::from_value(r.value).map_err(corrupt)?;
-                self.keep(
+                self.keep_value(
                     cx,
                     &key,
-                    &value,
+                    r.value.clone(),
                     json!({"calls": r.calls, "repairs": r.repairs, "dropped": prompt.dropped}),
                 )
                 .await?;
-                Ok(Ok(value))
+                Ok(Ok(r.value))
             }
             Err(f) => {
                 self.emit(

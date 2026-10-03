@@ -167,10 +167,44 @@ blocked and a ticket opens.
 
 ### The staged article (MVP, ADR-0058)
 
-One bounded local model cannot write a page in one call, so the Draft job writes it in stages
-(design: [`docs/design/mvp-pipeline.md`](../design/mvp-pipeline.md) §1, §3 and §4). The
-deterministic half is built as pure functions; wiring the stages into the Draft job is the next
-increment.
+One bounded local model cannot write a page in one call, so the Draft and Review jobs run in
+stages (design: [`docs/design/mvp-pipeline.md`](../design/mvp-pipeline.md) §1, §3, §4 and §8).
+The sim still requests one Draft and one Review job per phase; the stages live inside them
+(`crates/orchestrator/src/staged.rs`):
+
+```text
+Draft r0:  context#0 (no model; an empty hero shortlist → JobFailed{NeedsMedia})
+           → outline#0 → section#0 (intro) → section#1…N → closing#0
+           → assemble → validate (site_validator_v2) → fix#i for the failing part only → commit
+Draft rN:  retitle#0 (title named) and revise#i, only for the parts the review and the CEO's
+           newest send-back note name; untouched parts are assembled byte-identical → validate → commit
+Review:    review#0 when the reading text and checks fit `review_single_tokens` (~3,000),
+           else review_section#0…N+1 → review_summary#0 (a part under bar − 2 forces changes)
+```
+
+- **Budgets.** Every call is a byte-stable system prompt (role prompt, house style,
+  `STAGE_BLOCK_DOCS`) plus a `## Task:` user turn built by `agents::article_prompts` within the
+  model's `LlmProfile {context_tokens, reasoning_tokens, chars_per_token}` (the binding's
+  `llm_profile`; `local` = 16K context, 2,048 reasoning tokens): the answer budget and the
+  reasoning allowance are reserved first, then required parts, then optional parts by priority.
+  `LlmRequest.reasoning_tokens` carries the allowance to the browser bridge.
+- **Repairs.** `agents::llm::structured_with_repair` handles schema problems from the backend
+  (`InvalidOutput`, which carries the stripped answer) and the part's own checks alike: the repair
+  turn quotes the answer without its reasoning, capped, with the problems, and answers without
+  reasoning; at most 2 repairs a part and 4 a job; an unchanged answer stops the loop; a section
+  cut off at its limit is written in two halves.
+- **Stage store.** Results are stored by `(company, job, stage, index)` with an input hash,
+  first write wins (`Store::get_stage`/`put_stage`; the browser's `job_stages` table). A re-run
+  job repeats no completed call; a retried phase adopts its predecessor's rows
+  (`ArtifactRecord.last_job`). Plan posts carry a `dedupe` key. `ArtifactRecord.parts` keeps the
+  outline, the parts with their digests, the closing, the hero and the shortlists.
+- **Progress.** `Orchestrator::with_progress` reports `ProgressEvent {job_id, kind, staff,
+  stage, index, total, state, …}` as counts; the browser writes the lean `activity` record from
+  them and shows "Giulia · draft · section 3 of 5" on the HUD chip.
+- **Fakes.** `agents::fake_writer` (Rust) and `apps/game/src/llm/mvp-script.ts` (`?llm=fake`)
+  answer every stage from its prompt, for any brief: tests and soak runs need no scripted article.
+
+The pure parts:
 
 - `crates/agents/src/article.rs`:
   - stage schemas (`outline_schema`, `section_schema`, `closing_schema`, `review_schema`), flat

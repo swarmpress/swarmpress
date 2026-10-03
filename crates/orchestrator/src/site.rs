@@ -36,7 +36,7 @@ use knowledge::KnowledgeBase;
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use crate::article::{site_validator, site_validator_v2};
+use crate::article::site_validator_v2;
 use crate::run::SiteBinding;
 
 /// The site's house style, carried by the pack.
@@ -194,7 +194,6 @@ impl SiteBinding {
                 .and_then(Value::as_str)
                 .unwrap_or("en")
                 .to_string(),
-            validator: site_validator(&context),
             context,
             site_id,
             quality_bar: u8::try_from(small("quality_bar", 7)).map_err(|e| e.to_string())?,

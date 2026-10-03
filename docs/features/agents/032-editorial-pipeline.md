@@ -7,15 +7,22 @@ paths:
   - crates/agents/src/pipeline.rs
   - crates/agents/src/article.rs
   - crates/agents/src/llm.rs
+  - crates/agents/src/article_prompts.rs
+  - crates/agents/src/fake_writer.rs
   - "crates/agents/tests/pipeline*.rs"
   - crates/agents/tests/article.rs
+  - crates/agents/tests/repair.rs
+  - crates/agents/tests/fake_writer.rs
   - "crates/agents/tests/fixtures/article/**"
   - "crates/orchestrator/**"
   - "crates/agents/prompts/**"
   - crates/orchestrator-wasm/src/lib.rs
   - apps/game/src/store/schema.ts
   - apps/game/src/store/company-store.ts
+  - apps/game/src/store/company-store.test.ts
   - apps/game/src/llm/structured.ts
+  - apps/game/src/llm/mvp-script.ts
+  - apps/game/e2e/mvp.spec.ts
 adrs:
   - ADR-0011
   - ADR-0009
@@ -34,9 +41,15 @@ Decisions: [ADR-0011](../../adr/0011-orchestrator-owns-state-transitions.md), [A
 
 Design: [`docs/design/mvp-pipeline.md`](../../design/mvp-pipeline.md) sections 1, 4 and 7.
 
-What exists today: Standup, Draft, Review and Publish jobs in `crates/orchestrator/src/run.rs`; the
-draft is one structured call with a 16,000-token budget; no media, QA, research or closed-world
-checks run in the session path.
+What exists today: Standup, Draft, Review and Publish jobs in `crates/orchestrator/src/run.rs`.
+The Draft and Review jobs run in bounded stages (`crates/orchestrator/src/staged.rs`, P2 and P3):
+context, outline, intro, sections and closing, each a call within the model's `LlmProfile` and
+repaired with `structured_with_repair`; the page is assembled for the frozen theme and checked
+against the site's closed world (`site_validator_v2`); a failing part alone is fixed; stage results
+and posts are stored idempotently; revisions rewrite only the parts the review or the CEO's
+send-back note names; the review reads text with part markers, part by part when long. No media,
+QA or research stage runs yet; the standup is still the meeting of ADR-0012 (P4); timeout and
+cancel (P6) are not built.
 
 - **P1:** article shape for the frozen theme (hero, intro, sections, closing note; plain text;
   localized `seo`), v2 validator plus closed-world link and media checks.

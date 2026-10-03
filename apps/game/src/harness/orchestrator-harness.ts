@@ -50,6 +50,17 @@ const SITE: SiteBindingJson = {
   standup_max_turns: 4,
 }
 
+/**
+ * The binding with the site's knowledge pack from the central server (ADR-0061):
+ * the staged draft (ADR-0058) works inside the site's closed world, and the
+ * server checks the same closed world when the draft is committed.
+ */
+async function siteWithKnowledge(token: string): Promise<SiteBindingJson> {
+  const k = await client.knowledge(token)
+  if (k === 'not-modified') throw new Error('the knowledge pack came back not-modified without an ETag')
+  return { ...SITE, knowledge_pack: k.pack }
+}
+
 const statusEl = document.getElementById('status')!
 const logEl = document.getElementById('log')!
 const log = (line: string) => {
@@ -101,7 +112,7 @@ async function connect(login: string): Promise<{ companyId: string; leaseId: str
 async function runLoop(): Promise<LoopReport> {
   if (!company || !lease) throw new Error('connect first')
   const keeper = lease
-  const orch = await createOrchestrator({ store, gateway: centralGateway(client, () => keeper.token), llm: fakeLlm(), site: SITE })
+  const orch = await createOrchestrator({ store, gateway: centralGateway(client, () => keeper.token), llm: fakeLlm(), site: await siteWithKnowledge(keeper.token) })
   const res = await runMvpLoop(orch, {
     company: company.id,
     onStep: (s) => log(`${s.job.kind} r${s.job.revision} → ${JSON.stringify(s.outcomes)}`),
@@ -170,7 +181,7 @@ async function runSimLoop(): Promise<SimLoopReport> {
   const { default: initSim, Sim } = await import('swarm-wasm')
   await initSim()
   const sim = Sim.scenario('cinqueterre', BigInt(company.seed))
-  const orch = await createOrchestrator({ store, gateway: centralGateway(client, () => keeper.token), llm: fakeLlm(), site: SITE })
+  const orch = await createOrchestrator({ store, gateway: centralGateway(client, () => keeper.token), llm: fakeLlm(), site: await siteWithKnowledge(keeper.token) })
   const enc = new TextEncoder()
   const report: SimLoopReport = { jobs: [], staff: [], statusBefore: '', statusAfter: '', feed: [], postTypes: [], logged: 0, minute: 0, gate: null }
   const apply = async (cmd: string) => {

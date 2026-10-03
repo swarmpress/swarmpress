@@ -106,6 +106,11 @@ fn all_schemas() -> Vec<(&'static str, Value)> {
         ("section", section_schema()),
         ("closing", closing_schema()),
         ("review", review_schema(&section_ids(4))),
+        ("retitle", agents::article_prompts::retitle_schema()),
+        (
+            "review_section",
+            agents::article_prompts::section_review_schema(),
+        ),
     ]
 }
 

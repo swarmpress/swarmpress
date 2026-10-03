@@ -1,10 +1,11 @@
 //! The MVP article: its block subset, writer docs, validator and helpers.
 //!
-//! Two generations live here side by side until the staged Draft job lands
-//! (ADR-0058):
+//! Two generations live here side by side:
 //!
-//! - the single-call article ([`article_schema`], [`ARTICLE_BLOCK_DOCS`],
-//!   [`site_validator`]) that `run.rs` uses today;
+//! - the single-call article of Stage 0 ([`article_schema`],
+//!   [`ARTICLE_BLOCK_DOCS`], [`site_validator`], schema v1), no longer used
+//!   by the jobs and kept for comparison tests (the orchestrator-wasm build
+//!   does not reach it);
 //! - the closed world of the staged article (`docs/design/mvp-pipeline.md`
 //!   §3 and §4): the `context#0` shortlists built from the site's knowledge
 //!   base ([`hero_shortlist`], [`link_shortlist`], [`entity_facts`],
@@ -684,8 +685,8 @@ impl PageValidator for SiteValidatorV2 {
 }
 
 /// The validator of the staged article for a site: v2 schema, article
-/// profile, house style and the closed world of `kb`. It replaces
-/// [`site_validator`] when the staged Draft job is wired in.
+/// profile, house style and the closed world of `kb`. It replaced
+/// [`site_validator`] in the staged Draft job (ADR-0058).
 pub fn site_validator_v2(context: &SiteContext, kb: Arc<KnowledgeBase>) -> Arc<SiteValidatorV2> {
     Arc::new(SiteValidatorV2::new(kb, context.style_guide.clone()))
 }

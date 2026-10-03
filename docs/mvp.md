@@ -286,9 +286,11 @@ increment S) → merge, `DeployLanded` through the events API, the Plan thread, 
 restored from OPFS, and a fresh browser context restored from central sync. Health is derived
 from that evidence by Cockpit, not declared here.
 
-Known limits of Stage 0, all addressed by the tracks above: the script covers exactly one
-article; a fresh device restores the sim state without plan text; restore replays from the seed
-(until Z2).
+Known limits of Stage 0, all addressed by the tracks above: a fresh device restores the sim
+state without plan text; restore replays from the seed (until Z2). Since P2/P3 the `?llm=fake`
+model is brief-driven (`apps/game/src/llm/mvp-script.ts`): it answers every stage of the staged
+Draft and Review jobs from the prompt, so it is no longer limited to one scripted article, and the
+suite runs with the server's article profile and closed-world checks on.
 
 ```
 Browser (authoritative)                                          Central server (Rust + SQLite)
@@ -324,7 +326,9 @@ reload / new device: restore from OPFS or sync (world snapshot + the log after i
   with `World::drain_effects()`.
 - Results come back as `ServerCommand::{MeetingOutcome, JobCompleted, DeployLanded}`, and
   since increment S (ADR-0059, FEAT-079) `JobFailed{job_id, reason}` and
-  `DeployFailed{work_item}`. The sim accepts both; no executor sends them yet (P4, P6, G5).
+  `DeployFailed{work_item}`. The sim accepts both. The orchestrator sends
+  `JobFailed{NeedsMedia}` when a draft's hero shortlist is empty (P2); the other reasons and
+  `DeployFailed` follow with P4, P6 and G5.
 
 In the browser these are *local* commands that the client applies at the next step boundary and
 appends to the command log. "Server command" just means "not a player command".

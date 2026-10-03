@@ -122,6 +122,8 @@ describe('orchestrator-wasm with the browser store and the fake LocalLlm', () =>
       persona: 'giulia',
     })
     expect(events.filter((e) => e.stage === 'job').map((e) => `${e.kind}:${e.state}`)).toEqual([
+      'standup:started',
+      'standup:done',
       'draft:started',
       'draft:done',
       'review:started',
@@ -130,6 +132,8 @@ describe('orchestrator-wasm with the browser store and the fake LocalLlm', () =>
       'draft:done',
       'review:started',
       'review:done',
+      'publish:started',
+      'publish:done',
     ])
 
     // A re-run of the draft job calls no model and posts nothing.

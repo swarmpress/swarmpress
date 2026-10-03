@@ -1,13 +1,12 @@
 ---
 id: FEAT-078
 title: "Activity timeline and commit attribution"
-status: planned
+status: in-progress
 importance: high
 paths:
-  - apps/game/src/ui/components/Activity.tsx
-  - apps/game/src/ui/components/Activity.test.tsx
-  - apps/game/src/ui/activity-source.ts
-  - apps/game/e2e/activity.spec.ts
+  - apps/game/src/orchestration/activity.ts
+  - apps/game/src/orchestration/activity.test.ts
+  - apps/game/src/store/company-store.test.ts
   - crates/server/src/gateway.rs
   - crates/server/tests/gateway.rs
   - crates/orchestrator/src/gateway.rs
@@ -54,6 +53,12 @@ The MVP does not wait for work records (FEAT-061):
   author. The squash commit keeps the platform as author (the merge API has no author field) and
   carries `Co-authored-by` plus provenance trailers; this narrows ADR-0056 decision 8.
 - Revision diffs and following from another device stay with FEAT-061.
+
+Built (P5): the `activity` table (store migration 3) and `ActivityRecorder`
+(`apps/game/src/orchestration/activity.ts`), written from the orchestrator's progress events and
+the LLM bridge's per-call usage; the session's hook exposes the rows and the HUD chip reads
+"Giulia · draft · section 3 of 5". Not built: the Activity panel and the "Now" strip (U4); the
+`Activity.tsx` and `activity-source.ts` paths join this file when they exist.
 
 ## Acceptance criteria
 

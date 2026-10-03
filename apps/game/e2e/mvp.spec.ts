@@ -1,10 +1,13 @@
 // The MVP acceptance test (docs/mvp.md, "one article, end to end"), on the
 // REAL game page (`/?central=1`, production build) against the real
-// swarmpress-server (dev auth, fake GitHub, simulated deploys) with the scripted
-// `?llm=fake` model:
+// swarmpress-server (dev auth, fake GitHub, simulated deploys, the gateway's
+// article profile and closed-world checks on) with the brief-driven fake
+// `?llm=fake` model, which answers every stage of the staged Draft and Review
+// jobs (ADR-0058):
 //
 //   dev login → company founded → fast-forward to 09:00
-//   → standup → draft PR → review 6 → revision → review 8
+//   → standup → staged draft (outline, intro, 3 sections, closing) → PR → review 6
+//   → revision of the one section the review names → review 8
 //   → the publish gate: the CEO answers the approval ticket in the Inbox → merge
 //   → DeployLanded via the events API → item published
 //   → the Plan panel shows the thread
@@ -16,6 +19,7 @@
 // the clock (pause). Run with `playwright test -c playwright.mvp.config.ts`
 // (one project per store engine).
 import { expect, test, type Page } from '@playwright/test'
+import { MVP_REVISION_LINE } from '../src/llm/mvp-script'
 import type { SessionHook } from '../src/session/session'
 
 const ITEM = 'work-item-1'
@@ -117,7 +121,8 @@ async function approveInInbox(page: Page, shot: string) {
   await expect(preview).toBeVisible()
   await expect(preview.locator('iframe')).toHaveAttribute('sandbox', '')
   await expect(page.frameLocator('.article-preview iframe').getByRole('heading', { level: 1 })).toHaveText(TITLE)
-  await expect(page.frameLocator('.article-preview iframe').getByText('Maria and her sons')).toBeVisible()
+  // The revised section is what the CEO reads (the revision rewrote only that part).
+  await expect(page.frameLocator('.article-preview iframe').getByText(MVP_REVISION_LINE).first()).toBeVisible()
   await page.screenshot({ path: `test-results/mvp/${shot}-preview.png` })
   await page.keyboard.press('Escape')
   await expect(preview).toHaveCount(0)
@@ -210,7 +215,7 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
       { timeout: 180_000, intervals: [500] },
     )
     .toBe('published')
-  // Freeze the clock: the script has one article; tomorrow's standup would find it exhausted.
+  // Freeze the clock: tomorrow's standup would commission the next article.
   await session(page, 'pause')
   await expect(page.locator('.hud-chip')).toHaveAttribute('data-state', 'paused')
   await session(page, 'idle')
@@ -239,6 +244,28 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
   expect(gateway[1].headSha).not.toBe(gateway[0].headSha)
   expect(gateway[2]).toMatchObject({ number: gateway[0].number, headSha: gateway[1].headSha })
   expect(gateway[2].mergedSha).toMatch(/^[0-9a-f]{7,}$/)
+
+  // ---------------------------------------------------------------- the activity record (ADR-0058, FEAT-078)
+  // One job row per job with who did it (and, for the model's jobs, which model), and a row per stage of the draft.
+  const activity = await session(page, 'activity')
+  const jobRows = activity.filter((r) => r.stage === 'job')
+  expect(jobRows.map((r) => `${r.kind}:${r.revision}:${r.result}`)).toEqual(JOBS.map((j) => `${j}:done`))
+  expect(jobRows.every((r) => r.staff && r.persona && r.role)).toBe(true)
+  for (const r of jobRows.filter((r) => r.kind !== 'publish')) expect(r.model).toBe('fake-mvp')
+  expect(jobRows.filter((r) => r.kind !== 'publish').every((r) => r.tokens_in > 0 && r.tokens_out > 0)).toBe(true)
+  const firstDraft = jobRows[1].job_id
+  expect(activity.filter((r) => r.job_id === firstDraft && r.stage !== 'job').map((r) => `${r.stage}#${r.idx}`)).toEqual([
+    'context#0',
+    'outline#0',
+    'section#0',
+    'section#1',
+    'section#2',
+    'section#3',
+    'closing#0',
+    'commit#0',
+  ])
+  expect(jobRows[1].detail).toMatchObject({ pr: gateway[0].number, branch: gateway[0].branch, sha: gateway[0].headSha })
+  expect(activity.filter((r) => r.job_id === jobRows[3].job_id && r.stage !== 'job').map((r) => `${r.stage}#${r.idx}`)).toEqual(['revise#2', 'commit#0'])
 
   // ---------------------------------------------------------------- the site's knowledge pack (ADR-0061, K2)
   // The fake site repo starts as the cinqueterre-mini fixture (e2e/central-server.mjs). The session
@@ -340,13 +367,14 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
   expect(await postTypes(page)).toEqual(POST_TYPES)
   expect(await logKinds(page)).toEqual(LOGGED)
   await expectThreadInPlanPanel(page, `${engine}-plan-reloaded`)
-  // Nothing ran again: no job, no gateway call, no new command (the script is exhausted, so a re-run would fail loudly).
+  // Nothing ran again: no job, no gateway call, no new command, no new activity row.
   await session(page, 'idle')
   const after = await state(page)
   expect(after.jobs).toEqual([])
   expect(after.logged).toBe(0)
   expect(after.errors).toEqual([])
   expect(await session(page, 'gateway')).toEqual([])
+  expect(await session(page, 'activity')).toHaveLength(activity.length)
   // The pack of the merged head came from the store and was revalidated with its ETag (304).
   expect(after.knowledge).toMatchObject({ commit: gateway[2].mergedSha, bound: gateway[2].mergedSha, error: null })
   expect(after.knowledge.refreshes[0]).toEqual({ reason: 'start', result: 'not-modified' })
