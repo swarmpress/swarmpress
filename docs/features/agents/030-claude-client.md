@@ -1,11 +1,10 @@
 ---
 id: FEAT-030
 title: "Claude client"
-status: planned
+status: in-progress
 importance: critical
 paths:
   - "crates/claude/**"
-  - "crates/testkit/src/fake_claude*.rs"
 adrs:
   - ADR-0010
 ---
@@ -16,6 +15,11 @@ Messages API over reqwest: SSE parser, tool loop, structured outputs, `cache_con
 retries on 429/529/overloaded, refusal/fallback handling, usage capture into `llm_calls`.
 
 Decisions: [ADR-0010](../../adr/0010-claude-over-raw-http.md).
+
+> **Status note (2026-10-04):** Built and tested in `crates/claude` (SSE parser, tool loop,
+> structured outputs, retries, the HTTP client behind the `http` feature, `FakeClaude` in
+> `src/fake.rs`; tests in `crates/claude/tests/`). The MVP runs no cloud model (ADR-0057), so
+> nothing in the game calls it today.
 
 ## Acceptance criteria
 

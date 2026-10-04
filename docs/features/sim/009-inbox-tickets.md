@@ -5,9 +5,7 @@ status: in-progress
 importance: high
 paths:
   - crates/sim-core/src/inbox.rs
-  - crates/sim-core/src/tickets.rs
   - crates/sim-core/tests/publish_gate.rs
-  - "apps/game/src/ui/inbox/**"
   - apps/game/src/ui/components/Inbox.tsx
 adrs:
   - ADR-0011

@@ -55,3 +55,43 @@
   features: [FEAT-046, FEAT-048]
 - match: { classname: server, title: "config::tests::dev_auth_with_a_real_github_is_loopback_only" }
   features: [FEAT-046]
+# Placement validation in sim-core's src/validate.rs (FEAT-003): lot, rooms, doors, windows,
+# unlock levels and equipment. validate.rs is FEAT-079's path, so these keep FEAT-079 too.
+- match: { classname: sim-core, title: "validate::tests::grown_lot_strips" }
+  features: [FEAT-003, FEAT-079]
+- match: { classname: sim-core, title: "validate::tests::rejects_overlap_and_out_of_lot" }
+  features: [FEAT-003, FEAT-079]
+- match: { classname: sim-core, title: "validate::tests::rejects_unreachable_room" }
+  features: [FEAT-003, FEAT-079]
+- match: { classname: sim-core, title: "validate::tests::rejects_interior_windows_and_street_doors" }
+  features: [FEAT-003, FEAT-079]
+- match: { classname: sim-core, title: "validate::tests::prerequisites" }
+  features: [FEAT-003, FEAT-079]
+- match: { classname: sim-core, title: "validate::tests::equipment_rules" }
+  features: [FEAT-003, FEAT-079]
+# crates/sim-core/tests/organization.rs covers several features and no path owns the file, so its
+# cases are mapped one by one. The staff FSM's daily schedule (FEAT-004):
+- match: { classname: "sim-core::organization", title: "office_runs_a_normal_day" }
+  features: [FEAT-004]
+# Promotion, raises and pay cuts move morale (FEAT-005).
+- match: { classname: "sim-core::organization", title: "people_commands" }
+  features: [FEAT-005]
+# The books, month close, budgets, runway and loans (FEAT-007).
+- match: { classname: "sim-core::organization", title: "month_close_after_thirty_days" }
+  features: [FEAT-007]
+- match: { classname: "sim-core::organization", title: "a_week_without_revenue_raises_no_finance_tickets" }
+  features: [FEAT-007]
+- match: { classname: "sim-core::organization", title: "no_cfo_means_no_alerts_and_unkept_books" }
+  features: [FEAT-007]
+- match: { classname: "sim-core::organization", title: "approving_an_overrun_raises_the_budget" }
+  features: [FEAT-007]
+- match: { classname: "sim-core::organization", title: "runway_and_loans" }
+  features: [FEAT-007]
+- match: { classname: "sim-core::organization", title: "payroll_spike_on_an_expensive_hire" }
+  features: [FEAT-007]
+- match: { classname: "sim-core::organization", title: "friday_finance_review_with_the_cfo" }
+  features: [FEAT-007]
+# The work-style paragraph from traits and seniority (crates/agents/tests/personas.rs, a FEAT-031
+# file) is also a FEAT-005 acceptance criterion.
+- match: { classname: "agents::personas", title: "work_style_snapshots" }
+  features: [FEAT-005, FEAT-031]

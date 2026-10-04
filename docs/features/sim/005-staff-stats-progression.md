@@ -1,13 +1,11 @@
 ---
 id: FEAT-005
 title: "Staff stats, morale, fatigue and promotion"
-status: planned
+status: in-progress
 importance: high
 paths:
-  - crates/sim-core/src/staff/stats.rs
-  - crates/sim-core/src/staff/morale.rs
-  - crates/sim-core/src/hiring.rs
-  - crates/agents/src/prompts/work_style.rs
+  - crates/sim-core/src/staff.rs
+  - crates/agents/src/personas.rs
 adrs:
   - ADR-0010
   - ADR-0024
@@ -15,7 +13,12 @@ adrs:
 
 # Staff stats, morale, fatigue and promotion
 
-> **Status note (2026-10-02):** Morale, fatigue and promotion exist in `crates/sim-core/src/world.rs`; there are no skills or XP. The status lags because no test file is linked to this feature yet.
+> **Status note (2026-10-04):** Partly built. Traits, seniority and promotion are in
+> `crates/sim-core/src/staff.rs`; the morale and fatigue updates are in `world.rs`; the work-style
+> paragraph is `format_work_style` in `crates/agents/src/personas.rs`. Tests: `staff.rs`'s unit
+> tests, and, mapped in `docs/test-map.yaml`, `people_commands` (promotion and pay change move
+> morale) and the work-style snapshots. Not built: skills and XP, the promotion-request and
+> resignation tickets.
 
 Traits drive sim speed and error rate and render into a work-style paragraph in the prompt.
 Seniority (Junior/Mid/Senior/Star) picks the model. Skill grows from completed stages and editor

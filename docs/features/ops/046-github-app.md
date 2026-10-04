@@ -1,11 +1,10 @@
 ---
 id: FEAT-046
 title: "GitHub App client and site repos"
-status: planned
+status: in-progress
 importance: critical
 paths:
   - "crates/github/**"
-  - "crates/testkit/src/fake_github*.rs"
   - crates/server/tests/binding.rs
   - crates/server/migrations/0004_site_binding.sql
   - scripts/run-local.sh

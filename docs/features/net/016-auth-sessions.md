@@ -1,7 +1,7 @@
 ---
 id: FEAT-016
 title: "Auth: GitHub OAuth and cookie sessions"
-status: planned
+status: in-progress
 importance: high
 paths:
   - crates/server/src/auth.rs
@@ -20,6 +20,10 @@ GitHub OAuth sign-in, opaque server-side sessions in an HttpOnly Secure SameSite
 state-changing REST, Origin check on WS upgrade, per-company authorisation.
 
 Decisions: [ADR-0019](../../adr/0019-auth-github-oauth-cookie-sessions.md).
+
+> **Status note (2026-10-04):** The OAuth web flow, cookie sessions, logout, expiry and dev login
+> are built (`crates/server/src/auth.rs`) and tested (`crates/server/tests/http.rs`). Runner tokens
+> are not built yet; `crates/server/tests/runner_tokens.rs` is their planned test file.
 
 Runner tokens (increment A6, FEAT-063): a non-browser executor authenticates with
 `Authorization: Bearer <token>`. `runner_tokens` stores only the hash; a token is scoped to one

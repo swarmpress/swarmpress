@@ -1,13 +1,17 @@
 ---
 id: FEAT-038
 title: "Model registry and capability tiers"
-status: planned
+status: in-progress
 importance: high
 paths:
   - config/models.toml
   - apps/game/src/llm/registry.ts
+  - apps/game/src/llm/registry.test.ts
+  - apps/game/src/llm/registry.drift.test.ts
   - apps/game/src/llm/capabilities.ts
+  - apps/game/src/llm/capabilities.test.ts
   - apps/game/src/llm/download.ts
+  - apps/game/src/llm/download.test.ts
   - apps/game/src/llm/registry.default.ts
   - "apps/game/src/llm/runtime/bonsai/manifest/**"
   - apps/game/src/llm/runtime/bonsai/manifest.test.ts
@@ -41,7 +45,8 @@ Design: [`docs/design/mvp-runtime.md`](../../design/mvp-runtime.md) (weight cach
 - Phase A keeps the engine's own IndexedDB chunk cache (Range, per-chunk resume). An OPFS chunk
   store with per-chunk hashes comes after the go decision.
 - Tier selection is unused in the MVP: one model serves every role. The code exists with unit
-  tests; the status stays `planned` until R7 produces the eval evidence.
+  tests (registry, capabilities, download, manifest), so the feature is `in-progress`; it is not
+  `stable` until R7 produces the eval evidence (`bench/model-eval`).
 
 ## Acceptance criteria
 

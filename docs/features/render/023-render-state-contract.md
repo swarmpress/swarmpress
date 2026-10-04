@@ -7,7 +7,7 @@ paths:
   - apps/game/src/state/render-state.ts
   - apps/game/src/state/render-state.test.ts
   - crates/sim-core/src/render_state.rs
-  - crates/client-wasm/src/render.rs
+  - crates/client-wasm/src/json.rs
 adrs:
   - ADR-0007
 ---

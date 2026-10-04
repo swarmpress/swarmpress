@@ -6,13 +6,12 @@ importance: critical
 paths:
   - crates/sim-core/src/lib.rs
   - crates/sim-core/src/world.rs
-  - crates/sim-core/src/rng.rs
-  - crates/sim-core/src/command.rs
-  - "crates/sim-core/tests/determinism*.rs"
-  - "crates/sim-core/tests/proptest*.rs"
+  - crates/sim-core/src/commands.rs
+  - crates/sim-core/tests/golden.rs
+  - crates/sim-core/tests/invariants.rs
   - "crates/sim-core/benches/**"
   - "crates/client-wasm/tests/**"
-  - "crates/testkit/src/golden*.rs"
+  - crates/testkit/src/lib.rs
 adrs:
   - ADR-0002
   - ADR-0003

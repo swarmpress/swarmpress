@@ -5,10 +5,8 @@ status: in-progress
 importance: critical
 paths:
   - crates/sim-core/src/projects.rs
-  - "crates/sim-core/src/projects/**"
   - crates/sim-core/src/plan.rs
-  - crates/sim-core/src/jobs.rs
-  - "crates/sim-core/tests/pipeline*.rs"
+  - crates/sim-core/src/commands.rs
   - crates/sim-core/tests/job_contract.rs
 adrs:
   - ADR-0011

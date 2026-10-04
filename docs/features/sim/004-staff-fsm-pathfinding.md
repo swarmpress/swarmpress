@@ -1,14 +1,13 @@
 ---
 id: FEAT-004
 title: "Staff FSM and pathfinding"
-status: planned
+status: in-progress
 importance: critical
 paths:
   - crates/sim-core/src/staff.rs
-  - "crates/sim-core/src/staff/**"
   - crates/sim-core/src/pathfinding.rs
   - "crates/sim-core/benches/pathfinding*.rs"
-  - "crates/sim-core/tests/staff*.rs"
+  - crates/sim-core/tests/invariants.rs
 adrs:
   - ADR-0003
   - ADR-0007
@@ -16,7 +15,12 @@ adrs:
 
 # Staff FSM and pathfinding
 
-> **Status note (2026-10-02):** The code exists (`crates/sim-core/src/staff.rs`, `pathfinding.rs`, movement in `world.rs`) and the render state carries poses and paths; the status lags because no test file is linked to this feature yet.
+> **Status note (2026-10-04):** Built and tested. The FSM and schedules are in
+> `crates/sim-core/src/staff.rs`, A* in `pathfinding.rs` (unit tests in both), the decision and
+> movement in `world.rs`. The property tests (`tests/invariants.rs`: nobody inside a wall, nobody
+> without a path) and `office_runs_a_normal_day` (mapped in `docs/test-map.yaml`) cover the
+> feature. There is no pathfinding benchmark yet (`benches/pathfinding*.rs` is still to come; the
+> step benchmark includes walking).
 
 Staff with persona, role, seniority, traits (rigor, speed, creativity, sociability, resilience,
 ambition), skills, morale, fatigue, salary, home desk, assignment, activity, position and path. A

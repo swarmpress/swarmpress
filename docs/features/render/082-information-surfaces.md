@@ -4,13 +4,11 @@ title: "Live information surfaces"
 status: in-progress
 importance: high
 paths:
-  - "apps/game/src/render/surfaces/**"
   - apps/game/src/render/bricks/surfaces.ts
   - apps/game/src/render/bricks/surfaces.test.ts
   - apps/game/src/render/bricks/office.ts
   - apps/game/src/render/bricks/index.ts
   - apps/game/e2e/bricks.spec.ts
-  - "apps/game/src/ui/surfaces/**"
   - apps/game/src/state/render-state.ts
   - docs/architecture/render-state.md
 adrs:

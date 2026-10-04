@@ -1,15 +1,12 @@
 ---
 id: FEAT-003
 title: "Building, rooms and devices"
-status: planned
+status: in-progress
 importance: critical
 paths:
   - crates/sim-core/src/building.rs
-  - crates/sim-core/src/rooms.rs
-  - crates/sim-core/src/devices.rs
-  - crates/sim-core/src/placement.rs
-  - "crates/sim-core/tests/building*.rs"
-  - config/rooms.ron
+  - crates/sim-core/src/equipment.rs
+  - crates/sim-core/src/geom.rs
 adrs:
   - ADR-0003
   - ADR-0006
@@ -17,7 +14,11 @@ adrs:
 
 # Building, rooms and devices
 
-> **Status note (2026-10-02):** The code exists (`crates/sim-core/src/building.rs`, `equipment.rs`, room and device commands in `world.rs`) and runs in the 13-person scenario; the status lags because no test file is linked to this feature yet.
+> **Status note (2026-10-04):** Built and tested. The lot, rooms, walls, doors, windows, light and
+> capacity are in `crates/sim-core/src/building.rs`, devices in `equipment.rs`, the tile grid in
+> `geom.rs`; their unit tests live in those modules. Placement validation is in `validate.rs`; its
+> building and equipment tests are mapped in `docs/test-map.yaml`. One floor only (M1 limit),
+> room kinds are code, not a `config/rooms.ron` file.
 
 Lot, floors, walls, doors and windows on a 1 m grid. Rooms (Newsroom, EditorOffice, MeetingRoom,
 Archive, PhotoStudio, SeoLab, TranslationDesk, DesignStudio, CeoOffice, Kitchen, ServerRoom) with

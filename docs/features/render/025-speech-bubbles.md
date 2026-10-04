@@ -4,7 +4,6 @@ title: "Speech bubbles"
 status: in-progress
 importance: normal
 paths:
-  - "apps/game/src/render/bubbles/**"
   - "apps/game/src/ui/bubbles/**"
   - apps/game/src/orchestration/loop.ts
   - apps/game/src/orchestration/speech.ts
