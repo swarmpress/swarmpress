@@ -33,6 +33,7 @@ use agents::pipeline::Brief;
 use content_model::article_profile::{
     article_slug, check_article_profile, is_article_path, is_blog_index_path,
 };
+use content_model::{validate_page_v2, SchemaRegistry};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -105,7 +106,29 @@ pub struct EvalChecks {
     pub gateway_issues: Vec<String>,
     /// The measured checks as the editor reads them beside the text.
     pub measured: Vec<String>,
+    /// The rules the article breaks, once each whichever check found them
+    /// (sorted): one of [`RULES`]. A missing hero image is one `media`
+    /// failure, not three (links and media, site validator, gateway).
+    #[serde(default)]
+    pub rules: Vec<String>,
 }
+
+/// The rules [`EvalChecks::rules`] names.
+pub const RULES: [&str; 13] = [
+    "words",
+    "banned-phrase",
+    "near-duplicates",
+    "headings",
+    "title-length",
+    "description-length",
+    "plain-text",
+    "link",
+    "media",
+    "schema",
+    "profile",
+    "path",
+    "create-only",
+];
 
 impl EvalChecks {
     /// Every deterministic check passes.
@@ -262,22 +285,75 @@ pub fn eval_checks(site: &SiteBinding, brief: &Brief, record: &ArtifactRecord) -
         }
     }
 
-    let link_media_issues = site
+    let closed_world = site
         .knowledge
         .as_ref()
-        .map(|k| {
-            k.kb.closed_world_issues(page)
-                .iter()
-                .map(ToString::to_string)
-                .collect()
-        })
+        .map(|k| k.kb.closed_world_issues(page))
         .unwrap_or_default();
-    let site_issues = site
+    let link_media_issues: Vec<String> = closed_world.iter().map(ToString::to_string).collect();
+    let site_page_issues = site
         .validator_v2
         .as_ref()
-        .map(|v| v.check(page).iter().map(ToString::to_string).collect())
+        .map(|v| v.check(page))
         .unwrap_or_default();
+    let site_issues = site_page_issues.iter().map(ToString::to_string).collect();
     let path = record.path.clone().unwrap_or_else(|| brief.page_path());
+    let gateway_issues = gateway_checks(site, &brief.content_id, &path, page);
+
+    let title_ok = (10..=70).contains(&title_chars);
+    let description_ok = (40..=160).contains(&description_chars);
+    let mut rules: Vec<&str> = Vec::new();
+    for (rule, failed) in [
+        ("words", !words_ok),
+        ("banned-phrase", !banned.is_empty()),
+        ("near-duplicates", near > 0),
+        ("headings", !headings_ok),
+        ("title-length", !title_ok),
+        ("description-length", !description_ok),
+        ("plain-text", !plain.is_empty()),
+    ] {
+        if failed {
+            rules.push(rule);
+        }
+    }
+    rules.extend(closed_world.iter().map(|i| i.kind.code()));
+    rules.extend(site_page_issues.iter().map(|i| match i.code.as_str() {
+        "house_style" => "banned-phrase",
+        "link" => "link",
+        "media" => "media",
+        "schema" => "schema",
+        _ => "profile",
+    }));
+    // The gateway's own texts: the closed world (counted above), schema
+    // errors (the profile's first step), create-only, the path and size rules
+    // of `check_draft`, and the rest of the article profile.
+    let schema_lines = if gateway_issues.is_empty() {
+        Vec::new()
+    } else {
+        validate_page_v2(page, &SchemaRegistry::core()).error_lines()
+    };
+    rules.extend(
+        gateway_issues
+            .iter()
+            .filter(|i| !link_media_issues.contains(i))
+            .map(|i| {
+                if schema_lines.contains(i) {
+                    "schema"
+                } else if i.contains("create-only") {
+                    "create-only"
+                } else if i.starts_with(&path)
+                    || i.starts_with("page is ")
+                    || i == "page must be a JSON object"
+                {
+                    "path"
+                } else {
+                    "profile"
+                }
+            }),
+    );
+    rules.sort_unstable();
+    rules.dedup();
+
     EvalChecks {
         words,
         target_words: brief.target_words,
@@ -289,13 +365,14 @@ pub fn eval_checks(site: &SiteBinding, brief: &Brief, record: &ArtifactRecord) -
         headings_ok,
         title_chars,
         description_chars,
-        title_ok: (10..=70).contains(&title_chars),
-        description_ok: (40..=160).contains(&description_chars),
+        title_ok,
+        description_ok,
         plain_text_findings: plain,
         link_media_issues,
         site_issues,
-        gateway_issues: gateway_checks(site, &brief.content_id, &path, page),
+        gateway_issues,
         measured: crate::staged::measured_checks(site, brief, page, parts.as_ref()),
+        rules: rules.into_iter().map(String::from).collect(),
     }
 }
 
@@ -340,8 +417,10 @@ fn text_of(v: &Value) -> String {
     }
 }
 
-/// Paragraph blocks of a text: one per blank-line-separated paragraph.
+/// Paragraph blocks of a text: one per blank-line-separated paragraph, and
+/// one per HTML paragraph (`<p>…</p>`, the form of a few existing fields).
 fn paragraphs_of(text: &str) -> Vec<SectionBlock> {
+    let text = text.replace("</p>", "\n\n").replace("</P>", "\n\n");
     text.split("\n\n")
         .map(strip_html)
         .filter(|p| !p.is_empty())
@@ -501,10 +580,16 @@ fn read_block(r: &mut Read, block: &Value) {
             }
         }
         "image" | "image-pair" | "gallery" => {}
-        // Every other text block (paragraph, lead, editorial-intro,
-        // editor-note, quote) is read as paragraphs.
+        // The theme's two-column intro: both columns, then its pull quote.
+        "editorial-intro" => {
+            for field in ["leftContent", "rightContent", "quote"] {
+                push_blocks(r, paragraphs_of(&text_of(&block[field])));
+            }
+        }
+        // Every other text block (paragraph, lead, editor-note, quote) is
+        // read as paragraphs: its first text field.
         _ => {
-            for field in ["markdown", "content", "text"] {
+            for field in ["markdown", "content", "text", "quote"] {
                 let text = text_of(&block[field]);
                 if !text.is_empty() {
                     push_blocks(r, paragraphs_of(&text));

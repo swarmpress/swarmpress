@@ -28,6 +28,29 @@ export const THRESHOLDS = {
   ownerPublishPct: 80,
 } as const
 
+/**
+ * The legacy profile of the positive controls (docs/qualification/check-calibration.md):
+ * the rules the site's own published articles may break without the check being called
+ * miscalibrated. The gate for new drafts is unchanged; a control is only *scored* on this
+ * profile, and the report names every exception.
+ *
+ * - `banned-phrase`: the live articles predate the style guide's `vocabulary.avoid` list
+ *   ("iconic", "stunning", "hidden gem(s)", "tourist trap(s)"); the words are banned for
+ *   new writing, not wrong in the theme.
+ * - `media`: six live heroes are not in `content/config/media-index.json` (a gap in the
+ *   site's index the owner fixes); new drafts may only use indexed media (rule 5).
+ */
+export const LEGACY_RULES: Readonly<Record<string, string>> = {
+  'banned-phrase': "the live articles predate the style guide's banned vocabulary",
+  media: 'live hero images missing from the media index (a site data gap)',
+}
+
+/** A control's broken rules, create-only left out (a reference is on the site already). Results without `rules` fall back to the failing check names, which no legacy rule matches. */
+export const controlRules = (c: EvalChecks): string[] => (c.rules ?? failedChecks(c)).filter((r) => r !== 'create-only')
+
+/** A control breaks only rules of the legacy profile. */
+export const withinLegacyProfile = (c: EvalChecks | null): boolean => !!c && controlRules(c).every((r) => r in LEGACY_RULES)
+
 export interface StageSummary {
   stage: string
   /** Stages that called the model (reused ones left out). */
@@ -77,6 +100,12 @@ export interface EvalSummary {
   seededRejected: number
   /** References failing each check: a check that fails many accepted references is miscalibrated (§9). */
   calibration: Record<string, number>
+  /** References breaking each rule (create-only left out), each counted once per reference. */
+  controlRules: Record<string, number>
+  /** References whose only broken rules are in {@link LEGACY_RULES}. */
+  controlsWithinLegacy: number
+  /** References breaking a rule outside the legacy profile: a check bug or a rule the live site disagrees with, to look at before going live. */
+  controlsOutsideLegacy: { source: string; rules: string[] }[]
   jobsOverTimeout: number
   maxJobMs: number
   minutesPerArticle: number | null
@@ -175,6 +204,11 @@ export function summarize(res: EvalResults, marks: OwnerMarks = {}): EvalSummary
   const seeded = res.articles.filter((a) => a.kind === 'seeded')
   const calibration: Record<string, number> = {}
   for (const a of controls) for (const c of a.checks ? failedChecks(a.checks) : []) calibration[c] = (calibration[c] ?? 0) + 1
+  const controlRuleCounts: Record<string, number> = {}
+  for (const a of controls) for (const r of a.checks ? controlRules(a.checks) : []) controlRuleCounts[r] = (controlRuleCounts[r] ?? 0) + 1
+  const outsideLegacy = controls
+    .filter((a) => !withinLegacyProfile(a.checks))
+    .map((a) => ({ source: a.source, rules: a.checks ? controlRules(a.checks).filter((r) => !(r in LEGACY_RULES)) : ['no checks'] }))
   const jobs = res.articles.flatMap((a) => a.jobs)
   const ownerOf = approved.map((a) => marks[a.id]).filter((m): m is OwnerMark => !!m && m.publish !== null)
   return {
@@ -207,6 +241,9 @@ export function summarize(res: EvalResults, marks: OwnerMarks = {}): EvalSummary
     seededChecksRejected: seeded.filter((a) => checksReject(a.checks)).length,
     seededRejected: seeded.filter((a) => editorRejects(a, bar) || checksReject(a.checks)).length,
     calibration,
+    controlRules: controlRuleCounts,
+    controlsWithinLegacy: controls.length - outsideLegacy.length,
+    controlsOutsideLegacy: outsideLegacy,
     jobsOverTimeout: jobs.filter((j) => j.wallMs > res.config.jobTimeoutMs).length,
     maxJobMs: jobs.length ? Math.max(...jobs.map((j) => j.wallMs)) : 0,
     minutesPerArticle: (() => {
@@ -297,6 +334,22 @@ export function thresholdRows(s: EvalSummary, res: EvalResults): ThresholdRow[] 
       bar: `≥ ${T.controlsApprovedPct}%`,
       measured: s.controls ? `${s.controlsApproved} of ${s.controls} (${fmt(s.controlsApprovedPct)})` : 'no references in the pack',
       verdict: v(s.controls ? (s.controlsApprovedPct ?? 0) >= T.controlsApprovedPct : null),
+    },
+    {
+      id: 'calibration',
+      rule: 5,
+      metric: 'existing articles passing the checks on the legacy profile (calibration)',
+      bar: 'all',
+      measured: s.controls
+        ? `${s.controlsWithinLegacy} of ${s.controls}` +
+          (Object.keys(s.controlRules).length
+            ? `; rules broken: ${Object.entries(s.controlRules)
+                .sort()
+                .map(([r, n]) => `${r} ${n}${r in LEGACY_RULES ? ' (legacy)' : ''}`)
+                .join(', ')}`
+            : '; no rule broken')
+        : 'no references in the pack',
+      verdict: v(s.controls ? s.controlsOutsideLegacy.length === 0 : null),
     },
     {
       id: 'owner',

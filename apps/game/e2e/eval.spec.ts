@@ -123,7 +123,10 @@ base('@fake the eval on the scripted model: stable counts, a valid document, the
 
   const rows = thresholdRows(s, res)
   const verdicts = Object.fromEntries(rows.map((r) => [r.id, r.verdict]))
-  expect(verdicts).toMatchObject({ 'committed-pass': 'pass', approved: 'pass', 'median-revisions': 'pass', 'seeded-editor': 'pass', 'seeded-rejected': 'pass', briefs: 'fail', controls: 'fail', owner: 'pending' })
+  expect(verdicts).toMatchObject({ 'committed-pass': 'pass', approved: 'pass', 'median-revisions': 'pass', 'seeded-editor': 'pass', 'seeded-rejected': 'pass', calibration: 'pass', briefs: 'fail', controls: 'fail', owner: 'pending' })
+  // The mini pack's controls break only rules of the legacy profile (docs/qualification/check-calibration.md).
+  expect(s.controlRules).toEqual({ 'banned-phrase': 1, media: 2 })
+  expect(s.controlsOutsideLegacy).toEqual([])
   expect(overallVerdict(rows)).toBe('fail')
 
   // The page lists every generated article for the owner, and keeps the marks.

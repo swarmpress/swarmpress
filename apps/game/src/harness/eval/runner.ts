@@ -48,6 +48,8 @@ export interface EvalChecks {
   site_issues: string[]
   gateway_issues: string[]
   measured: string[]
+  /** The rules broken, once each whichever check found them (`orchestrator::eval::RULES`); absent in results exported before it existed. */
+  rules?: string[]
 }
 
 /** `orchestrator::eval::EvalArticle` (records cross as JSON; brief refs stay below 2^53). */

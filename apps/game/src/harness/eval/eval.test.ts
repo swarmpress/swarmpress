@@ -127,7 +127,8 @@ describe('the local store and gateway', () => {
 
 const config = (o: Partial<EvalConfig> = {}): EvalConfig => ({ backend: 'fake', modelId: 'fake-mvp', n: 3, bar: 7, maxRevisions: 3, jobTimeoutMs: 60_000, controls: true, seeded: true, ...o })
 
-async function run(o: Partial<EvalConfig> = {}): Promise<EvalResults> {
+async function run(o: Partial<EvalConfig> = {}, evalSite: EvalSite = site): Promise<EvalResults> {
+  const site = evalSite
   const cfg = config(o)
   const store = new MemoryOrchestratorStore()
   const meter = new Meter()
@@ -214,6 +215,41 @@ describe('the eval on the scripted model', () => {
     expect(articleText(approved[0].page)).toMatch(/^# /)
   })
 
+  it('scores the site’s own articles on the legacy profile and names every rule they break', () => {
+    const controls = res.articles.filter((a) => a.kind === 'control')
+    // The mini fixture copies the live shapes: a plural banned phrase ("tourist traps") and two heroes outside its media index.
+    expect(Object.fromEntries(controls.map((a) => [a.source.split('/').pop(), a.checks?.rules]))).toEqual({
+      '5-hidden-gelaterias-you-need-to-try.json': ['banned-phrase', 'create-only'],
+      'day-trip-to-portovenere.json': ['create-only', 'media'],
+      'last-light-on-sentiero-azzurro.json': ['create-only', 'media'],
+    })
+    const s = summarize(res)
+    expect(s.controlRules).toEqual({ 'banned-phrase': 1, media: 2 })
+    expect(s.controlsWithinLegacy).toBe(3)
+    expect(s.controlsOutsideLegacy).toEqual([])
+    expect(thresholdRows(s, res).find((r) => r.id === 'calibration')).toMatchObject({ verdict: 'pass', measured: '3 of 3; rules broken: banned-phrase 1 (legacy), media 2 (legacy)' })
+    // The legacy profile is for controls only: an approved brief with a banned phrase still fails threshold 4.
+    expect(s.approvedBanned).toBe(0)
+    // A rule outside the legacy profile fails the calibration row and is named.
+    const broken = structuredClone(res)
+    const c = broken.articles.find((a) => a.kind === 'control')!
+    c.checks = { ...c.checks!, rules: ['create-only', 'profile'] }
+    const sb = summarize(broken)
+    expect(sb.controlsOutsideLegacy).toEqual([{ source: c.source, rules: ['profile'] }])
+    expect(thresholdRows(sb, broken).find((r) => r.id === 'calibration')?.verdict).toBe('fail')
+    expect(evalMarkdown(broken, CTX)).toContain(`Outside the legacy profile: ${c.source} (profile).`)
+    // Results exported before `rules` existed fall back to the failing checks, none of them legacy.
+    const old = structuredClone(res)
+    for (const a of old.articles) if (a.checks) delete a.checks.rules
+    expect(summarize(old).controlsOutsideLegacy.map((x) => x.rules)).toEqual([['banned-phrases', 'site-validator'], ['links-and-media', 'site-validator', 'gateway'], ['links-and-media', 'site-validator', 'gateway']])
+    const doc = evalBenchmarkDoc(res, CTX)
+    expect(doc.metrics.filter((m) => m.name === 'controls.failing_rule').map((m) => [m.subject, m.value])).toEqual([
+      ['banned-phrase', 1],
+      ['media', 2],
+    ])
+    expect(doc.metrics.find((m) => m.name === 'controls.outside_legacy')?.value).toBe(0)
+  })
+
   it('is deterministic on the scripted model', async () => {
     const again = await run()
     const strip = (r: EvalResults) => r.articles.map((a) => [a.id, a.outcome, a.reviews.map((x) => x.score), a.checks?.words, JSON.stringify(a.page)])
@@ -227,4 +263,24 @@ describe('the eval on the scripted model', () => {
     expect(median([3, 1, 2])).toBe(2)
     expect(median([])).toBeNull()
   })
+})
+
+// The owner's site pack on the scripted model, local only (docs/qualification/check-calibration.md):
+// EVAL_PACK=<cargo xtask site-pack <site> --articles --out file> pnpm exec vitest run src/harness/eval
+describe.skipIf(!process.env.EVAL_PACK)('the eval on a real site pack (EVAL_PACK, scripted model)', () => {
+  it('passes the gate for new drafts, rejects the seeded set and scores the controls on the legacy profile', async () => {
+    const real = parseSitePack(await readFile(process.env.EVAL_PACK!, 'utf8'))
+    const res = await run({}, real)
+    const s = summarize(res)
+    const rows = thresholdRows(s, res)
+    for (const r of rows) console.log(`[calib] ${r.id}: ${r.measured} → ${r.verdict}`)
+    console.log(`[calib] checks failed by controls: ${JSON.stringify(s.calibration)}`)
+    console.log(`[calib] rules broken by controls: ${JSON.stringify(s.controlRules)}`)
+    for (const a of res.articles.filter((x) => x.kind === 'control')) console.log(`[calib] ${a.source.split('/').pop()}: ${(a.checks?.rules ?? []).join(', ')}`)
+    expect(res.errors).toEqual([])
+    expect(s.committedPass).toBe(s.committed)
+    expect(s.seededRejected).toBe(6)
+    expect(s.seededChecksRejected).toBe(6)
+    expect(s.controlsOutsideLegacy).toEqual([])
+  }, 600_000)
 })

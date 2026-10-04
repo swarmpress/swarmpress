@@ -17,6 +17,8 @@ paths:
   - apps/game/playwright.eval.config.ts
   - crates/orchestrator/src/eval.rs
   - crates/orchestrator/tests/eval.rs
+  - crates/orchestrator/tests/eval_calibration.rs
+  - docs/qualification/check-calibration.md
   - crates/knowledge/tests/fixtures/cinqueterre-mini/content/config/content-calendar.json
   - xtask/src/site_pack.rs
   - docs/runbooks/eval.md

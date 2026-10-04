@@ -7,7 +7,7 @@
  * Pure: runs in the page, under vitest and in Node. Imports no JSON.
  */
 import { BENCHMARK_SCHEMA, TOOL, type BenchmarkDoc, type BenchmarkMetric, type Direction, type ReportContext } from '../../llm/bench/report'
-import { failedChecks, overallVerdict, summarize, thresholdRows, type EvalSummary, type OwnerMarks, type ThresholdRow } from './metrics'
+import { LEGACY_RULES, failedChecks, overallVerdict, summarize, thresholdRows, type EvalSummary, type OwnerMarks, type ThresholdRow } from './metrics'
 import type { ArticleResult, EvalResults } from './runner'
 
 export const evalDocName = (backend: string) => `agent-pipeline-eval-${backend}`
@@ -70,6 +70,8 @@ export function evalBenchmarkDoc(res: EvalResults, ctx: ReportContext, s: EvalSu
   count('controls.approved_pct', 'editor', '%', s.controlsApprovedPct, 'higher_is_better', { min: 80 })
   count('controls.score_mean', 'editor', 'score', s.controlScores.length ? s.controlScores.reduce((a, b) => a + b, 0) / s.controlScores.length : null, 'higher_is_better')
   for (const [check, n] of Object.entries(s.calibration).sort()) count('controls.failing_check', check, 'articles', n, 'lower_is_better')
+  for (const [rule, n] of Object.entries(s.controlRules).sort()) count('controls.failing_rule', rule, 'articles', n, 'lower_is_better')
+  count('controls.outside_legacy', 'checks', 'articles', s.controls ? s.controlsOutsideLegacy.length : null, 'lower_is_better', { max: 0 })
   count('jobs.over_timeout', 'pipeline', 'jobs', s.jobsOverTimeout, 'lower_is_better', { max: 0 })
   measured('article.minutes_median', 'pipeline', 'min', s.minutesPerArticle, 'lower_is_better')
   measured('tokens.completion', 'all-stages', 'tokens', s.tokens.completion, 'informational')
@@ -265,6 +267,13 @@ export function evalMarkdown(res: EvalResults, ctx: ReportContext, marks: OwnerM
     ]),
     '',
     `Checks failed by the existing articles (calibration; create-only left out): ${Object.entries(s.calibration).map(([k, n]) => `${k} ${n} of ${s.controls}`).join(', ') || 'none'}.`,
+    '',
+    `Rules they break, each once per article: ${
+      Object.entries(s.controlRules)
+        .sort()
+        .map(([r, n]) => `${r} ${n} of ${s.controls}${r in LEGACY_RULES ? ` (legacy profile: ${LEGACY_RULES[r]})` : ''}`)
+        .join(', ') || 'none'
+    }. Outside the legacy profile: ${s.controlsOutsideLegacy.map((c) => `${c.source} (${c.rules.join(', ')})`).join('; ') || 'none'}.`,
     '',
     '## Articles',
     '',

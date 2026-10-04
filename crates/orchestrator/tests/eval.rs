@@ -10,7 +10,7 @@ use agents::fake_writer;
 use agents::pipeline::Brief;
 use content_model::article_profile::check_article_profile;
 use orchestrator::eval::{
-    eval_checks, gateway_checks, reference_article, seeded_bad, EvalArticle, SEED_KINDS,
+    eval_checks, gateway_checks, reference_article, seeded_bad, EvalArticle, RULES, SEED_KINDS,
 };
 use orchestrator::{
     ArtifactRecord, BriefRecord, FakeGateway, JobKind, JobRequest, MemStore, Orchestrator, Store,
@@ -123,6 +123,142 @@ fn every_seeded_fault_is_caught_by_the_deterministic_checks() {
         assert_eq!(seeded_bad(&site, &good, kind).unwrap(), bad);
     }
     assert!(seeded_bad(&site, &good, "typo").is_err());
+}
+
+/// A synthetic article in the theme's editorial block list (hero, two-column
+/// intro with HTML paragraphs, editor note, closing note), the shape of one
+/// live article; the text is made up.
+fn editorial_article(hero_title: &str, hero_image: &str) -> Value {
+    json!({
+        "id": "blog-synthetic",
+        "slug": { "en": "/en/blog/synthetic-evening-walk" },
+        "title": { "en": "An Evening Walk | The Dispatch" },
+        "page_type": "blog-article",
+        "seo": {
+            "title": { "en": "An Evening Walk | The Dispatch" },
+            "description": { "en": "Why the coast path is at its best in the last hour of daylight." }
+        },
+        "body": [
+            { "type": "editorial-hero", "title": hero_title, "subtitle": "The last hour of daylight on the coast path.", "image": hero_image },
+            { "type": "editorial-intro", "badge": "Evening",
+              "leftContent": "<p>Left column first paragraph about the walk.</p><p>Left column second paragraph about the stone.</p>",
+              "rightContent": "<p>Right column paragraph about the sea below.</p>",
+              "quote": "A pull quote about the light." },
+            { "type": "paragraph", "markdown": "A body paragraph about the path." },
+            { "type": "editor-note", "quote": "The editor walked it last week.", "author": "A. Editor", "role": "Editor", "image": "/editor.png" },
+            { "type": "paragraph", "markdown": "Another body paragraph about the village." },
+            { "type": "closing-note", "title": "Before you go", "content": "<p>Bring a torch for the way back.</p>" }
+        ]
+    })
+}
+
+/// Calibration (docs/qualification/check-calibration.md): the reference reading keeps the
+/// text of every block the theme renders, including the two-column intro (HTML paragraphs)
+/// and the editor note.
+#[test]
+fn the_reference_reading_keeps_the_editorial_intro_and_the_editor_note() {
+    let site = site();
+    let hero = reference("5-hidden-gelaterias-you-need-to-try")
+        .record
+        .page
+        .unwrap()["body"][0]["image"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let page = editorial_article("An Evening Walk", &hero);
+    let a = reference_article(
+        &site,
+        "content/pages/blog/synthetic-evening-walk.json",
+        &page,
+    )
+    .unwrap();
+    let parts = a.record.parts.as_ref().unwrap().to_parts();
+    let text = agents::article::reading_text(&parts);
+    for needle in [
+        "Left column first paragraph",
+        "Left column second paragraph",
+        "Right column paragraph",
+        "A pull quote about the light.",
+        "The editor walked it last week.",
+        "Bring a torch",
+    ] {
+        assert!(text.contains(needle), "{needle} missing from {text}");
+    }
+    // HTML paragraphs are separate paragraphs, without their tags.
+    assert!(!text.contains("<p>"), "{text}");
+    assert!(parts
+        .intro
+        .blocks
+        .iter()
+        .chain(parts.sections.iter().flat_map(|s| &s.blocks))
+        .any(|b| b.text == "Left column second paragraph about the stone."));
+}
+
+/// Calibration: every check failure is named once by the rule it breaks. A hero outside the
+/// media index is one `media` failure (the links-and-media, site-validator and gateway checks
+/// all report it); a plural of a banned phrase is a `banned-phrase` failure.
+#[test]
+fn checks_name_the_rules_an_article_breaks() {
+    let site = site();
+    let indexed = reference("5-hidden-gelaterias-you-need-to-try")
+        .record
+        .page
+        .unwrap()["body"][0]["image"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let clean = |title: &str, image: &str| {
+        let page = editorial_article(title, image);
+        let a = reference_article(
+            &site,
+            "content/pages/blog/synthetic-evening-walk.json",
+            &page,
+        )
+        .unwrap();
+        eval_checks(&site, &a.brief, &a.record)
+    };
+    let c = clean("An Evening Walk", &indexed);
+    assert_eq!(c.rules, Vec::<String>::new(), "{c:?}");
+    // An existing article: only create-only on a page that is otherwise clean.
+    let c = eval_checks(
+        &site,
+        &reference("day-trip-to-portovenere").brief,
+        &reference("day-trip-to-portovenere").record,
+    );
+    assert!(c.rules.contains(&"create-only".to_string()), "{c:?}");
+    // "tourist traps" in a live subtitle is the banned "tourist trap".
+    let gelaterias = reference("5-hidden-gelaterias-you-need-to-try");
+    let c = eval_checks(&site, &gelaterias.brief, &gelaterias.record);
+    assert_eq!(c.rules, ["banned-phrase", "create-only"], "{c:?}");
+    for r in &c.rules {
+        assert!(RULES.contains(&r.as_str()), "{r}");
+    }
+
+    let unindexed = "https://images.unsplash.com/photo-0000000000001-synthetic?q=80&w=2000";
+    let c = clean("Hidden Gems of the Evening", unindexed);
+    assert!(
+        !c.link_media_issues.is_empty()
+            && !c.site_issues.is_empty()
+            && !c.gateway_issues.is_empty(),
+        "{c:?}"
+    );
+    assert_eq!(c.banned_phrases, ["hidden gem"], "{c:?}");
+    assert_eq!(c.rules, ["banned-phrase", "media"], "{c:?}");
+
+    // The seeded faults name their rules too.
+    let good = reference("day-trip-to-portovenere");
+    for (kind, rule) in [
+        ("block-order", "profile"),
+        ("banned-phrase", "banned-phrase"),
+        ("unknown-entity", "link"),
+        ("too-short", "words"),
+        ("raw-html", "plain-text"),
+        ("duplicate-slug", "create-only"),
+    ] {
+        let bad = seeded_bad(&site, &good, kind).unwrap();
+        let c = eval_checks(&site, &bad.brief, &bad.record);
+        assert!(c.rules.iter().any(|r| r == rule), "{kind}: {:?}", c.rules);
+    }
 }
 
 fn brief() -> Brief {
