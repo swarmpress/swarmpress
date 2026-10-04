@@ -184,6 +184,15 @@ fn house_style_from_cinqueterre_fixture() {
         g.banned_phrase_hits("amazingly ordinary").is_empty(),
         "whole words only"
     );
+    // A plural does not dodge the ban (check calibration, FEAT-036): "Hidden Gems:" in a
+    // live title, "tourist traps" in a draft.
+    assert_eq!(
+        g.banned_phrase_hits("Hidden Gems: quiet streets, no tourist traps"),
+        vec!["tourist trap".to_string(), "hidden gem".to_string()]
+    );
+    assert!(g
+        .banned_phrase_hits("gemstones and hidden gemsets, iconically")
+        .is_empty());
     let page = json!({"title": {"en": "Riomaggiore"}, "body": [{"type": "paragraph", "markdown": "A must-see village."}]});
     assert_eq!(
         g.validate(&page).unwrap_err(),

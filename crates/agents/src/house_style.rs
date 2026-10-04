@@ -86,13 +86,15 @@ impl StyleGuide {
         &self.vocabulary.avoid
     }
 
-    /// Banned phrases found in `text` (case-insensitive, whole words).
+    /// Banned phrases found in `text` (case-insensitive, whole words; a
+    /// plural `s` or `es` on the last word counts too: "hidden gems" is the
+    /// banned "hidden gem").
     pub fn banned_phrase_hits(&self, text: &str) -> Vec<String> {
         let hay = text.to_lowercase();
         self.vocabulary
             .avoid
             .iter()
-            .filter(|p| contains_phrase(&hay, &p.to_lowercase()))
+            .filter(|p| contains_phrase_or_plural(&hay, &p.to_lowercase()))
             .cloned()
             .collect()
     }
@@ -128,6 +130,15 @@ pub fn contains_phrase(hay: &str, needle: &str) -> bool {
         start = at + needle.chars().next().map_or(1, char::len_utf8);
     }
     false
+}
+
+/// [`contains_phrase`], or the phrase with a plural `s` / `es` on its last
+/// word (both already lowercased).
+pub fn contains_phrase_or_plural(hay: &str, needle: &str) -> bool {
+    contains_phrase(hay, needle)
+        || (needle.ends_with(|c: char| c.is_alphabetic())
+            && (contains_phrase(hay, &format!("{needle}s"))
+                || contains_phrase(hay, &format!("{needle}es"))))
 }
 
 fn walk_strings(v: &Value, path: String, f: &mut dyn FnMut(&str, &str)) {
