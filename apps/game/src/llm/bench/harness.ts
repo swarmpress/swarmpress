@@ -21,6 +21,7 @@
  *   timeout=S                              per call, seconds
  *   idle=S                                 idle frame window before and after the load, seconds
  *   fakems=N                               scripted backend only: delay before each answer, ms (default 5)
+ *   office=bricks                          draw the brick office spike (FEAT-081) instead of the box office
  *   autostart=1                           start without the button (not for a cold Chrome start: that needs a click)
  */
 import { BACKENDS, BackendUnavailableError, backendFromQuery, openBackend, type BackendFactories, type BackendId } from '../backend'
@@ -40,7 +41,7 @@ import { FrameRecorder } from './frames'
 import type { BenchConfig, BenchResults, EquivalenceRecord, ModelPins } from './metrics'
 import { fmtBytes, fmtMs, overallVerdict, qualificationMarkdown, qualify } from './report'
 import { startBench, type BenchRun, type BenchState } from './runner'
-import { startScene, type BenchScene } from './scene'
+import { startScene, type BenchScene, type SceneCounts } from './scene'
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement
 const params = new URLSearchParams(location.search)
@@ -60,7 +61,7 @@ function oneOf<T extends string>(name: string, values: readonly T[], fallback: T
   return raw as T
 }
 
-function readConfig(): { config: BenchConfig; backend: BackendId; memory: boolean; autostart: boolean; forceWebgl: boolean } {
+function readConfig(): { config: BenchConfig; backend: BackendId; memory: boolean; autostart: boolean; forceWebgl: boolean; office: 'boxes' | 'bricks' } {
   const backend = backendFromQuery(location.search)
   if (!backend) throw new Error(`choose a backend with ?llm= (${Object.keys(BACKENDS).join(', ')})`)
   const suite = oneOf('suite', ['full', 'frames', 'load'] as const, 'full')!
@@ -88,6 +89,7 @@ function readConfig(): { config: BenchConfig; backend: BackendId; memory: boolea
     memory: num('memory', backend === 'fake' ? 0 : 1, 0, 1) === 1,
     autostart: params.get('autostart') === '1',
     forceWebgl: params.get('renderer') === 'webgl',
+    office: oneOf('office', ['boxes', 'bricks'] as const, 'boxes')!,
   }
 }
 
@@ -277,6 +279,8 @@ declare global {
       results(): BenchResults | null
       /** Resolves with the results when the run ends, failed or not. */
       done(): Promise<BenchResults>
+      /** The scene's draw calls and the brick rooms' counts (null without a scene). */
+      scene(): SceneCounts | null
     }
   }
 }
@@ -307,10 +311,11 @@ function boot(): void {
     validate: Validator
   }
   let prepared: Promise<Prepared> | null = null
+  let sceneRef: BenchScene | null = null
   const prepare = (): Promise<Prepared> =>
     (prepared ??= (async () => {
       if (!parsed) throw new Error(error ?? 'no configuration')
-      const { config, forceWebgl } = parsed
+      const { config, forceWebgl, office } = parsed
       const only = parseFixtureList(params.get('fixtures'))
       const suite = buildSuite({
         scale: config.scale,
@@ -326,12 +331,13 @@ function boot(): void {
       let scene: BenchScene | null = null
       if (frames && config.quality) {
         $('status').textContent = 'starting the scene'
-        scene = await startScene($('scene'), config.quality, frames, forceWebgl)
+        scene = await startScene($('scene'), config.quality, frames, forceWebgl, office)
         if (config.idleMs > 0) {
           $('status').textContent = `measuring idle frames (${Math.round(config.idleMs / 1000)} s, no model loaded)`
           await new Promise((r) => setTimeout(r, config.idleMs))
         }
       }
+      sceneRef = scene
       return { suite, frames, scene, validate }
     })())
 
@@ -403,6 +409,7 @@ function boot(): void {
     state: () => run?.state() ?? null,
     results: () => run?.results ?? null,
     done: () => ready,
+    scene: () => sceneRef?.counts() ?? null,
   }
 
   $('start').addEventListener('click', () => void start().catch((e) => console.error(e)))
@@ -416,7 +423,7 @@ function boot(): void {
   $('config').textContent = [
     `backend: ${BACKENDS[c.backend as BackendId].label}`,
     `suite: ${c.suite}, scale ${c.scale}, ${c.repeat} pass(es), ${c.reloads} warm reload(s)`,
-    `scene: ${c.quality ?? 'off'}${parsed!.forceWebgl ? ' (WebGL2)' : ''}`,
+    `scene: ${c.quality ?? 'off'}${parsed!.forceWebgl ? ' (WebGL2)' : ''}, office: ${parsed!.office}`,
     `reasoning: ${c.thinking ?? 'per fixture'}${c.context ? `, context ${c.context}` : ''}${c.pipelineDepth ? `, pipeline depth ${c.pipelineDepth}` : ''}`,
     `device loss: ${c.deviceLoss}`,
     `cross-origin isolated: ${globalThis.crossOriginIsolated === true}`,

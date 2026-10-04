@@ -19,6 +19,11 @@ import { defineConfig } from '@playwright/test'
 //
 //   CI=1 pnpm --filter @swarm-press/game exec playwright test -c playwright.bonsai.config.ts --project=scripted
 //
+// Project `bricks`: the brick office spike's frame times and counts (FEAT-081),
+// docs/qualification/brick-office-spike.md.
+//
+//   CI=1 pnpm --filter @swarm-press/game exec playwright test -c playwright.bonsai.config.ts --project=bricks
+//
 // The qualification runbook is docs/runbooks/model-qualification.md.
 // BENCH_REPORT_ONLY=1 rebuilds the qualification report from the raw results
 // without a browser, so nothing is built or served then.
@@ -28,7 +33,7 @@ const serve = !process.env.BENCH_REPORT_ONLY
 
 export default defineConfig({
   testDir: 'e2e',
-  testMatch: ['bonsai.spec.ts', 'bonsai-equivalence.spec.ts', 'bonsai-bench.spec.ts'],
+  testMatch: ['bonsai.spec.ts', 'bonsai-equivalence.spec.ts', 'bonsai-bench.spec.ts', 'bricks-bench.spec.ts'],
   // Cold: a 6 GB download plus kernel compilation. The qualification run sets its own, longer timeout.
   timeout: 90 * 60_000,
   workers: 1,
@@ -36,8 +41,10 @@ export default defineConfig({
   use: { baseURL: `http://localhost:${port}` },
   projects: [
     // Real GPU, real model; every test skips itself without BONSAI_E2E=1.
-    { name: 'bonsai', grepInvert: /@scripted/ },
+    { name: 'bonsai', testIgnore: 'bricks-bench.spec.ts', grepInvert: /@scripted/ },
     { name: 'scripted', testMatch: 'bonsai-bench.spec.ts', grep: /@scripted/, use: { launchOptions: { executablePath }, viewport: { width: 1280, height: 800 } } },
+    // The brick office spike's measurements (FEAT-081, e2e/bricks-bench.spec.ts): box office vs brick office per tier.
+    { name: 'bricks', testMatch: 'bricks-bench.spec.ts', use: { launchOptions: { executablePath }, viewport: { width: 1280, height: 800 } } },
   ],
   webServer: serve
     ? {

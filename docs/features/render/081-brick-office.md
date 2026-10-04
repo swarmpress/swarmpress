@@ -1,10 +1,14 @@
 ---
 id: FEAT-081
 title: "Brick office renderer (spike first)"
-status: planned
+status: in-progress
 importance: high
 paths:
   - "apps/game/src/render/bricks/**"
+  - apps/game/e2e/bricks.spec.ts
+  - apps/game/e2e/bricks-bench.spec.ts
+  - apps/game/src/llm/bench/bricks-report.ts
+  - apps/game/src/llm/bench/bricks-report.test.ts
   - apps/game/src/render/office.ts
   - apps/game/src/render/scene.ts
   - apps/game/e2e/visual.spec.ts
@@ -48,8 +52,20 @@ Design: [`docs/design/brick-office.md`](../../design/brick-office.md). Concept a
 - [ ] Every layout prop kind has a shipped kit design; the office matches the sim's doors and desks.
 - [ ] Visual baselines regenerated on Linux on SwiftShader WebGPU.
 
+## Spike status (2026-10-04)
+
+Built behind `?office=bricks` in `apps/game/src/render/bricks/` (kit-wasm loaded as a lazy chunk):
+the newsroom and the editor's office from the kit's room shells and shipped designs, one
+thin-instanced mesh per region, colour and shape per room, studs separate; the cutaway hides brick
+walls by the box office's rule. Tests: `src/render/bricks/*.test.ts` (NullEngine, the real kit),
+`e2e/bricks.spec.ts`; measurements: `e2e/bricks-bench.spec.ts` (project `bricks` of
+`playwright.bonsai.config.ts`), report in
+[`docs/qualification/brick-office-spike.md`](../../qualification/brick-office-spike.md). The go/no-go
+run on the M3 Max in Chrome with WebGPU is still to be made.
+
 ## Evidence
 
 - `game/vitest`
+- `game/playwright-e2e`
 - `game/playwright-visual`
 - `bench/frame-time`
