@@ -177,7 +177,7 @@ the labelled mode.
 
 | # | Increment | Size |
 |---|---|---|
-| G1 | Site repository preparation (**needs the owner's go; it touches the live repo**): tag `legacy-final`; pin `deploy.yml`'s monorepo checkout to `391d5de`; one manual deploy to confirm green; baseline; enable delete-branch-on-merge | S |
+| G1 | Site repository preparation (**needs the owner's go; it touches the live repo**): tag `legacy-final`; pin `deploy.yml`'s monorepo checkout to `391d5de`; one manual deploy to confirm green; baseline; enable delete-branch-on-merge. **Applied 2026-10-04** ([runbook step 0](runbooks/cinqueterre-cutover.md)) | S |
 | G2 | Bind and run for real locally: client passes `site_repo`; token mode; documented single-origin run on `:8080`; env-gated live test against a sandbox repo | M |
 | G3 | Server-side checks in `check_draft`: v2 schema, article profile, closed-world links and media, create-only path, no second open PR for the path, non-empty slug | S–M |
 | G4 | Finalise on merge in the same pull request: verify head, merge base, `status: published`, blog-index entry, squash-merge | M |

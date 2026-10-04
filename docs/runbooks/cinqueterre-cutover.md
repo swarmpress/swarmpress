@@ -88,6 +88,14 @@ holds. Each step is reverted with one revert commit.
 
 **Rollback:** revert the one-line PR.
 
+**Applied 2026-10-04 (G1):** tag `legacy-final` → `391d5de` pushed on swarmpress; the pin merged as
+[swarmpress/cinqueterre.travel#7](https://github.com/swarmpress/cinqueterre.travel/pull/7)
+(`914f867`); its push deploy (run 37222745324) checked out `391d5de` and went green;
+delete-branch-on-merge enabled. Gate: a crawl from `/` (internal links, normalised HTML hashes)
+before and after the deploy is identical: 79 URLs, 71 × 200, unchanged. The crawl also found live
+bugs that predate the change: `/en/[object Object]` links on the home page and each village page
+(6), and `/blog` and `/sights` answer 404 (linked from the site).
+
 **After step 0,** swarmpress `main` can change freely, because the live site no longer follows
 it. The fresh tree may then drop the frozen theme path, but it is only deleted after step 1
 (M5).
