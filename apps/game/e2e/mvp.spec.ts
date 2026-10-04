@@ -266,6 +266,17 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
   ])
   expect(jobRows[1].detail).toMatchObject({ pr: gateway[0].number, branch: gateway[0].branch, sha: gateway[0].headSha })
   expect(activity.filter((r) => r.job_id === jobRows[3].job_id && r.stage !== 'job').map((r) => `${r.stage}#${r.idx}`)).toEqual(['revise#2', 'commit#0'])
+  // The Activity panel (U4) lists the draft job with the writer's name and the model, read from the store.
+  const writer = await page.evaluate(
+    (staff) => (window as unknown as { __swarmpress: { overlay: { personaOf(id: string): { name: string } } } }).__swarmpress.overlay.personaOf(staff).name,
+    jobRows[1].staff!,
+  )
+  await page.getByRole('navigation', { name: 'CEO tools' }).getByRole('button', { name: /^Activity/ }).click()
+  const draftCard = page.getByRole('region', { name: 'Activity', exact: true }).locator(`article[data-job="${firstDraft}"]`)
+  await expect(draftCard).toContainText(writer)
+  await expect(draftCard).toContainText('fake-mvp')
+  await expect(draftCard).toContainText(`Draft · ${TITLE}`)
+  await page.keyboard.press('Escape')
 
   // ---------------------------------------------------------------- the site's knowledge pack (ADR-0061, K2)
   // The fake site repo starts as the cinqueterre-mini fixture (e2e/central-server.mjs). The session
