@@ -26,7 +26,7 @@ const isolation: Record<string, string> =
 
 export default defineConfig(({ mode }) => {
   // `vite build --mode harness` builds only the test harnesses (orchestrator.html,
-  // bonsai.html, bench.html) into dist-harness/; the production build never contains them.
+  // bonsai.html, bench.html, eval.html) into dist-harness/; the production build never contains them.
   const harness = mode === 'harness'
   const input: Record<string, string> = harness
     ? {
@@ -34,6 +34,8 @@ export default defineConfig(({ mode }) => {
         bonsai: fileURLToPath(new URL('./bonsai.html', import.meta.url)),
         // The model qualification harness (src/llm/bench, e2e/bonsai-bench.spec.ts).
         bench: fileURLToPath(new URL('./bench.html', import.meta.url)),
+        // The pipeline eval (src/harness/eval-harness.ts, e2e/eval.spec.ts, docs/runbooks/eval.md).
+        eval: fileURLToPath(new URL('./eval.html', import.meta.url)),
       }
     : {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),

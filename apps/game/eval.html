@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>swarm.press pipeline eval</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      :root { color-scheme: dark; --bg: #1b1f2a; --panel: #12151d; --line: #3a4256; --ok: #7fd18b; --bad: #ff8c8c; --wait: #f2c46d; }
+      body { margin: 0; background: var(--bg); color: #e8e6e3; font: 14px system-ui, sans-serif; }
+      main { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 12px; }
+      h1 { font-size: 18px; margin: 0; }
+      h2 { font-size: 13px; margin: 10px 0 0; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7; }
+      h3 { font-size: 16px; margin: 0; }
+      button, label.file { font: inherit; color: inherit; background: #262c3a; border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      a { color: #9ac1ff; }
+      pre { white-space: pre-wrap; word-break: break-word; background: var(--panel); padding: 10px; border-radius: 8px; margin: 0; font: 12px ui-monospace, Menlo, monospace; }
+      table { border-collapse: collapse; width: 100%; font-size: 13px; }
+      th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+      .muted { opacity: 0.7; font-size: 12px; margin: 0; }
+      .pass { color: var(--ok); } .fail { color: var(--bad); } .pending, .inconclusive { color: var(--wait); }
+      .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      article { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 8px; }
+      article .text { font-family: Georgia, serif; font-size: 15px; line-height: 1.5; max-width: 72ch; }
+      article .text h4 { font-size: 16px; margin: 12px 0 4px; }
+      article .text p { margin: 6px 0; }
+      article .text .dek { font-style: italic; opacity: 0.85; }
+      article .text .tip, article .text .closing { border-left: 3px solid var(--line); padding-left: 10px; }
+      article .meta { font-size: 12px; opacity: 0.85; }
+      article .marks { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+      article .marks input[type=text] { flex: 1; min-width: 200px; background: #1b1f2a; color: inherit; border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; }
+      details summary { cursor: pointer; }
+    </style>
+  </head>
+  <body data-eval="loading">
+    <main>
+      <h1>swarm.press pipeline eval</h1>
+      <p class="muted">
+        Test page, not part of the production build (FEAT-036, <code>docs/runbooks/eval.md</code>). Runs
+        unpublished content-calendar briefs through the real staged pipeline (draft, review, up to three
+        revisions) on one local model (<code>?llm=fake|bonsai|chrome</code>, <code>?n=</code> briefs),
+        reviews the site's own articles and six seeded-bad drafts, and scores the result against the
+        "publishable" threshold of <code>docs/design/mvp-pipeline.md</code> §9. In-memory store, local
+        gateway: nothing leaves the machine. Driven by <code>e2e/eval.spec.ts</code> through
+        <code>window.__eval</code>.
+      </p>
+      <div class="bar">
+        <button id="start" disabled>Start</button>
+        <label class="file">Load a site pack or exported results… <input id="pack-file" type="file" accept="application/json,.json" hidden /></label>
+        <button id="export" hidden>Export JSON (results and your marks)</button>
+        <a id="doc" hidden>Cockpit document</a>
+        <a id="record" hidden>Markdown record</a>
+      </div>
+      <pre id="status">loading</pre>
+      <h2>Configuration</h2>
+      <pre id="config"></pre>
+      <div id="summary"></div>
+      <div id="articles"></div>
+    </main>
+    <script type="module" src="/src/harness/eval-harness.ts"></script>
+  </body>
+</html>

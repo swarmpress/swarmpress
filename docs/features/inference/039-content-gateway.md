@@ -11,6 +11,7 @@ paths:
   - crates/server/tests/gateway.rs
   - crates/server/tests/events.rs
   - crates/server/src/article.rs
+  - crates/content-model/src/article_profile.rs
   - crates/server/tests/articles.rs
   - crates/server/tests/attribution.rs
   - crates/server/tests/close.rs
@@ -72,7 +73,8 @@ Planned changes:
     and dropped on a merge (`crates/server/src/site_knowledge.rs`). `SWARMPRESS_FAKE_SITE` seeds the
     fake's site repos (the e2e uses the `cinqueterre-mini` fixture).
   - **G3 (built):** for `content/pages/blog/*.json`, `check_draft`
-    validates the v2 schema and the article profile (`crates/server/src/article.rs`) and refuses an
+    validates the v2 schema and the article profile (`content_model::article_profile`, re-exported
+    as `crates/server/src/article.rs`; the eval harness runs the same code, FEAT-036) and refuses an
     empty slug (422 with `issues`); the draft is refused with 409 when the path exists on base, when
     another open pull request of the company targets it, or when the content id already drafts
     another path. Its links and media must be in the closed world of the knowledge pack at the base

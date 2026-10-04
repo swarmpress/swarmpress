@@ -16,5 +16,5 @@
       "kit-wasm": ["../../crates/kit-wasm/pkg/kit_wasm"]
     }
   },
-  "include": ["src", "e2e", "vite.config.ts", "vitest.config.ts", "playwright.config.ts", "playwright.orchestrator.config.ts", "playwright.bonsai.config.ts"]
+  "include": ["src", "e2e", "vite.config.ts", "vitest.config.ts", "playwright.config.ts", "playwright.orchestrator.config.ts", "playwright.bonsai.config.ts", "playwright.eval.config.ts"]
 }
