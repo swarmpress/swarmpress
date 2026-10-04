@@ -276,10 +276,12 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   let recoveries = 0
   let framesBefore = 0
   let lastLoss: DeviceLossInfo | null = null
+  // Recoveries run one after another: a new device lost while its scene is built waits its turn.
+  let recoveryChain: Promise<void> = Promise.resolve()
   const onLost = (info: DeviceLossInfo) => {
     lastLoss = info
     console.warn(`[render] WebGPU device lost (${info.reason}): ${info.message}`)
-    recover().catch((err) => {
+    recoveryChain = recoveryChain.then(recover).catch((err) => {
       recovering = false
       showFailure(err)
     })
