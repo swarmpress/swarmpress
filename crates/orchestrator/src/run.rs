@@ -8,7 +8,7 @@ use agents::{CompanyPrompt, Llm, LlmError, Persona, Role};
 use serde_json::{json, Value};
 
 use crate::article::SiteValidatorV2;
-use crate::gateway::{Attribution, Gateway, GatewayError};
+use crate::gateway::{Attribution, DeployState, Gateway, GatewayError};
 use crate::site::{ConfigSource, SiteKnowledge};
 use crate::store::{ArtifactRecord, BriefRecord, Store, StoreError};
 use crate::{Digest, JobFailure, JobKind, JobRequest, Outcome, Progress, StaffRef};
@@ -497,6 +497,67 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         Ok(who)
     }
 
+    /// A publish job for an item already merged: when the gateway reports
+    /// that the merge's deployment failed, ask it to deploy again
+    /// ([`Gateway::redeploy`]); the job then completes and the sim waits for
+    /// `DeployLanded` (or a new `DeployFailed`) as after a merge. The signal
+    /// is the server's deploy state, not anything in the sim: a run again
+    /// after a reload finds the merge `pending` (or `landed`) and calls
+    /// nothing. A refused redeploy is an error (the host retries, then
+    /// reports `JobFailed{Infrastructure}`: the item stays blocked with a
+    /// ticket) and is posted to the item's thread with the server's reason.
+    /// `Some` is the job's outcome when it was cancelled before the call.
+    async fn redeploy_if_failed(
+        &self,
+        req: &JobRequest,
+        item: &str,
+        art: &ArtifactRecord,
+    ) -> Result<Option<Outcome>> {
+        let Some(pr) = art.pr_number else {
+            return Ok(None);
+        };
+        if self.gateway.deploy_state(pr).await? != Some(DeployState::Failed) {
+            return Ok(None);
+        }
+        if let Some(reason) = self.cancelled(req) {
+            return Ok(Some(Outcome::JobFailed {
+                job_id: req.job_id,
+                reason,
+            }));
+        }
+        match self.gateway.redeploy(pr).await {
+            Ok(r) => {
+                let text = if r.requested {
+                    format!("PR #{pr}: its deploy failed; deploying it again.")
+                } else {
+                    format!("PR #{pr}: its deploy is already running again.")
+                };
+                self.system_post(
+                    req,
+                    item,
+                    "status",
+                    1,
+                    &text,
+                    json!({"pr": pr, "redeploy": r}),
+                )
+                .await?;
+                Ok(None)
+            }
+            Err(e) => {
+                self.system_post(
+                    req,
+                    item,
+                    "status",
+                    2,
+                    &format!("PR #{pr}: the deploy could not be run again: {}", e.0),
+                    json!({"pr": pr, "error": e.0}),
+                )
+                .await?;
+                Err(e.into())
+            }
+        }
+    }
+
     async fn publish(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
         let item = self.work_item(req)?.to_string();
         let mut art = self
@@ -504,7 +565,15 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             .await?
             .ok_or_else(|| invalid(format!("publish of {item} without a PR")))?;
         let (merged_sha, fresh) = match art.merged_sha.clone() {
-            Some(sha) => (sha, false), // idempotent retry: no second merge, no second post
+            // Merged already: no second merge, no second post. This is a run
+            // again after a reload, or the CEO's Retry on a `DeployFailed`
+            // ticket: then the deploy is run again (FEAT-085).
+            Some(sha) => {
+                if let Some(failed) = self.redeploy_if_failed(req, &item, &art).await? {
+                    return Ok(vec![failed]);
+                }
+                (sha, false)
+            }
             None => {
                 if let Some(reason) = self.cancelled(req) {
                     return Ok(vec![Outcome::JobFailed {

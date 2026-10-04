@@ -35,6 +35,16 @@ pub struct GatewayPr {
     pub closed_at: Option<i64>,
     /// The branch head after the gateway's own finalise commits.
     pub final_head: Option<String>,
+    /// Unix ms; when the current wait for a deployment began, if not at
+    /// `merged_at` (a redeploy).
+    pub deploy_since: Option<i64>,
+    /// The commit whose deployment failed (this merge, or the later merge
+    /// whose deployment superseded it); what a redeploy re-runs.
+    pub deploy_failed_sha: Option<String>,
+    /// How many redeploys were requested ([`redeploy`]).
+    pub deploy_attempt: i64,
+    /// The workflow run attempt the last redeploy re-ran, `<run id>:<attempt>`.
+    pub deploy_rerun: Option<String>,
 }
 
 impl GatewayPr {
@@ -53,12 +63,13 @@ impl GatewayPr {
 
 const PR_COLS: &str = "company_id, number, content_id, work_item, path, branch, head_sha, \
      merged_sha, merged_at, landed_at, deploy_state, deploy_detail, deploy_checked_at, \
-     closed_at, final_head";
+     closed_at, final_head, deploy_since, deploy_failed_sha, deploy_attempt, deploy_rerun";
 
 /// [`PR_COLS`] of `gateway_prs p` in a join.
 const P_COLS: &str = "p.company_id, p.number, p.content_id, p.work_item, p.path, p.branch, \
      p.head_sha, p.merged_sha, p.merged_at, p.landed_at, p.deploy_state, p.deploy_detail, \
-     p.deploy_checked_at, p.closed_at, p.final_head";
+     p.deploy_checked_at, p.closed_at, p.final_head, p.deploy_since, p.deploy_failed_sha, \
+     p.deploy_attempt, p.deploy_rerun";
 
 pub struct NewGatewayPr<'a> {
     pub company_id: &'a str,
@@ -229,13 +240,15 @@ pub struct WatchedPr {
 
 /// Merged pull requests whose deployment is still open: `pending` or
 /// `failed` (a failed one lands when a later deployment succeeds), not
-/// landed, merged at or after `since_ms`. Oldest first.
+/// landed, merged (or redeployed, `deploy_since`) at or after `since_ms`.
+/// Oldest merge first.
 pub async fn watched_prs(db: &Db, since_ms: i64) -> Result<Vec<WatchedPr>> {
     sqlx::query_as::<_, WatchedPr>(&format!(
         "SELECT {P_COLS}, c.site_repo AS site_repo
            FROM gateway_prs p JOIN companies c ON c.id = p.company_id
           WHERE p.merged_sha IS NOT NULL AND p.landed_at IS NULL
-            AND p.deploy_state IN ('pending', 'failed') AND p.merged_at >= ?1
+            AND p.deploy_state IN ('pending', 'failed')
+            AND COALESCE(p.deploy_since, p.merged_at) >= ?1
           ORDER BY p.merged_at, p.number"
     ))
     .bind(since_ms)
@@ -244,13 +257,13 @@ pub async fn watched_prs(db: &Db, since_ms: i64) -> Result<Vec<WatchedPr>> {
     .context("watched gateway PRs")
 }
 
-/// Pending pull requests merged before `before_ms`: nobody saw their
-/// deployment in time.
+/// Pending pull requests merged (or redeployed) before `before_ms`: nobody
+/// saw their deployment in time.
 pub async fn stale_pending(db: &Db, before_ms: i64) -> Result<Vec<GatewayPr>> {
     sqlx::query_as::<_, GatewayPr>(&format!(
         "SELECT {PR_COLS} FROM gateway_prs
           WHERE merged_sha IS NOT NULL AND landed_at IS NULL
-            AND deploy_state = 'pending' AND merged_at < ?1
+            AND deploy_state = 'pending' AND COALESCE(deploy_since, merged_at) < ?1
           ORDER BY merged_at, number"
     ))
     .bind(before_ms)
@@ -350,14 +363,17 @@ pub async fn land(
     Ok(out)
 }
 
-/// A pending merge failed to deploy: mark it and store its event, in one
-/// transaction. `None` when the pull request was not pending (it already
-/// landed or failed): nothing changes and no event is stored.
+/// A pending merge failed to deploy: mark it (with `failed_sha`, the commit
+/// whose deployment failed) and store its event, in one transaction. `None`
+/// when the pull request was not pending (it already landed or failed):
+/// nothing changes and no event is stored.
+#[allow(clippy::too_many_arguments)]
 pub async fn fail(
     db: &Db,
     company_id: &str,
     number: i64,
     detail: &str,
+    failed_sha: Option<&str>,
     now_ms: i64,
     kind: &str,
     payload: &Value,
@@ -365,7 +381,8 @@ pub async fn fail(
     let mut tx = db.begin_immediate().await?;
     let changed = sqlx::query(
         "UPDATE gateway_prs
-            SET deploy_state = 'failed', deploy_detail = ?3, updated_at = ?4
+            SET deploy_state = 'failed', deploy_detail = ?3, deploy_failed_sha = ?5,
+                updated_at = ?4
           WHERE company_id = ?1 AND number = ?2
             AND deploy_state = 'pending' AND landed_at IS NULL",
     )
@@ -373,6 +390,7 @@ pub async fn fail(
     .bind(number)
     .bind(detail)
     .bind(now_ms)
+    .bind(failed_sha)
     .execute(&mut *tx)
     .await
     .context("fail gateway PR")?
@@ -383,6 +401,43 @@ pub async fn fail(
     let event = insert_event_in(&mut *tx, company_id, kind, payload, now_ms).await?;
     tx.commit().await.context("commit failed gateway PR")?;
     Ok(Some(event))
+}
+
+/// A failed merge is deployed again (`POST /api/gateway/redeploy`): it is
+/// `pending` from `now_ms` (the poller's age limit counts from there),
+/// `deploy_attempt` counts up, and `rerun` (`<run id>:<attempt>`, the
+/// workflow run attempt that was re-run) is recorded. Returns the row as it
+/// is now, or `None` when the pull request was not `failed` (nothing
+/// changes).
+pub async fn redeploy(
+    db: &Db,
+    company_id: &str,
+    number: i64,
+    rerun: Option<&str>,
+    detail: &str,
+    now_ms: i64,
+) -> Result<Option<GatewayPr>> {
+    let changed = sqlx::query(
+        "UPDATE gateway_prs
+            SET deploy_state = 'pending', deploy_since = ?5, deploy_detail = ?4,
+                deploy_checked_at = NULL, deploy_attempt = deploy_attempt + 1,
+                deploy_rerun = COALESCE(?3, deploy_rerun), updated_at = ?5
+          WHERE company_id = ?1 AND number = ?2
+            AND deploy_state = 'failed' AND landed_at IS NULL",
+    )
+    .bind(company_id)
+    .bind(number)
+    .bind(rerun)
+    .bind(detail)
+    .bind(now_ms)
+    .execute(&db.writer)
+    .await
+    .context("redeploy gateway PR")?
+    .rows_affected();
+    if changed == 0 {
+        return Ok(None);
+    }
+    get_pr(db, company_id, number).await
 }
 
 /// Record that the poller asked GitHub about these pull requests.
@@ -458,6 +513,8 @@ mod tests {
                   VALUES ('co', 1, 'c1', 'content/a.json', 'drafts/content-c1', 'h1', 'm1', 10, 20),
                          ('co', 2, 'c2', 'content/b.json', 'drafts/content-c2', 'h2', NULL, 30, 40);",
             include_str!("../../migrations/0003_deploys.sql"),
+            include_str!("../../migrations/0004_site_binding.sql"),
+            include_str!("../../migrations/0005_redeploy.sql"),
         ] {
             sqlx::raw_sql(sql).execute(&db.writer).await.unwrap();
         }
@@ -465,6 +522,15 @@ mod tests {
         assert_eq!(merged.merged_at, Some(20));
         assert_eq!(merged.state(), "unknown");
         assert_eq!((merged.landed_at, merged.closed_at), (None, None));
+        // 0005: no redeploy yet.
+        assert_eq!(
+            (
+                merged.deploy_since,
+                merged.deploy_attempt,
+                merged.deploy_rerun
+            ),
+            (None, 0, None)
+        );
         let open = get_pr(&db, "co", 2).await.unwrap().unwrap();
         assert_eq!(open.state(), "open");
         assert_eq!((open.merged_at, open.deploy_state), (None, None));

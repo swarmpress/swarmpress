@@ -375,6 +375,15 @@ impl RepoApi for GuardedRepo {
         self.inner.download_artifact(repo, run_id, name).await
     }
 
+    async fn list_workflow_runs(&self, repo: &RepoId, head_sha: &str) -> Result<Vec<WorkflowRun>> {
+        self.inner.list_workflow_runs(repo, head_sha).await
+    }
+
+    async fn rerun_failed_jobs(&self, repo: &RepoId, run_id: u64) -> Result<()> {
+        self.policy.check_admin(self.actor, "rerun_failed_jobs")?;
+        self.inner.rerun_failed_jobs(repo, run_id).await
+    }
+
     // ---- gateway additions (ADR-0061) ----------------------------------
 
     async fn delete_branch(&self, repo: &RepoId, branch: &str) -> Result<bool> {

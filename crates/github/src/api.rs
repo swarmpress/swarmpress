@@ -95,6 +95,16 @@ pub trait RepoApi: Send + Sync {
     /// Download the zip of the named artifact of a workflow run.
     async fn download_artifact(&self, repo: &RepoId, run_id: u64, name: &str) -> Result<Vec<u8>>;
 
+    /// The workflow runs of the commit `head_sha`, newest first
+    /// (`GET /repos/{o}/{r}/actions/runs?head_sha=`).
+    async fn list_workflow_runs(&self, repo: &RepoId, head_sha: &str) -> Result<Vec<WorkflowRun>>;
+
+    /// Re-run the failed (and cancelled) jobs of a completed workflow run,
+    /// and the jobs that depend on them, as a new attempt of the same run
+    /// on the same commit (`POST .../actions/runs/{id}/rerun-failed-jobs`).
+    /// Needs the Actions write permission (`Forbidden` without it).
+    async fn rerun_failed_jobs(&self, repo: &RepoId, run_id: u64) -> Result<()>;
+
     // ---- gateway additions (ADR-0061) ----------------------------------
     /// Delete `branch`. `Ok(false)` when it did not exist. GitHub closes
     /// the open pull requests whose head it was.

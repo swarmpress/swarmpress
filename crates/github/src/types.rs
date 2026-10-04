@@ -275,6 +275,41 @@ pub struct CheckRun {
     pub details_url: Option<String>,
 }
 
+/// One run of a GitHub Actions workflow (`GET /repos/{o}/{r}/actions/runs`).
+///
+/// A re-run keeps the run's `id` and counts up `run_attempt`, so
+/// `(id, run_attempt)` names one attempt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkflowRun {
+    pub id: u64,
+    #[serde(default)]
+    pub name: Option<String>,
+    pub head_sha: String,
+    /// The workflow file, e.g. `.github/workflows/deploy.yml` (GitHub may
+    /// add `@<ref>`).
+    #[serde(default)]
+    pub path: String,
+    /// `push`, `workflow_dispatch`, ...
+    #[serde(default)]
+    pub event: String,
+    pub status: CheckStatus,
+    pub conclusion: Option<CheckConclusion>,
+    #[serde(default = "first_attempt")]
+    pub run_attempt: u32,
+}
+
+fn first_attempt() -> u32 {
+    1
+}
+
+impl WorkflowRun {
+    /// The workflow file's name, e.g. `deploy.yml`.
+    pub fn workflow_file(&self) -> &str {
+        let path = self.path.split('@').next().unwrap_or_default();
+        path.rsplit('/').next().unwrap_or(path)
+    }
+}
+
 impl CheckRun {
     pub fn is_success(&self) -> bool {
         self.status == CheckStatus::Completed

@@ -43,6 +43,7 @@
 use std::collections::BTreeMap;
 
 use axum::extract::{Query, State};
+use axum::http::HeaderMap;
 use axum::Json;
 use github::{CheckConclusion, CheckRun, CheckStatus, GitHubError};
 use serde::Deserialize;
@@ -51,10 +52,11 @@ use tokio::task::JoinHandle;
 
 use crate::app::{require_company, AppState};
 use crate::auth::CurrentUser;
+use crate::companies::require_lease;
 use crate::db::gateway::{self as store, GatewayPr, Land, WatchedPr};
 use crate::error::{AppError, AppResult};
 use crate::events::{self, kinds};
-use crate::gateway::{parse_repo, RepoBackend};
+use crate::gateway::{company_repo, gh_error, parse_repo, RepoBackend};
 
 pub const SOURCE_POLL: &str = "poll";
 pub const SOURCE_WEBHOOK: &str = "webhook";
@@ -190,6 +192,9 @@ pub fn payload(
         "detail": detail,
         "environment": environment,
         "source": source,
+        // How many redeploys preceded this event: a `DeployFailed` with a
+        // higher attempt is a new failure, not a repeated event.
+        "attempt": pr.map_or(0, |p| p.deploy_attempt),
     })
 }
 
@@ -239,6 +244,7 @@ pub async fn fail(
         &pr.company_id,
         pr.number,
         detail,
+        deployed_sha,
         st.now_ms(),
         kinds::DEPLOY_FAILED,
         &payload(
@@ -324,6 +330,209 @@ pub async fn status(
     })))
 }
 
+#[derive(Deserialize)]
+pub struct RedeployBody {
+    #[serde(default)]
+    pub number: Option<u64>,
+    #[serde(default)]
+    pub work_item: Option<String>,
+}
+
+/// A GitHub error of a redeploy, for the HTTP surface: a refusal by GitHub
+/// (no permission, a run that cannot be re-run) is a 403 that says what is
+/// missing; everything else as [`gh_error`].
+fn redeploy_error(e: GitHubError) -> AppError {
+    match e {
+        GitHubError::Forbidden(m) | GitHubError::Unauthorized(m) => AppError::Forbidden(format!(
+            "GitHub refused to re-run the deploy workflow: {m} (the token or GitHub App needs \
+             the Actions write permission, and the run must be re-runnable)"
+        )),
+        e => gh_error(e),
+    }
+}
+
+/// `POST /api/gateway/redeploy {number}` (or `{work_item}`: the newest pull
+/// request of that work item) → deploy a merge whose deployment failed
+/// again (FEAT-085, ADR-0059, ADR-0061 decision 7):
+///
+/// ```json
+/// { "number": 12, "work_item": "work-item-4", "state": "pending",
+///   "requested": true, "run_id": 30433642, "run_attempt": 1, "attempt": 1,
+///   "detail": "re-run of the failed jobs of workflow run 30433642 (attempt 1) requested" }
+/// ```
+///
+/// Lease-fenced like the other gateway writes. The pull request must be
+/// `failed`: the server finds the newest run of the deploy workflow
+/// (`SWARMPRESS_DEPLOY_WORKFLOW`, default `deploy.yml`) on the commit whose
+/// deployment failed (the merge, or the later merge that superseded it) and
+/// asks GitHub to re-run its failed jobs: a new attempt of the same run on
+/// the same commit, so the poller and the webhook observe it like the first.
+/// The merge is `pending` again from now (`attempt` counts the redeploys) and
+/// lands, or fails with a new `DeployFailed` whose payload carries the
+/// `attempt`.
+///
+/// - Idempotent per failed run attempt: a merge already `pending` again
+///   answers 200 with `requested: false` and asks GitHub nothing.
+/// - A run that is still going, or that succeeded after all, is not re-run:
+///   the merge is `pending` again and the observation decides.
+/// - Refused: 409 for a merge that landed, or a pull request that is not
+///   merged (open, closed, merged before deploys were watched); 409 when the
+///   commit has no run of the deploy workflow to re-run (nothing ran); 403
+///   when GitHub refuses the re-run (the Actions write permission). The merge
+///   then stays `failed`.
+pub async fn redeploy(
+    State(st): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    headers: HeaderMap,
+    Json(body): Json<RedeployBody>,
+) -> AppResult<Json<Value>> {
+    // Held to the end of the handler: the lease check, the GitHub call and
+    // the bookkeeping are one fenced unit (ADR-0045).
+    let fenced = require_lease(&st, &headers, &user).await?;
+    let company = &fenced.company;
+    let pr = match (
+        body.number,
+        body.work_item.as_deref().filter(|w| !w.is_empty()),
+    ) {
+        (Some(n), None) => {
+            let number =
+                i64::try_from(n).map_err(|_| AppError::BadRequest("number out of range".into()))?;
+            store::get_pr(&st.db, &company.id, number).await?
+        }
+        (None, Some(w)) => store::latest_pr_for_work_item(&st.db, &company.id, w).await?,
+        _ => {
+            return Err(AppError::BadRequest(
+                "give exactly one of `number` and `work_item`".into(),
+            ))
+        }
+    }
+    .ok_or_else(|| AppError::NotFound("no such gateway pull request of this company".into()))?;
+    let number = pr.number;
+    let reply = |pr: &GatewayPr, requested: bool, run: Option<(u64, u32)>| {
+        Json(json!({
+            "number": pr.number,
+            "work_item": pr.work_item,
+            "state": pr.state(),
+            "requested": requested,
+            "run_id": run.map(|r| r.0),
+            "run_attempt": run.map(|r| r.1),
+            "attempt": pr.deploy_attempt,
+            "detail": pr.deploy_detail,
+        }))
+    };
+    match pr.state() {
+        "failed" => {}
+        // Already waiting for a deployment (redeployed before, or never
+        // failed): nothing to do.
+        "pending" => return Ok(reply(&pr, false, None)),
+        "landed" => {
+            return Err(AppError::Conflict(format!(
+                "PR #{number} has landed: there is nothing to redeploy"
+            )))
+        }
+        other => {
+            return Err(AppError::Conflict(format!(
+                "PR #{number} is {other}: only a merge whose deployment failed can be redeployed"
+            )))
+        }
+    }
+    let now = st.now_ms();
+    let marked = |rerun: Option<String>, detail: String| {
+        let st = st.clone();
+        let company_id = company.id.clone();
+        async move {
+            store::redeploy(&st.db, &company_id, number, rerun.as_deref(), &detail, now)
+                .await?
+                .ok_or_else(|| {
+                    AppError::Conflict(format!("PR #{number} changed while it was redeployed"))
+                })
+        }
+    };
+
+    let Some(sha) = pr
+        .deploy_failed_sha
+        .clone()
+        .or_else(|| pr.merged_sha.clone())
+    else {
+        return Err(AppError::Conflict(format!(
+            "PR #{number} has no merge commit"
+        )));
+    };
+    let repo = company_repo(&st, company)?;
+    let api = st.github.api_for(&repo).await?;
+    let workflow = &st.cfg.deploys.workflow;
+    let run = api
+        .list_workflow_runs(&repo, &sha)
+        .await
+        .map_err(redeploy_error)?
+        .into_iter()
+        .filter(|r| r.workflow_file() == workflow)
+        .max_by_key(|r| (r.id, r.run_attempt))
+        .ok_or_else(|| {
+            AppError::Conflict(format!(
+                "no run of the deploy workflow `{workflow}` on {sha}: there is nothing to re-run \
+                 (start the workflow by hand, or merge again)"
+            ))
+        })?;
+    let attempt_key = format!("{}:{}", run.id, run.run_attempt);
+    let (pr, requested) = match (run.status, run.conclusion) {
+        (CheckStatus::Completed, Some(CheckConclusion::Success)) => (
+            marked(
+                None,
+                format!(
+                    "workflow run {} succeeded (attempt {}); waiting for its deployment to be observed",
+                    run.id, run.run_attempt
+                ),
+            )
+            .await?,
+            false,
+        ),
+        (CheckStatus::Completed, _) if pr.deploy_rerun.as_deref() == Some(attempt_key.as_str()) => {
+            // This attempt was re-run already: no second request to GitHub.
+            (
+                marked(
+                    None,
+                    format!(
+                        "workflow run {} (attempt {}) was re-run already",
+                        run.id, run.run_attempt
+                    ),
+                )
+                .await?,
+                false,
+            )
+        }
+        (CheckStatus::Completed, _) => {
+            api.rerun_failed_jobs(&repo, run.id)
+                .await
+                .map_err(redeploy_error)?;
+            (
+                marked(
+                    Some(attempt_key),
+                    format!(
+                        "re-run of the failed jobs of workflow run {} (attempt {}) requested",
+                        run.id, run.run_attempt
+                    ),
+                )
+                .await?,
+                true,
+            )
+        }
+        _ => (
+            marked(
+                None,
+                format!(
+                    "workflow run {} (attempt {}) is running",
+                    run.id, run.run_attempt
+                ),
+            )
+            .await?,
+            false,
+        ),
+    };
+    tracing::info!(company_id = %company.id, number, run_id = run.id, run_attempt = run.run_attempt, requested, "gateway redeploy");
+    Ok(reply(&pr, requested, Some((run.id, run.run_attempt))))
+}
+
 /// Whether the poller runs: a real GitHub with credentials, and no
 /// simulated deploys.
 pub fn enabled(st: &AppState) -> bool {
@@ -364,6 +573,15 @@ pub struct PollReport {
     pub failed: usize,
     /// Repositories or commits that could not be read this round.
     pub errors: usize,
+}
+
+/// Whether a redeploy of `pr` was requested less than one poll interval ago.
+/// Until then a failed verdict may still be the failed attempt's: GitHub
+/// replaces the check runs only once the new attempt's jobs are queued.
+fn redeployed_recently(pr: &GatewayPr, now: i64, cfg: &crate::config::DeployWatchConfig) -> bool {
+    let grace = i64::try_from(cfg.poll_interval.as_millis()).unwrap_or(i64::MAX / 4);
+    pr.deploy_since
+        .is_some_and(|t| now.saturating_sub(t) < grace)
 }
 
 /// One round: time out what was pending for too long, then ask GitHub for
@@ -419,7 +637,14 @@ pub async fn poll_once(st: &AppState) -> AppResult<PollReport> {
             let v = match api.list_check_runs(&repo, sha).await {
                 Ok(runs) => {
                     report.checked += 1;
-                    verdict(&runs, &cfg.check_name)
+                    match verdict(&runs, &cfg.check_name) {
+                        // A redeploy was just requested: the failed check runs
+                        // may not have been replaced by the new attempt's yet.
+                        Verdict::Failed(_) if redeployed_recently(&w.pr, now, cfg) => {
+                            Verdict::Running
+                        }
+                        v => v,
+                    }
                 }
                 Err(e) => {
                     tracing::warn!(repo = %repo_name, sha, error = %e, "deploy poll: check runs unavailable");
@@ -461,6 +686,9 @@ pub async fn poll_once(st: &AppState) -> AppResult<PollReport> {
             .await?;
         }
         for (i, why) in plan.fail {
+            if redeployed_recently(&watched[i].pr, now, cfg) {
+                continue;
+            }
             let (detail, deployed) = match why {
                 Failure::Own(why) => (why, watched[i].pr.merged_sha.clone()),
                 Failure::SupersededBy(k) => (
@@ -648,12 +876,16 @@ mod tests {
             deploy_checked_at: None,
             closed_at: None,
             final_head: None,
+            deploy_since: None,
+            deploy_failed_sha: None,
+            deploy_attempt: 0,
+            deploy_rerun: None,
         };
         assert_eq!(
             payload(Some(&pr), "success", SOURCE_POLL, Some("m2"), None, None),
             json!({ "content_id": "c1", "work_item": "work-item-1", "number": 7, "merged_sha": "m1",
                     "deployed_sha": "m2", "state": "success", "detail": null, "environment": null,
-                    "source": "poll" })
+                    "source": "poll", "attempt": 0 })
         );
         // A deployment the gateway cannot map still names its commit.
         let unmapped = payload(

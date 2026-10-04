@@ -119,6 +119,10 @@ pub struct DeployWatchConfig {
     /// Name of the check run (the workflow job) that publishes the site
     /// (`SWARMPRESS_DEPLOY_CHECK`, default `deploy`).
     pub check_name: String,
+    /// File name of the site's deploy workflow, whose failed run
+    /// `POST /api/gateway/redeploy` re-runs (`SWARMPRESS_DEPLOY_WORKFLOW`,
+    /// default `deploy.yml`).
+    pub workflow: String,
 }
 
 impl Default for DeployWatchConfig {
@@ -128,6 +132,7 @@ impl Default for DeployWatchConfig {
             max_age: Duration::from_secs(3600),
             batch: 20,
             check_name: "deploy".into(),
+            workflow: "deploy.yml".into(),
         }
     }
 }
@@ -393,6 +398,10 @@ impl Config {
                         .map(|v| v.trim().to_string())
                         .filter(|v| !v.is_empty())
                         .unwrap_or(d.check_name),
+                    workflow: opt("SWARMPRESS_DEPLOY_WORKFLOW")
+                        .map(|v| v.trim().rsplit('/').next().unwrap_or_default().to_string())
+                        .filter(|v| !v.is_empty())
+                        .unwrap_or(d.workflow),
                 }
             },
             lease_ttl: Duration::from_secs(num("SWARMPRESS_LEASE_SECS", 90)?.max(1)),

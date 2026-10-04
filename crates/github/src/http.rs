@@ -459,6 +459,11 @@ struct WireCheckRuns {
 }
 
 #[derive(Deserialize)]
+struct WireWorkflowRuns {
+    workflow_runs: Vec<WorkflowRun>,
+}
+
+#[derive(Deserialize)]
 struct WireArtifacts {
     artifacts: Vec<WireArtifact>,
 }
@@ -907,6 +912,22 @@ impl RepoApi for HttpGitHub {
         // the Authorization header when the redirect leaves the API host.
         let url = self.repo_url(repo, &["actions", "artifacts", &id, "zip"])?;
         Ok(self.send(Method::GET, url, None).await?.into_result()?.body)
+    }
+
+    async fn list_workflow_runs(&self, repo: &RepoId, head_sha: &str) -> Result<Vec<WorkflowRun>> {
+        let mut url = self.repo_url(repo, &["actions", "runs"])?;
+        url.query_pairs_mut()
+            .append_pair("head_sha", head_sha)
+            .append_pair("per_page", "100");
+        let w: WireWorkflowRuns = self.get_json(url).await?;
+        Ok(w.workflow_runs)
+    }
+
+    async fn rerun_failed_jobs(&self, repo: &RepoId, run_id: u64) -> Result<()> {
+        let run = run_id.to_string();
+        let url = self.repo_url(repo, &["actions", "runs", &run, "rerun-failed-jobs"])?;
+        self.send(Method::POST, url, None).await?.into_result()?;
+        Ok(())
     }
 
     // ---- gateway additions (ADR-0061) ----------------------------------

@@ -53,7 +53,9 @@ pub use article::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use gateway::GithubGateway;
-pub use gateway::{Attribution, DraftPr, FakeGateway, FakePr, Gateway, GatewayError};
+pub use gateway::{
+    Attribution, DeployState, DraftPr, FakeGateway, FakePr, Gateway, GatewayError, Redeploy,
+};
 pub use run::{CancelToken, Orchestrator, OrchestratorError, SiteBinding};
 pub use site::{
     ConfigSource, SeoSuffixSource, SiteKnowledge, STYLE_GUIDE_PATH, WRITER_PROMPT_PATH,

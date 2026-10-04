@@ -8,7 +8,7 @@
 //! comments and Pages config. Ids are counters, so two runs of the same
 //! script produce identical shas and numbers.
 //!
-//! Test controls (`create_repo`, `add_check_run`, `add_artifact`,
+//! Test controls (`create_repo`, `add_check_run`, `add_workflow_run`, `add_artifact`,
 //! `set_required_checks`, `set_mergeable`, `fail_next`, `calls`, ...) are
 //! inherent methods; everything production code uses goes through
 //! [`RepoApi`].
@@ -61,6 +61,7 @@ struct FakeRepo {
     prs: BTreeMap<u64, FakePr>,
     next_number: u64,
     check_runs: Vec<CheckRun>,
+    workflow_runs: Vec<WorkflowRun>,
     required_checks: Vec<String>,
     artifacts: BTreeMap<(u64, String), Vec<u8>>,
     comments: Vec<(u64, u64, String)>,
@@ -471,6 +472,63 @@ impl FakeGitHub {
             details_url: None,
         });
         new_id
+    }
+
+    /// Add a workflow run of the workflow file `path` (e.g.
+    /// `.github/workflows/deploy.yml`) on `head_sha`, attempt 1. Returns its id.
+    pub fn add_workflow_run(
+        &self,
+        id: &RepoId,
+        head_sha: &str,
+        path: &str,
+        status: CheckStatus,
+        conclusion: Option<CheckConclusion>,
+    ) -> u64 {
+        let mut s = self.lock();
+        let new_id = s.next_id();
+        let Some(r) = s.repos.get_mut(id) else {
+            return 0;
+        };
+        r.workflow_runs.push(WorkflowRun {
+            id: new_id,
+            name: Some(path.rsplit('/').next().unwrap_or(path).to_string()),
+            head_sha: head_sha.into(),
+            path: path.into(),
+            event: "push".into(),
+            status,
+            conclusion,
+            run_attempt: 1,
+        });
+        new_id
+    }
+
+    /// Set the status of a workflow run's current attempt.
+    pub fn set_workflow_run(
+        &self,
+        id: &RepoId,
+        run_id: u64,
+        status: CheckStatus,
+        conclusion: Option<CheckConclusion>,
+    ) {
+        if let Some(run) = self
+            .lock()
+            .repos
+            .get_mut(id)
+            .and_then(|r| r.workflow_runs.iter_mut().find(|w| w.id == run_id))
+        {
+            run.status = status;
+            run.conclusion = conclusion;
+        }
+    }
+
+    pub fn workflow_run(&self, id: &RepoId, run_id: u64) -> Option<WorkflowRun> {
+        self.lock()
+            .repos
+            .get(id)?
+            .workflow_runs
+            .iter()
+            .find(|w| w.id == run_id)
+            .cloned()
     }
 
     pub fn add_artifact(&self, id: &RepoId, run_id: u64, name: &str, zip: Vec<u8>) {
@@ -1063,6 +1121,53 @@ impl RepoApi for FakeGitHub {
             .get(&(run_id, name.to_string()))
             .cloned()
             .ok_or_else(|| nf(format!("artifact {name} in run {run_id}")))
+    }
+
+    async fn list_workflow_runs(&self, repo: &RepoId, head_sha: &str) -> Result<Vec<WorkflowRun>> {
+        let s = self.enter("list_workflow_runs")?;
+        let mut runs: Vec<WorkflowRun> = s
+            .repo(repo)?
+            .workflow_runs
+            .iter()
+            .filter(|w| w.head_sha == head_sha)
+            .cloned()
+            .collect();
+        runs.sort_by_key(|r| std::cmp::Reverse(r.id));
+        Ok(runs)
+    }
+
+    /// A new attempt of a completed, unsuccessful run: queued again, and the
+    /// commit's check runs that did not succeed are queued with it (the
+    /// failed jobs and the jobs that depend on them).
+    async fn rerun_failed_jobs(&self, repo: &RepoId, run_id: u64) -> Result<()> {
+        let mut s = self.enter("rerun_failed_jobs")?;
+        let r = s.repo_mut(repo)?;
+        let run = r
+            .workflow_runs
+            .iter_mut()
+            .find(|w| w.id == run_id)
+            .ok_or_else(|| nf(format!("workflow run {run_id}")))?;
+        if run.status != CheckStatus::Completed {
+            return Err(GitHubError::Forbidden(format!(
+                "workflow run {run_id} is not completed"
+            )));
+        }
+        if run.conclusion == Some(CheckConclusion::Success) {
+            return Err(GitHubError::Forbidden(format!(
+                "workflow run {run_id} has no failed jobs"
+            )));
+        }
+        run.run_attempt += 1;
+        run.status = CheckStatus::Queued;
+        run.conclusion = None;
+        let sha = run.head_sha.clone();
+        for c in r.check_runs.iter_mut().filter(|c| c.head_sha == sha) {
+            if c.conclusion != Some(CheckConclusion::Success) {
+                c.status = CheckStatus::Queued;
+                c.conclusion = None;
+            }
+        }
+        Ok(())
     }
 
     // ---- gateway additions (ADR-0061) ----------------------------------

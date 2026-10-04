@@ -955,3 +955,87 @@ async fn merge_branch_conflicts_and_missing_refs() {
         .unwrap_err()
         .is_not_found());
 }
+
+#[tokio::test]
+async fn a_failed_workflow_run_is_rerun_as_a_new_attempt_on_the_same_commit() {
+    let f = fake();
+    let sha = "a".repeat(40);
+    let path = ".github/workflows/deploy.yml";
+    let old = f.add_workflow_run(
+        &repo(),
+        &sha,
+        path,
+        CheckStatus::Completed,
+        Some(CheckConclusion::Cancelled),
+    );
+    let id = f.add_workflow_run(
+        &repo(),
+        &sha,
+        path,
+        CheckStatus::Completed,
+        Some(CheckConclusion::Failure),
+    );
+    f.add_check_run(
+        &repo(),
+        &sha,
+        "build",
+        CheckStatus::Completed,
+        Some(CheckConclusion::Success),
+    );
+    f.add_check_run(
+        &repo(),
+        &sha,
+        "deploy",
+        CheckStatus::Completed,
+        Some(CheckConclusion::Failure),
+    );
+    // Newest first, only this commit's.
+    let runs = f.list_workflow_runs(&repo(), &sha).await.unwrap();
+    assert_eq!(runs.iter().map(|r| r.id).collect::<Vec<_>>(), [id, old]);
+    assert_eq!(runs[0].workflow_file(), "deploy.yml");
+    assert_eq!(runs[0].run_attempt, 1);
+    assert!(f
+        .list_workflow_runs(&repo(), "0000")
+        .await
+        .unwrap()
+        .is_empty());
+
+    f.rerun_failed_jobs(&repo(), id).await.unwrap();
+    let run = f.workflow_run(&repo(), id).unwrap();
+    assert_eq!(
+        (run.run_attempt, run.status, run.conclusion),
+        (2, CheckStatus::Queued, None)
+    );
+    // The failed job runs again; the successful one keeps its result.
+    let checks = f.list_check_runs(&repo(), &sha).await.unwrap();
+    let state = |name: &str| {
+        let c = checks.iter().find(|c| c.name == name).unwrap();
+        (c.status, c.conclusion)
+    };
+    assert_eq!(
+        state("build"),
+        (CheckStatus::Completed, Some(CheckConclusion::Success))
+    );
+    assert_eq!(state("deploy"), (CheckStatus::Queued, None));
+
+    // A run that is still going, or that succeeded, cannot be re-run; an
+    // unknown one does not exist.
+    assert!(matches!(
+        f.rerun_failed_jobs(&repo(), id).await,
+        Err(GitHubError::Forbidden(_))
+    ));
+    f.set_workflow_run(
+        &repo(),
+        id,
+        CheckStatus::Completed,
+        Some(CheckConclusion::Success),
+    );
+    assert!(matches!(
+        f.rerun_failed_jobs(&repo(), id).await,
+        Err(GitHubError::Forbidden(_))
+    ));
+    assert!(matches!(
+        f.rerun_failed_jobs(&repo(), 999_999).await,
+        Err(GitHubError::NotFound(_))
+    ));
+}

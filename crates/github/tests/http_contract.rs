@@ -633,6 +633,56 @@ async fn check_runs_listed() {
 }
 
 #[tokio::test]
+async fn workflow_runs_listed_and_failed_jobs_rerun() {
+    let h = harness().await;
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/site/actions/runs"))
+        .and(query_param("head_sha", "abc"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "total_count": 1,
+            "workflow_runs": [{
+                "id": 30433642, "name": "Deploy to GitHub Pages", "head_sha": "abc",
+                "path": ".github/workflows/deploy.yml", "event": "push",
+                "status": "completed", "conclusion": "failure", "run_attempt": 2
+            }]
+        })))
+        .mount(&h.server)
+        .await;
+    let runs = h.gh.list_workflow_runs(&repo(), "abc").await.unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].id, 30433642);
+    assert_eq!(runs[0].workflow_file(), "deploy.yml");
+    assert_eq!(
+        (runs[0].status, runs[0].conclusion, runs[0].run_attempt),
+        (CheckStatus::Completed, Some(CheckConclusion::Failure), 2)
+    );
+
+    Mock::given(method("POST"))
+        .and(path(
+            "/repos/acme/site/actions/runs/30433642/rerun-failed-jobs",
+        ))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({})))
+        .expect(1)
+        .mount(&h.server)
+        .await;
+    h.gh.rerun_failed_jobs(&repo(), 30433642).await.unwrap();
+
+    // Without the Actions write permission GitHub answers 403.
+    Mock::given(method("POST"))
+        .and(path("/repos/acme/site/actions/runs/7/rerun-failed-jobs"))
+        .respond_with(
+            ResponseTemplate::new(403)
+                .set_body_json(json!({ "message": "Resource not accessible by integration" })),
+        )
+        .mount(&h.server)
+        .await;
+    assert!(matches!(
+        h.gh.rerun_failed_jobs(&repo(), 7).await,
+        Err(GitHubError::Forbidden(m)) if m.contains("not accessible")
+    ));
+}
+
+#[tokio::test]
 async fn artifact_download_follows_redirect() {
     let h = harness().await;
     Mock::given(method("GET"))

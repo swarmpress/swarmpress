@@ -411,6 +411,288 @@ async fn a_merge_nobody_deployed_times_out() {
     assert_eq!(b["state"], "failed");
 }
 
+// ---- POST /api/gateway/redeploy (FEAT-085) ----------------------------------
+
+const DEPLOY_YML: &str = ".github/workflows/deploy.yml";
+
+/// The deploy workflow's run on `sha` failed in its build job.
+fn failed_run(s: &TestServer, repo: &RepoId, sha: &str) -> u64 {
+    check(s, repo, sha, "build", Some(CheckConclusion::Failure));
+    check(s, repo, sha, "deploy", Some(CheckConclusion::Skipped));
+    s.fake_github().add_workflow_run(
+        repo,
+        sha,
+        DEPLOY_YML,
+        CheckStatus::Completed,
+        Some(CheckConclusion::Failure),
+    )
+}
+
+/// The current attempt of the run, and the checks of `sha`, succeed.
+fn run_succeeds(s: &TestServer, repo: &RepoId, sha: &str, run: u64) {
+    check(s, repo, sha, "build", Some(CheckConclusion::Success));
+    check(s, repo, sha, "deploy", Some(CheckConclusion::Success));
+    s.fake_github().set_workflow_run(
+        repo,
+        run,
+        CheckStatus::Completed,
+        Some(CheckConclusion::Success),
+    );
+}
+
+async fn redeploy(s: &TestServer, p: &GatewayPlayer, body: Value) -> (u16, Value) {
+    s.gateway(p, "redeploy", body).await
+}
+
+fn reruns(s: &TestServer) -> usize {
+    s.fake_github()
+        .calls()
+        .iter()
+        .filter(|c| *c == "rerun_failed_jobs")
+        .count()
+}
+
+#[tokio::test]
+async fn a_failed_deploy_is_redeployed_once_and_lands() {
+    let s = server().await;
+    let mut p = s.gateway_player(1).await;
+    let (number, sha) = merged(&s, &p, "a").await;
+    let run = failed_run(&s, &p.repo, &sha);
+    assert_eq!(poll(&s).await.failed, 1);
+    let evs = s.inbox(&p.cookie).await;
+    assert_eq!(evs[0]["kind"], "DeployFailed");
+    assert_eq!(evs[0]["payload"]["attempt"], 0);
+
+    // Long after the merge (past the poller's age limit): the redeploy
+    // restarts the wait. (The lease expired meanwhile: taken again.)
+    s.clock.advance(Duration::from_secs(2 * 3600));
+    p.lease = s.lease(&p.cookie, &p.company, "laptop").await;
+    let (st, b) = redeploy(&s, &p, json!({ "work_item": "work-a" })).await;
+    assert_eq!(st, 200, "{b}");
+    assert_eq!(b["number"], number);
+    assert_eq!(b["work_item"], "work-a");
+    assert_eq!(b["state"], "pending");
+    assert_eq!(b["requested"], true);
+    assert_eq!(b["run_id"], run);
+    assert_eq!(b["run_attempt"], 1);
+    assert_eq!(b["attempt"], 1);
+    assert_eq!(
+        b["detail"],
+        format!("re-run of the failed jobs of workflow run {run} (attempt 1) requested")
+    );
+    assert_eq!(reruns(&s), 1);
+    let attempt = s.fake_github().workflow_run(&p.repo, run).unwrap();
+    assert_eq!(
+        (attempt.run_attempt, attempt.status),
+        (2, CheckStatus::Queued)
+    );
+    let (_, b) = status(&s, &p, &format!("number={number}")).await;
+    assert_eq!(b["state"], "pending", "{b}");
+
+    // The same failed run again: a no-op, GitHub is not asked.
+    s.fake_github().clear_calls();
+    let (st, b) = redeploy(&s, &p, json!({ "number": number })).await;
+    assert_eq!((st, b["requested"].as_bool()), (200, Some(false)), "{b}");
+    assert_eq!(b["attempt"], 1);
+    assert!(s.fake_github().calls().is_empty());
+
+    // The new attempt is running, then succeeds: the merge lands.
+    assert_eq!(
+        poll(&s).await,
+        PollReport {
+            checked: 1,
+            ..Default::default()
+        }
+    );
+    run_succeeds(&s, &p.repo, &sha, run);
+    assert_eq!(poll(&s).await.landed, 1);
+    let evs: Vec<Value> = s
+        .inbox(&p.cookie)
+        .await
+        .into_iter()
+        .filter(|e| e["kind"] != "LeaseRevoked")
+        .collect();
+    assert_eq!(evs.len(), 2, "{evs:?}");
+    assert_eq!(evs[1]["kind"], "DeployLanded");
+    assert_eq!(evs[1]["payload"]["work_item"], "work-a");
+    assert_eq!(evs[1]["payload"]["attempt"], 1);
+
+    // A merge that landed is not redeployed.
+    s.fake_github().clear_calls();
+    let (st, b) = redeploy(&s, &p, json!({ "number": number })).await;
+    assert_eq!(st, 409, "{b}");
+    assert!(b["error"].as_str().unwrap().contains("has landed"), "{b}");
+    assert!(s.fake_github().calls().is_empty());
+}
+
+#[tokio::test]
+async fn a_redeploy_that_fails_again_is_a_new_failure_and_is_redeployed_again() {
+    let s = server().await;
+    let p = s.gateway_player(1).await;
+    let (number, sha) = merged(&s, &p, "a").await;
+    let run = failed_run(&s, &p.repo, &sha);
+    assert_eq!(poll(&s).await.failed, 1);
+    let (st, b) = redeploy(&s, &p, json!({ "number": number })).await;
+    assert_eq!((st, b["run_attempt"].as_u64()), (200, Some(1)), "{b}");
+
+    // Within one poll interval of the request a failed verdict may still be
+    // the old attempt's: it does not fail the merge.
+    failed_run_again(&s, &p.repo, &sha, run);
+    assert_eq!(poll(&s).await.failed, 0);
+    s.clock.advance(Duration::from_secs(31));
+    assert_eq!(poll(&s).await.failed, 1);
+    let evs = s.inbox(&p.cookie).await;
+    assert_eq!(evs.len(), 2, "{evs:?}");
+    assert_eq!(evs[1]["kind"], "DeployFailed");
+    assert_eq!(evs[1]["payload"]["attempt"], 1);
+    let (_, b) = status(&s, &p, &format!("number={number}")).await;
+    assert_eq!(b["state"], "failed");
+
+    // Attempt 2 failed: a new failed run attempt, re-run again.
+    let (st, b) = redeploy(&s, &p, json!({ "number": number })).await;
+    assert_eq!(st, 200, "{b}");
+    assert_eq!(
+        (
+            b["requested"].as_bool(),
+            b["run_attempt"].as_u64(),
+            b["attempt"].as_i64()
+        ),
+        (Some(true), Some(2), Some(2))
+    );
+    assert_eq!(reruns(&s), 2);
+    run_succeeds(&s, &p.repo, &sha, run);
+    assert_eq!(poll(&s).await.landed, 1);
+}
+
+/// The current attempt of the run failed again.
+fn failed_run_again(s: &TestServer, repo: &RepoId, sha: &str, run: u64) {
+    check(s, repo, sha, "build", Some(CheckConclusion::Failure));
+    check(s, repo, sha, "deploy", Some(CheckConclusion::Skipped));
+    s.fake_github().set_workflow_run(
+        repo,
+        run,
+        CheckStatus::Completed,
+        Some(CheckConclusion::Failure),
+    );
+}
+
+#[tokio::test]
+async fn a_superseded_merge_is_redeployed_with_the_run_that_failed_it() {
+    let s = server().await;
+    let p = s.gateway_player(1).await;
+    let (n1, sha1) = merged(&s, &p, "a").await;
+    let (_n2, sha2) = merged(&s, &p, "b").await;
+    // The first merge's run was cancelled by the second, which failed.
+    let cancelled = s.fake_github().add_workflow_run(
+        &p.repo,
+        &sha1,
+        DEPLOY_YML,
+        CheckStatus::Completed,
+        Some(CheckConclusion::Cancelled),
+    );
+    let run2 = failed_run(&s, &p.repo, &sha2);
+    assert_eq!(poll(&s).await.failed, 2);
+
+    let (st, b) = redeploy(&s, &p, json!({ "number": n1 })).await;
+    assert_eq!(st, 200, "{b}");
+    assert_eq!(
+        b["run_id"], run2,
+        "the failed deployment, not the cancelled run"
+    );
+    assert_eq!(
+        s.fake_github()
+            .workflow_run(&p.repo, cancelled)
+            .unwrap()
+            .run_attempt,
+        1
+    );
+    // Its success lands both merges (at or before).
+    run_succeeds(&s, &p.repo, &sha2, run2);
+    assert_eq!(poll(&s).await.landed, 2);
+}
+
+#[tokio::test]
+async fn redeploy_refusals() {
+    let s = server().await;
+    let p = s.gateway_player(1).await;
+    // Lease-fenced.
+    let (st, _) = s
+        .post_json(
+            "/api/gateway/redeploy",
+            Some(&p.cookie),
+            json!({ "number": 1 }),
+        )
+        .await;
+    assert_eq!(st, 428);
+    // Exactly one key; unknown pull requests.
+    assert_eq!(redeploy(&s, &p, json!({})).await.0, 400);
+    assert_eq!(redeploy(&s, &p, json!({ "number": 99 })).await.0, 404);
+
+    // An open pull request is not merged.
+    let (st, d) = s
+        .gateway(
+            &p,
+            "draft",
+            json!({ "content_id": "o", "work_item": "work-o", "path": "content/pages/en/o.json",
+                    "page": { "title": { "en": "o" } }, "message": "Draft: o" }),
+        )
+        .await;
+    assert_eq!(st, 200, "{d}");
+    let (st, b) = redeploy(&s, &p, json!({ "work_item": "work-o" })).await;
+    assert_eq!(st, 409, "{b}");
+    assert!(b["error"].as_str().unwrap().contains("is open"), "{b}");
+
+    // A pending merge needs nothing: 200, nothing requested.
+    let (number, sha) = merged(&s, &p, "a").await;
+    let (st, b) = redeploy(&s, &p, json!({ "number": number })).await;
+    assert_eq!((st, b["requested"].as_bool()), (200, Some(false)), "{b}");
+    assert_eq!(b["attempt"], 0);
+
+    // Failed, but GitHub has no run of the deploy workflow to re-run (only
+    // another workflow's): refused, the merge stays failed.
+    check(&s, &p.repo, &sha, "build", Some(CheckConclusion::Failure));
+    s.fake_github().add_workflow_run(
+        &p.repo,
+        &sha,
+        ".github/workflows/lint.yml",
+        CheckStatus::Completed,
+        Some(CheckConclusion::Failure),
+    );
+    assert_eq!(poll(&s).await.failed, 1);
+    let (st, b) = redeploy(&s, &p, json!({ "number": number })).await;
+    assert_eq!(st, 409, "{b}");
+    assert!(
+        b["error"].as_str().unwrap().contains("nothing to re-run"),
+        "{b}"
+    );
+
+    // GitHub refuses the re-run (no Actions write permission): 403 that says
+    // so, and the merge stays failed.
+    s.fake_github().add_workflow_run(
+        &p.repo,
+        &sha,
+        DEPLOY_YML,
+        CheckStatus::Completed,
+        Some(CheckConclusion::Failure),
+    );
+    s.fake_github().fail_next(
+        "rerun_failed_jobs",
+        github::GitHubError::Forbidden("Resource not accessible by integration".into()),
+    );
+    let (st, b) = redeploy(&s, &p, json!({ "number": number })).await;
+    assert_eq!(st, 403, "{b}");
+    let msg = b["error"].as_str().unwrap();
+    assert!(
+        msg.contains("Resource not accessible") && msg.contains("Actions write"),
+        "{b}"
+    );
+    let (_, b) = status(&s, &p, &format!("number={number}")).await;
+    assert_eq!(b["state"], "failed");
+    // Once GitHub allows it, the same request goes through.
+    let (st, b) = redeploy(&s, &p, json!({ "number": number })).await;
+    assert_eq!((st, b["requested"].as_bool()), (200, Some(true)), "{b}");
+}
+
 #[tokio::test]
 async fn deploy_status_is_scoped_to_the_company() {
     let s = TestServer::start().await;

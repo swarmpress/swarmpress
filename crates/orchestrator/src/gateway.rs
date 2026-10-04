@@ -25,6 +25,47 @@ pub struct DraftPr {
     pub head_sha: String,
 }
 
+/// What became of a merged pull request's deployment, as the central gateway
+/// observes it (`GET /api/gateway/deploy-status`, ADR-0061 decision 7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeployState {
+    /// Not merged yet.
+    Open,
+    /// Closed without a merge.
+    Closed,
+    /// Merged; its deployment is awaited.
+    Pending,
+    /// A deployment that contains the merge is live.
+    Landed,
+    /// Its deployment failed: [`Gateway::redeploy`] runs it again.
+    Failed,
+    /// Merged before deploys were observed, or a state this client does not
+    /// know.
+    #[serde(other)]
+    Unknown,
+}
+
+/// What [`Gateway::redeploy`] did (`POST /api/gateway/redeploy`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Redeploy {
+    /// The deploy state now: `pending` after a redeploy.
+    pub state: DeployState,
+    /// Whether this call asked GitHub to re-run the failed deploy; `false`
+    /// when the merge was already waiting for a deployment (a repeated call).
+    #[serde(default)]
+    pub requested: bool,
+    /// The workflow run that was (or is being) re-run.
+    #[serde(default)]
+    pub run_id: Option<u64>,
+    /// How many redeploys the merge has had.
+    #[serde(default)]
+    pub attempt: u32,
+    /// The server's account of it.
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
 /// Who did the work behind a repo operation, and in which job (ADR-0056
 /// decision 8, as narrowed by ADR-0058 decision 10). This is the
 /// `attribution` object of the central gateway's draft and merge requests.
@@ -170,6 +211,24 @@ pub trait Gateway: MaybeSendSync {
         let _ = attribution;
         self.merge(pr_number, head_sha).await
     }
+
+    /// The deploy state of PR `pr_number` (merged by this company), or
+    /// `None` when this gateway does not observe deploys. The default: `None`.
+    async fn deploy_state(&self, pr_number: u64) -> Result<Option<DeployState>, GatewayError> {
+        let _ = pr_number;
+        Ok(None)
+    }
+
+    /// Deploy the merge of PR `pr_number` again after its deployment failed
+    /// (FEAT-085). Idempotent: a merge already waiting for a deployment is
+    /// left alone (`requested: false`). Refused (an error) for a merge that
+    /// landed, one with nothing to re-run, or when GitHub refuses the re-run.
+    /// The default fails loudly (rule 11): this gateway cannot redeploy.
+    async fn redeploy(&self, pr_number: u64) -> Result<Redeploy, GatewayError> {
+        Err(GatewayError(format!(
+            "this gateway cannot redeploy PR #{pr_number}"
+        )))
+    }
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
@@ -207,6 +266,12 @@ impl<T: Gateway + ?Sized> Gateway for Arc<T> {
     ) -> Result<String, GatewayError> {
         (**self).merge_as(pr_number, head_sha, attribution).await
     }
+    async fn deploy_state(&self, pr_number: u64) -> Result<Option<DeployState>, GatewayError> {
+        (**self).deploy_state(pr_number).await
+    }
+    async fn redeploy(&self, pr_number: u64) -> Result<Redeploy, GatewayError> {
+        (**self).redeploy(pr_number).await
+    }
 }
 
 /// A PR in [`FakeGateway`].
@@ -229,6 +294,13 @@ struct FakeState {
     merges: u32,
     /// commit sha (draft commits and merge commits) → who it was attributed to
     attributions: BTreeMap<String, Attribution>,
+    /// PR → deploy state, once a test set one (deploys are not observed
+    /// otherwise: [`Gateway::deploy_state`] answers `None`).
+    deploys: BTreeMap<u64, DeployState>,
+    /// PR → redeploys requested.
+    redeploys: BTreeMap<u64, u32>,
+    /// The next redeploy fails with this message (GitHub refused).
+    refuse_redeploy: Option<String>,
 }
 
 /// In-memory [`Gateway`]: branches, files and PRs in `BTreeMap`s, with
@@ -277,6 +349,23 @@ impl FakeGateway {
     /// to; `None` for a commit made without attribution.
     pub fn attribution(&self, sha: &str) -> Option<Attribution> {
         self.lock().attributions.get(sha).cloned()
+    }
+
+    /// Observe deploys for PR `pr_number`: its deploy state is `state` from
+    /// now (a deployment landed or failed).
+    pub fn set_deploy_state(&self, pr_number: u64, state: DeployState) {
+        self.lock().deploys.insert(pr_number, state);
+    }
+
+    /// How many redeploys of PR `pr_number` were requested (repeated calls
+    /// that changed nothing do not count).
+    pub fn redeploy_count(&self, pr_number: u64) -> u32 {
+        self.lock().redeploys.get(&pr_number).copied().unwrap_or(0)
+    }
+
+    /// The next redeploy is refused with `message` (GitHub's refusal).
+    pub fn refuse_next_redeploy(&self, message: impl Into<String>) {
+        self.lock().refuse_redeploy = Some(message.into());
     }
 }
 
@@ -412,6 +501,47 @@ impl Gateway for FakeGateway {
             p.merged_sha = Some(sha.clone());
         }
         Ok(sha)
+    }
+
+    async fn deploy_state(&self, pr_number: u64) -> Result<Option<DeployState>, GatewayError> {
+        Ok(self.lock().deploys.get(&pr_number).copied())
+    }
+
+    /// As the central gateway: a failed deploy is pending again, a pending
+    /// one is left alone, anything else is refused.
+    async fn redeploy(&self, pr_number: u64) -> Result<Redeploy, GatewayError> {
+        let mut s = self.lock();
+        let state = s.deploys.get(&pr_number).copied();
+        let attempt = s.redeploys.get(&pr_number).copied().unwrap_or(0);
+        match state {
+            Some(DeployState::Failed) => {}
+            Some(DeployState::Pending) => {
+                return Ok(Redeploy {
+                    state: DeployState::Pending,
+                    requested: false,
+                    run_id: None,
+                    attempt,
+                    detail: None,
+                })
+            }
+            other => {
+                return Err(GatewayError(format!(
+                    "PR #{pr_number} is {other:?}: only a merge whose deployment failed can be redeployed"
+                )))
+            }
+        }
+        if let Some(why) = s.refuse_redeploy.take() {
+            return Err(GatewayError(why));
+        }
+        s.deploys.insert(pr_number, DeployState::Pending);
+        s.redeploys.insert(pr_number, attempt + 1);
+        Ok(Redeploy {
+            state: DeployState::Pending,
+            requested: true,
+            run_id: Some(pr_number),
+            attempt: attempt + 1,
+            detail: Some(format!("re-run of the deploy of PR #{pr_number} requested")),
+        })
     }
 }
 
