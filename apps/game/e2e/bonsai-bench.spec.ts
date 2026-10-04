@@ -84,7 +84,8 @@ base('@scripted the harness on the scripted backend writes both report kinds wit
   base.skip(base.info().project.name !== 'scripted', 'runs in the scripted project of playwright.bonsai.config.ts')
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
-  await page.goto('/bench.html?llm=fake&quality=low&reloads=2&loss=hook&idle=1&memory=1&autostart=1')
+  // idle=4: software WebGPU on a CI runner can draw under one frame a second, and the idle phase needs frames.
+  await page.goto('/bench.html?llm=fake&quality=low&reloads=2&loss=hook&idle=4&memory=1&autostart=1')
   const r = await runToEnd(page)
 
   expect(r.fatal).toBeUndefined()
