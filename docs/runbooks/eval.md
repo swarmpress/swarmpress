@@ -139,9 +139,14 @@ git commit -m "docs(qualification): pipeline eval on Bonsai, <verdict> (FEAT-036
 | 6 | you would publish ≥ 80% of the approved articles, none factually wrong | | your marks; **pending** until every approved article is marked |
 | 7 | no job over its timeout | 0 | the longest job is reported; median minutes per article is informational |
 
-Plus at least 20 briefs. The **calibration** line lists the checks the site's own articles fail
-(create-only aside): a check that fails many accepted articles is miscalibrated, not the articles
-(for example a banned phrase that the style guide lists and a live article uses).
+Plus at least 20 briefs. The **calibration** row (threshold 5) scores the site's own articles on
+the **legacy profile** (`LEGACY_RULES` in `metrics.ts`): they may break `banned-phrase` (vocabulary
+from before the style guide) and `media` (heroes missing from the media index), which new drafts
+may not; any other broken rule fails the row and is named under "Outside the legacy profile", a
+check bug or a rule the live site disagrees with. The record also lists the checks and the rules
+the articles break. The decisions and the site's data problems are in
+[`docs/qualification/check-calibration.md`](../qualification/check-calibration.md), with the
+commands that rebuild its table from a real pack (`EVAL_PACK`).
 
 A pass here, with the rehearsal on a fork (`fork-rehearsal.md`), is Milestone B.
 
