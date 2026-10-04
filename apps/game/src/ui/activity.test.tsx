@@ -223,6 +223,7 @@ describe('the Activity panel', () => {
     expect(within(panel()).queryByRole('button', { name: 'Load older jobs' })).toBeNull()
   })
 
+  // 230 rows in jsdom: over 5 s on a loaded CI runner.
   it('loads a bounded window and older jobs on demand', async () => {
     const many = Array.from({ length: ACTIVITY_PAGE + 30 }, (_, i) => row(i + 1, 'job'))
     const c = await open({ activity: many })
@@ -234,7 +235,7 @@ describe('the Activity panel', () => {
     expect(listed()).toHaveLength(ACTIVITY_PAGE + 30)
     expect(c.source.activityReads[1]).toEqual({ limit: ACTIVITY_PAGE, before: 31 })
     expect(within(panel()).queryByRole('button', { name: 'Load older jobs' })).toBeNull()
-  })
+  }, 30_000)
 
   it('reads nothing while closed', async () => {
     const c = setup()
