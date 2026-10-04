@@ -8,7 +8,7 @@
 
 swarm.press is a browser **management sim / digital dollhouse**. Each player is the CEO of an AI
 publishing house, shown as a detailed isometric 3D building (Babylon.js on WebGPU only, ADR-0064;
-the WebGL2 fallback is still in the code until its removal increment). The office is to be drawn
+browser tests run on SwiftShader's WebGPU, `apps/game/e2e/webgpu.ts`). The office is to be drawn
 in bricks from a construction kit that players and staff build with, with live information
 surfaces (ADR-0063, ADR-0065; decided, kit core and a spike first).
 - The staff are LLM agents with persistent personas. Their meetings play out as speech bubbles,

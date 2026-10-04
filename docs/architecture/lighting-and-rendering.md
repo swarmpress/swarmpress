@@ -1,15 +1,15 @@
 # Lighting and rendering
 
-> **Decided, not built yet:** the renderer becomes WebGPU only
-> ([ADR-0064](../adr/0064-webgpu-only.md)), and the office is to be drawn in bricks with live
-> information surfaces ([ADR-0063](../adr/0063-brick-office-and-live-information-surfaces.md),
+> **Decided, not built yet:** the office is to be drawn in bricks with live information surfaces
+> ([ADR-0063](../adr/0063-brick-office-and-live-information-surfaces.md),
 > [design](../design/brick-office.md)). This page describes the renderer as built today.
 
-The client renders the company as a detailed, lit digital dollhouse with Babylon.js. WebGPU is
-preferred and WebGL2 is the fallback. Lighting is gameplay information, so it always comes from
-the sim.
+The client renders the company as a detailed, lit digital dollhouse with Babylon.js on WebGPU
+only ([ADR-0064](../adr/0064-webgpu-only.md)). Lighting is gameplay information, so it always
+comes from the sim.
 
-Decisions: [ADR-0004](../adr/0004-babylonjs-webgpu-webgl2-fallback.md),
+Decisions: [ADR-0004](../adr/0004-babylonjs-webgpu-webgl2-fallback.md) (in part superseded by
+[ADR-0064](../adr/0064-webgpu-only.md)),
 [ADR-0005](../adr/0005-orthographic-iso-dollhouse-camera-and-cutaway.md),
 [ADR-0006](../adr/0006-baked-gi-dynamic-lights-day-night.md),
 [ADR-0007](../adr/0007-sim-renderer-render-state-contract.md),
@@ -18,14 +18,25 @@ Features: FEAT-017 to FEAT-029.
 
 ## Engine
 
-`createEngine(canvas, forceWebgl)` (`apps/game/src/render/engine.ts`):
-1. If WebGPU is supported, create a `WebGPUEngine` (antialias, `adaptToDeviceRatio`) and
-   `initAsync()`.
-2. If that fails, or `?renderer=webgl` is set, create a WebGL2 `Engine` with a stencil buffer.
+`createEngine(canvas)` (`apps/game/src/render/engine.ts`) creates a `WebGPUEngine` (antialias,
+`adaptToDeviceRatio`, `doNotHandleContextLost`) and `initAsync()`s it. There is no other renderer:
+- **No WebGPU.** No `navigator.gpu` (`no-api`), no adapter (`no-adapter`) or a device that does not
+  start (`device-failed`) is a `NoWebGpuError`, and the page shows the no-WebGPU screen
+  (`render/no-webgpu.ts`): what is missing, the browsers that work, a link to the requirements.
+- **Device loss.** `watchDeviceLoss` sees the device's `lost` promise. `main.ts` then holds the
+  clock (no frame and no idle tick runs it), disposes the engine, and builds a new engine on a new
+  canvas and the scene again from the sim's render state, with the camera angle and the GPU
+  scheduler's quality kept. After three losses on one page it gives up with the no-WebGPU screen
+  (`device-lost`). Babylon's own restore is off: it rebuilds resources before the new device
+  exists, so they stay tied to the dead one ([qualification](../qualification/webgpu-headless.md)).
+- Textures that change at run time (labels, the character atlas, brick surfaces) are uploaded as
+  raw pixels (`RawTexture`), never with `copyExternalImageToTexture`, which SwiftShader lacks.
 
-`window.__swarmpress.renderer` reports `webgpu` or `webgl2` for tests. Playwright runs two
-projects: `webgpu` (`--enable-unsafe-webgpu --use-angle=swiftshader
---enable-features=Vulkan`) and `fallback`.
+`window.__swarmpress` reports `renderer` (`webgpu`), `recoveries()` and `loseDevice()` (destroys
+the device, for the recovery test). Playwright runs every browser test on SwiftShader's WebGPU
+(`apps/game/e2e/webgpu.ts`: `--enable-unsafe-webgpu --use-angle=swiftshader
+--use-vulkan=swiftshader --enable-features=Vulkan,SkiaGraphite`), and the `no-webgpu` project
+without those flags checks the no-WebGPU screen.
 
 ## Scene structure
 

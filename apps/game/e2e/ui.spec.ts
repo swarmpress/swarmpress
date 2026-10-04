@@ -3,8 +3,8 @@ import { expect, test, type Page } from '@playwright/test'
 import { boot, waitStill } from './helpers'
 
 /**
- * CEO management overlay (ADR-0018) in the real browser, on the WebGL2
- * fallback over the live dollhouse, with the fixture data source (?ui=mock).
+ * CEO management overlay (ADR-0018) in the real browser, on software
+ * WebGPU (ADR-0064) over the live dollhouse, with the fixture data source (?ui=mock).
  * Screenshots go to test-results/ui/ as evidence (not baselines).
  */
 const require = createRequire(import.meta.url)
@@ -36,12 +36,8 @@ async function contrast(page: Page) {
 }
 
 test.describe('CEO overlay', () => {
-  test.beforeEach(({}, info) => {
-    test.skip(info.project.name !== 'fallback', 'the overlay is renderer-independent')
-  })
-
   test('opens every panel from the toolbar and by keyboard', async ({ page }) => {
-    const { errors } = await boot(page, '/?renderer=webgl&quality=low&ui=mock')
+    const { errors } = await boot(page, '/?quality=low&ui=mock')
     await expect(page.locator('.hud-business')).toContainText('Cash')
     await expect(page.locator('.hud-business')).toContainText('3 high')
 
@@ -76,7 +72,7 @@ test.describe('CEO overlay', () => {
   })
 
   test('profile card, allocation and answering a ticket', async ({ page }) => {
-    const { errors } = await boot(page, '/?renderer=webgl&quality=low&ui=mock')
+    const { errors } = await boot(page, '/?quality=low&ui=mock')
 
     await page.keyboard.press('o')
     await region(page, 'Org chart').getByRole('button', { name: /Giulia Rossi/ }).click()
@@ -118,7 +114,7 @@ test.describe('CEO overlay', () => {
   })
 
   test('publish approval: the article in its ticket, the preview, and Send back with a note', async ({ page }) => {
-    const { errors } = await boot(page, '/?renderer=webgl&quality=low&ui=mock')
+    const { errors } = await boot(page, '/?quality=low&ui=mock')
     // What the preview frame asks the network for (the game page's own requests are not counted).
     const fromPreview: string[] = []
     page.on('request', (r) => {
@@ -182,7 +178,7 @@ test.describe('CEO overlay', () => {
   })
 
   test('reads the live wasm sim by default', async ({ page }) => {
-    const { errors } = await boot(page, '/?renderer=webgl&quality=low')
+    const { errors } = await boot(page, '/?quality=low')
     await expect(page.locator('.hud-business')).toContainText('Cash')
     await page.keyboard.press('o')
     const org = region(page, 'Org chart')
@@ -207,17 +203,17 @@ test.describe('CEO overlay', () => {
   })
 
   test('stays out of frozen screenshot pages unless asked for', async ({ page }) => {
-    await boot(page, '/?renderer=webgl&quality=low&t=13:00')
+    await boot(page, '/?quality=low&t=13:00')
     await waitStill(page)
     await expect(toolbar(page)).toHaveCount(0)
     await expect(page.locator('.hud-business')).toHaveCount(0)
-    await boot(page, '/?renderer=webgl&quality=low&t=13:00&ui=mock')
+    await boot(page, '/?quality=low&t=13:00&ui=mock')
     await expect(toolbar(page)).toBeVisible()
   })
 
   test('stays usable at 1024 px wide', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 700 })
-    await boot(page, '/?renderer=webgl&quality=low&ui=mock')
+    await boot(page, '/?quality=low&ui=mock')
     await page.keyboard.press('p')
     const plan = region(page, 'Media & publishing plan')
     await expect(plan).toBeVisible()

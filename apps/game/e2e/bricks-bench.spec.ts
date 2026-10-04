@@ -10,15 +10,14 @@
  *
  * Project `bricks` of playwright.bonsai.config.ts (the harness build):
  *
- *   # headless here (WebGL2 on SwiftShader: timings inconclusive, counts and build times real)
+ *   # headless here (software WebGPU on SwiftShader: timings inconclusive, counts and build times real)
  *   CI=1 pnpm --filter @swarm-press/game exec playwright test -c playwright.bonsai.config.ts --project=bricks
  *
  *   # the go/no-go run on the M3 Max: installed Chrome, headed, WebGPU
- *   BRICKS_TARGET=1 BRICKS_CHANNEL=chrome BRICKS_RENDERER=webgpu \
+ *   BRICKS_TARGET=1 BRICKS_CHANNEL=chrome \
  *     pnpm --filter @swarm-press/game exec playwright test -c playwright.bonsai.config.ts --project=bricks
  *
- * Settings: BRICKS_TIERS (default low,medium,high), BRICKS_RENDERER=webgl|webgpu
- * (default webgl), BRICKS_CHANNEL (an installed browser; headed), BRICKS_IDLE_S
+ * Settings: BRICKS_TIERS (default low,medium,high), BRICKS_CHANNEL (an installed browser; headed), BRICKS_IDLE_S
  * (idle window, default 8), BRICKS_FAKEMS (scripted delay per answer, default 40),
  * BRICKS_TARGET=1 (this is the target machine and browser: frame timings count).
  */
@@ -35,7 +34,6 @@ import type { SceneCounts } from '../src/llm/bench/scene'
 const ROOT = fileURLToPath(new URL('../../..', import.meta.url))
 const env = process.env
 const TIERS = (env.BRICKS_TIERS ?? 'low,medium,high').split(',').map((t) => t.trim()).filter(Boolean)
-const RENDERER = env.BRICKS_RENDERER === 'webgpu' ? 'webgpu' : 'webgl'
 const IDLE_S = Number(env.BRICKS_IDLE_S ?? 8)
 const FAKE_MS = Number(env.BRICKS_FAKEMS ?? 40)
 
@@ -44,7 +42,7 @@ type Bench = { done(): Promise<BenchResults>; scene(): SceneCounts | null; error
 async function run(page: Page, tier: string, office: 'boxes' | 'bricks'): Promise<BricksRun> {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
-  const q = `llm=fake&suite=frames&quality=${tier}&office=${office}&idle=${IDLE_S}&fakems=${FAKE_MS}&memory=0&autostart=1${RENDERER === 'webgl' ? '&renderer=webgl' : ''}`
+  const q = `llm=fake&suite=frames&quality=${tier}&office=${office}&idle=${IDLE_S}&fakems=${FAKE_MS}&memory=0&autostart=1`
   await page.goto(`/bench.html?${q}`)
   const r = (await page.evaluate(() => (window as unknown as { __bench: Bench }).__bench.done())) as BenchResults
   const counts = (await page.evaluate(() => (window as unknown as { __bench: Bench }).__bench.scene())) as SceneCounts
@@ -70,7 +68,7 @@ test('brick office spike: frame times, draw calls, counts and chunk builds per t
   const measuredOn: Conclusive = {
     frames: env.BRICKS_TARGET === '1' && renderer === 'webgpu',
     cpu: /M3 Max/i.test(ctx.machine.cpuModel),
-    reason: renderer === 'webgpu' ? 'not declared the target run (BRICKS_TARGET=1)' : `${renderer} in headless Chromium (software rendering), not WebGPU on the target GPU`,
+    reason: env.BRICKS_CHANNEL ? 'not declared the target run (BRICKS_TARGET=1)' : `${renderer} in headless Chromium (SwiftShader, software rendering), not the target GPU`,
   }
   const dir = join(ROOT, 'artifacts', 'bench')
   mkdirSync(dir, { recursive: true })

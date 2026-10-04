@@ -7,7 +7,6 @@
  * URL parameters:
  *   llm=bonsai|chrome|transformers|fake   the backend (required; never switched)
  *   quality=low|medium|high               draw the office scene at this tier (absent: no scene)
- *   renderer=webgl                         force the scene onto WebGL2
  *   suite=full|frames|load                 all fixtures; the short frame-time set; load and warm-up only
  *   scale=0..1                             share of each fixture's prompts (validity needs 1)
  *   fixtures=a,c,section                   only these fixtures (letters or ids)
@@ -61,7 +60,7 @@ function oneOf<T extends string>(name: string, values: readonly T[], fallback: T
   return raw as T
 }
 
-function readConfig(): { config: BenchConfig; backend: BackendId; memory: boolean; autostart: boolean; forceWebgl: boolean; office: 'boxes' | 'bricks' } {
+function readConfig(): { config: BenchConfig; backend: BackendId; memory: boolean; autostart: boolean; office: 'boxes' | 'bricks' } {
   const backend = backendFromQuery(location.search)
   if (!backend) throw new Error(`choose a backend with ?llm= (${Object.keys(BACKENDS).join(', ')})`)
   const suite = oneOf('suite', ['full', 'frames', 'load'] as const, 'full')!
@@ -88,7 +87,6 @@ function readConfig(): { config: BenchConfig; backend: BackendId; memory: boolea
     backend,
     memory: num('memory', backend === 'fake' ? 0 : 1, 0, 1) === 1,
     autostart: params.get('autostart') === '1',
-    forceWebgl: params.get('renderer') === 'webgl',
     office: oneOf('office', ['boxes', 'bricks'] as const, 'boxes')!,
   }
 }
@@ -315,7 +313,7 @@ function boot(): void {
   const prepare = (): Promise<Prepared> =>
     (prepared ??= (async () => {
       if (!parsed) throw new Error(error ?? 'no configuration')
-      const { config, forceWebgl, office } = parsed
+      const { config, office } = parsed
       const only = parseFixtureList(params.get('fixtures'))
       const suite = buildSuite({
         scale: config.scale,
@@ -331,7 +329,7 @@ function boot(): void {
       let scene: BenchScene | null = null
       if (frames && config.quality) {
         $('status').textContent = 'starting the scene'
-        scene = await startScene($('scene'), config.quality, frames, forceWebgl, office)
+        scene = await startScene($('scene'), config.quality, frames, office)
         if (config.idleMs > 0) {
           $('status').textContent = `measuring idle frames (${Math.round(config.idleMs / 1000)} s, no model loaded)`
           await new Promise((r) => setTimeout(r, config.idleMs))
@@ -423,7 +421,7 @@ function boot(): void {
   $('config').textContent = [
     `backend: ${BACKENDS[c.backend as BackendId].label}`,
     `suite: ${c.suite}, scale ${c.scale}, ${c.repeat} pass(es), ${c.reloads} warm reload(s)`,
-    `scene: ${c.quality ?? 'off'}${parsed!.forceWebgl ? ' (WebGL2)' : ''}, office: ${parsed!.office}`,
+    `scene: ${c.quality ?? 'off'}, office: ${parsed!.office}`,
     `reasoning: ${c.thinking ?? 'per fixture'}${c.context ? `, context ${c.context}` : ''}${c.pipelineDepth ? `, pipeline depth ${c.pipelineDepth}` : ''}`,
     `device loss: ${c.deviceLoss}`,
     `cross-origin isolated: ${globalThis.crossOriginIsolated === true}`,

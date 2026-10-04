@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test'
+import { webgpuLaunch } from './e2e/webgpu'
 
 // e2e/mvp.spec.ts: the MVP acceptance test (docs/mvp.md), on the REAL game
 // page (`/?central=1`, the production build in dist/) against the real central
@@ -7,7 +8,6 @@ import { defineConfig } from '@playwright/test'
 // production build, proxying /auth /api /ws /web to it. One project per store
 // engine. Ports differ from the default and orchestrator configs so the suites
 // can run side by side.
-const executablePath = process.env.CHROMIUM_PATH || undefined
 const central = process.env.SWARMPRESS_MVP_BIND ?? '127.0.0.1:18081'
 const port = Number(process.env.SWARMPRESS_MVP_PORT ?? 4176)
 
@@ -23,7 +23,8 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${port}`,
     viewport: { width: 1280, height: 800 },
-    launchOptions: { executablePath },
+    // The game page draws on software WebGPU (ADR-0064, e2e/webgpu.ts).
+    launchOptions: webgpuLaunch,
   },
   webServer: [
     {

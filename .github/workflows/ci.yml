@@ -165,12 +165,16 @@ jobs:
       - name: Build client (wasm prebuilt)
         run: pnpm --filter @swarm-press/game exec vite build
       - run: pnpm --filter @swarm-press/game exec playwright install --with-deps chromium
-      - name: Playwright e2e (WebGPU + WebGL2)
-        run: pnpm --filter @swarm-press/game exec playwright test e2e/smoke.spec.ts e2e/bricks.spec.ts
+      # WebGPU only (ADR-0064): every test on SwiftShader's WebGPU (flags in apps/game/e2e/webgpu.ts),
+      # and the no-WebGPU screen in the no-webgpu project (no flags, so no adapter).
+      - name: Playwright e2e (SwiftShader WebGPU + the no-WebGPU screen)
+        run: pnpm --filter @swarm-press/game exec playwright test e2e/smoke.spec.ts e2e/no-webgpu.spec.ts e2e/bricks.spec.ts
         env:
           CI: '1'
           PW_JSON: reports/playwright.json
-      - name: Playwright visual regression
+      # Baselines (e2e/visual.spec.ts-snapshots/*-webgpu-linux.png) are taken on Linux x86_64 in
+      # mcr.microsoft.com/playwright:v1.56.1-noble with --update-snapshots (docs/guides/testing.md).
+      - name: Playwright visual regression (SwiftShader WebGPU)
         if: ${{ !cancelled() }}
         run: pnpm --filter @swarm-press/game exec playwright test e2e/visual.spec.ts
         env:

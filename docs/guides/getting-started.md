@@ -24,7 +24,8 @@ pnpm dev                    # runs `cargo xtask wasm`, then Vite on http://local
 `crates/client-wasm/pkg`, and serves `apps/game`.
 
 URL parameters:
-- `?renderer=webgl` forces the WebGL2 fallback.
+- The renderer is WebGPU only (ADR-0064): without WebGPU the page says so and names the browsers
+  that work.
 - Quality is auto-detected and can be overridden in the HUD.
 - `?central=1` turns on the MVP loop against the server: see
   [One article, from standup to published](#one-article-from-standup-to-published-the-mvp-loop).

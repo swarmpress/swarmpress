@@ -28,8 +28,7 @@ async function join(page: Page, tabId: string, companyId = 'acme') {
 
 const isLeader = (p: Page) => p.evaluate(() => (window as unknown as W).__leader!.isLeader)
 
-test('one leader per company across tabs; failover when the leader tab closes', async ({ context }, info) => {
-  test.skip(info.project.name !== 'fallback', 'browser-feature test; one project is enough')
+test('one leader per company across tabs; failover when the leader tab closes', async ({ context }) => {
   const a = await context.newPage()
   const b = await context.newPage()
   await join(a, 'A')

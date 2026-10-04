@@ -84,7 +84,7 @@ base('@scripted the harness on the scripted backend writes both report kinds wit
   base.skip(base.info().project.name !== 'scripted', 'runs in the scripted project of playwright.bonsai.config.ts')
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
-  await page.goto('/bench.html?llm=fake&quality=low&renderer=webgl&reloads=2&loss=hook&idle=1&memory=1&autostart=1')
+  await page.goto('/bench.html?llm=fake&quality=low&reloads=2&loss=hook&idle=1&memory=1&autostart=1')
   const r = await runToEnd(page)
 
   expect(r.fatal).toBeUndefined()
@@ -110,7 +110,7 @@ base('@scripted the harness on the scripted backend writes both report kinds wit
   ])
   expect(r.deviceLoss).toMatchObject({ mode: 'hook', observed: true, inFlightFailed: true })
   // The scene drew while the model was idle and while it was generating.
-  expect(r.frames?.renderer).toBe('webgl2')
+  expect(r.frames?.renderer).toBe('webgpu')
   expect(Object.keys(r.frames!.phases)).toEqual(expect.arrayContaining(['idle-unloaded', 'idle', 'generating']))
   // Page memory, from measureUserAgentSpecificMemory (the page is cross-origin isolated): a number,
   // or the reason the browser gave none. Never silently missing.

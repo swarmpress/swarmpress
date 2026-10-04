@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test'
+import { webgpuLaunch } from './e2e/webgpu'
 
 // The in-browser model runtime (ADR-0057), served from the harness build
 // (`vite build --mode harness`, cross-origin isolated by `vite preview`).
@@ -28,7 +29,6 @@ import { defineConfig } from '@playwright/test'
 // BENCH_REPORT_ONLY=1 rebuilds the qualification report from the raw results
 // without a browser, so nothing is built or served then.
 const port = Number(process.env.SWARMPRESS_BONSAI_PORT ?? 4178)
-const executablePath = process.env.CHROMIUM_PATH || undefined
 const serve = !process.env.BENCH_REPORT_ONLY
 
 export default defineConfig({
@@ -42,9 +42,9 @@ export default defineConfig({
   projects: [
     // Real GPU, real model; every test skips itself without BONSAI_E2E=1.
     { name: 'bonsai', testIgnore: 'bricks-bench.spec.ts', grepInvert: /@scripted/ },
-    { name: 'scripted', testMatch: 'bonsai-bench.spec.ts', grep: /@scripted/, use: { launchOptions: { executablePath }, viewport: { width: 1280, height: 800 } } },
+    { name: 'scripted', testMatch: 'bonsai-bench.spec.ts', grep: /@scripted/, use: { launchOptions: webgpuLaunch, viewport: { width: 1280, height: 800 } } },
     // The brick office spike's measurements (FEAT-081, e2e/bricks-bench.spec.ts): box office vs brick office per tier.
-    { name: 'bricks', testMatch: 'bricks-bench.spec.ts', use: { launchOptions: { executablePath }, viewport: { width: 1280, height: 800 } } },
+    { name: 'bricks', testMatch: 'bricks-bench.spec.ts', use: { launchOptions: webgpuLaunch, viewport: { width: 1280, height: 800 } } },
   ],
   webServer: serve
     ? {

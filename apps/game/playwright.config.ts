@@ -1,6 +1,8 @@
 import { defineConfig } from '@playwright/test'
+import { executablePath, webgpuLaunch } from './e2e/webgpu'
 
-const executablePath = process.env.CHROMIUM_PATH || undefined
+// Preview port: 4173 by default; SWARMPRESS_PREVIEW_PORT moves it (a shared machine).
+const port = Number(process.env.SWARMPRESS_PREVIEW_PORT ?? 4173)
 
 export default defineConfig({
   testDir: 'e2e',
@@ -11,28 +13,25 @@ export default defineConfig({
   // JSON report path is per run so smoke and visual evidence stay separate for Cockpit.
   reporter: [['list'], ['json', { outputFile: process.env.PW_JSON ?? 'reports/playwright.json' }]],
   expect: { timeout: 60_000, toHaveScreenshot: { animations: 'disabled' } },
-  use: { baseURL: 'http://localhost:4173', viewport: { width: 1280, height: 800 } },
+  use: { baseURL: `http://localhost:${port}`, viewport: { width: 1280, height: 800 } },
   webServer: {
-    command: 'pnpm exec vite preview --port 4173 --strictPort',
-    port: 4173,
+    command: `pnpm exec vite preview --port ${port} --strictPort`,
+    port,
     reuseExistingServer: !process.env.CI,
   },
+  // The renderer is WebGPU only (ADR-0064): every test runs on software WebGPU
+  // (SwiftShader, e2e/webgpu.ts) except the no-WebGPU screen's own.
   projects: [
     {
-      // Headless Chromium without flags exposes no WebGPU adapter, so this
-      // exercises the automatic WebGL2 fallback in createEngine().
-      name: 'fallback',
-      use: { launchOptions: { executablePath } },
+      name: 'webgpu',
+      testIgnore: 'no-webgpu.spec.ts',
+      use: { launchOptions: webgpuLaunch },
     },
     {
-      // Software WebGPU via SwiftShader/Vulkan.
-      name: 'webgpu',
-      use: {
-        launchOptions: {
-          executablePath,
-          args: ['--enable-unsafe-webgpu', '--use-angle=swiftshader', '--enable-features=Vulkan'],
-        },
-      },
+      // Headless Chromium without the flags offers no WebGPU adapter: the page must say so.
+      name: 'no-webgpu',
+      testMatch: 'no-webgpu.spec.ts',
+      use: { launchOptions: { executablePath } },
     },
   ],
 })

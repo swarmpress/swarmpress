@@ -13,7 +13,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { SessionHook } from '../src/session/session'
 
-const gameUrl = (engine: string, login: string, extra = '') => `/?central=1&login=${login}&llm=fake&store=${engine}&renderer=webgl&quality=low&speed=10${extra}`
+const gameUrl = (engine: string, login: string, extra = '') => `/?central=1&login=${login}&llm=fake&store=${engine}&quality=low&speed=10${extra}`
 
 /** Opens the game page and waits for the session and the first frames. Fails fast when boot threw. */
 async function boot(page: Page, url: string) {

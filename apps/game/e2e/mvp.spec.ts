@@ -32,7 +32,7 @@ const LOGGED = ['MeetingOutcome', 'JobCompleted', 'JobCompleted', 'JobCompleted'
 
 
 const gameUrl = (engine: string, login: string, extra = '') =>
-  `/?central=1&login=${login}&llm=fake&store=${engine}&renderer=webgl&quality=low&ff=09:00${extra}`
+  `/?central=1&login=${login}&llm=fake&store=${engine}&quality=low&ff=09:00${extra}`
 
 /** Opens the game page and waits for the session and the first frames. Fails fast when boot threw. */
 async function boot(page: Page, url: string) {

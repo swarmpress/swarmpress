@@ -233,21 +233,22 @@ Planned reporters:
 | github | FakeGitHub; wiremock contract tests on recorded responses; webhook HMAC |
 | server | a fresh temp-file SQLite (WAL) or `sqlite::memory:` database per test, no external services; a manual clock for sessions and leases; fake OAuth (wiremock); dev login; company + lease (acquire, renew, conflict, force, expiry); content gateway against `github::FakeGitHub` (draft, merge, PathPolicy, lease required, simulated deploy, `deployment_status` webhook with HMAC); event inbox polling and WebSocket push; sync segment immutability, snapshot, ownership; web fetch SSRF guard (unit-tested IP checks, no external network), limits and HTML → text; tracker collector, rollup, retention, signals |
 | client TS | vitest for daylight, camera maths, cutaway, render-state → scene, bubble layout, overlay components (@testing-library/preact); Babylon **NullEngine** for scene construction, light budgets, materials, device toggles |
-| client WebGPU/WebGL2 | Playwright (Chromium): boot on WebGPU (SwiftShader/Vulkan) and WebGL2; shader errors fail; visual regression at 08:00/13:00/19:30/23:00 × 4 angles; placement round-trip; inbox flow; axe; frame-time smoke; bundle size |
+| client WebGPU | Playwright (Chromium): every browser test on SwiftShader's WebGPU (`apps/game/e2e/webgpu.ts`, ADR-0064), the no-WebGPU screen without the flags; shader, WebGPU validation errors and device losses fail; device-loss recovery; visual regression at 08:00/13:00/19:30/23:00 × 4 angles; placement round-trip; inbox flow; axe; frame-time smoke; bundle size |
 | local LLM | vitest with `FakeLlm` (contracts, repair loops, GPU scheduler, leader election); server `FakeBrowserWorker`; nightly tiny real ONNX model on SwiftShader WebGPU; model eval harness |
 | site-kit and themes | Fixture-site build, block coverage, schema conformance, screenshots, Lighthouse and a11y budgets; cinqueterre parity (page list and HTML structure, old vs new build) |
 | live E2E (nightly or manual) | Real Claude and a sandbox org repo: publish one article and one theme tweak; assert HTTP 200 |
 
-## Known failing evidence (M0)
+## Browser tests on WebGPU (FEAT-017)
 
-`apps/game/e2e/smoke.spec.ts` fails in both projects. FEAT-017 is therefore **Broken** in
-`cockpit status`, while `validate --strict` passes:
+The renderer is WebGPU only (ADR-0064), so every Playwright suite launches Chromium with the flags
+in `apps/game/e2e/webgpu.ts`. On Linux all four of `--use-angle=swiftshader`,
+`--use-vulkan=swiftshader` and `--enable-features=Vulkan,SkiaGraphite` are needed besides
+`--enable-unsafe-webgpu`: without them the canvas' swap chain has no shared-image backing and the
+device is lost on the first frame. The investigation is in
+[webgpu-headless.md](../qualification/webgpu-headless.md). Visual baselines are taken on Linux
+x86_64 in `mcr.microsoft.com/playwright:v1.56.1-noble` (`--platform linux/amd64`) with
+`--update-snapshots`.
 
-- The `fallback` project asserts `renderer === 'webgl'`, but `createEngine()` reports `'webgl2'`.
-  The assertion dates from the Pixi prototype.
-- The `webgpu` project hits a SwiftShader limit in Babylon's WebGPU engine:
-  `createBuffer failed, size (65536) is too large for the implementation when mappedAtCreation
-  == true`.
-
-Fixing them is client work tracked under FEAT-017. Cockpit is doing its job by showing the
-breakage.
+Earlier failures recorded here (the `fallback` project's `'webgl'` assertion, and
+`createBuffer failed ... mappedAtCreation`) were both consequences of that lost device and are
+gone with it.

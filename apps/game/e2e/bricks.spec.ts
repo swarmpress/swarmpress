@@ -1,6 +1,6 @@
 /**
  * The brick office spike behind `?office=bricks` (FEAT-081, FEAT-082):
- * boots on WebGL2 (headless CI has no working WebGPU, see smoke.spec.ts),
+ * boots on software WebGPU (SwiftShader, ADR-0064; e2e/webgpu.ts),
  * checks the brick rooms through the `__swarmpress.bricks()` hook, zooms
  * onto the newsroom so the surfaces reach their close level, and attaches
  * screenshots. The screenshots are evidence for the report, not baselines:
@@ -28,13 +28,12 @@ const framesAfter = async (page: Page, n: number) => {
 }
 
 test('?office=bricks builds the newsroom and the editor’s office from the kit, with live surfaces', async ({ page }, info) => {
-  test.skip(info.project.name !== 'fallback', 'WebGL2 only: headless SwiftShader loses the WebGPU device')
   const consoleErrors: string[] = []
   page.on('console', (m) => {
     if (m.type() === 'error') consoleErrors.push(m.text())
   })
-  const { errors, renderer } = await boot(page, '/?office=bricks&renderer=webgl&quality=low')
-  expect(renderer).toBe('webgl2')
+  const { errors, renderer } = await boot(page, '/?office=bricks&quality=low')
+  expect(renderer).toBe('webgpu')
 
   const s = (await stats(page))!
   expect(s, 'the bricks hook is set').not.toBeNull()

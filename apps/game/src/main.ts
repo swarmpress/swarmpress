@@ -1,9 +1,11 @@
 import init, { Sim, version } from 'swarm-wasm'
-import { createEngine } from './render/engine'
+import type { WebGPUEngine } from '@babylonjs/core'
+import { createEngine, NoWebGpuError, watchDeviceLoss, type DeviceLossInfo } from './render/engine'
+import { mountNoWebGpu } from './render/no-webgpu'
 import { formatClock } from './render/daylight'
 import { QUALITY, type Quality } from './render/postfx'
 import { frameDue, isQuality, rendererHooks } from './render/quality'
-import { createGameScene } from './render/scene'
+import { createGameScene, type GameScene } from './render/scene'
 import { ClockDriver, clockStatus, type ClockHost } from './session/clock-driver'
 import type { GameSession } from './session/session'
 import { startTickTimer } from './session/tick-timer'
@@ -15,7 +17,6 @@ import { bubblesOf, mountBubbles } from './ui/bubbles/BubbleLayer'
 
 /**
  * URL parameters (also used by the e2e and visual tests):
- *   renderer=webgl     force the WebGL2 fallback
  *   quality=low|medium|high
  *   t=HH:MM            run the sim to this time of day and freeze it (deterministic screenshots)
  *   speed=N            sim steps per 100 ms of real time (fast-forward), default 1 = real time;
@@ -30,14 +31,19 @@ import { bubblesOf, mountBubbles } from './ui/bubbles/BubbleLayer'
  * With t=, the loop stops once the scene is ready and 20 frames are drawn
  * (`__swarmpress.still()` turns true) so screenshots are stable and cheap.
  *
+ * The renderer is WebGPU only (ADR-0064, src/render/engine.ts). Without it the
+ * page shows the no-WebGPU screen (src/render/no-webgpu.ts). A lost device is
+ * recovered on a new WebGPU engine and a rebuilt scene, the clock held meanwhile.
+ *
  * The clock (ADR-0060, src/session/clock-driver.ts): wall time is clamped
  * before it becomes sim steps, so a tab that was hidden never bursts; a
  * session's clock also holds while a job is due and rests at night. The HUD
  * shows its state. Frozen pages (t=) have no clock and no clock HUD.
  */
 
-/** If the WebGPU device dies before this many frames, reload on WebGL2. */
-const WEBGPU_WATCHDOG_FRAMES = 60
+/** Device losses recovered per page before the no-WebGPU screen; and the wait before each new engine. */
+const MAX_DEVICE_RECOVERIES = 3
+const RECOVERY_DELAY_MS = 250
 
 async function main(params: URLSearchParams, boot: BootScreen) {
   boot.stage('wasm')
@@ -49,15 +55,22 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   // The company's HQ timezone; comes from the company record once a server is connected.
   const timeZone = params.get('tz') ?? 'Europe/Rome'
 
-  const canvas = document.createElement('canvas')
-  canvas.id = 'game'
-  canvas.style.width = '100%'
-  canvas.style.height = '100%'
-  canvas.style.touchAction = 'none'
+  // The canvas is replaced when a lost device is recovered: its listeners belong to the old scene.
+  const newCanvas = () => {
+    const c = document.createElement('canvas')
+    c.id = 'game'
+    c.style.width = '100%'
+    c.style.height = '100%'
+    c.style.touchAction = 'none'
+    return c
+  }
+  let canvas = newCanvas()
   document.getElementById('stage')!.appendChild(canvas)
 
   boot.stage('renderer')
-  const { engine, name: renderer } = await createEngine(canvas, params.get('renderer') === 'webgl')
+  // WebGPU only (ADR-0064): a NoWebGpuError ends here, and the page shows the no-WebGPU screen.
+  let engine: WebGPUEngine = await createEngine(canvas)
+  const renderer = 'webgpu' as const
 
   // Offline sandbox (default): the browser runs its own sim-core replica.
   // `?central=1`: the company's sim, restored from the store or central sync
@@ -73,28 +86,30 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   const sim = session?.sim ?? Sim.demo(seed)
   const layout = JSON.parse(sim.layout_json()) as BuildingLayout
   const tier: Quality = isQuality(quality) ? quality : 'high'
-  const game = createGameScene(engine, canvas, layout, { quality: QUALITY[tier], postFx: true })
-  if (params.has('facing')) game.iso.setFacing(Number(params.get('facing')))
-  game.iso.snap()
   // FEAT-081 spike: ?office=bricks builds the newsroom and the editor's office from the construction kit (a lazy chunk).
   const brickMod = params.get('office') === 'bricks' ? await import('./render/bricks') : null
-  const bricks = brickMod ? await brickMod.attachBrickOffice(game, layout) : null
+  // The quality the GPU scheduler last asked for; a rebuilt scene starts at the tier, then takes it.
+  let liveQuality = QUALITY[tier]
+  const buildScene = async (on: WebGPUEngine, facing: number | null) => {
+    const g = createGameScene(on, canvas, layout, { quality: QUALITY[tier], postFx: true })
+    if (facing !== null) g.iso.setFacing(facing)
+    g.iso.snap()
+    if (liveQuality !== QUALITY[tier]) g.setQuality(liveQuality)
+    const b = brickMod ? await brickMod.attachBrickOffice(g, layout) : null
+    return { game: g, bricks: b }
+  }
+  let { game, bricks } = await buildScene(engine, params.has('facing') ? Number(params.get('facing')) : null)
   // GPU sharing with the local model (ADR-0057, FEAT-040): while it generates, the scene drops
   // a tier, pauses SSAO and bloom, and draws at most `fpsCap` frames a second; then it comes back.
   let fpsCap: number | null = null
   let lastDraw = 0
-  session?.models.attachRenderer(rendererHooks(game, tier, (fps) => (fpsCap = fps)))
-
-  if (renderer === 'webgpu') {
-    engine.onContextLostObservable.addOnce(() => {
-      if (engine.frameId < WEBGPU_WATCHDOG_FRAMES) {
-        const next = new URL(location.href)
-        next.searchParams.set('renderer', 'webgl')
-        next.searchParams.set('fallback', 'webgpu-device-lost')
-        location.replace(next)
-      }
-    })
+  const qualityTarget = {
+    setQuality: (q: typeof liveQuality) => {
+      liveQuality = q
+      game.setQuality(q)
+    },
   }
+  session?.models.attachRenderer(rendererHooks(qualityTarget, tier, (fps) => (fpsCap = fps)))
 
   // Wall clocks show the real time, except when frozen for screenshots, where
   // they show the frozen time so visual tests stay deterministic.
@@ -148,7 +163,11 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   }
   // While the tab is hidden the render loop stops; a 1 Hz worker timer keeps a
   // session's clock ticking (bounded by the same clamp) so work in flight can finish.
-  if (session && clock) startTickTimer(() => clock.idleTickAt(performance.now()))
+  // While a lost device is recovered the clock holds: no frame and no idle tick runs it.
+  let recovering = false
+  if (session && clock) startTickTimer(() => {
+    if (!recovering) clock.idleTickAt(performance.now())
+  })
 
   const hud = mountHud(document.getElementById('ui')!, clock)
 
@@ -165,23 +184,6 @@ async function main(params: URLSearchParams, boot: BootScreen) {
         )
   // --- end CEO overlay ---
   // --- scene ↔ overlay (FEAT-024): label texts and picking come from the store here; render/ reads none ---
-  if (overlay) {
-    const store = overlay.store
-    game.setLookups({
-      staff: (id) => {
-        const s = store.staff(id)
-        return s ? { name: store.personaOf(id).name, role: s.role } : undefined
-      },
-      workItem: (id) => store.planText.peek().items[id]?.title || undefined,
-    })
-    game.onPick({
-      person: (id) => store.openProfile({ staff: id }),
-      workItem: (id) => {
-        store.selectedItem.value = id
-        store.panel.value = 'plan'
-      },
-    })
-  }
   // Labels never cover the HUD or the overlay's toolbar and panels. Live pages only: on frozen
   // screenshot pages the HUD's text (fps) varies, and the labels must not vary with it.
   const screenRects = () => {
@@ -191,8 +193,29 @@ async function main(params: URLSearchParams, boot: BootScreen) {
       return { left: r.left - c.left, top: r.top - c.top, right: r.right - c.left, bottom: r.bottom - c.top }
     })
   }
-  if (overlay && brickMod && bricks) bricks.setSources(brickMod.surfaceSourcesFrom(overlay.store))
-  if (!frozen) game.setOccluders(screenRects)
+  // (again on every scene a device recovery builds)
+  const wireScene = (game: GameScene, bricks: Awaited<ReturnType<typeof buildScene>>['bricks']) => {
+    if (overlay) {
+      const store = overlay.store
+      game.setLookups({
+        staff: (id) => {
+          const s = store.staff(id)
+          return s ? { name: store.personaOf(id).name, role: s.role } : undefined
+        },
+        workItem: (id) => store.planText.peek().items[id]?.title || undefined,
+      })
+      game.onPick({
+        person: (id) => store.openProfile({ staff: id }),
+        workItem: (id) => {
+          store.selectedItem.value = id
+          store.panel.value = 'plan'
+        },
+      })
+    }
+    if (!frozen) game.setOccluders(screenRects)
+    if (overlay && brickMod && bricks) bricks.setSources(brickMod.surfaceSourcesFrom(overlay.store))
+  }
+  wireScene(game, bricks)
   // --- end scene ↔ overlay ---
   let latest: RenderState | null = null
   // Meeting speech bubbles (FEAT-025): live session pages only, never on frozen screenshot pages.
@@ -213,7 +236,7 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   let stillFrames = 0
   let still = false
   boot.done()
-  engine.runRenderLoop(() => {
+  const frame = () => {
     // Wall time since the last tick, clamped: per 100 ms slice a step boundary
     // (job outcomes and landed deploys are applied), then the steps the clock allows.
     const now = performance.now()
@@ -245,16 +268,57 @@ async function main(params: URLSearchParams, boot: BootScreen) {
       engine.stopRenderLoop()
       still = true
     }
-  })
+  }
+  engine.runRenderLoop(frame)
   window.addEventListener('resize', () => engine.resize())
+
+  // --- device loss (ADR-0064): a new WebGPU engine on a new canvas, the scene rebuilt from the sim ---
+  let recoveries = 0
+  let framesBefore = 0
+  let lastLoss: DeviceLossInfo | null = null
+  const onLost = (info: DeviceLossInfo) => {
+    lastLoss = info
+    console.warn(`[render] WebGPU device lost (${info.reason}): ${info.message}`)
+    recover().catch((err) => {
+      recovering = false
+      showFailure(err)
+    })
+  }
+  let device = watchDeviceLoss(engine, onLost)
+  const recover = async () => {
+    recovering = true
+    engine.stopRenderLoop()
+    framesBefore += engine.frameId
+    const facing = game.iso.facing()
+    device.dispose()
+    if (++recoveries > MAX_DEVICE_RECOVERIES) throw new NoWebGpuError('device-lost', `lost ${recoveries} times; last: ${lastLoss?.reason}: ${lastLoss?.message}`)
+    await new Promise((r) => setTimeout(r, RECOVERY_DELAY_MS))
+    const fresh = newCanvas()
+    canvas.replaceWith(fresh)
+    canvas = fresh
+    engine = await createEngine(canvas)
+    device = watchDeviceLoss(engine, onLost)
+    ;({ game, bricks } = await buildScene(engine, facing))
+    wireScene(game, bricks)
+    lastStep = -1n
+    stillFrames = 0
+    recovering = false
+    engine.runRenderLoop(frame)
+  }
 
   ;(window as unknown as { __swarmpress: unknown }).__swarmpress = {
     renderer,
-    fallback: params.get('fallback'),
     sim,
-    scene: game.scene,
+    get scene() {
+      return game.scene
+    },
     ready: () => game.isReady(),
-    frames: () => engine.frameId,
+    // Frames drawn on this page, across device recoveries.
+    frames: () => framesBefore + engine.frameId,
+    // Device-loss recovery (ADR-0064): how many so far, and a test hook that destroys the device.
+    recoveries: () => recoveries,
+    recovering: () => recovering,
+    loseDevice: () => device.destroyDevice(),
     still: () => still,
     overlay: overlay?.store ?? null,
     session: session?.hook ?? null,
@@ -262,16 +326,25 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     // Everyone on site, where they are drawn this frame and on the canvas (e2e smooth-movement check).
     people: () => game.people(),
     // The brick office spike's counts and timings (?office=bricks), else null.
-    bricks: bricks ? () => bricks.stats() : null,
+    bricks: bricks ? () => bricks!.stats() : null,
   }
 }
 
 const params = new URLSearchParams(location.search)
 const boot = mountBootScreen(document.body, params.get('central') === '1' ? SESSION_STAGES : DEMO_STAGES)
-main(params, boot).catch((err) => {
+main(params, boot).catch(showFailure)
+
+function showFailure(err: unknown) {
   console.error(err)
   document.body.dataset.error = String(err)
+  // No usable WebGPU (ADR-0064): its own screen, which says what is missing and which browsers work.
+  if (err instanceof NoWebGpuError) {
+    boot.el.remove()
+    document.body.dataset.noWebgpu = err.reason
+    if (!document.getElementById('no-webgpu')) mountNoWebGpu(document.body, err.reason, err.detail)
+    return
+  }
   // A visible error, whatever stage failed (after boot the screen is put back up).
   if (!boot.el.isConnected) document.body.append(boot.el)
   boot.fail(err)
-})
+}

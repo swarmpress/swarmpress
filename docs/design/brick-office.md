@@ -22,7 +22,7 @@
 | People | Motion, poses, labels, picking from FEAT-024 | Restyled in bricks with their own design (not a minifigure) |
 | Lighting | Lighting is sim state; `daylight(minute)`; the light budget | No baked lightmaps (ADR-0006, ADR-0017): bricks are procedural, so indirect light is SSAO plus a fill, per quality tier |
 | UI | Panels for decisions (Inbox approval, Plan, Finance) | Surfaces become the way in: zooming to the proof wall opens the approval; the whiteboard opens the Plan |
-| Engine | Babylon.js 9 | WebGPU only (ADR-0064); the WebGL2 fallback is removed in its own increment |
+| Engine | Babylon.js 9 | WebGPU only (ADR-0064); the WebGL2 fallback is removed (FEAT-017) |
 
 ## 2. Scale and coordinates
 

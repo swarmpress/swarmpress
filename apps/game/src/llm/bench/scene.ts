@@ -1,8 +1,8 @@
 /**
  * The office scene beside the model (ADR-0057: the model and the renderer
  * share one GPU). The game's own bootstrap, without the session, the HUD or
- * the overlay: the sim-core demo replica, `createEngine` (WebGPU first,
- * WebGL2 fallback) and `createGameScene` at a fixed quality tier, advancing
+ * the overlay: the sim-core demo replica, `createEngine` (WebGPU only,
+ * ADR-0064) and `createGameScene` at a fixed quality tier, advancing
  * the sim at real time so staff move as they would in the game.
  *
  * Every rendered frame goes to the recorder; the runner tells it what the
@@ -43,7 +43,7 @@ export interface BenchScene {
 /** Sim steps per second at real time: one game day is 20 real minutes (ADR-0060). */
 const DAY_MS = 20 * 60 * 1000
 
-export async function startScene(host: HTMLElement, quality: Quality, frames: FrameRecorder, forceWebgl = false, office: BenchOffice = 'boxes'): Promise<BenchScene> {
+export async function startScene(host: HTMLElement, quality: Quality, frames: FrameRecorder, office: BenchOffice = 'boxes'): Promise<BenchScene> {
   await init()
   const canvas = document.createElement('canvas')
   canvas.id = 'bench-scene'
@@ -51,7 +51,8 @@ export async function startScene(host: HTMLElement, quality: Quality, frames: Fr
   canvas.style.height = '100%'
   canvas.style.touchAction = 'none'
   host.appendChild(canvas)
-  const { engine, name: renderer } = await createEngine(canvas, forceWebgl)
+  const engine = await createEngine(canvas)
+  const renderer = 'webgpu'
   const sim = Sim.demo(42n)
   // Start at 10:00, when the office is busy.
   const stepsPerDay = Number(sim.steps_per_day())
@@ -95,13 +96,11 @@ export async function startScene(host: HTMLElement, quality: Quality, frames: Fr
   window.addEventListener('resize', onResize)
 
   let gpu: Record<string, unknown> | null = null
-  if (renderer === 'webgpu') {
-    const adapter = await (navigator as unknown as { gpu?: { requestAdapter(o?: unknown): Promise<{ info?: Record<string, unknown> } | null> } }).gpu
-      ?.requestAdapter({ powerPreference: 'high-performance' })
-      .catch(() => null)
-    const info = adapter?.info
-    if (info) gpu = { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description }
-  }
+  const adapter = await (navigator as unknown as { gpu?: { requestAdapter(o?: unknown): Promise<{ info?: Record<string, unknown> } | null> } }).gpu
+    ?.requestAdapter({ powerPreference: 'high-performance' })
+    .catch(() => null)
+  const info = adapter?.info
+  if (info) gpu = { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description }
   return {
     renderer,
     quality,
