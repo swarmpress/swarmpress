@@ -449,13 +449,12 @@ describe('BonsaiLlm device loss', () => {
 })
 
 describe('engine import and remote verification', () => {
-  /** The Hub's paths-info answer for the manifest's file (or `body` as given). */
+  /** The Hub's tree listing with the manifest's file (or `body` as given). */
   const hubFetch = (lfs: { oid?: string; size?: number } | null, status = 200, body?: unknown) =>
     (async (url: string, init?: RequestInit) => {
-      expect(url).toBe(`https://huggingface.co/api/models/${MODEL.hfRepo}/paths-info/${MODEL.revision}`)
-      expect(init?.method).toBe('POST')
-      expect(JSON.parse(String(init?.body))).toEqual({ paths: [MODEL.file] })
-      const json = body ?? [{ type: 'file', path: MODEL.file, size: lfs?.size, ...(lfs ? { lfs } : {}) }]
+      expect(url).toBe(`https://huggingface.co/api/models/${MODEL.hfRepo}/tree/${MODEL.revision}`)
+      expect(init?.method).toBe('GET')
+      const json = body ?? [{ type: 'file', path: 'README.md', size: 10 }, { type: 'file', path: MODEL.file, size: lfs?.size, ...(lfs ? { lfs } : {}) }]
       return new Response(JSON.stringify(json), { status, headers: { 'Content-Type': 'application/json' } })
     }) as unknown as typeof fetch
 

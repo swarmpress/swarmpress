@@ -131,15 +131,17 @@ export async function importVerifiedEngine(
 }
 
 /**
- * Ask the Hub for the file's metadata at the pinned revision (the `paths-info` API: the LFS
- * object's sha256 and size) and check it against the manifest. Not a HEAD on the file: the Hub
+ * Ask the Hub for the file's metadata at the pinned revision (a GET on its `tree` API: the LFS
+ * object's sha256 and size) and check it against the manifest. A GET, because the worker's network
+ * guard allows only GET and HEAD (ADR-0057). Not a HEAD on the file: the Hub
  * answers that with a redirect to its CDN, and a browser's fetch follows it and only sees the
  * CDN's headers, without `x-linked-etag`. The engine itself only checks that cached chunks belong
  * to the same revision.
  */
 export async function verifyRemoteFile(model: BonsaiModel, f: typeof fetch = fetch): Promise<void> {
-  const url = `https://huggingface.co/api/models/${model.hfRepo}/paths-info/${model.revision}`
-  const res = await f(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paths: [model.file] }) })
+  const dir = model.file.includes('/') ? `/${model.file.slice(0, model.file.lastIndexOf('/'))}` : ''
+  const url = `https://huggingface.co/api/models/${model.hfRepo}/tree/${model.revision}${dir}`
+  const res = await f(url, { method: 'GET' })
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`)
   let entry: { path?: string; size?: number; lfs?: { oid?: string; size?: number } } | undefined
   try {
