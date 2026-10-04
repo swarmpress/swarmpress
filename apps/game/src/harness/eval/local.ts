@@ -42,6 +42,13 @@ export class MemoryOrchestratorStore {
   getArtifact(company: string, workItem: string): string | null {
     return this.artifacts.get(this.key(company, workItem)) ?? null
   }
+  /** The company's artifacts, so a draft can leave out heroes already in flight (G6). */
+  listArtifacts(company: string): { work_item: string; record: string }[] {
+    const prefix = this.key(company, '')
+    return [...this.artifacts]
+      .filter(([k]) => k.startsWith(prefix))
+      .map(([k, record]) => ({ work_item: k.slice(prefix.length), record }))
+  }
   appendTranscript(_company: string, jobId: number, seq: number, speaker: string, text: string): void {
     this.transcripts.push({ jobId, seq, speaker, text })
   }

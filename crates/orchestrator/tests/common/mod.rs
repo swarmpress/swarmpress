@@ -49,6 +49,17 @@ pub fn site() -> SiteBinding {
     SiteBinding::from_json(&binding_json(&mini_pack_json(), json!({}))).unwrap()
 }
 
+/// The binding over the `cinqueterre-mini` pack without its content calendar: the standup's
+/// pitch tests are about the round itself, with the scripted writers' own topics.
+pub fn site_without_calendar() -> SiteBinding {
+    let mut pack: Value = serde_json::from_str(&mini_pack_json()).unwrap();
+    pack["files"]
+        .as_object_mut()
+        .unwrap()
+        .remove("content/config/content-calendar.json");
+    SiteBinding::from_json(&binding_json(&pack.to_string(), json!({}))).unwrap()
+}
+
 pub fn team() -> Vec<StaffRef> {
     [
         ("staff-4", "sophia", "editor-in-chief"),

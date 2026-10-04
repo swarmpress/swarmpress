@@ -16,7 +16,7 @@ use orchestrator::{
 use serde_json::{json, Value};
 
 mod common;
-use common::{site, team, COMPANY};
+use common::{site_without_calendar as site, team, COMPANY};
 
 fn standup(job_id: u64, context: Value) -> JobRequest {
     JobRequest {
