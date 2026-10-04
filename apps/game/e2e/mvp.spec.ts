@@ -228,11 +228,11 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
     .toBe(true)
   // ---------------------------------------------------------------- the standup played as speech bubbles (FEAT-025, ADR-0062)
   // The pitch the article came from showed above its writer, read from the transcript (the sim only had its length).
-  const writer = (await simJson<{ items: { id: string; phases: { kind: string; assignee: string | null }[] }[] }>(page, 'plan_json')).items
+  const pitcher = (await simJson<{ items: { id: string; phases: { kind: string; assignee: string | null }[] }[] }>(page, 'plan_json')).items
     .find((i) => i.id === ITEM)!
     .phases.find((p) => p.kind === 'draft')!.assignee
   const bubbles = await page.evaluate(() => (window as unknown as { __bubbles: { speaker: string; text: string }[] }).__bubbles)
-  expect(bubbles).toContainEqual({ speaker: writer, text: MVP_TOPICS[0].pitch })
+  expect(bubbles).toContainEqual({ speaker: pitcher, text: MVP_TOPICS[0].pitch })
   const kinds = await allKinds(page)
   expect(kinds.indexOf('Utterance')).toBe(0)
   expect(kinds.lastIndexOf('Utterance')).toBeLessThan(kinds.indexOf('MeetingOutcome'))
