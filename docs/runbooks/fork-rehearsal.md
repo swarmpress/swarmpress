@@ -17,7 +17,7 @@ tracks the live repository; do not use it for the fork.
 |---|---|
 | The fork | `<you>/cinqueterre.travel` under your personal account (step 1) |
 | A Pages address served at the root of a host | a custom domain you control, or the fork renamed to `<you>.github.io` (step 3) |
-| The gateway token | fine-grained personal access token; repository access: the fork only; Contents read/write, Pull requests read/write, Actions read, Metadata read (step 5) |
+| The gateway token | fine-grained personal access token; repository access: the fork only; Contents read/write, Pull requests read/write, Actions read/write (a Retry after a failed deploy re-runs its jobs), Metadata read (step 5) |
 | A token for the fork's `MONOREPO_PAT` secret | fine-grained, repository access "Public repositories (read-only)": the deploy workflow checks out the public `swarmpress/swarmpress` with it (step 1) |
 | Chrome | on the machine that runs the server |
 
@@ -116,7 +116,7 @@ and fix that first.
 1. Create the gateway token: GitHub → Settings → Developer settings → Fine-grained tokens →
    Generate. Resource owner: you. Repository access: **Only select repositories** → the fork.
    Repository permissions: **Contents: Read and write**, **Pull requests: Read and write**,
-   **Actions: Read-only** (Metadata: Read-only is added by itself). An expiry of a month.
+   **Actions: Read and write** (a Retry after a failed deploy re-runs its jobs; Metadata: Read-only is added by itself). An expiry of a month.
 2. Configure the server:
 
    ```sh
