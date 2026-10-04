@@ -173,6 +173,9 @@ async fn a_staged_draft_passes_the_gateway_checks() {
         brief_ref: Some(7),
         revision: 0,
         staff: team(),
+        meeting: None,
+        context: serde_json::Value::Null,
+        approved_by: None,
     })
     .await
     .unwrap();
