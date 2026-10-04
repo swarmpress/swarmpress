@@ -151,6 +151,53 @@ export const FALLBACK_JOB_TIMEOUT_MS = 60 * 60_000
 /** Finished jobs kept in `OrchestrationLoop.jobs`, and errors kept in `errors`. */
 export const KEEP_JOBS = 50
 export const KEEP_ERRORS = 50
+/**
+ * Settled job ids (and landed work items) remembered for de-duplication
+ * (FEAT-085, docs/mvp.md W). The sim requests a job once; only a restore
+ * re-emits effects, and it re-emits only the jobs the sim still waits for
+ * (`pendingOnly`). So an id older than the last few thousand jobs can never
+ * come back, and the sets stay bounded over weeks of play.
+ */
+export const KEEP_SETTLED = 4096
+
+/**
+ * A Set that forgets its oldest entries past `cap` (insertion order). For
+ * de-duplication of ids that, once old, can never be seen again.
+ */
+export class BoundedSet<T> {
+  private s = new Set<T>()
+  constructor(readonly cap: number) {}
+  add(v: T): this {
+    if (this.s.has(v)) return this
+    this.s.add(v)
+    if (this.s.size > this.cap) this.s.delete(this.s.values().next().value as T)
+    return this
+  }
+  has(v: T): boolean {
+    return this.s.has(v)
+  }
+  get size(): number {
+    return this.s.size
+  }
+}
+
+/** Sizes of the loop's in-memory collections (the soak test's growth check, FEAT-085). */
+export interface LoopSizes {
+  jobs: number
+  byId: number
+  seen: number
+  completed: number
+  landed: number
+  open: number
+  queue: number
+  ready: number
+  deploys: number
+  where: number
+  speech: number
+  simSeq: number
+  spoken: number
+  errors: number
+}
 
 /** The orchestrator's error for a lost model (`OrchestratorError::Unavailable`): not a job failure. */
 export const isModelUnavailable = (msg: string) => /model unavailable/.test(msg)
@@ -184,6 +231,15 @@ interface PlanView {
   jobs?: PlanJob[]
 }
 
+/** A deploy event waiting for the sim to accept it. */
+interface HeldDeploy {
+  workItem: string
+  mergedSha?: string
+  source?: string
+  /** A DeployFailed (ADR-0059): the item is blocked with a `DeployFailed` ticket. */
+  failed?: boolean
+}
+
 interface QueuedJob {
   json: string
   rec: JobRecord
@@ -215,10 +271,12 @@ export class OrchestrationLoop {
   /** The seq of the last command applied (the log is contiguous from 1). */
   private seq = 0
   private byId = new Map<number, JobRecord>()
-  /** Every job id this loop took in (a job is never queued twice, also after its record was trimmed). */
-  private seen = new Set<number>()
-  private completed = new Set<number>()
-  private landed = new Set<string>()
+  /** Every job id this loop took in (a job is never queued twice, also after its record was trimmed); the newest `KEEP_SETTLED`. */
+  private seen = new BoundedSet<number>(KEEP_SETTLED)
+  /** Jobs whose outcome is in the log; the newest `KEEP_SETTLED`. */
+  private completed = new BoundedSet<number>(KEEP_SETTLED)
+  /** Work items whose DeployLanded is in the log; the newest `KEEP_SETTLED`. */
+  private landed = new BoundedSet<string>(KEEP_SETTLED)
   /** Jobs waiting or running; the running one stays in here until it finished. */
   private queue: QueuedJob[] = []
   /** Jobs taken in whose outcome is not applied yet (and that the loop did not give up on). */
@@ -230,8 +288,14 @@ export class OrchestrationLoop {
   private seenStep: number
   /** Outcome commands waiting for the next step boundary. */
   private ready: string[] = []
-  /** Work items whose deploy landed, waiting until the sim accepts DeployLanded. */
-  private deploys: { workItem: string; mergedSha?: string; source?: string }[] = []
+  /**
+   * Deploy events of work items (DeployLanded, or DeployFailed with
+   * `failed`), waiting until the sim accepts them, in arrival order: one
+   * entry per item and kind; an entry whose item is closed is dropped.
+   */
+  private deploys: HeldDeploy[] = []
+  /** `seq` when the held deploys were last checked for closed items. */
+  private deploysCheckedAt = -1
   private intake: Promise<void> = Promise.resolve()
   private writes: Promise<void> = Promise.resolve()
   private running: Promise<void> | null = null
@@ -239,7 +303,7 @@ export class OrchestrationLoop {
   private where = new Map<number, { project: string; meeting: string | null }>()
   /** Turns of a job waiting to be spoken, and until when the last one spoken holds the floor (ms). */
   private speech = new Map<number, { queue: Turn[]; until: number }>()
-  /** The sim's next utterance seq per meeting, as last seen. */
+  /** The sim's next utterance seq per meeting, as last seen; dropped when the meeting's job closes. */
   private simSeq = new Map<string, number>()
   /** `meeting:sim seq` → the transcript row the bubble shows (the newest 256). */
   private spoken = new Map<string, { job: number; seq: number }>()
@@ -326,8 +390,8 @@ export class OrchestrationLoop {
   async loadPendingDeploys(): Promise<void> {
     const raw = await this.o.store.getKv(PENDING_DEPLOYS_KEY)
     if (!raw) return
-    for (const d of JSON.parse(raw) as OrchestrationLoop['deploys']) {
-      if (!this.deploys.some((x) => x.workItem === d.workItem)) this.deploys.push(d)
+    for (const d of JSON.parse(raw) as HeldDeploy[]) {
+      if (!this.holds(d.workItem, !!d.failed)) this.deploys.push(d)
     }
   }
 
@@ -531,9 +595,51 @@ export class OrchestrationLoop {
    * persisted, so the event cursor does not move past it.
    */
   async deployLanded(workItem: string, info: { mergedSha?: string; source?: string } = {}): Promise<void> {
-    if (this.landed.has(workItem) || this.deploys.some((d) => d.workItem === workItem)) return
+    if (this.landed.has(workItem) || this.holds(workItem, false)) return
     this.deploys.push({ workItem, ...info })
     await this.persistDeploys()
+  }
+
+  /**
+   * A DeployFailed event from the central server (ADR-0059): persisted, and
+   * applied as `DeployFailed{work_item}` once the sim accepts it (the item is
+   * merged and waits for its deploy), which blocks the item with a
+   * `DeployFailed` ticket. Without it the item would wait for a deploy that
+   * never comes: a silent stall. Rejects when it could not be persisted.
+   */
+  async deployFailed(workItem: string, info: { mergedSha?: string; source?: string } = {}): Promise<void> {
+    if (this.landed.has(workItem) || this.holds(workItem, true)) return
+    this.deploys.push({ workItem, ...info, failed: true })
+    await this.persistDeploys()
+  }
+
+  /** A central event (`DeployLanded`, `DeployFailed`) for the loop; other kinds are ignored. */
+  async deployEvent(ev: { kind: string; payload: Record<string, unknown> }): Promise<void> {
+    const p = ev.payload
+    if (typeof p.work_item !== 'string') return
+    const info = { mergedSha: typeof p.merged_sha === 'string' ? p.merged_sha : undefined, source: typeof p.source === 'string' ? p.source : undefined }
+    if (ev.kind === 'DeployLanded') await this.deployLanded(p.work_item, info)
+    else if (ev.kind === 'DeployFailed') await this.deployFailed(p.work_item, info)
+  }
+
+  /** The loop's collections and their sizes (diagnostics; the soak test's growth check). */
+  sizes(): LoopSizes {
+    return {
+      jobs: this.jobs.length,
+      byId: this.byId.size,
+      seen: this.seen.size,
+      completed: this.completed.size,
+      landed: this.landed.size,
+      open: this.open.size,
+      queue: this.queue.length,
+      ready: this.ready.length,
+      deploys: this.deploys.length,
+      where: this.where.size,
+      speech: this.speech.size,
+      simSeq: this.simSeq.size,
+      spoken: this.spoken.size,
+      errors: this.errors.length,
+    }
   }
 
   /** Resolves once queued effects are taken in, every job ran, its outcomes were applied and the log is written. */
@@ -574,8 +680,12 @@ export class OrchestrationLoop {
 
   // ------------------------------------------------------------ internals
 
+  private holds(workItem: string, failed: boolean): boolean {
+    return this.deploys.some((d) => d.workItem === workItem && !!d.failed === failed)
+  }
+
   private holdDeploy(workItem: string) {
-    if (this.landed.has(workItem) || this.deploys.some((d) => d.workItem === workItem)) return
+    if (this.landed.has(workItem) || this.holds(workItem, false)) return
     this.deploys.push({ workItem, source: 'orchestrator' })
     this.persistDeploys().catch((e) => this.fail(`pending deploys not persisted: ${String(e)}`))
   }
@@ -585,17 +695,28 @@ export class OrchestrationLoop {
   }
 
   private tryDeploys() {
-    const keep: OrchestrationLoop['deploys'] = []
+    const keep: HeldDeploy[] = []
     let changed = false
+    // An entry whose item closed (published, killed) can never apply: it is
+    // dropped instead of being held, and re-validated every boundary, for
+    // good. Checked once per applied command, so the plan is not parsed per step.
+    const closed = this.seq !== this.deploysCheckedAt ? this.closedItems() : null
+    if (closed) this.deploysCheckedAt = this.seq
     for (const d of this.deploys) {
-      if (this.landed.has(d.workItem)) {
+      if (!d.failed && this.landed.has(d.workItem)) {
         changed = true
         continue
       }
-      const cmd = JSON.stringify({ DeployLanded: { work_item: d.workItem } })
-      // The sim rejects DeployLanded until its publish phase ran (the item is
-      // `approved` until then): hold the event until it is accepted.
+      const cmd = JSON.stringify(d.failed ? { DeployFailed: { work_item: d.workItem } } : { DeployLanded: { work_item: d.workItem } })
+      // The sim rejects a deploy event until the item is merged and waits for
+      // its deploy (`scheduled`; `approved` until the publish phase ran):
+      // hold the event until it is accepted.
       if (this.o.sim.validate_command_json(cmd) !== undefined) {
+        if (closed?.has(d.workItem)) {
+          changed = true
+          this.log(`${d.failed ? 'DeployFailed' : 'DeployLanded'} ${d.workItem} dropped: the item is closed`)
+          continue
+        }
         keep.push(d)
         continue
       }
@@ -611,9 +732,9 @@ export class OrchestrationLoop {
       const post = {
         type: 'status',
         author: 'system',
-        text: `Published: the deploy landed${sha}.`,
+        text: d.failed ? `Blocked: the deploy failed${sha}.` : `Published: the deploy landed${sha}.`,
         from: before,
-        toStatus: 'published',
+        toStatus: d.failed ? 'blocked' : 'published',
         day: this.o.sim.day(),
         minute,
         payload: { merged_sha: d.mergedSha ?? null, source: d.source ?? null },
@@ -621,11 +742,19 @@ export class OrchestrationLoop {
       this.write(() => this.o.store.appendPost(this.o.companyId, d.workItem, JSON.stringify(post)).then(() => this.o.onPlanText?.())).catch((e) =>
         this.fail(`status post not written: ${String(e)}`),
       )
-      this.log(`DeployLanded ${d.workItem} applied at step ${this.o.sim.step()}`)
-      this.o.onLanded?.(d.workItem)
+      this.log(`${d.failed ? 'DeployFailed' : 'DeployLanded'} ${d.workItem} applied at step ${this.o.sim.step()}`)
+      if (!d.failed) this.o.onLanded?.(d.workItem)
     }
     this.deploys = keep
     if (changed) this.persistDeploys().catch((e) => this.fail(`pending deploys not persisted: ${String(e)}`))
+  }
+
+  private closedItems(): Set<string> {
+    return new Set(
+      this.items()
+        .filter((i) => i.status === 'published' || i.status === 'cancelled')
+        .map((i) => i.id),
+    )
   }
 
   private persistDeploys(): Promise<void> {
@@ -656,6 +785,9 @@ export class OrchestrationLoop {
     this.open.delete(jobId)
     this.due.settle(jobId)
     this.speech.delete(jobId)
+    // A meeting has one job (its standup): once that is settled no more turns come for the meeting.
+    const meeting = this.where.get(jobId)?.meeting
+    if (meeting) this.simSeq.delete(meeting)
     this.where.delete(jobId)
   }
 

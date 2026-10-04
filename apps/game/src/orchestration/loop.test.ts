@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CommandRecord } from '../store/company-store'
 import { commandText } from '../sync/segments'
 import type { DueStepSource } from './due-step'
-import { jobOutcomeKey, KEEP_ERRORS, KEEP_JOBS, OrchestrationLoop, PENDING_DEPLOYS_KEY, type LoopOptions, type LoopSim, type LoopStore } from './loop'
+import { BoundedSet, jobOutcomeKey, KEEP_ERRORS, KEEP_JOBS, OrchestrationLoop, PENDING_DEPLOYS_KEY, type LoopOptions, type LoopSim, type LoopStore } from './loop'
 
 /** The part of the sim the loop touches, scripted. */
 class StubSim implements LoopSim {
@@ -287,6 +287,72 @@ describe('OrchestrationLoop', () => {
     // A second delivery of the same event is ignored.
     await loop.deployLanded('work-item-1')
     expect(loop.pendingDeploys).toEqual([])
+  })
+
+  // W soak finding: the session ignored the server's DeployFailed event, so the item waited for a deploy that never came.
+  it('applies a DeployFailed event once the item waits for its deploy: the item is blocked with a ticket, not left waiting', async () => {
+    const sim = new StubSim()
+    const store = new MemStore()
+    const landed: string[] = []
+    const loop = new OrchestrationLoop({ sim, store, companyId: 'co', orchestrator: { run: async () => '[]' }, codec, onLanded: (w) => landed.push(w) })
+    sim.items = [{ id: 'work-item-1', status: 'approved' }]
+    sim.reject = (json) => (/Deploy(Landed|Failed)/.test(json) && sim.items[0].status !== 'scheduled' ? 'the item is not merged and waiting for a deploy' : undefined)
+    await loop.deployEvent({ kind: 'DeployFailed', payload: { work_item: 'work-item-1', merged_sha: 'abcdef0123', source: 'webhook' } })
+    // Persisted like a landed deploy, so a reload keeps it.
+    expect(JSON.parse(store.kv.get(PENDING_DEPLOYS_KEY)!)).toEqual([{ workItem: 'work-item-1', mergedSha: 'abcdef0123', source: 'webhook', failed: true }])
+    loop.boundary()
+    expect(sim.applied).toEqual([])
+    sim.items[0].status = 'scheduled'
+    loop.boundary()
+    await loop.flush()
+    expect(sim.applied).toEqual(['{"DeployFailed":{"work_item":"work-item-1"}}'])
+    expect(store.log.map((c) => c.kind)).toEqual(['DeployFailed'])
+    expect(landed).toEqual([])
+    expect(loop.pendingDeploys).toEqual([])
+    expect(JSON.parse(store.posts[0])).toMatchObject({ type: 'status', from: 'scheduled', toStatus: 'blocked' })
+    // A Retry merges again and the next deploy lands it.
+    sim.items[0].status = 'approved'
+    await loop.deployEvent({ kind: 'DeployLanded', payload: { work_item: 'work-item-1' } })
+    sim.items[0].status = 'scheduled'
+    loop.boundary()
+    expect(sim.applied[1]).toBe('{"DeployLanded":{"work_item":"work-item-1"}}')
+    expect(landed).toEqual(['work-item-1'])
+    // Other event kinds are not the loop's.
+    await loop.deployEvent({ kind: 'LeaseRevoked', payload: { epoch: 3 } })
+    expect(loop.pendingDeploys).toEqual([])
+  })
+
+  it('drops a held deploy event whose item was closed instead of holding it for good', async () => {
+    const sim = new StubSim()
+    const store = new MemStore()
+    const loop = new OrchestrationLoop({ sim, store, companyId: 'co', orchestrator: { run: async () => '[]' }, codec })
+    sim.items = [{ id: 'work-item-1', status: 'approved' }]
+    sim.reject = (json) => (json.includes('Deploy') && sim.items[0].status !== 'scheduled' ? 'not scheduled' : undefined)
+    await loop.deployLanded('work-item-1')
+    loop.boundary()
+    expect(loop.pendingDeploys).toEqual(['work-item-1'])
+    // The CEO kills the item: once a command was applied, the held event goes.
+    sim.items[0].status = 'cancelled'
+    loop.apply('"TriageInbox"')
+    const plans = sim.plans
+    loop.boundary()
+    expect(loop.pendingDeploys).toEqual([])
+    await loop.flush()
+    expect(JSON.parse(store.kv.get(PENDING_DEPLOYS_KEY)!)).toEqual([])
+    // The plan is read once per applied command, not at every boundary.
+    loop.boundary()
+    loop.boundary()
+    expect(sim.plans - plans).toBeLessThanOrEqual(1)
+  })
+
+  it('bounds its de-duplication sets', () => {
+    const s = new BoundedSet<number>(3)
+    for (let i = 1; i <= 5; i++) s.add(i)
+    expect(s.size).toBe(3)
+    expect(s.has(1)).toBe(false)
+    expect(s.has(5)).toBe(true)
+    s.add(5)
+    expect(s.size).toBe(3)
   })
 
   describe('game time (ADR-0060)', () => {

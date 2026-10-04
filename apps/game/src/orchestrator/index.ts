@@ -88,6 +88,8 @@ export function llmModeFromQuery(search: string): LlmMode {
 export function fakeMvpLlm(): FakeLlm {
   const model = createMvpModel()
   const llm = new FakeLlm({
+    // A session may run the fake for days (W): keep the newest calls only.
+    maxCalls: 20,
     responder: (messages) => {
       const reply = model.answer(mvpCallFromMessages(messages))
       return 'text' in reply ? reply.text : JSON.stringify(reply.json)

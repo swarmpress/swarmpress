@@ -40,6 +40,7 @@ import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResu
 import { CentralClient, centralGateway, companyFor, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company } from '../net/central'
 import { OrchestrationLoop, type JobRecord } from '../orchestration/loop'
 import { withApprover } from '../orchestration/approver'
+import { sweepStages } from '../orchestration/sweeper'
 import { recordingGateway, type GatewayCall } from './recording-gateway'
 import { ActivityRecorder, heldByText } from '../orchestration/activity'
 import { minutesPerArticle, standupContext, utteranceMs } from '../orchestration/speech'
@@ -255,6 +256,13 @@ export interface SessionOptions {
   /** Called with every error of the orchestration loop (the HUD shows a toast and marks the chip). */
   onError?: (message: string) => void
 }
+
+/** Central events kept for `hook.events()` (the newest; FEAT-085, a week must not grow it without end). */
+export const KEEP_EVENTS = 200
+/** The newest jobs whose activity rows give a standup its measured minutes per article. */
+export const STANDUP_ACTIVITY_JOBS = 30
+/** Model calls (whole prompts) the bridge keeps for diagnostics. */
+export const SESSION_LLM_CALLS = 20
 
 /** kv key of the "unattended days" setting (host policy; never in the sim or the command log). */
 export const UNATTENDED_DAYS_KEY = 'clock.unattended_days'
@@ -487,7 +495,8 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   })
   // P6: a call past its limit is aborted; the clock stands still while the model is not ready.
   const modelAway = () => models.status().state !== 'ready'
-  const llm = localLlmBridge(models.llm, { stageTimeoutMs: secondsParam(params, 'stagetimeout'), paused: modelAway })
+  // `calls` keeps whole prompts (tens of kB each with a real pack): the newest few are enough for diagnostics (W).
+  const llm = localLlmBridge(models.llm, { stageTimeoutMs: secondsParam(params, 'stagetimeout'), paused: modelAway, maxCalls: SESSION_LLM_CALLS })
   // The activity record and the chip's "section 3 of 5": progress events plus the bridge's usage (ADR-0058).
   const activity = new ActivityRecorder({ store, companyId: company.id, clock: () => ({ step: Number(sim.step()), day: sim.day(), minute: sim.minute_of_day() }), log })
   llm.onCall = (call) => activity.call(call)
@@ -514,6 +523,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   // The clock's speed paces meeting turns; the clock is made after the loop.
   let clockSpeed = () => 1
   await orchestrator.bind().catch((e) => opts.onError?.(`The orchestrator could not be bound to the site: ${String(e)}`))
+  // One per `dataSource()` call: main.ts makes one per page load, so this does not grow with play.
   const sources = new Set<SessionDataSource>()
   const loop = new OrchestrationLoop({
     sim,
@@ -532,9 +542,10 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     // The standup's context (ADR-0062): the sim's work in progress, titles from the plan store,
     // the measured model minutes per article from the activity record, and today's date.
     standupContext: async ({ project }) => {
-      const [plan, rows] = await Promise.all([store.plan(company.id), activity.flush().then(() => store.activity(company.id))])
+      // The newest jobs' rows only (W): the whole activity record grows with every job.
+      const [plan, page] = await Promise.all([store.plan(company.id), activity.flush().then(() => store.activityPage(company.id, { limit: STANDUP_ACTIVITY_JOBS }))])
       const titles = Object.fromEntries(Object.entries(plan.items).map(([id, i]) => [id, i.title]))
-      return standupContext(sim.plan_json(), project, { now: new Date(), titles, minutesPerArticle: minutesPerArticle(rows) })
+      return standupContext(sim.plan_json(), project, { now: new Date(), titles, minutesPerArticle: minutesPerArticle(page.rows) })
     },
     speechSpeed: () => clockSpeed(),
   })
@@ -564,14 +575,11 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   const deployRefetch = refetchOnDeploy(knowledge, () => !readOnly)
   const events = new EventStream(client, company.id, store, async (ev) => {
     received.push(ev)
-    if (ev.kind === 'DeployLanded' && typeof ev.payload.work_item === 'string') {
-      await loop.deployLanded(ev.payload.work_item, {
-        mergedSha: typeof ev.payload.merged_sha === 'string' ? ev.payload.merged_sha : undefined,
-        source: typeof ev.payload.source === 'string' ? ev.payload.source : undefined,
-      })
-      // The site changed (a merge of this or another device): its pack too.
-      deployRefetch(ev)
-    }
+    if (received.length > KEEP_EVENTS) received.splice(0, received.length - KEEP_EVENTS)
+    // DeployLanded publishes the item; DeployFailed blocks it with a ticket (ADR-0059).
+    await loop.deployEvent(ev)
+    // The site changed (a merge of this or another device): its pack too.
+    if (ev.kind === 'DeployLanded' && typeof ev.payload.work_item === 'string') deployRefetch(ev)
     // The inbox keeps old lease events; only the one that names this
     // session's own epoch concerns it (`revoked` checks).
     if (ev.kind === 'LeaseRevoked' && typeof ev.payload.epoch === 'number') {
@@ -623,6 +631,15 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     return r
   }
 
+  // The sweeper (W): stage rows no job can re-run or adopt any more go, at boot and every game day.
+  const sweep = () => {
+    if (readOnly || loop.halted) return
+    sweepStages(store, company.id, sim.plan_json())
+      .then((jobs) => jobs.length && log(`swept the stage rows of ${jobs.length} finished jobs`))
+      .catch((e) => log(`stage sweep failed: ${String(e)}`))
+  }
+  sweep()
+
   // Checkpoints: locally every game hour, to central every game day.
   let hourMark = sim.day() * 24 + Math.floor(sim.minute_of_day() / 60)
   let dayMark = sim.day()
@@ -634,6 +651,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     if (sim.day() !== dayMark) {
       dayMark = sim.day()
       void checkpoint()
+      sweep()
     } else if (!localBusy) {
       localBusy = true
       void checkpointLocal()

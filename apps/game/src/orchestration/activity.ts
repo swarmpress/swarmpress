@@ -135,8 +135,9 @@ export function heldByText(job: { who: string | null; kind: string; state: strin
 
 export class ActivityRecorder {
   private stage: OpenStage | null = null
+  /** Jobs in flight (one model: one at a time); deleted at the job's own done/failed event (FEAT-085). */
   private jobs = new Map<number, OpenJob>()
-  /** The latest stage event of each job in flight. */
+  /** The latest stage event of each job in flight; deleted with the job. */
   private latest = new Map<number, ProgressEvent>()
   private writes: Promise<void> = Promise.resolve()
   private now: () => number
@@ -212,6 +213,11 @@ export class ActivityRecorder {
         elapsedMs: Math.max(0, Math.round(at - started)),
       }
     })
+  }
+
+  /** Jobs and stage events held in memory (they are deleted when a job ends; FEAT-085's growth check). */
+  sizes(): { jobs: number; latest: number; errors: number } {
+    return { jobs: this.jobs.size, latest: this.latest.size, errors: this.errors.length }
   }
 
   /** Resolves when every row so far is written. */

@@ -23,6 +23,22 @@ import { MIGRATIONS } from './schema'
 /** Post types the orchestrator writes (orchestrator::POST_TYPES). */
 export const POST_TYPES = ['minutes', 'artifact', 'handoff', 'review', 'status'] as const
 
+/** The store's tables (schema.ts), for `rowCounts`. */
+export const STORE_TABLES = [
+  'command_log',
+  'snapshots',
+  'briefs',
+  'artifacts',
+  'transcripts',
+  'plan_items',
+  'plan_posts',
+  'kv',
+  'site_knowledge',
+  'job_stages',
+  'post_dedupe',
+  'activity',
+] as const
+
 /** Newest posts per item in the plan view (orchestrator::PLAN_POSTS_PER_ITEM). */
 export const PLAN_POSTS_PER_ITEM = 50
 
@@ -392,6 +408,40 @@ export class CompanyStore implements OrchestratorStore {
     for (const id of jobIds) await this.driver.run('DELETE FROM job_stages WHERE company = ? AND job_id = ?', [company, id])
   }
 
+  /**
+   * The jobs that have stage rows, each with the work item the activity
+   * record names for it (`undefined`: no activity row, the item is not
+   * known; `null`: a job without an item, a standup). The stage sweeper's
+   * input (orchestration/sweeper.ts, FEAT-085). Two plain reads: no
+   * correlated subquery (ADR-0041).
+   */
+  async stageJobs(company: string): Promise<{ jobId: number; workItem: string | null | undefined }[]> {
+    const ids = (await this.driver.all<{ job_id: number }>('SELECT DISTINCT job_id FROM job_stages WHERE company = ? ORDER BY job_id', [company])).map((r) =>
+      toNumber(r.job_id),
+    )
+    if (!ids.length) return []
+    const items = new Map<number, string | null>()
+    for (let i = 0; i < ids.length; i += 200) {
+      const part = ids.slice(i, i + 200)
+      const rows = await this.driver.all<{ job_id: number; work_item: string | null }>(
+        `SELECT DISTINCT job_id, work_item FROM activity WHERE company = ? AND job_id IN (${part.map(() => '?').join(', ')})`,
+        [company, ...part],
+      )
+      for (const r of rows) items.set(toNumber(r.job_id), r.work_item == null ? null : String(r.work_item))
+    }
+    return ids.map((jobId) => ({ jobId, workItem: items.has(jobId) ? items.get(jobId)! : undefined }))
+  }
+
+  /** Rows per table (diagnostics: the soak test's growth check, FEAT-085). */
+  async rowCounts(): Promise<Record<string, number>> {
+    const out: Record<string, number> = {}
+    for (const t of STORE_TABLES) {
+      const rows = await this.driver.all<{ n: number }>(`SELECT COUNT(*) AS n FROM ${t}`)
+      out[t] = toNumber(rows[0]?.n ?? 0)
+    }
+    return out
+  }
+
   // ------------------------------------------------------------ activity (FEAT-078)
 
   /**
@@ -465,7 +515,12 @@ export class CompanyStore implements OrchestratorStore {
 
   // ------------------------------------------------------------ plan / transcripts (reads)
 
-  /** The plan view (publishing-plan.md §7): posts oldest first, newest 50 per item. */
+  /**
+   * The plan view (publishing-plan.md §7): posts oldest first, newest 50 per item.
+   * Reads every post of the company: it grows with the items (about twenty a
+   * week, docs/design/mvp-pipeline.md §7 leaves them alone) and is read once
+   * per job, per standup and per UI change, never per step (FEAT-085).
+   */
   async plan(company: string): Promise<Plan> {
     const items = await this.driver.all<{ item: string; title: string; brief: string }>(
       'SELECT item, title, brief FROM plan_items WHERE company = ? ORDER BY item',

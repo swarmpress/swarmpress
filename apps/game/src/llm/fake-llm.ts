@@ -33,6 +33,8 @@ export interface FakeLlmOptions {
   sizeBytes?: number
   /** Timer injection (vitest fake timers patch the global setTimeout anyway). */
   sleep?: (ms: number) => Promise<void>
+  /** Calls kept in `calls`, the newest (a long-running fake, e.g. `?llm=fake` for a week). Default: all. */
+  maxCalls?: number
 }
 
 export interface FakeCall {
@@ -52,6 +54,8 @@ export class FakeLlm implements LocalLlm {
   readonly calls: FakeCall[] = []
   readonly loads: string[] = []
   disposed = false
+  /** Calls made (`calls` may keep only the newest). */
+  callCount = 0
   private script: FakeResponse[]
   private sleep: (ms: number) => Promise<void>
 
@@ -82,8 +86,10 @@ export class FakeLlm implements LocalLlm {
   async generate(messages: ChatMessage[], opts: GenerateOptions = {}): Promise<GenerateResult> {
     if (this.disposed) throw new Error('FakeLlm disposed')
     const { onDelta, signal, ...rest } = opts
-    const call = this.calls.length
+    const call = this.callCount++
     this.calls.push({ messages: messages.map((m) => ({ ...m })), opts: rest })
+    const max = this.opts.maxCalls
+    if (max != null && this.calls.length > max) this.calls.splice(0, this.calls.length - max)
     const next: FakeResponse =
       this.script.length > 0
         ? this.script.shift()!
