@@ -168,7 +168,7 @@ jobs:
       # WebGPU only (ADR-0064): every test on SwiftShader's WebGPU (flags in apps/game/e2e/webgpu.ts),
       # and the no-WebGPU screen in the no-webgpu project (no flags, so no adapter).
       - name: Playwright e2e (SwiftShader WebGPU + the no-WebGPU screen)
-        run: pnpm --filter @swarm-press/game exec playwright test e2e/smoke.spec.ts e2e/no-webgpu.spec.ts e2e/bricks.spec.ts
+        run: pnpm --filter @swarm-press/game exec playwright test e2e/smoke.spec.ts e2e/no-webgpu.spec.ts e2e/bricks.spec.ts --workers=1
         env:
           CI: '1'
           PW_JSON: reports/playwright.json

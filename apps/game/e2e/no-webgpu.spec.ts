@@ -1,5 +1,5 @@
 /**
- * No WebGPU, no game (ADR-0064 decision 2, FEAT-017): project `no-webgpu` runs
+ * No WebGPU, no game (ADR-0064 decision 2, FEAT-017): project `nowebgpu` runs
  * headless Chromium without the WebGPU flags, which offers no adapter. The page
  * shows the no-WebGPU screen — what is missing, which browsers work, a link to
  * the requirements — and draws nothing on another renderer.

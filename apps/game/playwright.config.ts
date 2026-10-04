@@ -29,7 +29,8 @@ export default defineConfig({
     },
     {
       // Headless Chromium without the flags offers no WebGPU adapter: the page must say so.
-      name: 'no-webgpu',
+      // No hyphen: Cockpit reads a bracketed `[a-b]` in a test name (Playwright appends the project) as a feature id.
+      name: 'nowebgpu',
       testMatch: 'no-webgpu.spec.ts',
       use: { launchOptions: { executablePath } },
     },

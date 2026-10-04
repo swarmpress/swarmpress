@@ -22,14 +22,24 @@ interface Stats {
 type Hook = { bricks: (() => Stats) | null; frames(): number; scene: { activeCamera: unknown } }
 
 const stats = (page: Page) => page.evaluate(() => (window as unknown as { __swarmpress: Hook }).__swarmpress.bricks?.() ?? null)
-const framesAfter = async (page: Page, n: number) => {
-  const start = await page.evaluate(() => (window as unknown as { __swarmpress: Hook }).__swarmpress.frames())
-  await page.waitForFunction((s) => (window as unknown as { __swarmpress: Hook }).__swarmpress.frames() > s, start + n, { timeout: 60_000 })
+// Software WebGPU on a shared CI runner can be slow; on a timeout, say how far the frames got and
+// what the page reported, instead of a bare TimeoutError.
+const framesAfter = async (page: Page, n: number, log: string[]) => {
+  const frames = () => page.evaluate(() => (window as unknown as { __swarmpress: Hook }).__swarmpress.frames())
+  const start = await frames()
+  try {
+    await page.waitForFunction((s) => (window as unknown as { __swarmpress: Hook }).__swarmpress.frames() > s, start + n, { timeout: 120_000 })
+  } catch (e) {
+    const failed = await page.evaluate(() => document.getElementById('no-webgpu')?.textContent ?? null)
+    throw new Error(`waited for ${n} frames after frame ${start}, reached ${await frames()}; no-WebGPU screen: ${failed}; console: ${log.slice(-20).join(' | ')}`, { cause: e })
+  }
 }
 
 test('?office=bricks builds the newsroom and the editor’s office from the kit, with live surfaces', async ({ page }, info) => {
   const consoleErrors: string[] = []
+  const consoleLog: string[] = []
   page.on('console', (m) => {
+    consoleLog.push(`${m.type()}: ${m.text()}`)
     if (m.type() === 'error') consoleErrors.push(m.text())
   })
   const { errors, renderer } = await boot(page, '/?office=bricks&quality=low')
@@ -59,7 +69,7 @@ test('?office=bricks builds the newsroom and the editor’s office from the kit,
     const perMinute = Number(sim.steps_per_day()) / 1440
     sim.advance(Math.round(((10 * 60 + 30 - sim.minute_of_day() + 1440) % 1440) * perMinute))
   })
-  await framesAfter(page, 20)
+  await framesAfter(page, 20, consoleLog)
   await info.attach('bricks-office-1030.png', { body: await page.locator('#stage canvas').screenshot(), contentType: 'image/png' })
 
   // Close up on the newsroom: the monitors and the board switch to their close views, within the budget.
@@ -79,7 +89,7 @@ test('?office=bricks builds the newsroom and the editor’s office from the kit,
     cam.orthoLeft = -zoom * aspect
     cam.orthoRight = zoom * aspect
   })
-  await framesAfter(page, 30)
+  await framesAfter(page, 30, consoleLog)
   const close = (await stats(page))!
   expect(close.surfaces.close).toBeGreaterThan(0)
   expect(close.surfaces.redraws).toBeGreaterThan(0)
