@@ -8,9 +8,9 @@
  * prompt both fakes give the same answer.
  *
  * - **Standup** (the pitch round, ADR-0062): the moderator opens, each free
- *   writer pitches the first topic nobody has taken (the season's calendar
- *   topics in the context pack, then `MVP_TOPICS`, whose first is "Harvest
- *   week in Manarola", the MVP article), and the commission takes the
+ *   writer pitches the first topic nobody has taken (`MVP_TOPICS`, whose
+ *   first is "Harvest week in Manarola", the MVP article, then the season's
+ *   calendar topics in the context pack), and the commission takes the
  *   pitches in order, as many as the cap allows.
  * - **Draft:** outline, intro, sections and closing from the brief, about
  *   the asked length, plain text that passes the per-part checks; fixes and
@@ -404,7 +404,10 @@ function openingLine(p: Prompt): string {
 function pitch(p: Prompt, later: string) {
   const { calendar, taken } = standupTopics(p.text, later)
   const free = (title: string) => !taken.has(title.toLowerCase())
-  const c = calendar.find((t) => free(t.title))
+  // Built-in topics first: the scripted MVP article stays the same whatever the site's calendar holds.
+  const t = MVP_TOPICS.find((x) => free(x.title))
+  if (t) return { say: t.pitch, title: t.title, angle: t.angle, keywords: t.keywords }
+  const c = calendar.find((x) => free(x.title))
   if (c) {
     const keywords = c.keywords.slice(0, 6)
     for (const extra of [c.title.toLowerCase(), 'cinque terre']) if (keywords.length < 2) keywords.push(extra)
@@ -415,8 +418,8 @@ function pitch(p: Prompt, later: string) {
       keywords,
     }
   }
-  const t = MVP_TOPICS.find((x) => free(x.title)) ?? MVP_TOPICS[0]
-  return { say: t.pitch, title: t.title, angle: t.angle, keywords: t.keywords }
+  const d = MVP_TOPICS[0]
+  return { say: d.pitch, title: d.title, angle: d.angle, keywords: d.keywords }
 }
 
 function commission(p: Prompt) {

@@ -13,8 +13,8 @@
 //!
 //! It also answers the standup's pitch round (ADR-0062,
 //! `crate::meetings`): the opening, one pitch per writer and the
-//! commissioning call. A writer pitches the first topic nobody has taken: the
-//! season's calendar topics in the context pack, then [`PITCH_TOPICS`]; a
+//! commissioning call. A writer pitches the first topic nobody has taken:
+//! [`PITCH_TOPICS`], then the season's calendar topics in the context pack; a
 //! title the prompt lists as published, in flight or pitched (or a repair
 //! turn names) is taken. The commissioning call takes the pitches in order,
 //! as many as the cap allows.
@@ -40,7 +40,7 @@ pub fn fake_writer(script: impl IntoIterator<Item = FakeReply>) -> FakeLlm {
     FakeLlm::with_responder(script, answer)
 }
 
-/// A topic the fake writers pitch when the calendar offers none (the twin
+/// A topic the fake writers pitch before the calendar's (the twin
 /// of `MVP_TOPICS` in `apps/game/src/llm/mvp-script.ts`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PitchTopic {
@@ -550,11 +550,16 @@ fn opening_line(p: &Prompt<'_>) -> String {
     )
 }
 
-/// A writer's pitch: the first topic nobody has taken (the season's calendar
-/// first), else the first built-in topic (a duplicate the round drops).
+/// A writer's pitch: the first built-in topic nobody has taken, then the
+/// season's calendar topics, else the first built-in topic (a duplicate the
+/// round drops). Built-in topics first keep the scripted MVP article the same
+/// whatever the site's calendar holds.
 fn pitch(p: &Prompt<'_>, later: &[&str]) -> Value {
     let (calendar, taken) = standup_topics(p.0, later);
     let free = |title: &str| !taken.contains(&title.to_lowercase());
+    if let Some(t) = PITCH_TOPICS.iter().find(|t| free(t.title)) {
+        return json!({"say": t.say, "title": t.title, "angle": t.angle, "keywords": t.keywords});
+    }
     if let Some((title, keywords)) = calendar.iter().find(|(t, _)| free(t)) {
         let mut keywords: Vec<String> = keywords.iter().take(6).cloned().collect();
         for extra in [title.to_lowercase(), "cinque terre".to_string()] {
@@ -569,10 +574,7 @@ fn pitch(p: &Prompt<'_>, later: &[&str]) -> Value {
             "keywords": keywords,
         });
     }
-    let t = PITCH_TOPICS
-        .iter()
-        .find(|t| free(t.title))
-        .unwrap_or(&PITCH_TOPICS[0]);
+    let t = &PITCH_TOPICS[0];
     json!({"say": t.say, "title": t.title, "angle": t.angle, "keywords": t.keywords})
 }
 
