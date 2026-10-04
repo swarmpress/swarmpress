@@ -80,8 +80,9 @@ jobs:
           JSON
           test "$size" -le 1267200
       # The construction kit compiler (ADR-0065) is its own module for the renderer:
-      # measured 213,527 bytes gzip on 2026-10-03, budget = measured + 25%.
-      - name: kit-wasm size budget (gzip <= 266,909 bytes)
+      # measured 168,221 bytes gzip on 2026-10-04 (name and producers sections stripped),
+      # budget = measured + 25%.
+      - name: kit-wasm size budget (gzip <= 210,277 bytes)
         run: |
           size=$(gzip -9 -c crates/kit-wasm/pkg/kit_wasm_bg.wasm | wc -c)
           echo "kit_wasm_bg.wasm gzip: $size bytes"
@@ -90,9 +91,9 @@ jobs:
           { "schema": "cockpit.benchmark.v1", "name": "kit-wasm-size", "component": "render",
             "provenance": { "commit": "${{ github.sha }}", "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)" },
             "metrics": [ { "name": "kit_wasm_bg.wasm gzip", "unit": "bytes", "value": $size,
-                           "determinism": "deterministic", "direction": "lower_is_better", "budget": { "max": 266909 } } ] }
+                           "determinism": "deterministic", "direction": "lower_is_better", "budget": { "max": 210277 } } ] }
           JSON
-          test "$size" -le 266909
+          test "$size" -le 210277
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14

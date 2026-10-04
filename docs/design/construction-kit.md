@@ -397,8 +397,8 @@ machine), median of Criterion's estimate:
 | newsroom, every placement compiled | 5.73 ms | < 200 ms a room |
 | the whole demo office: 11 shells and every placement | 33.2 ms | |
 
-The wasm module (`cargo xtask wasm --release`) is 213,527 bytes gzip (1,202,214 raw, half of it the
-name section); CI's budget is 266,909 bytes. Wasm compile times are measured with the renderer in
+The wasm module (`cargo xtask wasm --release`, name and producers sections stripped) is 168,221
+bytes gzip (572,521 raw); CI's budget is 210,277 bytes. Wasm compile times are measured with the renderer in
 K-3.
 
 ### 12.7 Open points
