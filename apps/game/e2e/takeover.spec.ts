@@ -7,11 +7,12 @@
 //   → A is told (LeaseRevoked), halts, holds its clock and goes read-only
 //   → A's old fencing token is refused by the gateway with 409; B's is accepted
 //
-// Two browser contexts are two devices: separate cookies and separate OPFS.
+// Two browsers are two devices: separate cookies, separate OPFS and separate GPU processes.
 // Run with `playwright test -c playwright.mvp.config.ts` (one project per
 // store engine).
-import { expect, test, type Page } from '@playwright/test'
+import { chromium, expect, test, type Page } from '@playwright/test'
 import type { SessionHook } from '../src/session/session'
+import { webgpuLaunch } from './webgpu'
 
 const gameUrl = (engine: string, login: string, extra = '') => `/?central=1&login=${login}&llm=fake&store=${engine}&quality=low&speed=10${extra}`
 
@@ -80,7 +81,7 @@ async function expectHeld(page: Page) {
   expect((await state(page)).step).toBe(before)
 }
 
-test('a second device is read-only until it takes over; the first then halts and is fenced out', async ({ page, browser, baseURL }, ti) => {
+test('a second device is read-only until it takes over; the first then halts and is fenced out', async ({ page, baseURL }, ti) => {
   const engine = ti.project.name
   const login = `takeover-${engine}-${Date.now().toString(36)}`
 
@@ -94,7 +95,11 @@ test('a second device is read-only until it takes over; the first then halts and
   await expectRunning(page)
   expect(await draftStatus(page, a.leaseToken!, 'from-a')).toBe(200)
 
-  const context = await browser.newContext({ baseURL, viewport: { width: 1280, height: 800 } })
+  // The second device is a second browser: two pages drawing on SwiftShader WebGPU in one browser share
+  // its GPU process, and the first page's frames starve the second's requestAdapter()
+  // (docs/qualification/webgpu-headless.md).
+  const device = await chromium.launch(webgpuLaunch)
+  const context = await device.newContext({ baseURL, viewport: { width: 1280, height: 800 } })
   try {
     // -------------------------------------------------------------- device B opens it: read-only
     const other = await context.newPage()
@@ -163,5 +168,6 @@ test('a second device is read-only until it takes over; the first then halts and
     expect(await draftStatus(other, took.leaseToken!, 'from-b')).toBe(200)
   } finally {
     await context.close()
+    await device.close()
   }
 })

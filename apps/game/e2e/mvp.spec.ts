@@ -18,9 +18,10 @@
 // the spec observes through `window.__swarmpress.session` and drives nothing but
 // the clock (pause). Run with `playwright test -c playwright.mvp.config.ts`
 // (one project per store engine).
-import { expect, test, type Page } from '@playwright/test'
+import { chromium, expect, test, type Page } from '@playwright/test'
 import { MVP_REVISION_LINE, MVP_TOPICS } from '../src/llm/mvp-script'
 import type { SessionHook } from '../src/session/session'
+import { webgpuLaunch } from './webgpu'
 
 const ITEM = 'work-item-1'
 const TITLE = 'Harvest week in Manarola'
@@ -178,7 +179,7 @@ async function expectThreadInPlanPanel(page: Page, shot: string) {
   await page.keyboard.press('Escape')
 }
 
-test('one article, end to end, in the real game page', async ({ page, browser, baseURL }, ti) => {
+test('one article, end to end, in the real game page', async ({ page, baseURL }, ti) => {
   const engine = ti.project.name
   const login = `mvp-${engine}-${Date.now().toString(36)}`
   // `speed=10`: ten sim steps per 100 ms, so a game hour takes five seconds.
@@ -459,7 +460,11 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
 
   // ---------------------------------------------------------------- a fresh browser context restores from central sync
   // A new context has no cookies and no OPFS: only the login and the central server remain.
-  const context = await browser.newContext({ baseURL, viewport: { width: 1280, height: 800 } })
+  // The second device is a second browser: two pages drawing on SwiftShader WebGPU in one browser share
+  // its GPU process, and the first page's frames starve the second's requestAdapter()
+  // (docs/qualification/webgpu-headless.md).
+  const device = await chromium.launch(webgpuLaunch)
+  const context = await device.newContext({ baseURL, viewport: { width: 1280, height: 800 } })
   try {
     const fresh = await context.newPage()
     // The reloaded page still holds the lease, so the new device takes the
@@ -495,5 +500,6 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
     expect(freshErrors).toEqual([])
   } finally {
     await context.close()
+    await device.close()
   }
 })

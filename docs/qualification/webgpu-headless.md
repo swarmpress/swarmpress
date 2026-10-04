@@ -69,7 +69,19 @@ buffers, textures and pipelines at once, on the old device. So `createEngine` tu
 handling off (`doNotHandleContextLost`) and `main.ts` recovers with a new engine on a new canvas and
 the scene rebuilt from the sim (`watchDeviceLoss`, FEAT-017).
 
-## 5. Reliability
+## 5. Two pages in one browser
+
+With the game drawing continuously on SwiftShader WebGPU in one page, a second page of the same
+browser (another context) never gets an adapter: `navigator.gpu.requestAdapter()` stays pending
+(more than 10 s here, more than 120 s in the MVP suite), on macOS and with either flag set. It
+resolves at once when the first page stops drawing (`?t=` freezes it), draws every third frame, or
+draws from a 50 ms timer instead of `requestAnimationFrame`; a small Babylon scene drawing
+continuously does not block it. The first page's software frames keep the shared GPU process busy.
+Real GPUs are not affected. The MVP and takeover suites, whose second device is a second page,
+therefore open that device in a second browser (its own GPU process), which is also closer to
+what a second device is.
+
+## 6. Reliability
 
 - **Linux x86_64, CI image:** `smoke.spec.ts` × 20 (`--repeat-each=20`, 2 workers): 80 tests, every
   boot on WebGPU with no device loss and no WebGPU validation error (20 of 20), the recovery test 20
@@ -79,7 +91,7 @@ the scene rebuilt from the sim (`watchDeviceLoss`, FEAT-017).
 - The visual baselines were re-taken on SwiftShader WebGPU in the same image and compared again from
   a fresh copy.
 
-## 6. Consequences
+## 7. Consequences
 
 - The flags live in one place, `apps/game/e2e/webgpu.ts`, used by `playwright.config.ts`,
   `playwright.mvp.config.ts` and `playwright.bonsai.config.ts` (scripted and bricks projects).
