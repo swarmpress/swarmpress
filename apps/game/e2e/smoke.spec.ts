@@ -124,7 +124,9 @@ test('people walk smoothly between sim steps and open their profile on click', a
     sitter = await page.evaluate(() => {
       const all = (window as unknown as { __swarmpress: Hook }).__swarmpress.people()
       const covered = (p: Person) => all.some((o) => o.label && p.screenX >= o.label.left - 2 && p.screenX <= o.label.right + 2 && p.screenY >= o.label.top - 2 && p.screenY <= o.label.bottom + 2)
-      return all.find((p) => !p.walking && p.screenY > 80 && p.screenY < 700 && p.screenX > 40 && p.screenX < 1240 && !covered(p)) ?? null
+      // Nobody else within 30 px either, so the click cannot land on a neighbour at the next desk.
+      const crowded = (p: Person) => all.some((o) => o.id !== p.id && Math.hypot(o.screenX - p.screenX, o.screenY - p.screenY) < 30)
+      return all.find((p) => !p.walking && p.screenY > 80 && p.screenY < 700 && p.screenX > 40 && p.screenX < 1240 && !covered(p) && !crowded(p)) ?? null
     })
     if (!sitter) await page.clock.runFor(1000)
   }
