@@ -6,7 +6,6 @@
 //! days, well above the 30-day `RunwayLow` alert, and project spend stays
 //! under its budget. FEAT-085.
 
-use sim_core::inbox::TicketKind;
 use sim_core::scenarios::scenario;
 
 const SEED: u64 = 7;
@@ -22,15 +21,23 @@ fn seven_days_without_revenue_raise_no_finance_ticket() {
         // Nobody runs the jobs: the effects are dropped, so no outcome (and no revenue) ever comes back.
         let _ = w.drain_effects();
     }
-    assert!(w.clock().day >= DAYS as u32, "seven days ran (day {})", w.clock().day);
+    assert!(
+        w.clock().day >= DAYS as u32,
+        "seven days ran (day {})",
+        w.clock().day
+    );
 
     let finance: Vec<_> = w
         .tickets
         .values()
-        .filter(|t| t.kind.is_financial() || t.kind == TicketKind::BudgetOverrun)
+        // Budget overrun, runway low, payroll spike, loan offer, hire affordability.
+        .filter(|t| t.kind.is_financial())
         .map(|t| t.kind)
         .collect();
-    assert!(finance.is_empty(), "finance tickets in week one: {finance:?}");
+    assert!(
+        finance.is_empty(),
+        "finance tickets in week one: {finance:?}"
+    );
 
     // Money only went out, and the runway is far from the alert.
     assert!(w.company.cash < start_cash, "the company burned cash");
