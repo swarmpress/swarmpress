@@ -23,6 +23,7 @@ import { mountOverlay, selectDataSource } from './ui/mount'
  *   seed=N             sim seed, default 42
  *   tz=Area/City       HQ timezone for the real-time wall clocks, default Europe/Rome
  *   ui=mock            CEO overlay on the fixture data source (also mounts it on t= pages)
+ *   office=bricks      the brick office spike (FEAT-081): newsroom and editor's office from the kit
  *   central=1          the MVP loop: dev login, company store, central server, orchestrator
  *                      (src/session/session.ts; also login=, llm=fake, store=, ff=HH:MM)
  * With t=, the loop stops once the scene is ready and 20 frames are drawn
@@ -74,6 +75,9 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   const game = createGameScene(engine, canvas, layout, { quality: QUALITY[tier], postFx: true })
   if (params.has('facing')) game.iso.setFacing(Number(params.get('facing')))
   game.iso.snap()
+  // FEAT-081 spike: ?office=bricks builds the newsroom and the editor's office from the construction kit (a lazy chunk).
+  const brickMod = params.get('office') === 'bricks' ? await import('./render/bricks') : null
+  const bricks = brickMod ? await brickMod.attachBrickOffice(game, layout) : null
   // GPU sharing with the local model (ADR-0057, FEAT-040): while it generates, the scene drops
   // a tier, pauses SSAO and bloom, and draws at most `fpsCap` frames a second; then it comes back.
   let fpsCap: number | null = null
@@ -188,6 +192,7 @@ async function main(params: URLSearchParams, boot: BootScreen) {
       })
     })
   }
+  if (overlay && brickMod && bricks) bricks.setSources(brickMod.surfaceSourcesFrom(overlay.store))
   // --- end scene ↔ overlay ---
   let lastStep = -1n
   let stillFrames = 0
@@ -237,6 +242,8 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     clock,
     // Everyone on site, where they are drawn this frame and on the canvas (e2e smooth-movement check).
     people: () => game.people(),
+    // The brick office spike's counts and timings (?office=bricks), else null.
+    bricks: bricks ? () => bricks.stats() : null,
   }
 }
 

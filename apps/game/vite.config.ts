@@ -46,6 +46,8 @@ export default defineConfig(({ mode }) => {
         // Built by `cargo xtask wasm` (wasm-bindgen --target web).
         'swarm-wasm': fileURLToPath(new URL('../../crates/client-wasm/pkg/client_wasm.js', import.meta.url)),
         'orchestrator-wasm': fileURLToPath(new URL('../../crates/orchestrator-wasm/pkg/orchestrator_wasm.js', import.meta.url)),
+        // The construction kit (ADR-0065), loaded only behind ?office=bricks (src/render/bricks).
+        'kit-wasm': fileURLToPath(new URL('../../crates/kit-wasm/pkg/kit_wasm.js', import.meta.url)),
       },
     },
     server: {
