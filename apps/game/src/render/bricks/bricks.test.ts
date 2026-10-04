@@ -142,6 +142,14 @@ describe.skipIf(!built)('brick office spike (kit-wasm, NullEngine)', () => {
     expect((z0 + z1) / 2).toBeCloseTo(3, 2)
   })
 
+  it('gives every thin-instanced mesh its own geometry (WebGL2 caches a vertex array object per geometry)', () => {
+    const { bricks } = scene()
+    const meshes = [...bricks.rooms.values()].flatMap((r) => [...r.meshes, ...r.studs].map((m) => m.mesh))
+    expect(new Set(meshes.map((m) => m.geometry)).size).toBe(meshes.length)
+    // Window modules are drawn as glass.
+    expect([...bricks.rooms.values()].some((r) => r.chunk.instances.some((b) => b.colour === 'glass' && b.region !== 'base'))).toBe(true)
+  })
+
   it('keeps the studs in their own meshes, so they can be dropped wholesale', () => {
     const { bricks } = scene()
     const studMeshes = [...bricks.rooms.values()].flatMap((r) => r.studs.map((s) => s.mesh))

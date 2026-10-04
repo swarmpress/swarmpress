@@ -19,7 +19,7 @@ interface Stats {
   buildMs: number
   surfaces: { monitors: number; boards: number; close: number; redraws: number; maxRedrawsPerFrame: number }
 }
-type Hook = { bricks: (() => Stats) | null; frames(): number; scene: { activeCamera: Record<string, unknown> & { target: { set(x: number, y: number, z: number): void } } } }
+type Hook = { bricks: (() => Stats) | null; frames(): number; scene: { activeCamera: unknown } }
 
 const stats = (page: Page) => page.evaluate(() => (window as unknown as { __swarmpress: Hook }).__swarmpress.bricks?.() ?? null)
 const framesAfter = async (page: Page, n: number) => {
@@ -53,6 +53,15 @@ test('?office=bricks builds the newsroom and the editor’s office from the kit,
   )
   for (const r of s.rooms) expect(names.some((n) => n.startsWith(`bricks-${r.room}-`)), r.room).toBe(true)
   await info.attach('bricks-office.png', { body: await page.locator('#stage canvas').screenshot(), contentType: 'image/png' })
+
+  // Mid-morning: the writers at their desks, the monitors on.
+  await page.evaluate(() => {
+    const sim = (window as unknown as { __swarmpress: { sim: { advance(n: number): void; steps_per_day(): bigint; minute_of_day(): number } } }).__swarmpress.sim
+    const perMinute = Number(sim.steps_per_day()) / 1440
+    sim.advance(Math.round(((10 * 60 + 30 - sim.minute_of_day() + 1440) % 1440) * perMinute))
+  })
+  await framesAfter(page, 20)
+  await info.attach('bricks-office-1030.png', { body: await page.locator('#stage canvas').screenshot(), contentType: 'image/png' })
 
   // Close up on the newsroom: the monitors and the board switch to their close views, within the budget.
   await page.evaluate(() => {

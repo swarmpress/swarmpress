@@ -28,6 +28,9 @@ export const GAP_Y = 0.001
 export const STUD_RADIUS = 0.3 * STUD
 export const STUD_HEIGHT = 0.0133
 
+/** The colour window modules are drawn in. */
+export const WINDOW_COLOUR = 'glass'
+
 export type Region = 'base' | 'upper' | `wall-${Side}`
 export type Shape = 'box' | 'cylinder'
 
@@ -187,8 +190,10 @@ export function buildRoomChunk(room: RoomLayout, exterior: Side[], sources: read
       return [p!.x + dx, p!.y + y, p!.z + dz]
     }
     for (let g = 0; g < b.groupCount(); g++) {
-      const colour = b.groupColour(g)
-      const shape = shapeOf(b.groupTemplate(g))
+      const template = b.groupTemplate(g)
+      // The window module has no pane of its own: the renderer draws it as glass (see the spike report).
+      const colour = template === 'window' ? WINDOW_COLOUR : b.groupColour(g)
+      const shape = shapeOf(template)
       const t = b.groupTransforms(g)
       for (let i = 0; i + 7 <= t.length; i += 7) {
         const [wx, wy, wz] = world(t[i], t[i + 1], t[i + 2])

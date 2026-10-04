@@ -25,7 +25,7 @@ import {
   Texture,
   Vector3,
   VertexBuffer,
-  type Geometry,
+  VertexData,
   type Scene,
 } from '@babylonjs/core'
 import type { BuildingLayout, RenderState, RoomKind, Side } from '../../state/render-state'
@@ -203,16 +203,23 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     return m
   }
 
-  // --- templates: one geometry per shape, shared by every mesh -------------
+  // --- templates: one shape per template kind. Each mesh gets its own copy of the vertex data:
+  // a geometry shared by thin-instanced meshes shares its cached vertex array object under
+  // WebGL2, and every mesh would then draw the first one's instance buffer.
   const templates = {
     box: MeshBuilder.CreateBox('brick-template-box', { size: 1 }, scene),
     cylinder: MeshBuilder.CreateCylinder('brick-template-cylinder', { diameter: 1, height: 1, tessellation: 16 }, scene),
     stud: MeshBuilder.CreateCylinder('brick-template-stud', { diameter: 2 * STUD_RADIUS, height: STUD_HEIGHT, tessellation: 10 }, scene),
   }
-  for (const t of Object.values(templates)) t.setEnabled(false)
-  const instanced = (name: string, geometry: Geometry, matrices: Float32Array, material: PBRMaterial) => {
+  const shapes = {
+    box: VertexData.ExtractFromMesh(templates.box),
+    cylinder: VertexData.ExtractFromMesh(templates.cylinder),
+    stud: VertexData.ExtractFromMesh(templates.stud),
+  }
+  for (const t of Object.values(templates)) t.dispose()
+  const instanced = (name: string, shape: VertexData, matrices: Float32Array, material: PBRMaterial) => {
     const m = new Mesh(name, scene)
-    geometry.applyToMesh(m)
+    shape.applyToMesh(m)
     m.material = material
     m.thinInstanceSetBuffer('matrix', matrices, 16, true)
     m.thinInstanceRefreshBoundingInfo(false)
@@ -248,10 +255,10 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     const exterior = exteriorSides(room, layout)
     const chunk = buildRoomChunk(room, exterior, sources)
     const meshes = chunk.instances.map((b) => ({
-      mesh: instanced(`bricks-${room.id}-${b.key}`, templates[b.shape].geometry!, b.matrices, materialFor(b.colour, room.id)),
+      mesh: instanced(`bricks-${room.id}-${b.key}`, shapes[b.shape], b.matrices, materialFor(b.colour, room.id)),
       region: b.region,
     }))
-    const studs = chunk.studs.map((b) => ({ mesh: instanced(`studs-${room.id}-${b.key}`, templates.stud.geometry!, b.matrices, materialFor(b.colour, room.id)), region: b.region }))
+    const studs = chunk.studs.map((b) => ({ mesh: instanced(`studs-${room.id}-${b.key}`, shapes.stud, b.matrices, materialFor(b.colour, room.id)), region: b.region }))
     const meshMs = now() - m0
     surfaceAnchors.push(...chunk.surfaces)
     roomBuilds.set(room.id, {
@@ -446,8 +453,9 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
         v.paint(cv.ctx)
         const px = cv.ctx.getImageData(0, 0, cv.w, cv.h)
         s.texture.update(new Uint8Array(px.data.buffer, px.data.byteOffset, px.data.byteLength))
+        // The emissive texture adds to the emissive colour: black, so the texture shows as drawn.
         s.material.emissiveTexture = s.texture
-        s.material.emissiveColor = Color3.White()
+        s.material.emissiveColor = Color3.Black()
       }
       redraws++
     }
