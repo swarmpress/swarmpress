@@ -162,14 +162,19 @@ interface Pr {
   mergedAt: number
   landed: boolean
   failed: boolean
+  /** Redeploys so far (the server's `attempt`, FEAT-085). */
+  attempt: number
+  /** Deploy failures so far. */
+  failures: number
 }
 
 /**
  * The central server's gateway and deploy events, as far as the browser sees
  * them: one PR per work item (a later draft commits to it), a merge at the
  * reviewed head that is idempotent, a deploy per merge that lands (or fails)
- * after a delay. A share of gateway calls fail, half before and half after
- * the server did the work (the answer is lost).
+ * after a delay, the deploy state of a merge and a redeploy of a failed one
+ * (a new deploy run, FEAT-085). A share of gateway calls fail, half before
+ * and half after the server did the work (the answer is lost).
  */
 export class FakeCentral {
   prs = new Map<number, Pr>()
@@ -180,6 +185,10 @@ export class FakeCentral {
   runs: { at: number; number: number; fail: boolean }[] = []
   delivered = 0
   deployFailures = 0
+  /** Redeploys the server started (a repeated call for a merge already pending starts none). */
+  redeploys = 0
+  /** Work items redeployed. */
+  redeployed = new Set<string>()
   failedCalls = 0
   anomalies: string[] = []
   /** Calls that fail once each, whatever the dice say (`openDraft:after`: the PR was committed, the answer lost). */
@@ -198,7 +207,7 @@ export class FakeCentral {
 
   gateway(alive: () => boolean): OrchestratorGateway {
     const never = new Promise<never>(() => undefined)
-    const maybeFail = (op: 'openDraft' | 'merge', stage: 'before' | 'after') => {
+    const maybeFail = (op: 'openDraft' | 'merge' | 'redeploy', stage: 'before' | 'after') => {
       const forced = this.forceFail.indexOf(`${op}:${stage}`)
       if (forced >= 0) this.forceFail.splice(forced, 1)
       if (forced >= 0 || this.random() < this.errorRate / 2) {
@@ -215,7 +224,7 @@ export class FakeCentral {
         if (n == null) {
           n = this.prs.size + 1
           this.byItem.set(key, n)
-          this.prs.set(n, { number: n, workItem: key, head: '', commits: 0, merged: null, mergedAt: 0, landed: false, failed: false })
+          this.prs.set(n, { number: n, workItem: key, head: '', commits: 0, merged: null, mergedAt: 0, landed: false, failed: false, attempt: 0, failures: 0 })
         }
         const pr = this.prs.get(n)!
         if (pr.merged) this.anomalies.push(`draft for ${key} after its PR #${n} was merged`)
@@ -242,6 +251,31 @@ export class FakeCentral {
         maybeFail('merge', 'after')
         return pr.merged
       },
+      // The server's deploy state (GET /api/gateway/deploy-status).
+      deployState: async (number) => {
+        if (!alive()) return never
+        const pr = this.prs.get(number)
+        if (!pr) return null
+        return pr.landed ? 'landed' : pr.failed ? 'failed' : pr.merged ? 'pending' : 'open'
+      },
+      // POST /api/gateway/redeploy (crates/server/src/deploys.rs): a failed merge gets a new deploy run.
+      redeploy: async (number) => {
+        if (!alive()) return never
+        maybeFail('redeploy', 'before')
+        const pr = this.prs.get(number)
+        if (!pr?.merged) throw new Error(`gateway: 409 PR #${number} is not merged`)
+        if (pr.landed) throw new Error(`gateway: 409 PR #${number} has landed: there is nothing to redeploy`)
+        const result = (requested: boolean) => ({ number, work_item: pr.workItem, state: 'pending' as const, requested, run_id: number, run_attempt: pr.attempt + 1, attempt: pr.attempt, detail: null })
+        if (!pr.failed) return result(false)
+        pr.failed = false
+        pr.attempt++
+        this.redeploys++
+        this.redeployed.add(pr.workItem)
+        if (this.redeploys > [...this.prs.values()].reduce((n, p) => n + p.failures, 0)) this.anomalies.push(`PR #${number} redeployed more often than it failed`)
+        this.deploy(pr)
+        maybeFail('redeploy', 'after')
+        return result(true)
+      },
     }
   }
 
@@ -260,6 +294,7 @@ export class FakeCentral {
       if (run.fail) {
         if (!own.landed && !own.failed) {
           own.failed = true
+          own.failures++
           this.deployFailures++
           out.push(this.event('DeployFailed', own, run.at))
         }
@@ -285,7 +320,7 @@ export class FakeCentral {
   }
 
   private event(kind: string, pr: Pr, at: number): CentralEvent {
-    return { seq: ++this.seq, company_id: 'soak', kind, payload: { work_item: pr.workItem, merged_sha: pr.merged, source: 'soak' }, created_at: at }
+    return { seq: ++this.seq, company_id: 'soak', kind, payload: { work_item: pr.workItem, merged_sha: pr.merged, source: 'soak', attempt: pr.attempt }, created_at: at }
   }
 
   private deploy(pr: Pr) {
@@ -372,7 +407,16 @@ export interface SoakReport {
   rejections: string[]
   loopErrors: string[]
   halted: string | null
-  events: { reloads: number; modelLosses: number; deployFailures: number; absentDay: number | null; jobTimeouts: number }
+  events: {
+    reloads: number
+    modelLosses: number
+    deployFailures: number
+    /** Redeploys after the CEO's Retry on a DeployFailed ticket (FEAT-085), and the redeployed items that were published. */
+    redeploys: number
+    redeployedPublished: number
+    absentDay: number | null
+    jobTimeouts: number
+  }
   /** Stage rows reused (after the reload) or adopted (by a retried phase), from the activity record. */
   reusedStages: number
   adoptedStages: number
@@ -765,7 +809,15 @@ export async function runSoak(o: SoakOptions): Promise<SoakReport> {
     rejections,
     loopErrors: [...page.loop.errors],
     halted: page.loop.halted,
-    events: { reloads, modelLosses, deployFailures: central.deployFailures, absentDay: o.absentDay ?? null, jobTimeouts: commands.filter((c) => c.kind === 'JobFailed').length },
+    events: {
+      reloads,
+      modelLosses,
+      deployFailures: central.deployFailures,
+      redeploys: central.redeploys,
+      redeployedPublished: items.filter((i) => central.redeployed.has(i.id) && i.status === 'published').length,
+      absentDay: o.absentDay ?? null,
+      jobTimeouts: commands.filter((c) => c.kind === 'JobFailed').length,
+    },
     reusedStages: reuse.reused,
     adoptedStages: reuse.adopted,
     activityRows: activityRows.length,

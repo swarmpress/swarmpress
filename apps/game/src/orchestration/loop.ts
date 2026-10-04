@@ -188,6 +188,7 @@ export interface LoopSizes {
   seen: number
   completed: number
   landed: number
+  failures: number
   open: number
   queue: number
   ready: number
@@ -238,12 +239,20 @@ interface HeldDeploy {
   source?: string
   /** A DeployFailed (ADR-0059): the item is blocked with a `DeployFailed` ticket. */
   failed?: boolean
+  /**
+   * The server's `attempt` of a DeployFailed: how many redeploys preceded the
+   * failure (FEAT-085). A failure after a redeploy has a higher one.
+   */
+  attempt?: number
 }
 
 interface QueuedJob {
   json: string
   rec: JobRecord
 }
+
+/** One deploy failure of a work item: its server `attempt` (FEAT-085). */
+const failureKey = (workItem: string, attempt: number) => `${workItem}#${attempt}`
 
 /** Earliest due step first, ties by job id. */
 const runsBefore = (a: JobRecord, b: JobRecord) => a.due_step < b.due_step || (a.due_step === b.due_step && a.job_id < b.job_id)
@@ -277,6 +286,8 @@ export class OrchestrationLoop {
   private completed = new BoundedSet<number>(KEEP_SETTLED)
   /** Work items whose DeployLanded is in the log; the newest `KEEP_SETTLED`. */
   private landed = new BoundedSet<string>(KEEP_SETTLED)
+  /** `<work item>#<attempt>` of every DeployFailed applied in this session (one ticket per failure); the newest `KEEP_SETTLED`. */
+  private failures = new BoundedSet<string>(KEEP_SETTLED)
   /** Jobs waiting or running; the running one stays in here until it finished. */
   private queue: QueuedJob[] = []
   /** Jobs taken in whose outcome is not applied yet (and that the loop did not give up on). */
@@ -606,10 +617,22 @@ export class OrchestrationLoop {
    * merged and waits for its deploy), which blocks the item with a
    * `DeployFailed` ticket. Without it the item would wait for a deploy that
    * never comes: a silent stall. Rejects when it could not be persisted.
+   *
+   * The CEO's `Retry` on that ticket redeploys (FEAT-085: the publish job asks
+   * the server to re-run the failed deploy). If that deploy fails too, the
+   * server sends a new DeployFailed with a higher `attempt`, which blocks the
+   * item again with a new ticket; the same failure delivered twice (same
+   * `attempt`) raises no second ticket.
    */
-  async deployFailed(workItem: string, info: { mergedSha?: string; source?: string } = {}): Promise<void> {
-    if (this.landed.has(workItem) || this.holds(workItem, true)) return
-    this.deploys.push({ workItem, ...info, failed: true })
+  async deployFailed(workItem: string, info: { mergedSha?: string; source?: string; attempt?: number } = {}): Promise<void> {
+    if (this.landed.has(workItem)) return
+    if (info.attempt != null && this.failures.has(failureKey(workItem, info.attempt))) return
+    const held = this.deploys.find((d) => d.workItem === workItem && d.failed)
+    if (held) {
+      // One held failure per item: a newer attempt replaces the older one.
+      if (info.attempt == null || (held.attempt ?? -1) >= info.attempt) return
+      Object.assign(held, info)
+    } else this.deploys.push({ workItem, ...info, failed: true })
     await this.persistDeploys()
   }
 
@@ -619,7 +642,7 @@ export class OrchestrationLoop {
     if (typeof p.work_item !== 'string') return
     const info = { mergedSha: typeof p.merged_sha === 'string' ? p.merged_sha : undefined, source: typeof p.source === 'string' ? p.source : undefined }
     if (ev.kind === 'DeployLanded') await this.deployLanded(p.work_item, info)
-    else if (ev.kind === 'DeployFailed') await this.deployFailed(p.work_item, info)
+    else if (ev.kind === 'DeployFailed') await this.deployFailed(p.work_item, { ...info, attempt: typeof p.attempt === 'number' ? p.attempt : undefined })
   }
 
   /** The loop's collections and their sizes (diagnostics; the soak test's growth check). */
@@ -630,6 +653,7 @@ export class OrchestrationLoop {
       seen: this.seen.size,
       completed: this.completed.size,
       landed: this.landed.size,
+      failures: this.failures.size,
       open: this.open.size,
       queue: this.queue.length,
       ready: this.ready.length,
@@ -727,6 +751,7 @@ export class OrchestrationLoop {
         continue
       }
       changed = true
+      if (d.failed && d.attempt != null) this.failures.add(failureKey(d.workItem, d.attempt))
       const sha = d.mergedSha ? ` (commit ${d.mergedSha.slice(0, 7)})` : ''
       const minute = this.o.sim.minute_of_day()
       const post = {

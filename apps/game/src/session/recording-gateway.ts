@@ -1,13 +1,13 @@
 /**
  * The session's gateway wrapper (`hook.gateway()`, the e2e suites): records
- * every draft and merge and forwards each call unchanged, attribution
+ * every draft, merge and redeploy and forwards each call unchanged, attribution
  * included (ADR-0056 decision 8, as narrowed by ADR-0058: the persona as the
  * draft's author, the provenance trailers on the squash commit).
  */
 import type { Attribution, OrchestratorGateway } from '../net/central'
 
 export interface GatewayCall {
-  op: 'draft' | 'merge'
+  op: 'draft' | 'merge' | 'redeploy'
   workItem?: string | null
   number: number
   branch?: string
@@ -39,5 +39,15 @@ export function recordingGateway(inner: OrchestratorGateway, calls: GatewayCall[
       keep({ op: 'merge', number, headSha, mergedSha: sha, attribution: parsed(attribution) })
       return sha
     },
+    ...(inner.deployState ? { deployState: (number: number) => inner.deployState!(number) } : {}),
+    ...(inner.redeploy
+      ? {
+          async redeploy(number: number) {
+            const r = await inner.redeploy!(number)
+            keep({ op: 'redeploy', workItem: r.work_item, number, attribution: null })
+            return r
+          },
+        }
+      : {}),
   }
 }

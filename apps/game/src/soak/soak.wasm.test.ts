@@ -118,6 +118,10 @@ describe.skipIf(!built)(`a ${DAYS}-day soak on the fake model (W)`, () => {
     expect(report.events.reloads).toBe(1)
     expect(report.events.modelLosses).toBe(1)
     expect(report.events.deployFailures).toBeGreaterThanOrEqual(1)
+    // FEAT-085: the CEO's Retry on the DeployFailed ticket redeployed the merge, and the new deploy published it.
+    expect(report.answers['deploy-failed:retry']).toBeGreaterThanOrEqual(1)
+    expect(report.events.redeploys).toBeGreaterThanOrEqual(1)
+    expect(report.events.redeployedPublished).toBeGreaterThanOrEqual(1)
     expect(report.faults.invalid).toBeGreaterThan(0)
     expect(report.faults.hang).toBeGreaterThan(0)
     expect(report.faults.unavailable).toBeGreaterThan(0)

@@ -322,6 +322,40 @@ describe('OrchestrationLoop', () => {
     expect(loop.pendingDeploys).toEqual([])
   })
 
+  // FEAT-085: Retry redeploys; a failed redeploy is a new failure (a higher attempt) with a new ticket.
+  it('applies a DeployFailed of a redeploy as a new failure, and the same failure only once', async () => {
+    const sim = new StubSim()
+    const store = new MemStore()
+    const loop = new OrchestrationLoop({ sim, store, companyId: 'co', orchestrator: { run: async () => '[]' }, codec })
+    sim.items = [{ id: 'work-item-1', status: 'scheduled' }]
+    sim.reject = (json) => (/Deploy(Landed|Failed)/.test(json) && sim.items[0].status !== 'scheduled' ? 'not waiting for a deploy' : undefined)
+    const failedEvent = (attempt: number) => ({ kind: 'DeployFailed', payload: { work_item: 'work-item-1', merged_sha: 'abcdef0123', source: 'poll', attempt } })
+    await loop.deployEvent(failedEvent(0))
+    loop.boundary()
+    sim.items[0].status = 'blocked'
+    // The same failure again (a repeated delivery): held, then dropped, never a second ticket.
+    await loop.deployEvent(failedEvent(0))
+    expect(loop.pendingDeploys).toEqual([])
+    // Retry → the publish job redeploys → the item waits for its deploy again; the redeploy fails too.
+    sim.items[0].status = 'scheduled'
+    await loop.deployEvent(failedEvent(1))
+    // A newer failure replaces an older one still held.
+    await loop.deployEvent(failedEvent(0))
+    expect(JSON.parse(store.kv.get(PENDING_DEPLOYS_KEY)!)).toEqual([{ workItem: 'work-item-1', mergedSha: 'abcdef0123', source: 'poll', attempt: 1, failed: true }])
+    loop.boundary()
+    await loop.flush()
+    expect(sim.applied).toEqual(['{"DeployFailed":{"work_item":"work-item-1"}}', '{"DeployFailed":{"work_item":"work-item-1"}}'])
+    expect(loop.sizes().failures).toBe(2)
+    // Retry again; the second redeploy lands.
+    await loop.deployEvent(failedEvent(1))
+    await loop.deployEvent({ kind: 'DeployLanded', payload: { work_item: 'work-item-1', merged_sha: 'abcdef0123', source: 'poll' } })
+    loop.boundary()
+    expect(sim.applied.slice(2)).toEqual(['{"DeployLanded":{"work_item":"work-item-1"}}'])
+    // Nothing after it landed counts.
+    await loop.deployEvent(failedEvent(2))
+    expect(loop.pendingDeploys).toEqual([])
+  })
+
   it('drops a held deploy event whose item was closed instead of holding it for good', async () => {
     const sim = new StubSim()
     const store = new MemStore()

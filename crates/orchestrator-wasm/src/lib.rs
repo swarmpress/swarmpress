@@ -42,8 +42,8 @@ use agents::{Llm, LlmError, LlmRequest};
 use async_trait::async_trait;
 use js_sys::{Array, Function, Promise, Reflect, JSON};
 use orchestrator::{
-    Attribution, DraftPr, Gateway, GatewayError, JobFailure, JobRequest, Orchestrator, Outcome,
-    Progress, ProgressEvent, SiteBinding, StageRow, Store, StoreError,
+    Attribution, DeployState, DraftPr, Gateway, GatewayError, JobFailure, JobRequest, Orchestrator,
+    Outcome, Progress, ProgressEvent, Redeploy, SiteBinding, StageRow, Store, StoreError,
 };
 use serde_json::{json, Value};
 use wasm_bindgen::prelude::*;
@@ -101,6 +101,20 @@ export interface OrchestratorGateway {
     Promise<{ number: number; branch: string; head_sha: string } | string>
   /** Returns the merge commit sha (or `{merged_sha}`). */
   merge(number: number, headSha: string, attributionJson?: string | null): Promise<string | { merged_sha: string }>
+  /**
+   * Optional (FEAT-085): the deploy state of a merged PR (`GET /api/gateway/deploy-status`):
+   * `open`, `closed`, `pending`, `landed`, `failed` or `unknown`, as a string or `{state}`;
+   * `null` when not observed. Without it deploys are not observed and a publish job never
+   * redeploys.
+   */
+  deployState?(number: number): Promise<string | { state: string } | null> | string | { state: string } | null
+  /**
+   * Optional (FEAT-085): deploy a merge whose deployment failed again
+   * (`POST /api/gateway/redeploy`) → `{state, requested, run_id, attempt, detail}`. Rejects when
+   * refused (landed, nothing to re-run, GitHub refused). A publish job for a merged item whose
+   * deploy state is `failed` calls it; without it that job fails loudly.
+   */
+  redeploy?(number: number): Promise<{ state: string; requested?: boolean; run_id?: number | null; attempt?: number; detail?: string | null }>
 }
 
 /**
@@ -443,6 +457,49 @@ impl Gateway for JsGateway {
             })
             .ok_or_else(|| gw("merge must return the merged sha".into()))
     }
+
+    /// `deployState(number)`, optional: without it deploys are not observed.
+    async fn deploy_state(&self, pr_number: u64) -> Result<Option<DeployState>, GatewayError> {
+        if !has_method(&self.obj, "deployState") {
+            return Ok(None);
+        }
+        #[allow(clippy::cast_precision_loss)]
+        let n = JsValue::from_f64(pr_number as f64);
+        let v = call(&self.obj, "deployState", &[n]).await.map_err(gw)?;
+        // A state name, or `{state}` (an object or its JSON text).
+        let state = match v.as_string().filter(|s| !s.trim_start().starts_with('{')) {
+            Some(s) => Some(Value::String(s)),
+            None => json_of(&v).map_err(gw)?.map(|v| match v.get("state") {
+                Some(s) => s.clone(),
+                None => v,
+            }),
+        };
+        state
+            .filter(|s| !s.is_null())
+            .map(|s| serde_json::from_value(s).map_err(|e| gw(format!("deployState answer: {e}"))))
+            .transpose()
+    }
+
+    /// `redeploy(number)`, optional: without it a redeploy fails loudly.
+    async fn redeploy(&self, pr_number: u64) -> Result<Redeploy, GatewayError> {
+        if !has_method(&self.obj, "redeploy") {
+            return Err(gw(format!(
+                "the gateway has no redeploy: PR #{pr_number} cannot be deployed again"
+            )));
+        }
+        #[allow(clippy::cast_precision_loss)]
+        let n = JsValue::from_f64(pr_number as f64);
+        let v = call(&self.obj, "redeploy", &[n]).await.map_err(gw)?;
+        let v = json_of(&v)
+            .map_err(gw)?
+            .ok_or_else(|| gw("redeploy returned nothing".into()))?;
+        serde_json::from_value(v).map_err(|e| gw(format!("redeploy answer: {e}")))
+    }
+}
+
+/// Whether the JS object has a callable `name`.
+fn has_method(obj: &JsValue, name: &str) -> bool {
+    Reflect::get(obj, &JsValue::from_str(name)).is_ok_and(|f| f.is_function())
 }
 
 // ---------------------------------------------------------------- Llm

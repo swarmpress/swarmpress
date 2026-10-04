@@ -303,6 +303,54 @@ describe('orchestrator-wasm under Bun', () => {
     expect(store.posts.length).toBe(posts.length)
   })
 
+  // FEAT-085: the CEO's Retry on a DeployFailed ticket runs the publish job again; the merge is
+  // done, so the job asks the gateway to deploy again (deployState, then redeploy) and completes.
+  test('a publish job for a merged item whose deploy failed redeploys through the JS gateway', async () => {
+    const store = new MemJsStore()
+    store.putArtifact(COMPANY, 'work-item-1', JSON.stringify({ brief_ref: 1, path: PATH, branch: 'drafts/content-1', pr_number: 4, head_sha: 'h1', merged_sha: 'm1' }))
+    const calls: string[] = []
+    let state = 'failed'
+    let refuse: string | null = null
+    const gateway = {
+      openDraft: () => Promise.reject(new Error('no draft in this test')),
+      merge: () => Promise.reject(new Error('no second merge')),
+      // A state name or {state}: both are accepted.
+      deployState: (n: number) => (calls.push(`state #${n}`), n % 2 ? state : { state }),
+      async redeploy(n: number) {
+        calls.push(`redeploy #${n}`)
+        if (refuse) throw new Error(refuse)
+        const requested = state === 'failed'
+        state = 'pending'
+        return { number: n, work_item: 'work-item-1', state, requested, run_id: 77, run_attempt: 1, attempt: 1, detail: 're-run requested' }
+      },
+    }
+    const site = JSON.stringify({ ...JSON.parse(SITE), simulate_deploy: false })
+    const orch = new OrchestratorHandle(store, gateway, fakeModel(), site)
+    const job = { company_id: COMPANY, job_id: 7, kind: 'publish', project: 'p', work_item: 'work-item-1', brief_ref: '1', revision: 0, staff: MVP_TEAM }
+    const statusPosts = () => store.posts.filter((p) => p.post.type === 'status').map((p) => p.post.text)
+
+    const out = JSON.parse(await orch.run(JSON.stringify(job)))
+    // Completed with the merge it had; no DeployLanded of its own: the sim waits for the deploy.
+    expect(out).toEqual([{ JobCompleted: { job_id: 7, digest: { ok: true, score: 0, words: 0, qa_defects: 0, artifact_sha: 'm1' } } }])
+    expect(calls).toEqual(['state #4', 'redeploy #4'])
+    expect(statusPosts()).toEqual(['PR #4: its deploy failed; deploying it again.'])
+    // Run again (a reload): the deploy is pending, nothing is asked twice.
+    await orch.run(JSON.stringify(job))
+    expect(calls).toEqual(['state #4', 'redeploy #4', 'state #4'])
+
+    // The redeploy failed too, and GitHub refuses the next re-run: the run rejects (the host
+    // retries, then reports JobFailed{Infrastructure}) and the reason is in the item's thread.
+    state = 'failed'
+    refuse = 'POST /api/gateway/redeploy: 403 GitHub refused to re-run the deploy workflow'
+    await expect(orch.run(JSON.stringify({ ...job, job_id: 9 }))).rejects.toThrow(/403 GitHub refused/)
+    expect(statusPosts()[1]).toContain('PR #4: the deploy could not be run again: redeploy: ')
+    expect(state).toBe('failed')
+
+    // A gateway without the optional methods never redeploys (deploys are not observed).
+    const plain = new OrchestratorHandle(store, { openDraft: gateway.openDraft, merge: gateway.merge }, fakeModel(), site)
+    expect(JSON.parse(await plain.run(JSON.stringify({ ...job, job_id: 10 })))[0].JobCompleted.digest.ok).toBe(true)
+  })
+
   test('infrastructure failures reject; agent failures resolve not-ok', async () => {
     const store = new MemJsStore()
     const model = createMvpModel()

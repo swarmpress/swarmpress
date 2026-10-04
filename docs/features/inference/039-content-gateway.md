@@ -23,6 +23,13 @@ paths:
   - crates/server/src/deploys.rs
   - crates/server/tests/deploys.rs
   - crates/server/migrations/0003_deploys.sql
+  - crates/server/migrations/0005_redeploy.sql
+  - crates/github/src/types.rs
+  - crates/github/src/fake.rs
+  - crates/github/src/http.rs
+  - crates/github/tests/fake_github.rs
+  - crates/github/tests/http_contract.rs
+  - crates/orchestrator/tests/redeploy.rs
   - crates/github/src/provenance.rs
   - crates/github/tests/content_repo.rs
   - crates/orchestrator/src/gateway.rs

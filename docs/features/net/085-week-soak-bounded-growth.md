@@ -19,10 +19,21 @@ paths:
   - apps/game/src/orchestrator/index.ts
   - apps/game/src/llm/fake-llm.ts
   - crates/sim-core/tests/finance_week.rs
+  - crates/server/src/deploys.rs
+  - crates/server/tests/deploys.rs
+  - crates/server/migrations/0005_redeploy.sql
+  - crates/orchestrator/src/run.rs
+  - crates/orchestrator/src/gateway.rs
+  - crates/orchestrator/tests/redeploy.rs
+  - crates/orchestrator-wasm/src/lib.rs
+  - crates/orchestrator-wasm/tests/loop.test.ts
+  - apps/game/src/net/central.ts
+  - apps/game/src/net/central.test.ts
 adrs:
   - ADR-0058
   - ADR-0059
   - ADR-0060
+  - ADR-0061
 ---
 
 # A week without stalls: bounded growth and the soak test
@@ -58,10 +69,27 @@ The server's `DeployFailed` event is applied as `DeployFailed{work_item}` once t
 for its deploy (`OrchestrationLoop.deployFailed`), which blocks it with a `DeployFailed` ticket.
 Before, the session ignored the event and the item waited for a deploy that never came.
 
-Not solved here: the CEO's `Retry` on that ticket re-runs the Publish job, which is idempotent
-(no second merge), so it triggers no new deploy; the item lands with the next deploy that
-carries its merge (the server lands every pending or failed merge up to a successful deploy).
-A redeploy needs a server endpoint.
+**Retry redeploys** (finding 8, closed). The CEO's `Retry` on that ticket requests the Publish
+job again (the sim is unchanged). The merge is done, so the job asks the gateway for the merge's
+deploy state; when the server reports `failed` it calls `POST /api/gateway/redeploy` instead of
+merging, posts "its deploy failed; deploying it again" and completes, and the sim waits for
+`DeployLanded` as after a merge (`Orchestrator::redeploy_if_failed`, `crates/orchestrator/src/run.rs`).
+The signal is the server's deploy state, not anything in the sim: a run of the same job after a
+reload finds the merge `pending` (or `landed`) and calls nothing.
+
+- The server re-runs the failed jobs of the deploy workflow's run (`deploy.yml`) on the commit
+  whose deployment failed, a new attempt on the same commit, so the poller and the webhook see
+  it like the first; the merge is `pending` again from the request (its age limit restarts).
+  Idempotent per failed run attempt; refused for a merge that landed, one with no run to re-run,
+  or when GitHub refuses the re-run (the Actions write permission): the job then fails with the
+  server's reason in the item's thread, the host reports `JobFailed{Infrastructure}`, and the item
+  stays blocked with an escalation ticket (rule 11). See the "Redeploy" section of
+  `crates/server/README.md`.
+- If the redeploy fails too, the server sends a new `DeployFailed` with a higher `attempt`: a new
+  ticket. The loop applies each `(work item, attempt)` once, so the same failure delivered twice
+  raises no second ticket.
+- The soak's fake central server redeploys the same way, and the soak asserts that the CEO's
+  `Retry` redeployed the failed merge and that the item was published.
 
 ## The soak
 
@@ -71,7 +99,7 @@ injector (2–40 s per call, 5% invalid answers, 2% hangs until the 120 s stage 
 loss mid-job, one draft that hangs twice and fails with `JobFailed{Timeout}`), a fake central
 server (one PR per item, idempotent merges, 1% gateway errors plus one forced error after the
 server did the work for a draft and a merge, a deploy per merge 60–240 s later, one deploy
-failure), the CEO answering by policy (and absent for one day), and one page reload mid-draft.
+failure and its redeploy), the CEO answering by policy (and absent for one day), and one page reload mid-draft.
 Vitest fake timers drive the wall clock: a game day takes about five seconds.
 
 It asserts: every item ends published or killed, or has a pending job, an open ticket or a

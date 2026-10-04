@@ -171,6 +171,39 @@ export interface DraftResult {
   committed: boolean
 }
 
+/** What became of a gateway pull request (`GET /api/gateway/deploy-status`). */
+export type DeployState = 'open' | 'closed' | 'pending' | 'landed' | 'failed' | 'unknown'
+
+export interface DeployStatus {
+  number: number
+  content_id: string
+  work_item: string | null
+  path: string
+  state: DeployState
+  merged_sha: string | null
+  merged_at: number | null
+  landed_at: number | null
+  closed_at: number | null
+  detail: string | null
+  checked_at: number | null
+  now: number
+}
+
+/** The answer of `POST /api/gateway/redeploy` (FEAT-085). */
+export interface RedeployResult {
+  number: number
+  work_item: string | null
+  /** `pending` after a redeploy. */
+  state: DeployState
+  /** Whether GitHub was asked to re-run the failed deploy (`false`: it was waiting for a deployment already). */
+  requested: boolean
+  run_id: number | null
+  run_attempt: number | null
+  /** Redeploys of this merge so far. */
+  attempt: number
+  detail: string | null
+}
+
 export interface CentralEvent {
   seq: number
   company_id: string
@@ -359,6 +392,26 @@ export class CentralClient {
     const body: { number: number; head_sha: string; attribution?: Attribution } = { number, head_sha: headSha }
     if (attribution) body.attribution = attribution
     return this.json('POST', '/api/gateway/merge', { json: body, headers: { [LEASE_HEADER]: token } })
+  }
+
+  /** `GET /api/gateway/deploy-status?number=`: a read, no lease; `null` for a pull request the server does not know (404). */
+  async deployStatus(number: number): Promise<DeployStatus | null> {
+    try {
+      return await this.json<DeployStatus>('GET', `/api/gateway/deploy-status?number=${encodeURIComponent(String(number))}`)
+    } catch (e) {
+      if (e instanceof CentralError && e.status === 404) return null
+      throw e
+    }
+  }
+
+  /**
+   * `POST /api/gateway/redeploy {number}` (FEAT-085): deploy a merge whose deployment failed
+   * again (the server re-runs the failed jobs of its deploy workflow run). Idempotent while the
+   * merge waits for a deployment. Refusals throw a `CentralError`: 409 landed, not merged or
+   * nothing to re-run (or the lease is not held), 403 GitHub refused the re-run.
+   */
+  redeploy(token: string, number: number): Promise<RedeployResult> {
+    return this.json('POST', '/api/gateway/redeploy', { json: { number }, headers: { [LEASE_HEADER]: token } })
   }
 
   /**
@@ -611,6 +664,10 @@ export interface OrchestratorGateway {
     attribution?: Attribution | string | null,
   ): Promise<{ number: number; branch: string; head_sha: string }>
   merge(number: number, headSha: string, attribution?: Attribution | string | null): Promise<string>
+  /** The deploy state of a merged pull request, `null` when not observed (FEAT-085). Optional. */
+  deployState?(number: number): Promise<DeployState | null>
+  /** Deploy a merge whose deployment failed again (FEAT-085). Optional; rejects when refused. */
+  redeploy?(number: number): Promise<RedeployResult>
 }
 
 function attributionOf(a: Attribution | string | null | undefined): Attribution | null {
@@ -636,6 +693,12 @@ export function centralGateway(client: CentralClient, token: () => string): Orch
     },
     async merge(number, headSha, attribution) {
       return (await client.merge(token(), number, headSha, attributionOf(attribution))).merged_sha
+    },
+    async deployState(number) {
+      return (await client.deployStatus(number))?.state ?? null
+    },
+    redeploy(number) {
+      return client.redeploy(token(), number)
     },
   }
 }

@@ -510,7 +510,9 @@ The index is never touched before finalise, so two open PRs cannot conflict on i
   `Model | InvalidOutput | NeedsMedia | NeedsPage | Timeout | Cancelled | Infrastructure`.
   `JobCompleted{ok:false}` stays for compatibility.
 - **`ServerCommand::DeployFailed{work_item}`**: valid when `Scheduled`; blocks the item and
-  raises `TicketKind::DeployFailed` (`Retry`/`Acknowledge`, default `Acknowledge`).
+  raises `TicketKind::DeployFailed` (`Retry`/`Acknowledge`, default `Acknowledge`). `Retry`
+  requests the Publish job again; the merge is done, so the job redeploys when the server
+  reports the deploy `failed` (`POST /api/gateway/redeploy`, FEAT-085).
 - **Tickets added:** `PublishApproval`, `StandupFailed`, `DeployFailed`, `NeedsMedia`,
   `NeedsPage`.
 - **Escalation default** (§7): the first escalation of an item defaults to `Retry`; any later

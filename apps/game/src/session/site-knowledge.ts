@@ -327,5 +327,7 @@ export function refetchAfterMerge(inner: OrchestratorGateway, keeper: SiteKnowle
       void keeper.refresh('merge')
       return sha
     },
+    ...(inner.deployState ? { deployState: (number: number) => inner.deployState!(number) } : {}),
+    ...(inner.redeploy ? { redeploy: (number: number) => inner.redeploy!(number) } : {}),
   }
 }

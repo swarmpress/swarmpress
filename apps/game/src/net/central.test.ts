@@ -93,6 +93,31 @@ describe('CentralClient', () => {
     expect(calls[1].headers[LEASE_HEADER]).toBe('lease-9')
   })
 
+  // FEAT-085: a publish job for a merged item whose deploy failed redeploys through these.
+  it('reads the deploy state (no lease) and redeploys with the lease', async () => {
+    const { client, calls } = mock(({ url, method }) => {
+      if (url.includes('/deploy-status?number=3')) return json({ number: 3, state: 'failed', detail: 'check `build` concluded failure' })
+      if (url.includes('/deploy-status')) return json({ error: 'no such gateway pull request of this company' }, 404)
+      if (method === 'POST' && url.endsWith('/api/gateway/redeploy'))
+        return (calls.at(-1)!.body as { number: number }).number === 3
+          ? json({ number: 3, work_item: 'work-item-1', state: 'pending', requested: true, run_id: 77, run_attempt: 1, attempt: 1, detail: 're-run requested' })
+          : json({ error: 'PR #4 has landed: there is nothing to redeploy' }, 409)
+      return json({ error: 'unexpected' }, 500)
+    })
+    const gw = centralGateway(client, () => 'lease-9')
+    expect(await gw.deployState!(3)).toBe('failed')
+    expect(calls[0]).toMatchObject({ method: 'GET', url: 'http://central.test/api/gateway/deploy-status?number=3' })
+    expect(calls[0].headers[LEASE_HEADER]).toBeUndefined()
+    expect(await gw.deployState!(9)).toBeNull()
+    expect(await gw.redeploy!(3)).toMatchObject({ state: 'pending', requested: true, run_id: 77, attempt: 1 })
+    expect(calls[2]).toMatchObject({ method: 'POST', url: 'http://central.test/api/gateway/redeploy', body: { number: 3 } })
+    expect(calls[2].headers[LEASE_HEADER]).toBe('lease-9')
+    const err = await gw.redeploy!(4).catch((e) => e)
+    expect(err).toBeInstanceOf(CentralError)
+    expect(err.status).toBe(409)
+    expect(err.message).toContain('has landed')
+  })
+
   it('passes attribution through the orchestrator gateway, as an object or as JSON text', async () => {
     const { client, calls } = mock(({ url }) =>
       url.endsWith('/draft')

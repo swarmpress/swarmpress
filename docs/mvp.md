@@ -181,7 +181,7 @@ the labelled mode.
 | G2 | Bind and run for real locally: client passes `site_repo`; token mode; documented single-origin run on `:8080`; env-gated live test against a sandbox repo | M |
 | G3 | Server-side checks in `check_draft`: v2 schema, article profile, closed-world links and media, create-only path, no second open PR for the path, non-empty slug | S–M |
 | G4 | Finalise on merge in the same pull request: verify head, merge base, `status: published`, blog-index entry, squash-merge | M |
-| G5 | Deploy observation by polling merged, unlanded pull requests; a success lands every merge at or before that sha; failures emit `DeployFailed`; migration `0003` | M |
+| G5 | Deploy observation by polling merged, unlanded pull requests; a success lands every merge at or before that sha; failures emit `DeployFailed`; migration `0003`. `Retry` on a `DeployFailed` ticket redeploys: `POST /api/gateway/redeploy` re-runs the failed deploy workflow run (migration `0005`, FEAT-085) | M |
 | G6 | Attribution before the first live merge: persona as author on draft commits; trailers and `Co-authored-by` on the squash commit | S–M |
 | G7 | Orphan cleanup: `POST /api/gateway/close`; a day-start sweeper | S |
 

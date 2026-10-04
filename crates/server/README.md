@@ -45,8 +45,9 @@ The token: a fine-grained personal access token whose repository access is the
 site repository only, with **Contents: read and write** (draft branches, page
 commits, the Merges API, branch deletion, the repository tarball for the
 knowledge pack), **Pull requests: read and write** (open, merge, close),
-**Actions: read** (the deploy poller's check runs) and **Metadata: read**
-(always included). These are taken from GitHub's documentation and have not
+**Actions: read** (the deploy poller's check runs; **Actions: read and write**
+for `POST /api/gateway/redeploy`, which re-runs a failed deploy workflow run)
+and **Metadata: read** (always included). These are taken from GitHub's documentation and have not
 been verified against the API by this project; a 403 in the server log names
 the call that needs more. Whether the check-runs endpoint the poller reads is
 covered by Actions: read for a fine-grained token is the least certain of
@@ -78,6 +79,7 @@ them: if the poller logs 403, merges stay `pending` and time out.
 | `SWARMPRESS_DEPLOY_POLL_MAX_AGE_SECS` | 3600 | a merge still pending this long after it was merged fails as `timed_out` and is no longer asked about (at least 60) |
 | `SWARMPRESS_DEPLOY_POLL_BATCH` | 20 | most merges asked about per repository and round, the newest (1 to 100) |
 | `SWARMPRESS_DEPLOY_CHECK` | `deploy` | name of the check run (the workflow job) whose success means the site is live |
+| `SWARMPRESS_DEPLOY_WORKFLOW` | `deploy.yml` | file name of the site's deploy workflow, whose failed run `POST /api/gateway/redeploy` re-runs |
 | `SWARMPRESS_ARTICLE_PROFILE` | `enforce` | the article profile on drafts under `content/pages/blog/`. `off` is for scripted runs that write articles outside the profile (the staged orchestrator no longer needs it; the e2e suites run with the profile on): it is accepted only with `SWARMPRESS_GITHUB=fake` (a startup error otherwise), and the site checks (create-only path, one open pull request per path) stay on. With the profile off the closed-world check (links and media against the knowledge pack) is off too: the scripted runs write articles outside the site's indexes |
 | `SWARMPRESS_STAFF_EMAIL_DOMAIN` | `staff.swarm.press` | mail domain of the git author addresses synthesised for staff personas (`<staff>+<company>@<domain>`); a host name. Choose it before the first live merge: the site's history is not rewritten |
 | `SWARMPRESS_LEASE_SECS` | 90 | company lease length |
@@ -105,6 +107,7 @@ them: if the poller logs 403, merges stay `pending` and time out.
 | `POST /api/gateway/merge` | lease required. `{number, head_sha, attribution?}` → `{merged_sha, finalized?}`; only PRs this company opened through the gateway; 409 if the head moved or the PR was closed. An article is finalised in the same pull request first (see "Finalise on merge") and the reply carries `finalized: {index: "added" \| "present" \| "absent" \| "skipped"}`. The merge is then `pending` until its deployment is observed |
 | `POST /api/gateway/close` | lease required. `{number}` → `{number, closed: true, already_closed, branch_deleted}`: close a pull request this company opened through the gateway, without merging, and delete its `drafts/` branch (for cancelled work). 404 for any other pull request, 409 for a merged one. Idempotent: closing again answers `already_closed: true` and calls nothing; a close that failed half-way is completed by the next one |
 | `GET /api/gateway/knowledge` | lease required (428 without the header, 409 with a stale one), like draft and merge. The knowledge pack (ADR-0061) of the site at the head of the company's base branch: 200 with the pack JSON `{commit, files, manifest, pages}` (`Content-Type: application/json`), `ETag: "<head sha>"` and `Cache-Control: no-cache`; 304 with the same `ETag` and `Cache-Control` and no body when `If-None-Match` names the head (weak, listed or `*` too). 404 when the base branch does not exist, 413 when the site is over the snapshot caps (`GitHubError::TooLarge`), 502 when a carried file is broken (an index that is not JSON) or GitHub fails. See "Knowledge pack" |
+| `POST /api/gateway/redeploy` | lease required. `{number}` (or `{work_item}`: its newest pull request) → `{number, work_item, state, requested, run_id, run_attempt, attempt, detail}`. Deploys a merge whose deployment `failed` again: re-runs the failed jobs of the newest run of the deploy workflow (`SWARMPRESS_DEPLOY_WORKFLOW`) on the commit whose deployment failed; the merge is `pending` again from now. A merge already `pending` answers 200 with `requested: false` and asks GitHub nothing (idempotent per failed run attempt). 409 for a merge that landed, a pull request that is not merged, or a commit with no run of the deploy workflow; 403 when GitHub refuses the re-run (it then stays `failed`). See "Redeploy" |
 | `GET /api/gateway/deploy-status?number=` (or `?work_item=`) | session required, no lease. What became of one of the company's gateway pull requests: `{number, content_id, work_item, path, state, merged_sha, merged_at, landed_at, closed_at, detail, checked_at, now}` with `state` one of `open`, `closed`, `pending`, `landed`, `failed`, `unknown`. Instants are unix ms on the server's clock (`now`). Reads the record only. 400 unless exactly one key is given, 404 for an unknown pull request |
 | `GET /api/events?after=&limit=` | `{events: [{seq, company_id, kind, payload, created_at}], last_seq}` (oldest first, max 500) |
 | `GET /ws/events?after=` | WebSocket (cookie auth): backlog after `after`, then live events, one JSON text frame each |
@@ -303,9 +306,40 @@ transaction as the transition.
 - **A failed merge lands later** if a later deployment succeeds, or if its own
   workflow is re-run and succeeds while it is still inside the polling window.
 - **Events.** `DeployLanded` and `DeployFailed` carry
-  `{content_id, work_item, number, merged_sha, deployed_sha, state, detail, environment, source}`.
+  `{content_id, work_item, number, merged_sha, deployed_sha, state, detail, environment, source, attempt}`.
   `merged_sha` is the pull request's own squash commit; `deployed_sha` the
-  commit whose deployment was observed.
+  commit whose deployment was observed; `attempt` the number of redeploys
+  before the event (a `DeployFailed` with a higher one is a new failure).
+
+### Redeploy (FEAT-085)
+
+`POST /api/gateway/redeploy` deploys a `failed` merge again; the browser's
+publish job calls it when the CEO answers `Retry` on a `DeployFailed` ticket
+(the merge is done, so there is nothing to merge).
+
+- **Mechanism: re-run the failed jobs** of the deploy workflow's run
+  (`POST /repos/{o}/{r}/actions/runs/{id}/rerun-failed-jobs`), not
+  `workflow_dispatch`. A re-run is a new attempt of the same run on the same
+  commit, so its check runs belong to the merge commit the poller watches and
+  its `deployment_status` names that commit. A `workflow_dispatch` runs at the
+  head of the base branch, a commit the gateway may not have merged (it could
+  not be placed among the merges). The site's `deploy.yml` allows both (`push`
+  to `main` and `workflow_dispatch`); both need the Actions write permission.
+- **Which run.** The newest run of `SWARMPRESS_DEPLOY_WORKFLOW` on the commit
+  whose deployment failed: the merge itself, or, for a superseded merge, the
+  later merge whose deployment failed (`deploy_failed_sha`); its success lands
+  both (at or before). A run still going, or one that succeeded after all, is
+  not re-run: the merge is `pending` again and the observation decides. No run
+  at all (a merge that timed out without one) is a 409: start the workflow by
+  hand or merge again.
+- **State.** The merge is `pending` from the request (`deploy_since`: the age
+  limit restarts), `deploy_attempt` counts up, and `deploy_rerun` records the
+  run attempt that was re-run (`<run id>:<attempt>`), so a second request for
+  the same failed attempt changes nothing. For one poll interval after the
+  request a failed verdict is read as still running: GitHub replaces the
+  failed attempt's check runs only once the new attempt's jobs are queued.
+- **Refusals** leave the merge `failed`: GitHub's 403 (no Actions write
+  permission) is answered with a 403 that says so.
 - **Not covered:** a deployment of a commit the gateway did not merge (a push
   by hand) cannot be placed among the merges, so it lands nothing by itself.
 
@@ -341,6 +375,7 @@ Migrations (`migrations/`, applied at startup):
 | `0002_executor.sql` | `company_executors`: the executor lease with its fencing epoch (ADR-0045) |
 | `0003_deploys.sql` | on `gateway_prs`: `merged_at`, `landed_at`, `deploy_state`, `deploy_detail`, `deploy_checked_at` (deploy observation), `closed_at` (`POST /api/gateway/close`), `final_head` (finalise on merge). Pull requests merged before it get `deploy_state = 'unknown'` |
 | `0004_site_binding.sql` | `gateway_prs_retired`: a company's settled gateway pull requests of a repository it was rebound away from (`PATCH /api/companies/me`), with that repository and base branch and `retired_at` |
+| `0005_redeploy.sql` | on `gateway_prs`: `deploy_since`, `deploy_failed_sha`, `deploy_attempt`, `deploy_rerun` (`POST /api/gateway/redeploy`) |
 
 ## Modules
 
@@ -384,7 +419,7 @@ cargo clippy -p server -p testkit --all-targets -- -D warnings
 | `tests/knowledge.rs` | `GET /api/gateway/knowledge`: the pack of the base head with its `ETag`, `Cache-Control` and `Content-Type`; 304 on a matching (also weak or listed) `If-None-Match`; the second request is a cache hit; session and lease required (401, 428, 409 after a takeover), 404 without the base branch; a merge drops the cached pack and the next request answers the new head (new ETag, the merged article in `pages`); 413 for `TooLarge` (route and draft), 502 for a broken index; the closed-world refusal (422) of an unknown link and of media not in the index, nothing written; the fake GitHub path: a repo seeded by `SWARMPRESS_FAKE_SITE` gives the mini fixture's pack, the profile off accepts an article outside the closed world, an unseeded repo gives an empty valid pack. |
 | `tests/attribution.rs` | The persona is the author of draft commits and the platform the committer; the squash commit carries `Co-authored-by` and the trailers, with the platform as author; the executor defaults to the lease holder; every malformed attribution answers 400 on draft and merge and reaches GitHub with nothing; without attribution nothing changes. |
 | `tests/close.rs` | `POST /api/gateway/close`: the pull request is closed and its branch deleted once; closing again calls nothing; foreign and hand-made pull requests answer 404 and are untouched; merged ones answer 409; the lease is required; a closed one cannot be merged and frees its path; an interrupted close is completed. |
-| `tests/deploys.rs` | The poller's round against the fake GitHub and the manual clock: a success lands the merge, a failure emits one `DeployFailed` and a re-run lands it, a burst of merges with one deployment lands all at or before it (poller and webhook), a superseded merge fails with the deployment that replaced it, a merge nobody deployed times out; `deploy-status` (states, scoping); the poller does not run with the fake or with simulated deploys; simulated deploys with a real GitHub refuse to start; the background task against a wiremock GitHub. |
+| `tests/deploys.rs` | The poller's round against the fake GitHub and the manual clock: a success lands the merge, a failure emits one `DeployFailed` and a re-run lands it, a burst of merges with one deployment lands all at or before it (poller and webhook), a superseded merge fails with the deployment that replaced it, a merge nobody deployed times out; `POST /api/gateway/redeploy`: failed → redeploy → success lands the item (also past the age limit), a second redeploy for the same failed run is a no-op, a redeploy that fails again is a new failure (`attempt`) and is redeployed again, a superseded merge re-runs the run that failed it, refusals (lease, landed, not merged, no run of the deploy workflow, GitHub 403); `deploy-status` (states, scoping); the poller does not run with the fake or with simulated deploys; simulated deploys with a real GitHub refuse to start; the background task against a wiremock GitHub. |
 | `tests/finalise.rs` | Finalise on merge: the page on the base branch is `published`; the story entry has the key order and types of a real entry and the rest of the file keeps its bytes; two pull requests from the same base both merge and the list holds both; a moved head is refused before anything is written; an interrupted merge is resumed, also after another merge moved the list; a repeated merge answers from the record; a site without a list; a broken list blocks the merge; pages outside the blog merge untouched. |
 | `tests/events.rs` | Polling with `after`/`limit`, per-company scoping, WebSocket backlog + live push. |
 | `tests/sync.rs` | Segment immutability (201/200/409), list, bytes on disk, snapshot with step, owner-only access. |

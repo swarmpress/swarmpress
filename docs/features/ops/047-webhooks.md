@@ -10,6 +10,7 @@ paths:
   - crates/server/src/deploys.rs
   - crates/server/tests/deploys.rs
   - crates/server/migrations/0003_deploys.sql
+  - crates/server/migrations/0005_redeploy.sql
 adrs:
   - ADR-0009
   - ADR-0061
