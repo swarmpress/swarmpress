@@ -264,6 +264,24 @@ jobs:
         with:
           name: game-playwright-bench
           path: apps/game/reports/playwright-bench.json
+      # The pipeline eval on the scripted model (FEAT-036): about 3 min, most of it the
+      # harness build. Its counts are deterministic, so its document is bench/agent-pipeline.
+      - name: Playwright pipeline eval (scripted model)
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @swarm-press/game exec playwright test -c playwright.eval.config.ts --project=fake
+        env:
+          CI: '1'
+          PW_JSON: reports/playwright-eval.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: game-playwright-eval
+          path: apps/game/reports/playwright-eval.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: bench-agent-pipeline
+          path: artifacts/bench/agent-pipeline-eval-fake.json
 
   sdk:
     name: Extension SDK (sdk, sandbox, swarmpress runner, browser parity)

@@ -345,6 +345,24 @@ workflow = "ci.yml"
 artifact = "game-playwright-bench"
 branch = "main"
 
+# The pipeline eval (eval.html, FEAT-036) on the scripted model with the cinqueterre-mini pack:
+# three briefs, the positive controls, the six seeded-bad drafts. Its counts are deterministic
+# and its document is bench/agent-pipeline.
+# `CI=1 PW_JSON=reports/playwright-eval.json playwright test -c playwright.eval.config.ts --project=fake`
+[[evidence]]
+id = "game/playwright-eval"
+title = "apps/game pipeline eval on the scripted model (counts, seeded-bad rejection)"
+format = "playwright"
+kind = "e2e"
+path = [".cockpit/evidence/game__playwright-eval/**/*.json", "apps/game/reports/playwright-eval.json"]
+component = "agents"
+features = ["FEAT-036"]
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "game-playwright-eval"
+branch = "main"
+
 [[evidence]]
 id = "site-kit/playwright"
 title = "packages/site-kit fixture-site screenshots"
