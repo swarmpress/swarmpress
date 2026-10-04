@@ -159,4 +159,23 @@ describe('the HUD chip data', () => {
     expect(r.label(2)).toBeNull()
     expect(heldByText({ who: null, kind: 'standup', state: 'running' }, null)).toBe('standup')
   })
+
+  it('lists the jobs in flight with their stage now, model and elapsed time (the Activity panel and the Now strip, U4)', async () => {
+    const { r } = await recorder()
+    expect(r.live()).toEqual([])
+    r.progress(ev('job', 0, 1, 'started'))
+    expect(r.live()).toEqual([
+      expect.objectContaining({ jobId: 2, kind: 'draft', staff: 'staff-1', persona: 'giulia', workItem: 'work-item-1', stage: null, label: null, model: null }),
+    ])
+    r.progress(ev('section', 3, 5, 'started'))
+    r.call(call(1800, 260))
+    const [job] = r.live()
+    expect(job).toMatchObject({ stage: 'section', index: 3, total: 5, label: 'section 3 of 5', model: 'fake-mvp' })
+    // The test clock moves 10 ms a read: started at 10, read at 40 and later.
+    expect(job.elapsedMs).toBeGreaterThan(0)
+    expect(r.live()[0].elapsedMs).toBeGreaterThan(job.elapsedMs)
+    r.progress(ev('section', 3, 5, 'done'))
+    r.progress(ev('job', 0, 1, 'failed', { halt: 'Timeout' }))
+    expect(r.live()).toEqual([])
+  })
 })

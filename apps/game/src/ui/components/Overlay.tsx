@@ -1,4 +1,5 @@
 import { PANELS, StoreContext, useStore, type OverlayStore, type PanelId } from '../store'
+import { Activity } from './Activity'
 import { ArticlePreview } from './ArticlePreview'
 import { Icon, Panel } from './common'
 import { Finance } from './Finance'
@@ -16,6 +17,7 @@ const PANEL_VIEW: Record<PanelId, () => preact.JSX.Element> = {
   projects: Projects,
   finance: Finance,
   inbox: Inbox,
+  activity: Activity,
   hiring: Hiring,
   performance: Performance,
 }

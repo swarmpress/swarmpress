@@ -427,11 +427,20 @@ describe('navigation and plan views', () => {
     expect(tools()).toContain('Performance')
   })
 
+  it('live with the company store offers the Activity panel (its activity record), after the Inbox', async () => {
+    const store = { ...fakePlanStore(planText()), activityPage: async () => ({ rows: [], more: false }) }
+    await live(liveSim(), companyStoreOptions(store, { id: 'c1', site_repo: REPO }))
+    await flush()
+    expect(tools()).toEqual(['Plan', 'Inbox', 'Activity', 'Org chart', 'Projects', 'Finance', 'Hiring'])
+    await key('a')
+    expect(panel(/^Activity/)).toBeTruthy()
+  })
+
   it('mock: Performance and all five plan views stay', async () => {
     const c = setup()
     ctx = c
     await flush()
-    expect(tools()).toEqual(['Plan', 'Inbox', 'Org chart', 'Projects', 'Finance', 'Performance', 'Hiring'])
+    expect(tools()).toEqual(['Plan', 'Inbox', 'Activity', 'Org chart', 'Projects', 'Finance', 'Performance', 'Hiring'])
     expect(availableViews(c.store.plan.value)).toEqual(['board', 'calendar', 'timeline', 'workload', 'goals'])
     await key('k')
     expect(panel(/Performance/)).toBeTruthy()

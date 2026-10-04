@@ -1,11 +1,14 @@
 import { SIM_COMMANDS, type CommandResult } from './commands'
 import {
   NO_SITE_LINKS,
+  type ActivityPage,
+  type ActivityQuery,
   type ArticleBrief,
   type ArticleRecord,
   type ArticleReview,
   type DataTopic,
   type GameDataSource,
+  type LiveJob,
   type NewPlanPost,
   type SiteLinks,
   type SourceCapabilities,
@@ -221,19 +224,40 @@ export function bannedPhrasesOf(styleGuide: unknown): string[] | null {
   return avoid.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
 }
 
+/** The part of the CompanyStore the activity record is read from (`CompanyStore.activityPage`, bounded by jobs). */
+export interface ActivityStore {
+  activityPage(company: string, q: ActivityQuery): Promise<ActivityPage>
+}
+
+/**
+ * The activity record of a source (FEAT-078, increment U4): rows from the
+ * company's store, and the jobs in flight from the orchestrator's progress
+ * events (the session's `ActivityRecorder`).
+ */
+export interface ActivityOptions {
+  page(q: ActivityQuery): Promise<ActivityPage>
+  /** The jobs in flight; none without a recorder. */
+  live?(): LiveJob[]
+  /** Changes whenever rows were written (the recorder's row count). Without it the rows are read again on every refresh. */
+  version?(): unknown
+}
+
 /**
  * What a session's data source takes from its company: plan text read from
  * and CEO posts written to the CompanyStore, the articles (artifact and brief
- * records) when the store has them, the site repository of the company row
- * for pull-request links, and the banned phrases of the site binding's style
- * guide. The public address of the site is not part of the company row (see
+ * records) when the store has them, the activity record when the store has
+ * one (with `recorder`: the jobs in flight and a version that moves with every
+ * row written), the site repository of the company row for pull-request
+ * links, and the banned phrases of the site binding's style guide. The public
+ * address of the site is not part of the company row (see
  * `SiteLinks.publicBaseUrl`).
  */
 export function companyStoreOptions(
-  store: PlanTextStore & Partial<ArticleStore>,
+  store: PlanTextStore & Partial<ArticleStore> & Partial<ActivityStore>,
   company: { id: string; site_repo?: string | null },
   site: { style_guide?: unknown } = {},
-): Pick<WasmOptions, 'planText' | 'appendPost' | 'site' | 'article' | 'bannedPhrases'> {
+  recorder?: Pick<ActivityOptions, 'live' | 'version'>,
+): Pick<WasmOptions, 'planText' | 'appendPost' | 'site' | 'article' | 'bannedPhrases' | 'activity'> {
   const articles =
     store.getArtifact && store.getBrief
       ? articleFromStore({ getArtifact: (c, w) => store.getArtifact!(c, w), getBrief: (c, r) => store.getBrief!(c, r) }, company.id)
@@ -244,6 +268,7 @@ export function companyStoreOptions(
     site: { repo: company.site_repo || null },
     article: articles,
     bannedPhrases: bannedPhrasesOf(site.style_guide),
+    activity: store.activityPage ? { page: (q) => store.activityPage!(company.id, q), live: recorder?.live, version: recorder?.version } : undefined,
   }
 }
 
@@ -274,6 +299,8 @@ export interface WasmOptions {
   article?: (item: string) => Promise<ArticleRecord | null>
   /** The house style's banned phrases (session: the site binding's style guide). */
   bannedPhrases?: readonly string[] | null
+  /** The activity record (session: the CompanyStore and the recorder). Without it the Activity panel is not offered. */
+  activity?: ActivityOptions
   /**
    * A cheap value that changes whenever the sim's JSON views may have
    * changed; the poll re-serialises them only then. Defaults to `sim.step()`
@@ -307,6 +334,8 @@ export class WasmDataSource implements GameDataSource {
   private timer: ReturnType<typeof setInterval> | null = null
   /** CEO posts and text when no external store is wired (offline sandbox). */
   private local: PlanStore = new MemoryPlanStore(EMPTY_PLAN_TEXT)
+  /** `activityVersion()` without a version: a new value on every call. */
+  private unversioned = 0
 
   constructor(
     private sim: SimOrgApi,
@@ -316,6 +345,7 @@ export class WasmDataSource implements GameDataSource {
     this.caps = {
       commands: new Set(opts.commands ?? SIM_COMMANDS),
       performance: !!opts.performance,
+      activity: !!opts.activity,
       site: { ...NO_SITE_LINKS, ...opts.site },
       bannedPhrases: opts.bannedPhrases ?? null,
     }
@@ -353,6 +383,17 @@ export class WasmDataSource implements GameDataSource {
   }
   async getPerformance() {
     return (await this.opts.performance?.()) ?? EMPTY_PERFORMANCE
+  }
+  async getActivity(q: ActivityQuery): Promise<ActivityPage> {
+    return (await this.opts.activity?.page(q)) ?? { rows: [], more: false }
+  }
+  async getLiveJobs(): Promise<LiveJob[]> {
+    return this.opts.activity?.live?.() ?? []
+  }
+  activityVersion(): unknown {
+    // Without a version the record is read again on every refresh.
+    const v = this.opts.activity?.version
+    return v ? v() : ++this.unversioned
   }
   async getPersona(slug: string) {
     return this.personas.find((p) => p.slug === slug)

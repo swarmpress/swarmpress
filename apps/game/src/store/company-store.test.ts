@@ -250,6 +250,49 @@ describe('CompanyStore (memory engine)', () => {
     expect(await s.activity('c2')).toEqual([])
   })
 
+  it('reads the activity record a window of jobs at a time, newest job first (the Activity panel, U4)', async () => {
+    const s = await store()
+    const row = (job_id: number, stage: string, idx = 0): ActivityRow => ({
+      job_id,
+      stage,
+      idx,
+      attempt: 1,
+      kind: 'draft',
+      revision: 0,
+      work_item: 'work-item-1',
+      staff: 'staff-1',
+      role: 'writer',
+      persona: 'giulia',
+      model: 'fake-mvp',
+      tokens_in: 10,
+      tokens_out: 5,
+      wall_ms: 40,
+      game_step: 1100,
+      day: 0,
+      minute: 552,
+      result: 'done',
+      detail: {},
+    })
+    // Seven jobs, each a stage row and a job row; job 7 is in flight (no job row yet); another company's rows.
+    for (let j = 1; j <= 7; j++) {
+      await s.putActivity('c1', row(j, 'section', 1))
+      if (j < 7) await s.putActivity('c1', row(j, 'job'))
+    }
+    await s.putActivity('c2', row(9, 'job'))
+    const first = await s.activityPage('c1', { limit: 3 })
+    expect(first.more).toBe(true)
+    expect(first.rows.map((r) => `${r.job_id}:${r.stage}`)).toEqual(['7:section', '6:section', '6:job', '5:section', '5:job'])
+    expect(first.rows.every((r) => typeof r.created_at === 'number' && r.created_at > 0)).toBe(true)
+    const second = await s.activityPage('c1', { limit: 3, before: 5 })
+    expect(second.rows.map((r) => r.job_id)).toEqual([4, 4, 3, 3, 2, 2])
+    expect(second.more).toBe(true)
+    const last = await s.activityPage('c1', { limit: 3, before: 2 })
+    expect(last).toMatchObject({ more: false })
+    expect(last.rows.map((r) => r.job_id)).toEqual([1, 1])
+    expect(await s.activityPage('c1', { limit: 3, before: 1 })).toEqual({ rows: [], more: false })
+    expect((await s.activityPage('c2', { limit: 200 })).rows.map((r) => r.job_id)).toEqual([9])
+  })
+
   it('has a key/value table', async () => {
     const s = await store()
     expect(await s.getKv('events.cursor')).toBeNull()

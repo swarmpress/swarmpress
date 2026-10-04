@@ -7,6 +7,7 @@ import { useStore, type PanelId } from '../store'
 const ICONS: Record<string, string> = {
   plan: 'M4 5h16v2H4zM4 11h10v2H4zM4 17h13v2H4zM18 10l3 2-3 2z',
   inbox: 'M3 5h18v14H3zM3 13h5l2 3h4l2-3h5',
+  activity: 'M3 12h4l3-7 4 14 3-7h4',
   org: 'M10 3h4v4h-4zM4 15h4v4H4zM10 15h4v4h-4zM16 15h4v4h-4zM12 7v4M6 15v-4h12v4',
   projects: 'M3 6h7l2 2h9v11H3z',
   finance: 'M4 19V9M10 19V5M16 19v-7M21 19H3',

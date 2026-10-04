@@ -49,6 +49,20 @@
 .hud-toast { padding: 8px 14px; border-radius: 8px; background: #141824; border: 1px solid rgba(255, 138, 128, 0.7); color: #ffd0cb; font-size: 13px; line-height: 1.4;
              box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); overflow-wrap: anywhere; }
 
+/* What runs now (U4): the "Now" strip, or the held chip as the way into the Activity panel. */
+button.hud-chip { font: inherit; font-size: 12px; cursor: pointer; }
+button.hud-chip:hover { background: rgba(255, 255, 255, 0.12); }
+.hud-chip-time { flex: none; font-variant-numeric: tabular-nums; opacity: 0.85; }
+.hud-chip-time::before { content: '· '; }
+.hud-now { display: inline-flex; align-items: baseline; gap: 6px; max-width: 52ch; height: 24px; padding: 0 10px; border-radius: 999px; border: 1px solid rgba(143, 179, 255, 0.45);
+           background: rgba(143, 179, 255, 0.08); color: #dfe7ff; font: 12px/22px system-ui, sans-serif; cursor: pointer; white-space: nowrap; }
+.hud-now:hover { background: rgba(143, 179, 255, 0.16); }
+.hud-now .hud-label { opacity: 0.75; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+.hud-now-text { overflow: hidden; text-overflow: ellipsis; }
+.hud-now-time { flex: none; font-variant-numeric: tabular-nums; opacity: 0.85; }
+.hud-now-time::before { content: '· '; }
+.hud-now:focus-visible, button.hud-chip:focus-visible { outline: 2px solid #e3b864; outline-offset: 2px; }
+
 /* The company's site binding (G2): which repository the gateway writes to. */
 .hud-site { display: inline-flex; align-items: baseline; gap: 4px; max-width: 40ch; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hud-site .hud-label { opacity: 0.75; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }

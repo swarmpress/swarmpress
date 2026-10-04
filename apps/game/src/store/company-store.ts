@@ -6,7 +6,8 @@
  *   posts (deduplicated by their `dedupe` key), the plan view (`planJson`)
  *   and the stage results of staged jobs (`getStage`/`putStage`, ADR-0058).
  * - The activity record (`putActivity`/`activity`, FEAT-078): one row per
- *   stage attempt and one per job.
+ *   stage attempt and one per job; `activityPage` reads it a window of jobs
+ *   at a time (the Activity panel).
  * - The sim's command log and snapshots (`appendCommands`, `commandsAfter`,
  *   `putSnapshot`, `latestSnapshot`).
  * - A small key/value table (event cursor, device id, ...).
@@ -114,6 +115,48 @@ export interface ActivityRow {
   minute: number | null
   result: string
   detail: Record<string, unknown>
+}
+
+/** An activity row as stored: the row plus the wall time it was written (a job row's: when the job ended). */
+export interface StoredActivityRow extends ActivityRow {
+  /** Unix ms. */
+  created_at: number
+}
+
+/** A window of the activity record (`activityPage`): every row of the jobs in it. */
+export interface ActivityPage {
+  rows: StoredActivityRow[]
+  /** Older jobs exist beyond the window. */
+  more: boolean
+}
+
+const ACTIVITY_COLUMNS =
+  'job_id, stage, idx, attempt, kind, revision, work_item, staff, role, persona, model, tokens_in, tokens_out, wall_ms, game_step, day, minute, result, detail'
+
+function activityRow(r: Record<string, unknown>): ActivityRow {
+  const num = (v: unknown) => (v == null ? null : toNumber(v as number))
+  const str = (v: unknown) => (v == null ? null : String(v))
+  return {
+    job_id: toNumber(r.job_id as number),
+    stage: String(r.stage),
+    idx: toNumber(r.idx as number),
+    attempt: toNumber(r.attempt as number),
+    kind: String(r.kind),
+    revision: toNumber(r.revision as number),
+    work_item: str(r.work_item),
+    staff: str(r.staff),
+    role: str(r.role),
+    persona: str(r.persona),
+    model: str(r.model),
+    tokens_in: toNumber(r.tokens_in as number),
+    tokens_out: toNumber(r.tokens_out as number),
+    wall_ms: toNumber(r.wall_ms as number),
+    game_step: num(r.game_step),
+    day: num(r.day),
+    minute: num(r.minute),
+    result: String(r.result),
+    detail: JSON.parse(String(r.detail)) as Record<string, unknown>,
+  }
 }
 
 /** A stored knowledge pack (`site_knowledge`, keyed by commit). */
@@ -380,33 +423,34 @@ export class CompanyStore implements OrchestratorStore {
   /** The activity record, oldest job first, the job row after its stage rows. `jobId` limits it to one job. */
   async activity(company: string, jobId?: number): Promise<ActivityRow[]> {
     const rows = await this.driver.all<Record<string, unknown>>(
-      `SELECT job_id, stage, idx, attempt, kind, revision, work_item, staff, role, persona, model, tokens_in, tokens_out, wall_ms, game_step, day, minute, result, detail
+      `SELECT ${ACTIVITY_COLUMNS}
        FROM activity WHERE company = ?${jobId == null ? '' : ' AND job_id = ?'} ORDER BY job_id, id`,
       jobId == null ? [company] : [company, jobId],
     )
-    const num = (v: unknown) => (v == null ? null : toNumber(v as number))
-    const str = (v: unknown) => (v == null ? null : String(v))
-    return rows.map((r) => ({
-      job_id: toNumber(r.job_id as number),
-      stage: String(r.stage),
-      idx: toNumber(r.idx as number),
-      attempt: toNumber(r.attempt as number),
-      kind: String(r.kind),
-      revision: toNumber(r.revision as number),
-      work_item: str(r.work_item),
-      staff: str(r.staff),
-      role: str(r.role),
-      persona: str(r.persona),
-      model: str(r.model),
-      tokens_in: toNumber(r.tokens_in as number),
-      tokens_out: toNumber(r.tokens_out as number),
-      wall_ms: toNumber(r.wall_ms as number),
-      game_step: num(r.game_step),
-      day: num(r.day),
-      minute: num(r.minute),
-      result: String(r.result),
-      detail: JSON.parse(String(r.detail)) as Record<string, unknown>,
-    }))
+    return rows.map(activityRow)
+  }
+
+  /**
+   * The Activity panel's bounded read (U4): every row of the newest `limit`
+   * jobs, or of the newest `limit` jobs older than `before`. Newest job
+   * first, each job's rows in the order they were written. Two reads on the
+   * `(company, job_id, id)` index; the table is never read whole.
+   */
+  async activityPage(company: string, q: { limit: number; before?: number | null }): Promise<ActivityPage> {
+    const limit = Math.max(1, Math.floor(q.limit))
+    const before = q.before == null ? null : Math.floor(q.before)
+    const ids = await this.driver.all<{ job_id: number }>(
+      `SELECT job_id FROM activity WHERE company = ?${before == null ? '' : ' AND job_id < ?'} GROUP BY job_id ORDER BY job_id DESC LIMIT ?`,
+      before == null ? [company, limit + 1] : [company, before, limit + 1],
+    )
+    const jobs = ids.slice(0, limit).map((r) => toNumber(r.job_id))
+    if (jobs.length === 0) return { rows: [], more: false }
+    const rows = await this.driver.all<Record<string, unknown>>(
+      `SELECT ${ACTIVITY_COLUMNS}, created_at
+       FROM activity WHERE company = ? AND job_id >= ? AND job_id <= ? ORDER BY job_id DESC, id`,
+      [company, jobs[jobs.length - 1], jobs[0]],
+    )
+    return { rows: rows.map((r) => ({ ...activityRow(r), created_at: toNumber(r.created_at as number) })), more: ids.length > limit }
   }
 
   // ------------------------------------------------------------ plan / transcripts (reads)

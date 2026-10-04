@@ -1,7 +1,7 @@
 import { render } from 'preact'
 import { signal } from '@preact/signals'
 import { SPEEDS, type ClockStatus } from '../session/clock-driver'
-import { eurCompact } from './format'
+import { elapsed, eurCompact } from './format'
 import { repoUrl } from './links'
 import { siteBindingText, type SiteBindingView } from './site-binding'
 import './hud.css'
@@ -64,6 +64,28 @@ export const hudAlert = signal<string | null>(null)
 /** The repository the company writes to (G2); the session sets it, null on the offline page. */
 export const hudSite = signal<SiteBindingView | null>(null)
 
+/**
+ * What runs now (FEAT-078, increment U4): the job in flight from the
+ * orchestrator's progress events, which the CEO overlay sets (mount.tsx).
+ * Null when nothing runs.
+ */
+export interface HudNow {
+  jobId: number
+  /** First name ("Giulia"); null when the job names nobody. */
+  who: string | null
+  /** The job kind as the chip says it ("draft"). */
+  kind: string
+  /** The stage in counts ("section 3 of 5"); null before the first stage. */
+  stage: string | null
+  elapsedMs: number
+  /** Opens the Activity panel on this job. */
+  open(): void
+}
+export const hudNow = signal<HudNow | null>(null)
+
+/** "Giulia · draft · section 3 of 5" (the chip's words, ADR-0058 decision 8). */
+export const nowText = (n: Pick<HudNow, 'who' | 'kind' | 'stage'>) => [n.who, n.kind, n.stage].filter(Boolean).join(' · ')
+
 export const TOAST_MS = 10_000
 const MAX_TOASTS = 3
 let toastSeq = 0
@@ -107,22 +129,70 @@ export function HudBusinessStats({ b }: { b: HudBusiness }) {
  * The status chip: exactly one of Running / Held / Resting / Model loading /
  * Lease lost / Halted / Paused, with who and what or the reason. A loop error
  * adds a mark the player can dismiss.
+ *
+ * With `now` (the clock is held for the job in flight, so the chip already
+ * says "Giulia · draft · section 3 of 5") the chip is the way into the
+ * Activity panel on that job, with the job's elapsed time, instead of a
+ * second "Now" line saying the same.
  */
-export function StatusChip({ status, alert, onDismissAlert }: { status: ClockStatus; alert?: string | null; onDismissAlert?: () => void }) {
+export function StatusChip({ status, alert, onDismissAlert, now }: { status: ClockStatus; alert?: string | null; onDismissAlert?: () => void; now?: HudNow | null }) {
   const text = status.detail ? `${status.label}: ${status.detail}` : status.label
+  const inner = (
+    <>
+      <span class="hud-chip-dot" aria-hidden="true" />
+      <span class="hud-chip-label">{status.label}</span>
+      {status.detail && <span class="hud-chip-detail">{status.detail}</span>}
+      {now && <span class="hud-chip-time">{elapsed(now.elapsedMs)}</span>}
+    </>
+  )
   return (
     <span class="hud-chip-wrap">
-      <span class={`hud-chip is-${status.state}`} data-state={status.state} title={text}>
-        <span class="hud-chip-dot" aria-hidden="true" />
-        <span class="hud-chip-label">{status.label}</span>
-        {status.detail && <span class="hud-chip-detail">{status.detail}</span>}
-      </span>
+      {now ? (
+        <button
+          type="button"
+          class={`hud-chip is-${status.state} is-link`}
+          data-state={status.state}
+          data-job={now.jobId}
+          title={`${text} (open in Activity)`}
+          aria-label={`${text}, ${elapsed(now.elapsedMs)}. Open in Activity`}
+          onClick={() => now.open()}
+        >
+          {inner}
+        </button>
+      ) : (
+        <span class={`hud-chip is-${status.state}`} data-state={status.state} title={text}>
+          {inner}
+        </span>
+      )}
       {alert && (
         <button type="button" class="hud-chip-alert" title={`${alert} (click to dismiss)`} aria-label={`Error: ${alert}. Dismiss`} onClick={onDismissAlert}>
           !
         </button>
       )}
     </span>
+  )
+}
+
+/**
+ * The "Now" strip (U4): one line on what runs now ("Giulia · draft · section
+ * 3 of 5 · 1:42"); a click opens the Activity panel on that job.
+ */
+export function NowStrip({ now }: { now: HudNow }) {
+  const text = nowText(now)
+  const time = elapsed(now.elapsedMs)
+  return (
+    <button
+      type="button"
+      class="hud-now"
+      data-job={now.jobId}
+      title="Open in Activity"
+      aria-label={`Now: ${text}, ${time}. Open in Activity`}
+      onClick={() => now.open()}
+    >
+      <span class="hud-label">Now</span>
+      <span class="hud-now-text">{text}</span>
+      <span class="hud-now-time">{time}</span>
+    </button>
   )
 }
 
@@ -222,13 +292,18 @@ function Hud({ controls }: { controls: HudControls | null }) {
   const c = hudClock.value
   const toasts = hudToasts.value
   const site = hudSite.value
+  // What runs now, on live pages only (frozen `?t=` pages have no clock HUD, so no strip either).
+  const now = c ? hudNow.value : null
+  // A held clock waits for the job in flight, and the chip already says so: the chip opens it.
+  const chipIsNow = !!now && c?.status.state === 'held'
   return (
     <>
       <div class={c ? 'hud has-clock' : 'hud'} role="status" aria-live="off">
         <span class="hud-clock">
           Day {s.day + 1} · {s.clock}
         </span>
-        {c && <StatusChip status={c.status} alert={hudAlert.value} onDismissAlert={() => (hudAlert.value = null)} />}
+        {c && <StatusChip status={c.status} alert={hudAlert.value} onDismissAlert={() => (hudAlert.value = null)} now={chipIsNow ? now : null} />}
+        {now && !chipIsNow && <NowStrip now={now} />}
         {c && controls && <ClockControls clock={c} controls={controls} />}
         {c && controls && c.unattendedDays != null && <UnattendedDays days={c.unattendedDays} controls={controls} label="Unattended days" />}
         {b && <HudBusinessStats b={b} />}
@@ -256,7 +331,8 @@ const sameClock = (a: HudClock | null, b: HudClock | null) =>
 
 /**
  * Heads-up display: clock and renderer, the clock's status chip and controls
- * (ADR-0060), plus company numbers once the CEO overlay is mounted (ADR-0018).
+ * (ADR-0060), plus company numbers and what runs now once the CEO overlay is
+ * mounted (ADR-0018, U4).
  */
 export function mountHud(el: HTMLElement, controls: HudControls | null = null) {
   render(<Hud controls={controls} />, el)

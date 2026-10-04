@@ -1,5 +1,19 @@
+import { pageOf } from './activity-source'
 import { ALL_COMMANDS, centsPerDayToEurMonth, kebab, type Command, type CommandResult, type SecretaryTask } from './commands'
-import { NO_SITE_LINKS, type ArticleRecord, type DataTopic, type GameDataSource, type NewPlanPost, type SiteLinks, type SourceCapabilities } from './data-source'
+import {
+  NO_SITE_LINKS,
+  type ActivityPage,
+  type ActivityQuery,
+  type ActivityRowJson,
+  type ArticleRecord,
+  type DataTopic,
+  type GameDataSource,
+  type LiveJob,
+  type NewPlanPost,
+  type SiteLinks,
+  type SourceCapabilities,
+} from './data-source'
+import { fixtureActivityRows, fixtureLiveJobs } from './fixtures/activity'
 import { FIXTURE_ARTICLE_ITEM, FIXTURE_BANNED_PHRASES, fixtureArticle } from './fixtures/article'
 import financeFixture from './fixtures/finance.json'
 import inboxFixture from './fixtures/inbox.json'
@@ -60,6 +74,10 @@ export interface MockOptions {
   articles?: Record<string, ArticleRecord>
   /** The house style's banned phrases; defaults to the style-guide fixture's list. `null`: no list. */
   bannedPhrases?: readonly string[] | null
+  /** The activity record's rows, oldest first; defaults to fixtures/activity.ts. `null`: no record (no Activity panel). */
+  activity?: ActivityRowJson[] | null
+  /** The jobs in flight; defaults to the fixture's job 10 (with the fixture record), else none. */
+  live?: LiveJob[]
 }
 
 const SENIORITY: Seniority[] = ['junior', 'mid', 'senior', 'star']
@@ -93,15 +111,23 @@ export class MockDataSource implements GameDataSource {
   private clock: () => number
   private caps: SourceCapabilities
   private articles: Record<string, ArticleRecord>
+  private activityRows: ActivityRowJson[]
+  private liveJobs: LiveJob[]
+  private activityRev = 0
+  /** Mock-only: every `getActivity` query, in order (tests of the bounded reads). */
+  readonly activityReads: ActivityQuery[] = []
 
   constructor(opts: MockOptions = {}) {
-    // The mock plays every command and has KPI fixtures.
+    // The mock plays every command and has KPI fixtures and an activity record.
     this.caps = {
       commands: new Set(opts.commands ?? ALL_COMMANDS),
       performance: true,
+      activity: opts.activity !== null,
       site: { ...NO_SITE_LINKS, ...opts.site },
       bannedPhrases: opts.bannedPhrases === undefined ? FIXTURE_BANNED_PHRASES : opts.bannedPhrases,
     }
+    this.activityRows = opts.activity === null ? [] : structuredClone(opts.activity ?? fixtureActivityRows())
+    this.liveJobs = structuredClone(opts.live ?? (opts.activity === undefined ? fixtureLiveJobs() : []))
     this.articles = opts.articles ?? { [FIXTURE_ARTICLE_ITEM]: fixtureArticle() }
     this.state = { ...fixtureState(), ...structuredClone(opts.state ?? {}) }
     // The fixtures reference the fixture personas (candidates included), not the live catalog.
@@ -142,6 +168,35 @@ export class MockDataSource implements GameDataSource {
   async getPerformance() {
     return this.state.performance
   }
+  async getActivity(q: ActivityQuery): Promise<ActivityPage> {
+    this.activityReads.push({ ...q })
+    return pageOf(this.activityRows, q)
+  }
+  async getLiveJobs(): Promise<LiveJob[]> {
+    return structuredClone(this.liveJobs)
+  }
+  activityVersion() {
+    return this.activityRev
+  }
+
+  /** Mock-only: rows the recorder would write (a stage done, a job ended); the record changes and listeners hear it. */
+  addActivity(rows: ActivityRowJson[]) {
+    for (const r of rows) {
+      // The store's key: a row with the same (job, stage, index, attempt) is replaced.
+      const i = this.activityRows.findIndex((x) => x.job_id === r.job_id && x.stage === r.stage && x.idx === r.idx && x.attempt === r.attempt)
+      if (i >= 0) this.activityRows.splice(i, 1)
+      this.activityRows.push(structuredClone(r))
+    }
+    this.activityRev++
+    this.emit(['activity'])
+  }
+
+  /** Mock-only: the jobs in flight, as the orchestrator's progress events report them. */
+  setLive(jobs: LiveJob[]) {
+    this.liveJobs = structuredClone(jobs)
+    this.emit(['activity'])
+  }
+
   async getPersona(slug: string) {
     return this.personas.find((p) => p.slug === slug)
   }

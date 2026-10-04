@@ -14,6 +14,12 @@ paths:
   - apps/game/src/store/schema.ts
   - apps/game/src/store/company-store.ts
   - apps/game/src/orchestrator/bridge.ts
+  - apps/game/src/ui/activity-source.ts
+  - apps/game/src/ui/activity-source.test.ts
+  - apps/game/src/ui/components/Activity.tsx
+  - apps/game/src/ui/activity.test.tsx
+  - apps/game/src/ui/fixtures/activity.ts
+  - apps/game/src/ui/hud.tsx
 adrs:
   - ADR-0056
   - ADR-0045
@@ -57,8 +63,17 @@ The MVP does not wait for work records (FEAT-061):
 Built (P5): the `activity` table (store migration 3) and `ActivityRecorder`
 (`apps/game/src/orchestration/activity.ts`), written from the orchestrator's progress events and
 the LLM bridge's per-call usage; the session's hook exposes the rows and the HUD chip reads
-"Giulia · draft · section 3 of 5". Not built: the Activity panel and the "Now" strip (U4); the
-`Activity.tsx` and `activity-source.ts` paths join this file when they exist.
+"Giulia · draft · section 3 of 5".
+
+Built (U4): the Activity panel (`components/Activity.tsx`, toolbar entry after the Inbox, key A)
+reads the record through the data source (`activity-source.ts`, `CompanyStore.activityPage`): the
+newest 200 jobs, older ones on "load older", re-read only when the recorder has written a row. Each
+job shows who, what (kind and work item, which opens in the Plan), model, wall time, tokens, game
+time, result and its pull request; it expands to its stages and attempts. The job in flight is
+pinned on top from progress events ("section 3 of 5 · 1:42"); filters by person, work item and
+kind. The HUD's "Now" strip says what runs now and opens the panel on that job; while the clock is
+held for that job the status chip already says it, so the chip becomes the click target instead
+(no second line). Frozen `?t=` pages show neither. Not built: the label above the working person.
 
 ## Acceptance criteria
 

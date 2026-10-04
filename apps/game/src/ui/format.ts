@@ -24,6 +24,23 @@ export function gameTime(minute: number) {
   return `Day ${day + 1} · ${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`
 }
 
+/** Wall time of a job in flight as a clock: "1:42", "12:05", "1:02:03". */
+export function elapsed(ms: number) {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  return h > 0 ? `${h}:${pad2(m)}:${pad2(s % 60)}` : `${m}:${pad2(s % 60)}`
+}
+
+/** How long something took: "40 ms", "1.2 s", "48 s", then as a clock ("4:41"). */
+export function duration(ms: number) {
+  const a = Math.max(0, Math.round(ms))
+  if (a < 1000) return `${a} ms`
+  if (a < 10_000) return `${(a / 1000).toFixed(1)} s`
+  if (a < 60_000) return `${Math.round(a / 1000)} s`
+  return elapsed(a)
+}
+
 /** Minutes until a deadline → "2h 40m left" / "overdue by 20m". */
 export function countdown(deltaMinutes: number) {
   const a = Math.abs(Math.round(deltaMinutes))

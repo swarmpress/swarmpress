@@ -34,7 +34,7 @@ afterEach(() => {
   live = null
 })
 
-const PANELS: PanelId[] = ['plan', 'inbox', 'org', 'projects', 'finance', 'performance', 'hiring']
+const PANELS: PanelId[] = ['plan', 'inbox', 'activity', 'org', 'projects', 'finance', 'performance', 'hiring']
 
 describe('axe: no violations', () => {
   it.each(PANELS)('%s panel', async (id) => {
@@ -72,6 +72,32 @@ describe('axe: no violations', () => {
     await flush()
     expect(document.querySelectorAll('li.post')).toHaveLength(6)
     expect(await audit(ctx.el), 'detail').toEqual([])
+  })
+
+  it('activity: the pinned job, expanded stages, filters, links, the empty state and an unfinished job', async () => {
+    ctx = setup({ site: { repo: 'swarmpress/cinqueterre.travel' } })
+    ctx.store.openActivity(10)
+    await flush()
+    await flush()
+    // Opened on the job in flight: expanded.
+    expect(document.querySelector('#activity-job-10 [aria-expanded="true"]')).not.toBeNull()
+    for (const id of [4, 8]) (document.querySelector(`#activity-job-${id} .activity-toggle`) as HTMLElement).click()
+    await flush()
+    expect(document.querySelectorAll('.activity-stages table')).toHaveLength(3)
+    expect(document.querySelectorAll('.activity-job a[rel="noopener noreferrer"]').length).toBeGreaterThan(0)
+    expect(await audit(ctx.el), 'expanded').toEqual([])
+    const kind = document.querySelectorAll<HTMLSelectElement>('[aria-label="Filter the activity"] select')[2]
+    kind.value = 'publish'
+    kind.dispatchEvent(new Event('change', { bubbles: true }))
+    await flush()
+    expect(await audit(ctx.el), 'filtered').toEqual([])
+    ctx.cleanup()
+    ctx = setup({ activity: [] })
+    ctx.store.panel.value = 'activity'
+    await flush()
+    await flush()
+    expect(document.querySelector('.activity-empty')).not.toBeNull()
+    expect(await audit(ctx.el), 'empty').toEqual([])
   })
 
   it('project detail', async () => {

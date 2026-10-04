@@ -3,8 +3,12 @@ import type { Persona } from './personas'
 import type { PlanJson, PlanPost, PlanText } from './plan-types'
 import type { FinanceJson, InboxJson, OrgJson, PerformanceJson } from './types'
 
-/** What changed, so a subscriber can re-read only that (a hint; `undefined` = anything). */
-export type DataTopic = 'org' | 'finance' | 'inbox' | 'plan' | 'performance' | 'clock'
+/**
+ * What changed, so a subscriber can re-read only that (a hint; `undefined` =
+ * anything). `clock` and `activity` need no snapshot: game time, and the
+ * activity record or the jobs in flight.
+ */
+export type DataTopic = 'org' | 'finance' | 'inbox' | 'plan' | 'performance' | 'clock' | 'activity'
 
 /** A post the CEO adds to a work item's thread (the source assigns `id`, and game time if missing). */
 export type NewPlanPost = Omit<PlanPost, 'id'>
@@ -85,6 +89,78 @@ export interface ArticleRecord {
   editor: string | null
 }
 
+/**
+ * One row of the activity record (ADR-0058 decision 9, FEAT-078) as the
+ * company's store keeps it: a stage attempt (`stage` = the stage, `attempt`
+ * from 1) or the job (`stage: 'job'`). Written by the host from the
+ * orchestrator's progress events; never part of the sim (CLAUDE.md rule 2).
+ * `detail` may hold text a model or a service wrote (an error): render it as
+ * text, never as markup.
+ */
+export interface ActivityRowJson {
+  job_id: number
+  stage: string
+  idx: number
+  attempt: number
+  kind: string
+  revision: number
+  work_item: string | null
+  staff: string | null
+  role: string | null
+  persona: string | null
+  model: string | null
+  tokens_in: number
+  tokens_out: number
+  wall_ms: number
+  game_step: number | null
+  day: number | null
+  minute: number | null
+  /** `done`, `failed`, `repaired` (an attempt a later one replaced) or `reused` (from the stage store). */
+  result: string
+  /** Errors, repairs, words, score, pull request, branch and sha. */
+  detail: Record<string, unknown>
+  /** Wall time the row was written, unix ms (a job row's: when the job ended). */
+  created_at?: number | null
+}
+
+/** A window of the activity record: the newest `limit` jobs, or those older than job `before`. */
+export interface ActivityQuery {
+  limit: number
+  before?: number | null
+}
+
+export interface ActivityPage {
+  /** Every row of the jobs in the window: newest job first, each job's rows in the order they were written. */
+  rows: ActivityRowJson[]
+  /** Older jobs exist beyond the window. */
+  more: boolean
+}
+
+/**
+ * A job in flight, from the orchestrator's progress events (ADR-0058
+ * decision 8: counts, never a percentage). Jobs run one at a time, so there
+ * is at most one.
+ */
+export interface LiveJob {
+  jobId: number
+  kind: string
+  revision: number
+  workItem: string | null
+  staff: string | null
+  persona: string | null
+  role: string | null
+  /** The stage running now (`section`); null before the first stage. */
+  stage: string | null
+  index: number
+  total: number
+  /** The stage in words ("section 3 of 5"); null before the first stage. */
+  label: string | null
+  /** The model of the job's latest call, once it made one. */
+  model: string | null
+  /** Wall time since the job started. */
+  elapsedMs: number
+}
+
 /** What a data source can do. Fixed for the lifetime of the source. */
 export interface SourceCapabilities {
   /**
@@ -95,6 +171,8 @@ export interface SourceCapabilities {
   commands: ReadonlySet<string>
   /** KPIs exist (tracker + KpiReport). False leaves the Performance panel out of the navigation. */
   performance: boolean
+  /** The source has an activity record (the company's store). False or absent leaves the Activity panel out. */
+  activity?: boolean
   site: SiteLinks
   /**
    * The phrases the site's house style bans (the style guide's
@@ -141,6 +219,19 @@ export interface GameDataSource {
   getArticle(item: string): Promise<ArticleRecord | null>
   /** KPIs from the first-party tracker + the latest KpiReport (organization.md §6a). */
   getPerformance(): Promise<PerformanceJson>
+  /**
+   * A window of the activity record (FEAT-078) from the company's store:
+   * bounded by `limit` jobs, never the whole record. Empty without one.
+   */
+  getActivity(q: ActivityQuery): Promise<ActivityPage>
+  /** The jobs in flight with the stage each runs now; empty when nothing runs. */
+  getLiveJobs(): Promise<LiveJob[]>
+  /**
+   * A cheap value that changes whenever the activity record may have
+   * changed; a reader compares it on every refresh and reads rows again only
+   * when it moved.
+   */
+  activityVersion(): unknown
   getPersona(slug: string): Promise<Persona | undefined>
   listPersonas(): Promise<Persona[]>
   /** Absolute game minute (day * 1440 + minute of day), for ticket deadlines. */

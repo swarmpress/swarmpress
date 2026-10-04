@@ -756,7 +756,12 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     dataSource: () => {
       // The Inbox's banned-phrase check reads the site's own style guide (the pack's, when the source is made).
       const site = { style_guide: knowledge.current?.styleGuide ?? undefined }
-      const s = new SessionDataSource(orgApi, { ...companyStoreOptions(store, company, site), changeKey: () => `${sim.step()}:${loop.lastSeq}` })
+      // The Activity panel and the HUD's Now strip (U4): rows from the store; the job in flight from progress events, while the loop still runs it.
+      const recorder = {
+        live: () => activity.live().filter((j) => loop.jobs.some((r) => r.job_id === j.jobId && r.state === 'running')),
+        version: () => activity.written,
+      }
+      const s = new SessionDataSource(orgApi, { ...companyStoreOptions(store, company, site, recorder), changeKey: () => `${sim.step()}:${loop.lastSeq}` })
       sources.add(s)
       return s
     },

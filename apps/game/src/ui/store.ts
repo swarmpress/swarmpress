@@ -2,26 +2,31 @@ import { createContext } from 'preact'
 import { useContext } from 'preact/hooks'
 import { batch, computed, signal, type ReadonlySignal } from '@preact/signals'
 import { commandName, NOT_AVAILABLE, toJson, type Command, type CommandName, type CommandResult } from './commands'
-import { readSnapshot, type ArticleRecord, type GameDataSource, type GameSnapshot, type SiteLinks } from './data-source'
+import { readSnapshot, type ArticleRecord, type GameDataSource, type GameSnapshot, type LiveJob, type SiteLinks } from './data-source'
 import { placeholderPersona, type Persona } from './personas'
 import type { PlanJson, PlanText, PostType } from './plan-types'
 import { EMPTY_PLAN, EMPTY_PLAN_TEXT, withTextOnlyItems } from './plan-wire'
 import type { FinanceJson, InboxJson, OrgJson, PerformanceJson, StaffJson } from './types'
 
-export type PanelId = 'plan' | 'org' | 'projects' | 'finance' | 'inbox' | 'hiring' | 'performance'
+export type PanelId = 'plan' | 'org' | 'projects' | 'finance' | 'inbox' | 'activity' | 'hiring' | 'performance'
 
 export interface PanelDef {
   id: PanelId
   label: string
-  /** Single-letter shortcut (also 1–7 by position). */
+  /** Single-letter shortcut (also 1–9 by position). */
   key: string
   icon: string
 }
 
-/** Toolbar order: the Plan is the primary instrument (ADR-0031). A store offers the ones its source has data for (`store.panels`). */
+/**
+ * Toolbar order: the Plan is the primary instrument (ADR-0031), then what
+ * needs the CEO and what the staff are doing. A store offers the ones its
+ * source has data for (`store.panels`).
+ */
 export const PANELS: PanelDef[] = [
   { id: 'plan', label: 'Plan', key: 'p', icon: 'plan' },
   { id: 'inbox', label: 'Inbox', key: 'i', icon: 'inbox' },
+  { id: 'activity', label: 'Activity', key: 'a', icon: 'activity' },
   { id: 'org', label: 'Org chart', key: 'o', icon: 'org' },
   { id: 'projects', label: 'Projects', key: 'j', icon: 'projects' },
   { id: 'finance', label: 'Finance', key: 'f', icon: 'finance' },
@@ -63,12 +68,20 @@ export interface OverlayStore {
   performance: ReadonlySignal<PerformanceJson>
   personas: ReadonlySignal<Persona[]>
   now: ReadonlySignal<number>
+  /**
+   * The jobs in flight with their stage now (the orchestrator's progress
+   * events): the Activity panel's pinned job and the HUD's "Now" strip. Read
+   * with the clock, about once a second.
+   */
+  live: ReadonlySignal<LiveJob[]>
   panel: ReturnType<typeof signal<PanelId | null>>
   profile: ReturnType<typeof signal<ProfileTarget | null>>
   selectedProject: ReturnType<typeof signal<string | null>>
   selectedItem: ReturnType<typeof signal<string | null>>
   /** The work item whose article preview is open (a dialog over the panels); null when closed. */
   article: ReturnType<typeof signal<string | null>>
+  /** The job the Activity panel opens on (expanded and focused), then clears; null for none. */
+  activityJob: ReturnType<typeof signal<number | null>>
   toast: ReturnType<typeof signal<Toast | null>>
   /** Apply a command, then re-read the source; shows a toast with the outcome. */
   run(cmd: Command, success?: string): Promise<CommandResult>
@@ -106,6 +119,10 @@ export interface OverlayStore {
   openProfile(t: ProfileTarget, opener?: HTMLElement | null): void
   closeProfile(): void
   togglePanel(id: PanelId): void
+  /** Opens the Activity panel (when the source has a record), on `jobId` if given: the HUD's "Now" strip. */
+  openActivity(jobId?: number | null): void
+  /** Opens a work item in the Plan panel. */
+  openItem(id: string): void
   /** Re-read the source (also called on every source change); resolves when the snapshot is in. */
   refresh(): Promise<void>
   dispose(): void
@@ -186,14 +203,30 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
     return inflight
   }
 
-  const tickClock = () =>
+  // The jobs in flight: read with the clock, set only when they changed (the elapsed time moves each second while one runs).
+  const live = signal<LiveJob[]>([])
+  let liveText = '[]'
+  const refreshLive = () =>
+    void source.getLiveJobs().then(
+      (jobs) => {
+        const text = JSON.stringify(jobs)
+        if (disposed || text === liveText) return
+        liveText = text
+        live.value = jobs
+      },
+      () => undefined,
+    )
+
+  const tickClock = () => {
+    refreshLive()
     void source.now().then((n) => {
       if (!disposed) clock.value = n
     })
+  }
 
   const store: OverlayStore = {
     source,
-    panels: PANELS.filter((p) => p.id !== 'performance' || caps.performance),
+    panels: PANELS.filter((p) => (p.id !== 'performance' || caps.performance) && (p.id !== 'activity' || !!caps.activity)),
     site: caps.site,
     bannedPhrases: caps.bannedPhrases ?? null,
     can: (name) => caps.commands.has(name),
@@ -206,11 +239,13 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
     performance: computed(() => snap.value.performance),
     personas: computed(() => snap.value.personas),
     now: clock,
+    live,
     panel: signal<PanelId | null>(null),
     profile: signal<ProfileTarget | null>(null),
     selectedProject: signal<string | null>(null),
     selectedItem: signal<string | null>(null),
     article: signal<string | null>(null),
+    activityJob: signal<number | null>(null),
     toast,
     async run(cmd, success) {
       if (!store.can(commandName(cmd))) {
@@ -298,6 +333,19 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
       if (!store.panels.some((p) => p.id === id)) return
       store.panel.value = store.panel.value === id ? null : id
     },
+    openActivity(jobId) {
+      if (!store.panels.some((p) => p.id === 'activity')) return
+      batch(() => {
+        store.activityJob.value = jobId ?? null
+        store.panel.value = 'activity'
+      })
+    },
+    openItem(id) {
+      batch(() => {
+        store.selectedItem.value = id
+        store.panel.value = 'plan'
+      })
+    },
     refresh: load,
     dispose() {
       disposed = true
@@ -307,12 +355,14 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
     },
   }
   const unsubscribe = source.subscribe((topics) => {
-    if (topics && topics.length === 1 && topics[0] === 'clock') tickClock()
+    // Game time and the activity record need no snapshot (the Activity panel reads its rows itself).
+    if (topics && topics.length > 0 && topics.every((t) => t === 'clock' || t === 'activity')) tickClock()
     else void load()
   })
-  // Game time moves without org changes; keep deadline countdowns current.
+  // Game time moves without org changes; keep deadline countdowns (and the job in flight) current.
   const ticker = setInterval(tickClock, 1000)
   void load()
+  refreshLive()
   return store
 }
 

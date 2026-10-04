@@ -2,7 +2,7 @@ import { render } from 'preact'
 import { effect } from '@preact/signals'
 import { Overlay } from './components/Overlay'
 import type { GameDataSource } from './data-source'
-import { hudBusiness } from './hud'
+import { hudBusiness, hudNow } from './hud'
 import { booksKept } from './rules'
 import { FIXTURE_NOW, MockDataSource } from './mock-source'
 import { createOverlayStore, type OverlayStore } from './store'
@@ -18,7 +18,7 @@ const isTyping = (t: EventTarget | null) => {
   return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
 }
 
-/** Global keyboard shortcuts: panel letters and the panel's position (1–7), Escape closes. */
+/** Global keyboard shortcuts: panel letters and the panel's position (1–9), Escape closes. */
 export function handleShortcut(store: OverlayStore, e: KeyboardEvent): boolean {
   if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return false
   if (e.key === 'Escape') {
@@ -60,11 +60,31 @@ export function mountOverlay(el: HTMLElement, source: GameDataSource) {
       highTickets: open.filter((t) => t.priority === 'high').length,
     }
   })
+  // The HUD's "Now" strip (U4): the job in flight (jobs run one at a time), named like the chip names it.
+  const stopNow = effect(() => {
+    const job = store.live.value[0]
+    if (!job) {
+      hudNow.value = null
+      return
+    }
+    const s = job.staff ? store.staff(job.staff) : undefined
+    const name = s ? store.personaOf(s.id).name : job.persona ? (store.persona(job.persona)?.name ?? null) : null
+    hudNow.value = {
+      jobId: job.jobId,
+      who: name ? name.split(' ')[0] : null,
+      kind: job.kind,
+      stage: job.label,
+      elapsedMs: job.elapsedMs,
+      open: () => store.openActivity(job.jobId),
+    }
+  })
   return {
     store,
     dispose() {
       window.removeEventListener('keydown', onKey)
       stopHud()
+      stopNow()
+      hudNow.value = null
       hudBusiness.value = null
       store.dispose()
       render(null, el)

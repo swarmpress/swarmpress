@@ -16,7 +16,9 @@
  * job row plus its commands plus its job-keyed text.
  *
  * It also knows what each job is doing right now, for the HUD chip
- * ("Giulia · draft · section 3 of 5", counts only).
+ * ("Giulia · draft · section 3 of 5", counts only), and the jobs in flight
+ * with their elapsed time (`live`) for the Activity panel and the HUD's
+ * "Now" strip (U4).
  */
 import type { LlmCallRecord, ProgressEvent } from '../orchestrator/bridge'
 import type { ActivityRow } from '../store/company-store'
@@ -57,6 +59,30 @@ interface OpenJob {
   tokensIn: number
   tokensOut: number
   model: string | null
+}
+
+/**
+ * A job in flight as the Activity panel pins it and the HUD's "Now" strip
+ * shows it (U4): who, what, the stage running now in counts ("section 3 of
+ * 5") and the wall time since the job started.
+ */
+export interface LiveJobInfo {
+  jobId: number
+  kind: string
+  revision: number
+  workItem: string | null
+  staff: string | null
+  persona: string | null
+  role: string | null
+  /** The latest stage event's stage; null before the first stage. */
+  stage: string | null
+  index: number
+  total: number
+  /** `progressLabel` of that stage ("section 3 of 5"); null before the first stage. */
+  label: string | null
+  /** The model of the job's latest call, once it made one. */
+  model: string | null
+  elapsedMs: number
 }
 
 /** What a stage is, in the chip's words; null for the job itself. */
@@ -155,6 +181,29 @@ export class ActivityRecorder {
     if (jobId != null) return this.latest.get(jobId) ?? null
     const all = [...this.latest.values()]
     return all[all.length - 1] ?? null
+  }
+
+  /** The jobs in flight (started, not yet done or failed), oldest first, with their stage now. */
+  live(): LiveJobInfo[] {
+    const at = this.now()
+    return [...this.jobs.values()].map(({ ev, started, model }) => {
+      const stage = this.latest.get(ev.job_id) ?? null
+      return {
+        jobId: ev.job_id,
+        kind: ev.kind,
+        revision: ev.revision,
+        workItem: ev.work_item,
+        staff: ev.staff,
+        persona: ev.persona,
+        role: ev.role,
+        stage: stage?.stage ?? null,
+        index: stage?.index ?? 0,
+        total: stage?.total ?? 0,
+        label: stage ? progressLabel(stage) : null,
+        model,
+        elapsedMs: Math.max(0, Math.round(at - started)),
+      }
+    })
   }
 
   /** Resolves when every row so far is written. */
