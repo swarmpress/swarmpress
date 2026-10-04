@@ -131,19 +131,28 @@ export async function importVerifiedEngine(
 }
 
 /**
- * One HEAD request against the pinned revision: the Hub reports the file's
- * sha256 (`x-linked-etag`) and size (`x-linked-size`). The engine itself only
- * checks that cached chunks belong to the same revision.
+ * Ask the Hub for the file's metadata at the pinned revision (the `paths-info` API: the LFS
+ * object's sha256 and size) and check it against the manifest. Not a HEAD on the file: the Hub
+ * answers that with a redirect to its CDN, and a browser's fetch follows it and only sees the
+ * CDN's headers, without `x-linked-etag`. The engine itself only checks that cached chunks belong
+ * to the same revision.
  */
 export async function verifyRemoteFile(model: BonsaiModel, f: typeof fetch = fetch): Promise<void> {
-  const url = `https://huggingface.co/${model.hfRepo}/resolve/${model.revision}/${model.file}`
-  const res = await f(url, { method: 'HEAD' })
+  const url = `https://huggingface.co/api/models/${model.hfRepo}/paths-info/${model.revision}`
+  const res = await f(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paths: [model.file] }) })
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`)
-  const etag = (res.headers.get('x-linked-etag') ?? '').replace(/^W\//, '').replace(/"/g, '')
-  const size = res.headers.get('x-linked-size')
-  if (!etag || size === null) throw new Error(`${url}: the Hub did not report the file's hash and size; refusing to load unverified weights`)
-  if (etag !== model.sha256 || Number(size) !== model.sizeBytes) {
-    throw new Error(`${url}: sha256 ${etag} (${size} bytes) does not match the manifest (${model.sha256}, ${model.sizeBytes} bytes)`)
+  let entry: { path?: string; size?: number; lfs?: { oid?: string; size?: number } } | undefined
+  try {
+    const list = (await res.json()) as Array<typeof entry>
+    entry = Array.isArray(list) ? list.find((e) => e?.path === model.file) : undefined
+  } catch {
+    entry = undefined
+  }
+  const sha = entry?.lfs?.oid
+  const size = entry?.lfs?.size ?? entry?.size
+  if (!sha || typeof size !== 'number') throw new Error(`${url}: the Hub did not report ${model.file}'s hash and size; refusing to load unverified weights`)
+  if (sha !== model.sha256 || size !== model.sizeBytes) {
+    throw new Error(`${url}: ${model.file} has sha256 ${sha} (${size} bytes), which does not match the manifest (${model.sha256}, ${model.sizeBytes} bytes)`)
   }
 }
 

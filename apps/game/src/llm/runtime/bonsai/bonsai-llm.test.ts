@@ -449,24 +449,32 @@ describe('BonsaiLlm device loss', () => {
 })
 
 describe('engine import and remote verification', () => {
-  const headFetch = (headers: Record<string, string>, status = 200) =>
-    (async () => new Response(null, { status, headers })) as unknown as typeof fetch
+  /** The Hub's paths-info answer for the manifest's file (or `body` as given). */
+  const hubFetch = (lfs: { oid?: string; size?: number } | null, status = 200, body?: unknown) =>
+    (async (url: string, init?: RequestInit) => {
+      expect(url).toBe(`https://huggingface.co/api/models/${MODEL.hfRepo}/paths-info/${MODEL.revision}`)
+      expect(init?.method).toBe('POST')
+      expect(JSON.parse(String(init?.body))).toEqual({ paths: [MODEL.file] })
+      const json = body ?? [{ type: 'file', path: MODEL.file, size: lfs?.size, ...(lfs ? { lfs } : {}) }]
+      return new Response(JSON.stringify(json), { status, headers: { 'Content-Type': 'application/json' } })
+    }) as unknown as typeof fetch
 
   it('accepts the Hub metadata that matches the manifest', async () => {
-    await expect(verifyRemoteFile(MODEL, headFetch({ 'x-linked-etag': `"${MODEL.sha256}"`, 'x-linked-size': '100' }))).resolves.toBeUndefined()
+    await expect(verifyRemoteFile(MODEL, hubFetch({ oid: MODEL.sha256, size: MODEL.sizeBytes }))).resolves.toBeUndefined()
   })
 
   it('refuses a different hash, a different size or missing metadata', async () => {
-    await expect(verifyRemoteFile(MODEL, headFetch({ 'x-linked-etag': `"${'c'.repeat(64)}"`, 'x-linked-size': '100' }))).rejects.toThrow(/does not match the manifest/)
-    await expect(verifyRemoteFile(MODEL, headFetch({ 'x-linked-etag': `"${MODEL.sha256}"`, 'x-linked-size': '99' }))).rejects.toThrow(/does not match the manifest/)
-    await expect(verifyRemoteFile(MODEL, headFetch({}))).rejects.toThrow(/refusing to load unverified weights/)
-    await expect(verifyRemoteFile(MODEL, headFetch({}, 404))).rejects.toThrow(/HTTP 404/)
+    await expect(verifyRemoteFile(MODEL, hubFetch({ oid: 'c'.repeat(64), size: MODEL.sizeBytes }))).rejects.toThrow(/does not match the manifest/)
+    await expect(verifyRemoteFile(MODEL, hubFetch({ oid: MODEL.sha256, size: MODEL.sizeBytes - 1 }))).rejects.toThrow(/does not match the manifest/)
+    await expect(verifyRemoteFile(MODEL, hubFetch(null))).rejects.toThrow(/refusing to load unverified weights/)
+    await expect(verifyRemoteFile(MODEL, hubFetch(null, 200, []))).rejects.toThrow(/refusing to load unverified weights/)
+    await expect(verifyRemoteFile(MODEL, hubFetch(null, 404))).rejects.toThrow(/HTTP 404/)
   })
 
   it('load checks the Hub before handing the file to the engine', async () => {
     const session = new FakeSession()
     const engine = fakeEngine(session)
-    const llm = new BonsaiLlm({ resolve: () => MODEL, importEngine: async () => engine, fetch: headFetch({ 'x-linked-etag': 'wrong', 'x-linked-size': '100' }) })
+    const llm = new BonsaiLlm({ resolve: () => MODEL, importEngine: async () => engine, fetch: hubFetch({ oid: 'wrong', size: MODEL.sizeBytes }) })
     await expect(llm.load('ternary-bonsai-2-27b')).rejects.toThrow(/does not match the manifest/)
     expect(engine.loads).toHaveLength(0)
   })
