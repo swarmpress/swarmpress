@@ -80,6 +80,8 @@ export interface OrchestratorStore {
   claimBrief(company: string, briefRef: string, workItem: string): Promise<boolean>
   putArtifact(company: string, workItem: string, recordJson: string): Promise<void>
   getArtifact(company: string, workItem: string): Promise<string | null>
+  /** Every artifact record of the company, `[{work_item, record}]` with the record as stored (JSON text). */
+  listArtifacts(company: string): Promise<{ work_item: string; record: string }[]>
   appendTranscript(company: string, jobId: number, seq: number, speaker: string, text: string): Promise<void>
   setItemText(company: string, item: string, title: string | null, brief: string | null): Promise<void>
   appendPost(company: string, item: string, postJson: string): Promise<string>
@@ -276,6 +278,14 @@ export class CompanyStore implements OrchestratorStore {
       workItem,
     ])
     return rows.length ? String(rows[0].record) : null
+  }
+
+  async listArtifacts(company: string): Promise<{ work_item: string; record: string }[]> {
+    const rows = await this.driver.all<{ work_item: string; record: string }>(
+      'SELECT work_item, record FROM artifacts WHERE company = ? ORDER BY work_item',
+      [company],
+    )
+    return rows.map((r) => ({ work_item: String(r.work_item), record: String(r.record) }))
   }
 
   async appendTranscript(company: string, jobId: number, seq: number, speaker: string, text: string): Promise<void> {

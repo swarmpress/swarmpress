@@ -281,6 +281,33 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
   expect(gateway[2]).toMatchObject({ number: gateway[0].number, headSha: gateway[1].headSha })
   expect(gateway[2].mergedSha).toMatch(/^[0-9a-f]{7,}$/)
 
+  // ---------------------------------------------------------------- attribution (G6, ADR-0058 decision 10)
+  // The draft and the merge carried who did the work; the fake GitHub on the server holds the commits.
+  const writer = gateway[0].attribution!
+  expect(writer).toMatchObject({ role: 'writer', job_kind: 'draft', revision: 0, work_item: ITEM, model: 'fake-mvp' })
+  expect(writer.executor).toBe(`browser ${(writer.executor ?? '').split(' ')[1]} epoch ${first.epoch}`)
+  expect(gateway[2].attribution).toMatchObject({ staff_id: writer.staff_id, name: writer.name, job_kind: 'publish', revision: 1, approved_by: `${login} (CEO)` })
+  const commitOf = (sha: string) =>
+    page.evaluate(async (s) => (await fetch(`/api/dev/github/commit/${s}`)).json(), sha) as Promise<{ message: string; author: { name: string; email: string } | null; committer: { name: string } | null }>
+  // The revision commit on the draft branch: the writer's persona is its author.
+  const revision = await commitOf(gateway[1].headSha!)
+  expect(revision.author?.name).toBe(writer.name)
+  expect(revision.author?.email).toMatch(new RegExp(`^${writer.staff_id}\\+.+@staff\\.swarm\\.press$`))
+  expect(revision.message).toMatch(
+    new RegExp(`^Revision 1: ${TITLE}\\n\\nJob: \\d+\\nJob-Kind: draft\\nWork-Item: ${ITEM}\\nModel: fake-mvp\\nExecutor: browser \\S+ epoch ${first.epoch}$`),
+  )
+  // The squash commit: the platform is its author (the merge API has none); the trailers name everyone.
+  const squash = await commitOf(gateway[2].mergedSha!)
+  expect(squash.author?.name).not.toBe(writer.name)
+  const trailers = squash.message.split('\n\n').at(-1)!.split('\n')
+  expect(trailers.map((t) => t.split(':')[0])).toEqual(['Job', 'Job-Kind', 'Work-Item', 'Model', 'Executor', 'Reviewed-by', 'Approved-by', 'Co-authored-by'])
+  expect(trailers).toContain('Job-Kind: publish')
+  expect(trailers).toContain(`Work-Item: ${ITEM}`)
+  expect(trailers).toContain('Model: fake-mvp')
+  expect(trailers).toContain(`Approved-by: ${login} (CEO)`)
+  expect(trailers.find((t) => t.startsWith('Reviewed-by: '))).toBe(`Reviewed-by: ${gateway[2].attribution!.reviewed_by}`)
+  expect(trailers.at(-1)).toBe(`Co-authored-by: ${writer.name} <${revision.author!.email}>`)
+
   // ---------------------------------------------------------------- the activity record (ADR-0058, FEAT-078)
   // One job row per job with who did it (and, for the model's jobs, which model), and a row per stage of the draft.
   const activity = await session(page, 'activity')

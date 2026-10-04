@@ -46,6 +46,13 @@ describe('CompanyStore (memory engine)', () => {
     await s.putArtifact('c1', 'w1', '{"brief_ref":1}')
     expect(await s.getArtifact('c1', 'w1')).toBe('{"brief_ref":1}')
     expect(await s.getArtifact('c1', 'nope')).toBeNull()
+    // The list (the heroes of open articles, P2): every item of the company, records verbatim.
+    await s.putArtifact('c1', 'w2', text)
+    await s.putArtifact('c2', 'w9', '{}')
+    expect(await s.listArtifacts('c1')).toEqual([
+      { work_item: 'w1', record: '{"brief_ref":1}' },
+      { work_item: 'w2', record: text },
+    ])
   })
 
   it('appends transcripts idempotently on (job, seq)', async () => {

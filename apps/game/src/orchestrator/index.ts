@@ -40,7 +40,9 @@ export interface CreateOrchestratorOptions {
   onProgress?: (event: ProgressEvent) => void
 }
 
-export async function createOrchestrator(o: CreateOrchestratorOptions): Promise<OrchestratorLike & { free(): void; siteSummary(): string }> {
+export async function createOrchestrator(
+  o: CreateOrchestratorOptions,
+): Promise<OrchestratorLike & { free(): void; siteSummary(): string; cancel(reason?: string): number | undefined }> {
   const m = await loadOrchestratorWasm()
   // The browser's repair loop validates with the validator the Rust side
   // re-checks with, so a value never passes here and fails there unrepaired.

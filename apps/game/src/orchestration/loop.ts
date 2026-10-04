@@ -15,10 +15,13 @@
  * its id as soon as `run()` resolves and reused if the page reloads before
  * they are logged.
  *
- * Failures are loud (CLAUDE.md rule 11): a job that keeps failing, or that
- * runs past its wall-clock limit, is reported to the sim as
- * `JobCompleted{ok: false}` (the item is blocked and a ticket raised), and a
- * failed command-log write halts the loop.
+ * Failures are loud (CLAUDE.md rule 11): a job that keeps failing is reported
+ * to the sim as `JobFailed{Infrastructure}`, one that runs past its
+ * wall-clock limit is cancelled (P6: the orchestrator stops it at its next
+ * stage boundary and answers `JobFailed{Timeout}`); the sim blocks the item
+ * and raises the escalation ticket. A failed command-log write halts the
+ * loop. A lost model is not a failure: the job waits for it and runs again,
+ * resuming from its stored stages.
  *
  * Game time (ADR-0060, FEAT-080): every job has a due step (`due-step.ts`).
  * Jobs run one at a time, earliest due first, and the clock holds one step
@@ -28,7 +31,7 @@
  * the sim or in the command log.
  */
 import { commandKind, settles, type ReplaySim } from '../catchup/replay'
-import type { OrchestratorLike } from '../orchestrator/bridge'
+import { activeTimer, type OrchestratorLike } from '../orchestrator/bridge'
 import type { CommandRecord } from '../store/company-store'
 import { commandBytes } from '../sync/segments'
 import { dueStepSource, type DueStepSource, type StepRange } from './due-step'
@@ -90,6 +93,12 @@ export interface LoopOptions {
    * Default `DEFAULT_JOB_TIMEOUT_MS`.
    */
   jobTimeoutMs?: number | Partial<Record<string, number>>
+  /** While true a job's wall clock stands still (the model is not ready: loading, a lost GPU device). */
+  paused?: () => boolean
+  /** How long a job cancelled at its limit may take to stop before the loop gives up on it, ms. Default 30 s. */
+  cancelGraceMs?: number
+  /** Poll interval while waiting for a paused model, ms. Default 500. */
+  pausePollMs?: number
   /** Where due steps come from. Default: the sim's view when the wasm build has it, else derived in the host. */
   due?: DueStepSource
   /** Finished jobs kept in `jobs` (jobs still in flight are always kept). Default 50. */
@@ -142,6 +151,9 @@ export const FALLBACK_JOB_TIMEOUT_MS = 60 * 60_000
 /** Finished jobs kept in `OrchestrationLoop.jobs`, and errors kept in `errors`. */
 export const KEEP_JOBS = 50
 export const KEEP_ERRORS = 50
+
+/** The orchestrator's error for a lost model (`OrchestratorError::Unavailable`): not a job failure. */
+export const isModelUnavailable = (msg: string) => /model unavailable/.test(msg)
 
 /** A job ran past its wall-clock limit: the loop gives up on it, without a retry. */
 export class JobTimeout extends Error {
@@ -666,25 +678,52 @@ export class OrchestrationLoop {
     return t?.[kind] ?? DEFAULT_JOB_TIMEOUT_MS[kind] ?? FALLBACK_JOB_TIMEOUT_MS
   }
 
-  /** `orchestrator.run` under the job's wall-clock limit; rejects with `JobTimeout` past it. */
+  /**
+   * `orchestrator.run` under the job's wall-clock limit, which stands still
+   * while `paused()`. Past the limit the job is cancelled (P6): the run stops
+   * at its next stage boundary and resolves with `JobFailed{Timeout}` (or
+   * with its outcome, if it got there first). A run that does not stop
+   * within the grace, or an orchestrator that cannot cancel, rejects with
+   * `JobTimeout`; whatever it returns later is ignored.
+   */
   private runWithLimit(rec: JobRecord, jobJson: string): Promise<string> {
     const run = this.o.orchestrator.run(jobJson)
     const limit = this.timeoutFor(rec.kind)
     if (!(limit > 0) || !Number.isFinite(limit)) return run
     return new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new JobTimeout(limit)), limit)
-      // A run that settles after the limit is ignored: the loop gave up on it.
+      let graceTimer: ReturnType<typeof setTimeout> | null = null
+      const stopTimer = activeTimer(
+        limit,
+        () => {
+          const cancel = this.o.orchestrator.cancel?.bind(this.o.orchestrator)
+          if (!cancel) return reject(new JobTimeout(limit))
+          this.log(`${rec.kind} job ${rec.job_id} ran past ${formatLimit(limit)}: cancelled`)
+          cancel('timeout')
+          graceTimer = setTimeout(() => reject(new JobTimeout(limit)), this.o.cancelGraceMs ?? 30_000)
+        },
+        this.o.paused,
+      )
+      const done = () => {
+        stopTimer()
+        if (graceTimer) clearTimeout(graceTimer)
+      }
       run.then(
         (out) => {
-          clearTimeout(timer)
+          done()
           resolve(out)
         },
         (e) => {
-          clearTimeout(timer)
-          reject(e)
+          done()
+          // Cancelled at the limit, a run that errs on its way out is still a timeout.
+          reject(graceTimer ? new JobTimeout(limit) : e)
         },
       )
     })
+  }
+
+  /** Waits until the model is ready again (`paused()` false). */
+  private async whilePaused(): Promise<void> {
+    while (this.o.paused?.() && !this.halted) await new Promise((r) => setTimeout(r, this.o.pausePollMs ?? 500))
   }
 
   private pump() {
@@ -725,24 +764,32 @@ export class OrchestrationLoop {
               this.log(`${rec.kind} job ${rec.job_id} stopped (${msg}): ${this.halted}`)
               return
             }
-            // A job past its limit is not retried: its first run may still be going (no cancel yet, P6).
+            // A lost model is not the job's failure (P6): wait for it, then run the
+            // same job again; it resumes from its stored stages. Not an attempt.
+            if (isModelUnavailable(msg) && !(e instanceof JobTimeout)) {
+              this.log(`${rec.kind} job ${rec.job_id}: ${msg}; waiting for the model`)
+              await this.whilePaused()
+              await new Promise((r) => setTimeout(r, this.o.retryMs ?? 2000))
+              attempt--
+              continue
+            }
+            // A job past its limit is not retried: it was cancelled (P6), and its run may still be going.
             if (attempt < retries && !(e instanceof JobTimeout)) {
               this.log(`${rec.kind} job ${rec.job_id} failed (${msg}); retrying`)
               await new Promise((r) => setTimeout(r, this.o.retryMs ?? 2000))
               continue
             }
             // Stubs fail loudly (CLAUDE.md rule 11): the sim is told the job
-            // failed, so it blocks the item and raises the escalation ticket.
-            // A standup has no failure command; the sim ends the meeting
-            // without briefs when its hour is over.
+            // failed and why, so it blocks the item and raises the escalation
+            // ticket. A failed standup is left to the sim, which ends the
+            // meeting without briefs when its hour is over.
             rec.state = 'failed'
             rec.ok = false
             rec.error = msg
             this.fail(`${rec.kind} job ${rec.job_id} failed: ${msg}`)
             if (rec.kind !== 'standup') {
-              this.ready.push(
-                JSON.stringify({ JobCompleted: { job_id: rec.job_id, digest: { ok: false, score: 0, words: 0, qa_defects: 0, artifact_sha: null } } }),
-              )
+              const reason = e instanceof JobTimeout ? 'Timeout' : 'Infrastructure'
+              this.ready.push(JSON.stringify({ JobFailed: { job_id: rec.job_id, reason } }))
             } else this.close(rec.job_id)
             break
           }

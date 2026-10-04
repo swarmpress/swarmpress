@@ -74,6 +74,7 @@ const codec = {
 
 const job = (job_id: number, kind: string, revision = 0, work_item: string | null = 'work-item-1') => ({ job_id, kind, revision, work_item })
 const completed = (job_id: number, ok = true, score = 0) => ({ JobCompleted: { job_id, digest: { ok, score, words: 0, qa_defects: 0, artifact_sha: null } } })
+const failed = (job_id: number, reason: string) => ({ JobFailed: { job_id, reason } })
 
 function setup(run: (jobJson: string) => Promise<string>, opts: Partial<LoopOptions> = {}) {
   const sim = new StubSim()
@@ -154,7 +155,7 @@ describe('OrchestrationLoop', () => {
     expect(loop.jobs).toMatchObject([{ job_id: 2, kind: 'review', state: 'done', ok: true, score: 8 }])
   })
 
-  it('reports a job that keeps failing to the sim as JobCompleted{ok: false} (rule 11)', async () => {
+  it('reports a job that keeps failing to the sim as JobFailed{Infrastructure} (rule 11)', async () => {
     const { sim, loop, ran } = setup(async () => {
       throw new Error('gateway down')
     })
@@ -163,7 +164,7 @@ describe('OrchestrationLoop', () => {
     loop.boundary()
     await loop.idle()
     expect(ran).toEqual([3, 3]) // one retry
-    expect(sim.applied).toEqual([JSON.stringify(completed(3, false))])
+    expect(sim.applied).toEqual([JSON.stringify(failed(3, 'Infrastructure'))])
     expect(loop.jobs).toMatchObject([{ job_id: 3, state: 'failed', ok: false, error: 'gateway down' }])
     expect(loop.errors.join('\n')).toMatch(/draft job 3 failed: gateway down/)
   })
@@ -427,10 +428,71 @@ describe('OrchestrationLoop', () => {
       expect(ran).toEqual([3]) // one run: its first attempt may still be going, so it is not started again
       expect(loop.jobs).toMatchObject([{ job_id: 3, state: 'failed', ok: false, error: 'timed out after 20 ms' }])
       expect(reported).toEqual(['draft job 3 failed: timed out after 20 ms'])
-      // The sim is told, so it blocks the item and raises the escalation ticket.
+      // The sim is told why, so it blocks the item and raises the escalation ticket.
       loop.boundary()
-      expect(sim.applied).toEqual([JSON.stringify(completed(3, false))])
+      expect(sim.applied).toEqual([JSON.stringify(failed(3, 'Timeout'))])
       expect(loop.busy).toBe(false)
+    })
+
+    it('cancels a job past its limit (P6): the run stops at its next stage and its JobFailed{Timeout} is applied', async () => {
+      const cancels: string[] = []
+      let stop: (out: string) => void = () => undefined
+      const { sim, loop, ran } = setup(() => new Promise<string>((r) => (stop = r)), { jobTimeoutMs: { draft: 20 }, retries: 2 })
+      // The orchestrator stops the job at its next stage boundary and answers JobFailed{Timeout}.
+      ;(loop as unknown as { o: LoopOptions }).o.orchestrator.cancel = (reason?: string) => {
+        cancels.push(String(reason))
+        setTimeout(() => stop(JSON.stringify([failed(3, 'Timeout')])), 5)
+      }
+      await loop.enqueueEffects(JSON.stringify([job(3, 'draft')]))
+      await loop.settled()
+      expect(cancels).toEqual(['timeout'])
+      expect(ran).toEqual([3])
+      expect(loop.jobs).toMatchObject([{ job_id: 3, ok: false, error: 'failed: Timeout' }])
+      loop.boundary()
+      expect(sim.applied).toEqual([JSON.stringify(failed(3, 'Timeout'))])
+      expect(loop.busy).toBe(false)
+    })
+
+    it('a cancelled run that does not stop within the grace is given up on', async () => {
+      const cancels: string[] = []
+      const { sim, loop } = setup(() => new Promise<string>(() => undefined), { jobTimeoutMs: 20, cancelGraceMs: 20 })
+      ;(loop as unknown as { o: LoopOptions }).o.orchestrator.cancel = (reason?: string) => void cancels.push(String(reason))
+      await loop.enqueueEffects(JSON.stringify([job(5, 'review')]))
+      await loop.settled()
+      expect(cancels).toEqual(['timeout'])
+      loop.boundary()
+      expect(sim.applied).toEqual([JSON.stringify(failed(5, 'Timeout'))])
+    })
+
+    it('the job clock stands still while the model is not ready', async () => {
+      let paused = true
+      const m = manual()
+      const { loop } = setup(m.run, { jobTimeoutMs: 30, paused: () => paused })
+      await loop.enqueueEffects(JSON.stringify([job(6, 'draft')]))
+      await new Promise((r) => setTimeout(r, 120))
+      expect(loop.jobs[0].state).toBe('running') // four limits passed, all of them paused
+      paused = false
+      await new Promise((r) => setTimeout(r, 120))
+      expect(loop.jobs[0]).toMatchObject({ state: 'failed', error: 'timed out after 30 ms' })
+    })
+
+    it('a lost model is not a job failure: the job waits for the model and runs again, without using a retry', async () => {
+      let paused = true
+      let n = 0
+      const { sim, loop, ran, reported } = setup(
+        async (j) => {
+          if (n++ < 2) throw new Error('model unavailable: the model was lost 3 times during one call')
+          return JSON.stringify([completed((JSON.parse(j) as { job_id: number }).job_id)])
+        },
+        { retries: 0, paused: () => paused, pausePollMs: 5 },
+      )
+      setTimeout(() => (paused = false), 60)
+      await loop.enqueueEffects(JSON.stringify([job(7, 'draft')]))
+      await loop.settled()
+      expect(ran).toEqual([7, 7, 7])
+      expect(reported).toEqual([])
+      loop.boundary()
+      expect(sim.applied).toEqual([JSON.stringify(completed(7))])
     })
 
     it('a job that finishes within its limit is not touched by it, and the next job runs', async () => {
@@ -450,7 +512,7 @@ describe('OrchestrationLoop', () => {
       await m.done(4, [completed(4, true, 9)])
       loop.boundary()
       await loop.flush()
-      expect(sim.applied).toEqual([JSON.stringify(completed(4, false))])
+      expect(sim.applied).toEqual([JSON.stringify(failed(4, 'Timeout'))])
       expect(store.kv.has(jobOutcomeKey(4))).toBe(false)
       expect(loop.jobs[0]).toMatchObject({ state: 'failed', ok: false })
     })

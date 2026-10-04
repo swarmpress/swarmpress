@@ -241,6 +241,9 @@ export interface SiteSummary {
   blog_index: boolean | null
   style_guide: 'pack' | 'binding' | 'absent'
   writer_prompt: 'pack' | 'binding' | 'absent'
+  /** What an article's `seo.title` ends with, and where that came from (the binding, the site's articles, its blog's name, the brand). */
+  seo_suffix?: string
+  seo_suffix_source?: 'binding' | 'articles' | 'blog_index' | 'brand'
 }
 
 /** Job kinds that need the site's knowledge (a publish only merges). */
@@ -297,6 +300,11 @@ export class SiteOrchestrator implements OrchestratorLike {
     }
     const handle = await this.bind()
     return handle.run(jobJson)
+  }
+
+  /** Stops the running job at its next stage boundary (P6; the bound handle's `cancel`). */
+  cancel(reason?: 'timeout' | 'cancelled'): unknown {
+    return this.handle?.cancel?.(reason)
   }
 }
 

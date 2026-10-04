@@ -6,12 +6,15 @@ import { readFile } from 'node:fs/promises'
 import { beforeAll, describe, expect, it } from 'vitest'
 import init, { OrchestratorHandle, validateJson } from 'orchestrator-wasm'
 import { FakeLlm } from '../llm/fake-llm'
+import type { ChatMessage, GenerateOptions, GenerateResult, LocalLlm } from '../llm/types'
+import { LlmUnavailableError } from '../llm/types'
 import { MVP_POST_TYPES, MVP_REVIEW_NOTE, MVP_REVISION_LINE } from '../llm/mvp-script'
 import { CompanyStore } from '../store/company-store'
 import { MemorySqliteDriver } from '../store/sqlite-driver'
 import miniPack from './fixtures/cinqueterre-mini.pack.json'
 import { fakeMvpLlm, llmModeFromQuery } from './index'
-import { defaultCallPolicy, localLlmBridge, runMvpLoop, rustValidator, toChatMessages, type LlmCallRecord, type ProgressEvent, type SiteBindingJson } from './bridge'
+import { activeTimer, defaultCallPolicy, localLlmBridge, runMvpLoop, rustValidator, toChatMessages, type LlmCallRecord, type Outcome, type ProgressEvent, type SiteBindingJson } from './bridge'
+import { MVP_TEAM } from '../llm/mvp-script'
 
 /** The binding over the knowledge crate's cinqueterre-mini pack (the staged draft needs the site's closed world). */
 const SITE: SiteBindingJson = {
@@ -30,9 +33,13 @@ const task = (c: { request: { messages: { text: string }[] } }) => /^## Task: (.
 
 function fakeGateway() {
   const prs: { branch: string; head: string; merged: string | null; workItem: string | null; page: string }[] = []
+  /** The attribution of every call (G6), parsed. */
+  const who: { op: string; attribution: Record<string, unknown> | null }[] = []
   return {
     prs,
-    async openDraft(contentId: string, path: string, pageJson: string, _message: string, workItem: string | null) {
+    who,
+    async openDraft(contentId: string, path: string, pageJson: string, _message: string, workItem: string | null, attribution?: string | null) {
+      who.push({ op: 'draft', attribution: attribution ? JSON.parse(attribution) : null })
       expect(path.startsWith('content/')).toBe(true)
       const branch = `drafts/content-${contentId}`
       let n = prs.findIndex((p) => p.branch === branch && !p.merged)
@@ -41,7 +48,8 @@ function fakeGateway() {
       prs[n].page = pageJson
       return { number: n + 1, branch, head_sha: prs[n].head }
     },
-    async merge(number: number, headSha: string) {
+    async merge(number: number, headSha: string, attribution?: string | null) {
+      who.push({ op: 'merge', attribution: attribution ? JSON.parse(attribution) : null })
       const pr = prs[number - 1]
       if (pr.head !== headSha) throw new Error('head moved')
       pr.merged ??= `merged-${number}`
@@ -304,5 +312,127 @@ describe('localLlmBridge policy and truncation', () => {
     const llm = localLlmBridge(local, { maxCalls: 3 })
     for (let i = 0; i < 5; i++) await llm.complete(JSON.stringify({ kind: 'generate', request: { ...request(50), messages: [{ role: 'user', text: `q${i}` }] } }))
     expect(llm.calls.map((c) => c.request.messages[0].text)).toEqual(['q2', 'q3', 'q4'])
+  })
+})
+
+/**
+ * A LocalLlm that hangs on one task while `hang.on`: the call never answers
+ * unless it is aborted (then it ends `cancelled`, as the worker does).
+ */
+function hangingOn(task: string, hang: { on: boolean; calls: number }): LocalLlm {
+  const inner = fakeMvpLlm()
+  return new Proxy(inner, {
+    get(target, prop, receiver) {
+      if (prop === 'generate') {
+        return (messages: ChatMessage[], opts: GenerateOptions = {}): Promise<GenerateResult> => {
+          const prompt = messages.find((m) => m.role === 'user')?.content ?? ''
+          if (hang.on && prompt.startsWith(`## Task: ${task}`)) {
+            hang.calls++
+            return new Promise((resolve) => {
+              const zero = { promptTokens: 1, completionTokens: 0, durationMs: 0, tokensPerSec: 0 }
+              opts.signal?.addEventListener('abort', () => resolve({ text: '', finishReason: 'cancelled', usage: zero }), { once: true })
+            })
+          }
+          return target.generate.call(receiver, messages, opts)
+        }
+      }
+      return Reflect.get(target, prop, receiver)
+    },
+  })
+}
+
+const STAGE_SITE = { ...SITE, executor: 'browser dev-1 epoch 2' }
+const run = async (orch: OrchestratorHandle, job: object) => JSON.parse(await orch.run(JSON.stringify(job))) as Outcome[]
+const jobOf = (job_id: number, kind: string, brief_ref: string | null, work_item: string | null = 'work-item-1') => ({
+  company_id: 'c1',
+  job_id,
+  kind,
+  project: 'project-1',
+  work_item: kind === 'standup' ? null : work_item,
+  brief_ref,
+  revision: 0,
+  staff: MVP_TEAM,
+})
+
+describe('P6 and G6 through the bridge (ADR-0058)', () => {
+  it('the draft commit and the merge carry the attribution, with the model the bridge reports', async () => {
+    const store = await CompanyStore.open(await MemorySqliteDriver.open())
+    const gateway = fakeGateway()
+    const orch = new OrchestratorHandle(store, gateway, localLlmBridge(fakeMvpLlm()), JSON.stringify(STAGE_SITE))
+    const res = await runMvpLoop(orch, { company: 'c1' })
+    expect(res.mergedSha).toBe('merged-1')
+    expect(gateway.who.map((w) => w.op)).toEqual(['draft', 'draft', 'merge'])
+    expect(gateway.who[0].attribution).toEqual({
+      staff_id: 'staff-1',
+      name: 'Giulia Rossi',
+      persona: 'giulia',
+      role: 'writer',
+      job_id: res.steps[1].job.job_id,
+      job_kind: 'draft',
+      revision: 0,
+      work_item: 'work-item-1',
+      model: 'fake-mvp',
+      executor: 'browser dev-1 epoch 2',
+    })
+    // runMvpLoop's publish job has no approver (no CEO answered a ticket there).
+    expect(gateway.who[2].attribution).toMatchObject({ staff_id: 'staff-1', job_kind: 'publish', revision: 1, model: 'fake-mvp', reviewed_by: 'Marco Vitali' })
+    expect(gateway.who[2].attribution).not.toHaveProperty('approved_by')
+  })
+
+  it('a hung model times out per stage, is tried once more, then the job fails with Timeout; a retried job adopts the finished stages', async () => {
+    const store = await CompanyStore.open(await MemorySqliteDriver.open())
+    const gateway = fakeGateway()
+    const hang = { on: true, calls: 0 }
+    const llm = localLlmBridge(hangingOn('section s2 of 3', hang), { stageTimeoutMs: 40 })
+    const orch = new OrchestratorHandle(store, gateway, llm, JSON.stringify(STAGE_SITE))
+    const standup = await run(orch, jobOf(1, 'standup', null))
+    const briefRef = (standup[0] as { MeetingOutcome: { briefs: { brief_ref: string }[] } }).MeetingOutcome.briefs[0].brief_ref
+    expect(await run(orch, jobOf(2, 'draft', briefRef))).toEqual([{ JobFailed: { job_id: 2, reason: 'Timeout' } }])
+    expect(hang.calls).toBe(2)
+    expect(gateway.prs).toHaveLength(0)
+    expect((await store.plan('c1')).posts['work-item-1'].map((p) => p.type)).toEqual(['minutes', 'status'])
+    // The sim's Retry: a new job id. The model answers again; only the rest is written.
+    hang.on = false
+    const before = llm.calls.length
+    const out = await run(orch, jobOf(3, 'draft', briefRef))
+    expect((out[0] as { JobCompleted: { digest: { ok: boolean } } }).JobCompleted.digest.ok).toBe(true)
+    expect(llm.calls.slice(before).map(task)).toEqual(['section s2 of 3', 'section s3 of 3', 'closing'])
+    expect((await store.plan('c1')).posts['work-item-1'].map((p) => p.type)).toEqual(['minutes', 'status', 'artifact', 'handoff'])
+    expect(gateway.prs).toHaveLength(1)
+  })
+
+  it('cancel() stops the running job between stages and aborts the call in flight', async () => {
+    const store = await CompanyStore.open(await MemorySqliteDriver.open())
+    const hang = { on: true, calls: 0 }
+    const llm = localLlmBridge(hangingOn('section s1 of 3', hang))
+    const orch = new OrchestratorHandle(store, fakeGateway(), llm, JSON.stringify(STAGE_SITE))
+    expect(orch.cancel('timeout')).toBeUndefined() // nothing runs
+    const standup = await run(orch, jobOf(1, 'standup', null))
+    const briefRef = (standup[0] as { MeetingOutcome: { briefs: { brief_ref: string }[] } }).MeetingOutcome.briefs[0].brief_ref
+    const draft = run(orch, jobOf(2, 'draft', briefRef))
+    while (hang.calls === 0) await new Promise((r) => setTimeout(r, 5))
+    expect(orch.cancel('timeout')).toBe(2)
+    expect(await draft).toEqual([{ JobFailed: { job_id: 2, reason: 'Timeout' } }])
+    expect(hang.calls).toBe(1) // not tried again: the job was cancelled
+    expect(llm.calls.map(task).slice(4)).toEqual(['outline', 'intro', 'section s1 of 3'])
+  })
+
+  it('a lost model answers Unavailable, so the run rejects instead of failing the job', async () => {
+    const lost = new FakeLlm({ script: [new LlmUnavailableError('the model was lost 3 times during one call')] })
+    const out = JSON.parse(await localLlmBridge(lost).complete(JSON.stringify({ kind: 'generate', request: request(50) })))
+    expect(out).toEqual({ error: { Unavailable: 'the model was lost 3 times during one call' } })
+    expect(localLlmBridge(lost).modelId).toBeNull()
+  })
+
+  it('the stage clock stands still while the model is not ready', async () => {
+    let paused = true
+    let fired = 0
+    const stop = activeTimer(30, () => fired++, () => paused)
+    await new Promise((r) => setTimeout(r, 90))
+    expect(fired).toBe(0)
+    paused = false
+    await new Promise((r) => setTimeout(r, 90))
+    expect(fired).toBe(1)
+    stop()
   })
 })

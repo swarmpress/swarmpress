@@ -5,6 +5,7 @@
  * Runs in the browser, under Node (vitest) and under Bun.
  */
 import type { ChatMessage, LocalLlm, ThinkingMode, Usage, Validator } from '../llm/types'
+import { isUnavailableError } from '../llm/types'
 import { MAX_REPAIR_CHARS, repairQuote, StructuredOutputError, StructuredTruncatedError, trimToSentence } from '../llm/structured'
 import type { MvpCall, MvpReply } from '../llm/mvp-script'
 import { MVP_TEAM } from '../llm/mvp-script'
@@ -29,6 +30,8 @@ export interface JobRequest {
   brief_ref: string | null
   revision: number
   staff: StaffRef[]
+  /** Publish jobs: who approved at the CEO's gate, filled in by the host (orchestration/approver.ts); never from the sim. */
+  approved_by?: string | null
 }
 
 export interface Digest {
@@ -99,13 +102,21 @@ export interface SiteBindingJson {
   llm_profile?: 'local' | 'fake' | { context_tokens: number; reasoning_tokens: number; chars_per_token: number }
   /** The longest review (estimated tokens) read in one call; longer ones are read part by part. */
   review_single_tokens?: number
-  /** What follows " | " in an article's `seo.title` (default: the brand name). */
+  /** What follows " | " in an article's `seo.title` (default: from the knowledge pack, else the brand name). */
   seo_suffix?: string
+  /** Who runs the jobs, for the commits' `Executor` trailer (`browser <device> epoch <n>`). */
+  executor?: string
 }
 
 /** What `OrchestratorHandle` needs from the wasm module. */
 export interface OrchestratorLike {
   run(jobJson: string): Promise<string>
+  /**
+   * Stops the running job at its next stage boundary (P6): it ends with
+   * `JobFailed{Timeout}` for `'timeout'`, else `JobFailed{Cancelled}`, and
+   * the model call in flight is aborted. Optional: older handles cannot.
+   */
+  cancel?(reason?: 'timeout' | 'cancelled'): unknown
 }
 
 /** `agents::LlmRequest` as JSON. */
@@ -128,6 +139,10 @@ export interface LlmCall {
 /** orchestrator-wasm's `OrchestratorLlm`. */
 export interface OrchestratorLlm {
   complete(requestJson: string): Promise<string>
+  /** The model's id, for the commits' `Model` trailer (ADR-0056 decision 8). */
+  readonly modelId?: string | null
+  /** Aborts the call in flight (`OrchestratorHandle.cancel` calls it). */
+  abort?(): void
   /**
    * Set the validator structured calls repair against. `createOrchestrator`
    * passes the Rust one (`validateJson`) so the browser's repair loop and the
@@ -210,6 +225,43 @@ export interface LocalLlmBridgeOptions {
   maxCalls?: number
   /** Hears what every call cost (also settable later as `onCall`). */
   onCall?: (rec: LlmCallRecord) => void
+  /**
+   * Wall-clock limit of one model call (one stage's call), ms (P6). Past it
+   * the call is aborted and answered `{error: {Timeout}}`; the Rust side
+   * makes the stage once more, then fails the job with `JobFailed{Timeout}`.
+   * 0 or Infinity: no limit. Default `DEFAULT_STAGE_TIMEOUT_MS`.
+   */
+  stageTimeoutMs?: number
+  /**
+   * While this is true the call's clock stands still: the model is not
+   * ready (a lost GPU device being recovered, a reload). A device loss is
+   * not a timeout; the runtime re-issues the call once the model is back.
+   */
+  paused?: () => boolean
+  /** How long an aborted call may take to stop before it is answered anyway, ms. Default 5000. */
+  abortGraceMs?: number
+}
+
+/** A model call's wall-clock limit: generous (a long section with reasoning on a slow GPU). */
+export const DEFAULT_STAGE_TIMEOUT_MS = 20 * 60_000
+
+/**
+ * Runs `onExpire` once `limitMs` of time passed while `paused()` was false.
+ * Ticks at most once a second; returns the stop function.
+ */
+export function activeTimer(limitMs: number, onExpire: () => void, paused: () => boolean = () => false): () => void {
+  if (!(limitMs > 0) || !Number.isFinite(limitMs)) return () => undefined
+  const tick = Math.max(5, Math.min(1000, Math.round(limitMs / 5)))
+  let used = 0
+  const h = setInterval(() => {
+    if (paused()) return
+    used += tick
+    if (used >= limitMs) {
+      clearInterval(h)
+      onExpire()
+    }
+  }, tick)
+  return () => clearInterval(h)
 }
 
 /**
@@ -246,18 +298,29 @@ function metered(llm: LocalLlm, sink: (u: Usage) => void): LocalLlm {
 export function localLlmBridge(
   local: LocalLlm,
   opts: LocalLlmBridgeOptions = {},
-): OrchestratorLlm & { calls: LlmCall[]; onCall?: (rec: LlmCallRecord) => void } {
+): OrchestratorLlm & { calls: LlmCall[]; onCall?: (rec: LlmCallRecord) => void; readonly modelId: string | null; abort(): void } {
   const calls: LlmCall[] = []
   const maxCalls = opts.maxCalls ?? 200
   const policy = opts.policy ?? defaultCallPolicy
+  const limit = opts.stageTimeoutMs ?? DEFAULT_STAGE_TIMEOUT_MS
+  const grace = opts.abortGraceMs ?? 5000
   let validate = opts.validate
   let turn: Usage[] = []
+  /** The calls in flight, each with what stops it. */
+  const inFlight = new Set<(why: string) => void>()
   const llm = metered(local, (u) => turn.push(u))
   const bridge = {
     calls,
     onCall: opts.onCall,
+    get modelId(): string | null {
+      return local.modelId ?? null
+    },
     useValidator(v: Validator) {
       validate = v
+    },
+    /** Aborts every call in flight; each answers `{error: {Timeout: 'cancelled'}}`. */
+    abort() {
+      for (const stop of [...inFlight]) stop('the model call was cancelled')
     },
     async complete(requestJson: string): Promise<string> {
       const call = JSON.parse(requestJson) as LlmCall
@@ -265,7 +328,29 @@ export function localLlmBridge(
       if (calls.length > maxCalls) calls.splice(0, calls.length - maxCalls)
       const started = performance.now()
       turn = []
-      const out = await answer(call)
+      const ac = new AbortController()
+      let stopped: string | null = null
+      let wake: () => void = () => undefined
+      const halted = new Promise<void>((r) => (wake = r))
+      const stop = (why: string) => {
+        if (stopped) return
+        stopped = why
+        ac.abort()
+        // A call that ignores the signal is not waited for longer than the grace.
+        setTimeout(wake, grace)
+      }
+      inFlight.add(stop)
+      const stopTimer = activeTimer(limit, () => stop(`the model call ran past its limit of ${Math.round(limit / 1000)} s`), opts.paused)
+      let out: string
+      try {
+        const running = answer(call, ac.signal)
+        running.catch(() => undefined)
+        const raced = await Promise.race([running, halted.then(() => null)])
+        out = stopped ? JSON.stringify({ error: { Timeout: stopped } }) : (raced as string)
+      } finally {
+        stopTimer()
+        inFlight.delete(stop)
+      }
       const usage = turn
       bridge.onCall?.({
         kind: call.kind,
@@ -280,13 +365,13 @@ export function localLlmBridge(
       return out
     },
   }
-  async function answer(call: LlmCall): Promise<string> {
+  async function answer(call: LlmCall, signal: AbortSignal): Promise<string> {
     const messages = toChatMessages(call.request)
     const maxTokens = call.request.max_tokens
     const p = policy(call)
     try {
       if (call.kind === 'generate') {
-        const r = await llm.generate(messages, { maxTokens, thinking: p.thinking, reasoningBudget: p.reasoningBudget })
+        const r = await llm.generate(messages, { maxTokens, thinking: p.thinking, reasoningBudget: p.reasoningBudget, signal })
         if (r.finishReason === 'length') {
           const text = trimToSentence(r.text)
           if (!text) return JSON.stringify({ error: { Truncated: { partial: r.text } } })
@@ -300,10 +385,13 @@ export function localLlmBridge(
         reasoningBudget: p.reasoningBudget,
         answerPrefix: p.answerPrefix,
         stopOnJsonEnd: p.stopOnJsonEnd,
+        signal,
         ...(validate ? { validate } : {}),
       })
       return JSON.stringify({ value })
     } catch (e) {
+      // The model is gone (device lost more often than the runtime re-issues): not the job's failure.
+      if (isUnavailableError(e)) return JSON.stringify({ error: { Unavailable: e instanceof Error ? e.message : String(e) } })
       if (e instanceof StructuredTruncatedError) return JSON.stringify({ error: { Truncated: { partial: e.lastText } } })
       // The last answer goes back too, without its reasoning and capped:
       // what agents::structured_with_repair quotes in its repair turn.
@@ -336,11 +424,13 @@ export function mvpCallOf(call: LlmCall): MvpCall {
 export function scriptedLlm(
   script: MvpReply[],
   model?: { answer(call: MvpCall): MvpReply },
+  modelId: string | null = null,
 ): OrchestratorLlm & { calls: LlmCall[]; remaining(): number } {
   const queue = [...script]
   const calls: LlmCall[] = []
   return {
     calls,
+    modelId,
     remaining: () => queue.length,
     async complete(requestJson: string): Promise<string> {
       const call = JSON.parse(requestJson) as LlmCall

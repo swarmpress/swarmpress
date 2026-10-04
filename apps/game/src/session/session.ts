@@ -29,11 +29,18 @@
  *   takeover=1       take the company over from the executor that holds it (this
  *                    page load only; the parameter is removed from the URL)
  *   restore=replay   ignore the snapshot and replay the whole log from the seed (the audit path)
+ *   stagetimeout=S   wall-clock limit of one model call, seconds (P6; default 20 min); past it
+ *                    the call is aborted and the stage made once more, then JobFailed{Timeout}
+ *   jobtimeout=S     wall-clock limit of one job, seconds (default per kind, loop.ts); past it
+ *                    the job is cancelled at its next stage boundary
+ *   Both clocks stand still while the model is not ready (a lost GPU device is not a timeout).
  */
 import { Sim } from 'swarm-wasm'
 import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResult, type RestoredSim, type SimFactory } from '../catchup/replay'
-import { CentralClient, centralGateway, companyFor, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type OrchestratorGateway } from '../net/central'
+import { CentralClient, centralGateway, companyFor, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company } from '../net/central'
 import { OrchestrationLoop, type JobRecord } from '../orchestration/loop'
+import { withApprover } from '../orchestration/approver'
+import { recordingGateway, type GatewayCall } from './recording-gateway'
 import { ActivityRecorder, heldByText } from '../orchestration/activity'
 import { minutesPerArticle, standupContext, utteranceMs } from '../orchestration/speech'
 import { createOrchestrator, jobsFromEffects, loadRustValidator, localLlmBridge, outcomesForSim, type ProgressEvent, type SiteBindingJson } from '../orchestrator'
@@ -85,14 +92,7 @@ export interface RestoreInfo {
   ms: number
 }
 
-export interface GatewayCall {
-  op: 'draft' | 'merge'
-  workItem?: string | null
-  number: number
-  branch?: string
-  headSha?: string
-  mergedSha?: string
-}
+export type { GatewayCall } from './recording-gateway'
 
 export interface SessionInfo {
   login: string
@@ -389,19 +389,10 @@ async function restore(
   return { sim, info, result, lastSeq: commands.length }
 }
 
-function recordingGateway(inner: OrchestratorGateway, calls: GatewayCall[]): OrchestratorGateway {
-  return {
-    async openDraft(contentId, path, pageJson, message, workItem) {
-      const r = await inner.openDraft(contentId, path, pageJson, message, workItem)
-      calls.push({ op: 'draft', workItem, number: r.number, branch: r.branch, headSha: r.head_sha })
-      return r
-    },
-    async merge(number, headSha) {
-      const sha = await inner.merge(number, headSha)
-      calls.push({ op: 'merge', number, headSha, mergedSha: sha })
-      return sha
-    },
-  }
+/** A positive number of seconds from the URL, in ms; undefined otherwise. */
+function secondsParam(params: URLSearchParams, name: string): number | undefined {
+  const n = Number(params.get(name))
+  return params.has(name) && n > 0 ? n * 1000 : undefined
 }
 
 export async function startSession(opts: SessionOptions): Promise<GameSession> {
@@ -494,7 +485,9 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     debug: params.get('llmdebug') === '1',
     log: (line) => log(`model: ${line}`),
   })
-  const llm = localLlmBridge(models.llm)
+  // P6: a call past its limit is aborted; the clock stands still while the model is not ready.
+  const modelAway = () => models.status().state !== 'ready'
+  const llm = localLlmBridge(models.llm, { stageTimeoutMs: secondsParam(params, 'stagetimeout'), paused: modelAway })
   // The activity record and the chip's "section 3 of 5": progress events plus the bridge's usage (ADR-0058).
   const activity = new ActivityRecorder({ store, companyId: company.id, clock: () => ({ step: Number(sim.step()), day: sim.day(), minute: sim.minute_of_day() }), log })
   llm.onCall = (call) => activity.call(call)
@@ -503,7 +496,8 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   // Rebound to a new pack at the next job after it changed; refreshes before every standup.
   const orchestrator = new SiteOrchestrator({
     keeper: knowledge,
-    site: SITE,
+    // G6: who runs the jobs, as the server itself would name the lease holder.
+    site: { ...SITE, ...(lease.current ? { executor: `${lease.current.holder_kind} ${lease.current.holder} epoch ${lease.current.epoch}` } : {}) },
     create: (site) =>
       createOrchestrator({
         store,
@@ -525,8 +519,11 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     sim,
     store,
     companyId: company.id,
-    orchestrator,
+    // G6: a publish job carries the CEO who approved it (the answered ticket, the signed-in player).
+    orchestrator: withApprover(orchestrator, { inboxJson: () => sim.inbox_json(), ceoName: () => me.user.name || me.user.login }),
     codec: { jobsFromEffects, outcomesForSim },
+    paused: modelAway,
+    ...(secondsParam(params, 'jobtimeout') ? { jobTimeoutMs: secondsParam(params, 'jobtimeout') } : {}),
     log,
     onError: opts.onError,
     onPlanText: () => sources.forEach((s) => s.planTextChanged()),
