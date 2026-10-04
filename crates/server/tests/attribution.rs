@@ -120,6 +120,31 @@ async fn draft_commits_carry_the_persona_and_the_squash_commit_the_trailers() {
             p.company
         )
     );
+
+    // The test route reads the same back (the browser suites use it): the
+    // caller's own repository, fake GitHub only, a session required.
+    let path = format!("/api/dev/github/commit/{head}");
+    let (st, back) = s.get_json(&path, Some(&p.cookie)).await;
+    assert_eq!(st, 200, "{back}");
+    assert_eq!(
+        back["author"],
+        json!({ "name": "Giulia Rossi", "email": persona.email })
+    );
+    assert_eq!(back["message"], json!(c.message));
+    let (st, back) = s
+        .get_json(
+            &format!("/api/dev/github/commit/{}", squash.sha),
+            Some(&p.cookie),
+        )
+        .await;
+    assert_eq!((st, back["message"].clone()), (200, json!(squash.message)));
+    assert_eq!(s.get_json(&path, None).await.0, 401);
+    assert_eq!(
+        s.get_json("/api/dev/github/commit/0000000", Some(&p.cookie))
+            .await
+            .0,
+        404
+    );
 }
 
 #[tokio::test]

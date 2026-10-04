@@ -9,13 +9,18 @@
 //!   "knowledge_pack": "<the pack JSON text of GET /api/gateway/knowledge>",
 //!   "style_guide": { ... }, "writer_prompt": { ... },
 //!   "llm_profile": "local" | "fake" | { "context_tokens": 16384, "reasoning_tokens": 2048, "chars_per_token": 3 },
-//!   "review_single_tokens": 3000, "seo_suffix": "The Dispatch" }
+//!   "review_single_tokens": 3000, "seo_suffix": "The Dispatch",
+//!   "executor": "browser dev-1 epoch 3" }
 //! ```
 //!
 //! `llm_profile` is the model's budget for the staged jobs (ADR-0058,
 //! default `local`); `review_single_tokens` the longest review read in one
 //! call ([`crate::REVIEW_SINGLE_TOKENS`]); `seo_suffix` what follows `" | "`
-//! in an article's `seo.title` (default: the brand name).
+//! in an article's `seo.title`. Without it the suffix comes from the pack
+//! ([`SeoSuffixSource`]): what the site's existing articles end their titles
+//! with, else the blog's name, else the brand name. `executor` names who runs
+//! the jobs in the commits' provenance (absent: the central gateway names the
+//! lease holder).
 //!
 //! `knowledge_pack` (JSON text, or the pack object) is the site at one
 //! commit: it is loaded with [`knowledge::pack::load`] into the binding's
@@ -101,6 +106,71 @@ impl SiteKnowledge {
     }
 }
 
+/// Where an article's `seo.title` suffix came from ([`SiteBinding::seo_suffix`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SeoSuffixSource {
+    /// The binding JSON's `seo_suffix`.
+    Binding,
+    /// What the site's existing articles end their titles with
+    /// (`"Day Trip to Portovenere | The Dispatch"`), the most common one.
+    Articles,
+    /// The name of the site's story section: the `blog-index` block's
+    /// `title` on `content/pages/blog-index.json`.
+    BlogIndex,
+    /// None of these: the brand name.
+    Brand,
+}
+
+/// Longest suffix taken from the site (characters).
+const MAX_SEO_SUFFIX: usize = 60;
+
+fn suffix_ok(s: &str) -> bool {
+    !s.is_empty() && s.chars().count() <= MAX_SEO_SUFFIX && !s.chars().any(char::is_control)
+}
+
+/// The `seo.title` suffix the site's articles use, from its knowledge pack
+/// (`docs/design/mvp-pipeline.md` §4): first the text after the last `" | "`
+/// in the titles of the existing blog articles of the pack's page list (the
+/// most common; ties go to the alphabetically first), then the name of the
+/// story section (the blog index's `blog-index` block title). `None` when the
+/// pack says neither.
+pub(crate) fn seo_suffix_of(k: &SiteKnowledge) -> Option<(String, SeoSuffixSource)> {
+    let lang = k.kb.manifest.default_language.clone();
+    let mut counts: std::collections::BTreeMap<String, usize> = Default::default();
+    for p in &k.kb.pages.pages {
+        let article = p.page_type == "blog-article" || p.path.starts_with("content/pages/blog/");
+        if !article {
+            continue;
+        }
+        if let Some((_, tail)) = p.title(&lang).rsplit_once(" | ") {
+            let tail = tail.trim();
+            if suffix_ok(tail) {
+                *counts.entry(tail.to_string()).or_default() += 1;
+            }
+        }
+    }
+    // Most common; on a tie the first in order (BTreeMap iterates sorted).
+    let best = counts
+        .iter()
+        .fold(None::<(&String, usize)>, |best, (s, n)| match best {
+            Some((_, m)) if m >= *n => best,
+            _ => Some((s, *n)),
+        });
+    if let Some((s, _)) = best {
+        return Some((s.clone(), SeoSuffixSource::Articles));
+    }
+    k.blog_index
+        .as_ref()
+        .and_then(|page| page["body"].as_array())
+        .into_iter()
+        .flatten()
+        .filter(|block| block["type"] == "blog-index")
+        .find_map(|block| block["title"].as_str().map(str::trim))
+        .filter(|t| suffix_ok(t))
+        .map(|t| (t.to_string(), SeoSuffixSource::BlogIndex))
+}
+
 /// The value of `key`, unless it is absent or `null`.
 fn present<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
     v.get(key).filter(|x| !x.is_null())
@@ -180,11 +250,19 @@ impl SiteBinding {
             .as_ref()
             .map(|k| site_validator_v2(&context, k.kb.clone()));
 
-        let seo_suffix = v
-            .get("seo_suffix")
-            .and_then(Value::as_str)
-            .unwrap_or(&brand_name)
-            .to_string();
+        let (seo_suffix, seo_suffix_source) = match present(v, "seo_suffix") {
+            Some(Value::String(s)) => (s.clone(), SeoSuffixSource::Binding),
+            Some(_) => return Err("site.seo_suffix must be a string".into()),
+            None => knowledge
+                .as_ref()
+                .and_then(seo_suffix_of)
+                .unwrap_or_else(|| (brand_name.clone(), SeoSuffixSource::Brand)),
+        };
+        let executor = match present(v, "executor") {
+            None => None,
+            Some(Value::String(s)) if !s.trim().is_empty() => Some(s.trim().to_string()),
+            Some(_) => return Err("site.executor must be a non-empty string".into()),
+        };
 
         let small = |k: &str, d: u64| v.get(k).and_then(Value::as_u64).unwrap_or(d);
         Ok(SiteBinding {
@@ -211,6 +289,8 @@ impl SiteBinding {
             ))
             .map_err(|e| e.to_string())?,
             seo_suffix,
+            seo_suffix_source,
+            executor,
             article_guidance,
             knowledge,
             style_source,
@@ -225,8 +305,8 @@ impl SiteBinding {
 
     /// What the binding was built from, for diagnostics (the browser's
     /// session hook): `{site_id, commit, pages, media, entities,
-    /// style_guide, writer_prompt}`; `commit` and the counts are `null`
-    /// without a pack.
+    /// style_guide, writer_prompt, seo_suffix, seo_suffix_source}`; `commit`
+    /// and the counts are `null` without a pack.
     pub fn summary(&self) -> Value {
         let k = self.knowledge.as_ref();
         json!({
@@ -238,6 +318,8 @@ impl SiteBinding {
             "blog_index": k.map(|k| k.blog_index.is_some()),
             "style_guide": self.style_source,
             "writer_prompt": self.writer_prompt_source,
+            "seo_suffix": self.seo_suffix,
+            "seo_suffix_source": self.seo_suffix_source,
         })
     }
 }

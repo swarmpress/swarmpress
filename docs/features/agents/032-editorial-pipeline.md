@@ -23,6 +23,9 @@ paths:
   - apps/game/src/llm/structured.ts
   - apps/game/src/llm/mvp-script.ts
   - apps/game/e2e/mvp.spec.ts
+  - apps/game/src/orchestrator/bridge.ts
+  - apps/game/src/orchestrator/bridge.test.ts
+  - crates/orchestrator-wasm/tests/loop.test.ts
 adrs:
   - ADR-0011
   - ADR-0009
@@ -48,8 +51,18 @@ repaired with `structured_with_repair`; the page is assembled for the frozen the
 against the site's closed world (`site_validator_v2`); a failing part alone is fixed; stage results
 and posts are stored idempotently; revisions rewrite only the parts the review or the CEO's
 send-back note names; the review reads text with part markers, part by part when long. No media,
-QA or research stage runs yet; the standup is still the meeting of ADR-0012 (P4); timeout and
-cancel (P6) are not built.
+QA or research stage runs yet; the standup is still the meeting of ADR-0012 (P4).
+
+Built (P6, `crates/orchestrator/tests/timeout.rs`): the browser bridge aborts a model call past
+its wall-clock limit (`stageTimeoutMs`, default 20 min, its clock stands still while the model is
+not ready) and answers `LlmError::Timeout`; the stage is made once more, then the job ends with
+`JobFailed{Timeout}` and keeps its completed stages, which the sim's `Retry` (a new job id) adopts.
+`OrchestratorHandle.cancel(reason)` stops the running job between stages and aborts the call in
+flight; the loop cancels a job past its own limit. Agent failures are `JobFailed{Model}` and
+`JobFailed{InvalidOutput}`; a lost model (`Unavailable`) is not a failure: the run rejects and the
+loop runs the job again once the model is back. The draft's hero shortlist leaves out the heroes of
+the company's other unmerged articles; the `seo.title` suffix comes from the site's articles (else
+the blog's name, else the brand).
 
 - **P1:** article shape for the frozen theme (hero, intro, sections, closing note; plain text;
   localized `seo`), v2 validator plus closed-world link and media checks.

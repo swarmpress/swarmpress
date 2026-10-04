@@ -51,7 +51,7 @@ use serde_json::{json, Value};
 
 use crate::article::{article_context, ArticleContext};
 use crate::gateway::Gateway;
-use crate::run::{corrupt, failed, invalid, persona, Orchestrator, Result};
+use crate::run::{corrupt, invalid, persona, Orchestrator, OrchestratorError, Result};
 use crate::store::{ArtifactRecord, StageRow, Store, StoredParts};
 use crate::{
     Digest, JobFailure, JobKind, JobRequest, Outcome, ProgressState, SiteBinding, StaffRef,
@@ -61,6 +61,10 @@ use crate::{
 pub const SECTION_REPAIRS: u32 = 2;
 /// Repair turns (and page-level fixes) one job may use.
 pub const JOB_REPAIRS: u32 = 4;
+/// Times a stage's model call is made again after it ran past its wall-clock
+/// limit (`LlmError::Timeout` from the browser bridge, P6); after that the job
+/// fails with `JobFailed{Timeout}` and keeps the stages it completed.
+pub const STAGE_TIMEOUT_RETRIES: u32 = 1;
 /// A review whose reading text and checks are estimated at no more than this
 /// many tokens is one call (the binding's `review_single_tokens`).
 pub const REVIEW_SINGLE_TOKENS: u32 = 3000;
@@ -85,6 +89,13 @@ pub(crate) enum Halt {
     Invalid { stage: String, errors: Vec<String> },
     /// The closed world has no image for the brief (rule 5).
     NeedsMedia,
+    /// A stage's model call ran past its limit again after its retry
+    /// ([`STAGE_TIMEOUT_RETRIES`]).
+    Timeout(String),
+    /// The host cancelled the job ([`crate::CancelToken`]).
+    Cancelled(JobFailure),
+    /// The model is gone: not a job failure, the run errs and is repeated.
+    Unavailable(String),
 }
 
 type Step<T> = std::result::Result<T, Halt>;
@@ -102,17 +113,21 @@ impl Halt {
             Halt::Llm(_) => "model",
             Halt::Invalid { .. } => "invalid-output",
             Halt::NeedsMedia => "needs-media",
+            Halt::Timeout(_) => "timeout",
+            Halt::Cancelled(JobFailure::Timeout) => "timeout",
+            Halt::Cancelled(_) => "cancelled",
+            Halt::Unavailable(_) => "unavailable",
         }
     }
 }
 
-fn halt_of(f: RepairFailed, stage: &str) -> Halt {
-    match f.error {
-        LlmError::InvalidOutput { errors, .. } => Halt::Invalid {
-            stage: stage.to_string(),
-            errors,
-        },
-        other => Halt::Llm(other),
+/// The failure of a cancelled call, before it was made.
+fn cancelled_call() -> RepairFailed {
+    RepairFailed {
+        error: LlmError::Timeout("the job was cancelled".into()),
+        calls: 0,
+        repairs: 0,
+        no_progress: false,
     }
 }
 
@@ -379,7 +394,28 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         Ok(())
     }
 
+    /// Why a call failed, as the job sees it: a cancelled job is cancelled
+    /// whatever the aborted call said.
+    fn halt_of(&self, cx: &Cx<'_>, f: RepairFailed, stage: &str) -> Halt {
+        if let Some(reason) = self.cancelled(cx.req) {
+            return Halt::Cancelled(reason);
+        }
+        match f.error {
+            LlmError::InvalidOutput { errors, .. } => Halt::Invalid {
+                stage: stage.to_string(),
+                errors,
+            },
+            LlmError::Timeout(msg) => Halt::Timeout(msg),
+            LlmError::Unavailable(msg) => Halt::Unavailable(msg),
+            other => Halt::Llm(other),
+        }
+    }
+
     /// One structured call with repairs, within the job's repair budget.
+    ///
+    /// The cancel flag is checked first (between stages, P6). A call that ran
+    /// past its wall-clock limit (`LlmError::Timeout`) is made once more
+    /// ([`STAGE_TIMEOUT_RETRIES`]) unless the job was cancelled meanwhile.
     async fn call(
         &self,
         cx: &Cx<'_>,
@@ -389,14 +425,29 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         budget: &mut u32,
     ) -> std::result::Result<agents::llm::Repaired, RepairFailed> {
         let req = prompt.request(cx.call.clone(), &cx.system);
-        let max = SECTION_REPAIRS.min(*budget);
-        let r = structured_with_repair(self.llm.as_ref(), &req, schema, check, max).await;
-        let used = match &r {
-            Ok(x) => x.repairs,
-            Err(e) => e.repairs,
-        };
-        *budget = budget.saturating_sub(used);
-        r
+        let mut timeouts = 0;
+        loop {
+            if self.cancelled(cx.req).is_some() {
+                return Err(cancelled_call());
+            }
+            let max = SECTION_REPAIRS.min(*budget);
+            let r = structured_with_repair(self.llm.as_ref(), &req, schema, check, max).await;
+            let used = match &r {
+                Ok(x) => x.repairs,
+                Err(e) => e.repairs,
+            };
+            *budget = budget.saturating_sub(used);
+            match r {
+                Err(f)
+                    if matches!(f.error, LlmError::Timeout(_))
+                        && timeouts < STAGE_TIMEOUT_RETRIES
+                        && self.cancelled(cx.req).is_none() =>
+                {
+                    timeouts += 1;
+                }
+                r => return r,
+            }
+        }
     }
 
     /// A structured stage: reused when stored, else one call (with repairs),
@@ -463,7 +514,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                     ProgressState::Failed,
                     failure_detail(&f),
                 );
-                Ok(Err(halt_of(f, stage)))
+                Ok(Err(self.halt_of(cx, f, stage)))
             }
         }
     }
@@ -520,7 +571,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 ProgressState::Failed,
                 failure_detail(&f),
             );
-            halt_of(f, "section")
+            self.halt_of(cx, f, "section")
         };
         let whole = check_for(spec, Vec::new());
         let draft = match self.call(cx, &prompt, &schema, &whole, budget).await {
@@ -619,6 +670,21 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         Ok((art, predecessor))
     }
 
+    /// The heroes (media ids and URLs) of the company's other articles that
+    /// are drafted and not merged yet: `article_context`'s `heroes_in_flight`.
+    /// Merged articles are in the site's own indexes already.
+    async fn heroes_in_flight(&self, req: &JobRequest, item: &str) -> Result<BTreeSet<String>> {
+        let mut out = BTreeSet::new();
+        for (other, record) in self.store.artifacts(&req.company_id).await? {
+            if other == item {
+                continue;
+            }
+            let art: ArtifactRecord = serde_json::from_value(record).map_err(corrupt)?;
+            out.extend(art.hero_in_flight().into_iter().flatten());
+        }
+        Ok(out)
+    }
+
     /// The first draft attaches the brief to its item: title, angle and the
     /// standup minutes (posted once per brief).
     async fn attach_brief(
@@ -671,15 +737,52 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         Ok(())
     }
 
-    /// A job that stopped short: a status post, then the outcome the sim
-    /// expects (`JobFailed{NeedsMedia}`, else a not-ok digest that blocks the
-    /// item with an escalation ticket).
+    /// A job that stopped short: a status post, then `JobFailed` with the
+    /// reason (the sim blocks the item with the ticket the reason calls for:
+    /// `NeedsMedia`, else an escalation). Stages it completed stay stored. A
+    /// lost model is not a failure: the run errs, and the host runs the job
+    /// again once the model is back.
     async fn halted(&self, cx: &Cx<'_>, halt: Halt) -> Result<Vec<Outcome>> {
         let (req, item) = (cx.req, cx.item);
+        let failed = |reason| Outcome::JobFailed {
+            job_id: req.job_id,
+            reason,
+        };
         let outcome = match &halt {
+            Halt::Unavailable(msg) => {
+                self.emit_job(cx, ProgressState::Failed, json!({"halt": halt.label()}));
+                return Err(OrchestratorError::Unavailable(msg.clone()));
+            }
             Halt::Llm(error) => {
                 self.report_llm_failure(req, item, error).await?;
-                failed(req.job_id)
+                failed(JobFailure::Model)
+            }
+            Halt::Timeout(msg) => {
+                self.system_post(
+                    req,
+                    item,
+                    "status",
+                    0,
+                    "A model call ran past its time limit twice; the item is blocked until the CEO decides. The finished stages are kept.",
+                    json!({"failure": "timeout", "error": msg}),
+                )
+                .await?;
+                failed(JobFailure::Timeout)
+            }
+            Halt::Cancelled(reason) => {
+                let text = if *reason == JobFailure::Timeout {
+                    "The job ran past its time limit and was stopped; the item is blocked until the CEO decides. The finished stages are kept."
+                } else {
+                    "The job was cancelled; the finished stages are kept."
+                };
+                let slug = if *reason == JobFailure::Timeout {
+                    "timeout"
+                } else {
+                    "cancelled"
+                };
+                self.system_post(req, item, "status", 0, text, json!({"failure": slug}))
+                    .await?;
+                failed(*reason)
             }
             Halt::Invalid { stage, errors } => {
                 let what = if req.kind == JobKind::Review {
@@ -696,7 +799,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                     json!({"stage": stage, "errors": errors}),
                 )
                 .await?;
-                failed(req.job_id)
+                failed(JobFailure::InvalidOutput)
             }
             Halt::NeedsMedia => {
                 self.system_post(
@@ -708,10 +811,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                     json!({"failure": "needs-media"}),
                 )
                 .await?;
-                Outcome::JobFailed {
-                    job_id: req.job_id,
-                    reason: JobFailure::NeedsMedia,
-                }
+                failed(JobFailure::NeedsMedia)
             }
         };
         self.emit_job(cx, ProgressState::Failed, json!({"halt": halt.label()}));
@@ -780,6 +880,10 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             Ok(x) => x,
             Err(halt) => return self.halted(&cx, halt).await,
         };
+        // The last stage boundary before the repo write.
+        if let Some(reason) = self.cancelled(req) {
+            return self.halted(&cx, Halt::Cancelled(reason)).await;
+        }
 
         self.emit(&cx, "commit", 0, 1, ProgressState::Started, json!({}));
         let path = brief.page_path();
@@ -788,10 +892,13 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         } else {
             format!("Revision {}: {}", req.revision, brief.title)
         };
+        // The writer's persona is the commit's author (ADR-0058 decision 10).
+        let who = self.attribution(req, &writer, "draft");
         let pr = self
             .gateway
-            .open_draft(&brief.content_id, &path, &page, &message)
+            .open_draft_as(&brief.content_id, &path, &page, &message, Some(&who))
             .await?;
+        art.model = who.model.clone();
         let words = parts.to_parts().words();
         art.brief_ref = brief_ref;
         art.page = Some(page.clone());
@@ -872,11 +979,13 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             Some(c) => c,
             None => {
                 self.emit(cx, "context", 0, 1, ProgressState::Started, json!({}));
+                // Two open articles never share a hero: the other drafts' heroes are left out.
+                let in_flight = self.heroes_in_flight(cx.req, cx.item).await?;
                 let c = article_context(
                     &knowledge.kb,
                     brief,
                     knowledge.blog_index.as_ref(),
-                    &BTreeSet::new(),
+                    &in_flight,
                 );
                 if c.heroes.is_empty() {
                     self.emit(

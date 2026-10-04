@@ -30,6 +30,7 @@ fn standup(job_id: u64, context: Value) -> JobRequest {
         staff: team(),
         meeting: Some("meeting-1".into()),
         context,
+        approved_by: None,
     }
 }
 

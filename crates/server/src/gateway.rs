@@ -1075,6 +1075,35 @@ pub async fn close(
     Ok(reply(false, branch_deleted))
 }
 
+/// `GET /api/dev/github/commit/{sha}` → `{sha, message, author, committer,
+/// parents}`: one commit of the caller's site repository, **fake GitHub
+/// only** (404 otherwise). A test route: the browser suites read back what
+/// the gateway wrote (the persona as draft author, the squash commit's
+/// trailers; G6). It reads, so it needs a session but not the lease.
+pub async fn dev_commit(
+    State(st): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    axum::extract::Path(sha): axum::extract::Path<String>,
+) -> AppResult<Json<Value>> {
+    let Some(fake) = st.github.fake() else {
+        return Err(AppError::NotFound("only with the fake GitHub".into()));
+    };
+    let company = crate::app::require_company(&st, &user.id).await?;
+    let repo = company_repo(&st, &company)?;
+    let c = fake.get_commit(&repo, &sha).await.map_err(gh_error)?;
+    let who = |a: &Option<github::CommitAuthor>| {
+        a.as_ref()
+            .map(|a| json!({ "name": a.name, "email": a.email }))
+    };
+    Ok(Json(json!({
+        "sha": c.sha,
+        "message": c.message,
+        "author": who(&c.author),
+        "committer": who(&c.committer),
+        "parents": c.parents,
+    })))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

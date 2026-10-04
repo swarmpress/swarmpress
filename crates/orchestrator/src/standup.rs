@@ -666,6 +666,7 @@ fn failure_of(e: &LlmError) -> &'static str {
         LlmError::InvalidOutput { .. } => "invalid-output",
         LlmError::Unavailable(_) | LlmError::Backend(_) => "infrastructure",
         LlmError::Refusal { .. } | LlmError::Truncated { .. } => "model",
+        LlmError::Timeout(_) => "timeout",
     }
 }
 

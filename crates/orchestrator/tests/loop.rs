@@ -12,8 +12,8 @@ use agents::fake_writer::{self, REVIEW_NOTE, REVISION_LINE};
 use agents::{FakeLlm, FakeReply};
 use github::{FakeGitHub, RepoId};
 use orchestrator::{
-    Digest, FakeGateway, Gateway, GithubGateway, JobKind, JobRequest, LlmProfile, MemStore,
-    Orchestrator, Outcome, StaffRef, Store,
+    Attribution, Digest, FakeGateway, Gateway, GithubGateway, JobKind, JobRequest, LlmProfile,
+    MemStore, Orchestrator, Outcome, StaffRef, Store,
 };
 use serde_json::{json, Value};
 
@@ -44,8 +44,28 @@ fn standup() -> Vec<FakeReply> {
     ]
 }
 
+/// The model id the commits' `Model` trailer names.
+const MODEL: &str = "fake-writer-1";
+/// Who runs the jobs, as the browser session names itself.
+const EXECUTOR: &str = "browser dev-1 epoch 3";
+/// Who approved the publish at the CEO's gate (the host fills it in).
+const APPROVER: &str = "Ada Lovelace (CEO)";
+
 fn fake() -> FakeLlm {
-    fake_writer::fake_writer(standup())
+    fake_writer::fake_writer(standup()).with_model_id(MODEL)
+}
+
+/// The binding with the session's executor.
+fn executor_site() -> orchestrator::SiteBinding {
+    orchestrator::SiteBinding::from_json(&common::binding_json(
+        &common::mini_pack_json(),
+        json!({"executor": EXECUTOR}),
+    ))
+    .unwrap()
+}
+
+fn name_of(persona: &str) -> String {
+    agents::Persona::builtin(persona).unwrap().name
 }
 
 /// The `## Task:` line of a recorded call.
@@ -71,6 +91,7 @@ fn job(job_id: u64, kind: JobKind, brief_ref: Option<u64>, revision: u8) -> JobR
         staff: team(),
         meeting: None,
         context: Value::Null,
+        approved_by: None,
     }
 }
 
@@ -122,7 +143,7 @@ fn fake_github() -> (GithubGateway, Gh) {
 
 async fn full_loop<G: Gateway>(gateway: G, repo: &dyn Repo) -> Orchestrator<MemStore, G> {
     let llm = Arc::new(fake());
-    let orch = Orchestrator::new(MemStore::new(), gateway, llm.clone(), site());
+    let orch = Orchestrator::new(MemStore::new(), gateway, llm.clone(), executor_site());
 
     // 09:00 standup → one brief for Giulia, edited by Marco
     let out = orch.run(&job(1, JobKind::Standup, None, 0)).await.unwrap();
@@ -218,11 +239,13 @@ async fn full_loop<G: Gateway>(gateway: G, repo: &dyn Repo) -> Orchestrator<MemS
         assert!(LlmProfile::LOCAL.fits(&call.request), "{}", task(&call));
     }
 
-    // Publish: squash-merge, then the (simulated) deploy lands.
-    let out = orch
-        .run(&job(6, JobKind::Publish, Some(brief_ref), 1))
-        .await
-        .unwrap();
+    // Publish (the CEO approved it at the gate): squash-merge, then the
+    // (simulated) deploy lands.
+    let publish = JobRequest {
+        approved_by: Some(APPROVER.into()),
+        ..job(6, JobKind::Publish, Some(brief_ref), 1)
+    };
+    let out = orch.run(&publish).await.unwrap();
     let merged = completed(&out).clone();
     assert!(merged.ok && merged.artifact_sha.is_some());
     assert_eq!(
@@ -254,10 +277,7 @@ async fn full_loop<G: Gateway>(gateway: G, repo: &dyn Repo) -> Orchestrator<MemS
         .ends_with(" | The Dispatch"));
 
     // Publishing again is idempotent (no second merge, same sha).
-    let again = orch
-        .run(&job(6, JobKind::Publish, Some(brief_ref), 1))
-        .await
-        .unwrap();
+    let again = orch.run(&publish).await.unwrap();
     assert_eq!(completed(&again), &merged);
 
     // The plan thread tells the story, in order.
@@ -291,6 +311,18 @@ async fn full_loop<G: Gateway>(gateway: G, repo: &dyn Repo) -> Orchestrator<MemS
     orch
 }
 
+/// The head of the draft branch (the revision) and the merge commit.
+async fn shas<G: Gateway>(orch: &Orchestrator<MemStore, G>) -> (String, String) {
+    let art = orch
+        .store()
+        .get_artifact(COMPANY, "work-item-1")
+        .await
+        .unwrap()
+        .unwrap();
+    let sha = |k: &str| art[k].as_str().unwrap().to_string();
+    (sha("head_sha"), sha("merged_sha"))
+}
+
 #[tokio::test]
 async fn standup_to_published_article() {
     let gw = Arc::new(FakeGateway::new());
@@ -300,12 +332,85 @@ async fn standup_to_published_article() {
         1,
         "publish merged exactly once"
     );
+
+    // G6: the draft commits are the writer's, the merge names the writer,
+    // the editor and the approver (ADR-0056 decision 8, ADR-0058 decision 10).
+    let (head, merged) = shas(&orch).await;
+    let writer = Attribution {
+        persona: Some("giulia".into()),
+        role: Some("writer".into()),
+        job_id: Some(4),
+        job_kind: Some("draft".into()),
+        revision: Some(1),
+        work_item: Some("work-item-1".into()),
+        model: Some(MODEL.into()),
+        executor: Some(EXECUTOR.into()),
+        ..Attribution::new("staff-1", name_of("giulia"))
+    };
+    assert_eq!(gw.attribution(&head), Some(writer.clone()));
+    assert_eq!(
+        gw.attribution(&merged),
+        Some(Attribution {
+            job_id: Some(6),
+            job_kind: Some("publish".into()),
+            reviewed_by: Some(name_of("marco")),
+            approved_by: Some(APPROVER.into()),
+            ..writer
+        })
+    );
 }
 
 #[tokio::test]
 async fn standup_to_published_article_over_github_gateway() {
+    use github::RepoApi;
+
     let (gw, repo) = fake_github();
-    full_loop(gw, &repo).await;
+    let orch = full_loop(gw, &repo).await;
+    let (head, merged) = shas(&orch).await;
+    let giulia = name_of("giulia");
+    let email = "staff-1+swarmpress-cinqueterre.travel@staff.swarm.press";
+
+    // The revision commit on the draft branch: Giulia is its author.
+    let draft = repo.0.get_commit(&repo.1, &head).await.unwrap();
+    assert_eq!(
+        draft.author,
+        Some(github::CommitAuthor {
+            name: giulia.clone(),
+            email: email.into()
+        })
+    );
+    assert_eq!(
+        draft.message,
+        format!(
+            "Revision 1: Harvest week in Manarola\n\nJob: 4\nJob-Kind: draft\n\
+             Work-Item: work-item-1\nModel: {MODEL}\nExecutor: {EXECUTOR}"
+        )
+    );
+    // The first draft (job 2) is its parent, also Giulia's.
+    let first = repo.0.get_commit(&repo.1, &draft.parents[0]).await.unwrap();
+    assert_eq!(first.author, draft.author);
+    assert!(first
+        .message
+        .starts_with("Draft: Harvest week in Manarola\n\nJob: 2\n"));
+
+    // The squash commit: the platform is its author (the merge API has no
+    // author field); Giulia is the co-author, with the provenance trailers.
+    let squash = repo.0.get_commit(&repo.1, &merged).await.unwrap();
+    assert_eq!(squash.author, squash.committer);
+    let (_, trailers) = squash.message.split_once("\n\n").unwrap();
+    assert_eq!(
+        trailers,
+        format!(
+            "Job: 6\nJob-Kind: publish\nWork-Item: work-item-1\nModel: {MODEL}\n\
+             Executor: {EXECUTOR}\nReviewed-by: {}\nApproved-by: {APPROVER}\n\
+             Co-authored-by: {giulia} <{email}>",
+            name_of("marco")
+        )
+    );
+    println!(
+        "draft commit:\n{}\n\nsquash commit:\n{}",
+        draft.message, squash.message
+    );
 }
 
 async fn refused<G: Gateway>(gateway: G, repo: &dyn Repo) {
@@ -325,7 +430,14 @@ async fn refused<G: Gateway>(gateway: G, repo: &dyn Repo) {
         .run(&job(2, JobKind::Draft, Some(brief_ref), 0))
         .await
         .unwrap();
-    assert!(!completed(&out).ok);
+    // A refusal fails the job (the sim blocks the item with an escalation).
+    assert_eq!(
+        out,
+        [Outcome::JobFailed {
+            job_id: 2,
+            reason: orchestrator::JobFailure::Model
+        }]
+    );
     assert!(
         repo.branch(&format!("drafts/content-content-{brief_ref:x}"))
             .is_none(),
@@ -342,7 +454,7 @@ async fn refused<G: Gateway>(gateway: G, repo: &dyn Repo) {
 }
 
 #[tokio::test]
-async fn refused_draft_reports_not_ok_and_posts_status() {
+async fn refused_draft_fails_the_job_and_posts_status() {
     let gw = Arc::new(FakeGateway::new());
     refused(gw.clone(), gw.as_ref()).await;
 }

@@ -95,7 +95,8 @@ fn a_binding_from_the_pack_carries_the_sites_style_guide_writer_prompt_and_close
         site.summary(),
         json!({"site_id": "cinqueterre.travel", "commit": COMMIT, "pages": direct.pages.len(),
                "media": 20, "entities": direct.entities.entities.len(), "blog_index": true,
-               "style_guide": "pack", "writer_prompt": "pack"})
+               "style_guide": "pack", "writer_prompt": "pack",
+               "seo_suffix": "The Dispatch", "seo_suffix_source": "articles"})
     );
 
     // What the staged-drafting increment will call: the hero shortlist comes
@@ -117,6 +118,85 @@ fn a_binding_from_the_pack_carries_the_sites_style_guide_writer_prompt_and_close
         .iter()
         .all(|h| k.kb.media.get(&h.media_id).is_some()));
     assert!(!ctx.links.is_empty());
+}
+
+/// An article's `seo.title` ends with what the site's articles use (the live
+/// site: "| The Dispatch"), not with the brand name "Cinque Terre Dispatch".
+#[test]
+fn the_seo_suffix_comes_from_the_sites_articles_then_its_blog_name_then_the_brand() {
+    use orchestrator::SeoSuffixSource;
+
+    // cinqueterre-mini: "Day Trip to Portovenere | The Dispatch" is its one
+    // article title with a suffix; its other pages' "| Cinque Terre Dispatch"
+    // (village pages, the home page) do not count.
+    let site = binding(json!({"knowledge_pack": mini_pack_json()})).unwrap();
+    assert_eq!(
+        (site.seo_suffix.as_str(), site.seo_suffix_source),
+        ("The Dispatch", SeoSuffixSource::Articles)
+    );
+    // The binding's own wins.
+    let own =
+        binding(json!({"knowledge_pack": mini_pack_json(), "seo_suffix": "Dispatch"})).unwrap();
+    assert_eq!(
+        (own.seo_suffix.as_str(), own.seo_suffix_source),
+        ("Dispatch", SeoSuffixSource::Binding)
+    );
+    // No pack: the brand.
+    let bare = binding(json!({})).unwrap();
+    assert_eq!(
+        (bare.seo_suffix.as_str(), bare.seo_suffix_source),
+        ("Cinque Terre Dispatch", SeoSuffixSource::Brand)
+    );
+
+    // A site whose articles carry no suffix: the story section's name (the
+    // blog index block's title); the most common article suffix otherwise.
+    let page = |id: &str, slug: &str, title: &str, page_type: &str| {
+        json!({"id": id, "slug": {"en": format!("/en{slug}")}, "title": {"en": title},
+               "page_type": page_type, "body": []})
+    };
+    let mut src = MemSource::new();
+    src.insert_json(
+        "content/site.json",
+        &json!({"name": "Mini", "locales": ["en"], "defaultLocale": "en"}),
+    )
+    .insert_json(
+        "content/pages/blog-index.json",
+        &json!({"id": "blog", "slug": {"en": "/en/blog"}, "title": {"en": "Stories"},
+                "page_type": "blog-index",
+                "body": [{"type": "blog-index", "title": "The Log", "stories": []}]}),
+    )
+    .insert_json(
+        "content/pages/blog/a.json",
+        &page("a", "/blog/a", "First walk", "blog-article"),
+    )
+    .insert_json(
+        "content/pages/village.json",
+        &page("v", "/village", "Village | Somewhere Else", "village"),
+    );
+    let pack_of = |src: &MemSource| pack::build(src, "c0ffee").unwrap().to_json().unwrap();
+    let blog = binding(json!({"knowledge_pack": pack_of(&src)})).unwrap();
+    assert_eq!(
+        (blog.seo_suffix.as_str(), blog.seo_suffix_source),
+        ("The Log", SeoSuffixSource::BlogIndex)
+    );
+    src.insert_json(
+        "content/pages/blog/b.json",
+        &page("b", "/blog/b", "Second walk | The Log Book", "blog-article"),
+    )
+    .insert_json(
+        "content/pages/blog/c.json",
+        &page("c", "/blog/c", "Third walk | The Log Book", "blog-article"),
+    )
+    .insert_json(
+        "content/pages/blog/d.json",
+        &page("d", "/blog/d", "Fourth walk | Old Name", "blog-article"),
+    );
+    let articles = binding(json!({"knowledge_pack": pack_of(&src)})).unwrap();
+    assert_eq!(
+        (articles.seo_suffix.as_str(), articles.seo_suffix_source),
+        ("The Log Book", SeoSuffixSource::Articles)
+    );
+    assert_eq!(articles.summary()["seo_suffix_source"], json!("articles"));
 }
 
 /// The site's own writer prompt and style guide resolve into the prompts of
@@ -153,6 +233,7 @@ async fn standup_and_draft_run_on_a_pack_binding() {
         staff: team.clone(),
         meeting: None,
         context: Value::Null,
+        approved_by: None,
     };
     // The fake writer answers the standup's pitch round and the staged draft.
     let llm = Arc::new(agents::fake_writer::fake_writer(Vec::<FakeReply>::new()));

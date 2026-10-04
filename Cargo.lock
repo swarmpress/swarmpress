@@ -1782,6 +1782,7 @@ dependencies = [
  "knowledge",
  "serde",
  "serde_json",
+ "sim-core",
  "thiserror",
  "tokio",
  "xxhash-rust",

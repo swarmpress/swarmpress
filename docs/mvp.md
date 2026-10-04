@@ -327,8 +327,10 @@ reload / new device: restore from OPFS or sync (world snapshot + the log after i
 - Results come back as `ServerCommand::{MeetingOutcome, JobCompleted, DeployLanded}`, and
   since increment S (ADR-0059, FEAT-079) `JobFailed{job_id, reason}` and
   `DeployFailed{work_item}`. The sim accepts both. The orchestrator sends
-  `JobFailed{NeedsMedia}` when a draft's hero shortlist is empty (P2); the other reasons and
-  `DeployFailed` follow with P4, P6 and G5.
+  `JobFailed{NeedsMedia}` when a draft's hero shortlist is empty (P2), `Model` and
+  `InvalidOutput` for agent failures, `Timeout`/`Cancelled` for a cancelled or timed-out job (P6);
+  the browser loop sends `Timeout` and `Infrastructure` for jobs it gives up on. A lost model is
+  not a failure: the job runs again once the model is back.
 
 In the browser these are *local* commands that the client applies at the next step boundary and
 appends to the command log. "Server command" just means "not a player command".

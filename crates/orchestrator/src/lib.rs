@@ -20,6 +20,12 @@
 //! - The LLM is the agents crate's [`agents::Llm`].
 //! - [`Progress`] (optional) hears what a job is doing, stage by stage
 //!   ([`ProgressEvent`]): the browser's HUD and activity log (ADR-0058).
+//! - [`CancelToken`] stops a running job between stages (P6): the host
+//!   cancels a job past its wall-clock limit; it ends with `JobFailed`.
+//!
+//! Repo writes carry an [`Attribution`] (ADR-0056 decision 8, as narrowed by
+//! ADR-0058 decision 10): the draft commit names the writer's persona, the
+//! squash commit the writer, the editor and the approver.
 //!
 //! The Draft and Review jobs run in bounded stages (ADR-0058, `staged`):
 //! each stage is one model call that fits the model's context
@@ -46,9 +52,11 @@ pub use article::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use gateway::GithubGateway;
-pub use gateway::{DraftPr, FakeGateway, FakePr, Gateway, GatewayError};
-pub use run::{Orchestrator, OrchestratorError, SiteBinding};
-pub use site::{ConfigSource, SiteKnowledge, STYLE_GUIDE_PATH, WRITER_PROMPT_PATH};
+pub use gateway::{Attribution, DraftPr, FakeGateway, FakePr, Gateway, GatewayError};
+pub use run::{CancelToken, Orchestrator, OrchestratorError, SiteBinding};
+pub use site::{
+    ConfigSource, SeoSuffixSource, SiteKnowledge, STYLE_GUIDE_PATH, WRITER_PROMPT_PATH,
+};
 pub use staged::{
     measured_checks, send_back_issues, stage_hash, JOB_REPAIRS, REVIEW_SINGLE_TOKENS,
     SECTION_REPAIRS,
@@ -112,6 +120,14 @@ pub struct JobRequest {
     /// wall-clock date, measured throughput). `null` without.
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub context: Value,
+    /// Publish jobs: who approved the publish at the CEO's gate (ADR-0059),
+    /// as the `Approved-by` of the squash commit. Never from the sim (its
+    /// effects carry no names): the host fills it in at job time from the
+    /// answered `PublishApproval` ticket and the signed-in CEO
+    /// (`apps/game/src/orchestration/approver.ts`). Absent when nobody
+    /// approved (an autonomous policy) or the host does not know.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_by: Option<String>,
 }
 
 /// What a finished job reports back to the sim.

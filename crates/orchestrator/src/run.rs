@@ -8,10 +8,10 @@ use agents::{CompanyPrompt, Llm, LlmError, Persona, Role};
 use serde_json::{json, Value};
 
 use crate::article::SiteValidatorV2;
-use crate::gateway::{Gateway, GatewayError};
+use crate::gateway::{Attribution, Gateway, GatewayError};
 use crate::site::{ConfigSource, SiteKnowledge};
 use crate::store::{ArtifactRecord, BriefRecord, Store, StoreError};
-use crate::{Digest, JobKind, JobRequest, Outcome, Progress, StaffRef};
+use crate::{Digest, JobFailure, JobKind, JobRequest, Outcome, Progress, StaffRef};
 
 /// Infrastructure failures. Agent failures (refusals, invalid output) are not
 /// errors: they come back as `ok: false` digests with a `status` post.
@@ -31,6 +31,43 @@ pub enum OrchestratorError {
     /// A stored record didn't deserialize.
     #[error("corrupt record: {0}")]
     Corrupt(String),
+    /// The model is gone (`LlmError::Unavailable`: the GPU device was lost
+    /// more often than the runtime retries a call). Not the job's failure:
+    /// the host waits for the model and runs the same job again, which
+    /// resumes from its stored stages (ADR-0058, P6).
+    #[error("model unavailable: {0}")]
+    Unavailable(String),
+}
+
+/// Stops running jobs between stages (P6). The host cancels a job that ran
+/// past its wall-clock limit (`reason` [`JobFailure::Timeout`]) or that is no
+/// longer wanted ([`JobFailure::Cancelled`]); the job checks before each model
+/// call and before its repo write, and ends with `JobFailed{reason}`. Stages it
+/// completed stay stored, so a retried phase adopts them.
+///
+/// Keyed by job id: a cancel never reaches another job, and a job's entry is
+/// dropped when its run returns.
+#[derive(Debug, Clone, Default)]
+pub struct CancelToken(Arc<std::sync::Mutex<std::collections::BTreeMap<u64, JobFailure>>>);
+
+impl CancelToken {
+    fn lock(&self) -> std::sync::MutexGuard<'_, std::collections::BTreeMap<u64, JobFailure>> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Asks job `job_id` to stop; the first reason given wins.
+    pub fn cancel(&self, job_id: u64, reason: JobFailure) {
+        self.lock().entry(job_id).or_insert(reason);
+    }
+
+    /// Why job `job_id` was cancelled, if it was.
+    pub fn reason(&self, job_id: u64) -> Option<JobFailure> {
+        self.lock().get(&job_id).copied()
+    }
+
+    pub(crate) fn clear(&self, job_id: u64) {
+        self.lock().remove(&job_id);
+    }
 }
 
 pub(crate) type Result<T> = std::result::Result<T, OrchestratorError>;
@@ -63,8 +100,16 @@ pub struct SiteBinding {
     /// A review whose reading text and checks are estimated at no more than
     /// this many tokens is one call; a longer one is read part by part.
     pub review_single_tokens: u32,
-    /// After `" | "` in an article's `seo.title`.
+    /// After `" | "` in an article's `seo.title`: the binding's own, else
+    /// what the site's existing articles use, else the blog's name, else the
+    /// brand ([`Self::seo_suffix_source`]).
     pub seo_suffix: String,
+    /// Where [`Self::seo_suffix`] came from.
+    pub seo_suffix_source: crate::site::SeoSuffixSource,
+    /// Who runs the jobs, as the `Executor` of a commit's provenance
+    /// (ADR-0045 wording: `browser <device> epoch <n>`). `None`: the central
+    /// gateway names the lease holder itself.
+    pub executor: Option<String>,
     /// The site's guidance for articles (`writer-prompt.json`
     /// `page_prompts.blog_article.writing_prompt`), given to the outline.
     pub article_guidance: Option<String>,
@@ -94,6 +139,7 @@ pub struct Orchestrator<S: Store, G: Gateway> {
     pub(crate) llm: Arc<dyn Llm>,
     pub(crate) site: SiteBinding,
     pub(crate) progress: Option<Arc<dyn Progress>>,
+    pub(crate) cancel: CancelToken,
 }
 
 pub(crate) fn role_of(r: &str) -> Option<Role> {
@@ -117,17 +163,9 @@ pub(crate) fn persona(slug: &str) -> Result<Persona> {
         .ok_or_else(|| OrchestratorError::Prompt(format!("unknown persona {slug}")))
 }
 
-pub(crate) fn failed(job_id: u64) -> Outcome {
-    Outcome::JobCompleted {
-        job_id,
-        digest: Digest {
-            ok: false,
-            score: 0,
-            words: 0,
-            qa_defects: 0,
-            artifact_sha: None,
-        },
-    }
+/// The display name of a persona, or its slug when the catalog has none.
+pub(crate) fn display_name(slug: &str) -> String {
+    persona(slug).map_or_else(|_| slug.to_string(), |p| p.name)
 }
 
 impl<S: Store, G: Gateway> Orchestrator<S, G> {
@@ -138,6 +176,39 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             llm,
             site,
             progress: None,
+            cancel: CancelToken::default(),
+        }
+    }
+
+    /// The token that cancels this orchestrator's running jobs (P6).
+    pub fn cancel_token(&self) -> CancelToken {
+        self.cancel.clone()
+    }
+
+    /// Asks job `job_id` to stop at its next stage boundary
+    /// ([`CancelToken::cancel`]).
+    pub fn cancel(&self, job_id: u64, reason: JobFailure) {
+        self.cancel.cancel(job_id, reason);
+    }
+
+    /// Why job `req` was cancelled, if it was.
+    pub(crate) fn cancelled(&self, req: &JobRequest) -> Option<JobFailure> {
+        self.cancel.reason(req.job_id)
+    }
+
+    /// Who did the work of `req`: `who`'s persona as the author, and the job.
+    /// The model is the backend's, the executor the binding's.
+    pub(crate) fn attribution(&self, req: &JobRequest, who: &StaffRef, kind: &str) -> Attribution {
+        Attribution {
+            persona: Some(who.persona.clone()),
+            role: Some(who.role.clone()),
+            job_id: Some(req.job_id),
+            job_kind: Some(kind.to_string()),
+            revision: Some(req.revision),
+            work_item: req.work_item.clone(),
+            model: self.llm.model_id(),
+            executor: self.site.executor.clone(),
+            ..Attribution::new(who.id.clone(), display_name(&who.persona))
         }
     }
 
@@ -163,6 +234,13 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     /// requests that don't fit the stored state; the caller may retry. Agent
     /// failures are reported as `ok: false`.
     pub async fn run(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
+        let out = self.run_kind(req).await;
+        // A cancel is for this run: a later run of the same job (a reload) starts afresh.
+        self.cancel.clear(req.job_id);
+        out
+    }
+
+    async fn run_kind(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
         match req.kind {
             JobKind::Standup => {
                 let who = self
@@ -399,6 +477,26 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     // (the standup is the pitch round of `crate::standup`; the Draft and
     // Review jobs are staged, `crate::staged`)
 
+    /// The squash commit's provenance: the article's writer as author (the
+    /// `Co-authored-by`), the publish job, the model that wrote the text, the
+    /// editor as `Reviewed-by` and the CEO who approved it as `Approved-by`
+    /// (the job request's `approved_by`, filled in by the host).
+    async fn publish_attribution(
+        &self,
+        req: &JobRequest,
+        art: &ArtifactRecord,
+    ) -> Result<Attribution> {
+        let rec = self.load_brief(req).await?;
+        let writer = self.staff_by_id(req, &rec, &rec.writer, "writer")?;
+        let editor = self.staff_by_id(req, &rec, &rec.editor, "editor")?;
+        let mut who = self.attribution(req, &writer, "publish");
+        who.revision = Some(art.revision);
+        who.model = art.model.clone().or(who.model);
+        who.reviewed_by = Some(display_name(&editor.persona));
+        who.approved_by = req.approved_by.clone().filter(|a| !a.trim().is_empty());
+        Ok(who)
+    }
+
     async fn publish(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
         let item = self.work_item(req)?.to_string();
         let mut art = self
@@ -408,6 +506,12 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         let (merged_sha, fresh) = match art.merged_sha.clone() {
             Some(sha) => (sha, false), // idempotent retry: no second merge, no second post
             None => {
+                if let Some(reason) = self.cancelled(req) {
+                    return Ok(vec![Outcome::JobFailed {
+                        job_id: req.job_id,
+                        reason,
+                    }]);
+                }
                 let pr = art
                     .pr_number
                     .ok_or_else(|| invalid(format!("publish of {item} without a PR")))?;
@@ -415,7 +519,8 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                     .head_sha
                     .clone()
                     .ok_or_else(|| invalid(format!("publish of {item} without a head sha")))?;
-                let sha = self.gateway.merge(pr, &head).await?;
+                let who = self.publish_attribution(req, &art).await?;
+                let sha = self.gateway.merge_as(pr, &head, Some(&who)).await?;
                 art.merged_sha = Some(sha.clone());
                 self.save_artifact(req, &item, &art).await?;
                 self.system_post(

@@ -31,6 +31,7 @@ paths:
   - crates/github/src/content.rs
   - crates/github/src/api.rs
   - apps/game/src/orchestration/sweeper.ts
+  - crates/server/src/app.rs
 adrs:
   - ADR-0009
   - ADR-0038

@@ -75,6 +75,7 @@ fn job(job_id: u64, kind: JobKind, revision: u8) -> JobRequest {
         staff: team(),
         meeting: None,
         context: Value::Null,
+        approved_by: None,
     }
 }
 
@@ -233,7 +234,14 @@ async fn a_section_that_will_not_pass_stops_the_job_after_its_repairs() {
     put_brief(store.as_ref(), 600).await;
     let o = orch(llm.clone(), store.clone());
     let out = o.run(&job(2, JobKind::Draft, 0)).await.unwrap();
-    assert!(!digest(&out).ok);
+    // The sim blocks the item with an escalation ticket that names the reason.
+    assert_eq!(
+        out,
+        [Outcome::JobFailed {
+            job_id: 2,
+            reason: JobFailure::InvalidOutput
+        }]
+    );
     assert_eq!(
         count(&llm, "section s2 of 3"),
         2,
@@ -308,6 +316,9 @@ impl Store for Dying {
     }
     async fn get_artifact(&self, c: &str, w: &str) -> Result<Option<Value>, StoreError> {
         self.inner.get_artifact(c, w).await
+    }
+    async fn artifacts(&self, c: &str) -> Result<Vec<(String, Value)>, StoreError> {
+        self.inner.artifacts(c).await
     }
     async fn append_transcript(
         &self,

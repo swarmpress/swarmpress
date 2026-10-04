@@ -20,6 +20,15 @@ paths:
   - apps/game/src/ui/activity.test.tsx
   - apps/game/src/ui/fixtures/activity.ts
   - apps/game/src/ui/hud.tsx
+  - apps/game/src/orchestrator/bridge.test.ts
+  - apps/game/src/orchestration/approver.ts
+  - apps/game/src/orchestration/approver.test.ts
+  - apps/game/src/session/recording-gateway.ts
+  - apps/game/src/session/recording-gateway.test.ts
+  - crates/server/tests/attribution.rs
+  - crates/orchestrator/tests/loop.rs
+  - crates/orchestrator-wasm/tests/loop.test.ts
+  - apps/game/e2e/mvp.spec.ts
 adrs:
   - ADR-0056
   - ADR-0045
@@ -74,6 +83,16 @@ pinned on top from progress events ("section 3 of 5 · 1:42"); filters by person
 kind. The HUD's "Now" strip says what runs now and opens the panel on that job; while the clock is
 held for that job the status chip already says it, so the chip becomes the click target instead
 (no second line). Frozen `?t=` pages show neither. Not built: the label above the working person.
+
+Built (G6, wiring): the staged Draft job sends the writer's attribution with its commit
+(`staff_id`, `name`, `persona`, `role`, `job_id`, `job_kind`, `revision`, `work_item`, the model
+id the bridge reports, and the session's `executor`); the Publish job sends the writer as author,
+`reviewed_by` (the editor) and `approved_by`. The approver is filled in by the host at job time
+(`apps/game/src/orchestration/approver.ts`): the CEO who answered the item's `PublishApproval`
+ticket with `Publish` (from `Sim.inbox_json()`), named as the signed-in player; no name enters the
+sim. `JsGateway` passes the attribution to the central gateway; the session's recording gateway
+forwards and records it. The MVP suite reads the commits back from the server's fake GitHub
+(`GET /api/dev/github/commit/{sha}`, fake GitHub only).
 
 ## Acceptance criteria
 

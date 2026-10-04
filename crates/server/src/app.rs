@@ -177,6 +177,8 @@ pub fn router(st: AppState) -> Router {
         .route("/api/gateway/close", post(gateway::close))
         .route("/api/gateway/knowledge", get(site_knowledge::knowledge))
         .route("/api/gateway/deploy-status", get(deploys::status))
+        // test route: fake GitHub only (404 otherwise)
+        .route("/api/dev/github/commit/{sha}", get(gateway::dev_commit))
         // events
         .route("/api/events", get(events::list))
         .route("/ws/events", get(events::ws))

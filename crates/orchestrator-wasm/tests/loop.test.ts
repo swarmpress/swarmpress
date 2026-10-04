@@ -69,6 +69,11 @@ class MemJsStore {
   getArtifact(c: string, w: string) {
     return this.artifacts.get(this.k(c, w)) ?? null
   }
+  // As JSON text (an array is accepted too).
+  listArtifacts(c: string) {
+    const rows = [...this.artifacts].filter(([k]) => k.startsWith(c + '\u0000')).map(([k, record]) => ({ work_item: k.split('\u0000')[1], record }))
+    return JSON.stringify(rows)
+  }
   async appendTranscript(c: string, job: number, seq: number, speaker: string, text: string) {
     const key = this.k(c, job, seq)
     if (!this.transcripts.has(key)) this.transcripts.set(key, { job, seq, speaker, text })
@@ -114,8 +119,11 @@ class FakeJsGateway {
   prs = new Map<number, { branch: string; head: string; merged: string | null; workItem: string | null }>()
   merges = 0
   commits = 0
+  /** The attribution of every call (G6), as the bridge passes it: JSON text. */
+  who: { op: string; attribution: Record<string, unknown> | null }[] = []
 
-  async openDraft(contentId: string, path: string, pageJson: string, message: string, workItem: string | null) {
+  async openDraft(contentId: string, path: string, pageJson: string, message: string, workItem: string | null, attribution?: string) {
+    this.who.push({ op: 'draft', attribution: attribution ? JSON.parse(attribution) : null })
     if (!path.startsWith('content/')) throw new Error(`path outside content/: ${path}`)
     expect(message.length).toBeGreaterThan(0)
     const branch = `drafts/content-${contentId}`
@@ -129,7 +137,8 @@ class FakeJsGateway {
     return { number, branch, head_sha: head }
   }
 
-  async merge(number: number, headSha: string) {
+  async merge(number: number, headSha: string, attribution?: string) {
+    this.who.push({ op: 'merge', attribution: attribution ? JSON.parse(attribution) : null })
     const pr = this.prs.get(number)
     if (!pr) throw new Error(`no PR #${number}`)
     if (pr.head !== headSha) throw new Error(`PR #${number} head is ${pr.head} not ${headSha}`)
@@ -185,6 +194,9 @@ describe('orchestrator-wasm under Bun', () => {
       blog_index: false,
       style_guide: 'pack',
       writer_prompt: 'absent',
+      // No article title with a suffix and no blog index in this pack: the brand.
+      seo_suffix: 'Cinque Terre Dispatch',
+      seo_suffix_source: 'brand',
     })
     const res = await runMvpLoop(orch, { company: COMPANY })
     expect(res.mergedSha).toBe('merge-1')
@@ -257,6 +269,13 @@ describe('orchestrator-wasm under Bun', () => {
     // The bridge stores the stage rows as JSON text.
     expect([...store.stages.keys()].filter((k) => k.includes('\u0000section\u0000'))).toHaveLength(4)
 
+    // G6: the attribution reached the gateway (the scripted model has no id: no Model).
+    expect(gateway.who.map((w) => w.op)).toEqual(['draft', 'draft', 'merge'])
+    expect(gateway.who[0].attribution).toEqual({
+      staff_id: 'staff-1', name: 'Giulia Rossi', persona: 'giulia', role: 'writer', job_id: 2, job_kind: 'draft', revision: 0, work_item: 'work-item-1',
+    })
+    expect(gateway.who[2].attribution).toMatchObject({ staff_id: 'staff-1', job_id: 6, job_kind: 'publish', revision: 1, reviewed_by: 'Marco Vitali' })
+
     // The gateway saw the work item; the revised page is what shipped.
     expect(gateway.merges).toBe(1)
     expect([...gateway.prs.values()][0].workItem).toBe('work-item-1')
@@ -296,10 +315,10 @@ describe('orchestrator-wasm under Bun', () => {
       await orch.run(JSON.stringify({ company_id: COMPANY, job_id: 1, kind: 'standup', project: 'p', work_item: null, brief_ref: null, revision: 0, staff: MVP_TEAM })),
     )
     const briefRef: string = out[0].MeetingOutcome.briefs[0].brief_ref
-    // The model is gone: the draft's first model call fails → ok:false + a status post.
+    // The model fails: the draft's first model call fails → JobFailed{Model} + a status post.
     const job = { company_id: COMPANY, job_id: 2, kind: 'draft', project: 'p', work_item: 'w1', brief_ref: briefRef, revision: 0, staff: MVP_TEAM }
     const draft = JSON.parse(await orch.run(JSON.stringify(job)))
-    expect(draft[0].JobCompleted.digest.ok).toBe(false)
+    expect(draft).toEqual([{ JobFailed: { job_id: 2, reason: 'Model' } }])
     expect(store.posts.at(-1)?.post.type).toBe('status')
     expect(gateway.prs.size).toBe(0)
     // A review before any draft is an invalid job: the promise rejects.
@@ -313,3 +332,38 @@ describe('orchestrator-wasm under Bun', () => {
   })
 })
 
+
+describe('P6: cancel through the handle', () => {
+  test('cancel() stops the running job before its next model call; the model call in flight is aborted', async () => {
+    const store = new MemJsStore()
+    const model = createMvpModel()
+    let release: () => void = () => undefined
+    let aborted = 0
+    // The intro hangs until the bridge's abort() releases it.
+    const llm = {
+      ...scriptedLlm([], model, 'fake-mvp'),
+      abort() {
+        aborted++
+        release()
+      },
+    }
+    const inner = llm.complete
+    llm.complete = async (json: string) => {
+      if (/## Task: intro/.test(json)) {
+        await new Promise<void>((r) => (release = r))
+        return JSON.stringify({ error: { Timeout: 'the model call was cancelled' } })
+      }
+      return inner(json)
+    }
+    const orch = new OrchestratorHandle(store, new FakeJsGateway(), llm, SITE)
+    const standup = JSON.parse(await orch.run(JSON.stringify({ company_id: COMPANY, job_id: 1, kind: 'standup', project: 'p', work_item: null, brief_ref: null, revision: 0, staff: MVP_TEAM })))
+    const briefRef: string = standup[0].MeetingOutcome.briefs[0].brief_ref
+    const running = orch.run(JSON.stringify({ company_id: COMPANY, job_id: 2, kind: 'draft', project: 'p', work_item: 'w1', brief_ref: briefRef, revision: 0, staff: MVP_TEAM }))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(orch.cancel('cancelled')).toBe(2)
+    expect(JSON.parse(await running)).toEqual([{ JobFailed: { job_id: 2, reason: 'Cancelled' } }])
+    expect(aborted).toBe(1)
+    expect(llm.calls.map(task).slice(4)).toEqual(['outline'])
+    expect(orch.cancel()).toBeUndefined()
+  })
+})

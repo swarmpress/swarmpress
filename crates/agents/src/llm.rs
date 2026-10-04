@@ -100,9 +100,16 @@ pub enum LlmError {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         answer: Option<String>,
     },
-    /// No executor available (e.g. no capable browser); retry later.
+    /// No executor available (e.g. no capable browser, or the GPU device was
+    /// lost more often than the runtime retries); retry later. Not the job's
+    /// fault: the orchestrator turns it into an infrastructure error, so the
+    /// job runs again once the model is back (ADR-0058, P6).
     #[error("backend unavailable: {0}")]
     Unavailable(String),
+    /// The call ran past its wall-clock limit, or was cancelled, and was
+    /// aborted (the browser bridge, P6). The staged jobs retry the stage once.
+    #[error("timed out: {0}")]
+    Timeout(String),
     #[error("backend error: {0}")]
     Backend(String),
 }
@@ -166,6 +173,13 @@ pub trait Llm: MaybeSendSync {
             answer: Some(v.to_string()),
         })?;
         Ok(v)
+    }
+
+    /// The id of the model that answers, when the backend knows it (the
+    /// browser's resident model, e.g. `ternary-bonsai-2-27b`): the `Model`
+    /// of a commit's provenance (ADR-0056 decision 8). Default: unknown.
+    fn model_id(&self) -> Option<String> {
+        None
     }
 }
 
@@ -539,6 +553,8 @@ pub struct FakeLlm {
     script: Mutex<VecDeque<FakeReply>>,
     calls: Mutex<Vec<RecordedCall>>,
     responder: Option<Box<FakeResponder>>,
+    /// What [`Llm::model_id`] reports ([`FakeLlm::with_model_id`]).
+    model_id: Option<String>,
 }
 
 impl std::fmt::Debug for FakeLlm {
@@ -557,7 +573,14 @@ impl FakeLlm {
             script: Mutex::new(script.into_iter().collect()),
             calls: Mutex::default(),
             responder: None,
+            model_id: None,
         }
+    }
+
+    /// Reports `id` as its [`Llm::model_id`].
+    pub fn with_model_id(mut self, id: impl Into<String>) -> Self {
+        self.model_id = Some(id.into());
+        self
     }
 
     /// A script, then `responder` for every call after it.
@@ -647,5 +670,9 @@ impl Llm for FakeLlm {
                 answer: Some(value.to_string()),
             })?;
         Ok(value)
+    }
+
+    fn model_id(&self) -> Option<String> {
+        self.model_id.clone()
     }
 }

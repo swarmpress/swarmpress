@@ -91,6 +91,24 @@ pub struct ArtifactRecord {
     /// adopts the stages its predecessor stored ([`Store::get_stage`]).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub last_job: BTreeMap<String, u64>,
+    /// The model that wrote the committed draft (the backend's
+    /// `Llm::model_id`): the squash commit's `Model` trailer names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+impl ArtifactRecord {
+    /// The hero image of a draft that is not merged yet, as the media id and
+    /// the URL: what another article's hero shortlist must leave out
+    /// (`docs/design/mvp-pipeline.md` §3, "Hero selection").
+    pub fn hero_in_flight(&self) -> Option<[String; 2]> {
+        if self.merged_sha.is_some() || self.pr_number.is_none() {
+            return None;
+        }
+        self.parts
+            .as_ref()
+            .map(|p| [p.hero.media_id.clone(), p.hero.url.clone()])
+    }
 }
 
 /// One part of an article as the artifact record keeps it.
@@ -235,6 +253,11 @@ pub trait Store: MaybeSendSync {
         work_item: &str,
     ) -> Result<Option<Value>, StoreError>;
 
+    /// Every work item's [`ArtifactRecord`] JSON, as `(work_item, record)`:
+    /// the Draft job leaves out the heroes of the company's other open
+    /// articles ([`ArtifactRecord::hero_in_flight`]).
+    async fn artifacts(&self, company: &str) -> Result<Vec<(String, Value)>, StoreError>;
+
     /// Append one meeting utterance; idempotent on `(job_id, seq)`.
     async fn append_transcript(
         &self,
@@ -314,6 +337,9 @@ macro_rules! forward_store {
             }
             async fn get_artifact(&self, c: &str, w: &str) -> Result<Option<Value>, StoreError> {
                 (**self).get_artifact(c, w).await
+            }
+            async fn artifacts(&self, c: &str) -> Result<Vec<(String, Value)>, StoreError> {
+                (**self).artifacts(c).await
             }
             async fn append_transcript(
                 &self,
@@ -487,6 +513,15 @@ impl Store for MemStore {
         work_item: &str,
     ) -> Result<Option<Value>, StoreError> {
         Ok(self.with(company, |c, _| c.artifacts.get(work_item).cloned()))
+    }
+
+    async fn artifacts(&self, company: &str) -> Result<Vec<(String, Value)>, StoreError> {
+        Ok(self.with(company, |c, _| {
+            c.artifacts
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        }))
     }
 
     async fn append_transcript(

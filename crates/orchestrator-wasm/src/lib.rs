@@ -11,7 +11,11 @@
 //! const orch = new OrchestratorHandle(store, gateway, llm, JSON.stringify(site))
 //! orch.setProgress((eventJson) => hud.progress(JSON.parse(eventJson)))   // optional
 //! const outcomes = JSON.parse(await orch.run(JSON.stringify(jobRequest)))
+//! orch.cancel('timeout')   // P6: the running job stops at its next stage boundary
 //! ```
+//!
+//! Repo writes carry the job's attribution (ADR-0056 decision 8, ADR-0058
+//! decision 10) as the gateway's last argument, JSON text.
 //!
 //! Conventions at the boundary:
 //! - Records (briefs, artifacts, posts, the plan) cross as **JSON text**; a JS
@@ -38,8 +42,8 @@ use agents::{Llm, LlmError, LlmRequest};
 use async_trait::async_trait;
 use js_sys::{Array, Function, Promise, Reflect, JSON};
 use orchestrator::{
-    DraftPr, Gateway, GatewayError, JobRequest, Orchestrator, Outcome, Progress, ProgressEvent,
-    SiteBinding, StageRow, Store, StoreError,
+    Attribution, DraftPr, Gateway, GatewayError, JobFailure, JobRequest, Orchestrator, Outcome,
+    Progress, ProgressEvent, SiteBinding, StageRow, Store, StoreError,
 };
 use serde_json::{json, Value};
 use wasm_bindgen::prelude::*;
@@ -55,6 +59,12 @@ export interface OrchestratorStore {
   claimBrief(company: string, briefRef: string, workItem: string): Promise<boolean> | boolean
   putArtifact(company: string, workItem: string, recordJson: string): Promise<void> | void
   getArtifact(company: string, workItem: string): Promise<string | null> | string | null
+  /**
+   * Every work item's artifact record, `[{work_item, record}]` with `record` the JSON text
+   * `putArtifact` stored (a u64 `brief_ref` survives only as text); the list itself may be
+   * JSON text or an array. The Draft job leaves out the heroes of the other open articles.
+   */
+  listArtifacts(company: string): Promise<string | { work_item: string; record: string }[]> | string | { work_item: string; record: string }[]
   appendTranscript(company: string, jobId: number, seq: number, speaker: string, text: string): Promise<void> | void
   setItemText(company: string, item: string, title: string | null, brief: string | null): Promise<void> | void
   /** Returns the new post id. */
@@ -79,12 +89,18 @@ export interface OrchestratorStore {
  */
 export type OrchestratorProgress = (eventJson: string) => void
 
-/** Repo operations (the browser's is the central gateway client). */
+/**
+ * Repo operations (the browser's is the central gateway client). `attributionJson` is the
+ * `attribution` of the gateway request as JSON text (ADR-0056 decision 8, as narrowed by
+ * ADR-0058): on a draft the writer, the job and the model; on a merge the writer, the
+ * publish job, `reviewed_by` and `approved_by`. The staged jobs always pass it.
+ */
 export interface OrchestratorGateway {
-  openDraft(contentId: string, path: string, pageJson: string, message: string, workItem: string | null):
+  openDraft(contentId: string, path: string, pageJson: string, message: string, workItem: string | null,
+    attributionJson?: string | null):
     Promise<{ number: number; branch: string; head_sha: string } | string>
   /** Returns the merge commit sha (or `{merged_sha}`). */
-  merge(number: number, headSha: string): Promise<string | { merged_sha: string }>
+  merge(number: number, headSha: string, attributionJson?: string | null): Promise<string | { merged_sha: string }>
 }
 
 /**
@@ -93,15 +109,23 @@ export interface OrchestratorGateway {
  * `LlmRequest = {profile, system: string[], messages: {role: 'user'|'assistant', text}[], max_tokens}`.
  * Answer `{text}` (generate), `{value}` or `{text}` (structured), or
  * `{error: LlmError}` (`{Refusal: {category, explanation}}`, `{Truncated: {partial}}`,
- * `{InvalidOutput: {errors}}`, `{Unavailable: msg}`, `{Backend: msg}`), as JSON text or an object.
+ * `{InvalidOutput: {errors}}`, `{Unavailable: msg}`, `{Timeout: msg}`, `{Backend: msg}`), as
+ * JSON text or an object. `Timeout`: the call ran past its limit or was aborted (the staged
+ * jobs make it once more); `Unavailable`: the model is gone (the job's run rejects, so the
+ * host runs it again once the model is back).
  *
  * A free-text answer that hit the token limit may come back as
  * `{text, truncated: true}`: `text` is then the output cut at its last
  * complete sentence and is accepted as the turn (a long meeting turn must not
  * fail the meeting). `{error: {Truncated}}` is for output with nothing usable.
+ *
+ * `modelId` (optional) names the model, for the commits' `Model` trailer; `abort()`
+ * (optional) aborts the call in flight, which `OrchestratorHandle.cancel` uses.
  */
 export interface OrchestratorLlm {
   complete(requestJson: string): Promise<string | object>
+  readonly modelId?: string | null
+  abort?(): void
 }
 "#;
 
@@ -205,6 +229,28 @@ impl Store for JsStore {
 
     async fn get_artifact(&self, c: &str, w: &str) -> Result<Option<Value>, StoreError> {
         self.call_json("getArtifact", &[s(c), s(w)]).await
+    }
+
+    async fn artifacts(&self, c: &str) -> Result<Vec<(String, Value)>, StoreError> {
+        let bad = |what: &str| StoreError(format!("listArtifacts: {what}"));
+        let Some(Value::Array(rows)) = self.call_json("listArtifacts", &[s(c)]).await? else {
+            return Err(bad("must return an array"));
+        };
+        rows.into_iter()
+            .map(|row| {
+                let item = row["work_item"]
+                    .as_str()
+                    .ok_or_else(|| bad("a row has no work_item"))?
+                    .to_string();
+                // The record is the text putArtifact stored; an object is accepted too.
+                let record = match &row["record"] {
+                    Value::String(t) => serde_json::from_str(t).map_err(|e| bad(&e.to_string()))?,
+                    Value::Object(_) => row["record"].clone(),
+                    _ => return Err(bad("a row has no record")),
+                };
+                Ok((item, record))
+            })
+            .collect()
     }
 
     async fn append_transcript(
@@ -322,6 +368,17 @@ fn gw(e: String) -> GatewayError {
     GatewayError(e)
 }
 
+/// An attribution as the JS gateway's last argument: its JSON text. Checked
+/// here first, so a malformed one never leaves the module.
+fn attribution_arg(a: Option<&Attribution>) -> Result<Option<JsValue>, GatewayError> {
+    let Some(a) = a else {
+        return Ok(None);
+    };
+    a.check().map_err(gw)?;
+    let text = serde_json::to_string(a).map_err(|e| gw(e.to_string()))?;
+    Ok(Some(s(&text)))
+}
+
 #[async_trait(?Send)]
 impl Gateway for JsGateway {
     async fn open_draft(
@@ -331,32 +388,49 @@ impl Gateway for JsGateway {
         page: &Value,
         message: &str,
     ) -> Result<DraftPr, GatewayError> {
+        self.open_draft_as(content_id, path, page, message, None)
+            .await
+    }
+
+    async fn merge(&self, pr_number: u64, head_sha: &str) -> Result<String, GatewayError> {
+        self.merge_as(pr_number, head_sha, None).await
+    }
+
+    async fn open_draft_as(
+        &self,
+        content_id: &str,
+        path: &str,
+        page: &Value,
+        message: &str,
+        attribution: Option<&Attribution>,
+    ) -> Result<DraftPr, GatewayError> {
         let work_item = self.work_item.borrow().clone();
-        let v = call(
-            &self.obj,
-            "openDraft",
-            &[
-                s(content_id),
-                s(path),
-                s(&page.to_string()),
-                s(message),
-                opt_s(work_item.as_deref()),
-            ],
-        )
-        .await
-        .map_err(gw)?;
+        let mut args = vec![
+            s(content_id),
+            s(path),
+            s(&page.to_string()),
+            s(message),
+            opt_s(work_item.as_deref()),
+        ];
+        args.extend(attribution_arg(attribution)?);
+        let v = call(&self.obj, "openDraft", &args).await.map_err(gw)?;
         let v = json_of(&v)
             .map_err(gw)?
             .ok_or_else(|| gw("openDraft returned nothing".into()))?;
         serde_json::from_value(v).map_err(|e| gw(format!("openDraft answer: {e}")))
     }
 
-    async fn merge(&self, pr_number: u64, head_sha: &str) -> Result<String, GatewayError> {
+    async fn merge_as(
+        &self,
+        pr_number: u64,
+        head_sha: &str,
+        attribution: Option<&Attribution>,
+    ) -> Result<String, GatewayError> {
         #[allow(clippy::cast_precision_loss)]
         let n = JsValue::from_f64(pr_number as f64);
-        let v = call(&self.obj, "merge", &[n, s(head_sha)])
-            .await
-            .map_err(gw)?;
+        let mut args = vec![n, s(head_sha)];
+        args.extend(attribution_arg(attribution)?);
+        let v = call(&self.obj, "merge", &args).await.map_err(gw)?;
         if let Some(sha) = v.as_string() {
             return Ok(sha);
         }
@@ -437,12 +511,23 @@ impl Llm for JsLlm {
             })?;
         Ok(value)
     }
+
+    /// The JS object's `modelId` (a property or a method), if it has one.
+    fn model_id(&self) -> Option<String> {
+        let v = Reflect::get(&self.0, &JsValue::from_str("modelId")).ok()?;
+        let v = match v.dyn_ref::<Function>() {
+            Some(f) => f.call0(&self.0).ok()?,
+            None => v,
+        };
+        v.as_string().filter(|m| !m.trim().is_empty())
+    }
 }
 
 // ---------------------------------------------------------------- site + JSON shims
 
 /// `{site_id, brand_name, language?, knowledge_pack?, style_guide?,
-/// writer_prompt?, quality_bar?, simulate_deploy?, standup_max_turns?}`
+/// writer_prompt?, quality_bar?, simulate_deploy?, standup_max_turns?,
+/// llm_profile?, review_single_tokens?, seo_suffix?, executor?}`
 /// (`orchestrator::SiteBinding::from_json`): with `knowledge_pack` (the pack
 /// JSON text of `GET /api/gateway/knowledge`) the style guide and the writer
 /// prompt are the site's own files and the binding carries the loaded
@@ -582,6 +667,10 @@ pub struct OrchestratorHandle {
     orch: Rc<Orchestrator<JsStore, JsGateway>>,
     work_item: Rc<RefCell<Option<String>>>,
     progress: Rc<RefCell<Option<Function>>>,
+    /// The job `run` is running, for `cancel`.
+    running: Rc<RefCell<Option<u64>>>,
+    /// The JS LLM object, whose `abort()` `cancel` calls.
+    llm: JsValue,
 }
 
 #[wasm_bindgen]
@@ -602,17 +691,42 @@ impl OrchestratorHandle {
             work_item: work_item.clone(),
         };
         #[allow(clippy::arc_with_non_send_sync)] // wasm32: one thread
-        let llm: Arc<dyn Llm> = Arc::new(JsLlm(llm));
+        let model: Arc<dyn Llm> = Arc::new(JsLlm(llm.clone()));
         let progress = Rc::new(RefCell::new(None));
         #[allow(clippy::arc_with_non_send_sync)] // wasm32: one thread
         let sink: Arc<dyn Progress> = Arc::new(JsProgress(progress.clone()));
         Ok(OrchestratorHandle {
             orch: Rc::new(
-                Orchestrator::new(JsStore(store), gateway, llm, site).with_progress(sink),
+                Orchestrator::new(JsStore(store), gateway, model, site).with_progress(sink),
             ),
             work_item,
             progress,
+            running: Rc::new(RefCell::new(None)),
+            llm,
         })
+    }
+
+    /// Stops the job `run` is running (P6): the job ends at its next stage
+    /// boundary with `JobFailed{reason}` (`'timeout'`, else `Cancelled`), and
+    /// the LLM's call in flight is aborted (its `abort()`, if it has one).
+    /// Completed stages stay stored. Returns the job id, or `undefined` when
+    /// no job is running.
+    pub fn cancel(&self, reason: Option<String>) -> Option<f64> {
+        let job = (*self.running.borrow())?;
+        let reason = match reason.as_deref() {
+            Some(r) if r.eq_ignore_ascii_case("timeout") => JobFailure::Timeout,
+            _ => JobFailure::Cancelled,
+        };
+        self.orch.cancel(job, reason);
+        if let Ok(f) = Reflect::get(&self.llm, &JsValue::from_str("abort")) {
+            if let Some(f) = f.dyn_ref::<Function>() {
+                // An abort that throws is ignored: the flag stops the job anyway.
+                let _ = f.call0(&self.llm);
+            }
+        }
+        // Job ids are sim counters, far below 2^53.
+        #[allow(clippy::cast_precision_loss)]
+        Some(job as f64)
     }
 
     /// Hears every stage of every job (`OrchestratorProgress`: one
@@ -650,11 +764,16 @@ impl OrchestratorHandle {
         let job = parse_job(job_json);
         let orch = self.orch.clone();
         let work_item = self.work_item.clone();
+        let running = self.running.clone();
         future_to_promise(async move {
             let job = job.map_err(|e| JsValue::from(js_sys::Error::new(&e)))?;
             *work_item.borrow_mut() = job.work_item.clone();
+            *running.borrow_mut() = Some(job.job_id);
             let res = orch.run(&job).await;
             *work_item.borrow_mut() = None;
+            if *running.borrow() == Some(job.job_id) {
+                *running.borrow_mut() = None;
+            }
             match res {
                 Ok(out) => Ok(JsValue::from_str(&outcomes_json(&out))),
                 Err(e) => Err(js_sys::Error::new(&e.to_string()).into()),
