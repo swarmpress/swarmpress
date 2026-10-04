@@ -373,7 +373,7 @@ pub fn blog_categories(blog_index: &Value) -> Vec<String> {
 }
 
 /// A page title without its brand suffix (`"Hikes | The Dispatch"` → `"Hikes"`).
-fn bare_title(title: &str) -> &str {
+pub(crate) fn bare_title(title: &str) -> &str {
     title
         .rsplit_once(" | ")
         .map_or(title, |(head, _)| head)
@@ -520,7 +520,7 @@ const STOPWORDS: [&str; 16] = [
 
 /// The words of a title that say what it is about: longer than three
 /// letters, not a stopword, with a plural `s` dropped (`wines` → `wine`).
-fn title_tokens(text: &str) -> BTreeSet<String> {
+pub(crate) fn title_tokens(text: &str) -> BTreeSet<String> {
     text.split(|c: char| !c.is_alphanumeric())
         .map(str::to_lowercase)
         .filter(|t| t.chars().count() > 3 && !STOPWORDS.contains(&t.as_str()))

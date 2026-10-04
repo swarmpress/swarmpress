@@ -22,19 +22,23 @@ use common::{site, team, COMPANY};
 
 const PATH: &str = "content/pages/blog/harvest-week-in-manarola.json";
 
-/// The scripted standup (moderator picks Giulia, Giulia pitches, moderator
-/// closes, outcome with one brief); every later call is answered by the
-/// brief-driven fake writer.
+/// The scripted standup, a pitch round (ADR-0062): the opening, Giulia's
+/// and Isabella's pitches, the commission of Giulia's; every later call is
+/// answered by the brief-driven fake writer.
 fn standup() -> Vec<FakeReply> {
     vec![
-        FakeReply::Json(json!({"next": "staff-1", "prompt": "Giulia, your pitch?", "done": false})),
-        FakeReply::Text(
-            "The Sciacchetrà harvest starts Monday; I want to be on the Manarola terraces.".into(),
-        ),
-        FakeReply::Json(json!({"next": "staff-1", "prompt": "", "done": true})),
+        FakeReply::Text("Good morning. We can take on one new article today.".into()),
         FakeReply::Json(json!({
-            "briefs": [{"title": "Harvest week in Manarola", "angle": "A day on the terraces with the pickers",
-                        "assignee": "staff-1", "keywords": ["sciacchetrà", "manarola harvest"], "target_words": 600}],
+            "say": "The Sciacchetrà harvest starts Monday; I want to be on the Manarola terraces.",
+            "title": "Harvest week in Manarola", "angle": "A day on the terraces with the pickers",
+            "keywords": ["sciacchetrà", "manarola harvest"]})),
+        FakeReply::Json(json!({
+            "say": "Nobody writes about Vernazza before eight; the harbour is a different place then.",
+            "title": "Vernazza harbour at first light",
+            "angle": "What the harbour looks like before the first train arrives",
+            "keywords": ["vernazza", "harbour"]})),
+        FakeReply::Json(json!({
+            "commission": [{"pitch": "P1", "target_words": 600}],
             "decisions": ["Giulia covers the harvest"], "escalations": []
         })),
     ]
@@ -65,6 +69,8 @@ fn job(job_id: u64, kind: JobKind, brief_ref: Option<u64>, revision: u8) -> JobR
         brief_ref,
         revision,
         staff: team(),
+        meeting: None,
+        context: Value::Null,
     }
 }
 
@@ -132,8 +138,8 @@ async fn full_loop<G: Gateway>(gateway: G, repo: &dyn Repo) -> Orchestrator<MemS
     let brief_ref = briefs[0].brief_ref;
     assert_eq!(
         orch.store().transcripts(COMPANY).len(),
-        1,
-        "Giulia's pitch is in the transcript"
+        4,
+        "the opening, two pitches and the closing are in the transcript"
     );
 
     // The sim creates work-item-1 and requests the first draft.

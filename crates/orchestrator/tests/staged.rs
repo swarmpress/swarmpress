@@ -73,6 +73,8 @@ fn job(job_id: u64, kind: JobKind, revision: u8) -> JobRequest {
         brief_ref: Some(BRIEF_REF),
         revision,
         staff: team(),
+        meeting: None,
+        context: Value::Null,
     }
 }
 

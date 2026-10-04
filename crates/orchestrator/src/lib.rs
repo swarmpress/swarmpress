@@ -34,6 +34,7 @@ mod gateway;
 mod run;
 mod site;
 mod staged;
+mod standup;
 mod store;
 
 pub use agents::article_prompts::LlmProfile;
@@ -51,6 +52,10 @@ pub use site::{ConfigSource, SiteKnowledge, STYLE_GUIDE_PATH, WRITER_PROMPT_PATH
 pub use staged::{
     measured_checks, send_back_issues, stage_hash, JOB_REPAIRS, REVIEW_SINGLE_TOKENS,
     SECTION_REPAIRS,
+};
+pub use standup::{
+    context_pack, ContextPack, InFlight, StandupContext, Wip, CONTEXT_PACK_TOKENS, PITCH_REPAIRS,
+    TOPIC_OVERLAP,
 };
 pub use store::{
     ArtifactRecord, BriefRecord, MemStore, StageRow, Store, StoreError, StoredParts, StoredSection,
@@ -97,6 +102,16 @@ pub struct JobRequest {
     /// 0 for the first draft; n for the nth revision (and the review of it).
     pub revision: u8,
     pub staff: Vec<StaffRef>,
+    /// The meeting a standup runs (`meeting-3`, the sim's
+    /// `Effect::RequestJob.meeting`): its turns become the meeting's
+    /// `Utterance`s in the browser (the `turn` progress event carries it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meeting: Option<String>,
+    /// What the host knows that the sim's request does not carry: for a
+    /// standup, [`StandupContext`] (work in progress, items in flight, the
+    /// wall-clock date, measured throughput). `null` without.
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub context: Value,
 }
 
 /// What a finished job reports back to the sim.
@@ -178,9 +193,16 @@ pub enum ProgressState {
 /// `stage` is `job` for the job as a whole, else one of `context`,
 /// `outline`, `section` (index 0 is the intro, 1…`total` the body
 /// sections), `closing`, `fix`, `retitle`, `revise`, `review`,
-/// `review_section`, `review_summary` or `commit`. `index`/`total` count
-/// within the stage. `detail` carries what an activity record keeps: words,
-/// repairs, errors, score, PR, branch, sha.
+/// `review_section`, `review_summary` or `commit`; a standup's are
+/// `opening`, `pitch` (1…`total`, one per free writer) and `commission`.
+/// `index`/`total` count within the stage. `detail` carries what an
+/// activity record keeps: words, repairs, errors, score, PR, branch, sha.
+///
+/// `turn` is not a stage but a meeting turn just written to the transcript
+/// (`TurnFinished`, ADR-0062 decision 8): `state` is `done`, `staff` the
+/// speaker, `index` the transcript seq and `detail`
+/// `{seq, speaker, chars, meeting}`. The browser turns it into an
+/// `Utterance` command; the text stays in the store.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProgressEvent {
     pub job_id: u64,

@@ -3,18 +3,15 @@
 use std::sync::Arc;
 
 use agents::article_prompts::{LlmProfile, STAGE_BLOCK_DOCS};
-use agents::prompts::{resolve, templates, PromptLayer, SiteContext, Vars};
-use agents::{
-    run_meeting, Brief, CompanyPrompt, Llm, LlmError, MeetingEvent, MeetingSpec, Participant,
-    Persona, Role,
-};
+use agents::prompts::{resolve, PromptLayer, SiteContext, Vars};
+use agents::{CompanyPrompt, Llm, LlmError, Persona, Role};
 use serde_json::{json, Value};
 
-use crate::article::{brief_ref_for, slugify, SiteValidatorV2};
+use crate::article::SiteValidatorV2;
 use crate::gateway::{Gateway, GatewayError};
 use crate::site::{ConfigSource, SiteKnowledge};
 use crate::store::{ArtifactRecord, BriefRecord, Store, StoreError};
-use crate::{BriefOut, Digest, JobKind, JobRequest, Outcome, Progress, StaffRef};
+use crate::{Digest, JobKind, JobRequest, Outcome, Progress, StaffRef};
 
 /// Infrastructure failures. Agent failures (refusals, invalid output) are not
 /// errors: they come back as `ok: false` digests with a `status` post.
@@ -76,6 +73,8 @@ pub struct SiteBinding {
     /// Test and dev: report `DeployLanded` right after the merge instead of
     /// waiting for the site repo's `deployment_status` webhook.
     pub simulate_deploy: bool,
+    /// Speaking turns of the moderated meeting of ADR-0012. The standup is a
+    /// pitch round (ADR-0062, `crate::standup`) and does not read it.
     pub standup_max_turns: u32,
     /// The site's knowledge pack, loaded (ADR-0061). The staged Draft job
     /// builds its `context#0` from it ([`crate::article_context`]) and
@@ -97,7 +96,7 @@ pub struct Orchestrator<S: Store, G: Gateway> {
     pub(crate) progress: Option<Arc<dyn Progress>>,
 }
 
-fn role_of(r: &str) -> Option<Role> {
+pub(crate) fn role_of(r: &str) -> Option<Role> {
     match r {
         "writer" => Some(Role::Writer),
         "editor" => Some(Role::Editor),
@@ -273,25 +272,9 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             .map_err(|e| OrchestratorError::Prompt(e.to_string()))
     }
 
-    fn participant(
-        &self,
-        s: &StaffRef,
-        company: &CompanyPrompt,
-        extra: Vars,
-    ) -> Result<Participant> {
-        let p = persona(&s.persona)?;
-        Ok(Participant {
-            id: s.id.clone(),
-            name: p.name.clone(),
-            role: role_of(&s.role).unwrap_or(Role::Writer),
-            seniority: Some(p.seniority),
-            system_prompt: self.system_prompt(company, &p, extra)?,
-        })
-    }
-
     // ------------------------------------------------------------ lookups
 
-    fn find<'a>(&self, req: &'a JobRequest, role: &str) -> Option<&'a StaffRef> {
+    pub(crate) fn find<'a>(&self, req: &'a JobRequest, role: &str) -> Option<&'a StaffRef> {
         req.staff.iter().find(|s| s.role == role)
     }
 
@@ -413,109 +396,8 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     }
 
     // ------------------------------------------------------------ jobs
-
-    async fn standup(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
-        let moderator = self
-            .find(req, "editor-in-chief")
-            .or_else(|| self.find(req, "editor"))
-            .ok_or_else(|| invalid("standup without an editor-in-chief or editor"))?;
-        let editor = self.find(req, "editor").unwrap_or(moderator);
-        let others: Vec<&StaffRef> = req.staff.iter().filter(|s| s.id != moderator.id).collect();
-
-        let mut agenda = Vars::new();
-        agenda.insert(
-            "agenda".into(),
-            json!(format!(
-                "Daily standup for {}: what we publish next.",
-                self.site.brand_name
-            )),
-        );
-        agenda.insert("max_turns".into(), json!(self.site.standup_max_turns));
-        agenda.insert(
-            "participants".into(),
-            json!(others
-                .iter()
-                .map(|s| format!("{} ({}, {})", s.id, s.persona, s.role))
-                .collect::<Vec<_>>()
-                .join(", ")),
-        );
-        let spec = MeetingSpec {
-            id: format!("job-{}", req.job_id),
-            topic: format!("{} standup", self.site.brand_name),
-            moderator: self.participant(moderator, &templates::editor_in_chief(), agenda)?,
-            participants: others
-                .iter()
-                .map(|s| self.participant(s, &templates::meeting_speaker(), Vars::new()))
-                .collect::<Result<_>>()?,
-            max_turns: self.site.standup_max_turns,
-            max_tokens_per_turn: 600,
-            max_tokens_outcome: 2000,
-        };
-        let mut on_event = |_: MeetingEvent| {};
-        let Ok(result) = run_meeting(self.llm.as_ref(), &spec, &mut on_event).await else {
-            // A failed standup ends without briefs; the sim tries again tomorrow.
-            return Ok(vec![Outcome::MeetingOutcome {
-                job_id: req.job_id,
-                briefs: vec![],
-            }]);
-        };
-
-        for u in &result.transcript {
-            self.store
-                .append_transcript(&req.company_id, req.job_id, u.seq, &u.speaker, &u.text)
-                .await?;
-        }
-        let minutes: Vec<Value> = result
-            .transcript
-            .iter()
-            .map(|u| json!({"seq": u.seq, "speaker": u.speaker, "text": u.text}))
-            .collect();
-
-        let mut briefs = Vec::new();
-        for (i, b) in result.outcome.briefs.iter().enumerate() {
-            let writer = req
-                .staff
-                .iter()
-                .find(|s| s.id == b.assignee && s.role == "writer")
-                .or_else(|| self.find(req, "writer"))
-                .ok_or_else(|| invalid("standup produced a brief but the team has no writer"))?;
-            let brief_ref = brief_ref_for(&req.company_id, req.job_id, i);
-            let record = BriefRecord {
-                job_id: req.job_id,
-                brief: Brief {
-                    content_id: format!("content-{brief_ref:x}"),
-                    title: b.title.clone(),
-                    slug: slugify(&b.title),
-                    angle: b.angle.clone(),
-                    keywords: b.keywords.clone(),
-                    target_words: b.target_words,
-                    language: self.site.language.clone(),
-                    notes: String::new(),
-                },
-                writer: writer.id.clone(),
-                editor: editor.id.clone(),
-                minutes: minutes.clone(),
-                work_item: None,
-                staff: vec![writer.clone(), editor.clone()],
-            };
-            self.store
-                .put_brief(
-                    &req.company_id,
-                    brief_ref,
-                    serde_json::to_value(&record).map_err(corrupt)?,
-                )
-                .await?;
-            briefs.push(BriefOut {
-                brief_ref,
-                writer: writer.id.clone(),
-                editor: editor.id.clone(),
-            });
-        }
-        Ok(vec![Outcome::MeetingOutcome {
-            job_id: req.job_id,
-            briefs,
-        }])
-    }
+    // (the standup is the pitch round of `crate::standup`; the Draft and
+    // Review jobs are staged, `crate::staged`)
 
     async fn publish(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
         let item = self.work_item(req)?.to_string();

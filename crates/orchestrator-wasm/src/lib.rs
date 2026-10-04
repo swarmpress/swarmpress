@@ -73,7 +73,9 @@ export interface OrchestratorStore {
  * `{job_id, kind, revision, work_item, staff, persona, role, stage, index, total, state, detail}`
  * with `state` one of `started`, `done`, `reused`, `failed` and `stage` one of `job`,
  * `context`, `outline`, `section` (index 0 is the intro), `closing`, `fix`, `retitle`,
- * `revise`, `review`, `review_section`, `review_summary`, `commit`.
+ * `revise`, `review`, `review_section`, `review_summary`, `commit`, and a standup's `opening`,
+ * `pitch`, `commission`. `stage: 'turn'` is a meeting turn just written to the transcript
+ * (`TurnFinished`, ADR-0062): `detail` is `{seq, speaker, chars, meeting}`.
  */
 export type OrchestratorProgress = (eventJson: string) => void
 

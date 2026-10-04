@@ -17,7 +17,8 @@
 //!   a banned-phrase validator.
 //! - [`state`]: ContentItem / Task / QuestionTicket state machines.
 //! - [`llm`]: the [`Llm`] trait with Claude and fake backends.
-//! - [`meetings`]: moderated multi-agent meetings.
+//! - [`meetings`]: moderated multi-agent meetings, and the standup's pitch
+//!   round (ADR-0062): its cap, schemas and prompts.
 //! - [`pipeline`]: the editorial pipeline.
 //! - [`article`]: the staged article (ADR-0058): stage schemas and typed
 //!   results, plain-text rules, per-section checks, deterministic assembly

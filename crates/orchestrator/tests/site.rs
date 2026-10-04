@@ -151,18 +151,11 @@ async fn standup_and_draft_run_on_a_pack_binding() {
         brief_ref,
         revision: 0,
         staff: team.clone(),
+        meeting: None,
+        context: Value::Null,
     };
-    // A scripted standup; the staged draft is answered by the fake writer.
-    let llm = Arc::new(agents::fake_writer::fake_writer(vec![
-        FakeReply::Json(json!({"next": "staff-1", "prompt": "Giulia?", "done": false})),
-        FakeReply::Text("The harvest starts Monday on the Manarola terraces.".into()),
-        FakeReply::Json(json!({"next": "staff-1", "prompt": "", "done": true})),
-        FakeReply::Json(json!({
-            "briefs": [{"title": "Harvest week in Manarola", "angle": "A day with the pickers",
-                        "assignee": "staff-1", "keywords": ["manarola"], "target_words": 600}],
-            "decisions": [], "escalations": []
-        })),
-    ]));
+    // The fake writer answers the standup's pitch round and the staged draft.
+    let llm = Arc::new(agents::fake_writer::fake_writer(Vec::<FakeReply>::new()));
     let site = binding(json!({"knowledge_pack": mini_pack_json()})).unwrap();
     let orch = Orchestrator::new(MemStore::new(), FakeGateway::new(), llm.clone(), site);
     let out = orch

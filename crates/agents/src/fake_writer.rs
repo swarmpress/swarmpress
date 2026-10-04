@@ -10,11 +10,19 @@
 //! paragraph, and about the asked number of words. As the editor it follows
 //! the MVP script: revision 0 scores 6 and names section 2 ([`REVIEW_NOTE`]),
 //! every later revision scores 8.
+//!
+//! It also answers the standup's pitch round (ADR-0062,
+//! `crate::meetings`): the opening, one pitch per writer and the
+//! commissioning call. A writer pitches the first topic nobody has taken: the
+//! season's calendar topics in the context pack, then [`PITCH_TOPICS`]; a
+//! title the prompt lists as published, in flight or pitched (or a repair
+//! turn names) is taken. The commissioning call takes the pitches in order,
+//! as many as the cap allows.
 
 use serde_json::{json, Value};
 
 use crate::article::closing_words;
-use crate::llm::{FakeLlm, FakeReply, LlmRequest};
+use crate::llm::{FakeLlm, FakeReply, LlmRequest, LlmRole};
 
 /// The editor's note on the first draft (it names section 2).
 pub const REVIEW_NOTE: &str = "Tell us who the pickers are.";
@@ -32,13 +40,75 @@ pub fn fake_writer(script: impl IntoIterator<Item = FakeReply>) -> FakeLlm {
     FakeLlm::with_responder(script, answer)
 }
 
-/// The answer to one call of the staged article, from its prompt and schema.
+/// A topic the fake writers pitch when the calendar offers none (the twin
+/// of `MVP_TOPICS` in `apps/game/src/llm/mvp-script.ts`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PitchTopic {
+    pub title: &'static str,
+    pub angle: &'static str,
+    pub keywords: &'static [&'static str],
+    pub target_words: u32,
+    /// What the writer says (the bubble).
+    pub say: &'static str,
+}
+
+/// What the fake writers pitch, in order; the first is the MVP article.
+pub const PITCH_TOPICS: [PitchTopic; 5] = [
+    PitchTopic {
+        title: "Harvest week in Manarola",
+        angle: "A day on the terraces with the pickers",
+        keywords: &["sciacchetrà", "manarola harvest"],
+        target_words: 600,
+        say: "The Sciacchetrà harvest starts Monday; I want to be on the Manarola terraces.",
+    },
+    PitchTopic {
+        title: "Vernazza harbour at first light",
+        angle: "What the harbour looks like before the first train arrives, and where to stand",
+        keywords: &["vernazza", "harbour", "morning"],
+        target_words: 700,
+        say: "Nobody writes about Vernazza before eight; the harbour is a different place then.",
+    },
+    PitchTopic {
+        title: "The ferry from Monterosso",
+        angle: "Seeing the five villages from the water, and when the boats do not run",
+        keywords: &["monterosso", "ferry", "boats"],
+        target_words: 600,
+        say: "Readers keep asking about the boats; I can ride the whole line on Thursday.",
+    },
+    PitchTopic {
+        title: "Corniglia and its long stair",
+        angle: "The one village above the sea, and how to arrive without losing your breath",
+        keywords: &["corniglia", "steps", "trains"],
+        target_words: 600,
+        say: "Corniglia gets skipped because of the stairs; I want to make the case for it.",
+    },
+    PitchTopic {
+        title: "Riomaggiore after dark",
+        angle: "The village once the day visitors have left, from dinner to the last train",
+        keywords: &["riomaggiore", "evening", "dinner"],
+        target_words: 800,
+        say: "The evening in Riomaggiore belongs to the people who stay; that is our story.",
+    },
+];
+
+/// The answer to one call of the staged article or of the standup's pitch
+/// round, from its prompt and schema.
 pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
-    let prompt = req
+    let at = req
         .messages
         .iter()
-        .find(|m| m.text.starts_with("## Task: "))
-        .map_or("", |m| m.text.as_str());
+        .position(|m| m.text.starts_with("## Task: "));
+    let prompt = at.map_or("", |i| req.messages[i].text.as_str());
+    // Repair turns come after the task: a pitch they name is taken.
+    let later: Vec<&str> = at
+        .map(|i| {
+            req.messages[i + 1..]
+                .iter()
+                .filter(|m| m.role == LlmRole::User)
+                .map(|m| m.text.as_str())
+                .collect()
+        })
+        .unwrap_or_default();
     let task = prompt
         .lines()
         .next()
@@ -46,6 +116,12 @@ pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
         .unwrap_or("")
         .trim();
     let p = Prompt(prompt);
+    match task {
+        "standup opening" => return FakeReply::Text(opening_line(&p)),
+        "pitch" => return FakeReply::Json(pitch(&p, &later)),
+        "commission" => return FakeReply::Json(commission(&p)),
+        _ => {}
+    }
     let words = p.number("Words: about ");
     // The second half of a section written in two halves starts elsewhere in
     // the sentence pool, so the halves do not repeat each other.
@@ -410,4 +486,121 @@ fn section_review(p: &Prompt<'_>, rest: &str) -> Value {
     } else {
         json!({"score": 8, "notes": "Clear and useful.", "issues": []})
     }
+}
+
+// ---------------------------------------------------------------- the standup
+
+use crate::meetings::CAP_LABEL;
+
+/// Every `«title»` in a line.
+fn quoted(line: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut rest = line;
+    while let Some(open) = rest.find('«') {
+        let after = &rest[open + '«'.len_utf8()..];
+        let Some(close) = after.find('»') else { break };
+        out.push(&after[..close]);
+        rest = &after[close + '»'.len_utf8()..];
+    }
+    out
+}
+
+/// The calendar topics a pitch prompt offers (`- «title» — keywords: a, b`)
+/// and the titles it says are taken (published, in flight, pitched), lower
+/// case; titles a repair turn names are taken too.
+fn standup_topics(prompt: &str, later: &[&str]) -> (Vec<(String, Vec<String>)>, Vec<String>) {
+    let mut calendar = Vec::new();
+    let mut taken = Vec::new();
+    let mut in_calendar = false;
+    for line in prompt.lines() {
+        if let Some(head) = line.strip_prefix("## ") {
+            in_calendar = head.starts_with("Calendar topics");
+            continue;
+        }
+        let titles = quoted(line);
+        if in_calendar && line.starts_with("- ") {
+            if let Some(title) = titles.first() {
+                let keywords = line
+                    .split_once("— keywords: ")
+                    .map(|(_, k)| {
+                        k.split(',')
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                            .map(String::from)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                calendar.push(((*title).to_string(), keywords));
+            }
+            continue;
+        }
+        taken.extend(titles.iter().map(|t| t.to_lowercase()));
+    }
+    for text in later {
+        taken.extend(quoted(text).iter().map(|t| t.to_lowercase()));
+    }
+    (calendar, taken)
+}
+
+fn opening_line(p: &Prompt<'_>) -> String {
+    let cap = p.number(CAP_LABEL);
+    let s = if cap == 1 { "" } else { "s" };
+    format!(
+        "Good morning. We can take on {cap} new article{s} today, so tell me what you want to write and why now."
+    )
+}
+
+/// A writer's pitch: the first topic nobody has taken (the season's calendar
+/// first), else the first built-in topic (a duplicate the round drops).
+fn pitch(p: &Prompt<'_>, later: &[&str]) -> Value {
+    let (calendar, taken) = standup_topics(p.0, later);
+    let free = |title: &str| !taken.contains(&title.to_lowercase());
+    if let Some((title, keywords)) = calendar.iter().find(|(t, _)| free(t)) {
+        let mut keywords: Vec<String> = keywords.iter().take(6).cloned().collect();
+        for extra in [title.to_lowercase(), "cinque terre".to_string()] {
+            if keywords.len() < 2 {
+                keywords.push(extra);
+            }
+        }
+        return json!({
+            "say": format!("The calendar says it is time for {title}; I would like to write it now."),
+            "title": cap(title, 70),
+            "angle": format!("A seasonal guide to {}, and what a visitor should plan for.", title.to_lowercase()),
+            "keywords": keywords,
+        });
+    }
+    let t = PITCH_TOPICS
+        .iter()
+        .find(|t| free(t.title))
+        .unwrap_or(&PITCH_TOPICS[0]);
+    json!({"say": t.say, "title": t.title, "angle": t.angle, "keywords": t.keywords})
+}
+
+/// The commissioning call: the pitches in order, as many as the cap allows,
+/// at their topic's length.
+fn commission(p: &Prompt<'_>) -> Value {
+    let cap = usize::try_from(p.number(CAP_LABEL).max(1)).unwrap_or(1);
+    let mut in_pitches = false;
+    let mut chosen = Vec::new();
+    for line in p.0.lines() {
+        if line == "Pitches:" {
+            in_pitches = true;
+            continue;
+        }
+        if !in_pitches || chosen.len() >= cap {
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("- ") else {
+            in_pitches = false;
+            continue;
+        };
+        let alias = rest.split_whitespace().next().unwrap_or("P1");
+        let title = quoted(line).first().copied().unwrap_or("");
+        let words = PITCH_TOPICS
+            .iter()
+            .find(|t| t.title.eq_ignore_ascii_case(title))
+            .map_or(crate::meetings::DEFAULT_TARGET_WORDS, |t| t.target_words);
+        chosen.push(json!({"pitch": alias, "target_words": words}));
+    }
+    json!({"commission": chosen, "decisions": [], "escalations": []})
 }
