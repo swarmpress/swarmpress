@@ -20,7 +20,7 @@ The Babylon.js client (`apps/game`): engine, camera, cutaway, lighting, characte
 | [FEAT-025](025-speech-bubbles.md) | Speech bubbles | in-progress | normal |
 | [FEAT-026](026-build-mode.md) | Build mode and placement | planned | high |
 | [FEAT-027](027-overlay-ui.md) | Overlay UI (Inbox, Feed, Staff, Build, HUD) | in-progress | high |
-| [FEAT-028](028-visual-regression.md) | Visual regression baselines | planned | high |
+| [FEAT-028](028-visual-regression.md) | Visual regression baselines | in-progress | high |
 | [FEAT-029](029-asset-pipeline.md) | Asset pipeline | planned | normal |
 | [FEAT-081](081-brick-office.md) | Brick office renderer (spike first) | in-progress | high |
 | [FEAT-082](082-information-surfaces.md) | Live information surfaces | in-progress | high |

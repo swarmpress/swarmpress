@@ -1,7 +1,7 @@
 ---
 id: FEAT-028
 title: "Visual regression baselines"
-status: planned
+status: in-progress
 importance: high
 paths:
   - "apps/game/e2e/visual*.spec.ts"
