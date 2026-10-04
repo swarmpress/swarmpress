@@ -1,12 +1,18 @@
 ---
 id: FEAT-025
 title: "Speech bubbles"
-status: planned
+status: in-progress
 importance: normal
 paths:
   - "apps/game/src/render/bubbles/**"
   - "apps/game/src/ui/bubbles/**"
   - apps/game/src/orchestration/loop.ts
+  - apps/game/src/orchestration/speech.ts
+  - apps/game/src/orchestration/speech.test.ts
+  - apps/game/src/orchestration/speech.wasm.test.ts
+  - apps/game/src/render/characters/label-layout.ts
+  - apps/game/src/render/characters/labels.ts
+  - apps/game/e2e/mvp.spec.ts
   - crates/sim-core/src/render_state.rs
 adrs:
   - ADR-0012
@@ -26,7 +32,9 @@ Decisions: [ADR-0012](../../adr/0012-meetings-streamed-multi-agent-conversations
 
 Design: [`docs/design/mvp-pipeline.md`](../../design/mvp-pipeline.md) section 2 ("Bubbles").
 
-Nothing is built. The orchestrator appends a transcript row after each turn and reports it; the
+Built (U5): `apps/game/src/orchestration/speech.ts` and the loop's utterance queue, the bubble
+layer in `apps/game/src/ui/bubbles/`, the labels' shared projection (`projectOffset`). Turns play
+at `clamp(chars / 15, 3, 12)` seconds divided by the clock speed. The orchestrator appends a transcript row after each turn and reports it; the
 loop applies an `Utterance` command at a step boundary while the meeting is open, and the outcome
 last. The sim increment (ADR-0059) adds `speak_from`/`speak_chars` and the render-state `bubbles`
 row. Text is fetched from `transcripts` by (job, seq), never from the sim. A Preact layer anchors
@@ -40,3 +48,4 @@ the bubble to the speaker with a client-side typewriter effect; streamed deltas 
 ## Evidence
 
 - `game/vitest`
+- `game/playwright-mvp`

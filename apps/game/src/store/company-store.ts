@@ -486,6 +486,17 @@ export class CompanyStore implements OrchestratorStore {
     return rows.map((r) => ({ job_id: toNumber(r.job_id), seq: toNumber(r.seq), speaker: String(r.speaker), text: String(r.text) }))
   }
 
+  /** One transcript row (a speech bubble's words, FEAT-025), or null. */
+  async transcriptLine(company: string, jobId: number, seq: number): Promise<TranscriptLine | null> {
+    const rows = await this.driver.all<{ speaker: string; text: string }>('SELECT speaker, text FROM transcripts WHERE company = ? AND job_id = ? AND seq = ?', [
+      company,
+      jobId,
+      seq,
+    ])
+    const r = rows[0]
+    return r ? { job_id: jobId, seq, speaker: String(r.speaker), text: String(r.text) } : null
+  }
+
   // ------------------------------------------------------------ sim log + snapshots
 
   /** Appends commands in one transaction; returns their seqs. */

@@ -113,6 +113,12 @@ export function progressLabel(ev: Pick<ProgressEvent, 'stage' | 'index' | 'total
       return 'summing up'
     case 'commit':
       return 'committing'
+    case 'opening':
+      return 'opening the standup'
+    case 'pitch':
+      return `pitch ${ev.index} of ${ev.total}`
+    case 'commission':
+      return 'commissioning'
     default:
       return ev.stage
   }
@@ -145,6 +151,8 @@ export class ActivityRecorder {
   /** A progress event of the orchestrator. */
   progress(ev: ProgressEvent): void {
     if (ev.stage === 'job') return this.jobEvent(ev)
+    // A meeting turn (`TurnFinished`) is speech for the loop, not a stage.
+    if (ev.stage === 'turn') return
     switch (ev.state) {
       case 'started':
         this.latest.set(ev.job_id, ev)

@@ -1,0 +1,10 @@
+/* Speech bubbles (FEAT-025): positioned by BubbleLayer.tsx with a transform; never take clicks. */
+.speech-bubbles-host,
+.speech-bubbles { position: fixed; inset: 0; pointer-events: none !important; }
+.speech-bubble { position: absolute; left: 0; top: 0; max-width: 260px; box-sizing: border-box; padding: 6px 10px 7px; border-radius: 10px;
+                 background: #fbf8f2; color: #1b1f2a; font: 13px/1.35 system-ui, sans-serif; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+                 overflow-wrap: anywhere; white-space: pre-wrap; }
+.speech-bubble-name { display: block; font-size: 11px; font-weight: 600; color: #6a5a3a; }
+/* The whole line for screen readers; the typed copy is what the eye sees. */
+.speech-bubble-full { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .speech-bubble { transition: none; } }

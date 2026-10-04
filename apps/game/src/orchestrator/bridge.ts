@@ -319,10 +319,12 @@ export function localLlmBridge(
 
 /** The fake model's view of a bridged call (`mvp-script.ts`). */
 export function mvpCallOf(call: LlmCall): MvpCall {
+  const users = call.request.messages.filter((m) => m.role === 'user').map((m) => m.text)
   return {
     system: call.request.system.join('\n\n'),
-    prompt: call.request.messages.find((m) => m.role === 'user')?.text ?? '',
+    prompt: users[0] ?? '',
     schema: (call.schema as Record<string, unknown> | undefined) ?? null,
+    later: users.slice(1).join('\n'),
   }
 }
 

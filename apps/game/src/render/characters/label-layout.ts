@@ -87,6 +87,44 @@ export function labelAlpha(zoom: number): number {
 // ----------------------------------------------------------------------------
 
 /**
+ * The orthographic view as the labels see it: the camera's right and up
+ * vectors, its target, pixels per metre and the render size.
+ */
+export interface ViewBasis {
+  rx: number
+  ry: number
+  rz: number
+  ux: number
+  uy: number
+  uz: number
+  tx: number
+  ty: number
+  tz: number
+  /** Render pixels per metre. */
+  ppm: number
+  viewW: number
+  viewH: number
+}
+
+/**
+ * The screen projection labels and speech bubbles share: a world point →
+ * render pixels from the view's centre (x right, y up), snapped to whole
+ * pixels, plus `liftPx` upwards. Writes into `out` (nothing allocated per frame).
+ */
+export function projectOffset(b: ViewBasis, x: number, y: number, z: number, liftPx: number, out: { ax: number; ay: number }): void {
+  const dx = x - b.tx
+  const dy = y - b.ty
+  const dz = z - b.tz
+  out.ax = Math.round(b.viewW / 2 + (dx * b.rx + dy * b.ry + dz * b.rz) * b.ppm) - b.viewW / 2
+  out.ay = Math.round(b.viewH / 2 + (dx * b.ux + dy * b.uy + dz * b.uz) * b.ppm + liftPx) - b.viewH / 2
+}
+
+/** A centred offset (render pixels, y up) as CSS pixels from the canvas' top-left. */
+export function offsetToCss(b: Pick<ViewBasis, 'viewW' | 'viewH'>, ax: number, ay: number, px: number): { x: number; y: number } {
+  return { x: (b.viewW / 2 + ax) / px, y: (b.viewH / 2 - ay) / px }
+}
+
+/**
  * Label slots in screen pixels (x right, y up). A label is `w × h`, centred on
  * `ax`, with its bottom edge at `ay` unless another label is in the way; then
  * it is raised to the first free height (`y` is the result). Reused arrays:

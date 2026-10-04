@@ -25,7 +25,7 @@ const SITE: SiteBindingJson = {
   knowledge_pack: JSON.stringify(miniPack),
 }
 
-/** The `## Task:` line of a bridged call (empty for the standup's). */
+/** The `## Task:` line of a bridged call. */
 const task = (c: { request: { messages: { text: string }[] } }) => /^## Task: (.*)/.exec(c.request.messages[0]?.text ?? '')?.[1] ?? ''
 
 function fakeGateway() {
@@ -69,8 +69,9 @@ describe('orchestrator-wasm with the browser store and the fake LocalLlm', () =>
     const res = await runMvpLoop(orch, { company: 'c1' })
     expect(res.steps.map((s) => s.job.kind)).toEqual(['standup', 'draft', 'review', 'draft', 'review', 'publish'])
     expect(res.steps[5].outcomes[1]).toEqual({ DeployLanded: { work_item: 'work-item-1' } })
-    // The standup (moderator, pitch, moderator, outcome), then the staged jobs (ADR-0058).
-    expect(llm.calls.map((c) => c.kind)).toEqual(['structured', 'generate', 'structured', ...Array(10).fill('structured')])
+    // The standup's pitch round (opening, two pitches, commission; ADR-0062), then the staged jobs (ADR-0058).
+    expect(llm.calls.map((c) => c.kind)).toEqual(['generate', ...Array(12).fill('structured')])
+    expect(llm.calls.slice(0, 4).map(task)).toEqual(['standup opening', 'pitch', 'pitch', 'commission'])
     expect(llm.calls.slice(4).map(task)).toEqual([
       'outline',
       'intro',
@@ -94,7 +95,11 @@ describe('orchestrator-wasm with the browser store and the fake LocalLlm', () =>
     const plan = await store.plan('c1')
     expect(plan.items['work-item-1'].title).toBe('Harvest week in Manarola')
     expect(plan.posts['work-item-1'].map((p) => p.type)).toEqual([...MVP_POST_TYPES])
-    expect(await store.transcripts('c1')).toHaveLength(1)
+    // The opening, Giulia's and Isabella's pitches and the closing, each reported as a turn (the bubbles).
+    expect((await store.transcripts('c1')).map((l) => `${l.seq}:${l.speaker}`)).toEqual(['0:staff-4', '1:staff-1', '2:staff-2', '3:staff-4'])
+    expect(events.filter((e) => e.stage === 'turn').map((e) => [e.index, e.staff, e.detail?.chars])).toEqual(
+      (await store.transcripts('c1')).map((l) => [l.seq, l.speaker, [...l.text].length]),
+    )
     expect(await store.getArtifact('c1', 'work-item-1')).toContain(`"brief_ref":${res.briefRef}`)
     expect(gateway.prs[0].workItem).toBe('work-item-1')
     const page = JSON.parse(gateway.prs[0].page)

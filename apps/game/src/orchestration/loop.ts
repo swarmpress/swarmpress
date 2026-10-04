@@ -32,6 +32,7 @@ import type { OrchestratorLike } from '../orchestrator/bridge'
 import type { CommandRecord } from '../store/company-store'
 import { commandBytes } from '../sync/segments'
 import { dueStepSource, type DueStepSource, type StepRange } from './due-step'
+import { expectedSeq, notSeatedYet, standupContext, turnOf, utteranceMs, type Turn } from './speech'
 
 export interface LoopSim extends ReplaySim {
   validate_command_json(json: string): string | undefined
@@ -100,6 +101,16 @@ export interface LoopOptions {
   onPlanText?: () => void
   /** Called after a `DeployLanded` was applied (the item is published). */
   onLanded?: (workItem: string) => void
+  /**
+   * A standup's context (ADR-0062, `orchestrator::StandupContext`), added to
+   * its job request as `context`. Default: work in progress and items in
+   * flight from `sim.plan_json()`, and today's date (speech.ts).
+   */
+  standupContext?: (job: { job_id: number; project: string }) => unknown | Promise<unknown>
+  /** Wall time in ms for meeting speech (default `Date.now`). */
+  now?: () => number
+  /** The clock's speed: meeting turns play this many times as fast (default 1). */
+  speechSpeed?: () => number
 }
 
 export interface ApplyResult {
@@ -212,6 +223,14 @@ export class OrchestrationLoop {
   private intake: Promise<void> = Promise.resolve()
   private writes: Promise<void> = Promise.resolve()
   private running: Promise<void> | null = null
+  /** Project and meeting of each job taken in (a standup's turns become its meeting's utterances). */
+  private where = new Map<number, { project: string; meeting: string | null }>()
+  /** Turns of a job waiting to be spoken, and until when the last one spoken holds the floor (ms). */
+  private speech = new Map<number, { queue: Turn[]; until: number }>()
+  /** The sim's next utterance seq per meeting, as last seen. */
+  private simSeq = new Map<string, number>()
+  /** `meeting:sim seq` → the transcript row the bubble shows (the newest 256). */
+  private spoken = new Map<string, { job: number; seq: number }>()
   private log: (line: string) => void
 
   constructor(private o: LoopOptions) {
@@ -315,10 +334,19 @@ export class OrchestrationLoop {
       .then(async () => {
         const fresh: QueuedJob[] = []
         for (const jobJson of await this.o.codec.jobsFromEffects(effectsJson, this.o.companyId)) {
-          const j = JSON.parse(jobJson) as { job_id: number; kind: string; revision: number; work_item: string | null; staff?: { persona?: string | null }[] }
+          const j = JSON.parse(jobJson) as {
+            job_id: number
+            kind: string
+            revision: number
+            work_item: string | null
+            project?: string
+            meeting?: string | null
+            staff?: { persona?: string | null }[]
+          }
           if (this.completed.has(j.job_id) || this.seen.has(j.job_id)) continue
           if (pending && !pending.has(j.job_id)) continue
           this.seen.add(j.job_id)
+          this.where.set(j.job_id, { project: j.project ?? '', meeting: j.meeting ?? null })
           fresh.push({ json: jobJson, rec: { job_id: j.job_id, kind: j.kind, revision: j.revision, work_item: j.work_item, state: 'queued', due_step: 0, who: whoOf(j) } })
         }
         const due = this.due.track(
@@ -362,8 +390,16 @@ export class OrchestrationLoop {
    */
   boundary() {
     if (this.halted) return
+    // Meeting turns first; a standup's outcome waits until its turns were spoken (ADR-0062).
+    if (this.speech.size) this.speak()
+    const held: string[] = []
     while (this.ready.length) {
       const cmd = this.ready.shift()!
+      const settled = settles(cmd).job
+      if (settled != null && this.speaking(settled)) {
+        held.push(cmd)
+        continue
+      }
       if (commandKind(cmd) === 'DeployLanded') {
         this.holdDeploy(JSON.parse(cmd).DeployLanded.work_item as string)
         continue
@@ -376,7 +412,70 @@ export class OrchestrationLoop {
         if (job != null) this.close(job)
       }
     }
+    this.ready.push(...held)
     if (this.deploys.length) this.tryDeploys()
+  }
+
+  /**
+   * A `turn` progress event of the orchestrator (`TurnFinished`, ADR-0062):
+   * queued as an `Utterance` of the job's meeting, applied at a step boundary.
+   */
+  turnFinished(ev: { job_id: number; stage: string; detail?: Record<string, unknown> | null }): void {
+    if (this.halted || this.completed.has(ev.job_id)) return
+    const turn = turnOf(ev, this.where.get(ev.job_id)?.meeting ?? null)
+    if (!turn) return
+    const s = this.speech.get(turn.job) ?? { queue: [], until: 0 }
+    s.queue.push(turn)
+    this.speech.set(turn.job, s)
+  }
+
+  /** The transcript row of a meeting's utterance `seq` (the sim's), if this loop spoke it. */
+  spokenAt(meeting: string, seq: number): { job: number; seq: number } | null {
+    return this.spoken.get(`${meeting}:${seq}`) ?? null
+  }
+
+  /** Turns of `job` still to be spoken, or the last one still holding the floor. */
+  private speaking(job: number): boolean {
+    const s = this.speech.get(job)
+    return !!s && (s.queue.length > 0 || this.nowMs() < s.until)
+  }
+
+  private nowMs(): number {
+    return (this.o.now ?? Date.now)()
+  }
+
+  /**
+   * Applies the next turn of each meeting whose floor is free. The seq is the
+   * sim's own (a rejected turn leaves a gap in the transcript's numbering, not
+   * the sim's). A speaker still walking to the table is waited for until the
+   * job is due; any other rejection skips the turn, never the loop.
+   */
+  private speak() {
+    const now = this.nowMs()
+    for (const [job, s] of this.speech) {
+      if (now < s.until || !s.queue.length) continue
+      const t = s.queue[0]
+      const cmd = (seq: number) => JSON.stringify({ Utterance: { meeting: t.meeting, seq, speaker: t.speaker, chars: t.chars } })
+      let seq = this.simSeq.get(t.meeting) ?? 0
+      let why = this.o.sim.validate_command_json(cmd(seq))
+      const expected = expectedSeq(why)
+      if (expected != null) {
+        seq = expected
+        why = this.o.sim.validate_command_json(cmd(seq))
+      }
+      const due = this.byId.get(job)?.due_step
+      if (notSeatedYet(why) && due != null && Number(this.o.sim.step()) + 1 < due) continue
+      s.queue.shift()
+      const r = why ? { ok: false, reason: why } : this.apply(cmd(seq))
+      if (!r.ok) {
+        this.log(`turn ${t.seq} of job ${job} (${t.speaker}) not spoken: ${r.reason}`)
+        continue
+      }
+      this.simSeq.set(t.meeting, seq + 1)
+      this.spoken.set(`${t.meeting}:${seq}`, { job, seq: t.seq })
+      if (this.spoken.size > 256) this.spoken.delete(this.spoken.keys().next().value!)
+      s.until = now + utteranceMs(t.chars, this.o.speechSpeed?.() ?? 1)
+    }
   }
 
   /**
@@ -544,6 +643,8 @@ export class OrchestrationLoop {
   private close(jobId: number) {
     this.open.delete(jobId)
     this.due.settle(jobId)
+    this.speech.delete(jobId)
+    this.where.delete(jobId)
   }
 
   /** Keeps the last `keepJobs` finished jobs; jobs still in flight always stay. */
@@ -602,7 +703,7 @@ export class OrchestrationLoop {
             let out = await this.o.store.getKv(key)
             if (out) this.log(`${rec.kind} job ${rec.job_id}: reusing the stored outcome`)
             else {
-              out = await this.runWithLimit(rec, jobJson)
+              out = await this.runWithLimit(rec, rec.kind === 'standup' ? await this.withContext(rec, jobJson) : jobJson)
               await this.o.store.setKv(key, out)
             }
             this.summarize(rec, out)
@@ -651,6 +752,15 @@ export class OrchestrationLoop {
     })().finally(() => {
       this.running = null
     })
+  }
+
+  /** A standup's request with its context (ADR-0062). A standup's request has no u64 to lose in a parse. */
+  private async withContext(rec: JobRecord, jobJson: string): Promise<string> {
+    const project = this.where.get(rec.job_id)?.project ?? ''
+    const context = this.o.standupContext
+      ? await this.o.standupContext({ job_id: rec.job_id, project })
+      : standupContext(this.o.sim.plan_json(), project, { now: new Date(this.nowMs()) })
+    return JSON.stringify({ ...(JSON.parse(jobJson) as Record<string, unknown>), context })
   }
 
   private summarize(rec: JobRecord, outcomesJson: string) {

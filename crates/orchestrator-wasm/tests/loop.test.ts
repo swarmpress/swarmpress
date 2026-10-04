@@ -226,7 +226,9 @@ describe('orchestrator-wasm under Bun', () => {
     expect(standup.outcomes).toEqual([
       { MeetingOutcome: { job_id: 1, briefs: [{ brief_ref: res.briefRef, writer: 'staff-1', editor: 'staff-5' }] } },
     ])
-    expect(store.transcripts.size).toBe(1)
+    // The pitch round (ADR-0062): the opening, two pitches, the closing; each a `turn` event.
+    expect(store.transcripts.size).toBe(4)
+    expect(progress.filter((e) => e.stage === 'turn').map((e) => e.staff)).toEqual(['staff-4', 'staff-1', 'staff-2', 'staff-4'])
 
     const kinds = res.steps.map((s) => `${s.job.kind}:${s.job.revision}`)
     expect(kinds).toEqual(['standup:0', 'draft:0', 'review:0', 'draft:1', 'review:1', 'publish:1'])
@@ -285,7 +287,7 @@ describe('orchestrator-wasm under Bun', () => {
   test('infrastructure failures reject; agent failures resolve not-ok', async () => {
     const store = new MemJsStore()
     const model = createMvpModel()
-    // The standup's four calls, then the model is gone.
+    // The standup's four calls (opening, two pitches, commission), then the model is gone.
     let left = 4
     const llm = scriptedLlm([], { answer: (call) => (left-- > 0 ? model.answer(call) : (undefined as never)) })
     const gateway = new FakeJsGateway()

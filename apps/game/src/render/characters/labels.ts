@@ -27,13 +27,16 @@ import {
   labelAt,
   labelSize,
   labelText,
+  offsetToCss,
   onWorkLine,
+  projectOffset,
   ROLE_ZOOM,
   sameText,
   stackLabels,
   type LabelSlots,
   type LabelText,
   type SceneLookups,
+  type ViewBasis,
 } from './label-layout'
 
 /** Clear space between a head and its label, CSS pixels. */
@@ -71,6 +74,10 @@ export interface Labels {
   textOf(staffId: string): LabelText | undefined
   /** A label's rectangle on the canvas (CSS pixels), if it is shown. */
   rectOf(staffId: string): ScreenRect | null
+  /** The top of a person's head on the canvas (CSS pixels from its top-left), when labels are drawn; for speech bubbles. */
+  headOf(staffId: string): { x: number; y: number } | null
+  /** Every label shown (CSS pixels). */
+  rects(): ScreenRect[]
   painted: boolean
   dispose(): void
 }
@@ -180,6 +187,10 @@ export function createLabels(main: Scene, capacity = 64): Labels {
   const slots: LabelSlots = createLabelSlots(capacity)
   const right = new Vector3()
   const up = new Vector3()
+  const basis: ViewBasis = { rx: 0, ry: 0, rz: 0, ux: 0, uy: 0, uz: 0, tx: 0, ty: 0, tz: 0, ppm: 1, viewW: 1, viewH: 1 }
+  const offset = { ax: 0, ay: 0 }
+  /** The head of slot i was projected this frame (its label may still be hidden under the HUD). */
+  const headShown = new Uint8Array(capacity)
   let viewW = 1
   let viewH = 1
   /** Render pixels per CSS pixel. */
@@ -259,24 +270,36 @@ export function createLabels(main: Scene, capacity = 64): Labels {
       camera.getDirectionToRef(Vector3.RightReadOnly, right)
       camera.getDirectionToRef(Vector3.UpReadOnly, up)
       const t = camera.target
+      basis.rx = right.x
+      basis.ry = right.y
+      basis.rz = right.z
+      basis.ux = up.x
+      basis.uy = up.y
+      basis.uz = up.z
+      basis.tx = t.x
+      basis.ty = t.y
+      basis.tz = t.z
+      basis.ppm = ppm
+      basis.viewW = viewW
+      basis.viewH = viewH
       for (let i = 0; i < capacity; i++) {
         const e = entries[i]
         const node = e && e.present && alpha > 0.01 ? anchor(e.staff) : undefined
         if (!e || !node || !node.isEnabled()) {
           slots.visible[i] = 0
+          headShown[i] = 0
           if (e && e.mesh.isEnabled()) e.mesh.setEnabled(false)
           continue
         }
         const p = node.position
-        const dx = p.x - t.x
-        const dy = p.y + headHeight(e.staff) - t.y
-        const dz = p.z - t.z
         slots.visible[i] = 1
+        headShown[i] = 1
         slots.w[i] = e.w * px
         slots.h[i] = e.h * px
         // Screen pixels from the canvas centre, y up; snapped so the label's edges fall on the pixel grid.
-        slots.ax[i] = Math.round(viewW / 2 + (dx * right.x + dy * right.y + dz * right.z) * ppm) - viewW / 2
-        slots.ay[i] = Math.round(viewH / 2 + (dx * up.x + dy * up.y + dz * up.z) * ppm + HEAD_GAP * px) - viewH / 2
+        projectOffset(basis, p.x, p.y + headHeight(e.staff), p.z, HEAD_GAP * px, offset)
+        slots.ax[i] = offset.ax
+        slots.ay[i] = offset.ay
       }
       stackLabels(slots, 2 * px)
       for (let i = 0; i < capacity; i++) {
@@ -319,6 +342,20 @@ export function createLabels(main: Scene, capacity = 64): Labels {
       const left = (viewW / 2 + slots.ax[i] - slots.w[i] / 2) / px
       const top = (viewH / 2 - slots.y[i] - slots.h[i]) / px
       return { left, top, right: left + slots.w[i] / px, bottom: top + slots.h[i] / px }
+    },
+    headOf(staffId) {
+      const i = byStaff.get(staffId)
+      if (i === undefined || !headShown[i]) return null
+      // The label's anchor less the gap: the top of the head (CSS pixels from the top-left).
+      return offsetToCss(basis, slots.ax[i], slots.ay[i] - HEAD_GAP * px, px)
+    },
+    rects() {
+      const out: ScreenRect[] = []
+      for (const id of byStaff.keys()) {
+        const r = labels.rectOf(id)
+        if (r) out.push(r)
+      }
+      return out
     },
     dispose() {
       for (const e of entries) e?.mesh.dispose()

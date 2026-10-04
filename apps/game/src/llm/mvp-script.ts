@@ -7,10 +7,11 @@
  * (`agents::article_prompts`) and start with `## Task: <stage>`; for the same
  * prompt both fakes give the same answer.
  *
- * - **Standup:** the moderator gives the floor to the first writer, the
- *   writer pitches, the moderator closes, and the outcome commissions one
- *   brief: the next of `MVP_TOPICS` (the first is "Harvest week in
- *   Manarola", the MVP article).
+ * - **Standup** (the pitch round, ADR-0062): the moderator opens, each free
+ *   writer pitches the first topic nobody has taken (the season's calendar
+ *   topics in the context pack, then `MVP_TOPICS`, whose first is "Harvest
+ *   week in Manarola", the MVP article), and the commission takes the
+ *   pitches in order, as many as the cap allows.
  * - **Draft:** outline, intro, sections and closing from the brief, about
  *   the asked length, plain text that passes the per-part checks; fixes and
  *   revisions of a named part (a revision starts with `MVP_REVISION_LINE`).
@@ -25,6 +26,8 @@ export interface MvpCall {
   system: string
   prompt: string
   schema: Record<string, unknown> | null
+  /** The user turns after the first (a repair turn names what was wrong), joined. */
+  later?: string
 }
 
 /** The editor's note on the first draft (it names section 2). */
@@ -352,51 +355,119 @@ export function articleAnswer(prompt: string, schema: Record<string, unknown> | 
   return null
 }
 
-// ---------------------------------------------------------------- the standup
+// ---------------------------------------------------------------- the standup (pitch round, ADR-0062)
 
-/** `staff-N` ids of the writers named in a moderator's system prompt (`staff-1 (giulia, writer)`). */
-function writersIn(system: string): string[] {
-  return [...system.matchAll(/(staff-\d+) \([^,()]+, writer\)/g)].map((m) => m[1])
+/** The context pack's cap line (`agents::meetings::CAP_LABEL`). */
+export const CAP_LABEL = 'Commissions today: at most '
+/** `agents::meetings::DEFAULT_TARGET_WORDS`. */
+const DEFAULT_TARGET_WORDS = 800
+
+/** Every `«title»` in a text. */
+function quoted(text: string): string[] {
+  return [...text.matchAll(/«([^»]*)»/g)].map((m) => m[1])
 }
 
 /**
- * A fake model: standups (moderator, pitch, outcome) and every stage of the
- * Draft and Review jobs. Standups commission `MVP_TOPICS` in turn; nothing
- * else keeps state.
+ * The calendar topics a pitch prompt offers (`- «title» — keywords: a, b`) and
+ * the titles it says are taken (published, in flight, pitched), lower case;
+ * titles a repair turn names are taken too (`standup_topics` in fake_writer.rs).
  */
-export function createMvpModel(topics: MvpTopic[] = MVP_TOPICS) {
-  let commissioned = 0
+function standupTopics(prompt: string, later: string): { calendar: { title: string; keywords: string[] }[]; taken: Set<string> } {
+  const calendar: { title: string; keywords: string[] }[] = []
+  const taken = new Set<string>()
+  let inCalendar = false
+  for (const line of prompt.split('\n')) {
+    if (line.startsWith('## ')) {
+      inCalendar = line.slice(3).startsWith('Calendar topics')
+      continue
+    }
+    const titles = quoted(line)
+    if (inCalendar && line.startsWith('- ')) {
+      if (titles[0] !== undefined) {
+        const at = line.indexOf('— keywords: ')
+        const keywords = at < 0 ? [] : line.slice(at + '— keywords: '.length).split(',').map((s) => s.trim()).filter(Boolean)
+        calendar.push({ title: titles[0], keywords })
+      }
+      continue
+    }
+    for (const t of titles) taken.add(t.toLowerCase())
+  }
+  for (const t of quoted(later)) taken.add(t.toLowerCase())
+  return { calendar, taken }
+}
+
+function openingLine(p: Prompt): string {
+  const cap = p.number(CAP_LABEL)
+  return `Good morning. We can take on ${cap} new article${cap === 1 ? '' : 's'} today, so tell me what you want to write and why now.`
+}
+
+function pitch(p: Prompt, later: string) {
+  const { calendar, taken } = standupTopics(p.text, later)
+  const free = (title: string) => !taken.has(title.toLowerCase())
+  const c = calendar.find((t) => free(t.title))
+  if (c) {
+    const keywords = c.keywords.slice(0, 6)
+    for (const extra of [c.title.toLowerCase(), 'cinque terre']) if (keywords.length < 2) keywords.push(extra)
+    return {
+      say: `The calendar says it is time for ${c.title}; I would like to write it now.`,
+      title: cap(c.title, 70),
+      angle: `A seasonal guide to ${c.title.toLowerCase()}, and what a visitor should plan for.`,
+      keywords,
+    }
+  }
+  const t = MVP_TOPICS.find((x) => free(x.title)) ?? MVP_TOPICS[0]
+  return { say: t.pitch, title: t.title, angle: t.angle, keywords: t.keywords }
+}
+
+function commission(p: Prompt) {
+  const n = Math.max(1, p.number(CAP_LABEL))
+  let inPitches = false
+  const chosen: { pitch: string; target_words: number }[] = []
+  for (const line of p.text.split('\n')) {
+    if (line === 'Pitches:') {
+      inPitches = true
+      continue
+    }
+    if (!inPitches || chosen.length >= n) continue
+    if (!line.startsWith('- ')) {
+      inPitches = false
+      continue
+    }
+    const alias = line.slice(2).split(/\s+/)[0] || 'P1'
+    const title = quoted(line)[0] ?? ''
+    const words = MVP_TOPICS.find((t) => t.title.toLowerCase() === title.toLowerCase())?.target_words ?? DEFAULT_TARGET_WORDS
+    chosen.push({ pitch: alias, target_words: words })
+  }
+  return { commission: chosen, decisions: [], escalations: [] }
+}
+
+/** The answer to a call of the standup's pitch round (`fake_writer::answer`); null when the call is not one. */
+export function standupAnswer(prompt: string, later = ''): MvpReply | null {
+  const first = prompt.split('\n')[0] ?? ''
+  if (!first.startsWith('## Task: ')) return null
+  const task = first.slice('## Task: '.length).trim()
+  const p = new Prompt(prompt)
+  if (task === 'standup opening') return { text: openingLine(p) }
+  if (task === 'pitch') return { json: pitch(p, later) }
+  if (task === 'commission') return { json: commission(p) }
+  return null
+}
+
+/**
+ * A fake model: the standup's pitch round (opening, one pitch per writer,
+ * the commission) and every stage of the Draft and Review jobs. A writer
+ * pitches the first topic nobody has taken: the season's calendar topics in
+ * the context pack, then `MVP_TOPICS`. Stateless and deterministic: the same
+ * call gets the same answer.
+ */
+export function createMvpModel() {
   return {
-    /** How many briefs the standups commissioned so far. */
-    get commissioned() {
-      return commissioned
-    },
     answer(call: MvpCall): MvpReply {
+      const standup = standupAnswer(call.prompt, call.later ?? '')
+      if (standup) return standup
       const article = articleAnswer(call.prompt, call.schema)
       if (article !== null) return { json: article }
-      const props = (call.schema?.properties ?? null) as Record<string, unknown> | null
-      const writers = writersIn(call.system)
-      const ids = enumOf(call.schema, ['properties', 'next', 'enum']).filter((x) => x)
-      const writer = writers.find((w) => ids.includes(w)) ?? writers[0] ?? ids[0] ?? 'staff-1'
-      const topic = topics[commissioned % topics.length]
-      if (props && 'next' in props) {
-        // The moderator: the floor to the first writer, then done.
-        const spoken = !call.prompt.includes('(nobody has spoken yet)')
-        return spoken ? { json: { next: writer, prompt: '', done: true } } : { json: { next: writer, prompt: 'Your pitch?', done: false } }
-      }
-      if (props && 'briefs' in props) {
-        const assignee = enumOf(call.schema, ['properties', 'briefs', 'items', 'properties', 'assignee', 'enum']).find((x) => writers.includes(x)) ?? writer
-        commissioned++
-        return {
-          json: {
-            briefs: [{ title: topic.title, angle: topic.angle, assignee, keywords: topic.keywords, target_words: topic.target_words }],
-            decisions: [`${topic.title} is commissioned`],
-            escalations: [],
-          },
-        }
-      }
-      // A meeting turn (free text): the writer's pitch.
-      return { text: topic.pitch }
+      return { text: 'I have nothing to add.' }
     },
   }
 }
@@ -430,6 +501,6 @@ export function mvpCallFromMessages(messages: { role: string; content: string }[
       schema = null
     }
   }
-  const prompt = messages.find((m) => m.role === 'user')?.content ?? ''
-  return { system, prompt, schema }
+  const users = messages.filter((m) => m.role === 'user').map((m) => m.content)
+  return { system, prompt: users[0] ?? '', schema, later: users.slice(1).join('\n') }
 }

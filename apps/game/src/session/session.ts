@@ -35,6 +35,7 @@ import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResu
 import { CentralClient, centralGateway, companyFor, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type OrchestratorGateway } from '../net/central'
 import { OrchestrationLoop, type JobRecord } from '../orchestration/loop'
 import { ActivityRecorder, heldByText } from '../orchestration/activity'
+import { minutesPerArticle, standupContext, utteranceMs } from '../orchestration/speech'
 import { createOrchestrator, jobsFromEffects, loadRustValidator, localLlmBridge, outcomesForSim, type ProgressEvent, type SiteBindingJson } from '../orchestrator'
 import { openCompanyStore, type ActivityRow, type CompanyStore, type Plan } from '../store'
 import { commandBytes, decodeSnapshot, encodeSnapshot, type Checkpoint } from '../sync/segments'
@@ -213,6 +214,11 @@ export interface GameSession {
   models: ModelRuntime
   /** The overlay's data source: the sim (commands logged through the loop) plus the store's plan text. */
   dataSource(): WasmDataSource
+  /** Speech bubbles (FEAT-025): a meeting turn's words from the transcript, and how long a turn lasts. */
+  speech: {
+    text(meeting: string, seq: number, job: number | null): Promise<string | null>
+    durationMs(chars: number): number
+  }
 }
 
 /**
@@ -492,13 +498,27 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   // The activity record and the chip's "section 3 of 5": progress events plus the bridge's usage (ADR-0058).
   const activity = new ActivityRecorder({ store, companyId: company.id, clock: () => ({ step: Number(sim.step()), day: sim.day(), minute: sim.minute_of_day() }), log })
   llm.onCall = (call) => activity.call(call)
+  // Meeting turns (`turn` events, ADR-0062) go to the loop as utterances; set once the loop exists.
+  let speak: (e: ProgressEvent) => void = () => undefined
   // Rebound to a new pack at the next job after it changed; refreshes before every standup.
   const orchestrator = new SiteOrchestrator({
     keeper: knowledge,
     site: SITE,
-    create: (site) => createOrchestrator({ store, gateway, llm, site, onProgress: (e) => activity.progress(e) }),
+    create: (site) =>
+      createOrchestrator({
+        store,
+        gateway,
+        llm,
+        site,
+        onProgress: (e) => {
+          activity.progress(e)
+          speak(e)
+        },
+      }),
     log,
   })
+  // The clock's speed paces meeting turns; the clock is made after the loop.
+  let clockSpeed = () => 1
   await orchestrator.bind().catch((e) => opts.onError?.(`The orchestrator could not be bound to the site: ${String(e)}`))
   const sources = new Set<SessionDataSource>()
   const loop = new OrchestrationLoop({
@@ -512,7 +532,16 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     onPlanText: () => sources.forEach((s) => s.planTextChanged()),
     // A published item is the moment worth keeping: seal the log and a checkpoint to central sync (docs/mvp.md).
     onLanded: () => void checkpoint(),
+    // The standup's context (ADR-0062): the sim's work in progress, titles from the plan store,
+    // the measured model minutes per article from the activity record, and today's date.
+    standupContext: async ({ project }) => {
+      const [plan, rows] = await Promise.all([store.plan(company.id), activity.flush().then(() => store.activity(company.id))])
+      const titles = Object.fromEntries(Object.entries(plan.items).map(([id, i]) => [id, i.title]))
+      return standupContext(sim.plan_json(), project, { now: new Date(), titles, minutesPerArticle: minutesPerArticle(rows) })
+    },
+    speechSpeed: () => clockSpeed(),
   })
+  speak = (e) => loop.turnFinished(e)
   loop.seed(result.completedJobs, result.landed, lastSeq)
   await loop.loadPendingDeploys()
   // A read-only session shows the restored world and runs nothing.
@@ -651,6 +680,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     clock.refresh()
   }
   clock.refresh()
+  clockSpeed = () => clock.state.speed
   // The model starts in the background: the office opens at once, the card and the chip show the stages.
   models.onChange(() => setModelStatus(models.status()))
   mountModelCard(models)
@@ -753,6 +783,14 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     status,
     setModelStatus,
     models,
+    speech: {
+      // The loop knows which transcript row each utterance it applied spoke; after a reload the seqs coincide.
+      text: async (meeting, seq, job) => {
+        const at = loop.spokenAt(meeting, seq) ?? (job != null ? { job, seq } : null)
+        return at ? ((await store.transcriptLine(company.id, at.job, at.seq))?.text ?? null) : null
+      },
+      durationMs: (chars) => utteranceMs(chars, clock.state.speed),
+    },
     dataSource: () => {
       // The Inbox's banned-phrase check reads the site's own style guide (the pack's, when the source is made).
       const site = { style_guide: knowledge.current?.styleGuide ?? undefined }

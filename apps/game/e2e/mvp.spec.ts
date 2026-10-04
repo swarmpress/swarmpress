@@ -19,7 +19,7 @@
 // the clock (pause). Run with `playwright test -c playwright.mvp.config.ts`
 // (one project per store engine).
 import { expect, test, type Page } from '@playwright/test'
-import { MVP_REVISION_LINE } from '../src/llm/mvp-script'
+import { MVP_REVISION_LINE, MVP_TOPICS } from '../src/llm/mvp-script'
 import type { SessionHook } from '../src/session/session'
 
 const ITEM = 'work-item-1'
@@ -75,8 +75,31 @@ const info = (page: Page) => session(page, 'info')
 const state = (page: Page) => session(page, 'state')
 const items = (page: Page) => session(page, 'items')
 const postTypes = async (page: Page) => ((await session(page, 'planText')).posts[ITEM] ?? []).map((p) => p.type)
-/** The command log in the page's store (OPFS). */
-const logKinds = async (page: Page) => (await session(page, 'commandLog')).map((c) => c.kind)
+/** The command log in the page's store (OPFS), without the standup's `Utterance`s (how many play depends on who sits down when). */
+const logKinds = async (page: Page) => (await session(page, 'commandLog')).map((c) => c.kind).filter((k) => k !== 'Utterance')
+/** The whole command log's kinds. */
+const allKinds = async (page: Page) => (await session(page, 'commandLog')).map((c) => c.kind)
+
+/**
+ * Records every speech bubble the page shows (FEAT-025): speaker and full
+ * text, from the DOM, from the first frame on (an init script, so a bubble
+ * shown before the test looks is not missed).
+ */
+async function recordBubbles(page: Page) {
+  await page.addInitScript(() => {
+    const log: { speaker: string; text: string }[] = []
+    ;(window as unknown as { __bubbles: typeof log }).__bubbles = log
+    new MutationObserver((records) => {
+      for (const r of records) {
+        for (const n of r.addedNodes) {
+          if (!(n instanceof HTMLElement)) continue
+          const found = n.classList.contains('speech-bubble') ? [n] : Array.from(n.querySelectorAll<HTMLElement>('.speech-bubble'))
+          for (const el of found) log.push({ speaker: el.dataset.speaker ?? '', text: el.querySelector('.speech-bubble-full')?.textContent ?? '' })
+        }
+      }
+    }).observe(document, { childList: true, subtree: true })
+  })
+}
 
 interface SimPlan {
   items: { id: string; status: string; awaitingApproval?: boolean }[]
@@ -162,6 +185,7 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
   const url = gameUrl(engine, login, '&speed=10')
 
   // ---------------------------------------------------------------- dev login → company founded
+  await recordBubbles(page)
   const errors = await boot(page, url)
   const first = await info(page)
   expect(first.login).toBe(login)
@@ -202,6 +226,16 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
       { timeout: 180_000, intervals: [500] },
     )
     .toBe(true)
+  // ---------------------------------------------------------------- the standup played as speech bubbles (FEAT-025, ADR-0062)
+  // The pitch the article came from showed above its writer, read from the transcript (the sim only had its length).
+  const writer = (await simJson<{ items: { id: string; phases: { kind: string; assignee: string | null }[] }[] }>(page, 'plan_json')).items
+    .find((i) => i.id === ITEM)!
+    .phases.find((p) => p.kind === 'draft')!.assignee
+  const bubbles = await page.evaluate(() => (window as unknown as { __bubbles: { speaker: string; text: string }[] }).__bubbles)
+  expect(bubbles).toContainEqual({ speaker: writer, text: MVP_TOPICS[0].pitch })
+  const kinds = await allKinds(page)
+  expect(kinds.indexOf('Utterance')).toBe(0)
+  expect(kinds.lastIndexOf('Utterance')).toBeLessThan(kinds.indexOf('MeetingOutcome'))
   await approveInInbox(page, `${engine}-inbox-approval`)
 
   // ---------------------------------------------------------------- approved: merge, deploy, published
@@ -232,7 +266,9 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
   expect(done.queued).toBe(0)
   expect(done.pendingCommands).toBe(0)
   expect(done.pendingDeploys).toEqual([])
-  expect(done.logged).toBe(LOGGED.length)
+  const spoken = (await allKinds(page)).filter((k) => k === 'Utterance').length
+  expect(spoken).toBeGreaterThanOrEqual(1)
+  expect(done.logged).toBe(LOGGED.length + spoken)
   expect(await logKinds(page)).toEqual(LOGGED)
 
   // The central gateway: one draft PR (two commits: draft and revision), then the merge.
@@ -327,7 +363,7 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
   await expect.poll(async () => (await state(page)).sealed?.central ?? null, { timeout: 30_000 }).not.toBeNull()
   const sealed = (await state(page)).sealed!
   expect(sealed.local).toBe(true)
-  expect(sealed.central).toEqual({ segment: 0, commands: LOGGED.length, step: sealed.step })
+  expect(sealed.central).toEqual({ segment: 0, commands: LOGGED.length + spoken, step: sealed.step })
   expect(sealed.step).toBeLessThanOrEqual(done.step)
   // Read back from the server by an independent request: one segment, and the checkpoint.
   const remote = await page.evaluate(async (company) => {
@@ -337,10 +373,11 @@ test('one article, end to end, in the real game page', async ({ page, browser, b
     return { segments: list.segments.map((x) => x.segment), kinds: segment.commands.map((c) => c.kind), seqs: segment.commands.map((c) => c.seq), snapshot, worldChars: world.length }
   }, first.companyId)
   expect(remote.segments).toEqual([0])
-  expect(remote.kinds).toEqual(LOGGED)
-  expect(remote.seqs).toEqual(LOGGED.map((_, i) => i + 1))
+  expect(remote.kinds.filter((k) => k !== 'Utterance')).toEqual(LOGGED)
+  expect(remote.kinds).toEqual(await allKinds(page))
+  expect(remote.seqs).toEqual(remote.kinds.map((_, i) => i + 1))
   // The record carries the world itself (base64 of `Sim.snapshot()`), not just where it was.
-  expect(remote.snapshot).toMatchObject({ format: 'swarmpress.snapshot.v1', step: sealed.step, hash: sealed.hash, lastSeq: LOGGED.length })
+  expect(remote.snapshot).toMatchObject({ format: 'swarmpress.snapshot.v1', step: sealed.step, hash: sealed.hash, lastSeq: LOGGED.length + spoken })
   expect(remote.worldChars).toBeGreaterThan(1000)
   expect((await state(page)).errors).toEqual([])
   expect(errors).toEqual([])

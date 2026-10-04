@@ -11,6 +11,7 @@ import type { BuildingLayout, RenderState } from './state/render-state'
 import { DEMO_STAGES, mountBootScreen, SESSION_STAGES, type BootScreen } from './ui/boot-screen'
 import { hudNotify, mountHud } from './ui/hud'
 import { mountOverlay, selectDataSource } from './ui/mount'
+import { bubblesOf, mountBubbles } from './ui/bubbles/BubbleLayer'
 
 /**
  * URL parameters (also used by the e2e and visual tests):
@@ -183,18 +184,32 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   }
   // Labels never cover the HUD or the overlay's toolbar and panels. Live pages only: on frozen
   // screenshot pages the HUD's text (fps) varies, and the labels must not vary with it.
-  if (!frozen) {
-    game.setOccluders(() => {
-      const c = canvas.getBoundingClientRect()
-      return Array.from(document.querySelectorAll('.hud, .hud-card, .toolbar, .panel, #model-startup'), (el) => {
-        const r = el.getBoundingClientRect()
-        return { left: r.left - c.left, top: r.top - c.top, right: r.right - c.left, bottom: r.bottom - c.top }
-      })
+  const screenRects = () => {
+    const c = canvas.getBoundingClientRect()
+    return Array.from(document.querySelectorAll('.hud, .hud-card, .toolbar, .panel, #model-startup'), (el) => {
+      const r = el.getBoundingClientRect()
+      return { left: r.left - c.left, top: r.top - c.top, right: r.right - c.left, bottom: r.bottom - c.top }
     })
   }
   if (overlay && brickMod && bricks) bricks.setSources(brickMod.surfaceSourcesFrom(overlay.store))
+  if (!frozen) game.setOccluders(screenRects)
   // --- end scene ↔ overlay ---
+  let latest: RenderState | null = null
+  // Meeting speech bubbles (FEAT-025): live session pages only, never on frozen screenshot pages.
+  if (session && !frozen) {
+    const speech = session.speech
+    mountBubbles(document.getElementById('ui')!, {
+      current: () => bubblesOf(latest),
+      text: (b) => speech.text(b.meeting, b.seq, b.job),
+      name: (id) => overlay?.store.personaOf(id).name,
+      anchor: (id) => game.speechAnchor(id),
+      obstacles: () => [...game.labelRects(), ...screenRects()],
+      view: () => ({ w: canvas.clientWidth, h: canvas.clientHeight }),
+      durationMs: (chars) => speech.durationMs(chars),
+    })
+  }
   let lastStep = -1n
+  let lastSeq = -1
   let stillFrames = 0
   let still = false
   boot.done()
@@ -204,9 +219,13 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     const now = performance.now()
     clock?.tickAt(now)
     const step = sim.step()
-    if (step !== lastStep) {
-      game.update(JSON.parse(sim.render_state_json()) as RenderState)
+    // A command applied while the clock holds (a meeting turn) changes the state at the same step.
+    const seq = session?.loop.lastSeq ?? 0
+    if (step !== lastStep || seq !== lastSeq) {
+      latest = JSON.parse(sim.render_state_json()) as RenderState
+      game.update(latest)
       lastStep = step
+      lastSeq = seq
     }
     game.setClock(frozenInstant ?? new Date(), frozenInstant ? 'UTC' : timeZone)
     // The clock always ticks; under the generation cap only the drawing waits.

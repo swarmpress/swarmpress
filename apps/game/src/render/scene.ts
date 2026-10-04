@@ -49,6 +49,14 @@ export interface GameScene {
   onPick(picks: ScenePicks): void
   /** Everyone on site and where they are drawn (tests and dev tools). */
   people(): PersonOnScreen[]
+  /**
+   * Where a speech bubble hangs (FEAT-025): the top of the person's head and
+   * their label, CSS pixels from the canvas' top-left, by the labels' own
+   * projection; null when labels are not drawn for them.
+   */
+  speechAnchor(staffId: string): { x: number; y: number; label: ScreenRect | null } | null
+  /** Every name label shown (CSS pixels): what a bubble must not cover. */
+  labelRects(): ScreenRect[]
   /** The building and the labels drawn over it are ready (shaders compiled, textures uploaded). */
   isReady(): boolean
   /**
@@ -149,6 +157,11 @@ export function createGameScene(
       picks = p
     },
     people: () => staff.onScreen(),
+    speechAnchor: (id) => {
+      const head = staff.labels.headOf(id)
+      return head ? { ...head, label: staff.labels.rectOf(id) } : null
+    },
+    labelRects: () => staff.labels.rects(),
     isReady: () => scene.isReady() && staff.labels.scene.isReady(),
     setQuality: (q) => {
       // Shadows can only come back if the page started with them (the generator exists).
