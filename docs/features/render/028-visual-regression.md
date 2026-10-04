@@ -14,7 +14,8 @@ adrs:
 # Visual regression baselines
 
 Deterministic render mode (fixed seed, frozen sim time, no animation jitter) with baselines at
-08:00, 13:00, 19:30 and 23:00 × four camera angles × {webgpu, webgl2}; perceptual diff tolerance.
+08:00, 13:00, 19:30 and 23:00 × four camera angles on SwiftShader's WebGPU (ADR-0064; the WebGL2
+baselines are gone); perceptual diff tolerance.
 
 Decisions: [ADR-0022](../../adr/0022-testing-strategy-cockpit-evidence-gate.md), [ADR-0006](../../adr/0006-baked-gi-dynamic-lights-day-night.md).
 
