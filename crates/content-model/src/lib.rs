@@ -11,6 +11,7 @@
 //! * [`validate`] — [`validate_page_v2`] → [`Report`] of errors and warnings.
 //! * [`docs`] — [`blocks_doc`]: writer-facing block docs generated from schemas.
 
+pub mod article_profile;
 pub mod blocks;
 pub mod docs;
 pub mod localized;

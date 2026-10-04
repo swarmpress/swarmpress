@@ -655,6 +655,41 @@ pub fn validate_json(schema_json: &str, value_json: &str) -> Result<Vec<String>,
     Ok(validator.validate(&value).err().unwrap_or_default())
 }
 
+/// [`OrchestratorHandle::eval_op`] over JSON values.
+fn eval_op(site: &SiteBinding, op: &str, args_json: &str) -> Result<String, String> {
+    use orchestrator::eval;
+    let args: Value = serde_json::from_str(args_json).map_err(|e| format!("{op} args: {e}"))?;
+    let field = |k: &str| args.get(k).cloned().unwrap_or(Value::Null);
+    let text = |k: &str| field(k).as_str().unwrap_or_default().to_string();
+    let out = match op {
+        "gateway_checks" => json!(eval::gateway_checks(
+            site,
+            &text("content_id"),
+            &text("path"),
+            &field("page")
+        )),
+        "checks" => {
+            let brief =
+                serde_json::from_value(field("brief")).map_err(|e| format!("brief: {e}"))?;
+            let record =
+                serde_json::from_value(field("record")).map_err(|e| format!("record: {e}"))?;
+            json!(eval::eval_checks(site, &brief, &record))
+        }
+        "reference" => json!(eval::reference_article(
+            site,
+            &text("path"),
+            &field("page")
+        )?),
+        "seeded_bad" => {
+            let good =
+                serde_json::from_value(field("article")).map_err(|e| format!("article: {e}"))?;
+            json!(eval::seeded_bad(site, &good, &text("kind"))?)
+        }
+        other => return Err(format!("unknown eval op {other:?}")),
+    };
+    Ok(out.to_string())
+}
+
 /// The module version (the crate version).
 #[wasm_bindgen]
 pub fn version() -> String {
@@ -753,6 +788,16 @@ impl OrchestratorHandle {
     #[wasm_bindgen(js_name = siteSummary)]
     pub fn site_summary(&self) -> String {
         self.orch.site().summary().to_string()
+    }
+
+    /// The eval harness (FEAT-036, `orchestrator::eval`). `op` is one of:
+    /// `gateway_checks` `{content_id, path, page}` → `[issue]`;
+    /// `checks` `{brief, record}` → `EvalChecks`;
+    /// `reference` `{path, page}` → `EvalArticle`;
+    /// `seeded_bad` `{article, kind}` → `EvalArticle`. JSON text in and out.
+    #[wasm_bindgen(js_name = evalOp)]
+    pub fn eval_op(&self, op: &str, args_json: &str) -> Result<String, JsError> {
+        eval_op(self.orch.site(), op, args_json).map_err(|e| JsError::new(&e))
     }
 
     /// Run one job request (JSON); resolves to the outcomes as JSON text,

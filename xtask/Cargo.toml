@@ -10,3 +10,5 @@ publish = false
 anyhow.workspace = true
 # site-pack: the knowledge pack of a local site clone.
 knowledge = { path = "../crates/knowledge" }
+# site-pack --articles: the pack document plus the site's articles (the eval harness).
+serde_json.workspace = true

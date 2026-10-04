@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Cinque Terre Content Calendar Configuration",
+  "description": "A few topics of the real site's calendar, in its shape (the eval harness takes its briefs from the unpublished ones). The Portovenere topic is published already.",
+  "version": "1.0.0",
+  "seasonal_content": {
+    "summer": {
+      "season_name": "Summer",
+      "publish_window": { "start": "06-01", "end": "08-31" },
+      "topics": [
+        {
+          "id": "beat-the-crowds",
+          "title": "How to Beat the Summer Crowds",
+          "slug": "beat-the-crowds-cinque-terre-summer",
+          "priority": "high",
+          "content_type": "blog-article",
+          "brief": "Practical strategies for enjoying Cinque Terre in peak summer. Cover the best times of day to visit each village, the trains to avoid, quieter trails, and how staying overnight in Vernazza or Manarola changes the experience.",
+          "target_length": "1500-1800 words",
+          "ideal_publish_date": "06-01",
+          "keywords": ["summer crowds", "Vernazza", "early morning", "travel tips"]
+        }
+      ]
+    },
+    "fall": {
+      "season_name": "Fall",
+      "publish_window": { "start": "09-01", "end": "11-30" },
+      "topics": [
+        {
+          "id": "wine-harvest",
+          "title": "The Grape Harvest in Manarola",
+          "slug": "wine-harvest-cinque-terre-vendemmia",
+          "priority": "high",
+          "content_type": "blog-article",
+          "brief": "The vendemmia on the terraces above Manarola: when it happens, how the monorails work, the Sciacchetrà tradition, and how visitors can watch or join without getting in the way.",
+          "target_length": "800-1000 words",
+          "ideal_publish_date": "09-01",
+          "keywords": ["Manarola", "wine harvest", "Sciacchetrà", "terraces"]
+        },
+        {
+          "id": "portovenere-day-trip",
+          "title": "Day Trip to Portovenere",
+          "slug": "day-trip-to-portovenere",
+          "priority": "medium",
+          "content_type": "blog-article",
+          "brief": "Published already: the eval harness must skip it.",
+          "target_length": "600-800 words",
+          "keywords": ["Portovenere", "day trip"]
+        }
+      ]
+    },
+    "winter": {
+      "season_name": "Winter",
+      "publish_window": { "start": "12-01", "end": "02-28" },
+      "topics": [
+        {
+          "id": "offseason-restaurants",
+          "title": "Where Locals Eat in Winter",
+          "slug": "winter-restaurants-cinque-terre-local-favorites",
+          "priority": "medium",
+          "content_type": "blog-article",
+          "brief": "Which restaurants in Riomaggiore and Monterosso stay open in winter, what is on the menu in the cold months, and how to book when half the village is closed.",
+          "target_length": "1000-1200 words",
+          "keywords": ["Riomaggiore", "winter", "restaurants", "local food"]
+        }
+      ]
+    }
+  },
+  "evergreen_content": {
+    "description": "Content that remains relevant year-round, updated annually",
+    "topics": [
+      {
+        "id": "train-schedule-guide",
+        "title": "Complete Train Schedule Guide",
+        "slug": "cinque-terre-train-schedule-guide",
+        "priority": "critical",
+        "content_type": "guide",
+        "brief": "Train travel between the five villages: the regional line, how often trains run, the Cinque Terre Card, La Spezia connections and platform tips.",
+        "target_length": "2000-2500 words",
+        "update_frequency": "annually in March",
+        "keywords": ["train schedule", "Cinque Terre Card", "Riomaggiore", "transport"]
+      }
+    ]
+  }
+}

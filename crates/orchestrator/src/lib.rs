@@ -36,6 +36,7 @@
 //! [`agents::Llm`] (see [`agents::MaybeSendSync`]).
 
 mod article;
+pub mod eval;
 mod gateway;
 mod run;
 mod site;
