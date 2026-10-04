@@ -64,10 +64,13 @@ function draftStatus(page: Page, token: string, contentId: string): Promise<numb
   )
 }
 
-/** The sim clock runs: the step moves within a second. */
+/**
+ * The sim clock runs: the step moves. A standup holds the clock while its turns play as bubbles
+ * (FEAT-025), several seconds at speed 10 on a loaded runner, so allow a minute.
+ */
 async function expectRunning(page: Page) {
   const before = (await state(page)).step
-  await expect.poll(async () => (await state(page)).step, { timeout: 10_000 }).toBeGreaterThan(before)
+  await expect.poll(async () => (await state(page)).step, { timeout: 60_000 }).toBeGreaterThan(before)
 }
 
 /** The sim clock is held: the step does not move for a second and a half. */
