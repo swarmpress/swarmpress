@@ -85,3 +85,4 @@ Accepted ADRs are never rewritten.
 | [0063](0063-brick-office-and-live-information-surfaces.md) | The brick office and live information surfaces | Accepted |
 | [0064](0064-webgpu-only.md) | WebGPU only | Accepted |
 | [0065](0065-the-construction-kit.md) | The construction kit | Accepted |
+| [0066](0066-gemma-4-e4b-with-mtp-on-upstream-llama-cpp-webgpu.md) | Gemma 4 E4B with MTP on upstream llama.cpp (WebGPU) | Accepted |

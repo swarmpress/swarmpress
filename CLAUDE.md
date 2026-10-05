@@ -16,8 +16,8 @@ surfaces (ADR-0063, ADR-0065; decided, kit core and a spike first).
 - The company is extensible through a JS SDK.
 - The user's own company is the imported, still-live **cinqueterre.travel**.
 
-Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0065; ADR-0038 to 0065 define
-the current architecture; ADR-0044 to 0065 are decided and mostly not built yet). Features and
+Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0066; ADR-0038 to 0066 define
+the current architecture; ADR-0044 to 0066 are decided and mostly not built yet). Features and
 their health: `docs/features/` plus Cockpit. The current MVP is `docs/mvp.md` (the owner's
 company for real, on one resident in-browser model); its implementation designs are in
 `docs/design/`.
@@ -30,9 +30,10 @@ Browser (authoritative for its company)
     Babylon scene ◄ render state ◄ client-wasm (sim-core, deterministic)
     Preact overlay (Inbox, Plan, Staff, Finance, Performance)
     orchestration loop: sim Effect::RequestJob → orchestrator (wasm) → commands back into the sim
-       ├ LocalLlm: one resident model in a Worker for all staff jobs (ADR-0057; decided, NOT
-       │   wired yet): Ternary-Bonsai-2 via an extracted WebGPU engine; Transformers.js is the
-       │   fallback; no cloud model and no native model server in the MVP
+       ├ LocalLlm: one resident model in a Worker for all staff jobs (ADR-0057, ADR-0066; decided,
+       │   NOT wired yet): Gemma 4 E4B (Q4 GGUF) with its MTP drafter on upstream llama.cpp's WebGPU
+       │   backend, built to wasm by us; Bonsai was a no-go; no cloud model and no native model
+       │   server in the MVP
        ├ store: Turso wasm on OPFS (sqlite-wasm fallback), ADR-0041
        └ extensions: JS bundles in a QuickJS-wasm sandbox with a Bun-style API, ADR-0042/0043
         │ HTTPS + WS (dev login / GitHub OAuth, company lease)
