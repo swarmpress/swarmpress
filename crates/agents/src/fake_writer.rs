@@ -120,6 +120,13 @@ pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
         "standup opening" => return FakeReply::Text(opening_line(&p)),
         "pitch" => return FakeReply::Json(pitch(&p, &later)),
         "commission" => return FakeReply::Json(commission(&p)),
+        // Every pitch checks out (ADR-0068), on a made-up official source.
+        "pitch check" => {
+            return FakeReply::Json(json!({"verifiable": true,
+                "note": "The park's information pages cover it.",
+                "claims": [{"claim": "The park's information office describes the place and its access.",
+                            "url": "https://www.parco.example/info", "title": "Park information"}]}))
+        }
         // Two claims on a made-up official source (ADR-0068); the fake's searches return exactly them.
         "research" => {
             return FakeReply::Json(json!({"claims": [

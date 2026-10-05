@@ -48,10 +48,11 @@ use std::collections::BTreeSet;
 use agents::house_style::contains_phrase;
 use agents::llm::{structured_with_repair, Repaired};
 use agents::meetings::{
-    commission_prompt, commission_schema, opening_prompt, pitch_alias, pitch_prompt, pitch_schema,
-    standup_cap, trim_to_sentence, CommissionDecision, Pitch, PitchLine, CAP_LABEL,
-    COMMISSION_ANSWER, DEFAULT_TARGET_WORDS, MAX_TARGET_WORDS, MIN_TARGET_WORDS,
-    MODEL_MINUTES_PER_DAY, OPENING_ANSWER, PITCH_ANSWER, PITCH_REASONING, TWO_SENTENCES,
+    commission_prompt, commission_schema, opening_prompt, pitch_alias, pitch_check_prompt,
+    pitch_check_schema, pitch_prompt, pitch_schema, standup_cap, trim_to_sentence,
+    CommissionDecision, Pitch, PitchLine, CAP_LABEL, COMMISSION_ANSWER, DEFAULT_TARGET_WORDS,
+    MAX_TARGET_WORDS, MIN_TARGET_WORDS, MODEL_MINUTES_PER_DAY, OPENING_ANSWER, PITCH_ANSWER,
+    PITCH_REASONING, TWO_SENTENCES,
 };
 use agents::prompts::{templates, Vars};
 use agents::{strip_reasoning, Brief, CallProfile, LlmError, LlmMessage, LlmRequest, Role};
@@ -274,6 +275,41 @@ type Topic = (String, Vec<String>);
 
 /// A valid pitch of the round: its alias, the writer, their name, the pitch.
 type Pitched<'a> = (String, &'a StaffRef, String, Pitch);
+
+/// The answer budget of a pitch check (ADR-0068).
+const CHECK_ANSWER: u32 = 900;
+
+/// What a pitch check found (ADR-0068), as stored for a re-run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PitchCheck {
+    /// `Some(false)`: the promise could not be verified; `None`: the check failed.
+    verifiable: Option<bool>,
+    note: String,
+    /// Claims whose source the search returned.
+    claims: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+impl PitchCheck {
+    /// A pitch counts as verifiable only with at least one claim whose source the search returned.
+    fn from_answer(value: &Value, sources: &[String]) -> Self {
+        let said = value["verifiable"].as_bool().unwrap_or(false);
+        let claims = agents::research::dossier_from(
+            &json!({"claims": value["claims"].clone()}),
+            sources,
+            &[],
+        )
+        .added
+        .len();
+        Self {
+            verifiable: Some(said && claims > 0),
+            note: value["note"].as_str().unwrap_or("").trim().to_string(),
+            claims,
+            error: None,
+        }
+    }
+}
 
 /// Slugs of the site's article files (`content/pages/blog/<slug>.json`).
 fn article_slugs(site: &SiteBinding) -> BTreeSet<String> {
@@ -988,6 +1024,106 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                     valid.push((pitch_alias(valid.len()), *writer, name, pitch));
                 }
                 None => failures.push(turn.failure.unwrap_or_else(|| "invalid-output".into())),
+            }
+        }
+
+        // check#1…N (ADR-0068): each pitch's central promise is checked on the
+        // web. An unverifiable pitch is set aside; a check that fails (a timeout,
+        // a backend that cannot search) keeps the pitch, unchecked.
+        if !valid.is_empty() {
+            let total = u32::try_from(valid.len()).unwrap_or(u32::MAX);
+            let mut kept: Vec<Pitched<'_>> = Vec::new();
+            for (i, (alias, writer, name, pitch)) in
+                std::mem::take(&mut valid).into_iter().enumerate()
+            {
+                let index = u32::try_from(i + 1).unwrap_or(u32::MAX);
+                let user = pitch_check_prompt(pack, &pitch);
+                let schema = pitch_check_schema();
+                let request = LlmRequest {
+                    profile: mod_call.clone(),
+                    system: vec![mod_system.clone()],
+                    messages: vec![LlmMessage::user(user.clone())],
+                    max_tokens: CHECK_ANSWER,
+                    reasoning_tokens: Some(PITCH_REASONING),
+                };
+                let hash = stage_hash(&["check", &mod_system, &user, &schema.to_string()]);
+                let check: PitchCheck = match self.recall(req, "check", index, Some(&hash)).await? {
+                    Some(v) => {
+                        self.report(
+                            req,
+                            Some(moderator),
+                            "check",
+                            index,
+                            total,
+                            ProgressState::Reused,
+                            json!({}),
+                        );
+                        serde_json::from_value(v).map_err(corrupt)?
+                    }
+                    None => {
+                        self.report(
+                            req,
+                            Some(moderator),
+                            "check",
+                            index,
+                            total,
+                            ProgressState::Started,
+                            json!({}),
+                        );
+                        let c = match self.llm.research(&request, &schema).await {
+                            Ok(r) => PitchCheck::from_answer(&r.value, &r.sources),
+                            Err(e) => PitchCheck {
+                                verifiable: None,
+                                note: String::new(),
+                                claims: 0,
+                                error: Some(e.to_string()),
+                            },
+                        };
+                        let state = if c.error.is_some() {
+                            ProgressState::Failed
+                        } else {
+                            ProgressState::Done
+                        };
+                        let detail = json!({"title": pitch.title, "verifiable": c.verifiable, "claims": c.claims, "error": c.error});
+                        self.report(req, Some(moderator), "check", index, total, state, detail);
+                        self.remember(req, "check", index, hash, &c).await?
+                    }
+                };
+                if check.verifiable == Some(false) {
+                    let why = if check.note.is_empty() {
+                        "nothing on the web verifies what it promises".to_string()
+                    } else {
+                        check.note.clone()
+                    };
+                    let line = Line {
+                        seq,
+                        speaker: "system".into(),
+                        text: format!("\u{ab}{}\u{bb} is set aside: {why}", pitch.title),
+                    };
+                    self.spoke(req, &line, None, false).await?;
+                    lines.push(line);
+                    seq += 1;
+                } else {
+                    kept.push((alias, writer, name, pitch));
+                }
+            }
+            valid = kept
+                .into_iter()
+                .enumerate()
+                .map(|(i, (_, w, n, p))| (pitch_alias(i), w, n, p))
+                .collect();
+            if valid.is_empty() {
+                let line = Line {
+                    seq,
+                    speaker: "system".into(),
+                    text: "No pitch could be verified; the standup commissions nothing today."
+                        .into(),
+                };
+                self.spoke(req, &line, None, false).await?;
+                return Ok(vec![Outcome::MeetingOutcome {
+                    job_id: req.job_id,
+                    briefs: Vec::new(),
+                }]);
             }
         }
 

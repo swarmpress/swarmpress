@@ -205,7 +205,7 @@ async fn full_loop<G: Gateway>(gateway: G, repo: &dyn Repo) -> Orchestrator<MemS
     assert!(completed(&out).ok);
     // The staged calls: the draft in stages, one review, a revision of the
     // one part the review names (ADR-0058).
-    let tasks: Vec<String> = llm.calls().iter().skip(4).map(task).collect();
+    let tasks: Vec<String> = llm.calls().iter().skip(6).map(task).collect();
     assert_eq!(
         tasks,
         [
@@ -222,7 +222,7 @@ async fn full_loop<G: Gateway>(gateway: G, repo: &dyn Repo) -> Orchestrator<MemS
         ],
         "{tasks:?}"
     );
-    let revise_prompt = &llm.calls()[13].request.messages[0].text;
+    let revise_prompt = &llm.calls()[15].request.messages[0].text;
     assert!(
         revise_prompt.contains(REVIEW_NOTE),
         "revision sees the review"
@@ -309,8 +309,8 @@ async fn full_loop<G: Gateway>(gateway: G, repo: &dyn Repo) -> Orchestrator<MemS
         "the review's issues are tagged by part"
     );
     assert_eq!(llm.remaining(), 0, "every scripted call was used");
-    // Standup 4, the draft 6 with its research, review, revision with its research, review.
-    assert_eq!(llm.calls().len(), 4 + 1 + 6 + 1 + 1 + 1 + 1);
+    // Standup 4 and two pitch checks, the draft 6 with its research, review, revision with its research, review.
+    assert_eq!(llm.calls().len(), 4 + 2 + 1 + 6 + 1 + 1 + 1 + 1);
     orch
 }
 

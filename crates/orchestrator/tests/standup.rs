@@ -90,7 +90,7 @@ fn day_zero() -> Value {
 }
 
 #[tokio::test]
-async fn a_pitch_round_costs_two_calls_plus_one_per_free_writer() {
+async fn a_pitch_round_costs_two_calls_plus_two_per_free_writer() {
     let llm = Arc::new(fake_writer::fake_writer(Vec::<FakeReply>::new()));
     let (o, events) = orch(llm.clone());
     let out = o.run(&standup(1, day_zero())).await.unwrap();
@@ -98,7 +98,17 @@ async fn a_pitch_round_costs_two_calls_plus_one_per_free_writer() {
     assert_eq!(b.len(), 1, "cap 1 until throughput is measured");
     assert_eq!(b[0].0, "staff-1", "the commissioned pitch's writer");
     let tasks: Vec<String> = llm.calls().iter().map(task).collect();
-    assert_eq!(tasks, ["standup opening", "pitch", "pitch", "commission"]);
+    assert_eq!(
+        tasks,
+        [
+            "standup opening",
+            "pitch",
+            "pitch",
+            "pitch check",
+            "pitch check",
+            "commission"
+        ]
+    );
     for call in llm.calls() {
         assert!(LlmProfile::LOCAL.fits(&call.request), "{}", task(&call));
     }
@@ -161,7 +171,8 @@ async fn a_pitch_round_costs_two_calls_plus_one_per_free_writer() {
     };
     let out = o.run(&req).await.unwrap();
     assert_eq!(briefs(&out).len(), 2);
-    assert_eq!(llm.calls().len(), 2 + 3);
+    // Opening and commission, then a pitch and its web check per writer (ADR-0068).
+    assert_eq!(llm.calls().len(), 2 + 3 + 3);
 }
 
 #[tokio::test]
@@ -214,7 +225,15 @@ async fn a_truncated_speaker_still_yields_a_brief() {
     let tasks: Vec<String> = llm.calls().iter().map(task).collect();
     assert_eq!(
         tasks,
-        ["standup opening", "pitch", "pitch", "pitch", "commission"]
+        [
+            "standup opening",
+            "pitch",
+            "pitch",
+            "pitch",
+            "pitch check",
+            "pitch check",
+            "commission"
+        ]
     );
     assert!(llm.calls()[2].request.messages[0]
         .text
@@ -251,7 +270,14 @@ async fn a_duplicate_pitch_is_repaired_once_then_dropped() {
     let tasks: Vec<String> = calls.iter().map(task).collect();
     assert_eq!(
         tasks,
-        ["standup opening", "pitch", "pitch", "pitch", "commission"]
+        [
+            "standup opening",
+            "pitch",
+            "pitch",
+            "pitch",
+            "pitch check",
+            "commission"
+        ]
     );
     // The repair turn names the conflict.
     let repair = &calls[2].request.messages.last().unwrap().text;
@@ -397,7 +423,17 @@ async fn a_rerun_repeats_no_call_and_replays_no_turn() {
         .filter(|e| e.state == orchestrator::ProgressState::Reused)
         .map(|e| format!("{}#{}", e.stage, e.index))
         .collect();
-    assert_eq!(reused, ["opening#0", "pitch#1", "pitch#2", "commission#0"]);
+    assert_eq!(
+        reused,
+        [
+            "opening#0",
+            "pitch#1",
+            "pitch#2",
+            "check#1",
+            "check#2",
+            "commission#0"
+        ]
+    );
     // The stage rows of the round.
     let stages: Vec<String> = o
         .store()
@@ -407,7 +443,15 @@ async fn a_rerun_repeats_no_call_and_replays_no_turn() {
         .collect();
     assert_eq!(
         stages,
-        ["commission#0", "frame#0", "opening#0", "pitch#1", "pitch#2"]
+        [
+            "check#1",
+            "check#2",
+            "commission#0",
+            "frame#0",
+            "opening#0",
+            "pitch#1",
+            "pitch#2"
+        ]
     );
 }
 
@@ -449,4 +493,89 @@ async fn the_context_pack_fits_its_budget() {
     let pack = context_pack(&site, &crowded, 1);
     assert_eq!(pack.sections, ["today"]);
     assert_eq!(pack.dropped, ["places", "published", "in_flight"]);
+}
+
+/// A fake whose first `unverifiable` pitch checks find nothing (ADR-0068).
+fn checking(unverifiable: usize) -> Arc<FakeLlm> {
+    let checked = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    Arc::new(FakeLlm::with_responder(
+        Vec::<FakeReply>::new(),
+        move |req, schema| {
+            let first = req.messages.first().map(|m| m.text.as_str()).unwrap_or("");
+            if first.starts_with("## Task: pitch check")
+                && checked.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < unverifiable
+            {
+                return FakeReply::Json(json!({"verifiable": false,
+                "note": "No source states the route or its walking time.", "claims": []}));
+            }
+            fake_writer::answer(req, schema)
+        },
+    ))
+}
+
+#[tokio::test]
+async fn an_unverifiable_pitch_is_set_aside_before_the_commission() {
+    let llm = checking(1);
+    let (o, events) = orch(llm.clone());
+    let out = o.run(&standup(1, day_zero())).await.unwrap();
+    // Giulia's pitch could not be verified: the commission only saw Isabella's.
+    assert_eq!(briefs(&out).len(), 1);
+    assert_eq!(briefs(&out)[0].0, "staff-2");
+    let commission = llm
+        .calls()
+        .into_iter()
+        .find(|c| task(c) == "commission")
+        .unwrap();
+    let prompt = &commission.request.messages[0].text;
+    assert!(prompt.contains("P1"), "{prompt}");
+    assert!(
+        !prompt.contains("P2"),
+        "only the verified pitch is offered: {prompt}"
+    );
+    let check = events
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|e| {
+            e.stage == "check" && e.index == 1 && e.state == orchestrator::ProgressState::Done
+        })
+        .cloned()
+        .unwrap();
+    assert_eq!(check.detail["verifiable"], json!(false));
+}
+
+#[tokio::test]
+async fn when_no_pitch_can_be_verified_nothing_is_commissioned() {
+    let llm = checking(usize::MAX);
+    let (o, _) = orch(llm.clone());
+    let out = o.run(&standup(1, day_zero())).await.unwrap();
+    assert!(
+        matches!(&out[..], [Outcome::MeetingOutcome { briefs, .. }] if briefs.is_empty()),
+        "{out:?}"
+    );
+    assert!(
+        llm.calls().iter().all(|c| task(c) != "commission"),
+        "no commission call"
+    );
+}
+
+#[tokio::test]
+async fn a_pitch_whose_check_fails_is_kept_unchecked() {
+    let llm = Arc::new(FakeLlm::with_responder(
+        Vec::<FakeReply>::new(),
+        |req, schema| {
+            let first = req.messages.first().map(|m| m.text.as_str()).unwrap_or("");
+            if first.starts_with("## Task: pitch check") {
+                return FakeReply::Error(LlmError::Timeout("the search took too long".into()));
+            }
+            fake_writer::answer(req, schema)
+        },
+    ));
+    let (o, _) = orch(llm.clone());
+    let out = o.run(&standup(1, day_zero())).await.unwrap();
+    assert_eq!(
+        briefs(&out).len(),
+        1,
+        "a technical failure does not empty the standup"
+    );
 }

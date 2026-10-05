@@ -18,7 +18,7 @@
  * - **Review:** revision 0 scores 6 and names section 2 (`MVP_REVIEW_NOTE`),
  *   every later revision scores 8: review 6 → revision → review 8.
  */
-import { MVP_RESEARCH } from './testing/mvp-research'
+import { MVP_PITCH_CHECK, MVP_RESEARCH } from './testing/mvp-research'
 
 export type MvpReply = { text: string } | { json: unknown }
 
@@ -456,6 +456,7 @@ export function standupAnswer(prompt: string, later = ''): MvpReply | null {
   if (task === 'standup opening') return { text: openingLine(p) }
   if (task === 'pitch') return { json: pitch(p, later) }
   if (task === 'commission') return { json: commission(p) }
+  if (task === 'pitch check') return { json: MVP_PITCH_CHECK }
   return null
 }
 

@@ -7,3 +7,10 @@ export const MVP_RESEARCH = {
     { claim: 'Trains between the five villages run about every twenty minutes in summer.', url: 'https://www.rail.example/timetable', title: 'Timetable' },
   ],
 }
+
+/** The scripted pitch check: every pitch checks out, on a made-up official source. */
+export const MVP_PITCH_CHECK = {
+  verifiable: true,
+  note: "The park's information pages cover it.",
+  claims: [{ claim: "The park's information office describes the place and its access.", url: 'https://www.parco.example/info', title: 'Park information' }],
+}
