@@ -5,6 +5,7 @@
  * Runs in the browser, under Node (vitest) and under Bun.
  */
 import type { ChatMessage, LocalLlm, ThinkingMode, Usage, Validator } from '../llm/types'
+import { urlsIn } from '../llm/research'
 import { isUnavailableError } from '../llm/types'
 import { MAX_REPAIR_CHARS, repairQuote, StructuredOutputError, StructuredTruncatedError, trimToSentence } from '../llm/structured'
 import type { MvpCall, MvpReply } from '../llm/mvp-script'
@@ -131,7 +132,8 @@ export interface LlmRequestJson {
 }
 
 export interface LlmCall {
-  kind: 'generate' | 'structured'
+  /** `research`: structured, answered with web search (ADR-0068). */
+  kind: 'generate' | 'structured' | 'research'
   request: LlmRequestJson
   schema?: Record<string, unknown>
 }
@@ -205,7 +207,7 @@ export function rustValidator(validateJson: (schemaJson: string, valueJson: stri
 
 /** What one bridged call cost (the host's activity log, ADR-0058 decision 9). */
 export interface LlmCallRecord {
-  kind: 'generate' | 'structured'
+  kind: 'generate' | 'structured' | 'research'
   /** The LocalLlm's model id, when it has one. */
   model: string | null
   /** Summed over the model turns of the call (a structured call may repair). */
@@ -379,6 +381,17 @@ export function localLlmBridge(
         }
         return JSON.stringify({ text: r.text })
       }
+      if (call.kind === 'research') {
+        if (!llm.research) return JSON.stringify({ error: { Unavailable: 'this model backend cannot search the web (ADR-0068)' } })
+        const r = await llm.research(messages, call.schema ?? {}, {
+          maxTokens,
+          thinking: p.thinking,
+          reasoningBudget: p.reasoningBudget,
+          signal,
+          ...(validate ? { validate } : {}),
+        })
+        return JSON.stringify({ value: r.value, sources: r.sources, searches: r.searches })
+      }
       const value = await llm.structured(messages, call.schema ?? {}, {
         maxTokens,
         thinking: p.thinking,
@@ -438,6 +451,8 @@ export function scriptedLlm(
       const next = queue.shift() ?? model?.answer(mvpCallOf(call))
       if (!next) return JSON.stringify({ error: { Backend: `script exhausted at call #${calls.length}` } })
       if (call.kind === 'generate') return JSON.stringify({ text: 'text' in next ? next.text : JSON.stringify(next.json) })
+      // The scripted researcher's sources are exactly the URLs its answer names.
+      if (call.kind === 'research' && 'json' in next) return JSON.stringify({ value: next.json, sources: urlsIn(next.json), searches: 1 })
       return JSON.stringify('json' in next ? { value: next.json } : { text: next.text })
     },
   }

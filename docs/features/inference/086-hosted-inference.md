@@ -11,8 +11,11 @@ paths:
   - apps/game/src/llm/hosted-llm.ts
   - apps/game/src/llm/hosted-llm.test.ts
   - apps/game/src/net/central.ts
+  - apps/game/src/llm/research.ts
+  - crates/server/migrations/0007_llm_searches.sql
 adrs:
   - ADR-0067
+  - ADR-0068
 ---
 
 # Hosted inference on GPT-6-Luna

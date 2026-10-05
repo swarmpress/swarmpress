@@ -26,11 +26,13 @@ paths:
   - apps/game/src/orchestrator/bridge.ts
   - apps/game/src/orchestrator/bridge.test.ts
   - crates/orchestrator-wasm/tests/loop.test.ts
+  - crates/agents/src/research.rs
 adrs:
   - ADR-0011
   - ADR-0009
   - ADR-0058
   - ADR-0061
+  - ADR-0068
 ---
 
 # Editorial pipeline (orchestrator)

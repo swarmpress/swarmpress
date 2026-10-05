@@ -52,6 +52,7 @@ import {
   type GenerateResult,
   type JsonSchema,
   type LocalLlm,
+  type ResearchResult,
   type RuntimeCapabilities,
   type StructuredOptions,
   type Validator,
@@ -685,6 +686,13 @@ class GatedLlm implements LocalLlm {
 
   structured<T>(messages: ChatMessage[], schema: JsonSchema, opts: StructuredOptions = {}): Promise<T> {
     return this.rt.call((llm) => llm.structured<T>(messages, schema, opts))
+  }
+
+  research<T>(messages: ChatMessage[], schema: JsonSchema, opts: StructuredOptions = {}): Promise<ResearchResult<T>> {
+    return this.rt.call((llm) => {
+      if (!llm.research) throw new LlmUnavailableError('this model backend cannot search the web (ADR-0068)')
+      return llm.research<T>(messages, schema, opts)
+    })
   }
 
   async capabilities(): Promise<RuntimeCapabilities> {

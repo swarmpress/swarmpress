@@ -36,14 +36,15 @@ use agents::article::{
     ReviewIssue, SectionBudget, SectionDraft, SectionId, SectionedReview, THEME_LANGUAGES,
 };
 use agents::article_prompts::{
-    closing_prompt, digest_of, fix_prompt, last_paragraph, outline_prompt, retitle_prompt,
-    retitle_schema, review_prompt, review_section_prompt, review_summary_prompt, revise_prompt,
-    section_prompt, section_review_schema, section_text, OutlineContext, Retitle, ReviewFrame,
-    RevisionNote, SectionNeighbours, SectionReview, SectionSpec, StagePrompt,
+    closing_prompt, digest_of, fix_prompt, last_paragraph, outline_prompt, research_prompt,
+    retitle_prompt, retitle_schema, review_prompt, review_section_prompt, review_summary_prompt,
+    revise_prompt, section_prompt, section_review_schema, section_text, OutlineContext, Retitle,
+    ReviewFrame, RevisionNote, SectionNeighbours, SectionReview, SectionSpec, StagePrompt,
 };
 use agents::llm::{structured_with_repair, RepairFailed, SemanticCheck};
 use agents::pipeline::{Brief, ReviewDecision};
 use agents::prompts::{templates, Vars};
+use agents::research::{dossier_from, evidence_lines, research_schema, Evidence};
 use agents::{CallProfile, LlmError, Role};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -519,6 +520,90 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         }
     }
 
+    /// `research#index` (ADR-0068): the brief researched on the web, the
+    /// claims whose source the search returned added to `evidence`. Reused
+    /// when stored. A backend that cannot search halts the job (rule 11); a
+    /// research turn that fails otherwise (an invalid answer, a refusal, a
+    /// timeout) leaves the dossier as it is and the draft goes on with what
+    /// it has, the failure reported on the stage.
+    #[allow(clippy::too_many_arguments)]
+    async fn research_stage(
+        &self,
+        cx: &Cx<'_>,
+        index: u32,
+        brief: &Brief,
+        site_facts: &[String],
+        evidence: &mut Vec<Evidence>,
+        questions: &[String],
+    ) -> Result<std::result::Result<(), Halt>> {
+        let known = evidence_lines(evidence);
+        let prompt = research_prompt(
+            &self.site.llm,
+            &cx.system,
+            brief,
+            site_facts,
+            &known,
+            questions,
+        );
+        let schema = research_schema();
+        let key = Key::of("research", index, 1, &prompt, &schema);
+        if let Some(added) = self.reuse::<Vec<Evidence>>(cx, &key).await? {
+            evidence.extend(added);
+            return Ok(Ok(()));
+        }
+        if let Some(reason) = self.cancelled(cx.req) {
+            return Ok(Err(Halt::Cancelled(reason)));
+        }
+        self.emit(cx, "research", index, 1, ProgressState::Started, json!({}));
+        let req = prompt.request(cx.call.clone(), &cx.system);
+        let mut timeouts = 0;
+        let answer = loop {
+            match self.llm.research(&req, &schema).await {
+                Err(LlmError::Timeout(_))
+                    if timeouts < STAGE_TIMEOUT_RETRIES && self.cancelled(cx.req).is_none() =>
+                {
+                    timeouts += 1;
+                }
+                other => break other,
+            }
+        };
+        match answer {
+            Ok(r) => {
+                let update = dossier_from(&r.value, &r.sources, evidence);
+                let detail = json!({
+                    "searches": r.searches,
+                    "sources": r.sources.len(),
+                    "kept": update.added.len(),
+                    "unverified": update.unverified,
+                    "repeated": update.repeated,
+                });
+                self.keep(cx, &key, &update.added, detail).await?;
+                evidence.extend(update.added);
+                Ok(Ok(()))
+            }
+            Err(e) => {
+                if let Some(reason) = self.cancelled(cx.req) {
+                    return Ok(Err(Halt::Cancelled(reason)));
+                }
+                self.emit(
+                    cx,
+                    "research",
+                    index,
+                    1,
+                    ProgressState::Failed,
+                    json!({"error": e.to_string()}),
+                );
+                match e {
+                    LlmError::Unavailable(msg) if msg.contains("cannot search") => {
+                        Ok(Err(Halt::Llm(LlmError::Backend(msg))))
+                    }
+                    LlmError::Unavailable(msg) => Ok(Err(Halt::Unavailable(msg))),
+                    _ => Ok(Ok(())),
+                }
+            }
+        }
+    }
+
     /// A body section or the intro (`section#i`): checked before the next
     /// one starts; cut off at its token limit, it is written in two halves.
     #[allow(clippy::too_many_arguments)]
@@ -871,10 +956,19 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             json!({"predecessor": predecessor}),
         );
 
-        let written = if req.revision == 0 {
-            self.write_fresh(&cx, &brief, brief_ref).await?
+        // The item's research dossier (ADR-0068): a first draft researches from
+        // nothing (a re-run reuses its stored research turn), a revision adds to it.
+        let mut evidence = if req.revision == 0 {
+            Vec::new()
         } else {
-            self.write_revision(&cx, &brief, &art).await?
+            art.evidence.clone()
+        };
+        let written = if req.revision == 0 {
+            self.write_fresh(&cx, &brief, brief_ref, &mut evidence)
+                .await?
+        } else {
+            self.write_revision(&cx, &brief, &art, &mut evidence)
+                .await?
         };
         let (parts, page) = match written {
             Ok(x) => x,
@@ -908,6 +1002,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         art.branch = Some(pr.branch.clone());
         art.pr_number = Some(pr.number);
         art.head_sha = Some(pr.head_sha.clone());
+        art.evidence = evidence;
         self.save_artifact(req, item, &art).await?;
         let detail = json!({"pr": pr.number, "branch": pr.branch, "sha": pr.head_sha, "path": path, "words": words});
         self.emit(&cx, "commit", 0, 1, ProgressState::Done, detail.clone());
@@ -963,6 +1058,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         cx: &Cx<'_>,
         brief: &Brief,
         brief_ref: u64,
+        evidence: &mut Vec<Evidence>,
     ) -> Result<Step<(StoredParts, Value)>> {
         let knowledge = self
             .site
@@ -1004,6 +1100,16 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             }
         };
 
+        // research#0: before the outline, so the plan rests on what can be stated.
+        if let Err(h) = self
+            .research_stage(cx, 0, brief, &ctx.facts, evidence, &[])
+            .await?
+        {
+            return Ok(Err(h));
+        }
+        let mut facts = ctx.facts.clone();
+        facts.extend(evidence_lines(evidence));
+
         let mut budget = JOB_REPAIRS;
         // outline#0
         let prompt = outline_prompt(
@@ -1013,7 +1119,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             &OutlineContext {
                 heroes: &ctx.heroes,
                 links: &ctx.links,
-                facts: &ctx.facts,
+                facts: &facts,
                 related: &ctx.related,
                 categories: &ctx.categories,
                 guidance: self.site.article_guidance.as_deref(),
@@ -1082,7 +1188,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                     &SectionNeighbours {
                         earlier: earlier_digests.clone(),
                         previous_end: prev.map(String::from).or_else(|| end.clone()),
-                        facts: &ctx.facts,
+                        facts: &facts,
                     },
                 )
             };
@@ -1382,6 +1488,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         cx: &Cx<'_>,
         brief: &Brief,
         art: &ArtifactRecord,
+        evidence: &mut Vec<Evidence>,
     ) -> Result<Step<(StoredParts, Value)>> {
         let req = cx.req;
         let stored = art.parts.clone().ok_or_else(|| {
@@ -1412,6 +1519,31 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 fix: String::new(),
             });
         }
+        // research#n: the editor's open notes are the questions (ADR-0068).
+        let questions: Vec<String> = issues
+            .iter()
+            .map(|i| {
+                if i.fix.trim().is_empty() {
+                    i.problem.clone()
+                } else {
+                    format!("{} {}", i.problem, i.fix)
+                }
+            })
+            .collect();
+        if let Err(h) = self
+            .research_stage(
+                cx,
+                u32::from(req.revision),
+                brief,
+                &[],
+                evidence,
+                &questions,
+            )
+            .await?
+        {
+            return Ok(Err(h));
+        }
+        let facts = evidence_lines(evidence);
         let n = stored.outline.sections.len();
         let total = u32::try_from(n).unwrap_or(u32::MAX);
         let all = SectionedReview {
@@ -1504,6 +1636,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                     &parts.closing.content,
                     &notes,
                     &neighbours,
+                    &facts,
                 );
                 let check = |v: &Value| -> std::result::Result<(), Vec<String>> {
                     let c: Closing = parse(v)?;
@@ -1537,6 +1670,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 &current,
                 &notes,
                 &neighbours,
+                &facts,
             );
             let others = other_paragraphs(&parts, id);
             let words = spec.words;
@@ -1632,11 +1766,13 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         let (reading, n) = (reading_text(&parts), parts.sections.len());
         let ids = section_ids(n);
         let checks = measured_checks(&self.site, &brief, &page, Some(&parts));
+        let evidence = evidence_lines(&art.evidence);
         let frame = ReviewFrame {
             brief: &brief,
             revision: req.revision,
             bar: self.site.quality_bar,
             checks: &checks,
+            evidence: &evidence,
         };
         let profile = &self.site.llm;
         let estimate = profile.tokens(&reading) + profile.tokens(&checks.join("\n"));

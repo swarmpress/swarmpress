@@ -569,6 +569,46 @@ impl Llm for JsLlm {
         Ok(value)
     }
 
+    /// `{kind: "research", request, schema}`: the page answers with web search
+    /// (the hosted backend) as `{value, sources, searches}`; a backend that
+    /// cannot search answers `{error: {Unavailable: …}}`.
+    async fn research(
+        &self,
+        req: &LlmRequest,
+        schema: &Value,
+    ) -> Result<agents::Researched, LlmError> {
+        let v = self
+            .complete(json!({"kind": "research", "request": req, "schema": schema}))
+            .await?;
+        let value = v
+            .get("value")
+            .cloned()
+            .ok_or_else(|| LlmError::Backend("research answer has no value".into()))?;
+        claude::SchemaValidator::new(schema)
+            .map_err(|e| LlmError::Backend(format!("bad schema: {e}")))?
+            .validate(&value)
+            .map_err(|errors| LlmError::InvalidOutput {
+                errors,
+                answer: Some(value.to_string()),
+            })?;
+        let sources = v
+            .get("sources")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(agents::normalize_source_url)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let searches = v.get("searches").and_then(Value::as_u64).unwrap_or(0);
+        Ok(agents::Researched {
+            value,
+            sources,
+            searches: u32::try_from(searches).unwrap_or(u32::MAX),
+        })
+    }
+
     /// The JS object's `modelId` (a property or a method), if it has one.
     fn model_id(&self) -> Option<String> {
         let v = Reflect::get(&self.0, &JsValue::from_str("modelId")).ok()?;

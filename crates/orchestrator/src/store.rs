@@ -95,6 +95,10 @@ pub struct ArtifactRecord {
     /// `Llm::model_id`): the squash commit's `Model` trailer names it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// The item's research dossier (ADR-0068): claims with their sources,
+    /// kept across revisions so every draft works from the same evidence.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<agents::research::Evidence>,
 }
 
 impl ArtifactRecord {

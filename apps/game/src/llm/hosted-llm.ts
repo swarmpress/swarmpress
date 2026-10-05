@@ -15,6 +15,8 @@
  *   made to start with it) and is not needed with a schema.
  * - `interactive` turns use the Standard tier, the others Flex.
  * - The answer arrives whole: `onDelta` gets it in one piece.
+ * - `research` runs the repair loop with web search on (ADR-0068) and returns
+ *   the sources of every attempt, for the orchestrator to check citations against.
  * - The server's 503 (no key, no credits, provider busy) is `LlmUnavailableError`:
  *   the session holds the clock instead of failing the job.
  */
@@ -27,6 +29,7 @@ import {
   type JsonSchema,
   type LoadProgress,
   type LocalLlm,
+  type ResearchResult,
   type RuntimeCapabilities,
   type StructuredOptions,
   type ThinkingMode,
@@ -38,6 +41,8 @@ export const HOSTED_LABEL = 'GPT-6-Luna (hosted by OpenAI, through the game serv
 /** GPT-6-Luna's context window, tokens. */
 const CONTEXT_TOKENS = 1_050_000
 const DEFAULT_REASONING_BUDGET = 1024
+/** Research searches the open web (ADR-0068), as from the Cinque Terre. */
+const WEB_SEARCH: NonNullable<LlmGenerateRequest['web_search']> = { context_size: 'medium', country: 'IT', region: 'Liguria' }
 const MIN_OUTPUT_TOKENS = 16
 
 export interface HostedLlmOptions {
@@ -68,6 +73,35 @@ export class HostedLlm implements LocalLlm {
   }
 
   async generate(messages: ChatMessage[], opts: GenerateOptions = {}): Promise<GenerateResult> {
+    return (await this.turn(messages, opts, null)).result
+  }
+
+  /**
+   * A structured answer researched on the web (ADR-0068): every attempt of the
+   * repair loop searches; the sources of all attempts are what its claims may cite.
+   */
+  async research<T>(messages: ChatMessage[], schema: JsonSchema, opts: StructuredOptions = {}): Promise<ResearchResult<T>> {
+    const sources: string[] = []
+    let searches = 0
+    const res = await runStructured<T>(
+      async (m, o) => {
+        const t = await this.turn(m, o, WEB_SEARCH)
+        for (const u of t.reply?.sources ?? []) if (!sources.includes(u)) sources.push(u)
+        searches += t.reply?.searches ?? 0
+        return t.result
+      },
+      messages,
+      schema,
+      opts,
+    )
+    return { value: res.value, sources, searches }
+  }
+
+  private async turn(
+    messages: ChatMessage[],
+    opts: GenerateOptions,
+    webSearch: LlmGenerateRequest['web_search'] | null,
+  ): Promise<{ result: GenerateResult; reply: LlmGenerateReply | null }> {
     if (!this.modelId) throw new Error('no model loaded')
     const started = performance.now()
     const thinking = opts.thinking ?? 'off'
@@ -81,13 +115,14 @@ export class HostedLlm implements LocalLlm {
       reasoning_effort: EFFORT[thinking],
       service_tier: opts.interactive ? 'default' : 'flex',
       ...(opts.jsonSchema ? { json_schema: opts.jsonSchema } : {}),
+      ...(webSearch ? { web_search: webSearch, kind: 'research' } : {}),
     }
-    if (opts.signal?.aborted) return this.cancelled(started)
+    if (opts.signal?.aborted) return { result: this.cancelled(started), reply: null }
     let reply: LlmGenerateReply
     try {
       reply = await this.o.send(body, opts.signal)
     } catch (e) {
-      if (opts.signal?.aborted || (e as { name?: string } | null)?.name === 'AbortError') return this.cancelled(started)
+      if (opts.signal?.aborted || (e as { name?: string } | null)?.name === 'AbortError') return { result: this.cancelled(started), reply: null }
       const status = statusOf(e)
       const message = e instanceof Error ? e.message : String(e)
       // No key, no credits, a busy provider: the model is not available, nothing was produced.
@@ -101,7 +136,7 @@ export class HostedLlm implements LocalLlm {
     const u = reply.usage
     const completionTokens = Math.max(0, u.output_tokens - u.reasoning_tokens)
     const durationMs = performance.now() - started
-    return {
+    const result: GenerateResult = {
       text: cut.text,
       finishReason: cut.stopped ? 'stop' : reply.finish === 'length' ? 'length' : 'stop',
       usage: {
@@ -113,6 +148,7 @@ export class HostedLlm implements LocalLlm {
         ...(thinking !== 'off' ? { reasoningTokens: u.reasoning_tokens } : {}),
       },
     }
+    return { result, reply }
   }
 
   private cancelled(started: number): GenerateResult {

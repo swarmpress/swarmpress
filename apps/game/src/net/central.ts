@@ -272,6 +272,17 @@ export interface LlmGenerateRequest {
   /** `flex` (default) for queued work, `default` (Standard) where the player waits. */
   service_tier?: 'flex' | 'default'
   json_schema?: Record<string, unknown>
+  /** Search the web while answering (ADR-0068). */
+  web_search?: { context_size?: 'low' | 'medium' | 'high'; country?: string; region?: string }
+}
+
+export interface LlmCitation {
+  url: string
+  title: string
+  start: number
+  end: number
+  /** The URL is among the sources the searches returned. */
+  verified: boolean
 }
 
 export interface LlmGenerateReply {
@@ -283,6 +294,10 @@ export interface LlmGenerateReply {
   usage: { input_tokens: number; cached_input_tokens: number; output_tokens: number; reasoning_tokens: number }
   cost_micros: number
   duration_ms: number
+  /** With `web_search`: searches run, every source they returned, the answer's citations. */
+  searches?: number
+  sources?: string[]
+  citations?: LlmCitation[]
 }
 
 export class CentralError extends Error {

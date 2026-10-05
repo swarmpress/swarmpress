@@ -88,8 +88,10 @@ Site repos build with @swarm-press/site-kit + an agent-authored theme on GitHub 
    transition. The orchestrator then does the GitHub and LLM work idempotently, keyed by job id,
    and the results come back as commands appended to the command log.
 5. **Closed world.** Agents refer to pages, entities and media only by ids from the knowledge
-   indexes. Unknown ids are validation errors returned to the model. Missing knowledge becomes a
-   `NEEDS_PAGE` or `NEEDS_MEDIA` ticket.
+   indexes. Unknown ids are validation errors returned to the model. Facts rest on the knowledge
+   pack or on the item's research dossier: claims found by web search whose source the search
+   actually returned (`E1`, `E2`…, ADR-0068). Missing knowledge becomes a `NEEDS_PAGE` or
+   `NEEDS_MEDIA` ticket.
 6. **One source of truth per entity.**
    - Content lives in the site repo, which the player owns (ADR-0047). Asset bytes live in object
      storage; each asset's sidecar lives in the site repo (ADR-0050).

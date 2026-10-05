@@ -349,7 +349,7 @@ async fn a_cancel_between_stages_stops_the_job_before_its_next_call_and_its_comm
         assert_eq!(out, [Outcome::JobFailed { job_id: 2, reason }]);
         assert_eq!(
             tasks(&llm),
-            ["outline", "intro", "section s1 of 3"],
+            ["research", "outline", "intro", "section s1 of 3"],
             "no call after the cancel"
         );
         assert!(gw.pr(1).is_none(), "no commit");

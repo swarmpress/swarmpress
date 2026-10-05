@@ -32,7 +32,8 @@ import { recordingGateway, type GatewayCall } from '../session/recording-gateway
 import { ClockDriver, sessionClockHost } from '../session/clock-driver'
 import type { CompanyStore } from '../store'
 import { runStructured } from '../llm/structured'
-import { LlmCancelledError, LlmUnavailableError, type ChatMessage, type GenerateOptions, type GenerateResult, type JsonSchema, type LocalLlm, type StructuredOptions } from '../llm/types'
+import { LlmCancelledError, LlmUnavailableError, type ChatMessage, type GenerateOptions, type GenerateResult, type JsonSchema, type LocalLlm, type ResearchResult, type StructuredOptions } from '../llm/types'
+import { urlsIn } from '../llm/research'
 import { decodeSnapshot, encodeSnapshot } from '../sync/segments'
 import { toLogged } from '../sync/uploader'
 
@@ -145,6 +146,12 @@ export class SoakLlm implements LocalLlm {
 
   async structured<T>(messages: ChatMessage[], schema: JsonSchema, opts: StructuredOptions = {}): Promise<T> {
     return (await runStructured<T>((m, o) => this.generate(m, o), messages, schema, opts)).value
+  }
+
+  /** Research under the same faults (ADR-0068): its sources are the URLs its answer names. */
+  async research<T>(messages: ChatMessage[], schema: JsonSchema, opts: StructuredOptions = {}): Promise<ResearchResult<T>> {
+    const value = await this.structured<T>(messages, schema, opts)
+    return { value, sources: urlsIn(value), searches: 1 }
   }
 
   async dispose(): Promise<void> {}

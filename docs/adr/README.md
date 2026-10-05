@@ -87,3 +87,4 @@ Accepted ADRs are never rewritten.
 | [0065](0065-the-construction-kit.md) | The construction kit | Accepted |
 | [0066](0066-gemma-4-e4b-with-mtp-on-upstream-llama-cpp-webgpu.md) | Gemma 4 E4B with MTP on upstream llama.cpp (WebGPU) | Superseded in part by ADR-0067 |
 | [0067](0067-hosted-inference-on-gpt-6-luna.md) | Hosted inference on GPT-6-Luna | Accepted |
+| [0068](0068-web-research-with-cited-evidence.md) | Web research with cited evidence | Accepted |

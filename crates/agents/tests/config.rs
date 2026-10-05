@@ -149,7 +149,14 @@ fn model_registry_loads_and_flags_placeholders_loudly() {
         .filter(|m| m.eval_pending)
         .map(|m| m.id.as_str())
         .collect();
-    assert_eq!(pending, ["ternary-bonsai-2-27b", "muse-glimmer-30b"]);
+    assert_eq!(
+        pending,
+        [
+            "ternary-bonsai-2-27b",
+            "gemma-4-e4b-it-qat",
+            "muse-glimmer-30b"
+        ]
+    );
     // Ternary Bonsai 2 is pinned to a real repo and checksum (ADR-0057); it
     // stays eval_pending until the qualification benchmark has run.
     let bonsai = r.get("ternary-bonsai-2-27b").unwrap();
@@ -159,8 +166,18 @@ fn model_registry_loads_and_flags_placeholders_loudly() {
         Ok("53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3")
     );
     assert_eq!(bonsai.verified_repo(), Ok(bonsai.hf_repo.as_str()));
+    // Gemma 4 E4B (ADR-0066) is pinned to a real checksum as well.
+    let gemma = r.get("gemma-4-e4b-it-qat").unwrap();
+    assert_eq!(
+        gemma.verified_sha256(),
+        Ok("df0fd4ee07072c607c29a0a1cb4f98918426cca12f45a2776bdd6ee6d09a4de3")
+    );
     // every other checksum is still a placeholder: loading must be refused
-    for m in r.models().iter().filter(|m| m.id != bonsai.id) {
+    for m in r
+        .models()
+        .iter()
+        .filter(|m| m.id != bonsai.id && m.id != gemma.id)
+    {
         assert!(
             matches!(
                 m.verified_sha256(),
@@ -170,7 +187,7 @@ fn model_registry_loads_and_flags_placeholders_loudly() {
             m.id
         );
     }
-    assert!(r.unverified().len() >= r.models().len() - 1);
+    assert!(r.unverified().len() >= r.models().len() - 2);
     assert!(r
         .get("gpt-oss-20b-q4f16")
         .unwrap()

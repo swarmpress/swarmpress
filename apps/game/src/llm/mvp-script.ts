@@ -18,6 +18,7 @@
  * - **Review:** revision 0 scores 6 and names section 2 (`MVP_REVIEW_NOTE`),
  *   every later revision scores 8: review 6 → revision → review 8.
  */
+import { MVP_RESEARCH } from './testing/mvp-research'
 
 export type MvpReply = { text: string } | { json: unknown }
 
@@ -339,6 +340,8 @@ export function articleAnswer(prompt: string, schema: Record<string, unknown> | 
   const partAt = task.indexOf(' part ')
   const shift = partAt >= 0 ? Math.max(0, leadingNumber(task.slice(partAt + 6)) - 1) * 2 : 0
   const target = p.number('Target length: about ')
+  // Two claims on made-up official sources (ADR-0068), as crates/agents/src/fake_writer.rs.
+  if (task === 'research') return MVP_RESEARCH
   if (task === 'outline') return outline(p, schema)
   if (task === 'intro' || task.startsWith('intro part')) return section(p, 0, shift, words, false)
   if (task.startsWith('section s')) return section(p, leadingNumber(task.slice('section s'.length)), shift, words, false)

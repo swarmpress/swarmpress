@@ -91,6 +91,8 @@ pub struct LlmConfig {
     pub timeout: Duration,
     /// Retries of a Flex call the provider refuses as busy (429/503), with backoff.
     pub flex_retries: u32,
+    /// One web search, millionths of a dollar ($10 per 1,000 calls, ADR-0068).
+    pub web_search_micros: i64,
     /// Prices per million tokens, in millionths of a dollar: Standard, then Flex and Batch.
     pub prices: LlmPrices,
 }
@@ -106,6 +108,8 @@ pub struct LlmPrices {
 pub struct TokenPrices {
     pub input: i64,
     pub cached_input: i64,
+    /// Input written to the provider's prompt cache.
+    pub cache_write: i64,
     pub output: i64,
 }
 
@@ -118,16 +122,19 @@ impl Default for LlmConfig {
             daily_budget_micros: 2_000_000,
             timeout: Duration::from_secs(600),
             flex_retries: 3,
+            web_search_micros: 10_000,
             // GPT-6-Luna, checked 2026-10-05 (docs/adr/0067-hosted-inference-on-gpt-6-luna.md).
             prices: LlmPrices {
                 standard: TokenPrices {
                     input: 100_000,
                     cached_input: 10_000,
+                    cache_write: 125_000,
                     output: 500_000,
                 },
                 flex: TokenPrices {
                     input: 50_000,
                     cached_input: 5_000,
+                    cache_write: 62_500,
                     output: 250_000,
                 },
             },

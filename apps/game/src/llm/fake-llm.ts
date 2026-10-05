@@ -4,6 +4,7 @@
  * function), streams it in word-ish chunks with configurable latency, and
  * records the call.
  */
+import { urlsIn } from './research'
 import { applyStop, runStructured, streamFromGenerate } from './structured'
 import type {
   ChatMessage,
@@ -13,6 +14,7 @@ import type {
   LoadProgress,
   LocalLlm,
   StructuredOptions,
+  ResearchResult,
 } from './types'
 
 export type FakeResponse = string | { text: string; finishReason?: GenerateResult['finishReason'] } | Error
@@ -136,6 +138,12 @@ export class FakeLlm implements LocalLlm {
 
   stream(messages: ChatMessage[], opts: Omit<GenerateOptions, 'onDelta'> = {}): AsyncIterable<string> {
     return streamFromGenerate((m, o) => this.generate(m, o), messages, opts)
+  }
+
+  /** The scripted answer as research (ADR-0068): its sources are the URLs it names. */
+  async research<T>(messages: ChatMessage[], schema: JsonSchema, opts: StructuredOptions = {}): Promise<ResearchResult<T>> {
+    const value = await this.structured<T>(messages, schema, opts)
+    return { value, sources: urlsIn(value), searches: 1 }
   }
 
   async structured<T>(messages: ChatMessage[], schema: JsonSchema, opts: StructuredOptions = {}): Promise<T> {

@@ -175,11 +175,58 @@ pub trait Llm: MaybeSendSync {
         Ok(v)
     }
 
+    /// JSON conforming to `schema`, answered with web search (ADR-0068), and
+    /// every source URL the searches returned. The caller checks the answer's
+    /// cited URLs against `sources` ([`normalize_source_url`]). Backends that
+    /// cannot search fail loudly (CLAUDE.md rule 11).
+    async fn research(&self, req: &LlmRequest, schema: &Value) -> Result<Researched, LlmError> {
+        let _ = (req, schema);
+        Err(LlmError::Unavailable(
+            "this model backend cannot search the web (ADR-0068)".into(),
+        ))
+    }
+
     /// The id of the model that answers, when the backend knows it (the
     /// browser's resident model, e.g. `ternary-bonsai-2-27b`): the `Model`
     /// of a commit's provenance (ADR-0056 decision 8). Default: unknown.
     fn model_id(&self) -> Option<String> {
         None
+    }
+}
+
+/// A research answer (ADR-0068): the structured value and the source URLs the
+/// web searches returned, normalized.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Researched {
+    pub value: Value,
+    #[serde(default)]
+    pub sources: Vec<String>,
+    #[serde(default)]
+    pub searches: u32,
+}
+
+/// A source URL compared by what it points at: without the search provider's
+/// `utm_source` parameter, the fragment and a trailing slash (the server's
+/// `normalize_url` does the same to the sources it returns).
+pub fn normalize_source_url(u: &str) -> String {
+    let u = u.trim();
+    let u = u.split('#').next().unwrap_or(u);
+    let (base, query) = match u.split_once('?') {
+        Some((b, q)) => (b, Some(q)),
+        None => (u, None),
+    };
+    let kept: Vec<&str> = query
+        .map(|q| {
+            q.split('&')
+                .filter(|kv| !kv.is_empty() && !kv.starts_with("utm_source="))
+                .collect()
+        })
+        .unwrap_or_default();
+    let base = base.trim_end_matches('/');
+    if kept.is_empty() {
+        base.to_string()
+    } else {
+        format!("{base}?{}", kept.join("&"))
     }
 }
 
@@ -672,7 +719,63 @@ impl Llm for FakeLlm {
         Ok(value)
     }
 
+    /// The responder's answer (scripts are for the stages a test is about; a
+    /// fake without a responder takes the script), as if every URL it names had
+    /// come back from a search.
+    async fn research(&self, req: &LlmRequest, schema: &Value) -> Result<Researched, LlmError> {
+        let value = match &self.responder {
+            Some(responder) => {
+                self.calls.lock().unwrap().push(RecordedCall {
+                    request: req.clone(),
+                    schema: Some(schema.clone()),
+                });
+                match responder(req, Some(schema)) {
+                    FakeReply::Json(v) => v,
+                    FakeReply::Text(t) => {
+                        claude::extract_json(&strip_reasoning(&t)).map_err(|e| {
+                            LlmError::InvalidOutput {
+                                errors: vec![e],
+                                answer: Some(t),
+                            }
+                        })?
+                    }
+                    FakeReply::Error(e) => return Err(e),
+                }
+            }
+            None => self.structured(req, schema).await?,
+        };
+        let mut sources = Vec::new();
+        collect_urls(&value, &mut sources);
+        Ok(Researched {
+            value,
+            sources,
+            searches: 1,
+        })
+    }
+
     fn model_id(&self) -> Option<String> {
         self.model_id.clone()
+    }
+}
+
+/// Every string under a `url` key, normalized, without duplicates.
+fn collect_urls(v: &Value, out: &mut Vec<String>) {
+    match v {
+        Value::Object(m) => {
+            for (k, x) in m {
+                if k == "url" {
+                    if let Some(u) = x.as_str() {
+                        let n = normalize_source_url(u);
+                        if !out.contains(&n) {
+                            out.push(n);
+                        }
+                    }
+                } else {
+                    collect_urls(x, out);
+                }
+            }
+        }
+        Value::Array(a) => a.iter().for_each(|x| collect_urls(x, out)),
+        _ => {}
     }
 }

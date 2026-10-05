@@ -170,6 +170,19 @@ export interface LocalLlm {
   capabilities?(): Promise<RuntimeCapabilities>
   /** Drop every cached prompt state; the next call starts from an empty context. */
   resetSession?(): Promise<void>
+  /**
+   * A structured answer researched on the web (ADR-0068), with every source URL the
+   * searches returned. Only backends that can search have it (the hosted one).
+   */
+  research?<T>(messages: ChatMessage[], jsonSchema: JsonSchema, opts?: StructuredOptions): Promise<ResearchResult<T>>
+}
+
+/** What a research call returns: the value and the sources its claims may cite. */
+export interface ResearchResult<T = unknown> {
+  value: T
+  /** Source URLs the web searches returned (as the server normalized them). */
+  sources: string[]
+  searches: number
 }
 
 export class LlmCancelledError extends Error {

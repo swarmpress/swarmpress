@@ -120,6 +120,15 @@ pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
         "standup opening" => return FakeReply::Text(opening_line(&p)),
         "pitch" => return FakeReply::Json(pitch(&p, &later)),
         "commission" => return FakeReply::Json(commission(&p)),
+        // Two claims on a made-up official source (ADR-0068); the fake's searches return exactly them.
+        "research" => {
+            return FakeReply::Json(json!({"claims": [
+                {"claim": "The park's information office lists the route as open all year.",
+                 "url": "https://www.parco.example/route", "title": "Route information"},
+                {"claim": "Trains between the five villages run about every twenty minutes in summer.",
+                 "url": "https://www.rail.example/timetable", "title": "Timetable"}
+            ]}))
+        }
         _ => {}
     }
     let words = p.number("Words: about ");

@@ -13,6 +13,10 @@
 //!   retried with backoff, then fails; it is never promoted silently.
 //! - `json_schema` asks for JSON-schema output (not strict: the client's
 //!   repair loop and the Rust checks still run, CLAUDE.md rule 3).
+//! - `web_search` lets the model search the open web (ADR-0068). The reply
+//!   carries the answer's citations and every source the searches returned;
+//!   a citation whose URL is not among those sources is marked
+//!   `verified: false` (the caller drops it). Searches are priced into the job.
 //!
 //! The answer is untrusted text: the browser validates it, and only the
 //! orchestrator turns it into commands.
@@ -63,6 +67,44 @@ pub struct GenerateRequest {
     /// A JSON schema the answer should follow.
     #[serde(default)]
     pub json_schema: Option<Value>,
+    /// Search the web while answering (ADR-0068).
+    #[serde(default)]
+    pub web_search: Option<WebSearch>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct WebSearch {
+    /// `low`, `medium` (default) or `high`.
+    #[serde(default)]
+    pub context_size: Option<String>,
+    /// ISO country code of the approximate location the search is for (e.g. `IT`).
+    #[serde(default)]
+    pub country: Option<String>,
+    /// Region of that location (e.g. `Liguria`).
+    #[serde(default)]
+    pub region: Option<String>,
+}
+
+/// A source URL without the provider's tracking parameter and fragment, for
+/// comparing citations with sources.
+pub fn normalize_url(u: &str) -> String {
+    match url::Url::parse(u) {
+        Ok(mut url) => {
+            let kept: Vec<(String, String)> = url
+                .query_pairs()
+                .filter(|(k, _)| k != "utm_source")
+                .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                .collect();
+            if kept.is_empty() {
+                url.set_query(None);
+            } else {
+                url.query_pairs_mut().clear().extend_pairs(kept);
+            }
+            url.set_fragment(None);
+            url.to_string().trim_end_matches('/').to_string()
+        }
+        Err(_) => u.trim().to_string(),
+    }
 }
 
 /// Start of the UTC day of `now_ms`.
@@ -70,12 +112,25 @@ pub fn day_start(now_ms: i64) -> i64 {
     now_ms - now_ms.rem_euclid(DAY_MS)
 }
 
-/// Cost of one answer in millionths of a dollar.
-pub fn cost_micros(p: TokenPrices, input: i64, cached: i64, output: i64) -> i64 {
-    let cached = cached.clamp(0, input.max(0));
-    let fresh = input.max(0) - cached;
+/// Cost of one answer's tokens in millionths of a dollar: fresh input, cached
+/// input and cache writes at their own prices (the provider bills cache writes
+/// instead of fresh input), and output (reasoning included).
+pub fn cost_micros(
+    p: TokenPrices,
+    input: i64,
+    cached: i64,
+    cache_written: i64,
+    output: i64,
+) -> i64 {
+    let input = input.max(0);
+    let cached = cached.clamp(0, input);
+    let written = cache_written.clamp(0, input - cached);
+    let fresh = input - cached - written;
     // Prices are per million tokens; round up so the budget never undercounts.
-    let total = fresh * p.input + cached * p.cached_input + output.max(0) * p.output;
+    let total = fresh * p.input
+        + cached * p.cached_input
+        + written * p.cache_write
+        + output.max(0) * p.output;
     (total + 999_999) / 1_000_000
 }
 
@@ -107,6 +162,24 @@ pub fn request_body(
         "service_tier": tier,
         "store": false,
     });
+    if let Some(ws) = &req.web_search {
+        let mut tool = json!({
+            "type": "web_search",
+            "search_context_size": ws.context_size.as_deref().unwrap_or("medium"),
+        });
+        if ws.country.is_some() || ws.region.is_some() {
+            let mut loc = json!({ "type": "approximate" });
+            if let Some(c) = &ws.country {
+                loc["country"] = json!(c);
+            }
+            if let Some(r) = &ws.region {
+                loc["region"] = json!(r);
+            }
+            tool["user_location"] = loc;
+        }
+        body["tools"] = json!([tool]);
+        body["include"] = json!(["web_search_call.action.sources"]);
+    }
     if let Some(schema) = &req.json_schema {
         body["text"] = json!({
             "format": { "type": "json_schema", "name": "answer", "schema": schema, "strict": false }
@@ -125,8 +198,26 @@ pub struct Answer {
     pub cached_tokens: i64,
     pub output_tokens: i64,
     pub reasoning_tokens: i64,
+    /// Input written to the provider's prompt cache.
+    pub cache_written: i64,
     pub tier: String,
     pub response_id: Option<String>,
+    /// Web searches the model ran.
+    pub searches: i64,
+    /// Every source URL the searches returned (normalized, without duplicates).
+    pub sources: Vec<String>,
+    pub citations: Vec<Citation>,
+}
+
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct Citation {
+    pub url: String,
+    pub title: String,
+    /// The cited span of the answer, in characters.
+    pub start: i64,
+    pub end: i64,
+    /// The URL is among the sources the searches returned.
+    pub verified: bool,
 }
 
 pub fn parse_answer(v: &Value, requested_tier: &str) -> Result<Answer, String> {
@@ -145,13 +236,42 @@ pub fn parse_answer(v: &Value, requested_tier: &str) -> Result<Answer, String> {
         other => return Err(format!("unexpected response status {other:?}")),
     };
     let mut text = String::new();
+    let mut searches = 0;
+    let mut sources: Vec<String> = Vec::new();
+    let mut raw: Vec<(String, String, i64, i64)> = Vec::new();
     for item in v["output"].as_array().into_iter().flatten() {
+        if item["type"] == "web_search_call" {
+            searches += 1;
+            for src in item["action"]["sources"].as_array().into_iter().flatten() {
+                if let Some(u) = src["url"].as_str() {
+                    let n = normalize_url(u);
+                    if !sources.contains(&n) {
+                        sources.push(n);
+                    }
+                }
+            }
+            continue;
+        }
         if item["type"] != "message" {
             continue;
         }
         for part in item["content"].as_array().into_iter().flatten() {
             match part["type"].as_str() {
-                Some("output_text") => text.push_str(part["text"].as_str().unwrap_or("")),
+                Some("output_text") => {
+                    // Annotation offsets are relative to this part; shift them to the whole text.
+                    let base = i64::try_from(text.chars().count()).unwrap_or(i64::MAX);
+                    for a in part["annotations"].as_array().into_iter().flatten() {
+                        if a["type"] == "url_citation" {
+                            raw.push((
+                                a["url"].as_str().unwrap_or("").to_string(),
+                                a["title"].as_str().unwrap_or("").to_string(),
+                                base + a["start_index"].as_i64().unwrap_or(0),
+                                base + a["end_index"].as_i64().unwrap_or(0),
+                            ));
+                        }
+                    }
+                    text.push_str(part["text"].as_str().unwrap_or(""));
+                }
                 Some("refusal") => {
                     return Err(format!(
                         "the model refused: {}",
@@ -162,6 +282,20 @@ pub fn parse_answer(v: &Value, requested_tier: &str) -> Result<Answer, String> {
             }
         }
     }
+    let citations = raw
+        .into_iter()
+        .map(|(u, title, start, end)| {
+            let url = normalize_url(&u);
+            let verified = sources.contains(&url);
+            Citation {
+                url,
+                title,
+                start,
+                end,
+                verified,
+            }
+        })
+        .collect();
     let u = &v["usage"];
     Ok(Answer {
         text,
@@ -179,6 +313,12 @@ pub fn parse_answer(v: &Value, requested_tier: &str) -> Result<Answer, String> {
             .unwrap_or(requested_tier)
             .to_string(),
         response_id: v["id"].as_str().map(String::from),
+        cache_written: u["input_tokens_details"]["cache_write_tokens"]
+            .as_i64()
+            .unwrap_or(0),
+        searches,
+        sources,
+        citations,
     })
 }
 
@@ -288,12 +428,13 @@ pub async fn generate(
                     prices_for(&cfg, &a.tier),
                     a.input_tokens,
                     a.cached_tokens,
+                    a.cache_written,
                     a.output_tokens,
-                );
+                ) + a.searches * cfg.web_search_micros;
                 sqlx::query(
                     "UPDATE llm_jobs SET status = ?2, tier_returned = ?3, input_tokens = ?4, cached_tokens = ?5,
                      output_tokens = ?6, reasoning_tokens = ?7, cost_micros = ?8, attempts = ?9, response_id = ?10,
-                     finished_at = ?11 WHERE id = ?1",
+                     finished_at = ?11, searches = ?12 WHERE id = ?1",
                 )
                 .bind(&job_id)
                 .bind(if a.finish == "stop" { "ok" } else { "incomplete" })
@@ -306,6 +447,7 @@ pub async fn generate(
                 .bind(attempts)
                 .bind(&a.response_id)
                 .bind(finished)
+                .bind(a.searches)
                 .execute(&st.db.writer)
                 .await?;
                 tracing::info!(company = %company.id, job = %job_id, %kind, tier = %a.tier, input = a.input_tokens,
@@ -324,6 +466,9 @@ pub async fn generate(
                     },
                     "cost_micros": cost,
                     "duration_ms": finished - now,
+                    "searches": a.searches,
+                    "sources": a.sources,
+                    "citations": a.citations,
                 })))
             }
             Err(msg) => {
@@ -462,11 +607,11 @@ mod tests {
         let p = LlmConfig::default().prices;
         // 100k input of which 40k cached, 20k output on Standard:
         // 60k × $0.10 + 40k × $0.01 + 20k × $0.50 per million = $0.0164.
-        assert_eq!(cost_micros(p.standard, 100_000, 40_000, 20_000), 16_400);
+        assert_eq!(cost_micros(p.standard, 100_000, 40_000, 0, 20_000), 16_400);
         // Flex is half.
-        assert_eq!(cost_micros(p.flex, 100_000, 40_000, 20_000), 8_200);
-        assert_eq!(cost_micros(p.standard, 1, 0, 0), 1);
-        assert_eq!(cost_micros(p.standard, 0, 0, 0), 0);
+        assert_eq!(cost_micros(p.flex, 100_000, 40_000, 0, 20_000), 8_200);
+        assert_eq!(cost_micros(p.standard, 1, 0, 0, 0), 1);
+        assert_eq!(cost_micros(p.standard, 0, 0, 0, 0), 0);
     }
 
     #[test]
@@ -482,6 +627,7 @@ mod tests {
             reasoning_effort: None,
             service_tier: None,
             json_schema: Some(json!({ "type": "object" })),
+            web_search: None,
         };
         let b = request_body(&cfg, &req, "medium", "flex", 900);
         assert_eq!(b["model"], "gpt-6-luna");
@@ -526,5 +672,75 @@ mod tests {
         assert!(parse_answer(&refused, "default")
             .unwrap_err()
             .contains("refused"));
+    }
+
+    #[test]
+    fn cache_writes_cost_more_than_fresh_input() {
+        let p = LlmConfig::default().prices;
+        // 12,454 input of which 4,413 written to the cache, 248 output, on Flex.
+        assert_eq!(cost_micros(p.flex, 12_454, 0, 4_413, 248), 740);
+    }
+
+    #[test]
+    fn web_search_sources_and_citations_are_read_and_checked() {
+        let v = json!({
+            "status": "completed", "service_tier": "flex",
+            "output": [
+                { "type": "web_search_call", "status": "completed",
+                  "action": { "type": "search", "query": "q",
+                              "sources": [ { "type": "url", "url": "https://www.parconazionale5terre.it/Eiti_dettaglio.php?id_iti=3581" } ] } },
+                { "type": "message", "content": [ { "type": "output_text", "text": "Trail 593V takes 55 minutes. Also 1 h.",
+                  "annotations": [
+                    { "type": "url_citation", "start_index": 0, "end_index": 27, "title": "593V",
+                      "url": "https://www.parconazionale5terre.it/Eiti_dettaglio.php?id_iti=3581&utm_source=openai" },
+                    { "type": "url_citation", "start_index": 28, "end_index": 38, "title": "Blog",
+                      "url": "https://example.com/made-up?utm_source=openai" } ] } ] }
+            ],
+            "usage": { "input_tokens": 100, "input_tokens_details": { "cached_tokens": 0, "cache_write_tokens": 20 },
+                       "output_tokens": 10, "output_tokens_details": { "reasoning_tokens": 0 } }
+        });
+        let a = parse_answer(&v, "flex").unwrap();
+        assert_eq!(a.searches, 1);
+        assert_eq!(
+            a.sources,
+            vec!["https://www.parconazionale5terre.it/Eiti_dettaglio.php?id_iti=3581".to_string()]
+        );
+        assert_eq!(a.cache_written, 20);
+        assert_eq!(a.citations.len(), 2);
+        assert!(
+            a.citations[0].verified,
+            "the tracking parameter does not hide a real source"
+        );
+        assert_eq!((a.citations[0].start, a.citations[0].end), (0, 27));
+        assert!(
+            !a.citations[1].verified,
+            "a URL the searches never returned is not verified"
+        );
+    }
+
+    #[test]
+    fn web_search_adds_the_tool_and_the_sources() {
+        let cfg = LlmConfig::default();
+        let req = GenerateRequest {
+            messages: vec![Message {
+                role: "user".into(),
+                content: "q".into(),
+            }],
+            kind: None,
+            max_output_tokens: None,
+            reasoning_effort: None,
+            service_tier: None,
+            json_schema: None,
+            web_search: Some(WebSearch {
+                context_size: Some("high".into()),
+                country: Some("IT".into()),
+                region: Some("Liguria".into()),
+            }),
+        };
+        let b = request_body(&cfg, &req, "low", "flex", 900);
+        assert_eq!(b["tools"][0]["type"], "web_search");
+        assert_eq!(b["tools"][0]["search_context_size"], "high");
+        assert_eq!(b["tools"][0]["user_location"]["country"], "IT");
+        assert_eq!(b["include"][0], "web_search_call.action.sources");
     }
 }

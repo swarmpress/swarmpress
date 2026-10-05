@@ -44,14 +44,16 @@ pub mod pipeline;
 pub mod plan;
 pub mod prompts;
 pub mod qa;
+pub mod research;
 pub mod roles;
 pub mod routing;
 pub mod state;
 
 pub use house_style::StyleGuide;
+pub use llm::normalize_source_url;
 pub use llm::{
     strip_reasoning, structured_with_repair, CallProfile, ClaudeLlm, FakeLlm, FakeReply, Llm,
-    LlmError, LlmMessage, LlmRequest, MaybeSendSync, RepairFailed, Repaired,
+    LlmError, LlmMessage, LlmRequest, MaybeSendSync, RepairFailed, Repaired, Researched,
 };
 pub use meetings::{
     run_meeting, MeetingEvent, MeetingOutcome, MeetingResult, MeetingSpec, Participant,

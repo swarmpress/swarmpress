@@ -78,9 +78,18 @@ describe('orchestrator-wasm with the browser store and the fake LocalLlm', () =>
     expect(res.steps.map((s) => s.job.kind)).toEqual(['standup', 'draft', 'review', 'draft', 'review', 'publish'])
     expect(res.steps[5].outcomes[1]).toEqual({ DeployLanded: { work_item: 'work-item-1' } })
     // The standup's pitch round (opening, two pitches, commission; ADR-0062), then the staged jobs (ADR-0058).
-    expect(llm.calls.map((c) => c.kind)).toEqual(['generate', ...Array(12).fill('structured')])
+    // Research before the draft and before the revision (ADR-0068).
+    expect(llm.calls.map((c) => c.kind)).toEqual([
+      'generate',
+      ...Array(3).fill('structured'),
+      'research',
+      ...Array(7).fill('structured'),
+      'research',
+      ...Array(2).fill('structured'),
+    ])
     expect(llm.calls.slice(0, 4).map(task)).toEqual(['standup opening', 'pitch', 'pitch', 'commission'])
     expect(llm.calls.slice(4).map(task)).toEqual([
+      'research',
       'outline',
       'intro',
       'section s1 of 3',
@@ -88,12 +97,13 @@ describe('orchestrator-wasm with the browser store and the fake LocalLlm', () =>
       'section s3 of 3',
       'closing',
       'review',
+      'research',
       'revise s2',
       'review',
     ])
     // The revision rewrites the part the review names, with its note.
-    expect(llm.calls[11].request.messages[0].text).toContain(MVP_REVIEW_NOTE)
-    expect(llm.calls[4].request.reasoning_tokens).toBe(2048)
+    expect(llm.calls[13].request.messages[0].text).toContain(MVP_REVIEW_NOTE)
+    expect(llm.calls[5].request.reasoning_tokens).toBe(2048)
     // FakeLlm saw the system layers as a system message.
     expect(local.calls[0].messages[0].role).toBe('system')
     // Every call was metered (the activity record's tokens and model).
@@ -121,6 +131,7 @@ describe('orchestrator-wasm with the browser store and the fake LocalLlm', () =>
       'closing#0',
       'context#0',
       'outline#0',
+      'research#0',
       'section#0',
       'section#1',
       'section#2',
@@ -414,7 +425,7 @@ describe('P6 and G6 through the bridge (ADR-0058)', () => {
     expect(orch.cancel('timeout')).toBe(2)
     expect(await draft).toEqual([{ JobFailed: { job_id: 2, reason: 'Timeout' } }])
     expect(hang.calls).toBe(1) // not tried again: the job was cancelled
-    expect(llm.calls.map(task).slice(4)).toEqual(['outline', 'intro', 'section s1 of 3'])
+    expect(llm.calls.map(task).slice(4)).toEqual(['research', 'outline', 'intro', 'section s1 of 3'])
   })
 
   it('a lost model answers Unavailable, so the run rejects instead of failing the job', async () => {

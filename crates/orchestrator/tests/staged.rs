@@ -187,6 +187,7 @@ async fn a_failing_section_costs_exactly_one_extra_call() {
     assert_eq!(
         tasks(&llm),
         [
+            "research",
             "outline",
             "intro",
             "section s1 of 4",
@@ -199,7 +200,7 @@ async fn a_failing_section_costs_exactly_one_extra_call() {
     );
     // The repair turn is section 3's, with its problems and the answer it got, nothing else.
     let calls = llm.calls();
-    let repair = &calls[5].request;
+    let repair = &calls[6].request;
     assert_eq!(repair.messages.len(), 3);
     assert!(repair.messages[1].text.contains("A stunning view"));
     assert!(repair.messages[2]
@@ -279,7 +280,7 @@ async fn a_section_cut_off_at_its_limit_is_written_in_two_halves() {
     );
     let t = tasks(&llm);
     assert_eq!(
-        &t[2..5],
+        &t[3..6],
         [
             "section s1 of 3",
             "section s1 of 3 part 1 of 2",
@@ -397,6 +398,7 @@ async fn a_job_killed_after_section_2_resumes_with_one_pr_and_one_post_of_each_k
     assert_eq!(
         tasks(&llm),
         [
+            "research",
             "outline",
             "intro",
             "section s1 of 3",
@@ -494,7 +496,7 @@ async fn a_revision_naming_s2_changes_only_s2() {
 
     let n = llm.calls().len();
     assert!(digest(&o.run(&job(4, JobKind::Draft, 1)).await.unwrap()).ok);
-    assert_eq!(tasks(&llm)[n..], ["revise s2"]);
+    assert_eq!(tasks(&llm)[n..], ["research", "revise s2"]);
     let after = page(&artifact(store.as_ref()).await);
     let (b, a) = (blocks_by_part(&before), blocks_by_part(&after));
     assert_eq!(b.keys().collect::<Vec<_>>(), a.keys().collect::<Vec<_>>());
@@ -540,8 +542,8 @@ async fn the_ceos_send_back_note_becomes_an_issue() {
     store.append_post(COMPANY, ITEM, note).await.unwrap();
     let n = llm.calls().len();
     assert!(digest(&o.run(&job(6, JobKind::Draft, 2)).await.unwrap()).ok);
-    assert_eq!(tasks(&llm)[n..], ["revise closing"]);
-    assert!(llm.calls()[n].request.messages[0]
+    assert_eq!(tasks(&llm)[n..], ["research", "revise closing"]);
+    assert!(llm.calls()[n + 1].request.messages[0]
         .text
         .contains("Say when the harvest ends."));
     let after = page(&artifact(store.as_ref()).await);
@@ -561,6 +563,7 @@ async fn the_ceos_send_back_note_becomes_an_issue() {
     assert_eq!(
         tasks(&llm)[n..],
         [
+            "research",
             "revise intro",
             "revise s1",
             "revise s2",
@@ -740,6 +743,8 @@ async fn progress_is_reported_as_counts_and_reuse_is_visible() {
             ("job".into(), 0, 1, Started),
             ("context".into(), 0, 1, Started),
             ("context".into(), 0, 1, Done),
+            ("research".into(), 0, 1, Started),
+            ("research".into(), 0, 1, Done),
             ("outline".into(), 0, 1, Started),
             ("outline".into(), 0, 1, Done),
             ("section".into(), 0, 3, Started),
@@ -774,7 +779,7 @@ async fn progress_is_reported_as_counts_and_reuse_is_visible() {
             Some("writer")
         )
     );
-    let commit = events.lock().unwrap()[16].detail.clone();
+    let commit = events.lock().unwrap()[18].detail.clone();
     assert_eq!(commit["pr"], json!(1));
     assert!(commit["branch"].as_str().unwrap().starts_with("drafts/"));
 
@@ -788,8 +793,8 @@ async fn progress_is_reported_as_counts_and_reuse_is_visible() {
         .filter(|e| e.state == Reused)
         .count();
     assert_eq!(
-        reused, 7,
-        "context, outline, intro, three sections and the closing"
+        reused, 8,
+        "context, research, outline, intro, three sections and the closing"
     );
     assert_eq!(
         events
