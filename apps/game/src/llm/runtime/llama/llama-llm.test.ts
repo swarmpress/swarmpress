@@ -14,7 +14,7 @@ const SPEC: LlamaModelSpec = {
 }
 
 /** A scripted stand-in for the shim: sp_generate emits `pieces` one by one and stops when asked. */
-function fakeModule(pieces: string[], over: { loadError?: string } = {}) {
+function fakeModule(pieces: string[], over: { loadError?: string; reasoning?: string[]; content?: string } = {}) {
   const calls: { name: string; args: unknown[] }[] = []
   const chat: [string, string][] = []
   const mod: LlamaModule = {
@@ -27,15 +27,19 @@ function fakeModule(pieces: string[], over: { loadError?: string } = {}) {
       if (name === 'sp_chat_add') chat.push([args[0] as string, args[1] as string])
       if (name === 'sp_generate') {
         const max = args[0] as number
-        let n = 0
+        const thinking = args[2] === 1
+        const reasoning = thinking ? (over.reasoning ?? []) : []
+        let n = reasoning.length
         let stopped = false
         let eog = true
+        let emitted = ''
         for (const p of pieces) {
           if (n >= max) {
             eog = false
             break
           }
           n++
+          emitted += p
           mod.onPiece?.(p)
           if (mod.stopRequested) {
             stopped = true
@@ -44,7 +48,23 @@ function fakeModule(pieces: string[], over: { loadError?: string } = {}) {
           }
         }
         return Promise.resolve(
-          JSON.stringify({ ok: true, promptTokens: 12, tokens: n, targetSteps: n, drafted: 0, accepted: 0, ttftMs: 50, decodeMs: 100 * Math.max(n - 1, 0), totalMs: 50 + 100 * n, stopped, eog }),
+          JSON.stringify({
+            ok: true,
+            promptTokens: 12,
+            tokens: n,
+            targetSteps: n,
+            drafted: 0,
+            accepted: 0,
+            ttftMs: 50,
+            decodeMs: 100 * Math.max(n - 1, 0),
+            totalMs: 50 + 100 * n,
+            stopped,
+            eog,
+            reasoningTokens: reasoning.length,
+            reasoned: thinking,
+            grammar: (args[4] as string) !== '',
+            content: over.content ?? emitted,
+          }),
         )
       }
       if (name === 'sp_free') return Promise.resolve(undefined)
@@ -148,6 +168,30 @@ describe('LlamaCppLlm', () => {
     await llm.load('m')
     const v = await llm.structured<{ title: string }>([{ role: 'user', content: 'title' }], { type: 'object', required: ['title'], properties: { title: { type: 'string' } } })
     expect(v).toEqual({ title: 'Vernazza' })
+  })
+
+  it('passes the schema for a grammar on every structured attempt, and drops the answer prefix with it', async () => {
+    const f = fakeModule(['{"title": "Manarola"}'])
+    const { llm } = adapter(f.mod)
+    await llm.load('m')
+    const schema = { type: 'object', required: ['title'], properties: { title: { type: 'string' } } }
+    await llm.structured([{ role: 'user', content: 'title' }], schema, { answerPrefix: '{' })
+    const args = f.calls.find((c) => c.name === 'sp_generate')!.args
+    expect(JSON.parse(args[4] as string)).toEqual(schema)
+    expect(args[3]).toBe('')
+  })
+
+  it('with thinking on, reasons first within the budget and returns only the parsed answer', async () => {
+    const f = fakeModule(['The answer.'], { reasoning: ['let', ' me', ' think'], content: 'The answer.' })
+    const { llm } = adapter(f.mod)
+    await llm.load('m')
+    const r = await llm.generate([{ role: 'user', content: 'q' }], { thinking: 'medium', reasoningBudget: 300, maxTokens: 50 })
+    const args = f.calls.find((c) => c.name === 'sp_generate')!.args
+    expect(args[2]).toBe(1)
+    expect(args[5]).toBe(300)
+    expect(r.text).toBe('The answer.')
+    expect(r.usage).toMatchObject({ reasoningTokens: 3, completionTokens: 1 })
+    expect(r.finishReason).toBe('stop')
   })
 
   it('a failed load says why, and nothing counts as loaded', async () => {

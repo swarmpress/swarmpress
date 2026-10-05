@@ -5,8 +5,12 @@
  * from OPFS (weights.ts) and are mounted read-only, the runtime module spawns
  * its own small pthread pool, and every GPU wait suspends through JSPI.
  *
- * One turn at a time, greedy, prompt-and-repair for structured output
- * (structured.ts). The MTP drafter is loaded only when the spec asks for it
+ * One turn at a time, greedy. Structured output is prompt-and-repair
+ * (structured.ts), and every attempt is also constrained by the grammar the
+ * chat template derives from the schema (`jsonSchema`). With `thinking` on,
+ * the model reasons first (capped by `reasoningBudget`); only the answer is
+ * streamed and returned, and upstream's parser for the template separates
+ * the two. The MTP drafter is loaded only when the spec asks for it
  * (`mtp`), and is off by default: in the runtime spike it was slower and its
  * greedy output differed from the target's
  * (docs/qualification/2026-10-05-gemma4-e4b-llama-webgpu-spike.md).
@@ -72,6 +76,11 @@ interface TurnStats {
   totalMs: number
   stopped: boolean
   eog: boolean
+  reasoningTokens: number
+  reasoned: boolean
+  grammar: boolean
+  /** The answer as upstream's parser for the template reads it (reasoning removed). */
+  content: string
 }
 
 const LABEL = 'Gemma 4 E4B on llama.cpp (in-browser WebGPU)'
@@ -161,8 +170,11 @@ export class LlamaCppLlm implements LocalLlm {
     const spec = this.spec
     if (!mod || !spec || !this.modelId) throw new Error('no model loaded')
     const maxTokens = Math.max(1, opts.maxTokens ?? 256)
-    // Reasoning is not wired for this backend yet (capabilities say 'off'), so the answer prefix always applies.
-    const prefix = opts.answerPrefix ?? ''
+    const thinking = (opts.thinking ?? 'off') !== 'off'
+    const reasoningBudget = thinking ? Math.max(1, opts.reasoningBudget ?? 1024) : 0
+    const schema = opts.jsonSchema ? JSON.stringify(opts.jsonSchema) : ''
+    // A grammar or a reasoning block comes first, so the answer prefix only applies without both (as in the shim).
+    const prefix = !schema && !thinking ? (opts.answerPrefix ?? '') : ''
 
     mod.ccall('sp_chat_reset', null, [], [])
     for (const m of messages) mod.ccall('sp_chat_add', null, ['string', 'string'], [m.role, m.content])
@@ -209,24 +221,43 @@ export class LlamaCppLlm implements LocalLlm {
 
     try {
       const stats = JSON.parse(
-        (await mod.ccall('sp_generate', 'string', ['number', 'number', 'number', 'string'], [maxTokens, spec.mtp ? 1 : 0, 0, prefix], { async: true })) as string,
+        (await mod.ccall(
+          'sp_generate',
+          'string',
+          ['number', 'number', 'number', 'string', 'string', 'number'],
+          [maxTokens, spec.mtp ? 1 : 0, thinking ? 1 : 0, prefix, schema, reasoningBudget],
+          { async: true },
+        )) as string,
       ) as TurnStats
       if (!stats.ok) throw new Error(`llama.cpp: ${stats.error}`)
-      if (!stoppedBy && !cancelled) flush(text.length)
+      // The parsed answer is authoritative unless this side cut the turn (a stop sequence, the end of the JSON value).
+      if (!stoppedBy && !cancelled) {
+        const final = applyStop(prefix + stats.content, opts.stop)
+        if (final.stopped) stoppedBy = 'sequence'
+        if (final.text.startsWith(text.slice(0, sent))) {
+          text = final.text
+          flush(text.length)
+        } else {
+          text = final.text
+        }
+      }
       this.mtpTotals.drafted += stats.drafted
       this.mtpTotals.accepted += stats.accepted
-      const completionTokens = stats.tokens
+      const completionTokens = Math.max(0, stats.tokens - stats.reasoningTokens)
+      const hitLimit = stats.tokens >= maxTokens + reasoningBudget || completionTokens >= maxTokens
       return {
         text,
-        finishReason: cancelled && !stoppedBy ? 'cancelled' : stoppedBy || stats.eog ? 'stop' : completionTokens >= maxTokens ? 'length' : 'stop',
+        finishReason: cancelled && !stoppedBy ? 'cancelled' : stoppedBy || stats.eog ? 'stop' : hitLimit ? 'length' : 'stop',
         usage: {
           promptTokens: stats.promptTokens,
           completionTokens,
           durationMs: stats.totalMs,
-          tokensPerSec: completionTokens > 1 && stats.decodeMs > 0 ? ((completionTokens - 1) * 1000) / stats.decodeMs : 0,
+          // Every generated token, reasoning included, as BonsaiLlm counts it: this is the decode rate of the GPU.
+          tokensPerSec: stats.tokens > 1 && stats.decodeMs > 0 ? ((stats.tokens - 1) * 1000) / stats.decodeMs : 0,
           prefillMs: stats.ttftMs,
           ttftMs: stats.ttftMs,
           cachedPromptTokens: 0,
+          ...(stats.reasoned ? { reasoningTokens: stats.reasoningTokens } : {}),
         },
       }
     } finally {
@@ -248,10 +279,12 @@ export class LlamaCppLlm implements LocalLlm {
       backend: 'llama-cpp',
       label: LABEL,
       webgpu: false,
+      // The grammar constrains every attempt, but structured calls still run the repair loop (the Rust checks go beyond the schema).
       supportsConstrainedOutput: false,
       supportsPrefixReuse: false,
       supportsVision: false,
-      reasoningModes: ['off'],
+      // Gemma 4 thinks or does not; 'medium' and 'xhigh' both turn thinking on, and the budget caps it.
+      reasoningModes: ['off', 'medium', 'xhigh'],
       contextTokens: this.nCtx,
     }
     const gpu = (navigator as unknown as { gpu?: { requestAdapter(o?: unknown): Promise<{ info?: Record<string, unknown>; features?: Iterable<string> } | null> } }).gpu
@@ -269,6 +302,7 @@ export class LlamaCppLlm implements LocalLlm {
         description: info.description,
         features: [...(adapter.features ?? [])],
         runtime: 'llama.cpp (ggml WebGPU, wasm64, JSPI)',
+        grammar: 'json-schema',
         mtp: this.spec?.mtp ?? null,
         draftMax: this.spec?.mtp ? this.spec.draftMax : null,
         mtpDrafted: this.mtpTotals.drafted,

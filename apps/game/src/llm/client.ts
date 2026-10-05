@@ -207,6 +207,7 @@ export class LlmClient implements LocalLlm {
       answerPrefix: opts.answerPrefix,
       stopOnJsonEnd: opts.stopOnJsonEnd,
       prefixKey: opts.prefixKey,
+      jsonSchema: opts.jsonSchema,
     }
     if (opts.signal?.aborted) throw new LlmCancelledError()
     const onAbort = () => this.ep.postMessage({ type: 'cancel', id: this.nextId++, target: id } satisfies ToWorker)

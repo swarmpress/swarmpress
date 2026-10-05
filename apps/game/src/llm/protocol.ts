@@ -6,7 +6,7 @@
  * device was lost) and carry no id.
  */
 import type { FakeResponse } from './fake-llm'
-import type { ChatMessage, DeviceKind, GenerateResult, LoadProgress, RuntimeCapabilities, ThinkingMode } from './types'
+import type { ChatMessage, DeviceKind, GenerateResult, LoadProgress, RuntimeCapabilities, ThinkingMode, JsonSchema } from './types'
 
 export type AdapterKind = 'transformers' | 'fake' | 'bonsai-kernels' | 'llama-cpp'
 
@@ -57,6 +57,7 @@ export interface WireGenerateOptions {
   answerPrefix?: string
   stopOnJsonEnd?: boolean
   prefixKey?: string
+  jsonSchema?: JsonSchema
 }
 
 /** A fixed-prompt benchmark (adapters that support it; see runtime/bonsai/bonsai-llm.ts). */

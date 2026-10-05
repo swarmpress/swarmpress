@@ -286,7 +286,7 @@ export async function runStructured<T>(
   let truncationRetried = false
   let reasoningOff = false
   for (let attempt = 0; attempt <= maxRepairs; attempt++) {
-    const res = await generate(convo, { temperature: 0.2, ...genOpts, ...(reasoningOff ? { thinking: 'off' as const, reasoningBudget: undefined } : {}) })
+    const res = await generate(convo, { temperature: 0.2, ...genOpts, jsonSchema: schema, ...(reasoningOff ? { thinking: 'off' as const, reasoningBudget: undefined } : {}) })
     attempts++
     usage = addUsage(usage, res.usage)
     lastText = res.text

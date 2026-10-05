@@ -76,6 +76,11 @@ export interface GenerateOptions {
   stopOnJsonEnd?: boolean
   /** Label for the reusable system prefix of this call (diagnostics; reuse is keyed by content). */
   prefixKey?: string
+  /**
+   * Constrain the answer to this JSON schema while decoding, for adapters that can (the llama.cpp
+   * backend turns it into a grammar); the others ignore it. `runStructured` sets it on every attempt.
+   */
+  jsonSchema?: JsonSchema
 }
 
 /** Download/initialisation progress, aggregated per model (see download.ts). */

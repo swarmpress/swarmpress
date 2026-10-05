@@ -114,7 +114,7 @@ async function generate(prompt: string, nPredict: number, mtp: boolean, thinking
   mod.stopRequested = false
   const stats = JSON.parse(
     (mod.ccall('sp_chat_reset', 'null', [], []), mod.ccall('sp_chat_add', 'null', ['string', 'string'], ['user', prompt]),
-    await mod.ccall('sp_generate', 'string', ['number', 'number', 'number', 'string'], [nPredict, mtp ? 1 : 0, thinking ? 1 : 0, ''], { async: true })),
+    await mod.ccall('sp_generate', 'string', ['number', 'number', 'number', 'string', 'string', 'number'], [nPredict, mtp ? 1 : 0, thinking ? 1 : 0, '', '', thinking ? 1024 : 0], { async: true })),
   )
   post({ type: 'done', stats })
 }
