@@ -1,6 +1,6 @@
 # ADR-0066 — Gemma 4 E4B with MTP on upstream llama.cpp (WebGPU)
 
-**Status:** Accepted (amends ADR-0057: the model, the runtime and the fallback ladder); rollout gated by the runtime spike
+**Status:** Accepted (amends ADR-0057: the model, the runtime and the fallback ladder); rollout gated by the runtime spike; superseded in part by ADR-0067 (Gemma is an opt-in local backend, not the resident model)
 **Date:** 2026-10-05
 
 ## Context

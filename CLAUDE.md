@@ -16,10 +16,10 @@ surfaces (ADR-0063, ADR-0065; decided, kit core and a spike first).
 - The company is extensible through a JS SDK.
 - The user's own company is the imported, still-live **cinqueterre.travel**.
 
-Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0066; ADR-0038 to 0066 define
-the current architecture; ADR-0044 to 0066 are decided and mostly not built yet). Features and
+Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0067; ADR-0038 to 0067 define
+the current architecture; ADR-0044 to 0067 are decided and mostly not built yet). Features and
 their health: `docs/features/` plus Cockpit. The current MVP is `docs/mvp.md` (the owner's
-company for real, on one resident in-browser model); its implementation designs are in
+company for real; inference moves to hosted GPT-6-Luna, ADR-0067); its implementation designs are in
 `docs/design/`.
 
 ## Architecture in one screen (local-first, ADR-0038)
@@ -30,10 +30,10 @@ Browser (authoritative for its company)
     Babylon scene ◄ render state ◄ client-wasm (sim-core, deterministic)
     Preact overlay (Inbox, Plan, Staff, Finance, Performance)
     orchestration loop: sim Effect::RequestJob → orchestrator (wasm) → commands back into the sim
-       ├ LocalLlm: one resident model in a Worker for all staff jobs (ADR-0057, ADR-0066; decided,
-       │   NOT wired yet): Gemma 4 E4B (Q4 GGUF) with its MTP drafter on upstream llama.cpp's WebGPU
-       │   backend, built to wasm by us; Bonsai was a no-go; no cloud model and no native model
-       │   server in the MVP
+       ├ LocalLlm: the adapter contract for every staff job. Decided (ADR-0067), NOT wired yet:
+       │   GPT-6-Luna through the OpenAI Responses API, called by crates/server (the key never
+       │   reaches the browser). Opt-in local experiment: Gemma 4 E4B on upstream llama.cpp's
+       │   WebGPU backend (ADR-0066, `?llm=gemma`)
        ├ store: Turso wasm on OPFS (sqlite-wasm fallback), ADR-0041
        └ extensions: JS bundles in a QuickJS-wasm sandbox with a Bun-style API, ADR-0042/0043
         │ HTTPS + WS (dev login / GitHub OAuth, company lease)
@@ -199,7 +199,7 @@ cockpit serve --watch                         # http://127.0.0.1:4747
 | The current MVP: milestones, tracks, increments, what "done" means | `docs/mvp.md` |
 | MVP implementation designs (runtime, pipeline, publish gate, game time, site path, gap analysis) | `docs/design/`, ADR-0057…0062 |
 | Brick office, construction kit, information surfaces (concept, designs, prototype) | `docs/reference/brick-office.md`, `docs/design/construction-kit.md`, `docs/design/brick-office.md`, ADR-0063…0065 |
-| Local-inference and agent-loop principles (the owner's concept document) | `docs/reference/browser-agent-studio.md` |
+| Agent-loop principles (the owner's concept document) and the move to hosted GPT-6-Luna | `docs/reference/browser-agent-studio.md`, `docs/reference/gpt-6-luna-simulation-migration.md`, ADR-0067 |
 | Stage 0 contract, central HTTP API | `docs/mvp.md` (Stage 0), `crates/server/README.md` |
 | Local-first, storage, SDK | ADR-0038…0043, `docs/architecture/sdk.md`, `docs/guides/extending.md` |
 | Commercial model, executors, continuity, pricing, assets (decided, not built) | ADR-0044…0056, `docs/architecture/commercial-model.md` |

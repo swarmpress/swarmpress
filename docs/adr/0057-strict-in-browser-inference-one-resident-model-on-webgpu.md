@@ -1,6 +1,6 @@
 # ADR-0057 — Strict in-browser inference: one resident model on WebGPU
 
-**Status:** Accepted (amends ADR-0024, ADR-0026, ADR-0027 and ADR-0054); amended by ADR-0066 (the model, the runtime and the fallback ladder)
+**Status:** Accepted (amends ADR-0024, ADR-0026, ADR-0027 and ADR-0054); amended by ADR-0066 (the model, the runtime and the fallback ladder); decision 1 superseded by ADR-0067 (hosted inference on GPT-6-Luna)
 **Date:** 2026-10-02
 
 ## Context

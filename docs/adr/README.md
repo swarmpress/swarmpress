@@ -76,7 +76,7 @@ Accepted ADRs are never rewritten.
 | [0054](0054-byo-infrastructure-and-player-held-secrets.md) | Bring your own infrastructure, and player-held secrets | Accepted |
 | [0055](0055-leagues-and-the-in-game-currency-symbol.md) | Leagues and the in-game currency symbol | Accepted |
 | [0056](0056-work-records-a-digest-chained-history-of-agent-work.md) | Work records: a digest-chained, attributable history of agent work | Accepted |
-| [0057](0057-strict-in-browser-inference-one-resident-model-on-webgpu.md) | Strict in-browser inference: one resident model on WebGPU | Accepted |
+| [0057](0057-strict-in-browser-inference-one-resident-model-on-webgpu.md) | Strict in-browser inference: one resident model on WebGPU | Superseded in part by ADR-0067 |
 | [0058](0058-staged-jobs-on-one-resident-model.md) | Staged jobs on one resident model | Accepted |
 | [0059](0059-publish-gate-and-failure-commands.md) | The CEO publish gate, and failures the sim can see | Accepted |
 | [0060](0060-game-time-is-independent-of-gpu-speed.md) | Game time is independent of GPU speed | Accepted |
@@ -85,4 +85,5 @@ Accepted ADRs are never rewritten.
 | [0063](0063-brick-office-and-live-information-surfaces.md) | The brick office and live information surfaces | Accepted |
 | [0064](0064-webgpu-only.md) | WebGPU only | Accepted |
 | [0065](0065-the-construction-kit.md) | The construction kit | Accepted |
-| [0066](0066-gemma-4-e4b-with-mtp-on-upstream-llama-cpp-webgpu.md) | Gemma 4 E4B with MTP on upstream llama.cpp (WebGPU) | Accepted |
+| [0066](0066-gemma-4-e4b-with-mtp-on-upstream-llama-cpp-webgpu.md) | Gemma 4 E4B with MTP on upstream llama.cpp (WebGPU) | Superseded in part by ADR-0067 |
+| [0067](0067-hosted-inference-on-gpt-6-luna.md) | Hosted inference on GPT-6-Luna | Accepted |
