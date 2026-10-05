@@ -107,6 +107,16 @@ describe('HostedLlm', () => {
     expect((b as Error).message).toMatch(/budget/)
   })
 
+  it('a call past its time and a network failure are the model being unavailable too', async () => {
+    for (const err of [httpError(504, 'the model did not answer in time'), new TypeError('Failed to fetch')]) {
+      const a = adapter(() => {
+        throw err
+      })
+      await a.llm.load(HOSTED_MODEL_ID)
+      expect(isUnavailableError(await a.llm.generate([{ role: 'user', content: 'x' }]).catch((x: unknown) => x))).toBe(true)
+    }
+  })
+
   it('an aborted turn is cancelled and sends nothing', async () => {
     const { llm, sent } = adapter(() => reply('never'))
     await llm.load(HOSTED_MODEL_ID)

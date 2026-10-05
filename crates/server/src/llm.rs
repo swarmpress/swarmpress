@@ -532,11 +532,12 @@ async fn call_provider(
             }
             Err(e) => {
                 return (
-                    Err(AppError::BadGateway(format!(
+                    // A network outage is transient: 503, so the browser holds and retries.
+                    Err(AppError::Unavailable(format!(
                         "model provider unreachable: {e}"
                     ))),
                     attempt,
-                )
+                );
             }
         };
         let status = res.status();

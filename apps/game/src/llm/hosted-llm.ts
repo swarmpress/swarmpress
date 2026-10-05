@@ -17,7 +17,8 @@
  * - The answer arrives whole: `onDelta` gets it in one piece.
  * - `research` runs the repair loop with web search on (ADR-0068) and returns
  *   the sources of every attempt, for the orchestrator to check citations against.
- * - The server's 503 (no key, no credits, provider busy) is `LlmUnavailableError`:
+ * - The server's 503 (no key, no credits, provider busy or unreachable), a 504 and a
+ *   network failure are `LlmUnavailableError`:
  *   the session holds the clock instead of failing the job.
  */
 import { applyStop, runStructured, streamFromGenerate } from './structured'
@@ -125,8 +126,10 @@ export class HostedLlm implements LocalLlm {
       if (opts.signal?.aborted || (e as { name?: string } | null)?.name === 'AbortError') return { result: this.cancelled(started), reply: null }
       const status = statusOf(e)
       const message = e instanceof Error ? e.message : String(e)
-      // No key, no credits, a busy provider: the model is not available, nothing was produced.
-      if (status === 503) throw new LlmUnavailableError(message)
+      // No key, no credits, a busy or unreachable provider, a call past its time, or no network
+      // to our own server (a fetch that never got a status): the model is not available and
+      // nothing was produced. The session holds the clock and runs the call again.
+      if (status === 503 || status === 504 || (status === null && e instanceof TypeError)) throw new LlmUnavailableError(message)
       throw e
     }
     this.spent.calls++
