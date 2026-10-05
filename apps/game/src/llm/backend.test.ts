@@ -54,12 +54,12 @@ describe('backend choice', () => {
   it('the URL wins, then the stored choice, then the default', async () => {
     const store = memoryStore()
     expect(await chooseBackend({ search: '', companyId: 'c1', store })).toEqual({ id: DEFAULT_BACKEND, source: 'default' })
-    expect(DEFAULT_BACKEND).toBe('gemma')
+    expect(DEFAULT_BACKEND).toBe('luna')
     await storeBackend(store, 'c1', 'chrome')
     expect(store.data.get(backendKey('c1'))).toBe('chrome')
     expect(await chooseBackend({ search: '', companyId: 'c1', store })).toEqual({ id: 'chrome', source: 'stored' })
     // Another company has its own choice.
-    expect(await chooseBackend({ search: '', companyId: 'c2', store })).toEqual({ id: 'gemma', source: 'default' })
+    expect(await chooseBackend({ search: '', companyId: 'c2', store })).toEqual({ id: 'luna', source: 'default' })
     // ?llm= is a one-off: it wins and is not written back.
     expect(await chooseBackend({ search: '?llm=fake', companyId: 'c1', store })).toEqual({ id: 'fake', source: 'query' })
     expect(store.data.get(backendKey('c1'))).toBe('chrome')
@@ -71,11 +71,13 @@ describe('backend choice', () => {
     await expect(chooseBackend({ search: '', companyId: 'c1', store })).rejects.toThrow(/not one this build knows/)
   })
 
-  it('every backend is local, and its registry model exists', () => {
+  it('only the hosted backend runs on the server (ADR-0067); every local one has its registry model', () => {
     expect(Object.keys(BACKENDS).sort()).toEqual([...BACKEND_IDS].sort())
+    expect(Object.values(BACKENDS).filter((b) => b.runsIn === 'server').map((b) => b.id)).toEqual(['luna'])
     for (const b of Object.values(BACKENDS)) {
+      if (b.runsIn === 'server') continue
       if (b.modelId) expect(findModel(DEFAULT_REGISTRY, b.modelId), b.id).toBeDefined()
-      expect(b.label).not.toMatch(/cloud|api/i)
+      expect(b.label).not.toMatch(/cloud|api|hosted/i)
     }
     expect(BACKENDS.chrome.label).toBe(CHROME_LABEL)
     expect(BACKENDS.chrome.runsIn).toBe('window')

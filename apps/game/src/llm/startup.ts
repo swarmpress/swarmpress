@@ -75,6 +75,13 @@ export function formatBytes(n: number): string {
 /** What the player is told before anything is downloaded. */
 export function explainText(backend: BackendId, sizeBytes: number | null): string {
   const info = BACKENDS[backend]
+  if (info.runsIn === 'server') {
+    return (
+      `Your staff think with ${info.label}, a model OpenAI runs. For each job the game server sends it what the job needs: the brief, the drafts, ` +
+      `the site's knowledge and the meeting so far. The key and the company's daily budget stay on the server; nothing is downloaded to this computer. ` +
+      `Nothing is published without your approval.`
+    )
+  }
   const where = 'Your staff think with a language model that runs here, in this browser, on this computer. No brief, draft or prompt is sent to an inference service.'
   if (info.runsIn === 'window') {
     return `${where} ${info.label}: Chrome downloads, stores and updates its own model; its size and version are Chrome's to choose. Starting it the first time may need this click.`
@@ -325,8 +332,13 @@ export async function runStartup(d: StartupDeps): Promise<StartupResult> {
     d.onOpened?.(opened)
 
     // 3. Storage: browser-managed models (Chrome) keep their own.
-    if (BACKENDS[d.backend].runsIn === 'window' || !d.sizeBytes) {
-      emit('storage', 'skipped', BACKENDS[d.backend].runsIn === 'window' ? 'Chrome manages its own model storage' : 'the backend does not say how large the model is')
+    const runsIn = BACKENDS[d.backend].runsIn
+    if (runsIn === 'window' || runsIn === 'server' || !d.sizeBytes) {
+      emit(
+        'storage',
+        'skipped',
+        runsIn === 'window' ? 'Chrome manages its own model storage' : runsIn === 'server' ? 'the model runs on the server' : 'the backend does not say how large the model is',
+      )
     } else {
       const size = d.sizeBytes
       storage = await stage('storage', async () => checkStorage(d.storage, size, (await d.cachedBytes?.().catch(() => null)) ?? 0))

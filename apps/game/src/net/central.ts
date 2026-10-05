@@ -261,6 +261,30 @@ export function packCommit(packJson: string): string | null {
   return m ? m[1] : null
 }
 
+/** `POST /api/llm/generate` (ADR-0067, FEAT-086): one model turn on the server's hosted model. */
+export interface LlmGenerateRequest {
+  messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
+  /** What the call is for (the server's job record). */
+  kind?: string
+  /** Answer and reasoning tokens together. */
+  max_output_tokens?: number
+  reasoning_effort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+  /** `flex` (default) for queued work, `default` (Standard) where the player waits. */
+  service_tier?: 'flex' | 'default'
+  json_schema?: Record<string, unknown>
+}
+
+export interface LlmGenerateReply {
+  job_id: string
+  text: string
+  finish: 'stop' | 'length'
+  model: string
+  service_tier: string
+  usage: { input_tokens: number; cached_input_tokens: number; output_tokens: number; reasoning_tokens: number }
+  cost_micros: number
+  duration_ms: number
+}
+
 export class CentralError extends Error {
   constructor(
     readonly status: number,
@@ -295,14 +319,14 @@ export class CentralClient {
     return base.replace(/^http/, 'ws') + path
   }
 
-  private async request(method: string, path: string, init: { json?: unknown; body?: BodyInit; headers?: Record<string, string> } = {}) {
+  private async request(method: string, path: string, init: { json?: unknown; body?: BodyInit; headers?: Record<string, string>; signal?: AbortSignal } = {}) {
     const headers: Record<string, string> = { ...init.headers }
     let body = init.body
     if (init.json !== undefined) {
       headers['content-type'] = 'application/json'
       body = JSON.stringify(init.json)
     }
-    const res = await this.fetchImpl(this.baseUrl + path, { method, headers, body, credentials: 'include' })
+    const res = await this.fetchImpl(this.baseUrl + path, { method, headers, body, credentials: 'include', ...(init.signal ? { signal: init.signal } : {}) })
     if (!res.ok) {
       let parsed: unknown = null
       let text = ''
@@ -379,6 +403,13 @@ export class CentralClient {
 
   async releaseLease(companyId: string, token: string): Promise<void> {
     await this.request('DELETE', `/api/companies/${encodeURIComponent(companyId)}/lease`, { headers: { [LEASE_HEADER]: token } })
+  }
+
+  // ------------------------------------------------------------ hosted model
+
+  /** One model turn on the server's hosted model; fenced by the lease (the spend is the company's). */
+  llmGenerate(token: string, body: LlmGenerateRequest, signal?: AbortSignal): Promise<LlmGenerateReply> {
+    return this.json('POST', '/api/llm/generate', { json: body, headers: { [LEASE_HEADER]: token }, ...(signal ? { signal } : {}) })
   }
 
   // ------------------------------------------------------------ gateway

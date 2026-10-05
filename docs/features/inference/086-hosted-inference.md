@@ -8,6 +8,9 @@ paths:
   - crates/server/tests/llm.rs
   - crates/server/migrations/0006_llm_jobs.sql
   - crates/server/src/config.rs
+  - apps/game/src/llm/hosted-llm.ts
+  - apps/game/src/llm/hosted-llm.test.ts
+  - apps/game/src/net/central.ts
 adrs:
   - ADR-0067
 ---
@@ -28,5 +31,10 @@ with its usage and cost.
 - A Flex call the provider refuses as busy is retried with backoff, never promoted silently; an
   account without credits is reported as such, not retried.
 
-Not built yet: the browser backend that calls it, Batch preparation, the story director and
+The browser's `luna` backend (`apps/game/src/llm/hosted-llm.ts`) is the default: it implements
+`LocalLlm` over that route with the session's lease, maps thinking to reasoning effort, sends the
+schema of structured calls, uses Standard for interactive turns, and treats a 503 as the model being
+unavailable (the clock holds).
+
+Not built yet: running it in the qualification harness, Batch preparation, the story director and
 event-grounded conversations (the migration document's steps 2 to 4).

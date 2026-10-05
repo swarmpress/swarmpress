@@ -144,6 +144,18 @@ function wire(backend: BackendId, onEvent: (kind: string, message: string) => vo
           return a === 'available' ? 'warm' : a === 'downloadable' || a === 'downloading' ? 'cold' : 'unknown'
         },
       }
+    case 'luna':
+      // Step 2 of the migration (ADR-0067): the harness needs a signed-in server session with the lease first.
+      return {
+        modelId: 'gpt-6-luna',
+        model: null,
+        factories: {
+          luna: () => {
+            throw new Error('the qualification harness cannot run the hosted model yet (it has no server session); run it through the game with ?central=1')
+          },
+        },
+        inferStart: async () => 'unknown',
+      }
     case 'gemma': {
       const l = LLAMA_LOCK.model
       const spawn = () =>

@@ -1,5 +1,5 @@
 /**
- * Which local model backend a company session uses (ADR-0057, ADR-0066).
+ * Which model backend a company session uses (ADR-0057, ADR-0066, ADR-0067).
  *
  * One backend per company session, chosen explicitly: by `?llm=` on the URL,
  * else by the choice stored for the company, else the default. The choice is
@@ -10,27 +10,34 @@
  */
 import type { LocalLlm, RuntimeCapabilities } from './types'
 
-export const BACKEND_IDS = ['fake', 'gemma', 'bonsai', 'chrome', 'transformers'] as const
+export const BACKEND_IDS = ['fake', 'luna', 'gemma', 'bonsai', 'chrome', 'transformers'] as const
 export type BackendId = (typeof BACKEND_IDS)[number]
 
 export interface BackendInfo {
   id: BackendId
   /** Shown to the player. */
   label: string
-  /** Where the adapter runs. */
-  runsIn: 'worker' | 'window' | 'memory'
+  /** Where the adapter runs; `server`: the central server calls a hosted model (ADR-0067). */
+  runsIn: 'worker' | 'window' | 'memory' | 'server'
   /** Registry id of the model it loads; null when the backend has no registry model. */
   modelId: string | null
   description: string
 }
 
 export const BACKENDS: Record<BackendId, BackendInfo> = {
+  luna: {
+    id: 'luna',
+    label: 'GPT-6-Luna (hosted)',
+    runsIn: 'server',
+    modelId: 'gpt-6-luna',
+    description: 'OpenAI’s GPT-6-Luna, called by the game server, which holds the key and the company’s daily budget. Nothing is downloaded.',
+  },
   gemma: {
     id: 'gemma',
     label: 'Gemma 4 E4B on llama.cpp (in-browser WebGPU)',
     runsIn: 'worker',
     modelId: 'gemma-4-e4b-it-qat',
-    description: 'One Gemma 4 E4B model on upstream llama.cpp’s WebGPU backend, in a worker. About 4.2 GB to download once.',
+    description: 'One Gemma 4 E4B model on upstream llama.cpp’s WebGPU backend, in a worker. About 4.2 GB to download once. An opt-in local experiment (ADR-0067).',
   },
   bonsai: {
     id: 'bonsai',
@@ -62,13 +69,13 @@ export const BACKENDS: Record<BackendId, BackendInfo> = {
   },
 }
 
-export const DEFAULT_BACKEND: BackendId = 'gemma'
+export const DEFAULT_BACKEND: BackendId = 'luna'
 
 export function isBackendId(v: unknown): v is BackendId {
   return typeof v === 'string' && (BACKEND_IDS as readonly string[]).includes(v)
 }
 
-/** `?llm=fake|gemma|bonsai|chrome|transformers`; null when absent. An unknown value is an error, not a default. */
+/** `?llm=fake|luna|gemma|bonsai|chrome|transformers`; null when absent. An unknown value is an error, not a default. */
 export function backendFromQuery(search: string): BackendId | null {
   const v = new URLSearchParams(search).get('llm')
   if (v === null || v === '') return null

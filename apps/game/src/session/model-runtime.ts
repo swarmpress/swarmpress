@@ -56,6 +56,7 @@ import {
   type StructuredOptions,
   type Validator,
 } from '../llm/types'
+import type { HostedLlmOptions } from '../llm/hosted-llm'
 import { fakeMvpLlm } from '../orchestrator'
 import type { ModelStatus } from './clock-driver'
 
@@ -127,6 +128,8 @@ export interface ModelRuntimeOptions {
   registry?: ModelRegistry
   /** `?llmdebug=1`: the worker's test hooks are on (`destroyDevice`). */
   debug?: boolean
+  /** The hosted backend's line to the server (ADR-0067): one turn with the current lease. */
+  hosted?: HostedLlmOptions['send']
   log?: (line: string) => void
 }
 
@@ -198,8 +201,10 @@ function requirementsOf(id: BackendId, registry: ModelRegistry): GpuRequirements
 }
 
 /** The adapters of the real page: worker backends spawn the LLM worker, Chrome's runs in the window. Imported lazily. */
-export function browserFactories(debug: boolean, registry: ModelRegistry): NonNullable<ModelRuntimeOptions['factories']> {
+export function browserFactories(debug: boolean, registry: ModelRegistry, hosted?: HostedLlmOptions['send']): NonNullable<ModelRuntimeOptions['factories']> {
   return ({ onEvent }) => ({
+    // Without the central server there is nobody to call the hosted model: no factory, so the backend blocks with that reason.
+    ...(hosted ? { luna: async () => new (await import('../llm/hosted-llm')).HostedLlm({ send: hosted }) } : {}),
     gemma: async () => (await import('../llm/client')).LlmClient.spawn({ registry, onEvent, debug }),
     bonsai: async () => (await import('../llm/client')).LlmClient.spawn({ registry, onEvent, debug }),
     transformers: async () => (await import('../llm/client')).LlmClient.spawn({ registry, onEvent, debug }),
@@ -292,7 +297,7 @@ class SessionModelRuntime implements ModelRuntime {
       error: this.error,
       explain: this.phase === 'explain' ? this.explainText : null,
       canTakeOver: this.phase === 'elsewhere' && !!this.lock?.canTakeOver,
-      alternatives: this.phase === 'blocked' && id ? (['gemma', 'bonsai', 'chrome', 'transformers'] as BackendId[]).filter((b) => b !== id) : [],
+      alternatives: this.phase === 'blocked' && id ? (['luna', 'gemma', 'bonsai', 'chrome', 'transformers'] as BackendId[]).filter((b) => b !== id) : [],
       storage: this.storage ? { ...this.storage } : null,
       fromCache: this.fromCache,
       loads: this.loads,
@@ -458,7 +463,7 @@ class SessionModelRuntime implements ModelRuntime {
     this.stage = null
     this.fromCache = null
     this.setPhase('starting', null)
-    const factories = (this.o.factories ?? browserFactories(!!this.o.debug, this.registry))({ onEvent: (e) => this.onBackendEvent(e) })
+    const factories = (this.o.factories ?? browserFactories(!!this.o.debug, this.registry, this.o.hosted))({ onEvent: (e) => this.onBackendEvent(e) })
     const model = findModel(this.registry, modelIdOf(id))
     try {
       const validate = await this.o.validate?.().catch(() => undefined)

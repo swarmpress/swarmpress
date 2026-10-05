@@ -81,6 +81,8 @@ export interface GenerateOptions {
    * backend turns it into a grammar); the others ignore it. `runStructured` sets it on every attempt.
    */
   jsonSchema?: JsonSchema
+  /** The player waits for this answer: a hosted backend uses its faster, dearer tier for it. */
+  interactive?: boolean
 }
 
 /** Download/initialisation progress, aggregated per model (see download.ts). */

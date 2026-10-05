@@ -19,7 +19,7 @@
  *   central=1        turn the session on
  *   login=NAME       dev login (default `ceo`; needs SWARMPRESS_DEV_AUTH=1 on the server)
  *   llm=fake         the scripted MVP model (src/llm/mvp-script.ts)
- *   llm=gemma|bonsai|chrome|transformers
+ *   llm=luna|gemma|bonsai|chrome|transformers
  *                    the local model backend for this page load (ADR-0057; without it the
  *                    company's stored choice, else Bonsai). session/model-runtime.ts starts it;
  *                    the clock holds until it is ready
@@ -482,8 +482,9 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   if (!readOnly) await knowledge.refresh('start')
   const calls: GatewayCall[] = []
   const gateway = refetchAfterMerge(recordingGateway(centralGateway(client, () => lease.token), calls), knowledge)
-  // The local model (ADR-0057): the backend is chosen here (`?llm=`, else the company's stored
-  // choice, else Bonsai); it starts once the clock exists (below). `?llm=fake` is the scripted model.
+  // The model (ADR-0067): the backend is chosen here (`?llm=`, else the company's stored choice,
+  // else the hosted GPT-6-Luna through this server); it starts once the clock exists (below).
+  // `?llm=fake` is the scripted model; `?llm=gemma` the opt-in local one.
   const models = await openModelRuntime({
     search: location.search,
     companyId: company.id,
@@ -491,6 +492,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     readOnly: !!readOnly,
     validate: () => loadRustValidator(),
     debug: params.get('llmdebug') === '1',
+    hosted: (body, signal) => client.llmGenerate(lease.token, body, signal),
     log: (line) => log(`model: ${line}`),
   })
   // P6: a call past its limit is aborted; the clock stands still while the model is not ready.

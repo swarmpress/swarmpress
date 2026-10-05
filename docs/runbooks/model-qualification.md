@@ -206,7 +206,7 @@ a new adapter); they are not a setting of this harness.
 ## The game on the real model (increment R8)
 
 The game page runs on the backend the URL names (`?llm=bonsai|chrome|transformers`), else the
-company's stored choice, else Bonsai; `?llm=fake` is the scripted model of the e2e suites. A backend
+company's stored choice, else the hosted GPT-6-Luna (ADR-0067; this runbook covers the local backends); `?llm=fake` is the scripted model of the e2e suites. A backend
 that cannot run on the device blocks with a notice and is never swapped for another one; the notice
 offers the other local backends as an explicit choice for the company (it applies on the next page
 load, without `?llm=`).
@@ -216,7 +216,7 @@ pnpm --filter @swarm-press/game bonsai:runtime      # once: the pinned engine in
 cp .env.example .env && set -a && . ./.env && set +a
 cargo run -p server --bin swarmpress-server        # the central server on 127.0.0.1:8080 (docs/guides/getting-started.md)
 pnpm dev                                           # in a second terminal; then open in Chrome:
-# http://localhost:5173/?central=1&llm=bonsai&ff=09:00
+# http://localhost:5173/?central=1&llm=gemma&ff=09:00
 ```
 
 - The office opens at once with the clock held ("Model loading" on the HUD chip). A card in the
