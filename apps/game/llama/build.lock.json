@@ -1,0 +1,11 @@
+{
+  "comment": "ADR-0066: what scripts/llama-runtime.mjs builds. The commit must equal llamaCpp.commit in src/llm/runtime/llama/runtime.lock.json (the report names it).",
+  "llamaCpp": {
+    "repo": "https://github.com/ggml-org/llama.cpp.git",
+    "commit": "8e1642198dcd4e408f8776222d6ae31b74d01187"
+  },
+  "emdawnwebgpu": {
+    "tag": "v20260908.214631",
+    "url": "https://github.com/google/dawn/releases/download/v20260908.214631/emdawnwebgpu_pkg-v20260908.214631.zip"
+  }
+}

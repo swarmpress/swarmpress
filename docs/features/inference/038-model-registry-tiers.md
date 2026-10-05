@@ -16,6 +16,7 @@ paths:
   - "apps/game/src/llm/runtime/bonsai/manifest/**"
   - apps/game/src/llm/runtime/bonsai/manifest.test.ts
   - apps/game/src/llm/runtime/bonsai/runtime.lock.json
+  - apps/game/src/llm/runtime/llama/runtime.lock.json
   - apps/game/src/llm/bench/report.ts
   - apps/game/src/llm/bench/report.test.ts
   - crates/agents/src/models.rs
@@ -23,6 +24,7 @@ paths:
 adrs:
   - ADR-0026
   - ADR-0057
+  - ADR-0066
 ---
 
 # Model registry and capability tiers

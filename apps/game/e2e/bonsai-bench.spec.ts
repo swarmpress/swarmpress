@@ -14,7 +14,8 @@
  *   did not complete.
  *
  * Settings of the qualification run (environment):
- *   BENCH_LLM=bonsai|chrome|transformers   backend (default bonsai)
+ *   BENCH_LLM=gemma|bonsai|chrome|transformers   backend (default bonsai)
+ *   BENCH_MTP=1                            gemma: load the MTP drafter and use it
  *   BENCH_SUITE=full|frames|load           default full
  *   BENCH_QUALITY=low|medium|high|off      scene tier (default medium; off for load)
  *   BENCH_SCALE, BENCH_FIXTURES, BENCH_THINKING, BENCH_CONTEXT, BENCH_DEPTH,
@@ -177,6 +178,7 @@ function benchUrl(): string {
     ['thinking', env.BENCH_THINKING],
     ['context', env.BENCH_CONTEXT],
     ['depth', env.BENCH_DEPTH],
+    ['mtp', env.BENCH_MTP],
     ['repeat', env.BENCH_REPEAT],
     ['reloads', env.BENCH_RELOADS],
     ['start', env.BENCH_START],
@@ -221,6 +223,9 @@ real('the qualification run', async ({ page, context }) => {
   }
   real.setTimeout(Number(env.BENCH_TIMEOUT_MIN ?? 720) * 60_000)
   if (LLM === 'bonsai' && !existsSync(ENGINE_PATH)) throw new Error('the Bonsai engine is not installed: run `pnpm --filter @swarm-press/game bonsai:runtime` first')
+  if (LLM === 'gemma' && !existsSync(fileURLToPath(new URL('../public/vendor/llama/llama.wasm', import.meta.url)))) {
+    throw new Error('the llama.cpp runtime is not built: run `pnpm --filter @swarm-press/game llama:runtime` first')
+  }
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   page.on('console', (m) => {

@@ -189,6 +189,8 @@ export interface BenchConfig {
   /** Overrides of the model manifest (the fallback ladder's retune), when given. */
   context: number | null
   pipelineDepth: number | null
+  /** Gemma on llama.cpp: the MTP drafter is on (`mtp=1`). Absent for the other backends. */
+  mtp?: boolean
   /** Passes over the suite in one page. */
   repeat: number
   /** Reloads after the suite, each a warm start. */
@@ -207,6 +209,8 @@ export interface ModelPins {
   sha256: string
   bytes: number
   engineSha256: string
+  /** The engine when it is pinned by a commit rather than a file hash (llama.cpp). */
+  engine?: string
   /** Context length the manifest pins, tokens. */
   context: number
 }

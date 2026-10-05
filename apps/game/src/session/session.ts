@@ -19,7 +19,7 @@
  *   central=1        turn the session on
  *   login=NAME       dev login (default `ceo`; needs SWARMPRESS_DEV_AUTH=1 on the server)
  *   llm=fake         the scripted MVP model (src/llm/mvp-script.ts)
- *   llm=bonsai|chrome|transformers
+ *   llm=gemma|bonsai|chrome|transformers
  *                    the local model backend for this page load (ADR-0057; without it the
  *                    company's stored choice, else Bonsai). session/model-runtime.ts starts it;
  *                    the clock holds until it is ready

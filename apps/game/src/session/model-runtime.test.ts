@@ -124,7 +124,7 @@ describe('backend selection', () => {
     const s = setup({ store })
     expect((await open({ ...s.options, search: '?central=1&llm=bonsai' })).choice).toEqual({ id: 'bonsai', source: 'query' })
     expect((await open({ ...s.options, search: '?central=1' })).choice).toEqual({ id: 'chrome', source: 'stored' })
-    expect((await open({ ...s.options, search: '?central=1', store: memoryStore() })).choice).toEqual({ id: 'bonsai', source: 'default' })
+    expect((await open({ ...s.options, search: '?central=1', store: memoryStore() })).choice).toEqual({ id: 'gemma', source: 'default' })
     // Choosing loads nothing.
     expect(s.opened).toEqual([])
   })
@@ -144,10 +144,10 @@ describe('backend selection', () => {
     const rt = await open(s.options)
     await rt.start()
     expect(rt.info()).toMatchObject({ phase: 'blocked', backend: null })
-    expect(rt.status()).toEqual({ state: 'none', detail: '?llm=claude: unknown backend (use fake, bonsai, chrome, transformers)' })
+    expect(rt.status()).toEqual({ state: 'none', detail: '?llm=claude: unknown backend (use fake, gemma, bonsai, chrome, transformers)' })
     // "Try again" cannot choose a backend for the player either.
     await rt.retry()
-    expect(rt.info()).toMatchObject({ phase: 'blocked', error: '?llm=claude: unknown backend (use fake, bonsai, chrome, transformers)' })
+    expect(rt.info()).toMatchObject({ phase: 'blocked', error: '?llm=claude: unknown backend (use fake, gemma, bonsai, chrome, transformers)' })
     expect(s.opened).toEqual([])
   })
 
@@ -163,7 +163,7 @@ describe('backend selection', () => {
     expect(s.opened).toEqual(['bonsai'])
     expect(s.made[0].disposed).toBe(true)
     // The notice offers the other local backends; choosing one stores it for the next page load.
-    expect(info.alternatives).toEqual(['chrome', 'transformers'])
+    expect(info.alternatives).toEqual(['gemma', 'chrome', 'transformers'])
     await rt.switchBackend('chrome')
     expect((s.options.store as ReturnType<typeof memoryStore>).data.get(backendKey('c1'))).toBe('chrome')
     expect(s.opened).toEqual(['bonsai'])

@@ -6,6 +6,10 @@ importance: high
 paths:
   - "apps/game/src/llm/**"
   - "apps/game/src/llm/runtime/bonsai/**"
+  - "apps/game/src/llm/runtime/llama/**"
+  - "apps/game/llama/**"
+  - apps/game/scripts/llama-runtime.mjs
+  - apps/game/llama-spike.html
   - "apps/game/src/llm/bench/**"
   - apps/game/src/llm/chrome-prompt-llm.ts
   - apps/game/src/llm/backend.ts
@@ -32,6 +36,7 @@ paths:
 adrs:
   - ADR-0024
   - ADR-0057
+  - ADR-0066
 ---
 
 # LocalLlm worker and adapters

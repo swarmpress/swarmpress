@@ -113,7 +113,8 @@ async function generate(prompt: string, nPredict: number, mtp: boolean, thinking
   if (!mod) throw new Error('no model loaded')
   mod.stopRequested = false
   const stats = JSON.parse(
-    await mod.ccall('sp_generate', 'string', ['string', 'number', 'number', 'number'], [prompt, nPredict, mtp ? 1 : 0, thinking ? 1 : 0], { async: true }),
+    (mod.ccall('sp_chat_reset', 'null', [], []), mod.ccall('sp_chat_add', 'null', ['string', 'string'], ['user', prompt]),
+    await mod.ccall('sp_generate', 'string', ['number', 'number', 'number', 'string'], [nPredict, mtp ? 1 : 0, thinking ? 1 : 0, ''], { async: true })),
   )
   post({ type: 'done', stats })
 }

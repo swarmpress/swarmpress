@@ -97,7 +97,7 @@ describe('the backend modules', () => {
 
   it('are the ones expected (the scan is not vacuous)', () => {
     const names = files.map((f) => relative(SRC, f).replaceAll('\\', '/'))
-    for (const must of ['llm/backend.ts', 'llm/client.ts', 'llm/worker.ts', 'llm/worker-host.ts', 'llm/chrome-prompt-llm.ts', 'llm/transformers-llm.ts', 'llm/startup.ts', 'llm/runtime/bonsai/bonsai-llm.ts', 'session/model-runtime.ts']) {
+    for (const must of ['llm/backend.ts', 'llm/client.ts', 'llm/worker.ts', 'llm/worker-host.ts', 'llm/chrome-prompt-llm.ts', 'llm/transformers-llm.ts', 'llm/startup.ts', 'llm/runtime/bonsai/bonsai-llm.ts', 'llm/runtime/llama/llama-llm.ts', 'llm/runtime/llama/weights.ts', 'session/model-runtime.ts']) {
       expect(names).toContain(must)
     }
   })
@@ -119,8 +119,8 @@ describe('the backend modules', () => {
   it('the worker hands every adapter the guarded fetch', () => {
     const worker = readFileSync(join(SRC, 'llm', 'worker.ts'), 'utf8')
     expect(worker).toMatch(/const guardedFetch = localOnlyFetch\(fetch\.bind\(self\)/)
-    // The Bonsai adapter and the Transformers.js adapter both take it.
-    expect(worker.match(/fetch: guardedFetch/g)).toHaveLength(1)
+    // The Bonsai and llama.cpp adapters take it as `fetch`; the Transformers.js adapter takes it below.
+    expect(worker.match(/fetch: guardedFetch/g)).toHaveLength(2)
     expect(worker).toMatch(/: guardedFetch,\n/)
     // No adapter is built without a fetch of its own, which would fall back to the unguarded global.
     expect(worker).not.toMatch(/fetch: undefined/)

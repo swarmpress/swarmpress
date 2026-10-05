@@ -104,5 +104,25 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
       evalPending: true,
       sha256: '53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3',
     },
+    {
+      // The one resident model of the MVP since ADR-0066: Gemma 4 E4B (QAT,
+      // Unsloth's UD-Q4_K_XL GGUF) on upstream llama.cpp's WebGPU backend,
+      // selected by runtime/llama/runtime.lock.json. The VRAM figure is the
+      // runtime spike's (2.49 GB of weights, a 207 MB compute buffer, the KV
+      // cache at 8K); the buffer limits are estimates until the qualification run.
+      id: 'gemma-4-e4b-it-qat',
+      description: 'Gemma 4 E4B instruct (QAT), UD-Q4_K_XL GGUF, upstream llama.cpp on WebGPU; optional MTP drafter.',
+      hfRepo: 'unsloth/gemma-4-E4B-it-qat-GGUF',
+      dtype: 'UD-Q4_K_XL',
+      sizeBytes: 4_215_695_776,
+      context: 8192,
+      minMaxBufferSize: 1 * GiB,
+      minStorageBufferBindingSize: 1 * GiB,
+      approxVramBytes: 3000 * MiB,
+      tier: 'large',
+      roles: [...STAFF_ROLES],
+      evalPending: true,
+      sha256: 'df0fd4ee07072c607c29a0a1cb4f98918426cca12f45a2776bdd6ee6d09a4de3',
+    },
   ],
 }

@@ -38,6 +38,7 @@ llama_model * g_model = nullptr;
 llama_context * g_ctx = nullptr;
 llama_context * g_ctx_dft = nullptr;
 common_chat_templates_ptr g_templates;
+std::vector<common_chat_msg> g_messages;
 std::string g_result;
 
 std::string json_escape(const std::string & s) {
@@ -142,8 +143,8 @@ static const char * sp_load_impl(const char * target_path, const char * draft_pa
     return g_result.c_str();
 }
 
-// Streams one user turn through sp_emit. use_mtp=0 decodes token by token on the target alone.
-static const char * sp_generate_impl(const char * user_text, int n_predict, int use_mtp, int enable_thinking) {
+// Streams the answer to the conversation through sp_emit. use_mtp=0 decodes token by token on the target alone.
+static const char * sp_generate_impl(int n_predict, int use_mtp, int enable_thinking, const char * answer_prefix) {
     if (!g_model) return fail("no model loaded");
     if (use_mtp && !g_ctx_dft) return fail("no MTP drafter loaded");
 
@@ -153,13 +154,12 @@ static const char * sp_generate_impl(const char * user_text, int n_predict, int 
     llama_memory_clear(llama_get_memory(g_ctx), true);
     if (g_ctx_dft) llama_memory_clear(llama_get_memory(g_ctx_dft), true);
 
+    if (g_messages.empty()) return fail("no messages");
     common_chat_templates_inputs inputs;
-    common_chat_msg msg;
-    msg.role = "user";
-    msg.content = user_text;
-    inputs.messages.push_back(msg);
+    inputs.messages = g_messages;
     inputs.enable_thinking = enable_thinking != 0;
-    const std::string prompt = common_chat_templates_apply(g_templates.get(), inputs).prompt;
+    // The answer prefix (for example "{") is part of the prompt; the caller adds it to the text.
+    const std::string prompt = common_chat_templates_apply(g_templates.get(), inputs).prompt + (answer_prefix ? answer_prefix : "");
 
     std::vector<llama_token> inp = common_tokenize(g_ctx, prompt, true, true);
     if (inp.size() < 2) return fail("empty prompt");
@@ -170,7 +170,7 @@ static const char * sp_generate_impl(const char * user_text, int n_predict, int 
 
     const double t0 = emscripten_get_now();
     int n_predicted = 0, n_drafted = 0, n_accepted = 0, n_target_steps = 0;
-    bool stopped = false;
+    bool stopped = false, eog = false;
     double t_first = 0;
 
     if (!use_mtp) {
@@ -184,7 +184,7 @@ static const char * sp_generate_impl(const char * user_text, int n_predict, int 
             ++n_target_steps;
             if (n_predicted == 0) t_first = emscripten_get_now();
             ++n_predicted;
-            if (llama_vocab_is_eog(vocab, id)) break;
+            if (llama_vocab_is_eog(vocab, id)) { eog = true; break; }
             emit(common_token_to_piece(g_ctx, id));
             if (sp_should_stop()) { stopped = true; break; }
             batch.clear();
@@ -273,7 +273,7 @@ static const char * sp_generate_impl(const char * user_text, int n_predict, int 
             for (size_t i = 0; i < ids.size(); ++i) {
                 prompt_tgt.push_back(id_last);
                 id_last = ids[i];
-                if (llama_vocab_is_eog(vocab, id_last)) { done = true; break; }
+                if (llama_vocab_is_eog(vocab, id_last)) { eog = true; done = true; break; }
                 emit(common_token_to_piece(g_ctx, id_last));
             }
             draft.clear();
@@ -292,7 +292,7 @@ static const char * sp_generate_impl(const char * user_text, int n_predict, int 
                ",\"targetSteps\":" + std::to_string(n_target_steps) + ",\"drafted\":" + std::to_string(n_drafted) +
                ",\"accepted\":" + std::to_string(n_accepted) + ",\"ttftMs\":" + std::to_string(t_first > 0 ? t_first - t0 : 0) +
                ",\"decodeMs\":" + std::to_string(decode_ms) + ",\"totalMs\":" + std::to_string(t1 - t0) +
-               ",\"stopped\":" + (stopped ? "true" : "false") + "}";
+               ",\"stopped\":" + (stopped ? "true" : "false") + ",\"eog\":" + (eog ? "true" : "false") + "}";
     return g_result.c_str();
 }
 
@@ -306,9 +306,19 @@ EMSCRIPTEN_KEEPALIVE const char * sp_load(const char * target_path, const char *
     }
 }
 
-EMSCRIPTEN_KEEPALIVE const char * sp_generate(const char * user_text, int n_predict, int use_mtp, int enable_thinking) {
+// The conversation of the next sp_generate: sp_chat_reset, then sp_chat_add per message.
+EMSCRIPTEN_KEEPALIVE void sp_chat_reset() { g_messages.clear(); }
+
+EMSCRIPTEN_KEEPALIVE void sp_chat_add(const char * role, const char * content) {
+    common_chat_msg msg;
+    msg.role = role;
+    msg.content = content;
+    g_messages.push_back(msg);
+}
+
+EMSCRIPTEN_KEEPALIVE const char * sp_generate(int n_predict, int use_mtp, int enable_thinking, const char * answer_prefix) {
     try {
-        return sp_generate_impl(user_text, n_predict, use_mtp, enable_thinking);
+        return sp_generate_impl(n_predict, use_mtp, enable_thinking, answer_prefix);
     } catch (const std::exception & e) {
         return fail(std::string("exception: ") + e.what());
     } catch (...) {

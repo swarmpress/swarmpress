@@ -1,5 +1,5 @@
 /**
- * Which local model backend a company session uses (ADR-0057).
+ * Which local model backend a company session uses (ADR-0057, ADR-0066).
  *
  * One backend per company session, chosen explicitly: by `?llm=` on the URL,
  * else by the choice stored for the company, else the default. The choice is
@@ -10,7 +10,7 @@
  */
 import type { LocalLlm, RuntimeCapabilities } from './types'
 
-export const BACKEND_IDS = ['fake', 'bonsai', 'chrome', 'transformers'] as const
+export const BACKEND_IDS = ['fake', 'gemma', 'bonsai', 'chrome', 'transformers'] as const
 export type BackendId = (typeof BACKEND_IDS)[number]
 
 export interface BackendInfo {
@@ -25,12 +25,19 @@ export interface BackendInfo {
 }
 
 export const BACKENDS: Record<BackendId, BackendInfo> = {
+  gemma: {
+    id: 'gemma',
+    label: 'Gemma 4 E4B on llama.cpp (in-browser WebGPU)',
+    runsIn: 'worker',
+    modelId: 'gemma-4-e4b-it-qat',
+    description: 'One Gemma 4 E4B model on upstream llama.cpp’s WebGPU backend, in a worker. About 4.2 GB to download once.',
+  },
   bonsai: {
     id: 'bonsai',
     label: 'Ternary Bonsai 2 (in-browser WebGPU)',
     runsIn: 'worker',
     modelId: 'ternary-bonsai-2-27b',
-    description: 'One 27B model on application-controlled WebGPU kernels, in a worker. About 6 GB to download once.',
+    description: 'One 27B model on application-controlled WebGPU kernels, in a worker. About 6 GB to download once. A no-go on the qualification machine (ADR-0066).',
   },
   chrome: {
     id: 'chrome',
@@ -55,13 +62,13 @@ export const BACKENDS: Record<BackendId, BackendInfo> = {
   },
 }
 
-export const DEFAULT_BACKEND: BackendId = 'bonsai'
+export const DEFAULT_BACKEND: BackendId = 'gemma'
 
 export function isBackendId(v: unknown): v is BackendId {
   return typeof v === 'string' && (BACKEND_IDS as readonly string[]).includes(v)
 }
 
-/** `?llm=fake|bonsai|chrome|transformers`; null when absent. An unknown value is an error, not a default. */
+/** `?llm=fake|gemma|bonsai|chrome|transformers`; null when absent. An unknown value is an error, not a default. */
 export function backendFromQuery(search: string): BackendId | null {
   const v = new URLSearchParams(search).get('llm')
   if (v === null || v === '') return null

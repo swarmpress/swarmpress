@@ -11,6 +11,10 @@
 import type { BenchRequest, BenchResult, Endpoint, FromWorker, ModelSpec, RuntimeEventKind, ToWorker, WireGenerateOptions } from './protocol'
 import { findModel, type ModelRegistry } from './registry'
 import { bonsaiManifest } from './runtime/bonsai/manifest'
+import LLAMA_LOCK from './runtime/llama/runtime.lock.json'
+
+/** Where the llama.cpp runtime module is served (scripts/llama-runtime.mjs builds it there). */
+export const LLAMA_RUNTIME_URL = '/vendor/llama/llama.mjs'
 import { runStructured, streamFromGenerate } from './structured'
 import { TINY_MODEL_ENTRY } from './testing/tiny-model'
 import {
@@ -137,6 +141,27 @@ export class LlmClient implements LocalLlm {
     const m = this.o.registry ? findModel(this.o.registry, modelId) : undefined
     if (!m) throw new Error(`unknown model "${modelId}" (not in registry)`)
     // A pinned manifest selects the Bonsai WebGPU runtime; it must describe the same file as the registry.
+    // The llama.cpp runtime's lock pins its model (ADR-0066).
+    if (modelId === LLAMA_LOCK.model.id) {
+      const l = LLAMA_LOCK.model
+      if (l.repo !== m.hfRepo) throw new Error(`model "${modelId}": the llama.cpp lock (${l.repo}) and the registry (${m.hfRepo}) name different repos`)
+      return {
+        id: m.id,
+        hfRepo: l.repo,
+        dtype: m.dtype,
+        device: 'webgpu',
+        sizeBytes: l.target.size,
+        adapter: 'llama-cpp',
+        file: l.target.file,
+        revision: l.revision,
+        sha256: l.target.sha256,
+        context: Math.min(l.context, m.context),
+        runtime: { url: LLAMA_RUNTIME_URL, sha256: '' },
+        draft: l.draft,
+        mtp: false,
+        draftMax: l.draftMax,
+      }
+    }
     const manifest = bonsaiManifest(modelId)
     if (manifest) {
       if (manifest.repo !== m.hfRepo) throw new Error(`model "${modelId}": the manifest (${manifest.repo}) and the registry (${m.hfRepo}) name different repos`)

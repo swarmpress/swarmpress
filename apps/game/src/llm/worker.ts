@@ -56,6 +56,27 @@ async function build(first: ModelSpec, host: HostContext): Promise<LocalLlm> {
       onEvent: (e) => host.emit(e.kind, e.message),
     })
   }
+  if (first.adapter === 'llama-cpp') {
+    const { LlamaCppLlm } = await import('./runtime/llama/llama-llm')
+    return new LlamaCppLlm({
+      resolve: (id) => {
+        const s = spec(id)
+        if (!s.file || !s.revision || !s.sha256 || !s.sizeBytes || !s.draft || !s.runtime || !s.context) throw new Error(`model spec ${id} is not a llama.cpp manifest`)
+        return {
+          repo: s.hfRepo,
+          revision: s.revision,
+          target: { file: s.file, size: s.sizeBytes, sha256: s.sha256 },
+          draft: s.draft,
+          context: s.context,
+          runtimeUrl: abs(s.runtime.url),
+          mtp: s.mtp ?? false,
+          draftMax: s.draftMax ?? 4,
+        }
+      },
+      fetch: guardedFetch,
+      onEvent: (e) => host.emit(e.kind, e.message),
+    })
+  }
   // onnxruntime-web's runtime (.mjs + .wasm) is self-hosted through Vite asset
   // URLs instead of Transformers.js' default jsDelivr CDN.
   const [{ TransformersJsLlm }, ort, { tinyModelFetch }] = await Promise.all([

@@ -17,7 +17,9 @@ import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, '..')
-const lock = JSON.parse(readFileSync(join(root, 'src/llm/runtime/llama/runtime.lock.json'), 'utf8'))
+const lock = JSON.parse(readFileSync(join(root, 'llama/build.lock.json'), 'utf8'))
+const runtimeLock = JSON.parse(readFileSync(join(root, 'src/llm/runtime/llama/runtime.lock.json'), 'utf8'))
+if (runtimeLock.llamaCpp.commit !== lock.llamaCpp.commit) throw new Error('llama/build.lock.json and runtime.lock.json name different llama.cpp commits')
 const cache = process.env.LLAMA_CACHE ?? join(homedir(), 'Library/Caches/swarmpress-llama')
 const emsdk = process.env.EMSDK ?? join(homedir(), 'emsdk')
 const llamaDir = join(cache, 'llama.cpp')

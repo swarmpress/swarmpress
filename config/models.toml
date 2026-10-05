@@ -101,6 +101,26 @@ tier = "high"
 roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-in-chief", "editor", "writer", "translator", "fact-checker", "photo-editor", "photographer", "video-producer", "art-director", "web-developer", "ux-designer", "it-engineer", "dev-ops", "seo-specialist", "marketing-manager", "social-media-manager"]
 eval_pending = true
 
+# Gemma 4 E4B is the one resident model of the MVP since ADR-0066 (Bonsai was a
+# no-go): Unsloth's QAT UD-Q4_K_XL GGUF on upstream llama.cpp's WebGPU backend
+# (apps/game/src/llm/runtime/llama; revision and the MTP drafter are pinned in
+# its runtime.lock.json). `approx_vram_mb` is from the runtime spike; the buffer
+# limits are estimates until the qualification run; `eval_pending` stays true.
+[[model]]
+id = "gemma-4-e4b-it-qat"
+description = "Gemma 4 E4B instruct (QAT), UD-Q4_K_XL GGUF, upstream llama.cpp on WebGPU; optional MTP drafter"
+hf_repo = "unsloth/gemma-4-E4B-it-qat-GGUF"
+dtype = "UD-Q4_K_XL"
+size_bytes = 4_215_695_776
+sha256 = "df0fd4ee07072c607c29a0a1cb4f98918426cca12f45a2776bdd6ee6d09a4de3"
+context = 8192
+min_max_buffer_size = 1_073_741_824
+min_max_storage_buffer_binding_size = 1_073_741_824
+approx_vram_mb = 3000
+tier = "mid"
+roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-in-chief", "editor", "writer", "translator", "fact-checker", "photo-editor", "photographer", "video-producer", "art-director", "web-developer", "ux-designer", "it-engineer", "dev-ops", "seo-specialist", "marketing-manager", "social-media-manager"]
+eval_pending = true
+
 # Muse Glimmer: research candidate; the repo name is an unknown placeholder.
 
 [[model]]

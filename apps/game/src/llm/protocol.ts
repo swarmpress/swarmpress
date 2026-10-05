@@ -8,7 +8,7 @@
 import type { FakeResponse } from './fake-llm'
 import type { ChatMessage, DeviceKind, GenerateResult, LoadProgress, RuntimeCapabilities, ThinkingMode } from './types'
 
-export type AdapterKind = 'transformers' | 'fake' | 'bonsai-kernels'
+export type AdapterKind = 'transformers' | 'fake' | 'bonsai-kernels' | 'llama-cpp'
 
 export interface ModelSpec {
   /** Registry id. */
@@ -36,6 +36,13 @@ export interface ModelSpec {
   /** The engine module: where it is served and the hash it must have. */
   runtime?: { url: string; sha256: string }
   decodePipelineDepth?: number
+  // --- adapter 'llama-cpp' (runtime/llama/runtime.lock.json; also uses file, revision, sha256, context, runtime.url) ---
+  /** The MTP drafter GGUF of the same repo. */
+  draft?: { file: string; size: number; sha256: string }
+  /** Load the drafter and use it for every turn. Default false. */
+  mtp?: boolean
+  /** Most tokens the drafter proposes per step. */
+  draftMax?: number
 }
 
 export interface WireGenerateOptions {

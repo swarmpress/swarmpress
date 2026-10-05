@@ -1,14 +1,12 @@
 {
-  "comment": "ADR-0066: the pinned upstream llama.cpp build and the Gemma 4 E4B model. scripts/llama-runtime.mjs builds this commit; the worker verifies the model files by size and sha256.",
+  "comment": "ADR-0066: the model the llama.cpp runtime loads, pinned by revision, size and sha256, and the llama.cpp commit it is built from (llama/build.lock.json has the build's sources).",
   "llamaCpp": {
-    "repo": "https://github.com/ggml-org/llama.cpp.git",
     "commit": "8e1642198dcd4e408f8776222d6ae31b74d01187"
   },
-  "emdawnwebgpu": {
-    "tag": "v20260908.214631",
-    "url": "https://github.com/google/dawn/releases/download/v20260908.214631/emdawnwebgpu_pkg-v20260908.214631.zip"
-  },
   "model": {
+    "id": "gemma-4-e4b-it-qat",
+    "context": 8192,
+    "draftMax": 4,
     "repo": "unsloth/gemma-4-E4B-it-qat-GGUF",
     "revision": "8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265",
     "target": {

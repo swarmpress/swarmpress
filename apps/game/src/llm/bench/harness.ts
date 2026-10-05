@@ -5,13 +5,14 @@
  * scene drawing beside it, and exposes everything on `window.__bench`.
  *
  * URL parameters:
- *   llm=bonsai|chrome|transformers|fake   the backend (required; never switched)
+ *   llm=gemma|bonsai|chrome|transformers|fake   the backend (required; never switched)
  *   quality=low|medium|high               draw the office scene at this tier (absent: no scene)
  *   suite=full|frames|load                 all fixtures; the short frame-time set; load and warm-up only
  *   scale=0..1                             share of each fixture's prompts (validity needs 1)
  *   fixtures=a,c,section                   only these fixtures (letters or ids)
  *   thinking=off|medium|xhigh              one reasoning mode for every call (fallback ladder)
  *   context=N, depth=N                     Bonsai: context length and decode pipeline depth (fallback ladder)
+ *   mtp=1                                  Gemma on llama.cpp: load the MTP drafter and use it (default off)
  *   repeat=N                               passes over the suite (the device-loss soak uses 20)
  *   reloads=N                              warm reloads after the suite
  *   start=cold|warm                        what the runner says this start is (else inferred)
@@ -32,6 +33,8 @@ import { bonsaiManifest } from '../runtime/bonsai/manifest'
 import { compareIds, EQUIVALENCE_PROMPTS, EQUIVALENCE_TOKENS, goldenKey } from '../runtime/bonsai/equivalence'
 import type { UpstreamDeviceInfo } from '../runtime/bonsai/upstream'
 import { cachedWeightBytes } from '../runtime/bonsai/weight-cache'
+import LLAMA_LOCK from '../runtime/llama/runtime.lock.json'
+import { storedBytes } from '../runtime/llama/weights'
 import type { LocalLlm, RuntimeCapabilities, ThinkingMode, Validator } from '../types'
 import { loadRustValidator } from '../../orchestrator'
 import { BENCH_FAKE_MODEL, BenchFakeLlm } from './fake'
@@ -75,6 +78,7 @@ function readConfig(): { config: BenchConfig; backend: BackendId; memory: boolea
     thinking: oneOf('thinking', ['off', 'medium', 'xhigh'] as const, null),
     context: params.has('context') ? num('context', 16384, 512, 262144) : null,
     pipelineDepth: params.has('depth') ? num('depth', 4, 1, 64) : null,
+    ...(backend === 'gemma' ? { mtp: params.get('mtp') === '1' } : {}),
     repeat: Math.floor(num('repeat', 1, 1, 100)),
     reloads: Math.floor(num('reloads', 0, 0, 20)),
     start: oneOf('start', ['cold', 'warm', 'unknown'] as const, 'unknown')!,
@@ -140,6 +144,37 @@ function wire(backend: BackendId, onEvent: (kind: string, message: string) => vo
           return a === 'available' ? 'warm' : a === 'downloadable' || a === 'downloading' ? 'cold' : 'unknown'
         },
       }
+    case 'gemma': {
+      const l = LLAMA_LOCK.model
+      const spawn = () =>
+        LlmClient.spawn({
+          registry: DEFAULT_REGISTRY,
+          onEvent: (e) => onEvent(e.kind, e.message),
+          resolveSpec: (id: string): ModelSpec | undefined => {
+            const base = resolver.resolveSpec(id)
+            return { ...base, mtp: config.mtp === true, ...(config.context !== null ? { context: config.context } : {}) }
+          },
+        })
+      return {
+        modelId: l.id,
+        model: {
+          repo: l.repo,
+          file: l.target.file,
+          revision: l.revision,
+          sha256: l.target.sha256,
+          bytes: l.target.size,
+          engineSha256: '',
+          engine: `llama.cpp ${LLAMA_LOCK.llamaCpp.commit.slice(0, 12)} (WebGPU, wasm64)`,
+          context: config.context ?? l.context,
+        },
+        factories: { gemma: spawn },
+        inferStart: async () => {
+          const have = await storedBytes(l.target).catch(() => null)
+          if (have === null) return 'unknown'
+          return have === 0 ? 'cold' : have >= l.target.size ? 'warm' : 'unknown'
+        },
+      }
+    }
     case 'transformers':
     case 'bonsai': {
       const modelId = BACKENDS[backend].modelId!
@@ -422,7 +457,7 @@ function boot(): void {
     `backend: ${BACKENDS[c.backend as BackendId].label}`,
     `suite: ${c.suite}, scale ${c.scale}, ${c.repeat} pass(es), ${c.reloads} warm reload(s)`,
     `scene: ${c.quality ?? 'off'}, office: ${parsed!.office}`,
-    `reasoning: ${c.thinking ?? 'per fixture'}${c.context ? `, context ${c.context}` : ''}${c.pipelineDepth ? `, pipeline depth ${c.pipelineDepth}` : ''}`,
+    `reasoning: ${c.thinking ?? 'per fixture'}${c.context ? `, context ${c.context}` : ''}${c.pipelineDepth ? `, pipeline depth ${c.pipelineDepth}` : ''}${c.mtp !== undefined ? `, MTP ${c.mtp ? 'on' : 'off'}` : ''}`,
     `device loss: ${c.deviceLoss}`,
     `cross-origin isolated: ${globalThis.crossOriginIsolated === true}`,
   ].join('\n')

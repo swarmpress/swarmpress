@@ -215,6 +215,7 @@ export function modelEvalDoc(r: BenchResults, ctx: ReportContext): BenchmarkDoc 
     thinking: r.config.thinking ?? 'per fixture',
     context: r.capabilities.loaded?.contextTokens ?? r.config.context,
     pipeline_depth: r.config.pipelineDepth,
+    ...(r.config.mtp !== undefined ? { mtp: r.config.mtp } : {}),
     complete: r.complete,
   })
   const m = new Metrics(scripted)
@@ -774,7 +775,7 @@ export function qualificationMarkdown(input: QualificationInput): string {
     ['Browser', `${primary?.env.browser ?? 'unknown'}; cross-origin isolated: ${primary?.env.crossOriginIsolated ? 'yes' : 'no'}`],
     ['Backend', `${primary?.backendLabel ?? backend} (\`${backend}\`)`],
     ['Model', pins ? `${pins.repo} \`${pins.file}\` at ${pins.revision.slice(0, 12)}, sha256 ${pins.sha256.slice(0, 12)}…, ${fmtBytes(pins.bytes)}` : (primary?.modelId ?? 'chosen by the backend')],
-    ['Engine', pins ? `sha256 ${pins.engineSha256.slice(0, 12)}…` : 'not pinned by this repository'],
+    ['Engine', pins ? (pins.engine ?? `sha256 ${pins.engineSha256.slice(0, 12)}…`) : 'not pinned by this repository'],
     ['Context', `${primary?.capabilities.loaded?.contextTokens ?? 'not reported'} tokens`],
     ['Model GPU device', Object.keys(device).length ? `\`${JSON.stringify(device)}\`` : 'not reported'],
     ['Commit', `${ctx.provenance.commit ?? 'unknown'}${ctx.provenance.dirty ? ' (dirty tree)' : ''}${ctx.provenance.branch ? ` on ${ctx.provenance.branch}` : ''}`],

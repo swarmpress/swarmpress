@@ -62,7 +62,26 @@ cd apps/game
 bench() { pnpm exec playwright test -c playwright.bonsai.config.ts --project=bonsai e2e/bonsai-bench.spec.ts "$@"; }
 ```
 
-### Ternary Bonsai 2 (`BENCH_LLM=bonsai`, the default)
+### Gemma 4 E4B on llama.cpp (`BENCH_LLM=gemma`, ADR-0066)
+
+The resident model since Bonsai's no-go. Build the runtime once (cmake, ninja and the Emscripten
+SDK in `~/emsdk` are needed; the llama.cpp checkout lives in `~/Library/Caches/swarmpress-llama`):
+
+```sh
+pnpm --filter @swarm-press/game llama:runtime     # upstream llama.cpp at the pinned commit → public/vendor/llama/ (git-ignored)
+```
+
+The weights (4.22 GB, plus the 60 MB MTP drafter when it is on) go to the origin's OPFS on the
+first load; a dropped download resumes. The same runs as for Bonsai below, with
+`BENCH_LLM=gemma`. `BENCH_MTP=1` loads the drafter and uses it (off by default: in the spike it was
+slower and not equivalent, `docs/qualification/2026-10-05-gemma4-e4b-llama-webgpu-spike.md`); give
+such a run its own machine name (`BENCH_MACHINE=apple-m3-max-128gb-mtp`). Smoke run first:
+
+```sh
+BONSAI_E2E=1 BENCH_LLM=gemma BENCH_QUALITY=off BENCH_FIXTURES=a BENCH_SCALE=0.1 BENCH_LABEL=smoke bench
+```
+
+### Ternary Bonsai 2 (`BENCH_LLM=bonsai`, no-go)
 
 | # | Run | Command | Expected time |
 |---|---|---|---|

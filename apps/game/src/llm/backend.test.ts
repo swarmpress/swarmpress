@@ -54,12 +54,12 @@ describe('backend choice', () => {
   it('the URL wins, then the stored choice, then the default', async () => {
     const store = memoryStore()
     expect(await chooseBackend({ search: '', companyId: 'c1', store })).toEqual({ id: DEFAULT_BACKEND, source: 'default' })
-    expect(DEFAULT_BACKEND).toBe('bonsai')
+    expect(DEFAULT_BACKEND).toBe('gemma')
     await storeBackend(store, 'c1', 'chrome')
     expect(store.data.get(backendKey('c1'))).toBe('chrome')
     expect(await chooseBackend({ search: '', companyId: 'c1', store })).toEqual({ id: 'chrome', source: 'stored' })
     // Another company has its own choice.
-    expect(await chooseBackend({ search: '', companyId: 'c2', store })).toEqual({ id: 'bonsai', source: 'default' })
+    expect(await chooseBackend({ search: '', companyId: 'c2', store })).toEqual({ id: 'gemma', source: 'default' })
     // ?llm= is a one-off: it wins and is not written back.
     expect(await chooseBackend({ search: '?llm=fake', companyId: 'c1', store })).toEqual({ id: 'fake', source: 'query' })
     expect(store.data.get(backendKey('c1'))).toBe('chrome')

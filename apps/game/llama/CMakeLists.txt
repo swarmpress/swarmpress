@@ -37,7 +37,7 @@ add_executable(llama-shim shim.cpp)
 target_link_libraries(llama-shim PRIVATE llama-common llama)
 set_target_properties(llama-shim PROPERTIES OUTPUT_NAME "llama" SUFFIX ".mjs")
 target_link_options(llama-shim PRIVATE
-    "-sEXPORTED_FUNCTIONS=['_sp_load','_sp_generate','_sp_free','_malloc','_free']"
+    "-sEXPORTED_FUNCTIONS=['_sp_load','_sp_generate','_sp_chat_reset','_sp_chat_add','_sp_free','_malloc','_free']"
     "-sJSPI_EXPORTS=['sp_load','sp_generate','sp_free']"
     "-sEXPORTED_RUNTIME_METHODS=['FS','WORKERFS','UTF8ToString','ccall','getExceptionMessage']"
     "-sEXPORT_EXCEPTION_HANDLING_HELPERS=1"

@@ -200,6 +200,7 @@ function requirementsOf(id: BackendId, registry: ModelRegistry): GpuRequirements
 /** The adapters of the real page: worker backends spawn the LLM worker, Chrome's runs in the window. Imported lazily. */
 export function browserFactories(debug: boolean, registry: ModelRegistry): NonNullable<ModelRuntimeOptions['factories']> {
   return ({ onEvent }) => ({
+    gemma: async () => (await import('../llm/client')).LlmClient.spawn({ registry, onEvent, debug }),
     bonsai: async () => (await import('../llm/client')).LlmClient.spawn({ registry, onEvent, debug }),
     transformers: async () => (await import('../llm/client')).LlmClient.spawn({ registry, onEvent, debug }),
     chrome: async () => new (await import('../llm/chrome-prompt-llm')).ChromePromptLlm(),
@@ -291,7 +292,7 @@ class SessionModelRuntime implements ModelRuntime {
       error: this.error,
       explain: this.phase === 'explain' ? this.explainText : null,
       canTakeOver: this.phase === 'elsewhere' && !!this.lock?.canTakeOver,
-      alternatives: this.phase === 'blocked' && id ? (['bonsai', 'chrome', 'transformers'] as BackendId[]).filter((b) => b !== id) : [],
+      alternatives: this.phase === 'blocked' && id ? (['gemma', 'bonsai', 'chrome', 'transformers'] as BackendId[]).filter((b) => b !== id) : [],
       storage: this.storage ? { ...this.storage } : null,
       fromCache: this.fromCache,
       loads: this.loads,
@@ -641,8 +642,12 @@ function factsFromCapabilities(c: { webgpu: boolean; features?: string[]; limits
   return { features: c.features ?? [], maxBufferSize: c.limits?.maxBufferSize ?? null, maxStorageBufferBindingSize: c.limits?.maxStorageBufferBindingSize ?? null }
 }
 
-/** Cached bytes of the Bonsai weights (the engine's IndexedDB cache); other backends cannot tell. */
+/** Cached bytes of the model's weights: Gemma's files in OPFS, Bonsai's engine cache in IndexedDB; other backends cannot tell. */
 async function defaultCachedBytes(id: BackendId): Promise<number | null> {
+  if (id === 'gemma') {
+    const [{ storedBytes }, lock] = await Promise.all([import('../llm/runtime/llama/weights'), import('../llm/runtime/llama/runtime.lock.json')])
+    return (await storedBytes(lock.default.model.target)) + (await storedBytes(lock.default.model.draft))
+  }
   const manifest = id === 'bonsai' ? bonsaiManifest(BACKENDS.bonsai.modelId!) : undefined
   if (!manifest) return null
   const r = await (await import('../llm/runtime/bonsai/weight-cache')).cachedWeightBytes(manifest.revision)
