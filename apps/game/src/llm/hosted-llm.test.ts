@@ -68,6 +68,13 @@ describe('HostedLlm', () => {
     expect(sent[0]).toMatchObject({ max_output_tokens: 64, reasoning_effort: 'none', service_tier: 'default' })
   })
 
+  it('raises a tiny output limit to the provider minimum of 16', async () => {
+    const { llm, sent } = adapter(() => reply('ok'))
+    await llm.load(HOSTED_MODEL_ID)
+    await llm.generate([{ role: 'user', content: 'x' }], { maxTokens: 8 })
+    expect(sent[0].max_output_tokens).toBe(16)
+  })
+
   it('structured calls send the schema and parse the JSON answer', async () => {
     const { llm, sent } = adapter(() => reply('{"title":"Vernazza"}'))
     await llm.load(HOSTED_MODEL_ID)
@@ -78,10 +85,10 @@ describe('HostedLlm', () => {
   })
 
   it('applies stop sequences and reports an answer cut by the output limit as length', async () => {
-    const { llm } = adapter((b) => (b.max_output_tokens === 10 ? reply('half an ans', { finish: 'length' }) : reply('one END two')))
+    const { llm } = adapter((b) => (b.max_output_tokens === 40 ? reply('half an ans', { finish: 'length' }) : reply('one END two')))
     await llm.load(HOSTED_MODEL_ID)
     expect((await llm.generate([{ role: 'user', content: 'x' }], { stop: [' END'] })).text).toBe('one')
-    expect((await llm.generate([{ role: 'user', content: 'x' }], { maxTokens: 10 })).finishReason).toBe('length')
+    expect((await llm.generate([{ role: 'user', content: 'x' }], { maxTokens: 40 })).finishReason).toBe('length')
   })
 
   it('a 503 (no key, no credits, busy provider) is the model being unavailable; other errors stay errors', async () => {

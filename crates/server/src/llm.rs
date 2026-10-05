@@ -35,6 +35,8 @@ const DAY_MS: i64 = 86_400_000;
 /// The model's own output limit (128,000 tokens for GPT-6-Luna).
 const MAX_OUTPUT_TOKENS: u32 = 128_000;
 const DEFAULT_OUTPUT_TOKENS: u32 = 4096;
+/// The provider refuses fewer output tokens than this; smaller limits are raised to it.
+const MIN_OUTPUT_TOKENS: u32 = 16;
 const EFFORTS: [&str; 6] = ["none", "low", "medium", "high", "xhigh", "max"];
 
 #[derive(Debug, Deserialize)]
@@ -270,7 +272,13 @@ pub async fn generate(
     .execute(&st.db.writer)
     .await?;
 
-    let body = request_body(&cfg, &req, &effort, &tier, max_output);
+    let body = request_body(
+        &cfg,
+        &req,
+        &effort,
+        &tier,
+        max_output.max(MIN_OUTPUT_TOKENS),
+    );
     let (result, attempts) = call_provider(&st.http, &cfg, &key, &body, &tier).await;
     let finished = st.now_ms();
     match result {

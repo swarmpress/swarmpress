@@ -38,6 +38,7 @@ export const HOSTED_LABEL = 'GPT-6-Luna (hosted by OpenAI, through the game serv
 /** GPT-6-Luna's context window, tokens. */
 const CONTEXT_TOKENS = 1_050_000
 const DEFAULT_REASONING_BUDGET = 1024
+const MIN_OUTPUT_TOKENS = 16
 
 export interface HostedLlmOptions {
   /** Sends one turn to the server with the current lease (the session's `CentralClient.llmGenerate`). */
@@ -75,7 +76,8 @@ export class HostedLlm implements LocalLlm {
     const body: LlmGenerateRequest = {
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
       kind: this.o.kind ?? 'generate',
-      max_output_tokens: maxTokens + reasoning,
+      // The provider takes no fewer than 16 output tokens.
+      max_output_tokens: Math.max(MIN_OUTPUT_TOKENS, maxTokens + reasoning),
       reasoning_effort: EFFORT[thinking],
       service_tier: opts.interactive ? 'default' : 'flex',
       ...(opts.jsonSchema ? { json_schema: opts.jsonSchema } : {}),
