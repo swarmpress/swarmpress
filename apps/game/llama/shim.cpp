@@ -164,7 +164,6 @@ static const char * sp_generate_impl(int n_predict, int use_mtp, int enable_thin
     std::vector<llama_token> inp = common_tokenize(g_ctx, prompt, true, true);
     if (inp.size() < 2) return fail("empty prompt");
     if ((uint32_t) inp.size() + (uint32_t) n_predict + 8 > llama_n_ctx(g_ctx)) return fail("prompt and answer exceed the context");
-    if ((uint32_t) inp.size() > llama_n_batch(g_ctx)) return fail("prompt exceeds the batch size");
 
     common_sampler_ptr smpl(common_sampler_init(g_model, g_params.sampling));
 
@@ -175,8 +174,14 @@ static const char * sp_generate_impl(int n_predict, int use_mtp, int enable_thin
 
     if (!use_mtp) {
         common_batch batch(g_ctx);
-        for (size_t i = 0; i < inp.size(); ++i) batch.add(inp[i], (llama_pos) i, seq_id, i + 1 == inp.size());
-        if (llama_process(g_ctx, LLAMA_PROCESS_TYPE_DECODE, batch.get()) != 0) return fail("prefill failed");
+        // The prompt goes in batches of n_batch tokens; only the last token needs logits.
+        const size_t n_batch = llama_n_batch(g_ctx);
+        for (size_t start = 0; start < inp.size(); start += n_batch) {
+            batch.clear();
+            const size_t end = std::min(inp.size(), start + n_batch);
+            for (size_t i = start; i < end; ++i) batch.add(inp[i], (llama_pos) i, seq_id, i + 1 == inp.size());
+            if (llama_process(g_ctx, LLAMA_PROCESS_TYPE_DECODE, batch.get()) != 0) return fail("prefill failed");
+        }
         llama_pos n_past = (llama_pos) inp.size();
         while (n_predicted < n_predict) {
             const llama_token id = common_sampler_sample(smpl.get(), g_ctx, -1);
@@ -199,10 +204,16 @@ static const char * sp_generate_impl(int n_predict, int use_mtp, int enable_thin
         const bool use_ckpt_dft = common_context_can_seq_rm(g_ctx_dft) == COMMON_CONTEXT_SEQ_RM_TYPE_FULL;
 
         {
+            // All but the last prompt token, in batches of n_batch, through the target and the drafter.
             common_batch batch_prompt(g_ctx);
-            for (size_t i = 0; i + 1 < inp.size(); ++i) batch_prompt.add(inp[i], (llama_pos) i, seq_id, false);
-            if (llama_process(g_ctx, LLAMA_PROCESS_TYPE_DECODE, batch_prompt.get()) != 0) { common_speculative_free(spec); return fail("prefill failed"); }
-            if (!common_speculative_process(spec, batch_prompt)) { common_speculative_free(spec); return fail("MTP prefill failed"); }
+            const size_t n_batch = llama_n_batch(g_ctx);
+            for (size_t start = 0; start + 1 < inp.size(); start += n_batch) {
+                batch_prompt.clear();
+                const size_t end = std::min(inp.size() - 1, start + n_batch);
+                for (size_t i = start; i < end; ++i) batch_prompt.add(inp[i], (llama_pos) i, seq_id, false);
+                if (llama_process(g_ctx, LLAMA_PROCESS_TYPE_DECODE, batch_prompt.get()) != 0) { common_speculative_free(spec); return fail("prefill failed"); }
+                if (!common_speculative_process(spec, batch_prompt)) { common_speculative_free(spec); return fail("MTP prefill failed"); }
+            }
         }
 
         llama_token id_last = inp.back();

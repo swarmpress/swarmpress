@@ -109,13 +109,13 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
       // Unsloth's UD-Q4_K_XL GGUF) on upstream llama.cpp's WebGPU backend,
       // selected by runtime/llama/runtime.lock.json. The VRAM figure is the
       // runtime spike's (2.49 GB of weights, a 207 MB compute buffer, the KV
-      // cache at 8K); the buffer limits are estimates until the qualification run.
+      // cache at 8K); the window is the design's 16K; the buffer limits are estimates until the qualification run.
       id: 'gemma-4-e4b-it-qat',
       description: 'Gemma 4 E4B instruct (QAT), UD-Q4_K_XL GGUF, upstream llama.cpp on WebGPU; optional MTP drafter.',
       hfRepo: 'unsloth/gemma-4-E4B-it-qat-GGUF',
       dtype: 'UD-Q4_K_XL',
       sizeBytes: 4_215_695_776,
-      context: 8192,
+      context: 16384,
       minMaxBufferSize: 1 * GiB,
       minStorageBufferBindingSize: 1 * GiB,
       approxVramBytes: 3000 * MiB,

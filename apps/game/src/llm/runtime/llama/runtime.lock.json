@@ -5,7 +5,7 @@
   },
   "model": {
     "id": "gemma-4-e4b-it-qat",
-    "context": 8192,
+    "context": 16384,
     "draftMax": 4,
     "repo": "unsloth/gemma-4-E4B-it-qat-GGUF",
     "revision": "8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265",
