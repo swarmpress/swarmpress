@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "bonsai:runtime": "node scripts/bonsai-runtime.mjs"
+    "bonsai:runtime": "node scripts/bonsai-runtime.mjs",
+    "llama:runtime": "node scripts/llama-runtime.mjs"
   },
   "dependencies": {
     "@babylonjs/core": "^9.29.0",

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>llama.cpp spike</title>
+    <style>
+      body { font: 14px/1.4 system-ui, sans-serif; margin: 16px; max-width: 960px; }
+      textarea { width: 100%; height: 5em; }
+      pre { white-space: pre-wrap; background: #f4f4f4; padding: 8px; max-height: 18em; overflow: auto; }
+      label { margin-right: 12px; }
+      input[type='number'] { width: 6em; }
+      button { margin: 4px 4px 4px 0; }
+      .row { margin: 8px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Gemma 4 E4B + MTP on llama.cpp WebGPU (ADR-0066 spike)</h1>
+    <p>Save your work first. A frame gap over 2 s stops the turn.</p>
+    <div class="row">
+      <button id="download">1. Download (4.3 GB, once)</button>
+      <span id="progress"></span>
+    </div>
+    <div class="row">
+      <label><input id="draft" type="checkbox" checked /> MTP drafter</label>
+      <label>context <input id="ctx" type="number" value="8192" /></label>
+      <label>draft max <input id="nmax" type="number" value="4" /></label>
+      <button id="load">2. Load</button>
+    </div>
+    <textarea id="prompt">Write a travel article of about 300 words about a morning walk from Vernazza to Monterosso in the Cinque Terre. Plain prose, no headings.</textarea>
+    <div class="row">
+      <label>tokens <input id="npredict" type="number" value="400" /></label>
+      <label><input id="thinking" type="checkbox" /> thinking</label>
+      <button id="gen-mtp">3a. Generate with MTP</button>
+      <button id="gen-plain">3b. Generate without MTP</button>
+      <button id="stop">Stop</button>
+      <span id="rate"></span> <span id="frames"></span>
+    </div>
+    <pre id="out"></pre>
+    <pre id="log"></pre>
+    <script type="module" src="/src/llm/runtime/llama/spike.ts"></script>
+  </body>
+</html>
