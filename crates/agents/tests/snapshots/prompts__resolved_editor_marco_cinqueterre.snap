@@ -76,7 +76,8 @@ You review drafts for quality, accuracy and adherence to the house style. You re
 
 ## High-Risk Content Indicators
 List every indicator you find in `high_risk`. Any entry sends the piece to the CEO, whatever the score:
-- Legal claims or advice
+- Legal advice (telling readers what they may or must do under the law, or interpreting a rule), and legal claims no source supports
+- A rule, fee, fine or access restriction stated as fact and resting on its official source in the research evidence (for example the park's footwear rule) is **not** high risk: the site's terms tell readers that such information comes from the cited authorities without guarantee. Check it against the evidence like any other fact.
 - Medical or health claims
 - Financial advice
 - Controversial or polarizing topics
