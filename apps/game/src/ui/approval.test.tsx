@@ -154,6 +154,30 @@ describe('the publish-approval ticket on live data', () => {
     expect(measured.textContent).toContain('Banned phrases are not checked: this session has no style guide.')
   })
 
+  it('lists the research the article rests on, each claim with a link to its page (ADR-0068)', async () => {
+    const evidence = [
+      { id: 'E1', claim: 'Trail 593V climbs from Riomaggiore to Montenero in about 55 minutes.', url: 'https://www.parconazionale5terre.it/Eiti_dettaglio.php?id_iti=3581', title: 'Parco Nazionale delle Cinque Terre' },
+      { id: 'E2', claim: 'A source the page must not link.', url: 'javascript:alert(1)', title: 'Bad' },
+      { id: 'E3', claim: 'Footwear rules apply on the trails.', url: 'https://www.parconazionale5terre.it/rules', title: '' },
+    ]
+    await openInbox(gatedSim(), companyStore(artifact({ evidence })))
+    const sources = within(gate()).getByRole('group', { name: 'Sources' })
+    const items = within(sources).getAllByRole('listitem')
+    // A source that is not an http(s) address is dropped when the record is read.
+    expect(items.map((li) => li.dataset.evidence)).toEqual(['E1', 'E3'])
+    expect(items[0].textContent).toContain('Trail 593V climbs')
+    const link = within(items[0]).getByRole('link', { name: 'Parco Nazionale delle Cinque Terre' })
+    expect(link.getAttribute('href')).toBe(evidence[0].url)
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+    // Without a title the host names the link.
+    expect(within(items[1]).getByRole('link', { name: 'www.parconazionale5terre.it' })).toBeTruthy()
+  })
+
+  it('says so when an article has no research in the store', async () => {
+    await openInbox(gatedSim())
+    expect(within(gate()).getByRole('group', { name: 'Sources' }).textContent).toContain('No web research is in the store')
+  })
+
   it('links the pull request in the company’s repository and names the head it would merge', async () => {
     await openInbox(gatedSim())
     const t = within(gate())

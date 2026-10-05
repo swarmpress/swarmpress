@@ -12,6 +12,7 @@ import {
   type NewPlanPost,
   type SiteLinks,
   type SourceCapabilities,
+  type ArticleEvidence,
 } from './data-source'
 import { loadPersonaCatalog, type Persona } from './personas'
 import { MemoryPlanStore, type PlanStore } from './plan-store'
@@ -175,6 +176,19 @@ function toBrief(v: unknown): ArticleBrief | null {
   }
 }
 
+/** The dossier's claims with an http(s) source; anything else (a script URL, a malformed entry) is left out. */
+function toEvidence(v: unknown): ArticleEvidence[] {
+  if (!Array.isArray(v)) return []
+  const out: ArticleEvidence[] = []
+  for (const x of v) {
+    const e = obj(x)
+    const url = strOrNull(e?.url)
+    if (!e || !url || !/^https?:\/\//i.test(url)) continue
+    out.push({ id: strOrNull(e.id) ?? `E${out.length + 1}`, claim: strOrNull(e.claim) ?? '', url, title: strOrNull(e.title) ?? '' })
+  }
+  return out
+}
+
 /** An `ArtifactRecord` and its `BriefRecord` (crates/orchestrator/src/store.rs), as parsed JSON, in the overlay's shape. */
 export function toArticleRecord(artifact: unknown, briefRecord: unknown): ArticleRecord {
   const a = obj(artifact) ?? {}
@@ -191,6 +205,7 @@ export function toArticleRecord(artifact: unknown, briefRecord: unknown): Articl
     brief: toBrief(b?.brief),
     writer: strOrNull(b?.writer),
     editor: strOrNull(b?.editor),
+    evidence: toEvidence(a.evidence),
   }
 }
 

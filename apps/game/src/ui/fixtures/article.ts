@@ -33,6 +33,7 @@ export function fixtureArticle(): ArticleRecord {
     pr: FIXTURE_ARTICLE_PR,
     headSha: '9f2c1aa7b3e4d5f60718293a4b5c6d7e8f901234',
     mergedSha: null,
+    evidence: [],
     brief: { title: brief.title, angle: brief.angle, slug: brief.slug, keywords: [...brief.keywords], targetWords: brief.target_words },
     writer: 'staff-1',
     editor: 'staff-5',

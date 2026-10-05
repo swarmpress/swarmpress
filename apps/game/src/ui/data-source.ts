@@ -68,6 +68,16 @@ export interface ArticleBrief {
  * `page` is model output. Treat it as untrusted: read it through
  * article-preview.ts and article-checks.ts, never as markup.
  */
+/** One researched claim of an article's dossier (ADR-0068): untrusted text, rendered as text. */
+export interface ArticleEvidence {
+  /** `E1`, `E2`, …: how drafts and reviews refer to it. */
+  id: string
+  claim: string
+  /** An http(s) address (anything else is dropped when the record is read). */
+  url: string
+  title: string
+}
+
 export interface ArticleRecord {
   /** The latest page JSON, as committed to the draft branch; null before the first draft. */
   page: unknown | null
@@ -87,6 +97,8 @@ export interface ArticleRecord {
   /** Staff ids. */
   writer: string | null
   editor: string | null
+  /** The research the article rests on (ADR-0068), oldest first; empty when none was done. */
+  evidence: ArticleEvidence[]
 }
 
 /**

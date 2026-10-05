@@ -13,9 +13,12 @@ import { Badge, External } from './common'
  * ADR-0059; docs/design/mvp-pipeline.md §5). Everything comes from the
  * company's store (`ArticleRecord`), nothing from the sim.
  *
- * Two labelled groups, kept apart (docs/reference/browser-agent-studio.md §20):
+ * Labelled groups, kept apart (docs/reference/browser-agent-studio.md §20):
  * - **Measured checks**: counted from the page JSON, reproducible, pass or fail.
  * - **Editor's opinion**: the reviewer's score, notes and issues.
+ * - **Sources**: the web research the article rests on (ADR-0068), each claim
+ *   with the page that states it, so the CEO can check a flagged claim.
+ *   Claims and titles are text a model and a web page wrote: shown as text.
  */
 export function ArticleJudgement({ item, id, missing }: { item: string; id: string; missing?: boolean }) {
   const store = useStore()
@@ -60,6 +63,27 @@ export function ArticleJudgement({ item, id, missing }: { item: string; id: stri
         )}
       </div>
 
+      <div class="approval-group" role="group" aria-labelledby={`${id}-sources`}>
+        <h5 id={`${id}-sources`}>Sources</h5>
+        {record.evidence.length > 0 ? (
+          <>
+            <p class="small muted">What the staff found on the web before writing; a claim is kept only when the search returned its page.</p>
+            <ol class="sources">
+              {record.evidence.map((e) => (
+                <li key={e.id} data-evidence={e.id}>
+                  <strong>{e.id}</strong> {e.claim}{' '}
+                  <span class="small">
+                    (<External href={e.url}>{e.title || hostOf(e.url)}</External>)
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </>
+        ) : (
+          <p class="small muted">No web research is in the store for this article.</p>
+        )}
+      </div>
+
       <p class="approval-actions">
         <ReadArticleButton item={item} />
         {record.pr != null && (
@@ -76,6 +100,15 @@ export function ArticleJudgement({ item, id, missing }: { item: string; id: stri
       </p>
     </div>
   )
+}
+
+/** The host of a source, for a link without a title. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
 }
 
 type Status = 'pass' | 'fail' | 'info'

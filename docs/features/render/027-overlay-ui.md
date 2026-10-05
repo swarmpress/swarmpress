@@ -15,6 +15,7 @@ adrs:
   - ADR-0018
   - ADR-0059
   - ADR-0060
+  - ADR-0068
 ---
 
 # Overlay UI (CEO management)

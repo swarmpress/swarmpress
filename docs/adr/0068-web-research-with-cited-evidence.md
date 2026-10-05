@@ -54,8 +54,9 @@ The pitch check (decision 6) is built too: `check#i` per pitch in the standup
 (`crates/orchestrator/src/standup.rs`); an unverifiable pitch is set aside with a line in the
 meeting, a check that fails technically keeps the pitch, and a round with nothing verifiable
 commissions nothing. Not built yet: drafts citing evidence ids in their output (decision 4 holds
-the rule in the prompts only), the `NEEDS_PAGE` ticket for a gap neither covers, and the sources
-on the publish-approval ticket (decision 5).
+the rule in the prompts only), and the `NEEDS_PAGE` ticket for a gap neither covers. The sources
+(decision 5) are on every Inbox ticket about the article (the publish approval and an editor's
+escalation): each claim with a link to its page (`apps/game/src/ui/components/ArticleJudgement.tsx`).
 
 ## Consequences
 
