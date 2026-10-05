@@ -43,6 +43,12 @@ the run fails and says why.
   use it for every run.
 - Close other GPU-heavy apps, plug the machine in, and keep the Chrome window visible: a hidden tab
   stops the scene's frames (they are not counted) and may slow the worker.
+- **Smoke-test every backend before a long run:**
+  `BENCH_QUALITY=off BENCH_FIXTURES=a BENCH_SCALE=0.1 BENCH_LABEL=smoke bench` (with that backend's
+  `BENCH_LLM`). On the owner's M3 Max, generating with Ternary Bonsai 2 made the machine stop
+  responding until WindowServer restarted and ended the login session
+  ([`2026-10-05-bonsai-apple-m3-max-128gb-stability.md`](../qualification/2026-10-05-bonsai-apple-m3-max-128gb-stability.md)).
+  Save open work first.
 
 ## The runs
 
