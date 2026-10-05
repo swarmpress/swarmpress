@@ -75,6 +75,66 @@ pub enum GithubMode {
     },
 }
 
+/// Hosted inference (ADR-0067): GPT-6-Luna through the OpenAI Responses API.
+#[derive(Clone, Debug)]
+pub struct LlmConfig {
+    /// `OPENAI_API_KEY`. Without it `POST /api/llm/generate` answers 503.
+    pub api_key: Option<String>,
+    /// `OPENAI_BASE_URL` (default `https://api.openai.com`; tests point it at wiremock).
+    pub api_base: String,
+    /// `SWARMPRESS_LLM_MODEL` (default `gpt-6-luna`).
+    pub model: String,
+    /// Spending cap per company and UTC day, millionths of a dollar
+    /// (`LUNA_DAILY_BUDGET_USD`, default 2).
+    pub daily_budget_micros: i64,
+    /// One provider call's limit (`SWARMPRESS_LLM_TIMEOUT_SECS`, default 600).
+    pub timeout: Duration,
+    /// Retries of a Flex call the provider refuses as busy (429/503), with backoff.
+    pub flex_retries: u32,
+    /// Prices per million tokens, in millionths of a dollar: Standard, then Flex and Batch.
+    pub prices: LlmPrices,
+}
+
+/// Token prices of one model, millionths of a dollar per million tokens.
+#[derive(Clone, Copy, Debug)]
+pub struct LlmPrices {
+    pub standard: TokenPrices,
+    pub flex: TokenPrices,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct TokenPrices {
+    pub input: i64,
+    pub cached_input: i64,
+    pub output: i64,
+}
+
+impl Default for LlmConfig {
+    fn default() -> Self {
+        Self {
+            api_key: None,
+            api_base: "https://api.openai.com".into(),
+            model: "gpt-6-luna".into(),
+            daily_budget_micros: 2_000_000,
+            timeout: Duration::from_secs(600),
+            flex_retries: 3,
+            // GPT-6-Luna, checked 2026-10-05 (docs/adr/0067-hosted-inference-on-gpt-6-luna.md).
+            prices: LlmPrices {
+                standard: TokenPrices {
+                    input: 100_000,
+                    cached_input: 10_000,
+                    output: 500_000,
+                },
+                flex: TokenPrices {
+                    input: 50_000,
+                    cached_input: 5_000,
+                    output: 250_000,
+                },
+            },
+        }
+    }
+}
+
 /// Web fetch proxy (ADR-0040).
 #[derive(Clone, Debug)]
 pub struct WebConfig {
@@ -198,6 +258,8 @@ pub struct Config {
     /// Upper bound on one sync upload (`SWARMPRESS_SYNC_MAX_BYTES`, default 64 MiB).
     pub sync_max_bytes: usize,
     pub web: WebConfig,
+    /// Hosted inference (ADR-0067).
+    pub llm: LlmConfig,
     /// Built game client to serve at `/` (SPA fallback to index.html).
     pub static_dir: Option<PathBuf>,
     /// Cross-origin isolation for the served client (ADR-0041): the COEP value sent with
@@ -234,6 +296,7 @@ impl Config {
             staff_email_domain: github::provenance::DEFAULT_EMAIL_DOMAIN.into(),
             sync_max_bytes: 8 * 1024 * 1024,
             web: WebConfig::default(),
+            llm: LlmConfig::default(),
             static_dir: None,
             coep: Some("credentialless".into()),
             session_ttl: Duration::from_secs(30 * 24 * 3600),
@@ -340,6 +403,29 @@ impl Config {
             ..wd
         };
 
+        let ld = LlmConfig::default();
+        let daily_budget_micros =
+            match opt("LUNA_DAILY_BUDGET_USD").filter(|v| !v.trim().is_empty()) {
+                None => ld.daily_budget_micros,
+                Some(v) => usd_micros(&v).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "LUNA_DAILY_BUDGET_USD={v:?} must be an amount in dollars, e.g. 2 or 2.50"
+                    )
+                })?,
+            };
+        let llm = LlmConfig {
+            api_key: opt("OPENAI_API_KEY").filter(|v| !v.trim().is_empty()),
+            api_base: opt("OPENAI_BASE_URL")
+                .filter(|v| !v.is_empty())
+                .unwrap_or(ld.api_base.clone()),
+            model: opt("SWARMPRESS_LLM_MODEL")
+                .filter(|v| !v.is_empty())
+                .unwrap_or(ld.model.clone()),
+            daily_budget_micros,
+            timeout: Duration::from_secs(num("SWARMPRESS_LLM_TIMEOUT_SECS", 600u64)?),
+            ..ld
+        };
+
         let td = TrackerConfig::default();
         let tracker = TrackerConfig {
             origin: opt("SWARMPRESS_TRACKER_ORIGIN")
@@ -413,6 +499,7 @@ impl Config {
                 .unwrap_or_else(|| github::provenance::DEFAULT_EMAIL_DOMAIN.into()),
             sync_max_bytes: num("SWARMPRESS_SYNC_MAX_BYTES", 64 * 1024 * 1024)?,
             web,
+            llm,
             static_dir,
             coep,
             session_ttl: Duration::from_secs(num("SWARMPRESS_SESSION_TTL_SECS", 30 * 24 * 3600)?),
@@ -550,6 +637,30 @@ fn is_mail_domain(d: &str) -> bool {
         })
 }
 
+/// `"2"`, `"2.5"` or `"0.05"` dollars as millionths of a dollar (no floating point).
+pub fn usd_micros(v: &str) -> Option<i64> {
+    let v = v.trim().trim_start_matches('$');
+    let (whole, frac) = v.split_once('.').unwrap_or((v, ""));
+    if whole.is_empty() && frac.is_empty() || frac.len() > 6 {
+        return None;
+    }
+    let whole: i64 = if whole.is_empty() {
+        0
+    } else {
+        whole.parse().ok()?
+    };
+    let frac_digits = format!("{frac:0<6}");
+    let frac: i64 = if frac.is_empty() {
+        0
+    } else {
+        frac_digits.parse().ok()?
+    };
+    if whole < 0 || !v.chars().all(|c| c.is_ascii_digit() || c == '.') {
+        return None;
+    }
+    whole.checked_mul(1_000_000)?.checked_add(frac)
+}
+
 fn opt(key: &str) -> Option<String> {
     std::env::var(key).ok()
 }
@@ -588,6 +699,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dollar_amounts_parse_without_floating_point() {
+        assert_eq!(usd_micros("2"), Some(2_000_000));
+        assert_eq!(usd_micros("2.50"), Some(2_500_000));
+        assert_eq!(usd_micros("$0.05"), Some(50_000));
+        assert_eq!(usd_micros(".5"), Some(500_000));
+        assert_eq!(usd_micros("0"), Some(0));
+        for bad in ["", "-1", "abc", "1.2345678", "1,5", "."] {
+            assert_eq!(usd_micros(bad), None, "{bad}");
+        }
+    }
 
     fn real(token: Option<&str>) -> GithubMode {
         GithubMode::Real {

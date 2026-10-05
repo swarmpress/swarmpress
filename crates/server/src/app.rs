@@ -25,7 +25,7 @@ use crate::events::{self, EventHub};
 use crate::gateway::{self, RepoBackend};
 use crate::site_knowledge::{self, KnowledgeCache};
 use crate::tracker::{self, AnalyticsSignalSink, PendingSignalSink, RateLimiter, Tracker};
-use crate::{companies, deploys, sync, web, webhooks};
+use crate::{companies, deploys, llm, sync, web, webhooks};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -202,6 +202,7 @@ pub fn router(st: AppState) -> Router {
                 .layer(sync_limit),
         )
         // web access
+        .route("/api/llm/generate", post(llm::generate))
         .route("/web/fetch", get(web::fetch))
         .route("/web/firecrawl/{*rest}", post(web::firecrawl))
         // tracker

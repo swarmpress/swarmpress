@@ -15,3 +15,4 @@ In-browser LLMs for staff work, the model registry, the browser job worker proto
 | [FEAT-040](040-gpu-scheduler.md) | GPU scheduler | in-progress | high |
 | [FEAT-041](041-agency-escalation.md) | Agency escalation | planned | high |
 | [FEAT-064](064-llm-proxy-memo.md) | Central LLM proxy and memo cache | planned | high |
+| [FEAT-086](086-hosted-inference.md) | Hosted inference on GPT-6-Luna | in-progress | high |

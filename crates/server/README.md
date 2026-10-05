@@ -85,6 +85,10 @@ them: if the poller logs 403, merges stay `pending` and time out.
 | `SWARMPRESS_LEASE_SECS` | 90 | company lease length |
 | `SWARMPRESS_SYNC_MAX_BYTES` | 67108864 | largest sync upload |
 | `SWARMPRESS_WEB_FETCH_RATE_PER_MIN`, `SWARMPRESS_WEB_FETCH_BURST` | 30, 10 | per-user token bucket for `/web/fetch` |
+| `OPENAI_API_KEY` | unset | hosted inference (ADR-0067); without it `/api/llm/generate` answers 503 |
+| `OPENAI_BASE_URL`, `SWARMPRESS_LLM_MODEL` | `https://api.openai.com`, `gpt-6-luna` | provider and model |
+| `LUNA_DAILY_BUDGET_USD` | 2 | spending cap per company and UTC day; past it, 429 |
+| `SWARMPRESS_LLM_TIMEOUT_SECS` | 600 | one provider call |
 | `SWARMPRESS_TRACKER_*` | | see `.env.example` |
 | `RUST_LOG` | `info,sqlx=warn` | |
 
@@ -117,6 +121,7 @@ them: if the poller logs 403, merges stay `pending` and time out.
 | `GET /api/sync/{company}/log` | `{segments: [{segment, sha256, size, created_at}]}` |
 | `PUT /api/sync/{company}/snapshot` | raw bytes, `x-swarmpress-step` required; replaces the latest snapshot |
 | `GET /api/sync/{company}/snapshot` | the bytes with `x-swarmpress-step` and `x-swarmpress-sha256`; 404 before the first |
+| `POST /api/llm/generate` (lease) | `{messages, kind?, max_output_tokens?, reasoning_effort?, service_tier?: flex\|default, json_schema?}` → `{job_id, text, finish: stop\|length, service_tier, usage, cost_micros, duration_ms}`; 429 past the daily budget, 503 without a key or credits (FEAT-086) |
 | `GET /web/fetch?url=` | `{url, status, content_type, text}`; see below |
 | `POST /web/firecrawl/{*rest}` | 501 `{"error":"firecrawl requires credits (wave 3)"}` |
 | `GET/POST /api/projects` | the company's publications; `POST {simProjectId, slug, name, domain?, repo?}` mints a public `trackerKey` |

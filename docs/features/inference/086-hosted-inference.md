@@ -1,0 +1,32 @@
+---
+id: FEAT-086
+title: "Hosted inference on GPT-6-Luna"
+status: in-progress
+importance: high
+paths:
+  - crates/server/src/llm.rs
+  - crates/server/tests/llm.rs
+  - crates/server/migrations/0006_llm_jobs.sql
+  - crates/server/src/config.rs
+adrs:
+  - ADR-0067
+---
+
+# Hosted inference on GPT-6-Luna
+
+The central server runs every model turn on GPT-6-Luna through the OpenAI Responses API
+(ADR-0067; the owner's [migration document](../../reference/gpt-6-luna-simulation-migration.md)).
+`POST /api/llm/generate` takes the conversation, a reasoning effort, a service tier (Flex by
+default, Standard where the player waits) and an optional JSON schema, and returns the answer
+with its usage and cost.
+
+- Signed-in players with the company's current lease only; the lease lock is not held across
+  the provider call.
+- The key (`OPENAI_API_KEY`) stays on the server; without it the route answers 503.
+- One `llm_jobs` row per call (tokens, cost, tier, attempts, status); a company past its daily
+  budget (`LUNA_DAILY_BUDGET_USD`, per UTC day) gets 429.
+- A Flex call the provider refuses as busy is retried with backoff, never promoted silently; an
+  account without credits is reported as such, not retried.
+
+Not built yet: the browser backend that calls it, Batch preparation, the story director and
+event-grounded conversations (the migration document's steps 2 to 4).
