@@ -36,6 +36,11 @@ the run fails and says why.
 
   The engine is unlicensed upstream and is **never committed**; check
   `git ls-files apps/game/public/vendor` is empty before any commit.
+- **Keep the browser profile on the internal SSD.** The default profile is inside the repository;
+  if the repository is on an external disk, every warm start reads the 6 GB of weights from it (on
+  the owner's USB volume: 4.0 min to ready instead of 11.5 s). Point `BONSAI_PROFILE` at an
+  internal path, for example `BONSAI_PROFILE=$HOME/Library/Caches/swarmpress-bonsai-profile`, and
+  use it for every run.
 - Close other GPU-heavy apps, plug the machine in, and keep the Chrome window visible: a hidden tab
   stops the scene's frames (they are not counted) and may slow the worker.
 
