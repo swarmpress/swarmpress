@@ -9,11 +9,13 @@
   "exports": {
     ".": "./src/index.ts",
     "./skill": "./src/skill.ts",
-    "./interpret": "./src/interpret.ts"
+    "./interpret": "./src/interpret.ts",
+    "./runtime.js": "./runtime/toolgraph-runtime.js"
   },
   "scripts": {
     "test": "mkdir -p reports; bun test --reporter=junit --reporter-outfile=reports/junit.xml; s=$?; bun ../sdk/scripts/bun-junit.ts reports/junit.xml; exit $s",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:runtime": "bun scripts/build-runtime.ts"
   },
   "dependencies": {
     "@swarm-press/sdk": "workspace:*",
