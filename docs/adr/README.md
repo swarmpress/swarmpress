@@ -92,3 +92,4 @@ Accepted ADRs are never rewritten.
 | [0070](0070-site-integrity-and-page-refresh.md) | Site integrity and page refresh | Accepted |
 | [0071](0071-the-analytics-loop.md) | The analytics loop | Accepted |
 | [0072](0072-site-blueprints-and-tool-graphs.md) | Site blueprints and tool graphs, built in bricks | Accepted |
+| [0073](0073-translations-and-distribution.md) | Translations and distribution | Accepted |

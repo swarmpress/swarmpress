@@ -262,6 +262,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             }
             JobKind::Performance => self.performance(req).await,
             JobKind::KpiReport => self.kpi_report(req).await,
+            JobKind::Promotion => self.promotion(req).await,
             JobKind::Draft => self.staged_draft(req).await,
             JobKind::Review => self.staged_review(req).await,
             JobKind::Publish => {

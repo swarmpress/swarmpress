@@ -346,6 +346,26 @@ fn audit_and_summary() {
         audit.policy.is_empty(),
         "the mini site has no linking policy"
     );
+    // ADR-0073: the articles whose title lacks a site language (the gelateria article has all four)
+    let untranslated: Vec<(&str, &[String])> = audit
+        .untranslated
+        .iter()
+        .map(|u| (u.path.as_str(), u.missing.as_slice()))
+        .collect();
+    let missing = ["de".to_string(), "it".to_string(), "fr".to_string()];
+    assert_eq!(
+        untranslated,
+        [
+            (
+                "content/pages/blog/day-trip-to-portovenere.json",
+                &missing[..]
+            ),
+            (
+                "content/pages/blog/last-light-on-sentiero-azzurro.json",
+                &missing[..]
+            )
+        ]
+    );
     let summary = SiteSummary::new(&kb, Some(&audit)).to_string();
     assert!(summary.contains("pages: 9"));
     assert!(summary.contains("stray copies 2 (1 identical)"));

@@ -127,6 +127,9 @@ pub enum JobKind {
     /// The data scientist's weekly report at the KPI review (ADR-0071).
     #[serde(alias = "kpi-report")]
     KpiReport,
+    /// Promotion copy for a page that went live (ADR-0073).
+    #[serde(alias = "promotion")]
+    Promotion,
 }
 
 impl JobKind {
@@ -140,12 +143,16 @@ impl JobKind {
             JobKind::Board => "board",
             JobKind::Performance => "performance",
             JobKind::KpiReport => "kpi-report",
+            JobKind::Promotion => "promotion",
         }
     }
 
     /// A data scientist's job (ADR-0071): no phase, no ticket.
     pub const fn is_analysis(self) -> bool {
-        matches!(self, JobKind::Performance | JobKind::KpiReport)
+        matches!(
+            self,
+            JobKind::Performance | JobKind::KpiReport | JobKind::Promotion
+        )
     }
 
     /// A meeting's job: its attendees are its staff, its end is its outcome.
@@ -236,6 +243,9 @@ pub enum WorkItemKind {
     /// An existing page's broken internal links removed (ADR-0070), without a model.
     #[serde(alias = "fix")]
     Fix,
+    /// An existing page translated into one more language (ADR-0073).
+    #[serde(alias = "translation")]
+    Translation,
 }
 
 impl WorkItemKind {
@@ -244,6 +254,7 @@ impl WorkItemKind {
             WorkItemKind::Article => "article",
             WorkItemKind::Refresh => "refresh",
             WorkItemKind::Fix => "fix",
+            WorkItemKind::Translation => "translation",
         }
     }
 
@@ -617,6 +628,7 @@ impl World {
             JobKind::Performance | JobKind::KpiReport => {
                 self.data_scientist().into_iter().collect()
             }
+            JobKind::Promotion => self.promoter(job.project).into_iter().collect(),
             _ => item
                 .and_then(|i| i.phases.iter().find(|p| p.job == Some(job.job_id)))
                 .and_then(|p| p.assignee)
@@ -868,12 +880,29 @@ impl World {
                 break;
             }
             let editor = self.plan.items.get(&id).and_then(|i| i.owner);
-            let writer = self
-                .staff
-                .values()
-                .filter(|s| s.is_active() && can_draft(s.role) && s.allocation(project) > 0)
-                .map(|s| s.id)
-                .find(|s| Some(*s) != editor && self.writing(*s).is_none());
+            let translation = self
+                .plan
+                .items
+                .get(&id)
+                .is_some_and(|i| i.kind == WorkItemKind::Translation);
+            let free = |s: &&crate::staff::Staff| {
+                s.is_active()
+                    && can_draft(s.role)
+                    && s.allocation(project) > 0
+                    && Some(s.id) != editor
+                    && self.writing(s.id).is_none()
+            };
+            // A translation goes to a free translator first (ADR-0073).
+            let writer = translation
+                .then(|| {
+                    self.staff
+                        .values()
+                        .filter(free)
+                        .find(|s| s.role == Role::Translator)
+                        .map(|s| s.id)
+                })
+                .flatten()
+                .or_else(|| self.staff.values().find(free).map(|s| s.id));
             let Some(writer) = writer else {
                 break;
             };
@@ -1086,7 +1115,7 @@ impl World {
                     i.followed_up = true;
                 }
             }
-            (JobKind::KpiReport, _) => {}
+            (JobKind::KpiReport | JobKind::Promotion, _) => {}
             (JobKind::Standup, _) => {
                 self.end_standup(&job);
                 self.raise_standup_failed(job.project, reason);
@@ -1311,6 +1340,50 @@ impl World {
             project,
             work_item: id,
         });
+        self.request_promotion(id);
+    }
+
+    /// The project's social media manager, else its marketing manager (ADR-0073).
+    pub(crate) fn promoter(&self, project: ProjectId) -> Option<StaffId> {
+        [Role::SocialMediaManager, Role::MarketingManager]
+            .into_iter()
+            .find_map(|r| {
+                self.staff
+                    .values()
+                    .find(|s| s.is_active() && s.role == r && s.allocation(project) > 0)
+                    .or_else(|| self.staff.values().find(|s| s.is_active() && s.role == r))
+                    .map(|s| s.id)
+            })
+    }
+
+    /// Promotion copy for an article or a refresh that just went live, when
+    /// the `distribution` policy is on and someone can write it (ADR-0073).
+    fn request_promotion(&mut self, id: WorkItemId) {
+        if !self.company.policies.distribution {
+            return;
+        }
+        let Some((project, kind, brief_ref, revision)) = self
+            .plan
+            .items
+            .get(&id)
+            .map(|i| (i.project, i.kind, i.brief_ref, i.revision))
+        else {
+            return;
+        };
+        if !matches!(kind, WorkItemKind::Article | WorkItemKind::Refresh) {
+            return;
+        }
+        if let Some(who) = self.promoter(project) {
+            self.request_job(
+                JobKind::Promotion,
+                project,
+                Some(id),
+                brief_ref,
+                revision,
+                None,
+                vec![who],
+            );
+        }
     }
 
     fn push_feed(&mut self, e: FeedEntry) {

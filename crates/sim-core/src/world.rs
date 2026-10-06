@@ -466,6 +466,7 @@ impl World {
                 Policy::QualityBar(q) => self.company.policies.quality_bar = q,
                 Policy::EditorialBoard(on) => self.company.policies.editorial_board = on,
                 Policy::Analytics(on) => self.company.policies.analytics = on,
+                Policy::Distribution(on) => self.company.policies.distribution = on,
             },
             Command::Promote { staff } => {
                 if let Some(s) = self.staff.get_mut(&staff) {

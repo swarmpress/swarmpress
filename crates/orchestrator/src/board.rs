@@ -95,6 +95,17 @@ pub struct SiteHealth {
     /// text); their page is resolved from the brief.
     #[serde(default)]
     pub underperforming: Vec<Underperforming>,
+    /// Articles missing site languages (ADR-0073), from the audit.
+    #[serde(default)]
+    pub untranslated: Vec<UntranslatedPage>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UntranslatedPage {
+    pub path: String,
+    #[serde(default)]
+    pub title: String,
+    pub missing: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,8 +139,8 @@ pub struct BrokenPage {
     pub broken: u32,
 }
 
-/// Site pages the board's frame offers at most (ADR-0070).
-const SITE_PAGES: usize = 6;
+/// Site pages the board's frame offers at most (ADR-0070, ADR-0073).
+const SITE_PAGES: usize = 8;
 
 /// A page of the frame's site-health section.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -140,6 +151,9 @@ struct FrameSite {
     path: String,
     title: String,
     detail: String,
+    /// The languages a translation may target (ADR-0073).
+    #[serde(default)]
+    missing: Vec<String>,
 }
 
 impl BoardContext {
@@ -439,10 +453,24 @@ fn frame_site(site: Option<&SiteHealth>) -> Vec<FrameSite> {
             format!("{} broken internal link{s}", b.broken),
         )
     });
-    for (kind, path, title, detail) in under.chain(stale).chain(fixes) {
-        if out.len() >= SITE_PAGES || out.iter().any(|x| x.path == path) {
+    let translations = site.untranslated.iter().take(SITE_PAGES / 4).map(|u| {
+        (
+            "translation",
+            u.path.clone(),
+            u.title.clone(),
+            format!("{} missing", u.missing.join(", ")),
+        )
+    });
+    for (kind, path, title, detail) in under.chain(stale).chain(fixes).chain(translations) {
+        if out.len() >= SITE_PAGES || out.iter().any(|x| x.path == path && x.kind == kind) {
             continue;
         }
+        let missing = site
+            .untranslated
+            .iter()
+            .find(|u| kind == "translation" && u.path == path)
+            .map(|u| u.missing.clone())
+            .unwrap_or_default();
         let title = if title.trim().is_empty() {
             path.clone()
         } else {
@@ -454,6 +482,7 @@ fn frame_site(site: Option<&SiteHealth>) -> Vec<FrameSite> {
             path,
             title,
             detail,
+            missing,
         });
     }
     out
@@ -468,7 +497,7 @@ fn plan_problems(
 ) -> Vec<String> {
     let mut problems = Vec::new();
     let mut seen = taken.clone();
-    let mut cared: Vec<&str> = Vec::new();
+    let mut cared: Vec<String> = Vec::new();
     for (i, p) in plan.proposals.iter().enumerate() {
         let n = i + 1;
         if p.is_maintenance() {
@@ -482,10 +511,20 @@ fn plan_problems(
                     "Proposal {n}: {page} needs a {}, not a {kind}.",
                     s.kind
                 )),
-                Some(_) if cared.contains(&page) => {
+                Some(s)
+                    if s.kind == "translation"
+                        && !s.missing.iter().any(|l| l == p.language.trim()) =>
+                {
+                    problems.push(format!(
+                        "Proposal {n}: {page} needs a translation into one of {}, not {:?}.",
+                        s.missing.join(", "),
+                        p.language.trim()
+                    ))
+                }
+                Some(_) if cared.contains(&format!("{page}/{}", p.language.trim())) => {
                     problems.push(format!("Proposal {n}: {page} is planned twice."))
                 }
-                Some(_) => cared.push(page),
+                Some(_) => cared.push(format!("{page}/{}", p.language.trim())),
             }
             if !(1..=MAX_PUBLISH_DAY).contains(&p.publish_day) {
                 problems.push(format!(
@@ -907,7 +946,12 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                     angle: pitch.angle.clone(),
                     keywords: pitch.keywords.clone(),
                     target_words: DEFAULT_TARGET_WORDS,
-                    language: self.site.language.clone(),
+                    // a translation's brief carries its target language (ADR-0073)
+                    language: if care.is_some_and(|s| s.kind == "translation") {
+                        proposal.language.trim().to_string()
+                    } else {
+                        self.site.language.clone()
+                    },
                     notes: String::new(),
                 },
                 writer: String::new(),
@@ -938,6 +982,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 kind: match care.map(|s| s.kind.as_str()) {
                     Some("refresh") => "Refresh",
                     Some("fix") => "Fix",
+                    Some("translation") => "Translation",
                     _ => "Article",
                 }
                 .to_string(),

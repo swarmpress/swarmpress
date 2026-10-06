@@ -478,7 +478,9 @@ function weeklyBoard(p: Prompt) {
     const alias = line.slice(2).split(/\s+/)[0] ?? ''
     const title = quoted(line)[0]
     if (title === undefined) continue
-    const kind = line.includes('(fix:') ? 'fix' : 'refresh'
+    const kind = line.includes('(fix:') ? 'fix' : line.includes('(translation:') ? 'translation' : 'refresh'
+    // a translation into the first missing language: `(translation: de, fr missing)`
+    const language = /\(translation: ([a-z]{2})/.exec(line)?.[1] ?? ''
     proposals.push({
       topic: '',
       title: cap(title, 70),
@@ -488,6 +490,7 @@ function weeklyBoard(p: Prompt) {
       workstream: 'Site upkeep',
       kind,
       page: alias,
+      language,
     })
   }
   let inTopics = false
@@ -529,6 +532,7 @@ function weeklyBoard(p: Prompt) {
     if (maintenance && !('kind' in prop)) {
       prop.kind = 'article'
       prop.page = ''
+      prop.language = ''
     }
   })
   return {
@@ -584,6 +588,20 @@ export function standupAnswer(prompt: string, later = ''): MvpReply | null {
         updates: [{ passage: 'P1', text: `Updated this season (see the park's notice): ${[...first].slice(0, 120).join('')}`, why: 'The opening facts were from an earlier season.', evidence: ['E1'] }],
       },
     }
+  }
+  if (task === 'promotion') {
+    const url = p.text.split('\n').find((l) => l.startsWith('URL: '))?.slice(5) ?? ''
+    const title = quoted(p.text)[0] ?? 'the article'
+    return { json: { newsletter: `New on the site: ${title}. Read it here: ${url}`, instagram: `${title}\nNew on the blog, link in bio.\n#cinqueterre #liguria #italytravel`, x: `New: ${title} ${url}`, facebook: `We just published ${title}. Read it here: ${url}` } }
+  }
+  if (task.startsWith('translate into ')) {
+    const lang = task.slice('translate into '.length)
+    const translations = p.text
+      .split('\n')
+      .map((l) => /^(F\d+): (.*)$/.exec(l))
+      .filter((m): m is RegExpExecArray => !!m)
+      .map((m) => ({ field: m[1], text: `[${lang}] ${m[2]}` }))
+    return { json: { translations } }
   }
   if (task === 'update review') return { json: { decision: 'approve', score: 8, notes: 'The update is correct and rests on the evidence.', issues: [], high_risk: [] } }
   return null

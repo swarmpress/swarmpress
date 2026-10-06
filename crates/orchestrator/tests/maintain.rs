@@ -394,3 +394,160 @@ async fn the_board_sees_underperforming_articles_and_the_last_kpi_report() {
         Some("content/pages/blog/harvest-week-in-manarola.json")
     );
 }
+
+async fn put_translation_brief(store: &dyn Store, brief_ref: u64, target: &str, lang: &str) {
+    let rec = json!({
+        "job_id": 19,
+        "brief": {"content_id": format!("content-{brief_ref:x}"), "title": "Translate", "slug": "t",
+                  "angle": "Translate the article.", "keywords": [], "target_words": 800, "language": lang, "notes": ""},
+        "writer": "", "editor": "staff-5", "minutes": [], "work_item": null,
+        "staff": [staff("staff-5")], "kind": "translation", "target": target
+    });
+    store.put_brief(COMPANY, brief_ref, rec).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_translation_fills_the_localized_fields_of_the_live_page() {
+    let llm = Arc::new(fake_writer::fake_writer(Vec::<FakeReply>::new()));
+    let gw = gateway();
+    let o = orch(llm.clone(), gw.clone());
+    put_translation_brief(o.store().as_ref(), 11, BROKEN, "de").await;
+    let before: Value = serde_json::from_str(&fixture(BROKEN)).unwrap();
+    let fields = orchestrator_localized(&before);
+    assert!(!fields.is_empty(), "the article has localized fields");
+
+    let out = o
+        .run(&job(80, JobKind::Draft, 11, 0, "staff-2"))
+        .await
+        .unwrap();
+    assert!(digest(&out).ok, "{out:?}");
+    assert!(
+        tasks(&llm).iter().all(|t| t == "translate into de"),
+        "{:?}",
+        tasks(&llm)
+    );
+    let branch = format!("drafts/content-{}", before["id"].as_str().unwrap());
+    let after: Value = serde_json::from_str(&gw.file_text(&branch, BROKEN).unwrap()).unwrap();
+    for (ptr, en) in &fields {
+        let obj = after.pointer(ptr).unwrap();
+        assert_eq!(obj["en"], json!(en), "{ptr}: English stays");
+        assert_eq!(obj["de"], json!(format!("[de] {en}")), "{ptr}");
+    }
+    // the slug is not translated
+    assert_eq!(after["slug"], before["slug"]);
+    // the review is told what it reviews
+    let out = o
+        .run(&job(81, JobKind::Review, 11, 0, "staff-5"))
+        .await
+        .unwrap();
+    assert_eq!(digest(&out).score, 8);
+    let prompt = llm.calls().last().unwrap().request.messages[0].text.clone();
+    assert!(prompt.contains("translation into German"), "{prompt}");
+}
+
+fn orchestrator_localized(page: &Value) -> Vec<(String, String)> {
+    // the same rule as orchestrator::maintain::localized_fields, for the assertion
+    fn walk(v: &Value, ptr: &str, key: &str, out: &mut Vec<(String, String)>) {
+        match v {
+            Value::Object(m) => {
+                let loc = !m.is_empty()
+                    && m.keys()
+                        .all(|k| k.len() == 2 && k.chars().all(|c| c.is_ascii_lowercase()))
+                    && m.get("en")
+                        .and_then(Value::as_str)
+                        .is_some_and(|t| !t.trim().is_empty());
+                if loc {
+                    if key != "slug" {
+                        out.push((ptr.to_string(), m["en"].as_str().unwrap().to_string()));
+                    }
+                    return;
+                }
+                for (k, c) in m {
+                    walk(c, &format!("{ptr}/{k}"), k, out);
+                }
+            }
+            Value::Array(a) => {
+                for (i, c) in a.iter().enumerate() {
+                    walk(c, &format!("{ptr}/{i}"), key, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    walk(page, "", "", &mut out);
+    out
+}
+
+#[tokio::test]
+async fn promotion_copy_is_posted_and_nothing_is_sent() {
+    let llm = Arc::new(fake_writer::fake_writer(Vec::<FakeReply>::new()));
+    let o = orch(llm.clone(), gateway());
+    put_care_brief(o.store().as_ref(), 12, "refresh", STALE).await;
+    let social = StaffRef {
+        id: "staff-12".into(),
+        persona: "isabella".into(),
+        role: "social-media-manager".into(),
+    };
+    let req = JobRequest {
+        staff: vec![social],
+        ..job(90, JobKind::Promotion, 12, 0, "staff-1")
+    };
+    let out = o.run(&req).await.unwrap();
+    assert!(digest(&out).ok, "{out:?}");
+    let text = o.store().plan_json(COMPANY).await.unwrap();
+    let post = &text["posts"]["work-item-12"][0];
+    assert_eq!(post["type"], json!("distribution"));
+    assert_eq!(post["payload"]["sent"], json!(false));
+    let url = post["payload"]["url"].as_str().unwrap();
+    assert!(
+        url.ends_with("/en/blog/5-hidden-gelaterias-you-need-to-try"),
+        "{url}"
+    );
+    assert!(post["payload"]["x"].as_str().unwrap().contains(url));
+}
+
+#[tokio::test]
+async fn the_board_plans_a_translation_into_a_missing_language() {
+    let llm = Arc::new(fake_writer::fake_writer(Vec::<FakeReply>::new()));
+    let o = orch(llm.clone(), gateway());
+    let ctx = json!({"today": "2026-10-05", "in_flight": [], "planned_room": 10,
+                     "site": {"untranslated": [{"path": BROKEN, "title": "The Last Light on the Sentiero Azzurro", "missing": ["de", "it", "fr"]}]}});
+    let req = JobRequest {
+        company_id: COMPANY.into(),
+        job_id: 95,
+        kind: JobKind::Board,
+        project: "project-1".into(),
+        work_item: None,
+        brief_ref: None,
+        revision: 0,
+        staff: board_team(),
+        meeting: Some("meeting-9".into()),
+        context: ctx,
+        approved_by: None,
+    };
+    let out = o.run(&req).await.unwrap();
+    let prompt = &llm.calls()[0].request.messages[0].text;
+    assert!(
+        prompt.contains(
+            "- S1 «The Last Light on the Sentiero Azzurro» (translation: de, it, fr missing)"
+        ),
+        "{prompt}"
+    );
+    let items = match out.as_slice() {
+        [Outcome::BoardOutcome { items, .. }] => items.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(items[0].kind, "Translation");
+    let rec: BriefRecord = serde_json::from_value(
+        o.store()
+            .get_brief(COMPANY, items[0].brief_ref)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(rec.kind.as_deref(), Some("translation"));
+    assert_eq!(rec.brief.language, "de");
+    assert_eq!(rec.target.as_deref(), Some(BROKEN));
+}

@@ -195,10 +195,11 @@ test.describe('CEO overlay', () => {
     await page.keyboard.press('k')
     await expect(region(page, 'Performance')).toHaveCount(0)
     await expect(region(page, 'Finance')).toBeVisible()
-    // The plan shows the board alone: the sim exports nothing for the other views.
+    // The plan shows the board and the goals (one per project, ADR-0069); the schedule views
+    // fill only after the first editorial board.
     await page.keyboard.press('p')
     await expect(region(page, 'Media & publishing plan')).toBeVisible()
-    await expect(region(page, 'Media & publishing plan').getByRole('tab')).toHaveCount(0)
+    await expect(region(page, 'Media & publishing plan').getByRole('tab')).toHaveText(['Board', 'Goals'])
     expect(errors).toEqual([])
   })
 

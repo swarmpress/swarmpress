@@ -937,6 +937,27 @@ impl KnowledgeBase {
                     title: p.title(&self.manifest.default_language).to_string(),
                     date,
                 });
+                // The site languages its title has no text for (ADR-0073).
+                let missing: Vec<String> = self
+                    .manifest
+                    .languages
+                    .iter()
+                    .filter(|l| **l != self.manifest.default_language)
+                    .filter(|l| {
+                        v["title"]
+                            .get(l.as_str())
+                            .and_then(Value::as_str)
+                            .is_none_or(|t| t.trim().is_empty())
+                    })
+                    .cloned()
+                    .collect();
+                if !missing.is_empty() {
+                    audit.untranslated.push(Untranslated {
+                        path: p.path.clone(),
+                        title: p.title(&self.manifest.default_language).to_string(),
+                        missing,
+                    });
+                }
             }
             if let Some(policies) = policy.as_ref().and_then(|v| v["policies"].as_object()) {
                 if let Some(body) = v["body"].as_array() {
@@ -1069,6 +1090,16 @@ pub struct SiteAudit {
     pub articles: Vec<ArticleDate>,
     /// Blocks outside the linking policy's link counts.
     pub policy: Vec<PolicyFinding>,
+    /// Articles missing site languages (ADR-0073).
+    pub untranslated: Vec<Untranslated>,
+}
+
+/// An article and the site languages its title has no text for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Untranslated {
+    pub path: String,
+    pub title: String,
+    pub missing: Vec<String>,
 }
 
 /// The core page types followed by a site's registry file, if it has one.

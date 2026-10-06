@@ -146,6 +146,12 @@ async fn audited(st: &AppState, company: &crate::db::Company) -> AppResult<(Arc<
         .take(LIST_CAP)
         .map(|f| json!({"path": f.path, "pointer": f.pointer, "block": f.block, "links": f.links, "min": f.min, "max": f.max}))
         .collect();
+    let untranslated: Vec<Value> = audit
+        .untranslated
+        .iter()
+        .take(LIST_CAP)
+        .map(|u| json!({"path": u.path, "title": u.title, "missing": u.missing}))
+        .collect();
     let live_pages = kb
         .pages
         .pages
@@ -174,6 +180,8 @@ async fn audited(st: &AppState, company: &crate::db::Company) -> AppResult<(Arc<
         "policy": policy,
         "policy_count": audit.policy.len(),
         "articles": audit.articles.len(),
+        "untranslated": untranslated,
+        "untranslated_count": audit.untranslated.len(),
         "signals": signals,
     });
     let articles = audit

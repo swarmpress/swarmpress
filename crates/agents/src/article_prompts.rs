@@ -1155,3 +1155,96 @@ otherwise, naming the change and what to do. Score the article as it now stands.
     c.required("changes", s);
     c.build()
 }
+
+// ---------------------------------------------------------------------------
+// Translating a published page (ADR-0073)
+// ---------------------------------------------------------------------------
+
+/// The answer budget of one translation batch, tokens.
+pub const TRANSLATE_ANSWER: u32 = 3000;
+/// Fields one translation batch carries at most.
+pub const TRANSLATE_BATCH: usize = 30;
+/// Characters of English one batch carries at most.
+pub const TRANSLATE_BATCH_CHARS: usize = 6000;
+
+/// One translated field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FieldTranslation {
+    pub field: String,
+    pub text: String,
+}
+
+/// A translation batch's answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TranslateAnswer {
+    pub translations: Vec<FieldTranslation>,
+}
+
+/// The English name of a language code the site uses.
+pub fn language_name(code: &str) -> &str {
+    match code {
+        "de" => "German",
+        "fr" => "French",
+        "it" => "Italian",
+        "es" => "Spanish",
+        "en" => "English",
+        other => other,
+    }
+}
+
+/// `translate#i` (ADR-0073): one batch of a page's English fields into `lang`.
+pub fn translate_prompt(
+    profile: &LlmProfile,
+    system: &str,
+    lang: &str,
+    title: &str,
+    fields: &[(String, String)],
+    style: &str,
+) -> StagePrompt {
+    let name = language_name(lang);
+    let mut c = Composer::new(
+        profile,
+        system,
+        format!("translate into {lang}"),
+        TRANSLATE_ANSWER,
+    );
+    c.required(
+        "instructions",
+        format!(
+            "Translate each field of this published article from English into {name}, in the article's voice. Keep \
+place names, proper names, trail numbers and product names as they are; keep any inline markup (like <br/>) where it \
+is; keep each field about as long as the English. Translate every field, once, and nothing else. Answer \
+`{{\"translations\": [{{\"field\": \"F1\", \"text\": …}}]}}`."
+        ),
+    );
+    c.optional("style", 1, style.to_string());
+    let mut f = format!("## The article\nTitle: {title}\n\n## Fields (English)\n");
+    for (alias, text) in fields {
+        f.push_str(&format!("{alias}: {text}\n"));
+    }
+    c.required("fields", f);
+    c.build()
+}
+
+/// The schema of a translation batch over `n` fields.
+pub fn translate_schema(n: usize) -> Value {
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["translations"],
+        "properties": {
+            "translations": {
+                "type": "array", "minItems": n.max(1), "maxItems": n.max(1),
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["field", "text"],
+                    "properties": {
+                        "field": {"type": "string", "minLength": 2, "maxLength": 5},
+                        "text": {"type": "string", "minLength": 1, "maxLength": 6000}
+                    }
+                }
+            }
+        }
+    })
+}

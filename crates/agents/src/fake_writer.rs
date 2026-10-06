@@ -153,6 +153,20 @@ pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
                                     "Link new articles from the village pages."]}),
             );
         }
+        "promotion" => {
+            let url = p.field("URL: ");
+            let title = quoted(p.0)
+                .first()
+                .copied()
+                .unwrap_or("the article")
+                .to_string();
+            return FakeReply::Json(json!({
+                "newsletter": format!("New on the site: {title}. Read it here: {url}"),
+                "instagram": format!("{title}\nNew on the blog, link in bio.\n#cinqueterre #liguria #italytravel"),
+                "x": format!("New: {title} {url}"),
+                "facebook": format!("We just published {title}. Read it here: {url}")
+            }));
+        }
         "update review" => {
             return FakeReply::Json(json!({"decision": "approve", "score": 8,
                 "notes": "The update is correct and rests on the evidence.", "issues": [], "high_risk": []}))
@@ -174,6 +188,18 @@ pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
             ]}))
         }
         _ => {}
+    }
+    // A translation copies each field, marked with its language (ADR-0073).
+    if let Some(lang) = task.strip_prefix("translate into ") {
+        let translations: Vec<Value> =
+            p.0.lines()
+                .filter_map(|l| {
+                    let (alias, text) = l.split_once(": ")?;
+                    (alias.starts_with('F') && alias[1..].chars().all(|c| c.is_ascii_digit()))
+                        .then(|| json!({"field": alias, "text": format!("[{lang}] {text}")}))
+                })
+                .collect();
+        return FakeReply::Json(json!({"translations": translations}));
     }
     let words = p.number("Words: about ");
     // The second half of a section written in two halves starts elsewhere in
@@ -637,9 +663,17 @@ fn weekly_board(p: &Prompt<'_>) -> Value {
         };
         let kind = if line.contains("(fix:") {
             "fix"
+        } else if line.contains("(translation:") {
+            "translation"
         } else {
             "refresh"
         };
+        // a translation into the first missing language: `(translation: de, fr missing)`
+        let language = line
+            .split_once("(translation: ")
+            .and_then(|(_, r)| r.split([',', ' ']).next())
+            .unwrap_or("")
+            .to_string();
         proposals.push(json!({
             "topic": "",
             "title": cap(title, 70),
@@ -650,6 +684,7 @@ fn weekly_board(p: &Prompt<'_>) -> Value {
             "workstream": "Site upkeep",
             "kind": kind,
             "page": alias,
+            "language": language,
         }));
     }
     let mut in_topics = false;
@@ -736,6 +771,7 @@ fn weekly_board(p: &Prompt<'_>) -> Value {
         if maintenance && prop.get("kind").is_none() {
             prop["kind"] = json!("article");
             prop["page"] = json!("");
+            prop["language"] = json!("");
         }
     }
     json!({

@@ -145,6 +145,8 @@ export type PostType =
   | 'performance'
   /** The CEO's note with a Send back at the publish gate (ADR-0059): what the revision should fix. */
   | 'send-back-note'
+  /** Promotion copy for a page that went live (ADR-0073): written for the CEO, never sent. */
+  | 'distribution'
 
 export const POST_TYPES: PostType[] = [
   'comment',

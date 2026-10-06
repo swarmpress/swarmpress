@@ -221,6 +221,9 @@ export interface SiteAudit {
   policy: { path: string; pointer: string; block: string; links: number; min: number; max: number | null }[]
   policy_count: number
   stale: { path: string; title: string; date: string; age_days: number }[]
+  /** Articles missing site languages (ADR-0073). */
+  untranslated: { path: string; title: string; missing: string[] }[]
+  untranslated_count: number
   stale_count: number
   stale_days: number
   articles: number

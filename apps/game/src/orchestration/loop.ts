@@ -155,6 +155,7 @@ export const DEFAULT_JOB_TIMEOUT_MS: Record<string, number> = {
   board: 30 * 60_000,
   performance: 15 * 60_000,
   'kpi-report': 15 * 60_000,
+  promotion: 15 * 60_000,
   draft: 60 * 60_000,
   review: 30 * 60_000,
   publish: 15 * 60_000,

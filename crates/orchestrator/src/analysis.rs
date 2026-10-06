@@ -228,6 +228,115 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         }])
     }
 
+    /// The Promotion job (ADR-0073): copy for the newsletter and the site's
+    /// channels when a page goes live, as a `distribution` post in the item's
+    /// thread. Nothing is sent or posted.
+    pub(crate) async fn promotion(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
+        use agents::analysis::{promotion_prompt, promotion_schema, Promotion, PROMOTION_ANSWER};
+        let item = self.work_item(req)?;
+        let who = req.staff.first().cloned().ok_or_else(|| {
+            invalid(format!(
+                "job {} has nobody to write promotion copy",
+                req.job_id
+            ))
+        })?;
+        let rec = self.load_brief(req).await?;
+        let slug = rec
+            .target
+            .as_deref()
+            .and_then(|t| t.rsplit('/').next())
+            .and_then(|f| f.strip_suffix(".json"))
+            .unwrap_or(&rec.brief.slug)
+            .to_string();
+        let base = self
+            .site
+            .knowledge
+            .as_ref()
+            .and_then(|k| k.kb.manifest.base_url.clone())
+            .unwrap_or_else(|| format!("https://{}", self.site.site_id));
+        let url = format!("{}/en/blog/{slug}", base.trim_end_matches('/'));
+        self.report_job(req, Some(&who), ProgressState::Started, json!({"url": url}));
+        let user = promotion_prompt(
+            &rec.brief.title,
+            &rec.brief.angle,
+            &url,
+            &self.site.brand_name,
+        );
+        let p = persona(&who.persona)?;
+        let system = self.system_prompt(&templates::seo_marketing(), &p, Vars::new())?;
+        let request = LlmRequest {
+            profile: CallProfile {
+                job: agents::JobKind::Brief,
+                role: role_of(&who.role).unwrap_or(Role::MarketingManager),
+                seniority: Some(p.seniority),
+                staff_id: Some(who.id.clone()),
+            },
+            system: vec![system.clone()],
+            messages: vec![LlmMessage::user(user.clone())],
+            max_tokens: PROMOTION_ANSWER,
+            reasoning_tokens: Some(0),
+        };
+        let schema = promotion_schema();
+        let hash = stage_hash(&["promotion", &system, &user]);
+        let copy: Option<Promotion> = match self.recall(req, "promotion", 0, Some(&hash)).await? {
+            Some(v) => serde_json::from_value(v).map_err(corrupt)?,
+            None => {
+                let ok = |_: &Value| -> std::result::Result<(), Vec<String>> { Ok(()) };
+                let r = structured_with_repair(self.llm.as_ref(), &request, &schema, &ok, 1)
+                    .await
+                    .ok()
+                    .and_then(|r| serde_json::from_value::<Promotion>(r.value).ok());
+                self.remember(req, "promotion", 0, hash, &r).await?
+            }
+        };
+        let Some(copy) = copy else {
+            self.system_post(
+                req,
+                item,
+                "status",
+                0,
+                "The promotion copy could not be written.",
+                json!({"promotion": "failed"}),
+            )
+            .await?;
+            self.report_job(req, Some(&who), ProgressState::Failed, json!({}));
+            return Ok(vec![Outcome::JobFailed {
+                job_id: req.job_id,
+                reason: JobFailure::Model,
+            }]);
+        };
+        let text = format!(
+            "Newsletter: {}\n\nInstagram: {}\n\nX: {}\n\nFacebook: {}",
+            copy.newsletter.trim(),
+            copy.instagram.trim(),
+            copy.x.trim(),
+            copy.facebook.trim()
+        );
+        let key = format!("{}:distribution:0", req.job_id);
+        self.post(
+            req,
+            item,
+            "distribution",
+            &who.id,
+            None,
+            &text,
+            json!({"url": url, "newsletter": copy.newsletter, "instagram": copy.instagram, "x": copy.x, "facebook": copy.facebook, "sent": false}),
+            Some(&key),
+        )
+        .await?;
+        self.report_job(req, Some(&who), ProgressState::Done, json!({"url": url}));
+        Ok(vec![Outcome::JobCompleted {
+            job_id: req.job_id,
+            digest: Digest {
+                ok: true,
+                score: 0,
+                words: 0,
+                qa_defects: 0,
+                artifact_sha: None,
+            },
+        }])
+    }
+
     /// The KpiReport job (module docs).
     pub(crate) async fn kpi_report(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
         let who = self.analyst(req)?.clone();

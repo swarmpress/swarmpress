@@ -56,7 +56,8 @@ pub use article::{
     ENTITY_FACTS, HERO_SHORTLIST, LINK_SHORTLIST, RELATED_TITLES,
 };
 pub use board::{
-    workstream_ref_for, BoardContext, BrokenPage, SiteHealth, StalePage, PLAN_REPAIRS,
+    workstream_ref_for, BoardContext, BrokenPage, SiteHealth, StalePage, Underperforming,
+    UntranslatedPage, PLAN_REPAIRS,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use gateway::GithubGateway;
@@ -99,6 +100,8 @@ pub enum JobKind {
     Performance,
     /// The data scientist's weekly KPI report (ADR-0071).
     KpiReport,
+    /// Promotion copy for a page that went live (ADR-0073).
+    Promotion,
 }
 
 /// Someone taking part in a job, as the sim knows them.

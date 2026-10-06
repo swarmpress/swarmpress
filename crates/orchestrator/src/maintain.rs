@@ -42,10 +42,56 @@ use crate::{Digest, JobFailure, JobRequest, Outcome, ProgressState};
 pub const REFRESH: &str = "refresh";
 /// The brief kind of a fix.
 pub const FIX: &str = "fix";
+/// The brief kind of a translation (ADR-0073); the brief's `language` is the target.
+pub const TRANSLATION: &str = "translation";
 
-/// Whether a brief is a maintenance brief (refresh or fix).
+/// Whether a brief changes a published page (refresh, fix or translation).
 pub fn is_maintenance(rec: &BriefRecord) -> bool {
-    matches!(rec.kind.as_deref(), Some(REFRESH | FIX))
+    matches!(rec.kind.as_deref(), Some(REFRESH | FIX | TRANSLATION))
+}
+
+fn is_lang_code(k: &str) -> bool {
+    k.len() == 2 && k.chars().all(|c| c.is_ascii_lowercase())
+}
+
+/// The page's `LocalizedString` fields (objects of language codes with an
+/// `en` string), slugs left out: `(pointer, English)`, in page order
+/// (ADR-0073).
+pub fn localized_fields(page: &Value) -> Vec<(String, String)> {
+    fn walk(v: &Value, ptr: &str, key: &str, out: &mut Vec<(String, String)>) {
+        match v {
+            Value::Object(m) => {
+                let localized = !m.is_empty()
+                    && m.keys().all(|k| is_lang_code(k))
+                    && m.get("en")
+                        .and_then(Value::as_str)
+                        .is_some_and(|t| !t.trim().is_empty());
+                if localized {
+                    if key != "slug" {
+                        out.push((ptr.to_string(), m["en"].as_str().unwrap_or("").to_string()));
+                    }
+                    return;
+                }
+                for (k, child) in m {
+                    walk(
+                        child,
+                        &format!("{ptr}/{}", k.replace('~', "~0").replace('/', "~1")),
+                        k,
+                        out,
+                    );
+                }
+            }
+            Value::Array(a) => {
+                for (i, child) in a.iter().enumerate() {
+                    walk(child, &format!("{ptr}/{i}"), key, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    walk(page, "", "", &mut out);
+    out
 }
 
 /// The parent pointer and the last key of a JSON pointer.
@@ -209,7 +255,12 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         } else {
             art.evidence.clone()
         };
-        let changes = if kind == FIX && req.revision == 0 {
+        let changes = if kind == TRANSLATION {
+            match self.translate_page(&cx, rec, &mut page).await? {
+                Ok(c) => c,
+                Err(halt) => return self.halted(&cx, halt).await,
+            }
+        } else if kind == FIX && req.revision == 0 {
             let kb = self.site.knowledge.as_ref().ok_or_else(|| {
                 invalid(format!(
                     "job {}: a fix needs the site's knowledge pack",
@@ -227,7 +278,9 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             }
         };
         if changes.is_empty() {
-            let text = if kind == FIX {
+            let text = if kind == TRANSLATION {
+                "The page has no localized fields left to translate into this language; nothing was changed."
+            } else if kind == FIX {
                 "The page has no broken internal links left to remove; nothing was changed."
             } else {
                 "Nothing on the page was found out of date against the research; nothing was changed."
@@ -263,7 +316,11 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             .or_else(|| page["title"].as_str())
             .unwrap_or(&rec.brief.title)
             .to_string();
-        let verb = if kind == FIX { "Fix links" } else { "Refresh" };
+        let verb = match kind.as_str() {
+            FIX => "Fix links".to_string(),
+            TRANSLATION => format!("Translate into {}", rec.brief.language),
+            _ => "Refresh".to_string(),
+        };
         let message = if req.revision == 0 {
             format!("{verb}: {title}")
         } else {
@@ -327,6 +384,147 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 artifact_sha: Some(pr.head_sha),
             },
         }])
+    }
+
+    /// `translate#i` (ADR-0073): the page's localized fields into the brief's
+    /// language, in batches; the changed lines (a sample, then a count), or
+    /// why the job halts. Fields the language has text for already are kept,
+    /// except on a revision (the editor asked for another translation).
+    async fn translate_page(
+        &self,
+        cx: &Cx<'_>,
+        rec: &BriefRecord,
+        page: &mut Value,
+    ) -> Result<std::result::Result<Vec<String>, Halt>> {
+        use agents::article_prompts::{
+            translate_prompt, translate_schema, TranslateAnswer, TRANSLATE_BATCH,
+            TRANSLATE_BATCH_CHARS,
+        };
+        let req = cx.req;
+        let lang = rec.brief.language.trim().to_string();
+        if !is_lang_code(&lang) || lang == "en" {
+            return Err(invalid(format!(
+                "job {}: a translation into {lang:?}",
+                req.job_id
+            )));
+        }
+        let title = page["title"]["en"]
+            .as_str()
+            .unwrap_or(&rec.brief.title)
+            .to_string();
+        let todo: Vec<(String, String)> = localized_fields(page)
+            .into_iter()
+            .filter(|(ptr, _)| {
+                req.revision > 0
+                    || page
+                        .pointer(ptr)
+                        .and_then(|o| o.get(&lang))
+                        .and_then(Value::as_str)
+                        .is_none_or(|t| t.trim().is_empty())
+            })
+            .collect();
+        // Batches by count and by characters.
+        let mut batches: Vec<Vec<(String, String)>> = Vec::new();
+        for f in todo {
+            let full = batches.last().is_none_or(|b| {
+                b.len() >= TRANSLATE_BATCH
+                    || b.iter().map(|(_, t)| t.len()).sum::<usize>() + f.1.len()
+                        > TRANSLATE_BATCH_CHARS
+            });
+            if full {
+                batches.push(Vec::new());
+            }
+            if let Some(b) = batches.last_mut() {
+                b.push(f);
+            }
+        }
+        // The site's voice, from its style guide, when the pack carries one.
+        let style = self
+            .site
+            .knowledge
+            .as_ref()
+            .and_then(|k| k.file_json(crate::STYLE_GUIDE_PATH).ok().flatten())
+            .and_then(|g| {
+                g["voice"]
+                    .as_str()
+                    .map(|v| format!("## House style\nVoice: {v}\n"))
+            })
+            .unwrap_or_default();
+        let total = u32::try_from(batches.len()).unwrap_or(u32::MAX);
+        let mut changes: Vec<String> = Vec::new();
+        let mut translated = 0usize;
+        let mut budget = crate::staged::JOB_REPAIRS;
+        for (i, batch) in batches.iter().enumerate() {
+            let fields: Vec<(String, String)> = batch
+                .iter()
+                .enumerate()
+                .map(|(n, (_, t))| (format!("F{}", n + 1), t.clone()))
+                .collect();
+            let prompt =
+                translate_prompt(&self.site.llm, &cx.system, &lang, &title, &fields, &style);
+            let schema = translate_schema(fields.len());
+            let aliases: Vec<String> = fields.iter().map(|(a, _)| a.clone()).collect();
+            let check = |v: &Value| -> std::result::Result<(), Vec<String>> {
+                let a: TranslateAnswer =
+                    serde_json::from_value(v.clone()).map_err(|e| vec![e.to_string()])?;
+                let mut problems = Vec::new();
+                for alias in &aliases {
+                    match a.translations.iter().filter(|t| &t.field == alias).count() {
+                        0 => problems.push(format!("{alias} is missing.")),
+                        1 => {}
+                        _ => problems.push(format!("{alias} is given twice.")),
+                    }
+                }
+                if a.translations.iter().any(|t| t.text.trim().is_empty()) {
+                    problems.push("every translation needs text".into());
+                }
+                if problems.is_empty() {
+                    Ok(())
+                } else {
+                    Err(problems)
+                }
+            };
+            let index = u32::try_from(i).unwrap_or(u32::MAX) + u32::from(req.revision) * 1000;
+            let answer: TranslateAnswer = match self
+                .structured_stage(
+                    cx,
+                    "translate",
+                    index,
+                    total,
+                    &prompt,
+                    &schema,
+                    &check,
+                    &mut budget,
+                )
+                .await?
+            {
+                Ok(a) => a,
+                Err(h) => return Ok(Err(h)),
+            };
+            for (n, (ptr, en)) in batch.iter().enumerate() {
+                let alias = format!("F{}", n + 1);
+                let Some(t) = answer.translations.iter().find(|t| t.field == alias) else {
+                    continue;
+                };
+                if let Some(Value::Object(m)) = page.pointer_mut(ptr) {
+                    m.insert(lang.clone(), Value::String(t.text.trim().to_string()));
+                    translated += 1;
+                    if changes.len() < 12 {
+                        changes.push(format!(
+                            "{ptr} ({lang}): \u{ab}{en}\u{bb} → \u{ab}{}\u{bb}",
+                            t.text.trim()
+                        ));
+                    }
+                }
+            }
+        }
+        if translated > changes.len() {
+            changes.push(format!(
+                "… and {} more fields translated into {lang}",
+                translated - changes.len()
+            ));
+        }
+        Ok(Ok(changes))
     }
 
     /// `research#n` then `refresh#n` (module docs): the changed lines, or why
@@ -511,10 +709,13 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             ProgressState::Started,
             json!({"predecessor": predecessor}),
         );
-        let kind = if rec.kind.as_deref() == Some(FIX) {
-            "fix of broken links"
-        } else {
-            "refresh"
+        let kind = match rec.kind.as_deref() {
+            Some(FIX) => "fix of broken links".to_string(),
+            Some(TRANSLATION) => format!(
+                "translation into {}",
+                agents::article_prompts::language_name(&rec.brief.language)
+            ),
+            _ => "refresh".to_string(),
         };
         let evidence = evidence_lines(&art.evidence);
         let frame = ReviewFrame {
@@ -524,7 +725,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             checks: &[],
             evidence: &evidence,
         };
-        let prompt = update_review_prompt(&self.site.llm, &cx.system, &frame, kind, &art.changes);
+        let prompt = update_review_prompt(&self.site.llm, &cx.system, &frame, &kind, &art.changes);
         let schema = review_schema();
         let ok = |_: &Value| -> std::result::Result<(), Vec<String>> { Ok(()) };
         let mut budget = crate::staged::JOB_REPAIRS;

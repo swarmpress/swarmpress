@@ -78,9 +78,11 @@ const state = (page: Page) => session(page, 'state')
 const items = (page: Page) => session(page, 'items')
 const postTypes = async (page: Page) => ((await session(page, 'planText')).posts[ITEM] ?? []).map((p) => p.type)
 /** The command log in the page's store (OPFS), without the standup's `Utterance`s (how many play depends on who sits down when). */
-const logKinds = async (page: Page) => (await session(page, 'commandLog')).map((c) => c.kind).filter((k) => k !== 'Utterance')
+/** Background signals (the daily site audit and analytics, ADR-0070/0071) arrive whenever they do: not part of the article's story. */
+const SIGNALS = new Set(['SiteSignals', 'AnalyticsSignals'])
+const logKinds = async (page: Page) => (await session(page, 'commandLog')).map((c) => c.kind).filter((k) => k !== 'Utterance' && !SIGNALS.has(k))
 /** The whole command log's kinds. */
-const allKinds = async (page: Page) => (await session(page, 'commandLog')).map((c) => c.kind)
+const allKinds = async (page: Page) => (await session(page, 'commandLog')).map((c) => c.kind).filter((k) => !SIGNALS.has(k))
 
 /**
  * Records every speech bubble the page shows (FEAT-025): speaker and full
@@ -156,7 +158,8 @@ async function approveInInbox(page: Page, shot: string) {
   // Answered: the ticket has no options any more, and the command is in the log.
   await expect(options).toHaveCount(0)
   await page.keyboard.press('Escape')
-  expect(await logKinds(page)).toEqual(LOGGED.slice(0, 6))
+  // the publish job may already have finished (it runs while the clock is paused)
+  expect((await logKinds(page)).slice(0, 6)).toEqual(LOGGED.slice(0, 6))
   await session(page, 'resume')
 }
 
@@ -281,7 +284,9 @@ test('one article, end to end, in the real game page', async ({ page, baseURL },
   expect(done.pendingDeploys).toEqual([])
   const spoken = (await allKinds(page)).filter((k) => k === 'Utterance').length
   expect(spoken).toBeGreaterThanOrEqual(1)
-  expect(done.logged).toBe(LOGGED.length + spoken)
+  // the background signals logged on the way (the site audit at boot)
+  const signals = (await session(page, 'commandLog')).filter((c) => SIGNALS.has(c.kind)).length
+  expect(done.logged).toBe(LOGGED.length + spoken + signals)
   expect(await logKinds(page)).toEqual(LOGGED)
 
   // The central gateway: one draft PR (two commits: draft and revision), then the merge.
@@ -407,7 +412,7 @@ test('one article, end to end, in the real game page', async ({ page, baseURL },
   await expect.poll(async () => (await state(page)).sealed?.central ?? null, { timeout: 30_000 }).not.toBeNull()
   const sealed = (await state(page)).sealed!
   expect(sealed.local).toBe(true)
-  expect(sealed.central).toEqual({ segment: 0, commands: LOGGED.length + spoken, step: sealed.step })
+  expect(sealed.central).toEqual({ segment: 0, commands: LOGGED.length + spoken + signals, step: sealed.step })
   expect(sealed.step).toBeLessThanOrEqual(done.step)
   // Read back from the server by an independent request: one segment, and the checkpoint.
   const remote = await page.evaluate(async (company) => {
@@ -417,11 +422,11 @@ test('one article, end to end, in the real game page', async ({ page, baseURL },
     return { segments: list.segments.map((x) => x.segment), kinds: segment.commands.map((c) => c.kind), seqs: segment.commands.map((c) => c.seq), snapshot, worldChars: world.length }
   }, first.companyId)
   expect(remote.segments).toEqual([0])
-  expect(remote.kinds.filter((k) => k !== 'Utterance')).toEqual(LOGGED)
-  expect(remote.kinds).toEqual(await allKinds(page))
+  expect(remote.kinds.filter((k) => k !== 'Utterance' && !SIGNALS.has(k))).toEqual(LOGGED)
+  expect(remote.kinds.filter((k) => !SIGNALS.has(k))).toEqual(await allKinds(page))
   expect(remote.seqs).toEqual(remote.kinds.map((_, i) => i + 1))
   // The record carries the world itself (base64 of `Sim.snapshot()`), not just where it was.
-  expect(remote.snapshot).toMatchObject({ format: 'swarmpress.snapshot.v1', step: sealed.step, hash: sealed.hash, lastSeq: LOGGED.length + spoken })
+  expect(remote.snapshot).toMatchObject({ format: 'swarmpress.snapshot.v1', step: sealed.step, hash: sealed.hash, lastSeq: LOGGED.length + spoken + signals })
   expect(remote.worldChars).toBeGreaterThan(1000)
   expect((await state(page)).errors).toEqual([])
   expect(errors).toEqual([])
@@ -463,7 +468,9 @@ test('one article, end to end, in the real game page', async ({ page, baseURL },
   await session(page, 'idle')
   const after = await state(page)
   expect(after.jobs).toEqual([])
-  expect(after.logged).toBe(0)
+  // only the site audit's signals may be logged again (the merged article changed the site)
+  const fresh = (await session(page, 'commandLog')).slice(-after.logged || Infinity)
+  expect(after.logged === 0 || fresh.every((c) => SIGNALS.has(c.kind))).toBe(true)
   expect(after.errors).toEqual([])
   expect(await session(page, 'gateway')).toEqual([])
   expect(await session(page, 'activity')).toHaveLength(activity.length)
@@ -507,7 +514,9 @@ test('one article, end to end, in the real game page', async ({ page, baseURL },
     await session(fresh, 'idle')
     const quiet = await state(fresh)
     expect(quiet.jobs).toEqual([])
-    expect(quiet.logged).toBe(0)
+    // only the site audit's signals (the reload's were not sealed yet)
+    const since = (await session(fresh, 'commandLog')).slice(-quiet.logged || Infinity)
+    expect(quiet.logged === 0 || since.every((c) => SIGNALS.has(c.kind))).toBe(true)
     expect(quiet.pendingDeploys).toEqual([])
     expect(quiet.errors).toEqual([])
     expect(await session(fresh, 'gateway')).toEqual([])

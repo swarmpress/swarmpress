@@ -29,6 +29,8 @@ pub const POST_TYPES: &[&str] = &[
     "status",
     // the data scientist's follow-up (ADR-0071)
     "performance",
+    // promotion copy for a page that went live (ADR-0073)
+    "distribution",
 ];
 
 /// Posts per item included in [`Store::plan_json`] (newest).

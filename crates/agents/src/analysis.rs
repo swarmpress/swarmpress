@@ -78,3 +78,40 @@ pub fn kpi_report_schema() -> Value {
         }
     })
 }
+
+/// The answer budget of promotion copy, tokens (ADR-0073).
+pub const PROMOTION_ANSWER: u32 = 900;
+
+/// Promotion copy for a page that went live (ADR-0073): one text per channel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Promotion {
+    pub newsletter: String,
+    pub instagram: String,
+    pub x: String,
+    pub facebook: String,
+}
+
+/// The user turn of promotion copy.
+pub fn promotion_prompt(title: &str, angle: &str, url: &str, brand: &str) -> String {
+    format!(
+        "## Task: promotion\n\nArticle: \u{ab}{title}\u{bb}\nWhat it is about: {angle}\nURL: {url}\nPublication: {brand}\n\n\
+Write promotion copy for this article, which just went live: a `newsletter` blurb (two or three sentences ending with \
+the URL), an `instagram` caption (a hook, two short lines, three to five hashtags; no URL, the bio links it), an `x` post \
+(at most 260 characters including the URL) and a `facebook` post (two sentences and the URL). Promise only what the \
+article delivers; no prices, dates or numbers that are not in the title or the description. Answer with JSON only."
+    )
+}
+
+pub fn promotion_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["newsletter", "instagram", "x", "facebook"],
+        "properties": {
+            "newsletter": {"type": "string", "minLength": 20, "maxLength": 600},
+            "instagram": {"type": "string", "minLength": 20, "maxLength": 600},
+            "x": {"type": "string", "minLength": 20, "maxLength": 280},
+            "facebook": {"type": "string", "minLength": 20, "maxLength": 600}
+        }
+    })
+}

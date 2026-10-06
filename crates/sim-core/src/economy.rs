@@ -144,6 +144,9 @@ pub struct Policies {
     /// report. Off in old logs; the game turns it on once.
     #[serde(default)]
     pub analytics: bool,
+    /// Promotion copy when a page goes live (ADR-0073). Off in old logs.
+    #[serde(default)]
+    pub distribution: bool,
 }
 
 impl Default for Policies {
@@ -154,6 +157,7 @@ impl Default for Policies {
             quality_bar: 7,
             editorial_board: false,
             analytics: false,
+            distribution: false,
         }
     }
 }

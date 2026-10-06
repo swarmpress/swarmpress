@@ -1,4 +1,4 @@
-//! The analytics loop's sim half (FEAT-089, ADR-0071): with the `analytics`
+//! The analytics loop's sim half (FEAT-097, ADR-0071): with the `analytics`
 //! policy, the Monday KPI review requests the data scientist's report, and an
 //! item published 14 game days ago gets one follow-up whose score stays on it.
 //! Off by default: old logs replay without either.

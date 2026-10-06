@@ -689,19 +689,23 @@ pub struct BoardProposal {
     /// The site-health alias (`S1`…) a refresh or fix is for; empty for an article.
     #[serde(default)]
     pub page: String,
+    /// The language of a translation (ADR-0073); empty otherwise.
+    #[serde(default)]
+    pub language: String,
 }
 
 impl BoardProposal {
     /// A refresh or a fix of a published page (ADR-0070).
     pub fn is_maintenance(&self) -> bool {
-        matches!(self.kind.trim(), "refresh" | "fix")
+        matches!(self.kind.trim(), "refresh" | "fix" | "translation")
     }
 }
 
 /// A page of the site that needs care, by its alias (ADR-0070).
 pub struct BoardSite<'a> {
     pub alias: &'a str,
-    /// `refresh` (a stale article) or `fix` (broken internal links).
+    /// `refresh` (a stale article), `fix` (broken internal links) or
+    /// `translation` (an article missing languages, ADR-0073).
     pub kind: &'a str,
     pub title: &'a str,
     /// Why, for the board: `last updated 2023-10-15, 1087 days ago`, `2 broken internal links`.
@@ -730,9 +734,10 @@ pub fn board_prompt(
             .join("\n");
         format!(
             "\n\n## Site health (published pages that need care)\n{lines}\n\nA proposal may also be the `refresh` of a \
-stale article or the `fix` of a page with broken links listed here: set `kind` to `refresh` or `fix` and `page` to \
-its S alias (each page once; its title stays the page's). Otherwise `kind` is `article` and `page` empty. Plan the \
-most important care first; it counts against the same limit."
+stale article, the `fix` of a page with broken links or the `translation` of an article missing languages, as listed \
+here: set `kind` to `refresh`, `fix` or `translation` and `page` to its S alias (its title stays the page's); a \
+translation also sets `language` to one of the missing ones (one language per proposal). Otherwise `kind` is `article`, \
+`page` and `language` empty. Plan the most important care first; it counts against the same limit."
         )
     };
     let topics = if topics.is_empty() {
@@ -780,11 +785,13 @@ pub fn board_schema(cap: usize, maintenance: bool) -> Value {
     if maintenance {
         let item = &mut schema["properties"]["proposals"]["items"];
         item["properties"]["kind"] =
-            json!({"type": "string", "enum": ["article", "refresh", "fix"]});
+            json!({"type": "string", "enum": ["article", "refresh", "fix", "translation"]});
         item["properties"]["page"] = json!({"type": "string", "maxLength": 4});
+        item["properties"]["language"] = json!({"type": "string", "maxLength": 5});
         if let Some(r) = item["required"].as_array_mut() {
             r.push(json!("kind"));
             r.push(json!("page"));
+            r.push(json!("language"));
         }
     }
     schema

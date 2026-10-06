@@ -157,6 +157,8 @@ pub enum Policy {
     EditorialBoard(bool),
     /// The analytics loop's jobs on or off (ADR-0071, default off).
     Analytics(bool),
+    /// Promotion copy when a page goes live, on or off (ADR-0073, default off).
+    Distribution(bool),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

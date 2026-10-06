@@ -1,12 +1,12 @@
 {
-  "about": "World hashes after N game days (N x steps_per_day steps from a fresh world). The ONE shared fixture for determinism evidence: asserted natively and in wasm by crates/client-wasm/tests/runner_golden.rs, and under the Bun runner by packages/runner/test/golden.test.ts. When sim-core changes the world on purpose, regenerate with: for each case, bun packages/runner/src/cli.ts run --seed S --days N --world W --json (sim.final.hash), then run both tests. Re-baselined for world format 2 (FEAT-079, ADR-0059): a standup nobody answers now raises a StandupFailed ticket, so every demo case that runs past 10:00 of day 0 moved; the step-0 world and the empty company (no meetings, tickets or work items) encode as before. Re-baselined for world format 3 (FEAT-087, ADR-0069): the plan carries workstreams and board days and every work item its planned days, so every case moved, the step-0 world and the empty company included; the editorial board is off unless a command turns it on, so no case holds one. Re-baselined for world format 4 (FEAT-089, ADR-0071): a work item's follow-up score and flag and the analytics policy.",
+  "about": "World hashes after N game days (N x steps_per_day steps from a fresh world). The ONE shared fixture for determinism evidence: asserted natively and in wasm by crates/client-wasm/tests/runner_golden.rs, and under the Bun runner by packages/runner/test/golden.test.ts. When sim-core changes the world on purpose, regenerate with: for each case, bun packages/runner/src/cli.ts run --seed S --days N --world W --json (sim.final.hash), then run both tests. Re-baselined for world format 2 (FEAT-079, ADR-0059): a standup nobody answers now raises a StandupFailed ticket, so every demo case that runs past 10:00 of day 0 moved; the step-0 world and the empty company (no meetings, tickets or work items) encode as before. Re-baselined for world format 3 (FEAT-087, ADR-0069): the plan carries workstreams and board days and every work item its planned days, so every case moved, the step-0 world and the empty company included; the editorial board is off unless a command turns it on, so no case holds one. Re-baselined for world format 4 (FEAT-097, ADR-0071): a work item's follow-up score and flag and the analytics policy. Re-baselined for world format 5 (FEAT-098, ADR-0073): the distribution policy.",
   "steps_per_day": 12000,
   "cases": [
-    { "world": "demo", "seed": "42", "days": 0, "hash": "0xd374f1ae15a66e50" },
-    { "world": "demo", "seed": "42", "days": 1, "hash": "0x8e9b75f22c8778ee" },
-    { "world": "demo", "seed": "42", "days": 3, "hash": "0x7b54c00e2c70550d" },
-    { "world": "demo", "seed": "7", "days": 2, "hash": "0xb14702f17119a1d1" },
-    { "world": "demo", "seed": "18446744073709551615", "days": 1, "hash": "0xae32308cecf241e9" },
-    { "world": "empty", "seed": "42", "days": 1, "hash": "0xab9ce44b75d8eaac" }
+    { "world": "demo", "seed": "42", "days": 0, "hash": "0x4ed50c3e8a8f13b2" },
+    { "world": "demo", "seed": "42", "days": 1, "hash": "0x364dfbe176df787b" },
+    { "world": "demo", "seed": "42", "days": 3, "hash": "0x0e0fd3778514883d" },
+    { "world": "demo", "seed": "7", "days": 2, "hash": "0x3890500fc21880cd" },
+    { "world": "demo", "seed": "18446744073709551615", "days": 1, "hash": "0x5fea3c3418ffb712" },
+    { "world": "empty", "seed": "42", "days": 1, "hash": "0x7eeac3b9cf625cc1" }
   ]
 }

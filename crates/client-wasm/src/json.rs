@@ -441,6 +441,7 @@ pub fn org(w: &World) -> Value {
             "qualityBar": w.company.policies.quality_bar,
             "editorialBoard": w.company.policies.editorial_board,
             "analytics": w.company.policies.analytics,
+            "distribution": w.company.policies.distribution,
         },
         "departments": departments,
         "staff": staff,

@@ -3,12 +3,13 @@ import { executablePath, webgpuLaunch } from './e2e/webgpu'
 
 // Preview port: 4173 by default; SWARMPRESS_PREVIEW_PORT moves it (a shared machine).
 const port = Number(process.env.SWARMPRESS_PREVIEW_PORT ?? 4173)
+// Need the central server: playwright.orchestrator.config.ts, playwright.mvp.config.ts.
+// Need a GPU and the real model (gated): playwright.bonsai.config.ts.
+const IGNORED = ['orchestrator.spec.ts', 'mvp.spec.ts', 'takeover.spec.ts', 'mvp-bonsai.spec.ts', 'bonsai.spec.ts', 'bonsai-equivalence.spec.ts']
 
 export default defineConfig({
   testDir: 'e2e',
-  // Need the central server: playwright.orchestrator.config.ts, playwright.mvp.config.ts.
-  // Need a GPU and the real model (gated): playwright.bonsai.config.ts.
-  testIgnore: ['orchestrator.spec.ts', 'mvp.spec.ts', 'takeover.spec.ts', 'mvp-bonsai.spec.ts', 'bonsai.spec.ts', 'bonsai-equivalence.spec.ts'],
+  testIgnore: IGNORED,
   timeout: 180_000,
   // JSON report path is per run so smoke and visual evidence stay separate for Cockpit.
   reporter: [['list'], ['json', { outputFile: process.env.PW_JSON ?? 'reports/playwright.json' }]],
@@ -24,7 +25,8 @@ export default defineConfig({
   projects: [
     {
       name: 'webgpu',
-      testIgnore: 'no-webgpu.spec.ts',
+      // A project's testIgnore replaces the top-level one: repeat it.
+      testIgnore: [...IGNORED, 'no-webgpu.spec.ts'],
       use: { launchOptions: webgpuLaunch },
     },
     {

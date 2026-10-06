@@ -29,9 +29,9 @@
  *   takeover=1       take the company over from the executor that holds it (this
  *                    page load only; the parameter is removed from the URL)
  *   restore=replay   ignore the snapshot and replay the whole log from the seed (the audit path)
- *   board=off        keep the weekly editorial board and the analytics loop off for this page
- *                    load (ADR-0069, ADR-0071; the one-article end-to-end test); without it the
- *                    session turns both on once
+ *   board=off        keep the weekly editorial board, the analytics loop and promotion copy off
+ *                    for this page load (ADR-0069, ADR-0071, ADR-0073; the one-article end-to-end
+ *                    test); without it the session turns them on once
  *   restore=rebase   rebuild the company from its command log alone, ignoring the snapshot and
  *                    the checkpoint, and seal a fresh snapshot: once, after a world format change
  *                    (ADR-0069's format 3) left a snapshot this build cannot read
@@ -272,8 +272,6 @@ export const SESSION_LLM_CALLS = 20
 
 /** kv key of the "unattended days" setting (host policy; never in the sim or the command log). */
 export const UNATTENDED_DAYS_KEY = 'clock.unattended_days'
-/** kv key of the last `SiteSignals` command logged (ADR-0070): logged again only when the audit changed. */
-export const SITE_SIGNALS_KEY = 'site.signals'
 /** Plan text key of the site audit's summary (ADR-0070): `title` is the sentence, `brief` the counts as JSON. */
 export const SITE_AUDIT_ITEM = 'site:audit'
 
@@ -584,7 +582,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       const underperforming = items
         .filter((i) => i.project === project && i.performance != null && i.performance <= 3 && i.briefRefText)
         .map((i) => ({ brief_ref: i.briefRefText!, title: '', score: i.performance! }))
-      return { ...ctx, site: { stale: audit?.stale ?? [], broken: audit?.broken_pages ?? [], underperforming } }
+      return { ...ctx, site: { stale: audit?.stale ?? [], broken: audit?.broken_pages ?? [], underperforming, untranslated: audit?.untranslated ?? [] } }
     },
     speechSpeed: () => clockSpeed(),
     // The data scientist's numbers (ADR-0071): a follow-up's page since 14 days, the KPI report's two weeks.
@@ -748,11 +746,17 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     if (readOnly || loop.halted) return siteAudit
     const a = await client.siteAudit(lease.token)
     siteAudit = a
-    const cmd = JSON.stringify({ SiteSignals: a.signals })
-    if ((await store.getKv(SITE_SIGNALS_KEY)) !== cmd) {
-      const r = loop.apply(cmd)
-      if (r.ok) await store.setKv(SITE_SIGNALS_KEY, cmd)
-      else log(`site signals not applied: ${r.reason}`)
+    // Logged only when the sim holds other signals: the same on every device that restores the log.
+    const held = (JSON.parse(sim.plan_json()) as { site?: { livePages: number; languages: number; brokenLinks: number; mediaCount: number } | null }).site
+    const same =
+      held != null &&
+      held.livePages === a.signals.live_pages &&
+      held.languages === a.signals.languages &&
+      held.brokenLinks === a.signals.broken_links &&
+      held.mediaCount === a.signals.media_count
+    if (!same) {
+      const r = loop.apply(JSON.stringify({ SiteSignals: a.signals }))
+      if (!r.ok) log(`site signals not applied: ${r.reason}`)
     }
     const summary = `${a.stale_count} stale articles (over ${a.stale_days} days), ${a.broken_pages.length} pages with broken links (${a.broken_links} links), ${a.orphan_count} orphan pages, ${a.policy_count} linking-policy findings`
     await store.setItemText(company.id, SITE_AUDIT_ITEM, summary, JSON.stringify({ commit: a.commit, stale: a.stale_count, broken: a.broken_links, orphans: a.orphan_count, policy: a.policy_count }))
@@ -764,7 +768,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   // The weekly editorial board plans the week (ADR-0069): on once, as a logged command, so a
   // replay of an older log holds no board before it.
   if (!readOnly && !loop.halted && params.get('board') !== 'off') {
-    const org = JSON.parse(sim.org_json()) as { policies?: { editorialBoard?: boolean; analytics?: boolean } }
+    const org = JSON.parse(sim.org_json()) as { policies?: { editorialBoard?: boolean; analytics?: boolean; distribution?: boolean } }
     if (org.policies?.editorialBoard === false) {
       const r = loop.apply(JSON.stringify({ SetPolicy: { EditorialBoard: true } }))
       log(r.ok ? 'the weekly editorial board is on' : `the editorial board could not be turned on: ${r.reason}`)
@@ -773,6 +777,11 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     if (org.policies?.analytics === false) {
       const r = loop.apply(JSON.stringify({ SetPolicy: { Analytics: true } }))
       log(r.ok ? 'the analytics loop is on' : `the analytics loop could not be turned on: ${r.reason}`)
+    }
+    // Promotion copy when a page goes live (ADR-0073): written for the CEO, never sent.
+    if (org.policies?.distribution === false) {
+      const r = loop.apply(JSON.stringify({ SetPolicy: { Distribution: true } }))
+      log(r.ok ? 'promotion copy is on' : `promotion copy could not be turned on: ${r.reason}`)
     }
   }
   // A rebased company seals its new world at once: the old snapshot is of another sim build.
