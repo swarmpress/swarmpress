@@ -110,6 +110,12 @@ export interface LoopOptions {
   onPlanText?: () => void
   /** Called after a `DeployLanded` was applied (the item is published). */
   onLanded?: (workItem: string) => void
+  /**
+   * Runs a `tool-run` job in the host (ADR-0072: tools run in the browser's
+   * sandbox, not in the orchestrator); resolves with outcomes JSON like
+   * `orchestrator.run`. Without it, tool runs go to the orchestrator.
+   */
+  toolRun?: (job: { job_id: number; tool_ref: number }) => Promise<string>
   /** Called when a job's run finished with its outcome (`ok` from its digest); not for a failed run. */
   onJobDone?: (job: JobRecord) => void
   /**
@@ -918,7 +924,10 @@ export class OrchestrationLoop {
             let out = await this.o.store.getKv(key)
             if (out) this.log(`${rec.kind} job ${rec.job_id}: reusing the stored outcome`)
             else {
-              out = await this.runWithLimit(rec, CONTEXT_KINDS.has(rec.kind) ? await this.withContext(rec, jobJson) : jobJson)
+              out =
+                rec.kind === 'tool-run' && this.o.toolRun
+                  ? await this.o.toolRun({ job_id: rec.job_id, tool_ref: Number((JSON.parse(jobJson) as { brief_ref?: string | number }).brief_ref) })
+                  : await this.runWithLimit(rec, CONTEXT_KINDS.has(rec.kind) ? await this.withContext(rec, jobJson) : jobJson)
               await this.o.store.setKv(key, out)
             }
             this.summarize(rec, out)

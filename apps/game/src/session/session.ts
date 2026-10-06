@@ -45,6 +45,7 @@ import { Sim } from 'swarm-wasm'
 import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResult, type RestoredSim, type SimFactory } from '../catchup/replay'
 import { CentralClient, centralGateway, companyFor, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type SiteAudit } from '../net/central'
 import type { PutBlueprintBody, PutBlueprintResult, SiteModels } from '../blueprint/types'
+import { packPages, runToolJob } from '../tools/host'
 import { blueprintCommand, toolsCommand, type HeldStructure } from '../blueprint/digest'
 import { commission, type CommissionKind } from '../blueprint/commission'
 import type { CommandResult } from '../ui/commands'
@@ -532,6 +533,8 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   let siteAudit: SiteAudit | null = null
   let auditSite: () => Promise<SiteAudit | null> = async () => null
   let loadSiteModels: () => Promise<void> = async () => undefined
+  // The site's models as last read (ADR-0072): tool runs find their tool here.
+  let siteModels: SiteModels | null = null
   // The analytics signals' delivery (ADR-0071), set once the loop exists.
   let deliverSignals: () => Promise<void> = async () => undefined
   const { sim, info: restored, result, lastSeq } = await restore(store, client, company, { forceReplay: params.get('restore') === 'replay', rebase })
@@ -617,6 +620,24 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     onPlanText: () => sources.forEach((s) => s.planTextChanged()),
     // A published item is the moment worth keeping: seal the log and a checkpoint to central sync (docs/mvp.md).
     onLanded: () => void checkpoint(),
+    // The site's tools run here, in the sandbox (ADR-0072, FEAT-091): on demand and on their schedule; bound
+    // outputs become site data (FEAT-092).
+    toolRun: (job) =>
+      runToolJob(job, {
+        models: siteModels,
+        pages: packPages(knowledge.current?.text),
+        readPage: async (path) => (await client.gatewayFile(lease.token, path))?.page ?? null,
+        facilities: {
+          webFetch: async (url) => {
+            const r = await client.webFetch(url)
+            return { status: r.status, contentType: r.content_type, text: r.text }
+          },
+          llm: async (_tier, prompt) => (await client.llmGenerate(lease.token, { messages: [{ role: 'user', content: prompt }], kind: 'tool-agent' })).text,
+        },
+        putData: (body) => client.putSiteData(lease.token, body),
+        site: { name: company.name },
+        log,
+      }),
     // An applied structure or tool (FEAT-095) changed the site's models: read them again, which logs their digests.
     onJobDone: (job) => {
       if (job.kind !== 'publish' || !job.ok || !job.work_item) return
@@ -832,6 +853,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   loadSiteModels = async () => {
     if (readOnly || loop.halted) return
     const m = await client.siteBlueprint(lease.token)
+    siteModels = m
     sources.forEach((s) => s.setSiteModels(m))
     log(`site models at ${m.commit.slice(0, 7)}: ${m.source} blueprint, ${m.blueprint.page_types.length} page types, ${m.tools.length} tools, ${m.issues.length} issues`)
     // Their digests enter the sim as logged commands when they differ from what it holds (FEAT-095):
