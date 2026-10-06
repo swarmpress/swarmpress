@@ -184,6 +184,11 @@ export function validateChapter(raw: unknown, ctx: StoryContext): Chapter {
   }
 }
 
+/** Everyone a scene speaks or speaks to. */
+function participants(scene: Scene): string[] {
+  return [...new Set(scene.lines.flatMap((l) => (l.to ? [l.speaker, l.to] : [l.speaker])))]
+}
+
 /** What survives a reload. */
 interface StoryState {
   /** Chapters requested so far. */
@@ -210,6 +215,12 @@ export interface DirectorDeps {
   running(): boolean
   /** How long a line stays up (wall ms). */
   durationMs(chars: number): number
+  /**
+   * Whether a person can talk now (on site, not in or on the way to a
+   * meeting). A scene whose people are not all free is skipped whole, instead
+   * of being cut off at the first line the sim refuses.
+   */
+  free?(id: string): boolean
   log?(line: string): void
 }
 
@@ -297,9 +308,12 @@ export class StoryDirector {
     if (due && !this.playing) {
       this.state.played.push(due.id)
       changed = true
-      this.playing = this.play(due).finally(() => {
-        this.playing = null
-      })
+      const busy = this.d.free ? participants(due).filter((id) => !this.d.free!(id)) : []
+      if (busy.length) this.d.log?.(`story: scene ${due.id} skipped (${busy.join(', ')} not free)`)
+      else
+        this.playing = this.play(due).finally(() => {
+          this.playing = null
+        })
     }
     if (changed || Math.abs(this.state.elapsed - this.savedAt) >= SAVE_EVERY_SECONDS) {
       this.savedAt = this.state.elapsed

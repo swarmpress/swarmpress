@@ -201,6 +201,16 @@ describe('StoryDirector', () => {
     expect(calls).toBe(2)
   })
 
+  it('skips a scene whose people are not all free, whole', async () => {
+    const { d, applied } = deps({ free: (id) => id !== 'staff-2' })
+    const director = new StoryDirector(d)
+    await advance(director, 210)
+    expect(applied).toEqual([]) // both scenes involve staff-2
+    const ok = deps({ free: () => true })
+    await advance(new StoryDirector(ok.d), 10)
+    expect(ok.applied).toHaveLength(2)
+  })
+
   it('remembers played scenes across a reload', async () => {
     const first = deps()
     await advance(new StoryDirector(first.d), 20)

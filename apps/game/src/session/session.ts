@@ -903,6 +903,10 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       deleteKv: (k) => store.deleteKv(k),
       running: () => !loop.halted && clock.hold === null && clock.state.phase !== 'night' && model.state === 'ready',
       durationMs: (chars) => utteranceMs(chars, clock.state.speed),
+      free: (id) => {
+        const p = (JSON.parse(sim.render_state_json()) as RenderState).staff.find((x) => x.id === id)
+        return !!p && p.activity !== 'off-site' && p.activity !== 'leaving' && !p.meeting
+      },
       log: (line) => log(line),
     })
     let last = performance.now()
