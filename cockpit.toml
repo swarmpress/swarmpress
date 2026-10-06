@@ -62,7 +62,7 @@ packages = ["knowledge"]
 id = "knowledge/nextest"
 component = "content"
 [[evidence.split]]
-packages = ["content-schema", "content-model"]
+packages = ["content-schema", "content-model", "blueprint"]
 id = "content/nextest"
 component = "content"
 [[evidence.split]]

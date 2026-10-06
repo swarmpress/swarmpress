@@ -21,6 +21,11 @@
 - match: { classname: protocol }
   features: [FEAT-011]
 # The page-type registry (FEAT-089): the exported format, the body checks, the pipeline's cross-check.
+# The blueprint crate's unit tests: types and the town (FEAT-090), the importer (FEAT-093).
+- match: { classname: blueprint, title: "types::tests" }
+  features: [FEAT-090]
+- match: { classname: blueprint, title: "import::tests" }
+  features: [FEAT-093]
 - match: { classname: content-schema, title: "the_core_page_types" }
   features: [FEAT-089]
 - match: { classname: content-model, title: "page_types::tests" }

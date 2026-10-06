@@ -145,6 +145,10 @@
         {
           "type": "object", "additionalProperties": false, "required": ["kind", "pack"],
           "properties": { "kind": { "const": "pack" }, "pack": { "type": "string" }, "version": { "type": "string" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "source", "hash"],
+          "properties": { "kind": { "const": "view" }, "source": { "type": "string" }, "hash": { "type": "string" } }
         }
       ]
     }

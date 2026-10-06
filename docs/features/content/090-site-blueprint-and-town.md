@@ -1,10 +1,13 @@
 ---
 id: FEAT-090
 title: "Site blueprint: the semantic model, the brick town and the blueprint canvas"
-status: planned
+status: in-progress
 importance: normal
 paths:
-  - "crates/blueprint/**"
+  - "crates/blueprint/src/**"
+  - "crates/blueprint/tests/check.rs"
+  - "crates/blueprint/tests/town.rs"
+  - "crates/kit/src/design.rs"
   - "apps/game/src/render/bricks/town.ts"
   - "apps/game/src/ui/components/Blueprint*.tsx"
 adrs:

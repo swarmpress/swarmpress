@@ -1,11 +1,12 @@
 ---
 id: FEAT-093
 title: "Blueprint import: reverse-engineering the live site, then HTML and ZIP designs"
-status: planned
+status: in-progress
 importance: normal
 paths:
-  - "crates/blueprint/src/import/**"
-  - "crates/blueprint/tests/import*.rs"
+  - "crates/blueprint/src/import.rs"
+  - "crates/blueprint/tests/import.rs"
+  - "crates/blueprint/tests/fixtures/cinqueterre-mini.blueprint.json"
 adrs:
   - ADR-0072
   - ADR-0061
@@ -29,6 +30,22 @@ Later, HTML and ZIP design exports (including Claude Design exports) are importe
 Re-importing an import produces a semantic diff.
 
 Design: [`docs/design/construction-kits.md`](../../design/construction-kits.md) §8.
+
+## As built (2026-10-06)
+
+`blueprint::import::import(src)` reads a site checkout without a model:
+- **Page types** come from the pages; a core type keeps the platform's slots.
+- **Slots** come from block usage. A block that opens (or closes) at least 80% of a type's pages
+  and stands nowhere else becomes the opening (closing) slot; every other block goes into a `body`
+  slot. The slots are kept only if every page of the type fits them.
+- **Routes** become `/{lang}/…/{slug}` patterns.
+- **Relationships** come from the link graph (at least 30% of a type's pages, and at least two).
+- **Collections and navigation** come from the manifest, item counts from the collection index,
+  and the tokens file from the theme.
+
+The fixture site's import is golden (`tests/fixtures/cinqueterre-mini.blueprint.json`), passes the
+checker in its own context, and its derived registry accepts every page of each non-core type.
+HTML and ZIP import come later (X-3).
 
 ## Acceptance criteria
 

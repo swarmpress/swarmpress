@@ -263,6 +263,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "blueprint"
+version = "0.2.0"
+dependencies = [
+ "content-model",
+ "getrandom 0.3.4",
+ "kit",
+ "knowledge",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "borrow-or-share"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

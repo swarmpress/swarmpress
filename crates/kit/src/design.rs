@@ -228,6 +228,13 @@ pub enum Provenance {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         version: Option<String>,
     },
+    /// Generated from a semantic model (ADR-0072): a view of `source` at
+    /// `hash` (the blueprint's town). Rebuilt when the model changes, never
+    /// edited brick by brick.
+    View {
+        source: String,
+        hash: String,
+    },
 }
 
 /// Part budget a design declares for itself (capped by the compile limits).

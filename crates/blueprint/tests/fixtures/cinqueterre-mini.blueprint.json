@@ -1,0 +1,307 @@
+{
+  "blueprint": {
+    "collections": [
+      {
+        "from": "collection:hikes",
+        "id": "hikes",
+        "items": 14,
+        "type": "HikesItem"
+      },
+      {
+        "from": "collection:restaurants",
+        "id": "restaurants",
+        "items": 20,
+        "type": "RestaurantsItem"
+      }
+    ],
+    "format": "swarmpress.blueprint.v1",
+    "intent": {},
+    "navigation": [
+      {
+        "section": "blog"
+      },
+      {
+        "section": "hikes"
+      },
+      {
+        "section": "itinerary"
+      },
+      {
+        "section": "restaurants"
+      },
+      {
+        "section": "transportation"
+      }
+    ],
+    "page_types": [
+      {
+        "aliases": [
+          "blog-post",
+          "article"
+        ],
+        "html_fields": [
+          {
+            "block": "editorial-hero",
+            "field": "title"
+          },
+          {
+            "block": "closing-note",
+            "field": "content"
+          }
+        ],
+        "id": "blog-article",
+        "label": {
+          "en": "Article"
+        },
+        "pages": 3,
+        "require": [
+          {
+            "block": "paragraph",
+            "min": 1
+          }
+        ],
+        "route": "/{lang}/blog/{slug}",
+        "slots": [
+          {
+            "blocks": [
+              "editorial-hero"
+            ],
+            "id": "hero",
+            "max": 1,
+            "min": 1
+          },
+          {
+            "blocks": [
+              "heading",
+              "paragraph",
+              "list",
+              "callout",
+              "image"
+            ],
+            "id": "body"
+          },
+          {
+            "blocks": [
+              "closing-note"
+            ],
+            "id": "closing",
+            "max": 1,
+            "min": 1
+          }
+        ],
+        "source": {
+          "kind": "page"
+        }
+      },
+      {
+        "id": "blog-index",
+        "label": {
+          "en": "Blog index"
+        },
+        "pages": 2,
+        "route": "/{lang}/blog",
+        "source": {
+          "kind": "page"
+        }
+      },
+      {
+        "id": "city",
+        "label": {
+          "en": "City"
+        },
+        "pages": 1,
+        "route": "/{lang}/riomaggiore",
+        "slots": [
+          {
+            "blocks": [
+              "editorial-hero"
+            ],
+            "id": "lead",
+            "max": 1,
+            "min": 1
+          },
+          {
+            "blocks": [
+              "collection-with-interludes",
+              "editorial-intro",
+              "faq-section"
+            ],
+            "id": "body"
+          },
+          {
+            "blocks": [
+              "closing-note"
+            ],
+            "id": "closing",
+            "max": 1,
+            "min": 1
+          }
+        ],
+        "source": {
+          "kind": "page"
+        }
+      },
+      {
+        "id": "info",
+        "label": {
+          "en": "Info"
+        },
+        "pages": 1,
+        "route": "/{lang}/transport",
+        "slots": [
+          {
+            "blocks": [
+              "editorial-hero"
+            ],
+            "id": "lead",
+            "max": 1,
+            "min": 1
+          },
+          {
+            "blocks": [
+              "editorial-intro",
+              "collection-embed",
+              "content-section",
+              "collection-with-interludes",
+              "faq-section"
+            ],
+            "id": "body"
+          },
+          {
+            "blocks": [
+              "closing-note"
+            ],
+            "id": "closing",
+            "max": 1,
+            "min": 1
+          }
+        ],
+        "source": {
+          "kind": "page"
+        }
+      },
+      {
+        "id": "language-root",
+        "label": {
+          "en": "Language Root"
+        },
+        "pages": 1,
+        "route": "/{lang}",
+        "slots": [
+          {
+            "blocks": [
+              "hero-section"
+            ],
+            "id": "lead",
+            "max": 1,
+            "min": 1
+          },
+          {
+            "blocks": [
+              "featured-carousel",
+              "trending-now",
+              "village-selector",
+              "places-to-stay",
+              "eat-drink",
+              "highlights",
+              "curated-escapes",
+              "latest-stories",
+              "audio-guides",
+              "practical-advice",
+              "about"
+            ],
+            "id": "body"
+          },
+          {
+            "blocks": [
+              "newsletter"
+            ],
+            "id": "closing",
+            "max": 1,
+            "min": 1
+          }
+        ],
+        "source": {
+          "kind": "page"
+        }
+      },
+      {
+        "id": "restaurants",
+        "label": {
+          "en": "Restaurants"
+        },
+        "pages": 1,
+        "route": "/{lang}/riomaggiore/restaurants",
+        "slots": [
+          {
+            "blocks": [
+              "editorial-hero"
+            ],
+            "id": "lead",
+            "max": 1,
+            "min": 1
+          },
+          {
+            "blocks": [
+              "editorial-intro",
+              "collection-with-interludes"
+            ],
+            "id": "body"
+          },
+          {
+            "blocks": [
+              "closing-note"
+            ],
+            "id": "closing",
+            "max": 1,
+            "min": 1
+          }
+        ],
+        "source": {
+          "kind": "page"
+        }
+      }
+    ],
+    "relationships": [
+      {
+        "cardinality": "many-to-many",
+        "from": "blog-index",
+        "kind": "links-to",
+        "to": "blog-article",
+        "via": "body"
+      }
+    ]
+  },
+  "types": {
+    "HikesItem": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "LocalizedString"
+        },
+        "slug": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug"
+      ],
+      "type": "object"
+    },
+    "RestaurantsItem": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "LocalizedString"
+        },
+        "slug": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug"
+      ],
+      "type": "object"
+    }
+  }
+}
