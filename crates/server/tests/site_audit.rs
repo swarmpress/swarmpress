@@ -228,6 +228,22 @@ async fn an_update_names_the_blob_it_replaces_and_create_stays_create_only() {
         .await;
     assert_eq!(st, 200, "{body}");
     assert!(body["number"].as_u64().unwrap() > 0, "{body}");
+    // an update may keep an older article's own shape, but not change its id
+    let legacy = json!({"id": "content-old", "slug": {"en": "/en/blog/old-harvest"}, "title": {"en": "The Old Harvest"},
+                        "page_type": "blog-article", "body": [{"type": "paragraph", "text": {"en": "Updated."}}]});
+    let (st, body) = s
+        .gateway(&p, "draft", json!({"content_id": "content-old", "path": path, "page": legacy, "message": "Refresh", "update": sha}))
+        .await;
+    assert_eq!(
+        st, 200,
+        "the profile of new articles does not apply: {body}"
+    );
+    let mut renamed = legacy.clone();
+    renamed["id"] = json!("something-else");
+    let (st, _) = s
+        .gateway(&p, "draft", json!({"content_id": "content-old", "path": path, "page": renamed, "message": "Refresh", "update": sha}))
+        .await;
+    assert_eq!(st, 422);
     // update is for articles only
     let (st, _) = s
         .gateway(

@@ -122,6 +122,25 @@ pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
         "commission" => return FakeReply::Json(commission(&p)),
         "weekly board" => return FakeReply::Json(weekly_board(&p)),
         "board schedule" => return FakeReply::Json(board_schedule(&p)),
+        // A refresh updates the first passage, on the first evidence (ADR-0070).
+        "refresh" => {
+            let first =
+                p.0.lines()
+                    .find_map(|l| l.strip_prefix("P1: "))
+                    .unwrap_or("the article");
+            let lead: String = first.chars().take(120).collect();
+            return FakeReply::Json(json!({
+                "summary": "One passage was out of date; the rest still holds.",
+                "updates": [{"passage": "P1",
+                             "text": format!("Updated this season (see the park's notice): {lead}"),
+                             "why": "The opening facts were from an earlier season.",
+                             "evidence": ["E1"]}]
+            }));
+        }
+        "update review" => {
+            return FakeReply::Json(json!({"decision": "approve", "score": 8,
+                "notes": "The update is correct and rests on the evidence.", "issues": [], "high_risk": []}))
+        }
         // Every pitch checks out (ADR-0068), on a made-up official source.
         "pitch check" => {
             return FakeReply::Json(json!({"verifiable": true,
@@ -582,6 +601,41 @@ fn weekly_board(p: &Prompt<'_>) -> Value {
     };
     // (alias, title, season, keywords) from `- T1 «title» (season) — keywords: a, b`
     let mut proposals: Vec<Value> = Vec::new();
+    // Site care first (ADR-0070): `- S1 «title» (refresh: …)` under `## Site health`.
+    let mut in_site = false;
+    let maintenance = p.0.contains("## Site health");
+    for line in p.0.lines() {
+        if let Some(head) = line.strip_prefix("## ") {
+            in_site = head.starts_with("Site health");
+            continue;
+        }
+        if !in_site || proposals.len() >= most {
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("- ") else {
+            continue;
+        };
+        let alias = rest.split_whitespace().next().unwrap_or("");
+        let Some(title) = quoted(line).first().copied() else {
+            continue;
+        };
+        let kind = if line.contains("(fix:") {
+            "fix"
+        } else {
+            "refresh"
+        };
+        proposals.push(json!({
+            "topic": "",
+            "title": cap(title, 70),
+            "angle": if kind == "fix" { "Remove the broken links so readers do not land on missing pages.".to_string() }
+                     else { format!("Bring {} up to date for this season.", cap(title, 60)) },
+            "keywords": ["cinque terre", "update"],
+            "priority": "high",
+            "workstream": "Site upkeep",
+            "kind": kind,
+            "page": alias,
+        }));
+    }
     let mut in_topics = false;
     for line in p.0.lines() {
         if let Some(head) = line.strip_prefix("## ") {
@@ -657,10 +711,16 @@ fn weekly_board(p: &Prompt<'_>) -> Value {
             "workstream": "Evergreen guides",
         }));
     }
+    let care = proposals.iter().filter(|p| p.get("kind").is_some()).count();
     for (i, prop) in proposals.iter_mut().enumerate() {
         let day = u32::try_from(2 + 2 * i).unwrap_or(13).min(13);
         prop["publish_day"] = json!(day);
-        prop["after"] = json!(u32::from(i == 1));
+        // the second article builds on the first; site care builds on nothing
+        prop["after"] = json!(if care == 0 { u32::from(i == 1) } else { 0 });
+        if maintenance && prop.get("kind").is_none() {
+            prop["kind"] = json!("article");
+            prop["page"] = json!("");
+        }
     }
     json!({
         "say": "This is the plan for the next two weeks: the season first, then the guides readers keep asking for.",

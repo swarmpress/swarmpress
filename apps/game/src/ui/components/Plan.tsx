@@ -33,6 +33,7 @@ export function Plan() {
       ) : (
         <>
           <ThisWeek />
+          <SiteHealth />
           <Filters filter={filter} onChange={setFilter} />
           {tabs.length > 1 ? (
             <>
@@ -52,6 +53,23 @@ export function Plan() {
         </>
       )}
     </Panel>
+  )
+}
+
+/** The site's health (ADR-0070): the sim's signals from the latest audit and the audit's summary. */
+function SiteHealth() {
+  const store = useStore()
+  const site = store.plan.value.site
+  if (!site) return null
+  const summary = store.planText.value.items['site:audit']?.title
+  return (
+    <section class="card site-health" aria-labelledby="site-health-title">
+      <h3 id="site-health-title">Site health</h3>
+      <p class="small">
+        {site.livePages} live pages in {site.languages} languages · {site.brokenLinks} broken internal links · {site.mediaCount} images
+      </p>
+      {summary && <p class="small muted">{summary}. The weekly board plans refreshes and fixes.</p>}
+    </section>
   )
 }
 

@@ -702,3 +702,37 @@ fn an_item_with_an_open_ticket_is_answered_not_cancelled() {
         .unwrap_err();
     assert!(err.to_string().contains("open ticket"), "{err}");
 }
+
+#[test]
+fn the_board_plans_refresh_and_fix_items_that_publish_without_a_new_page() {
+    let mut w = with_board(16);
+    w.apply(Command::SetPolicy(Policy::Autonomy(
+        AutonomyPolicy::Autonomous,
+    )))
+    .unwrap();
+    let board = step_until(&mut w, JobKind::Board, 600);
+    let mut refresh = stub(1800, 0, 2);
+    refresh.kind = WorkItemKind::Refresh;
+    let mut fix = stub(1801, 0, 2);
+    fix.kind = WorkItemKind::Fix;
+    board_outcome(&mut w, board.job_id, vec![refresh, fix]);
+    let r = items_with(&w, 1800);
+    assert_eq!(w.plan.items[&r].kind, WorkItemKind::Refresh);
+    assert_eq!(w.plan.items[&items_with(&w, 1801)].kind, WorkItemKind::Fix);
+    let drafts = drain(&mut w);
+    assert_eq!(drafts.len(), 2, "both start like articles: {drafts:?}");
+    let pages = w.projects[&DEMO_PROJECT].kpis.live_pages;
+    complete(&mut w, drafts[0].job_id, 0);
+    let review = step_until(&mut w, JobKind::Review, 300);
+    complete(&mut w, review.job_id, 8);
+    let publish = step_until(&mut w, JobKind::Publish, 300);
+    complete(&mut w, publish.job_id, 0);
+    run(&mut w, 20);
+    w.apply_server(ServerCommand::DeployLanded { work_item: r })
+        .unwrap();
+    assert_eq!(w.plan.items[&r].status, WorkItemStatus::Published);
+    assert_eq!(
+        w.projects[&DEMO_PROJECT].kpis.live_pages, pages,
+        "an update makes no new page"
+    );
+}

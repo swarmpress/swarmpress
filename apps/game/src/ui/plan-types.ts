@@ -112,7 +112,16 @@ export interface GoalJson {
   current: number
 }
 
+/** The latest site audit's signals as the sim holds them (ADR-0070); null before the first audit. */
+export interface SiteJson {
+  livePages: number
+  languages: number
+  brokenLinks: number
+  mediaCount: number
+}
+
 export interface PlanJson {
+  site?: SiteJson | null
   goals: GoalJson[]
   workstreams: WorkstreamJson[]
   items: WorkItemJson[]

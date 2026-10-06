@@ -42,7 +42,7 @@
  */
 import { Sim } from 'swarm-wasm'
 import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResult, type RestoredSim, type SimFactory } from '../catchup/replay'
-import { CentralClient, centralGateway, companyFor, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company } from '../net/central'
+import { CentralClient, centralGateway, companyFor, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type SiteAudit } from '../net/central'
 import { OrchestrationLoop, type JobRecord } from '../orchestration/loop'
 import { withApprover } from '../orchestration/approver'
 import { sweepStages } from '../orchestration/sweeper'
@@ -271,6 +271,10 @@ export const SESSION_LLM_CALLS = 20
 
 /** kv key of the "unattended days" setting (host policy; never in the sim or the command log). */
 export const UNATTENDED_DAYS_KEY = 'clock.unattended_days'
+/** kv key of the last `SiteSignals` command logged (ADR-0070): logged again only when the audit changed. */
+export const SITE_SIGNALS_KEY = 'site.signals'
+/** Plan text key of the site audit's summary (ADR-0070): `title` is the sentence, `brief` the counts as JSON. */
+export const SITE_AUDIT_ITEM = 'site:audit'
 
 async function signIn(client: CentralClient, login: string) {
   const me = await client.me()
@@ -478,6 +482,9 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
 
   stage('restore')
   const rebase = params.get('restore') === 'rebase'
+  // The latest site audit (ADR-0070) and how to refresh it (set once the loop exists).
+  let siteAudit: SiteAudit | null = null
+  let auditSite: () => Promise<SiteAudit | null> = async () => null
   const { sim, info: restored, result, lastSeq } = await restore(store, client, company, { forceReplay: params.get('restore') === 'replay', rebase })
   log(
     `company ${company.id} restored from ${restored.source} at step ${restored.step} (${restored.snapshot ? 'snapshot + ' : ''}${restored.replayed} commands replayed, ${restored.ms} ms)`,
@@ -562,11 +569,14 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       const titles = Object.fromEntries(Object.entries(plan.items).map(([id, i]) => [id, i.title]))
       return standupContext(sim.plan_json(), project, { now: new Date(), titles, minutesPerArticle: minutesPerArticle(page.rows) })
     },
-    // The editorial board's context (ADR-0069): the standup's, with the planned items' titles from the board's briefs.
+    // The editorial board's context (ADR-0069): the standup's, with the planned items' titles from the board's briefs,
+    // and the site audit's stale articles and broken pages for the board to plan care (ADR-0070).
     boardContext: async ({ project }) => {
       const [plan, page] = await Promise.all([store.plan(company.id), activity.flush().then(() => store.activityPage(company.id, { limit: STANDUP_ACTIVITY_JOBS }))])
       const titles = Object.fromEntries(Object.entries(plan.items).map(([id, i]) => [id, i.title]))
-      return boardContext(sim.plan_json(), project, { now: new Date(), titles, minutesPerArticle: minutesPerArticle(page.rows) })
+      const ctx = boardContext(sim.plan_json(), project, { now: new Date(), titles, minutesPerArticle: minutesPerArticle(page.rows) })
+      const audit = siteAudit ?? (await auditSite().catch(() => null))
+      return audit ? { ...ctx, site: { stale: audit.stale, broken: audit.broken_pages } } : ctx
     },
     speechSpeed: () => clockSpeed(),
   })
@@ -673,6 +683,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       dayMark = sim.day()
       void checkpoint()
       sweep()
+      void auditSite().catch((e) => log(`site audit failed: ${String(e)}`))
     } else if (!localBusy) {
       localBusy = true
       void checkpointLocal()
@@ -683,6 +694,25 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   window.addEventListener('pagehide', () => {
     void checkpoint()
   })
+  // The site audit (ADR-0070): fetched at boot and at each new game day; its signals enter the sim as a
+  // logged command when they changed, its summary is plan text for the Plan panel, its findings feed the board.
+  auditSite = async () => {
+    if (readOnly || loop.halted) return siteAudit
+    const a = await client.siteAudit(lease.token)
+    siteAudit = a
+    const cmd = JSON.stringify({ SiteSignals: a.signals })
+    if ((await store.getKv(SITE_SIGNALS_KEY)) !== cmd) {
+      const r = loop.apply(cmd)
+      if (r.ok) await store.setKv(SITE_SIGNALS_KEY, cmd)
+      else log(`site signals not applied: ${r.reason}`)
+    }
+    const summary = `${a.stale_count} stale articles (over ${a.stale_days} days), ${a.broken_pages.length} pages with broken links (${a.broken_links} links), ${a.orphan_count} orphan pages, ${a.policy_count} linking-policy findings`
+    await store.setItemText(company.id, SITE_AUDIT_ITEM, summary, JSON.stringify({ commit: a.commit, stale: a.stale_count, broken: a.broken_links, orphans: a.orphan_count, policy: a.policy_count }))
+    sources.forEach((s) => s.planTextChanged())
+    log(`site audit at ${a.commit.slice(0, 7)}: ${summary}`)
+    return a
+  }
+  void auditSite().catch((e) => log(`site audit failed: ${String(e)}`))
   // The weekly editorial board plans the week (ADR-0069): on once, as a logged command, so a
   // replay of an older log holds no board before it.
   if (!readOnly && !loop.halted && params.get('board') !== 'off') {

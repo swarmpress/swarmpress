@@ -99,7 +99,7 @@ pub(crate) enum Halt {
     Unavailable(String),
 }
 
-type Step<T> = std::result::Result<T, Halt>;
+pub(crate) type Step<T> = std::result::Result<T, Halt>;
 
 /// What a failed call reports in its progress event.
 #[inline(never)]
@@ -135,12 +135,12 @@ fn cancelled_call() -> RepairFailed {
 /// One job's frame: who works, under which system prompt, and whose stages
 /// a retried phase may adopt.
 pub(crate) struct Cx<'a> {
-    req: &'a JobRequest,
-    item: &'a str,
-    worker: StaffRef,
-    predecessor: Option<u64>,
-    system: String,
-    call: CallProfile,
+    pub(crate) req: &'a JobRequest,
+    pub(crate) item: &'a str,
+    pub(crate) worker: StaffRef,
+    pub(crate) predecessor: Option<u64>,
+    pub(crate) system: String,
+    pub(crate) call: CallProfile,
 }
 
 /// A stage key and its input hash.
@@ -291,7 +291,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     // ------------------------------------------------------------ progress
 
     #[inline(never)]
-    fn emit(
+    pub(crate) fn emit(
         &self,
         cx: &Cx<'_>,
         stage: &str,
@@ -304,7 +304,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     }
 
     #[inline(never)]
-    fn emit_job(&self, cx: &Cx<'_>, state: ProgressState, detail: Value) {
+    pub(crate) fn emit_job(&self, cx: &Cx<'_>, state: ProgressState, detail: Value) {
         self.emit(cx, "job", 0, 1, state, detail);
     }
 
@@ -454,7 +454,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     /// A structured stage: reused when stored, else one call (with repairs),
     /// then stored.
     #[allow(clippy::too_many_arguments)]
-    async fn structured_stage<T: DeserializeOwned>(
+    pub(crate) async fn structured_stage<T: DeserializeOwned>(
         &self,
         cx: &Cx<'_>,
         stage: &'static str,
@@ -527,7 +527,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     /// timeout) leaves the dossier as it is and the draft goes on with what
     /// it has, the failure reported on the stage.
     #[allow(clippy::too_many_arguments)]
-    async fn research_stage(
+    pub(crate) async fn research_stage(
         &self,
         cx: &Cx<'_>,
         index: u32,
@@ -736,7 +736,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
 
     /// Records this job as the latest of its kind on the item and returns the
     /// artifact record and the predecessor whose stages may be adopted.
-    async fn begin(
+    pub(crate) async fn begin(
         &self,
         req: &JobRequest,
         item: &str,
@@ -772,7 +772,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
 
     /// The first draft attaches the brief to its item: title, angle and the
     /// standup minutes (posted once per brief).
-    async fn attach_brief(
+    pub(crate) async fn attach_brief(
         &self,
         req: &JobRequest,
         item: &str,
@@ -827,7 +827,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     /// `NeedsMedia`, else an escalation). Stages it completed stay stored. A
     /// lost model is not a failure: the run errs, and the host runs the job
     /// again once the model is back.
-    async fn halted(&self, cx: &Cx<'_>, halt: Halt) -> Result<Vec<Outcome>> {
+    pub(crate) async fn halted(&self, cx: &Cx<'_>, halt: Halt) -> Result<Vec<Outcome>> {
         let (req, item) = (cx.req, cx.item);
         let failed = |reason| Outcome::JobFailed {
             job_id: req.job_id,
@@ -903,7 +903,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         Ok(vec![outcome])
     }
 
-    fn writer_cx<'a>(
+    pub(crate) fn writer_cx<'a>(
         &self,
         req: &'a JobRequest,
         item: &'a str,
@@ -937,6 +937,9 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     pub(crate) async fn staged_draft(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
         let item = self.work_item(req)?;
         let rec = self.load_brief(req).await?;
+        if crate::maintain::is_maintenance(&rec) {
+            return self.maintenance_draft(req, item, &rec).await;
+        }
         let brief = rec.brief.clone();
         let writer = self.staff_by_id(req, &rec, &rec.writer, "writer")?;
         let editor = self.staff_by_id(req, &rec, &rec.editor, "editor")?;
@@ -1719,6 +1722,9 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     pub(crate) async fn staged_review(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
         let item = self.work_item(req)?;
         let rec = self.load_brief(req).await?;
+        if crate::maintain::is_maintenance(&rec) {
+            return self.maintenance_review(req, item, &rec).await;
+        }
         let brief = rec.brief.clone();
         let editor = self.staff_by_id(req, &rec, &rec.editor, "editor")?;
         let mut art = self

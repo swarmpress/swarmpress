@@ -107,6 +107,7 @@ describe('the editorial board’s plan text (ADR-0069, FEAT-087)', () => {
       'brief:7': { title: 'Vernazza harbour at first light', brief: '…' },
       'work-item-5': { title: 'Vernazza at dawn (as drafted)', brief: '…' },
       'workstream:8361854316634078731': { title: 'Fall', brief: '' },
+      'site:audit': { title: '2 stale articles (over 90 days)', brief: '{}' },
     },
     todos: {},
     workstreams: {},

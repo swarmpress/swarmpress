@@ -211,13 +211,26 @@ pub enum WorkItemKind {
     #[default]
     #[serde(alias = "article")]
     Article,
+    /// An existing article brought up to date (ADR-0070); its brief names the page.
+    #[serde(alias = "refresh")]
+    Refresh,
+    /// An existing page's broken internal links removed (ADR-0070), without a model.
+    #[serde(alias = "fix")]
+    Fix,
 }
 
 impl WorkItemKind {
     pub const fn slug(self) -> &'static str {
         match self {
             WorkItemKind::Article => "article",
+            WorkItemKind::Refresh => "refresh",
+            WorkItemKind::Fix => "fix",
         }
+    }
+
+    /// The item makes a new page (a refresh or a fix changes one the site has).
+    pub const fn creates_page(self) -> bool {
+        matches!(self, WorkItemKind::Article)
     }
 }
 
@@ -1234,8 +1247,11 @@ impl World {
         item.status = WorkItemStatus::Published;
         item.published_step = Some(step);
         let project = item.project;
+        let new_page = item.kind.creates_page();
         if let Some(p) = self.projects.get_mut(&project) {
-            p.kpis.live_pages += 1;
+            if new_page {
+                p.kpis.live_pages += 1;
+            }
         }
         self.push_feed(FeedEntry {
             step,

@@ -289,6 +289,8 @@ async fn a_staged_draft_passes_the_gateway_checks() {
         minutes: vec![],
         work_item: None,
         staff: team(),
+        kind: None,
+        target: None,
     };
     store
         .put_brief(COMPANY, 7, serde_json::to_value(rec).unwrap())

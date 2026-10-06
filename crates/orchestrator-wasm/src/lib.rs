@@ -45,7 +45,7 @@ use async_trait::async_trait;
 use js_sys::{Array, Function, Promise, Reflect, JSON};
 use orchestrator::{
     Attribution, DeployState, DraftPr, Gateway, GatewayError, JobFailure, JobRequest, Orchestrator,
-    Outcome, Progress, ProgressEvent, Redeploy, SiteBinding, StageRow, Store, StoreError,
+    Outcome, PageFile, Progress, ProgressEvent, Redeploy, SiteBinding, StageRow, Store, StoreError,
 };
 use serde_json::{json, Value};
 use wasm_bindgen::prelude::*;
@@ -458,6 +458,63 @@ impl Gateway for JsGateway {
                     .map(String::from)
             })
             .ok_or_else(|| gw("merge must return the merged sha".into()))
+    }
+
+    /// `readPage(path)` → `{page, sha}` or `null` (ADR-0070), optional:
+    /// without it a refresh or fix fails loudly.
+    async fn read_page(&self, path: &str) -> Result<Option<PageFile>, GatewayError> {
+        if !has_method(&self.obj, "readPage") {
+            return Err(gw(format!("this gateway cannot read pages ({path})")));
+        }
+        let v = call(&self.obj, "readPage", &[s(path)]).await.map_err(gw)?;
+        let Some(v) = json_of(&v).map_err(gw)? else {
+            return Ok(None);
+        };
+        if v.is_null() {
+            return Ok(None);
+        }
+        let sha = v["sha"]
+            .as_str()
+            .ok_or_else(|| gw("readPage must return {page, sha}".into()))?
+            .to_string();
+        let page = match &v["page"] {
+            Value::String(t) => {
+                serde_json::from_str(t).map_err(|e| gw(format!("readPage page: {e}")))?
+            }
+            other => other.clone(),
+        };
+        Ok(Some(PageFile { page, sha }))
+    }
+
+    /// `openUpdate(contentId, path, pageJson, message, workItem, attribution, blobSha)`
+    /// (ADR-0070), optional: without it an update fails loudly.
+    async fn open_update_as(
+        &self,
+        content_id: &str,
+        path: &str,
+        page: &Value,
+        message: &str,
+        attribution: Option<&Attribution>,
+        blob_sha: &str,
+    ) -> Result<DraftPr, GatewayError> {
+        if !has_method(&self.obj, "openUpdate") {
+            return Err(gw(format!("this gateway cannot update {path}")));
+        }
+        let work_item = self.work_item.borrow().clone();
+        let args = vec![
+            s(content_id),
+            s(path),
+            s(&page.to_string()),
+            s(message),
+            opt_s(work_item.as_deref()),
+            attribution_arg(attribution)?.unwrap_or(JsValue::NULL),
+            s(blob_sha),
+        ];
+        let v = call(&self.obj, "openUpdate", &args).await.map_err(gw)?;
+        let v = json_of(&v)
+            .map_err(gw)?
+            .ok_or_else(|| gw("openUpdate returned nothing".into()))?;
+        serde_json::from_value(v).map_err(|e| gw(format!("openUpdate answer: {e}")))
     }
 
     /// `deployState(number)`, optional: without it deploys are not observed.

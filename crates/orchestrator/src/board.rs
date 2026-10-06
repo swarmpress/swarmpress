@@ -31,8 +31,8 @@
 use agents::llm::{structured_with_repair, Repaired};
 use agents::meetings::{
     board_cap, board_prompt, board_schema, pitch_check_prompt, pitch_check_schema, schedule_prompt,
-    schedule_schema, BoardPlan, BoardProposal, BoardSchedule, BoardTopic, Pitch, ScheduleItem,
-    BOARD_ANSWER, BOARD_CAP_LABEL, CAP_LABEL, DEFAULT_TARGET_WORDS, MAX_PUBLISH_DAY,
+    schedule_schema, BoardPlan, BoardProposal, BoardSchedule, BoardSite, BoardTopic, Pitch,
+    ScheduleItem, BOARD_ANSWER, BOARD_CAP_LABEL, CAP_LABEL, DEFAULT_TARGET_WORDS, MAX_PUBLISH_DAY,
     MODEL_MINUTES_PER_DAY, PITCH_REASONING, SCHEDULE_ANSWER,
 };
 use agents::prompts::{templates, Vars};
@@ -77,6 +77,54 @@ pub struct BoardContext {
     /// minus its unstarted items).
     #[serde(default)]
     pub planned_room: Option<usize>,
+    /// The latest site audit's findings the board may plan care for
+    /// (ADR-0070), from `GET /api/site/audit`.
+    #[serde(default)]
+    pub site: Option<SiteHealth>,
+}
+
+/// What the host passes of the site audit (ADR-0070): the stale articles and
+/// the pages with broken internal links, each with its path and title.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SiteHealth {
+    #[serde(default)]
+    pub stale: Vec<StalePage>,
+    #[serde(default)]
+    pub broken: Vec<BrokenPage>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StalePage {
+    pub path: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub date: String,
+    #[serde(default)]
+    pub age_days: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrokenPage {
+    pub path: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub broken: u32,
+}
+
+/// Site pages the board's frame offers at most (ADR-0070).
+const SITE_PAGES: usize = 6;
+
+/// A page of the frame's site-health section.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct FrameSite {
+    alias: String,
+    /// `refresh` or `fix`.
+    kind: String,
+    path: String,
+    title: String,
+    detail: String,
 }
 
 impl BoardContext {
@@ -111,6 +159,9 @@ struct Frame {
     editors: Vec<String>,
     pack: String,
     topics: Vec<FrameTopic>,
+    /// Pages that need care (ADR-0070).
+    #[serde(default)]
+    site: Vec<FrameSite>,
     #[serde(default)]
     why_not: String,
 }
@@ -339,12 +390,93 @@ fn board_topics(site: &SiteBinding, today: Option<&str>, taken: &Taken) -> Vec<F
     out
 }
 
+/// The site-health section of a frame: the oldest stale articles, then the
+/// pages with the most broken links, at most [`SITE_PAGES`], each page once.
+fn frame_site(site: Option<&SiteHealth>) -> Vec<FrameSite> {
+    let Some(site) = site else {
+        return Vec::new();
+    };
+    let mut out: Vec<FrameSite> = Vec::new();
+    let mut broken: Vec<&BrokenPage> = site.broken.iter().collect();
+    broken.sort_by(|a, b| b.broken.cmp(&a.broken).then(a.path.cmp(&b.path)));
+    let stale = site.stale.iter().take(SITE_PAGES / 2 + 1).map(|s| {
+        (
+            "refresh",
+            s.path.clone(),
+            s.title.clone(),
+            format!("last updated {}, {} days ago", s.date, s.age_days),
+        )
+    });
+    let fixes = broken.into_iter().map(|b| {
+        let s = if b.broken == 1 { "" } else { "s" };
+        (
+            "fix",
+            b.path.clone(),
+            b.title.clone(),
+            format!("{} broken internal link{s}", b.broken),
+        )
+    });
+    for (kind, path, title, detail) in stale.chain(fixes) {
+        if out.len() >= SITE_PAGES || out.iter().any(|x| x.path == path) {
+            continue;
+        }
+        let title = if title.trim().is_empty() {
+            path.clone()
+        } else {
+            title
+        };
+        out.push(FrameSite {
+            alias: format!("S{}", out.len() + 1),
+            kind: kind.to_string(),
+            path,
+            title,
+            detail,
+        });
+    }
+    out
+}
+
 /// The problems of a plan, for its repair turn (empty: none).
-fn plan_problems(plan: &BoardPlan, topics: &[FrameTopic], taken: &Taken) -> Vec<String> {
+fn plan_problems(
+    plan: &BoardPlan,
+    topics: &[FrameTopic],
+    site: &[FrameSite],
+    taken: &Taken,
+) -> Vec<String> {
     let mut problems = Vec::new();
     let mut seen = taken.clone();
+    let mut cared: Vec<&str> = Vec::new();
     for (i, p) in plan.proposals.iter().enumerate() {
         let n = i + 1;
+        if p.is_maintenance() {
+            let kind = p.kind.trim();
+            let page = p.page.trim();
+            match site.iter().find(|s| s.alias == page) {
+                None => problems.push(format!(
+                    "Proposal {n} is a {kind} of {page:?}, which is not in the site-health list: use one of its S aliases."
+                )),
+                Some(s) if s.kind != kind => problems.push(format!(
+                    "Proposal {n}: {page} needs a {}, not a {kind}.",
+                    s.kind
+                )),
+                Some(_) if cared.contains(&page) => {
+                    problems.push(format!("Proposal {n}: {page} is planned twice."))
+                }
+                Some(_) => cared.push(page),
+            }
+            if !(1..=MAX_PUBLISH_DAY).contains(&p.publish_day) {
+                problems.push(format!(
+                    "Proposal {n} is published on day {}: use 1 to {MAX_PUBLISH_DAY}.",
+                    p.publish_day
+                ));
+            }
+            continue;
+        }
+        if !p.page.trim().is_empty() {
+            problems.push(format!(
+                "Proposal {n} is an article: leave `page` empty (it is for a refresh or a fix)."
+            ));
+        }
         let topic = p.topic.trim();
         if !topic.is_empty() && !topics.iter().any(|t| t.alias == topic) {
             problems.push(format!(
@@ -448,8 +580,18 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 priority: &t.priority,
             })
             .collect();
-        let user = board_prompt(&frame.pack, &topics, frame.cap);
-        let schema = board_schema(frame.cap);
+        let site: Vec<BoardSite<'_>> = frame
+            .site
+            .iter()
+            .map(|s| BoardSite {
+                alias: &s.alias,
+                kind: &s.kind,
+                title: &s.title,
+                detail: &s.detail,
+            })
+            .collect();
+        let user = board_prompt(&frame.pack, &topics, &site, frame.cap);
+        let schema = board_schema(frame.cap, !frame.site.is_empty());
         let request = LlmRequest {
             profile: profile.clone(),
             system: vec![system.clone()],
@@ -487,7 +629,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                     let check = |v: &Value| -> std::result::Result<(), Vec<String>> {
                         let plan: BoardPlan =
                             serde_json::from_value(v.clone()).map_err(|e| vec![e.to_string()])?;
-                        let problems = plan_problems(&plan, &frame.topics, &taken);
+                        let problems = plan_problems(&plan, &frame.topics, &frame.site, &taken);
                         if problems.is_empty() {
                             Ok(())
                         } else {
@@ -567,6 +709,11 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         let mut kept: Vec<(usize, &BoardProposal)> = Vec::new();
         for (i, proposal) in plan.proposals.iter().enumerate() {
             let index = u32::try_from(i + 1).unwrap_or(u32::MAX);
+            // Site care promises nothing new to check: its research runs in the job.
+            if proposal.is_maintenance() {
+                kept.push((i, proposal));
+                continue;
+            }
             let pitch = as_pitch(proposal);
             let user = pitch_check_prompt(&frame.pack, &pitch);
             let schema = pitch_check_schema();
@@ -693,12 +840,35 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 .into_iter()
                 .collect();
             let brief_ref = brief_ref_for(&req.company_id, req.job_id, *i);
+            // Site care: the page's own title and path (ADR-0070).
+            let care = proposal
+                .is_maintenance()
+                .then(|| frame.site.iter().find(|s| s.alias == proposal.page.trim()))
+                .flatten();
+            let pitch = match care {
+                Some(s) => Pitch {
+                    title: s.title.clone(),
+                    ..pitch
+                },
+                None => pitch,
+            };
+            let slug = care.map_or_else(
+                || slugify(&pitch.title),
+                |s| {
+                    s.path
+                        .rsplit('/')
+                        .next()
+                        .and_then(|f| f.strip_suffix(".json"))
+                        .unwrap_or("")
+                        .to_string()
+                },
+            );
             let record = BriefRecord {
                 job_id: req.job_id,
                 brief: Brief {
                     content_id: format!("content-{brief_ref:x}"),
                     title: pitch.title.clone(),
-                    slug: slugify(&pitch.title),
+                    slug,
                     angle: pitch.angle.clone(),
                     keywords: pitch.keywords.clone(),
                     target_words: DEFAULT_TARGET_WORDS,
@@ -710,6 +880,8 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 minutes: minutes.clone(),
                 work_item: None,
                 staff: vec![editor.clone()],
+                kind: care.map(|s| s.kind.clone()),
+                target: care.map(|s| s.path.clone()),
             };
             self.store
                 .put_brief(
@@ -728,6 +900,12 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 .await?;
             titles.push(format!("\u{ab}{}\u{bb} on day {publish}", pitch.title));
             items.push(PlannedOut {
+                kind: match care.map(|s| s.kind.as_str()) {
+                    Some("refresh") => "Refresh",
+                    Some("fix") => "Fix",
+                    _ => "Article",
+                }
+                .to_string(),
                 brief_ref,
                 editor: editor.id.clone(),
                 priority: priority_of(&proposal.priority).to_string(),
@@ -1032,6 +1210,11 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             editors: editors.iter().map(|s| s.id.clone()).collect(),
             pack,
             topics,
+            site: if cap > 0 {
+                frame_site(ctx.site.as_ref())
+            } else {
+                Vec::new()
+            },
             why_not,
         }
     }

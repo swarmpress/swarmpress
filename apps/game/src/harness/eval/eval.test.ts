@@ -255,7 +255,8 @@ describe('the eval on the scripted model', () => {
     const strip = (r: EvalResults) => r.articles.map((a) => [a.id, a.outcome, a.reviews.map((x) => x.score), a.checks?.words, JSON.stringify(a.page)])
     expect(strip(again)).toEqual(strip(res))
     expect(again.stages.map((s) => [s.stage, s.calls, s.turns])).toEqual(res.stages.map((s) => [s.stage, s.calls, s.turns]))
-  })
+    // A whole second eval run: about 5 s on a loaded machine, past vitest's default.
+  }, 20_000)
 
   it('can leave out the controls and the seeded set', async () => {
     const r = await run({ n: 1, controls: false, seeded: false })

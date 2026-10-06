@@ -683,10 +683,58 @@ pub struct BoardProposal {
     /// The number (from 1) of an earlier proposal this one builds on; 0 for none.
     #[serde(default)]
     pub after: u32,
+    /// `article` (the default), `refresh` or `fix` (ADR-0070).
+    #[serde(default)]
+    pub kind: String,
+    /// The site-health alias (`S1`…) a refresh or fix is for; empty for an article.
+    #[serde(default)]
+    pub page: String,
+}
+
+impl BoardProposal {
+    /// A refresh or a fix of a published page (ADR-0070).
+    pub fn is_maintenance(&self) -> bool {
+        matches!(self.kind.trim(), "refresh" | "fix")
+    }
+}
+
+/// A page of the site that needs care, by its alias (ADR-0070).
+pub struct BoardSite<'a> {
+    pub alias: &'a str,
+    /// `refresh` (a stale article) or `fix` (broken internal links).
+    pub kind: &'a str,
+    pub title: &'a str,
+    /// Why, for the board: `last updated 2023-10-15, 1087 days ago`, `2 broken internal links`.
+    pub detail: &'a str,
 }
 
 /// The user turn of the board's planning call (`plan#0`).
-pub fn board_prompt(context: &str, topics: &[BoardTopic<'_>], cap: usize) -> String {
+pub fn board_prompt(
+    context: &str,
+    topics: &[BoardTopic<'_>],
+    site: &[BoardSite<'_>],
+    cap: usize,
+) -> String {
+    let site_part = if site.is_empty() {
+        String::new()
+    } else {
+        let lines = site
+            .iter()
+            .map(|p| {
+                format!(
+                    "- {} \u{ab}{}\u{bb} ({}: {})",
+                    p.alias, p.title, p.kind, p.detail
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            "\n\n## Site health (published pages that need care)\n{lines}\n\nA proposal may also be the `refresh` of a \
+stale article or the `fix` of a page with broken links listed here: set `kind` to `refresh` or `fix` and `page` to \
+its S alias (each page once; its title stays the page's). Otherwise `kind` is `article` and `page` empty. Plan the \
+most important care first; it counts against the same limit."
+        )
+    };
     let topics = if topics.is_empty() {
         "(none)".to_string()
     } else {
@@ -712,7 +760,7 @@ pub fn board_prompt(context: &str, topics: &[BoardTopic<'_>], cap: usize) -> Str
             .join("\n")
     };
     format!(
-        "## Task: weekly board\n\n{context}\n\n## Calendar topics (not yet published)\n{topics}\n\n{BOARD_CAP_LABEL}{cap}\n\n\
+        "## Task: weekly board\n\n{context}\n\n## Calendar topics (not yet published)\n{topics}{site_part}\n\n{BOARD_CAP_LABEL}{cap}\n\n\
 Plan the articles of the next two weeks. Propose at most {cap}, the strongest first: the calendar's \
 topics when their season is now or near, and articles that fill gaps in what is published. For each: \
 `topic` (the T alias of the calendar topic it is, or an empty string), a `title` a reader would click \
@@ -725,8 +773,24 @@ and `say`: what you tell the board, two sentences. Answer with JSON only."
     )
 }
 
-/// The schema of the board's plan with at most `cap` proposals.
-pub fn board_schema(cap: usize) -> Value {
+/// The schema of the board's plan with at most `cap` proposals; with
+/// `maintenance`, each proposal also has a `kind` and a `page` (ADR-0070).
+pub fn board_schema(cap: usize, maintenance: bool) -> Value {
+    let mut schema = board_schema_base(cap);
+    if maintenance {
+        let item = &mut schema["properties"]["proposals"]["items"];
+        item["properties"]["kind"] =
+            json!({"type": "string", "enum": ["article", "refresh", "fix"]});
+        item["properties"]["page"] = json!({"type": "string", "maxLength": 4});
+        if let Some(r) = item["required"].as_array_mut() {
+            r.push(json!("kind"));
+            r.push(json!("page"));
+        }
+    }
+    schema
+}
+
+fn board_schema_base(cap: usize) -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,

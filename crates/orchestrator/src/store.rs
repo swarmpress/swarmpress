@@ -52,6 +52,13 @@ pub struct BriefRecord {
     /// persona comes from here.
     #[serde(default)]
     pub staff: Vec<crate::StaffRef>,
+    /// `refresh` or `fix` for maintenance of a published page (ADR-0070);
+    /// absent for a new article.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// The page a refresh or fix changes (`content/pages/blog/….json`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
 }
 
 /// The latest artifacts of one work item (stored as JSON by
@@ -104,6 +111,10 @@ pub struct ArtifactRecord {
     /// the staff member doing their work.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub writer: Option<crate::StaffRef>,
+    /// What a refresh or a fix changed on the published page, one line per
+    /// change (ADR-0070): what the editor reviews.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changes: Vec<String>,
 }
 
 impl ArtifactRecord {

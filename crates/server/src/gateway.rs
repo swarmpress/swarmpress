@@ -584,15 +584,33 @@ pub async fn draft(
         }
     }
     let who = attribution_of(body.attribution.as_ref(), &fenced.lease)?;
+    // An update keeps the existing page's own shape (an older article need
+    // not have the new-article profile): its id must stay the content id,
+    // and its links and media are checked against the site below (ADR-0070).
+    let update = body.update.is_some();
     let checked = check_draft(
         &body.content_id,
         &body.path,
         &body.page,
         &DraftRules {
             max_bytes: st.cfg.max_page_bytes,
-            article_profile: st.cfg.article_profile,
+            article_profile: st.cfg.article_profile && !update,
         },
     )?;
+    if update && !checked.article {
+        return Err(AppError::BadRequest(
+            "update is for articles (content/pages/blog/*.json)".into(),
+        ));
+    }
+    if update && body.page["id"].as_str() != Some(body.content_id.as_str()) {
+        return Err(AppError::Unprocessable {
+            message: format!("{} is not the article it updates", checked.path),
+            issues: vec![format!(
+                "/id must stay the content id \"{}\"",
+                body.content_id
+            )],
+        });
+    }
     let path = checked.path;
     let repo = company_repo(&st, company)?;
     let api = st.github.api_for(&repo).await?;
@@ -608,10 +626,6 @@ pub async fn draft(
             body.update.as_deref(),
         )
         .await?;
-    } else if body.update.is_some() {
-        return Err(AppError::BadRequest(
-            "update is for articles (content/pages/blog/*.json)".into(),
-        ));
     }
     let guarded: Arc<dyn RepoApi> = Arc::new(GuardedRepo::new(api, ActorKind::ContentAgent));
     let content = ContentRepo::new(guarded, repo, company.site_base_branch.clone());

@@ -794,7 +794,17 @@ pub fn plan(w: &World, project: Option<&str>) -> Value {
             })
         })
         .collect();
+    // The latest site audit's signals (ADR-0070), as the sim holds them.
+    let site = w.company.signals.as_ref().map(|g| {
+        json!({
+            "livePages": g.live_pages,
+            "languages": g.languages,
+            "brokenLinks": g.broken_links,
+            "mediaCount": g.media_count,
+        })
+    });
     json!({
+        "site": site,
         "goals": goals,
         "workstreams": workstreams,
         "items": items,

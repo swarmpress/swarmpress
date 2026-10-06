@@ -67,6 +67,8 @@ async fn put_brief(store: &dyn Store, brief_ref: u64) {
         minutes: vec![],
         work_item: None,
         staff: team(),
+        kind: None,
+        target: None,
     };
     store
         .put_brief(COMPANY, brief_ref, serde_json::to_value(rec).unwrap())

@@ -51,6 +51,13 @@ plan is where such work belongs (ADR-0069).
 7. `GET /api/gateway/file?path=…` reads one `content/pages/**` file at the base head with its blob
    sha, for the refresh and fix jobs.
 
+**Build status (2026-10-06):** decisions 1 to 7 are built: the audit and the file read on the
+server, the update mode, the `Refresh` and `Fix` kinds, the refresh and fix jobs and their review,
+the board's site-health section and the host's daily audit. A refresh works on the page's own
+prose fields (`text`, `markdown`, `quote` and the like), not on the agent article parts, so it
+can update the site's older articles too; an update therefore skips the new-article profile on the
+server and is checked against the closed world.
+
 ## Consequences
 
 - Stale articles and broken links become visible work the board plans and the CEO approves, and

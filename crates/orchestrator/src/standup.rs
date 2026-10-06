@@ -1327,6 +1327,8 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 minutes: minutes.clone(),
                 work_item: None,
                 staff: vec![(*writer).clone(), editor.clone()],
+                kind: None,
+                target: None,
             };
             self.store
                 .put_brief(

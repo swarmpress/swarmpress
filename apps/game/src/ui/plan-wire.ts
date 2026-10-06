@@ -143,7 +143,7 @@ export function splitPlanJson(doc: unknown): { skeleton: PlanJson | null; text: 
   const d = doc as Record<string, unknown>
   if (Array.isArray(d.items)) {
     const sk = d as unknown as Partial<PlanJson>
-    return { skeleton: { goals: sk.goals ?? [], workstreams: sk.workstreams ?? [], items: sk.items ?? [] }, text: null }
+    return { skeleton: { site: sk.site ?? null, goals: sk.goals ?? [], workstreams: sk.workstreams ?? [], items: sk.items ?? [] }, text: null }
   }
   return { skeleton: null, text: normalizePlanText(d as PlanTextWire) }
 }
@@ -165,8 +165,8 @@ export function statusFromThread(posts: PlanPost[]): WorkItemStatus {
   return status
 }
 
-/** Plan text the editorial board keys by brief or workstream ref, not by a work item (ADR-0069). */
-export const BOARD_TEXT_KEY = /^(brief|workstream):/
+/** Plan text keyed by a brief or workstream ref (ADR-0069) or the site audit (`site:audit`, ADR-0070), not by a work item. */
+export const BOARD_TEXT_KEY = /^(brief|workstream|site):/
 
 /**
  * The board's plan text joined to the sim's ids (ADR-0069): an item without

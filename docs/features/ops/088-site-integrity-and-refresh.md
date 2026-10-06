@@ -8,6 +8,8 @@ paths:
   - crates/server/tests/site_audit.rs
   - crates/knowledge/src/kb.rs
   - crates/knowledge/tests/cinqueterre_mini.rs
+  - crates/orchestrator/src/maintain.rs
+  - crates/orchestrator/tests/maintain.rs
 adrs:
   - ADR-0070
   - ADR-0061
@@ -35,10 +37,25 @@ both pass the editor and the CEO's publish gate. Article updates name the blob t
   blob it replaces; everything else stays create-only. Tests: `crates/server/tests/site_audit.rs`,
   `crates/knowledge/tests/cinqueterre_mini.rs`.
 
+- **Sim**: `WorkItemKind::Refresh` and `Fix` (the article's phases; publishing one makes no new
+  live page). Test: `crates/sim-core/tests/editorial_board.rs`.
+- **Orchestrator** (`crates/orchestrator/src/maintain.rs`): the gateway reads a page with its
+  blob sha and drafts an update naming it (`Gateway::read_page`, `open_update_as`; the fake, the
+  GitHub and the browser's JS gateway). A fix removes the page's broken internal links without a
+  model; a refresh researches, then rewrites only the outdated prose passages against the evidence
+  (a changed localized field keeps English only); nothing to change ends not-ok; a page gone is
+  `NeedsPage`. The review (`update review`) sees the changes. The board's frame gets a site-health
+  section (stale articles, pages with broken links, `S1`…) from the host's `site` context; a
+  proposal may be a refresh or a fix of an alias (checked), without a web check. Tests:
+  `crates/orchestrator/tests/maintain.rs`.
+- **Host**: the session fetches the audit at boot and at each new game day, logs `SiteSignals`
+  when they changed, writes the summary as plan text (`site:audit`) and gives the board the
+  findings; the Plan panel's "Site health" card shows them.
+
 ## Not built yet
 
-- The host's daily `SiteSignals`, the `Refresh` and `Fix` work item kinds, the board's site-health
-  section, the refresh and fix Draft jobs, the site-health card.
+- Linking-policy findings and orphans are reported, not planned as work.
+- Lighthouse scores are not measured (the `SiteSignals` fields stay 0).
 
 ## Acceptance criteria
 

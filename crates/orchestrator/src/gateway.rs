@@ -229,6 +229,37 @@ pub trait Gateway: MaybeSendSync {
             "this gateway cannot redeploy PR #{pr_number}"
         )))
     }
+
+    /// A page of the base branch with its blob sha (ADR-0070), `None` when it
+    /// does not exist. The default fails loudly (rule 11).
+    async fn read_page(&self, path: &str) -> Result<Option<PageFile>, GatewayError> {
+        Err(GatewayError(format!(
+            "this gateway cannot read pages ({path})"
+        )))
+    }
+
+    /// [`Gateway::open_draft_as`] for an update of an existing article
+    /// (ADR-0070 decision 6): refused unless `path` is still the blob
+    /// `blob_sha` on the base branch. The default fails loudly (rule 11).
+    async fn open_update_as(
+        &self,
+        content_id: &str,
+        path: &str,
+        page: &Value,
+        message: &str,
+        attribution: Option<&Attribution>,
+        blob_sha: &str,
+    ) -> Result<DraftPr, GatewayError> {
+        let _ = (content_id, page, message, attribution, blob_sha);
+        Err(GatewayError(format!("this gateway cannot update {path}")))
+    }
+}
+
+/// A page read through the gateway: its JSON and the blob sha an update names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageFile {
+    pub page: Value,
+    pub sha: String,
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
@@ -271,6 +302,22 @@ impl<T: Gateway + ?Sized> Gateway for Arc<T> {
     }
     async fn redeploy(&self, pr_number: u64) -> Result<Redeploy, GatewayError> {
         (**self).redeploy(pr_number).await
+    }
+    async fn read_page(&self, path: &str) -> Result<Option<PageFile>, GatewayError> {
+        (**self).read_page(path).await
+    }
+    async fn open_update_as(
+        &self,
+        content_id: &str,
+        path: &str,
+        page: &Value,
+        message: &str,
+        attribution: Option<&Attribution>,
+        blob_sha: &str,
+    ) -> Result<DraftPr, GatewayError> {
+        (**self)
+            .open_update_as(content_id, path, page, message, attribution, blob_sha)
+            .await
     }
 }
 
@@ -367,11 +414,75 @@ impl FakeGateway {
     pub fn refuse_next_redeploy(&self, message: impl Into<String>) {
         self.lock().refuse_redeploy = Some(message.into());
     }
+
+    /// Puts a file on the base branch (`main`), as a published site would have it.
+    pub fn put_main(&self, path: &str, text: &str) {
+        self.lock()
+            .files
+            .entry("main".into())
+            .or_default()
+            .insert(path.to_string(), text.to_string());
+    }
+
+    /// The blob sha of a text, as [`Gateway::read_page`] answers it.
+    pub fn blob_sha(text: &str) -> String {
+        fake_sha(&["blob", text])
+    }
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Gateway for FakeGateway {
+    async fn read_page(&self, path: &str) -> Result<Option<PageFile>, GatewayError> {
+        let text = self
+            .lock()
+            .files
+            .get("main")
+            .and_then(|f| f.get(path))
+            .cloned();
+        text.map(|t| {
+            let page = serde_json::from_str(&t)
+                .map_err(|e| GatewayError(format!("{path} is not JSON: {e}")))?;
+            Ok(PageFile {
+                page,
+                sha: Self::blob_sha(&t),
+            })
+        })
+        .transpose()
+    }
+
+    async fn open_update_as(
+        &self,
+        content_id: &str,
+        path: &str,
+        page: &Value,
+        message: &str,
+        attribution: Option<&Attribution>,
+        blob_sha: &str,
+    ) -> Result<DraftPr, GatewayError> {
+        let current = self
+            .lock()
+            .files
+            .get("main")
+            .and_then(|f| f.get(path))
+            .cloned();
+        match current {
+            None => {
+                return Err(GatewayError(format!(
+                    "{path} does not exist on main: an update needs an existing article"
+                )))
+            }
+            Some(t) if Self::blob_sha(&t) != blob_sha => {
+                return Err(GatewayError(format!(
+                    "{path} changed on main since it was read: read it again"
+                )))
+            }
+            Some(_) => {}
+        }
+        self.open_draft_as(content_id, path, page, message, attribution)
+            .await
+    }
+
     async fn open_draft(
         &self,
         content_id: &str,
@@ -632,6 +743,43 @@ impl Gateway for GithubGateway {
             branch: pr.branch,
             head_sha: pr.pr.head_sha,
         })
+    }
+
+    async fn read_page(&self, path: &str) -> Result<Option<PageFile>, GatewayError> {
+        let base = self.repo.base_branch().to_string();
+        self.repo
+            .read_page_at(&base, path)
+            .await
+            .map(|v| {
+                v.map(|v| PageFile {
+                    page: v.value,
+                    sha: v.sha,
+                })
+            })
+            .map_err(|e| GatewayError(format!("read {path}: {e}")))
+    }
+
+    async fn open_update_as(
+        &self,
+        content_id: &str,
+        path: &str,
+        page: &Value,
+        message: &str,
+        attribution: Option<&Attribution>,
+        blob_sha: &str,
+    ) -> Result<DraftPr, GatewayError> {
+        match self.read_page(path).await? {
+            None => Err(GatewayError(format!(
+                "{path} does not exist: an update needs an existing article"
+            ))),
+            Some(f) if !f.sha.eq_ignore_ascii_case(blob_sha) => Err(GatewayError(format!(
+                "{path} changed since it was read: read it again"
+            ))),
+            Some(_) => {
+                self.open_draft_as(content_id, path, page, message, attribution)
+                    .await
+            }
+        }
     }
 
     async fn merge_as(

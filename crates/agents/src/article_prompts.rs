@@ -927,3 +927,231 @@ pub struct SectionReview {
     pub notes: String,
     pub issues: Vec<PartIssue>,
 }
+
+// ---------------------------------------------------------------------------
+// Refreshing a published page (ADR-0070)
+// ---------------------------------------------------------------------------
+
+/// The answer budget of a refresh turn, tokens.
+pub const REFRESH_ANSWER: u32 = 2400;
+/// The answer budget of the review of an update, tokens.
+pub const UPDATE_REVIEW_ANSWER: u32 = 900;
+/// Passages a refresh turn sees at most.
+pub const MAX_PASSAGES: usize = 40;
+/// Updates one refresh turn may make.
+pub const MAX_UPDATES: usize = 8;
+/// The shortest text worth refreshing, characters.
+const MIN_PASSAGE_CHARS: usize = 60;
+/// Fields of a page whose text a refresh may replace.
+/// (`markdown` and `quote` hold prose in the site's older articles; plain text
+/// is valid there. HTML fields are left alone.)
+const PASSAGE_KEYS: [&str; 12] = [
+    "text",
+    "markdown",
+    "quote",
+    "content",
+    "description",
+    "intro",
+    "body",
+    "answer",
+    "caption",
+    "summary",
+    "subtitle",
+    "dek",
+];
+
+/// A prose passage of a published page: its alias (`P1`…), the JSON pointer
+/// of its English text and the text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Passage {
+    pub alias: String,
+    pub pointer: String,
+    pub text: String,
+}
+
+fn escape_pointer(key: &str) -> String {
+    key.replace('~', "~0").replace('/', "~1")
+}
+
+/// The prose passages of a page's body, in reading order, at most
+/// [`MAX_PASSAGES`]: string fields of [`PASSAGE_KEYS`] (or their `en` when
+/// localized) of at least 60 characters.
+pub fn page_passages(page: &Value) -> Vec<Passage> {
+    fn walk(v: &Value, ptr: &str, out: &mut Vec<(String, String)>) {
+        match v {
+            Value::Object(m) => {
+                for (k, child) in m {
+                    let p = format!("{ptr}/{}", escape_pointer(k));
+                    if PASSAGE_KEYS.contains(&k.as_str()) {
+                        match child {
+                            Value::String(s) if s.chars().count() >= MIN_PASSAGE_CHARS => {
+                                out.push((p, s.clone()));
+                                continue;
+                            }
+                            Value::Object(l) => {
+                                if let Some(Value::String(s)) = l.get("en") {
+                                    if s.chars().count() >= MIN_PASSAGE_CHARS {
+                                        out.push((format!("{p}/en"), s.clone()));
+                                        continue;
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    walk(child, &p, out);
+                }
+            }
+            Value::Array(a) => {
+                for (i, child) in a.iter().enumerate() {
+                    walk(child, &format!("{ptr}/{i}"), out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut found = Vec::new();
+    if let Some(body) = page.get("body") {
+        walk(body, "/body", &mut found);
+    }
+    found
+        .into_iter()
+        .take(MAX_PASSAGES)
+        .enumerate()
+        .map(|(i, (pointer, text))| Passage {
+            alias: format!("P{}", i + 1),
+            pointer,
+            text,
+        })
+        .collect()
+}
+
+/// One update a refresh proposes: a passage's new English text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PassageUpdate {
+    pub passage: String,
+    pub text: String,
+    /// What was out of date, in one sentence.
+    pub why: String,
+    /// Evidence ids (`E1`…) the new text rests on.
+    #[serde(default)]
+    pub evidence: Vec<String>,
+}
+
+/// A refresh turn's answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefreshAnswer {
+    pub summary: String,
+    pub updates: Vec<PassageUpdate>,
+}
+
+/// `refresh#n` (ADR-0070): the writer reads the published page against the
+/// research evidence and rewrites only the passages that are out of date.
+#[allow(clippy::too_many_arguments)]
+pub fn refresh_prompt(
+    profile: &LlmProfile,
+    system: &str,
+    title: &str,
+    why: &str,
+    passages: &[Passage],
+    evidence: &[String],
+    notes: &[String],
+) -> StagePrompt {
+    let mut c = Composer::new(profile, system, "refresh".into(), REFRESH_ANSWER);
+    c.required(
+        "instructions",
+        format!(
+            "This article is published and is being brought up to date. Read it against the research evidence. \
+Rewrite only the passages whose facts are out of date or wrong, at most {MAX_UPDATES}, each as its complete new \
+plain text in the article's voice and about the same length; keep every other passage as it is. A new fact must \
+rest on the evidence: cite its ids (`E1`…). Do not invent; if nothing is out of date, return no updates and say so \
+in the summary. Answer `{{\"summary\": …, \"updates\": [{{\"passage\": \"P3\", \"text\": …, \"why\": …, \"evidence\": [\"E1\"]}}]}}`."
+        ),
+    );
+    c.required(
+        "page",
+        format!("## The article\nTitle: {title}\nWhy now: {why}\n"),
+    );
+    if !notes.is_empty() {
+        let mut n = String::from("## The editor's notes on the last update (address them)\n");
+        for x in notes {
+            n.push_str(&format!("- {x}\n"));
+        }
+        c.required("notes", n);
+    }
+    let mut ev = String::from("## Research evidence\n");
+    if evidence.is_empty() {
+        ev.push_str("(none found)\n");
+    }
+    for e in evidence {
+        ev.push_str(&format!("- {e}\n"));
+    }
+    c.required("evidence", ev);
+    let mut p = String::from("## Passages\n");
+    for x in passages {
+        p.push_str(&format!("{}: {}\n", x.alias, x.text));
+    }
+    c.required("passages", p);
+    c.build()
+}
+
+/// The schema of a refresh turn over `n` passages.
+pub fn refresh_schema(n: usize) -> Value {
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["summary", "updates"],
+        "properties": {
+            "summary": {"type": "string", "minLength": 10, "maxLength": 500},
+            "updates": {
+                "type": "array", "maxItems": MAX_UPDATES.min(n.max(1)),
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["passage", "text", "why", "evidence"],
+                    "properties": {
+                        "passage": {"type": "string", "minLength": 2, "maxLength": 4},
+                        "text": {"type": "string", "minLength": 40, "maxLength": 4000},
+                        "why": {"type": "string", "minLength": 5, "maxLength": 300},
+                        "evidence": {"type": "array", "maxItems": 6,
+                                     "items": {"type": "string", "minLength": 2, "maxLength": 4}}
+                    }
+                }
+            }
+        }
+    })
+}
+
+/// `update review` (ADR-0070): the editor reviews the changes a refresh or a
+/// fix made to a published page, against the evidence.
+pub fn update_review_prompt(
+    profile: &LlmProfile,
+    system: &str,
+    frame: &ReviewFrame<'_>,
+    kind: &str,
+    changes: &[String],
+) -> StagePrompt {
+    let mut c = Composer::new(
+        profile,
+        system,
+        "update review".into(),
+        UPDATE_REVIEW_ANSWER,
+    );
+    c.required("frame", review_head(frame));
+    c.required(
+        "instructions",
+        format!(
+            "This is a {kind} of a published article, not a new draft: review only the changes below. Approve when each \
+change is correct, rests on the evidence or the site, and reads like the rest of the article; ask for changes \
+otherwise, naming the change and what to do. Score the article as it now stands."
+        ),
+    );
+    c.required("brief", brief_part(frame.brief));
+    c.optional("evidence", 1, evidence_part(frame.evidence));
+    let mut s = String::from("## The changes\n");
+    for x in changes {
+        s.push_str(&format!("- {x}\n"));
+    }
+    c.required("changes", s);
+    c.build()
+}

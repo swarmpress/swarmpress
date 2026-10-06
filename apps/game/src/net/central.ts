@@ -161,6 +161,43 @@ export interface DraftRequest {
   message: string
   work_item?: string | null
   attribution?: Attribution | null
+  /** An update of an existing article (ADR-0070): the blob sha it replaces. */
+  update?: string | null
+}
+
+/** `GET /api/gateway/file`: a `content/pages/` file at the base head with its blob sha (ADR-0070). */
+export interface GatewayFile {
+  path: string
+  sha: string
+  commit: string
+  page: unknown
+}
+
+/** `GET /api/site/audit` (ADR-0070): the site's health at the base head. */
+export interface SiteAudit {
+  commit: string
+  pages: number
+  links_checked: number
+  broken_links: number
+  broken_pages: { path: string; title: string; broken: number }[]
+  orphans: { path: string; title: string }[]
+  orphan_count: number
+  policy: { path: string; pointer: string; block: string; links: number; min: number; max: number | null }[]
+  policy_count: number
+  stale: { path: string; title: string; date: string; age_days: number }[]
+  stale_count: number
+  stale_days: number
+  articles: number
+  /** `ServerCommand::SiteSignals`, as the sim takes it. */
+  signals: {
+    live_pages: number
+    languages: number
+    broken_links: number
+    media_count: number
+    lighthouse_performance: number
+    lighthouse_accessibility: number
+    lighthouse_seo: number
+  }
 }
 
 export interface DraftResult {
@@ -428,6 +465,21 @@ export class CentralClient {
   }
 
   // ------------------------------------------------------------ gateway
+
+  /** A page of the base branch with its blob sha; `null` when it does not exist (ADR-0070). */
+  async gatewayFile(token: string, path: string): Promise<GatewayFile | null> {
+    try {
+      return await this.json('GET', `/api/gateway/file?path=${encodeURIComponent(path)}`, { headers: { [LEASE_HEADER]: token } })
+    } catch (e) {
+      if (e instanceof CentralError && e.status === 404) return null
+      throw e
+    }
+  }
+
+  /** The site audit of the base head (ADR-0070). */
+  siteAudit(token: string): Promise<SiteAudit> {
+    return this.json('GET', '/api/site/audit', { headers: { [LEASE_HEADER]: token } })
+  }
 
   /** `token`: the lease's fencing token (`Lease.token`). */
   draft(token: string, body: DraftRequest): Promise<DraftResult> {
@@ -714,6 +766,18 @@ export interface OrchestratorGateway {
   deployState?(number: number): Promise<DeployState | null>
   /** Deploy a merge whose deployment failed again (FEAT-085). Optional; rejects when refused. */
   redeploy?(number: number): Promise<RedeployResult>
+  /** A page of the base branch with its blob sha, `null` when absent (ADR-0070). Optional. */
+  readPage?(path: string): Promise<{ page: unknown; sha: string } | null>
+  /** An update of an existing article naming the blob it replaces (ADR-0070). Optional. */
+  openUpdate?(
+    contentId: string,
+    path: string,
+    pageJson: string,
+    message: string,
+    workItem: string | null,
+    attribution: Attribution | string | null,
+    blobSha: string,
+  ): Promise<{ number: number; branch: string; head_sha: string }>
 }
 
 function attributionOf(a: Attribution | string | null | undefined): Attribution | null {
@@ -745,6 +809,17 @@ export function centralGateway(client: CentralClient, token: () => string): Orch
     },
     redeploy(number) {
       return client.redeploy(token(), number)
+    },
+    async readPage(path) {
+      const f = await client.gatewayFile(token(), path)
+      return f ? { page: f.page, sha: f.sha } : null
+    },
+    async openUpdate(contentId, path, pageJson, message, workItem, attribution, blobSha) {
+      const body: DraftRequest = { content_id: contentId, path, page: JSON.parse(pageJson), message, work_item: workItem, update: blobSha }
+      const who = attributionOf(attribution)
+      if (who) body.attribution = who
+      const r = await client.draft(token(), body)
+      return { number: r.number, branch: r.branch, head_sha: r.head_sha }
     },
   }
 }

@@ -39,6 +39,7 @@ mod article;
 mod board;
 pub mod eval;
 mod gateway;
+mod maintain;
 mod run;
 mod site;
 mod staged;
@@ -52,11 +53,14 @@ pub use article::{
     used_hero_images, word_count, ArticleContext, SiteValidatorV2, ARTICLE_BLOCK_DOCS,
     ENTITY_FACTS, HERO_SHORTLIST, LINK_SHORTLIST, RELATED_TITLES,
 };
-pub use board::{workstream_ref_for, BoardContext, PLAN_REPAIRS};
+pub use board::{
+    workstream_ref_for, BoardContext, BrokenPage, SiteHealth, StalePage, PLAN_REPAIRS,
+};
 #[cfg(not(target_arch = "wasm32"))]
 pub use gateway::GithubGateway;
 pub use gateway::{
-    Attribution, DeployState, DraftPr, FakeGateway, FakePr, Gateway, GatewayError, Redeploy,
+    Attribution, DeployState, DraftPr, FakeGateway, FakePr, Gateway, GatewayError, PageFile,
+    Redeploy,
 };
 pub use run::{CancelToken, Orchestrator, OrchestratorError, SiteBinding};
 pub use site::{
@@ -205,10 +209,17 @@ pub enum Outcome {
     },
 }
 
+fn article_kind() -> String {
+    "Article".into()
+}
+
 /// One item the board planned, in the sim's `PlannedStub` field names (its
 /// `kind` defaults to an article; `priority` is the sim's variant name).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlannedOut {
+    /// `Article`, `Refresh` or `Fix` (the sim's `WorkItemKind`, ADR-0070).
+    #[serde(default = "article_kind")]
+    pub kind: String,
     pub brief_ref: u64,
     /// Who reviews and owns it (a staff id); the writer is the sim's choice.
     pub editor: String,

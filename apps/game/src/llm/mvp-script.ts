@@ -466,6 +466,30 @@ function weeklyBoard(p: Prompt) {
     return !seen.some((t) => t === title.toLowerCase() || words(t).filter((w) => mine.includes(w)).length >= 2)
   }
   const proposals: Record<string, unknown>[] = []
+  // Site care first (ADR-0070): `- S1 «title» (refresh: …)` under `## Site health`.
+  const maintenance = p.text.includes('## Site health')
+  let inSite = false
+  for (const line of p.text.split('\n')) {
+    if (line.startsWith('## ')) {
+      inSite = line.slice(3).startsWith('Site health')
+      continue
+    }
+    if (!inSite || proposals.length >= most || !line.startsWith('- ')) continue
+    const alias = line.slice(2).split(/\s+/)[0] ?? ''
+    const title = quoted(line)[0]
+    if (title === undefined) continue
+    const kind = line.includes('(fix:') ? 'fix' : 'refresh'
+    proposals.push({
+      topic: '',
+      title: cap(title, 70),
+      angle: kind === 'fix' ? 'Remove the broken links so readers do not land on missing pages.' : `Bring ${cap(title, 60)} up to date for this season.`,
+      keywords: ['cinque terre', 'update'],
+      priority: 'high',
+      workstream: 'Site upkeep',
+      kind,
+      page: alias,
+    })
+  }
   let inTopics = false
   for (const line of p.text.split('\n')) {
     if (line.startsWith('## ')) {
@@ -497,9 +521,15 @@ function weeklyBoard(p: Prompt) {
     seen.push(t.title.toLowerCase())
     proposals.push({ topic: '', title: t.title, angle: t.angle, keywords: t.keywords, priority: 'high', workstream: 'Evergreen guides' })
   }
+  const care = proposals.filter((x) => 'kind' in x).length
   proposals.forEach((prop, i) => {
     prop.publish_day = Math.min(13, 2 + 2 * i)
-    prop.after = i === 1 ? 1 : 0
+    // the second article builds on the first; site care builds on nothing
+    prop.after = care === 0 && i === 1 ? 1 : 0
+    if (maintenance && !('kind' in prop)) {
+      prop.kind = 'article'
+      prop.page = ''
+    }
   })
   return {
     say: 'This is the plan for the next two weeks: the season first, then the guides readers keep asking for.',
@@ -545,6 +575,17 @@ export function standupAnswer(prompt: string, later = ''): MvpReply | null {
   if (task === 'pitch check') return { json: MVP_PITCH_CHECK }
   if (task === 'weekly board') return { json: weeklyBoard(p) }
   if (task === 'board schedule') return { json: boardSchedule(p) }
+  // A refresh updates the first passage, on the first evidence (ADR-0070; `fake_writer.rs`).
+  if (task === 'refresh') {
+    const first = p.text.split('\n').find((l) => l.startsWith('P1: '))?.slice(4) ?? 'the article'
+    return {
+      json: {
+        summary: 'One passage was out of date; the rest still holds.',
+        updates: [{ passage: 'P1', text: `Updated this season (see the park's notice): ${[...first].slice(0, 120).join('')}`, why: 'The opening facts were from an earlier season.', evidence: ['E1'] }],
+      },
+    }
+  }
+  if (task === 'update review') return { json: { decision: 'approve', score: 8, notes: 'The update is correct and rests on the evidence.', issues: [], high_risk: [] } }
   return null
 }
 
