@@ -543,6 +543,16 @@ export class CentralClient {
     }
   }
 
+  /** `GET /web/fetch?url=` (ADR-0040): the central proxy a tool's web goes through (SSRF guard, rate limit, text only). */
+  webFetch(url: string): Promise<{ url: string; status: number; content_type: string; text: string }> {
+    return this.json('GET', `/web/fetch?url=${encodeURIComponent(url)}`)
+  }
+
+  /** A tool run's output as site data (ADR-0072, FEAT-092): validated against the tool's type, committed. */
+  putSiteData(token: string, body: { tool: string; key?: string; port?: string; value: unknown }): Promise<{ path: string; commit: string; changed: boolean }> {
+    return this.json('PUT', '/api/site/data', { json: body, headers: { [LEASE_HEADER]: token } })
+  }
+
   /** The site audit of the base head (ADR-0070). */
   siteAudit(token: string): Promise<SiteAudit> {
     return this.json('GET', '/api/site/audit', { headers: { [LEASE_HEADER]: token } })
