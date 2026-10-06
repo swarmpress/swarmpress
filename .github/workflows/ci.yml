@@ -344,6 +344,11 @@ jobs:
         with:
           name: runner-junit
           path: packages/runner/reports/junit.xml
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: toolgraph-junit
+          path: packages/toolgraph/reports/junit.xml
 
   site-kit:
     name: Site kit + starter theme (kit check, astro build, vitest)
@@ -465,6 +470,10 @@ jobs:
         with:
           name: runner-junit
           path: packages/runner/reports
+      - uses: actions/download-artifact@v4
+        with:
+          name: toolgraph-junit
+          path: packages/toolgraph/reports
       - uses: actions/download-artifact@v4
         with:
           name: site-kit-vitest-junit

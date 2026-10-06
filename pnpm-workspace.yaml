@@ -8,6 +8,7 @@ packages:
   - 'packages/sdk'
   - 'packages/sandbox'
   - 'packages/runner'
+  - 'packages/toolgraph'
   - 'examples/extensions/*'
   # The cinque-terre Astro theme has its own package.json + own deps (astro,
   # react, tailwind, etc.) and is built standalone by each site repo's

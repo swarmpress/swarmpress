@@ -248,6 +248,19 @@ workflow = "ci.yml"
 artifact = "runner-junit"
 branch = "main"
 
+[[evidence]]
+id = "toolgraph/bun-test"
+title = "packages/toolgraph bun test (tool-graph interpreter, trace and replay, Rust fixtures, sandbox end to end)"
+format = "junit"
+kind = "integration"
+path = [".cockpit/evidence/toolgraph__bun-test/**/*.xml", "packages/toolgraph/reports/junit.xml"]
+component = "sdk"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "toolgraph-junit"
+branch = "main"
+
 # ---------------------------------------------------------------- orchestrator-wasm (bun test)
 # The MVP loop through the JS bridge (crates/orchestrator-wasm/tests/loop.test.ts), run from the
 # repo root so classnames are repo-relative: `bun test crates/orchestrator-wasm/tests

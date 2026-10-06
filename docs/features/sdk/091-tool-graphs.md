@@ -49,3 +49,4 @@ Depends on: FEAT-054 (sandbox), FEAT-056 (skills).
 - `sdk/bun-test`
 - `sandbox/bun-test`
 - `runner/bun-test`
+- `toolgraph/bun-test`

@@ -6,10 +6,10 @@
   "scripts": {
     "dev": "pnpm --filter @swarm-press/game dev",
     "build": "pnpm --filter @swarm-press/game build",
-    "typecheck": "pnpm -r --filter @swarm-press/game --filter @swarm-press/content-schema --filter @swarm-press/site-kit --filter @swarm-press/sdk --filter @swarm-press/sandbox --filter @swarm-press/runner typecheck",
+    "typecheck": "pnpm -r --filter @swarm-press/game --filter @swarm-press/content-schema --filter @swarm-press/site-kit --filter @swarm-press/sdk --filter @swarm-press/sandbox --filter @swarm-press/runner --filter @swarm-press/toolgraph typecheck",
     "test": "pnpm -r --filter @swarm-press/content-schema --filter @swarm-press/game test",
     "test:e2e": "pnpm --filter @swarm-press/game test:e2e",
-    "test:sdk": "pnpm -r --filter @swarm-press/sdk --filter @swarm-press/sandbox --filter @swarm-press/runner test",
+    "test:sdk": "pnpm -r --filter @swarm-press/sdk --filter @swarm-press/sandbox --filter @swarm-press/runner --filter @swarm-press/toolgraph test",
     "test:site-kit": "pnpm --filter @swarm-press/site-kit test",
     "kit": "node packages/site-kit/bin/kit.mjs",
     "swarmpress": "bun packages/runner/src/cli.ts",

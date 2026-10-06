@@ -1,0 +1,16 @@
+{
+  "departures": [
+    { "stop": "monterosso", "dep": "08:50", "dest": "Portovenere" },
+    { "stop": "vernazza", "dep": "09:05", "dest": "Portovenere" },
+    { "stop": "vernazza", "dep": "09:40", "dest": "Monterosso" },
+    { "stop": "manarola", "dep": "09:55", "dest": "La Spezia" },
+    { "stop": "vernazza", "dep": "10:25", "dest": "Portovenere" },
+    { "stop": "vernazza", "dep": "11:00", "dest": "Monterosso" },
+    { "stop": "riomaggiore", "dep": "11:20", "dest": "Lerici" },
+    { "stop": "vernazza", "dep": "11:45", "dest": "La Spezia" },
+    { "stop": "vernazza", "dep": "12:30", "dest": "Monterosso" },
+    { "stop": "vernazza", "dep": "14:15", "dest": "Portovenere" },
+    { "stop": "vernazza", "dep": "16:05", "dest": "Monterosso" },
+    { "stop": "monterosso", "dep": "17:10", "dest": "La Spezia" }
+  ]
+}

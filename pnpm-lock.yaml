@@ -288,6 +288,28 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@20.19.25)(jsdom@26.1.0)(tsx@4.20.6)
 
+  packages/toolgraph:
+    dependencies:
+      '@swarm-press/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      zod:
+        specifier: ^3.22.4
+        version: 3.25.76
+    devDependencies:
+      '@swarm-press/runner':
+        specifier: workspace:*
+        version: link:../runner
+      '@swarm-press/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
+      '@types/bun':
+        specifier: 1.3.14
+        version: 1.3.14
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
   packages/tracker:
     devDependencies:
       esbuild:
