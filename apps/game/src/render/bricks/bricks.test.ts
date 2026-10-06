@@ -20,6 +20,7 @@ import { buildRoomChunk, exteriorSides, regionOf, shellOrigin, type ChunkSource 
 import { mappingOf, type KitApi } from './kit'
 import { buildBrickOffice, SPIKE_ROOMS, type BrickOffice } from './office'
 import { PLATE, roomPlacements, STUD, turnOf, type DesignInfo } from './placements'
+import townJson from '../../../../../crates/blueprint/tests/fixtures/cinqueterre-mini.town.json'
 
 const layout = layoutJson as unknown as BuildingLayout
 const PKG = resolve(process.cwd(), '../../crates/kit-wasm/pkg') + '/'
@@ -225,5 +226,29 @@ describe.skipIf(!built)('brick office spike (kit-wasm, NullEngine)', () => {
     }
     // Surfaces face into the room, in front of their screen.
     for (const s of monitors) expect(s.anchor.normal).toEqual([0, 0, 1])
+  })
+
+  it('puts the site’s brick town on a model table, scaled, and rebuilds only on change (ADR-0072)', () => {
+    const { bricks } = scene()
+    expect(bricks.stats().model).toBeNull()
+    const json = JSON.stringify(townJson)
+    bricks.setModel(json)
+    const m = bricks.stats().model!
+    expect(m).not.toBeNull()
+    expect(m.room).toBe(room('editor-office').id)
+    expect(m.instances).toBe(m.kitInstances)
+    expect(m.instances).toBeGreaterThan(20)
+    expect(m.scale).toBeGreaterThan(0)
+    expect(m.scale).toBeLessThanOrEqual(1 / 8)
+    // The same town again: nothing is rebuilt.
+    const before = bricks.stats().model
+    bricks.setModel(json)
+    expect(bricks.stats().model).toBe(before)
+    // A design the kit refuses leaves no model, and null clears it.
+    bricks.setModel(JSON.stringify({ ...townJson, ops: [{ op: 'box', at: [0, 0, 0], size: [1, 1, 1], part: 'nope' }] }))
+    expect(bricks.stats().model).toBeNull()
+    bricks.setModel(json)
+    bricks.setModel(null)
+    expect(bricks.stats().model).toBeNull()
   })
 })

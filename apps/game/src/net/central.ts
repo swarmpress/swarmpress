@@ -239,6 +239,8 @@ export interface SiteAudit {
   }
 }
 
+export type { SiteModels } from '../blueprint/types'
+
 export interface DraftResult {
   number: number
   branch: string
@@ -544,6 +546,11 @@ export class CentralClient {
   /** The site audit of the base head (ADR-0070). */
   siteAudit(token: string): Promise<SiteAudit> {
     return this.json('GET', '/api/site/audit', { headers: { [LEASE_HEADER]: token } })
+  }
+
+  /** The site's blueprint, tools and brick town at the base head (ADR-0072). */
+  siteBlueprint(token: string): Promise<import('../blueprint/types').SiteModels> {
+    return this.json('GET', '/api/site/blueprint', { headers: { [LEASE_HEADER]: token } })
   }
 
   /** `token`: the lease's fencing token (`Lease.token`). */

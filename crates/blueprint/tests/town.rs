@@ -37,6 +37,22 @@ fn the_fixture_town_compiles_and_is_stable() {
     }
 }
 
+/// The fixture town as JSON: the renderer's tests build it (`apps/game`).
+#[test]
+fn the_fixture_town_is_golden() {
+    let design = town(&mini(), &TownInput::default());
+    let text = serde_json::to_string_pretty(&design).unwrap() + "\n";
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cinqueterre-mini.town.json");
+    if std::env::var_os("BLESS").is_some() {
+        std::fs::write(&path, &text).unwrap();
+    }
+    assert_eq!(
+        text,
+        std::fs::read_to_string(&path).expect("golden (BLESS=1)")
+    );
+}
+
 #[test]
 fn problems_and_changes_show_in_the_bricks() {
     let bp = mini();

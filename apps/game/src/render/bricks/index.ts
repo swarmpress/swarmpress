@@ -54,3 +54,17 @@ export function surfaceSourcesFrom(store: StoreLike): SurfaceSources {
     board: () => boardCards(store.plan.peek().items, (id) => store.planText.peek().items[id]?.title),
   }
 }
+
+/** The part of the overlay's store the model table reads (structurally `OverlayStore.siteModels`). */
+export interface ModelStoreLike {
+  siteModels: { subscribe(fn: (m: { town: unknown } | null) => void): () => void }
+}
+
+/**
+ * Keeps the model table on the site's current town (ADR-0072): every time
+ * the store's site models change, the town's design goes to the bricks
+ * (rebuilt only when it differs). Returns the unsubscribe.
+ */
+export function watchModel(store: ModelStoreLike, bricks: BrickOffice): () => void {
+  return store.siteModels.subscribe((m) => bricks.setModel(m ? JSON.stringify(m.town) : null))
+}

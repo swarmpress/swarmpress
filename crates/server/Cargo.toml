@@ -20,6 +20,7 @@ content-model = { path = "../content-model" }
 # The knowledge pack (ADR-0061): built here from a repository snapshot, served
 # to the browser, and loaded for the gateway's closed-world draft checks.
 knowledge = { path = "../knowledge" }
+blueprint = { path = "../blueprint" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -52,6 +53,7 @@ time = "0.3"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 [dev-dependencies]
+kit = { path = "../kit" }
 testkit = { path = "../testkit" }
 tokio-tungstenite = "0.26"
 wiremock = "0.6"

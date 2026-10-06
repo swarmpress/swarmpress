@@ -1,3 +1,4 @@
+import type { SiteModels } from '../blueprint/types'
 import type { CommandResult } from './commands'
 import type { Persona } from './personas'
 import type { PlanJson, PlanPost, PlanText } from './plan-types'
@@ -6,9 +7,9 @@ import type { FinanceJson, InboxJson, OrgJson, PerformanceJson } from './types'
 /**
  * What changed, so a subscriber can re-read only that (a hint; `undefined` =
  * anything). `clock` and `activity` need no snapshot: game time, and the
- * activity record or the jobs in flight.
+ * activity record or the jobs in flight; nor does `site`, the site's models.
  */
-export type DataTopic = 'org' | 'finance' | 'inbox' | 'plan' | 'performance' | 'clock' | 'activity'
+export type DataTopic = 'org' | 'finance' | 'inbox' | 'plan' | 'performance' | 'clock' | 'activity' | 'site'
 
 /** A post the CEO adds to a work item's thread (the source assigns `id`, and game time if missing). */
 export type NewPlanPost = Omit<PlanPost, 'id'>
@@ -262,6 +263,12 @@ export interface GameDataSource {
    * writes). `topics` is a hint. Returns an unsubscribe function.
    */
   subscribe(onChange: (topics?: DataTopic[]) => void): () => void
+  /**
+   * The site's blueprint, tools and town (ADR-0072), as last read from the
+   * central server; `null` until read, or for a source without a site. A
+   * change is announced with the `site` topic.
+   */
+  getSiteModels?(): Promise<SiteModels | null>
 }
 
 /** Everything the overlay renders from, read in one go. */

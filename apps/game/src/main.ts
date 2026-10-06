@@ -194,6 +194,7 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     })
   }
   // (again on every scene a device recovery builds)
+  let unwatchModel: (() => void) | null = null
   const wireScene = (game: GameScene, bricks: Awaited<ReturnType<typeof buildScene>>['bricks']) => {
     if (overlay) {
       const store = overlay.store
@@ -214,6 +215,9 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     }
     if (!frozen) game.setOccluders(screenRects)
     if (overlay && brickMod && bricks) bricks.setSources(brickMod.surfaceSourcesFrom(overlay.store))
+    // The model table (ADR-0072): the site's brick town, kept current from the store.
+    unwatchModel?.()
+    unwatchModel = overlay && brickMod && bricks ? brickMod.watchModel(overlay.store, bricks) : null
   }
   wireScene(game, bricks)
   // --- end scene ↔ overlay ---

@@ -23,6 +23,7 @@ import {
   SceneInstrumentation,
   StandardMaterial,
   Texture,
+  TransformNode,
   Vector3,
   VertexBuffer,
   VertexData,
@@ -34,6 +35,7 @@ import type { Lighting } from '../lighting'
 import { lampsLightFloor, MAX_LIGHTS_PER_MATERIAL, type OfficeHandles } from '../office'
 import { buildRoomChunk, exteriorSides, shellOrigin, STUD_HEIGHT, STUD_RADIUS, type ChunkSource, type Region, type RoomChunk, type SurfaceAnchor } from './chunk'
 import { mappingOf, paletteOf, type KitApi, type KitBuildLike, type PaletteColour } from './kit'
+import { modelPlacement, modelRoom } from './model'
 import { roomPlacements, type DesignInfo } from './placements'
 import {
   boardView,
@@ -92,6 +94,8 @@ export interface BrickOfficeStats {
   buildMs: number
   surfaces: { monitors: number; boards: number; close: number; redraws: number; maxRedrawsPerFrame: number }
   studsShown: boolean
+  /** The model table's town, or null when there is none. */
+  model?: { room: string; hash: string; instances: number; kitInstances: number; scale: number } | null
 }
 
 interface SurfaceHandle {
@@ -122,6 +126,11 @@ export interface BrickOffice {
   frame(): void
   setSources(sources: SurfaceSources | null): void
   setStuds(on: boolean): void
+  /**
+   * The site's brick town on the model table (ADR-0072): a design JSON from
+   * the central server, or null to clear. Rebuilt only when it changes.
+   */
+  setModel(designJson: string | null): void
   stats(): BrickOfficeStats
   dispose(): void
 }
@@ -479,6 +488,69 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     }
   }
 
+  // --- the model table (ADR-0072): the site's town, scaled onto a table ------
+  let model: {
+    json: string
+    node: TransformNode
+    meshes: Mesh[]
+    build: KitBuildLike
+    stats: NonNullable<BrickOfficeStats['model']>
+  } | null = null
+  const clearModel = () => {
+    if (!model) return
+    for (const m of model.meshes) m.dispose()
+    model.node.dispose()
+    model.build.free()
+    model = null
+  }
+  const setModel = (json: string | null) => {
+    if (model && json === model.json) return
+    clearModel()
+    const room = json ? modelRoom(rooms) : null
+    if (!json || !room) return
+    const town = kit.compile(json, '')
+    if (!town.ok()) {
+      console.warn(`[bricks] the site town did not compile: ${town.issuesJson()}`)
+      town.free()
+      return
+    }
+    const info = JSON.parse(town.infoJson()) as { hash: string; bounds: [number, number, number] }
+    const table = compiled(modelPlacement(room, { bounds: [1, 1, 1] }, info).table.design, '{}')
+    const mp = modelPlacement(room, table.info, info)
+    const tableChunk = buildRoomChunk(room, [], [{ build: table.build, placement: mp.table, footprint: [table.info.bounds[0], table.info.bounds[1]], shell: false }])
+    const townChunk = buildRoomChunk(room, [], [{ build: town, origin: [0, 0, 0], shell: false }])
+    const node = new TransformNode('model-town', scene)
+    node.position.set(mp.origin[0], mp.origin[1], mp.origin[2])
+    node.scaling.setAll(mp.scale)
+    const meshes: Mesh[] = []
+    for (const [chunk, parent] of [[tableChunk, null], [townChunk, node]] as const) {
+      for (const b of chunk.instances) meshes.push(instanced(`model-${chunk === townChunk ? 'town' : 'table'}-${b.key}`, shapes[b.shape], b.matrices, materialFor(b.colour, room.id)))
+      for (const b of chunk.studs) meshes.push(instanced(`model-studs-${chunk === townChunk ? 'town' : 'table'}-${b.key}`, shapes.stud, b.matrices, materialFor(b.colour, room.id)))
+      if (parent) {
+        for (const m of meshes.slice(-chunk.instances.length - chunk.studs.length)) {
+          m.unfreezeWorldMatrix()
+          m.parent = parent
+          m.computeWorldMatrix(true)
+          m.freezeWorldMatrix()
+        }
+      }
+    }
+    for (const l of office.rooms.get(room.id)?.lights ?? []) l.includedOnlyMeshes.push(...meshes)
+    model = {
+      json,
+      node,
+      meshes,
+      build: town,
+      stats: {
+        room: room.id,
+        hash: info.hash,
+        instances: townChunk.instanceCount,
+        kitInstances: town.instanceCount(),
+        scale: mp.scale,
+      },
+    }
+  }
+
   const buildMs = now() - t0
   return {
     rooms: roomBuilds,
@@ -491,6 +563,7 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     setStuds: (on) => {
       studsShown = on
     },
+    setModel,
     stats: () => {
       const rs = [...roomBuilds.values()].map((r) => r.stats)
       let active = 0
@@ -513,9 +586,11 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
           maxRedrawsPerFrame,
         },
         studsShown,
+        model: model?.stats ?? null,
       }
     },
     dispose: () => {
+      clearModel()
       scene.onBeforeRenderObservable.remove(observer)
       instrumentation.dispose()
       for (const b of ownBuilds) b.free()

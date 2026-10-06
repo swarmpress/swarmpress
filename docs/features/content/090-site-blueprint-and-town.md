@@ -8,8 +8,12 @@ paths:
   - "crates/blueprint/tests/check.rs"
   - "crates/blueprint/tests/town.rs"
   - "crates/kit/src/design.rs"
-  - "apps/game/src/render/bricks/town.ts"
+  - "apps/game/src/render/bricks/model.ts"
+  - "apps/game/src/render/bricks/model.test.ts"
+  - "apps/game/src/blueprint/**"
   - "apps/game/src/ui/components/Blueprint*.tsx"
+  - "crates/server/src/site_blueprint.rs"
+  - "crates/server/tests/site_blueprint.rs"
 adrs:
   - ADR-0072
   - ADR-0065
@@ -35,6 +39,18 @@ diffs.
 Design: [`docs/design/construction-kits.md`](../../design/construction-kits.md) §3 to §6.
 
 Depends on: FEAT-089, FEAT-081 (brick office renderer), FEAT-079 (approval tickets).
+
+## As built (2026-10-06)
+
+- **The crate.** `crates/blueprint` holds the format, the type system, the checker, the semantic hash,
+  diffs that apply back, and the town generator (`town.rs`, a `swarmpress.design.v1` with
+  `provenance: view`).
+- **The server.** `GET /api/site/blueprint` answers the stored blueprint, or one imported from the
+  pages, with its tools, issues and town, cached per commit.
+- **The browser.** The session reads the models at boot and on each game day into the overlay
+  store (`siteModels`). Behind `?office=bricks`, the brick office stands a meeting table in the
+  first planning room it builds (strategy room, design studio, editor's office, newsroom) and puts
+  the town on it, scaled to fit, at most 1/8. It rebuilds only when the town changes.
 
 ## Acceptance criteria
 

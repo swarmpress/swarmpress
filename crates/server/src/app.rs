@@ -42,6 +42,8 @@ pub struct AppState {
     pub knowledge: Arc<KnowledgeCache>,
     /// Site audits by (site repository, commit) ([`crate::site_audit`], ADR-0070).
     pub audits: Arc<crate::site_audit::AuditCache>,
+    /// Blueprints and tools by (site repository, commit) ([`crate::site_blueprint`], ADR-0072).
+    pub blueprints: Arc<crate::site_blueprint::BlueprintCache>,
     /// Per-user limiter for `/web/fetch`.
     pub web_limiter: Arc<RateLimiter<String>>,
     /// Serializes sync blob writes (single process).
@@ -85,6 +87,7 @@ impl AppState {
             github,
             knowledge: Arc::new(KnowledgeCache::default()),
             audits: Arc::new(crate::site_audit::AuditCache::default()),
+            blueprints: Arc::new(crate::site_blueprint::BlueprintCache::default()),
             web_limiter,
             sync_lock: Arc::new(tokio::sync::Mutex::new(())),
             company_locks: CompanyLocks::default(),
@@ -181,6 +184,10 @@ pub fn router(st: AppState) -> Router {
         .route("/api/gateway/knowledge", get(site_knowledge::knowledge))
         .route("/api/gateway/file", get(crate::site_audit::file))
         .route("/api/site/audit", get(crate::site_audit::audit))
+        .route(
+            "/api/site/blueprint",
+            get(crate::site_blueprint::get_blueprint),
+        )
         .route("/api/gateway/deploy-status", get(deploys::status))
         .route("/api/gateway/redeploy", post(deploys::redeploy))
         // test route: fake GitHub only (404 otherwise)

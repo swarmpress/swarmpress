@@ -1,4 +1,5 @@
 import { createContext } from 'preact'
+import type { SiteModels } from '../blueprint/types'
 import { useContext } from 'preact/hooks'
 import { batch, computed, signal, type ReadonlySignal } from '@preact/signals'
 import { commandName, NOT_AVAILABLE, toJson, type Command, type CommandName, type CommandResult } from './commands'
@@ -74,6 +75,8 @@ export interface OverlayStore {
    * with the clock, about once a second.
    */
   live: ReadonlySignal<LiveJob[]>
+  /** The site's blueprint, tools and town (ADR-0072); null until the source has them. */
+  siteModels: ReadonlySignal<SiteModels | null>
   panel: ReturnType<typeof signal<PanelId | null>>
   profile: ReturnType<typeof signal<ProfileTarget | null>>
   selectedProject: ReturnType<typeof signal<string | null>>
@@ -217,6 +220,16 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
       () => undefined,
     )
 
+  // The site's models: read when the source announces them, never with the snapshot.
+  const siteModels = signal<SiteModels | null>(null)
+  const refreshSite = () =>
+    void source.getSiteModels?.().then(
+      (m) => {
+        if (!disposed && m !== siteModels.value) siteModels.value = m
+      },
+      () => undefined,
+    )
+
   const tickClock = () => {
     refreshLive()
     void source.now().then((n) => {
@@ -240,6 +253,7 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
     personas: computed(() => snap.value.personas),
     now: clock,
     live,
+    siteModels,
     panel: signal<PanelId | null>(null),
     profile: signal<ProfileTarget | null>(null),
     selectedProject: signal<string | null>(null),
@@ -356,6 +370,8 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
   }
   const unsubscribe = source.subscribe((topics) => {
     // Game time and the activity record need no snapshot (the Activity panel reads its rows itself).
+    if (topics?.includes('site')) refreshSite()
+    if (topics && topics.length > 0 && topics.every((t) => t === 'site')) return
     if (topics && topics.length > 0 && topics.every((t) => t === 'clock' || t === 'activity')) tickClock()
     else void load()
   })
@@ -363,6 +379,7 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
   const ticker = setInterval(tickClock, 1000)
   void load()
   refreshLive()
+  refreshSite()
   return store
 }
 

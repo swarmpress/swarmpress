@@ -44,6 +44,7 @@
 import { Sim } from 'swarm-wasm'
 import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResult, type RestoredSim, type SimFactory } from '../catchup/replay'
 import { CentralClient, centralGateway, companyFor, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type SiteAudit } from '../net/central'
+import type { SiteModels } from '../blueprint/types'
 import { OrchestrationLoop, type JobRecord } from '../orchestration/loop'
 import { withApprover } from '../orchestration/approver'
 import { sweepStages } from '../orchestration/sweeper'
@@ -251,6 +252,18 @@ class SessionDataSource extends WasmDataSource {
 
   planTextChanged() {
     this.planListeners.forEach((l) => l(['plan']))
+  }
+
+  /** The site's models from the central server (ADR-0072); the session sets them, the overlay reads them. */
+  private models: SiteModels | null = null
+
+  setSiteModels(m: SiteModels) {
+    this.models = m
+    this.planListeners.forEach((l) => l(['site']))
+  }
+
+  getSiteModels(): Promise<SiteModels | null> {
+    return Promise.resolve(this.models)
   }
 }
 
@@ -488,6 +501,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   // The latest site audit (ADR-0070) and how to refresh it (set once the loop exists).
   let siteAudit: SiteAudit | null = null
   let auditSite: () => Promise<SiteAudit | null> = async () => null
+  let loadSiteModels: () => Promise<void> = async () => undefined
   // The analytics signals' delivery (ADR-0071), set once the loop exists.
   let deliverSignals: () => Promise<void> = async () => undefined
   const { sim, info: restored, result, lastSeq } = await restore(store, client, company, { forceReplay: params.get('restore') === 'replay', rebase })
@@ -720,6 +734,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       void checkpoint()
       sweep()
       void auditSite().catch((e) => log(`site audit failed: ${String(e)}`))
+      void loadSiteModels().catch((e) => log(`site models failed: ${String(e)}`))
       void deliverSignals().catch((e) => log(`analytics signals failed: ${String(e)}`))
   // The analytics signals (ADR-0071): each pending row logged once, oldest first, on a game day
   // counted back from today, then acknowledged.
@@ -776,6 +791,14 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     return a
   }
   void auditSite().catch((e) => log(`site audit failed: ${String(e)}`))
+  // The site's blueprint, tools and brick town (ADR-0072): read at boot and with each audit, cached per commit by the server.
+  loadSiteModels = async () => {
+    if (readOnly || loop.halted) return
+    const m = await client.siteBlueprint(lease.token)
+    sources.forEach((s) => s.setSiteModels(m))
+    log(`site models at ${m.commit.slice(0, 7)}: ${m.source} blueprint, ${m.blueprint.page_types.length} page types, ${m.tools.length} tools, ${m.issues.length} issues`)
+  }
+  void loadSiteModels().catch((e) => log(`site models failed: ${String(e)}`))
   // The weekly editorial board plans the week (ADR-0069): on once, as a logged command, so a
   // replay of an older log holds no board before it.
   if (!readOnly && !loop.halted && params.get('board') !== 'off') {
