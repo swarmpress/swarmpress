@@ -274,7 +274,9 @@ async fn the_board_plans_site_care_from_the_audit() {
     let o = orch(llm.clone(), gateway());
     let ctx = json!({"today": "2026-10-05", "in_flight": [], "planned_room": 10, "site": {
         "stale": [{"path": STALE, "title": "5 Hidden Gelaterias You Need to Try", "date": "2025-01-05", "age_days": 638}],
-        "broken": [{"path": BROKEN, "title": "The Last Light on the Sentiero Azzurro", "broken": 2}]
+        // A page that is not an article cannot be updated (ADR-0070): never offered, however broken.
+        "broken": [{"path": "content/pages/cinque-terre/hiking.json", "title": "Hiking in the Cinque Terre", "broken": 9},
+                   {"path": BROKEN, "title": "The Last Light on the Sentiero Azzurro", "broken": 2}]
     }});
     let req = JobRequest {
         company_id: COMPANY.into(),
@@ -306,6 +308,7 @@ async fn the_board_plans_site_care_from_the_audit() {
         ),
         "{prompt}"
     );
+    assert!(!prompt.contains("Hiking in the Cinque Terre"), "{prompt}");
     assert_eq!(items[0].kind, "Refresh");
     assert_eq!(items[1].kind, "Fix");
     assert_eq!(items[2].kind, "Article");

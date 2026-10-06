@@ -420,7 +420,8 @@ fn board_topics(site: &SiteBinding, today: Option<&str>, taken: &Taken) -> Vec<F
 }
 
 /// The site-health section of a frame: the oldest stale articles, then the
-/// pages with the most broken links, at most [`SITE_PAGES`], each page once.
+/// articles with the most broken links, at most [`SITE_PAGES`], each page
+/// once. Pages that are not articles are left out: they cannot be updated.
 fn frame_site(site: Option<&SiteHealth>) -> Vec<FrameSite> {
     let Some(site) = site else {
         return Vec::new();
@@ -462,6 +463,11 @@ fn frame_site(site: Option<&SiteHealth>) -> Vec<FrameSite> {
         )
     });
     for (kind, path, title, detail) in under.chain(stale).chain(fixes).chain(translations) {
+        // Every site-care item is an update, and only articles may be updated
+        // (ADR-0070 decision 6): the gateway's own test, so the two never disagree.
+        if !content_model::article_profile::is_article_path(&path) {
+            continue;
+        }
         if out.len() >= SITE_PAGES || out.iter().any(|x| x.path == path && x.kind == kind) {
             continue;
         }
