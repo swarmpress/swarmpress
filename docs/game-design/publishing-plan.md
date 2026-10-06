@@ -1,7 +1,7 @@
 # The media & publishing plan: the company's shared workspace
 
 > Status: design contract (2026-10-01). Decision: [ADR-0031](../adr/0031-the-publishing-plan-is-the-shared-workspace-for-ceo-and-agents.md).
-> Builds on the legacy agentic editorial planning spec (`git show 15998d0:specs/agentic_editorial_planning_spec.md`)
+> Builds on the legacy agentic editorial planning spec ([`docs/reference/legacy/agentic_editorial_planning_spec.md`](../reference/legacy/agentic_editorial_planning_spec.md); how the legacy ideas fit: [`docs/reference/legacy/README.md`](../reference/legacy/README.md))
 > and on [organization.md](organization.md).
 
 Every real publishing house runs on a plan: what we publish, when, why, who

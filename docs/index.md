@@ -21,7 +21,7 @@ The legacy TypeScript code is reachable at the git tag `legacy-ts`.
 | [Features](features/) | FEAT-001 onwards, one file per feature, read by Cockpit to derive health |
 | [MVP](mvp.md) | The current MVP: the owner's company for real, on one resident in-browser model |
 | [Design](design/mvp-runtime.md) | Implementation designs for the MVP: [runtime](design/mvp-runtime.md), [pipeline, gate, time and site path](design/mvp-pipeline.md), [gap analysis](design/mvp-gap-analysis.md), [construction kit](design/construction-kit.md), [brick office](design/brick-office.md) |
-| [Reference](reference/browser-agent-studio.md) | The owner's concept document, [Browser Agent Studio](reference/browser-agent-studio.md): the source of the agent-loop principles (its local-inference direction is replaced by the [GPT-6-Luna migration](reference/gpt-6-luna-simulation-migration.md), ADR-0067); the [brick office](reference/brick-office.md) concept with its prototype (ADR-0063) |
+| [Reference](reference/browser-agent-studio.md) | The owner's concept document, [Browser Agent Studio](reference/browser-agent-studio.md): the source of the agent-loop principles (its local-inference direction is replaced by the [GPT-6-Luna migration](reference/gpt-6-luna-simulation-migration.md), ADR-0067); the [brick office](reference/brick-office.md) concept with its prototype (ADR-0063); the [legacy agentic website framework](reference/legacy/README.md) concepts and how they fit |
 
 ### Architecture
 
