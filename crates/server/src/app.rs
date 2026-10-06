@@ -40,6 +40,8 @@ pub struct AppState {
     pub github: Arc<RepoBackend>,
     /// Knowledge packs by (site repository, commit) ([`site_knowledge`]).
     pub knowledge: Arc<KnowledgeCache>,
+    /// Site audits by (site repository, commit) ([`crate::site_audit`], ADR-0070).
+    pub audits: Arc<crate::site_audit::AuditCache>,
     /// Per-user limiter for `/web/fetch`.
     pub web_limiter: Arc<RateLimiter<String>>,
     /// Serializes sync blob writes (single process).
@@ -82,6 +84,7 @@ impl AppState {
             events: EventHub::default(),
             github,
             knowledge: Arc::new(KnowledgeCache::default()),
+            audits: Arc::new(crate::site_audit::AuditCache::default()),
             web_limiter,
             sync_lock: Arc::new(tokio::sync::Mutex::new(())),
             company_locks: CompanyLocks::default(),
@@ -176,6 +179,8 @@ pub fn router(st: AppState) -> Router {
         .route("/api/gateway/merge", post(gateway::merge))
         .route("/api/gateway/close", post(gateway::close))
         .route("/api/gateway/knowledge", get(site_knowledge::knowledge))
+        .route("/api/gateway/file", get(crate::site_audit::file))
+        .route("/api/site/audit", get(crate::site_audit::audit))
         .route("/api/gateway/deploy-status", get(deploys::status))
         .route("/api/gateway/redeploy", post(deploys::redeploy))
         // test route: fake GitHub only (404 otherwise)

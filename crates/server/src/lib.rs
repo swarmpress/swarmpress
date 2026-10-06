@@ -36,6 +36,7 @@ pub mod events;
 pub mod finalize;
 pub mod gateway;
 pub mod llm;
+pub mod site_audit;
 pub mod site_knowledge;
 pub mod sync;
 pub mod tracker;

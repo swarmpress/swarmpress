@@ -458,10 +458,13 @@ async fn site_knowledge(
 ///
 /// - the content id drafts one path only: 409 when its open pull request is
 ///   on another path;
-/// - the path is create-only: 409 when it already exists on the base branch;
+/// - the path is create-only: 409 when it already exists on the base branch,
+///   unless the draft is an update (ADR-0070 decision 6): it names the blob
+///   it replaces, and 409 when the path does not exist or is another blob now;
 /// - one open pull request per path: 409 when another open gateway pull
 ///   request of this company targets it;
 /// - closed-world links and media ([`check_closed_world`]): 422.
+#[allow(clippy::too_many_arguments)]
 async fn check_against_site(
     st: &AppState,
     company: &crate::db::Company,
@@ -470,6 +473,7 @@ async fn check_against_site(
     content_id: &str,
     path: &str,
     page: &Value,
+    update: Option<&str>,
 ) -> AppResult<()> {
     if let Some(own) = store::open_prs_for_content(&st.db, &company.id, content_id)
         .await?
@@ -491,15 +495,25 @@ async fn check_against_site(
         )));
     }
     let base = &company.site_base_branch;
-    if api
-        .get_file(repo, base, path)
-        .await
-        .map_err(gh_error)?
-        .is_some()
-    {
-        return Err(AppError::Conflict(format!(
-            "{path} already exists on {base}: article paths are create-only"
-        )));
+    let existing = api.get_file(repo, base, path).await.map_err(gh_error)?;
+    match (update, existing) {
+        (None, Some(_)) => {
+            return Err(AppError::Conflict(format!(
+                "{path} already exists on {base}: article paths are create-only"
+            )));
+        }
+        (Some(_), None) => {
+            return Err(AppError::Conflict(format!(
+                "{path} does not exist on {base}: an update needs an existing article"
+            )));
+        }
+        (Some(sha), Some(f)) if !f.sha.eq_ignore_ascii_case(sha) => {
+            return Err(AppError::Conflict(format!(
+                "{path} changed on {base} since it was read (blob {} not {sha}): read it again",
+                f.sha
+            )));
+        }
+        _ => {}
     }
     let site = site_knowledge(st, api, repo, base).await?;
     check_closed_world(page, site.as_deref()).map_err(|issues| AppError::Unprocessable {
@@ -520,6 +534,10 @@ pub struct DraftBody {
     /// Who wrote the page, in which job ([`attribution_of`]).
     #[serde(default)]
     pub attribution: Option<Value>,
+    /// An update of an existing article (ADR-0070): the blob sha of the file
+    /// it replaces, as `GET /api/gateway/file` answered it. Absent: create-only.
+    #[serde(default)]
+    pub update: Option<String>,
 }
 
 /// The validated `attribution` of a gateway request (ADR-0056 decision 8, as
@@ -587,8 +605,13 @@ pub async fn draft(
             &body.content_id,
             &path,
             &body.page,
+            body.update.as_deref(),
         )
         .await?;
+    } else if body.update.is_some() {
+        return Err(AppError::BadRequest(
+            "update is for articles (content/pages/blog/*.json)".into(),
+        ));
     }
     let guarded: Arc<dyn RepoApi> = Arc::new(GuardedRepo::new(api, ActorKind::ContentAgent));
     let content = ContentRepo::new(guarded, repo, company.site_base_branch.clone());

@@ -1,6 +1,6 @@
 # ADR-0061 — Knowledge pack; gateway read, finalise and close; create-only article paths
 
-**Status:** Accepted (amends ADR-0013 and ADR-0009)
+**Status:** Accepted (amends ADR-0013 and ADR-0009); decision 5 amended by ADR-0070 (explicit article updates)
 **Date:** 2026-10-02
 
 ## Context

@@ -89,3 +89,4 @@ Accepted ADRs are never rewritten.
 | [0067](0067-hosted-inference-on-gpt-6-luna.md) | Hosted inference on GPT-6-Luna | Accepted |
 | [0068](0068-web-research-with-cited-evidence.md) | Web research with cited evidence | Accepted |
 | [0069](0069-the-weekly-editorial-board-plans-the-week.md) | The weekly editorial board plans the week | Accepted |
+| [0070](0070-site-integrity-and-page-refresh.md) | Site integrity and page refresh | Accepted |

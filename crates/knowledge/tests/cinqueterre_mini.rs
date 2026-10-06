@@ -307,6 +307,45 @@ fn audit_and_summary() {
         audit.media_checked,
         audit.media_by_id + audit.media_by_url + audit.unknown_media.len()
     );
+    // ADR-0070: inbound links (page bodies and the navigation), orphans, article dates.
+    assert_eq!(
+        audit.inbound["content/pages/blog/day-trip-to-portovenere.json"],
+        3
+    );
+    assert_eq!(
+        audit.orphans,
+        [
+            "content/pages/blog/last-light-on-sentiero-azzurro.json",
+            "content/pages/riomaggiore/restaurants.json",
+            "content/pages/transport.json"
+        ]
+    );
+    let dates: Vec<(&str, Option<&str>)> = audit
+        .articles
+        .iter()
+        .map(|a| (a.path.as_str(), a.date.as_deref()))
+        .collect();
+    assert_eq!(
+        dates,
+        [
+            (
+                "content/pages/blog/5-hidden-gelaterias-you-need-to-try.json",
+                Some("2025-01-05")
+            ),
+            (
+                "content/pages/blog/day-trip-to-portovenere.json",
+                Some("2026-01-25")
+            ),
+            (
+                "content/pages/blog/last-light-on-sentiero-azzurro.json",
+                Some("2026-05-12")
+            )
+        ]
+    );
+    assert!(
+        audit.policy.is_empty(),
+        "the mini site has no linking policy"
+    );
     let summary = SiteSummary::new(&kb, Some(&audit)).to_string();
     assert!(summary.contains("pages: 9"));
     assert!(summary.contains("stray copies 2 (1 identical)"));

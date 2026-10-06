@@ -742,9 +742,112 @@ impl KnowledgeBase {
         }
     }
 
-    /// Loads every routed page and checks links and media across the site.
+    /// The pages a page links to (repo paths): its internal hrefs and page
+    /// slugs that resolve, collection references left out. Used for the
+    /// audit's inbound links (ADR-0070).
+    pub fn link_targets(&self, page: &Value) -> BTreeSet<String> {
+        let mut langs: Vec<String> = page["slug"]
+            .as_object()
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default();
+        if langs.is_empty() {
+            langs.push(self.manifest.default_language.clone());
+        }
+        let mut out = BTreeSet::new();
+        if let Some(body) = page["body"].as_array() {
+            for block in body {
+                self.walk_targets(block, false, &langs, &mut out);
+            }
+        }
+        out
+    }
+
+    fn walk_targets(&self, v: &Value, in_coll: bool, langs: &[String], out: &mut BTreeSet<String>) {
+        match v {
+            Value::Object(m) => {
+                let in_coll = in_coll || m.contains_key("collectionType");
+                for (k, child) in m {
+                    if LINK_KEYS.contains(&k.as_str()) {
+                        match child {
+                            Value::String(s) => self.href_target(s, langs, out),
+                            Value::Object(per_lang) => {
+                                for (lang, s) in per_lang {
+                                    if let Some(s) = s.as_str() {
+                                        self.href_target(s, std::slice::from_ref(lang), out);
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    } else if k == "slug" && !in_coll {
+                        if let Some(slug) = child.as_str().filter(|s| !s.is_empty()) {
+                            if slug.starts_with('/') {
+                                if let Some(p) = self.pages.by_route(slug) {
+                                    out.insert(p.path.clone());
+                                }
+                            } else {
+                                for p in self.pages.by_last_segment(slug) {
+                                    out.insert(p.path.clone());
+                                }
+                            }
+                        }
+                    } else {
+                        self.walk_targets(child, in_coll, langs, out);
+                    }
+                }
+            }
+            Value::Array(a) => {
+                for child in a {
+                    self.walk_targets(child, in_coll, langs, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn href_target(&self, href: &str, langs: &[String], out: &mut BTreeSet<String>) {
+        if self.check_href(href, langs) != Ok(true) {
+            return;
+        }
+        let route = normalize_route(self.strip_origin(href.trim()));
+        let first = route
+            .trim_start_matches('/')
+            .split('/')
+            .next()
+            .unwrap_or_default();
+        let hit = if self.is_lang(first) {
+            self.pages.by_route(&route)
+        } else {
+            langs.iter().find_map(|l| {
+                let c = if route == "/" {
+                    format!("/{l}")
+                } else {
+                    format!("/{l}{route}")
+                };
+                self.pages.by_route(&c)
+            })
+        };
+        if let Some(p) = hit {
+            out.insert(p.path.clone());
+        }
+    }
+
+    /// Loads every routed page and checks links and media across the site;
+    /// also counts inbound links (orphans), dates the articles (from their
+    /// `updated_at`, else the blog index) and checks the blocks against
+    /// `content/config/linking-policy.json` when the site has one (ADR-0070).
     pub fn audit(&self, src: &dyn SiteSource) -> Result<SiteAudit, KnowledgeError> {
         let mut audit = SiteAudit::default();
+        let policy = src.read_json(LINKING_POLICY_PATH)?;
+        let index_dates = blog_index_dates(src.read_json(crate::pack::BLOG_INDEX_PATH)?.as_ref());
+        let mut inbound: BTreeMap<String, usize> = BTreeMap::new();
+        // The site's navigation links pages too (header and footer menus).
+        if let Some(nav) = src.read_json(NAVIGATION_PATH)? {
+            let as_page = serde_json::json!({"body": [nav]});
+            for t in self.link_targets(&as_page) {
+                *inbound.entry(t).or_default() += 1;
+            }
+        }
         for p in &self.pages.pages {
             let Some(v) = src.read_json(&p.path)? else {
                 continue;
@@ -762,9 +865,139 @@ impl KnowledgeBase {
             for m in media.unknown {
                 audit.unknown_media.push((p.path.clone(), m));
             }
+            for t in self.link_targets(&v) {
+                if t != p.path {
+                    *inbound.entry(t).or_default() += 1;
+                }
+            }
+            if let Some(stem) = p
+                .path
+                .strip_prefix(BLOG_DIR)
+                .and_then(|f| f.strip_suffix(".json"))
+            {
+                let date = v["updated_at"]
+                    .as_str()
+                    .and_then(|d| d.get(..10))
+                    .map(String::from)
+                    .or_else(|| index_dates.get(stem).cloned());
+                audit.articles.push(ArticleDate {
+                    path: p.path.clone(),
+                    title: p.title(&self.manifest.default_language).to_string(),
+                    date,
+                });
+            }
+            if let Some(policies) = policy.as_ref().and_then(|v| v["policies"].as_object()) {
+                if let Some(body) = v["body"].as_array() {
+                    for (i, block) in body.iter().enumerate() {
+                        let Some(kind) = block["type"].as_str() else {
+                            continue;
+                        };
+                        let Some(rule) = policies.get(kind) else {
+                            continue;
+                        };
+                        let one = serde_json::json!({"slug": v["slug"], "body": [block]});
+                        let links = self.check_links(&one).checked;
+                        let min = rule["minLinks"].as_u64().unwrap_or(0) as usize;
+                        let max = rule["maxLinks"].as_u64().map_or(usize::MAX, |m| m as usize);
+                        if links < min || links > max {
+                            audit.policy.push(PolicyFinding {
+                                path: p.path.clone(),
+                                pointer: format!("/body/{i}"),
+                                block: kind.to_string(),
+                                links,
+                                min,
+                                max: rule["maxLinks"].as_u64().map(|m| m as usize),
+                            });
+                        }
+                    }
+                }
+            }
         }
+        for p in &self.pages.pages {
+            let home = p.page_type == "home"
+                || p.routes
+                    .values()
+                    .any(|r| r == "/" || self.is_lang(r.trim_matches('/')));
+            if !home && p.page_type != "blog-index" && !inbound.contains_key(&p.path) {
+                audit.orphans.push(p.path.clone());
+            }
+        }
+        audit.inbound = inbound;
         Ok(audit)
     }
+}
+
+/// The site's header and footer menus, which link pages as well.
+pub const NAVIGATION_PATH: &str = "content/config/navigation.json";
+/// Where the site's linking policy lives (ADR-0070).
+pub const LINKING_POLICY_PATH: &str = "content/config/linking-policy.json";
+/// Where the site keeps its articles.
+pub const BLOG_DIR: &str = "content/pages/blog/";
+
+/// `slug → YYYY-MM-DD` from the blog index's stories (`Oct 15, 2023` or ISO).
+fn blog_index_dates(index: Option<&Value>) -> BTreeMap<String, String> {
+    const MONTHS: [&str; 12] = [
+        "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+    ];
+    let mut out = BTreeMap::new();
+    let Some(body) = index.and_then(|v| v["body"].as_array()) else {
+        return out;
+    };
+    for story in body
+        .iter()
+        .filter(|b| b["type"] == "blog-index")
+        .filter_map(|b| b["stories"].as_array())
+        .flatten()
+    {
+        let (Some(slug), Some(date)) = (story["slug"].as_str(), story["date"].as_str()) else {
+            continue;
+        };
+        let iso = if date.len() >= 10 && date.as_bytes()[4] == b'-' {
+            Some(date[..10].to_string())
+        } else {
+            let words: Vec<&str> = date
+                .split(|c: char| c.is_whitespace() || c == ',')
+                .filter(|w| !w.is_empty())
+                .collect();
+            match words.as_slice() {
+                [m, d, y, ..] => {
+                    let lower = m.to_lowercase();
+                    MONTHS
+                        .iter()
+                        .position(|x| lower.starts_with(x))
+                        .and_then(|i| {
+                            let d: u32 = d.parse().ok()?;
+                            let y: u32 = y.parse().ok()?;
+                            Some(format!("{y:04}-{:02}-{d:02}", i + 1))
+                        })
+                }
+                _ => None,
+            }
+        };
+        if let Some(iso) = iso {
+            out.insert(slug.to_string(), iso);
+        }
+    }
+    out
+}
+
+/// An article and its last date (`YYYY-MM-DD`), if the site says.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ArticleDate {
+    pub path: String,
+    pub title: String,
+    pub date: Option<String>,
+}
+
+/// A block with fewer or more internal links than the linking policy allows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PolicyFinding {
+    pub path: String,
+    pub pointer: String,
+    pub block: String,
+    pub links: usize,
+    pub min: usize,
+    pub max: Option<usize>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -776,4 +1009,12 @@ pub struct SiteAudit {
     pub media_by_id: usize,
     pub media_by_url: usize,
     pub unknown_media: Vec<(String, UnknownMedia)>,
+    /// Inbound links per page path, from other pages (ADR-0070).
+    pub inbound: BTreeMap<String, usize>,
+    /// Routed pages no other page links to (the home and the blog index left out).
+    pub orphans: Vec<String>,
+    /// The site's articles with their last date.
+    pub articles: Vec<ArticleDate>,
+    /// Blocks outside the linking policy's link counts.
+    pub policy: Vec<PolicyFinding>,
 }
