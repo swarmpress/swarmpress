@@ -3,6 +3,7 @@
  * set of URLs the site serves. Every injected Astro route renders exactly the
  * entries assigned to it, so no two routes ever generate the same path.
  */
+import { isArticleType } from '@swarm-press/content-schema'
 import type { Finding } from '../findings'
 import type { CollectionItemRecord, LoadedSite, PageRecord } from '../content/load'
 import type { CollectionDef, Region, Section } from '../manifest/schema'
@@ -50,10 +51,9 @@ export interface RoutePlan {
   findings: Finding[]
 }
 
-const ARTICLE_TYPES = new Set(['blog-article', 'blog-post', 'article'])
-
+/** An article by route kind, or by its page type in the registry (FEAT-089). */
 export function isArticle(entry: RouteEntry): boolean {
-  return entry.kind === 'blog-post' || (!!entry.page && ARTICLE_TYPES.has(entry.page.pageType))
+  return entry.kind === 'blog-post' || (!!entry.page && isArticleType(entry.page.pageType))
 }
 
 export function planRoutes(site: LoadedSite): RoutePlan {

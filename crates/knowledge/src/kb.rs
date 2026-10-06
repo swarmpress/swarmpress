@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use content_model::registry::{LINK_KEYS, MEDIA_KEYS};
-use content_model::{block_meta, MediaRef, SchemaRegistry};
+use content_model::{block_meta, MediaRef, PageTypes, SchemaRegistry, SITE_PAGE_TYPES_PATH};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -13,6 +13,7 @@ use crate::entities::{Entity, EntityIndex};
 use crate::manifest::SiteManifest;
 use crate::media::{MediaCandidate, MediaEntry, MediaIndex, MediaQuery, NeedsMedia};
 use crate::pages::{normalize_route, PageEntry, PageRegistry};
+use crate::source::KnowledgeError as SourceError;
 use crate::source::{KnowledgeError, SiteSource};
 
 /// Closed-world miss for links: the target page does not exist (yet).
@@ -113,6 +114,8 @@ pub enum ClosedWorldKind {
     Link,
     /// A media reference that is not in the media index.
     Media,
+    /// A `page_type` the site has neither declared nor used (FEAT-089).
+    PageType,
 }
 
 impl ClosedWorldKind {
@@ -121,6 +124,7 @@ impl ClosedWorldKind {
         match self {
             ClosedWorldKind::Link => "link",
             ClosedWorldKind::Media => "media",
+            ClosedWorldKind::PageType => "page_type",
         }
     }
 }
@@ -166,6 +170,9 @@ pub struct KnowledgeBase {
     pub media: MediaIndex,
     pub pages: PageRegistry,
     pub collections: CollectionIndex,
+    /// The core page types, then the site's own
+    /// ([`SITE_PAGE_TYPES_PATH`], FEAT-089).
+    pub page_types: PageTypes,
     /// Manifest languages plus every language a page is routed in.
     known_langs: BTreeSet<String>,
 }
@@ -189,6 +196,7 @@ impl KnowledgeBase {
             PageRegistry::build(src)?,
         );
         kb.collections = CollectionIndex::build(src)?;
+        kb.page_types = page_types_of(src.read_json(SITE_PAGE_TYPES_PATH)?.as_ref())?;
         Ok(kb)
     }
 
@@ -216,6 +224,7 @@ impl KnowledgeBase {
             media,
             pages,
             collections: CollectionIndex::default(),
+            page_types: PageTypes::core().clone(),
             known_langs,
         }
     }
@@ -708,10 +717,53 @@ impl KnowledgeBase {
         }
     }
 
-    /// The page's links that do not resolve and its media that is not in the
-    /// index ([`Self::check_links`], [`Self::check_media`]), links first, each
-    /// in page order. Empty: the page stays inside the closed world.
+    /// Whether `name` is a page type of the site: declared (core or the
+    /// site's registry) or already used by one of its pages. The used ones
+    /// keep the site's existing pages inside the closed world until the
+    /// site declares its types.
+    pub fn is_page_type(&self, name: &str) -> bool {
+        self.page_types.get(name).is_some() || self.pages.pages.iter().any(|p| p.page_type == name)
+    }
+
+    /// Every page type of the site ([`Self::is_page_type`]), sorted.
+    pub fn page_type_names(&self) -> BTreeSet<&str> {
+        let mut names = self.page_types.names();
+        names.extend(
+            self.pages
+                .pages
+                .iter()
+                .map(|p| p.page_type.as_str())
+                .filter(|t| !t.is_empty()),
+        );
+        names
+    }
+
+    /// The page's `page_type` when the site does not know it
+    /// ([`Self::is_page_type`]). A missing `page_type` is the schema's to
+    /// report.
+    pub fn check_page_type(&self, page: &Value) -> Option<ClosedWorldIssue> {
+        let name = page.get("page_type").and_then(Value::as_str)?;
+        if self.is_page_type(name) {
+            return None;
+        }
+        let known: Vec<&str> = self.page_type_names().into_iter().collect();
+        Some(ClosedWorldIssue {
+            kind: ClosedWorldKind::PageType,
+            pointer: "/page_type".into(),
+            message: format!(
+                "{name:?} is not a page type of the site (known: {})",
+                known.join(", ")
+            ),
+        })
+    }
+
+    /// The page's unknown page type ([`Self::check_page_type`]), its links
+    /// that do not resolve and its media that is not in the index
+    /// ([`Self::check_links`], [`Self::check_media`]): the page type first,
+    /// then links, then media, each in page order. Empty: the page stays
+    /// inside the closed world.
     pub fn closed_world_issues(&self, page: &Value) -> Vec<ClosedWorldIssue> {
+        let page_type = self.check_page_type(page);
         let links = self
             .check_links(page)
             .broken
@@ -730,7 +782,7 @@ impl KnowledgeBase {
                 pointer: m.pointer,
                 message: format!("{:?} is not in the media index: {}", m.value, m.reason),
             });
-        links.chain(media).collect()
+        page_type.into_iter().chain(links).chain(media).collect()
     }
 
     /// Everything `write_page` checks: schema (if a registry is given), links, media.
@@ -1017,4 +1069,18 @@ pub struct SiteAudit {
     pub articles: Vec<ArticleDate>,
     /// Blocks outside the linking policy's link counts.
     pub policy: Vec<PolicyFinding>,
+}
+
+/// The core page types followed by a site's registry file, if it has one.
+pub fn page_types_of(site: Option<&Value>) -> Result<PageTypes, SourceError> {
+    let Some(file) = site else {
+        return Ok(PageTypes::core().clone());
+    };
+    let shape = |errors: Vec<String>| SourceError::Shape {
+        path: SITE_PAGE_TYPES_PATH.into(),
+        message: errors.join("; "),
+    };
+    PageTypes::core()
+        .with_site(&PageTypes::parse(file).map_err(shape)?)
+        .map_err(shape)
 }

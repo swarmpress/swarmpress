@@ -9,10 +9,10 @@
 //!   "pages": [ { "id", "path", "page_type", "routes", "titles", "status" } ] }
 //! ```
 //!
-//! * `files` holds [`PACK_FILES`]: the eight `content/config` files agents
+//! * `files` holds [`PACK_FILES`]: the nine `content/config` files agents
 //!   read (entity, media and sitemap indexes, style guide, writer prompt,
-//!   content calendar, linking policy, media guidelines) and the blog index
-//!   page. A file the site does not have is left out.
+//!   content calendar, linking policy, media guidelines, the site's page
+//!   types) and the blog index page. A file the site does not have is left out.
 //! * `manifest` is the site manifest as [`SiteManifest::load`] sees it on the
 //!   full tree. It is carried because a site without `site.manifest.json`
 //!   infers it from files the pack does not hold (`content/site.json`,
@@ -36,7 +36,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::entities::{EntityIndex, ENTITY_INDEX_PATH};
-use crate::kb::KnowledgeBase;
+use content_model::SITE_PAGE_TYPES_PATH;
+
+use crate::kb::{page_types_of, KnowledgeBase};
 use crate::manifest::SiteManifest;
 use crate::media::{MediaIndex, MEDIA_INDEX_PATH};
 use crate::pages::{PageEntry, PageRegistry};
@@ -47,7 +49,7 @@ use crate::source::{KnowledgeError, SiteSource};
 pub const BLOG_INDEX_PATH: &str = "content/pages/blog-index.json";
 
 /// Every file a pack carries verbatim, when the site has it.
-pub const PACK_FILES: [&str; 9] = [
+pub const PACK_FILES: [&str; 10] = [
     ENTITY_INDEX_PATH,
     MEDIA_INDEX_PATH,
     "content/config/sitemap-index.json",
@@ -56,6 +58,7 @@ pub const PACK_FILES: [&str; 9] = [
     "content/config/content-calendar.json",
     "content/config/linking-policy.json",
     "content/config/media-guidelines.json",
+    SITE_PAGE_TYPES_PATH,
     BLOG_INDEX_PATH,
 ];
 
@@ -146,13 +149,15 @@ pub fn load(pack: &Pack) -> Result<KnowledgeBase, KnowledgeError> {
         .file_json(MEDIA_INDEX_PATH)?
         .map(|v| MediaIndex::from_value(&v))
         .unwrap_or_default();
-    Ok(KnowledgeBase::from_parts(
+    let mut kb = KnowledgeBase::from_parts(
         format!("pack@{}", pack.commit),
         pack.manifest.clone(),
         entities,
         media,
         PageRegistry::from_entries(pack.pages.iter().cloned()),
-    ))
+    );
+    kb.page_types = page_types_of(pack.file_json(SITE_PAGE_TYPES_PATH)?.as_ref())?;
+    Ok(kb)
 }
 
 #[cfg(test)]

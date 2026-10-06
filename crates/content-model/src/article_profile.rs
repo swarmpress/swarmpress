@@ -7,11 +7,17 @@
 //! - a valid page under schema v2 (`content_model::validate_page_v2`);
 //! - `page_type: "blog-article"`, `id` equal to the content id, and a `slug`
 //!   whose every language key is `/<lang>/blog/<slug>` for the file's stem;
-//! - one `editorial-hero`, first (the page's only `<h1>`); one
-//!   `closing-note`, last; in between only `heading`, `paragraph`, `list`,
-//!   `callout` and `image`, with at least one paragraph;
-//! - no raw `<` or `>` in `editorial-hero.title` and `closing-note.content`,
-//!   the two fields the theme prints with `set:html`.
+//! - the body of a `blog-article` page type (FEAT-089): one
+//!   `editorial-hero`, first (the page's only `<h1>`); one `closing-note`,
+//!   last; in between only `heading`, `paragraph`, `list`, `callout` and
+//!   `image`, with at least one paragraph; no raw `<` or `>` in
+//!   `editorial-hero.title` and `closing-note.content`, the two fields the
+//!   theme prints with `set:html`.
+//!
+//! The body rules are data: the core page-type registry
+//! ([`crate::page_types`], exported from `packages/content-schema`). The
+//! constants below name the same blocks for the code that needs them (the
+//! gateway's finalise step reads the hero) and a test keeps them equal.
 //!
 //! Everything here is pure. The checks that need the site (create-only path,
 //! no second open pull request, closed-world links and media) are in the
@@ -25,6 +31,7 @@
 
 use std::sync::OnceLock;
 
+use crate::page_types::{PageType, PageTypes};
 use crate::{validate_page_v2, SchemaRegistry};
 use serde_json::Value;
 
@@ -82,18 +89,11 @@ fn registry() -> &'static SchemaRegistry {
     REGISTRY.get_or_init(SchemaRegistry::core)
 }
 
-/// Every string a v2 text field holds: the plain value, or each language of
-/// a localized object.
-fn texts(value: &Value) -> Vec<&str> {
-    match value {
-        Value::String(s) => vec![s.as_str()],
-        Value::Object(m) => m.values().filter_map(Value::as_str).collect(),
-        _ => Vec::new(),
-    }
-}
-
-fn has_raw_html(value: &Value) -> bool {
-    texts(value).iter().any(|s| s.contains(['<', '>']))
+/// The `blog-article` page type of the core registry.
+pub fn article_type() -> &'static PageType {
+    PageTypes::core()
+        .get(ARTICLE_PAGE_TYPE)
+        .expect("the core registry has the article type")
 }
 
 /// The article profile. `Err` lists every problem found, as text an agent
@@ -141,7 +141,9 @@ pub fn check_article_profile(
         match page.get("slug").and_then(Value::as_object) {
             Some(routes) if !routes.is_empty() => {
                 for (lang, route) in routes {
-                    let want = format!("/{lang}/blog/{slug}");
+                    let want = article_type()
+                        .route_for(lang, slug)
+                        .unwrap_or_else(|| format!("/{lang}/blog/{slug}"));
                     if route.as_str() != Some(want.as_str()) {
                         issues.push(format!(
                             "/slug/{lang} must be {want:?} (the file is {slug}.json)"
@@ -156,7 +158,12 @@ pub fn check_article_profile(
     // ---- blocks: set and order
     match page.get("body").and_then(Value::as_array) {
         None => {} // the schema already reported it
-        Some(body) => check_body(body, &mut issues),
+        Some(body) => issues.extend(
+            article_type()
+                .check_body(body)
+                .into_iter()
+                .map(|i| i.message),
+        ),
     }
 
     if issues.is_empty() {
@@ -168,62 +175,6 @@ pub fn check_article_profile(
             issues.push(format!("and {more} more"));
         }
         Err(issues)
-    }
-}
-
-fn kind(block: &Value) -> &str {
-    block.get("type").and_then(Value::as_str).unwrap_or("")
-}
-
-fn check_body(body: &[Value], issues: &mut Vec<String>) {
-    let count = |t: &str| body.iter().filter(|b| kind(b) == t).count();
-
-    let heroes = count(HERO_BLOCK);
-    if heroes != 1 {
-        issues.push(format!(
-            "/body must hold exactly one {HERO_BLOCK} (the page's only <h1>), found {heroes}"
-        ));
-    }
-    if body.first().map(kind) != Some(HERO_BLOCK) {
-        issues.push(format!("/body/0 must be the {HERO_BLOCK}"));
-    }
-    let closings = count(CLOSING_BLOCK);
-    if closings != 1 {
-        issues.push(format!(
-            "/body must hold exactly one {CLOSING_BLOCK}, found {closings}"
-        ));
-    }
-    if body.last().map(kind) != Some(CLOSING_BLOCK) {
-        issues.push(format!(
-            "the last block of /body must be the {CLOSING_BLOCK}"
-        ));
-    }
-    for (i, block) in body.iter().enumerate() {
-        let t = kind(block);
-        if t == HERO_BLOCK || t == CLOSING_BLOCK || BODY_BLOCKS.contains(&t) {
-            continue;
-        }
-        issues.push(format!(
-            "/body/{i}: `{t}` is not allowed in an article (allowed: {HERO_BLOCK}, {}, {CLOSING_BLOCK})",
-            BODY_BLOCKS.join(", ")
-        ));
-    }
-    if count("paragraph") == 0 {
-        issues.push("/body must hold at least one paragraph".to_string());
-    }
-
-    // The two fields the frozen theme prints with `set:html`.
-    for (i, block) in body.iter().enumerate() {
-        let field = match kind(block) {
-            HERO_BLOCK => "title",
-            CLOSING_BLOCK => "content",
-            _ => continue,
-        };
-        if block.get(field).is_some_and(has_raw_html) {
-            issues.push(format!(
-                "/body/{i}/{field} is printed as HTML: it must not contain a raw `<` or `>` (escape them)"
-            ));
-        }
     }
 }
 
@@ -301,6 +252,16 @@ mod tests {
 
     fn has(issues: &[String], needle: &str) -> bool {
         issues.iter().any(|i| i.contains(needle))
+    }
+
+    #[test]
+    fn the_constants_name_the_registry_s_article() {
+        let t = article_type();
+        let slots = t.slots.as_ref().unwrap();
+        assert_eq!(slots.first().unwrap().blocks, [HERO_BLOCK]);
+        assert_eq!(slots.last().unwrap().blocks, [CLOSING_BLOCK]);
+        assert_eq!(slots[1].blocks, BODY_BLOCKS);
+        assert_eq!(t.route.as_deref(), Some("/{lang}/blog/{slug}"));
     }
 
     #[test]

@@ -196,7 +196,7 @@ fn pack_from_a_checkout_round_trips_to_an_equal_knowledge_base() {
 fn pack_carries_the_fixture_config_and_the_blog_index() {
     let src = src();
     let pack = pack::build(&src, COMMIT).unwrap();
-    // The fixture has six of the eight config files (the style guide and the
+    // The fixture has six of the nine config files (the style guide and the
     // writer prompt are the real site's, verbatim; the content calendar a few of
     // its topics, for the eval harness), and the blog index.
     assert_eq!(
@@ -341,8 +341,11 @@ fn pack_from_the_real_site() {
             .keys()
             .map(String::as_str)
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(PACK_FILES),
-        "the real site has all nine carried files"
+        BTreeSet::from(PACK_FILES)
+            .into_iter()
+            .filter(|p| *p != content_model::SITE_PAGE_TYPES_PATH)
+            .collect::<BTreeSet<_>>(),
+        "the real site has all nine carried files; it declares no page types yet"
     );
     assert_same_answers(&direct, &loaded, &src);
     assert_eq!(

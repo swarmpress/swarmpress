@@ -10,6 +10,8 @@
 //!   `content-schema`) + site custom blocks (`x:<name>`), in v1 and v2 form.
 //! * [`validate`] — [`validate_page_v2`] → [`Report`] of errors and warnings.
 //! * [`docs`] — [`blocks_doc`]: writer-facing block docs generated from schemas.
+//! * [`page_types`] — [`PageTypes`]: the page-type registry (FEAT-089), core
+//!   types and a site's own, and the check of a body against its type.
 
 pub mod article_profile;
 pub mod blocks;
@@ -17,6 +19,7 @@ pub mod docs;
 pub mod localized;
 pub mod media;
 pub mod page;
+pub mod page_types;
 pub mod registry;
 pub mod validate;
 
@@ -28,6 +31,7 @@ pub use docs::blocks_doc;
 pub use localized::{text_of, Localized, LocalizedString, LocalizedText, FALLBACK_LANG};
 pub use media::{url_identity, MediaRef, MediaRefError};
 pub use page::{classify_block_type, Block, BlockKind, Page, PageSeo, PageStatus};
+pub use page_types::{BodyIssue, PageType, PageTypes, SITE_PAGE_TYPES_PATH};
 pub use registry::{BlockSchema, RegistryError, SchemaOrigin, SchemaRegistry};
 pub use validate::{validate_page_v2, Issue, Report};
 

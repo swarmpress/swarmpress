@@ -20,6 +20,15 @@
   features: [FEAT-009, FEAT-079]
 - match: { classname: protocol }
   features: [FEAT-011]
+# The page-type registry (FEAT-089): the exported format, the body checks, the pipeline's cross-check.
+- match: { classname: content-schema, title: "the_core_page_types" }
+  features: [FEAT-089]
+- match: { classname: content-model, title: "page_types::tests" }
+  features: [FEAT-089]
+- match: { classname: content-model, title: "the_constants_name_the_registry_s_article" }
+  features: [FEAT-089]
+- match: { classname: agents, title: "the_article_blocks_are_the_registry_s" }
+  features: [FEAT-089]
 - match: { classname: content-schema }
   features: [FEAT-042]
 # The shared golden fixture (packages/runner/test/fixtures/golden.json): native = wasm = Bun.

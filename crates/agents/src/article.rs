@@ -1815,6 +1815,19 @@ pub fn section_digest(heading: &str, draft: &SectionDraft) -> String {
 mod tests {
     use super::*;
 
+    /// The pipeline's stricter profile stands on the registry's article type
+    /// (FEAT-089): the same id and the same blocks.
+    #[test]
+    fn the_article_blocks_are_the_registry_s() {
+        let t = content_model::PageTypes::core().get(PAGE_TYPE).unwrap();
+        assert_eq!(t.id, PAGE_TYPE);
+        let mut registry = t.allowed_blocks().unwrap();
+        let mut ours = ARTICLE_BLOCKS.to_vec();
+        registry.sort_unstable();
+        ours.sort_unstable();
+        assert_eq!(registry, ours);
+    }
+
     #[test]
     fn section_ids_round_trip_and_reject_lookalikes() {
         for (text, id) in [

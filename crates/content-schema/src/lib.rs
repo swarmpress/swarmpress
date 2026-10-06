@@ -1,9 +1,14 @@
-//! Page JSON validation for agent writes.
+//! Page JSON validation for agent writes, and the page-type registry's format.
 //!
 //! `schema/page.schema.json` is generated from the Zod schema in
 //! `packages/content-schema` (`pnpm schema:export`) and committed; CI fails
 //! if it drifts. The fixtures in `fixtures/` are validated by both this crate
 //! and the Zod test so the two validators stay in agreement.
+//!
+//! The same export writes the page-type registry (FEAT-089, ADR-0072):
+//! `schema/page-types.schema.json` (the format, [`validate_page_types`]) and
+//! `schema/page-types.json` (the core types, [`CORE_PAGE_TYPES_JSON`]), which
+//! `content_model::page_types` reads.
 
 use std::sync::OnceLock;
 
@@ -19,6 +24,35 @@ fn validator() -> &'static jsonschema::Validator {
         // zod-to-json-schema wraps the schema as { $ref: "#/definitions/Page", definitions: {...} }
         jsonschema::validator_for(&schema).expect("embedded schema compiles")
     })
+}
+
+/// The page-type registry format (`swarmpress.page-types.v1`).
+pub const PAGE_TYPES_SCHEMA_JSON: &str = include_str!("../schema/page-types.schema.json");
+/// The core page types, defaults filled in.
+pub const CORE_PAGE_TYPES_JSON: &str = include_str!("../schema/page-types.json");
+
+fn page_types_validator() -> &'static jsonschema::Validator {
+    static VALIDATOR: OnceLock<jsonschema::Validator> = OnceLock::new();
+    VALIDATOR.get_or_init(|| {
+        let schema: Value =
+            serde_json::from_str(PAGE_TYPES_SCHEMA_JSON).expect("embedded schema is JSON");
+        jsonschema::validator_for(&schema).expect("embedded schema compiles")
+    })
+}
+
+/// Validates a page-type registry file against the exported format. The
+/// cross-field rules (a block in one slot, unique ids) are checked by
+/// `content_model::page_types`, as Zod's refinements do not export.
+pub fn validate_page_types(file: &Value) -> Result<(), Vec<String>> {
+    let errors: Vec<String> = page_types_validator()
+        .iter_errors(file)
+        .map(|e| format!("{}: {}", e.instance_path, e))
+        .collect();
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
 }
 
 /// Validates a page document, returning human-readable errors suitable for
@@ -72,5 +106,17 @@ mod tests {
     #[test]
     fn invalid_fixtures_fail() {
         run_fixtures("invalid", false);
+    }
+
+    #[test]
+    fn the_core_page_types_match_their_format() {
+        let core: Value = serde_json::from_str(CORE_PAGE_TYPES_JSON).unwrap();
+        assert_eq!(validate_page_types(&core), Ok(()));
+        let mut bad = core.clone();
+        bad["page_types"][0]["colour"] = Value::from("red");
+        assert!(validate_page_types(&bad).is_err());
+        let mut bad = core;
+        bad["format"] = Value::from("swarmpress.page-types.v0");
+        assert!(validate_page_types(&bad).is_err());
     }
 }
