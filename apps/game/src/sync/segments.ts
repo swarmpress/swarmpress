@@ -20,6 +20,7 @@
  * are never rounded by `JSON.parse`.
  */
 import type { LoggedCommand } from '../catchup/replay'
+import { TEXT_KINDS, type TextRecord } from '../store/company-store'
 
 export const SEGMENT_FORMAT = 'swarmpress.log.v1'
 export const CHECKPOINT_FORMAT = 'swarmpress.checkpoint.v1'
@@ -42,26 +43,42 @@ export interface Checkpoint {
 interface SegmentDoc {
   format: typeof SEGMENT_FORMAT
   commands: { seq: number; step: number; kind: string; cmd: string }[]
+  /** The company text journalled since the previous segment (ADR-0075); absent when none. */
+  texts?: TextRecord[]
 }
 
 const enc = new TextEncoder()
 const dec = new TextDecoder()
 
-export function encodeSegment(commands: LoggedCommand[]): Uint8Array {
+/** A segment's bytes. Without texts they are exactly those of a segment before ADR-0075. */
+export function encodeSegment(commands: LoggedCommand[], texts: TextRecord[] = []): Uint8Array {
   const doc: SegmentDoc = { format: SEGMENT_FORMAT, commands: commands.map((c) => ({ seq: c.seq, step: c.step, kind: c.kind, cmd: c.json })) }
+  if (texts.length) doc.texts = texts.map((t) => ({ n: t.n, kind: t.kind, key: t.key, value: t.value }))
   return enc.encode(JSON.stringify(doc))
 }
 
 export function decodeSegment(bytes: Uint8Array): LoggedCommand[] {
+  return decodeSegmentDoc(bytes).commands
+}
+
+/** A segment's commands and texts. */
+export function decodeSegmentDoc(bytes: Uint8Array): { commands: LoggedCommand[]; texts: TextRecord[] } {
   const doc = JSON.parse(dec.decode(bytes)) as SegmentDoc
   if (doc.format !== SEGMENT_FORMAT) throw new Error(`unknown log segment format ${JSON.stringify(doc.format)}`)
   if (!Array.isArray(doc.commands)) throw new Error('log segment without a commands array')
-  return doc.commands.map((c, i) => {
+  const commands = doc.commands.map((c, i) => {
     if (!Number.isInteger(c?.seq) || !Number.isInteger(c?.step) || typeof c.kind !== 'string' || typeof c.cmd !== 'string') {
       throw new Error(`log segment entry ${i} is malformed`)
     }
     return { seq: c.seq, step: c.step, kind: c.kind, json: c.cmd }
   })
+  const texts = (doc.texts ?? []).map((t, i) => {
+    if (!Number.isInteger(t?.n) || !(TEXT_KINDS as readonly string[]).includes(t.kind) || typeof t.key !== 'string' || typeof t.value !== 'string') {
+      throw new Error(`log segment text ${i} is malformed`)
+    }
+    return { n: t.n, kind: t.kind, key: t.key, value: t.value }
+  })
+  return { commands, texts }
 }
 
 /** The fields of a record that say where the world was, in a fixed order (the encoding is byte-stable). */

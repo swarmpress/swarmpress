@@ -128,7 +128,7 @@ describe('CompanyStore (memory engine)', () => {
 
   it('keeps site knowledge packs by commit, verbatim, the newest two (migration 2)', async () => {
     const s = await store()
-    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3])
+    expect(MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4])
     expect(await s.latestKnowledge()).toBeNull()
     // Text kept byte for byte: whitespace, key order and a u64 survive.
     const pack = (c: string) => `{"commit":"${c}","files":{"content/config/style-guide.json":"{\\n  \\"voice\\": \\"warm\\"\\n}\\n"},"manifest":{"n":18446744073709551615},"pages":[]}`
@@ -152,11 +152,11 @@ describe('CompanyStore (memory engine)', () => {
   it('a store of schema 1 gains the site_knowledge, stage and activity tables when it opens', async () => {
     const s = await store()
     await s.setKv('device.id', 'dev-1')
-    for (const t of ['site_knowledge', 'job_stages', 'post_dedupe', 'activity']) await s.driver.exec(`DROP TABLE ${t}`)
+    for (const t of ['site_knowledge', 'job_stages', 'post_dedupe', 'activity', 'text_journal']) await s.driver.exec(`DROP TABLE ${t}`)
     await s.driver.run('DELETE FROM schema_migrations WHERE version >= 2')
     expect(await s.schemaVersion()).toBe(1)
     const again = await CompanyStore.open(s.driver)
-    expect(await again.schemaVersion()).toBe(3)
+    expect(await again.schemaVersion()).toBe(SCHEMA_VERSION)
     expect(await again.getKv('device.id')).toBe('dev-1')
     await again.putKnowledge({ commit: 'c', etag: '"c"', pack: '{}' })
     expect((await again.latestKnowledge())!.pack).toBe('{}')
@@ -166,14 +166,65 @@ describe('CompanyStore (memory engine)', () => {
   it('a store of schema 2 gains the stage, dedupe and activity tables and keeps its posts (migration 3)', async () => {
     const s = await store()
     await s.appendPost('c1', 'w1', JSON.stringify({ type: 'status', author: 'ceo', text: 'before' }))
-    for (const t of ['job_stages', 'post_dedupe', 'activity']) await s.driver.exec(`DROP TABLE ${t}`)
-    await s.driver.run('DELETE FROM schema_migrations WHERE version = 3')
+    for (const t of ['job_stages', 'post_dedupe', 'activity', 'text_journal']) await s.driver.exec(`DROP TABLE ${t}`)
+    await s.driver.run('DELETE FROM schema_migrations WHERE version >= 3')
     expect(await s.schemaVersion()).toBe(2)
     const again = await CompanyStore.open(s.driver)
-    expect(await again.schemaVersion()).toBe(3)
+    expect(await again.schemaVersion()).toBe(SCHEMA_VERSION)
     const id = await again.appendPost('c1', 'w1', JSON.stringify({ type: 'status', author: 'system', text: 'after', dedupe: '7:status:0' }))
     expect(id).toBe('post-2')
     expect((await again.plan('c1')).posts.w1.map((p) => p.text)).toEqual(['before', 'after'])
+  })
+
+  it('journals every text write once, and a fresh store rebuilds the same plan from the journal (ADR-0075)', async () => {
+    const s = await store()
+    const brief = JSON.stringify({ job_id: 3, brief: { title: 'Harvest' }, writer: 'staff-1', editor: 'staff-5', minutes: [], work_item: null, staff: [] })
+    await s.putBrief('c1', '77', brief)
+    await s.putBrief('c1', '77', brief) // a re-run: not written, not journalled
+    expect(await s.claimBrief('c1', '77', 'work-item-1')).toBe(true)
+    expect(await s.claimBrief('c1', '77', 'work-item-2')).toBe(false)
+    await s.putArtifact('c1', 'work-item-1', '{"rev":0}')
+    await s.putArtifact('c1', 'work-item-1', '{"rev":1}')
+    await s.appendTranscript('c1', 3, 0, 'staff-1', 'Morning.')
+    await s.appendTranscript('c1', 3, 0, 'staff-1', 'Morning.')
+    await s.setItemText('c1', 'work-item-1', 'Harvest week', null)
+    await s.appendPost('c1', 'work-item-1', JSON.stringify({ type: 'status', author: 'ceo', text: 'go' }))
+    await s.appendPost('c1', 'work-item-1', JSON.stringify({ type: 'minutes', author: 'system', text: 'm', dedupe: '3:minutes' }))
+    await s.appendPost('c1', 'work-item-1', JSON.stringify({ type: 'minutes', author: 'system', text: 'm', dedupe: '3:minutes' }))
+    await s.setKv('story.line.0', 'Coffee?')
+    await s.setKv('device.id', 'not company text')
+    const texts = await s.textsAfter(0)
+    expect(texts.map((t) => t.kind)).toEqual(['brief', 'brief-claim', 'artifact', 'artifact', 'transcript', 'item', 'post', 'post', 'kv'])
+    expect(texts.map((t) => t.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
+    expect(await s.lastText()).toBe(9)
+    expect((await s.textsAfter(4, 1)).map((t) => t.n)).toEqual([5]) // at least one row past the byte cap
+    expect((await s.textsBetween(2, 3)).map((t) => t.kind)).toEqual(['brief-claim', 'artifact'])
+
+    const fresh = await store()
+    await fresh.applyTexts('c1', texts)
+    expect(await fresh.plan('c1')).toEqual(await s.plan('c1'))
+    expect(await fresh.getBrief('c1', '77')).toBe(await s.getBrief('c1', '77'))
+    expect(await fresh.getArtifact('c1', 'work-item-1')).toBe('{"rev":1}')
+    expect(await fresh.transcripts('c1')).toEqual(await s.transcripts('c1'))
+    expect(await fresh.getKv('story.line.0')).toBe('Coffee?')
+    expect(await fresh.lastText()).toBe(9)
+  })
+
+  it('journals the text of a store that predates the journal, once', async () => {
+    const s = await store()
+    await s.putBrief('c1', '9', JSON.stringify({ job_id: 1, brief: {}, writer: '', editor: 'staff-5', minutes: [], work_item: null, staff: [] }))
+    await s.claimBrief('c1', '9', 'work-item-1')
+    await s.setItemText('c1', 'work-item-1', 'Trains', 'brief')
+    await s.appendPost('c1', 'work-item-1', JSON.stringify({ type: 'status', author: 'ceo', text: 'go' }))
+    await s.setKv('story.line.3', 'Hi.')
+    await s.driver.run('DELETE FROM text_journal') // as before migration 4
+    expect(await s.backfillJournal('c1')).toBe(5)
+    expect(await s.backfillJournal('c1')).toBe(0)
+    const fresh = await store()
+    await fresh.applyTexts('c1', await s.textsAfter(0))
+    expect(await fresh.plan('c1')).toEqual(await s.plan('c1'))
+    expect(await fresh.getBrief('c1', '9')).toBe(await s.getBrief('c1', '9'))
+    expect(await fresh.getKv('story.line.3')).toBe('Hi.')
   })
 
   it('keeps stage results by (company, job, stage, index), first write wins, values verbatim', async () => {

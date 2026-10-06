@@ -14,7 +14,11 @@ paths:
   - apps/game/src/net/central.ts
   - apps/game/src/net/central.test.ts
   - apps/game/e2e/mvp.spec.ts
+  - apps/game/src/store/company-store.ts
+  - apps/game/src/store/company-store.test.ts
+  - apps/game/src/store/schema.ts
 adrs:
+  - ADR-0075
   - ADR-0038
   - ADR-0039
   - ADR-0045
@@ -66,3 +70,14 @@ Acceptance (A2):
   never overwrites it.
 
 Depends on: FEAT-013 (A1).
+
+## Company text (ADR-0075, built)
+
+Segments carry the company store's text journal. Every brief, artifact, transcript line, plan item
+text, post and story line is journalled in its own write's transaction and sealed after
+`sync.sealed_text`, up to 2 MiB per segment, in text-only segments when needed. A central restore
+replays it into the empty store, and a store from before the journal journals its tables once.
+Tests:
+- `company-store.test.ts` (journal, rebuild, backfill);
+- `uploader.test.ts` (text with commands, text-only segments, byte-for-byte resend);
+- `e2e/mvp.spec.ts`: the fresh device has the item's thread and title.

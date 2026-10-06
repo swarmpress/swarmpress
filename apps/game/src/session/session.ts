@@ -54,7 +54,7 @@ import { boardContext, minutesPerArticle, standupContext, utteranceMs } from '..
 import { createOrchestrator, jobsFromEffects, loadRustValidator, localLlmBridge, outcomesForSim, type ProgressEvent, type SiteBindingJson } from '../orchestrator'
 import { openCompanyStore, type ActivityRow, type CompanyStore, type Plan } from '../store'
 import { commandBytes, decodeSnapshot, encodeSnapshot, type Checkpoint } from '../sync/segments'
-import { fetchRemote, NEXT_SEGMENT_KEY, SEALED_SEQ_KEY, SyncUploader, toLogged, type SealResult } from '../sync/uploader'
+import { fetchRemote, NEXT_SEGMENT_KEY, SEALED_SEQ_KEY, SEALED_TEXT_KEY, SyncUploader, toLogged, type SealResult } from '../sync/uploader'
 import type { DataTopic } from '../ui/data-source'
 import { mountModelCard } from '../ui/model-card'
 import { companyStoreOptions, WasmDataSource, type SimOrgApi } from '../ui/wasm-source'
@@ -388,6 +388,9 @@ async function restore(
   const record = local ? decodeSnapshot(local.bytes) : null
   let cp: Checkpoint | null = record?.checkpoint ?? null
   let world: Uint8Array | null = record?.world ?? null
+  // A store from before the text journal journals its text once, so the next seal carries it (ADR-0075).
+  const backfilled = await store.backfillJournal(company.id)
+  if (backfilled) console.info(`[session] journalled ${backfilled} texts written before the text journal`)
   if (!commands.length && !cp) {
     const remote = await fetchRemote(client, company.id)
     if (remote) {
@@ -399,6 +402,9 @@ async function restore(
       await store.appendCommands(commands.map((c) => ({ seq: c.seq, step: c.step, kind: c.kind, payload: commandBytes(c.json) })))
       await store.setKv(SEALED_SEQ_KEY, String(commands.length ? commands[commands.length - 1].seq : 0))
       await store.setKv(NEXT_SEGMENT_KEY, String(remote.segments))
+      // The company's text (ADR-0075): replayed into the empty store, and sealed already.
+      await store.applyTexts(company.id, remote.texts)
+      await store.setKv(SEALED_TEXT_KEY, String(await store.lastText()))
       if (cp && remote.record) await store.putSnapshot(cp.step, remote.record, cp.hash)
     } else source = 'new'
   }

@@ -12,7 +12,7 @@
 //   → DeployLanded via the events API → item published
 //   → the Plan panel shows the thread
 //   → a reload restores everything from OPFS
-//   → a fresh browser context restores from central sync
+//   → a fresh browser context restores from central sync, the item's text with it
 //
 // The sim runs in the page's own render loop (`speed=` only scales the clock);
 // the spec observes through `window.__swarmpress.session` and drives nothing but
@@ -502,12 +502,15 @@ test('one article, end to end, in the real game page', async ({ page, baseURL },
     expect(await logKinds(fresh)).toEqual(LOGGED)
     const restoredPlan = await simJson<SimPlan>(fresh, 'plan_json')
     expect(restoredPlan.feed.map((f) => ({ kind: f.kind, workItem: f.workItem }))).toContainEqual({ kind: 'published', workItem: ITEM })
-    // The Plan panel shows the item as published (the sim's skeleton). Its thread
-    // text is NOT part of central sync (CLAUDE.md rule 6: plan text lives in the
-    // browser store), so a new device has the item without its posts.
+    // The company's text travels in the sealed segments (ADR-0075): the new device has the item's
+    // thread as far as the last seal (at least through the review), and its title.
+    const freshPosts = await postTypes(fresh)
+    expect(freshPosts.length).toBeGreaterThanOrEqual(4)
+    expect(freshPosts).toEqual(POST_TYPES.slice(0, freshPosts.length))
+    expect((await session(fresh, 'planText')).items[ITEM]?.title).toBe(TITLE)
     await fresh.getByRole('navigation', { name: 'CEO tools' }).getByRole('button', { name: /^Plan/ }).click()
     const panel = fresh.getByRole('region', { name: 'Media & publishing plan', exact: true })
-    await panel.getByRole('button', { name: ITEM, exact: true }).first().click()
+    await panel.getByRole('button', { name: TITLE, exact: true }).first().click()
     await expect(panel.locator('.work-item .card-row')).toContainText('Published')
     await fresh.screenshot({ path: `test-results/mvp/${engine}-plan-fresh-context.png` })
     // The DeployLanded event is delivered again (new cursor) and ignored; nothing re-runs.

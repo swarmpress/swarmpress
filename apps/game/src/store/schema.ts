@@ -154,6 +154,24 @@ CREATE UNIQUE INDEX activity_key ON activity (company, job_id, stage, idx, attem
 CREATE INDEX activity_job ON activity (company, job_id, id);
 `,
   },
+  {
+    // ADR-0075 (the first increment of ADR-0056's work records): every text the
+    // company writes (briefs, artifacts, transcripts, plan text, posts, story
+    // lines) is journalled in the same transaction, so a seal can send what is
+    // new since the last one and a fresh device can rebuild the tables from it.
+    // One database per company: no company column, like `command_log`.
+    version: 4,
+    name: 'text journal',
+    sql: `
+CREATE TABLE text_journal (
+  n INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+`,
+  },
 ]
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version

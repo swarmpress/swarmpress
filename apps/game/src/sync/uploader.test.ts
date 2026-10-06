@@ -7,8 +7,8 @@ import { commandKind, type LoggedCommand } from '../catchup/replay'
 import { CentralClient, CentralError, STEP_HEADER } from '../net/central'
 import { CompanyStore } from '../store'
 import { MemorySqliteDriver } from '../store/sqlite-driver'
-import { CHECKPOINT_FORMAT, commandBytes, decodeCheckpoint, decodeSegment, decodeSnapshot, encodeCheckpoint, encodeSegment, encodeSnapshot, SNAPSHOT_FORMAT } from './segments'
-import { fetchRemote, NEXT_SEGMENT_KEY, SEALED_SEQ_KEY, SyncUploader, toLogged, type SyncStore } from './uploader'
+import { CHECKPOINT_FORMAT, commandBytes, decodeCheckpoint, decodeSegment, decodeSegmentDoc, decodeSnapshot, encodeCheckpoint, encodeSegment, encodeSnapshot, SNAPSHOT_FORMAT } from './segments'
+import { fetchRemote, NEXT_SEGMENT_KEY, SEALED_SEQ_KEY, SEALED_TEXT_KEY, SyncUploader, TEXT_BYTES_PER_SEGMENT, toLogged, type SyncStore } from './uploader'
 
 const BASE = 'http://central.test'
 const CO = 'co-1'
@@ -331,6 +331,8 @@ describe('SyncUploader.seal', () => {
       let failNext = true
       const flaky: SyncStore = {
         commandsAfter: (s) => store.commandsAfter(s),
+        textsAfter: (n, b) => store.textsAfter(n, b),
+        textsBetween: (a, b) => store.textsBetween(a, b),
         getKv: (k) => store.getKv(k),
         setKv: async (k, v) => {
           if (failNext && k === NEXT_SEGMENT_KEY) {
@@ -432,6 +434,7 @@ describe('fetchRemote', () => {
     await up.seal(cp(60))
     expect(await fetchRemote(client, CO)).toEqual({
       commands: [],
+      texts: [],
       checkpoint: { format: CHECKPOINT_FORMAT, scenario: 'cinqueterre', seed: '7', step: 60, hash: '1000060', lastSeq: 0 },
       // A legacy checkpoint: no world; the record is kept as the server holds it.
       world: null,
@@ -491,5 +494,72 @@ describe('fetchRemote', () => {
     srv.segments.set(`${CO}/2`, encodeSegment([c(3, 30)]))
     srv.hooks.before = (call) => (call.method === 'GET' && call.path.endsWith('/log/1') ? json({ error: 'no segment 1' }, 404) : undefined)
     await expect(fetchRemote(client, CO)).rejects.toThrow()
+  })
+})
+
+describe('company text in segments (ADR-0075)', () => {
+  it('a segment without texts has exactly the bytes of one before texts', () => {
+    const cmds = [{ seq: 1, step: 540, kind: 'Praise', json: PRAISE }]
+    expect(new TextDecoder().decode(encodeSegment(cmds))).toBe(`{"format":"swarmpress.log.v1","commands":[{"seq":1,"step":540,"kind":"Praise","cmd":${JSON.stringify(PRAISE)}}]}`)
+    expect(decodeSegmentDoc(encodeSegment(cmds)).texts).toEqual([])
+  })
+
+  it('seals the journal with the commands, then text-only segments past the byte cap, and a fresh store rebuilds from them', async () => {
+    const { store, srv, client, up } = await setup()
+    await log(store, [540, PRAISE])
+    await store.setItemText(CO, 'work-item-1', 'Harvest week', null)
+    await store.appendTranscript(CO, 1, 0, 'staff-1', 'Morning.')
+    expect(await up.seal(cp(600))).toEqual({ segment: 0, commands: 1, step: 600 })
+    const seg0 = decodeSegmentDoc(srv.segments.get(`${CO}/0`)!)
+    expect(seg0.commands).toHaveLength(1)
+    expect(seg0.texts.map((t) => t.kind)).toEqual(['item', 'transcript'])
+    expect(await store.getKv(SEALED_TEXT_KEY)).toBe('2')
+
+    // Text alone (no new command), larger than one segment's cap: two text-only segments.
+    const big = 'x'.repeat(TEXT_BYTES_PER_SEGMENT - 100)
+    await store.putArtifact(CO, 'work-item-1', JSON.stringify({ body: big }))
+    await store.appendPost(CO, 'work-item-1', JSON.stringify({ type: 'status', author: 'ceo', text: big }))
+    expect(await up.seal(cp(700))).toEqual({ segment: 2, commands: 0, step: 700 })
+    expect(decodeSegmentDoc(srv.segments.get(`${CO}/1`)!)).toMatchObject({ commands: [], texts: [{ n: 3, kind: 'artifact' }] })
+    expect(decodeSegmentDoc(srv.segments.get(`${CO}/2`)!)).toMatchObject({ commands: [], texts: [{ n: 4, kind: 'post' }] })
+    // Nothing new: nothing sent but the checkpoint.
+    srv.calls.length = 0
+    await up.seal(cp(800))
+    expect(srv.puts('log')).toHaveLength(0)
+
+    const remote = (await fetchRemote(client, CO))!
+    expect(remote.commands).toEqual(await localLog(store))
+    expect(remote.texts.map((t) => t.n)).toEqual([1, 2, 3, 4])
+    const fresh = await CompanyStore.open(await MemorySqliteDriver.open())
+    await fresh.applyTexts(CO, remote.texts)
+    expect(await fresh.plan(CO)).toEqual(await store.plan(CO))
+    expect(await fresh.getArtifact(CO, 'work-item-1')).toBe(await store.getArtifact(CO, 'work-item-1'))
+    expect(await fresh.transcripts(CO)).toEqual(await store.transcripts(CO))
+  })
+
+  it('a text-only segment cut off before its progress was recorded is sent again byte for byte', async () => {
+    const { store, srv, client } = await setup()
+    await store.setItemText(CO, 'work-item-1', 'Harvest week', null)
+    let fail = true
+    const flaky: SyncStore = {
+      commandsAfter: (s) => store.commandsAfter(s),
+      textsAfter: (n, b) => store.textsAfter(n, b),
+      textsBetween: (a, b) => store.textsBetween(a, b),
+      getKv: (k) => store.getKv(k),
+      setKv: async (k, v) => {
+        if (fail && k === SEALED_TEXT_KEY) {
+          fail = false
+          throw new Error('tab closed')
+        }
+        await store.setKv(k, v)
+      },
+    }
+    await expect(new SyncUploader(client, flaky, CO).seal(cp(600))).rejects.toThrow(/tab closed/)
+    const first = srv.segments.get(`${CO}/0`)!
+    await store.setItemText(CO, 'work-item-2', 'Trains', null)
+    await new SyncUploader(client, store, CO).seal(cp(700))
+    expect(same(srv.segments.get(`${CO}/0`)!, first)).toBe(true)
+    expect(decodeSegmentDoc(srv.segments.get(`${CO}/1`)!).texts.map((t) => t.n)).toEqual([2])
+    expect(await store.getKv(SEALED_TEXT_KEY)).toBe('2')
   })
 })

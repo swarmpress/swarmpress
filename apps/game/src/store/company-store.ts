@@ -42,6 +42,23 @@ export const STORE_TABLES = [
 /** Newest posts per item in the plan view (orchestrator::PLAN_POSTS_PER_ITEM). */
 export const PLAN_POSTS_PER_ITEM = 50
 
+/**
+ * A journalled text (ADR-0075): what a store write put in a table, replayable
+ * on an empty store (`applyTexts`). `n` is this database's journal order.
+ */
+export interface TextRecord {
+  n: number
+  kind: TextKind
+  key: string
+  value: string
+}
+
+export const TEXT_KINDS = ['brief', 'brief-claim', 'artifact', 'transcript', 'item', 'post', 'kv'] as const
+export type TextKind = (typeof TEXT_KINDS)[number]
+
+/** kv keys whose values are company text: the story director's lines (ADR-0074), not its per-device playback state. */
+export const isSyncedKv = (key: string) => key.startsWith('story.line.')
+
 export interface CommandRecord {
   /** Log position; assigned by the store when absent. */
   seq?: number
@@ -246,13 +263,21 @@ export class CompanyStore implements OrchestratorStore {
 
   // ------------------------------------------------------------ orchestrator Store
 
+  /** The journal row of a text write (ADR-0075), for the write's own batch. */
+  private journal(kind: TextKind, key: string, value: string): SqlStatement {
+    return { sql: 'INSERT INTO text_journal (kind, key, value, created_at) VALUES (?, ?, ?, ?)', params: [kind, key, value, Date.now()] }
+  }
+
   async putBrief(company: string, briefRef: string, recordJson: string): Promise<void> {
     const rec = JSON.parse(recordJson) as { work_item?: string | null }
-    await this.driver.run('INSERT OR IGNORE INTO briefs (company, brief_ref, record, work_item) VALUES (?, ?, ?, ?)', [
-      company,
-      briefRef,
-      recordJson,
-      typeof rec.work_item === 'string' ? rec.work_item : null,
+    // First write wins: a re-run's write is neither stored nor journalled.
+    if ((await this.driver.all('SELECT 1 AS x FROM briefs WHERE company = ? AND brief_ref = ?', [company, briefRef])).length) return
+    await this.driver.batch([
+      {
+        sql: 'INSERT OR IGNORE INTO briefs (company, brief_ref, record, work_item) VALUES (?, ?, ?, ?)',
+        params: [company, briefRef, recordJson, typeof rec.work_item === 'string' ? rec.work_item : null],
+      },
+      this.journal('brief', briefRef, recordJson),
     ])
   }
 
@@ -269,22 +294,23 @@ export class CompanyStore implements OrchestratorStore {
   }
 
   async claimBrief(company: string, briefRef: string, workItem: string): Promise<boolean> {
-    const r = await this.driver.run(
-      'UPDATE briefs SET work_item = ? WHERE company = ? AND brief_ref = ? AND work_item IS NULL',
-      [workItem, company, briefRef],
-    )
-    if (r.changes > 0) return true
+    const free = await this.driver.all('SELECT 1 AS x FROM briefs WHERE company = ? AND brief_ref = ? AND work_item IS NULL', [company, briefRef])
+    if (free.length) {
+      const [r] = await this.driver.batch([
+        { sql: 'UPDATE briefs SET work_item = ? WHERE company = ? AND brief_ref = ? AND work_item IS NULL', params: [workItem, company, briefRef] },
+        this.journal('brief-claim', briefRef, workItem),
+      ])
+      if (r.changes > 0) return true
+    }
     const rows = await this.driver.all('SELECT 1 AS x FROM briefs WHERE company = ? AND brief_ref = ?', [company, briefRef])
     if (rows.length === 0) throw new Error(`unknown brief_ref ${briefRef}`)
     return false
   }
 
   async putArtifact(company: string, workItem: string, recordJson: string): Promise<void> {
-    await this.driver.run('INSERT OR REPLACE INTO artifacts (company, work_item, record, updated_at) VALUES (?, ?, ?, ?)', [
-      company,
-      workItem,
-      recordJson,
-      Date.now(),
+    await this.driver.batch([
+      { sql: 'INSERT OR REPLACE INTO artifacts (company, work_item, record, updated_at) VALUES (?, ?, ?, ?)', params: [company, workItem, recordJson, Date.now()] },
+      this.journal('artifact', workItem, recordJson),
     ])
   }
 
@@ -305,12 +331,10 @@ export class CompanyStore implements OrchestratorStore {
   }
 
   async appendTranscript(company: string, jobId: number, seq: number, speaker: string, text: string): Promise<void> {
-    await this.driver.run('INSERT OR IGNORE INTO transcripts (company, job_id, seq, speaker, text) VALUES (?, ?, ?, ?, ?)', [
-      company,
-      jobId,
-      seq,
-      speaker,
-      text,
+    if ((await this.driver.all('SELECT 1 AS x FROM transcripts WHERE company = ? AND job_id = ? AND seq = ?', [company, jobId, seq])).length) return
+    await this.driver.batch([
+      { sql: 'INSERT OR IGNORE INTO transcripts (company, job_id, seq, speaker, text) VALUES (?, ?, ?, ?, ?)', params: [company, jobId, seq, speaker, text] },
+      this.journal('transcript', `${jobId}:${seq}`, JSON.stringify({ speaker, text })),
     ])
   }
 
@@ -321,6 +345,7 @@ export class CompanyStore implements OrchestratorStore {
         sql: 'UPDATE plan_items SET title = COALESCE(?, title), brief = COALESCE(?, brief) WHERE company = ? AND item = ?',
         params: [title, brief, company, item],
       },
+      this.journal('item', item, JSON.stringify({ title, brief })),
     ])
   }
 
@@ -339,25 +364,19 @@ export class CompanyStore implements OrchestratorStore {
     delete post.id
     delete post.item
     const dedupe = typeof post.dedupe === 'string' && post.dedupe ? post.dedupe : null
-    if (!dedupe) {
-      const r = await this.driver.run('INSERT INTO plan_posts (company, item, type, post, created_at) VALUES (?, ?, ?, ?, ?)', [
-        company,
-        item,
-        type,
-        JSON.stringify(post),
-        Date.now(),
-      ])
-      return `post-${r.lastInsertRowid}`
-    }
+    const text = JSON.stringify(post)
     for (let attempt = 0; ; attempt++) {
-      const have = await this.driver.all<{ post_id: number }>('SELECT post_id FROM post_dedupe WHERE company = ? AND dedupe = ?', [company, dedupe])
-      if (have.length) return `post-${toNumber(have[0].post_id)}`
+      if (dedupe) {
+        const have = await this.driver.all<{ post_id: number }>('SELECT post_id FROM post_dedupe WHERE company = ? AND dedupe = ?', [company, dedupe])
+        if (have.length) return `post-${toNumber(have[0].post_id)}`
+      }
       const next = await this.driver.all<{ n: number | null }>('SELECT MAX(id) AS n FROM plan_posts')
       const id = (next[0]?.n == null ? 0 : toNumber(next[0].n)) + 1
       try {
         await this.driver.batch([
-          { sql: 'INSERT INTO plan_posts (id, company, item, type, post, created_at) VALUES (?, ?, ?, ?, ?, ?)', params: [id, company, item, type, JSON.stringify(post), Date.now()] },
-          { sql: 'INSERT INTO post_dedupe (company, dedupe, post_id) VALUES (?, ?, ?)', params: [company, dedupe, id] },
+          { sql: 'INSERT INTO plan_posts (id, company, item, type, post, created_at) VALUES (?, ?, ?, ?, ?, ?)', params: [id, company, item, type, text, Date.now()] },
+          ...(dedupe ? [{ sql: 'INSERT INTO post_dedupe (company, dedupe, post_id) VALUES (?, ?, ?)', params: [company, dedupe, id] }] : []),
+          this.journal('post', item, text),
         ])
         return `post-${id}`
       } catch (e) {
@@ -658,10 +677,129 @@ export class CompanyStore implements OrchestratorStore {
   }
 
   async setKv(key: string, value: string): Promise<void> {
-    await this.driver.run('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)', [key, value])
+    const put: SqlStatement = { sql: 'INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)', params: [key, value] }
+    if (isSyncedKv(key)) await this.driver.batch([put, this.journal('kv', key, value)])
+    else await this.driver.run(put.sql, put.params)
   }
 
   async deleteKv(key: string): Promise<void> {
     await this.driver.run('DELETE FROM kv WHERE key = ?', [key])
   }
+
+  // ------------------------------------------------------------ text journal (ADR-0075)
+
+  /**
+   * Journalled texts after `after`, oldest first, up to about `maxBytes` of
+   * values (always at least one row when there is one).
+   */
+  async textsAfter(after: number, maxBytes = Number.MAX_SAFE_INTEGER): Promise<TextRecord[]> {
+    const rows = await this.driver.all<{ n: number; kind: string; key: string; value: string }>(
+      'SELECT n, kind, key, value FROM text_journal WHERE n > ? ORDER BY n LIMIT 500',
+      [after],
+    )
+    const out: TextRecord[] = []
+    let bytes = 0
+    for (const r of rows) {
+      const t = textRecord(r)
+      bytes += t.value.length + t.key.length
+      if (out.length && bytes > maxBytes) break
+      out.push(t)
+    }
+    return out
+  }
+
+  /** Journalled texts `from..=to`, oldest first. */
+  async textsBetween(from: number, to: number): Promise<TextRecord[]> {
+    const rows = await this.driver.all<{ n: number; kind: string; key: string; value: string }>(
+      'SELECT n, kind, key, value FROM text_journal WHERE n >= ? AND n <= ? ORDER BY n',
+      [from, to],
+    )
+    return rows.map(textRecord)
+  }
+
+  /** The newest journal number (0 when empty). */
+  async lastText(): Promise<number> {
+    const rows = await this.driver.all<{ n: number | null }>('SELECT MAX(n) AS n FROM text_journal')
+    return rows[0]?.n == null ? 0 : toNumber(rows[0].n)
+  }
+
+  /**
+   * Journals the text a store held before it had a journal (migration 4),
+   * once: when the journal is empty and the tables are not. Returns how many
+   * rows were journalled.
+   */
+  async backfillJournal(company: string): Promise<number> {
+    if ((await this.lastText()) > 0) return 0
+    const stmts: SqlStatement[] = []
+    const add = (kind: TextKind, key: string, value: string) => stmts.push(this.journal(kind, key, value))
+    for (const r of await this.driver.all<{ brief_ref: string; record: string; work_item: string | null }>(
+      'SELECT brief_ref, record, work_item FROM briefs WHERE company = ? ORDER BY brief_ref',
+      [company],
+    )) {
+      add('brief', String(r.brief_ref), String(r.record))
+      if (r.work_item != null) add('brief-claim', String(r.brief_ref), String(r.work_item))
+    }
+    for (const r of await this.driver.all<{ item: string; title: string; brief: string }>('SELECT item, title, brief FROM plan_items WHERE company = ? ORDER BY item', [company])) {
+      add('item', String(r.item), JSON.stringify({ title: String(r.title), brief: String(r.brief) }))
+    }
+    for (const r of await this.driver.all<{ work_item: string; record: string }>('SELECT work_item, record FROM artifacts WHERE company = ? ORDER BY work_item', [company])) {
+      add('artifact', String(r.work_item), String(r.record))
+    }
+    for (const r of await this.driver.all<{ job_id: number; seq: number; speaker: string; text: string }>(
+      'SELECT job_id, seq, speaker, text FROM transcripts WHERE company = ? ORDER BY job_id, seq',
+      [company],
+    )) {
+      add('transcript', `${toNumber(r.job_id)}:${toNumber(r.seq)}`, JSON.stringify({ speaker: String(r.speaker), text: String(r.text) }))
+    }
+    for (const r of await this.driver.all<{ item: string; post: string }>('SELECT item, post FROM plan_posts WHERE company = ? ORDER BY id', [company])) {
+      add('post', String(r.item), String(r.post))
+    }
+    for (const r of await this.driver.all<{ key: string; value: string }>("SELECT key, value FROM kv WHERE key LIKE 'story.line.%' ORDER BY key")) {
+      add('kv', String(r.key), String(r.value))
+    }
+    if (stmts.length) await this.driver.batch(stmts)
+    return stmts.length
+  }
+
+  /**
+   * Replays texts another device journalled into this store, in order,
+   * through the same writes (so they are journalled here too): how a device
+   * restored from central sync gets the company's text (ADR-0075).
+   */
+  async applyTexts(company: string, texts: Omit<TextRecord, 'n'>[]): Promise<void> {
+    for (const t of texts) {
+      switch (t.kind) {
+        case 'brief':
+          await this.putBrief(company, t.key, t.value)
+          break
+        case 'brief-claim':
+          await this.claimBrief(company, t.key, t.value)
+          break
+        case 'artifact':
+          await this.putArtifact(company, t.key, t.value)
+          break
+        case 'transcript': {
+          const at = t.key.indexOf(':')
+          const line = JSON.parse(t.value) as { speaker: string; text: string }
+          await this.appendTranscript(company, Number(t.key.slice(0, at)), Number(t.key.slice(at + 1)), line.speaker, line.text)
+          break
+        }
+        case 'item': {
+          const v = JSON.parse(t.value) as { title: string | null; brief: string | null }
+          await this.setItemText(company, t.key, v.title, v.brief)
+          break
+        }
+        case 'post':
+          await this.appendPost(company, t.key, t.value)
+          break
+        case 'kv':
+          await this.setKv(t.key, t.value)
+          break
+      }
+    }
+  }
+}
+
+function textRecord(r: { n: number; kind: string; key: string; value: string }): TextRecord {
+  return { n: toNumber(r.n), kind: String(r.kind) as TextKind, key: String(r.key), value: String(r.value) }
 }
