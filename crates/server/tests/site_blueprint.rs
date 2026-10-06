@@ -139,6 +139,7 @@ async fn a_stored_blueprint_is_checked_with_its_types_and_tools() {
     let p = player(&s, &extra).await;
     let v: Value = get(&s, &p, None).await.json().await.unwrap();
     assert_eq!(v["source"], "repo");
+    assert!(v["context"]["sections"].is_array(), "{}", v["context"]);
     // The binding's type does not fit: one issue, on that slot, and the town marks it.
     let issues = v["issues"].as_array().unwrap();
     assert_eq!(issues.len(), 1, "{issues:?}");
@@ -152,4 +153,114 @@ async fn a_stored_blueprint_is_checked_with_its_types_and_tools() {
         tools[0]["manifest"]["origins"],
         json!(["https://api.open-meteo.com"])
     );
+}
+
+async fn put(s: &TestServer, p: &GatewayPlayer, body: Value) -> reqwest::Response {
+    s.http
+        .put(s.url("/api/site/blueprint"))
+        .header(COOKIE, &p.cookie)
+        .header(LEASE, &p.lease)
+        .json(&body)
+        .send()
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn the_ceo_edits_the_blueprint_and_it_lands_on_the_base_branch() {
+    let s = TestServer::start().await;
+    let p = player(&s, &[]).await;
+    let repo = github::RepoId::new("swarmpress-sites", "player1-site");
+    let v: Value = get(&s, &p, None).await.json().await.unwrap();
+    let base = v["hash"].as_str().unwrap().to_string();
+    let mut bp = v["blueprint"].clone();
+    bp["page_types"].as_array_mut().unwrap().push(json!({
+        "id": "author", "label": { "en": "Author" }, "route": "/{lang}/authors/{slug}",
+        "source": { "kind": "page" },
+        "slots": [{ "id": "profile", "blocks": ["team-grid"], "min": 1, "max": 1 }]
+    }));
+
+    // A blueprint that does not check: 422 with the issues, nothing written.
+    let mut broken = bp.clone();
+    broken["page_types"]
+        .as_array_mut()
+        .unwrap()
+        .last_mut()
+        .unwrap()["slots"][0]["blocks"] = json!(["team-grids"]);
+    let r = put(&s, &p, json!({ "blueprint": broken, "base_hash": base })).await;
+    assert_eq!(r.status().as_u16(), 422);
+    let e: Value = r.json().await.unwrap();
+    assert!(e["issues"].to_string().contains("team-grids"), "{e}");
+    let head0 = s.fake_github().branch_head(&repo, "main").unwrap();
+
+    // A stale base: 409.
+    let r = put(
+        &s,
+        &p,
+        json!({ "blueprint": bp, "base_hash": "0".repeat(64) }),
+    )
+    .await;
+    assert_eq!(r.status().as_u16(), 409);
+    assert_eq!(s.fake_github().branch_head(&repo, "main").unwrap(), head0);
+
+    // The edit lands: blueprint, types and the derived registry on main.
+    let r = put(
+        &s,
+        &p,
+        json!({ "blueprint": bp, "base_hash": base, "message": "Add author pages" }),
+    )
+    .await;
+    assert_eq!(r.status().as_u16(), 200);
+    let out: Value = r.json().await.unwrap();
+    assert_ne!(out["commit"], json!(head0));
+    assert_eq!(
+        s.fake_github().branch_head(&repo, "main").unwrap(),
+        out["commit"].as_str().unwrap()
+    );
+    assert!(out["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c["kind"] == "added" && c["subject"] == "page-type" && c["id"] == "author"));
+    let stored: Value = serde_json::from_str(
+        &s.fake_github()
+            .file_text(&repo, "main", "blueprint/site.json")
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(stored["page_types"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["id"] == "author"));
+    let registry: Value = serde_json::from_str(
+        &s.fake_github()
+            .file_text(&repo, "main", "content/config/page-types.json")
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(registry["page_types"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["id"] == "author"));
+    assert!(
+        !registry["page_types"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["id"] == "blog-article"),
+        "core types stay the platform's"
+    );
+
+    // The next read is the stored blueprint at the new head.
+    let v: Value = get(&s, &p, None).await.json().await.unwrap();
+    assert_eq!(v["source"], "repo");
+    assert_eq!(v["hash"], out["hash"]);
+    assert_eq!(v["issues"], json!([]));
+    // The same blueprint again changes nothing.
+    let r = put(&s, &p, json!({ "blueprint": bp, "base_hash": out["hash"] })).await;
+    let again: Value = r.json().await.unwrap();
+    assert_eq!(again["changes"], json!([]));
+    assert_eq!(again["commit"], out["commit"]);
 }

@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use content_model::SchemaRegistry;
 use knowledge::source::file_stem;
 use knowledge::{KnowledgeBase, SiteSource};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::check::{CheckContext, ToolSig};
@@ -48,6 +49,59 @@ pub fn load(src: &dyn SiteSource) -> Result<SiteModels, Vec<Issue>> {
     Ok(SiteModels { blueprint, types })
 }
 
+/// The parts of a checker's context that come from the site's tree, as data:
+/// what the server sends with the models so the browser can check edits
+/// (`blueprint-wasm`) exactly as the server does.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SiteContext {
+    #[serde(default)]
+    pub custom_blocks: Vec<String>,
+    #[serde(default)]
+    pub sections: Vec<String>,
+    #[serde(default)]
+    pub collections: Vec<String>,
+}
+
+impl SiteContext {
+    /// The checker's context: these facts, the site's types and its tools.
+    pub fn check_context(
+        &self,
+        types: &BTreeMap<String, Value>,
+        tools: BTreeMap<String, ToolSig>,
+    ) -> Result<CheckContext, Vec<Issue>> {
+        Ok(CheckContext {
+            types: TypeRegistry::with_site(types)?,
+            custom_blocks: self.custom_blocks.iter().cloned().collect(),
+            tools,
+            sections: self.sections.iter().cloned().collect(),
+            manifest_collections: self.collections.iter().cloned().collect(),
+        })
+    }
+}
+
+/// The site facts of the checker's context, read from its tree.
+pub fn site_context(src: &dyn SiteSource) -> Result<SiteContext, Vec<Issue>> {
+    let kb = KnowledgeBase::build(src).map_err(|e| issue("/", e))?;
+    let mut registry = SchemaRegistry::core();
+    let custom_blocks =
+        knowledge::load_custom_blocks(src, &mut registry).map_err(|e| issue("theme/blocks", e))?;
+    Ok(SiteContext {
+        custom_blocks,
+        sections: kb
+            .manifest
+            .sections
+            .iter()
+            .map(|s| s.slug.clone())
+            .collect(),
+        collections: kb
+            .manifest
+            .collections
+            .iter()
+            .map(|c| c.kind.clone())
+            .collect(),
+    })
+}
+
 /// The checker's context for a site: its types, custom blocks, manifest
 /// sections and collections, and the given tools.
 pub fn context(
@@ -55,27 +109,5 @@ pub fn context(
     types: &BTreeMap<String, Value>,
     tools: BTreeMap<String, ToolSig>,
 ) -> Result<CheckContext, Vec<Issue>> {
-    let kb = KnowledgeBase::build(src).map_err(|e| issue("/", e))?;
-    let mut registry = SchemaRegistry::core();
-    let custom_blocks = knowledge::load_custom_blocks(src, &mut registry)
-        .map_err(|e| issue("theme/blocks", e))?
-        .into_iter()
-        .collect();
-    Ok(CheckContext {
-        types: TypeRegistry::with_site(types)?,
-        custom_blocks,
-        tools,
-        sections: kb
-            .manifest
-            .sections
-            .iter()
-            .map(|s| s.slug.clone())
-            .collect(),
-        manifest_collections: kb
-            .manifest
-            .collections
-            .iter()
-            .map(|c| c.kind.clone())
-            .collect(),
-    })
+    site_context(src)?.check_context(types, tools)
 }

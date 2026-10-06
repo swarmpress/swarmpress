@@ -92,6 +92,25 @@ fn branch_prefixes_per_actor() {
     assert!(p.check_branch(BOT, "bad..ref").is_err());
 }
 
+/// The structure actor (ADR-0072) writes the blueprint, on structure/ branches only.
+#[test]
+fn structure_agent_writes_the_blueprint_only() {
+    let p = PathPolicy::default();
+    let s = ActorKind::StructureAgent;
+    assert_eq!(s.as_str(), "structure-agent");
+    assert!(p.check_write(s, "blueprint/site.json").is_ok());
+    assert!(p
+        .check_write(s, "blueprint/tools/ferry-times.tool.json")
+        .is_ok());
+    assert!(p.check_write(s, "content/pages/blog/x.json").is_err());
+    assert!(p.check_write(s, "theme/tokens.json").is_err());
+    assert!(p.check_write(s, "blueprint/package.json").is_err());
+    assert!(p.check_branch(s, "structure/1a2b").is_ok());
+    assert!(p.check_branch(s, "drafts/x").is_err());
+    assert!(p.check_write(CONTENT, "blueprint/site.json").is_err());
+    assert!(p.check_write(DESIGN, "blueprint/site.json").is_err());
+}
+
 #[test]
 fn custom_policy_roots() {
     let p = PathPolicy {

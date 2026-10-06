@@ -5,7 +5,9 @@
 //!   on each into its `pkg/` (consumed by `apps/game`, Bun tests and the runner):
 //!   `client-wasm` (the sim) → `crates/client-wasm/pkg`, `orchestrator-wasm`
 //!   (the orchestrator bridge) → `crates/orchestrator-wasm/pkg`, `kit-wasm`
-//!   (the construction kit compiler, ADR-0065) → `crates/kit-wasm/pkg`. They
+//!   (the construction kit compiler, ADR-0065) → `crates/kit-wasm/pkg`,
+//!   `blueprint-wasm` (site blueprints and tool graphs, ADR-0072) →
+//!   `crates/blueprint-wasm/pkg`. They
 //!   are separate modules with separate size budgets. `--only <crate>` builds one.
 //! - `site-pack <site-dir> [--out <file>] [--commit <sha>]`: build the
 //!   knowledge pack of a local site clone (see [`site_pack`]).
@@ -34,7 +36,7 @@ fn main() -> Result<()> {
         Some("site-pack") => site_pack::run(&args[1..]),
         _ => {
             eprintln!(
-                "usage: cargo xtask wasm [--release] [--only client-wasm|orchestrator-wasm|kit-wasm]"
+                "usage: cargo xtask wasm [--release] [--only client-wasm|orchestrator-wasm|kit-wasm|blueprint-wasm]"
             );
             eprintln!("       {}", site_pack::USAGE);
             std::process::exit(2);
@@ -75,6 +77,7 @@ const WASM_CRATES: &[(&str, &str)] = &[
     ("client-wasm", "client_wasm"),
     ("orchestrator-wasm", "orchestrator_wasm"),
     ("kit-wasm", "kit_wasm"),
+    ("blueprint-wasm", "blueprint_wasm"),
 ];
 
 fn wasm(release: bool, only: Option<&str>) -> Result<()> {

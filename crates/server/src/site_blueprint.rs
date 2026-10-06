@@ -12,7 +12,10 @@
 //! * the checker's issues for the blueprint in its site (custom blocks,
 //!   manifest sections and collections, the tools);
 //! * the brick town (a `swarmpress.design.v1` the browser compiles with the
-//!   kit), slots with issues marked.
+//!   kit), slots with issues marked;
+//! * the site facts of the checker's context (custom blocks, manifest
+//!   sections and collections), so the browser checks edits with
+//!   `blueprint-wasm` exactly as here.
 //!
 //! Everything is deterministic for a commit and cached per (repository,
 //! commit); the ETag is the commit and `If-None-Match` gets 304.
@@ -114,7 +117,8 @@ pub fn models_of(src: &dyn SiteSource, commit: &str) -> Result<Value, String> {
     }
     let sigs: BTreeMap<String, ToolSig> = graphs.iter().map(|g| (g.id.clone(), g.sig())).collect();
 
-    let ctx = site::context(src, &types, sigs.clone()).map_err(fail)?;
+    let site_ctx = site::site_context(src).map_err(fail)?;
+    let ctx = site_ctx.check_context(&types, sigs.clone()).map_err(fail)?;
     let issues = check(&bp, &ctx);
     let tool_ctx = ToolContext {
         types: ctx.types.clone(),
@@ -161,6 +165,7 @@ pub fn models_of(src: &dyn SiteSource, commit: &str) -> Result<Value, String> {
         "blueprint": bp,
         "types": types,
         "issues": issues_json(&issues),
+        "context": site_ctx,
         "tools": tools,
         "tool_errors": tool_errors,
         "town": design,
@@ -213,4 +218,200 @@ pub async fn get_blueprint(
         Json(hit.body.clone()),
     )
         .into_response())
+}
+
+#[derive(serde::Deserialize)]
+pub struct PutBody {
+    /// The new blueprint (`swarmpress.blueprint.v1`).
+    pub blueprint: Value,
+    /// The site's types, when they change too (name → schema); absent: kept.
+    #[serde(default)]
+    pub types: Option<BTreeMap<String, Value>>,
+    /// The hash of the blueprint the edit was made on (`hash` of the GET):
+    /// a different current hash means someone else changed it first (409).
+    pub base_hash: String,
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+fn pretty(v: &impl serde::Serialize) -> Vec<u8> {
+    let mut s = serde_json::to_string_pretty(v).unwrap_or_default();
+    s.push('\n');
+    s.into_bytes()
+}
+
+/// `PUT /api/site/blueprint`: the CEO's edit of the site's structure
+/// (ADR-0072 decision 8). The blueprint is checked in its site exactly as the
+/// GET checks it (422 with the issues), written by the structure actor
+/// (`blueprint/` only, on a `structure/` branch), the site's page-type
+/// registry (`content/config/page-types.json`) is derived from it by the
+/// platform, and the branch is squash-merged into the base branch. Answers
+/// `{commit, hash, changes}`: the new base head, the blueprint's hash and
+/// the semantic diff from the one it replaced.
+pub async fn put_blueprint(
+    State(st): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    headers: HeaderMap,
+    Json(body): Json<PutBody>,
+) -> AppResult<Json<Value>> {
+    use github::{
+        ActorKind, GuardedRepo, MergeMethod, MergeOptions, NewPullRequest, PutFile, RepoApi,
+    };
+
+    let fenced = require_lease(&st, &headers, &user).await?;
+    let company = &fenced.company;
+    let repo = company_repo(&st, company)?;
+    let _guard = st.repo_lock(&repo.to_string()).await;
+    let api = st.github.api_for(&repo).await?;
+    let head = base_head(api.as_ref(), &repo, &company.site_base_branch).await?;
+    let snap = api.snapshot(&repo, &head, "").await.map_err(gh_error)?;
+    let current = models_of(&snap, &head).map_err(|e| {
+        AppError::BadGateway(format!(
+            "the models of {repo} at {head} cannot be read: {e}"
+        ))
+    })?;
+    if current["hash"].as_str() != Some(body.base_hash.as_str()) {
+        return Err(AppError::Conflict(format!(
+            "the blueprint changed since this edit began (now {})",
+            current["hash"].as_str().unwrap_or_default()
+        )));
+    }
+    let old = blueprint::Blueprint::from_value(&current["blueprint"])
+        .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+    let new = blueprint::Blueprint::from_value(&body.blueprint)
+        .map_err(|e| AppError::BadRequest(format!("not a blueprint: {e}")))?;
+    let types_changed = body.types.is_some();
+    let types: BTreeMap<String, Value> = match body.types {
+        Some(t) => t,
+        None => serde_json::from_value(current["types"].clone()).unwrap_or_default(),
+    };
+    let tools: Vec<ToolGraph> = current["tools"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|t| ToolGraph::from_value(&t["graph"]).ok())
+        .collect();
+    let sigs: BTreeMap<String, ToolSig> = tools.iter().map(|g| (g.id.clone(), g.sig())).collect();
+    let fail = |issues: Vec<blueprint::Issue>| AppError::Unprocessable {
+        message: "the blueprint does not check".into(),
+        issues: issues.iter().map(ToString::to_string).collect(),
+    };
+    let ctx = site::site_context(&snap)
+        .map_err(fail)?
+        .check_context(&types, sigs)
+        .map_err(fail)?;
+    let issues = check(&new, &ctx);
+    if !issues.is_empty() {
+        return Err(fail(issues));
+    }
+    let changes = blueprint::diff(&old, &new);
+    let hash = blueprint::hash(&new);
+    if changes.is_empty() && current["source"] == "repo" && !types_changed {
+        return Ok(Json(json!({ "commit": head, "hash": hash, "changes": [] })));
+    }
+
+    // Write: the structure actor on its branch, the derived registry by the platform.
+    let guarded: Arc<dyn RepoApi> =
+        Arc::new(GuardedRepo::new(api.clone(), ActorKind::StructureAgent));
+    let branch = format!("structure/{}", &hash[..12]);
+    if api
+        .get_branch(&repo, &branch)
+        .await
+        .map_err(gh_error)?
+        .is_none()
+    {
+        guarded
+            .create_branch(&repo, &branch, &head)
+            .await
+            .map_err(gh_error)?;
+    }
+    let message = body
+        .message
+        .unwrap_or_else(|| "Update the site blueprint".to_string());
+    let sha_at = |path: &str| snap.files.contains_key(path);
+    let mut writes: Vec<(String, Vec<u8>, bool)> =
+        vec![(blueprint::BLUEPRINT_PATH.to_string(), pretty(&new), true)];
+    for (name, schema) in &types {
+        writes.push((
+            format!("{}/{name}.json", blueprint::format::TYPES_DIR),
+            pretty(schema),
+            true,
+        ));
+    }
+    let registry = new.registry();
+    if registry["page_types"]
+        .as_array()
+        .is_some_and(|a| !a.is_empty())
+        || sha_at(content_model::SITE_PAGE_TYPES_PATH)
+    {
+        writes.push((
+            content_model::SITE_PAGE_TYPES_PATH.to_string(),
+            pretty(&registry),
+            false,
+        ));
+    }
+    for (path, bytes, structure) in writes {
+        if snap.files.get(&path).map(|t| t.as_bytes()) == Some(bytes.as_slice()) {
+            continue;
+        }
+        let existing = api
+            .get_file(&repo, &branch, &path)
+            .await
+            .map_err(gh_error)?
+            .map(|f| f.sha);
+        let put = PutFile {
+            branch: branch.clone(),
+            path: path.clone(),
+            content: bytes,
+            message: message.clone(),
+            expected_sha: existing,
+            author: None,
+        };
+        let target: &Arc<dyn RepoApi> = if structure { &guarded } else { &api };
+        target.put_file(&repo, &put).await.map_err(gh_error)?;
+    }
+    let branch_head = api
+        .get_branch(&repo, &branch)
+        .await
+        .map_err(gh_error)?
+        .map(|b| b.sha)
+        .unwrap_or_default();
+    if branch_head == head {
+        return Ok(Json(
+            json!({ "commit": head, "hash": hash, "changes": changes }),
+        ));
+    }
+    let pr = api
+        .create_pr(
+            &repo,
+            &NewPullRequest {
+                title: message.clone(),
+                head: branch.clone(),
+                base: company.site_base_branch.clone(),
+                body: format!(
+                    "The site's structure (ADR-0072): {} changes.",
+                    changes.len()
+                ),
+                draft: false,
+            },
+        )
+        .await
+        .map_err(gh_error)?;
+    let merged = api
+        .merge_pr(
+            &repo,
+            pr.number,
+            &MergeOptions {
+                method: MergeMethod::Squash,
+                expected_head_sha: Some(branch_head),
+                commit_title: Some(format!("{message} (#{})", pr.number)),
+                commit_message: None,
+            },
+        )
+        .await
+        .map_err(gh_error)?;
+    tracing::info!(company_id = %company.id, pr = pr.number, %hash, "blueprint updated");
+    Ok(Json(
+        json!({ "commit": merged.sha, "hash": hash, "changes": changes }),
+    ))
 }

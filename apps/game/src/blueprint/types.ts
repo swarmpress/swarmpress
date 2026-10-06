@@ -91,6 +91,8 @@ export interface SiteModels {
   issues: ModelIssue[]
   tools: SiteTool[]
   tool_errors: { path: string; error: string }[]
+  /** The site facts of the checker's context (`blueprint-wasm` checks edits with them). */
+  context: { custom_blocks: string[]; sections: string[]; collections: string[] }
   /** The brick town (`swarmpress.design.v1`, provenance `view`). */
   town: Record<string, unknown>
 }

@@ -186,7 +186,7 @@ pub fn router(st: AppState) -> Router {
         .route("/api/site/audit", get(crate::site_audit::audit))
         .route(
             "/api/site/blueprint",
-            get(crate::site_blueprint::get_blueprint),
+            get(crate::site_blueprint::get_blueprint).put(crate::site_blueprint::put_blueprint),
         )
         .route("/api/gateway/deploy-status", get(deploys::status))
         .route("/api/gateway/redeploy", post(deploys::redeploy))

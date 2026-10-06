@@ -1,0 +1,23 @@
+[package]
+name = "blueprint-wasm"
+description = "wasm-bindgen facade over the site blueprint and tool graphs (crates/blueprint, ADR-0072): checks, diffs, hashes, the town and tool manifests in the browser, exactly as the server computes them"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+blueprint = { path = "../blueprint" }
+serde.workspace = true
+serde_json.workspace = true
+# Must match the wasm-bindgen CLI version used by `cargo xtask wasm`.
+wasm-bindgen = "=0.2.100"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
+[lints]
+workspace = true

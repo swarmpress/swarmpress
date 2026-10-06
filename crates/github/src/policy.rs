@@ -28,6 +28,8 @@ pub enum ActorKind {
     ContentAgent,
     /// Art director, front-end dev: the agent-authored theme.
     DesignAgent,
+    /// The site's structure (ADR-0072): the blueprint, its types and tools.
+    StructureAgent,
     /// The platform/orchestrator identity. Unrestricted.
     PlatformBot,
 }
@@ -37,6 +39,7 @@ impl ActorKind {
         match self {
             ActorKind::ContentAgent => "content-agent",
             ActorKind::DesignAgent => "design-agent",
+            ActorKind::StructureAgent => "structure-agent",
             ActorKind::PlatformBot => "platform-bot",
         }
     }
@@ -59,6 +62,8 @@ pub struct PathPolicy {
     pub design_roots: Vec<String>,
     pub content_branch_prefixes: Vec<String>,
     pub design_branch_prefixes: Vec<String>,
+    pub structure_roots: Vec<String>,
+    pub structure_branch_prefixes: Vec<String>,
 }
 
 impl Default for PathPolicy {
@@ -68,6 +73,8 @@ impl Default for PathPolicy {
             design_roots: vec!["theme".into()],
             content_branch_prefixes: vec!["drafts/".into()],
             design_branch_prefixes: vec!["design/".into()],
+            structure_roots: vec!["blueprint".into()],
+            structure_branch_prefixes: vec!["structure/".into()],
         }
     }
 }
@@ -140,6 +147,7 @@ impl PathPolicy {
         let roots = match actor {
             ActorKind::ContentAgent => &self.content_roots,
             ActorKind::DesignAgent => &self.design_roots,
+            ActorKind::StructureAgent => &self.structure_roots,
             ActorKind::PlatformBot => unreachable!(),
         };
         if roots.iter().any(|r| under_root(&p, r)) {
@@ -159,6 +167,7 @@ impl PathPolicy {
             ActorKind::PlatformBot => return Ok(()),
             ActorKind::ContentAgent => &self.content_branch_prefixes,
             ActorKind::DesignAgent => &self.design_branch_prefixes,
+            ActorKind::StructureAgent => &self.structure_branch_prefixes,
         };
         if prefixes
             .iter()

@@ -225,7 +225,10 @@ struct BlockMetaFile {
 fn parse_core_meta() -> Vec<BlockMeta> {
     let file: BlockMetaFile =
         serde_json::from_str(content_schema::BLOCK_META_JSON).expect("the block metadata is valid");
-    assert_eq!(file.format, "swarmpress.block-meta.v1", "block metadata format");
+    assert_eq!(
+        file.format, "swarmpress.block-meta.v1",
+        "block metadata format"
+    );
     file.blocks
 }
 

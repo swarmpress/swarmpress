@@ -50,6 +50,8 @@ export default defineConfig(({ mode }) => {
         'orchestrator-wasm': fileURLToPath(new URL('../../crates/orchestrator-wasm/pkg/orchestrator_wasm.js', import.meta.url)),
         // The construction kit (ADR-0065), loaded only behind ?office=bricks (src/render/bricks).
         'kit-wasm': fileURLToPath(new URL('../../crates/kit-wasm/pkg/kit_wasm.js', import.meta.url)),
+        // Site blueprints and tool graphs (ADR-0072): the blueprint canvas checks and diffs with it.
+        'blueprint-wasm': fileURLToPath(new URL('../../crates/blueprint-wasm/pkg/blueprint_wasm.js', import.meta.url)),
       },
     },
     server: {

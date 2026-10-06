@@ -69,6 +69,7 @@ temp/
 /crates/client-wasm/pkg/
 /crates/orchestrator-wasm/pkg/
 /crates/kit-wasm/pkg/
+/crates/blueprint-wasm/pkg/
 /crates/orchestrator-wasm/reports/
 # vite build --mode harness (test harness pages, never in the production build)
 apps/game/dist-harness/
