@@ -89,6 +89,11 @@ export interface RenderContext {
     /** Sub-pages of the current entry (a region's sections and collections). */
     children: NavLink[]
   }
+  /**
+   * A tool's output as site data (ADR-0072): `content/data/<tool>/<key>.json`.
+   * `key` defaults to the page's own key (its file name), then `latest`.
+   */
+  toolData: <T = unknown>(tool: string, key?: string) => T | undefined
   /** Items of a collection, optionally filtered by region and/or keys (in key order). */
   collectionItems: (type: string, opts?: { region?: string; keys?: string[] }) => CollectionItemRecord[]
   itemTitle: (item: CollectionItemRecord) => string
@@ -386,6 +391,13 @@ export function createRenderContext(opts: ContextOptions): RenderContext {
       languages,
       breadcrumb: crumbs,
       children,
+    },
+    toolData: <T,>(tool: string, key?: string): T | undefined => {
+      const own = page ? page.file.split('/').pop()?.replace(/\.json$/, '') : undefined
+      for (const k of key ? [key] : [own, 'latest']) {
+        if (k && site.data.has(`${tool}/${k}`)) return site.data.get(`${tool}/${k}`) as T
+      }
+      return undefined
     },
     collectionItems,
     itemTitle,

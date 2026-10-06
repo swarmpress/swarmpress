@@ -1,11 +1,15 @@
 ---
 id: FEAT-092
 title: "Block-to-tool bindings at build time"
-status: planned
+status: in-progress
 importance: normal
 paths:
-  - "crates/blueprint/src/bindings.rs"
-  - "crates/orchestrator/src/tools.rs"
+  - "crates/blueprint/src/check.rs"
+  - "crates/server/src/site_data.rs"
+  - "crates/server/tests/site_data.rs"
+  - "packages/site-kit/src/content/load.ts"
+  - "packages/site-kit/test/unit/tool-data.test.ts"
+  - "apps/game/src/tools/**"
 adrs:
   - ADR-0072
 ---
@@ -24,6 +28,18 @@ chute into the storey.
 Design: [`docs/design/construction-kits.md`](../../design/construction-kits.md) §3.5, §7.3.
 
 Depends on: FEAT-090, FEAT-091.
+
+## As built (2026-10-06)
+
+- **Checking a binding:** `blueprint::check` checks a slot's `source` binding: the tool exists,
+  the output's type fits the slot's `accepts` type, the inputs exist, and the context paths are
+  closed.
+- **Writing the data:** `PUT /api/site/data` validates a run's output against the tool's output
+  type, then commits it to `content/data/<tool>/<key>.json` as a content write. The same value
+  again changes nothing.
+- **Reading the data:** the site kit loads `content/data/**` into `LoadedSite.data`, and a theme
+  block reads it with `ctx.toolData(tool)`: the page's own key first, then `latest`.
+- **Running in the browser:** the game runs the tool in the sandbox (`apps/game/src/tools/runner.ts`).
 
 ## Acceptance criteria
 

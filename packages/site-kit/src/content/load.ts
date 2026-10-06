@@ -81,6 +81,12 @@ export interface LoadedSite {
   customBlocks: CustomBlockDef[]
   registry: SchemaRegistry
   findings: Finding[]
+  /**
+   * Tools' outputs as site data (ADR-0072, build-time bindings):
+   * `content/data/<tool>/<key>.json` by `<tool>/<key>`. Written by the
+   * platform after a run, validated against the tool's output type.
+   */
+  data: Map<string, unknown>
 }
 
 export interface LoadOptions {
@@ -330,5 +336,22 @@ export function loadSite(opts: LoadOptions): LoadedSite {
     collections.set(def.type, loadCollection(root, def, regionSlugs, findings))
   }
 
-  return { root, contentDir, themeDir, manifest, pages, collections, media, customBlocks, registry, findings }
+  const data = new Map<string, unknown>()
+  const dataRoot = join(contentRoot, 'data')
+  for (const full of walkJson(dataRoot)) {
+    const rel = toPosix(relative(dataRoot, full)).replace(/\.json$/, '')
+    const parts = rel.split('/')
+    if (parts.length !== 2) {
+      findings.push({ severity: 'warning', code: 'data_path', file: toPosix(relative(root, full)), path: '', message: 'tool data lives at content/data/<tool>/<key>.json' })
+      continue
+    }
+    const parsed = readJson(full)
+    if (!parsed.ok) {
+      findings.push({ severity: 'error', code: 'invalid_json', file: toPosix(relative(root, full)), path: '', message: parsed.error })
+      continue
+    }
+    data.set(rel, parsed.value)
+  }
+
+  return { root, contentDir, themeDir, manifest, pages, collections, media, customBlocks, registry, findings, data }
 }
