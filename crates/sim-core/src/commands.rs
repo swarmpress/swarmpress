@@ -155,6 +155,8 @@ pub enum Policy {
     QualityBar(u8),
     /// The weekly editorial board on or off (ADR-0069, default off).
     EditorialBoard(bool),
+    /// The analytics loop's jobs on or off (ADR-0071, default off).
+    Analytics(bool),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

@@ -84,6 +84,23 @@ export function availableViews(plan: PlanJson): PlanView[] {
   return views
 }
 
+/** The newest KPI report's minutes (ADR-0071): headline and recommendations; null before the first. */
+export function latestKpi(text: PlanText): { headline: string; recommendations: string[] } | null {
+  let best: { headline: string; recommendations: string[] } | null = null
+  let bestKey = -1
+  for (const posts of Object.values(text.posts)) {
+    for (const [i, p] of posts.entries()) {
+      if (p.type !== 'minutes' || p.payload?.kpi_report !== true) continue
+      const key = (p.day ?? 0) * 1440 + (p.minute ?? 0) + i / 1000
+      if (key < bestKey) continue
+      bestKey = key
+      const recs = Array.isArray(p.payload.recommendations) ? (p.payload.recommendations as unknown[]).filter((r): r is string => typeof r === 'string') : []
+      best = { headline: typeof p.payload.headline === 'string' ? p.payload.headline : '', recommendations: recs }
+    }
+  }
+  return best
+}
+
 /** The newest editorial board's minutes (ADR-0069): its theme and big bets; null before the first board. */
 export function latestBoard(text: PlanText): { theme: string; bigBets: string[]; item: string } | null {
   let best: { theme: string; bigBets: string[]; item: string } | null = null

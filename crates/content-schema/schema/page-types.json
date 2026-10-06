@@ -1,0 +1,70 @@
+{
+  "format": "swarmpress.page-types.v1",
+  "page_types": [
+    {
+      "id": "blog-article",
+      "label": {
+        "en": "Article"
+      },
+      "aliases": [
+        "blog-post",
+        "article"
+      ],
+      "route": "/{lang}/blog/{slug}",
+      "slots": [
+        {
+          "id": "hero",
+          "blocks": [
+            "editorial-hero"
+          ],
+          "min": 1,
+          "max": 1
+        },
+        {
+          "id": "body",
+          "blocks": [
+            "heading",
+            "paragraph",
+            "list",
+            "callout",
+            "image"
+          ],
+          "min": 0
+        },
+        {
+          "id": "closing",
+          "blocks": [
+            "closing-note"
+          ],
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "require": [
+        {
+          "block": "paragraph",
+          "min": 1
+        }
+      ],
+      "html_fields": [
+        {
+          "block": "editorial-hero",
+          "field": "title"
+        },
+        {
+          "block": "closing-note",
+          "field": "content"
+        }
+      ]
+    },
+    {
+      "id": "blog-index",
+      "label": {
+        "en": "Blog index"
+      },
+      "aliases": [],
+      "require": [],
+      "html_fields": []
+    }
+  ]
+}

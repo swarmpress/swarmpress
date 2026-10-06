@@ -325,3 +325,72 @@ async fn the_board_plans_site_care_from_the_audit() {
     assert_eq!(rec.brief.title, "5 Hidden Gelaterias You Need to Try");
     assert_eq!(rec.brief.slug, "5-hidden-gelaterias-you-need-to-try");
 }
+
+#[tokio::test]
+async fn the_board_sees_underperforming_articles_and_the_last_kpi_report() {
+    let llm = Arc::new(fake_writer::fake_writer(Vec::<FakeReply>::new()));
+    let o = orch(llm.clone(), gateway());
+    let store = o.store();
+    store
+        .put_brief(
+            COMPANY,
+            42,
+            json!({"job_id": 1, "brief": {"content_id": "c", "title": "Harvest week in Manarola", "slug": "harvest-week-in-manarola",
+                   "angle": "a", "keywords": [], "target_words": 800, "language": "en", "notes": ""},
+                   "writer": "staff-1", "editor": "staff-5", "minutes": [], "work_item": "work-item-3", "staff": []}),
+        )
+        .await
+        .unwrap();
+    store
+        .append_post(
+            COMPANY,
+            "meeting-3",
+            json!({"type": "minutes", "author": "staff-13", "text": "KPI report", "day": 7, "minute": 600,
+                   "payload": {"kpi_report": true, "recommendations": ["Write more about Vernazza.", "Refresh the beach guide.", "Promote the train guide."]}}),
+        )
+        .await
+        .unwrap();
+    let ctx = json!({"today": "2026-10-05", "in_flight": [], "planned_room": 10,
+                     "site": {"underperforming": [{"brief_ref": "42", "title": "", "score": 2}]}});
+    let req = JobRequest {
+        company_id: COMPANY.into(),
+        job_id: 70,
+        kind: JobKind::Board,
+        project: "project-1".into(),
+        work_item: None,
+        brief_ref: None,
+        revision: 0,
+        staff: board_team(),
+        meeting: Some("meeting-8".into()),
+        context: ctx,
+        approved_by: None,
+    };
+    let out = o.run(&req).await.unwrap();
+    let prompt = &llm.calls()[0].request.messages[0].text;
+    assert!(
+        prompt.contains(
+            "- S1 «Harvest week in Manarola» (refresh: its 14-day follow-up scored 2/10)"
+        ),
+        "{prompt}"
+    );
+    assert!(
+        prompt.contains("## Last KPI report's recommendations\n- Write more about Vernazza."),
+        "{prompt}"
+    );
+    let items = match out.as_slice() {
+        [Outcome::BoardOutcome { items, .. }] => items.clone(),
+        other => panic!("{other:?}"),
+    };
+    let rec: BriefRecord = serde_json::from_value(
+        store
+            .get_brief(COMPANY, items[0].brief_ref)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        rec.target.as_deref(),
+        Some("content/pages/blog/harvest-week-in-manarola.json")
+    );
+}

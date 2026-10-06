@@ -260,6 +260,8 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 self.report_outcome(req, who, &out);
                 out
             }
+            JobKind::Performance => self.performance(req).await,
+            JobKind::KpiReport => self.kpi_report(req).await,
             JobKind::Draft => self.staged_draft(req).await,
             JobKind::Review => self.staged_review(req).await,
             JobKind::Publish => {

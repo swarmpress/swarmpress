@@ -47,6 +47,9 @@ pub const KPI_REVIEW_END: u16 = hm(10, 0);
 /// until its outcome arrives, at most `plan::BOARD_TIMEOUT_MINUTES`.
 pub const BOARD_START: u16 = hm(10, 0);
 pub const BOARD_END: u16 = hm(10, 20);
+/// The data scientist's follow-ups are requested in this window (ADR-0071).
+pub const FOLLOW_UP_START: u16 = hm(11, 0);
+pub const FOLLOW_UP_END: u16 = hm(11, 20);
 /// Friday finance review (CFO → CEO office).
 pub const FINANCE_REVIEW_START: u16 = hm(16, 0);
 pub const FINANCE_REVIEW_END: u16 = hm(16, 30);

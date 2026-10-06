@@ -694,3 +694,68 @@ async fn collected_events_get_hashed_sessions() {
     assert_eq!(rows[0], rows[1], "same visitor, same session");
     assert_ne!(rows[0].0, rows[2].0, "different visitor");
 }
+
+/// ADR-0071: the host fetches the company's pending signals with its lease,
+/// logs them and acknowledges them; a page's numbers come with the project's
+/// per-page median.
+#[tokio::test]
+async fn the_host_pulls_and_acknowledges_signals_and_reads_a_pages_numbers() {
+    let s = TestServer::start().await;
+    let p = s.gateway_player(1).await;
+    let proj = project(&s, &p.cookie).await;
+    let pid = proj["id"].as_str().unwrap().to_string();
+    let yesterday = Utc::now().date_naive() - Duration::days(1);
+    fixture(&s.db, &pid, yesterday).await;
+    tracker::rollup(&s.db, Utc::now(), 7).await.unwrap();
+    tracker::nightly_signals(&s.db, &PendingSignalSink, Utc::now())
+        .await
+        .unwrap();
+    let lease = [(common::LEASE, p.lease.as_str())];
+    let get = |path: String| {
+        let s = &s;
+        let cookie = p.cookie.clone();
+        async move {
+            s.send_json(reqwest::Method::GET, &path, Some(&cookie), &lease, None)
+                .await
+        }
+    };
+
+    // without the lease: refused
+    let (st, _) = s.get_json("/api/analytics/signals", Some(&p.cookie)).await;
+    assert_eq!(st, 428);
+    let (st, body) = get("/api/analytics/signals".into()).await;
+    assert_eq!(st, 200, "{body}");
+    let rows = body["signals"].as_array().unwrap();
+    assert_eq!(rows.len(), 1, "{body}");
+    assert_eq!(rows[0]["project"], json!("project-1"));
+    assert_eq!(rows[0]["day"], json!(yesterday));
+    assert_eq!(rows[0]["sessions"], json!(3));
+    assert!(rows[0]["top_pages_digest"].is_string(), "a u64 as text");
+
+    let (st, body) = s
+        .send_json(
+            reqwest::Method::POST,
+            "/api/analytics/signals/ack",
+            Some(&p.cookie),
+            &lease,
+            Some(json!({"rows": [{"project_key": pid, "day": yesterday}, {"project_key": "someone-else", "day": yesterday}]})),
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["applied"], json!(1));
+    let (_, body) = get("/api/analytics/signals".into()).await;
+    assert!(
+        body["signals"].as_array().unwrap().is_empty(),
+        "delivered once"
+    );
+
+    let (st, body) = get(format!("/api/analytics/page?path=/a&from={yesterday}")).await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["pageviews"], json!(2));
+    assert_eq!(body["avg_engaged_ms"], json!(7500));
+    assert_eq!(body["scroll_75"], json!(1));
+    assert_eq!(body["pages"], json!(3), "/a, /b, /de/a");
+    assert_eq!(body["median_pageviews"], json!(1));
+    let (st, _) = get(format!("/api/analytics/page?path=nope&from={yesterday}")).await;
+    assert_eq!(st, 400);
+}

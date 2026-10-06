@@ -216,6 +216,15 @@ pub fn router(st: AppState) -> Router {
             get(tracker::list_projects).post(tracker::post_project),
         )
         .route("/api/analytics", get(tracker::get_analytics))
+        .route(
+            "/api/analytics/signals",
+            get(crate::analytics_loop::signals),
+        )
+        .route(
+            "/api/analytics/signals/ack",
+            post(crate::analytics_loop::ack),
+        )
+        .route("/api/analytics/page", get(crate::analytics_loop::page))
         .route("/t/s.js", get(tracker::script))
         .route(
             "/t/e",

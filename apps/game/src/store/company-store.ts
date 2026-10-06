@@ -21,7 +21,7 @@ import { toBytes, toNumber } from './driver'
 import { MIGRATIONS } from './schema'
 
 /** Post types the orchestrator writes (orchestrator::POST_TYPES). */
-export const POST_TYPES = ['minutes', 'artifact', 'handoff', 'review', 'status'] as const
+export const POST_TYPES = ['minutes', 'artifact', 'handoff', 'review', 'status', 'performance'] as const
 
 /** The store's tables (schema.ts), for `rowCounts`. */
 export const STORE_TABLES = [

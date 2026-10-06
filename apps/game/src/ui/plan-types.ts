@@ -93,6 +93,8 @@ export interface WorkItemJson {
   unstarted?: boolean
   /** The board's planned publish day (`publishDay` is the live day once published). */
   plannedPublishDay?: number | null
+  /** The 14-day follow-up's score, 0..10 (ADR-0071). */
+  performance?: number | null
   /** UI only: known from plan text (orchestrator threads) but not in the sim skeleton. */
   textOnly?: boolean
 }

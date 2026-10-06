@@ -91,6 +91,21 @@ pub struct SiteHealth {
     pub stale: Vec<StalePage>,
     #[serde(default)]
     pub broken: Vec<BrokenPage>,
+    /// Articles whose follow-up scored low (ADR-0071), by brief ref (decimal
+    /// text); their page is resolved from the brief.
+    #[serde(default)]
+    pub underperforming: Vec<Underperforming>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Underperforming {
+    pub brief_ref: String,
+    #[serde(default)]
+    pub title: String,
+    pub score: u8,
+    /// Resolved by the orchestrator from the brief (not from the host).
+    #[serde(default)]
+    pub path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -407,6 +422,14 @@ fn frame_site(site: Option<&SiteHealth>) -> Vec<FrameSite> {
             format!("last updated {}, {} days ago", s.date, s.age_days),
         )
     });
+    let under = site.underperforming.iter().map(|u| {
+        (
+            "refresh",
+            u.path.clone(),
+            u.title.clone(),
+            format!("its 14-day follow-up scored {}/10", u.score),
+        )
+    });
     let fixes = broken.into_iter().map(|b| {
         let s = if b.broken == 1 { "" } else { "s" };
         (
@@ -416,7 +439,7 @@ fn frame_site(site: Option<&SiteHealth>) -> Vec<FrameSite> {
             format!("{} broken internal link{s}", b.broken),
         )
     });
-    for (kind, path, title, detail) in stale.chain(fixes) {
+    for (kind, path, title, detail) in under.chain(stale).chain(fixes) {
         if out.len() >= SITE_PAGES || out.iter().any(|x| x.path == path) {
             continue;
         }
@@ -535,7 +558,19 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         let frame: Frame = match self.recall(req, "frame", 0, None).await? {
             Some(v) => serde_json::from_value(v).map_err(corrupt)?,
             None => {
-                let frame = self.board_frame(req, &ctx);
+                let ctx = self.with_store_facts(req, ctx.clone()).await?;
+                let mut frame = self.board_frame(req, &ctx);
+                // The latest KPI report's recommendations (ADR-0071).
+                if frame.cap > 0 {
+                    if let Some(recs) = self.latest_kpi_recommendations(req).await? {
+                        frame
+                            .pack
+                            .push_str("\n\n## Last KPI report's recommendations\n");
+                        for r in recs {
+                            frame.pack.push_str(&format!("- {r}\n"));
+                        }
+                    }
+                }
                 let hash = stage_hash(&["board-frame", &req.context.to_string()]);
                 self.remember(req, "frame", 0, hash, &frame).await?
             }
@@ -1156,6 +1191,64 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
 
     /// The frame of a first run: the cap, the reviewing editors, the pack and
     /// the season's calendar topics.
+    /// The context with what the store knows: the pages of underperforming
+    /// articles, from their briefs (ADR-0071).
+    async fn with_store_facts(
+        &self,
+        req: &JobRequest,
+        mut ctx: BoardContext,
+    ) -> Result<BoardContext> {
+        if let Some(site) = ctx.site.as_mut() {
+            for u in &mut site.underperforming {
+                let Ok(r) = u.brief_ref.parse::<u64>() else {
+                    continue;
+                };
+                let Some(v) = self.store.get_brief(&req.company_id, r).await? else {
+                    continue;
+                };
+                let rec: BriefRecord = serde_json::from_value(v).map_err(corrupt)?;
+                u.path = rec
+                    .target
+                    .clone()
+                    .unwrap_or_else(|| format!("content/pages/blog/{}.json", rec.brief.slug));
+                if u.title.trim().is_empty() {
+                    u.title = rec.brief.title.clone();
+                }
+            }
+            site.underperforming.retain(|u| !u.path.is_empty());
+        }
+        Ok(ctx)
+    }
+
+    /// The recommendations of the newest KPI report in the plan text, if any.
+    async fn latest_kpi_recommendations(&self, req: &JobRequest) -> Result<Option<Vec<String>>> {
+        let text = self.store.plan_json(&req.company_id).await?;
+        let mut best: Option<(i64, Vec<String>)> = None;
+        for posts in text["posts"]
+            .as_object()
+            .into_iter()
+            .flat_map(|m| m.values())
+        {
+            for p in posts.as_array().into_iter().flatten() {
+                if p["payload"]["kpi_report"] != json!(true) {
+                    continue;
+                }
+                let at = p["day"].as_i64().unwrap_or(0) * 1440 + p["minute"].as_i64().unwrap_or(0);
+                let recs: Vec<String> = p["payload"]["recommendations"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .map(String::from)
+                    .collect();
+                if !recs.is_empty() && best.as_ref().is_none_or(|(b, _)| at >= *b) {
+                    best = Some((at, recs));
+                }
+            }
+        }
+        Ok(best.map(|(_, r)| r))
+    }
+
     fn board_frame(&self, req: &JobRequest, ctx: &BoardContext) -> Frame {
         let mut editors: Vec<&StaffRef> = req.staff.iter().filter(|s| s.role == "editor").collect();
         if editors.is_empty() {

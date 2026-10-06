@@ -90,6 +90,7 @@ fn policy() -> impl Strategy<Value = Policy> {
         .prop_map(Policy::Autonomy),
         (0u8..14).prop_map(Policy::QualityBar),
         any::<bool>().prop_map(Policy::EditorialBoard),
+        any::<bool>().prop_map(Policy::Analytics),
     ]
 }
 

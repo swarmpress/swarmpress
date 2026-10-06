@@ -58,4 +58,31 @@ describe('recordingGateway', () => {
     expect(calls).toHaveLength(KEEP_GATEWAY_CALLS)
     expect(calls[0].number).toBe(5)
   })
+
+  it('forwards the page read and the update of a refresh or fix, recording the update as a draft (ADR-0070)', async () => {
+    const seen: unknown[][] = []
+    const gw: OrchestratorGateway = {
+      openDraft: async () => ({ number: 1, branch: 'b', head_sha: 'h' }),
+      merge: async () => 'm',
+      async readPage(path) {
+        seen.push(['read', path])
+        return { page: { id: 'p' }, sha: 'blob1' }
+      },
+      async openUpdate(...args) {
+        seen.push(['update', ...args])
+        return { number: 7, branch: 'drafts/content-p', head_sha: 'u1' }
+      },
+    }
+    const calls: GatewayCall[] = []
+    const rec = recordingGateway(gw, calls)
+    expect(await rec.readPage!('content/pages/blog/a.json')).toEqual({ page: { id: 'p' }, sha: 'blob1' })
+    await rec.openUpdate!('p', 'content/pages/blog/a.json', '{}', 'Refresh: A', 'work-item-9', JSON.stringify(writer), 'blob1')
+    expect(seen).toEqual([
+      ['read', 'content/pages/blog/a.json'],
+      ['update', 'p', 'content/pages/blog/a.json', '{}', 'Refresh: A', 'work-item-9', JSON.stringify(writer), 'blob1'],
+    ])
+    expect(calls).toEqual([{ op: 'draft', workItem: 'work-item-9', number: 7, branch: 'drafts/content-p', headSha: 'u1', attribution: writer }])
+    // a gateway without them stays without them: the job fails loudly in the wasm
+    expect(recordingGateway(inner().gw, []).readPage).toBeUndefined()
+  })
 })

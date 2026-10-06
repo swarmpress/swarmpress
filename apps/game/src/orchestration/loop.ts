@@ -121,6 +121,11 @@ export interface LoopOptions {
    * Default: the standup's plus the room for planned items (speech.ts).
    */
   boardContext?: (job: { job_id: number; project: string }) => unknown | Promise<unknown>
+  /**
+   * The context of a data scientist's job (ADR-0071): a follow-up's page numbers, the KPI
+   * report's aggregates. Default: none (the job says it has no data).
+   */
+  analysisContext?: (job: { job_id: number; kind: string; project: string; jobJson: string }) => unknown | Promise<unknown>
   /** Wall time in ms for meeting speech (default `Date.now`). */
   now?: () => number
   /** The clock's speed: meeting turns play this many times as fast (default 1). */
@@ -148,6 +153,8 @@ export const jobOutcomeKey = (jobId: number) => `job.outcome.${jobId}`
 export const DEFAULT_JOB_TIMEOUT_MS: Record<string, number> = {
   standup: 30 * 60_000,
   board: 30 * 60_000,
+  performance: 15 * 60_000,
+  'kpi-report': 15 * 60_000,
   draft: 60 * 60_000,
   review: 30 * 60_000,
   publish: 15 * 60_000,
@@ -259,6 +266,9 @@ interface QueuedJob {
 
 /** One deploy failure of a work item: its server `attempt` (FEAT-085). */
 const failureKey = (workItem: string, attempt: number) => `${workItem}#${attempt}`
+
+/** Job kinds whose request gets a context from the host. */
+const CONTEXT_KINDS = new Set(['standup', 'board', 'performance', 'kpi-report'])
 
 /** Earliest due step first, ties by job id. */
 const runsBefore = (a: JobRecord, b: JobRecord) => a.due_step < b.due_step || (a.due_step === b.due_step && a.job_id < b.job_id)
@@ -905,7 +915,7 @@ export class OrchestrationLoop {
             let out = await this.o.store.getKv(key)
             if (out) this.log(`${rec.kind} job ${rec.job_id}: reusing the stored outcome`)
             else {
-              out = await this.runWithLimit(rec, rec.kind === 'standup' || rec.kind === 'board' ? await this.withContext(rec, jobJson) : jobJson)
+              out = await this.runWithLimit(rec, CONTEXT_KINDS.has(rec.kind) ? await this.withContext(rec, jobJson) : jobJson)
               await this.o.store.setKv(key, out)
             }
             this.summarize(rec, out)
@@ -972,6 +982,11 @@ export class OrchestrationLoop {
     const project = this.where.get(rec.job_id)?.project ?? ''
     const job = { job_id: rec.job_id, project }
     const now = new Date(this.nowMs())
+    if (rec.kind === 'performance' || rec.kind === 'kpi-report') {
+      const context = this.o.analysisContext ? await this.o.analysisContext({ ...job, kind: rec.kind, jobJson }) : null
+      // A work-item request's brief ref crosses as decimal text: the parse loses nothing.
+      return context == null ? jobJson : JSON.stringify({ ...(JSON.parse(jobJson) as Record<string, unknown>), context })
+    }
     const context =
       rec.kind === 'board'
         ? this.o.boardContext

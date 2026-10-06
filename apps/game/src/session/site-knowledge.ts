@@ -329,5 +329,8 @@ export function refetchAfterMerge(inner: OrchestratorGateway, keeper: SiteKnowle
     },
     ...(inner.deployState ? { deployState: (number: number) => inner.deployState!(number) } : {}),
     ...(inner.redeploy ? { redeploy: (number: number) => inner.redeploy!(number) } : {}),
+    // ADR-0070: forwarded as they are.
+    ...(inner.readPage ? { readPage: (path: string) => inner.readPage!(path) } : {}),
+    ...(inner.openUpdate ? { openUpdate: (...args: Parameters<NonNullable<OrchestratorGateway['openUpdate']>>) => inner.openUpdate!(...args) } : {}),
   }
 }

@@ -616,3 +616,47 @@ pub async fn schema_columns(db: &Db) -> Result<Vec<(String, String)>> {
     }
     Ok(out)
 }
+
+/// One page's numbers since a day (ADR-0071).
+#[derive(Clone, Debug, Default, PartialEq, Eq, FromRow)]
+pub struct PageStats {
+    pub pageviews: i64,
+    pub sessions: i64,
+    pub avg_engaged_ms: i64,
+    pub scroll_75: i64,
+    /// Days with any view.
+    pub days: i64,
+}
+
+pub async fn page_stats(
+    db: &Db,
+    project_id: &str,
+    path: &str,
+    from: NaiveDate,
+) -> Result<PageStats> {
+    sqlx::query_as::<_, PageStats>(
+        "SELECT COALESCE(sum(pageviews), 0) AS pageviews, COALESCE(sum(sessions), 0) AS sessions,
+                COALESCE(sum(engaged_ms_sum) / NULLIF(sum(engaged_count), 0), 0) AS avg_engaged_ms,
+                COALESCE(sum(scroll_75_count), 0) AS scroll_75,
+                count(DISTINCT day) AS days
+         FROM analytics_daily WHERE project_id = ?1 AND path = ?2 AND day >= ?3",
+    )
+    .bind(project_id)
+    .bind(path)
+    .bind(from)
+    .fetch_one(&db.reader)
+    .await
+    .context("page stats")
+}
+
+/// Page views per path of a project since a day (for the median, ADR-0071).
+pub async fn per_path_pageviews(db: &Db, project_id: &str, from: NaiveDate) -> Result<Vec<i64>> {
+    sqlx::query_scalar(
+        "SELECT sum(pageviews) FROM analytics_daily WHERE project_id = ?1 AND day >= ?2 GROUP BY path",
+    )
+    .bind(project_id)
+    .bind(from)
+    .fetch_all(&db.reader)
+    .await
+    .context("per-path page views")
+}

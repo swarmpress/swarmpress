@@ -49,5 +49,16 @@ export function recordingGateway(inner: OrchestratorGateway, calls: GatewayCall[
           },
         }
       : {}),
+    // ADR-0070: a refresh or fix reads its page and drafts an update naming its blob.
+    ...(inner.readPage ? { readPage: (path: string) => inner.readPage!(path) } : {}),
+    ...(inner.openUpdate
+      ? {
+          async openUpdate(...args: Parameters<NonNullable<OrchestratorGateway['openUpdate']>>) {
+            const r = await inner.openUpdate!(...args)
+            keep({ op: 'draft', workItem: args[4], number: r.number, branch: r.branch, headSha: r.head_sha, attribution: parsed(args[5]) })
+            return r
+          },
+        }
+      : {}),
   }
 }

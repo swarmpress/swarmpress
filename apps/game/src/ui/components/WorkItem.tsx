@@ -45,6 +45,9 @@ export function WorkItemDetail({ item }: { item: WorkItemJson }) {
         <Badge tone={item.status === 'blocked' ? 'bad' : item.status === 'published' ? 'good' : 'info'}>{sentence(item.status)}</Badge>
         <Badge tone={priorityTone(item.priority)}>{sentence(item.priority)}</Badge>
         {item.textOnly && <Badge tone="neutral">Status from the thread</Badge>}
+        {item.performance != null && (
+          <Badge tone={item.performance >= 7 ? 'good' : item.performance <= 3 ? 'bad' : 'info'}>Follow-up {item.performance}/10</Badge>
+        )}
       </div>
       <p class="small muted">
         {sentence(item.kind)} · {store.projectName(item.project)}

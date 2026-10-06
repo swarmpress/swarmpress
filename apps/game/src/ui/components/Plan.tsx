@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks'
 import { sentence } from '../format'
-import { availableViews, currentPhase, latestBoard, filterItems, itemProgress, workload, WORK_MINUTES_PER_WEEK, type BoardFilter, type PlanView } from '../plan-logic'
+import { availableViews, currentPhase, latestBoard, latestKpi, filterItems, itemProgress, workload, WORK_MINUTES_PER_WEEK, type BoardFilter, type PlanView } from '../plan-logic'
 import { STATUS_ORDER, type WorkItemJson } from '../plan-types'
 import { useStore } from '../store'
 import { Badge, Meter, Panel, PersonButton, priorityTone, TabPanel, Tabs } from './common'
@@ -77,12 +77,18 @@ function SiteHealth() {
 function ThisWeek() {
   const store = useStore()
   const board = latestBoard(store.planText.value)
-  if (!board) return null
+  const kpi = latestKpi(store.planText.value)
+  if (!board && !kpi) return null
   return (
     <section class="card this-week" aria-labelledby="this-week-title">
       <h3 id="this-week-title">This week</h3>
-      <p>{board.theme}</p>
-      {board.bigBets.length > 0 && (
+      {kpi && (
+        <p class="small">
+          <strong>KPI report:</strong> {kpi.headline}
+        </p>
+      )}
+      {board && <p>{board.theme}</p>}
+      {board && board.bigBets.length > 0 && (
         <>
           <h4>Big bets</h4>
           <ul>

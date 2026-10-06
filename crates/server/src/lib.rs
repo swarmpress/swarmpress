@@ -24,6 +24,7 @@
 //! - [`db`]: every SQL statement (SQLite, single writer + readers)
 //! - [`app`]: state, routes, background tasks
 
+pub mod analytics_loop;
 pub mod app;
 pub mod article;
 pub mod auth;

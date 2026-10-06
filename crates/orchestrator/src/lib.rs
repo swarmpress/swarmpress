@@ -35,6 +35,7 @@
 //! Async traits are `Send` on native targets and `?Send` on wasm32, matching
 //! [`agents::Llm`] (see [`agents::MaybeSendSync`]).
 
+mod analysis;
 mod article;
 mod board;
 pub mod eval;
@@ -47,6 +48,7 @@ mod standup;
 mod store;
 
 pub use agents::article_prompts::LlmProfile;
+pub use analysis::{performance_score, PageNumbers, PerformanceContext};
 pub use article::{
     article_context, article_schema, blog_categories, brief_entities, brief_ref_for, entity_facts,
     hero_shortlist, link_shortlist, related_titles, site_validator, site_validator_v2, slugify,
@@ -93,6 +95,10 @@ pub enum JobKind {
     Publish,
     /// The weekly editorial board (ADR-0069).
     Board,
+    /// The data scientist's follow-up of a published item (ADR-0071).
+    Performance,
+    /// The data scientist's weekly KPI report (ADR-0071).
+    KpiReport,
 }
 
 /// Someone taking part in a job, as the sim knows them.

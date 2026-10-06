@@ -126,6 +126,11 @@ them: if the poller logs 403, merges stay `pending` and time out.
 | `POST /web/firecrawl/{*rest}` | 501 `{"error":"firecrawl requires credits (wave 3)"}` |
 | `GET/POST /api/projects` | the company's publications; `POST {simProjectId, slug, name, domain?, repo?}` mints a public `trackerKey` |
 | `GET /api/analytics?project=&days=` | Performance panel data (ADR-0032) |
+| `GET /api/analytics/signals` | lease required. The company's pending analytics signals, oldest first, as the sim's `AnalyticsSignals` takes them (the digest as decimal text) plus `project_key` and `day` for the ack (ADR-0071) |
+| `POST /api/analytics/signals/ack` | lease required. `{rows: [{project_key, day}]}`: the rows the host logged are applied; rows of other companies are ignored |
+| `GET /api/analytics/page?path=&from=` | lease required. One page's page views, sessions, average engaged time, 75%-scroll count and days since `from`, with the project's per-page median (ADR-0071) |
+| `GET /api/site/audit` | lease required. The audit of the site at the base head (ADR-0070): the `SiteSignals` fields, broken links per page, orphans, stale articles (over 90 days by the server's day), linking-policy findings; cached per commit; `ETag: "<commit>-<day>"`, 304 on `If-None-Match` |
+| `GET /api/gateway/file?path=` | lease required. One `content/pages/**/*.json` file at the base head with its blob sha (`{path, sha, commit, page}`), for refresh and fix jobs; 403 elsewhere, 404 when absent. A draft with `update: <blob sha>` updates that article, only if it is still that blob; every other draft of an article path stays create-only (ADR-0070) |
 | `GET /t/s.js`, `POST /t/e` | tracker script and collector (no auth; see `src/tracker.rs`) |
 | `/*` | static game client with SPA fallback |
 

@@ -140,6 +140,10 @@ pub struct Policies {
     /// logs; the game turns it on once with `SetPolicy`.
     #[serde(default)]
     pub editorial_board: bool,
+    /// The analytics loop's jobs (ADR-0071): follow-ups and the weekly KPI
+    /// report. Off in old logs; the game turns it on once.
+    #[serde(default)]
+    pub analytics: bool,
 }
 
 impl Default for Policies {
@@ -149,6 +153,7 @@ impl Default for Policies {
             autonomy: AutonomyPolicy::ApproveAll,
             quality_bar: 7,
             editorial_board: false,
+            analytics: false,
         }
     }
 }

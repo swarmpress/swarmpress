@@ -28,6 +28,8 @@ const WORLD_FORMATS: &[(u32, u64)] = &[
     (2, 0x39d9_8696_fe53_cdc4),
     // FEAT-087, ADR-0069: the weekly editorial board and planned items
     (3, 0xa01f_2bd6_e634_9f86),
+    // FEAT-089, ADR-0071: the analytics loop (follow-up score and flag, the policy)
+    (4, 0xc494_97aa_3ace_5cd8),
 ];
 
 /// The golden hash of the current world format.

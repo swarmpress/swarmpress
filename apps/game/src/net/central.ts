@@ -173,6 +173,42 @@ export interface GatewayFile {
   page: unknown
 }
 
+/** `GET /api/analytics` (ADR-0032): a project's aggregates. */
+export interface AnalyticsSummary {
+  from: string
+  to: string
+  days: { day: string; sessions: number; visitors: number; pageviews: number; engagedSessions: number; engagementRate: number }[]
+  totals: { sessions: number; visitors: number; pageviews: number; engagedSessions: number; engagementPm: number }
+  topPages: { path: string; pageviews: number; sessions: number; avgEngagedMs: number }[]
+  languages: { lang: string; pageviews: number }[]
+  sources: { source: string; sessions: number; pageviews: number }[]
+}
+
+/** A pending analytics signal (ADR-0071). */
+export interface AnalyticsSignalRow {
+  project_key: string
+  day: string
+  project: string
+  sessions: number
+  visitors: number
+  pageviews: number
+  engagement_pm: number
+  /** A u64 as decimal text. */
+  top_pages_digest: string
+}
+
+/** `GET /api/analytics/page` (ADR-0071). */
+export interface AnalyticsPage {
+  path: string
+  pageviews: number
+  sessions: number
+  avg_engaged_ms: number
+  scroll_75: number
+  days: number
+  median_pageviews: number
+  pages: number
+}
+
 /** `GET /api/site/audit` (ADR-0070): the site's health at the base head. */
 export interface SiteAudit {
   commit: string
@@ -470,6 +506,32 @@ export class CentralClient {
   async gatewayFile(token: string, path: string): Promise<GatewayFile | null> {
     try {
       return await this.json('GET', `/api/gateway/file?path=${encodeURIComponent(path)}`, { headers: { [LEASE_HEADER]: token } })
+    } catch (e) {
+      if (e instanceof CentralError && e.status === 404) return null
+      throw e
+    }
+  }
+
+  /** `GET /api/analytics`: a project's aggregates over the last `days` (the read model of ADR-0032). */
+  analytics(project: string, days: number): Promise<AnalyticsSummary> {
+    return this.json('GET', `/api/analytics?project=${encodeURIComponent(project)}&days=${days}`)
+  }
+
+  /** The company's pending analytics signals (ADR-0071); `top_pages_digest` is a u64 as text. */
+  async analyticsSignals(token: string): Promise<AnalyticsSignalRow[]> {
+    const r = await this.json<{ signals: AnalyticsSignalRow[] }>('GET', '/api/analytics/signals', { headers: { [LEASE_HEADER]: token } })
+    return r.signals
+  }
+
+  /** Marks signals the host logged as applied (ADR-0071). */
+  ackAnalyticsSignals(token: string, rows: { project_key: string; day: string }[]): Promise<{ applied: number }> {
+    return this.json('POST', '/api/analytics/signals/ack', { json: { rows }, headers: { [LEASE_HEADER]: token } })
+  }
+
+  /** One page's numbers since `from` (YYYY-MM-DD) and the per-page median (ADR-0071); `null` without a tracker project. */
+  async analyticsPage(token: string, path: string, from: string): Promise<AnalyticsPage | null> {
+    try {
+      return await this.json('GET', `/api/analytics/page?path=${encodeURIComponent(path)}&from=${from}`, { headers: { [LEASE_HEADER]: token } })
     } catch (e) {
       if (e instanceof CentralError && e.status === 404) return null
       throw e

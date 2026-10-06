@@ -33,8 +33,8 @@ use thiserror::Error;
 use crate::building::{Building, RoomKind};
 use crate::clock::{
     hm, Clock, SimConfig, Weekday, ARRIVAL_START, BOARD_END, BOARD_START, BRIEFING_TIME,
-    EVENING_START, FINANCE_REVIEW_END, FINANCE_REVIEW_START, KPI_REVIEW_END, KPI_REVIEW_START,
-    LUNCH_MINUTES, STANDUP_END, STANDUP_START,
+    EVENING_START, FINANCE_REVIEW_END, FINANCE_REVIEW_START, FOLLOW_UP_END, FOLLOW_UP_START,
+    KPI_REVIEW_END, KPI_REVIEW_START, LUNCH_MINUTES, STANDUP_END, STANDUP_START,
 };
 use crate::commands::{
     Command, DemolishTarget, Input, OvertimePolicy, Placement, Policy, ServerCommand,
@@ -465,6 +465,7 @@ impl World {
                 Policy::Autonomy(a) => self.company.policies.autonomy = a,
                 Policy::QualityBar(q) => self.company.policies.quality_bar = q,
                 Policy::EditorialBoard(on) => self.company.policies.editorial_board = on,
+                Policy::Analytics(on) => self.company.policies.analytics = on,
             },
             Command::Promote { staff } => {
                 if let Some(s) = self.staff.get_mut(&staff) {
@@ -1296,6 +1297,11 @@ impl World {
                 self.open_standup(pid, day, STANDUP_START);
             }
         }
+        // 11:00: the data scientist's follow-ups of items published 14 days ago (ADR-0071).
+        if self.company.policies.analytics && (FOLLOW_UP_START..FOLLOW_UP_END).contains(&now.minute)
+        {
+            self.request_follow_ups(day);
+        }
         // Monday 10:00, and a project's first 10:00: the editorial board
         // plans the week (ADR-0069), when the policy is on.
         if self.company.policies.editorial_board && (BOARD_START..BOARD_END).contains(&now.minute) {
@@ -1337,7 +1343,7 @@ impl World {
                 if let Some(room) =
                     self.free_meeting_room(day, KPI_REVIEW_START, KPI_REVIEW_END, None)
                 {
-                    self.open_meeting(
+                    let mid = self.open_meeting(
                         MeetingKind::KpiReview,
                         None,
                         room,
@@ -1346,6 +1352,30 @@ impl World {
                         KPI_REVIEW_END,
                         attendees,
                     );
+                    // The data scientist's report (ADR-0071), for the first active project.
+                    let project = self
+                        .projects
+                        .values()
+                        .find(|p| p.status == ProjectStatus::Active)
+                        .map(|p| p.id);
+                    if let (true, Some(project), Some(ds)) = (
+                        self.company.policies.analytics,
+                        project,
+                        self.data_scientist(),
+                    ) {
+                        let job = self.request_job(
+                            JobKind::KpiReport,
+                            project,
+                            None,
+                            None,
+                            0,
+                            Some(mid),
+                            vec![ds],
+                        );
+                        if let Some(m) = self.meetings.get_mut(&mid) {
+                            m.job = Some(job);
+                        }
+                    }
                 }
             }
         }

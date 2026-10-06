@@ -29,8 +29,9 @@
  *   takeover=1       take the company over from the executor that holds it (this
  *                    page load only; the parameter is removed from the URL)
  *   restore=replay   ignore the snapshot and replay the whole log from the seed (the audit path)
- *   board=off        keep the weekly editorial board off for this page load (ADR-0069; the
- *                    one-article end-to-end test); without it the session turns it on once
+ *   board=off        keep the weekly editorial board and the analytics loop off for this page
+ *                    load (ADR-0069, ADR-0071; the one-article end-to-end test); without it the
+ *                    session turns both on once
  *   restore=rebase   rebuild the company from its command log alone, ignoring the snapshot and
  *                    the checkpoint, and seal a fresh snapshot: once, after a world format change
  *                    (ADR-0069's format 3) left a snapshot this build cannot read
@@ -485,6 +486,8 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   // The latest site audit (ADR-0070) and how to refresh it (set once the loop exists).
   let siteAudit: SiteAudit | null = null
   let auditSite: () => Promise<SiteAudit | null> = async () => null
+  // The analytics signals' delivery (ADR-0071), set once the loop exists.
+  let deliverSignals: () => Promise<void> = async () => undefined
   const { sim, info: restored, result, lastSeq } = await restore(store, client, company, { forceReplay: params.get('restore') === 'replay', rebase })
   log(
     `company ${company.id} restored from ${restored.source} at step ${restored.step} (${restored.snapshot ? 'snapshot + ' : ''}${restored.replayed} commands replayed, ${restored.ms} ms)`,
@@ -576,9 +579,33 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       const titles = Object.fromEntries(Object.entries(plan.items).map(([id, i]) => [id, i.title]))
       const ctx = boardContext(sim.plan_json(), project, { now: new Date(), titles, minutesPerArticle: minutesPerArticle(page.rows) })
       const audit = siteAudit ?? (await auditSite().catch(() => null))
-      return audit ? { ...ctx, site: { stale: audit.stale, broken: audit.broken_pages } } : ctx
+      // Articles whose 14-day follow-up scored 3 or less (ADR-0071): refresh candidates, by brief ref.
+      const items = (JSON.parse(sim.plan_json()) as { items: { project: string; performance?: number | null; briefRefText?: string | null }[] }).items
+      const underperforming = items
+        .filter((i) => i.project === project && i.performance != null && i.performance <= 3 && i.briefRefText)
+        .map((i) => ({ brief_ref: i.briefRefText!, title: '', score: i.performance! }))
+      return { ...ctx, site: { stale: audit?.stale ?? [], broken: audit?.broken_pages ?? [], underperforming } }
     },
     speechSpeed: () => clockSpeed(),
+    // The data scientist's numbers (ADR-0071): a follow-up's page since 14 days, the KPI report's two weeks.
+    analysisContext: async ({ kind, project, jobJson }) => {
+      if (kind === 'kpi-report') {
+        const two = await client.analytics(project, 14).catch(() => null)
+        if (!two) return null
+        const sum = (ds: typeof two.days) => ds.reduce((t, d) => ({ sessions: t.sessions + d.sessions, visitors: t.visitors + d.visitors, pageviews: t.pageviews + d.pageviews }), { sessions: 0, visitors: 0, pageviews: 0 })
+        const week = await client.analytics(project, 7).catch(() => null)
+        return week ? { week: { totals: week.totals, topPages: week.topPages, languages: week.languages, sources: week.sources }, previous: { totals: sum(two.days.slice(0, 7)) } } : null
+      }
+      const job = JSON.parse(jobJson) as { brief_ref?: string | number | null }
+      const rec = job.brief_ref != null ? await store.getBrief(company.id, String(job.brief_ref)) : null
+      const brief = rec ? (JSON.parse(rec) as { target?: string; brief?: { slug?: string } }) : null
+      const file = brief?.target ?? (brief?.brief?.slug ? `content/pages/blog/${brief.brief.slug}.json` : null)
+      const slug = file?.split('/').pop()?.replace(/\.json$/, '')
+      if (!slug) return { page: null }
+      const from = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10)
+      const page = await client.analyticsPage(lease.token, `/en/blog/${slug}`, from).catch(() => null)
+      return { page }
+    },
   })
   speak = (e) => loop.turnFinished(e)
   loop.seed(result.completedJobs, result.landed, lastSeq)
@@ -684,6 +711,27 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       void checkpoint()
       sweep()
       void auditSite().catch((e) => log(`site audit failed: ${String(e)}`))
+      void deliverSignals().catch((e) => log(`analytics signals failed: ${String(e)}`))
+  // The analytics signals (ADR-0071): each pending row logged once, oldest first, on a game day
+  // counted back from today, then acknowledged.
+  deliverSignals = async () => {
+    if (readOnly || loop.halted) return
+    const rows = await client.analyticsSignals(lease.token)
+    if (!rows.length) return
+    const today = sim.day()
+    const acked: { project_key: string; day: string }[] = []
+    rows.forEach((r, i) => {
+      const day = Math.max(0, today - (rows.length - 1 - i))
+      // The digest is a u64: written into the JSON as its digits, never through a JS number.
+      const cmd = `{"AnalyticsSignals":{"project":${JSON.stringify(r.project)},"day":${day},"sessions":${r.sessions},"visitors":${r.visitors},"pageviews":${r.pageviews},"engagement_pm":${r.engagement_pm},"top_pages_digest":${/^\d+$/.test(r.top_pages_digest) ? r.top_pages_digest : 0}}}`
+      const res = loop.apply(cmd)
+      if (res.ok) acked.push({ project_key: r.project_key, day: r.day })
+      else log(`analytics signal of ${r.day} not applied: ${res.reason}`)
+    })
+    if (acked.length) await client.ackAnalyticsSignals(lease.token, acked)
+    log(`analytics: ${acked.length} of ${rows.length} signals logged`)
+  }
+  void deliverSignals().catch((e) => log(`analytics signals failed: ${String(e)}`))
     } else if (!localBusy) {
       localBusy = true
       void checkpointLocal()
@@ -716,10 +764,15 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   // The weekly editorial board plans the week (ADR-0069): on once, as a logged command, so a
   // replay of an older log holds no board before it.
   if (!readOnly && !loop.halted && params.get('board') !== 'off') {
-    const org = JSON.parse(sim.org_json()) as { policies?: { editorialBoard?: boolean } }
+    const org = JSON.parse(sim.org_json()) as { policies?: { editorialBoard?: boolean; analytics?: boolean } }
     if (org.policies?.editorialBoard === false) {
       const r = loop.apply(JSON.stringify({ SetPolicy: { EditorialBoard: true } }))
       log(r.ok ? 'the weekly editorial board is on' : `the editorial board could not be turned on: ${r.reason}`)
+    }
+    // The analytics loop's jobs (ADR-0071): the data scientist's follow-ups and the weekly report.
+    if (org.policies?.analytics === false) {
+      const r = loop.apply(JSON.stringify({ SetPolicy: { Analytics: true } }))
+      log(r.ok ? 'the analytics loop is on' : `the analytics loop could not be turned on: ${r.reason}`)
     }
   }
   // A rebased company seals its new world at once: the old snapshot is of another sim build.

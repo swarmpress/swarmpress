@@ -48,7 +48,7 @@ pub const SNAPSHOT_FORMAT: u16 = 1;
 ///   `WorkItem.escalations`, new ticket kinds and options, and new rules (a
 ///   standup nobody answers raises a ticket; a passing review parks the item
 ///   under `ApproveAll`).
-pub const WORLD_FORMAT: u32 = 3;
+pub const WORLD_FORMAT: u32 = 4;
 /// Bytes before the body.
 pub const HEADER_LEN: usize = 42;
 

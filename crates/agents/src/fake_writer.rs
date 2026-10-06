@@ -137,6 +137,22 @@ pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
                              "evidence": ["E1"]}]
             }));
         }
+        // The data scientist copies the first number it was given (ADR-0071).
+        "content performance" => {
+            let views = p.number("  \"pageviews\": ");
+            return FakeReply::Json(
+                json!({"summary": format!("+14 days: {views} views since it was published."),
+                "verdict": "on-par", "suggestion": ""}),
+            );
+        }
+        "kpi report" => {
+            return FakeReply::Json(
+                json!({"headline": "A steady week on the site.", "highlights": [],
+                "recommendations": ["Plan the season's calendar topics first.",
+                                    "Refresh the oldest guides readers still find.",
+                                    "Link new articles from the village pages."]}),
+            );
+        }
         "update review" => {
             return FakeReply::Json(json!({"decision": "approve", "score": 8,
                 "notes": "The update is correct and rests on the evidence.", "issues": [], "high_risk": []}))

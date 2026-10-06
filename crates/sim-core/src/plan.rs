@@ -97,6 +97,12 @@ pub const MAX_PLANNED: usize = 10;
 pub const MAX_BOARD_OFFSET: u8 = 13;
 /// Items a planned item may wait for.
 pub const MAX_DEPENDS: usize = 2;
+/// Game days after its publication an item gets its follow-up (ADR-0071).
+pub const FOLLOW_UP_DAYS: u32 = 14;
+/// Follow-ups requested in one day at most.
+pub const FOLLOW_UPS_PER_DAY: usize = 3;
+/// An analysis job is due this long after it was requested, game minutes.
+pub const ANALYSIS_DUE_MINUTES: u16 = 30;
 
 /// What a job is for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -115,6 +121,12 @@ pub enum JobKind {
     /// The weekly editorial board (ADR-0069).
     #[serde(alias = "board")]
     Board,
+    /// The data scientist's follow-up of a published item (ADR-0071).
+    #[serde(alias = "performance")]
+    Performance,
+    /// The data scientist's weekly report at the KPI review (ADR-0071).
+    #[serde(alias = "kpi-report")]
+    KpiReport,
 }
 
 impl JobKind {
@@ -126,7 +138,14 @@ impl JobKind {
             JobKind::Review => "review",
             JobKind::Publish => "publish",
             JobKind::Board => "board",
+            JobKind::Performance => "performance",
+            JobKind::KpiReport => "kpi-report",
         }
+    }
+
+    /// A data scientist's job (ADR-0071): no phase, no ticket.
+    pub const fn is_analysis(self) -> bool {
+        matches!(self, JobKind::Performance | JobKind::KpiReport)
     }
 
     /// A meeting's job: its attendees are its staff, its end is its outcome.
@@ -435,6 +454,12 @@ pub struct WorkItem {
     /// Items that must be published before it starts.
     #[serde(default)]
     pub depends_on: Vec<WorkItemId>,
+    /// The follow-up's score, 0..=10 (ADR-0071).
+    #[serde(default)]
+    pub performance: Option<u8>,
+    /// The follow-up was requested and is over (done or failed): never again.
+    #[serde(default)]
+    pub followed_up: bool,
 }
 
 impl WorkItem {
@@ -589,6 +614,9 @@ impl World {
                 .and_then(|m| self.meetings.get(&m))
                 .map(|m| m.attendees.iter().copied().collect())
                 .unwrap_or_default(),
+            JobKind::Performance | JobKind::KpiReport => {
+                self.data_scientist().into_iter().collect()
+            }
             _ => item
                 .and_then(|i| i.phases.iter().find(|p| p.job == Some(job.job_id)))
                 .and_then(|p| p.assignee)
@@ -714,6 +742,8 @@ impl World {
                 due_day: None,
                 publish_day: None,
                 depends_on: Vec::new(),
+                performance: None,
+                followed_up: false,
             };
             self.plan.items.insert(id, item);
             self.start_phase(id, 0);
@@ -777,6 +807,8 @@ impl World {
                     .iter()
                     .filter_map(|i| created.get(usize::from(*i)).copied())
                     .collect(),
+                performance: None,
+                followed_up: false,
             };
             self.plan.items.insert(id, item);
             created.push(id);
@@ -945,6 +977,9 @@ impl World {
         if job.kind == JobKind::Board {
             return job.requested_step + self.minutes_to_steps(BOARD_DUE_MINUTES);
         }
+        if job.kind.is_analysis() {
+            return job.requested_step + self.minutes_to_steps(ANALYSIS_DUE_MINUTES);
+        }
         job.work_item
             .and_then(|id| self.plan.items.get(&id))
             .and_then(|i| i.phases.iter().find(|p| p.job == Some(job.job_id)))
@@ -1010,6 +1045,16 @@ impl World {
         let Some(job) = self.plan.jobs.remove(&job_id) else {
             return;
         };
+        if job.kind.is_analysis() {
+            // A follow-up keeps its score on the item (ADR-0071); a report only its text.
+            if let (JobKind::Performance, Some(id)) = (job.kind, job.work_item) {
+                if let Some(i) = self.plan.items.get_mut(&id) {
+                    i.performance = Some(digest.score);
+                    i.followed_up = true;
+                }
+            }
+            return;
+        }
         let Some(id) = job.work_item else {
             return;
         };
@@ -1035,6 +1080,13 @@ impl World {
             return;
         };
         match (job.kind, job.work_item) {
+            // An analysis that failed is not retried; the orchestrator posts why.
+            (JobKind::Performance, Some(id)) => {
+                if let Some(i) = self.plan.items.get_mut(&id) {
+                    i.followed_up = true;
+                }
+            }
+            (JobKind::KpiReport, _) => {}
             (JobKind::Standup, _) => {
                 self.end_standup(&job);
                 self.raise_standup_failed(job.project, reason);
@@ -1548,6 +1600,57 @@ impl World {
             if let Some(project) = self.plan.items.get(&id).map(|i| i.project) {
                 self.start_due_planned(project, today);
             }
+        }
+    }
+
+    /// The company's data scientist (the lowest id), if one is active.
+    pub(crate) fn data_scientist(&self) -> Option<StaffId> {
+        self.staff
+            .values()
+            .find(|s| s.is_active() && s.role == Role::DataScientist)
+            .map(|s| s.id)
+    }
+
+    /// Requests the follow-ups that are due (ADR-0071): items published at
+    /// least [`FOLLOW_UP_DAYS`] ago, not followed up, none pending, while the
+    /// company has a data scientist; at most [`FOLLOW_UPS_PER_DAY`], oldest
+    /// first.
+    pub(crate) fn request_follow_ups(&mut self, today: u32) {
+        let Some(ds) = self.data_scientist() else {
+            return;
+        };
+        let pending: Vec<WorkItemId> = self
+            .plan
+            .jobs
+            .values()
+            .filter(|j| j.kind == JobKind::Performance)
+            .filter_map(|j| j.work_item)
+            .collect();
+        let day_of = |step: u64| self.config.clock_at(step).day;
+        let due: Vec<(ProjectId, WorkItemId, Option<u64>, u8)> = self
+            .plan
+            .items
+            .values()
+            .filter(|i| i.status == WorkItemStatus::Published && !i.followed_up)
+            .filter(|i| matches!(i.kind, WorkItemKind::Article | WorkItemKind::Refresh))
+            .filter(|i| !pending.contains(&i.id))
+            .filter(|i| {
+                i.published_step
+                    .is_some_and(|s| day_of(s) + FOLLOW_UP_DAYS <= today)
+            })
+            .take(FOLLOW_UPS_PER_DAY)
+            .map(|i| (i.project, i.id, i.brief_ref, i.revision))
+            .collect();
+        for (project, id, brief_ref, revision) in due {
+            self.request_job(
+                JobKind::Performance,
+                project,
+                Some(id),
+                brief_ref,
+                revision,
+                None,
+                vec![ds],
+            );
         }
     }
 

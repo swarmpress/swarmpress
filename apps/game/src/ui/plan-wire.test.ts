@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import wire from './fixtures/plan-wire.json'
 import { normalizePlanText, normalizePost, splitPlanJson, statusFromThread, toStorePost, withBoardText, withTextOnlyItems, type PlanTextWire } from './plan-wire'
 import type { PlanJson, PlanText, WorkItemJson } from './plan-types'
-import { latestBoard } from './plan-logic'
+import { latestBoard, latestKpi } from './plan-logic'
 
 /**
  * The orchestrator's `Store::plan_json` shape (crates/orchestrator/src/store.rs,
@@ -124,6 +124,13 @@ describe('the editorial board’s plan text (ADR-0069, FEAT-087)', () => {
     // nothing to join: the same object
     const bare: PlanJson = { goals: [], workstreams: [], items: [] }
     expect(withBoardText(bare, text)).toBe(text)
+  })
+
+  it('reads the newest KPI report from the review’s minutes (ADR-0071)', () => {
+    expect(latestKpi(text)).toBeNull()
+    const kpi = { id: 'p1', item: 'meeting-3', type: 'minutes' as const, author: 'staff-13', text: 'KPI report', day: 7, minute: 570,
+                  payload: { kpi_report: true, headline: 'A steady week.', recommendations: ['One.', 'Two.', 'Three.'] } }
+    expect(latestKpi({ ...text, posts: { 'meeting-3': [kpi as never] } })).toEqual({ headline: 'A steady week.', recommendations: ['One.', 'Two.', 'Three.'] })
   })
 
   it('reads the newest board’s theme and big bets from its minutes', () => {

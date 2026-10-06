@@ -440,6 +440,7 @@ pub fn org(w: &World) -> Value {
             "autonomy": w.company.policies.autonomy.slug(),
             "qualityBar": w.company.policies.quality_bar,
             "editorialBoard": w.company.policies.editorial_board,
+            "analytics": w.company.policies.analytics,
         },
         "departments": departments,
         "staff": staff,
@@ -687,6 +688,9 @@ pub fn plan(w: &World, project: Option<&str>) -> Value {
                 "publishDay": i.published_step.map(day_of).or(i.publish_day),
                 "plannedPublishDay": i.publish_day,
                 "unstarted": i.is_unstarted(),
+                // the 14-day follow-up's score (ADR-0071)
+                "performance": i.performance,
+                "followedUp": i.followed_up,
                 "createdDay": day_of(i.created_step),
                 "meeting": opt_id(i.meeting),
                 "tickets": i.tickets.iter().map(ToString::to_string).collect::<Vec<_>>(),

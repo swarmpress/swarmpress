@@ -21,6 +21,9 @@
 //!   work item's planned days, workstream and dependencies, the plan's
 //!   workstreams and board days, the `EditorialBoard` policy; the script
 //!   turns the board on and answers the first one.
+//! - `0xa01f_2bd6_e634_9f86`: world format 3.
+//! - world format 4 (FEAT-089, ADR-0071): `WorkItem.performance` and
+//!   `followed_up`, `Policies.analytics`; the script is unchanged.
 
 use sim_core::commands::JobFailure;
 use sim_core::ids::{StaffId, TicketId, WorkItemId};
@@ -28,7 +31,7 @@ use sim_core::inbox::{ResolvedBy, TicketKind, TicketOption, TicketStatus};
 use sim_core::plan::{JobKind, WorkItemStatus};
 use sim_core::scenarios::{golden_script, run_golden, DEMO_PROJECT, GOLDEN_STEPS};
 
-const GOLDEN_HASH: u64 = 0xa01f_2bd6_e634_9f86;
+const GOLDEN_HASH: u64 = 0xc494_97aa_3ace_5cd8;
 
 #[test]
 fn golden_hash() {

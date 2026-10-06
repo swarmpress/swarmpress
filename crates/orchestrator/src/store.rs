@@ -21,7 +21,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 /// Post types the orchestrator writes to an item's thread.
-pub const POST_TYPES: &[&str] = &["minutes", "artifact", "handoff", "review", "status"];
+pub const POST_TYPES: &[&str] = &[
+    "minutes",
+    "artifact",
+    "handoff",
+    "review",
+    "status",
+    // the data scientist's follow-up (ADR-0071)
+    "performance",
+];
 
 /// Posts per item included in [`Store::plan_json`] (newest).
 pub const PLAN_POSTS_PER_ITEM: usize = 50;
