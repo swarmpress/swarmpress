@@ -185,6 +185,10 @@ pub fn router(st: AppState) -> Router {
         .route("/api/gateway/file", get(crate::site_audit::file))
         .route("/api/site/audit", get(crate::site_audit::audit))
         .route(
+            "/api/site/data",
+            get(crate::site_data::get_data).put(crate::site_data::put_data),
+        )
+        .route(
             "/api/site/blueprint",
             get(crate::site_blueprint::get_blueprint).put(crate::site_blueprint::put_blueprint),
         )

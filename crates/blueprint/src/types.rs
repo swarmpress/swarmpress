@@ -421,6 +421,98 @@ impl TypeRegistry {
         Some(cur)
     }
 
+    /// Whether a JSON value is of type `t`: field-path reasons when not.
+    /// Closed objects refuse extra fields; an `integer` is a whole number; a
+    /// `LocalizedString` is a string or an object with `en`; `null` is only
+    /// an optional value. The runtime twin of the TypeScript interpreter's
+    /// `validate` (`packages/toolgraph/src/types.ts`).
+    pub fn validate(&self, v: &Value, t: &TypeExpr) -> Result<(), Vec<String>> {
+        let mut why = Vec::new();
+        if v.is_null() {
+            if !t.optional {
+                why.push("the value: missing".into());
+            }
+        } else {
+            let ty = self.ty_of(t);
+            self.validate_ty(v, &ty, "", 0, &mut why);
+        }
+        if why.is_empty() {
+            Ok(())
+        } else {
+            Err(why)
+        }
+    }
+
+    fn validate_ty(&self, v: &Value, t: &Ty, at: &str, depth: u32, why: &mut Vec<String>) {
+        let here = if at.is_empty() { "the value".to_string() } else { at.to_string() };
+        if why.len() >= 20 || depth > MAX_DEPTH {
+            return;
+        }
+        let Some(t) = self.resolve(t) else {
+            why.push(format!("{here}: an unknown type"));
+            return;
+        };
+        let bad = |what: &str, why: &mut Vec<String>| why.push(format!("{here}: not {what}"));
+        match t {
+            Ty::String => {
+                if !v.is_string() {
+                    bad("a string", why)
+                }
+            }
+            Ty::Integer => {
+                if !(v.is_i64() || v.is_u64()) {
+                    bad("an integer", why)
+                }
+            }
+            Ty::Number => {
+                if !v.is_number() {
+                    bad("a number", why)
+                }
+            }
+            Ty::Boolean => {
+                if !v.is_boolean() {
+                    bad("a boolean", why)
+                }
+            }
+            Ty::Localized => match v {
+                Value::String(_) => {}
+                Value::Object(o) if o.get("en").is_some_and(Value::is_string) && o.values().all(Value::is_string) => {}
+                _ => bad("a LocalizedString (a string or {en, …})", why),
+            },
+            Ty::Enum(set) => {
+                if !v.as_str().is_some_and(|s| set.contains(s)) {
+                    bad(&format!("one of {}", set.iter().cloned().collect::<Vec<_>>().join(", ")), why)
+                }
+            }
+            Ty::Array(item) => match v.as_array() {
+                None => bad("a list", why),
+                Some(a) => {
+                    for (i, x) in a.iter().enumerate() {
+                        self.validate_ty(x, item, &format!("{at}[{i}]"), depth + 1, why);
+                    }
+                }
+            },
+            Ty::Object(fields) => match v.as_object() {
+                None => bad("an object", why),
+                Some(o) => {
+                    for (name, (ft, required)) in fields {
+                        let path = if at.is_empty() { name.clone() } else { format!("{at}.{name}") };
+                        match o.get(name) {
+                            None | Some(Value::Null) if *required => why.push(format!("{path}: missing")),
+                            None | Some(Value::Null) => {}
+                            Some(x) => self.validate_ty(x, ft, &path, depth + 1, why),
+                        }
+                    }
+                    for k in o.keys().filter(|k| !fields.contains_key(*k)) {
+                        let path = if at.is_empty() { k.clone() } else { format!("{at}.{k}") };
+                        why.push(format!("{path}: not a field of this type"));
+                    }
+                }
+            },
+            Ty::Ref(_) => why.push(format!("{here}: a reference does not resolve")),
+        }
+    }
+
     fn resolve<'a>(&'a self, t: &'a Ty) -> Option<&'a Ty> {
         let mut t = t;
         for _ in 0..MAX_DEPTH {
@@ -582,6 +674,24 @@ mod tests {
         assert!(r.fits(&t("LocalizedString"), &t("string")).is_err());
         assert_eq!(r.fits(&t("integer"), &t("number")), Ok(()));
         assert!(r.fits(&t("Nope"), &t("Page")).is_err());
+    }
+
+    #[test]
+    fn values_are_validated() {
+        let r = site();
+        let ok = json!({ "temperature": 21, "condition": "sun" });
+        assert_eq!(r.validate(&ok, &t("Weather")), Ok(()));
+        assert_eq!(r.validate(&json!([ok.clone(), ok.clone()]), &t("Weather[]")), Ok(()));
+        assert_eq!(r.validate(&Value::Null, &t("Weather?")), Ok(()));
+        let why = r.validate(&json!({ "temperature": 2.5, "condition": "fog", "wind": 3 }), &t("Weather")).unwrap_err();
+        assert!(why.contains(&"temperature: not an integer".to_string()), "{why:?}");
+        assert!(why.iter().any(|w| w.starts_with("condition: not one of")), "{why:?}");
+        assert!(why.contains(&"wind: not a field of this type".to_string()), "{why:?}");
+        let why = r.validate(&json!([{ "temperature": 1 }]), &t("Weather[]")).unwrap_err();
+        assert_eq!(why, ["[0].condition: missing"]);
+        assert!(r.validate(&json!({ "title": { "de": "x" }, "hero": { "id": "m", "url": "u" } }), &t("Teaser")).is_err());
+        assert_eq!(r.validate(&json!({ "title": "x", "hero": { "id": "m", "url": "u" } }), &t("Teaser")), Ok(()));
+        assert!(r.validate(&Value::Null, &t("Weather")).is_err());
     }
 
     #[test]
