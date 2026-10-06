@@ -1,0 +1,54 @@
+{
+  "ferry-times": {
+    "capabilities": [
+      "web"
+    ],
+    "description": "The next ferry departures from a village's pier.",
+    "entry": {
+      "bundle": "tool.js"
+    },
+    "id": "press.swarm.tool.ferry-times",
+    "kinds": [
+      "skill"
+    ],
+    "name": "Ferry departures",
+    "origins": [
+      "https://www.navigazionegolfodeipoeti.it"
+    ],
+    "sdk": "^0.1.0",
+    "version": "0.0.5671078"
+  },
+  "story-teaser": {
+    "capabilities": [
+      "llm:low"
+    ],
+    "entry": {
+      "bundle": "tool.js"
+    },
+    "id": "press.swarm.tool.story-teaser",
+    "kinds": [
+      "skill"
+    ],
+    "name": "Story teaser",
+    "sdk": "^0.1.0",
+    "version": "0.0.5674557"
+  },
+  "weather": {
+    "capabilities": [
+      "web"
+    ],
+    "entry": {
+      "bundle": "tool.js"
+    },
+    "id": "press.swarm.tool.weather",
+    "kinds": [
+      "skill"
+    ],
+    "name": "Weather now",
+    "origins": [
+      "https://api.open-meteo.com"
+    ],
+    "sdk": "^0.1.0",
+    "version": "0.0.4056889"
+  }
+}

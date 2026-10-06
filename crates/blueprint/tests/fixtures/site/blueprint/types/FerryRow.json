@@ -1,0 +1,2 @@
+{ "type": "object", "additionalProperties": false, "required": ["stop", "dep", "dest"],
+  "properties": { "stop": { "type": "string" }, "dep": { "type": "string" }, "dest": { "type": "string" } } }

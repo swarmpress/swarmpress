@@ -1,0 +1,16 @@
+{
+  "format": "swarmpress.tool.v1",
+  "id": "story-teaser",
+  "name": { "en": "Story teaser" },
+  "inputs": { "article": "Article" },
+  "outputs": { "teaser": "Teaser" },
+  "nodes": [
+    { "id": "in", "kind": "input", "port": "article" },
+    { "id": "long", "kind": "condition", "test": "exists", "path": "$.published_at" },
+    { "id": "write", "kind": "agent", "role": "writer", "tier": "low", "instruction": "Write a one-line teaser for this published article, at most 90 characters.", "output": "Teaser" },
+    { "id": "out", "kind": "output", "port": "teaser" }
+  ],
+  "edges": [["in.out", "long.in"], ["long.yes", "write.in"], ["write.out", "out.in"]],
+  "triggers": [{ "kind": "on-demand" }],
+  "limits": { "llm_calls_per_run": 1 }
+}

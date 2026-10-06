@@ -1,11 +1,13 @@
 ---
 id: FEAT-091
 title: "Tool graphs: typed workflows compiled to sandboxed skills, and the factory district"
-status: planned
+status: in-progress
 importance: normal
 paths:
   - "packages/toolgraph/**"
-  - "crates/blueprint/src/tools/**"
+  - "crates/blueprint/src/tools.rs"
+  - "crates/blueprint/tests/tools.rs"
+  - "crates/blueprint/tests/fixtures/site/**"
   - "apps/game/src/ui/components/Tools*.tsx"
   - "apps/game/src/render/bricks/machines.ts"
 adrs:

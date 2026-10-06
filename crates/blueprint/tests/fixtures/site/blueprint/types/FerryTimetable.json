@@ -1,0 +1,2 @@
+{ "type": "object", "additionalProperties": false, "required": ["departures"],
+  "properties": { "departures": { "type": "array", "items": { "$ref": "FerryRow" } } } }

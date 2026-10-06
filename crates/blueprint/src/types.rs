@@ -141,6 +141,23 @@ fn builtins() -> BTreeMap<String, Ty> {
     );
     out.insert("Page".into(), obj(&page));
     out.insert("Article".into(), obj(&article));
+    out.insert(
+        "FeedItem".into(),
+        obj(&[
+            ("title", s.clone(), true),
+            ("link", s.clone(), true),
+            ("published", s.clone(), false),
+            ("summary", s.clone(), false),
+        ]),
+    );
+    out.insert(
+        "SearchResult".into(),
+        obj(&[
+            ("title", s.clone(), true),
+            ("url", s.clone(), true),
+            ("snippet", s.clone(), false),
+        ]),
+    );
     for kind in ["Village", "Trail", "Transport", "Category"] {
         out.insert(kind.into(), obj(&entity));
     }
@@ -346,6 +363,62 @@ impl TypeRegistry {
         } else {
             Err(why)
         }
+    }
+
+    /// [`Self::fits`] for types without a name (a field's type, a list's item).
+    pub fn fits_shape(&self, producer: &Ty, consumer: &Ty) -> Result<(), Vec<String>> {
+        let mut why = Vec::new();
+        self.fits_ty(producer, consumer, "", 0, &mut why);
+        if why.is_empty() {
+            Ok(())
+        } else {
+            Err(why)
+        }
+    }
+
+    /// The type of an expression (lists as arrays; `?` is a binding matter, not a shape).
+    pub fn ty_of(&self, t: &TypeExpr) -> Ty {
+        let base = Ty::Ref(t.name.clone());
+        if t.list {
+            Ty::Array(Box::new(base))
+        } else {
+            base
+        }
+    }
+
+    /// The type found at `path` (`$`, `$.a.b`, `$.items[0].name`, `$.items[]`)
+    /// inside `t`, if every step exists. `[n]` and `[]` step into an array.
+    pub fn type_at(&self, t: &Ty, path: &str) -> Option<Ty> {
+        let rest = path.strip_prefix('$')?;
+        let mut cur = t.clone();
+        let mut chars = rest;
+        while !chars.is_empty() {
+            if let Some(r) = chars.strip_prefix('.') {
+                let end = r.find(['.', '[']).unwrap_or(r.len());
+                let name = &r[..end];
+                if name.is_empty() {
+                    return None;
+                }
+                match self.resolve(&cur)? {
+                    Ty::Object(f) => cur = f.get(name)?.0.clone(),
+                    _ => return None,
+                }
+                chars = &r[end..];
+            } else {
+                let r = chars.strip_prefix('[')?;
+                let end = r.find(']')?;
+                let idx = &r[..end];
+                if !idx.is_empty() && !idx.bytes().all(|b| b.is_ascii_digit()) {
+                    return None;
+                }
+                match self.resolve(&cur)? {
+                    Ty::Array(item) => cur = (**item).clone(),
+                    _ => return None,
+                }
+                chars = &r[end + 1..];
+            }
+        }
+        Some(cur)
     }
 
     fn resolve<'a>(&'a self, t: &'a Ty) -> Option<&'a Ty> {

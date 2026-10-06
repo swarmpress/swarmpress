@@ -1,0 +1,2 @@
+{ "type": "object", "additionalProperties": false, "required": ["current"],
+  "properties": { "current": { "$ref": "Weather" } } }

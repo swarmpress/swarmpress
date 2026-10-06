@@ -1,0 +1,2 @@
+{ "type": "object", "additionalProperties": false, "required": ["time", "to"],
+  "properties": { "time": { "type": "string" }, "to": { "type": "string" } } }

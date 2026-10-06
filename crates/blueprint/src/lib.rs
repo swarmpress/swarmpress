@@ -21,6 +21,7 @@ pub mod hash;
 pub mod import;
 pub mod issue;
 pub mod site;
+pub mod tools;
 pub mod town;
 pub mod types;
 

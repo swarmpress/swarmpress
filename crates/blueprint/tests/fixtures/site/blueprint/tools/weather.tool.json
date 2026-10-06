@@ -1,0 +1,15 @@
+{
+  "format": "swarmpress.tool.v1",
+  "id": "weather",
+  "name": { "en": "Weather now" },
+  "inputs": { "city": "string" },
+  "outputs": { "weather": "Weather" },
+  "nodes": [
+    { "id": "in", "kind": "input", "port": "city" },
+    { "id": "fetch", "kind": "connector", "connector": "http-get", "url": "https://api.open-meteo.com/v1/current?city={city}", "returns": "WeatherReport" },
+    { "id": "now", "kind": "op", "op": "pick", "path": "$.current", "returns": "Weather" },
+    { "id": "out", "kind": "output", "port": "weather" }
+  ],
+  "edges": [["in.out", "fetch.params"], ["fetch.out", "now.in"], ["now.out", "out.in"]],
+  "triggers": [{ "kind": "on-demand" }]
+}
