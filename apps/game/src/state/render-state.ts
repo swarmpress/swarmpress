@@ -273,6 +273,8 @@ export interface RenderState {
   bubbles: BubbleRender[]
   /** Remarks in progress (ADR-0074). */
   remarks: RemarkRender[]
+  /** The site's model (ADR-0072): set once the host reported a blueprint; the model table stands then. */
+  siteModel: { pageTypes: number; slots: number; issues: number; tools: number; failingTools: number } | null
   /** The seq the next remark must carry. */
   nextRemark: number
 }
@@ -456,5 +458,6 @@ export function demoRenderState(minute: number, day: number): RenderState {
     bubbles: [],
     remarks: [],
     nextRemark: 0,
+    siteModel: null,
   }
 }

@@ -185,6 +185,31 @@ describe('CentralClient', () => {
   })
 })
 
+describe('CentralClient.putBlueprint (PUT /api/site/blueprint, ADR-0072)', () => {
+  const blueprint = { format: 'swarmpress.blueprint.v1' as const, page_types: [] }
+  it('sends the edit with the lease and its base hash, and answers the landed diff', async () => {
+    const { client, calls } = mock(() => json({ commit: 'c2', hash: 'h2', changes: [{ kind: 'added', subject: 'page-type', id: 'author' }] }))
+    const r = await client.putBlueprint('lease-9', { blueprint, base_hash: 'h1', message: 'Authors' })
+    expect(r).toEqual({ commit: 'c2', hash: 'h2', changes: [{ kind: 'added', subject: 'page-type', id: 'author' }] })
+    expect(calls[0]).toMatchObject({ method: 'PUT', url: 'http://central.test/api/site/blueprint', body: { blueprint, base_hash: 'h1', message: 'Authors' } })
+    expect(calls[0].headers[LEASE_HEADER]).toBe('lease-9')
+  })
+
+  it('throws the 422 with its issues and the 409 of a stale base', async () => {
+    let status = 422
+    const { client } = mock(() =>
+      status === 422 ? json({ error: 'the blueprint does not check', issues: ['bad-slot at /page_types/0/slots: x'] }, 422) : json({ error: 'the blueprint changed since this edit began (now h3)' }, 409),
+    )
+    const bad = await client.putBlueprint('t', { blueprint, base_hash: 'h1' }).catch((e) => e)
+    expect(bad).toBeInstanceOf(CentralError)
+    expect(bad.status).toBe(422)
+    expect(bad.body.issues).toEqual(['bad-slot at /page_types/0/slots: x'])
+    status = 409
+    const stale = await client.putBlueprint('t', { blueprint, base_hash: 'h1' }).catch((e) => e)
+    expect(stale.status).toBe(409)
+  })
+})
+
 describe('LeaseKeeper', () => {
   const lease = (over: Record<string, unknown> = {}) => ({
     epoch: 4,

@@ -45,6 +45,7 @@ tests and are checked by the same functions.
 | Meetings | `meetings[]`: `id`, `kind`, `project`, `room`, `day`, `start`, `end`, `active`, `attendees`, `speaker`, `job` | | |
 | Bubbles | `bubbles[]`: `meeting`, `seq`, `speaker`, `startedStep`, `untilStep`, `chars` | | one per meeting with a turn in progress; text is fetched by reference |
 | Remarks | `remarks[]`: `seq`, `speaker`, `listener`, `startedStep`, `untilStep`, `chars`; `nextRemark` | | lines outside meetings (ADR-0074, the story director); the speaker's pose is `talk`, the listener's `listen`; text by `seq` from the kv (`story.line.<seq>`) |
+| Site model | `siteModel`: `pageTypes`, `slots`, `issues`, `tools`, `failingTools`, or null | | the site's blueprint digest and installed tools (ADR-0072); the brick office stands the model table only while it is set, and the town's geometry comes from the store (`GET /api/site/blueprint`), like a surface's close content |
 | Planned | screen content, poses beyond the six, props' content (moodboard, whiteboard), HUD levels | | need a contract change before the renderer may show them |
 
 ## Bubbles and who works on what (built, FEAT-079)

@@ -50,6 +50,7 @@ pub mod roles;
 pub mod scenarios;
 pub mod snapshot;
 pub mod staff;
+pub mod structure;
 pub mod validate;
 pub mod world;
 

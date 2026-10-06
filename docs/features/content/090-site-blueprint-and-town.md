@@ -12,6 +12,7 @@ paths:
   - "apps/game/src/render/bricks/model.test.ts"
   - "apps/game/src/blueprint/**"
   - "apps/game/src/ui/components/Blueprint*.tsx"
+  - "apps/game/src/ui/blueprint/**"
   - "crates/server/src/site_blueprint.rs"
   - "crates/server/tests/site_blueprint.rs"
 adrs:
@@ -51,6 +52,21 @@ Depends on: FEAT-089, FEAT-081 (brick office renderer), FEAT-079 (approval ticke
   store (`siteModels`). Behind `?office=bricks`, the brick office stands a meeting table in the
   first planning room it builds (strategy room, design studio, editor's office, newsroom) and puts
   the town on it, scaled to fit, at most 1/8. It rebuilds only when the town changes.
+- **The canvas.** The overlay's Blueprint panel (key B) is offered once the source has the site's
+  models. Its Blueprint tab draws the blueprint flat in SVG on a stud grid: a building per page type
+  in the town's street order, a storey per slot in page order coloured by its first block's intent
+  (the town's palette ids, `apps/game/src/blueprint/colours.ts`; optional storeys striped), globals as
+  roof and foundation bands, a pipe on a storey a tool feeds, relationships as walkways and
+  collections as warehouses. The CEO edits a draft (parts bin of the closed catalogue and the site's
+  blocks, page types, storeys, blocks, min and max, relationships), an imported blueprint only after
+  "Start editing from this import". Each edit is checked and diffed in the browser by
+  `blueprint-wasm`, loaded lazily: issues mark storeys red, additions are outlined green, removals
+  ghosted, changes yellow. Save sends `PUT /api/site/blueprint` with the base hash and reloads the
+  models; a 422 shows the server's issues, a 409 offers a reload. The inspector has a simple view in
+  words and an advanced view with the JSON. The Tools tab draws each tool as a machine in the
+  layered layout (layer = longest path from a source, ordered by id), tubes coloured by type, with
+  its triggers, manifest and issues; it is read-only until T-1. Building positions are kept in the
+  panel for now, not in `blueprint/layout.json`.
 
 ## Acceptance criteria
 

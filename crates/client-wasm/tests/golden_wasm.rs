@@ -13,7 +13,7 @@ use wasm_bindgen_test::wasm_bindgen_test;
 
 /// World format 2 (FEAT-079, ADR-0059: the publish gate and the failure
 /// commands); format 1 was `0x591f_2064_16aa_2764`.
-const GOLDEN_HASH: u64 = 0xb813_e0b6_11f8_535b;
+const GOLDEN_HASH: u64 = 0xb5dd_1e08_70d7_ce56;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 #[cfg_attr(not(target_arch = "wasm32"), test)]

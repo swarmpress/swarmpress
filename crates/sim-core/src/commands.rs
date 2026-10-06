@@ -18,8 +18,9 @@ use crate::ids::{
     CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId,
 };
 use crate::inbox::{DelegationPolicy, SecretaryTaskKind, TicketOption};
-use crate::plan::{BriefStub, PlannedStub, WorkItemStatus, WorkPriority};
+use crate::plan::{BriefStub, PlannedStub, WorkItemKind, WorkItemStatus, WorkPriority};
 use crate::projects::ProjectStatus;
+use crate::structure::ToolStub;
 
 /// What the player can do.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -117,6 +118,18 @@ pub enum Command {
     UpdateWorkItem {
         item: WorkItemId,
         update: WorkItemUpdate,
+    },
+    /// The CEO asks for a change to the site's structure, a tool or the
+    /// theme (ADR-0072): a structural work item whose Draft its architect
+    /// starts at once. The request's words are store text under `brief_ref`.
+    Commission {
+        project: ProjectId,
+        kind: WorkItemKind,
+        brief_ref: u64,
+    },
+    /// The CEO runs an installed tool now (ADR-0072).
+    RunTool {
+        tool_ref: u64,
     },
 }
 
@@ -332,6 +345,18 @@ pub enum ServerCommand {
     /// The deploy carrying a merged (`Scheduled`) work item failed: the item
     /// is blocked and a `DeployFailed` ticket raised.
     DeployFailed { work_item: WorkItemId },
+    /// The site's blueprint at the base head (ADR-0072): its digest and
+    /// counts; the blueprint itself stays in the site repo.
+    BlueprintChanged {
+        /// First 16 bytes of the blueprint's semantic hash.
+        hash: [u8; 16],
+        page_types: u16,
+        slots: u16,
+        issues: u16,
+    },
+    /// The site's installed tools (ADR-0072): exactly these, each with its
+    /// schedule and the role of its agent step.
+    ToolsChanged { tools: Vec<ToolStub> },
 }
 
 /// Anything that can be applied to a world.

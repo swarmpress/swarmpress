@@ -96,3 +96,29 @@ export interface SiteModels {
   /** The brick town (`swarmpress.design.v1`, provenance `view`). */
   town: Record<string, unknown>
 }
+
+/** A semantic change between two blueprints (`crates/blueprint/src/diff.rs`), keyed by stable ids. */
+export interface BlueprintChange {
+  kind: 'added' | 'removed' | 'changed'
+  subject: 'page-type' | 'slot' | 'global' | 'collection' | 'relationship' | 'navigation' | 'intent'
+  /** `home`, `home/hero` (a slot), `blog-article>village:about` (a relationship). */
+  id: string
+  /** The fields that differ, for `changed`. */
+  fields?: string[]
+}
+
+/** `PUT /api/site/blueprint`: the CEO's edit, made on the blueprint whose hash is `base_hash`. */
+export interface PutBlueprintBody {
+  blueprint: Blueprint
+  /** The site's types, when they change too; absent: kept. */
+  types?: Record<string, unknown>
+  base_hash: string
+  message?: string
+}
+
+/** The answer of `PUT /api/site/blueprint`: the new base head, the blueprint's hash and the diff it landed. */
+export interface PutBlueprintResult {
+  commit: string
+  hash: string
+  changes: BlueprintChange[]
+}

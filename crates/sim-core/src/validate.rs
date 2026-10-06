@@ -509,6 +509,26 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
         }
         Command::SetDelegation { .. } => Ok(()),
         Command::UpdateWorkItem { item, update } => w.check_update_item(*item, update),
+        Command::Commission { project, kind, .. } => w
+            .check_commission(*project, *kind)
+            .map(|_| ())
+            .map_err(Reject::Invalid),
+        Command::RunTool { tool_ref } => {
+            if !w.plan.structure.tools.contains_key(tool_ref) {
+                return Err(Reject::Invalid("no installed tool has that ref"));
+            }
+            if w.tool_run_pending(*tool_ref) {
+                return Err(Reject::Invalid("the tool is already running"));
+            }
+            if !w
+                .projects
+                .values()
+                .any(|p| p.status == crate::projects::ProjectStatus::Active)
+            {
+                return Err(Reject::Invalid("a tool runs for an active project"));
+            }
+            Ok(())
+        }
         Command::Praise { staff } => {
             active_staff(w, *staff)?;
             if w.praises_today >= PRAISES_PER_DAY {
@@ -593,6 +613,31 @@ pub fn validate_server(w: &World, cmd: &ServerCommand) -> Result<(), Reject> {
             Ok(())
         }
         ServerCommand::SiteSignals(_) => Ok(()),
+        ServerCommand::BlueprintChanged { .. } => Ok(()),
+        ServerCommand::ToolsChanged { tools } => {
+            if tools.len() > crate::structure::MAX_TOOLS {
+                return Err(Reject::Limit("tools (64)"));
+            }
+            let refs: std::collections::BTreeSet<u64> = tools.iter().map(|t| t.tool_ref).collect();
+            if refs.len() != tools.len() {
+                return Err(Reject::Invalid("a tool is listed twice"));
+            }
+            if tools
+                .iter()
+                .any(|t| t.tool_ref >= crate::structure::TOOL_REF_LIMIT)
+            {
+                return Err(Reject::Invalid("a tool ref is 6 bytes of the tool's hash"));
+            }
+            if tools
+                .iter()
+                .any(|t| t.schedule_days > crate::structure::MAX_SCHEDULE_DAYS)
+            {
+                return Err(Reject::Invalid(
+                    "a schedule runs at most every 28 game days",
+                ));
+            }
+            Ok(())
+        }
         ServerCommand::Remark {
             speaker,
             listener,
@@ -646,6 +691,8 @@ pub(crate) fn price(w: &World, cmd: &Command) -> i64 {
         | Command::Delegate { .. }
         | Command::SetDelegation { .. }
         | Command::UpdateWorkItem { .. }
+        | Command::Commission { .. }
+        | Command::RunTool { .. }
         | Command::Praise { .. } => 0,
     }
 }

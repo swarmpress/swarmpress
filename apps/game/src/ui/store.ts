@@ -9,7 +9,7 @@ import type { PlanJson, PlanText, PostType } from './plan-types'
 import { EMPTY_PLAN, EMPTY_PLAN_TEXT, withBoardText, withTextOnlyItems } from './plan-wire'
 import type { FinanceJson, InboxJson, OrgJson, PerformanceJson, StaffJson } from './types'
 
-export type PanelId = 'plan' | 'org' | 'projects' | 'finance' | 'inbox' | 'activity' | 'hiring' | 'performance'
+export type PanelId = 'plan' | 'org' | 'projects' | 'finance' | 'inbox' | 'activity' | 'hiring' | 'performance' | 'blueprint'
 
 export interface PanelDef {
   id: PanelId
@@ -33,6 +33,8 @@ export const PANELS: PanelDef[] = [
   { id: 'finance', label: 'Finance', key: 'f', icon: 'finance' },
   { id: 'performance', label: 'Performance', key: 'k', icon: 'performance' },
   { id: 'hiring', label: 'Hiring', key: 'h', icon: 'hiring' },
+  // The site's structure and tools (ADR-0072): only while the source has the site's models.
+  { id: 'blueprint', label: 'Blueprint', key: 'b', icon: 'blueprint' },
 ]
 
 /** Who a profile card shows: an employee (staff id) or a catalog persona (candidate). */
@@ -46,8 +48,12 @@ export interface Toast {
 
 export interface OverlayStore {
   source: GameDataSource
-  /** The panels the source has data for, in toolbar order (Performance only with KPIs). */
-  panels: PanelDef[]
+  /**
+   * The panels the source has data for, in toolbar order (Performance only
+   * with KPIs, the Blueprint only once the source has the site's models).
+   * Read in a render, it re-renders when the site's models come or go.
+   */
+  readonly panels: PanelDef[]
   /** Where pull requests and published pages live; from the source, never a constant. */
   site: SiteLinks
   /** The house style's banned phrases, for an article's measured checks; null when the source has no list. */
@@ -86,6 +92,8 @@ export interface OverlayStore {
   /** The job the Activity panel opens on (expanded and focused), then clears; null for none. */
   activityJob: ReturnType<typeof signal<number | null>>
   toast: ReturnType<typeof signal<Toast | null>>
+  /** Show a toast (it clears itself after a few seconds). */
+  say(text: string, tone: Toast['tone']): void
   /** Apply a command, then re-read the source; shows a toast with the outcome. */
   run(cmd: Command, success?: string): Promise<CommandResult>
   /**
@@ -237,9 +245,14 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
     })
   }
 
+  const offered = PANELS.filter((p) => (p.id !== 'performance' || caps.performance) && (p.id !== 'activity' || !!caps.activity))
+  const withSite = computed(() => (siteModels.value ? offered : offered.filter((p) => p.id !== 'blueprint')))
+
   const store: OverlayStore = {
     source,
-    panels: PANELS.filter((p) => (p.id !== 'performance' || caps.performance) && (p.id !== 'activity' || !!caps.activity)),
+    get panels() {
+      return withSite.value
+    },
     site: caps.site,
     bannedPhrases: caps.bannedPhrases ?? null,
     can: (name) => caps.commands.has(name),
@@ -261,6 +274,7 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
     article: signal<string | null>(null),
     activityJob: signal<number | null>(null),
     toast,
+    say,
     async run(cmd, success) {
       if (!store.can(commandName(cmd))) {
         say(NOT_AVAILABLE, 'error')

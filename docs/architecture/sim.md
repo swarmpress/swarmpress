@@ -116,6 +116,30 @@ The room kinds, equipment, staff traits and project kinds are described in the g
   moves the hash. Job ids are sequential per world (`plan.jobs_requested`), hence
   deterministic and idempotency keys for the executor.
 
+### Structure and tools (ADR-0072)
+
+- **`Command::Commission{project, kind, brief_ref}`** (`kind`: `Structure`, `Tool` or `Theme`)
+  creates a structural work item with phases Draft and Publish. The Draft job is `Architect`,
+  `ToolBuild` or `ThemeCode`, done by the kind's architect:
+  - structure: the UX designer, else the strategist, else the editor-in-chief;
+  - tools: the web developer, else the IT engineer, else DevOps;
+  - theme: the web developer, else the art director, else the UX designer.
+
+  A project holds at most three open structural items.
+- **The gate:** after the Draft, the item always waits at a `StructureApproval` ticket, whatever
+  the autonomy policy. The ticket is CEO-only and its default `Defer` never applies the change.
+  - `Approve` starts the Publish job, which applies the change; the item is then Published with no
+    deploy to wait for.
+  - `SendBack` starts a revision; `Kill` cancels the item.
+- **`ServerCommand::BlueprintChanged{hash, page_types, slots, issues}`** keeps the blueprint's
+  digest.
+- **`ServerCommand::ToolsChanged{tools: [{tool_ref, schedule_days, role}]}`** sets the installed
+  tools. `tool_ref` is the first 6 bytes of the tool's hash. A tool that stays keeps its run counts.
+- **Tool runs:** `Command::RunTool{tool_ref}` and the 06:00 schedule request a `ToolRun` job, at
+  most one pending per tool. The job's `brief_ref` is the tool ref, and its staff is the member
+  of the role of the tool's agent step, or nobody. `JobCompleted` and `JobFailed` count the run.
+- **World format 7.**
+
 ## Snapshots
 
 `crates/sim-core/src/snapshot.rs` (FEAT-060, ADR-0046). A snapshot is the whole world as bytes,

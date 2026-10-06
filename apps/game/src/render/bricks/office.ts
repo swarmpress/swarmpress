@@ -95,7 +95,7 @@ export interface BrickOfficeStats {
   surfaces: { monitors: number; boards: number; close: number; redraws: number; maxRedrawsPerFrame: number }
   studsShown: boolean
   /** The model table's town, or null when there is none. */
-  model?: { room: string; hash: string; instances: number; kitInstances: number; scale: number } | null
+  model?: { room: string; hash: string; instances: number; kitInstances: number; scale: number; shown: boolean } | null
 }
 
 interface SurfaceHandle {
@@ -475,6 +475,8 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
 
   const update = (state: RenderState) => {
     lastState = state
+    // The model table stands while the sim knows a blueprint (rule 8: the render state decides).
+    showModel(!!state.siteModel)
     const levels = new Map(state.rooms.map((r) => [r.id, r.light]))
     for (const [room, m] of roomBulbs) {
       const level = levels.get(room) ?? 'off'
@@ -494,8 +496,14 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     node: TransformNode
     meshes: Mesh[]
     build: KitBuildLike
-    stats: NonNullable<BrickOfficeStats['model']>
+    stats: Omit<NonNullable<BrickOfficeStats['model']>, 'shown'>
   } | null = null
+  /** Whether the render state says the model table stands; false until a state arrives. */
+  let modelShown = false
+  function showModel(on: boolean) {
+    modelShown = on
+    for (const m of model?.meshes ?? []) m.setEnabled(on)
+  }
   const clearModel = () => {
     if (!model) return
     for (const m of model.meshes) m.dispose()
@@ -536,6 +544,7 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
       }
     }
     for (const l of office.rooms.get(room.id)?.lights ?? []) l.includedOnlyMeshes.push(...meshes)
+    for (const m of meshes) m.setEnabled(modelShown)
     model = {
       json,
       node,
@@ -586,7 +595,7 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
           maxRedrawsPerFrame,
         },
         studsShown,
-        model: model?.stats ?? null,
+        model: model ? { ...model.stats, shown: modelShown } : null,
       }
     },
     dispose: () => {

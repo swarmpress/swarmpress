@@ -86,10 +86,14 @@ pub enum TicketKind {
     /// planned that week (ADR-0069).
     #[serde(alias = "board-failed")]
     BoardFailed,
+    /// A proposed change to the site's structure, its tools or its theme is
+    /// ready: the CEO applies it or not (ADR-0072). Its default never applies.
+    #[serde(alias = "structure-approval")]
+    StructureApproval,
 }
 
 impl TicketKind {
-    pub const ALL: [TicketKind; 14] = [
+    pub const ALL: [TicketKind; 15] = [
         TicketKind::BudgetOverrun,
         TicketKind::RunwayLow,
         TicketKind::PayrollSpike,
@@ -104,6 +108,7 @@ impl TicketKind {
         TicketKind::NeedsMedia,
         TicketKind::NeedsPage,
         TicketKind::BoardFailed,
+        TicketKind::StructureApproval,
     ];
 
     pub const fn slug(self) -> &'static str {
@@ -117,6 +122,7 @@ impl TicketKind {
             TicketKind::ProjectProposal => "project-proposal",
             TicketKind::Escalation => "escalation",
             TicketKind::PublishApproval => "publish-approval",
+            TicketKind::StructureApproval => "structure-approval",
             TicketKind::StandupFailed => "standup-failed",
             TicketKind::DeployFailed => "deploy-failed",
             TicketKind::NeedsMedia => "needs-media",
@@ -139,6 +145,7 @@ impl TicketKind {
             | TicketKind::ProjectProposal
             | TicketKind::Escalation
             | TicketKind::PublishApproval
+            | TicketKind::StructureApproval
             | TicketKind::StandupFailed
             | TicketKind::DeployFailed
             | TicketKind::NeedsMedia
@@ -152,7 +159,10 @@ impl TicketKind {
     /// Only the CEO answers it, whatever its priority and the delegation
     /// policy: nothing reaches the live site on the Secretary's word.
     pub const fn ceo_only(self) -> bool {
-        matches!(self, TicketKind::PublishApproval)
+        matches!(
+            self,
+            TicketKind::PublishApproval | TicketKind::StructureApproval
+        )
     }
 
     /// Carries money; delegation stops at the threshold.
@@ -180,6 +190,7 @@ impl TicketKind {
             TicketKind::ProjectProposal => &[Approve, Reject],
             TicketKind::Escalation => &[Retry, Kill],
             TicketKind::PublishApproval => &[Publish, SendBack, Kill, Defer],
+            TicketKind::StructureApproval => &[Approve, SendBack, Kill, Defer],
             TicketKind::StandupFailed | TicketKind::BoardFailed => &[Retry, Skip],
             TicketKind::DeployFailed => &[Retry, Acknowledge],
             TicketKind::NeedsMedia | TicketKind::NeedsPage => &[Retry, Kill],
@@ -201,7 +212,7 @@ impl TicketKind {
             TicketKind::Escalation | TicketKind::NeedsMedia | TicketKind::NeedsPage => {
                 TicketOption::Kill
             }
-            TicketKind::PublishApproval => TicketOption::Defer,
+            TicketKind::PublishApproval | TicketKind::StructureApproval => TicketOption::Defer,
             TicketKind::StandupFailed | TicketKind::BoardFailed => TicketOption::Skip,
             TicketKind::DeployFailed => TicketOption::Acknowledge,
         }
@@ -689,7 +700,8 @@ impl World {
                 Err("a loan is already outstanding")
             }
             (_, TicketOption::TakeLoan) if t.amount_cents <= 0 => Err("nothing to borrow"),
-            (TicketKind::PublishApproval, TicketOption::Publish | TicketOption::SendBack) => {
+            (TicketKind::PublishApproval, TicketOption::Publish | TicketOption::SendBack)
+            | (TicketKind::StructureApproval, TicketOption::Approve | TicketOption::SendBack) => {
                 let item = t
                     .work_item
                     .and_then(|i| self.plan.items.get(&i))
@@ -792,8 +804,8 @@ impl World {
                 (O::Acknowledge, Some(id)) => self.await_next_deploy(id),
                 _ => {}
             },
-            TicketKind::PublishApproval => match (option, t.item) {
-                (O::Publish, Some(id)) => self.publish_item(id),
+            TicketKind::PublishApproval | TicketKind::StructureApproval => match (option, t.item) {
+                (O::Publish | O::Approve, Some(id)) => self.publish_item(id),
                 (O::SendBack, Some(id)) => self.send_back_item(id),
                 (O::Kill, Some(id)) => self.cancel_item(id),
                 // Defer: the item stays parked; `raise_morning_approvals`

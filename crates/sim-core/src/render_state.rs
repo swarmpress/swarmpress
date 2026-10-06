@@ -120,6 +120,22 @@ pub struct RenderState {
     /// Remarks in progress outside meetings (ADR-0074), in speaker-id order.
     #[serde(default)]
     pub remarks: Vec<RemarkRender>,
+    /// The site's model (ADR-0072): set once the host reported a blueprint;
+    /// the renderer then stands the model table (its town comes from the
+    /// store, like a surface's close content).
+    #[serde(default)]
+    pub site_model: Option<SiteModelRender>,
+}
+
+/// What the office shows of the site's structure and tools (ADR-0072).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SiteModelRender {
+    pub page_types: u16,
+    pub slots: u16,
+    pub issues: u16,
+    pub tools: u16,
+    /// Tools whose last run failed.
+    pub failing_tools: u16,
 }
 
 /// A remark's bubble: the client fetches the text by `seq` (ADR-0074).
@@ -311,8 +327,25 @@ pub fn render_state(w: &World) -> RenderState {
         })
         .collect();
 
+    let structure = &w.plan.structure;
+    let site_model = structure.model.map(|m| SiteModelRender {
+        page_types: m.page_types,
+        slots: m.slots,
+        issues: m.issues,
+        tools: u16::try_from(structure.tools.len()).unwrap_or(u16::MAX),
+        failing_tools: u16::try_from(
+            structure
+                .tools
+                .values()
+                .filter(|t| t.last_ok == Some(false))
+                .count(),
+        )
+        .unwrap_or(u16::MAX),
+    });
+
     RenderState {
         remarks,
+        site_model,
         step: w.step,
         day: now.day,
         minute: now.minute,

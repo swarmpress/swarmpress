@@ -235,6 +235,13 @@ describe.skipIf(!built)('brick office spike (kit-wasm, NullEngine)', () => {
     bricks.setModel(json)
     const m = bricks.stats().model!
     expect(m).not.toBeNull()
+    // Hidden until the render state says the sim knows a blueprint (rule 8).
+    expect(m.shown).toBe(false)
+    const state = workingJson as unknown as RenderState
+    bricks.update({ ...state, siteModel: { pageTypes: 6, slots: 18, issues: 0, tools: 0, failingTools: 0 } })
+    expect(bricks.stats().model!.shown).toBe(true)
+    bricks.update({ ...state, siteModel: null })
+    expect(bricks.stats().model!.shown).toBe(false)
     expect(m.room).toBe(room('editor-office').id)
     expect(m.instances).toBe(m.kitInstances)
     expect(m.instances).toBeGreaterThan(20)
@@ -243,7 +250,7 @@ describe.skipIf(!built)('brick office spike (kit-wasm, NullEngine)', () => {
     // The same town again: nothing is rebuilt.
     const before = bricks.stats().model
     bricks.setModel(json)
-    expect(bricks.stats().model).toBe(before)
+    expect(bricks.stats().model).toEqual(before)
     // A design the kit refuses leaves no model, and null clears it.
     bricks.setModel(JSON.stringify({ ...townJson, ops: [{ op: 'box', at: [0, 0, 0], size: [1, 1, 1], part: 'nope' }] }))
     expect(bricks.stats().model).toBeNull()

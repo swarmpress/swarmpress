@@ -567,6 +567,12 @@ impl World {
                 self.secretary_answers();
             }
             Command::UpdateWorkItem { item, update } => self.update_item(item, update),
+            Command::Commission {
+                project,
+                kind,
+                brief_ref,
+            } => self.commission(project, kind, brief_ref),
+            Command::RunTool { tool_ref } => self.request_tool_run(tool_ref),
             Command::Praise { staff } => {
                 let bonus = if self.building.first_room_of(RoomKind::CeoOffice).is_some() {
                     PRAISE_MORALE + PRAISE_MORALE / 5
@@ -662,6 +668,13 @@ impl World {
             ServerCommand::DeployLanded { work_item } => self.apply_deploy_landed(work_item),
             ServerCommand::JobFailed { job_id, reason } => self.apply_job_failed(job_id, reason),
             ServerCommand::DeployFailed { work_item } => self.apply_deploy_failed(work_item),
+            ServerCommand::BlueprintChanged {
+                hash,
+                page_types,
+                slots,
+                issues,
+            } => self.apply_blueprint_changed(hash, page_types, slots, issues),
+            ServerCommand::ToolsChanged { tools } => self.apply_tools_changed(&tools),
             ServerCommand::Utterance {
                 meeting,
                 speaker,
@@ -1311,6 +1324,10 @@ impl World {
                 // The standup runs until its outcome arrives, at most an hour.
                 self.open_standup(pid, day, STANDUP_START);
             }
+        }
+        // 06:00: scheduled tool runs (ADR-0072).
+        if World::tools_window(now.minute) {
+            self.run_scheduled_tools(day);
         }
         // 11:00: the data scientist's follow-ups of items published 14 days ago (ADR-0071).
         if self.company.policies.analytics && (FOLLOW_UP_START..FOLLOW_UP_END).contains(&now.minute)

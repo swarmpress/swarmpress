@@ -89,6 +89,7 @@ export const STATE_KEYS = keysOf<RenderState>()(
   'bubbles',
   'remarks',
   'nextRemark',
+  'siteModel',
 )
 export const ROOM_KEYS = keysOf<RoomRender>()('id', 'kind', 'light', 'occupancy', 'capacity')
 export const DEVICE_KEYS = keysOf<DeviceRender>()('id', 'room', 'kind', 'state', 'user', 'attachedTo')

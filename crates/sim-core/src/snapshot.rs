@@ -48,7 +48,11 @@ pub const SNAPSHOT_FORMAT: u16 = 1;
 ///   `WorkItem.escalations`, new ticket kinds and options, and new rules (a
 ///   standup nobody answers raises a ticket; a passing review parks the item
 ///   under `ApproveAll`).
-pub const WORLD_FORMAT: u32 = 6;
+/// - 3 to 6: the board, the analytics loop, distribution, remarks (see
+///   `tests/snapshot.rs`).
+/// - 7: the site's structure and tools (ADR-0072): `Plan.structure`,
+///   `PendingJob.tool`, structural work items and `StructureApproval`.
+pub const WORLD_FORMAT: u32 = 7;
 /// Bytes before the body.
 pub const HEADER_LEN: usize = 42;
 

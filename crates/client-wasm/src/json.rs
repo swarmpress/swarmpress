@@ -304,6 +304,14 @@ pub fn render_state(w: &World, rs: &RenderState) -> Value {
         "bubbles": bubbles,
         "remarks": remarks,
         "nextRemark": w.next_remark,
+        // The site's model (ADR-0072): the renderer stands the model table when set.
+        "siteModel": rs.site_model.map(|m| json!({
+            "pageTypes": m.page_types,
+            "slots": m.slots,
+            "issues": m.issues,
+            "tools": m.tools,
+            "failingTools": m.failing_tools,
+        })),
         "day": rs.day,
         "minute": rs.minute,
         "phase": phase_slug(rs.phase),
@@ -826,8 +834,29 @@ pub fn plan(w: &World, project: Option<&str>) -> Value {
             "mediaCount": g.media_count,
         })
     });
+    // The site's structure and tools (ADR-0072), as the sim holds them.
+    let st = &w.plan.structure;
+    let structure = json!({
+        "model": st.model.map(|m| json!({
+            "hash": m.hash.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+            "pageTypes": m.page_types,
+            "slots": m.slots,
+            "issues": m.issues,
+            "changedStep": m.changed_step,
+        })),
+        "tools": st.tools.iter().map(|(r, t)| json!({
+            "toolRef": r,
+            "scheduleDays": t.schedule_days,
+            "role": t.role.map(|r| r.slug()),
+            "runs": t.runs,
+            "failures": t.failures,
+            "lastRunDay": t.last_run_day,
+            "lastOk": t.last_ok,
+        })).collect::<Vec<_>>(),
+    });
     json!({
         "site": site,
+        "structure": structure,
         "goals": goals,
         "workstreams": workstreams,
         "items": items,

@@ -130,6 +130,20 @@ pub enum JobKind {
     /// Promotion copy for a page that went live (ADR-0073).
     #[serde(alias = "promotion")]
     Promotion,
+    /// A proposed change to the site's blueprint (ADR-0072): the Draft of a
+    /// `Structure` item.
+    #[serde(alias = "architect")]
+    Architect,
+    /// A proposed tool graph (ADR-0072): the Draft of a `Tool` item.
+    #[serde(alias = "tool-build")]
+    ToolBuild,
+    /// One run of an installed tool (ADR-0072): no phase, no ticket.
+    #[serde(alias = "tool-run")]
+    ToolRun,
+    /// The theme's templates from the blueprint (ADR-0072): the Draft of a
+    /// `Theme` item.
+    #[serde(alias = "theme-code")]
+    ThemeCode,
 }
 
 impl JobKind {
@@ -144,6 +158,10 @@ impl JobKind {
             JobKind::Performance => "performance",
             JobKind::KpiReport => "kpi-report",
             JobKind::Promotion => "promotion",
+            JobKind::Architect => "architect",
+            JobKind::ToolBuild => "tool-build",
+            JobKind::ToolRun => "tool-run",
+            JobKind::ThemeCode => "theme-code",
         }
     }
 
@@ -246,6 +264,15 @@ pub enum WorkItemKind {
     /// An existing page translated into one more language (ADR-0073).
     #[serde(alias = "translation")]
     Translation,
+    /// A change to the site's blueprint (ADR-0072).
+    #[serde(alias = "structure")]
+    Structure,
+    /// A new or changed tool (ADR-0072).
+    #[serde(alias = "tool")]
+    Tool,
+    /// The theme regenerated from the blueprint (ADR-0072).
+    #[serde(alias = "theme")]
+    Theme,
 }
 
 impl WorkItemKind {
@@ -255,6 +282,9 @@ impl WorkItemKind {
             WorkItemKind::Refresh => "refresh",
             WorkItemKind::Fix => "fix",
             WorkItemKind::Translation => "translation",
+            WorkItemKind::Structure => "structure",
+            WorkItemKind::Tool => "tool",
+            WorkItemKind::Theme => "theme",
         }
     }
 
@@ -390,7 +420,7 @@ pub struct Phase {
 }
 
 impl Phase {
-    fn new(kind: PhaseKind, assignee: Option<StaffId>) -> Phase {
+    pub(crate) fn new(kind: PhaseKind, assignee: Option<StaffId>) -> Phase {
         Phase {
             kind,
             assignee,
@@ -539,6 +569,9 @@ pub struct PendingJob {
     pub work_item: Option<WorkItemId>,
     pub meeting: Option<MeetingId>,
     pub requested_step: u64,
+    /// The tool a `ToolRun` runs (ADR-0072).
+    #[serde(default)]
+    pub tool: Option<u64>,
 }
 
 /// The CEO feed's spotlight entries.
@@ -586,6 +619,9 @@ pub struct Plan {
     /// The day each project last held its editorial board (ADR-0069).
     #[serde(default)]
     pub board_days: BTreeMap<ProjectId, u32>,
+    /// The site's structure and tools (ADR-0072).
+    #[serde(default)]
+    pub structure: crate::structure::Structure,
 }
 
 /// Roles that may write a brief's draft.
@@ -629,6 +665,13 @@ impl World {
                 self.data_scientist().into_iter().collect()
             }
             JobKind::Promotion => self.promoter(job.project).into_iter().collect(),
+            JobKind::ToolRun => job
+                .tool
+                .and_then(|r| self.plan.structure.tools.get(&r))
+                .and_then(|f| f.role)
+                .and_then(|r| self.first_of(&[r], job.project))
+                .into_iter()
+                .collect(),
             _ => item
                 .and_then(|i| i.phases.iter().find(|p| p.job == Some(job.job_id)))
                 .and_then(|p| p.assignee)
@@ -640,7 +683,7 @@ impl World {
             kind: job.kind,
             project: job.project,
             work_item: job.work_item,
-            brief_ref: item.and_then(|i| i.brief_ref),
+            brief_ref: job.tool.or_else(|| item.and_then(|i| i.brief_ref)),
             revision: item.map_or(0, |i| i.revision),
             meeting: job.meeting,
             staff,
@@ -694,6 +737,7 @@ impl World {
                 work_item,
                 meeting,
                 requested_step: self.step,
+                tool: None,
             },
         );
         self.effects.push(Effect::RequestJob {
@@ -1006,7 +1050,7 @@ impl World {
         if job.kind == JobKind::Board {
             return job.requested_step + self.minutes_to_steps(BOARD_DUE_MINUTES);
         }
-        if job.kind.is_analysis() {
+        if job.kind.is_analysis() || job.kind == JobKind::ToolRun {
             return job.requested_step + self.minutes_to_steps(ANALYSIS_DUE_MINUTES);
         }
         job.work_item
@@ -1022,7 +1066,7 @@ impl World {
     }
 
     /// Starts phase `index` of an item: state, timers, job.
-    fn start_phase(&mut self, id: WorkItemId, index: usize) {
+    pub(crate) fn start_phase(&mut self, id: WorkItemId, index: usize) {
         let step = self.step;
         let Some(kind) = self
             .plan
@@ -1044,6 +1088,10 @@ impl World {
             PhaseKind::Publish => WorkItemStatus::Approved,
         };
         let (project, brief_ref, revision) = (item.project, item.brief_ref, item.revision);
+        let job_kind = match kind {
+            PhaseKind::Draft => item.kind.draft_job(),
+            _ => kind.job(),
+        };
         let phase = &mut item.phases[index];
         phase.state = PhaseState::Working;
         phase.started_step = Some(step);
@@ -1051,7 +1099,7 @@ impl World {
         phase.result = None;
         let staff: Vec<StaffId> = phase.assignee.into_iter().collect();
         let job = self.request_job(
-            kind.job(),
+            job_kind,
             project,
             Some(id),
             brief_ref,
@@ -1074,6 +1122,10 @@ impl World {
         let Some(job) = self.plan.jobs.remove(&job_id) else {
             return;
         };
+        if let Some(tool) = job.tool {
+            self.tool_run_done(tool, digest.ok);
+            return;
+        }
         if job.kind.is_analysis() {
             // A follow-up keeps its score on the item (ADR-0071); a report only its text.
             if let (JobKind::Performance, Some(id)) = (job.kind, job.work_item) {
@@ -1108,6 +1160,10 @@ impl World {
         let Some(job) = self.plan.jobs.remove(&job_id) else {
             return;
         };
+        if let Some(tool) = job.tool {
+            self.tool_run_done(tool, false);
+            return;
+        }
         match (job.kind, job.work_item) {
             // An analysis that failed is not retried; the orchestrator posts why.
             (JobKind::Performance, Some(id)) => {
@@ -1210,13 +1266,23 @@ impl World {
         self.raise_publish_approval(id);
     }
 
-    /// Asks the CEO whether a parked item may be published.
+    /// Asks the CEO whether a parked item may be published (applied, for a
+    /// structural item: ADR-0072).
     fn raise_publish_approval(&mut self, id: WorkItemId) {
-        let Some((project, owner)) = self.plan.items.get(&id).map(|i| (i.project, i.owner)) else {
+        let Some((project, owner, structural)) = self
+            .plan
+            .items
+            .get(&id)
+            .map(|i| (i.project, i.owner, i.kind.is_structural()))
+        else {
             return;
         };
         let ticket = self.raise_ticket(TicketSpec {
-            kind: TicketKind::PublishApproval,
+            kind: if structural {
+                TicketKind::StructureApproval
+            } else {
+                TicketKind::PublishApproval
+            },
             project: Some(project),
             from: owner,
             role: None,
@@ -1239,7 +1305,13 @@ impl World {
         let asked: Vec<WorkItemId> = self
             .tickets
             .values()
-            .filter(|t| t.is_open() && t.kind == TicketKind::PublishApproval)
+            .filter(|t| {
+                t.is_open()
+                    && matches!(
+                        t.kind,
+                        TicketKind::PublishApproval | TicketKind::StructureApproval
+                    )
+            })
             .filter_map(|t| t.work_item)
             .collect();
         let parked: Vec<WorkItemId> = self
@@ -1424,7 +1496,10 @@ impl World {
             };
             let current = item.current;
             item.phases[current].state = PhaseState::Done;
+            let structural = item.kind.is_structural();
             let next = match kind {
+                // A structural change always waits for the CEO (ADR-0072).
+                PhaseKind::Draft if structural => Next::Gate(current + 1),
                 PhaseKind::Draft => Next::Phase(current + 1),
                 PhaseKind::Review => {
                     item.last_score = Some(result.score);
@@ -1447,6 +1522,12 @@ impl World {
                         item.reopen_for_revision();
                         Next::Phase(0)
                     }
+                }
+                // Applied by its Publish job: no deploy to wait for.
+                PhaseKind::Publish if structural => {
+                    item.status = WorkItemStatus::Published;
+                    item.published_step = Some(step);
+                    Next::Wait
                 }
                 PhaseKind::Publish => {
                     item.status = WorkItemStatus::Scheduled;

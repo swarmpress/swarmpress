@@ -1,4 +1,4 @@
-import type { SiteModels } from '../blueprint/types'
+import type { PutBlueprintBody, PutBlueprintResult, SiteModels } from '../blueprint/types'
 import type { CommandResult } from './commands'
 import type { Persona } from './personas'
 import type { PlanJson, PlanPost, PlanText } from './plan-types'
@@ -269,6 +269,14 @@ export interface GameDataSource {
    * change is announced with the `site` topic.
    */
   getSiteModels?(): Promise<SiteModels | null>
+  /**
+   * The CEO's edit of the blueprint (`PUT /api/site/blueprint`, ADR-0072).
+   * Rejects with an error carrying `status` (422: `body.issues`, 409: a
+   * stale `base_hash`) and `body`. Absent: the source cannot save.
+   */
+  saveBlueprint?(body: PutBlueprintBody): Promise<PutBlueprintResult>
+  /** Read the site's models again (after a save, or a 409); announced with the `site` topic. */
+  reloadSiteModels?(): Promise<void>
 }
 
 /** Everything the overlay renders from, read in one go. */

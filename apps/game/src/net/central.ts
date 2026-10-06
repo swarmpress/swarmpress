@@ -553,6 +553,17 @@ export class CentralClient {
     return this.json('GET', '/api/site/blueprint', { headers: { [LEASE_HEADER]: token } })
   }
 
+  /**
+   * `PUT /api/site/blueprint`: the CEO's edit of the site's structure
+   * (ADR-0072). A blueprint that does not check is a 422 whose body carries
+   * `{error, issues: string[]}`; a `base_hash` that is no longer the current
+   * one is a 409 (someone changed the blueprint first). Both throw a
+   * `CentralError` with the status and the parsed body.
+   */
+  putBlueprint(token: string, body: import('../blueprint/types').PutBlueprintBody): Promise<import('../blueprint/types').PutBlueprintResult> {
+    return this.json('PUT', '/api/site/blueprint', { json: body, headers: { [LEASE_HEADER]: token } })
+  }
+
   /** `token`: the lease's fencing token (`Lease.token`). */
   draft(token: string, body: DraftRequest): Promise<DraftResult> {
     return this.json('POST', '/api/gateway/draft', { json: body, headers: { [LEASE_HEADER]: token } })

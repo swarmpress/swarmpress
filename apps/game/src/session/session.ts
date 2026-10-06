@@ -44,7 +44,7 @@
 import { Sim } from 'swarm-wasm'
 import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResult, type RestoredSim, type SimFactory } from '../catchup/replay'
 import { CentralClient, centralGateway, companyFor, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type SiteAudit } from '../net/central'
-import type { SiteModels } from '../blueprint/types'
+import type { PutBlueprintBody, PutBlueprintResult, SiteModels } from '../blueprint/types'
 import { OrchestrationLoop, type JobRecord } from '../orchestration/loop'
 import { withApprover } from '../orchestration/approver'
 import { sweepStages } from '../orchestration/sweeper'
@@ -264,6 +264,18 @@ class SessionDataSource extends WasmDataSource {
 
   getSiteModels(): Promise<SiteModels | null> {
     return Promise.resolve(this.models)
+  }
+
+  /** How the overlay saves and re-reads the blueprint; the session sets it with the lease (null: read-only). */
+  siteActions: { save(body: PutBlueprintBody): Promise<PutBlueprintResult>; reload(): Promise<void> } | null = null
+
+  saveBlueprint(body: PutBlueprintBody): Promise<PutBlueprintResult> {
+    if (!this.siteActions) return Promise.reject(new Error('This session cannot change the site (read-only).'))
+    return this.siteActions.save(body)
+  }
+
+  reloadSiteModels(): Promise<void> {
+    return this.siteActions ? this.siteActions.reload() : Promise.resolve()
   }
 }
 
@@ -1019,6 +1031,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
         version: () => activity.written,
       }
       const s = new SessionDataSource(orgApi, { ...companyStoreOptions(store, company, site, recorder), changeKey: () => `${sim.step()}:${loop.lastSeq}` })
+      if (!readOnly) s.siteActions = { save: (body) => client.putBlueprint(lease.token, body), reload: () => loadSiteModels() }
       sources.add(s)
       return s
     },

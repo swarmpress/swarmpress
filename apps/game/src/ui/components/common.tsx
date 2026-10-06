@@ -13,6 +13,7 @@ const ICONS: Record<string, string> = {
   finance: 'M4 19V9M10 19V5M16 19v-7M21 19H3',
   performance: 'M3 17l5-6 4 3 6-8 3 3',
   hiring: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M18 8v6M15 11h6',
+  blueprint: 'M4 21V8l8-5 8 5v13zM4 12h16M4 16.5h16M10 21v-3h4v3',
   close: 'M6 6l12 12M18 6L6 18',
   back: 'M15 5l-7 7 7 7',
 }

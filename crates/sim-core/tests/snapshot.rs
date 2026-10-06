@@ -34,6 +34,9 @@ const WORLD_FORMATS: &[(u32, u64)] = &[
     (5, 0x6d4c_cf99_7f96_64c8),
     // FEAT-099, ADR-0074: remarks (the story director's bubbles)
     (6, 0xb813_e0b6_11f8_535b),
+    // FEAT-090, FEAT-091, ADR-0072: the site's structure and tools (Plan.structure,
+    // PendingJob.tool, structural work items, StructureApproval)
+    (7, 0xb5dd_1e08_70d7_ce56),
 ];
 
 /// The golden hash of the current world format.
