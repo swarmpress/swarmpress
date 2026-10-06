@@ -724,6 +724,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             bar: self.site.quality_bar,
             checks: &[],
             evidence: &evidence,
+            previous: &[],
         };
         let prompt = update_review_prompt(&self.site.llm, &cx.system, &frame, &kind, &art.changes);
         let schema = review_schema();

@@ -525,6 +525,48 @@ async fn a_revision_naming_s2_changes_only_s2() {
 }
 
 #[tokio::test]
+async fn a_re_review_is_shown_its_notes_on_the_previous_draft() {
+    let llm = Arc::new(fake_writer::fake_writer([]));
+    let store: Arc<dyn Store> = Arc::new(MemStore::new());
+    put_brief(store.as_ref(), 600).await;
+    let o = orch(llm.clone(), store.clone());
+    first_draft_and_review(&o).await;
+    let prompt_of = |from: usize, task: &str| -> String {
+        llm.calls()[from..]
+            .iter()
+            .find(|c| {
+                c.request.messages[0]
+                    .text
+                    .starts_with(&format!("## Task: {task}"))
+            })
+            .map(|c| c.request.messages[0].text.clone())
+            .unwrap_or_else(|| panic!("no {task} call"))
+    };
+    // The first review has no previous notes.
+    assert!(!prompt_of(0, "review").contains("Your notes on the previous draft"));
+    let issue = artifact(store.as_ref()).await["sectioned_review"]["issues"][0].clone();
+    let problem = issue["problem"].as_str().unwrap().to_string();
+
+    // The revision is told what to do with an unsupported claim, with the facts in the prompt.
+    let n = llm.calls().len();
+    o.run(&job(4, JobKind::Draft, 1)).await.unwrap();
+    assert!(prompt_of(n, "revise s2").contains("support it with a fact listed below or remove it"));
+
+    // The re-review sees what it asked for, tagged by part.
+    let n = llm.calls().len();
+    o.run(&job(5, JobKind::Review, 1)).await.unwrap();
+    let review = prompt_of(n, "review");
+    assert!(
+        review.contains("## Your notes on the previous draft"),
+        "{review}"
+    );
+    assert!(
+        review.contains(&format!("- [s2] {}", problem.trim())),
+        "{review}"
+    );
+}
+
+#[tokio::test]
 async fn the_ceos_send_back_note_becomes_an_issue() {
     let llm = Arc::new(fake_writer::fake_writer([]));
     let store: Arc<dyn Store> = Arc::new(MemStore::new());

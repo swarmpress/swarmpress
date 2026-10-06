@@ -682,15 +682,16 @@ pub fn revise_prompt(
     };
     c.required(
         "instructions",
-        format!("Revise this part of your article. Address every note below; keep what the notes do not touch. {shape}"),
+        format!("Revise this part of your article. Address every note below; keep what the notes do not touch. Where a note says a claim is unsupported, support it with a fact listed below or remove it; never restate it unchanged. {shape}"),
     );
     c.required("brief", brief_part(brief));
     c.required("article", article_part(outline, Some(spec.id)));
     c.required("section", spec.part());
     c.required("current", format!("## Your current text\n{current}\n"));
     c.required("notes", notes_part(notes));
-    // Research evidence answers the notes that ask for verified facts (ADR-0068).
-    c.optional("facts", 1, facts_part(facts));
+    // Research evidence answers the notes that ask for verified facts (ADR-0068);
+    // without it a revision cannot tell a supported claim from one to cut.
+    c.required("facts", facts_part(facts));
     c.optional(
         "neighbours",
         2,
@@ -786,6 +787,10 @@ pub struct ReviewFrame<'a> {
     pub checks: &'a [String],
     /// The item's research evidence (`E1: … (source: …)`), ADR-0068.
     pub evidence: &'a [String],
+    /// The editor's issues on the previous draft, `[part] problem Fix: …`
+    /// (empty for a first draft): a re-review judges the revision against
+    /// them instead of starting over.
+    pub previous: &'a [String],
 }
 
 fn review_head(frame: &ReviewFrame<'_>) -> String {
@@ -793,6 +798,29 @@ fn review_head(frame: &ReviewFrame<'_>) -> String {
         "Revision: {}\nApproval bar: {}\n",
         frame.revision, frame.bar
     )
+}
+
+/// The previous review's issues as a re-review reads them; `part` keeps only
+/// that part's issues and the whole-article ones.
+fn previous_part(previous: &[String], part: Option<SectionId>) -> String {
+    let tag = part.map(|id| format!("[{id}]"));
+    let lines: Vec<&String> = previous
+        .iter()
+        .filter(|l| match &tag {
+            Some(t) => l.starts_with(t.as_str()) || l.starts_with("[whole]"),
+            None => true,
+        })
+        .collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    let mut s = String::from(
+        "## Your notes on the previous draft\nThis is a revision. Judge it first on these notes: check each one and say in your notes whether it was addressed. Raise a new issue only for a factual error, an unsupported claim or a breach of the standards, not for a preference you did not raise before. If your notes are addressed and nothing serious is new, the draft meets the bar.\n",
+    );
+    for l in lines {
+        s.push_str(&format!("- {l}\n"));
+    }
+    s
 }
 
 fn checks_part(checks: &[String]) -> String {
@@ -818,6 +846,7 @@ pub fn review_prompt(
     );
     c.required("brief", brief_part(frame.brief));
     c.required("checks", checks_part(frame.checks));
+    c.required("previous", previous_part(frame.previous, None));
     c.optional("evidence", 1, evidence_part(frame.evidence));
     c.required("draft", format!("## The draft\n{reading}"));
     c.build()
@@ -858,6 +887,7 @@ pub fn review_section_prompt(
         "Review this one part of a longer draft. Score it from 1 to 10 and list its issues (at most four), each with a fix.",
     );
     c.required("brief", brief_part(frame.brief));
+    c.required("previous", previous_part(frame.previous, Some(id)));
     c.optional("evidence", 1, evidence_part(frame.evidence));
     c.required("part", format!("## [{id}] {heading}\n{text}\n"));
     c.build()
@@ -889,6 +919,7 @@ pub fn review_summary_prompt(
         s.push_str(&format!("- [{id}] {score}/10\n"));
     }
     c.required("scores", s);
+    c.required("previous", previous_part(frame.previous, None));
     c.optional("evidence", 2, evidence_part(frame.evidence));
     c.optional(
         "digests",

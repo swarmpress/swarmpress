@@ -1773,12 +1773,29 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         let ids = section_ids(n);
         let checks = measured_checks(&self.site, &brief, &page, Some(&parts));
         let evidence = evidence_lines(&art.evidence);
+        // A re-review sees what it asked for last time (the review is replaced only below).
+        let previous: Vec<String> = if req.revision > 0 {
+            art.sectioned_review
+                .iter()
+                .flat_map(|r| &r.issues)
+                .map(|i| {
+                    if i.fix.trim().is_empty() {
+                        format!("[{}] {}", i.section, i.problem.trim())
+                    } else {
+                        format!("[{}] {} Fix: {}", i.section, i.problem.trim(), i.fix.trim())
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let frame = ReviewFrame {
             brief: &brief,
             revision: req.revision,
             bar: self.site.quality_bar,
             checks: &checks,
             evidence: &evidence,
+            previous: &previous,
         };
         let profile = &self.site.llm;
         let estimate = profile.tokens(&reading) + profile.tokens(&checks.join("\n"));
