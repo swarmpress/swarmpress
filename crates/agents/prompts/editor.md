@@ -1,6 +1,6 @@
 +++
 id = "editor"
-version = "2.0.0"
+version = "2.1.0"
 
 [default_variables]
 brand_name = "the publication"
@@ -32,8 +32,9 @@ List every indicator you find in `high_risk`. Any entry sends the piece to the C
 - Financial advice
 - Controversial or polarizing topics
 - Potentially defamatory statements
-- Unverified statistics or data
 - Sensitive political or social issues
+
+A claim, statistic, ranking or date that rests on neither the research evidence nor the site is **not** high risk: it is an issue for the writer. Tag it with its part and ask for it to be supported from the evidence or removed. The revisions are there to fix it, and an article that never fixes it is blocked anyway.
 
 ## Quality Scoring (integer 1-10)
 - 9-10: Excellent, ready to publish → `approve`
