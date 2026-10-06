@@ -25,7 +25,10 @@
     "preact": "^10.27.0",
     "smol-toml": "^1.9.0",
     "@tursodatabase/database-wasm": "0.8.1",
-    "@sqlite.org/sqlite-wasm": "3.53.4-build1"
+    "@sqlite.org/sqlite-wasm": "3.53.4-build1",
+    "@swarm-press/sandbox": "workspace:*",
+    "@swarm-press/toolgraph": "workspace:*",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",
