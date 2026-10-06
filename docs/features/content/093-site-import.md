@@ -7,6 +7,9 @@ paths:
   - "crates/blueprint/src/import.rs"
   - "crates/blueprint/tests/import.rs"
   - "crates/blueprint/tests/fixtures/cinqueterre-mini.blueprint.json"
+  - "apps/game/src/blueprint/design-import.ts"
+  - "apps/game/src/blueprint/design-import.test.ts"
+  - "apps/game/src/blueprint/fixtures/**"
 adrs:
   - ADR-0072
   - ADR-0061
@@ -45,7 +48,20 @@ Design: [`docs/design/construction-kits.md`](../../design/construction-kits.md) 
 
 The fixture site's import is golden (`tests/fixtures/cinqueterre-mini.blueprint.json`), passes the
 checker in its own context, and its derived registry accepts every page of each non-core type.
-HTML and ZIP import come later (X-3).
+**Designs (HTML or ZIP, Claude Design exports included)** are read in the browser by
+`apps/game/src/blueprint/design-import.ts`:
+- **Parsing:** `DOMParser` parses the pages, so their scripts never run, and nothing is fetched.
+- **ZIP:** stored and deflated entries are read without a library; non-text and oversized files
+  are skipped.
+- **Sections to blocks:** each page's top-level sections map to catalogue blocks by fixed rules
+  (newsletter, FAQ, gallery, cards, hero, stats, call to action, content), and the rule that
+  fired is kept.
+- **Page types:** each page becomes one page type with slots in section order.
+- **Globals:** headers and footers become globals only when the site has their blocks.
+- **Tokens:** `:root` custom properties become token candidates.
+
+The proposal checks clean on the real checker (blueprint-wasm). The semantic reconciliation is
+`diffBlueprints` against the stored blueprint.
 
 ## Acceptance criteria
 
