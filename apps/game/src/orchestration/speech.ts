@@ -73,7 +73,20 @@ interface PlanWip {
   room: number
   awaitingApproval: number
   freeWriters: string[]
+  /** Planned items a board may still add (ADR-0069). */
+  plannedRoom?: number
 }
+
+/** `orchestrator::BoardContext`: the standup's context plus the room under the sim's planned-item limit. */
+export interface BoardContextJson extends StandupContextJson {
+  planned_room: number | null
+}
+
+type PlanItemLite = { id: string; project: string; status: string; briefRefText?: string | null }
+
+/** An item's title: its own plan text, else its brief's from the board (`brief:<ref>`, ADR-0069). */
+const titleOf = (i: PlanItemLite, titles?: Record<string, string | undefined>) =>
+  titles?.[i.id] || (i.briefRefText ? titles?.[`brief:${i.briefRefText}`] : undefined) || null
 
 /** The local date `YYYY-MM-DD` (seasons follow wall time, ADR-0048). */
 export function localDate(d: Date): string {
@@ -104,7 +117,7 @@ export function standupContext(
   project: string,
   opts: { now: Date; titles?: Record<string, string | undefined>; minutesPerArticle?: number | null; modelMinutesPerDay?: number },
 ): StandupContextJson {
-  const plan = JSON.parse(planJson) as { items: { id: string; project: string; status: string }[]; wip?: PlanWip[] }
+  const plan = JSON.parse(planJson) as { items: PlanItemLite[]; wip?: PlanWip[] }
   const wip = plan.wip?.find((w) => w.project === project)
   const closed = new Set(['published', 'cancelled'])
   return {
@@ -114,8 +127,23 @@ export function standupContext(
       : {}),
     in_flight: plan.items
       .filter((i) => i.project === project && !closed.has(i.status))
-      .map((i) => ({ id: i.id, status: i.status, title: opts.titles?.[i.id] || null })),
+      .map((i) => ({ id: i.id, status: i.status, title: titleOf(i, opts.titles) })),
     minutes_per_article: opts.minutesPerArticle ?? null,
     ...(opts.modelMinutesPerDay ? { model_minutes_per_day: opts.modelMinutesPerDay } : {}),
   }
+}
+
+/**
+ * The context of an editorial board for `project` (ADR-0069): the standup's
+ * (items in flight and planned, with titles, the date, the throughput) and
+ * the room under the sim's limit of planned items.
+ */
+export function boardContext(
+  planJson: string,
+  project: string,
+  opts: { now: Date; titles?: Record<string, string | undefined>; minutesPerArticle?: number | null; modelMinutesPerDay?: number },
+): BoardContextJson {
+  const base = standupContext(planJson, project, opts)
+  const wip = (JSON.parse(planJson) as { wip?: PlanWip[] }).wip?.find((w) => w.project === project)
+  return { ...base, planned_room: wip?.plannedRoom ?? null }
 }

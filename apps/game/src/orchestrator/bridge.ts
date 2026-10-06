@@ -49,12 +49,24 @@ export interface BriefOut {
   editor: string
 }
 
+/** `orchestrator::PlannedOut`: one item the editorial board planned (ADR-0069); refs are decimal strings here. */
+export interface PlannedOut {
+  brief_ref: string
+  editor: string
+  priority: string
+  workstream?: number
+  start_offset: number
+  publish_offset: number
+  depends_on?: number[]
+}
+
 /** `orchestrator::JobFailure`: why a job cannot finish (the sim's names). */
 export type JobFailure = 'Model' | 'InvalidOutput' | 'NeedsMedia' | 'NeedsPage' | 'Timeout' | 'Cancelled' | 'Infrastructure'
 
 /** `orchestrator::Outcome` (externally tagged). */
 export type Outcome =
   | { MeetingOutcome: { job_id: number; briefs: BriefOut[] } }
+  | { BoardOutcome: { job_id: number; workstreams: string[]; items: PlannedOut[] } }
   | { JobCompleted: { job_id: number; digest: Digest } }
   | { JobFailed: { job_id: number; reason: JobFailure } }
   | { DeployLanded: { work_item: string } }

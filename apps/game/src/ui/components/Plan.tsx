@@ -21,7 +21,7 @@ export function Plan() {
   const [chosen, setView] = useState<View>('board')
   const [filter, setFilter] = useState<BoardFilter>({ project: null, workstream: null, person: null })
   const selected = store.plan.value.items.find((i) => i.id === store.selectedItem.value)
-  // Only the views the plan has data for (the live sim exports no schedule or goals yet).
+  // Only the views the plan has data for (the schedule views light up after the first editorial board, ADR-0069).
   const available = availableViews(store.plan.value)
   const tabs = VIEWS.filter((v) => available.includes(v.id))
   const view = available.includes(chosen) ? chosen : 'board'

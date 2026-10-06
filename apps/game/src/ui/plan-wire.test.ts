@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import wire from './fixtures/plan-wire.json'
-import { normalizePlanText, normalizePost, splitPlanJson, statusFromThread, toStorePost, withTextOnlyItems, type PlanTextWire } from './plan-wire'
+import { normalizePlanText, normalizePost, splitPlanJson, statusFromThread, toStorePost, withBoardText, withTextOnlyItems, type PlanTextWire } from './plan-wire'
+import type { PlanJson, PlanText, WorkItemJson } from './plan-types'
 
 /**
  * The orchestrator's `Store::plan_json` shape (crates/orchestrator/src/store.rs,
@@ -74,3 +75,58 @@ describe('plan_json wire shape (orchestrator)', () => {
     ])
   })
 })
+
+describe('the editorial board’s plan text (ADR-0069, FEAT-087)', () => {
+  const item = (id: string, briefRefText: string | null, extra: Partial<WorkItemJson> = {}): WorkItemJson => ({
+    id,
+    project: 'project-1',
+    workstream: 'workstream-1',
+    kind: 'article',
+    status: 'planned',
+    priority: 'normal',
+    owner: 'staff-5',
+    phases: [],
+    todos: [],
+    dependsOn: [],
+    dueDay: 5,
+    publishDay: 6,
+    tickets: [],
+    briefRefText,
+    unstarted: true,
+    ...extra,
+  })
+  const plan: PlanJson = {
+    goals: [{ id: 'goal-project-1', metric: 'monthly-readers', target: 1000, current: 120 }],
+    workstreams: [{ id: 'workstream-1', project: 'project-1', status: 'active', textRef: '8361854316634078731' }],
+    items: [item('work-item-4', '5861808041880732776'), item('work-item-5', '7', { unstarted: false, status: 'in-progress' })],
+  }
+  const text: PlanText = {
+    items: {
+      'brief:5861808041880732776': { title: 'The Grape Harvest in Manarola', brief: 'A seasonal guide.' },
+      'brief:7': { title: 'Vernazza harbour at first light', brief: '…' },
+      'work-item-5': { title: 'Vernazza at dawn (as drafted)', brief: '…' },
+      'workstream:8361854316634078731': { title: 'Fall', brief: '' },
+    },
+    todos: {},
+    workstreams: {},
+    goals: {},
+    posts: {},
+  }
+
+  it('names an item by its brief until it has text of its own, a workstream and the goal by theirs', () => {
+    const joined = withBoardText(plan, text)
+    expect(joined.items['work-item-4'].title).toBe('The Grape Harvest in Manarola')
+    expect(joined.items['work-item-5'].title).toBe('Vernazza at dawn (as drafted)')
+    expect(joined.workstreams['workstream-1'].title).toBe('Fall')
+    expect(joined.goals['goal-project-1'].title).toBe('Monthly readers')
+    // nothing to join: the same object
+    const bare: PlanJson = { goals: [], workstreams: [], items: [] }
+    expect(withBoardText(bare, text)).toBe(text)
+  })
+
+  it('never shows the board’s brief and workstream keys as items of their own', () => {
+    const joined = withTextOnlyItems({ goals: [], workstreams: [], items: [] }, text, 'project-1')
+    expect(joined.items.map((i) => i.id)).toEqual(['work-item-5'])
+  })
+})
+

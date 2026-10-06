@@ -770,7 +770,7 @@ export async function runSoak(o: SoakOptions): Promise<SoakReport> {
   const landedLog = new Map<string, number>()
   for (const c of commands) {
     const body = JSON.parse(c.json) as Record<string, Record<string, unknown>>
-    if (c.kind === 'JobCompleted' || c.kind === 'JobFailed' || c.kind === 'MeetingOutcome') {
+    if (c.kind === 'JobCompleted' || c.kind === 'JobFailed' || c.kind === 'MeetingOutcome' || c.kind === 'BoardOutcome') {
       const id = Number(body[c.kind].job_id)
       settled.set(id, (settled.get(id) ?? 0) + 1)
     }

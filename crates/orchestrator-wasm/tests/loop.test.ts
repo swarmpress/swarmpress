@@ -223,6 +223,36 @@ describe('orchestrator-wasm under Bun', () => {
     expect(() => new OrchestratorHandle({}, {}, {}, bound({ knowledge_pack: '{"commit": 1}' }))).toThrow(/knowledge pack/)
   })
 
+  test('the weekly editorial board: the twin fake plans what the Rust fake plans, refs cross as text (ADR-0069)', async () => {
+    const store = new MemJsStore()
+    const llm = fakeModel()
+    const orch = new OrchestratorHandle(store, new FakeJsGateway(), llm, SITE)
+    const team = [...MVP_TEAM.filter((s) => s.role !== 'writer'), { id: 'staff-9', persona: 'chiara', role: 'strategist' }]
+    const req = { company_id: COMPANY, job_id: 19, kind: 'board', project: 'project-1', work_item: null, brief_ref: null, revision: 0, staff: team, meeting: 'meeting-7', context: { today: '2026-10-05', in_flight: [], planned_room: 10 } }
+    const out = JSON.parse(await orch.run(JSON.stringify(req)))
+    const board = out[0].BoardOutcome
+    // the same plan as crates/orchestrator/tests/board.rs: the autumn topic, then four guides
+    expect(llm.calls.map(task)).toEqual(['weekly board', ...Array(5).fill('pitch check')])
+    expect(board.items.map((i: { start_offset: number; publish_offset: number }) => [i.start_offset, i.publish_offset])).toEqual([
+      [0, 2],
+      [2, 4],
+      [4, 6],
+      [6, 8],
+      [8, 10],
+    ])
+    expect(board.items[1].depends_on).toEqual([0])
+    expect(board.workstreams).toHaveLength(2)
+    for (const r of [...board.workstreams, ...board.items.map((i: { brief_ref: string }) => i.brief_ref)]) expect(r).toMatch(/^\d+$/)
+    const titles = board.items.map((i: { brief_ref: string }) => JSON.parse(store.briefs.get(`${COMPANY}\u0000${i.brief_ref}`)!.record).brief.title)
+    expect(titles.slice(0, 2)).toEqual(['The Grape Harvest in Manarola', 'Vernazza harbour at first light'])
+    expect(store.items.get(`${COMPANY}\u0000brief:${board.items[0].brief_ref}`)?.title).toBe('The Grape Harvest in Manarola')
+    expect(store.items.get(`${COMPANY}\u0000workstream:${board.workstreams[0]}`)?.title).toBe('Fall')
+    // for the sim: the refs as numbers again, the u64s exact
+    const [cmd] = outcomesForSim(JSON.stringify(out))
+    expect(cmd).toContain(`"workstreams":[${board.workstreams.join(',')}]`)
+    expect(cmd).toContain(`"brief_ref":${board.items[0].brief_ref}`)
+  })
+
   test('standup → draft → review 6 → revision → review 8 → publish', async () => {
     const store = new MemJsStore()
     const gateway = new FakeJsGateway()
@@ -251,9 +281,12 @@ describe('orchestrator-wasm under Bun', () => {
     const publish = res.steps[5].outcomes
     expect(publish[1]).toEqual({ DeployLanded: { work_item: 'work-item-1' } })
 
-    // The staged calls (ADR-0058): the draft in stages, a review, a revision of
-    // the part the review names (its prompt carries the note), a review.
-    expect(llm.calls.slice(4).map(task)).toEqual([
+    // The staged calls (ADR-0058): after the standup's six (opening, two pitches,
+    // two pitch checks, the commission), research (ADR-0068), the draft in stages,
+    // a review, research on the review's notes and a revision of the part the
+    // review names (its prompt carries the note), a review.
+    expect(llm.calls.slice(6).map(task)).toEqual([
+      'research',
       'outline',
       'intro',
       'section s1 of 3',
@@ -261,10 +294,11 @@ describe('orchestrator-wasm under Bun', () => {
       'section s3 of 3',
       'closing',
       'review',
+      'research',
       'revise s2',
       'review',
     ])
-    expect(llm.calls[11].request.messages[0].text).toContain(MVP_REVIEW_NOTE)
+    expect(llm.calls[15].request.messages[0].text).toContain(MVP_REVIEW_NOTE)
     expect(progress.filter((e) => e.stage === 'section' && e.state === 'done').map((e) => `${e.index}/${e.total}`)).toEqual(['0/3', '1/3', '2/3', '3/3'])
     // The bridge stores the stage rows as JSON text.
     expect([...store.stages.keys()].filter((k) => k.includes('\u0000section\u0000'))).toHaveLength(4)
@@ -411,7 +445,8 @@ describe('P6: cancel through the handle', () => {
     expect(orch.cancel('cancelled')).toBe(2)
     expect(JSON.parse(await running)).toEqual([{ JobFailed: { job_id: 2, reason: 'Cancelled' } }])
     expect(aborted).toBe(1)
-    expect(llm.calls.map(task).slice(4)).toEqual(['outline'])
+    // after the standup's six calls: the draft's research and outline, then the intro was cancelled
+    expect(llm.calls.map(task).slice(6)).toEqual(['research', 'outline'])
     expect(orch.cancel()).toBeUndefined()
   })
 })

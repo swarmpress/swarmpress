@@ -29,6 +29,11 @@
  *   takeover=1       take the company over from the executor that holds it (this
  *                    page load only; the parameter is removed from the URL)
  *   restore=replay   ignore the snapshot and replay the whole log from the seed (the audit path)
+ *   board=off        keep the weekly editorial board off for this page load (ADR-0069; the
+ *                    one-article end-to-end test); without it the session turns it on once
+ *   restore=rebase   rebuild the company from its command log alone, ignoring the snapshot and
+ *                    the checkpoint, and seal a fresh snapshot: once, after a world format change
+ *                    (ADR-0069's format 3) left a snapshot this build cannot read
  *   stagetimeout=S   wall-clock limit of one model call, seconds (P6; default 20 min); past it
  *                    the call is aborted and the stage made once more, then JobFailed{Timeout}
  *   jobtimeout=S     wall-clock limit of one job, seconds (default per kind, loop.ts); past it
@@ -43,7 +48,7 @@ import { withApprover } from '../orchestration/approver'
 import { sweepStages } from '../orchestration/sweeper'
 import { recordingGateway, type GatewayCall } from './recording-gateway'
 import { ActivityRecorder, heldByText } from '../orchestration/activity'
-import { minutesPerArticle, standupContext, utteranceMs } from '../orchestration/speech'
+import { boardContext, minutesPerArticle, standupContext, utteranceMs } from '../orchestration/speech'
 import { createOrchestrator, jobsFromEffects, loadRustValidator, localLlmBridge, outcomesForSim, type ProgressEvent, type SiteBindingJson } from '../orchestrator'
 import { openCompanyStore, type ActivityRow, type CompanyStore, type Plan } from '../store'
 import { commandBytes, decodeSnapshot, encodeSnapshot, type Checkpoint } from '../sync/segments'
@@ -346,13 +351,15 @@ const SIMS: SimFactory<Sim> = {
  * sync, else a new company. With a snapshot record the sim is rebuilt from
  * the world bytes and only the commands logged after it are replayed
  * (FEAT-060); a legacy checkpoint, or `forceReplay` (`?restore=replay`, the
- * audit path), replays the whole log from the seed.
+ * audit path), replays the whole log from the seed. `rebase`
+ * (`?restore=rebase`, ADR-0069) replays it without the checkpoint either: a
+ * world format change moves every hash, so the old checkpoint cannot be met.
  */
 async function restore(
   store: CompanyStore,
   client: CentralClient,
   company: Company,
-  opts: { forceReplay?: boolean } = {},
+  opts: { forceReplay?: boolean; rebase?: boolean } = {},
 ): Promise<{ sim: Sim; info: RestoreInfo; result: ReplayResult; lastSeq: number }> {
   const t0 = performance.now()
   let source: RestoreSource = 'opfs'
@@ -379,9 +386,14 @@ async function restore(
   assertContiguous(commands, `restore from ${source}`)
   let restored: RestoredSim<Sim>
   try {
-    restored = restoreSim(SIMS, { scenario: SCENARIO, seed: simSeed(company), commands, point: cp, world, forceReplay: opts.forceReplay })
+    restored = opts.rebase
+      ? restoreSim(SIMS, { scenario: SCENARIO, seed: simSeed(company), commands, point: null, world: null })
+      : restoreSim(SIMS, { scenario: SCENARIO, seed: simSeed(company), commands, point: cp, world, forceReplay: opts.forceReplay })
   } catch (e) {
-    throw new Error(`restore from ${source}: ${e instanceof Error ? e.message : String(e)}`)
+    const msg = e instanceof Error ? e.message : String(e)
+    // A snapshot of an older sim build: the log can rebuild the company once (ADR-0069).
+    const hint = /written by sim build/.test(msg) ? ' Open the game with ?restore=rebase once to rebuild the company from its command log.' : ''
+    throw new Error(`restore from ${source}: ${msg}${hint}`)
   }
   const { sim, result } = restored
   const info: RestoreInfo = {
@@ -465,7 +477,8 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   }
 
   stage('restore')
-  const { sim, info: restored, result, lastSeq } = await restore(store, client, company, { forceReplay: params.get('restore') === 'replay' })
+  const rebase = params.get('restore') === 'rebase'
+  const { sim, info: restored, result, lastSeq } = await restore(store, client, company, { forceReplay: params.get('restore') === 'replay', rebase })
   log(
     `company ${company.id} restored from ${restored.source} at step ${restored.step} (${restored.snapshot ? 'snapshot + ' : ''}${restored.replayed} commands replayed, ${restored.ms} ms)`,
   )
@@ -548,6 +561,12 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       const [plan, page] = await Promise.all([store.plan(company.id), activity.flush().then(() => store.activityPage(company.id, { limit: STANDUP_ACTIVITY_JOBS }))])
       const titles = Object.fromEntries(Object.entries(plan.items).map(([id, i]) => [id, i.title]))
       return standupContext(sim.plan_json(), project, { now: new Date(), titles, minutesPerArticle: minutesPerArticle(page.rows) })
+    },
+    // The editorial board's context (ADR-0069): the standup's, with the planned items' titles from the board's briefs.
+    boardContext: async ({ project }) => {
+      const [plan, page] = await Promise.all([store.plan(company.id), activity.flush().then(() => store.activityPage(company.id, { limit: STANDUP_ACTIVITY_JOBS }))])
+      const titles = Object.fromEntries(Object.entries(plan.items).map(([id, i]) => [id, i.title]))
+      return boardContext(sim.plan_json(), project, { now: new Date(), titles, minutesPerArticle: minutesPerArticle(page.rows) })
     },
     speechSpeed: () => clockSpeed(),
   })
@@ -664,6 +683,22 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   window.addEventListener('pagehide', () => {
     void checkpoint()
   })
+  // The weekly editorial board plans the week (ADR-0069): on once, as a logged command, so a
+  // replay of an older log holds no board before it.
+  if (!readOnly && !loop.halted && params.get('board') !== 'off') {
+    const org = JSON.parse(sim.org_json()) as { policies?: { editorialBoard?: boolean } }
+    if (org.policies?.editorialBoard === false) {
+      const r = loop.apply(JSON.stringify({ SetPolicy: { EditorialBoard: true } }))
+      log(r.ok ? 'the weekly editorial board is on' : `the editorial board could not be turned on: ${r.reason}`)
+    }
+  }
+  // A rebased company seals its new world at once: the old snapshot is of another sim build.
+  if (rebase && !readOnly) {
+    void checkpoint().then((r) => log(`rebased: a fresh snapshot at step ${r.step} (local ${r.local}, central ${r.central ? 'sealed' : 'not sealed'})`))
+    const url = new URL(location.href)
+    url.searchParams.delete('restore')
+    history.replaceState(null, '', url)
+  }
 
   // The clock (ADR-0060). The model runtime reports through `setModelStatus`:
   // the scripted `?llm=fake` model is ready at once; a real backend holds the

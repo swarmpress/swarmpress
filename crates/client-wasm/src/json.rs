@@ -439,6 +439,7 @@ pub fn org(w: &World) -> Value {
         "policies": {
             "autonomy": w.company.policies.autonomy.slug(),
             "qualityBar": w.company.policies.quality_bar,
+            "editorialBoard": w.company.policies.editorial_board,
         },
         "departments": departments,
         "staff": staff,

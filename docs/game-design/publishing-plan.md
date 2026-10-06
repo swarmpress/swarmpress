@@ -103,7 +103,7 @@ CEO) and a timestamp in game time.
 | When | Ritual | Plan effect |
 |---|---|---|
 | Daily 09:00 | Project standup (team, lead moderates) | Minutes posted to the items discussed; blockers become `question` posts; new ideas become `proposal` posts |
-| Monday 10:00 | Editorial board (strategist, EiC, SEO/marketing, CFO for cost) | Weekly plan: the strategist proposes items from the calendar, audits and analytics; the EiC schedules and assigns; big bets go to the CEO as tickets |
+| Monday 10:00 | Editorial board (strategist, EiC, SEO/marketing, CFO for cost) | Weekly plan: the strategist proposes items from the calendar, audits and analytics; the EiC schedules and assigns; big bets go to the CEO as tickets. **Built in part (ADR-0069):** the strategist plans up to two weeks from the content calendar, each proposal checked on the web; the orchestrator schedules (start two days before the planned publish day, editors in turn) and the sim starts items when they are due. Big bets are in the minutes, not tickets: the CEO does not approve the plan. The EiC's own scheduling call comes later |
 | Friday 16:00 | Finance review (CFO + CEO office) | Budget vs actual per workstream; CFO comments on expensive items |
 | Continuous | Work | Phases progress, handoffs, reviews |
 | On events | Audits, deploy failures, news | System or IT posts create `fix` items |

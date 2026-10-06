@@ -294,11 +294,14 @@ describe.skipIf(!built)('WasmDataSource over the real sim', () => {
     const tools = within(screen.getByRole('navigation', { name: 'CEO tools' })).getAllByRole('button').map((b) => b.querySelector('.tool-label')!.textContent)
     expect(tools).toEqual(['Plan', 'Inbox', 'Org chart', 'Projects', 'Finance', 'Hiring'])
 
-    expect(availableViews(h.store.plan.value)).toEqual(['board'])
+    // No schedule before the first editorial board; the sim's goal per project from the start (ADR-0069).
+    expect(availableViews(h.store.plan.value)).toEqual(['board', 'goals'])
     h.store.panel.value = 'plan'
     await flush()
-    expect(within(region(/Media & publishing plan/)).queryByRole('tablist')).toBeNull()
+    const tabs = within(within(region(/Media & publishing plan/)).getByRole('tablist')).getAllByRole('tab')
+    expect(tabs.map((t) => t.textContent)).toEqual(['Board', 'Goals'])
     expect(within(region(/Media & publishing plan/)).getAllByRole('article')).toHaveLength(1)
+    expect(h.store.planText.value.goals['goal-project-1']?.title).toBe('Monthly readers')
 
     h.store.panel.value = 'finance'
     await flush()

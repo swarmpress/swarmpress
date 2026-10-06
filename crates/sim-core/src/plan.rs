@@ -460,7 +460,9 @@ impl WorkItem {
     /// Open and not past the gate: a failed review or a `SendBack` can still
     /// restart its Draft, so its writer is not free for another item.
     pub fn in_writing_loop(&self) -> bool {
+        // a planned item the board made is not in it until it starts (ADR-0069)
         !self.status.is_closed()
+            && !self.is_unstarted()
             && self
                 .phases
                 .iter()

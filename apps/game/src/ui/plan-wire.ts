@@ -165,6 +165,44 @@ export function statusFromThread(posts: PlanPost[]): WorkItemStatus {
   return status
 }
 
+/** Plan text the editorial board keys by brief or workstream ref, not by a work item (ADR-0069). */
+export const BOARD_TEXT_KEY = /^(brief|workstream):/
+
+/**
+ * The board's plan text joined to the sim's ids (ADR-0069): an item without
+ * text of its own takes its brief's (`brief:<briefRefText>`, before its first
+ * draft names it), a workstream its title (`workstream:<textRef>`), the
+ * sim's goal its name.
+ */
+export function withBoardText(plan: PlanJson, text: PlanText): PlanText {
+  let items: PlanText['items'] | null = null
+  for (const it of plan.items) {
+    if (text.items[it.id]?.title || !it.briefRefText) continue
+    const brief = text.items[`brief:${it.briefRefText}`]
+    if (!brief) continue
+    items ??= { ...text.items }
+    items[it.id] = brief
+  }
+  let workstreams: PlanText['workstreams'] | null = null
+  for (const ws of plan.workstreams) {
+    if (text.workstreams[ws.id] || !ws.textRef) continue
+    const t = text.items[`workstream:${ws.textRef}`]
+    if (!t) continue
+    workstreams ??= { ...text.workstreams }
+    workstreams[ws.id] = { title: t.title, description: '' }
+  }
+  // The sim's one goal per project (monthly readers) has no text of its own.
+  let goals: PlanText['goals'] | null = null
+  for (const g of plan.goals) {
+    if (text.goals[g.id] || g.metric !== 'monthly-readers') continue
+    goals ??= { ...text.goals }
+    goals[g.id] = { title: 'Monthly readers' }
+  }
+  return items || workstreams || goals
+    ? { ...text, items: items ?? text.items, workstreams: workstreams ?? text.workstreams, goals: goals ?? text.goals }
+    : text
+}
+
 /**
  * Join the skeleton with items that exist only as text (the orchestrator
  * writes text for work items the sim skeleton may not export yet), so every
@@ -172,7 +210,7 @@ export function statusFromThread(posts: PlanPost[]): WorkItemStatus {
  */
 export function withTextOnlyItems(plan: PlanJson, text: PlanText, project: string | null): PlanJson {
   const known = new Set(plan.items.map((i) => i.id))
-  const ids = [...new Set([...Object.keys(text.items), ...Object.keys(text.posts)])].filter((id) => !known.has(id))
+  const ids = [...new Set([...Object.keys(text.items), ...Object.keys(text.posts)])].filter((id) => !known.has(id) && !BOARD_TEXT_KEY.test(id))
   if (!ids.length) return plan
   const extra: WorkItemJson[] = ids.map((id) => {
     const posts = text.posts[id] ?? []

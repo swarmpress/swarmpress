@@ -32,8 +32,9 @@ const POST_TYPES = ['minutes', 'artifact', 'handoff', 'review', 'artifact', 'han
 const LOGGED = ['MeetingOutcome', 'JobCompleted', 'JobCompleted', 'JobCompleted', 'JobCompleted', 'AnswerTicket', 'JobCompleted', 'DeployLanded']
 
 
+// One article, end to end: the weekly editorial board (ADR-0069) stays off, or its 10:00 plan would start more.
 const gameUrl = (engine: string, login: string, extra = '') =>
-  `/?central=1&login=${login}&llm=fake&store=${engine}&quality=low&ff=09:00${extra}`
+  `/?central=1&login=${login}&llm=fake&store=${engine}&quality=low&ff=09:00&board=off${extra}`
 
 /** Opens the game page and waits for the session and the first frames. Fails fast when boot threw. */
 async function boot(page: Page, url: string) {
@@ -333,6 +334,8 @@ test('one article, end to end, in the real game page', async ({ page, baseURL },
   const firstDraft = jobRows[1].job_id
   expect(activity.filter((r) => r.job_id === firstDraft && r.stage !== 'job').map((r) => `${r.stage}#${r.idx}`)).toEqual([
     'context#0',
+    // web research before the outline (ADR-0068)
+    'research#0',
     'outline#0',
     'section#0',
     'section#1',
@@ -342,7 +345,7 @@ test('one article, end to end, in the real game page', async ({ page, baseURL },
     'commit#0',
   ])
   expect(jobRows[1].detail).toMatchObject({ pr: gateway[0].number, branch: gateway[0].branch, sha: gateway[0].headSha })
-  expect(activity.filter((r) => r.job_id === jobRows[3].job_id && r.stage !== 'job').map((r) => `${r.stage}#${r.idx}`)).toEqual(['revise#2', 'commit#0'])
+  expect(activity.filter((r) => r.job_id === jobRows[3].job_id && r.stage !== 'job').map((r) => `${r.stage}#${r.idx}`)).toEqual(['research#1', 'revise#2', 'commit#0'])
   // The Activity panel (U4) lists the draft job with the writer's name and the model, read from the store.
   const writer = await page.evaluate(
     (staff) => (window as unknown as { __swarmpress: { overlay: { personaOf(id: string): { name: string } } } }).__swarmpress.overlay.personaOf(staff).name,

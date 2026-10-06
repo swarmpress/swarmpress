@@ -54,7 +54,8 @@ World
 │                                       salary_cents, home_desk, assignment, activity, pos, path, pose }>
 ├─ projects:  BTreeMap<ProjectId, Project { kind, stage, owner, revisions, deadline_step, … }>
 ├─ plan:      Plan { items: BTreeMap<WorkItemId, WorkItem>, jobs: BTreeMap<u64, PendingJob>,
-│                     jobs_requested, standup_days, feed }        (crates/sim-core/src/plan.rs)
+│                     jobs_requested, standup_days, feed, workstreams, next_workstream,
+│                     board_days }                               (crates/sim-core/src/plan.rs)
 ├─ effects:   Vec<Effect>  (outbox; #[serde(skip)], outside the hash and snapshots)
 ├─ meetings:  BTreeMap<MeetingId, Meeting { kind, room, attendees, job, next_seq, speaker,
 │                                           speak_from, speak_until, speak_chars }>
@@ -209,6 +210,19 @@ JobCompleted{ok: false} │ JobFailed       ─► Blocked + Escalation, NeedsMe
 
   A `MeetingOutcome` that breaks either is refused as a whole and the standup stays pending. An
   absent CEO therefore stops new commissions and loses nothing.
+- **The weekly editorial board** (ADR-0069, when `policies.editorial_board` is on, off by
+  default). Monday 10:00, and a project's first 10:00, a `Board` job for the strategists, the
+  editors-in-chief, the project's editors and SEO/marketing staff and the CFO
+  (`MeetingKind::EditorialBoard`, at most two game hours, due after 90 minutes).
+  `BoardOutcome{job_id, workstreams, items}` creates `Planned` items that are **unstarted** (Draft
+  pending, no writer) with `start_day`, `due_day`, `publish_day`, a workstream and dependencies; at
+  most 7 per board and 10 unstarted per project, offsets up to 13 days, an active reviewer on the
+  team, backward dependencies only, each brief once. Unstarted items are not open items: they do
+  not count against `WIP_LIMIT`. `start_due_planned` starts the due ones (start day reached,
+  dependencies published) at each standup, before its job, and right after the board: by
+  priority, planned publish day, id; each with the lowest-id free drafter who is not its editor;
+  within `WIP_LIMIT`. A failed or silent board raises `BoardFailed` (`Retry` now, `Skip` until
+  Monday). Evidence: `crates/sim-core/tests/editorial_board.rs`.
 - **Phases.** A work item has phases Draft → Review → Publish. A phase ends at
   `max(min time, job result)`: Draft 2 h, Review 1 h, Publish 15 min (game time), so the office
   shows the work even when an executor answers at once.

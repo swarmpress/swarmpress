@@ -1055,6 +1055,10 @@ mod tests {
         assert_eq!(plan["goals"][0]["metric"], "monthly-readers");
         let wip = &plan["wip"][0];
         assert_eq!(wip["unstarted"], 1);
+        assert_eq!(
+            wip["inWritingLoop"], 1,
+            "an unstarted item is not in the writing loop"
+        );
         assert_eq!(wip["plannedRoom"], 9);
         assert_eq!(wip["editorialBoard"], true);
     }

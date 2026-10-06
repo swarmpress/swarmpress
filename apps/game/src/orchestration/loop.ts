@@ -35,7 +35,7 @@ import { activeTimer, type OrchestratorLike } from '../orchestrator/bridge'
 import type { CommandRecord } from '../store/company-store'
 import { commandBytes } from '../sync/segments'
 import { dueStepSource, type DueStepSource, type StepRange } from './due-step'
-import { expectedSeq, notSeatedYet, standupContext, turnOf, utteranceMs, type Turn } from './speech'
+import { boardContext, expectedSeq, notSeatedYet, standupContext, turnOf, utteranceMs, type Turn } from './speech'
 
 export interface LoopSim extends ReplaySim {
   validate_command_json(json: string): string | undefined
@@ -116,6 +116,11 @@ export interface LoopOptions {
    * flight from `sim.plan_json()`, and today's date (speech.ts).
    */
   standupContext?: (job: { job_id: number; project: string }) => unknown | Promise<unknown>
+  /**
+   * An editorial board's context (ADR-0069, `orchestrator::BoardContext`).
+   * Default: the standup's plus the room for planned items (speech.ts).
+   */
+  boardContext?: (job: { job_id: number; project: string }) => unknown | Promise<unknown>
   /** Wall time in ms for meeting speech (default `Date.now`). */
   now?: () => number
   /** The clock's speed: meeting turns play this many times as fast (default 1). */
@@ -142,6 +147,7 @@ export const jobOutcomeKey = (jobId: number) => `job.outcome.${jobId}`
  */
 export const DEFAULT_JOB_TIMEOUT_MS: Record<string, number> = {
   standup: 30 * 60_000,
+  board: 30 * 60_000,
   draft: 60 * 60_000,
   review: 30 * 60_000,
   publish: 15 * 60_000,
@@ -259,7 +265,7 @@ const runsBefore = (a: JobRecord, b: JobRecord) => a.due_step < b.due_step || (a
 
 /** "giulia" → "Giulia": the persona slug of the first person on the job; a standup is the team's. */
 function whoOf(job: { kind: string; staff?: { persona?: string | null }[] }): string | null {
-  if (job.kind === 'standup') return 'Team'
+  if (job.kind === 'standup' || job.kind === 'board') return 'Team'
   const slug = job.staff?.[0]?.persona
   return slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : null
 }
@@ -899,7 +905,7 @@ export class OrchestrationLoop {
             let out = await this.o.store.getKv(key)
             if (out) this.log(`${rec.kind} job ${rec.job_id}: reusing the stored outcome`)
             else {
-              out = await this.runWithLimit(rec, rec.kind === 'standup' ? await this.withContext(rec, jobJson) : jobJson)
+              out = await this.runWithLimit(rec, rec.kind === 'standup' || rec.kind === 'board' ? await this.withContext(rec, jobJson) : jobJson)
               await this.o.store.setKv(key, out)
             }
             this.summarize(rec, out)
@@ -958,23 +964,33 @@ export class OrchestrationLoop {
     })
   }
 
-  /** A standup's request with its context (ADR-0062). A standup's request has no u64 to lose in a parse. */
+  /**
+   * A meeting's request with its context: a standup's (ADR-0062) or a board's
+   * (ADR-0069). A meeting's request has no u64 to lose in a parse.
+   */
   private async withContext(rec: JobRecord, jobJson: string): Promise<string> {
     const project = this.where.get(rec.job_id)?.project ?? ''
-    const context = this.o.standupContext
-      ? await this.o.standupContext({ job_id: rec.job_id, project })
-      : standupContext(this.o.sim.plan_json(), project, { now: new Date(this.nowMs()) })
+    const job = { job_id: rec.job_id, project }
+    const now = new Date(this.nowMs())
+    const context =
+      rec.kind === 'board'
+        ? this.o.boardContext
+          ? await this.o.boardContext(job)
+          : boardContext(this.o.sim.plan_json(), project, { now })
+        : this.o.standupContext
+          ? await this.o.standupContext(job)
+          : standupContext(this.o.sim.plan_json(), project, { now })
     return JSON.stringify({ ...(JSON.parse(jobJson) as Record<string, unknown>), context })
   }
 
   private summarize(rec: JobRecord, outcomesJson: string) {
-    // Small fields only; u64 brief refs in MeetingOutcome are not read here.
+    // Small fields only; u64 brief and workstream refs in MeetingOutcome and BoardOutcome are not read here.
     for (const o of JSON.parse(outcomesJson) as Record<string, { digest?: { ok: boolean; score: number }; reason?: string }>[]) {
       const d = o.JobCompleted?.digest
       if (d) {
         rec.ok = d.ok
         rec.score = d.score
-      } else if (o.MeetingOutcome) rec.ok = true
+      } else if (o.MeetingOutcome || o.BoardOutcome) rec.ok = true
       else if (o.JobFailed) {
         // ADR-0059: the sim blocks the item with the ticket the reason calls for (e.g. NeedsMedia).
         rec.ok = false

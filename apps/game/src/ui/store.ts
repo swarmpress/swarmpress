@@ -5,7 +5,7 @@ import { commandName, NOT_AVAILABLE, toJson, type Command, type CommandName, typ
 import { readSnapshot, type ArticleRecord, type GameDataSource, type GameSnapshot, type LiveJob, type SiteLinks } from './data-source'
 import { placeholderPersona, type Persona } from './personas'
 import type { PlanJson, PlanText, PostType } from './plan-types'
-import { EMPTY_PLAN, EMPTY_PLAN_TEXT, withTextOnlyItems } from './plan-wire'
+import { EMPTY_PLAN, EMPTY_PLAN_TEXT, withBoardText, withTextOnlyItems } from './plan-wire'
 import type { FinanceJson, InboxJson, OrgJson, PerformanceJson, StaffJson } from './types'
 
 export type PanelId = 'plan' | 'org' | 'projects' | 'finance' | 'inbox' | 'activity' | 'hiring' | 'performance'
@@ -235,7 +235,7 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
     finance: computed(() => snap.value.finance),
     inbox: computed(() => snap.value.inbox),
     plan: computed(() => withTextOnlyItems(snap.value.plan, snap.value.planText, snap.value.org.projects[0]?.id ?? null)),
-    planText: computed(() => snap.value.planText),
+    planText: computed(() => withBoardText(snap.value.plan, snap.value.planText)),
     performance: computed(() => snap.value.performance),
     personas: computed(() => snap.value.personas),
     now: clock,

@@ -447,6 +447,67 @@ function commission(p: Prompt) {
   return { commission: chosen, decisions: [], escalations: [] }
 }
 
+/** The board's cap line (`agents::meetings::BOARD_CAP_LABEL`). */
+export const BOARD_CAP_LABEL = 'Proposals this week: at most '
+
+/**
+ * The weekly board's plan (ADR-0069; `weekly_board` in fake_writer.rs): the
+ * calendar topics nobody has, then the built-in topics that repeat nothing
+ * taken or proposed, as many as the cap allows; publish days two apart from
+ * day 2; the second item builds on the first.
+ */
+function weeklyBoard(p: Prompt) {
+  const most = Math.max(1, p.number(BOARD_CAP_LABEL))
+  const { taken } = standupTopics(p.text, '')
+  const seen = [...taken]
+  const words = (t: string) => t.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => [...w].length > 3)
+  const free = (title: string) => {
+    const mine = words(title)
+    return !seen.some((t) => t === title.toLowerCase() || words(t).filter((w) => mine.includes(w)).length >= 2)
+  }
+  const proposals: Record<string, unknown>[] = []
+  let inTopics = false
+  for (const line of p.text.split('\n')) {
+    if (line.startsWith('## ')) {
+      inTopics = line.slice(3).startsWith('Calendar topics (not yet published)')
+      continue
+    }
+    if (!inTopics || proposals.length >= most || !line.startsWith('- ')) continue
+    const alias = line.slice(2).split(/\s+/)[0] ?? ''
+    const title = quoted(line)[0]
+    if (title === undefined || !free(title)) continue
+    seen.push(title.toLowerCase())
+    const season = /\(([^)]*)\)[^(]*$/.exec(line)?.[1] ?? 'The season'
+    const at = line.indexOf('— keywords: ')
+    const keywords = at < 0 ? [] : line.slice(at + '— keywords: '.length).split(',').map((s) => s.trim()).filter(Boolean).slice(0, 6)
+    for (const extra of [title.toLowerCase(), 'cinque terre']) if (keywords.length < 2) keywords.push(cap(extra, 40))
+    proposals.push({
+      topic: alias,
+      title: cap(title, 70),
+      angle: `A seasonal guide to ${title.toLowerCase()}, and what a visitor should plan for.`,
+      keywords,
+      priority: 'normal',
+      workstream: cap(season, 40),
+    })
+  }
+  for (const t of MVP_TOPICS) {
+    if (proposals.length >= most) break
+    if (!free(t.title)) continue
+    seen.push(t.title.toLowerCase())
+    proposals.push({ topic: '', title: t.title, angle: t.angle, keywords: t.keywords, priority: 'high', workstream: 'Evergreen guides' })
+  }
+  proposals.forEach((prop, i) => {
+    prop.publish_day = Math.min(13, 2 + 2 * i)
+    prop.after = i === 1 ? 1 : 0
+  })
+  return {
+    say: 'This is the plan for the next two weeks: the season first, then the guides readers keep asking for.',
+    week_theme: 'The season and the guides readers ask for.',
+    proposals,
+    big_bets: [],
+  }
+}
+
 /** The answer to a call of the standup's pitch round (`fake_writer::answer`); null when the call is not one. */
 export function standupAnswer(prompt: string, later = ''): MvpReply | null {
   const first = prompt.split('\n')[0] ?? ''
@@ -457,6 +518,7 @@ export function standupAnswer(prompt: string, later = ''): MvpReply | null {
   if (task === 'pitch') return { json: pitch(p, later) }
   if (task === 'commission') return { json: commission(p) }
   if (task === 'pitch check') return { json: MVP_PITCH_CHECK }
+  if (task === 'weekly board') return { json: weeklyBoard(p) }
   return null
 }
 

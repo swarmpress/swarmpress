@@ -85,8 +85,14 @@ export interface WorkItemJson {
   tickets: string[]
   /** UI extension: languages the item publishes in (calendar rows). */
   languages?: string[]
-  /** UI extension: game day work started, for the timeline. */
+  /** Game day work may start (the editorial board's plan, ADR-0069), for the timeline. */
   startDay?: number | null
+  /** The brief's ref as text (a u64): the board's plan text key `brief:<briefRefText>`. */
+  briefRefText?: string | null
+  /** Planned by the board and not started yet (no writer, outside the WIP limit). */
+  unstarted?: boolean
+  /** The board's planned publish day (`publishDay` is the live day once published). */
+  plannedPublishDay?: number | null
   /** UI only: known from plan text (orchestrator threads) but not in the sim skeleton. */
   textOnly?: boolean
 }
@@ -95,6 +101,8 @@ export interface WorkstreamJson {
   id: string
   project: string
   status: 'active' | 'paused' | 'done' | string
+  /** The plan text's key `workstream:<textRef>` (ADR-0069): a u64 as text. */
+  textRef?: string
 }
 
 export interface GoalJson {

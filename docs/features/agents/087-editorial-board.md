@@ -7,6 +7,9 @@ paths:
   - crates/sim-core/tests/editorial_board.rs
   - crates/orchestrator/src/board.rs
   - crates/orchestrator/tests/board.rs
+  - apps/game/src/ui/plan-wire.ts
+  - apps/game/src/ui/plan-wire.test.ts
+  - apps/game/src/orchestration/speech.test.ts
 adrs:
   - ADR-0031
   - ADR-0059
@@ -42,10 +45,23 @@ CEO does not approve the plan; the publish gate still guards what goes live.
   (`ArtifactRecord.writer`). Tests: `crates/orchestrator/tests/board.rs`; through the JSON
   boundary: `client-wasm`'s `the_editorial_board_through_json`.
 
+- **Host** (`apps/game`): the session turns the policy on once as a logged command; the loop
+  gives a board its context (`boardContext` in `orchestration/speech.ts`: items in flight and
+  planned, named by their briefs, the room under `MAX_PLANNED`) and reports a failed board as
+  `JobFailed`; `?restore=rebase` rebuilds a company from its command log alone and seals a fresh
+  snapshot (a world format change, ADR-0069 decision 8); the Plan panel names planned items,
+  workstreams and the goal from the board's plan text (`withBoardText` in `ui/plan-wire.ts`), and
+  its Calendar, Timeline and Workload views fill after the first board. The browser's fake model
+  answers the board (`llm/mvp-script.ts`, the twin of `fake_writer`). Tests:
+  `ui/plan-wire.test.ts`, `orchestration/speech.test.ts`, `ui/wasm-live.test.tsx`,
+  `crates/orchestrator-wasm/tests/loop.test.ts` (the twin under Bun).
+
 ## Not built yet
 
-- The host: the board's context, the one-time rebase of the owner's company, plan views with
-  planned days, workstreams and goals.
+- The editor-in-chief's own scheduling call (`PlanSchedule`), moving or cancelling a planned item,
+  big bets as tickets, the next season's topics within their lead time.
+- Another device that takes a company over has its command log but not the store's text: a board
+  brief (like a standup brief) is unknown there until work records sync (ADR-0056).
 
 ## Acceptance criteria
 

@@ -65,7 +65,11 @@ every Monday; the existing company is rebased once onto the new state format.
 (`crates/sim-core/tests/editorial_board.rs`, the golden script answers a board), and so is the
 orchestrator's board job (6, `crates/orchestrator/src/board.rs`). The plan text lives under the
 store's existing item text, keyed `brief:<ref>` and `workstream:<ref>`, so no store interface
-changed. The host's context, the rebase path and the Plan views follow.
+changed. The host is built too: the session turns the policy on once, the loop passes the
+board's context, `?restore=rebase` rebuilds a company from its command log, and the Plan panel
+names planned items from their briefs. Verified live with the fake model on a fresh company:
+the board at 10:00 planned seven items under two workstreams and the first started at once;
+a rebase restored the company from central sync and sealed a fresh snapshot.
 
 ## Consequences
 

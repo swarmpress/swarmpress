@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { expectedSeq, localDate, minutesPerArticle, notSeatedYet, standupContext, turnOf, utteranceMs } from './speech'
+import { boardContext, expectedSeq, localDate, minutesPerArticle, notSeatedYet, standupContext, turnOf, utteranceMs } from './speech'
 
 describe('meeting speech (ADR-0062, FEAT-025)', () => {
   it('a turn holds the floor for clamp(chars / 15, 3, 12) seconds, divided by the clock speed', () => {
@@ -46,5 +46,25 @@ describe('meeting speech (ADR-0062, FEAT-025)', () => {
       minutes_per_article: 8,
     })
     expect(localDate(new Date(2026, 0, 5))).toBe('2026-01-05')
+  })
+
+  it('builds a board’s context: planned items named by their briefs, and the room for more (ADR-0069)', () => {
+    const plan = JSON.stringify({
+      items: [
+        { id: 'work-item-4', project: 'project-1', status: 'planned', briefRefText: '5861808041880732776' },
+        { id: 'work-item-5', project: 'project-1', status: 'in-progress', briefRefText: '7' },
+      ],
+      wip: [{ project: 'project-1', limit: 3, open: 1, room: 2, awaitingApproval: 0, freeWriters: [], plannedRoom: 9 }],
+    })
+    const titles = { 'brief:5861808041880732776': 'The Grape Harvest in Manarola', 'work-item-5': 'Vernazza at dawn', 'brief:7': 'not this one' }
+    const ctx = boardContext(plan, 'project-1', { now: new Date(2026, 9, 5, 10), titles, minutesPerArticle: null })
+    expect(ctx.planned_room).toBe(9)
+    expect(ctx.today).toBe('2026-10-05')
+    expect(ctx.in_flight).toEqual([
+      { id: 'work-item-4', status: 'planned', title: 'The Grape Harvest in Manarola' },
+      { id: 'work-item-5', status: 'in-progress', title: 'Vernazza at dawn' },
+    ])
+    // the standup's context names a planned item the same way
+    expect(standupContext(plan, 'project-1', { now: new Date(2026, 9, 5, 9), titles }).in_flight[0].title).toBe('The Grape Harvest in Manarola')
   })
 })
