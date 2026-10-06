@@ -4,7 +4,8 @@
  *
  * - `page.schema.json`: the page schema;
  * - `page-types.schema.json`: the page-type registry format (FEAT-089);
- * - `page-types.json`: the core page types, defaults filled in.
+ * - `page-types.json`: the core page types, defaults filled in;
+ * - `block-meta.json`: `data/block-meta.json`, verbatim once it parses.
  *
  * Run `pnpm --filter @swarm-press/content-schema export`. With `--check`,
  * exits non-zero if a committed file is out of date.
@@ -15,6 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import { PageSchema } from '../src/page'
 import { CORE_PAGE_TYPES, PageTypesFileSchema } from '../src/page-types'
+import { BlockMetaFileSchema } from '../src/block-meta'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const DIR = resolve(here, '../../../crates/content-schema/schema')
@@ -29,6 +31,13 @@ const outputs: Record<string, string> = {
     zodToJsonSchema(PageTypesFileSchema, { name: 'PageTypes', target: 'jsonSchema7', $refStrategy: 'none' }),
   ),
   'page-types.json': json(CORE_PAGE_TYPES),
+  'block-meta.json': blockMetaText(),
+}
+
+function blockMetaText(): string {
+  const text = readFileSync(resolve(here, '../data/block-meta.json'), 'utf8')
+  BlockMetaFileSchema.parse(JSON.parse(text))
+  return text
 }
 
 const check = process.argv.includes('--check')

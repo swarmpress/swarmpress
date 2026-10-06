@@ -1,0 +1,781 @@
+{
+  "format": "swarmpress.block-meta.v1",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "category": "core",
+      "intent": "inform",
+      "description": "Text paragraph for conveying information",
+      "linking": {
+        "minLinks": 0,
+        "maxLinks": 3,
+        "allowedTargets": [
+          "villages",
+          "hikes",
+          "restaurants",
+          "accommodations",
+          "sights"
+        ],
+        "anchorGuidance": "Use descriptive anchor text that describes the destination"
+      }
+    },
+    {
+      "type": "heading",
+      "category": "core",
+      "intent": "orient",
+      "description": "Section heading (h2-h4) that structures the page"
+    },
+    {
+      "type": "hero",
+      "category": "core",
+      "intent": "orient",
+      "description": "Large hero section to set context and capture attention",
+      "media": {
+        "required": true,
+        "min": 1,
+        "max": 1,
+        "entityMatch": "strict",
+        "allowedCategories": [
+          "sights",
+          "beaches",
+          "trails"
+        ],
+        "aspectRatio": "landscape"
+      },
+      "linking": {
+        "minLinks": 0,
+        "maxLinks": 2,
+        "allowedTargets": [
+          "villages",
+          "itinerary"
+        ]
+      }
+    },
+    {
+      "type": "image",
+      "category": "core",
+      "intent": "showcase",
+      "description": "Single image with optional caption",
+      "media": {
+        "required": true,
+        "min": 1,
+        "max": 1,
+        "entityMatch": "strict"
+      }
+    },
+    {
+      "type": "gallery",
+      "category": "core",
+      "intent": "showcase",
+      "description": "Multiple images in grid, carousel, or masonry layout",
+      "media": {
+        "required": true,
+        "min": 3,
+        "max": 12,
+        "entityMatch": "strict",
+        "allowedCategories": [
+          "sights",
+          "beaches",
+          "food",
+          "accommodations"
+        ]
+      }
+    },
+    {
+      "type": "quote",
+      "category": "core",
+      "intent": "engage",
+      "description": "Pull quote with attribution"
+    },
+    {
+      "type": "list",
+      "category": "core",
+      "intent": "inform",
+      "description": "Ordered or unordered list of short items",
+      "linking": {
+        "minLinks": 0,
+        "maxLinks": 5,
+        "allowedTargets": [
+          "villages",
+          "hikes",
+          "restaurants",
+          "accommodations",
+          "sights"
+        ]
+      }
+    },
+    {
+      "type": "faq",
+      "category": "core",
+      "intent": "inform",
+      "description": "Frequently asked questions with expandable answers",
+      "linking": {
+        "minLinks": 1,
+        "maxLinks": 5,
+        "allowedTargets": [
+          "villages",
+          "hikes",
+          "transport",
+          "weather"
+        ],
+        "anchorGuidance": "Link relevant terms in answers to related pages"
+      }
+    },
+    {
+      "type": "callout",
+      "category": "core",
+      "intent": "inform",
+      "description": "Highlighted tip, warning or note"
+    },
+    {
+      "type": "embed",
+      "category": "core",
+      "intent": "engage",
+      "description": "Embedded video or map from an allowed provider"
+    },
+    {
+      "type": "collection-embed",
+      "category": "core",
+      "intent": "navigate",
+      "description": "Cards for items of a site collection",
+      "media": {
+        "required": false,
+        "min": 0,
+        "max": 12,
+        "entityMatch": "strict"
+      },
+      "linking": {
+        "minLinks": 0,
+        "maxLinks": 12,
+        "allowedTargets": [
+          "restaurants",
+          "accommodations",
+          "hikes",
+          "events",
+          "sights"
+        ]
+      },
+      "context": [
+        "collection_type"
+      ]
+    },
+    {
+      "type": "map",
+      "category": "core",
+      "intent": "orient",
+      "description": "Interactive map with markers or a trail",
+      "linking": {
+        "minLinks": 0,
+        "maxLinks": 20,
+        "allowedTargets": [
+          "villages",
+          "hikes",
+          "restaurants",
+          "accommodations",
+          "sights"
+        ]
+      }
+    },
+    {
+      "type": "hero-section",
+      "category": "section",
+      "intent": "orient",
+      "description": "Full-width hero with CTA buttons",
+      "media": {
+        "required": true,
+        "min": 1,
+        "max": 1,
+        "entityMatch": "category",
+        "aspectRatio": "landscape"
+      },
+      "linking": {
+        "minLinks": 1,
+        "maxLinks": 3,
+        "allowedTargets": [
+          "villages",
+          "itinerary",
+          "accommodations"
+        ]
+      }
+    },
+    {
+      "type": "feature-section",
+      "category": "section",
+      "intent": "inform",
+      "description": "Grid of features with icons and short copy",
+      "linking": {
+        "minLinks": 0,
+        "maxLinks": 6,
+        "allowedTargets": []
+      }
+    },
+    {
+      "type": "stats-section",
+      "category": "section",
+      "intent": "inform",
+      "description": "Key figures with labels"
+    },
+    {
+      "type": "cta-section",
+      "category": "section",
+      "intent": "convert",
+      "description": "Call-to-action section to drive user action",
+      "media": {
+        "required": false,
+        "min": 0,
+        "max": 1,
+        "entityMatch": "none"
+      },
+      "linking": {
+        "minLinks": 1,
+        "maxLinks": 2,
+        "allowedTargets": [
+          "itinerary",
+          "accommodations",
+          "restaurants"
+        ]
+      }
+    },
+    {
+      "type": "faq-section",
+      "category": "section",
+      "intent": "inform",
+      "description": "FAQ section with a heading and Q&A items",
+      "linking": {
+        "minLinks": 0,
+        "maxLinks": 5,
+        "allowedTargets": [
+          "villages",
+          "hikes",
+          "transport",
+          "weather"
+        ],
+        "anchorGuidance": "Link relevant terms in answers to related pages"
+      }
+    },
+    {
+      "type": "content-section",
+      "category": "section",
+      "intent": "inform",
+      "description": "Long-form text section, optionally with an image",
+      "media": {
+        "required": false,
+        "min": 0,
+        "max": 1,
+        "entityMatch": "strict"
+      },
+      "linking": {
+        "minLinks": 0,
+        "maxLinks": 5,
+        "allowedTargets": [
+          "villages",
+          "hikes",
+          "restaurants",
+          "accommodations",
+          "sights"
+        ]
+      }
+    },
+    {
+      "type": "newsletter",
+      "category": "section",
+      "intent": "convert",
+      "description": "Newsletter signup form"
+    },
+    {
+      "type": "section-header",
+      "category": "section",
+      "intent": "orient",
+      "description": "Eyebrow, title and intro for a section"
+    },
+    {
+      "type": "village-selector",
+      "category": "theme",
+      "intent": "navigate",
+      "description": "Navigation component to select villages",
+      "media": {
+        "required": true,
+        "min": 5,
+        "max": 5,
+        "entityMatch": "strict",
+        "allowedCategories": [
+          "sights"
+        ]
+      },
+      "linking": {
+        "minLinks": 5,
+        "maxLinks": 5,
+        "allowedTargets": [
+          "villages"
+        ]
+      }
+    },
+    {
+      "type": "places-to-stay",
+      "category": "theme",
+      "intent": "showcase",
+      "description": "Accommodation listings for a village",
+      "media": {
+        "required": true,
+        "min": 3,
+        "max": 10,
+        "entityMatch": "strict",
+        "allowedCategories": [
+          "accommodations"
+        ]
+      },
+      "linking": {
+        "minLinks": 1,
+        "maxLinks": 3,
+        "allowedTargets": [
+          "accommodations",
+          "villages"
+        ]
+      },
+      "context": [
+        "village"
+      ]
+    },
+    {
+      "type": "featured-carousel",
+      "category": "theme",
+      "intent": "showcase",
+      "description": "Carousel of featured content (stories, places)",
+      "media": {
+        "required": true,
+        "min": 3,
+        "max": 8,
+        "entityMatch": "category",
+        "allowedCategories": [
+          "sights",
+          "food",
+          "accommodations"
+        ]
+      },
+      "linking": {
+        "minLinks": 3,
+        "maxLinks": 8,
+        "allowedTargets": [
+          "villages",
+          "blog",
+          "itinerary"
+        ]
+      }
+    },
+    {
+      "type": "village-intro",
+      "category": "theme",
+      "intent": "orient",
+      "description": "Village introduction with lead story and essentials",
+      "media": {
+        "required": true,
+        "min": 1,
+        "max": 2,
+        "entityMatch": "strict"
+      },
+      "linking": {
+        "minLinks": 2,
+        "maxLinks": 5,
+        "allowedTargets": [
+          "restaurants",
+          "accommodations",
+          "hikes",
+          "beaches",
+          "sights"
+        ],
+        "anchorGuidance": "Link to village subsections naturally in the narrative"
+      },
+      "context": [
+        "village",
+        "weather",
+        "essentials"
+      ]
+    },
+    {
+      "type": "trending-now",
+      "category": "theme",
+      "intent": "navigate",
+      "description": "Lead story plus secondary stories",
+      "media": {
+        "required": true,
+        "min": 1,
+        "max": 6,
+        "entityMatch": "category"
+      },
+      "linking": {
+        "minLinks": 1,
+        "maxLinks": 6,
+        "allowedTargets": [
+          "blog",
+          "villages"
+        ]
+      }
+    },
+    {
+      "type": "about",
+      "category": "theme",
+      "intent": "inform",
+      "description": "About section describing the publication/team",
+      "media": {
+        "required": false,
+        "min": 0,
+        "max": 1,
+        "entityMatch": "none"
+      },
+      "linking": {
+        "minLinks": 0,
+        "maxLinks": 2,
+        "allowedTargets": [
+          "team"
+        ]
+      }
+    },
+    {
+      "type": "curated-escapes",
+      "category": "theme",
+      "intent": "navigate",
+      "description": "Grid of themed travel collection cards",
+      "media": {
+        "required": true,
+        "min": 2,
+        "max": 8,
+        "entityMatch": "category"
+      },
+      "linking": {
+        "minLinks": 2,
+        "maxLinks": 8,
+        "allowedTargets": [
+          "itinerary",
+          "blog",
+          "villages"
+        ]
+      }
+    },
+    {
+      "type": "latest-stories",
+      "category": "theme",
+      "intent": "navigate",
+      "description": "Blog-style grid with lead story and filters",
+      "media": {
+        "required": true,
+        "min": 1,
+        "max": 12,
+        "entityMatch": "category"
+      },
+      "linking": {
+        "minLinks": 1,
+        "maxLinks": 12,
+        "allowedTargets": [
+          "blog"
+        ]
+      }
+    },
+    {
+      "type": "eat-drink",
+      "category": "theme",
+      "intent": "showcase",
+      "description": "Restaurant and food listings",
+      "media": {
+        "required": true,
+        "min": 3,
+        "max": 10,
+        "entityMatch": "strict",
+        "allowedCategories": [
+          "food",
+          "restaurants"
+        ]
+      },
+      "linking": {
+        "minLinks": 1,
+        "maxLinks": 3,
+        "allowedTargets": [
+          "restaurants",
+          "villages",
+          "culinary"
+        ]
+      },
+      "context": [
+        "village"
+      ]
+    },
+    {
+      "type": "highlights",
+      "category": "theme",
+      "intent": "showcase",
+      "description": "Key highlights/features of an area",
+      "media": {
+        "required": true,
+        "min": 3,
+        "max": 6,
+        "entityMatch": "category"
+      },
+      "linking": {
+        "minLinks": 2,
+        "maxLinks": 6,
+        "allowedTargets": [
+          "villages",
+          "hikes",
+          "beaches",
+          "sights"
+        ]
+      }
+    },
+    {
+      "type": "audio-guides",
+      "category": "theme",
+      "intent": "engage",
+      "description": "Audio/podcast cards with play buttons",
+      "media": {
+        "required": false,
+        "min": 0,
+        "max": 6,
+        "entityMatch": "category"
+      }
+    },
+    {
+      "type": "practical-advice",
+      "category": "theme",
+      "intent": "inform",
+      "description": "Compact icon-based advice strip",
+      "linking": {
+        "minLinks": 0,
+        "maxLinks": 4,
+        "allowedTargets": [
+          "transport",
+          "weather"
+        ]
+      }
+    },
+    {
+      "type": "editorial-hero",
+      "category": "editorial",
+      "intent": "orient",
+      "description": "Editorial page hero with background image and article metadata",
+      "media": {
+        "required": true,
+        "min": 1,
+        "max": 1,
+        "entityMatch": "strict",
+        "allowedCategories": [
+          "sights",
+          "trails",
+          "food"
+        ],
+        "aspectRatio": "landscape"
+      },
+      "context": [
+        "village",
+        "category",
+        "author"
+      ]
+    },
+    {
+      "type": "editorial-intro",
+      "category": "editorial",
+      "intent": "orient",
+      "description": "Centered intro with badge, quote and two-column content",
+      "linking": {
+        "minLinks": 0,
+        "maxLinks": 4,
+        "allowedTargets": [
+          "villages",
+          "hikes",
+          "restaurants",
+          "accommodations",
+          "sights"
+        ]
+      }
+    },
+    {
+      "type": "editorial-interlude",
+      "category": "editorial",
+      "intent": "engage",
+      "description": "Highlighted break between content sections"
+    },
+    {
+      "type": "editor-note",
+      "category": "editorial",
+      "intent": "engage",
+      "description": "Expert quote with avatar (local perspective)",
+      "media": {
+        "required": false,
+        "min": 0,
+        "max": 1,
+        "entityMatch": "none"
+      }
+    },
+    {
+      "type": "closing-note",
+      "category": "editorial",
+      "intent": "convert",
+      "description": "Reflective closing section with optional actions",
+      "linking": {
+        "minLinks": 0,
+        "maxLinks": 3,
+        "allowedTargets": []
+      }
+    },
+    {
+      "type": "itinerary-hero",
+      "category": "template",
+      "intent": "orient",
+      "description": "Hero section for itinerary pages",
+      "media": {
+        "required": true,
+        "min": 1,
+        "max": 1,
+        "entityMatch": "category",
+        "aspectRatio": "landscape"
+      },
+      "context": [
+        "duration",
+        "difficulty"
+      ]
+    },
+    {
+      "type": "itinerary-days",
+      "category": "template",
+      "intent": "inform",
+      "description": "Day-by-day itinerary breakdown",
+      "media": {
+        "required": true,
+        "min": 4,
+        "max": 10,
+        "entityMatch": "strict"
+      },
+      "linking": {
+        "minLinks": 4,
+        "maxLinks": 15,
+        "allowedTargets": [
+          "villages",
+          "hikes",
+          "restaurants",
+          "accommodations"
+        ],
+        "anchorGuidance": "Link each village and activity mentioned to its page"
+      }
+    },
+    {
+      "type": "team-grid",
+      "category": "template",
+      "intent": "inform",
+      "description": "Editor profiles with portraits",
+      "media": {
+        "required": true,
+        "min": 1,
+        "max": 12,
+        "entityMatch": "none"
+      }
+    },
+    {
+      "type": "airports-overview",
+      "category": "template",
+      "intent": "orient",
+      "description": "Nearest airports with distances and travel times",
+      "linking": {
+        "minLinks": 0,
+        "maxLinks": 2,
+        "allowedTargets": [
+          "transport"
+        ]
+      }
+    },
+    {
+      "type": "weather-live",
+      "category": "template",
+      "intent": "inform",
+      "description": "Current conditions, forecast and webcams",
+      "media": {
+        "required": false,
+        "min": 0,
+        "max": 6,
+        "entityMatch": "strict"
+      },
+      "context": [
+        "weather"
+      ]
+    },
+    {
+      "type": "weather-journal",
+      "category": "template",
+      "intent": "engage",
+      "description": "Editor's weather note with recommendations",
+      "media": {
+        "required": false,
+        "min": 0,
+        "max": 1,
+        "entityMatch": "none"
+      },
+      "context": [
+        "weather"
+      ]
+    },
+    {
+      "type": "blog-article",
+      "category": "template",
+      "intent": "inform",
+      "description": "Full blog article with nested content and sidebar",
+      "media": {
+        "required": false,
+        "min": 0,
+        "max": 8,
+        "entityMatch": "strict"
+      },
+      "linking": {
+        "minLinks": 1,
+        "maxLinks": 10,
+        "allowedTargets": [
+          "villages",
+          "hikes",
+          "restaurants",
+          "accommodations",
+          "blog"
+        ]
+      }
+    },
+    {
+      "type": "collection-with-interludes",
+      "category": "template",
+      "intent": "showcase",
+      "description": "Collection items with editorial interludes between groups",
+      "media": {
+        "required": true,
+        "min": 5,
+        "max": 30,
+        "entityMatch": "strict"
+      },
+      "linking": {
+        "minLinks": 2,
+        "maxLinks": 10,
+        "allowedTargets": [
+          "villages",
+          "restaurants",
+          "accommodations"
+        ]
+      },
+      "context": [
+        "village",
+        "collection_type"
+      ]
+    },
+    {
+      "type": "blog-index",
+      "category": "template",
+      "intent": "navigate",
+      "description": "Blog listing with lead story and categories",
+      "media": {
+        "required": true,
+        "min": 1,
+        "max": 50,
+        "entityMatch": "category"
+      },
+      "linking": {
+        "minLinks": 1,
+        "maxLinks": 50,
+        "allowedTargets": [
+          "blog"
+        ]
+      }
+    }
+  ]
+}

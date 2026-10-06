@@ -28,6 +28,9 @@ fn validator() -> &'static jsonschema::Validator {
 
 /// The page-type registry format (`swarmpress.page-types.v1`).
 pub const PAGE_TYPES_SCHEMA_JSON: &str = include_str!("../schema/page-types.schema.json");
+/// The core block metadata (`packages/content-schema/data/block-meta.json`,
+/// copied verbatim by the export).
+pub const BLOCK_META_JSON: &str = include_str!("../schema/block-meta.json");
 /// The core page types, defaults filled in.
 pub const CORE_PAGE_TYPES_JSON: &str = include_str!("../schema/page-types.json");
 

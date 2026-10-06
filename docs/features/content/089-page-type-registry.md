@@ -11,6 +11,10 @@ paths:
   - "packages/content-schema/src/page-types.ts"
   - "packages/content-schema/test/page-types.test.ts"
   - "packages/site-kit/test/unit/page-types.test.ts"
+  - "packages/content-schema/data/block-meta.json"
+  - "packages/content-schema/src/block-meta.ts"
+  - "packages/content-schema/test/block-meta.test.ts"
+  - "crates/content-schema/schema/block-meta.json"
 adrs:
   - ADR-0072
   - ADR-0014
@@ -46,7 +50,14 @@ Design: [`docs/design/construction-kits.md`](../../design/construction-kits.md) 
 - **Closed world.** The knowledge base reports an unknown `page_type` as a `page_type` issue, before
   links and media. A type is known if the site declares it, or if one of its pages already uses it,
   so existing sites stay valid until they declare their types. The pack carries the site's registry.
-- **Not yet done:** moving `BlockMeta` to shared data.
+- **Block metadata is data.** `packages/content-schema/data/block-meta.json` is the one source:
+  - TypeScript parses it (`BLOCK_META`, `blockMeta`);
+  - the export copies it to `crates/content-schema/schema/block-meta.json`, which
+    `content_model::core_block_meta` reads;
+  - `pnpm schema:check` fails on drift.
+
+  The hand-built Rust table is gone; before it was removed, a test showed that the data matched it
+  exactly.
 
 ## Acceptance criteria
 
