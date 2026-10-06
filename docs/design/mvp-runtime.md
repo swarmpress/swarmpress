@@ -1,5 +1,11 @@
 # MVP runtime design: Ternary Bonsai 2 on WebGPU behind `LocalLlm`
 
+> **Superseded (2026-10-05):** the resident model was a no-go on the owner's machine
+> ([qualification](../qualification/2026-10-05-bonsai-apple-m3-max-128gb-stability.md)); staff run on
+> hosted GPT-6-Luna through the central server ([ADR-0067](../adr/0067-hosted-inference-on-gpt-6-luna.md)).
+> The `LocalLlm` contract, the clock hold while the model is away and the bridge's timeouts below
+> still apply; the WebGPU engine, the resident lock and the GPU scheduler are not on the MVP path.
+> Kept as the record of the design.
 > **Status:** design, 2026-10-02. Decided in [ADR-0057](../adr/0057-strict-in-browser-inference-one-resident-model-on-webgpu.md).
 > Nothing here is built. Track **R** of [`docs/mvp.md`](../mvp.md).
 > **Evidence status:** the demo bundle, the GGUF header, the Hub metadata and this repo were

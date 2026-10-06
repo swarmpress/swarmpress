@@ -2,6 +2,14 @@
 
 > **Status:** plan approved 2026-10-02. Decided in ADR-0057 to ADR-0062; nothing in the tracks
 > below is built unless a feature file says so.
+> **Inference changed on 2026-10-05:** the resident in-browser model (ADR-0057, track R) was a
+> no-go on the owner's machine ([qualification](qualification/2026-10-05-bonsai-apple-m3-max-128gb-stability.md));
+> staff now run on hosted **GPT-6-Luna** through the central server
+> ([ADR-0067](adr/0067-hosted-inference-on-gpt-6-luna.md), FEAT-086), with web research
+> ([ADR-0068](adr/0068-web-research-with-cited-evidence.md)). Gemma 4 E4B stays an opt-in local
+> experiment ([ADR-0066](adr/0066-gemma-4-e4b-with-mtp-on-upstream-llama-cpp-webgpu.md)). Where this plan says
+> Bonsai, the resident model or "strictly local", read the hosted model; tracks P, G, U, T and the
+> gate are unchanged. The weekly editorial board (ADR-0069) now plans the week ahead of the standups.
 > **Design detail:** [runtime](design/mvp-runtime.md) · [pipeline, gate, time, site path](design/mvp-pipeline.md) ·
 > [gap analysis](design/mvp-gap-analysis.md) · concept source
 > [Browser Agent Studio](reference/browser-agent-studio.md).
@@ -17,9 +25,10 @@ real MVP is:
 - **Your own company, for real.** The owner runs cinqueterre.travel as CEO on their own
   machine. Staff write real articles; real pull requests land in the real site repository;
   merges deploy the live site; the result returns to the game.
-- **Strictly local inference in the browser.** One resident model, Ternary-Bonsai-2-27B on
-  WebGPU, in a Dedicated Worker, shared by all staff. No inference API, no native model server,
-  no cloud fallback. The runtime is proven by a benchmark report before anything is built on it.
+- **Hosted inference on GPT-6-Luna** (ADR-0067, replacing the strictly local plan of ADR-0057):
+  the central server calls the Responses API with the key it holds, fenced by the company lease
+  and a daily budget; the browser never sees the key. Research turns search the open web and
+  cite what they found (ADR-0068).
 - **A watchable office:** staff visibly at work, meeting speech bubbles, working Plan / Inbox /
   Finance panels, an Activity timeline.
 - **The CEO approves each article** before it is merged.
@@ -43,8 +52,8 @@ What the explorations found, and this plan fixes:
 
 On the owner's Mac (M3 Max, 128 GB) in Chrome, with the local server serving the built game:
 
-1. Bonsai downloads once, verifies, loads in a Worker and passes a qualification turn; a status
-   chip shows each stage. No inference request leaves the machine.
+1. The hosted model is reachable through the server and passes a qualification turn; a status
+   chip shows its state, and an outage holds the clock instead of failing jobs (ADR-0067).
 2. The 09:00 standup runs on real site context and commissions a capped number of articles; the
    turns play as speech bubbles.
 3. A writer drafts in bounded stages; the editor reviews; deterministic checks pass.
@@ -62,9 +71,9 @@ On the owner's Mac (M3 Max, 128 GB) in Chrome, with the local server serving the
 | Topic | Decision | ADR |
 |---|---|---|
 | MVP target | The owner's company on cinqueterre.travel, single player, server run locally | – |
-| Inference | Strictly local in-browser WebGPU; Bonsai PTQ1_0; no Claude in the MVP | 0057 |
-| Runtime source | Extract the engine from the webml-community demo behind the existing `LocalLlm` interface; prove first | 0057 |
-| Second backend | Chrome Prompt API as a separately labelled adapter on the same fixtures; never substituted silently | 0057 |
+| Inference | Hosted GPT-6-Luna through the central server (Flex by default, a daily budget); local Gemma opt-in only. Was: strictly local Bonsai (ADR-0057, a no-go) | 0067 (0057, 0066) |
+| Research | Open-web research with checked citations before every draft; pitches checked too | 0068 |
+| Weekly plan | The editorial board plans two weeks each Monday; no CEO approval of the plan | 0069 |
 | Pipeline | Bounded stages inside the Draft and Review jobs | 0058 |
 | Publish gate | The CEO approves every article before merge | 0059 |
 | Game time | The clock holds while work is due; day length stays 20 real minutes | 0060 |
@@ -88,7 +97,7 @@ Defaults chosen with the plan:
 
 | | Milestone | Proves |
 |---|---|---|
-| R | Runtime go/no-go | Bonsai in a Worker meets thresholds on the owner's Mac, or the fallback ladder is taken |
+| R | Runtime go/no-go | Done 2026-10-05: Bonsai was a no-go; hosted GPT-6-Luna instead (ADR-0067) |
 | A | Real model, fake GitHub | A staged article reaches the gate, is approved and merged, on real inference |
 | B | Rehearsal | Eval thresholds met; 7 game days against a fork with real deploys |
 | C | First live article | One article, cap 1 per day, approved by the CEO, verified live by hand |
@@ -364,5 +373,5 @@ prototype (`git show f0db482:crates/server/src/orchestrator.rs`):
 | Mode | LLM | GitHub |
 |---|---|---|
 | test (CI) | scripted `FakeLlm` (Rust tests), scripted fake `LocalLlm` (browser e2e) | `FakeGitHub` in the server |
-| dev (manual) | `?llm=fake` scripted; `?llm=bonsai` once track R lands | `SWARMPRESS_GITHUB=fake` (in-memory, lost on restart) or a sandbox repo |
-| MVP (owner's machine) | the resident in-browser model (ADR-0057) | token mode against the site repository (G2) |
+| dev (manual) | `?llm=fake` scripted; GPT-6-Luna through the local server (`OPENAI_API_KEY` in `.env`); `?llm=gemma` opt-in | `SWARMPRESS_GITHUB=fake` (in-memory, lost on restart) or a sandbox repo |
+| MVP (owner's machine) | hosted GPT-6-Luna through the server (ADR-0067) | token mode against the site repository (G2) |
