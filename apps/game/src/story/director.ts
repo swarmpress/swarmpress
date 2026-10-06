@@ -23,12 +23,20 @@ export const CHAPTER_SECONDS = 600
 export const PREFETCH_AT_SECONDS = 420
 /** The longest line, characters. */
 export const MAX_LINE_CHARS = 240
+/**
+ * The chapter's answer budget, tokens: five scenes of six lines of up to
+ * 240 characters, with their JSON, fit with room to spare. Without it a
+ * hosted call gets the adapter's small default and is cut off.
+ */
+export const CHAPTER_ANSWER_TOKENS = 4000
 /** Pause after a line before the next (ms), on top of its reading time. */
 export const LINE_GAP_MS = 600
 /** Running seconds between saves of the director's state. */
 export const SAVE_EVERY_SECONDS = 15
 /** Lines whose words stay in the kv (older bubbles are long gone). */
 export const KEPT_LINES = 200
+/** Running seconds before a failed chapter request is tried again. */
+export const RETRY_AFTER_SECONDS = 120
 /** kv key of the director's state. */
 export const STORY_STATE_KEY = 'story.state'
 /** kv key of a remark's words, by its sim seq. */
@@ -215,6 +223,9 @@ export class StoryDirector {
   private playing: Promise<void> | null = null
   private loading: Promise<void> | null = null
   private savedAt = 0
+  /** Running seconds this director has seen, and when it may ask again after a failure. */
+  private running = 0
+  private retryAt = 0
 
   constructor(private readonly d: DirectorDeps) {}
 
@@ -241,6 +252,7 @@ export class StoryDirector {
 
   private request(): Promise<void> {
     if (this.requesting) return this.requesting
+    if (this.running < this.retryAt) return Promise.resolve()
     let ctx: StoryContext
     this.requesting = Promise.resolve(this.d.context())
       .then((c) => {
@@ -253,7 +265,10 @@ export class StoryDirector {
         this.d.log?.(`story: chapter ${this.state.chapters} ready (${this.state.next.scenes.length} scenes)`)
         return this.save()
       })
-      .catch((e) => this.d.log?.(`story: no chapter (${String(e)}); the office stays quiet`))
+      .catch((e) => {
+        this.retryAt = this.running + RETRY_AFTER_SECONDS
+        this.d.log?.(`story: no chapter (${String(e)}); the office stays quiet, next try in ${RETRY_AFTER_SECONDS} s`)
+      })
       .finally(() => {
         this.requesting = null
       })
@@ -263,6 +278,7 @@ export class StoryDirector {
   async tick(seconds: number): Promise<void> {
     await this.load()
     if (!this.d.running()) return
+    this.running += seconds
     if (!this.state.current) {
       // the first chapter: ask, and start it when it arrives
       if (this.state.next) this.startNext()

@@ -6,6 +6,7 @@ import {
   CHAPTER_SECONDS,
   chapterPrompt,
   PREFETCH_AT_SECONDS,
+  RETRY_AFTER_SECONDS,
   STORY_STATE_KEY,
   StoryDirector,
   storyLineKey,
@@ -183,6 +184,21 @@ describe('StoryDirector', () => {
     const director = new StoryDirector(refused.d)
     await advance(director, 10)
     expect(refused.kv.has(storyLineKey(1))).toBe(false)
+  })
+
+  it('waits two running minutes after a failed request before asking again', async () => {
+    let calls = 0
+    const { d } = deps({
+      ask: async () => {
+        calls++
+        throw new Error('cut off')
+      },
+    })
+    const director = new StoryDirector(d)
+    await advance(director, RETRY_AFTER_SECONDS - 10)
+    expect(calls).toBe(1)
+    await advance(director, 20)
+    expect(calls).toBe(2)
   })
 
   it('remembers played scenes across a reload', async () => {
