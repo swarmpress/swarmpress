@@ -45,9 +45,6 @@ import { Sim } from 'swarm-wasm'
 import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResult, type RestoredSim, type SimFactory } from '../catchup/replay'
 import { CentralClient, centralGateway, companyFor, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type SiteAudit } from '../net/central'
 import type { PutBlueprintBody, PutBlueprintResult, SiteModels } from '../blueprint/types'
-import { blueprintCommand, toolsCommand, type HeldStructure } from '../blueprint/digest'
-import { commission, type CommissionKind } from '../blueprint/commission'
-import type { CommandResult } from '../ui/commands'
 import { OrchestrationLoop, type JobRecord } from '../orchestration/loop'
 import { withApprover } from '../orchestration/approver'
 import { sweepStages } from '../orchestration/sweeper'
@@ -269,12 +266,8 @@ class SessionDataSource extends WasmDataSource {
     return Promise.resolve(this.models)
   }
 
-  /** How the overlay saves and re-reads the blueprint, and commissions the architects; the session sets it with the lease (null: read-only). */
-  siteActions: {
-    save(body: PutBlueprintBody): Promise<PutBlueprintResult>
-    reload(): Promise<void>
-    commission(kind: CommissionKind, request: string): Promise<CommandResult>
-  } | null = null
+  /** How the overlay saves and re-reads the blueprint; the session sets it with the lease (null: read-only). */
+  siteActions: { save(body: PutBlueprintBody): Promise<PutBlueprintResult>; reload(): Promise<void> } | null = null
 
   saveBlueprint(body: PutBlueprintBody): Promise<PutBlueprintResult> {
     if (!this.siteActions) return Promise.reject(new Error('This session cannot change the site (read-only).'))
@@ -283,11 +276,6 @@ class SessionDataSource extends WasmDataSource {
 
   reloadSiteModels(): Promise<void> {
     return this.siteActions ? this.siteActions.reload() : Promise.resolve()
-  }
-
-  commission(kind: CommissionKind, request: string): Promise<CommandResult> {
-    if (!this.siteActions) return Promise.resolve({ ok: false, reason: 'This session cannot change the site (read-only).' })
-    return this.siteActions.commission(kind, request)
   }
 }
 
@@ -617,13 +605,6 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     onPlanText: () => sources.forEach((s) => s.planTextChanged()),
     // A published item is the moment worth keeping: seal the log and a checkpoint to central sync (docs/mvp.md).
     onLanded: () => void checkpoint(),
-    // An applied structure or tool (FEAT-095) changed the site's models: read them again, which logs their digests.
-    onJobDone: (job) => {
-      if (job.kind !== 'publish' || !job.ok || !job.work_item) return
-      const items = (JSON.parse(sim.plan_json()) as { items: { id: string; kind?: string }[] }).items
-      const kind = items.find((i) => i.id === job.work_item)?.kind
-      if (kind === 'structure' || kind === 'tool') void loadSiteModels().catch((e) => log(`site models failed: ${String(e)}`))
-    },
     // The standup's context (ADR-0062): the sim's work in progress, titles from the plan store,
     // the measured model minutes per article from the activity record, and today's date.
     standupContext: async ({ project }) => {
@@ -834,14 +815,6 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     const m = await client.siteBlueprint(lease.token)
     sources.forEach((s) => s.setSiteModels(m))
     log(`site models at ${m.commit.slice(0, 7)}: ${m.source} blueprint, ${m.blueprint.page_types.length} page types, ${m.tools.length} tools, ${m.issues.length} issues`)
-    // Their digests enter the sim as logged commands when they differ from what it holds (FEAT-095):
-    // the same on every device that restores the log.
-    const held = (JSON.parse(sim.plan_json()) as { structure?: HeldStructure }).structure
-    for (const cmd of [blueprintCommand(m, held), toolsCommand(m, held)]) {
-      if (!cmd) continue
-      const r = loop.apply(cmd)
-      if (!r.ok) log(`site model digest not applied: ${r.reason} (${cmd.slice(0, 80)})`)
-    }
   }
   void loadSiteModels().catch((e) => log(`site models failed: ${String(e)}`))
   // The weekly editorial board plans the week (ADR-0069): on once, as a logged command, so a
@@ -1058,26 +1031,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
         version: () => activity.written,
       }
       const s = new SessionDataSource(orgApi, { ...companyStoreOptions(store, company, site, recorder), changeKey: () => `${sim.step()}:${loop.lastSeq}` })
-      if (!readOnly)
-        s.siteActions = {
-          save: (body) => client.putBlueprint(lease.token, body),
-          reload: () => loadSiteModels(),
-          // FEAT-095: the request is a brief in the store, the command carries its ref.
-          commission: (kind, request) => {
-            const project = (JSON.parse(sim.org_json()) as { projects?: { id: string; status?: string }[] }).projects?.find((p) => !p.status || p.status === 'active')?.id
-            if (!project) return Promise.resolve({ ok: false, reason: 'There is no active project.' })
-            return commission(
-              {
-                validate: (json) => sim.validate_command_json(json),
-                apply: (json) => loop.apply(json),
-                putBrief: (ref, record) => store.putBrief(company.id, ref, record),
-              },
-              project,
-              kind,
-              request,
-            )
-          },
-        }
+      if (!readOnly) s.siteActions = { save: (body) => client.putBlueprint(lease.token, body), reload: () => loadSiteModels() }
       sources.add(s)
       return s
     },
