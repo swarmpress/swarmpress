@@ -34,7 +34,10 @@ both pass the editor and the CEO's publish gate. Article updates name the blob t
 - **Server**: `GET /api/site/audit` (lease; cached per commit; the ETag carries the commit and the
   day; stale = more than 90 days old by the server's clock), `GET /api/gateway/file` (a
   `content/pages/` file with its blob sha), and the draft's `update` field: an update names the
-  blob it replaces; everything else stays create-only. Tests: `crates/server/tests/site_audit.rs`,
+  blob it replaces; everything else stays create-only. An update is refused only for the unknown
+  links and media it adds, not for those the live page already has: the older articles use images
+  the media index does not list (`gateway::new_closed_world_issues`). Site care offers articles
+  only. Tests: `crates/server/tests/site_audit.rs`,
   `crates/knowledge/tests/cinqueterre_mini.rs`.
 
 - **Sim**: `WorkItemKind::Refresh` and `Fix` (the article's phases; publishing one makes no new

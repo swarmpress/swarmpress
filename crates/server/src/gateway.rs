@@ -435,6 +435,33 @@ pub fn check_closed_world(page: &Value, site: Option<&dyn ClosedWorld>) -> Resul
     }
 }
 
+/// The closed-world issues an update adds (ADR-0070): those of `page` that
+/// the page it replaces (`base`) does not have already. The live site's older
+/// articles may use media the index does not list; an update that keeps them
+/// is not refused for them, one that brings a new unknown reference is.
+/// Issues are compared by their message (`<pointer>: <message>`, which names
+/// the target), so a removed block that moves the pointers changes nothing.
+pub fn new_closed_world_issues(
+    page: &Value,
+    base: Option<&Value>,
+    site: Option<&dyn ClosedWorld>,
+) -> Result<(), Vec<String>> {
+    let Err(mut issues) = check_closed_world(page, site) else {
+        return Ok(());
+    };
+    if let (Some(base), Some(site)) = (base, site) {
+        let message = |i: &str| i.split_once(": ").map_or(i, |(_, m)| m).to_string();
+        let known: std::collections::BTreeSet<String> =
+            site.check_page(base).iter().map(|i| message(i)).collect();
+        issues.retain(|i| !known.contains(&message(i)));
+    }
+    if issues.is_empty() {
+        Ok(())
+    } else {
+        Err(issues)
+    }
+}
+
 /// The knowledge base of `repo` at the head of `base`: the knowledge pack's
 /// ([`crate::site_knowledge::site_pack`], cached by head sha). `None` when
 /// the article profile is off (`SWARMPRESS_ARTICLE_PROFILE=off`, fake GitHub
@@ -496,6 +523,10 @@ async fn check_against_site(
     }
     let base = &company.site_base_branch;
     let existing = api.get_file(repo, base, path).await.map_err(gh_error)?;
+    // An update is checked against what the live page already refers to.
+    let replaced: Option<Value> = update
+        .and(existing.as_ref())
+        .and_then(|f| serde_json::from_slice(&f.content).ok());
     match (update, existing) {
         (None, Some(_)) => {
             return Err(AppError::Conflict(format!(
@@ -516,9 +547,11 @@ async fn check_against_site(
         _ => {}
     }
     let site = site_knowledge(st, api, repo, base).await?;
-    check_closed_world(page, site.as_deref()).map_err(|issues| AppError::Unprocessable {
-        message: format!("{path} refers to pages or media the site does not have"),
-        issues,
+    new_closed_world_issues(page, replaced.as_ref(), site.as_deref()).map_err(|issues| {
+        AppError::Unprocessable {
+            message: format!("{path} refers to pages or media the site does not have"),
+            issues,
+        }
     })
 }
 
@@ -1275,5 +1308,39 @@ mod tests {
             Err(vec!["unknown media https://x.test/a.jpg".to_string()])
         );
         assert_eq!(check_closed_world(&json!({}), Some(&NoMedia)), Ok(()));
+    }
+
+    #[test]
+    fn an_update_is_refused_only_for_the_unknown_references_it_adds() {
+        struct NoMedia;
+        impl ClosedWorld for NoMedia {
+            fn check_page(&self, page: &Value) -> Vec<String> {
+                page.get("body")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .enumerate()
+                    .filter_map(|(i, b)| b.get("image").and_then(Value::as_str).map(|u| (i, u)))
+                    .map(|(i, url)| format!("/body/{i}/image: URL not in media index: {url}"))
+                    .collect()
+            }
+        }
+        let base = json!({ "body": [{ "type": "cta" }, { "image": "https://x.test/old.jpg" }] });
+        // The block before it is gone: same image, another pointer. Kept, so not refused.
+        let kept = json!({ "body": [{ "image": "https://x.test/old.jpg" }] });
+        assert_eq!(
+            new_closed_world_issues(&kept, Some(&base), Some(&NoMedia)),
+            Ok(())
+        );
+        // A new unknown image is refused, the inherited one still is not.
+        let added = json!({ "body": [{ "image": "https://x.test/old.jpg" }, { "image": "https://x.test/new.jpg" }] });
+        assert_eq!(
+            new_closed_world_issues(&added, Some(&base), Some(&NoMedia)),
+            Err(vec![
+                "/body/1/image: URL not in media index: https://x.test/new.jpg".to_string()
+            ])
+        );
+        // A create has no base: everything counts.
+        assert!(new_closed_world_issues(&kept, None, Some(&NoMedia)).is_err());
     }
 }
