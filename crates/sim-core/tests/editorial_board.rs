@@ -613,3 +613,92 @@ fn a_snapshot_with_planned_items_restores_and_reissues_nothing() {
     assert!(drain(&mut r).is_empty());
     assert_eq!(r.unstarted_items(DEMO_PROJECT), 2);
 }
+
+// ---------------------------------------------------------------------
+// The CEO changes the plan (UpdateWorkItem)
+// ---------------------------------------------------------------------
+
+fn update(item: WorkItemId, u: sim_core::commands::WorkItemUpdate) -> Command {
+    Command::UpdateWorkItem { item, update: u }
+}
+
+#[test]
+fn the_ceo_moves_reassigns_reprioritizes_and_cancels_planned_items() {
+    use sim_core::commands::WorkItemUpdate as U;
+    let mut w = with_board(14);
+    let board = step_until(&mut w, JobKind::Board, 600);
+    board_outcome(
+        &mut w,
+        board.job_id,
+        vec![stub(1600, 5, 8), stub(1601, 6, 9)],
+    );
+    let a = items_with(&w, 1600);
+    let b = items_with(&w, 1601);
+
+    // priority, on any open item
+    w.apply(update(a, U::Priority(WorkPriority::Urgent)))
+        .unwrap();
+    assert_eq!(w.plan.items[&a].priority, WorkPriority::Urgent);
+
+    // the editor, before the item starts: review and ownership move with it
+    w.apply(update(a, U::Owner(SOPHIA))).unwrap();
+    assert_eq!(w.plan.items[&a].owner, Some(SOPHIA));
+    assert_eq!(w.plan.items[&a].phases[1].assignee, Some(SOPHIA));
+    assert!(w.apply(update(a, U::Owner(GIULIA))).is_err(), "a writer");
+
+    // the due day: moved to today, the item is due now and starts at once
+    let today = w.clock().day;
+    assert!(
+        w.apply(update(b, U::DueDay(today + 30))).is_err(),
+        "too far"
+    );
+    w.apply(update(b, U::DueDay(today))).unwrap();
+    let it = &w.plan.items[&b];
+    assert_eq!(
+        (it.start_day, it.due_day, it.publish_day),
+        (Some(today), Some(today), Some(today + 1))
+    );
+    let started = drain(&mut w);
+    assert_eq!(started.len(), 1, "{started:?}");
+    assert_eq!(started[0].work_item, Some(b));
+    // a started item keeps its editor
+    assert!(w.apply(update(b, U::Owner(SOPHIA))).is_err());
+
+    // the pipeline's statuses are not the CEO's
+    assert!(w
+        .apply(update(a, U::Status(WorkItemStatus::Approved)))
+        .is_err());
+    // cancelling a started item drops its job and frees its writer
+    w.apply(update(b, U::Status(WorkItemStatus::Cancelled)))
+        .unwrap();
+    assert_eq!(w.plan.items[&b].status, WorkItemStatus::Cancelled);
+    assert!(w.plan.jobs.values().all(|j| j.work_item != Some(b)));
+    assert!(
+        w.apply(update(b, U::Priority(WorkPriority::Low))).is_err(),
+        "closed"
+    );
+    // cancelling a planned one takes it off the plan
+    w.apply(update(a, U::Status(WorkItemStatus::Cancelled)))
+        .unwrap();
+    assert_eq!(w.unstarted_items(DEMO_PROJECT), 0);
+}
+
+#[test]
+fn an_item_with_an_open_ticket_is_answered_not_cancelled() {
+    use sim_core::commands::WorkItemUpdate as U;
+    let mut w = with_board(15);
+    let board = step_until(&mut w, JobKind::Board, 600);
+    board_outcome(&mut w, board.job_id, vec![stub(1700, 0, 3)]);
+    let id = items_with(&w, 1700);
+    let draft = drain(&mut w).remove(0);
+    w.apply_server(ServerCommand::JobFailed {
+        job_id: draft.job_id,
+        reason: JobFailure::NeedsMedia,
+    })
+    .unwrap();
+    assert_eq!(w.plan.items[&id].status, WorkItemStatus::Blocked);
+    let err = w
+        .apply(update(id, U::Status(WorkItemStatus::Cancelled)))
+        .unwrap_err();
+    assert!(err.to_string().contains("open ticket"), "{err}");
+}

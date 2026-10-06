@@ -246,7 +246,7 @@ describe.skipIf(!built)('WasmDataSource over the real sim', () => {
     expect((await source.getInbox()).tickets.find((t) => t.id === ticket.id)).toMatchObject({ status: 'answered', answer: other, resolvedBy: 'ceo' })
   })
 
-  it('the dead actions of a real work item are disabled and change nothing in the sim', async () => {
+  it('the dead actions of a real work item are disabled, the sim gates the rest, and nothing changes', async () => {
     const { sim, item } = escalated()
     const sent: string[] = []
     const watched: SimOrgApi = {
@@ -267,22 +267,24 @@ describe.skipIf(!built)('WasmDataSource over the real sim', () => {
     await flush()
     const hash = sim.hash()
     const p = within(region(/Media & publishing plan/))
+    // Approving is the publish gate's, never a status change: the sim says so.
+    const approve = p.getByRole('button', { name: 'Approve' }) as HTMLButtonElement
+    expect(approve.disabled).toBe(true)
+    expect(approve.title).toMatch(/only cancelling is the CEO's/)
     const dead = [
-      p.getByRole('button', { name: 'Re-prioritize' }),
-      p.getByRole('button', { name: 'Approve' }),
-      p.getByRole('button', { name: 'Cancel item…' }),
       ...p.getAllByRole('button', { name: 'Reassign' }),
       ...p.getAllByRole('button', { name: 'Send to Agency' }),
     ] as HTMLButtonElement[]
-    expect(dead.length).toBeGreaterThanOrEqual(5)
+    expect(dead.length).toBeGreaterThanOrEqual(2)
     for (const b of dead) {
       expect(b.disabled, b.textContent!).toBe(true)
       expect(b.title, b.textContent!).toBe(NOT_AVAILABLE)
       fireEvent.click(b)
     }
     await flush()
+    // the escalated item has an open ticket: the sim refuses to cancel it, and nothing is applied
     expect((await h.store.run(cmd.setItemStatus(item, 'cancelled'))).ok).toBe(false)
-    expect(sent).toEqual([])
+    expect(sent.every((json) => json.includes('UpdateWorkItem'))).toBe(true)
     expect(sim.hash()).toBe(hash)
   })
 

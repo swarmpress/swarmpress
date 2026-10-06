@@ -56,10 +56,17 @@ CEO does not approve the plan; the publish gate still guards what goes live.
   `ui/plan-wire.test.ts`, `orchestration/speech.test.ts`, `ui/wasm-live.test.tsx`,
   `crates/orchestrator-wasm/tests/loop.test.ts` (the twin under Bun).
 
+- **The CEO changes the plan** (`Command::UpdateWorkItem`): a work item's priority, the editor of
+  an item not started yet, its due day (the planned publish day follows; moved to today it starts
+  at once), or cancels it (refused while a ticket on it is open or once it is merged). Approving
+  stays the publish gate's. The work item panel's Re-prioritize, Move and Cancel act on the sim.
+  Tests: `crates/sim-core/tests/editorial_board.rs`, `ui/live-panels.test.tsx`,
+  `ui/wasm-live.test.tsx`.
+
 ## Not built yet
 
-- The editor-in-chief's own scheduling call (`PlanSchedule`), moving or cancelling a planned item,
-  big bets as tickets, the next season's topics within their lead time.
+- The editor-in-chief's own scheduling call (`PlanSchedule`), big bets as tickets, the next
+  season's topics within their lead time.
 - Another device that takes a company over has its command log but not the store's text: a board
   brief (like a standup brief) is unknown there until work records sync (ADR-0056).
 

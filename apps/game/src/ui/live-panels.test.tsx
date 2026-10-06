@@ -207,11 +207,9 @@ describe('work item on live data', () => {
     const c = await live(sim, { planText: async () => text })
     const p = await openItem(c)
 
+    // The sim has UpdateWorkItem (ADR-0069): priority, due day and cancel are its to gate.
+    expect(p.getByRole('combobox', { name: 'Priority' }).disabled).toBe(false)
     const dead = [
-      p.getByRole('combobox', { name: 'Priority' }),
-      p.getByRole('button', { name: 'Re-prioritize' }),
-      p.getByRole('button', { name: 'Approve' }),
-      p.getByRole('button', { name: 'Cancel item…' }),
       ...p.getAllByRole('combobox', { name: 'Reassign' }),
       ...p.getAllByRole('button', { name: 'Reassign' }),
       ...p.getAllByRole('button', { name: 'Send to Agency' }),
@@ -221,7 +219,7 @@ describe('work item on live data', () => {
     // One Reassign and one Send to Agency per open phase of the real item.
     const openPhases = sim.state.plan.items[0].phases.filter((ph) => ph.state !== 'done').length
     expect(openPhases).toBeGreaterThan(0)
-    expect(dead).toHaveLength(6 + 3 * openPhases)
+    expect(dead).toHaveLength(2 + 3 * openPhases)
     for (const el of dead) {
       expect(el.disabled, el.textContent ?? '').toBe(true)
       expect(el.title, el.textContent ?? '').toBe(NOT_AVAILABLE)
@@ -231,19 +229,17 @@ describe('work item on live data', () => {
     for (const el of dead) fireEvent.click(el)
     await flush()
     expect(sim.applied).toEqual([])
-    expect(sim.validated).toEqual([])
-    expect(p.queryByRole('group', { name: 'Confirm cancel' })).toBeNull()
+    // only the sim's own command was checked: the plan commands never reach it
+    expect(sim.validated.every((json: string) => json.includes('UpdateWorkItem'))).toBe(true)
   })
 
   it('never hands the sim a command it would reject: the store is the single gate', async () => {
     const sim = liveSim()
     const c = await live(sim)
-    expect(PLAN_COMMANDS.map((n) => c.store.can(n))).toEqual([false, false, false, false, false])
+    expect(PLAN_COMMANDS.map((n) => c.store.can(n))).toEqual([false, false, false, false])
     expect(SIM_COMMANDS.every((n) => c.store.can(n))).toBe(true)
 
     const plan = [
-      cmd.setPriority(LIVE_ITEM, 'urgent'),
-      cmd.setItemStatus(LIVE_ITEM, 'approved'),
       cmd.assignPhase(LIVE_ITEM, 0, 'staff-1'),
       cmd.acceptProposal(LIVE_ITEM, 'post-1'),
       cmd.completeTodo(LIVE_ITEM, 'todo-1'),

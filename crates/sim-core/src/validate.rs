@@ -508,6 +508,7 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
             }
         }
         Command::SetDelegation { .. } => Ok(()),
+        Command::UpdateWorkItem { item, update } => w.check_update_item(*item, update),
         Command::Praise { staff } => {
             active_staff(w, *staff)?;
             if w.praises_today >= PRAISES_PER_DAY {
@@ -638,6 +639,7 @@ pub(crate) fn price(w: &World, cmd: &Command) -> i64 {
         | Command::AnswerTicket { .. }
         | Command::Delegate { .. }
         | Command::SetDelegation { .. }
+        | Command::UpdateWorkItem { .. }
         | Command::Praise { .. } => 0,
     }
 }

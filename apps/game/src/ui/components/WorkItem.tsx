@@ -23,6 +23,9 @@ export function WorkItemDetail({ item }: { item: WorkItemJson }) {
   const artifacts = posts.filter((p) => p.type === 'artifact' && p.artifact)
   const ws = item.workstream ? text.workstreams[item.workstream]?.title : null
   const [priority, setPriority] = useState(item.priority)
+  // Shown 1-based, like the plan's day labels.
+  const [due, setDue] = useState(item.dueDay != null ? item.dueDay + 1 : null)
+  const move = due != null ? store.check(cmd.setDueDay(item.id, due - 1)) : null
   const [confirmCancel, setConfirmCancel] = useState(false)
   const approve = store.check(cmd.setItemStatus(item.id, 'approved'))
   const cancel = store.check(cmd.setItemStatus(item.id, 'cancelled'))
@@ -77,6 +80,23 @@ export function WorkItemDetail({ item }: { item: WorkItemJson }) {
         >
           Re-prioritize
         </button>
+        {due != null && (
+          <>
+            <label class="field-inline">
+              <span>Due day</span>
+              <input type="number" min={1} value={due} disabled={!!noUpdate} title={noUpdate} onInput={(e) => setDue(Number(e.currentTarget.value))} />
+            </label>
+            <button
+              type="button"
+              class="btn"
+              disabled={!move?.ok || due - 1 === item.dueDay}
+              title={move?.reason}
+              onClick={() => store.run(cmd.setDueDay(item.id, due - 1), `Due on day ${due}`)}
+            >
+              Move
+            </button>
+          </>
+        )}
         <button type="button" class="btn" disabled={!approve.ok} title={approve.reason} onClick={() => store.run(cmd.setItemStatus(item.id, 'approved'), 'Approved')}>
           Approve
         </button>

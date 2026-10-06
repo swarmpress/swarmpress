@@ -183,6 +183,19 @@ fn delegate_task() -> impl Strategy<Value = SecretaryTaskKind> {
 
 fn org_command() -> impl Strategy<Value = Command> {
     prop_oneof![
+        (1u32..8, 0u8..4, 0u32..20).prop_map(|(item, k, n)| {
+            use sim_core::commands::WorkItemUpdate as U;
+            let update = match k {
+                0 => U::Priority(WorkPriority::High),
+                1 => U::Owner(StaffId(n % 14)),
+                2 => U::DueDay(n),
+                _ => U::Status(WorkItemStatus::Cancelled),
+            };
+            Command::UpdateWorkItem {
+                item: WorkItemId(item),
+                update,
+            }
+        }),
         staff_id().prop_map(|staff| Command::Promote { staff }),
         (staff_id(), -10i64..60_000).prop_map(|(staff, cents_per_day)| Command::SetSalary {
             staff,

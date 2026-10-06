@@ -1420,6 +1420,121 @@ impl World {
         Ok(())
     }
 
+    /// Validates the CEO's change to a work item (pure).
+    pub(crate) fn check_update_item(
+        &self,
+        id: WorkItemId,
+        update: &crate::commands::WorkItemUpdate,
+    ) -> Result<(), crate::Reject> {
+        use crate::commands::WorkItemUpdate as U;
+        use crate::Reject;
+        let item = self
+            .plan
+            .items
+            .get(&id)
+            .ok_or(Reject::Invalid("no such work item"))?;
+        if item.status.is_closed() {
+            return Err(Reject::Invalid(
+                "the item is already published or cancelled",
+            ));
+        }
+        match *update {
+            U::Priority(_) => Ok(()),
+            U::Owner(editor) => {
+                if !item.is_unstarted() {
+                    return Err(Reject::Invalid(
+                        "the editor can change only before the item starts",
+                    ));
+                }
+                let ok = self.staff.get(&editor).is_some_and(|p| {
+                    p.is_active() && can_review(p.role) && p.allocation(item.project) > 0
+                });
+                if ok {
+                    Ok(())
+                } else {
+                    Err(Reject::Invalid(
+                        "the editor must be an editor on the project's team",
+                    ))
+                }
+            }
+            U::DueDay(day) => {
+                let today = self.clock().day;
+                if day < today {
+                    Err(Reject::Invalid("the due day is in the past"))
+                } else if day > today + u32::from(MAX_BOARD_OFFSET) {
+                    Err(Reject::Invalid("a due day is at most two weeks ahead"))
+                } else {
+                    Ok(())
+                }
+            }
+            U::Status(WorkItemStatus::Cancelled) => {
+                if item.status == WorkItemStatus::Scheduled {
+                    return Err(Reject::Invalid(
+                        "the item is merged and waits for its deploy",
+                    ));
+                }
+                if item
+                    .tickets
+                    .iter()
+                    .any(|t| self.tickets.get(t).is_some_and(|t| t.is_open()))
+                {
+                    return Err(Reject::Invalid(
+                        "the item has an open ticket: answer it instead",
+                    ));
+                }
+                Ok(())
+            }
+            U::Status(_) => Err(Reject::Invalid(
+                "only cancelling is the CEO's; the pipeline sets every other status",
+            )),
+        }
+    }
+
+    /// Applies the CEO's change to a work item (checked).
+    pub(crate) fn update_item(&mut self, id: WorkItemId, update: crate::commands::WorkItemUpdate) {
+        use crate::commands::WorkItemUpdate as U;
+        let today = self.clock().day;
+        match update {
+            U::Priority(p) => {
+                if let Some(i) = self.plan.items.get_mut(&id) {
+                    i.priority = p;
+                }
+            }
+            U::Owner(editor) => {
+                let Some(project) = self.plan.items.get(&id).map(|i| i.project) else {
+                    return;
+                };
+                let publisher = self.publisher(project, editor);
+                if let Some(i) = self.plan.items.get_mut(&id) {
+                    i.owner = Some(editor);
+                    for p in &mut i.phases {
+                        match p.kind {
+                            PhaseKind::Review => p.assignee = Some(editor),
+                            PhaseKind::Publish => p.assignee = Some(publisher),
+                            PhaseKind::Draft => {}
+                        }
+                    }
+                }
+            }
+            U::DueDay(day) => {
+                if let Some(i) = self.plan.items.get_mut(&id) {
+                    i.due_day = Some(day);
+                    i.publish_day = Some(day + 1);
+                    if i.is_unstarted() {
+                        i.start_day = Some(i.start_day.map_or(today, |s| s.min(day)));
+                    }
+                }
+            }
+            U::Status(_) => self.cancel_item(id),
+        }
+        // A planned item moved earlier, or a cancelled one freed room.
+        if matches!(update, U::DueDay(_) | U::Status(_)) {
+            if let Some(project) = self.plan.items.get(&id).map(|i| i.project) {
+                self.start_due_planned(project, today);
+            }
+        }
+    }
+
     /// Validates an editorial board's outcome (pure, ADR-0069).
     pub(crate) fn check_board_outcome(
         &self,

@@ -113,10 +113,11 @@ export const SIM_COMMANDS: readonly CommandName[] = [
   'Delegate',
   'Praise',
   'SetDelegation',
+  'UpdateWorkItem',
 ]
 
 /** Plan commands of publishing-plan.md §6 the sim does not have yet (the mock source applies them). */
-export const PLAN_COMMANDS: readonly CommandName[] = ['UpdateWorkItem', 'AssignPhase', 'AcceptProposal', 'CompleteTodo', 'SendToAgency']
+export const PLAN_COMMANDS: readonly CommandName[] = ['AssignPhase', 'AcceptProposal', 'CompleteTodo', 'SendToAgency']
 
 /** Every command the overlay can build. */
 export const ALL_COMMANDS: readonly CommandName[] = [...SIM_COMMANDS, ...PLAN_COMMANDS]
@@ -182,6 +183,8 @@ export const cmd = {
   setPriority: (item: WorkItemRef, priority: string): Command => ({
     UpdateWorkItem: { item, update: { Priority: pascal(priority) as WorkPriorityVariant } },
   }),
+  /** The day (0-based game day) the item should be ready; it publishes the day after (ADR-0069). */
+  setDueDay: (item: WorkItemRef, day: number): Command => ({ UpdateWorkItem: { item, update: { DueDay: day } } }),
   setItemStatus: (item: WorkItemRef, status: string): Command => ({
     UpdateWorkItem: { item, update: { Status: pascal(status) as WorkItemStatusVariant } },
   }),

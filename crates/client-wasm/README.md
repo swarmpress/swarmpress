@@ -249,6 +249,10 @@ Every command, with an example:
 {"SetPolicy":{"Autonomy":"ApproveMajor"}}  // ApproveAll | ApproveMajor | Autonomous (or approve-all | approve-major | autonomous)
 {"SetPolicy":{"QualityBar":8}}             // 5..=10
 {"SetPolicy":{"EditorialBoard":true}}       // the weekly editorial board (ADR-0069), off by default
+{"UpdateWorkItem":{"item":"work-item-4","update":{"Priority":"Urgent"}}}   // Urgent | High | Normal | Low
+{"UpdateWorkItem":{"item":"work-item-4","update":{"Owner":"staff-5"}}}     // the editor, before the item starts
+{"UpdateWorkItem":{"item":"work-item-4","update":{"DueDay":6}}}            // today..today+13; publishes the day after
+{"UpdateWorkItem":{"item":"work-item-4","update":{"Status":"Cancelled"}}}  // only Cancelled; not with an open ticket
 // inbox and delegation
 {"AnswerTicket":{"ticket":"ticket-3","option":"arrange-hiring"}}
 {"AnswerTicket":{"ticket":"ticket-4","option":"publish"}}   // the publish gate: publish | send-back | kill | defer

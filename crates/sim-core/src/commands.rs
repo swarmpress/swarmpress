@@ -18,7 +18,7 @@ use crate::ids::{
     CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId,
 };
 use crate::inbox::{DelegationPolicy, SecretaryTaskKind, TicketOption};
-use crate::plan::{BriefStub, PlannedStub};
+use crate::plan::{BriefStub, PlannedStub, WorkItemStatus, WorkPriority};
 use crate::projects::ProjectStatus;
 
 /// What the player can do.
@@ -111,6 +111,25 @@ pub enum Command {
     Praise {
         staff: StaffId,
     },
+    /// The CEO changes an open work item in the plan (publishing-plan.md §6,
+    /// ADR-0069): its priority, the editor of an item not started yet, its
+    /// planned due day, or cancels it. Approving stays the publish gate's.
+    UpdateWorkItem {
+        item: WorkItemId,
+        update: WorkItemUpdate,
+    },
+}
+
+/// What [`Command::UpdateWorkItem`] changes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WorkItemUpdate {
+    Priority(WorkPriority),
+    /// The editor who reviews and owns it; only before it starts.
+    Owner(StaffId),
+    /// The day it should be ready; the planned publish day is the day after.
+    DueDay(u32),
+    /// Only `Cancelled`: the sim's state machine owns every other status.
+    Status(WorkItemStatus),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

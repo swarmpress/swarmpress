@@ -556,6 +556,7 @@ impl World {
                 self.exec.delegation = policy;
                 self.secretary_answers();
             }
+            Command::UpdateWorkItem { item, update } => self.update_item(item, update),
             Command::Praise { staff } => {
                 let bonus = if self.building.first_room_of(RoomKind::CeoOffice).is_some() {
                     PRAISE_MORALE + PRAISE_MORALE / 5
