@@ -477,7 +477,7 @@ function weeklyBoard(p: Prompt) {
     const title = quoted(line)[0]
     if (title === undefined || !free(title)) continue
     seen.push(title.toLowerCase())
-    const season = /\(([^)]*)\)[^(]*$/.exec(line)?.[1] ?? 'The season'
+    const season = (/\(([^)]*)\)[^(]*$/.exec(line)?.[1] ?? 'The season').split(',')[0]
     const at = line.indexOf('— keywords: ')
     const keywords = at < 0 ? [] : line.slice(at + '— keywords: '.length).split(',').map((s) => s.trim()).filter(Boolean).slice(0, 6)
     for (const extra of [title.toLowerCase(), 'cinque terre']) if (keywords.length < 2) keywords.push(cap(extra, 40))
@@ -486,7 +486,8 @@ function weeklyBoard(p: Prompt) {
       title: cap(title, 70),
       angle: `A seasonal guide to ${title.toLowerCase()}, and what a visitor should plan for.`,
       keywords,
-      priority: 'normal',
+      // the calendar's priority: `[critical]` and `[high]` are high
+      priority: /\[(critical|high)\]/.test(line) ? 'high' : /\[low\]/.test(line) ? 'low' : 'normal',
       workstream: cap(season, 40),
     })
   }
@@ -508,6 +509,30 @@ function weeklyBoard(p: Prompt) {
   }
 }
 
+/** The editor-in-chief's schedule (`board_schedule` in fake_writer.rs): the strategist's days, two days of lead, the editors in turn. */
+function boardSchedule(p: Prompt) {
+  const editors: string[] = []
+  const days: number[] = []
+  let inEditors = false
+  for (const line of p.text.split('\n')) {
+    if (line === 'Editors who review:') {
+      inEditors = true
+      continue
+    }
+    if (inEditors) {
+      if (line.startsWith('- ')) editors.push(line.slice(2).split(/\s+/)[0] ?? '')
+      else inEditors = false
+    } else {
+      const m = /proposed for day (\d+)/.exec(line)
+      if (m) days.push(Number(m[1]))
+    }
+  }
+  return {
+    items: days.map((d, i) => ({ item: i + 1, editor: editors[i % Math.max(1, editors.length)] ?? '', start_day: Math.max(0, d - 2), publish_day: d })),
+    say: 'The schedule stands: each editor takes their share, and drafts start two days ahead.',
+  }
+}
+
 /** The answer to a call of the standup's pitch round (`fake_writer::answer`); null when the call is not one. */
 export function standupAnswer(prompt: string, later = ''): MvpReply | null {
   const first = prompt.split('\n')[0] ?? ''
@@ -519,6 +544,7 @@ export function standupAnswer(prompt: string, later = ''): MvpReply | null {
   if (task === 'commission') return { json: commission(p) }
   if (task === 'pitch check') return { json: MVP_PITCH_CHECK }
   if (task === 'weekly board') return { json: weeklyBoard(p) }
+  if (task === 'board schedule') return { json: boardSchedule(p) }
   return null
 }
 

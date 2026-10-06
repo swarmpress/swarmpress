@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks'
 import { sentence } from '../format'
-import { availableViews, currentPhase, filterItems, itemProgress, workload, WORK_MINUTES_PER_WEEK, type BoardFilter, type PlanView } from '../plan-logic'
+import { availableViews, currentPhase, latestBoard, filterItems, itemProgress, workload, WORK_MINUTES_PER_WEEK, type BoardFilter, type PlanView } from '../plan-logic'
 import { STATUS_ORDER, type WorkItemJson } from '../plan-types'
 import { useStore } from '../store'
 import { Badge, Meter, Panel, PersonButton, priorityTone, TabPanel, Tabs } from './common'
@@ -32,6 +32,7 @@ export function Plan() {
         <WorkItemDetail item={selected} />
       ) : (
         <>
+          <ThisWeek />
           <Filters filter={filter} onChange={setFilter} />
           {tabs.length > 1 ? (
             <>
@@ -51,6 +52,29 @@ export function Plan() {
         </>
       )}
     </Panel>
+  )
+}
+
+/** The newest editorial board's theme and big bets (ADR-0069): what the CEO should know, not approve. */
+function ThisWeek() {
+  const store = useStore()
+  const board = latestBoard(store.planText.value)
+  if (!board) return null
+  return (
+    <section class="card this-week" aria-labelledby="this-week-title">
+      <h3 id="this-week-title">This week</h3>
+      <p>{board.theme}</p>
+      {board.bigBets.length > 0 && (
+        <>
+          <h4>Big bets</h4>
+          <ul>
+            {board.bigBets.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
   )
 }
 

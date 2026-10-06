@@ -70,6 +70,10 @@ board's context, `?restore=rebase` rebuilds a company from its command log, and 
 names planned items from their briefs. Verified live with the fake model on a fresh company:
 the board at 10:00 planned seven items under two workstreams and the first started at once;
 a rebase restored the company from central sync and sealed a fresh snapshot.
+Since then (2026-10-06): the CEO changes planned items (`UpdateWorkItem`); the board sees the next
+season within its lead time and the evergreen topics; the editor-in-chief's scheduling call
+replaces the fixed rule when one sits on the board (decision 6's later increment); big bets show in
+the Plan panel's "This week" card rather than as tickets, since nothing is asked of the CEO.
 
 ## Consequences
 

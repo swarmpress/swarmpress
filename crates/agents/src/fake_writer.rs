@@ -121,6 +121,7 @@ pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
         "pitch" => return FakeReply::Json(pitch(&p, &later)),
         "commission" => return FakeReply::Json(commission(&p)),
         "weekly board" => return FakeReply::Json(weekly_board(&p)),
+        "board schedule" => return FakeReply::Json(board_schedule(&p)),
         // Every pitch checks out (ADR-0068), on a made-up official source.
         "pitch check" => {
             return FakeReply::Json(json!({"verifiable": true,
@@ -604,7 +605,10 @@ fn weekly_board(p: &Prompt<'_>) -> Value {
         let season = line
             .rsplit_once('(')
             .and_then(|(_, r)| r.split_once(')'))
-            .map_or("The season", |(s, _)| s);
+            .map_or("The season", |(s, _)| s)
+            .split(',')
+            .next()
+            .unwrap_or("The season");
         let mut keywords: Vec<String> = line
             .split_once("— keywords: ")
             .map(|(_, k)| {
@@ -621,12 +625,18 @@ fn weekly_board(p: &Prompt<'_>) -> Value {
                 keywords.push(cap(&extra, 40));
             }
         }
+        // the calendar's priority: `[critical]` and `[high]` are high
+        let priority = match line.split_once(" [").and_then(|(_, r)| r.split_once(']')) {
+            Some(("critical" | "high", _)) => "high",
+            Some(("low", _)) => "low",
+            _ => "normal",
+        };
         proposals.push(json!({
             "topic": alias,
             "title": cap(title, 70),
             "angle": format!("A seasonal guide to {}, and what a visitor should plan for.", title.to_lowercase()),
             "keywords": keywords,
-            "priority": "normal",
+            "priority": priority,
             "workstream": cap(season, 40),
         }));
     }
@@ -658,6 +668,39 @@ fn weekly_board(p: &Prompt<'_>) -> Value {
         "proposals": proposals,
         "big_bets": [],
     })
+}
+
+/// The editor-in-chief's schedule: the strategist's days, two days of lead,
+/// the editors in turn (the same as the orchestrator's fallback).
+fn board_schedule(p: &Prompt<'_>) -> Value {
+    let mut editors: Vec<String> = Vec::new();
+    let mut days: Vec<u32> = Vec::new();
+    let mut in_editors = false;
+    for line in p.0.lines() {
+        if line == "Editors who review:" {
+            in_editors = true;
+            continue;
+        }
+        if in_editors {
+            match line.strip_prefix("- ") {
+                Some(rest) => {
+                    editors.push(rest.split_whitespace().next().unwrap_or("").to_string())
+                }
+                None => in_editors = false,
+            }
+        } else if let Some((_, rest)) = line.split_once("proposed for day ") {
+            days.push(leading_number(rest));
+        }
+    }
+    let items: Vec<Value> = days
+        .iter()
+        .enumerate()
+        .map(|(i, d)| {
+            let editor = editors.get(i % editors.len().max(1)).cloned().unwrap_or_default();
+            json!({"item": i + 1, "editor": editor, "start_day": d.saturating_sub(2), "publish_day": d})
+        })
+        .collect();
+    json!({"items": items, "say": "The schedule stands: each editor takes their share, and drafts start two days ahead."})
 }
 
 fn opening_line(p: &Prompt<'_>) -> String {

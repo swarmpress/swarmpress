@@ -82,10 +82,11 @@ async fn the_board_plans_the_calendar_then_the_guides_with_checks_and_records() 
     let out = o.run(&board(19, autumn())).await.unwrap();
     let (workstreams, items) = outcome(&out);
     // cap 5 until throughput is measured: the autumn topic (Portovenere is
-    // published), then the guides that do not repeat it
+    // published), the evergreen one, then the guides that do not repeat them
     assert_eq!(items.len(), 5, "{items:?}");
     let mut expected = vec!["weekly board".to_string()];
     expected.extend(std::iter::repeat_n("pitch check".to_string(), 5));
+    expected.push("board schedule".to_string());
     assert_eq!(tasks(&llm), expected);
 
     // the plan prompt: the board's cap, the date, the season's topics by alias
@@ -103,6 +104,10 @@ async fn the_board_plans_the_calendar_then_the_guides_with_checks_and_records() 
         !prompt.contains("Day Trip to Portovenere"),
         "published: {prompt}"
     );
+    assert!(
+        prompt.contains("- T2 «Complete Train Schedule Guide» (Evergreen) [critical]"),
+        "{prompt}"
+    );
     assert!(!prompt.contains("Commissions today"), "{prompt}");
 
     // scheduling: two days of lead, editors in turn (one editor here),
@@ -115,20 +120,21 @@ async fn the_board_plans_the_calendar_then_the_guides_with_checks_and_records() 
     assert!(items.iter().all(|i| i.editor == "staff-5"));
     assert_eq!(items[1].depends_on, vec![0]);
     assert!(items[2].depends_on.is_empty());
-    assert_eq!(items[0].priority, "Normal");
-    assert_eq!(items[1].priority, "High");
+    assert_eq!(items[0].priority, "High", "the calendar's high");
+    assert_eq!(items[1].priority, "High", "the calendar's critical");
 
     // workstreams: the season and the guides, refs stable per name
     assert_eq!(
         workstreams,
         vec![
             workstream_ref_for(COMPANY, "Fall"),
+            workstream_ref_for(COMPANY, "Evergreen"),
             workstream_ref_for(COMPANY, "Evergreen guides")
         ]
     );
     assert_eq!(workstream_ref_for(COMPANY, "fall "), workstreams[0]);
     assert_eq!(items[0].workstream, Some(0));
-    assert_eq!(items[4].workstream, Some(1));
+    assert_eq!(items[4].workstream, Some(2));
 
     // records: a brief without a writer per item, plan text for briefs and workstreams
     let text = o.store().plan_json(COMPANY).await.unwrap();
@@ -157,14 +163,24 @@ async fn the_board_plans_the_calendar_then_the_guides_with_checks_and_records() 
         first["brief"]["title"],
         json!("The Grape Harvest in Manarola")
     );
-    // the harvest guide repeats the calendar's harvest: the next guide instead
     let second = o
         .store()
         .get_brief(COMPANY, items[1].brief_ref)
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(second["brief"]["title"], json!(PITCH_TOPICS[1].title));
+    assert_eq!(
+        second["brief"]["title"],
+        json!("Complete Train Schedule Guide")
+    );
+    // the harvest guide repeats the calendar's harvest: the next guide instead
+    let third = o
+        .store()
+        .get_brief(COMPANY, items[2].brief_ref)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(third["brief"]["title"], json!(PITCH_TOPICS[1].title));
     assert_eq!(
         text["items"][format!("workstream:{}", workstreams[0])]["title"],
         json!("Fall")
@@ -175,7 +191,8 @@ async fn the_board_plans_the_calendar_then_the_guides_with_checks_and_records() 
         .iter()
         .map(|l| l["speaker"].as_str().unwrap())
         .collect();
-    assert_eq!(speakers, ["staff-9", "staff-9"]);
+    // the strategist opens, the editor-in-chief schedules, the strategist closes
+    assert_eq!(speakers, ["staff-9", "staff-4", "staff-9"]);
     let minutes = &text["posts"]["meeting-7"][0];
     assert_eq!(minutes["type"], json!("minutes"));
     assert!(minutes["text"]
@@ -196,7 +213,9 @@ async fn published_in_flight_and_planned_titles_are_taken() {
     let (_, items) = outcome(&out);
     let prompt = llm.calls()[0].request.messages[0].text.clone();
     assert!(
-        prompt.contains("## Calendar topics (not yet published)\n(none)"),
+        prompt.contains(
+            "## Calendar topics (not yet published)\n- T1 «Complete Train Schedule Guide»"
+        ),
         "the planned harvest is not offered: {prompt}"
     );
     let mut titles = Vec::new();
@@ -211,7 +230,8 @@ async fn published_in_flight_and_planned_titles_are_taken() {
     }
     assert!(!titles.contains(&"The Grape Harvest in Manarola".to_string()));
     assert!(!titles.contains(&PITCH_TOPICS[0].title.to_string()));
-    assert_eq!(titles[0], PITCH_TOPICS[1].title);
+    assert_eq!(titles[0], "Complete Train Schedule Guide");
+    assert_eq!(titles[1], PITCH_TOPICS[1].title);
 }
 
 #[tokio::test]
@@ -231,7 +251,7 @@ async fn an_unverifiable_proposal_is_set_aside_and_its_dependent_waits_for_nothi
     let out = o.run(&board(21, autumn())).await.unwrap();
     let (_, items) = outcome(&out);
     assert_eq!(items.len(), 4);
-    // the Vernazza guide built on the harvest: it no longer waits
+    // the train guide built on the harvest: it no longer waits
     assert!(items[0].depends_on.is_empty());
     let lines = o.store().transcripts(COMPANY);
     assert!(lines.iter().any(|l| l["speaker"] == json!("system")
@@ -257,7 +277,7 @@ async fn a_re_run_repeats_no_call_and_gives_the_same_outcome() {
         .unwrap();
     assert_eq!(first, again);
     assert_eq!(llm.calls().len(), calls, "no model call on a re-run");
-    assert_eq!(o.store().transcripts(COMPANY).len(), 2, "no turn twice");
+    assert_eq!(o.store().transcripts(COMPANY).len(), 3, "no turn twice");
 }
 
 #[tokio::test]
@@ -332,4 +352,121 @@ async fn a_board_briefs_first_draft_is_written_by_the_writer_the_sim_staffed() {
         matches!(out.as_slice(), [Outcome::JobCompleted { .. }]),
         "{out:?}"
     );
+}
+
+#[tokio::test]
+async fn the_next_season_is_offered_within_its_lead_time() {
+    let llm = Arc::new(fake_writer::fake_writer(Vec::<FakeReply>::new()));
+    let o = orch(llm.clone());
+    // 10 November: autumn still, winter's window opens in 21 days (lead: 4 weeks)
+    let ctx = json!({"today": "2026-11-10", "in_flight": [], "planned_room": 10});
+    o.run(&board(30, ctx)).await.unwrap();
+    let prompt = llm.calls()[0].request.messages[0].text.clone();
+    assert!(
+        prompt.contains("«The Grape Harvest in Manarola» (Fall)"),
+        "{prompt}"
+    );
+    assert!(
+        prompt.contains("«Where Locals Eat in Winter» (Winter, from 12-01)"),
+        "{prompt}"
+    );
+    // 5 October: winter is eight weeks away, not yet
+    let llm = Arc::new(fake_writer::fake_writer(Vec::<FakeReply>::new()));
+    let o = orch(llm.clone());
+    o.run(&board(31, autumn())).await.unwrap();
+    let prompt = llm.calls()[0].request.messages[0].text.clone();
+    assert!(!prompt.contains("Winter"), "{prompt}");
+}
+
+/// A model that answers the board's calls with the fake writer, except the schedule.
+fn with_schedule(answer: Value) -> Arc<FakeLlm> {
+    Arc::new(FakeLlm::with_responder(
+        Vec::<FakeReply>::new(),
+        move |req: &LlmRequest, schema: Option<&Value>| {
+            if task_of(req) == "board schedule" {
+                return FakeReply::Json(answer.clone());
+            }
+            fake_writer::answer(req, schema)
+        },
+    ))
+}
+
+#[tokio::test]
+async fn the_editor_in_chief_schedules_the_plan() {
+    let mut team = board_team();
+    team.push(StaffRef {
+        id: "staff-12".into(),
+        persona: "isabella".into(),
+        role: "editor".into(),
+    });
+    let items: Vec<Value> = (1..=5)
+        .map(|i| {
+            let editor = if i % 2 == 0 { "staff-12" } else { "staff-5" };
+            json!({"item": i, "editor": editor, "start_day": i, "publish_day": i + 3})
+        })
+        .collect();
+    let llm = with_schedule(
+        json!({"items": items, "say": "Marco takes the odd ones, Isabella the even ones."}),
+    );
+    let o = orch(llm.clone());
+    let out = o
+        .run(&JobRequest {
+            staff: team,
+            ..board(40, autumn())
+        })
+        .await
+        .unwrap();
+    let (_, planned) = outcome(&out);
+    let got: Vec<(&str, u8, u8)> = planned
+        .iter()
+        .map(|i| (i.editor.as_str(), i.start_offset, i.publish_offset))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            ("staff-5", 1, 4),
+            ("staff-12", 2, 5),
+            ("staff-5", 3, 6),
+            ("staff-12", 4, 7),
+            ("staff-5", 5, 8)
+        ]
+    );
+    // the prompt lists both editors and the strategist's days
+    let call = llm
+        .calls()
+        .into_iter()
+        .find(|c| task_of(&c.request) == "board schedule")
+        .unwrap();
+    let prompt = &call.request.messages[0].text;
+    assert!(
+        prompt.contains("- staff-5 (") && prompt.contains("- staff-12 ("),
+        "{prompt}"
+    );
+    assert!(prompt.contains("2. «Complete Train Schedule Guide» (high priority, proposed for day 4, builds on item 1)"), "{prompt}");
+}
+
+#[tokio::test]
+async fn a_schedule_that_breaks_the_rules_falls_back_to_the_editors_in_turn() {
+    // an unknown editor, twice (the answer and its repair)
+    let items: Vec<Value> = (1..=5)
+        .map(|i| json!({"item": i, "editor": "staff-1", "start_day": 0, "publish_day": 2}))
+        .collect();
+    let llm = with_schedule(json!({"items": items, "say": "Giulia reviews everything."}));
+    let o = orch(llm.clone());
+    let out = o.run(&board(41, autumn())).await.unwrap();
+    let (_, planned) = outcome(&out);
+    assert!(planned.iter().all(|i| i.editor == "staff-5"));
+    assert_eq!(planned[0].start_offset, 0);
+    assert_eq!(planned[0].publish_offset, 2);
+    let schedules = llm
+        .calls()
+        .iter()
+        .filter(|c| task_of(&c.request) == "board schedule")
+        .count();
+    assert_eq!(schedules, 2, "one repair turn");
+    let lines = o.store().transcripts(COMPANY);
+    assert!(lines.iter().any(|l| l["text"]
+        .as_str()
+        .unwrap()
+        .contains("schedule could not be used")));
 }

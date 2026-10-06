@@ -650,6 +650,8 @@ pub struct BoardTopic<'a> {
     pub keywords: &'a [String],
     /// The season or event it belongs to.
     pub season: &'a str,
+    /// The calendar's priority, when it has one.
+    pub priority: &'a str,
 }
 
 /// The board's plan as the model answers it (`plan#0`).
@@ -696,7 +698,15 @@ pub fn board_prompt(context: &str, topics: &[BoardTopic<'_>], cap: usize) -> Str
                 } else {
                     format!(" — keywords: {}", t.keywords.join(", "))
                 };
-                format!("- {} \u{ab}{}\u{bb} ({}){kw}", t.alias, t.title, t.season)
+                let prio = if t.priority.is_empty() {
+                    String::new()
+                } else {
+                    format!(" [{}]", t.priority)
+                };
+                format!(
+                    "- {} \u{ab}{}\u{bb} ({}){prio}{kw}",
+                    t.alias, t.title, t.season
+                )
             })
             .collect::<Vec<_>>()
             .join("\n")
@@ -745,6 +755,102 @@ pub fn board_schema(cap: usize) -> Value {
             },
             "big_bets": {"type": "array", "maxItems": 3,
                          "items": {"type": "string", "minLength": 5, "maxLength": 240}}
+        }
+    })
+}
+
+/// The answer budget of the editor-in-chief's scheduling call, tokens.
+pub const SCHEDULE_ANSWER: u32 = 1200;
+
+/// One item the editor-in-chief schedules (`schedule#0`, ADR-0069).
+pub struct ScheduleItem<'a> {
+    pub title: &'a str,
+    /// `high`, `normal` or `low`.
+    pub priority: &'a str,
+    /// The strategist's publish day, days from today.
+    pub proposed_day: u32,
+    /// The number (from 1) of an earlier item it builds on, or 0.
+    pub after: u32,
+}
+
+/// The editor-in-chief's schedule (`schedule#0`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoardSchedule {
+    pub items: Vec<ScheduledItem>,
+    /// What the editor-in-chief tells the board (the speech bubble).
+    pub say: String,
+}
+
+/// One scheduled item: by its number from 1, in the order given.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScheduledItem {
+    pub item: u32,
+    /// The reviewing editor's staff id, from the list.
+    pub editor: String,
+    /// Days from today: when the draft may start, and when it publishes.
+    pub start_day: u32,
+    pub publish_day: u32,
+}
+
+/// The user turn of the editor-in-chief's scheduling call: every item once,
+/// with an editor from the list, a start day and a publish day.
+pub fn schedule_prompt(items: &[ScheduleItem<'_>], editors: &[(&str, &str)]) -> String {
+    let items = items
+        .iter()
+        .enumerate()
+        .map(|(i, it)| {
+            let after = if it.after > 0 {
+                format!(", builds on item {}", it.after)
+            } else {
+                String::new()
+            };
+            format!(
+                "{}. \u{ab}{}\u{bb} ({} priority, proposed for day {}{after})",
+                i + 1,
+                it.title,
+                it.priority,
+                it.proposed_day
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let editors = editors
+        .iter()
+        .map(|(id, name)| format!("- {id} ({name})"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "## Task: board schedule\n\nThe strategist's plan for the next two weeks:\n{items}\n\nEditors who review:\n{editors}\n\n\
+Schedule every item once, by its number: the `editor` who reviews it (a staff id from the list; spread \
+the load, never more than half the items to one editor when there are several), the `start_day` its \
+draft may begin and the `publish_day` (days from today, 0 to {MAX_PUBLISH_DAY}; a draft needs about \
+two days; an item that builds on another publishes after it). Keep the strategist's days unless the \
+load or an order requires otherwise. `say`: what you tell the board, two sentences. Answer with JSON only."
+    )
+}
+
+/// The schema of the editor-in-chief's schedule for `n` items.
+pub fn schedule_schema(n: usize) -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["items", "say"],
+        "properties": {
+            "say": {"type": "string", "minLength": 10, "maxLength": 400},
+            "items": {
+                "type": "array", "minItems": n.max(1), "maxItems": n.max(1),
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["item", "editor", "start_day", "publish_day"],
+                    "properties": {
+                        "item": {"type": "integer", "minimum": 1, "maximum": n.max(1)},
+                        "editor": {"type": "string", "minLength": 3, "maxLength": 40},
+                        "start_day": {"type": "integer", "minimum": 0, "maximum": MAX_PUBLISH_DAY},
+                        "publish_day": {"type": "integer", "minimum": 1, "maximum": MAX_PUBLISH_DAY}
+                    }
+                }
+            }
         }
     })
 }

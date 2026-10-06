@@ -30,9 +30,10 @@
 
 use agents::llm::{structured_with_repair, Repaired};
 use agents::meetings::{
-    board_cap, board_prompt, board_schema, pitch_check_prompt, pitch_check_schema, BoardPlan,
-    BoardProposal, BoardTopic, Pitch, BOARD_ANSWER, BOARD_CAP_LABEL, CAP_LABEL,
-    DEFAULT_TARGET_WORDS, MAX_PUBLISH_DAY, MODEL_MINUTES_PER_DAY, PITCH_REASONING,
+    board_cap, board_prompt, board_schema, pitch_check_prompt, pitch_check_schema, schedule_prompt,
+    schedule_schema, BoardPlan, BoardProposal, BoardSchedule, BoardTopic, Pitch, ScheduleItem,
+    BOARD_ANSWER, BOARD_CAP_LABEL, CAP_LABEL, DEFAULT_TARGET_WORDS, MAX_PUBLISH_DAY,
+    MODEL_MINUTES_PER_DAY, PITCH_REASONING, SCHEDULE_ANSWER,
 };
 use agents::prompts::{templates, Vars};
 use agents::{Brief, CallProfile, LlmMessage, LlmRequest, Role};
@@ -95,7 +96,11 @@ struct FrameTopic {
     alias: String,
     title: String,
     keywords: Vec<String>,
+    /// The season (or `Evergreen`) it belongs to.
     season: String,
+    /// The calendar's priority (`critical`, `high`, `medium`, `low`).
+    #[serde(default)]
+    priority: String,
 }
 
 /// The first run's frame (`frame#0`), reused by every re-run.
@@ -122,6 +127,71 @@ struct Planned {
     failure: Option<String>,
 }
 
+/// The stored scheduling stage: the editor-in-chief's schedule, or why there is none.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct Scheduled {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    schedule: Option<BoardSchedule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+/// The problems of a schedule, for its repair turn (empty: none).
+fn schedule_problems(
+    s: &BoardSchedule,
+    n: usize,
+    editors: &[String],
+    after_kept: &[Option<usize>],
+) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut seen = vec![false; n];
+    let mut publish = vec![0u32; n];
+    for it in &s.items {
+        let k = it.item as usize;
+        if k == 0 || k > n {
+            problems.push(format!(
+                "Item {} does not exist: number them 1 to {n}.",
+                it.item
+            ));
+            continue;
+        }
+        if std::mem::replace(&mut seen[k - 1], true) {
+            problems.push(format!("Item {k} is scheduled twice."));
+        }
+        if !editors.contains(&it.editor) {
+            problems.push(format!(
+                "Item {k}: {} is not an editor on the list ({}).",
+                it.editor,
+                editors.join(", ")
+            ));
+        }
+        if it.start_day > it.publish_day {
+            problems.push(format!(
+                "Item {k} starts on day {} after its publish day {}.",
+                it.start_day, it.publish_day
+            ));
+        }
+        publish[k - 1] = it.publish_day;
+    }
+    for (k, done) in seen.iter().enumerate() {
+        if !done {
+            problems.push(format!("Item {} is missing.", k + 1));
+        }
+    }
+    for (k, a) in after_kept.iter().enumerate() {
+        if let Some(a) = a {
+            if seen[k] && seen[*a] && publish[k] < publish[*a] {
+                problems.push(format!(
+                    "Item {} builds on item {} and must not publish before it.",
+                    k + 1,
+                    a + 1
+                ));
+            }
+        }
+    }
+    problems
+}
+
 /// A workstream's store ref: stable per company and name (lower case), so
 /// the sim reuses a workstream week after week.
 pub fn workstream_ref_for(company: &str, name: &str) -> u64 {
@@ -132,7 +202,40 @@ pub fn workstream_ref_for(company: &str, name: &str) -> u64 {
     xxhash_rust::xxh3::xxh3_64(&buf) & (i64::MAX as u64)
 }
 
-/// The season's calendar topics nobody has, up to [`BOARD_TOPICS`].
+/// Day of the year of a `MM-DD` (a year of 365 days; 0 when malformed).
+fn day_of_year(md: &str) -> u32 {
+    const BEFORE: [u32; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    let mut parts = md.split('-').map(|x| x.parse::<u32>().unwrap_or(0));
+    let (m, d) = (parts.next().unwrap_or(0), parts.next().unwrap_or(0));
+    if !(1..=12).contains(&m) {
+        return 0;
+    }
+    BEFORE[(m - 1) as usize] + d.saturating_sub(1)
+}
+
+/// Days from `today` (`YYYY-MM-DD`) to the next `MM-DD`.
+fn days_until(today: &str, md: &str) -> u32 {
+    let now = today.get(5..10).map_or(0, day_of_year);
+    (day_of_year(md) + 365 - now) % 365
+}
+
+/// The rank of a calendar priority (`critical` first).
+fn priority_rank(p: &str) -> u8 {
+    match p {
+        "critical" => 0,
+        "high" => 1,
+        "medium" => 2,
+        "low" => 3,
+        _ => 2,
+    }
+}
+
+/// The calendar topics a board may plan, up to [`BOARD_TOPICS`], nobody
+/// having them yet (published, in flight, planned): the current season's,
+/// then the next season's once its publish window is within its lead time
+/// (`ideal_generation_lead_time_weeks`, else the calendar's
+/// `trigger_weeks_before_publish_window`, else 4), then the evergreen ones;
+/// each group by the calendar's priority.
 fn board_topics(site: &SiteBinding, today: Option<&str>, taken: &Taken) -> Vec<FrameTopic> {
     let Some(k) = site.knowledge.as_ref() else {
         return Vec::new();
@@ -140,50 +243,100 @@ fn board_topics(site: &SiteBinding, today: Option<&str>, taken: &Taken) -> Vec<F
     let Ok(Some(calendar)) = k.file_json(CALENDAR_PATH) else {
         return Vec::new();
     };
-    let Some(seasons) = calendar["seasonal_content"].as_object() else {
+    let Some(today) = today else {
         return Vec::new();
     };
-    let Some(s) = today.and_then(|t| season(seasons, t)) else {
-        return Vec::new();
-    };
-    let name = s["season_name"]
-        .as_str()
-        .unwrap_or("The season")
-        .to_string();
-    s["topics"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|t| {
-            let title = t["title"].as_str()?.trim().to_string();
-            let keywords: Vec<String> = t["keywords"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .map(String::from)
-                .collect();
-            let slug = t["slug"]
-                .as_str()
-                .map_or_else(|| slugify(&title), String::from);
-            let probe = Pitch {
-                say: String::new(),
-                title: title.clone(),
-                angle: String::new(),
-                keywords: keywords.clone(),
-            };
-            let fresh = !taken.paths.contains(&slug) && taken.conflict(&probe).is_none();
-            fresh.then_some((title, keywords))
-        })
-        .take(BOARD_TOPICS)
-        .enumerate()
-        .map(|(i, (title, keywords))| FrameTopic {
-            alias: format!("T{}", i + 1),
-            title,
-            keywords,
-            season: name.clone(),
-        })
-        .collect()
+    let default_lead = calendar
+        .pointer("/content_generation_rules/automatic_triggers/seasonal/trigger_weeks_before_publish_window")
+        .and_then(Value::as_u64)
+        .unwrap_or(4);
+    // (group label, topics)
+    let mut groups: Vec<(String, &Vec<Value>)> = Vec::new();
+    if let Some(seasons) = calendar["seasonal_content"].as_object() {
+        let current = season(seasons, today);
+        if let Some(s) = current {
+            if let Some(t) = s["topics"].as_array() {
+                groups.push((
+                    s["season_name"]
+                        .as_str()
+                        .unwrap_or("The season")
+                        .to_string(),
+                    t,
+                ));
+            }
+        }
+        let mut next: Vec<(u32, String, &Vec<Value>)> = seasons
+            .values()
+            .filter(|s| !current.is_some_and(|c| std::ptr::eq(c, *s)))
+            .filter_map(|s| {
+                let start = s.pointer("/publish_window/start")?.as_str()?;
+                let lead = s["ideal_generation_lead_time_weeks"]
+                    .as_u64()
+                    .unwrap_or(default_lead);
+                let days = days_until(today, start);
+                if u64::from(days) > lead * 7 {
+                    return None;
+                }
+                let name = s["season_name"].as_str().unwrap_or("The next season");
+                Some((
+                    days,
+                    format!("{name}, from {start}"),
+                    s["topics"].as_array()?,
+                ))
+            })
+            .collect();
+        next.sort_by_key(|(d, ..)| *d);
+        groups.extend(next.into_iter().map(|(_, n, t)| (n, t)));
+    }
+    if let Some(t) = calendar
+        .pointer("/evergreen_content/topics")
+        .and_then(Value::as_array)
+    {
+        groups.push(("Evergreen".to_string(), t));
+    }
+    let mut out: Vec<FrameTopic> = Vec::new();
+    for (label, topics) in groups {
+        let mut fresh: Vec<(u8, String, Vec<String>, String)> = topics
+            .iter()
+            .filter_map(|t| {
+                let title = t["title"].as_str()?.trim().to_string();
+                let keywords: Vec<String> = t["keywords"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .map(String::from)
+                    .collect();
+                let slug = t["slug"]
+                    .as_str()
+                    .map_or_else(|| slugify(&title), String::from);
+                let probe = Pitch {
+                    say: String::new(),
+                    title: title.clone(),
+                    angle: String::new(),
+                    keywords: keywords.clone(),
+                };
+                let fresh = !taken.paths.contains(&slug) && taken.conflict(&probe).is_none();
+                let priority = t["priority"].as_str().unwrap_or("medium").to_string();
+                fresh.then(|| (priority_rank(&priority), title, keywords, priority))
+            })
+            .collect();
+        // stable: the calendar's own order within a priority
+        fresh.sort_by_key(|(rank, ..)| *rank);
+        for (_, title, keywords, priority) in fresh {
+            if out.len() >= BOARD_TOPICS || out.iter().any(|t| t.title == title) {
+                continue;
+            }
+            out.push(FrameTopic {
+                alias: format!("T{}", out.len() + 1),
+                title,
+                keywords,
+                season: label.clone(),
+                priority,
+            });
+        }
+    }
+    out
 }
 
 /// The problems of a plan, for its repair turn (empty: none).
@@ -292,6 +445,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 title: &t.title,
                 keywords: &t.keywords,
                 season: &t.season,
+                priority: &t.priority,
             })
             .collect();
         let user = board_prompt(&frame.pack, &topics, frame.cap);
@@ -485,8 +639,24 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             }
         }
 
-        // Schedule: items in plan order; each waits for the earlier item it
-        // builds on, if that one was kept; editors take turns.
+        // The earlier kept item each kept item builds on (its index in `kept`).
+        let after_kept: Vec<Option<usize>> = kept
+            .iter()
+            .enumerate()
+            .map(|(n, (_, p))| {
+                (p.after > 0)
+                    .then(|| kept.iter().position(|(j, _)| *j == p.after as usize - 1))
+                    .flatten()
+                    .filter(|at| *at < n)
+            })
+            .collect();
+        // schedule#0: the editor-in-chief's editors and days, else the fixed rule.
+        let slots = self
+            .board_schedule(req, &frame, &kept, &after_kept, &mut seq, &mut lines)
+            .await?;
+
+        // Items in plan order; each waits for the earlier item it builds on,
+        // if that one was kept.
         let mut workstreams: Vec<(u64, String)> = Vec::new();
         let mut items: Vec<PlannedOut> = Vec::new();
         let mut titles: Vec<String> = Vec::new();
@@ -496,7 +666,8 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             .collect();
         for (n, (i, proposal)) in kept.iter().enumerate() {
             let pitch = as_pitch(proposal);
-            let editor_id = &frame.editors[n % frame.editors.len()];
+            let (editor_id, start, publish) = &slots[n];
+            let (start, publish) = (*start, *publish);
             let editor = req
                 .staff
                 .iter()
@@ -517,18 +688,10 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 };
                 u8::try_from(at).ok()
             };
-            let depends_on: Vec<u8> = (proposal.after > 0)
-                .then(|| {
-                    let target = proposal.after as usize - 1;
-                    kept.iter()
-                        .position(|(j, _)| *j == target)
-                        .filter(|at| *at < n)
-                        .and_then(|at| u8::try_from(at).ok())
-                })
-                .flatten()
+            let depends_on: Vec<u8> = after_kept[n]
+                .and_then(|at| u8::try_from(at).ok())
                 .into_iter()
                 .collect();
-            let publish = proposal.publish_day.clamp(1, MAX_PUBLISH_DAY);
             let brief_ref = brief_ref_for(&req.company_id, req.job_id, *i);
             let record = BriefRecord {
                 job_id: req.job_id,
@@ -569,7 +732,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 editor: editor.id.clone(),
                 priority: priority_of(&proposal.priority).to_string(),
                 workstream,
-                start_offset: u8::try_from(publish.saturating_sub(LEAD_DAYS)).unwrap_or(0),
+                start_offset: u8::try_from(start).unwrap_or(0),
                 publish_offset: u8::try_from(publish).unwrap_or(13),
                 depends_on,
             });
@@ -628,6 +791,189 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             workstreams: workstreams.into_iter().map(|(r, _)| r).collect(),
             items,
         }])
+    }
+
+    /// `schedule#0` (ADR-0069): the editor-in-chief gives each kept item an
+    /// editor, a start and a publish day, checked (every item once, an editor
+    /// of the frame, start not after publish, after what it builds on) with one
+    /// repair turn. Without an editor-in-chief, or when the call fails, the
+    /// fixed rule: the strategist's day, [`LEAD_DAYS`] of lead, editors in turn.
+    /// Returns `(editor, start, publish)` per kept item.
+    async fn board_schedule(
+        &self,
+        req: &JobRequest,
+        frame: &Frame,
+        kept: &[(usize, &BoardProposal)],
+        after_kept: &[Option<usize>],
+        seq: &mut u32,
+        lines: &mut Vec<Line>,
+    ) -> Result<Vec<(String, u32, u32)>> {
+        let fixed: Vec<(String, u32, u32)> = kept
+            .iter()
+            .enumerate()
+            .map(|(n, (_, p))| {
+                let publish = p.publish_day.clamp(1, MAX_PUBLISH_DAY);
+                (
+                    frame.editors[n % frame.editors.len()].clone(),
+                    publish.saturating_sub(LEAD_DAYS),
+                    publish,
+                )
+            })
+            .collect();
+        let Some(chief) = self.find(req, "editor-in-chief") else {
+            return Ok(fixed);
+        };
+        if kept.is_empty() {
+            return Ok(fixed);
+        }
+        let p = persona(&chief.persona)?;
+        let system = self.system_prompt(&templates::editorial_board(), &p, Vars::new())?;
+        let names: Vec<(String, String)> = frame
+            .editors
+            .iter()
+            .map(|id| {
+                let name = req
+                    .staff
+                    .iter()
+                    .find(|s| &s.id == id)
+                    .map_or_else(|| id.clone(), Self::name_of);
+                (id.clone(), name)
+            })
+            .collect();
+        let editors: Vec<(&str, &str)> = names
+            .iter()
+            .map(|(a, b)| (a.as_str(), b.as_str()))
+            .collect();
+        let items: Vec<ScheduleItem<'_>> = kept
+            .iter()
+            .enumerate()
+            .map(|(n, (_, p))| ScheduleItem {
+                title: p.title.trim(),
+                priority: p.priority.trim(),
+                proposed_day: p.publish_day.clamp(1, MAX_PUBLISH_DAY),
+                after: after_kept[n].map_or(0, |a| u32::try_from(a + 1).unwrap_or(0)),
+            })
+            .collect();
+        let user = schedule_prompt(&items, &editors);
+        let schema = schedule_schema(kept.len());
+        let request = LlmRequest {
+            profile: CallProfile {
+                job: agents::JobKind::PlanSchedule,
+                role: role_of(&chief.role).unwrap_or(Role::EditorInChief),
+                seniority: Some(p.seniority),
+                staff_id: Some(chief.id.clone()),
+            },
+            system: vec![system.clone()],
+            messages: vec![LlmMessage::user(user.clone())],
+            max_tokens: SCHEDULE_ANSWER,
+            reasoning_tokens: Some(PITCH_REASONING),
+        };
+        let n = kept.len();
+        let check = |v: &Value| -> std::result::Result<(), Vec<String>> {
+            let s: BoardSchedule =
+                serde_json::from_value(v.clone()).map_err(|e| vec![e.to_string()])?;
+            let problems = schedule_problems(&s, n, &frame.editors, after_kept);
+            if problems.is_empty() {
+                Ok(())
+            } else {
+                Err(problems)
+            }
+        };
+        let hash = stage_hash(&["schedule", &system, &user, &schema.to_string()]);
+        let (stored, fresh): (Scheduled, bool) =
+            match self.recall(req, "schedule", 0, Some(&hash)).await? {
+                Some(v) => {
+                    self.report(
+                        req,
+                        Some(chief),
+                        "schedule",
+                        0,
+                        1,
+                        ProgressState::Reused,
+                        json!({}),
+                    );
+                    (serde_json::from_value(v).map_err(corrupt)?, false)
+                }
+                None => {
+                    self.report(
+                        req,
+                        Some(chief),
+                        "schedule",
+                        0,
+                        1,
+                        ProgressState::Started,
+                        json!({}),
+                    );
+                    let r = structured_with_repair(
+                        self.llm.as_ref(),
+                        &request,
+                        &schema,
+                        &check,
+                        PLAN_REPAIRS,
+                    )
+                    .await;
+                    let stored = match r {
+                        Ok(Repaired { value, .. }) => {
+                            match serde_json::from_value::<BoardSchedule>(value) {
+                                Ok(s) => Scheduled {
+                                    schedule: Some(s),
+                                    error: None,
+                                },
+                                Err(e) => Scheduled {
+                                    schedule: None,
+                                    error: Some(e.to_string()),
+                                },
+                            }
+                        }
+                        Err(f) => Scheduled {
+                            schedule: None,
+                            error: Some(f.error.to_string()),
+                        },
+                    };
+                    let state = if stored.schedule.is_some() {
+                        ProgressState::Done
+                    } else {
+                        ProgressState::Failed
+                    };
+                    let detail =
+                        json!({"fallback": stored.schedule.is_none(), "error": stored.error});
+                    self.report(req, Some(chief), "schedule", 0, 1, state, detail);
+                    (
+                        self.remember(req, "schedule", 0, hash, &stored).await?,
+                        true,
+                    )
+                }
+            };
+        let Some(schedule) = stored.schedule else {
+            let line = Line {
+                seq: *seq,
+                speaker: "system".into(),
+                text: "The editor-in-chief's schedule could not be used; the editors take the items in turn."
+                    .into(),
+            };
+            self.spoke(req, &line, None, false).await?;
+            lines.push(line);
+            *seq += 1;
+            return Ok(fixed);
+        };
+        let line = Line {
+            seq: *seq,
+            speaker: chief.id.clone(),
+            text: schedule.say.trim().to_string(),
+        };
+        self.spoke(req, &line, Some(chief), fresh).await?;
+        lines.push(line);
+        *seq += 1;
+        let mut out = fixed;
+        for it in &schedule.items {
+            if let Some(slot) = (it.item as usize)
+                .checked_sub(1)
+                .and_then(|k| out.get_mut(k))
+            {
+                *slot = (it.editor.clone(), it.start_day, it.publish_day);
+            }
+        }
+        Ok(out)
     }
 
     /// The frame of a first run: the cap, the reviewing editors, the pack and

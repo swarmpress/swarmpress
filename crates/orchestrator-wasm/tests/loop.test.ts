@@ -231,8 +231,8 @@ describe('orchestrator-wasm under Bun', () => {
     const req = { company_id: COMPANY, job_id: 19, kind: 'board', project: 'project-1', work_item: null, brief_ref: null, revision: 0, staff: team, meeting: 'meeting-7', context: { today: '2026-10-05', in_flight: [], planned_room: 10 } }
     const out = JSON.parse(await orch.run(JSON.stringify(req)))
     const board = out[0].BoardOutcome
-    // the same plan as crates/orchestrator/tests/board.rs: the autumn topic, then four guides
-    expect(llm.calls.map(task)).toEqual(['weekly board', ...Array(5).fill('pitch check')])
+    // the same plan as crates/orchestrator/tests/board.rs: the autumn topic, the evergreen one, then three guides
+    expect(llm.calls.map(task)).toEqual(['weekly board', ...Array(5).fill('pitch check'), 'board schedule'])
     expect(board.items.map((i: { start_offset: number; publish_offset: number }) => [i.start_offset, i.publish_offset])).toEqual([
       [0, 2],
       [2, 4],
@@ -241,10 +241,10 @@ describe('orchestrator-wasm under Bun', () => {
       [8, 10],
     ])
     expect(board.items[1].depends_on).toEqual([0])
-    expect(board.workstreams).toHaveLength(2)
+    expect(board.workstreams).toHaveLength(3)
     for (const r of [...board.workstreams, ...board.items.map((i: { brief_ref: string }) => i.brief_ref)]) expect(r).toMatch(/^\d+$/)
     const titles = board.items.map((i: { brief_ref: string }) => JSON.parse(store.briefs.get(`${COMPANY}\u0000${i.brief_ref}`)!.record).brief.title)
-    expect(titles.slice(0, 2)).toEqual(['The Grape Harvest in Manarola', 'Vernazza harbour at first light'])
+    expect(titles.slice(0, 3)).toEqual(['The Grape Harvest in Manarola', 'Complete Train Schedule Guide', 'Vernazza harbour at first light'])
     expect(store.items.get(`${COMPANY}\u0000brief:${board.items[0].brief_ref}`)?.title).toBe('The Grape Harvest in Manarola')
     expect(store.items.get(`${COMPANY}\u0000workstream:${board.workstreams[0]}`)?.title).toBe('Fall')
     // for the sim: the refs as numbers again, the u64s exact

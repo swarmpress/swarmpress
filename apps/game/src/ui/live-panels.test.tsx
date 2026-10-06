@@ -208,7 +208,7 @@ describe('work item on live data', () => {
     const p = await openItem(c)
 
     // The sim has UpdateWorkItem (ADR-0069): priority, due day and cancel are its to gate.
-    expect(p.getByRole('combobox', { name: 'Priority' }).disabled).toBe(false)
+    expect((p.getByRole('combobox', { name: 'Priority' }) as HTMLSelectElement).disabled).toBe(false)
     const dead = [
       ...p.getAllByRole('combobox', { name: 'Reassign' }),
       ...p.getAllByRole('button', { name: 'Reassign' }),

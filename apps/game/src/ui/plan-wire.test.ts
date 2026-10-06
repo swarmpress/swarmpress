@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import wire from './fixtures/plan-wire.json'
 import { normalizePlanText, normalizePost, splitPlanJson, statusFromThread, toStorePost, withBoardText, withTextOnlyItems, type PlanTextWire } from './plan-wire'
 import type { PlanJson, PlanText, WorkItemJson } from './plan-types'
+import { latestBoard } from './plan-logic'
 
 /**
  * The orchestrator's `Store::plan_json` shape (crates/orchestrator/src/store.rs,
@@ -122,6 +123,24 @@ describe('the editorial board’s plan text (ADR-0069, FEAT-087)', () => {
     // nothing to join: the same object
     const bare: PlanJson = { goals: [], workstreams: [], items: [] }
     expect(withBoardText(bare, text)).toBe(text)
+  })
+
+  it('reads the newest board’s theme and big bets from its minutes', () => {
+    expect(latestBoard(text)).toBeNull()
+    const minutes = (day: number, theme: string, bets: string[]) => ({
+      id: `post-${day}`,
+      item: 'meeting-7',
+      type: 'minutes' as const,
+      author: 'staff-9',
+      text: `Theme of the week: ${theme}`,
+      day,
+      minute: 600,
+      payload: { week_theme: theme, big_bets: bets },
+    })
+    const withBoards: PlanText = { ...text, posts: { 'meeting-7': [minutes(0, 'Harvest first', ['A wine series']) as never], 'meeting-9': [minutes(7, 'Storm season', []) as never] } }
+    expect(latestBoard(withBoards)).toEqual({ theme: 'Storm season', bigBets: [], item: 'meeting-9' })
+    withBoards.posts['meeting-9'] = []
+    expect(latestBoard(withBoards)).toEqual({ theme: 'Harvest first', bigBets: ['A wine series'], item: 'meeting-7' })
   })
 
   it('never shows the board’s brief and workstream keys as items of their own', () => {

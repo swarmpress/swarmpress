@@ -63,10 +63,21 @@ CEO does not approve the plan; the publish gate still guards what goes live.
   Tests: `crates/sim-core/tests/editorial_board.rs`, `ui/live-panels.test.tsx`,
   `ui/wasm-live.test.tsx`.
 
+- **The calendar the board sees**: the current season's topics, the next season's once its
+  publish window is within its lead time (`ideal_generation_lead_time_weeks`, 4 weeks on
+  cinqueterre.travel), then the evergreen topics, each group by the calendar's priority, which the
+  frame shows (`[critical]`).
+- **The editor-in-chief schedules** (`schedule#0`, `PlanSchedule`): each kept item gets an editor
+  from the board, a start and a publish day; checked (every item once, a listed editor, start not
+  after publish, not before what it builds on) with one repair turn; without an editor-in-chief or
+  when it fails, the fixed rule (two days of lead, editors in turn) and a line in the meeting.
+- **Big bets** are what the CEO should know, not approve: the Plan panel's "This week" card shows
+  the newest board's theme and big bets from its minutes (`latestBoard` in `ui/plan-logic.ts`).
+  No ticket: rule 10's tickets are for decisions.
+
 ## Not built yet
 
-- The editor-in-chief's own scheduling call (`PlanSchedule`), big bets as tickets, the next
-  season's topics within their lead time.
+- Nothing of ADR-0069 beyond the gap below.
 - Another device that takes a company over has its command log but not the store's text: a board
   brief (like a standup brief) is unknown there until work records sync (ADR-0056).
 

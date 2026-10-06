@@ -1,4 +1,4 @@
-import type { PlanJson, WorkItemJson } from './plan-types'
+import type { PlanJson, PlanText, WorkItemJson } from './plan-types'
 import type { OrgJson } from './types'
 
 export interface BoardFilter {
@@ -82,4 +82,24 @@ export function availableViews(plan: PlanJson): PlanView[] {
   if (plan.items.some((i) => isOpen(i) && (i.dueDay ?? i.publishDay) != null)) views.push('workload')
   if (plan.goals.length > 0) views.push('goals')
   return views
+}
+
+/** The newest editorial board's minutes (ADR-0069): its theme and big bets; null before the first board. */
+export function latestBoard(text: PlanText): { theme: string; bigBets: string[]; item: string } | null {
+  let best: { theme: string; bigBets: string[]; item: string } | null = null
+  let bestKey = -1
+  for (const [item, posts] of Object.entries(text.posts)) {
+    for (const [i, p] of posts.entries()) {
+      const theme = p.type === 'minutes' ? p.payload?.week_theme : undefined
+      if (typeof theme !== 'string' || !theme.trim()) continue
+      // newest by game time, then by thread order
+      const key = (p.day ?? 0) * 1440 + (p.minute ?? 0) + i / 1000
+      if (key < bestKey) continue
+      bestKey = key
+      const raw = Array.isArray(p.payload?.big_bets) ? (p.payload.big_bets as unknown[]) : []
+      const bigBets = raw.filter((b): b is string => typeof b === 'string' && b.trim() !== '').map((b) => b.trim())
+      best = { theme: theme.trim(), bigBets, item }
+    }
+  }
+  return best
 }
