@@ -13,6 +13,8 @@ paths:
   - apps/game/src/net/central.ts
   - apps/game/src/llm/research.ts
   - crates/server/migrations/0007_llm_searches.sql
+  - apps/game/src/orchestrator/bridge.ts
+  - apps/game/src/orchestrator/bridge.test.ts
 adrs:
   - ADR-0067
   - ADR-0068
@@ -33,11 +35,16 @@ with its usage and cost.
   budget (`LUNA_DAILY_BUDGET_USD`, per UTC day) gets 429.
 - A Flex call the provider refuses as busy is retried with backoff, never promoted silently; an
   account without credits is reported as such, not retried.
+- The call and its row run on their own task, so a client that goes away mid-call (a reload, a
+  lost lease) still has its spend recorded. Rows a restart cut off are marked `abandoned` at
+  start and hourly (`llm::sweep_abandoned`); their spend is unknown and counts as zero.
 
 The browser's `luna` backend (`apps/game/src/llm/hosted-llm.ts`) is the default: it implements
 `LocalLlm` over that route with the session's lease, maps thinking to reasoning effort, sends the
-schema of structured calls, uses Standard for interactive turns, and treats a 503 as the model being
-unavailable (the clock holds).
+schema of structured calls, and treats a 503 as the model being unavailable (the clock holds). A
+call is interactive (Standard) when the clock holds for a due job as it starts, because the player waits for it;
+every other call, including the story director's prefetched chapters, goes on Flex (the bridge's
+`interactive` option).
 
-Not built yet: running it in the qualification harness, Batch preparation, the story director and
-event-grounded conversations (the migration document's steps 2 to 4).
+Not built yet: running it in the qualification harness, Batch preparation, and real-world
+events for conversations. The story director is FEAT-099.

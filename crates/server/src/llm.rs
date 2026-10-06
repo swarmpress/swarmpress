@@ -7,7 +7,10 @@
 //! - The key stays here (`OPENAI_API_KEY`); without it the route answers 503.
 //! - Every call is a row in `llm_jobs` (written before the call, finished
 //!   after it) with its tokens and cost; a company that has spent its daily
-//!   budget (`LUNA_DAILY_BUDGET_USD`, per UTC day) gets 429.
+//!   budget (`LUNA_DAILY_BUDGET_USD`, per UTC day) gets 429. The call runs
+//!   on its own task, so a client that goes away mid-call still has its spend
+//!   recorded; a row a restart left `pending` is marked `abandoned` by
+//!   [`sweep_abandoned`] (at start, then hourly).
 //! - `service_tier`: `flex` (default) for queued work, `default` (Standard)
 //!   where the player waits. A Flex call the provider refuses as busy is
 //!   retried with backoff, then fails; it is never promoted silently.
@@ -419,6 +422,28 @@ pub async fn generate(
         &tier,
         max_output.max(MIN_OUTPUT_TOKENS),
     );
+    // The call and its record run on their own task: a client that goes away mid-call
+    // (a reload, a lost lease) does not cancel them, so the spend is still recorded.
+    let task = tokio::spawn(complete(
+        st, cfg, key, body, tier, job_id, company.id, kind, now,
+    ));
+    task.await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("the model call's task failed: {e}")))?
+}
+
+/// Calls the provider and finishes the job's row (see `generate`).
+#[allow(clippy::too_many_arguments)]
+async fn complete(
+    st: AppState,
+    cfg: LlmConfig,
+    key: String,
+    body: Value,
+    tier: String,
+    job_id: String,
+    company_id: String,
+    kind: String,
+    now: i64,
+) -> AppResult<Json<Value>> {
     let (result, attempts) = call_provider(&st.http, &cfg, &key, &body, &tier).await;
     let finished = st.now_ms();
     match result {
@@ -450,7 +475,7 @@ pub async fn generate(
                 .bind(a.searches)
                 .execute(&st.db.writer)
                 .await?;
-                tracing::info!(company = %company.id, job = %job_id, %kind, tier = %a.tier, input = a.input_tokens,
+                tracing::info!(company = %company_id, job = %job_id, %kind, tier = %a.tier, input = a.input_tokens,
                     output = a.output_tokens, cost_micros = cost, "llm generate");
                 Ok(Json(json!({
                     "job_id": job_id,
@@ -481,6 +506,26 @@ pub async fn generate(
             Err(e)
         }
     }
+}
+
+/// Marks `pending` rows that no call of this process can still finish as
+/// `abandoned`: those created before `started_ms` (a restart cut them off) or
+/// older than the longest possible call. Their spend, if any, is unknown:
+/// the budget counts them as zero. Returns how many rows were marked.
+pub async fn sweep_abandoned(st: &AppState, started_ms: i64) -> AppResult<u64> {
+    let cfg = &st.cfg.llm;
+    let longest = cfg.timeout.as_millis() as i64 * (i64::from(cfg.flex_retries) + 1) + 5 * 60_000;
+    let now = st.now_ms();
+    let cutoff = started_ms.max(now - longest);
+    let r = sqlx::query(
+        "UPDATE llm_jobs SET status = 'abandoned', error = 'the call was cut off (server restart)', finished_at = ?2
+         WHERE status = 'pending' AND created_at < ?1",
+    )
+    .bind(cutoff)
+    .bind(now)
+    .execute(&st.db.writer)
+    .await?;
+    Ok(r.rows_affected())
 }
 
 async fn fail_job(

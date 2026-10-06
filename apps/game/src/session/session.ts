@@ -523,7 +523,14 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   // P6: a call past its limit is aborted; the clock stands still while the model is not ready.
   const modelAway = () => models.status().state !== 'ready'
   // `calls` keeps whole prompts (tens of kB each with a real pack): the newest few are enough for diagnostics (W).
-  const llm = localLlmBridge(models.llm, { stageTimeoutMs: secondsParam(params, 'stagetimeout'), paused: modelAway, maxCalls: SESSION_LLM_CALLS })
+  // Standard tier while the clock holds for a due job (the player waits), Flex otherwise (ADR-0067); bound once the clock exists.
+  let playerWaits = () => false
+  const llm = localLlmBridge(models.llm, {
+    stageTimeoutMs: secondsParam(params, 'stagetimeout'),
+    paused: modelAway,
+    maxCalls: SESSION_LLM_CALLS,
+    interactive: () => playerWaits(),
+  })
   // The activity record and the chip's "section 3 of 5": progress events plus the bridge's usage (ADR-0058).
   const activity = new ActivityRecorder({ store, companyId: company.id, clock: () => ({ step: Number(sim.step()), day: sim.day(), minute: sim.minute_of_day() }), log })
   llm.onCall = (call) => activity.call(call)
@@ -829,6 +836,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   }
   clock.refresh()
   clockSpeed = () => clock.state.speed
+  playerWaits = () => clock.hold === 'due'
   // The model starts in the background: the office opens at once, the card and the chip show the stages.
   models.onChange(() => setModelStatus(models.status()))
   mountModelCard(models)

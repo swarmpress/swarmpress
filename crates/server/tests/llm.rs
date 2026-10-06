@@ -215,3 +215,99 @@ async fn bad_requests_and_provider_errors_are_reported() {
         .unwrap();
     assert_eq!(failed, 1);
 }
+
+#[tokio::test]
+async fn a_client_that_goes_away_mid_call_still_has_its_spend_recorded() {
+    let provider = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(answer("late", 1000, 200))
+                .set_delay(std::time::Duration::from_millis(800)),
+        )
+        .expect(1)
+        .mount(&provider)
+        .await;
+    let s = server(&provider, 2_000_000).await;
+    let p = s.gateway_player(1).await;
+    // The client gives up after 100 ms: the handler is dropped, the call is not.
+    let cut = s
+        .http
+        .post(s.url("/api/llm/generate"))
+        .header(reqwest::header::COOKIE, &p.cookie)
+        .header(LEASE, &p.lease)
+        .json(&body())
+        .timeout(std::time::Duration::from_millis(100))
+        .send()
+        .await;
+    assert!(cut.is_err(), "the client timed out");
+    let mut row = None;
+    for _ in 0..40 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let r: Option<(String, i64)> = sqlx::query_as("SELECT status, cost_micros FROM llm_jobs")
+            .fetch_optional(&s.st.db.reader)
+            .await
+            .unwrap();
+        if r.as_ref().is_some_and(|(st, _)| st != "pending") {
+            row = r;
+            break;
+        }
+    }
+    assert_eq!(row, Some(("ok".to_string(), 100)));
+}
+
+#[tokio::test]
+async fn pending_rows_a_restart_cut_off_are_abandoned() {
+    let provider = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(answer("Ciao!", 1000, 200)))
+        .mount(&provider)
+        .await;
+    let s = server(&provider, 2_000_000).await;
+    let p = s.gateway_player(1).await;
+    assert_eq!(generate(&s, &p.cookie, Some(&p.lease), body()).await.0, 200);
+    let now = s.st.now_ms();
+    // Two rows a crashed process left pending (before this start), one of this process (after).
+    for (id, at) in [
+        ("old-1", now - 60_000),
+        ("old-2", now - 1),
+        ("live", now + 1),
+    ] {
+        sqlx::query(
+            "INSERT INTO llm_jobs (id, company_id, user_id, kind, model, tier_requested, reasoning_effort, status, created_at)
+             SELECT ?1, company_id, user_id, 'draft', model, 'flex', 'low', 'pending', ?2 FROM llm_jobs LIMIT 1",
+        )
+        .bind(id)
+        .bind(at)
+        .execute(&s.st.db.writer)
+        .await
+        .unwrap();
+    }
+    assert_eq!(
+        swarmpress_server::llm::sweep_abandoned(&s.st, now)
+            .await
+            .unwrap(),
+        2
+    );
+    let rows: Vec<(String, String)> = sqlx::query_as("SELECT id, status FROM llm_jobs WHERE id != (SELECT id FROM llm_jobs WHERE status = 'ok') ORDER BY id")
+        .fetch_all(&s.st.db.reader)
+        .await
+        .unwrap();
+    assert_eq!(
+        rows,
+        vec![
+            ("live".into(), "pending".into()),
+            ("old-1".into(), "abandoned".into()),
+            ("old-2".into(), "abandoned".into())
+        ]
+    );
+    // A second sweep finds nothing; the ok row is untouched.
+    assert_eq!(
+        swarmpress_server::llm::sweep_abandoned(&s.st, now)
+            .await
+            .unwrap(),
+        0
+    );
+}

@@ -309,6 +309,21 @@ impl Background {
 pub fn spawn_background(st: &AppState) -> Background {
     let mut tasks = vec![tracker::spawn_maintenance(st)];
     tasks.extend(deploys::spawn(st));
+    // Hosted model calls a restart cut off (ADR-0067): at start, then hourly.
+    let st3 = st.clone();
+    let started = st.now_ms();
+    tasks.push(tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(3600));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tick.tick().await;
+            match llm::sweep_abandoned(&st3, started).await {
+                Ok(n) if n > 0 => tracing::warn!(rows = n, "llm jobs abandoned"),
+                Ok(_) => {}
+                Err(e) => tracing::error!(error = ?e, "llm job sweep failed"),
+            }
+        }
+    }));
     let st2 = st.clone();
     tasks.push(tokio::spawn(async move {
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(3600));

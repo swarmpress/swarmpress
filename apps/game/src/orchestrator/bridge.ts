@@ -254,6 +254,12 @@ export interface LocalLlmBridgeOptions {
   paused?: () => boolean
   /** How long an aborted call may take to stop before it is answered anyway, ms. Default 5000. */
   abortGraceMs?: number
+  /**
+   * Whether the player waits for the call starting now (ADR-0067: Standard
+   * where the player waits, Flex for queued work). Asked once per call; a
+   * hosted backend uses its faster, dearer tier for it. Default: never.
+   */
+  interactive?: () => boolean
 }
 
 /** A model call's wall-clock limit: generous (a long section with reasoning on a slow GPU). */
@@ -383,9 +389,10 @@ export function localLlmBridge(
     const messages = toChatMessages(call.request)
     const maxTokens = call.request.max_tokens
     const p = policy(call)
+    const interactive = opts.interactive?.() ?? false
     try {
       if (call.kind === 'generate') {
-        const r = await llm.generate(messages, { maxTokens, thinking: p.thinking, reasoningBudget: p.reasoningBudget, signal })
+        const r = await llm.generate(messages, { maxTokens, thinking: p.thinking, reasoningBudget: p.reasoningBudget, signal, interactive })
         if (r.finishReason === 'length') {
           const text = trimToSentence(r.text)
           if (!text) return JSON.stringify({ error: { Truncated: { partial: r.text } } })
@@ -400,6 +407,7 @@ export function localLlmBridge(
           thinking: p.thinking,
           reasoningBudget: p.reasoningBudget,
           signal,
+          interactive,
           ...(validate ? { validate } : {}),
         })
         return JSON.stringify({ value: r.value, sources: r.sources, searches: r.searches })
@@ -411,6 +419,7 @@ export function localLlmBridge(
         answerPrefix: p.answerPrefix,
         stopOnJsonEnd: p.stopOnJsonEnd,
         signal,
+        interactive,
         ...(validate ? { validate } : {}),
       })
       return JSON.stringify({ value })

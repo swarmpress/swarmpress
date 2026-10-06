@@ -320,6 +320,20 @@ describe('localLlmBridge policy and truncation', () => {
     expect(local.calls[1].opts).toMatchObject({ maxTokens: 4096, thinking: 'medium', reasoningBudget: 2048, stopOnJsonEnd: true })
   })
 
+  it('marks a call interactive while the player waits for it (Standard tier, ADR-0067)', async () => {
+    const local = new FakeLlm({ responder: () => 'A sentence.' })
+    let waits = false
+    const llm = localLlmBridge(local, { interactive: () => waits })
+    await llm.complete(JSON.stringify({ kind: 'generate', request: request(50) }))
+    waits = true
+    await llm.complete(JSON.stringify({ kind: 'generate', request: request(50) }))
+    await llm.complete(structured({ type: 'object' }, 512))
+    const marks = local.calls.map((c) => c.opts.interactive)
+    expect(marks[0]).toBe(false)
+    expect(marks.slice(1).length).toBeGreaterThan(1)
+    expect(marks.slice(1).every(Boolean)).toBe(true)
+  })
+
   it('keeps a bounded record of calls', async () => {
     const local = new FakeLlm({ responder: () => 'A sentence.' })
     const llm = localLlmBridge(local, { maxCalls: 3 })
