@@ -1,0 +1,17 @@
+{
+  "name": "News digest",
+  "nodes": [
+    { "id": "1", "name": "When clicking Test workflow", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "parameters": {} },
+    { "id": "2", "name": "RSS Read", "type": "n8n-nodes-base.rssFeedRead", "typeVersion": 1, "parameters": { "url": "https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml" } },
+    { "id": "3", "name": "Limit", "type": "n8n-nodes-base.limit", "typeVersion": 1, "parameters": { "maxItems": 5 } },
+    { "id": "4", "name": "Edit Fields", "type": "n8n-nodes-base.set", "typeVersion": 3.4,
+      "parameters": { "assignments": { "assignments": [
+        { "id": "a", "name": "title", "value": "={{ $json.title }}", "type": "string" },
+        { "id": "b", "name": "link", "value": "={{ $json.link }}", "type": "string" } ] } } }
+  ],
+  "connections": {
+    "When clicking Test workflow": { "main": [[{ "node": "RSS Read", "type": "main", "index": 0 }]] },
+    "RSS Read": { "main": [[{ "node": "Limit", "type": "main", "index": 0 }]] },
+    "Limit": { "main": [[{ "node": "Edit Fields", "type": "main", "index": 0 }]] }
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "graph": {
+    "format": "swarmpress.tool.v1",
+    "id": "weather-alert",
+    "name": {
+      "en": "Weather alert"
+    },
+    "description": "Imported from n8n: Weather alert.",
+    "inputs": {},
+    "outputs": {
+      "format_alert": "WeatherAlertFormatAlertOut"
+    },
+    "nodes": [
+      {
+        "kind": "connector",
+        "id": "forecast",
+        "connector": "http-get",
+        "url": "https://api.open-meteo.com/v1/forecast?latitude=44.1&longitude=9.7&current=temperature_2m",
+        "returns": "WeatherAlertForecastResponse"
+      },
+      {
+        "kind": "condition",
+        "id": "hot",
+        "test": "compare",
+        "path": "$.current.temperature_2m",
+        "cmp": "gt",
+        "value": 30,
+        "cases": []
+      },
+      {
+        "kind": "skill",
+        "id": "format-alert",
+        "extension": "press.swarm.sealed",
+        "tool": "n8n-nodes-base.code",
+        "returns": "WeatherAlertFormatAlertOut"
+      },
+      {
+        "kind": "output",
+        "id": "format-alert-out",
+        "port": "format_alert"
+      }
+    ],
+    "edges": [
+      [
+        "forecast.out",
+        "hot.in"
+      ],
+      [
+        "hot.yes",
+        "format-alert.in"
+      ],
+      [
+        "format-alert.out",
+        "format-alert-out.in"
+      ]
+    ],
+    "triggers": [
+      {
+        "kind": "schedule",
+        "every_game_days": 1
+      }
+    ],
+    "failure": {
+      "retries": 0,
+      "on_error": "fail"
+    },
+    "limits": {
+      "llm_calls_per_run": 0,
+      "fetches_per_run": 0
+    }
+  },
+  "types": {
+    "WeatherAlertForecastResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "current"
+      ],
+      "properties": {
+        "current": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "temperature_2m"
+          ],
+          "properties": {
+            "temperature_2m": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "WeatherAlertFormatAlertOut": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    }
+  }
+}

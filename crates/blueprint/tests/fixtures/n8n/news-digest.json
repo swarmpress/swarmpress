@@ -1,0 +1,92 @@
+{
+  "graph": {
+    "format": "swarmpress.tool.v1",
+    "id": "news-digest",
+    "name": {
+      "en": "News digest"
+    },
+    "description": "Imported from n8n: News digest.",
+    "inputs": {},
+    "outputs": {
+      "edit_fields": "NewsDigestEditFields[]"
+    },
+    "nodes": [
+      {
+        "kind": "connector",
+        "id": "rss-read",
+        "connector": "rss",
+        "url": "https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml",
+        "returns": "FeedItem[]"
+      },
+      {
+        "kind": "op",
+        "id": "limit",
+        "op": "limit",
+        "count": 5,
+        "fields": {},
+        "desc": false
+      },
+      {
+        "kind": "op",
+        "id": "edit-fields",
+        "op": "map",
+        "fields": {
+          "title": "$.title",
+          "link": "$.link"
+        },
+        "returns": "NewsDigestEditFields[]",
+        "desc": false
+      },
+      {
+        "kind": "output",
+        "id": "edit-fields-out",
+        "port": "edit_fields"
+      }
+    ],
+    "edges": [
+      [
+        "rss-read.out",
+        "limit.in"
+      ],
+      [
+        "limit.out",
+        "edit-fields.in"
+      ],
+      [
+        "edit-fields.out",
+        "edit-fields-out.in"
+      ]
+    ],
+    "triggers": [
+      {
+        "kind": "on-demand"
+      }
+    ],
+    "failure": {
+      "retries": 0,
+      "on_error": "fail"
+    },
+    "limits": {
+      "llm_calls_per_run": 0,
+      "fetches_per_run": 0
+    }
+  },
+  "types": {
+    "NewsDigestEditFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "link"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "link": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

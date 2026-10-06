@@ -1,0 +1,18 @@
+{
+  "name": "Weather alert",
+  "nodes": [
+    { "id": "1", "name": "Every day", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2,
+      "parameters": { "rule": { "interval": [{ "field": "days", "daysInterval": 1 }] } } },
+    { "id": "2", "name": "Forecast", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "parameters": { "method": "GET", "url": "https://api.open-meteo.com/v1/forecast?latitude=44.1&longitude=9.7&current=temperature_2m" } },
+    { "id": "3", "name": "Hot?", "type": "n8n-nodes-base.if", "typeVersion": 1,
+      "parameters": { "conditions": { "number": [{ "value1": "={{ $json.current.temperature_2m }}", "operation": "larger", "value2": 30 }] } } },
+    { "id": "4", "name": "Format alert", "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "parameters": { "jsCode": "return [{ json: { text: 'Hot: ' + $json.current.temperature_2m } }]" } }
+  ],
+  "connections": {
+    "Every day": { "main": [[{ "node": "Forecast", "type": "main", "index": 0 }]] },
+    "Forecast": { "main": [[{ "node": "Hot?", "type": "main", "index": 0 }]] },
+    "Hot?": { "main": [[{ "node": "Format alert", "type": "main", "index": 0 }], []] }
+  }
+}
