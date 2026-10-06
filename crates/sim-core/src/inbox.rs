@@ -82,10 +82,14 @@ pub enum TicketKind {
     /// A job needs a page the site does not have (rule 5).
     #[serde(alias = "needs-page")]
     NeedsPage,
+    /// The weekly editorial board's job failed or timed out: nothing was
+    /// planned that week (ADR-0069).
+    #[serde(alias = "board-failed")]
+    BoardFailed,
 }
 
 impl TicketKind {
-    pub const ALL: [TicketKind; 13] = [
+    pub const ALL: [TicketKind; 14] = [
         TicketKind::BudgetOverrun,
         TicketKind::RunwayLow,
         TicketKind::PayrollSpike,
@@ -99,6 +103,7 @@ impl TicketKind {
         TicketKind::DeployFailed,
         TicketKind::NeedsMedia,
         TicketKind::NeedsPage,
+        TicketKind::BoardFailed,
     ];
 
     pub const fn slug(self) -> &'static str {
@@ -116,6 +121,7 @@ impl TicketKind {
             TicketKind::DeployFailed => "deploy-failed",
             TicketKind::NeedsMedia => "needs-media",
             TicketKind::NeedsPage => "needs-page",
+            TicketKind::BoardFailed => "board-failed",
         }
     }
 
@@ -136,7 +142,8 @@ impl TicketKind {
             | TicketKind::StandupFailed
             | TicketKind::DeployFailed
             | TicketKind::NeedsMedia
-            | TicketKind::NeedsPage => Priority::High,
+            | TicketKind::NeedsPage
+            | TicketKind::BoardFailed => Priority::High,
             TicketKind::PayrollSpike | TicketKind::MissingRole => Priority::Medium,
             TicketKind::HireAffordability => Priority::Low,
         }
@@ -173,7 +180,7 @@ impl TicketKind {
             TicketKind::ProjectProposal => &[Approve, Reject],
             TicketKind::Escalation => &[Retry, Kill],
             TicketKind::PublishApproval => &[Publish, SendBack, Kill, Defer],
-            TicketKind::StandupFailed => &[Retry, Skip],
+            TicketKind::StandupFailed | TicketKind::BoardFailed => &[Retry, Skip],
             TicketKind::DeployFailed => &[Retry, Acknowledge],
             TicketKind::NeedsMedia | TicketKind::NeedsPage => &[Retry, Kill],
         }
@@ -195,7 +202,7 @@ impl TicketKind {
                 TicketOption::Kill
             }
             TicketKind::PublishApproval => TicketOption::Defer,
-            TicketKind::StandupFailed => TicketOption::Skip,
+            TicketKind::StandupFailed | TicketKind::BoardFailed => TicketOption::Skip,
             TicketKind::DeployFailed => TicketOption::Acknowledge,
         }
     }
@@ -699,6 +706,10 @@ impl World {
                 let project = t.project.ok_or("the ticket has no project")?;
                 self.standup_possible(project)
             }
+            (TicketKind::BoardFailed, TicketOption::Retry) => {
+                let project = t.project.ok_or("the ticket has no project")?;
+                self.board_possible(project)
+            }
             _ => Ok(()),
         }
     }
@@ -792,6 +803,11 @@ impl World {
             TicketKind::StandupFailed => {
                 if let (O::Retry, Some(p)) = (option, t.project) {
                     self.retry_standup(p);
+                }
+            }
+            TicketKind::BoardFailed => {
+                if let (O::Retry, Some(p)) = (option, t.project) {
+                    self.retry_board(p);
                 }
             }
         }

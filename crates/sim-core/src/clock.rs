@@ -43,6 +43,10 @@ pub const BRIEFING_TIME: u16 = hm(8, 30);
 /// Monday KPI review (data scientist → CEO office).
 pub const KPI_REVIEW_START: u16 = hm(9, 30);
 pub const KPI_REVIEW_END: u16 = hm(10, 0);
+/// Monday's editorial board (ADR-0069): it opens in this window and runs
+/// until its outcome arrives, at most `plan::BOARD_TIMEOUT_MINUTES`.
+pub const BOARD_START: u16 = hm(10, 0);
+pub const BOARD_END: u16 = hm(10, 20);
 /// Friday finance review (CFO → CEO office).
 pub const FINANCE_REVIEW_START: u16 = hm(16, 0);
 pub const FINANCE_REVIEW_END: u16 = hm(16, 30);

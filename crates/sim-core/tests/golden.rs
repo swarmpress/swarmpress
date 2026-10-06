@@ -16,14 +16,19 @@
 //!   raises one every day, which is why the command-less runner fixture
 //!   moved too), the escalation default, `Meeting.speak_from/speak_chars`,
 //!   `Ticket.failure`, `WorkItem.escalations`, and a longer script.
+//! - `0x39d9_8696_fe53_cdc4`: world format 2.
+//! - world format 3 (FEAT-087, ADR-0069): the weekly editorial board, the
+//!   work item's planned days, workstream and dependencies, the plan's
+//!   workstreams and board days, the `EditorialBoard` policy; the script
+//!   turns the board on and answers the first one.
 
 use sim_core::commands::JobFailure;
-use sim_core::ids::{TicketId, WorkItemId};
+use sim_core::ids::{StaffId, TicketId, WorkItemId};
 use sim_core::inbox::{ResolvedBy, TicketKind, TicketOption, TicketStatus};
 use sim_core::plan::{JobKind, WorkItemStatus};
-use sim_core::scenarios::{golden_script, run_golden, GOLDEN_STEPS};
+use sim_core::scenarios::{golden_script, run_golden, DEMO_PROJECT, GOLDEN_STEPS};
 
-const GOLDEN_HASH: u64 = 0x39d9_8696_fe53_cdc4;
+const GOLDEN_HASH: u64 = 0xa01f_2bd6_e634_9f86;
 
 #[test]
 fn golden_hash() {
@@ -80,9 +85,35 @@ fn golden_hash() {
         .filter(|t| t.kind == TicketKind::StandupFailed && t.failure == Some(JobFailure::Timeout))
         .count();
     assert!(timed_out >= 3, "{timed_out} standups timed out");
-    // The only job still pending is item 2's retried draft.
-    let pending: Vec<JobKind> = w.plan.jobs.values().map(|j| j.kind).collect();
-    assert_eq!(pending, vec![JobKind::Draft]);
+    // Day 4, 10:00: the first editorial board (job 19) planned items 4 and
+    // 5 under one workstream; item 4 started with the lowest-id free writer,
+    // item 5 waits for it to be published.
+    assert_eq!(w.plan.board_days.get(&DEMO_PROJECT), Some(&4));
+    assert_eq!(item(4).status, WorkItemStatus::InProgress);
+    assert_eq!(item(4).phases[0].assignee, Some(StaffId(1)));
+    assert_eq!(
+        (item(4).start_day, item(4).due_day, item(4).publish_day),
+        (Some(4), Some(6), Some(7))
+    );
+    assert_eq!(item(5).status, WorkItemStatus::Planned);
+    assert!(item(5).is_unstarted());
+    assert_eq!(item(5).depends_on, vec![WorkItemId(4)]);
+    assert_eq!(item(4).workstream, item(5).workstream);
+    assert_eq!(w.plan.workstreams.len(), 1);
+    // Pending: item 2's retried draft and item 4's draft.
+    let pending: Vec<(JobKind, Option<WorkItemId>)> = w
+        .plan
+        .jobs
+        .values()
+        .map(|j| (j.kind, j.work_item))
+        .collect();
+    assert_eq!(
+        pending,
+        vec![
+            (JobKind::Draft, Some(WorkItemId(2))),
+            (JobKind::Draft, Some(WorkItemId(4)))
+        ]
+    );
     println!("golden hash: {:#018x}", w.hash());
     assert_eq!(w.hash(), GOLDEN_HASH, "got {:#018x}", w.hash());
 }

@@ -136,6 +136,10 @@ pub struct Policies {
     pub autonomy: AutonomyPolicy,
     /// Editor approval bar (plan: approve at 7 or above).
     pub quality_bar: u8,
+    /// The weekly editorial board plans the week (ADR-0069). Off in old
+    /// logs; the game turns it on once with `SetPolicy`.
+    #[serde(default)]
+    pub editorial_board: bool,
 }
 
 impl Default for Policies {
@@ -144,6 +148,7 @@ impl Default for Policies {
             overtime: OvertimePolicy::Allow,
             autonomy: AutonomyPolicy::ApproveAll,
             quality_bar: 7,
+            editorial_board: false,
         }
     }
 }

@@ -1,6 +1,6 @@
 # ADR-0059 — The CEO publish gate, and failures the sim can see
 
-**Status:** Accepted (amends ADR-0028 and ADR-0031)
+**Status:** Accepted (amends ADR-0028 and ADR-0031); amended by ADR-0069 (unstarted planned items do not count against the WIP limit)
 **Date:** 2026-10-02
 
 ## Context

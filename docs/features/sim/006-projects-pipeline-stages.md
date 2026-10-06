@@ -13,6 +13,7 @@ adrs:
   - ADR-0020
   - ADR-0031
   - ADR-0038
+  - ADR-0069
 ---
 
 # Projects and pipeline stages

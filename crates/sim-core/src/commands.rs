@@ -18,7 +18,7 @@ use crate::ids::{
     CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId,
 };
 use crate::inbox::{DelegationPolicy, SecretaryTaskKind, TicketOption};
-use crate::plan::BriefStub;
+use crate::plan::{BriefStub, PlannedStub};
 use crate::projects::ProjectStatus;
 
 /// What the player can do.
@@ -134,6 +134,8 @@ pub enum Policy {
     Autonomy(AutonomyPolicy),
     /// Editor approval bar, 5..=10 (default 7).
     QualityBar(u8),
+    /// The weekly editorial board on or off (ADR-0069, default off).
+    EditorialBoard(bool),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -257,6 +259,14 @@ pub enum ServerCommand {
     /// A standup's outcome: the briefs it agreed on become work items.
     /// `job_id` is the standup's job.
     MeetingOutcome { job_id: u64, briefs: Vec<BriefStub> },
+    /// An editorial board's outcome (ADR-0069): the items it planned, not
+    /// started yet. `workstreams` are the opaque text refs of the
+    /// workstreams the items name by index. `job_id` is the board's job.
+    BoardOutcome {
+        job_id: u64,
+        workstreams: Vec<u64>,
+        items: Vec<PlannedStub>,
+    },
     /// The deploy carrying a merged work item is live.
     DeployLanded { work_item: WorkItemId },
     /// One meeting turn: `speaker` talks for a duration derived from `chars`.

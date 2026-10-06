@@ -16,8 +16,8 @@ surfaces (ADR-0063, ADR-0065; decided, kit core and a spike first).
 - The company is extensible through a JS SDK.
 - The user's own company is the imported, still-live **cinqueterre.travel**.
 
-Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0067; ADR-0038 to 0067 define
-the current architecture; ADR-0044 to 0067 are decided and mostly not built yet). Features and
+Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0069; ADR-0038 to 0069 define
+the current architecture; ADR-0044 to 0069 are decided and mostly not built yet). Features and
 their health: `docs/features/` plus Cockpit. The current MVP is `docs/mvp.md` (the owner's
 company for real; inference moves to hosted GPT-6-Luna, ADR-0067); its implementation designs are in
 `docs/design/`.

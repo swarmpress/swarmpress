@@ -50,7 +50,7 @@ use crate::ids::{
     CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId,
 };
 use crate::inbox::{DelegationPolicy, FollowUpTopic, SecretaryTaskKind, TicketOption};
-use crate::plan::{BriefStub, WorkItemKind};
+use crate::plan::{BriefStub, PlannedStub, WorkItemKind, WorkPriority};
 use crate::projects::ProjectStatus;
 use crate::staff::{persona, persona_by_key, Schedule, Traits};
 use crate::world::World;
@@ -820,10 +820,44 @@ pub fn golden_script() -> Vec<(u64, Input)> {
             46_000,
             p(Command::Demolish(DemolishTarget::Room(RoomId(12)))),
         ),
+        // day 3, 21:00: the editorial board is turned on (ADR-0069)
+        (39_500, p(Command::SetPolicy(Policy::EditorialBoard(true)))),
         (
             48_000,
             p(Command::SetDelegation {
                 policy: DelegationPolicy::LowAndMedium,
+            }),
+        ),
+        // day 4, 10:00: the first editorial board (job 19) plans two items
+        // for Marco under one workstream: item 4 starts now (draft job 20),
+        // item 5 waits for item 4's publication
+        (
+            49_700,
+            s(ServerCommand::BoardOutcome {
+                job_id: 19,
+                workstreams: vec![901],
+                items: vec![
+                    PlannedStub {
+                        kind: WorkItemKind::Article,
+                        brief_ref: 601,
+                        editor: StaffId(5),
+                        priority: WorkPriority::High,
+                        workstream: Some(0),
+                        start_offset: 0,
+                        publish_offset: 3,
+                        depends_on: vec![],
+                    },
+                    PlannedStub {
+                        kind: WorkItemKind::Article,
+                        brief_ref: 602,
+                        editor: StaffId(5),
+                        priority: WorkPriority::Normal,
+                        workstream: Some(0),
+                        start_offset: 1,
+                        publish_offset: 5,
+                        depends_on: vec![0],
+                    },
+                ],
             }),
         ),
     ]

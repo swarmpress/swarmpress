@@ -156,6 +156,13 @@ id_type!(
     WorkItemId,
     "work-item-"
 );
+id_type!(
+    /// A workstream of the publishing plan (ADR-0031, ADR-0069): a season or
+    /// theme the weekly editorial board plans items under. Its title is text
+    /// in the store, under the workstream's `text_ref`.
+    WorkstreamId,
+    "workstream-"
+);
 
 /// Stable persona number from the catalog (`crates/agents/personas/*.toml`,
 /// field `id`); see [`crate::staff::PERSONAS`]. Serialized as a plain number.

@@ -38,8 +38,8 @@ use sim_core::inbox::{
     TicketOption,
 };
 use sim_core::plan::{
-    BriefStub, JobKind, PhaseKind, PhaseState, WorkItemKind, WorkItemStatus, MAX_REVISIONS,
-    WIP_LIMIT,
+    BriefStub, JobKind, PhaseKind, PhaseState, PlannedStub, WorkItemKind, WorkItemStatus,
+    WorkPriority, MAX_PLANNED, MAX_REVISIONS, WIP_LIMIT,
 };
 use sim_core::projects::ProjectStatus;
 use sim_core::roles::Role;
@@ -89,6 +89,7 @@ fn policy() -> impl Strategy<Value = Policy> {
         ])
         .prop_map(Policy::Autonomy),
         (0u8..14).prop_map(Policy::QualityBar),
+        any::<bool>().prop_map(Policy::EditorialBoard),
     ]
 }
 
@@ -293,6 +294,34 @@ fn server_command() -> impl Strategy<Value = ServerCommand> {
         (1u32..5).prop_map(|w| ServerCommand::DeployFailed {
             work_item: WorkItemId(w),
         }),
+        (1u64..12, 1u32..14, 0u8..4, 0u8..6, any::<bool>()).prop_map(
+            |(j, ed, start, publish, dep)| ServerCommand::BoardOutcome {
+                job_id: j,
+                workstreams: vec![7],
+                items: vec![
+                    PlannedStub {
+                        kind: WorkItemKind::Article,
+                        brief_ref: 1_000 + j,
+                        editor: StaffId(ed),
+                        priority: WorkPriority::Normal,
+                        workstream: Some(0),
+                        start_offset: start,
+                        publish_offset: publish,
+                        depends_on: vec![],
+                    },
+                    PlannedStub {
+                        kind: WorkItemKind::Article,
+                        brief_ref: 2_000 + j,
+                        editor: StaffId(ed),
+                        priority: WorkPriority::High,
+                        workstream: None,
+                        start_offset: 0,
+                        publish_offset: publish,
+                        depends_on: if dep { vec![0] } else { vec![] },
+                    },
+                ],
+            }
+        ),
     ]
 }
 
@@ -558,6 +587,11 @@ fn check_plan(w: &World) {
             "{p} has {} open items (limit {WIP_LIMIT})",
             w.open_items(*p)
         );
+        assert!(
+            w.unstarted_items(*p) <= MAX_PLANNED,
+            "{p} has {} planned items not started",
+            w.unstarted_items(*p)
+        );
     }
     let mut writers: Vec<StaffId> = Vec::new();
     let mut drafting: Vec<StaffId> = Vec::new();
@@ -570,7 +604,15 @@ fn check_plan(w: &World) {
             );
             writers.push(writer);
         }
-        if !item.status.is_closed() {
+        if item.is_unstarted() {
+            // planned by the board: no writer and no job until it starts
+            assert!(
+                w.plan.jobs.values().all(|j| j.work_item != Some(item.id)),
+                "{} has a job before it started",
+                item.id
+            );
+            assert!(item.start_day.is_some(), "{} has no start day", item.id);
+        } else if !item.status.is_closed() {
             if let Some(p) = item.phase().filter(|p| p.kind == PhaseKind::Draft) {
                 let writer = p.assignee.expect("a draft has a writer");
                 assert!(

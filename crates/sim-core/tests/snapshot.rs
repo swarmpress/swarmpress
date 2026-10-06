@@ -26,6 +26,8 @@ const WORLD_FORMATS: &[(u32, u64)] = &[
     (1, 0x591f_2064_16aa_2764),
     // FEAT-079, ADR-0059: the publish gate and the failure commands
     (2, 0x39d9_8696_fe53_cdc4),
+    // FEAT-087, ADR-0069: the weekly editorial board and planned items
+    (3, 0xa01f_2bd6_e634_9f86),
 ];
 
 /// The golden hash of the current world format.
@@ -75,7 +77,7 @@ fn golden_run_through_snapshots_matches_the_uninterrupted_run() {
     let (w, restores) = golden_through_snapshots(7_919);
     assert_eq!(restores, 6);
     assert_eq!(w.hash(), GOLDEN_HASH, "got {:#018x}", w.hash());
-    assert_eq!(w.plan.items.len(), 3);
+    assert_eq!(w.plan.items.len(), 5);
     assert_eq!(
         w.plan.items.values().next().map(|i| i.status),
         Some(WorkItemStatus::Published)

@@ -24,6 +24,19 @@
 //! JobCompleted{ok: false} │ JobFailed    ─► Blocked + ticket (Escalation, NeedsMedia, NeedsPage)
 //! ```
 //!
+//! The weekly editorial board (ADR-0069), when the company's
+//! `editorial_board` policy is on:
+//!
+//! ```text
+//! Monday 10:00 (and a project's first 10:00) ─► RequestJob(Board, attendees)
+//!   ─► ServerCommand::BoardOutcome{items} ─► WorkItems Planned, unstarted
+//!      (a start, a planned publish day, an editor; no writer yet)
+//!   (JobFailed, or no outcome within two game hours: a BoardFailed ticket)
+//! each standup (and the board's outcome): unstarted items whose start day
+//!   has come and whose dependencies are published start their Draft with a
+//!   free writer, while the project stays within WIP_LIMIT.
+//! ```
+//!
 //! A phase completes at `max(min time, job done)`: drafts take at least 2
 //! game hours, reviews 1, publishing 15 minutes, so the office shows the work
 //! even when an executor answers instantly.
@@ -48,7 +61,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::clock::{Clock, BRIEFING_TIME};
 use crate::commands::{AutonomyPolicy, JobDigest, JobFailure};
-use crate::ids::{MeetingId, ProjectId, StaffId, TicketId, WorkItemId};
+use crate::ids::{MeetingId, ProjectId, StaffId, TicketId, WorkItemId, WorkstreamId};
 use crate::inbox::{TicketKind, TicketOption, TicketSpec};
 use crate::roles::Role;
 use crate::world::World;
@@ -72,6 +85,18 @@ pub const AUTO_PUBLISH_SCORE: u8 = 9;
 pub const FEED_KEPT: usize = 32;
 /// Ticket ids kept on a work item (the newest ones).
 pub const ITEM_TICKETS_KEPT: usize = 16;
+/// An editorial board waits this long for its outcome, game minutes (ADR-0069).
+pub const BOARD_TIMEOUT_MINUTES: u16 = 120;
+/// A board's job is due this long after it was requested, game minutes (ADR-0060).
+pub const BOARD_DUE_MINUTES: u16 = 90;
+/// Items one board may plan.
+pub const MAX_BOARD_ITEMS: usize = 7;
+/// Planned items not yet started a project may hold.
+pub const MAX_PLANNED: usize = 10;
+/// The latest day a board may plan for, counted from the board's day.
+pub const MAX_BOARD_OFFSET: u8 = 13;
+/// Items a planned item may wait for.
+pub const MAX_DEPENDS: usize = 2;
 
 /// What a job is for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -87,6 +112,9 @@ pub enum JobKind {
     Review,
     #[serde(alias = "publish")]
     Publish,
+    /// The weekly editorial board (ADR-0069).
+    #[serde(alias = "board")]
+    Board,
 }
 
 impl JobKind {
@@ -97,7 +125,13 @@ impl JobKind {
             JobKind::Draft => "draft",
             JobKind::Review => "review",
             JobKind::Publish => "publish",
+            JobKind::Board => "board",
         }
+    }
+
+    /// A meeting's job: its attendees are its staff, its end is its outcome.
+    pub const fn is_meeting(self) -> bool {
+        matches!(self, JobKind::Standup | JobKind::Board)
     }
 }
 
@@ -134,6 +168,40 @@ pub struct BriefStub {
     pub editor: StaffId,
     /// Opaque server-side id of the brief text.
     pub brief_ref: u64,
+}
+
+/// One item planned by the editorial board (`ServerCommand::BoardOutcome`,
+/// ADR-0069). Days are offsets from the board's day; workstreams and
+/// dependencies are indices into the outcome's own lists.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlannedStub {
+    #[serde(default)]
+    pub kind: WorkItemKind,
+    /// Opaque server-side id of the brief text.
+    pub brief_ref: u64,
+    /// Who reviews and owns it; the writer is chosen when it starts.
+    pub editor: StaffId,
+    #[serde(default)]
+    pub priority: WorkPriority,
+    /// Index into the outcome's `workstreams`.
+    #[serde(default)]
+    pub workstream: Option<u8>,
+    /// The day its Draft may start, from the board's day.
+    pub start_offset: u8,
+    /// The planned publish day, from the board's day.
+    pub publish_offset: u8,
+    /// Indices of earlier items in the same outcome it waits for.
+    #[serde(default)]
+    pub depends_on: Vec<u8>,
+}
+
+/// A workstream (ADR-0031, ADR-0069). Its title is store text under `text_ref`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Workstream {
+    pub id: WorkstreamId,
+    pub project: ProjectId,
+    pub text_ref: u64,
+    pub created_step: u64,
 }
 
 #[derive(
@@ -339,9 +407,35 @@ pub struct WorkItem {
     pub escalations: u8,
     pub created_step: u64,
     pub published_step: Option<u64>,
+    /// The board's workstream (ADR-0069).
+    #[serde(default)]
+    pub workstream: Option<WorkstreamId>,
+    /// The day its Draft may start (planned items).
+    #[serde(default)]
+    pub start_day: Option<u32>,
+    /// The day it should be ready (the day before its planned publish day).
+    #[serde(default)]
+    pub due_day: Option<u32>,
+    /// The planned publish day.
+    #[serde(default)]
+    pub publish_day: Option<u32>,
+    /// Items that must be published before it starts.
+    #[serde(default)]
+    pub depends_on: Vec<WorkItemId>,
 }
 
 impl WorkItem {
+    /// Planned by the board and not started: its Draft has neither begun nor
+    /// a writer. It does not count against [`WIP_LIMIT`].
+    pub fn is_unstarted(&self) -> bool {
+        self.status == WorkItemStatus::Planned
+            && self.current == 0
+            && self
+                .phases
+                .first()
+                .is_some_and(|p| p.state == PhaseState::Pending && p.job.is_none())
+    }
+
     pub fn phase(&self) -> Option<&Phase> {
         self.phases.get(self.current)
     }
@@ -433,6 +527,14 @@ pub struct Plan {
     /// The day each project last held its standup: one standup job per
     /// project per day, even if the meeting ends early and is cleared.
     pub standup_days: BTreeMap<ProjectId, u32>,
+    /// Workstreams (ADR-0069).
+    #[serde(default)]
+    pub workstreams: BTreeMap<WorkstreamId, Workstream>,
+    #[serde(default)]
+    pub next_workstream: u32,
+    /// The day each project last held its editorial board (ADR-0069).
+    #[serde(default)]
+    pub board_days: BTreeMap<ProjectId, u32>,
 }
 
 /// Roles that may write a brief's draft.
@@ -467,7 +569,7 @@ impl World {
     fn job_effect(&self, job: &PendingJob) -> Effect {
         let item = job.work_item.and_then(|id| self.plan.items.get(&id));
         let staff: Vec<StaffId> = match job.kind {
-            JobKind::Standup => job
+            JobKind::Standup | JobKind::Board => job
                 .meeting
                 .and_then(|m| self.meetings.get(&m))
                 .map(|m| m.attendees.iter().copied().collect())
@@ -592,10 +694,170 @@ impl World {
                 escalations: 0,
                 created_step: self.step,
                 published_step: None,
+                workstream: None,
+                start_day: None,
+                due_day: None,
+                publish_day: None,
+                depends_on: Vec::new(),
             };
             self.plan.items.insert(id, item);
             self.start_phase(id, 0);
         }
+    }
+
+    /// Creates the work items the editorial board planned (ADR-0069): Planned
+    /// and unstarted, with their days, editor, workstream and dependencies;
+    /// then starts those that are due.
+    pub(crate) fn apply_board_outcome(
+        &mut self,
+        job_id: u64,
+        workstreams: &[u64],
+        items: &[PlannedStub],
+    ) {
+        let Some(job) = self.plan.jobs.remove(&job_id) else {
+            return;
+        };
+        self.end_standup(&job);
+        let project = job.project;
+        let today = self.clock().day;
+        let streams: Vec<WorkstreamId> = workstreams
+            .iter()
+            .map(|r| self.workstream_for(project, *r))
+            .collect();
+        let mut created: Vec<WorkItemId> = Vec::new();
+        for stub in items {
+            self.plan.next_item += 1;
+            let id = WorkItemId(self.plan.next_item);
+            let publisher = self.publisher(project, stub.editor);
+            let publish_day = today + u32::from(stub.publish_offset);
+            let item = WorkItem {
+                id,
+                project,
+                kind: stub.kind,
+                status: WorkItemStatus::Planned,
+                priority: stub.priority,
+                owner: Some(stub.editor),
+                brief_ref: Some(stub.brief_ref),
+                revision: 0,
+                phases: vec![
+                    Phase::new(PhaseKind::Draft, None),
+                    Phase::new(PhaseKind::Review, Some(stub.editor)),
+                    Phase::new(PhaseKind::Publish, Some(publisher)),
+                ],
+                current: 0,
+                meeting: job.meeting,
+                tickets: Vec::new(),
+                last_score: None,
+                escalations: 0,
+                created_step: self.step,
+                published_step: None,
+                workstream: stub
+                    .workstream
+                    .and_then(|i| streams.get(usize::from(i)).copied()),
+                start_day: Some(today + u32::from(stub.start_offset)),
+                due_day: Some(publish_day.saturating_sub(1).max(today)),
+                publish_day: Some(publish_day),
+                depends_on: stub
+                    .depends_on
+                    .iter()
+                    .filter_map(|i| created.get(usize::from(*i)).copied())
+                    .collect(),
+            };
+            self.plan.items.insert(id, item);
+            created.push(id);
+        }
+        self.start_due_planned(project, today);
+    }
+
+    /// The project's workstream with `text_ref`, created when new.
+    fn workstream_for(&mut self, project: ProjectId, text_ref: u64) -> WorkstreamId {
+        if let Some(w) = self
+            .plan
+            .workstreams
+            .values()
+            .find(|w| w.project == project && w.text_ref == text_ref)
+        {
+            return w.id;
+        }
+        self.plan.next_workstream += 1;
+        let id = WorkstreamId(self.plan.next_workstream);
+        self.plan.workstreams.insert(
+            id,
+            Workstream {
+                id,
+                project,
+                text_ref,
+                created_step: self.step,
+            },
+        );
+        id
+    }
+
+    /// Starts the project's planned items that are due (ADR-0069): unstarted,
+    /// start day reached, every dependency published; by priority, then
+    /// planned publish day, then id; each with the lowest-id free drafter on
+    /// the team who is not its editor; while the project stays within
+    /// [`WIP_LIMIT`]. Deterministic, no model involved.
+    pub(crate) fn start_due_planned(&mut self, project: ProjectId, day: u32) {
+        let mut due: Vec<(WorkPriority, u32, WorkItemId)> = self
+            .plan
+            .items
+            .values()
+            .filter(|i| i.project == project && i.is_unstarted())
+            .filter(|i| i.start_day.is_some_and(|d| d <= day))
+            .filter(|i| {
+                i.depends_on.iter().all(|d| {
+                    self.plan
+                        .items
+                        .get(d)
+                        .is_none_or(|o| o.status == WorkItemStatus::Published)
+                })
+            })
+            .map(|i| (i.priority, i.publish_day.unwrap_or(u32::MAX), i.id))
+            .collect();
+        due.sort();
+        for (_, _, id) in due {
+            if self.open_items(project) >= WIP_LIMIT {
+                break;
+            }
+            let editor = self.plan.items.get(&id).and_then(|i| i.owner);
+            let writer = self
+                .staff
+                .values()
+                .filter(|s| s.is_active() && can_draft(s.role) && s.allocation(project) > 0)
+                .map(|s| s.id)
+                .find(|s| Some(*s) != editor && self.writing(*s).is_none());
+            let Some(writer) = writer else {
+                break;
+            };
+            if let Some(p) = self
+                .plan
+                .items
+                .get_mut(&id)
+                .and_then(|i| i.phases.first_mut())
+            {
+                p.assignee = Some(writer);
+            }
+            self.start_phase(id, 0);
+        }
+    }
+
+    /// The board of `job` produced nothing: tell the CEO (rule 11). `Retry`
+    /// holds the board again now, `Skip` (the default) waits for next Monday.
+    fn raise_board_failed(&mut self, project: ProjectId, failure: JobFailure) {
+        let from = self.projects.get(&project).and_then(|p| p.lead);
+        self.raise_ticket_with(
+            TicketSpec {
+                kind: TicketKind::BoardFailed,
+                project: Some(project),
+                from,
+                role: None,
+                amount_cents: 0,
+                work_item: None,
+            },
+            None,
+            Some(failure),
+        );
     }
 
     /// The standup of `job` ends now (its outcome or its failure arrived).
@@ -628,12 +890,22 @@ impl World {
     }
 
     /// Open items of a project: everything not published or cancelled,
-    /// parked and blocked ones included.
+    /// parked and blocked ones included; planned items not yet started are
+    /// not counted (ADR-0069 amends ADR-0059).
     pub fn open_items(&self, project: ProjectId) -> usize {
         self.plan
             .items
             .values()
-            .filter(|i| i.project == project && !i.status.is_closed())
+            .filter(|i| i.project == project && !i.status.is_closed() && !i.is_unstarted())
+            .count()
+    }
+
+    /// Planned items of a project that have not started (ADR-0069).
+    pub fn unstarted_items(&self, project: ProjectId) -> usize {
+        self.plan
+            .items
+            .values()
+            .filter(|i| i.project == project && i.is_unstarted())
             .count()
     }
 
@@ -654,6 +926,9 @@ impl World {
     pub fn job_due_step(&self, job: &PendingJob) -> u64 {
         if job.kind == JobKind::Standup {
             return job.requested_step + self.minutes_to_steps(STANDUP_DUE_MINUTES);
+        }
+        if job.kind == JobKind::Board {
+            return job.requested_step + self.minutes_to_steps(BOARD_DUE_MINUTES);
         }
         job.work_item
             .and_then(|id| self.plan.items.get(&id))
@@ -748,6 +1023,10 @@ impl World {
             (JobKind::Standup, _) => {
                 self.end_standup(&job);
                 self.raise_standup_failed(job.project, reason);
+            }
+            (JobKind::Board, _) => {
+                self.end_standup(&job);
+                self.raise_board_failed(job.project, reason);
             }
             (_, Some(id)) => {
                 let kind = match reason {
@@ -1040,31 +1319,36 @@ impl World {
         }
     }
 
-    /// Ends standups whose outcome never came: no briefs, the job is
-    /// dropped, and a `StandupFailed` ticket says so (rule 11).
+    /// Ends standups and boards whose outcome never came: nothing is
+    /// planned, the job is dropped, and a `StandupFailed` or `BoardFailed`
+    /// ticket says so (rule 11).
     pub(crate) fn time_out_standups(&mut self) {
         let now = self.clock();
-        let timed_out: Vec<(u64, ProjectId)> = self
+        let timed_out: Vec<(u64, JobKind, ProjectId)> = self
             .plan
             .jobs
             .values()
             .filter(|j| {
-                j.kind == JobKind::Standup
+                j.kind.is_meeting()
                     && !j
                         .meeting
                         .and_then(|m| self.meetings.get(&m))
                         .is_some_and(|m| m.is_active(now))
             })
-            .map(|j| (j.job_id, j.project))
+            .map(|j| (j.job_id, j.kind, j.project))
             .collect();
-        for (job, project) in timed_out {
+        for (job, kind, project) in timed_out {
             self.plan.jobs.remove(&job);
             for m in self.meetings.values_mut() {
                 if m.job == Some(job) {
                     m.job = None;
                 }
             }
-            self.raise_standup_failed(project, JobFailure::Timeout);
+            if kind == JobKind::Board {
+                self.raise_board_failed(project, JobFailure::Timeout);
+            } else {
+                self.raise_standup_failed(project, JobFailure::Timeout);
+            }
         }
     }
 
@@ -1134,6 +1418,75 @@ impl World {
         Ok(())
     }
 
+    /// Validates an editorial board's outcome (pure, ADR-0069).
+    pub(crate) fn check_board_outcome(
+        &self,
+        job_id: u64,
+        workstreams: &[u64],
+        items: &[PlannedStub],
+    ) -> Result<(), crate::Reject> {
+        use crate::Reject;
+        let job = self
+            .plan
+            .jobs
+            .get(&job_id)
+            .ok_or(Reject::Invalid("no pending job with that id"))?;
+        if job.kind != JobKind::Board {
+            return Err(Reject::Invalid("not a board job"));
+        }
+        if items.len() > MAX_BOARD_ITEMS {
+            return Err(Reject::Limit("items per board"));
+        }
+        if workstreams.len() > MAX_BOARD_ITEMS {
+            return Err(Reject::Limit("workstreams per board"));
+        }
+        if self.unstarted_items(job.project) + items.len() > MAX_PLANNED {
+            return Err(Reject::Limit("planned items not yet started per project"));
+        }
+        for (n, it) in items.iter().enumerate() {
+            let editor_ok = self.staff.get(&it.editor).is_some_and(|p| {
+                p.is_active() && can_review(p.role) && p.allocation(job.project) > 0
+            });
+            if !editor_ok {
+                return Err(Reject::Invalid(
+                    "the editor must be an editor on the project's team",
+                ));
+            }
+            if it.publish_offset > MAX_BOARD_OFFSET {
+                return Err(Reject::Invalid("a board plans at most two weeks ahead"));
+            }
+            if it.start_offset > it.publish_offset {
+                return Err(Reject::Invalid(
+                    "an item cannot start after its publish day",
+                ));
+            }
+            if it
+                .workstream
+                .is_some_and(|w| usize::from(w) >= workstreams.len())
+            {
+                return Err(Reject::Invalid("unknown workstream index"));
+            }
+            if it.depends_on.len() > MAX_DEPENDS {
+                return Err(Reject::Limit("dependencies per item"));
+            }
+            if it.depends_on.iter().any(|d| usize::from(*d) >= n) {
+                return Err(Reject::Invalid(
+                    "an item may only wait for an earlier item of the same board",
+                ));
+            }
+            if items[..n].iter().any(|o| o.brief_ref == it.brief_ref)
+                || self
+                    .plan
+                    .items
+                    .values()
+                    .any(|i| i.brief_ref == Some(it.brief_ref))
+            {
+                return Err(Reject::Invalid("a brief is planned once"));
+            }
+        }
+        Ok(())
+    }
+
     /// Validates a job failure (pure): any pending job may fail, once.
     pub(crate) fn check_job_failed(&self, job_id: u64) -> Result<(), crate::Reject> {
         self.plan
@@ -1157,6 +1510,9 @@ impl World {
             .ok_or(Reject::Invalid("no pending job with that id"))?;
         if matches!(job.kind, JobKind::Standup) {
             return Err(Reject::Invalid("a standup ends with a MeetingOutcome"));
+        }
+        if matches!(job.kind, JobKind::Board) {
+            return Err(Reject::Invalid("a board ends with a BoardOutcome"));
         }
         if digest.score > 10 {
             return Err(Reject::Invalid("score is 0..=10"));

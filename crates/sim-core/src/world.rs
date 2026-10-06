@@ -32,9 +32,9 @@ use thiserror::Error;
 
 use crate::building::{Building, RoomKind};
 use crate::clock::{
-    hm, Clock, SimConfig, Weekday, ARRIVAL_START, BRIEFING_TIME, EVENING_START, FINANCE_REVIEW_END,
-    FINANCE_REVIEW_START, KPI_REVIEW_END, KPI_REVIEW_START, LUNCH_MINUTES, STANDUP_END,
-    STANDUP_START,
+    hm, Clock, SimConfig, Weekday, ARRIVAL_START, BOARD_END, BOARD_START, BRIEFING_TIME,
+    EVENING_START, FINANCE_REVIEW_END, FINANCE_REVIEW_START, KPI_REVIEW_END, KPI_REVIEW_START,
+    LUNCH_MINUTES, STANDUP_END, STANDUP_START,
 };
 use crate::commands::{
     Command, DemolishTarget, Input, OvertimePolicy, Placement, Policy, ServerCommand,
@@ -50,7 +50,9 @@ use crate::inbox::{
     ExecutiveOffice, SecretaryTask, SecretaryTaskKind, Ticket, TicketKind, TicketSpec,
 };
 use crate::pathfinding::{plan_path, NavGrid, Path};
-use crate::plan::{Effect, JobKind, Plan, STANDUP_TIMEOUT_MINUTES};
+use crate::plan::{
+    can_review, Effect, JobKind, Plan, BOARD_TIMEOUT_MINUTES, STANDUP_TIMEOUT_MINUTES,
+};
 use crate::projects::{Project, ProjectStatus, MONTH_DAYS};
 use crate::staff::{
     persona, salary_for, Activity, Candidate, Role, Schedule, Seniority, Spot, Staff, Traits,
@@ -85,6 +87,10 @@ pub enum MeetingKind {
     FinanceReview,
     /// Booked by the Secretary (`Delegate{ScheduleMeeting}`).
     Scheduled,
+    /// Monday 10:00, one per active project when the `editorial_board`
+    /// policy is on (ADR-0069): the strategists, the editors, SEO and
+    /// marketing and the CFO plan the week.
+    EditorialBoard,
 }
 
 impl MeetingKind {
@@ -94,6 +100,7 @@ impl MeetingKind {
             MeetingKind::KpiReview => "kpi-review",
             MeetingKind::FinanceReview => "finance-review",
             MeetingKind::Scheduled => "scheduled",
+            MeetingKind::EditorialBoard => "editorial-board",
         }
     }
 }
@@ -457,6 +464,7 @@ impl World {
                 Policy::Overtime(o) => self.company.policies.overtime = o,
                 Policy::Autonomy(a) => self.company.policies.autonomy = a,
                 Policy::QualityBar(q) => self.company.policies.quality_bar = q,
+                Policy::EditorialBoard(on) => self.company.policies.editorial_board = on,
             },
             Command::Promote { staff } => {
                 if let Some(s) = self.staff.get_mut(&staff) {
@@ -635,6 +643,11 @@ impl World {
             ServerCommand::MeetingOutcome { job_id, briefs } => {
                 self.apply_meeting_outcome(job_id, &briefs);
             }
+            ServerCommand::BoardOutcome {
+                job_id,
+                workstreams,
+                items,
+            } => self.apply_board_outcome(job_id, &workstreams, &items),
             ServerCommand::DeployLanded { work_item } => self.apply_deploy_landed(work_item),
             ServerCommand::JobFailed { job_id, reason } => self.apply_job_failed(job_id, reason),
             ServerCommand::DeployFailed { work_item } => self.apply_deploy_failed(work_item),
@@ -1079,6 +1092,8 @@ impl World {
     /// Opens a project's standup at `start` and requests its job. Does
     /// nothing without a team or a free meeting room.
     fn open_standup(&mut self, project: ProjectId, day: u32, start: u16) {
+        // Planned work comes first: the standup pitches into what is left.
+        self.start_due_planned(project, day);
         let attendees = self.standup_team(project);
         let end = Self::standup_end(start);
         let Some(room) = (!attendees.is_empty())
@@ -1145,6 +1160,119 @@ impl World {
         }
     }
 
+    /// Who sits on a project's editorial board (ADR-0069): the strategists,
+    /// the editors-in-chief, the project's editors and its SEO and marketing
+    /// staff, and the CFO. Empty when the project has no editor to plan for.
+    fn board_team(&self, project: ProjectId) -> BTreeSet<StaffId> {
+        let team: BTreeSet<StaffId> = self
+            .project_team(project)
+            .into_keys()
+            .filter(|s| {
+                self.staff.get(s).is_some_and(|s| {
+                    s.is_active()
+                        && matches!(
+                            s.role,
+                            Role::Editor
+                                | Role::EditorInChief
+                                | Role::SeoSpecialist
+                                | Role::MarketingManager
+                        )
+                })
+            })
+            .collect();
+        let has_editor = team
+            .iter()
+            .any(|s| self.staff.get(s).is_some_and(|s| can_review(s.role)));
+        if !has_editor {
+            return BTreeSet::new();
+        }
+        team.into_iter()
+            .chain(self.active_with_role(Role::Strategist))
+            .chain(self.active_with_role(Role::EditorInChief))
+            .chain(
+                self.exec
+                    .cfo
+                    .filter(|c| self.staff.get(c).is_some_and(|s| s.is_active())),
+            )
+            .collect()
+    }
+
+    /// A board from `start`: at most two hours, never past midnight.
+    fn board_end(start: u16) -> u16 {
+        (start + BOARD_TIMEOUT_MINUTES).min(hm(24, 0))
+    }
+
+    /// Opens a project's editorial board at `start` and requests its job.
+    /// Does nothing without a team or a free meeting room.
+    fn open_board(&mut self, project: ProjectId, day: u32, start: u16) {
+        let attendees = self.board_team(project);
+        let end = Self::board_end(start);
+        let Some(room) = (!attendees.is_empty())
+            .then(|| self.free_meeting_room(day, start, end, None))
+            .flatten()
+        else {
+            return;
+        };
+        let staff: Vec<StaffId> = attendees.iter().copied().collect();
+        let mid = self.open_meeting(
+            MeetingKind::EditorialBoard,
+            Some(project),
+            room,
+            day,
+            start,
+            end,
+            attendees,
+        );
+        self.plan.board_days.insert(project, day);
+        let job = self.request_job(JobKind::Board, project, None, None, 0, Some(mid), staff);
+        if let Some(m) = self.meetings.get_mut(&mid) {
+            m.job = Some(job);
+        }
+    }
+
+    /// Whether a `BoardFailed` ticket's `Retry` can hold the board for
+    /// `project` now (pure).
+    pub(crate) fn board_possible(&self, project: ProjectId) -> Result<(), &'static str> {
+        let active = self
+            .projects
+            .get(&project)
+            .is_some_and(|p| p.status == ProjectStatus::Active);
+        if !active {
+            return Err("the project is not active");
+        }
+        if !self.company.policies.editorial_board {
+            return Err("the editorial board is off");
+        }
+        if self
+            .plan
+            .jobs
+            .values()
+            .any(|j| j.kind == JobKind::Board && j.project == project)
+        {
+            return Err("a board of this project is already running");
+        }
+        if self.board_team(project).is_empty() {
+            return Err("the project has no editor");
+        }
+        let now = self.clock();
+        let end = Self::board_end(now.minute);
+        if self
+            .free_meeting_room(now.day, now.minute, end, None)
+            .is_none()
+        {
+            return Err("no meeting room is free");
+        }
+        Ok(())
+    }
+
+    /// `BoardFailed` answer `Retry`: the board is held again, starting now.
+    pub(crate) fn retry_board(&mut self, project: ProjectId) {
+        if self.board_possible(project).is_ok() {
+            let now = self.clock();
+            self.open_board(project, now.day, now.minute);
+        }
+    }
+
     /// The daily rhythm (organization.md §8).
     fn schedule_rituals(&mut self, now: Clock) {
         let day = now.day;
@@ -1165,6 +1293,27 @@ impl World {
                 }
                 // The standup runs until its outcome arrives, at most an hour.
                 self.open_standup(pid, day, STANDUP_START);
+            }
+        }
+        // Monday 10:00, and a project's first 10:00: the editorial board
+        // plans the week (ADR-0069), when the policy is on.
+        if self.company.policies.editorial_board && (BOARD_START..BOARD_END).contains(&now.minute) {
+            let active: Vec<ProjectId> = self
+                .projects
+                .values()
+                .filter(|p| p.status == ProjectStatus::Active)
+                .map(|p| p.id)
+                .collect();
+            for pid in active {
+                let last = self.plan.board_days.get(&pid).copied();
+                let due = match last {
+                    None => true,
+                    Some(d) => d != day && now.weekday() == Weekday::Monday,
+                };
+                if !due || self.has_meeting(MeetingKind::EditorialBoard, Some(pid), day) {
+                    continue;
+                }
+                self.open_board(pid, day, BOARD_START);
             }
         }
         let office: Vec<StaffId> = self
