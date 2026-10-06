@@ -19,3 +19,5 @@ Tutorial: [`docs/guides/extending.md`](../../guides/extending.md).
 | [FEAT-057](057-context-providers-publish-targets.md) | Context providers and publish targets | in-progress | high |
 | [FEAT-058](058-challenges-props-provenance.md) | Challenges, prop packs, panels and staff-authored provenance (manifest only) | in-progress | normal |
 | [FEAT-063](063-self-hosted-continuity.md) | Self-hosted continuity runner (swarmpress continue) | planned | high |
+| [FEAT-091](091-tool-graphs.md) | Tool graphs: typed workflows compiled to sandboxed skills, and the factory district | planned | normal |
+| [FEAT-096](096-n8n-import.md) | n8n workflow import | planned | normal |

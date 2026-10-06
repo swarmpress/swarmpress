@@ -17,11 +17,11 @@ The legacy TypeScript code is reachable at the git tag `legacy-ts`.
 | [Game design](game-design/overview.md) | Time, staff, rooms and progression, economy, events and inbox, leaderboard |
 | [Guides](guides/getting-started.md) | Getting started, testing (Cockpit evidence), asset pipeline, contributing |
 | [Runbooks](runbooks/operations.md) | Operations, and the [cinqueterre cutover](runbooks/cinqueterre-cutover.md) |
-| [ADRs](adr/README.md) | ADR-0001 to ADR-0065, the decisions and the alternatives we rejected |
+| [ADRs](adr/README.md) | ADR-0001 to ADR-0072, the decisions and the alternatives we rejected |
 | [Features](features/) | FEAT-001 onwards, one file per feature, read by Cockpit to derive health |
 | [MVP](mvp.md) | The current MVP: the owner's company for real, on one resident in-browser model |
-| [Design](design/mvp-runtime.md) | Implementation designs for the MVP: [runtime](design/mvp-runtime.md), [pipeline, gate, time and site path](design/mvp-pipeline.md), [gap analysis](design/mvp-gap-analysis.md), [construction kit](design/construction-kit.md), [brick office](design/brick-office.md) |
-| [Reference](reference/browser-agent-studio.md) | The owner's concept document, [Browser Agent Studio](reference/browser-agent-studio.md): the source of the agent-loop principles (its local-inference direction is replaced by the [GPT-6-Luna migration](reference/gpt-6-luna-simulation-migration.md), ADR-0067); the [brick office](reference/brick-office.md) concept with its prototype (ADR-0063); the [legacy agentic website framework](reference/legacy/README.md) concepts and how they fit |
+| [Design](design/mvp-runtime.md) | Implementation designs for the MVP: [runtime](design/mvp-runtime.md), [pipeline, gate, time and site path](design/mvp-pipeline.md), [gap analysis](design/mvp-gap-analysis.md), [construction kit](design/construction-kit.md), [brick office](design/brick-office.md), [site blueprint and tool graphs in bricks](design/construction-kits.md) |
+| [Reference](reference/browser-agent-studio.md) | The owner's concept document, [Browser Agent Studio](reference/browser-agent-studio.md): the source of the agent-loop principles (its local-inference direction is replaced by the [GPT-6-Luna migration](reference/gpt-6-luna-simulation-migration.md), ADR-0067); the [brick office](reference/brick-office.md) concept with its prototype (ADR-0063); the [construction kits](reference/construction-kits.md) concept, site blueprints and tool graphs (ADR-0072); the [legacy agentic website framework](reference/legacy/README.md) concepts and how they fit |
 
 ### Architecture
 

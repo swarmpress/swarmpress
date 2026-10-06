@@ -201,6 +201,7 @@ cockpit serve --watch                         # http://127.0.0.1:4747
 | The current MVP: milestones, tracks, increments, what "done" means | `docs/mvp.md` |
 | MVP implementation designs (runtime, pipeline, publish gate, game time, site path, gap analysis) | `docs/design/`, ADR-0057…0062 |
 | Brick office, construction kit, information surfaces (concept, designs, prototype) | `docs/reference/brick-office.md`, `docs/design/construction-kit.md`, `docs/design/brick-office.md`, ADR-0063…0065 |
+| Site blueprint and tool graphs (page types, n8n-like tools, the brick town; decided, not built) | `docs/reference/construction-kits.md`, `docs/design/construction-kits.md`, ADR-0072 |
 | Agent-loop principles (the owner's concept document) and the move to hosted GPT-6-Luna | `docs/reference/browser-agent-studio.md`, `docs/reference/gpt-6-luna-simulation-migration.md`, ADR-0067 |
 | Stage 0 contract, central HTTP API | `docs/mvp.md` (Stage 0), `crates/server/README.md` |
 | Local-first, storage, SDK | ADR-0038…0043, `docs/architecture/sdk.md`, `docs/guides/extending.md` |
