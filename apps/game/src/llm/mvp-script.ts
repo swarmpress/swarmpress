@@ -18,6 +18,7 @@
  * - **Review:** revision 0 scores 6 and names section 2 (`MVP_REVIEW_NOTE`),
  *   every later revision scores 8: review 6 → revision → review 8.
  */
+import { FAKE_FERRY_TOOL, FAKE_PAGES_TOOL } from './testing/fake-tools'
 import { MVP_PITCH_CHECK, MVP_RESEARCH } from './testing/mvp-research'
 
 export type MvpReply = { text: string } | { json: unknown }
@@ -641,8 +642,45 @@ export function standupAnswer(prompt: string, later = ''): MvpReply | null {
     return { json: { translations } }
   }
   if (task === 'story chapter') return { json: storyChapter(prompt) }
+  // The architects (FEAT-095): an author page type; the ferry tool, else a tool of built-in types.
+  if (task === 'site architect') return { json: siteArchitect(p) }
+  if (task === 'tool build') return { json: toolBuild(p) }
   if (task === 'update review') return { json: { decision: 'approve', score: 8, notes: 'The update is correct and rests on the evidence.', issues: [], high_risk: [] } }
   return null
+}
+
+// ---------------------------------------------------------------- the architects (FEAT-095)
+
+/** The page type ids a `site architect` prompt lists (`- id «Label» route`). */
+function listedPageTypes(p: Prompt): string[] {
+  return p.text
+    .split('\n')
+    .filter((l) => l.startsWith('- ') && l.includes(' «'))
+    .map((l) => l.slice(2, l.indexOf(' «')).trim())
+}
+
+/** `fake_writer::site_architect`: an author page type with a profile slot, linked from the articles. */
+function siteArchitect(p: Prompt) {
+  const types = listedPageTypes(p)
+  let id = 'author'
+  for (let n = 2; types.includes(id); n++) id = `author-${n}`
+  const from = types.includes('blog-article') ? 'blog-article' : (types[0] ?? 'blog-article')
+  return {
+    summary: `Adds an author page type (${id}) with a profile slot, and links every ${from} page to its author.`,
+    edits: [
+      { op: 'add-page-type', id, label: 'Author', route: '/{lang}/authors/{slug}', slots: [{ id: 'profile', blocks: ['team-grid'], min: 1, max: 1 }] },
+      { op: 'add-relationship', from, to: id, kind: 'written-by', cardinality: 'many-to-one', via: 'metadata.author' },
+    ],
+  }
+}
+
+/** `fake_writer::tool_build`: the ferry tool when the site has its types, else the latest-pages tool. */
+function toolBuild(p: Prompt) {
+  const lines = p.text.split('\n')
+  const ferry = ['FerryDeparture', 'FerryRow', 'FerryTimetable'].every((t) => lines.some((l) => l.startsWith(`- ${t}: `)))
+  return ferry
+    ? { summary: 'Reads the ferry timetable and gives each village its next six departures, refreshed daily.', graph: FAKE_FERRY_TOOL }
+    : { summary: "Lists the site's six newest pages from its knowledge pack, on demand.", graph: FAKE_PAGES_TOOL }
 }
 
 /**

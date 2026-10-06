@@ -61,6 +61,7 @@ fn problems_and_changes_show_in_the_bricks() {
         &bp,
         &TownInput {
             issues: BTreeSet::from(["city/lead".to_string()]),
+            ..TownInput::default()
         },
     );
     assert_ne!(plain.hash().unwrap(), flagged.hash().unwrap());
@@ -69,4 +70,54 @@ fn problems_and_changes_show_in_the_bricks() {
     fewer.page_types.pop();
     let smaller = town(&fewer, &TownInput::default());
     assert!(smaller.footprint[0] != plain.footprint[0]);
+}
+
+/// The fixture tools as machines in the factory district (design §4.3).
+#[test]
+fn tools_stand_as_machines_east_of_the_town() {
+    use blueprint::machines::{layout, type_colour, MachineInput};
+    use blueprint::tools::ToolGraph;
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/site/blueprint/tools");
+    let tool = |id: &str| {
+        let v: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.join(format!("{id}.tool.json"))).unwrap(),
+        )
+        .unwrap();
+        ToolGraph::from_value(&v).unwrap()
+    };
+    // Layers: longest path from a source, then id order.
+    let ferry = tool("ferry-times");
+    let l = layout(&ferry);
+    assert_eq!(l["fetch"], (0, 0));
+    assert_eq!(l["in"], (0, 1));
+    assert_eq!(l["rows"], (1, 0));
+    assert_eq!(l["here"], (2, 0));
+    assert_eq!(l["out"], (5, 0));
+    assert_eq!(type_colour("FerryRow[]"), type_colour("FerryRow"));
+    assert_eq!(type_colour("Article"), "blue");
+
+    let bp = mini();
+    let plain = town(&bp, &TownInput::default());
+    let tools = vec![
+        MachineInput {
+            graph: ferry,
+            broken: Default::default(),
+        },
+        MachineInput {
+            graph: tool("story-teaser"),
+            broken: ["write".to_string()].into(),
+        },
+    ];
+    let with = town(
+        &bp,
+        &TownInput {
+            tools,
+            ..TownInput::default()
+        },
+    );
+    assert!(with.footprint[0] != plain.footprint[0]);
+    let built = kit::compile(&with, &kit::Params::new(), kit::Kit::shipped())
+        .unwrap_or_else(|e| panic!("{e:#?}"));
+    let base = kit::compile(&plain, &kit::Params::new(), kit::Kit::shipped()).unwrap();
+    assert!(built.summary.parts > base.summary.parts);
 }

@@ -339,6 +339,11 @@ wire_enum! {
         PhotoBrief = "photo-brief",
         // Web Development, IT & Operations
         SiteChange = "site-change",
+        // Structure (ADR-0072, FEAT-095): the Information Architect's
+        // blueprint proposal (played by the UX designer) and the Web
+        // Developer's tool graph
+        SiteArchitect = "site-architect",
+        ToolBuild = "tool-build",
         OpsCheck = "ops-check",
         // SEO & Marketing
         SeoPlan = "seo-plan",
@@ -368,7 +373,8 @@ impl JobKind {
             JobKind::Translate => "translator",
             JobKind::Research => "analyst",
             JobKind::ArtDirection | JobKind::VisualReview | JobKind::CriticReview => "art_director",
-            JobKind::ThemeCode | JobKind::SiteChange => "web_developer",
+            JobKind::ThemeCode | JobKind::SiteChange | JobKind::ToolBuild => "web_developer",
+            JobKind::SiteArchitect => "information_architect",
             JobKind::StrategyPitch | JobKind::ProjectBusinessCase | JobKind::WeeklyPlan => {
                 "strategist"
             }

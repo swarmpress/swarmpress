@@ -125,6 +125,12 @@ pub struct ArtifactRecord {
     /// change (ADR-0070): what the editor reviews.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub changes: Vec<String>,
+    /// A structural item's proposal (ADR-0072, FEAT-095): the architect's
+    /// blueprint or the Web Developer's tool, applied by the item's Publish
+    /// job once the CEO approved it. Its presence makes the Publish job a
+    /// structural one ([`crate::structure`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structure: Option<crate::structure::Proposal>,
 }
 
 impl ArtifactRecord {

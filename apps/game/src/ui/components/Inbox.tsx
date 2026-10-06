@@ -49,10 +49,16 @@ const TICKET_KINDS: Record<string, KindInfo> = {
   'deploy-failed': { label: 'Deploy failed', about: 'The article is merged, but its deploy failed. Retry publishes it again. Acknowledge waits for the next deploy.' },
   'needs-media': { label: 'Media needed', about: 'The site has no media that fits this article. Retry once media is added, or kill the article.' },
   'needs-page': { label: 'Page needed', about: 'The article needs a page the site does not have. Retry once the page exists, or kill the article.' },
+  // ADR-0072, FEAT-095: a staff proposal for the site's structure or tools; only you answer it.
+  'structure-approval': {
+    label: 'Structure approval',
+    about: 'A proposed change to the site’s structure or tools. Approve applies it to the site. Send back asks for a new proposal; Kill drops it. Defer asks again at 08:30 and never applies it.',
+  },
 }
 
 const OPTION_LABELS: Record<string, string> = {
   publish: 'Publish',
+  approve: 'Approve',
   'send-back': 'Send back',
   kill: 'Kill',
   defer: 'Defer',
@@ -233,6 +239,7 @@ function Ticket({ t }: { t: TicketJson }) {
       </p>
       {t.summary ? <p class="ticket-summary">{t.summary}</p> : info?.about && <p class="ticket-summary small">{info.about}</p>}
       {open && t.workItem && ARTICLE_KINDS.has(kind) && <ArticleJudgement item={t.workItem} id={t.id} missing={kind === 'publish-approval'} />}
+      {t.workItem && kind === 'structure-approval' && <StructureProposal item={t.workItem} />}
       {open ? (
         <>
           {delta != null && (
@@ -281,6 +288,55 @@ function Ticket({ t }: { t: TicketJson }) {
         </p>
       )}
     </article>
+  )
+}
+
+/** A change of a proposal, as `blueprint::Change` (or `{kind, subject: 'tool', id}`). */
+interface ProposedChange {
+  kind: string
+  subject: string
+  id: string
+  fields?: string[]
+}
+
+/**
+ * What the CEO approves at a `StructureApproval` (FEAT-095): the architect's
+ * summary and the semantic change list of its proposal, as the Draft job
+ * posted them to the item's thread from its artifact. Text from the store,
+ * never from the sim.
+ */
+export function StructureProposal({ item }: { item: string }) {
+  const store = useStore()
+  const posts = store.planText.value.posts[item] ?? []
+  const post = [...posts].reverse().find((p) => {
+    const st = p.payload?.structure as { changes?: unknown } | undefined
+    return p.type === 'artifact' && Array.isArray(st?.changes)
+  })
+  const st = post?.payload?.structure as { kind?: string; summary?: string; changes: ProposedChange[]; revision?: number } | undefined
+  if (!post || !st) {
+    return (
+      <p class="small warn-text">
+        The proposal is not in this device’s store (plan text is not synced between devices yet), so its changes cannot be shown here.
+      </p>
+    )
+  }
+  const tone = (k: string): 'good' | 'neutral' | 'warn' => (k === 'added' ? 'good' : k === 'removed' ? 'neutral' : 'warn')
+  return (
+    <section class="structure-proposal" aria-label="Proposed changes">
+      {st.summary && <p class="ticket-summary">{st.summary}</p>}
+      <p class="small muted">
+        {st.kind === 'tool' ? 'Tool' : 'Blueprint'} · {st.changes.length} {st.changes.length === 1 ? 'change' : 'changes'}
+        {st.revision ? ` · revision ${st.revision}` : ''} · proposed by {store.nameOf(post.author)}
+      </p>
+      <ul class="bp-changes">
+        {st.changes.map((c) => (
+          <li key={`${c.kind}:${c.subject}:${c.id}`} class={`bp-change is-${c.kind}`}>
+            <Badge tone={tone(c.kind)}>{c.kind}</Badge> {c.subject} <strong>{c.id}</strong>
+            {c.fields && c.fields.length > 0 && <span class="muted"> ({c.fields.join(', ')})</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

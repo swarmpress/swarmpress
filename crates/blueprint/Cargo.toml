@@ -16,5 +16,9 @@ kit = { path = "../kit" }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }
 
+[dev-dependencies]
+# tests/edit.rs: the fake architect's answers fit the answer schemas.
+jsonschema = { version = "0.33", default-features = false }
+
 [lints]
 workspace = true

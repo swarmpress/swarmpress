@@ -264,3 +264,113 @@ async fn the_ceo_edits_the_blueprint_and_it_lands_on_the_base_branch() {
     assert_eq!(again["changes"], json!([]));
     assert_eq!(again["commit"], out["commit"]);
 }
+
+fn fixture(path: &str) -> Value {
+    serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../blueprint/tests/fixtures/site/blueprint")
+                .join(path),
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+/// FEAT-095: the Web Developer's tool lands through the same PUT, after the
+/// tool checker passed in the site's context; a tool that does not check is
+/// a 422 and nothing is written.
+#[tokio::test]
+async fn a_tool_is_installed_through_the_put_after_its_check() {
+    let s = TestServer::start().await;
+    let p = player(&s, &[]).await;
+    let repo = github::RepoId::new("swarmpress-sites", "player1-site");
+    let v: Value = get(&s, &p, None).await.json().await.unwrap();
+    // The site's types first: the imported ones and the weather's.
+    let mut types = v["types"].clone();
+    types["Weather"] = fixture("types/Weather.json");
+    types["WeatherReport"] = fixture("types/WeatherReport.json");
+    let r = put(
+        &s,
+        &p,
+        json!({ "blueprint": v["blueprint"], "types": types, "base_hash": v["hash"] }),
+    )
+    .await;
+    assert_eq!(r.status().as_u16(), 200);
+    let stored: Value = r.json().await.unwrap();
+    assert_eq!(stored["tools"], json!([]));
+    let hash = stored["hash"].clone();
+
+    let weather = fixture("tools/weather.tool.json");
+    // A graph whose id is not its key: 400.
+    let r = put(
+        &s,
+        &p,
+        json!({ "base_hash": hash, "tools": { "forecast": weather } }),
+    )
+    .await;
+    assert_eq!(r.status().as_u16(), 400);
+    // A graph that does not check (an unknown type): 422 with the issues, nothing written.
+    let mut broken = weather.clone();
+    broken["nodes"][2]["returns"] = json!("Wheather");
+    let head0 = s.fake_github().branch_head(&repo, "main").unwrap();
+    let r = put(
+        &s,
+        &p,
+        json!({ "base_hash": hash, "tools": { "weather": broken } }),
+    )
+    .await;
+    assert_eq!(r.status().as_u16(), 422);
+    let e: Value = r.json().await.unwrap();
+    assert!(e["issues"].to_string().contains("Wheather"), "{e}");
+    assert_eq!(s.fake_github().branch_head(&repo, "main").unwrap(), head0);
+    // A stale base: 409.
+    let r = put(
+        &s,
+        &p,
+        json!({ "base_hash": "0".repeat(64), "tools": { "weather": weather } }),
+    )
+    .await;
+    assert_eq!(r.status().as_u16(), 409);
+
+    // The tool lands as the structure actor's file on main; the blueprint is kept.
+    let r = put(
+        &s,
+        &p,
+        json!({ "base_hash": hash, "tools": { "weather": weather }, "message": "Install the weather tool" }),
+    )
+    .await;
+    assert_eq!(r.status().as_u16(), 200);
+    let out: Value = r.json().await.unwrap();
+    assert_eq!(out["tools"], json!(["weather"]));
+    assert_eq!(out["changes"], json!([]));
+    assert_eq!(out["hash"], hash);
+    assert_ne!(out["commit"], json!(head0));
+    let file: Value = serde_json::from_str(
+        &s.fake_github()
+            .file_text(&repo, "main", "blueprint/tools/weather.tool.json")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        blueprint::tools::ToolGraph::from_value(&file).unwrap(),
+        blueprint::tools::ToolGraph::from_value(&weather).unwrap()
+    );
+    let v: Value = get(&s, &p, None).await.json().await.unwrap();
+    let tools = v["tools"].as_array().unwrap();
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0]["id"], "weather");
+    assert_eq!(tools[0]["issues"], json!([]));
+    // The same tool again writes nothing.
+    let again: Value = put(
+        &s,
+        &p,
+        json!({ "base_hash": hash, "tools": { "weather": weather } }),
+    )
+    .await
+    .json()
+    .await
+    .unwrap();
+    assert_eq!(again["tools"], json!([]));
+    assert_eq!(again["commit"], out["commit"]);
+}

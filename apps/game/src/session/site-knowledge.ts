@@ -332,5 +332,25 @@ export function refetchAfterMerge(inner: OrchestratorGateway, keeper: SiteKnowle
     // ADR-0070: forwarded as they are.
     ...(inner.readPage ? { readPage: (path: string) => inner.readPage!(path) } : {}),
     ...(inner.openUpdate ? { openUpdate: (...args: Parameters<NonNullable<OrchestratorGateway['openUpdate']>>) => inner.openUpdate!(...args) } : {}),
+    // FEAT-095: a structure change that landed moves the base head, like a merge.
+    ...(inner.siteModels ? { siteModels: () => inner.siteModels!() } : {}),
+    ...(inner.putBlueprint
+      ? {
+          async putBlueprint(body: string) {
+            const r = await inner.putBlueprint!(body)
+            if (r.status === 'landed') void keeper.refresh('merge')
+            return r
+          },
+        }
+      : {}),
+    ...(inner.putTool
+      ? {
+          async putTool(graph: string, message: string) {
+            const r = await inner.putTool!(graph, message)
+            if (r.status === 'landed') void keeper.refresh('merge')
+            return r
+          },
+        }
+      : {}),
   }
 }

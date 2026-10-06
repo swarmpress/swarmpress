@@ -110,6 +110,8 @@ export interface LoopOptions {
   onPlanText?: () => void
   /** Called after a `DeployLanded` was applied (the item is published). */
   onLanded?: (workItem: string) => void
+  /** Called when a job's run finished with its outcome (`ok` from its digest); not for a failed run. */
+  onJobDone?: (job: JobRecord) => void
   /**
    * A standup's context (ADR-0062, `orchestrator::StandupContext`), added to
    * its job request as `context`. Default: work in progress and items in
@@ -926,6 +928,7 @@ export class OrchestrationLoop {
             if (!cmds.some((c) => settles(c).job === rec.job_id)) this.close(rec.job_id)
             rec.state = 'done'
             this.o.onPlanText?.()
+            this.o.onJobDone?.(rec)
             this.log(`${rec.kind} r${rec.revision} (job ${rec.job_id}) → ${out.slice(0, 200)}`)
             break
           } catch (e) {

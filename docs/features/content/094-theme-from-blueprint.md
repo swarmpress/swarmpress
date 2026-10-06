@@ -1,11 +1,13 @@
 ---
 id: FEAT-094
 title: "Theme generation from the blueprint"
-status: planned
+status: in-progress
 importance: normal
 paths:
-  - "crates/orchestrator/src/theme.rs"
-  - "crates/agents/src/jobs/theme_code.rs"
+  - "crates/blueprint/src/theme.rs"
+  - "crates/agents/src/theme.rs"
+  - "crates/server/src/site_theme.rs"
+  - "crates/server/tests/site_theme.rs"
 adrs:
   - ADR-0072
   - ADR-0015

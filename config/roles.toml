@@ -301,6 +301,22 @@ role = "web-developer"
 also = ["ux-designer"]
 max_tokens = 16000
 
+# Structure (ADR-0072, FEAT-095): proposals the CEO approves at a
+# StructureApproval ticket; nothing lands without it.
+[jobs.site-architect]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "ux-designer"
+also = ["strategist", "editor-in-chief"]
+max_tokens = 4096
+
+[jobs.tool-build]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "web-developer"
+also = ["it-engineer", "dev-ops"]
+max_tokens = 6144
+
 [jobs.ops-check]
 executor = "browser_then_claude"
 min_tier = "mid"

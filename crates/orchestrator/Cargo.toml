@@ -12,6 +12,9 @@ content-schema.workspace = true
 # the link and media checks of the v2 validator. Both build for wasm32.
 content-model = { path = "../content-model" }
 knowledge = { path = "../knowledge" }
+# The site's models (ADR-0072, FEAT-095): the architects' edits are applied
+# and checked in-process, as the server checks them.
+blueprint = { path = "../blueprint" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

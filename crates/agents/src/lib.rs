@@ -49,6 +49,8 @@ pub mod research;
 pub mod roles;
 pub mod routing;
 pub mod state;
+pub mod theme;
+pub mod tool_use;
 
 pub use house_style::StyleGuide;
 pub use llm::normalize_source_url;

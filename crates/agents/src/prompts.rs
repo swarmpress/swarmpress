@@ -120,6 +120,7 @@ pub mod templates {
         analyst => "analyst",
         art_director => "art_director",
         web_developer => "web_developer",
+        information_architect => "information_architect",
         strategist => "strategist",
         data_scientist => "data_scientist",
         editorial_board => "editorial_board",

@@ -51,6 +51,10 @@ export function recordingGateway(inner: OrchestratorGateway, calls: GatewayCall[
       : {}),
     // ADR-0070: a refresh or fix reads its page and drafts an update naming its blob.
     ...(inner.readPage ? { readPage: (path: string) => inner.readPage!(path) } : {}),
+    // FEAT-095: the site's models and the architects' approved changes, forwarded.
+    ...(inner.siteModels ? { siteModels: () => inner.siteModels!() } : {}),
+    ...(inner.putBlueprint ? { putBlueprint: (body: string) => inner.putBlueprint!(body) } : {}),
+    ...(inner.putTool ? { putTool: (graph: string, message: string) => inner.putTool!(graph, message) } : {}),
     ...(inner.openUpdate
       ? {
           async openUpdate(...args: Parameters<NonNullable<OrchestratorGateway['openUpdate']>>) {

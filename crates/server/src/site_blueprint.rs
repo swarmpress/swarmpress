@@ -156,7 +156,34 @@ pub fn models_of(src: &dyn SiteSource, commit: &str) -> Result<Value, String> {
             }
         }
     }
-    let design = town(&bp, &TownInput { issues: flagged });
+    // Tools stand as machines; a node with a checker issue wears a red brick.
+    let machines = graphs
+        .iter()
+        .map(|g| {
+            let broken = check_tool(g, &tool_ctx)
+                .iter()
+                .filter_map(|i| {
+                    let rest = i.path.strip_prefix("/nodes/")?;
+                    let key = rest.split('/').next()?;
+                    match key.parse::<usize>() {
+                        Ok(k) => g.nodes.get(k).map(|n| n.id().to_string()),
+                        Err(_) => Some(key.to_string()),
+                    }
+                })
+                .collect();
+            blueprint::machines::MachineInput {
+                graph: g.clone(),
+                broken,
+            }
+        })
+        .collect();
+    let design = town(
+        &bp,
+        &TownInput {
+            issues: flagged,
+            tools: machines,
+        },
+    );
 
     Ok(json!({
         "commit": commit,
@@ -222,8 +249,10 @@ pub async fn get_blueprint(
 
 #[derive(serde::Deserialize)]
 pub struct PutBody {
-    /// The new blueprint (`swarmpress.blueprint.v1`).
-    pub blueprint: Value,
+    /// The new blueprint (`swarmpress.blueprint.v1`); absent: kept (a PUT of
+    /// tools only).
+    #[serde(default)]
+    pub blueprint: Option<Value>,
     /// The site's types, when they change too (name → schema); absent: kept.
     #[serde(default)]
     pub types: Option<BTreeMap<String, Value>>,
@@ -232,6 +261,12 @@ pub struct PutBody {
     pub base_hash: String,
     #[serde(default)]
     pub message: Option<String>,
+    /// Tools to install or replace (id → `swarmpress.tool.v1` graph), written
+    /// to `blueprint/tools/<id>.tool.json` after the tool checker passes in
+    /// the site's context (FEAT-095: the Web Developer's `ToolBuild`, applied
+    /// at the CEO's `StructureApproval`); absent: the tools are kept.
+    #[serde(default)]
+    pub tools: Option<BTreeMap<String, Value>>,
 }
 
 fn pretty(v: &impl serde::Serialize) -> Vec<u8> {
@@ -246,8 +281,14 @@ fn pretty(v: &impl serde::Serialize) -> Vec<u8> {
 /// (`blueprint/` only, on a `structure/` branch), the site's page-type
 /// registry (`content/config/page-types.json`) is derived from it by the
 /// platform, and the branch is squash-merged into the base branch. Answers
-/// `{commit, hash, changes}`: the new base head, the blueprint's hash and
-/// the semantic diff from the one it replaced.
+/// `{commit, hash, changes, tools}`: the new base head, the blueprint's hash,
+/// the semantic diff from the one it replaced and the ids of the tools
+/// written.
+///
+/// `tools` (optional, FEAT-095) installs or replaces tools: each graph's id
+/// must be its key, and it must pass `check_tool` in the site's context (its
+/// types and the other tools' signatures, the new ones included), else 422
+/// with the issues; the blueprint is then checked against the new tools too.
 pub async fn put_blueprint(
     State(st): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -278,42 +319,85 @@ pub async fn put_blueprint(
     }
     let old = blueprint::Blueprint::from_value(&current["blueprint"])
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
-    let new = blueprint::Blueprint::from_value(&body.blueprint)
-        .map_err(|e| AppError::BadRequest(format!("not a blueprint: {e}")))?;
+    let new = match &body.blueprint {
+        Some(v) => blueprint::Blueprint::from_value(v)
+            .map_err(|e| AppError::BadRequest(format!("not a blueprint: {e}")))?,
+        None => old.clone(),
+    };
     let types_changed = body.types.is_some();
     let types: BTreeMap<String, Value> = match body.types {
         Some(t) => t,
         None => serde_json::from_value(current["types"].clone()).unwrap_or_default(),
     };
-    let tools: Vec<ToolGraph> = current["tools"]
+    let mut tools: BTreeMap<String, ToolGraph> = current["tools"]
         .as_array()
         .into_iter()
         .flatten()
         .filter_map(|t| ToolGraph::from_value(&t["graph"]).ok())
+        .map(|g| (g.id.clone(), g))
         .collect();
-    let sigs: BTreeMap<String, ToolSig> = tools.iter().map(|g| (g.id.clone(), g.sig())).collect();
+    let mut new_tools: Vec<ToolGraph> = Vec::new();
+    for (id, v) in body.tools.iter().flatten() {
+        let g = ToolGraph::from_value(v).map_err(|e| AppError::Unprocessable {
+            message: format!("tool {id} is not a tool graph"),
+            issues: vec![e],
+        })?;
+        if g.id != *id {
+            return Err(AppError::BadRequest(format!(
+                "tool {id}: the graph's id is {}",
+                g.id
+            )));
+        }
+        if tools.get(id) != Some(&g) {
+            new_tools.push(g.clone());
+        }
+        tools.insert(id.clone(), g);
+    }
+    let sigs: BTreeMap<String, ToolSig> = tools.values().map(|g| (g.id.clone(), g.sig())).collect();
     let fail = |issues: Vec<blueprint::Issue>| AppError::Unprocessable {
         message: "the blueprint does not check".into(),
         issues: issues.iter().map(ToString::to_string).collect(),
     };
     let ctx = site::site_context(&snap)
         .map_err(fail)?
-        .check_context(&types, sigs)
+        .check_context(&types, sigs.clone())
         .map_err(fail)?;
+    let tool_ctx = ToolContext {
+        types: ctx.types.clone(),
+        tools: sigs,
+        skills: BTreeMap::new(),
+        tables: BTreeSet::new(),
+    };
+    for g in &new_tools {
+        let issues = check_tool(g, &tool_ctx);
+        if !issues.is_empty() {
+            return Err(AppError::Unprocessable {
+                message: format!("tool {} does not check", g.id),
+                issues: issues.iter().map(ToString::to_string).collect(),
+            });
+        }
+    }
     let issues = check(&new, &ctx);
     if !issues.is_empty() {
         return Err(fail(issues));
     }
     let changes = blueprint::diff(&old, &new);
     let hash = blueprint::hash(&new);
-    if changes.is_empty() && current["source"] == "repo" && !types_changed {
-        return Ok(Json(json!({ "commit": head, "hash": hash, "changes": [] })));
+    let tool_ids: Vec<&str> = new_tools.iter().map(|g| g.id.as_str()).collect();
+    if changes.is_empty() && current["source"] == "repo" && !types_changed && new_tools.is_empty() {
+        return Ok(Json(
+            json!({ "commit": head, "hash": hash, "changes": [], "tools": [] }),
+        ));
     }
 
     // Write: the structure actor on its branch, the derived registry by the platform.
     let guarded: Arc<dyn RepoApi> =
         Arc::new(GuardedRepo::new(api.clone(), ActorKind::StructureAgent));
-    let branch = format!("structure/{}", &hash[..12]);
+    // One branch per change: the blueprint's hash, and the new tools' hashes when tools change.
+    let branch = match new_tools.first() {
+        None => format!("structure/{}", &hash[..12]),
+        Some(g) => format!("structure/{}-{}", &hash[..8], &g.hash()[..8]),
+    };
     if api
         .get_branch(&repo, &branch)
         .await
@@ -335,6 +419,13 @@ pub async fn put_blueprint(
         writes.push((
             format!("{}/{name}.json", blueprint::format::TYPES_DIR),
             pretty(schema),
+            true,
+        ));
+    }
+    for g in &new_tools {
+        writes.push((
+            format!("{}/{}.tool.json", blueprint::format::TOOLS_DIR, g.id),
+            pretty(g),
             true,
         ));
     }
@@ -378,7 +469,7 @@ pub async fn put_blueprint(
         .unwrap_or_default();
     if branch_head == head {
         return Ok(Json(
-            json!({ "commit": head, "hash": hash, "changes": changes }),
+            json!({ "commit": head, "hash": hash, "changes": changes, "tools": tool_ids }),
         ));
     }
     let pr = api
@@ -412,6 +503,6 @@ pub async fn put_blueprint(
         .map_err(gh_error)?;
     tracing::info!(company_id = %company.id, pr = pr.number, %hash, "blueprint updated");
     Ok(Json(
-        json!({ "commit": merged.sha, "hash": hash, "changes": changes }),
+        json!({ "commit": merged.sha, "hash": hash, "changes": changes, "tools": tool_ids }),
     ))
 }

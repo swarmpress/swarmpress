@@ -46,6 +46,7 @@ mod site;
 mod staged;
 mod standup;
 mod store;
+mod structure;
 
 pub use agents::article_prompts::LlmProfile;
 pub use analysis::{performance_score, PageNumbers, PerformanceContext};
@@ -62,8 +63,8 @@ pub use board::{
 #[cfg(not(target_arch = "wasm32"))]
 pub use gateway::GithubGateway;
 pub use gateway::{
-    Attribution, DeployState, DraftPr, FakeGateway, FakePr, Gateway, GatewayError, PageFile,
-    Redeploy,
+    Attribution, DeployState, DraftPr, FakeGateway, FakePr, FakeSite, Gateway, GatewayError,
+    ModelsPut, PageFile, Redeploy,
 };
 pub use run::{CancelToken, Orchestrator, OrchestratorError, SiteBinding};
 pub use site::{
@@ -81,6 +82,7 @@ pub use store::{
     ArtifactRecord, BriefRecord, MemStore, StageRow, Store, StoreError, StoredParts, StoredSection,
     PLAN_POSTS_PER_ITEM, POST_TYPES,
 };
+pub use structure::{structure_brief, Proposal, STRUCTURE_KINDS};
 
 use agents::MaybeSendSync;
 use serde::{Deserialize, Serialize};
@@ -102,6 +104,17 @@ pub enum JobKind {
     KpiReport,
     /// Promotion copy for a page that went live (ADR-0073).
     Promotion,
+    /// The Information Architect's blueprint proposal: the Draft of a
+    /// `Structure` item (ADR-0072, FEAT-095).
+    Architect,
+    /// The Web Developer's tool graph: the Draft of a `Tool` item.
+    ToolBuild,
+    /// The theme from the blueprint: the Draft of a `Theme` item (FEAT-094;
+    /// not built: it fails loudly).
+    ThemeCode,
+    /// One run of an installed tool (FEAT-091; not run by the orchestrator
+    /// yet: it fails loudly).
+    ToolRun,
 }
 
 /// Someone taking part in a job, as the sim knows them.

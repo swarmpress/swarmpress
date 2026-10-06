@@ -438,7 +438,7 @@ then sees them as function tools:
 
 | Concept agent | swarm.press |
 |---|---|
-| Site Architect | a new role, the **Information Architect**, in the strategy department (`StrategyRoom`) |
+| Site Architect | the **Information Architect**, played by the **UX designer** (else the strategist, else the editor-in-chief: the sim's `WorkItemKind::architects`). No new role was added (FEAT-095): the `site-architect` job runs on the UX designer's persona with its own prompt (`crates/agents/prompts/information_architect.md`) |
 | Design Interpreter | the Art Director, with a new interpretation stage |
 | Tool Architect, Connector Agent, Schema Agent | the **Web Developer**. Connector choice and schema inference are stages of the `ToolBuild` job, not separate people |
 | Implementation Agent | the Web Developer (`theme-code`) with the Art Director's mood board (FEAT-045 gate) |

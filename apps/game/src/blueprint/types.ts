@@ -114,11 +114,21 @@ export interface PutBlueprintBody {
   types?: Record<string, unknown>
   base_hash: string
   message?: string
+  /** Tools to install or replace (id → graph), checked in the site first (FEAT-095). */
+  tools?: Record<string, ToolGraph>
 }
 
-/** The answer of `PUT /api/site/blueprint`: the new base head, the blueprint's hash and the diff it landed. */
+/** `PUT /api/site/blueprint` of tools only (FEAT-095): the blueprint is kept. */
+export interface PutToolsBody {
+  base_hash: string
+  tools: Record<string, ToolGraph>
+  message?: string
+}
+
+/** The answer of `PUT /api/site/blueprint`: the new base head, the blueprint's hash, the diff it landed and the tools written. */
 export interface PutBlueprintResult {
   commit: string
   hash: string
   changes: BlueprintChange[]
+  tools?: string[]
 }

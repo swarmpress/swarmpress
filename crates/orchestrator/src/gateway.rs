@@ -253,6 +253,38 @@ pub trait Gateway: MaybeSendSync {
         let _ = (content_id, page, message, attribution, blob_sha);
         Err(GatewayError(format!("this gateway cannot update {path}")))
     }
+
+    /// The site's models at the base head (`GET /api/site/blueprint`,
+    /// ADR-0072): `{commit, source, hash, blueprint, types, issues, context,
+    /// tools: [{id, hash, graph, issues, manifest}]}`. The default fails
+    /// loudly (rule 11).
+    async fn site_models(&self) -> Result<Value, GatewayError> {
+        Err(GatewayError(
+            "this gateway cannot read the site's models".into(),
+        ))
+    }
+
+    /// Writes the site's blueprint (`PUT /api/site/blueprint` with
+    /// `{blueprint, types?, base_hash, message?}`, FEAT-095): an architect's
+    /// approved proposal. The default fails loudly (rule 11).
+    async fn put_blueprint(&self, body: &Value) -> Result<ModelsPut, GatewayError> {
+        let _ = body;
+        Err(GatewayError(
+            "this gateway cannot change the site's blueprint".into(),
+        ))
+    }
+
+    /// Installs or replaces one tool (`PUT /api/site/blueprint` with
+    /// `{base_hash, tools: {id: graph}, message}` on the current base,
+    /// FEAT-095): the Web Developer's approved graph. The default fails
+    /// loudly (rule 11).
+    async fn put_tool(&self, graph: &Value, message: &str) -> Result<ModelsPut, GatewayError> {
+        let _ = message;
+        Err(GatewayError(format!(
+            "this gateway cannot install tools ({})",
+            graph["id"].as_str().unwrap_or("?")
+        )))
+    }
 }
 
 /// A page read through the gateway: its JSON and the blob sha an update names.
@@ -260,6 +292,38 @@ pub trait Gateway: MaybeSendSync {
 pub struct PageFile {
     pub page: Value,
     pub sha: String,
+}
+
+/// What a write of the site's models came to (`PUT /api/site/blueprint`,
+/// ADR-0072): it landed, its base was stale (409), or the server's checker
+/// refused it (422). Other failures are [`GatewayError`]s (retryable).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ModelsPut {
+    Landed {
+        /// The base branch's head after the write.
+        commit: String,
+        /// The blueprint's hash after the write.
+        hash: String,
+        /// The semantic diff it landed (`blueprint::Change`s).
+        #[serde(default)]
+        changes: Vec<Value>,
+        /// The tools written.
+        #[serde(default)]
+        tools: Vec<String>,
+    },
+    /// The blueprint changed since the base the change was made on.
+    Stale {
+        #[serde(default)]
+        error: String,
+    },
+    /// The change does not check in the site.
+    Refused {
+        #[serde(default)]
+        error: String,
+        #[serde(default)]
+        issues: Vec<String>,
+    },
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
@@ -319,6 +383,15 @@ impl<T: Gateway + ?Sized> Gateway for Arc<T> {
             .open_update_as(content_id, path, page, message, attribution, blob_sha)
             .await
     }
+    async fn site_models(&self) -> Result<Value, GatewayError> {
+        (**self).site_models().await
+    }
+    async fn put_blueprint(&self, body: &Value) -> Result<ModelsPut, GatewayError> {
+        (**self).put_blueprint(body).await
+    }
+    async fn put_tool(&self, graph: &Value, message: &str) -> Result<ModelsPut, GatewayError> {
+        (**self).put_tool(graph, message).await
+    }
 }
 
 /// A PR in [`FakeGateway`].
@@ -348,6 +421,181 @@ struct FakeState {
     redeploys: BTreeMap<u64, u32>,
     /// The next redeploy fails with this message (GitHub refused).
     refuse_redeploy: Option<String>,
+    /// The site's models, once a test set them ([`FakeGateway::set_site`]).
+    site: Option<FakeSite>,
+}
+
+/// The site's models in [`FakeGateway`]: what `blueprint/` holds, and the
+/// site facts of the checker's context.
+#[derive(Debug, Clone)]
+pub struct FakeSite {
+    pub blueprint: blueprint::Blueprint,
+    pub types: BTreeMap<String, Value>,
+    pub tools: BTreeMap<String, blueprint::tools::ToolGraph>,
+    pub context: blueprint::site::SiteContext,
+    /// Writes that landed (the commit counter).
+    pub writes: u32,
+}
+
+impl FakeSite {
+    pub fn new(
+        blueprint: blueprint::Blueprint,
+        types: BTreeMap<String, Value>,
+        context: blueprint::site::SiteContext,
+    ) -> Self {
+        Self {
+            blueprint,
+            types,
+            tools: BTreeMap::new(),
+            context,
+            writes: 0,
+        }
+    }
+
+    fn commit(&self) -> String {
+        fake_sha(&["site", &self.writes.to_string()])
+    }
+
+    fn sigs(&self) -> BTreeMap<String, blueprint::ToolSig> {
+        self.tools
+            .values()
+            .map(|g| (g.id.clone(), g.sig()))
+            .collect()
+    }
+
+    /// The models as `GET /api/site/blueprint` answers them (no town).
+    fn models(&self) -> Result<Value, GatewayError> {
+        let fail = |i: Vec<blueprint::Issue>| GatewayError(format!("site models: {i:?}"));
+        let ctx = self
+            .context
+            .check_context(&self.types, self.sigs())
+            .map_err(fail)?;
+        let tool_ctx = blueprint::tools::ToolContext {
+            types: ctx.types.clone(),
+            tools: self.sigs(),
+            ..Default::default()
+        };
+        let tools: Vec<Value> = self
+            .tools
+            .values()
+            .map(|g| {
+                serde_json::json!({
+                    "id": g.id,
+                    "hash": g.hash(),
+                    "graph": g,
+                    "issues": blueprint::tools::check_tool(g, &tool_ctx),
+                    "manifest": blueprint::tools::manifest(g),
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({
+            "commit": self.commit(),
+            "source": "repo",
+            "hash": blueprint::hash(&self.blueprint),
+            "blueprint": self.blueprint,
+            "types": self.types,
+            "issues": blueprint::check(&self.blueprint, &ctx),
+            "context": self.context,
+            "tools": tools,
+            "tool_errors": [],
+        }))
+    }
+
+    /// `PUT /api/site/blueprint` as the server does it: base hash, tools
+    /// checked, blueprint checked, then written.
+    fn put(&mut self, body: &Value) -> Result<ModelsPut, GatewayError> {
+        let current = blueprint::hash(&self.blueprint);
+        if body["base_hash"].as_str() != Some(current.as_str()) {
+            return Ok(ModelsPut::Stale {
+                error: format!("the blueprint changed since this edit began (now {current})"),
+            });
+        }
+        let new = match body.get("blueprint").filter(|v| !v.is_null()) {
+            Some(v) => blueprint::Blueprint::from_value(v)
+                .map_err(|e| GatewayError(format!("not a blueprint: {e}")))?,
+            None => self.blueprint.clone(),
+        };
+        let types: BTreeMap<String, Value> = match body.get("types").filter(|v| !v.is_null()) {
+            Some(v) => {
+                serde_json::from_value(v.clone()).map_err(|e| GatewayError(e.to_string()))?
+            }
+            None => self.types.clone(),
+        };
+        let mut tools = self.tools.clone();
+        let mut written = Vec::new();
+        if let Some(Value::Object(m)) = body.get("tools") {
+            for (id, v) in m {
+                let g = match blueprint::tools::ToolGraph::from_value(v) {
+                    Ok(g) if g.id == *id => g,
+                    Ok(g) => {
+                        return Err(GatewayError(format!(
+                            "tool {id}: the graph's id is {}",
+                            g.id
+                        )))
+                    }
+                    Err(e) => {
+                        return Ok(ModelsPut::Refused {
+                            error: format!("tool {id} is not a tool graph"),
+                            issues: vec![e],
+                        })
+                    }
+                };
+                if tools.get(id) != Some(&g) {
+                    written.push(id.clone());
+                }
+                tools.insert(id.clone(), g);
+            }
+        }
+        let sigs: BTreeMap<String, blueprint::ToolSig> =
+            tools.values().map(|g| (g.id.clone(), g.sig())).collect();
+        let ctx = match self.context.check_context(&types, sigs.clone()) {
+            Ok(c) => c,
+            Err(issues) => {
+                return Ok(ModelsPut::Refused {
+                    error: "the types do not check".into(),
+                    issues: issues.iter().map(ToString::to_string).collect(),
+                })
+            }
+        };
+        let tool_ctx = blueprint::tools::ToolContext {
+            types: ctx.types.clone(),
+            tools: sigs,
+            ..Default::default()
+        };
+        for id in &written {
+            let issues = blueprint::tools::check_tool(&tools[id], &tool_ctx);
+            if !issues.is_empty() {
+                return Ok(ModelsPut::Refused {
+                    error: format!("tool {id} does not check"),
+                    issues: issues.iter().map(ToString::to_string).collect(),
+                });
+            }
+        }
+        let issues = blueprint::check(&new, &ctx);
+        if !issues.is_empty() {
+            return Ok(ModelsPut::Refused {
+                error: "the blueprint does not check".into(),
+                issues: issues.iter().map(ToString::to_string).collect(),
+            });
+        }
+        let changes: Vec<Value> = blueprint::diff(&self.blueprint, &new)
+            .iter()
+            .map(|c| serde_json::to_value(c).unwrap_or_default())
+            .collect();
+        let hash = blueprint::hash(&new);
+        if !changes.is_empty() || !written.is_empty() || types != self.types {
+            self.blueprint = new;
+            self.types = types;
+            self.tools = tools;
+            self.writes += 1;
+        }
+        Ok(ModelsPut::Landed {
+            commit: self.commit(),
+            hash,
+            changes,
+            tools: written,
+        })
+    }
 }
 
 /// In-memory [`Gateway`]: branches, files and PRs in `BTreeMap`s, with
@@ -428,11 +676,57 @@ impl FakeGateway {
     pub fn blob_sha(text: &str) -> String {
         fake_sha(&["blob", text])
     }
+
+    /// The site's models from now on (FEAT-095); without them
+    /// [`Gateway::site_models`] fails.
+    pub fn set_site(&self, site: FakeSite) {
+        self.lock().site = Some(site);
+    }
+
+    /// The site's models as they are now.
+    pub fn site(&self) -> Option<FakeSite> {
+        self.lock().site.clone()
+    }
+
+    /// Changes another actor's edit made to the blueprint (the base of a
+    /// pending proposal goes stale).
+    pub fn edit_site(&self, f: impl FnOnce(&mut FakeSite)) {
+        if let Some(site) = self.lock().site.as_mut() {
+            f(site);
+            site.writes += 1;
+        }
+    }
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Gateway for FakeGateway {
+    async fn site_models(&self) -> Result<Value, GatewayError> {
+        match self.lock().site.as_ref() {
+            Some(site) => site.models(),
+            None => Err(GatewayError("the fake site has no models".into())),
+        }
+    }
+
+    async fn put_blueprint(&self, body: &Value) -> Result<ModelsPut, GatewayError> {
+        match self.lock().site.as_mut() {
+            Some(site) => site.put(body),
+            None => Err(GatewayError("the fake site has no models".into())),
+        }
+    }
+
+    async fn put_tool(&self, graph: &Value, message: &str) -> Result<ModelsPut, GatewayError> {
+        let id = graph["id"].as_str().unwrap_or_default().to_string();
+        let mut s = self.lock();
+        let Some(site) = s.site.as_mut() else {
+            return Err(GatewayError("the fake site has no models".into()));
+        };
+        let base = blueprint::hash(&site.blueprint);
+        let mut tools = serde_json::Map::new();
+        tools.insert(id, graph.clone());
+        site.put(&serde_json::json!({"base_hash": base, "tools": tools, "message": message}))
+    }
+
     async fn read_page(&self, path: &str) -> Result<Option<PageFile>, GatewayError> {
         let text = self
             .lock()

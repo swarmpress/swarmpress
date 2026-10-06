@@ -48,6 +48,8 @@ pub const MAX_STACK: i64 = 10;
 pub struct TownInput {
     /// `page-type/slot` ids with an issue (validation or the site audit).
     pub issues: BTreeSet<String>,
+    /// The site's tools: machines in the factory district east of the town.
+    pub tools: Vec<crate::machines::MachineInput>,
 }
 
 /// The brick colour of a block intent (fixed: players learn it).
@@ -203,8 +205,18 @@ pub fn town(bp: &Blueprint, input: &TownInput) -> Design {
     let lanes = bp.relationships.len() as i64;
     let row_z = MARGIN + WAREHOUSE + GAP; // warehouses behind the row
     let street_z = row_z + BUILDING;
-    let width = MARGIN * 2 + n * BUILDING + (n - 1) * GAP;
-    let depth = street_z + 2 + lanes * 2 + MARGIN;
+    let town_width = MARGIN * 2 + n * BUILDING + (n - 1) * GAP;
+    // The factory district: one plot per tool, east of the town, in id order.
+    let mut tools: Vec<&crate::machines::MachineInput> = input.tools.iter().collect();
+    tools.sort_by(|a, b| a.graph.id.cmp(&b.graph.id));
+    let plots: Vec<(i64, i64)> = tools
+        .iter()
+        .map(|m| crate::machines::plot_size(&m.graph))
+        .collect();
+    let factory_width: i64 = plots.iter().map(|(w, _)| w + GAP).sum();
+    let width = town_width + factory_width;
+    let depth = (street_z + 2 + lanes * 2 + MARGIN)
+        .max(plots.iter().map(|(_, d)| d + 2 * MARGIN).max().unwrap_or(0));
 
     let mut ops = vec![region([0, 0, 0], [width, depth, 1], "plate", "green")];
     let mut door_x: BTreeMap<&str, i64> = BTreeMap::new();
@@ -215,7 +227,20 @@ pub fn town(bp: &Blueprint, input: &TownInput) -> Design {
         height = height.max(building(bp, t, x, row_z, input, &mut ops));
     }
     // The street.
-    ops.push(region([0, street_z, 1], [width, 2, 1], "tile", "grey-dark"));
+    ops.push(region(
+        [0, street_z, 1],
+        [town_width, 2, 1],
+        "tile",
+        "grey-dark",
+    ));
+    // The machines.
+    let mut fx = town_width;
+    for (m, (w, _)) in tools.iter().zip(&plots) {
+        height = height.max(crate::machines::machine_ops(
+            m, fx, MARGIN, region, &mut ops,
+        ));
+        fx += w + GAP;
+    }
     // Walkways: one lane per relationship, door to door.
     for (k, r) in bp.relationships.iter().enumerate() {
         let (Some(&a), Some(&b)) = (door_x.get(r.from.as_str()), door_x.get(r.to.as_str())) else {
@@ -246,7 +271,7 @@ pub fn town(bp: &Blueprint, input: &TownInput) -> Design {
         let x = match behind {
             Some(dx) => dx - WAREHOUSE / 2,
             None => {
-                let x = width - MARGIN - WAREHOUSE - spare * (WAREHOUSE + 1);
+                let x = town_width - MARGIN - WAREHOUSE - spare * (WAREHOUSE + 1);
                 spare += 1;
                 x.max(0)
             }

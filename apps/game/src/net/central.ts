@@ -560,7 +560,10 @@ export class CentralClient {
    * one is a 409 (someone changed the blueprint first). Both throw a
    * `CentralError` with the status and the parsed body.
    */
-  putBlueprint(token: string, body: import('../blueprint/types').PutBlueprintBody): Promise<import('../blueprint/types').PutBlueprintResult> {
+  putBlueprint(
+    token: string,
+    body: import('../blueprint/types').PutBlueprintBody | import('../blueprint/types').PutToolsBody,
+  ): Promise<import('../blueprint/types').PutBlueprintResult> {
     return this.json('PUT', '/api/site/blueprint', { json: body, headers: { [LEASE_HEADER]: token } })
   }
 
@@ -851,6 +854,12 @@ export interface OrchestratorGateway {
   redeploy?(number: number): Promise<RedeployResult>
   /** A page of the base branch with its blob sha, `null` when absent (ADR-0070). Optional. */
   readPage?(path: string): Promise<{ page: unknown; sha: string } | null>
+  /** The site's models at the base head (`GET /api/site/blueprint`, FEAT-095). Optional. */
+  siteModels?(): Promise<import('../blueprint/types').SiteModels>
+  /** An approved blueprint proposal (`PUT /api/site/blueprint`, FEAT-095): a 409 and a 422 resolve as `stale` and `refused`. Optional. */
+  putBlueprint?(bodyJson: string): Promise<ModelsPut>
+  /** An approved tool, installed through the same PUT on the current base (FEAT-095). Optional. */
+  putTool?(graphJson: string, message: string): Promise<ModelsPut>
   /** An update of an existing article naming the blob it replaces (ADR-0070). Optional. */
   openUpdate?(
     contentId: string,
@@ -861,6 +870,34 @@ export interface OrchestratorGateway {
     attribution: Attribution | string | null,
     blobSha: string,
   ): Promise<{ number: number; branch: string; head_sha: string }>
+}
+
+/** What a write of the site's models came to (`orchestrator::ModelsPut`): landed, stale (409) or refused (422). */
+export type ModelsPut =
+  | { status: 'landed'; commit: string; hash: string; changes: unknown[]; tools: string[] }
+  | { status: 'stale'; error: string }
+  | { status: 'refused'; error: string; issues: string[] }
+
+/**
+ * `PUT /api/site/blueprint` as a `ModelsPut`: the 409 and the 422 are answers
+ * (the job reports them to the sim), anything else rejects (the loop retries).
+ */
+export async function putModels(
+  client: CentralClient,
+  token: string,
+  body: import('../blueprint/types').PutBlueprintBody | import('../blueprint/types').PutToolsBody,
+): Promise<ModelsPut> {
+  try {
+    const r = await client.putBlueprint(token, body)
+    return { status: 'landed', commit: r.commit, hash: r.hash, changes: r.changes ?? [], tools: r.tools ?? [] }
+  } catch (e) {
+    if (e instanceof CentralError && (e.status === 409 || e.status === 422)) {
+      const b = (e.body ?? {}) as { error?: unknown; issues?: unknown }
+      const error = typeof b.error === 'string' ? b.error : e.message
+      return e.status === 409 ? { status: 'stale', error } : { status: 'refused', error, issues: Array.isArray(b.issues) ? b.issues.map(String) : [] }
+    }
+    throw e
+  }
 }
 
 function attributionOf(a: Attribution | string | null | undefined): Attribution | null {
@@ -896,6 +933,19 @@ export function centralGateway(client: CentralClient, token: () => string): Orch
     async readPage(path) {
       const f = await client.gatewayFile(token(), path)
       return f ? { page: f.page, sha: f.sha } : null
+    },
+    // FEAT-095: the architects read the models and apply what the CEO approved.
+    siteModels() {
+      return client.siteBlueprint(token())
+    },
+    putBlueprint(bodyJson) {
+      return putModels(client, token(), JSON.parse(bodyJson) as import('../blueprint/types').PutBlueprintBody)
+    },
+    async putTool(graphJson, message) {
+      const graph = JSON.parse(graphJson) as import('../blueprint/types').ToolGraph
+      // On the current base: a tool does not change the blueprint, the server checks it in the site as it is now.
+      const models = await client.siteBlueprint(token())
+      return putModels(client, token(), { base_hash: models.hash, tools: { [graph.id]: graph }, message })
     },
     async openUpdate(contentId, path, pageJson, message, workItem, attribution, blobSha) {
       const body: DraftRequest = { content_id: contentId, path, page: JSON.parse(pageJson), message, work_item: workItem, update: blobSha }

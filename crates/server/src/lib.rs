@@ -41,6 +41,7 @@ pub mod site_audit;
 pub mod site_blueprint;
 pub mod site_data;
 pub mod site_knowledge;
+pub mod site_theme;
 pub mod sync;
 pub mod tracker;
 pub mod web;

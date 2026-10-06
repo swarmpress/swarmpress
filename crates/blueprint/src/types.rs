@@ -444,7 +444,11 @@ impl TypeRegistry {
     }
 
     fn validate_ty(&self, v: &Value, t: &Ty, at: &str, depth: u32, why: &mut Vec<String>) {
-        let here = if at.is_empty() { "the value".to_string() } else { at.to_string() };
+        let here = if at.is_empty() {
+            "the value".to_string()
+        } else {
+            at.to_string()
+        };
         if why.len() >= 20 || depth > MAX_DEPTH {
             return;
         }
@@ -476,12 +480,20 @@ impl TypeRegistry {
             }
             Ty::Localized => match v {
                 Value::String(_) => {}
-                Value::Object(o) if o.get("en").is_some_and(Value::is_string) && o.values().all(Value::is_string) => {}
+                Value::Object(o)
+                    if o.get("en").is_some_and(Value::is_string)
+                        && o.values().all(Value::is_string) => {}
                 _ => bad("a LocalizedString (a string or {en, …})", why),
             },
             Ty::Enum(set) => {
                 if !v.as_str().is_some_and(|s| set.contains(s)) {
-                    bad(&format!("one of {}", set.iter().cloned().collect::<Vec<_>>().join(", ")), why)
+                    bad(
+                        &format!(
+                            "one of {}",
+                            set.iter().cloned().collect::<Vec<_>>().join(", ")
+                        ),
+                        why,
+                    )
                 }
             }
             Ty::Array(item) => match v.as_array() {
@@ -496,15 +508,25 @@ impl TypeRegistry {
                 None => bad("an object", why),
                 Some(o) => {
                     for (name, (ft, required)) in fields {
-                        let path = if at.is_empty() { name.clone() } else { format!("{at}.{name}") };
+                        let path = if at.is_empty() {
+                            name.clone()
+                        } else {
+                            format!("{at}.{name}")
+                        };
                         match o.get(name) {
-                            None | Some(Value::Null) if *required => why.push(format!("{path}: missing")),
+                            None | Some(Value::Null) if *required => {
+                                why.push(format!("{path}: missing"))
+                            }
                             None | Some(Value::Null) => {}
                             Some(x) => self.validate_ty(x, ft, &path, depth + 1, why),
                         }
                     }
                     for k in o.keys().filter(|k| !fields.contains_key(*k)) {
-                        let path = if at.is_empty() { k.clone() } else { format!("{at}.{k}") };
+                        let path = if at.is_empty() {
+                            k.clone()
+                        } else {
+                            format!("{at}.{k}")
+                        };
                         why.push(format!("{path}: not a field of this type"));
                     }
                 }
@@ -681,16 +703,46 @@ mod tests {
         let r = site();
         let ok = json!({ "temperature": 21, "condition": "sun" });
         assert_eq!(r.validate(&ok, &t("Weather")), Ok(()));
-        assert_eq!(r.validate(&json!([ok.clone(), ok.clone()]), &t("Weather[]")), Ok(()));
+        assert_eq!(
+            r.validate(&json!([ok.clone(), ok.clone()]), &t("Weather[]")),
+            Ok(())
+        );
         assert_eq!(r.validate(&Value::Null, &t("Weather?")), Ok(()));
-        let why = r.validate(&json!({ "temperature": 2.5, "condition": "fog", "wind": 3 }), &t("Weather")).unwrap_err();
-        assert!(why.contains(&"temperature: not an integer".to_string()), "{why:?}");
-        assert!(why.iter().any(|w| w.starts_with("condition: not one of")), "{why:?}");
-        assert!(why.contains(&"wind: not a field of this type".to_string()), "{why:?}");
-        let why = r.validate(&json!([{ "temperature": 1 }]), &t("Weather[]")).unwrap_err();
+        let why = r
+            .validate(
+                &json!({ "temperature": 2.5, "condition": "fog", "wind": 3 }),
+                &t("Weather"),
+            )
+            .unwrap_err();
+        assert!(
+            why.contains(&"temperature: not an integer".to_string()),
+            "{why:?}"
+        );
+        assert!(
+            why.iter().any(|w| w.starts_with("condition: not one of")),
+            "{why:?}"
+        );
+        assert!(
+            why.contains(&"wind: not a field of this type".to_string()),
+            "{why:?}"
+        );
+        let why = r
+            .validate(&json!([{ "temperature": 1 }]), &t("Weather[]"))
+            .unwrap_err();
         assert_eq!(why, ["[0].condition: missing"]);
-        assert!(r.validate(&json!({ "title": { "de": "x" }, "hero": { "id": "m", "url": "u" } }), &t("Teaser")).is_err());
-        assert_eq!(r.validate(&json!({ "title": "x", "hero": { "id": "m", "url": "u" } }), &t("Teaser")), Ok(()));
+        assert!(r
+            .validate(
+                &json!({ "title": { "de": "x" }, "hero": { "id": "m", "url": "u" } }),
+                &t("Teaser")
+            )
+            .is_err());
+        assert_eq!(
+            r.validate(
+                &json!({ "title": "x", "hero": { "id": "m", "url": "u" } }),
+                &t("Teaser")
+            ),
+            Ok(())
+        );
         assert!(r.validate(&Value::Null, &t("Weather")).is_err());
     }
 

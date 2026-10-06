@@ -5,6 +5,8 @@
 //! * [`types`]: one structural type system for blocks and tools.
 //! * [`check`]: closed ids, page-type rules and type fits, as [`Issue`]s.
 //! * [`hash`], [`diff`]: the semantic hash and diffs keyed by stable ids.
+//! * [`edit`]: the closed edit operations an architect returns, applied by
+//!   [`apply_edits`], and the JSON Schemas the architects answer with.
 //! * [`import`]: a read-only blueprint reverse-engineered from a live site.
 //! * [`town`]: the blueprint as a brick town, a `swarmpress.design.v1`
 //!   design the kit compiles (the bricks are a view, never the source).
@@ -16,17 +18,21 @@
 
 pub mod check;
 pub mod diff;
+pub mod edit;
 pub mod format;
 pub mod hash;
 pub mod import;
 pub mod issue;
+pub mod machines;
 pub mod site;
+pub mod theme;
 pub mod tools;
 pub mod town;
 pub mod types;
 
 pub use check::{check, CheckContext, ToolSig};
 pub use diff::{apply, diff, Change, ChangeKind, Subject};
+pub use edit::{apply_edits, parse_edits, proposal_schema, tool_proposal_schema, Edit, SlotSpec};
 pub use format::{Blueprint, BlueprintPageType, BLUEPRINT_FORMAT, BLUEPRINT_PATH};
 pub use hash::hash;
 pub use issue::{Issue, IssueCode};

@@ -8,6 +8,11 @@
  * Positions on the canvas are editor layout, kept in this component for now:
  * design §5.1 puts them in `blueprint/layout.json` (outside the semantic
  * hash), which no route writes yet.
+ *
+ * "Ask the architect" (FEAT-095, design §5.3) addresses a staff member, not
+ * a chatbot: the request becomes a structural work item drafted by the UX
+ * designer (or, on the Tools tab, a tool built by the Web Developer), and
+ * its proposal comes back as a StructureApproval ticket in the Inbox.
  */
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { buildingsOf, updateSlot } from '../../blueprint/model'
@@ -68,6 +73,7 @@ export function Blueprint() {
           )}
           <Tabs label="Blueprint views" idPrefix="blueprint" tabs={TABS} value={tab} onChange={setTab} />
           <TabPanel idPrefix="blueprint" value={tab}>
+            <AskArchitect key={tab} kind={tab === 'tools' ? 'tool' : 'structure'} />
             {tab === 'blueprint' ? (
               <BlueprintEditor key={`${models.commit}:${models.hash}`} models={models} api={checker.api} />
             ) : (
@@ -77,6 +83,72 @@ export function Blueprint() {
         </>
       )}
     </Panel>
+  )
+}
+
+const ASK = {
+  structure: {
+    label: 'Ask the architect',
+    who: 'the Information Architect (the UX designer)',
+    placeholder: 'Add an author page type and link articles to it.',
+  },
+  tool: {
+    label: 'Ask for a tool',
+    who: 'the Web Developer',
+    placeholder: 'Show the next ferries from each village, refreshed daily.',
+  },
+} as const
+
+/** The request box (FEAT-095): text to the store as a brief, `Commission` to the sim. */
+export function AskArchitect({ kind }: { kind: 'structure' | 'tool' }) {
+  const store = useStore()
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [refused, setRefused] = useState<string | null>(null)
+  const can = !!store.source.commission
+  const a = ASK[kind]
+  const submit = async () => {
+    if (!store.source.commission || !text.trim()) return
+    setBusy(true)
+    setRefused(null)
+    try {
+      const r = await store.source.commission(kind, text)
+      if (r.ok) {
+        setText('')
+        store.say(`Asked ${a.who}: the proposal comes to your Inbox for approval.`, 'ok')
+      } else setRefused(r.reason ?? 'The request was not taken.')
+    } catch (e) {
+      setRefused(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <form
+      class="bp-ask"
+      aria-label={a.label}
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (!busy) void submit()
+      }}
+    >
+      <label class="field">
+        <span>{a.label}</span>
+        <textarea rows={2} maxLength={1200} value={text} placeholder={a.placeholder} disabled={!can || busy} onInput={(e) => setText(e.currentTarget.value)} />
+      </label>
+      <p class="small muted">
+        A request to {a.who}. Nothing changes on the site until you approve the proposal.
+      </p>
+      <button type="submit" class="btn" disabled={!can || busy || !text.trim()}>
+        {busy ? 'Asking…' : a.label}
+      </button>
+      {!can && <span class="small muted"> This game cannot commission work on the site.</span>}
+      {refused && (
+        <p class="small error-text" role="alert">
+          {refused}
+        </p>
+      )}
+    </form>
   )
 }
 

@@ -127,7 +127,13 @@ pub fn apply_changes(base: &str, proposal: &str, changes: &str) -> Result<String
 #[wasm_bindgen(js_name = townDesign)]
 pub fn town_design(bp: &str, flagged: &str) -> Result<String, JsValue> {
     let issues: BTreeSet<String> = parse(flagged, "/flagged")?;
-    Ok(out(&town(&blueprint_of(bp)?, &TownInput { issues })))
+    Ok(out(&town(
+        &blueprint_of(bp)?,
+        &TownInput {
+            issues,
+            ..TownInput::default()
+        },
+    )))
 }
 
 #[wasm_bindgen(js_name = pageTypesOf)]

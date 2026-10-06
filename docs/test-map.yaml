@@ -48,6 +48,9 @@
   features: [FEAT-079, FEAT-060]
 - match: { classname: client-wasm, title: "bubbles_and_work_items" }
   features: [FEAT-079, FEAT-023]
+# The site's model digests (BlueprintChanged, ToolsChanged) through the JSON door (FEAT-095).
+- match: { classname: client-wasm, title: "model_digests_are_server_commands" }
+  features: [FEAT-095]
 # World snapshots through the facade (crates/client-wasm/tests/snapshot_wasm.rs).
 - match: { classname: client-wasm, title: "snapshot" }
   features: [FEAT-060, FEAT-001]

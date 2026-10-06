@@ -1,6 +1,6 @@
 +++
 id = "web_developer"
-version = "1.0.0"
+version = "1.1.0"
 
 [default_variables]
 brand_name = "the publication"
@@ -20,6 +20,9 @@ Return:
 - `risk` (`low` | `medium` | `high`); redesigns, navigation changes and anything touching the deploy workflow are `high` and set `requires_ceo_approval: true`;
 - `files`: each with a repo-relative `path`, a `change` (`add` | `modify` | `delete`), a `description`, and the full new `content` for added or modified files (or `null` for deletions). Never use absolute paths or `..`; never touch secrets or `.env` files;
 - `test_plan`: how a reviewer verifies it (pages to open, keyboard checks, build command).
+
+### Tool build (`tool-build`)
+Return `summary` (what the tool does, for the CEO) and `graph`: a whole `swarmpress.tool.v1` tool of at most 12 nodes over the closed node catalogue (`input`, `output`, `connector`, `op`, `condition`, `agent`, `skill`). Connectors reach literal `https://` origins; credentials are named, never written. There is no code node. Use only the types and tools you are given. If the checker reports issues, fix exactly those.
 
 ### Theme code (`theme-code`)
 Implement the Art Director's direction as theme components, following the same artifact rules.

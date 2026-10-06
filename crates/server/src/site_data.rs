@@ -45,7 +45,8 @@ pub const MAX_DATA_BYTES: usize = 256 * 1024;
 fn valid_key(k: &str) -> bool {
     !k.is_empty()
         && k.len() <= 100
-        && k.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && k.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
         && !k.starts_with('-')
         && !k.ends_with('-')
 }
@@ -77,28 +78,38 @@ async fn tool_at(
     head: &str,
     tool: &str,
 ) -> AppResult<(ToolGraph, TypeRegistry)> {
-    let snap = api.snapshot(repo, head, "blueprint").await.map_err(gh_error)?;
+    let snap = api
+        .snapshot(repo, head, "blueprint")
+        .await
+        .map_err(gh_error)?;
     let path = format!("{}/{tool}.tool.json", blueprint::format::TOOLS_DIR);
     let text = snap
         .files
         .get(&path)
         .ok_or_else(|| AppError::NotFound(format!("the site has no tool {tool}")))?;
-    let v: Value = serde_json::from_str(text).map_err(|e| AppError::BadGateway(format!("{path}: {e}")))?;
-    let graph = ToolGraph::from_value(&v).map_err(|e| AppError::BadGateway(format!("{path}: {e}")))?;
+    let v: Value =
+        serde_json::from_str(text).map_err(|e| AppError::BadGateway(format!("{path}: {e}")))?;
+    let graph =
+        ToolGraph::from_value(&v).map_err(|e| AppError::BadGateway(format!("{path}: {e}")))?;
     let mut types = BTreeMap::new();
     for (p, t) in &snap.files {
         if let Some(name) = p
             .strip_prefix(&format!("{}/", blueprint::format::TYPES_DIR))
             .and_then(|r| r.strip_suffix(".json"))
         {
-            let v: Value = serde_json::from_str(t).map_err(|e| AppError::BadGateway(format!("{p}: {e}")))?;
+            let v: Value =
+                serde_json::from_str(t).map_err(|e| AppError::BadGateway(format!("{p}: {e}")))?;
             types.insert(name.to_string(), v);
         }
     }
     let reg = TypeRegistry::with_site(&types).map_err(|issues| {
         AppError::BadGateway(format!(
             "the site's types do not check: {}",
-            issues.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ")
+            issues
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; ")
         ))
     })?;
     Ok((graph, reg))
@@ -114,7 +125,9 @@ pub async fn put_data(
     let fenced = require_lease(&st, &headers, &user).await?;
     let company = &fenced.company;
     if !blueprint::issue::valid_id(&body.tool) || !valid_key(&body.key) {
-        return Err(AppError::BadRequest("tool and key are kebab-case ids".into()));
+        return Err(AppError::BadRequest(
+            "tool and key are kebab-case ids".into(),
+        ));
     }
     let repo = company_repo(&st, company)?;
     let _guard = st.repo_lock(&repo.to_string()).await;
@@ -123,7 +136,9 @@ pub async fn put_data(
     let (graph, reg) = tool_at(&api, &repo, &head, &body.tool).await?;
     let port = match &body.port {
         Some(p) => p.clone(),
-        None if graph.outputs.len() == 1 => graph.outputs.keys().next().cloned().unwrap_or_default(),
+        None if graph.outputs.len() == 1 => {
+            graph.outputs.keys().next().cloned().unwrap_or_default()
+        }
         None => {
             return Err(AppError::BadRequest(format!(
                 "name one of the tool's outputs: {}",
@@ -136,25 +151,44 @@ pub async fn put_data(
         .get(&port)
         .ok_or_else(|| AppError::BadRequest(format!("{} has no output {port}", body.tool)))?;
     let ty = TypeExpr::parse(ty).map_err(AppError::BadRequest)?;
-    reg.validate(&body.value, &ty).map_err(|why| AppError::Unprocessable {
-        message: format!("the value is not a {ty}"),
-        issues: why,
-    })?;
+    reg.validate(&body.value, &ty)
+        .map_err(|why| AppError::Unprocessable {
+            message: format!("the value is not a {ty}"),
+            issues: why,
+        })?;
 
     let path = data_path(&body.tool, &body.key);
     let mut text = serde_json::to_string_pretty(&body.value).unwrap_or_default();
     text.push('\n');
     if text.len() > MAX_DATA_BYTES {
-        return Err(AppError::PayloadTooLarge(format!("{path} would be over {MAX_DATA_BYTES} bytes")));
+        return Err(AppError::PayloadTooLarge(format!(
+            "{path} would be over {MAX_DATA_BYTES} bytes"
+        )));
     }
     let existing = api.get_file(&repo, &head, &path).await.map_err(gh_error)?;
     if existing.as_ref().and_then(|f| f.text().ok()) == Some(text.as_str()) {
-        return Ok(Json(json!({ "path": path, "commit": head, "changed": false })));
+        return Ok(Json(
+            json!({ "path": path, "commit": head, "changed": false }),
+        ));
     }
-    let guarded: Arc<dyn RepoApi> = Arc::new(GuardedRepo::new(api.clone(), ActorKind::ContentAgent));
-    let branch = format!("drafts/data-{}-{}-{}", body.tool, body.key, &head[..8.min(head.len())]);
-    if api.get_branch(&repo, &branch).await.map_err(gh_error)?.is_none() {
-        guarded.create_branch(&repo, &branch, &head).await.map_err(gh_error)?;
+    let guarded: Arc<dyn RepoApi> =
+        Arc::new(GuardedRepo::new(api.clone(), ActorKind::ContentAgent));
+    let branch = format!(
+        "drafts/data-{}-{}-{}",
+        body.tool,
+        body.key,
+        &head[..8.min(head.len())]
+    );
+    if api
+        .get_branch(&repo, &branch)
+        .await
+        .map_err(gh_error)?
+        .is_none()
+    {
+        guarded
+            .create_branch(&repo, &branch, &head)
+            .await
+            .map_err(gh_error)?;
     }
     let message = format!("Data: {} ({})", body.tool, body.key);
     guarded
@@ -204,7 +238,9 @@ pub async fn put_data(
         .await
         .map_err(gh_error)?;
     tracing::info!(company_id = %company.id, tool = %body.tool, key = %body.key, "site data written");
-    Ok(Json(json!({ "path": path, "commit": merged.sha, "changed": true })))
+    Ok(Json(
+        json!({ "path": path, "commit": merged.sha, "changed": true }),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -223,7 +259,9 @@ pub async fn get_data(
 ) -> AppResult<Json<Value>> {
     let fenced = require_lease(&st, &headers, &user).await?;
     if !blueprint::issue::valid_id(&q.tool) || !valid_key(&q.key) {
-        return Err(AppError::BadRequest("tool and key are kebab-case ids".into()));
+        return Err(AppError::BadRequest(
+            "tool and key are kebab-case ids".into(),
+        ));
     }
     let company = &fenced.company;
     let repo = company_repo(&st, company)?;
@@ -235,7 +273,12 @@ pub async fn get_data(
         .await
         .map_err(gh_error)?
         .ok_or_else(|| AppError::NotFound(format!("{path} does not exist")))?;
-    let text = f.text().map_err(|_| AppError::BadGateway(format!("{path} is not UTF-8")))?;
-    let value: Value = serde_json::from_str(text).map_err(|e| AppError::BadGateway(format!("{path}: {e}")))?;
-    Ok(Json(json!({ "path": path, "commit": head, "value": value })))
+    let text = f
+        .text()
+        .map_err(|_| AppError::BadGateway(format!("{path} is not UTF-8")))?;
+    let value: Value =
+        serde_json::from_str(text).map_err(|e| AppError::BadGateway(format!("{path}: {e}")))?;
+    Ok(Json(
+        json!({ "path": path, "commit": head, "value": value }),
+    ))
 }

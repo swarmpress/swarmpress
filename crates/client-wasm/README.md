@@ -287,6 +287,9 @@ digest's `artifact_sha` may be a hex string (its first 16 bytes are kept),
 {"AnalyticsSignals":{"project":"project-1","day":1,"sessions":1840,"visitors":1420,
                      "pageviews":4610,"engagement_pm":640,"top_pages_digest":1592642302}}
 {"Utterance":{"meeting":"meeting-4","seq":0,"speaker":"staff-4","chars":140}}
+{"BlueprintChanged":{"hash":[1,35,69,103,137,171,205,239,1,35,69,103,137,171,205,239],
+                     "page_types":6,"slots":14,"issues":0}}       // ADR-0072: the blueprint's digest
+{"ToolsChanged":{"tools":[{"tool_ref":177789920126454,"schedule_days":1,"role":null}]}}
 ```
 
 A rejected command throws (or, for `validate_command_json`, returns) the

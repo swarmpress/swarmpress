@@ -254,7 +254,7 @@ impl Sim {
 
 /// `ServerCommand` variant names: a JSON command with one of these tags is a
 /// server command, anything else a player command.
-const SERVER_VARIANTS: [&str; 10] = [
+const SERVER_VARIANTS: [&str; 12] = [
     "Remark",
     "JobCompleted",
     "MeetingOutcome",
@@ -265,6 +265,9 @@ const SERVER_VARIANTS: [&str; 10] = [
     "AnalyticsSignals",
     "JobFailed",
     "DeployFailed",
+    // The site's models as digests (ADR-0072, FEAT-095).
+    "BlueprintChanged",
+    "ToolsChanged",
 ];
 
 fn tag(v: &Value) -> Option<&str> {
@@ -416,6 +419,25 @@ mod tests {
         assert!(sim.validate_command(&[0xff, 0xff]).is_some());
         assert_eq!(sim.apply_command(&ok), Ok(()));
         assert!(sim.apply_command(&bad).is_err());
+    }
+
+    /// FEAT-095: the site's model digests are server commands in the JSON door too.
+    #[test]
+    fn model_digests_are_server_commands() {
+        let mut sim = Sim::demo(1);
+        let bp = r#"{"BlueprintChanged":{"hash":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],"page_types":6,"slots":14,"issues":0}}"#;
+        let tools = r#"{"ToolsChanged":{"tools":[{"tool_ref":177789920126454,"schedule_days":1,"role":"web-developer"}]}}"#;
+        assert_eq!(sim.validate_command_json(bp), None);
+        sim.apply_command_json(bp).unwrap();
+        sim.apply_command_json(tools).unwrap();
+        let plan: Value = serde_json::from_str(&sim.plan_json(None)).unwrap();
+        assert_eq!(plan["structure"]["model"]["pageTypes"], 6);
+        assert_eq!(
+            plan["structure"]["model"]["hash"],
+            "0102030405060708090a0b0c0d0e0f10"
+        );
+        assert_eq!(plan["structure"]["tools"][0]["toolRef"], 177789920126454u64);
+        assert_eq!(plan["structure"]["tools"][0]["role"], "web-developer");
     }
 
     #[test]

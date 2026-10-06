@@ -44,8 +44,9 @@ use agents::{Llm, LlmError, LlmRequest};
 use async_trait::async_trait;
 use js_sys::{Array, Function, Promise, Reflect, JSON};
 use orchestrator::{
-    Attribution, DeployState, DraftPr, Gateway, GatewayError, JobFailure, JobRequest, Orchestrator,
-    Outcome, PageFile, Progress, ProgressEvent, Redeploy, SiteBinding, StageRow, Store, StoreError,
+    Attribution, DeployState, DraftPr, Gateway, GatewayError, JobFailure, JobRequest, ModelsPut,
+    Orchestrator, Outcome, PageFile, Progress, ProgressEvent, Redeploy, SiteBinding, StageRow,
+    Store, StoreError,
 };
 use serde_json::{json, Value};
 use wasm_bindgen::prelude::*;
@@ -117,6 +118,23 @@ export interface OrchestratorGateway {
    * deploy state is `failed` calls it; without it that job fails loudly.
    */
   redeploy?(number: number): Promise<{ state: string; requested?: boolean; run_id?: number | null; attempt?: number; detail?: string | null }>
+  /**
+   * Optional (FEAT-095): the site's models at the base head (`GET /api/site/blueprint`), an
+   * object or its JSON text. Without it the architects' jobs fail loudly.
+   */
+  siteModels?(): Promise<string | object>
+  /**
+   * Optional (FEAT-095): `PUT /api/site/blueprint` with `bodyJson`
+   * (`{blueprint, base_hash, message}`) → `{status: 'landed', commit, hash, changes, tools}`,
+   * `{status: 'stale', error}` on a 409 or `{status: 'refused', error, issues}` on a 422;
+   * rejects on anything else (retryable).
+   */
+  putBlueprint?(bodyJson: string): Promise<string | object>
+  /**
+   * Optional (FEAT-095): installs one tool (`graphJson`, a `swarmpress.tool.v1`) through the same
+   * PUT on the current base; answers as `putBlueprint`.
+   */
+  putTool?(graphJson: string, message: string): Promise<string | object>
 }
 
 /**
@@ -553,6 +571,49 @@ impl Gateway for JsGateway {
             .map_err(gw)?
             .ok_or_else(|| gw("redeploy returned nothing".into()))?;
         serde_json::from_value(v).map_err(|e| gw(format!("redeploy answer: {e}")))
+    }
+
+    /// `siteModels()`, optional: without it the architects fail loudly.
+    async fn site_models(&self) -> Result<Value, GatewayError> {
+        if !has_method(&self.obj, "siteModels") {
+            return Err(gw("this gateway cannot read the site's models".into()));
+        }
+        let v = call(&self.obj, "siteModels", &[]).await.map_err(gw)?;
+        json_of(&v)
+            .map_err(gw)?
+            .ok_or_else(|| gw("siteModels returned nothing".into()))
+    }
+
+    /// `putBlueprint(bodyJson)`, optional: without it a structure is never applied.
+    async fn put_blueprint(&self, body: &Value) -> Result<ModelsPut, GatewayError> {
+        if !has_method(&self.obj, "putBlueprint") {
+            return Err(gw("this gateway cannot change the site's blueprint".into()));
+        }
+        let v = call(&self.obj, "putBlueprint", &[s(&body.to_string())])
+            .await
+            .map_err(gw)?;
+        Self::models_put(&v, "putBlueprint")
+    }
+
+    /// `putTool(graphJson, message)`, optional: without it a tool is never installed.
+    async fn put_tool(&self, graph: &Value, message: &str) -> Result<ModelsPut, GatewayError> {
+        if !has_method(&self.obj, "putTool") {
+            return Err(gw("this gateway cannot install tools".into()));
+        }
+        let v = call(&self.obj, "putTool", &[s(&graph.to_string()), s(message)])
+            .await
+            .map_err(gw)?;
+        Self::models_put(&v, "putTool")
+    }
+}
+
+impl JsGateway {
+    /// A [`ModelsPut`] from a JS answer (an object or its JSON text).
+    fn models_put(v: &JsValue, what: &str) -> Result<ModelsPut, GatewayError> {
+        let v = json_of(v)
+            .map_err(gw)?
+            .ok_or_else(|| gw(format!("{what} returned nothing")))?;
+        serde_json::from_value(v).map_err(|e| gw(format!("{what} answer: {e}")))
     }
 }
 

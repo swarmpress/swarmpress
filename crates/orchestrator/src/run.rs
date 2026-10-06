@@ -263,6 +263,10 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             JobKind::Performance => self.performance(req).await,
             JobKind::KpiReport => self.kpi_report(req).await,
             JobKind::Promotion => self.promotion(req).await,
+            JobKind::Architect => self.architect(req).await,
+            JobKind::ToolBuild => self.tool_build(req).await,
+            JobKind::ThemeCode => self.theme_code(req).await,
+            JobKind::ToolRun => self.tool_run(req).await,
             JobKind::Draft => self.staged_draft(req).await,
             JobKind::Review => self.staged_review(req).await,
             JobKind::Publish => {
@@ -616,6 +620,10 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             .load_artifact(req, &item)
             .await?
             .ok_or_else(|| invalid(format!("publish of {item} without a PR")))?;
+        // A structural item's artifact holds its proposal: applied, not merged (FEAT-095).
+        if art.structure.is_some() {
+            return self.apply_structure(req, &item, art).await;
+        }
         let (merged_sha, fresh) = match art.merged_sha.clone() {
             // Merged already: no second merge, no second post. This is a run
             // again after a reload, or the CEO's Retry on a `DeployFailed`

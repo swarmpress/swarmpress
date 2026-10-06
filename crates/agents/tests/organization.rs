@@ -8,7 +8,7 @@ use agents::{Department, JobKind, Role, RolesConfig};
 #[test]
 fn every_job_kind_has_role_executor_and_template() {
     let c = RolesConfig::builtin();
-    assert_eq!(JobKind::ALL.len(), 33);
+    assert_eq!(JobKind::ALL.len(), 35);
     for &k in JobKind::ALL {
         let p = c.job(k);
         assert!(p.role.is_agent(), "{k}");
@@ -55,6 +55,9 @@ fn every_job_kind_has_role_executor_and_template() {
     assert_eq!(who(JobKind::PlanSchedule), Role::EditorInChief);
     assert_eq!(who(JobKind::PhotoSelection), Role::PhotoEditor);
     assert_eq!(who(JobKind::SiteChange), Role::WebDeveloper);
+    // FEAT-095: the UX designer plays the Information Architect.
+    assert_eq!(who(JobKind::SiteArchitect), Role::UxDesigner);
+    assert_eq!(who(JobKind::ToolBuild), Role::WebDeveloper);
     assert_eq!(who(JobKind::OpsCheck), Role::ItEngineer);
     assert_eq!(who(JobKind::SeoPlan), Role::SeoSpecialist);
     assert_eq!(who(JobKind::MarketingPlan), Role::MarketingManager);

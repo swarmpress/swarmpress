@@ -7,6 +7,7 @@
 //! The orchestrator owns state: these functions only return artifacts.
 
 pub mod analytics;
+pub mod architect;
 pub mod hiring;
 pub mod numbers;
 pub mod office;

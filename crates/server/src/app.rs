@@ -184,6 +184,11 @@ pub fn router(st: AppState) -> Router {
         .route("/api/gateway/knowledge", get(site_knowledge::knowledge))
         .route("/api/gateway/file", get(crate::site_audit::file))
         .route("/api/site/audit", get(crate::site_audit::audit))
+        .route("/api/site/theme", put(crate::site_theme::put_theme))
+        .route(
+            "/api/site/theme/merge",
+            post(crate::site_theme::merge_theme),
+        )
         .route(
             "/api/site/data",
             get(crate::site_data::get_data).put(crate::site_data::put_data),

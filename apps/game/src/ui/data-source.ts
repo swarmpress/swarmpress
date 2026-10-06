@@ -277,6 +277,13 @@ export interface GameDataSource {
   saveBlueprint?(body: PutBlueprintBody): Promise<PutBlueprintResult>
   /** Read the site's models again (after a save, or a 409); announced with the `site` topic. */
   reloadSiteModels?(): Promise<void>
+  /**
+   * Ask the architects (FEAT-095): the request goes to the store as the
+   * item's brief and `Command::Commission{kind, brief_ref}` is logged; the
+   * sim staffs the Draft with the UX designer (a blueprint change) or the
+   * Web Developer (a tool). Absent: the source cannot commission.
+   */
+  commission?(kind: 'structure' | 'tool', request: string): Promise<CommandResult>
 }
 
 /** Everything the overlay renders from, read in one go. */

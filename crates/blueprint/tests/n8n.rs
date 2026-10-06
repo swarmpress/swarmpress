@@ -11,16 +11,26 @@ use blueprint::{IssueCode, TypeRegistry};
 use serde_json::Value;
 
 fn load(id: &str) -> (ToolGraph, TypeRegistry) {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/n8n/{id}.json"));
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/n8n/{id}.json"));
     let v: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let types: BTreeMap<String, Value> = serde_json::from_value(v["types"].clone()).unwrap();
-    (ToolGraph::from_value(&v["graph"]).unwrap(), TypeRegistry::with_site(&types).unwrap())
+    (
+        ToolGraph::from_value(&v["graph"]).unwrap(),
+        TypeRegistry::with_site(&types).unwrap(),
+    )
 }
 
 fn check(id: &str) -> Vec<(IssueCode, String)> {
     let (g, types) = load(id);
-    let ctx = ToolContext { types, ..ToolContext::default() };
-    check_tool(&g, &ctx).into_iter().map(|i| (i.code, i.path)).collect()
+    let ctx = ToolContext {
+        types,
+        ..ToolContext::default()
+    };
+    check_tool(&g, &ctx)
+        .into_iter()
+        .map(|i| (i.code, i.path))
+        .collect()
 }
 
 #[test]
