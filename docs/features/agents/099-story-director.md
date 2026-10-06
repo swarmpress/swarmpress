@@ -9,6 +9,7 @@ paths:
   - apps/game/src/story/director.ts
   - apps/game/src/story/context.ts
   - apps/game/src/story/director.test.ts
+  - apps/game/e2e/story.spec.ts
   - apps/game/src/ui/bubbles/BubbleLayer.tsx
 adrs:
   - ADR-0074
@@ -36,7 +37,8 @@ words stay in the company store's kv, never in the sim.
   - Prefetch at 420 seconds, and quiet when a chapter is late.
   - Playback that ends a scene the sim refuses, and persistence across reloads.
   - Remark bubbles in the bubble layer, and the fake model's chapter.
-  - Test: `apps/game/src/story/director.test.ts`.
+  - Tests: `apps/game/src/story/director.test.ts`; in the real game page, `apps/game/e2e/story.spec.ts`
+    (`playwright.mvp.config.ts`).
 - On by default with the hosted model; `?story=on|off` overrides it.
 
 ## Not built
