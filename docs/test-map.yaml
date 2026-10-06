@@ -95,3 +95,6 @@
 # file) is also a FEAT-005 acceptance criterion.
 - match: { classname: "agents::personas", title: "work_style_snapshots" }
   features: [FEAT-005, FEAT-031]
+# The editorial board through the JSON boundary (ADR-0069).
+- match: { classname: client-wasm, title: "the_editorial_board_through_json" }
+  features: [FEAT-087]

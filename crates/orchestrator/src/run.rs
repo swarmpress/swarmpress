@@ -251,6 +251,15 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 self.report_outcome(req, who, &out);
                 out
             }
+            JobKind::Board => {
+                let who = self
+                    .find(req, "strategist")
+                    .or_else(|| self.find(req, "editor-in-chief"));
+                self.report_job(req, who, crate::ProgressState::Started, json!({}));
+                let out = self.board(req).await;
+                self.report_outcome(req, who, &out);
+                out
+            }
             JobKind::Draft => self.staged_draft(req).await,
             JobKind::Review => self.staged_review(req).await,
             JobKind::Publish => {
@@ -269,6 +278,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             Ok(o) => {
                 let detail = match o.first() {
                     Some(Outcome::MeetingOutcome { briefs, .. }) => json!({"briefs": briefs.len()}),
+                    Some(Outcome::BoardOutcome { items, .. }) => json!({"items": items.len()}),
                     Some(Outcome::JobCompleted { digest, .. }) => {
                         json!({"ok": digest.ok, "merged_sha": digest.artifact_sha})
                     }
@@ -389,7 +399,46 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             .get_brief(&req.company_id, brief_ref)
             .await?
             .ok_or_else(|| invalid(format!("unknown brief_ref {brief_ref}")))?;
-        serde_json::from_value(v).map_err(corrupt)
+        let mut rec: BriefRecord = serde_json::from_value(v).map_err(corrupt)?;
+        if rec.writer.is_empty() {
+            self.board_writer(req, &mut rec, brief_ref).await?;
+        }
+        Ok(rec)
+    }
+
+    /// A board brief has no writer (ADR-0069): the sim staffs its first
+    /// draft, whose writer is kept in the item's artifact record for the
+    /// review and the publish attribution.
+    async fn board_writer(
+        &self,
+        req: &JobRequest,
+        rec: &mut BriefRecord,
+        brief_ref: u64,
+    ) -> Result<()> {
+        let Some(item) = req.work_item.as_deref() else {
+            return Ok(());
+        };
+        let mut art = self.load_artifact(req, item).await?.unwrap_or_default();
+        let writer = match art.writer.clone() {
+            Some(w) => w,
+            None if req.kind == JobKind::Draft => {
+                let Some(w) = req.staff.first().cloned() else {
+                    return Ok(());
+                };
+                if art.brief_ref == 0 {
+                    art.brief_ref = brief_ref;
+                }
+                art.writer = Some(w.clone());
+                self.save_artifact(req, item, &art).await?;
+                w
+            }
+            None => return Ok(()),
+        };
+        rec.writer = writer.id.clone();
+        if !rec.staff.iter().any(|s| s.id == writer.id) {
+            rec.staff.push(writer);
+        }
+        Ok(())
     }
 
     pub(crate) async fn load_artifact(

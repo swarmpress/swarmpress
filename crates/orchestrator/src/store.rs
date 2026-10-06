@@ -99,6 +99,11 @@ pub struct ArtifactRecord {
     /// kept across revisions so every draft works from the same evidence.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<agents::research::Evidence>,
+    /// The writer the sim staffed the first draft with, for a brief made
+    /// without one (the editorial board's, ADR-0069): later jobs carry only
+    /// the staff member doing their work.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub writer: Option<crate::StaffRef>,
 }
 
 impl ArtifactRecord {

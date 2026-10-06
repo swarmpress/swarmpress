@@ -1,0 +1,692 @@
+//! The weekly editorial board (ADR-0069; `docs/game-design/publishing-plan.md`
+//! section 4).
+//!
+//! ```text
+//! frame#0   no model: the cap, the editors, the context pack and the calendar
+//!           topics, fixed by the first run
+//!   cap 0  ─► one system transcript line, BoardOutcome{items: []}, no model call
+//! plan#0    the strategist's plan: {say, week_theme, proposals[≤cap], big_bets};
+//!           one repair turn for an unknown calendar topic, a taken or repeated
+//!           title, a forward `after`
+//! check#i   each proposal's central promise checked on the web (ADR-0068);
+//!           an unverifiable one is set aside, a failed check keeps it
+//!   ─► briefs (no writer: the sim staffs an item when it starts), workstream
+//!      titles, minutes ─► BoardOutcome{workstreams, items}
+//! ```
+//!
+//! - **Scheduling is the orchestrator's**, not the model's: the model names a
+//!   publish day; the item may start two days before it (`start_offset`), and
+//!   the reviewing editors take the items in turn. The editor-in-chief's own
+//!   scheduling call (`PlanSchedule`) is a later increment.
+//! - **Closed world**: a proposal names a calendar topic only by its alias
+//!   (`T1` …) from the frame; the dedupe against published, in-flight and
+//!   planned titles is the standup's ([`crate::standup`]).
+//! - **Text never enters the sim** (rule 2): titles, angles and workstream
+//!   names are store text; the outcome carries opaque refs. The board's
+//!   briefs are plan text under `brief:<ref>`, its workstreams under
+//!   `workstream:<ref>`, so the Plan panel can name an item before it starts.
+//! - **Stage store**: every stage is stored under `(company, job, stage,
+//!   index)`; a re-run job repeats no completed call.
+
+use agents::llm::{structured_with_repair, Repaired};
+use agents::meetings::{
+    board_cap, board_prompt, board_schema, pitch_check_prompt, pitch_check_schema, BoardPlan,
+    BoardProposal, BoardTopic, Pitch, BOARD_ANSWER, BOARD_CAP_LABEL, CAP_LABEL,
+    DEFAULT_TARGET_WORDS, MAX_PUBLISH_DAY, MODEL_MINUTES_PER_DAY, PITCH_REASONING,
+};
+use agents::prompts::{templates, Vars};
+use agents::{Brief, CallProfile, LlmMessage, LlmRequest, Role};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+use crate::article::{brief_ref_for, slugify};
+use crate::gateway::Gateway;
+use crate::run::{corrupt, invalid, persona, role_of, Orchestrator, Result};
+use crate::staged::stage_hash;
+use crate::standup::{
+    clean, context_pack, published, season, staff_order, Line, PitchCheck, StandupContext, Taken,
+    CALENDAR_PATH, CHECK_ANSWER,
+};
+use crate::store::{BriefRecord, Store};
+use crate::{JobFailure, JobRequest, Outcome, PlannedOut, ProgressState, SiteBinding, StaffRef};
+
+/// Calendar topics the board's frame offers.
+const BOARD_TOPICS: usize = 8;
+/// Days before its publish day a planned item may start.
+const LEAD_DAYS: u32 = 2;
+/// Repair turns the plan gets.
+pub const PLAN_REPAIRS: u32 = 1;
+
+// ---------------------------------------------------------------- what the host says
+
+/// What the host adds to a board's request (`JobRequest::context`): the
+/// standup's context (the date, items in flight and planned, with titles,
+/// the measured throughput) plus the room under the sim's limit of planned
+/// items:
+///
+/// ```json
+/// { "today": "2026-10-05", "in_flight": [{"id": "work-item-4", "status": "planned", "title": "…"}],
+///   "planned_room": 8, "minutes_per_article": 7.5, "model_minutes_per_day": 45 }
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct BoardContext {
+    #[serde(flatten)]
+    pub standup: StandupContext,
+    /// Planned items the project may still take (the sim's `MAX_PLANNED`
+    /// minus its unstarted items).
+    #[serde(default)]
+    pub planned_room: Option<usize>,
+}
+
+impl BoardContext {
+    /// The context of a request (`null`: none); a malformed one is an invalid job.
+    pub fn of(req: &JobRequest) -> Result<Self> {
+        if req.context.is_null() {
+            return Ok(Self::default());
+        }
+        serde_json::from_value(req.context.clone())
+            .map_err(|e| invalid(format!("board context: {e}")))
+    }
+}
+
+/// A calendar topic of the frame: alias, title, keywords, season.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct FrameTopic {
+    alias: String,
+    title: String,
+    keywords: Vec<String>,
+    season: String,
+}
+
+/// The first run's frame (`frame#0`), reused by every re-run.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct Frame {
+    cap: usize,
+    /// Reviewing editors' staff ids, in turn order.
+    editors: Vec<String>,
+    pack: String,
+    topics: Vec<FrameTopic>,
+    #[serde(default)]
+    why_not: String,
+}
+
+/// The stored planning stage: the plan, or why there is none.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct Planned {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    plan: Option<BoardPlan>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+    /// `model`, `invalid-output` or `infrastructure`, when there is no plan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    failure: Option<String>,
+}
+
+/// A workstream's store ref: stable per company and name (lower case), so
+/// the sim reuses a workstream week after week.
+pub fn workstream_ref_for(company: &str, name: &str) -> u64 {
+    let mut buf = Vec::with_capacity(company.len() + name.len() + 12);
+    buf.extend_from_slice(company.as_bytes());
+    buf.extend_from_slice(b"\0workstream\0");
+    buf.extend_from_slice(name.trim().to_lowercase().as_bytes());
+    xxhash_rust::xxh3::xxh3_64(&buf) & (i64::MAX as u64)
+}
+
+/// The season's calendar topics nobody has, up to [`BOARD_TOPICS`].
+fn board_topics(site: &SiteBinding, today: Option<&str>, taken: &Taken) -> Vec<FrameTopic> {
+    let Some(k) = site.knowledge.as_ref() else {
+        return Vec::new();
+    };
+    let Ok(Some(calendar)) = k.file_json(CALENDAR_PATH) else {
+        return Vec::new();
+    };
+    let Some(seasons) = calendar["seasonal_content"].as_object() else {
+        return Vec::new();
+    };
+    let Some(s) = today.and_then(|t| season(seasons, t)) else {
+        return Vec::new();
+    };
+    let name = s["season_name"]
+        .as_str()
+        .unwrap_or("The season")
+        .to_string();
+    s["topics"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|t| {
+            let title = t["title"].as_str()?.trim().to_string();
+            let keywords: Vec<String> = t["keywords"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect();
+            let slug = t["slug"]
+                .as_str()
+                .map_or_else(|| slugify(&title), String::from);
+            let probe = Pitch {
+                say: String::new(),
+                title: title.clone(),
+                angle: String::new(),
+                keywords: keywords.clone(),
+            };
+            let fresh = !taken.paths.contains(&slug) && taken.conflict(&probe).is_none();
+            fresh.then_some((title, keywords))
+        })
+        .take(BOARD_TOPICS)
+        .enumerate()
+        .map(|(i, (title, keywords))| FrameTopic {
+            alias: format!("T{}", i + 1),
+            title,
+            keywords,
+            season: name.clone(),
+        })
+        .collect()
+}
+
+/// The problems of a plan, for its repair turn (empty: none).
+fn plan_problems(plan: &BoardPlan, topics: &[FrameTopic], taken: &Taken) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut seen = taken.clone();
+    for (i, p) in plan.proposals.iter().enumerate() {
+        let n = i + 1;
+        let topic = p.topic.trim();
+        if !topic.is_empty() && !topics.iter().any(|t| t.alias == topic) {
+            problems.push(format!(
+                "Proposal {n} names the calendar topic {topic:?}, which is not in the list: use one of its T aliases or an empty string."
+            ));
+        }
+        if p.after as usize >= n {
+            problems.push(format!(
+                "Proposal {n} builds on proposal {}: `after` must name an earlier proposal, or be 0.",
+                p.after
+            ));
+        }
+        if !(1..=MAX_PUBLISH_DAY).contains(&p.publish_day) {
+            problems.push(format!(
+                "Proposal {n} is published on day {}: use 1 to {MAX_PUBLISH_DAY}.",
+                p.publish_day
+            ));
+        }
+        let pitch = as_pitch(p);
+        if let Some(conflict) = seen.conflict(&pitch) {
+            problems.push(format!("Proposal {n}: {conflict}"));
+        }
+        seen.pitched("the board", &pitch);
+    }
+    problems
+}
+
+fn as_pitch(p: &BoardProposal) -> Pitch {
+    clean(Pitch {
+        say: String::new(),
+        title: p.title.clone(),
+        angle: p.angle.clone(),
+        keywords: p.keywords.clone(),
+    })
+}
+
+fn priority_of(p: &str) -> &'static str {
+    match p.trim() {
+        "high" => "High",
+        "low" => "Low",
+        _ => "Normal",
+    }
+}
+
+impl<S: Store, G: Gateway> Orchestrator<S, G> {
+    /// The board job (module docs).
+    pub(crate) async fn board(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
+        let speaker = self
+            .find(req, "strategist")
+            .or_else(|| self.find(req, "editor-in-chief"))
+            .or_else(|| self.find(req, "editor"))
+            .ok_or_else(|| invalid("board without a strategist or editor"))?;
+        let ctx = BoardContext::of(req)?;
+
+        // frame#0: fixed by the first run, whatever the host says later.
+        let frame: Frame = match self.recall(req, "frame", 0, None).await? {
+            Some(v) => serde_json::from_value(v).map_err(corrupt)?,
+            None => {
+                let frame = self.board_frame(req, &ctx);
+                let hash = stage_hash(&["board-frame", &req.context.to_string()]);
+                self.remember(req, "frame", 0, hash, &frame).await?
+            }
+        };
+        let mut seq = 0u32;
+        if frame.cap == 0 {
+            let line = Line {
+                seq,
+                speaker: "system".into(),
+                text: format!("Nothing is planned this week. {}", frame.why_not),
+            };
+            self.spoke(req, &line, None, false).await?;
+            return Ok(vec![Outcome::BoardOutcome {
+                job_id: req.job_id,
+                workstreams: Vec::new(),
+                items: Vec::new(),
+            }]);
+        }
+
+        // plan#0
+        let p = persona(&speaker.persona)?;
+        let mut vars = Vars::new();
+        vars.insert(
+            "agenda".into(),
+            json!("The Monday editorial board: plan the next two weeks."),
+        );
+        let system = self.system_prompt(&templates::strategist(), &p, vars)?;
+        let profile = CallProfile {
+            job: agents::JobKind::WeeklyPlan,
+            role: role_of(&speaker.role).unwrap_or(Role::Strategist),
+            seniority: Some(p.seniority),
+            staff_id: Some(speaker.id.clone()),
+        };
+        let topics: Vec<BoardTopic<'_>> = frame
+            .topics
+            .iter()
+            .map(|t| BoardTopic {
+                alias: &t.alias,
+                title: &t.title,
+                keywords: &t.keywords,
+                season: &t.season,
+            })
+            .collect();
+        let user = board_prompt(&frame.pack, &topics, frame.cap);
+        let schema = board_schema(frame.cap);
+        let request = LlmRequest {
+            profile: profile.clone(),
+            system: vec![system.clone()],
+            messages: vec![LlmMessage::user(user.clone())],
+            max_tokens: BOARD_ANSWER,
+            reasoning_tokens: Some(PITCH_REASONING),
+        };
+        let published = published(&self.site);
+        let taken = Taken::new(&self.site, &ctx.standup, &published);
+        let hash = stage_hash(&["plan", &system, &user, &schema.to_string()]);
+        let (planned, fresh): (Planned, bool) =
+            match self.recall(req, "plan", 0, Some(&hash)).await? {
+                Some(v) => {
+                    self.report(
+                        req,
+                        Some(speaker),
+                        "plan",
+                        0,
+                        1,
+                        ProgressState::Reused,
+                        json!({}),
+                    );
+                    (serde_json::from_value(v).map_err(corrupt)?, false)
+                }
+                None => {
+                    self.report(
+                        req,
+                        Some(speaker),
+                        "plan",
+                        0,
+                        1,
+                        ProgressState::Started,
+                        json!({}),
+                    );
+                    let check = |v: &Value| -> std::result::Result<(), Vec<String>> {
+                        let plan: BoardPlan =
+                            serde_json::from_value(v.clone()).map_err(|e| vec![e.to_string()])?;
+                        let problems = plan_problems(&plan, &frame.topics, &taken);
+                        if problems.is_empty() {
+                            Ok(())
+                        } else {
+                            Err(problems)
+                        }
+                    };
+                    let r = structured_with_repair(
+                        self.llm.as_ref(),
+                        &request,
+                        &schema,
+                        &check,
+                        PLAN_REPAIRS,
+                    )
+                    .await;
+                    let planned = match r {
+                        Ok(Repaired { value, .. }) => match serde_json::from_value(value) {
+                            Ok(plan) => Planned {
+                                plan: Some(plan),
+                                error: None,
+                                failure: None,
+                            },
+                            Err(e) => Planned {
+                                plan: None,
+                                error: Some(e.to_string()),
+                                failure: Some("invalid-output".into()),
+                            },
+                        },
+                        Err(f) => Planned {
+                            plan: None,
+                            error: Some(f.error.to_string()),
+                            failure: Some(crate::standup::failure_of(&f.error).into()),
+                        },
+                    };
+                    let state = if planned.plan.is_some() {
+                        ProgressState::Done
+                    } else {
+                        ProgressState::Failed
+                    };
+                    let detail = json!({
+                        "proposals": planned.plan.as_ref().map(|p| p.proposals.len()),
+                        "error": planned.error,
+                    });
+                    self.report(req, Some(speaker), "plan", 0, 1, state, detail);
+                    (self.remember(req, "plan", 0, hash, &planned).await?, true)
+                }
+            };
+        let Some(plan) = planned.plan else {
+            let line = Line {
+                seq,
+                speaker: "system".into(),
+                text: "The board could not agree on a plan; the CEO is told.".into(),
+            };
+            self.spoke(req, &line, None, false).await?;
+            let reason = match planned.failure.as_deref() {
+                Some("infrastructure") => JobFailure::Infrastructure,
+                Some("model") => JobFailure::Model,
+                Some("timeout") => JobFailure::Timeout,
+                _ => JobFailure::InvalidOutput,
+            };
+            return Ok(vec![Outcome::JobFailed {
+                job_id: req.job_id,
+                reason,
+            }]);
+        };
+        let opening = Line {
+            seq,
+            speaker: speaker.id.clone(),
+            text: plan.say.trim().to_string(),
+        };
+        self.spoke(req, &opening, Some(speaker), fresh).await?;
+        let mut lines = vec![opening];
+        seq += 1;
+
+        // check#1…N (ADR-0068)
+        let total = u32::try_from(plan.proposals.len()).unwrap_or(u32::MAX);
+        // (index in the plan, proposal)
+        let mut kept: Vec<(usize, &BoardProposal)> = Vec::new();
+        for (i, proposal) in plan.proposals.iter().enumerate() {
+            let index = u32::try_from(i + 1).unwrap_or(u32::MAX);
+            let pitch = as_pitch(proposal);
+            let user = pitch_check_prompt(&frame.pack, &pitch);
+            let schema = pitch_check_schema();
+            let request = LlmRequest {
+                profile: profile.clone(),
+                system: vec![system.clone()],
+                messages: vec![LlmMessage::user(user.clone())],
+                max_tokens: CHECK_ANSWER,
+                reasoning_tokens: Some(PITCH_REASONING),
+            };
+            let hash = stage_hash(&["check", &system, &user, &schema.to_string()]);
+            let check: PitchCheck = match self.recall(req, "check", index, Some(&hash)).await? {
+                Some(v) => {
+                    self.report(
+                        req,
+                        Some(speaker),
+                        "check",
+                        index,
+                        total,
+                        ProgressState::Reused,
+                        json!({}),
+                    );
+                    serde_json::from_value(v).map_err(corrupt)?
+                }
+                None => {
+                    self.report(
+                        req,
+                        Some(speaker),
+                        "check",
+                        index,
+                        total,
+                        ProgressState::Started,
+                        json!({}),
+                    );
+                    let c = match self.llm.research(&request, &schema).await {
+                        Ok(r) => PitchCheck::from_answer(&r.value, &r.sources),
+                        Err(e) => PitchCheck {
+                            verifiable: None,
+                            note: String::new(),
+                            claims: 0,
+                            error: Some(e.to_string()),
+                        },
+                    };
+                    let state = if c.error.is_some() {
+                        ProgressState::Failed
+                    } else {
+                        ProgressState::Done
+                    };
+                    let detail = json!({"title": pitch.title, "verifiable": c.verifiable, "claims": c.claims, "error": c.error});
+                    self.report(req, Some(speaker), "check", index, total, state, detail);
+                    self.remember(req, "check", index, hash, &c).await?
+                }
+            };
+            if check.verifiable == Some(false) {
+                let why = if check.note.is_empty() {
+                    "nothing on the web verifies what it promises".to_string()
+                } else {
+                    check.note.clone()
+                };
+                let line = Line {
+                    seq,
+                    speaker: "system".into(),
+                    text: format!("\u{ab}{}\u{bb} is set aside: {why}", pitch.title),
+                };
+                self.spoke(req, &line, None, false).await?;
+                lines.push(line);
+                seq += 1;
+            } else {
+                kept.push((i, proposal));
+            }
+        }
+
+        // Schedule: items in plan order; each waits for the earlier item it
+        // builds on, if that one was kept; editors take turns.
+        let mut workstreams: Vec<(u64, String)> = Vec::new();
+        let mut items: Vec<PlannedOut> = Vec::new();
+        let mut titles: Vec<String> = Vec::new();
+        let minutes: Vec<Value> = lines
+            .iter()
+            .map(|l| json!({"seq": l.seq, "speaker": l.speaker, "text": l.text}))
+            .collect();
+        for (n, (i, proposal)) in kept.iter().enumerate() {
+            let pitch = as_pitch(proposal);
+            let editor_id = &frame.editors[n % frame.editors.len()];
+            let editor = req
+                .staff
+                .iter()
+                .find(|s| &s.id == editor_id)
+                .cloned()
+                .ok_or_else(|| invalid(format!("board editor {editor_id} is not in the job")))?;
+            let ws_name = proposal.workstream.trim().to_string();
+            let workstream = if ws_name.is_empty() {
+                None
+            } else {
+                let r = workstream_ref_for(&req.company_id, &ws_name);
+                let at = match workstreams.iter().position(|(x, _)| *x == r) {
+                    Some(at) => at,
+                    None => {
+                        workstreams.push((r, ws_name.clone()));
+                        workstreams.len() - 1
+                    }
+                };
+                u8::try_from(at).ok()
+            };
+            let depends_on: Vec<u8> = (proposal.after > 0)
+                .then(|| {
+                    let target = proposal.after as usize - 1;
+                    kept.iter()
+                        .position(|(j, _)| *j == target)
+                        .filter(|at| *at < n)
+                        .and_then(|at| u8::try_from(at).ok())
+                })
+                .flatten()
+                .into_iter()
+                .collect();
+            let publish = proposal.publish_day.clamp(1, MAX_PUBLISH_DAY);
+            let brief_ref = brief_ref_for(&req.company_id, req.job_id, *i);
+            let record = BriefRecord {
+                job_id: req.job_id,
+                brief: Brief {
+                    content_id: format!("content-{brief_ref:x}"),
+                    title: pitch.title.clone(),
+                    slug: slugify(&pitch.title),
+                    angle: pitch.angle.clone(),
+                    keywords: pitch.keywords.clone(),
+                    target_words: DEFAULT_TARGET_WORDS,
+                    language: self.site.language.clone(),
+                    notes: String::new(),
+                },
+                writer: String::new(),
+                editor: editor.id.clone(),
+                minutes: minutes.clone(),
+                work_item: None,
+                staff: vec![editor.clone()],
+            };
+            self.store
+                .put_brief(
+                    &req.company_id,
+                    brief_ref,
+                    serde_json::to_value(&record).map_err(corrupt)?,
+                )
+                .await?;
+            self.store
+                .set_item_text(
+                    &req.company_id,
+                    &format!("brief:{brief_ref}"),
+                    Some(&pitch.title),
+                    Some(&pitch.angle),
+                )
+                .await?;
+            titles.push(format!("\u{ab}{}\u{bb} on day {publish}", pitch.title));
+            items.push(PlannedOut {
+                brief_ref,
+                editor: editor.id.clone(),
+                priority: priority_of(&proposal.priority).to_string(),
+                workstream,
+                start_offset: u8::try_from(publish.saturating_sub(LEAD_DAYS)).unwrap_or(0),
+                publish_offset: u8::try_from(publish).unwrap_or(13),
+                depends_on,
+            });
+        }
+        for (r, name) in &workstreams {
+            self.store
+                .set_item_text(
+                    &req.company_id,
+                    &format!("workstream:{r}"),
+                    Some(name),
+                    None,
+                )
+                .await?;
+        }
+
+        // The strategist closes with the plan; the minutes keep the theme
+        // and the big bets (no ticket: the CEO does not approve the plan).
+        let closing = if titles.is_empty() {
+            "Nothing survived the checks; nothing is planned this week.".to_string()
+        } else {
+            format!("The plan: {}.", titles.join("; "))
+        };
+        let line = Line {
+            seq,
+            speaker: speaker.id.clone(),
+            text: closing,
+        };
+        self.spoke(req, &line, Some(speaker), fresh).await?;
+        lines.push(line);
+        let mut text = vec![format!("Theme of the week: {}", plan.week_theme.trim())];
+        text.extend(
+            plan.big_bets
+                .iter()
+                .map(|b| format!("Big bet: {}", b.trim())),
+        );
+        text.extend(lines.iter().skip(1).map(|l| l.text.clone()));
+        let item = req
+            .meeting
+            .clone()
+            .unwrap_or_else(|| format!("board-{}", req.job_id));
+        let key = format!("{}:minutes:0", req.job_id);
+        self.post(
+            req,
+            &item,
+            "minutes",
+            &speaker.id,
+            None,
+            &text.join("\n"),
+            json!({"job": req.job_id, "week_theme": plan.week_theme, "big_bets": plan.big_bets, "items": items.len()}),
+            Some(&key),
+        )
+        .await?;
+
+        Ok(vec![Outcome::BoardOutcome {
+            job_id: req.job_id,
+            workstreams: workstreams.into_iter().map(|(r, _)| r).collect(),
+            items,
+        }])
+    }
+
+    /// The frame of a first run: the cap, the reviewing editors, the pack and
+    /// the season's calendar topics.
+    fn board_frame(&self, req: &JobRequest, ctx: &BoardContext) -> Frame {
+        let mut editors: Vec<&StaffRef> = req.staff.iter().filter(|s| s.role == "editor").collect();
+        if editors.is_empty() {
+            editors = req
+                .staff
+                .iter()
+                .filter(|s| s.role == "editor-in-chief")
+                .collect();
+        }
+        editors.sort_by(|a, b| staff_order(&a.id).cmp(&staff_order(&b.id)));
+        let cap = if editors.is_empty() {
+            0
+        } else {
+            board_cap(
+                ctx.planned_room,
+                ctx.standup.minutes_per_article,
+                ctx.standup
+                    .model_minutes_per_day
+                    .unwrap_or(MODEL_MINUTES_PER_DAY),
+            )
+        };
+        let why_not = if !editors.is_empty() && cap == 0 {
+            "The plan is full: every planned item still waits to start.".to_string()
+        } else if editors.is_empty() {
+            "Nobody on the board reviews.".to_string()
+        } else {
+            String::new()
+        };
+        let published = published(&self.site);
+        let taken = Taken::new(&self.site, &ctx.standup, &published);
+        let topics = if cap > 0 {
+            board_topics(&self.site, ctx.standup.today.as_deref(), &taken)
+        } else {
+            Vec::new()
+        };
+        // The standup's pack without its calendar section (the frame lists
+        // the topics with their aliases), the cap line the board's own.
+        let pack = if cap > 0 {
+            let mut c = ctx.standup.clone();
+            c.today = None;
+            let p = context_pack(&self.site, &c, cap);
+            let head = match ctx.standup.today.as_deref() {
+                Some(d) => format!("{BOARD_CAP_LABEL}{cap}\nDate: {d}"),
+                None => format!("{BOARD_CAP_LABEL}{cap}"),
+            };
+            p.text.replacen(&format!("{CAP_LABEL}{cap}"), &head, 1)
+        } else {
+            String::new()
+        };
+        Frame {
+            cap,
+            editors: editors.iter().map(|s| s.id.clone()).collect(),
+            pack,
+            topics,
+            why_not,
+        }
+    }
+}

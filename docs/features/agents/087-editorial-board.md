@@ -5,6 +5,8 @@ status: in-progress
 importance: high
 paths:
   - crates/sim-core/tests/editorial_board.rs
+  - crates/orchestrator/src/board.rs
+  - crates/orchestrator/tests/board.rs
 adrs:
   - ADR-0031
   - ADR-0059
@@ -30,11 +32,18 @@ CEO does not approve the plan; the publish gate still guards what goes live.
   `start_due_planned` at each standup and after the board, `BoardFailed` on a failure or a
   timeout, world format 3. Tests: `crates/sim-core/tests/editorial_board.rs`; the golden script
   answers a board (`tests/golden.rs`).
+- **Orchestrator** (`crates/orchestrator/src/board.rs`): `frame#0` (the cap from the room under
+  `MAX_PLANNED` and the measured throughput, the reviewing editors, the standup's context pack and
+  the season's calendar topics by alias), `plan#0` (the strategist's plan, one repair turn for an
+  unknown topic, a taken or repeated title, a forward dependency), `check#i` web checks
+  (ADR-0068), then briefs without a writer, plan text under `brief:<ref>` and
+  `workstream:<ref>`, minutes, and `BoardOutcome`. Start days are two days before the planned
+  publish day; editors take turns. A board brief's first draft keeps the writer the sim staffed
+  (`ArtifactRecord.writer`). Tests: `crates/orchestrator/tests/board.rs`; through the JSON
+  boundary: `client-wasm`'s `the_editorial_board_through_json`.
 
 ## Not built yet
 
-- The orchestrator's board job: frame, the week's proposals from the content calendar, web checks,
-  brief and workstream records.
 - The host: the board's context, the one-time rebase of the owner's company, plan views with
   planned days, workstreams and goals.
 

@@ -157,6 +157,14 @@ orchestrator's `Outcome` JSON (see "Server commands" below). Then:
   raised (the same ticket the sim raises itself when a standup's outcome has
   not arrived after 60 game minutes); a work-item job blocks the item with a
   `needs-media`, `needs-page` or `escalation` ticket carrying the `failure`;
+- `BoardOutcome{job_id, workstreams, items}` (ADR-0069, the weekly editorial
+  board's `board` job, Monday 10:00 and a project's first 10:00 once
+  `SetPolicy{EditorialBoard: true}`): one `planned` item per entry, not started
+  (`unstarted: true`, no writer, outside the WIP limit), with `startDay`,
+  `dueDay`, `publishDay` (planned), `workstream` and `dependsOn`; the sim
+  starts due items itself, with the lowest-id free drafter, at each standup and
+  right after the board. A failed or silent board raises `board-failed`
+  (`retry` holds it again, `skip`, the default, waits for Monday);
 - `DeployLanded` → `published`; `DeployFailed` (also only for a `scheduled`
   item) → `blocked` with a `deploy-failed` ticket: `retry` requests the
   Publish job again, `acknowledge` puts the item back to `scheduled`.
@@ -174,15 +182,19 @@ on `policies.autonomy`:
   published without asking, anything else gets the ticket;
 - `autonomous`: the Publish job is requested at once.
 
-`plan_json(project?)` follows publishing-plan.md §7 (`goals` and
-`workstreams` are empty until they exist in the sim) and adds per item
-`briefRef`, `revision`, `lastScore`, `currentPhase`, `awaitingApproval`,
+`plan_json(project?)` follows publishing-plan.md §7 (`goals`: one per open
+project, `monthly-readers` against its target; `workstreams[]`: `id, project,
+status, textRef`, the plan text's key `workstream:<textRef>`) and adds per item
+`briefRef` and `briefRefText` (the same u64 as text: the board's plan text key
+`brief:<briefRefText>`), `startDay`, `dueDay`, `publishDay` (live, else
+planned), `plannedPublishDay`, `unstarted`, `revision`, `lastScore`, `currentPhase`, `awaitingApproval`,
 `escalations`, `createdDay`, `meeting`, per phase `job` and `score` (reviews),
 plus `jobs[]` (pending: `id, kind, project, workItem, meeting,
 requestedMinute, requestedStep, dueStep`), `nextDueStep` (the earliest
 `dueStep`, `null` with no pending job; the same as `next_due_step()`),
 `wip[]` (per open project: `project, limit, open, room, awaitingApproval,
-blocked, inWritingLoop, freeWriters[]`: what a standup may still commission)
+blocked, inWritingLoop, freeWriters[], unstarted, plannedRoom, editorialBoard`:
+what a standup may still commission, and what a board may still plan)
 and `feed[]` (`kind: published|blocked, project, workItem, minute`).
 `dueStep` is the step at which the job's phase minimum has elapsed (for a
 standup: its request + 30 game minutes). It is a view for the host's clock
@@ -236,6 +248,7 @@ Every command, with an example:
 {"SetPolicy":{"Overtime":"Crunch"}}        // Never | Allow | Crunch
 {"SetPolicy":{"Autonomy":"ApproveMajor"}}  // ApproveAll | ApproveMajor | Autonomous (or approve-all | approve-major | autonomous)
 {"SetPolicy":{"QualityBar":8}}             // 5..=10
+{"SetPolicy":{"EditorialBoard":true}}       // the weekly editorial board (ADR-0069), off by default
 // inbox and delegation
 {"AnswerTicket":{"ticket":"ticket-3","option":"arrange-hiring"}}
 {"AnswerTicket":{"ticket":"ticket-4","option":"publish"}}   // the publish gate: publish | send-back | kill | defer
@@ -256,6 +269,9 @@ digest's `artifact_sha` may be a hex string (its first 16 bytes are kept),
 
 ```jsonc
 {"MeetingOutcome":{"job_id":1,"briefs":[{"brief_ref":42,"writer":"staff-1","editor":"staff-5"}]}}
+{"BoardOutcome":{"job_id":5,"workstreams":[901],"items":[{"brief_ref":601,"editor":"staff-5","priority":"High",
+                 "workstream":0,"start_offset":0,"publish_offset":3},
+                {"brief_ref":602,"editor":"staff-5","priority":"Normal","start_offset":1,"publish_offset":5,"depends_on":[0]}]}}
 {"JobCompleted":{"job_id":2,"digest":{"ok":true,"score":0,"words":930,"qa_defects":0,
                  "artifact_sha":"0123456789abcdef0123456789abcdef01234567"}}}
 {"JobCompleted":{"job_id":3,"digest":{"ok":true,"score":8,"words":0,"qa_defects":1,"artifact_sha":null}}}

@@ -192,7 +192,7 @@ impl Sim {
 
     /// Parses a JSON command and applies it now: a player [`Command`] or a
     /// [`ServerCommand`] (orchestrator results `MeetingOutcome`,
-    /// `JobCompleted`, `JobFailed`; deploy notices `DeployLanded`,
+    /// `BoardOutcome`, `JobCompleted`, `JobFailed`; deploy notices `DeployLanded`,
     /// `DeployFailed`; signals; utterances), told apart by the variant name. Both go through the shared validation
     /// (`sim_core::validate_input`). `Err` carries the reason. Shapes: README.
     pub fn apply_command_json(&mut self, json: &str) -> Result<(), String> {
@@ -254,9 +254,10 @@ impl Sim {
 
 /// `ServerCommand` variant names: a JSON command with one of these tags is a
 /// server command, anything else a player command.
-const SERVER_VARIANTS: [&str; 8] = [
+const SERVER_VARIANTS: [&str; 9] = [
     "JobCompleted",
     "MeetingOutcome",
+    "BoardOutcome",
     "DeployLanded",
     "Utterance",
     "SiteSignals",
@@ -995,5 +996,66 @@ mod tests {
             .unwrap();
         let v: Value = serde_json::from_str(&sim.finance_json()).unwrap();
         assert_eq!(v["booksUnkept"], true);
+    }
+
+    /// The editorial board through the JSON boundary (ADR-0069): the policy,
+    /// the board's request, the orchestrator's `BoardOutcome` (after
+    /// `outcomesForSim`: numeric refs) and the plan's new fields.
+    #[test]
+    fn the_editorial_board_through_json() {
+        let mut sim = Sim::demo(5);
+        sim.apply_command_json(r#"{"SetPolicy":{"EditorialBoard":true}}"#)
+            .unwrap();
+        sim.advance(1_520); // 10:02
+        let effects: Value = serde_json::from_str(&sim.drain_effects_json()).unwrap();
+        let board = effects
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["kind"] == "board")
+            .expect("a board job at 10:00")
+            .clone();
+        assert!(board["staff"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s["role"] == "editor"));
+        let outcome = serde_json::json!({"BoardOutcome": {"job_id": board["job_id"],
+        "workstreams": [8_361_854_316_634_078_731_u64],
+        "items": [
+            {"brief_ref": 5_861_808_041_880_732_776_u64, "editor": "staff-5", "priority": "High",
+             "workstream": 0, "start_offset": 0, "publish_offset": 2},
+            {"brief_ref": 2, "editor": "staff-5", "priority": "Normal",
+             "start_offset": 3, "publish_offset": 5, "depends_on": [0]}
+        ]}})
+        .to_string();
+        assert_eq!(sim.validate_command_json(&outcome), None);
+        sim.apply_command_json(&outcome).unwrap();
+        let effects: Value = serde_json::from_str(&sim.drain_effects_json()).unwrap();
+        assert_eq!(effects[0]["kind"], "draft", "the first item starts now");
+        let plan: Value = serde_json::from_str(&sim.plan_json(None)).unwrap();
+        let items = plan["items"].as_array().unwrap();
+        let first = &items[items.len() - 2];
+        let second = &items[items.len() - 1];
+        assert_eq!(first["status"], "in-progress");
+        assert_eq!(first["briefRefText"], "5861808041880732776");
+        assert_eq!(first["workstream"], "workstream-1");
+        assert_eq!(first["startDay"], 0);
+        assert_eq!(first["dueDay"], 1);
+        assert_eq!(first["publishDay"], 2);
+        assert_eq!(first["unstarted"], false);
+        assert_eq!(second["status"], "planned");
+        assert_eq!(second["unstarted"], true);
+        assert_eq!(second["dependsOn"], serde_json::json!([first["id"]]));
+        assert_eq!(second["priority"], "normal");
+        assert_eq!(
+            plan["workstreams"][0]["textRef"], "8361854316634078731",
+            "a u64 crosses as text"
+        );
+        assert_eq!(plan["goals"][0]["metric"], "monthly-readers");
+        let wip = &plan["wip"][0];
+        assert_eq!(wip["unstarted"], 1);
+        assert_eq!(wip["plannedRoom"], 9);
+        assert_eq!(wip["editorialBoard"], true);
     }
 }

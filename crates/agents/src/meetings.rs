@@ -597,6 +597,158 @@ Answer with JSON only:\n\
     )
 }
 
+// ---------------------------------------------------------------------------
+// The weekly editorial board (ADR-0069)
+// ---------------------------------------------------------------------------
+
+/// Items one board plans at most (the sim's `MAX_BOARD_ITEMS`).
+pub const MAX_BOARD_PROPOSALS: usize = 7;
+/// The latest publish day a board may plan, days from the board (the sim's
+/// `MAX_BOARD_OFFSET`).
+pub const MAX_PUBLISH_DAY: u32 = 13;
+/// Working days a board plans for (its throughput unit).
+pub const BOARD_WORKING_DAYS: f64 = 5.0;
+/// The answer budget of the board's planning call, tokens.
+pub const BOARD_ANSWER: u32 = 2400;
+/// The line of the board's context that states its cap (`… at most 5`).
+pub const BOARD_CAP_LABEL: &str = "Proposals this week: at most ";
+
+/// How many items a board may plan (ADR-0069): the smallest of the room
+/// under the sim's limit of planned items (`None`: the host did not say),
+/// the model's throughput for a working week and [`MAX_BOARD_PROPOSALS`].
+/// Throughput is `⌊5 × model_minutes_per_day ÷ minutes_per_article⌋`, and
+/// 5 (an article a working day) until the host has measured an article.
+#[allow(clippy::float_arithmetic)]
+pub fn board_cap(
+    room: Option<usize>,
+    minutes_per_article: Option<f64>,
+    model_minutes_per_day: f64,
+) -> usize {
+    let throughput = match minutes_per_article {
+        Some(m) if m.is_finite() && m > 0.0 => {
+            let n = (BOARD_WORKING_DAYS * model_minutes_per_day.max(0.0) / m).floor();
+            if n >= MAX_BOARD_PROPOSALS as f64 {
+                MAX_BOARD_PROPOSALS
+            } else {
+                // 0 ≤ n < MAX_BOARD_PROPOSALS: the cast is exact.
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let n = n as usize;
+                n.max(1)
+            }
+        }
+        _ => 5,
+    };
+    room.unwrap_or(usize::MAX)
+        .min(throughput)
+        .min(MAX_BOARD_PROPOSALS)
+}
+
+/// One calendar topic the board may plan, by its alias (`T1`, …).
+pub struct BoardTopic<'a> {
+    pub alias: &'a str,
+    pub title: &'a str,
+    pub keywords: &'a [String],
+    /// The season or event it belongs to.
+    pub season: &'a str,
+}
+
+/// The board's plan as the model answers it (`plan#0`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoardPlan {
+    /// What the strategist tells the board (the speech bubble).
+    pub say: String,
+    pub week_theme: String,
+    pub proposals: Vec<BoardProposal>,
+    #[serde(default)]
+    pub big_bets: Vec<String>,
+}
+
+/// One proposed article of the week.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoardProposal {
+    /// A calendar topic's alias, or empty when it is none of them.
+    #[serde(default)]
+    pub topic: String,
+    pub title: String,
+    pub angle: String,
+    pub keywords: Vec<String>,
+    /// `high`, `normal` or `low`.
+    pub priority: String,
+    /// Days from the board, 1 to [`MAX_PUBLISH_DAY`].
+    pub publish_day: u32,
+    /// The workstream: the season or theme, a short name.
+    pub workstream: String,
+    /// The number (from 1) of an earlier proposal this one builds on; 0 for none.
+    #[serde(default)]
+    pub after: u32,
+}
+
+/// The user turn of the board's planning call (`plan#0`).
+pub fn board_prompt(context: &str, topics: &[BoardTopic<'_>], cap: usize) -> String {
+    let topics = if topics.is_empty() {
+        "(none)".to_string()
+    } else {
+        topics
+            .iter()
+            .map(|t| {
+                let kw = if t.keywords.is_empty() {
+                    String::new()
+                } else {
+                    format!(" — keywords: {}", t.keywords.join(", "))
+                };
+                format!("- {} \u{ab}{}\u{bb} ({}){kw}", t.alias, t.title, t.season)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    format!(
+        "## Task: weekly board\n\n{context}\n\n## Calendar topics (not yet published)\n{topics}\n\n{BOARD_CAP_LABEL}{cap}\n\n\
+Plan the articles of the next two weeks. Propose at most {cap}, the strongest first: the calendar's \
+topics when their season is now or near, and articles that fill gaps in what is published. For each: \
+`topic` (the T alias of the calendar topic it is, or an empty string), a `title` a reader would click \
+(at most 70 characters), the `angle` in one sentence, 2 to 6 `keywords`, a `priority` (`high`, \
+`normal` or `low`), a `publish_day` (days from today, 1 to {MAX_PUBLISH_DAY}; spread them over the \
+two weeks), a `workstream` (the season or theme it belongs to, two to four words) and `after` (the \
+number of an earlier proposal it builds on, or 0). Never repeat a published or planned title. Give the \
+`week_theme` in one sentence, up to three `big_bets` the CEO should know about (one sentence each), \
+and `say`: what you tell the board, two sentences. Answer with JSON only."
+    )
+}
+
+/// The schema of the board's plan with at most `cap` proposals.
+pub fn board_schema(cap: usize) -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["say", "week_theme", "proposals", "big_bets"],
+        "properties": {
+            "say": {"type": "string", "minLength": 20, "maxLength": 400},
+            "week_theme": {"type": "string", "minLength": 5, "maxLength": 200},
+            "proposals": {
+                "type": "array", "minItems": 1, "maxItems": cap.max(1),
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["topic", "title", "angle", "keywords", "priority", "publish_day", "workstream", "after"],
+                    "properties": {
+                        "topic": {"type": "string", "maxLength": 4},
+                        "title": {"type": "string", "minLength": 10, "maxLength": 70},
+                        "angle": {"type": "string", "minLength": 10, "maxLength": 240},
+                        "keywords": {"type": "array", "minItems": 2, "maxItems": 6,
+                                     "items": {"type": "string", "minLength": 2, "maxLength": 40}},
+                        "priority": {"type": "string", "enum": ["high", "normal", "low"]},
+                        "publish_day": {"type": "integer", "minimum": 1, "maximum": MAX_PUBLISH_DAY},
+                        "workstream": {"type": "string", "minLength": 2, "maxLength": 40},
+                        "after": {"type": "integer", "minimum": 0, "maximum": cap.max(1)}
+                    }
+                }
+            },
+            "big_bets": {"type": "array", "maxItems": 3,
+                         "items": {"type": "string", "minLength": 5, "maxLength": 240}}
+        }
+    })
+}
+
 /// The user turn of the commissioning call.
 /// `check#i` (ADR-0068): can the central promise of a pitch be verified on
 /// the web before it is commissioned? Answered with web search.

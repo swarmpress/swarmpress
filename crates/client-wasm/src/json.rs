@@ -12,7 +12,7 @@ use sim_core::finance::CostBreakdown;
 use sim_core::geom::PosMm;
 use sim_core::ids::{PersonaId, ProjectId, StaffId};
 use sim_core::inbox::TicketKind;
-use sim_core::plan::{can_draft, Effect, PhaseKind, WorkItemStatus, WIP_LIMIT};
+use sim_core::plan::{can_draft, Effect, PhaseKind, WorkItemStatus, MAX_PLANNED, WIP_LIMIT};
 use sim_core::projects::{ProjectStatus, MONTH_DAYS};
 use sim_core::render_state::{Light, RenderState};
 use sim_core::roles::Department;
@@ -664,12 +664,14 @@ pub fn plan(w: &World, project: Option<&str>) -> Value {
             json!({
                 "id": i.id.to_string(),
                 "project": i.project.to_string(),
-                "workstream": Value::Null,
+                "workstream": opt_id(i.workstream),
                 "kind": i.kind.slug(),
                 "status": i.status.slug(),
                 "priority": i.priority.slug(),
                 "owner": opt_id(i.owner),
                 "briefRef": i.brief_ref,
+                // a u64 a JS number cannot hold exactly: the plan text's key
+                "briefRefText": i.brief_ref.map(|r| r.to_string()),
                 "revision": i.revision,
                 "lastScore": i.last_score,
                 "currentPhase": i.phase().map(|p| p.kind.slug()),
@@ -677,9 +679,13 @@ pub fn plan(w: &World, project: Option<&str>) -> Value {
                 "escalations": i.escalations,
                 "phases": phases,
                 "todos": [],
-                "dependsOn": [],
-                "dueDay": Value::Null,
-                "publishDay": i.published_step.map(day_of),
+                "dependsOn": i.depends_on.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                "startDay": i.start_day,
+                "dueDay": i.due_day,
+                // the day it went live, else the board's planned day (ADR-0069)
+                "publishDay": i.published_step.map(day_of).or(i.publish_day),
+                "plannedPublishDay": i.publish_day,
+                "unstarted": i.is_unstarted(),
                 "createdDay": day_of(i.created_step),
                 "meeting": opt_id(i.meeting),
                 "tickets": i.tickets.iter().map(ToString::to_string).collect::<Vec<_>>(),
@@ -733,6 +739,10 @@ pub fn plan(w: &World, project: Option<&str>) -> Value {
                 "awaitingApproval": mine().filter(|i| i.awaiting_approval()).count(),
                 "blocked": mine().filter(|i| i.status == WorkItemStatus::Blocked).count(),
                 "inWritingLoop": mine().filter(|i| i.in_writing_loop()).count(),
+                // the board's items not started yet, and the room under MAX_PLANNED (ADR-0069)
+                "unstarted": w.unstarted_items(p.id),
+                "plannedRoom": MAX_PLANNED.saturating_sub(w.unstarted_items(p.id)),
+                "editorialBoard": w.company.policies.editorial_board,
                 "freeWriters": free_writers,
             })
         })
@@ -751,9 +761,41 @@ pub fn plan(w: &World, project: Option<&str>) -> Value {
             })
         })
         .collect();
+    // One goal per project: monthly readers against its target (no `Goal`
+    // entity yet, ADR-0069).
+    let goals: Vec<Value> = w
+        .projects
+        .values()
+        .filter(|p| p.is_open() && wanted(p.id))
+        .map(|p| {
+            let target = u64::from(p.kpis.goal_monthly_readers);
+            json!({
+                "id": format!("goal-{}", p.id),
+                "project": p.id.to_string(),
+                "metric": "monthly-readers",
+                "target": target,
+                "current": target * u64::from(p.kpis.goal_progress_pm) / 1000,
+            })
+        })
+        .collect();
+    let workstreams: Vec<Value> = w
+        .plan
+        .workstreams
+        .values()
+        .filter(|ws| wanted(ws.project))
+        .map(|ws| {
+            json!({
+                "id": ws.id.to_string(),
+                "project": ws.project.to_string(),
+                "status": "active",
+                // the plan text's key, `workstream:<textRef>`
+                "textRef": ws.text_ref.to_string(),
+            })
+        })
+        .collect();
     json!({
-        "goals": [],
-        "workstreams": [],
+        "goals": goals,
+        "workstreams": workstreams,
         "items": items,
         "jobs": jobs,
         "nextDueStep": w.next_due_step(),

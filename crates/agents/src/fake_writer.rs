@@ -120,6 +120,7 @@ pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
         "standup opening" => return FakeReply::Text(opening_line(&p)),
         "pitch" => return FakeReply::Json(pitch(&p, &later)),
         "commission" => return FakeReply::Json(commission(&p)),
+        "weekly board" => return FakeReply::Json(weekly_board(&p)),
         // Every pitch checks out (ADR-0068), on a made-up official source.
         "pitch check" => {
             return FakeReply::Json(json!({"verifiable": true,
@@ -506,7 +507,7 @@ fn section_review(p: &Prompt<'_>, rest: &str) -> Value {
 
 // ---------------------------------------------------------------- the standup
 
-use crate::meetings::CAP_LABEL;
+use crate::meetings::{BOARD_CAP_LABEL, CAP_LABEL};
 
 /// Every `«title»` in a line.
 fn quoted(line: &str) -> Vec<&str> {
@@ -556,6 +557,107 @@ fn standup_topics(prompt: &str, later: &[&str]) -> (Vec<(String, Vec<String>)>, 
         taken.extend(quoted(text).iter().map(|t| t.to_lowercase()));
     }
     (calendar, taken)
+}
+
+/// The weekly board's plan (ADR-0069): the calendar topics nobody has, then
+/// the built-in topics nobody has, as many as the cap allows; publish days
+/// two apart from day 2; the second item builds on the first.
+fn weekly_board(p: &Prompt<'_>) -> Value {
+    let most = usize::try_from(p.number(BOARD_CAP_LABEL).max(1)).unwrap_or(1);
+    let (_, mut taken) = standup_topics(p.0, &[]);
+    // A title is free when nothing taken or proposed shares two of its longer words.
+    let words = |t: &str| -> Vec<String> {
+        t.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| w.chars().count() > 3)
+            .map(String::from)
+            .collect()
+    };
+    let free = |title: &str, taken: &[String]| {
+        let mine = words(title);
+        !taken.iter().any(|t| {
+            t == &title.to_lowercase() || words(t).iter().filter(|w| mine.contains(w)).count() >= 2
+        })
+    };
+    // (alias, title, season, keywords) from `- T1 «title» (season) — keywords: a, b`
+    let mut proposals: Vec<Value> = Vec::new();
+    let mut in_topics = false;
+    for line in p.0.lines() {
+        if let Some(head) = line.strip_prefix("## ") {
+            in_topics = head.starts_with("Calendar topics (not yet published)");
+            continue;
+        }
+        if !in_topics || proposals.len() >= most {
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("- ") else {
+            continue;
+        };
+        let alias = rest.split_whitespace().next().unwrap_or("");
+        let Some(title) = quoted(line).first().copied() else {
+            continue;
+        };
+        if !free(title, &taken) {
+            continue;
+        }
+        taken.push(title.to_lowercase());
+        let season = line
+            .rsplit_once('(')
+            .and_then(|(_, r)| r.split_once(')'))
+            .map_or("The season", |(s, _)| s);
+        let mut keywords: Vec<String> = line
+            .split_once("— keywords: ")
+            .map(|(_, k)| {
+                k.split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .take(6)
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default();
+        for extra in [title.to_lowercase(), "cinque terre".to_string()] {
+            if keywords.len() < 2 {
+                keywords.push(cap(&extra, 40));
+            }
+        }
+        proposals.push(json!({
+            "topic": alias,
+            "title": cap(title, 70),
+            "angle": format!("A seasonal guide to {}, and what a visitor should plan for.", title.to_lowercase()),
+            "keywords": keywords,
+            "priority": "normal",
+            "workstream": cap(season, 40),
+        }));
+    }
+    for t in PITCH_TOPICS {
+        if proposals.len() >= most {
+            break;
+        }
+        if !free(t.title, &taken) {
+            continue;
+        }
+        taken.push(t.title.to_lowercase());
+        proposals.push(json!({
+            "topic": "",
+            "title": t.title,
+            "angle": t.angle,
+            "keywords": t.keywords,
+            "priority": "high",
+            "workstream": "Evergreen guides",
+        }));
+    }
+    for (i, prop) in proposals.iter_mut().enumerate() {
+        let day = u32::try_from(2 + 2 * i).unwrap_or(13).min(13);
+        prop["publish_day"] = json!(day);
+        prop["after"] = json!(u32::from(i == 1));
+    }
+    json!({
+        "say": "This is the plan for the next two weeks: the season first, then the guides readers keep asking for.",
+        "week_theme": "The season and the guides readers ask for.",
+        "proposals": proposals,
+        "big_bets": [],
+    })
 }
 
 fn opening_line(p: &Prompt<'_>) -> String {

@@ -62,8 +62,10 @@ every Monday; the existing company is rebased once onto the new state format.
    company is rebuilt once by replaying its command log from the seed (`?restore=rebase`).
 
 **Build status (2026-10-06):** decisions 1 to 5 and 8 (the sim) are built and tested
-(`crates/sim-core/tests/editorial_board.rs`, the golden script answers a board). The
-orchestrator's board job (6), the host's context, the rebase path and the Plan views follow.
+(`crates/sim-core/tests/editorial_board.rs`, the golden script answers a board), and so is the
+orchestrator's board job (6, `crates/orchestrator/src/board.rs`). The plan text lives under the
+store's existing item text, keyed `brief:<ref>` and `workstream:<ref>`, so no store interface
+changed. The host's context, the rebase path and the Plan views follow.
 
 ## Consequences
 

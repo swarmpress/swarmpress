@@ -84,7 +84,7 @@ const UNDER_COVERED: usize = 3;
 /// The longest opening kept, characters (cut at a sentence).
 const OPENING_CHARS: usize = 600;
 /// The site's editorial calendar, carried by the knowledge pack.
-const CALENDAR_PATH: &str = "content/config/content-calendar.json";
+pub(crate) const CALENDAR_PATH: &str = "content/config/content-calendar.json";
 /// Where the site keeps its articles.
 const BLOG_DIR: &str = "content/pages/blog/";
 
@@ -184,10 +184,10 @@ pub struct ContextPack {
 
 /// One published article as the pack and the de-duplication see it.
 #[derive(Debug, Clone)]
-struct Published {
-    title: String,
-    category: Option<String>,
-    slug: String,
+pub(crate) struct Published {
+    pub(crate) title: String,
+    pub(crate) category: Option<String>,
+    pub(crate) slug: String,
 }
 
 /// `Oct 15, 2023` or `2023-10-15` as `(year, month, day)`; unknown: zeros.
@@ -219,7 +219,7 @@ fn story_date(s: &str) -> (u32, u32, u32) {
 
 /// The site's articles, newest first: the blog index's stories by date
 /// (then id), then article pages the index does not list yet.
-fn published(site: &SiteBinding) -> Vec<Published> {
+pub(crate) fn published(site: &SiteBinding) -> Vec<Published> {
     let Some(k) = site.knowledge.as_ref() else {
         return Vec::new();
     };
@@ -277,23 +277,23 @@ type Topic = (String, Vec<String>);
 type Pitched<'a> = (String, &'a StaffRef, String, Pitch);
 
 /// The answer budget of a pitch check (ADR-0068).
-const CHECK_ANSWER: u32 = 900;
+pub(crate) const CHECK_ANSWER: u32 = 900;
 
 /// What a pitch check found (ADR-0068), as stored for a re-run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct PitchCheck {
+pub(crate) struct PitchCheck {
     /// `Some(false)`: the promise could not be verified; `None`: the check failed.
-    verifiable: Option<bool>,
-    note: String,
+    pub(crate) verifiable: Option<bool>,
+    pub(crate) note: String,
     /// Claims whose source the search returned.
-    claims: usize,
+    pub(crate) claims: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
+    pub(crate) error: Option<String>,
 }
 
 impl PitchCheck {
     /// A pitch counts as verifiable only with at least one claim whose source the search returned.
-    fn from_answer(value: &Value, sources: &[String]) -> Self {
+    pub(crate) fn from_answer(value: &Value, sources: &[String]) -> Self {
         let said = value["verifiable"].as_bool().unwrap_or(false);
         let claims = agents::research::dossier_from(
             &json!({"claims": value["claims"].clone()}),
@@ -343,7 +343,10 @@ fn same_topic(a: &BTreeSet<String>, b: &BTreeSet<String>) -> bool {
 
 /// The season `today` (`YYYY-MM-DD`) falls in: the calendar's own publish
 /// windows (`MM-DD`, wrapping over new year), else by month.
-fn season<'v>(seasons: &'v serde_json::Map<String, Value>, today: &str) -> Option<&'v Value> {
+pub(crate) fn season<'v>(
+    seasons: &'v serde_json::Map<String, Value>,
+    today: &str,
+) -> Option<&'v Value> {
     let md = today.get(5..10)?;
     let in_window = |s: &Value| {
         let start = s.pointer("/publish_window/start")?.as_str()?;
@@ -575,9 +578,9 @@ struct Seen {
 
 /// What a pitch must not repeat.
 #[derive(Debug, Clone, Default)]
-struct Taken {
+pub(crate) struct Taken {
     /// Slugs of the site's article files.
-    paths: BTreeSet<String>,
+    pub(crate) paths: BTreeSet<String>,
     seen: Vec<Seen>,
 }
 
@@ -586,7 +589,7 @@ fn topic_words(title: &str, keywords: &[String]) -> BTreeSet<String> {
 }
 
 impl Taken {
-    fn new(site: &SiteBinding, ctx: &StandupContext, published: &[Published]) -> Self {
+    pub(crate) fn new(site: &SiteBinding, ctx: &StandupContext, published: &[Published]) -> Self {
         let mut seen: Vec<Seen> = published
             .iter()
             .map(|p| Seen {
@@ -616,7 +619,7 @@ impl Taken {
         }
     }
 
-    fn pitched(&mut self, by: &str, p: &Pitch) {
+    pub(crate) fn pitched(&mut self, by: &str, p: &Pitch) {
         self.seen.push(Seen {
             title: p.title.clone(),
             slug: slugify(&p.title),
@@ -626,7 +629,7 @@ impl Taken {
     }
 
     /// The conflict a pitch runs into, named for the repair turn.
-    fn conflict(&self, p: &Pitch) -> Option<String> {
+    pub(crate) fn conflict(&self, p: &Pitch) -> Option<String> {
         let slug = slugify(&p.title);
         if slug.is_empty() {
             return Some(format!(
@@ -697,7 +700,7 @@ struct Commissioned {
     error: Option<String>,
 }
 
-fn failure_of(e: &LlmError) -> &'static str {
+pub(crate) fn failure_of(e: &LlmError) -> &'static str {
     match e {
         LlmError::InvalidOutput { .. } => "invalid-output",
         LlmError::Unavailable(_) | LlmError::Backend(_) => "infrastructure",
@@ -707,7 +710,7 @@ fn failure_of(e: &LlmError) -> &'static str {
 }
 
 /// Staff ids in number order (`staff-2` before `staff-10`).
-fn staff_order(id: &str) -> (u64, &str) {
+pub(crate) fn staff_order(id: &str) -> (u64, &str) {
     let n = id
         .rsplit('-')
         .next()
@@ -730,15 +733,15 @@ fn cut_chars(text: &str, max: usize) -> String {
 }
 
 /// One spoken line of the transcript.
-struct Line {
-    seq: u32,
-    speaker: String,
-    text: String,
+pub(crate) struct Line {
+    pub(crate) seq: u32,
+    pub(crate) speaker: String,
+    pub(crate) text: String,
 }
 
 impl<S: Store, G: Gateway> Orchestrator<S, G> {
     /// A stage row of this job, if stored (`hash`: only when it matches).
-    async fn recall(
+    pub(crate) async fn recall(
         &self,
         req: &JobRequest,
         stage: &str,
@@ -754,7 +757,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     }
 
     /// Stores a stage row (first write wins) and returns what is stored.
-    async fn remember<T: Serialize + serde::de::DeserializeOwned>(
+    pub(crate) async fn remember<T: Serialize + serde::de::DeserializeOwned>(
         &self,
         req: &JobRequest,
         stage: &str,
@@ -775,7 +778,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
 
     /// Writes a transcript row; a turn made by this run (`fresh`) is then
     /// reported as `TurnFinished` for the speech bubble.
-    async fn spoke(
+    pub(crate) async fn spoke(
         &self,
         req: &JobRequest,
         line: &Line,
@@ -816,7 +819,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         })
     }
 
-    fn name_of(who: &StaffRef) -> String {
+    pub(crate) fn name_of(who: &StaffRef) -> String {
         persona(&who.persona).map_or_else(|_| who.id.clone(), |p| p.name)
     }
 
@@ -1497,7 +1500,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
 }
 
 /// A pitch with its text trimmed and its keywords once each.
-fn clean(p: Pitch) -> Pitch {
+pub(crate) fn clean(p: Pitch) -> Pitch {
     let mut keywords: Vec<String> = Vec::new();
     for k in p.keywords {
         let k = k.trim().to_string();

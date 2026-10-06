@@ -25,6 +25,8 @@
 //! - `brief_ref` crosses as a **decimal string** in method arguments, in
 //!   [`OrchestratorHandle::run`]'s outcomes, and may be a string in the job
 //!   request (a number is accepted too).
+//! - A board's `workstreams` refs (ADR-0069) cross as decimal strings in the
+//!   outcomes too; [`outcomes_for_sim`] turns both back into numbers.
 //! - A JS method may return a value or a Promise; a rejection becomes a
 //!   store/gateway error (the job can be retried) or `LlmError::Backend`.
 //!
@@ -691,6 +693,17 @@ pub fn outcomes_for_sim(outcomes_json: &str) -> Result<Vec<String>, JsError> {
                     };
                     match numeric {
                         Some(n) => *x = json!(n),
+                        // a board's workstream refs (ADR-0069)
+                        None if k == "workstreams" => {
+                            if let Value::Array(a) = x {
+                                for r in a.iter_mut() {
+                                    if let Some(n) = r.as_str().and_then(|s| s.parse::<u64>().ok())
+                                    {
+                                        *r = json!(n);
+                                    }
+                                }
+                            }
+                        }
                         None => walk(x),
                     }
                 }
@@ -717,6 +730,14 @@ pub fn outcomes_json(out: &[Outcome]) -> String {
                     if k == "brief_ref" {
                         if let Some(n) = x.as_u64() {
                             *x = Value::String(n.to_string());
+                        }
+                    } else if k == "workstreams" && x.is_array() {
+                        if let Value::Array(a) = x {
+                            for r in a.iter_mut() {
+                                if let Some(n) = r.as_u64() {
+                                    *r = Value::String(n.to_string());
+                                }
+                            }
                         }
                     } else {
                         walk(x);

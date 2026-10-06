@@ -36,6 +36,7 @@
 //! [`agents::Llm`] (see [`agents::MaybeSendSync`]).
 
 mod article;
+mod board;
 pub mod eval;
 mod gateway;
 mod run;
@@ -51,6 +52,7 @@ pub use article::{
     used_hero_images, word_count, ArticleContext, SiteValidatorV2, ARTICLE_BLOCK_DOCS,
     ENTITY_FACTS, HERO_SHORTLIST, LINK_SHORTLIST, RELATED_TITLES,
 };
+pub use board::{workstream_ref_for, BoardContext, PLAN_REPAIRS};
 #[cfg(not(target_arch = "wasm32"))]
 pub use gateway::GithubGateway;
 pub use gateway::{
@@ -85,6 +87,8 @@ pub enum JobKind {
     Draft,
     Review,
     Publish,
+    /// The weekly editorial board (ADR-0069).
+    Board,
 }
 
 /// Someone taking part in a job, as the sim knows them.
@@ -191,6 +195,30 @@ pub enum Outcome {
     DeployLanded {
         work_item: String,
     },
+    /// The editorial board's plan (ADR-0069): `workstreams` are store refs
+    /// whose titles are plan text under `workstream:<ref>`; items name them
+    /// by index.
+    BoardOutcome {
+        job_id: u64,
+        workstreams: Vec<u64>,
+        items: Vec<PlannedOut>,
+    },
+}
+
+/// One item the board planned, in the sim's `PlannedStub` field names (its
+/// `kind` defaults to an article; `priority` is the sim's variant name).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlannedOut {
+    pub brief_ref: u64,
+    /// Who reviews and owns it (a staff id); the writer is the sim's choice.
+    pub editor: String,
+    pub priority: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workstream: Option<u8>,
+    pub start_offset: u8,
+    pub publish_offset: u8,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub depends_on: Vec<u8>,
 }
 
 /// Where a stage is ([`ProgressEvent::state`]).
