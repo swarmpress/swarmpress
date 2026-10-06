@@ -44,6 +44,7 @@ tests and are checked by the same functions.
 | | `fatigue`, `morale` | permille | |
 | Meetings | `meetings[]`: `id`, `kind`, `project`, `room`, `day`, `start`, `end`, `active`, `attendees`, `speaker`, `job` | | |
 | Bubbles | `bubbles[]`: `meeting`, `seq`, `speaker`, `startedStep`, `untilStep`, `chars` | | one per meeting with a turn in progress; text is fetched by reference |
+| Remarks | `remarks[]`: `seq`, `speaker`, `listener`, `startedStep`, `untilStep`, `chars`; `nextRemark` | | lines outside meetings (ADR-0074, the story director); the speaker's pose is `talk`, the listener's `listen`; text by `seq` from the kv (`story.line.<seq>`) |
 | Planned | screen content, poses beyond the six, props' content (moodboard, whiteboard), HUD levels | | need a contract change before the renderer may show them |
 
 ## Bubbles and who works on what (built, FEAT-079)

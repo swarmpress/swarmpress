@@ -281,11 +281,29 @@ pub fn render_state(w: &World, rs: &RenderState) -> Value {
         })
         .collect();
 
+    // Remarks outside meetings (ADR-0074): text by `seq`.
+    let remarks: Vec<Value> = rs
+        .remarks
+        .iter()
+        .map(|r| {
+            json!({
+                "seq": r.seq,
+                "speaker": r.speaker.to_string(),
+                "listener": opt_id(r.listener),
+                "startedStep": r.started_step,
+                "untilStep": r.until_step,
+                "chars": r.chars,
+            })
+        })
+        .collect();
+
     json!({
         "step": rs.step,
         "weekday": weekday_slug(w.clock().weekday()),
         "meetings": meetings,
         "bubbles": bubbles,
+        "remarks": remarks,
+        "nextRemark": w.next_remark,
         "day": rs.day,
         "minute": rs.minute,
         "phase": phase_slug(rs.phase),

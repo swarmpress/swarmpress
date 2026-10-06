@@ -93,3 +93,4 @@ Accepted ADRs are never rewritten.
 | [0071](0071-the-analytics-loop.md) | The analytics loop | Accepted |
 | [0072](0072-site-blueprints-and-tool-graphs.md) | Site blueprints and tool graphs, built in bricks | Accepted |
 | [0073](0073-translations-and-distribution.md) | Translations and distribution | Accepted |
+| [0074](0074-the-story-director.md) | The story director | Accepted |

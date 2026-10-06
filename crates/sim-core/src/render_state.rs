@@ -117,6 +117,20 @@ pub struct RenderState {
     pub staff: Vec<StaffRender>,
     /// One per meeting with a turn in progress, in meeting-id order.
     pub bubbles: Vec<BubbleRender>,
+    /// Remarks in progress outside meetings (ADR-0074), in speaker-id order.
+    #[serde(default)]
+    pub remarks: Vec<RemarkRender>,
+}
+
+/// A remark's bubble: the client fetches the text by `seq` (ADR-0074).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemarkRender {
+    pub seq: u32,
+    pub speaker: StaffId,
+    pub listener: Option<StaffId>,
+    pub started_step: u64,
+    pub until_step: u64,
+    pub chars: u32,
 }
 
 impl World {
@@ -238,6 +252,9 @@ pub fn render_state(w: &World) -> RenderState {
                             _ => Pose::Listen,
                         }
                     }
+                    // A remark in progress (ADR-0074): the speaker talks, the listener listens.
+                    _ if w.remarks_now().any(|(sp, _)| sp == s.id) => Pose::Talk,
+                    _ if w.remarks_now().any(|(_, r)| r.listener == Some(s.id)) => Pose::Listen,
                     // Typing means a job: someone at their desk types while
                     // a phase of theirs is being worked on, and sits otherwise.
                     (Activity::Working, _) if work_item.is_some() => Pose::Type,
@@ -282,7 +299,20 @@ pub fn render_state(w: &World) -> RenderState {
         })
         .collect();
 
+    let remarks = w
+        .remarks_now()
+        .map(|(speaker, r)| RemarkRender {
+            seq: r.seq,
+            speaker,
+            listener: r.listener,
+            started_step: r.from_step,
+            until_step: r.until_step,
+            chars: r.chars,
+        })
+        .collect();
+
     RenderState {
+        remarks,
         step: w.step,
         day: now.day,
         minute: now.minute,

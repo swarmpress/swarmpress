@@ -567,6 +567,43 @@ function boardSchedule(p: Prompt) {
   }
 }
 
+/**
+ * The story director's chapter (`story/director.ts`): two scenes between the
+ * first people who are free (not in a meeting, not away), with no claims
+ * about production. Deterministic.
+ */
+function storyChapter(prompt: string) {
+  const at = prompt.indexOf('## Now\n')
+  let people: { id: string; name: string; activity: string }[] = []
+  try {
+    people = (JSON.parse(prompt.slice(at + '## Now\n'.length)) as { people: typeof people }).people ?? []
+  } catch {
+    people = []
+  }
+  const free = people.filter((x) => !/meeting|away/i.test(x.activity))
+  const [a, b, c] = free
+  const scenes = []
+  if (a && b) {
+    scenes.push({
+      id: 's1',
+      at: 30,
+      lines: [
+        { speaker: a.id, to: b.id, text: `${b.name.split(' ')[0]}, have you seen the light over the harbour this morning?` },
+        { speaker: b.id, to: a.id, text: 'Only through the window. Someone has to keep the coffee machine company.' },
+      ],
+    })
+  }
+  if (c ?? a) {
+    const s = c ?? a
+    scenes.push({ id: 's2', at: 300, lines: [{ speaker: s.id, to: null, text: 'Right. Back to the terraces and the trains.' }] })
+  }
+  return {
+    situation: 'A quiet stretch of the working day.',
+    scenes,
+    continuity: a && b ? [`${a.name} and ${b.name} talked about the harbour.`] : [],
+  }
+}
+
 /** The answer to a call of the standup's pitch round (`fake_writer::answer`); null when the call is not one. */
 export function standupAnswer(prompt: string, later = ''): MvpReply | null {
   const first = prompt.split('\n')[0] ?? ''
@@ -603,6 +640,7 @@ export function standupAnswer(prompt: string, later = ''): MvpReply | null {
       .map((m) => ({ field: m[1], text: `[${lang}] ${m[2]}` }))
     return { json: { translations } }
   }
+  if (task === 'story chapter') return { json: storyChapter(prompt) }
   if (task === 'update review') return { json: { decision: 'approve', score: 8, notes: 'The update is correct and rests on the evidence.', issues: [], high_risk: [] } }
   return null
 }

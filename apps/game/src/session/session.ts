@@ -62,6 +62,10 @@ import { hudSite } from '../ui/hud'
 import { siteBindingView } from '../ui/site-binding'
 import { cleanDays, ClockDriver, clockStatus, sessionClockHost, type ClockStatus, type ModelStatus } from './clock-driver'
 import { openModelRuntime, type ModelRuntime, type ModelRuntimeInfo } from './model-runtime'
+import { StoryDirector, storyLineKey } from '../story/director'
+import { storyContext } from '../story/context'
+import { REMARK } from '../ui/bubbles/BubbleLayer'
+import type { RenderState } from '../state/render-state'
 import { refetchAfterMerge, refetchOnDeploy, SiteKnowledgeKeeper, SiteOrchestrator, type KnowledgeStatus, type SiteSummary } from './site-knowledge'
 
 export const SCENARIO = 'cinqueterre'
@@ -828,6 +832,39 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   // The model starts in the background: the office opens at once, the card and the chip show the stages.
   models.onChange(() => setModelStatus(models.status()))
   mountModelCard(models)
+
+  // The story director (ADR-0074): ten-minute chapters of studio life as remarks, on the hosted
+  // model by default (`?story=on|off` overrides); only running clock time counts.
+  const storyParam = params.get('story')
+  const storyOn = !readOnly && storyParam !== 'off' && (storyParam === 'on' || models.info().backend === 'luna')
+  if (storyOn) {
+    const director = new StoryDirector({
+      ask: (messages, schema) => models.llm.structured(messages, schema, { maxRepairs: 1 }),
+      context: async () =>
+        storyContext({
+          render: JSON.parse(sim.render_state_json()) as RenderState,
+          plan: JSON.parse(sim.plan_json()),
+          text: await store.plan(company.id),
+          brand: SITE.brand_name,
+        }),
+      apply: (json) => loop.apply(json),
+      nextRemark: () => (JSON.parse(sim.render_state_json()) as RenderState).nextRemark,
+      getKv: (k) => store.getKv(k),
+      setKv: (k, v) => store.setKv(k, v),
+      deleteKv: (k) => store.deleteKv(k),
+      running: () => !loop.halted && clock.hold === null && clock.state.phase !== 'night' && model.state === 'ready',
+      durationMs: (chars) => utteranceMs(chars, clock.state.speed),
+      log: (line) => log(line),
+    })
+    let last = performance.now()
+    setInterval(() => {
+      const now = performance.now()
+      const seconds = (now - last) / 1000
+      last = now
+      void director.tick(seconds).catch((e) => log(`story: ${String(e)}`))
+    }, 1000)
+    log('the story director is on')
+  }
   void models.start()
 
   const items = (): Record<string, string> =>
@@ -930,6 +967,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     speech: {
       // The loop knows which transcript row each utterance it applied spoke; after a reload the seqs coincide.
       text: async (meeting, seq, job) => {
+        if (meeting === REMARK) return store.getKv(storyLineKey(seq))
         const at = loop.spokenAt(meeting, seq) ?? (job != null ? { job, seq } : null)
         return at ? ((await store.transcriptLine(company.id, at.job, at.seq))?.text ?? null) : null
       },

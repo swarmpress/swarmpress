@@ -9,6 +9,7 @@
 import type {
   Activity,
   BubbleRender,
+  RemarkRender,
   BuildingLayout,
   DayPhase,
   DeskLayout,
@@ -86,6 +87,8 @@ export const STATE_KEYS = keysOf<RenderState>()(
   'staff',
   'meetings',
   'bubbles',
+  'remarks',
+  'nextRemark',
 )
 export const ROOM_KEYS = keysOf<RoomRender>()('id', 'kind', 'light', 'occupancy', 'capacity')
 export const DEVICE_KEYS = keysOf<DeviceRender>()('id', 'room', 'kind', 'state', 'user', 'attachedTo')
@@ -110,6 +113,7 @@ export const STAFF_KEYS = keysOf<StaffRender>()(
 export const PATH_KEYS = keysOf<PathRender>()('waypoints', 'startStep', 'speed')
 export const MEETING_KEYS = keysOf<MeetingRender>()('id', 'kind', 'project', 'room', 'day', 'start', 'end', 'active', 'attendees', 'speaker', 'job')
 export const BUBBLE_KEYS = keysOf<BubbleRender>()('meeting', 'seq', 'speaker', 'startedStep', 'untilStep', 'chars')
+export const REMARK_KEYS = keysOf<RemarkRender>()('seq', 'speaker', 'listener', 'startedStep', 'untilStep', 'chars')
 
 export const ROOM_KINDS = valuesOf<RoomKind>()(
   'newsroom',
@@ -261,5 +265,6 @@ export function checkRenderState(state: unknown, r = new ShapeReport()): ShapeRe
     r.type(m.active, 'boolean', `${p}.active`)
   })
   r.list(state.bubbles, 'state.bubbles', (b, p) => void r.keys(b, BUBBLE_KEYS, p))
+  r.list(state.remarks, 'state.remarks', (b, p) => void r.keys(b, REMARK_KEYS, p))
   return r
 }

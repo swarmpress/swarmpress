@@ -593,6 +593,12 @@ pub fn validate_server(w: &World, cmd: &ServerCommand) -> Result<(), Reject> {
             Ok(())
         }
         ServerCommand::SiteSignals(_) => Ok(()),
+        ServerCommand::Remark {
+            speaker,
+            listener,
+            seq,
+            chars,
+        } => w.check_remark(*speaker, *listener, *seq, *chars),
         ServerCommand::AnalyticsSignals {
             project,
             day,

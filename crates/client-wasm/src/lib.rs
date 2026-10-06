@@ -254,7 +254,8 @@ impl Sim {
 
 /// `ServerCommand` variant names: a JSON command with one of these tags is a
 /// server command, anything else a player command.
-const SERVER_VARIANTS: [&str; 9] = [
+const SERVER_VARIANTS: [&str; 10] = [
+    "Remark",
     "JobCompleted",
     "MeetingOutcome",
     "BoardOutcome",

@@ -302,6 +302,15 @@ pub enum ServerCommand {
     },
     /// Result of the nightly site audit.
     SiteSignals(SiteSignals),
+    /// A line a person says outside a meeting (ADR-0074, the story director):
+    /// a bubble of `chars` characters; the text is fetched by `seq`.
+    Remark {
+        speaker: StaffId,
+        #[serde(default)]
+        listener: Option<StaffId>,
+        seq: u32,
+        chars: u32,
+    },
     /// One day of first-party analytics for a project (organization.md §6a,
     /// ADR-0032). Integers only; the same for every replica.
     AnalyticsSignals {

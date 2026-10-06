@@ -44,6 +44,7 @@ pub mod pathfinding;
 pub mod personas;
 pub mod plan;
 pub mod projects;
+pub mod remarks;
 pub mod render_state;
 pub mod roles;
 pub mod scenarios;

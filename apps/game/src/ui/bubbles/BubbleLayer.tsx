@@ -53,7 +53,10 @@ export interface BubbleSource {
 const keyOf = (b: BubbleView) => `${b.meeting}:${b.seq}`
 
 /** The bubbles of a render state: a turn in progress in a meeting still in session, with the meeting's job. */
-export function bubblesOf(state: Pick<RenderState, 'bubbles' | 'meetings'> | null): BubbleView[] {
+/** The meeting name of a remark's bubble (ADR-0074): its words are found by `seq` alone. */
+export const REMARK = 'remark'
+
+export function bubblesOf(state: (Pick<RenderState, 'bubbles' | 'meetings'> & Partial<Pick<RenderState, 'remarks'>>) | null): BubbleView[] {
   if (!state) return []
   const out: BubbleView[] = []
   for (const b of state.bubbles ?? []) {
@@ -61,6 +64,7 @@ export function bubblesOf(state: Pick<RenderState, 'bubbles' | 'meetings'> | nul
     if (!m?.active) continue
     out.push({ meeting: b.meeting, seq: b.seq, speaker: b.speaker, job: m.job, chars: b.chars })
   }
+  for (const r of state.remarks ?? []) out.push({ meeting: REMARK, seq: r.seq, speaker: r.speaker, job: null, chars: r.chars })
   return out
 }
 

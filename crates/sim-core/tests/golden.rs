@@ -27,6 +27,9 @@
 //! - `0xc494_97aa_3ace_5cd8`: world format 4.
 //! - world format 5 (FEAT-098, ADR-0073): `Policies.distribution`; the
 //!   script is unchanged.
+//! - `0x6d4c_cf99_7f96_64c8`: world format 5.
+//! - world format 6 (FEAT-099, ADR-0074): `World.remarks` and `next_remark`;
+//!   the script is unchanged.
 
 use sim_core::commands::JobFailure;
 use sim_core::ids::{StaffId, TicketId, WorkItemId};
@@ -34,7 +37,7 @@ use sim_core::inbox::{ResolvedBy, TicketKind, TicketOption, TicketStatus};
 use sim_core::plan::{JobKind, WorkItemStatus};
 use sim_core::scenarios::{golden_script, run_golden, DEMO_PROJECT, GOLDEN_STEPS};
 
-const GOLDEN_HASH: u64 = 0x6d4c_cf99_7f96_64c8;
+const GOLDEN_HASH: u64 = 0xb813_e0b6_11f8_535b;
 
 #[test]
 fn golden_hash() {

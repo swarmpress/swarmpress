@@ -232,6 +232,20 @@ export interface BubbleRender {
   chars: number
 }
 
+/**
+ * A remark outside meetings (ADR-0074): a line of the story director's
+ * chapter. The words are kept by `seq` in the company store (rule 2).
+ */
+export interface RemarkRender {
+  seq: number
+  speaker: string
+  /** Who is spoken to; null for the room. */
+  listener: string | null
+  startedStep: number
+  untilStep: number
+  chars: number
+}
+
 export type DayPhase = 'night' | 'arrival' | 'standup' | 'work' | 'lunch' | 'evening'
 export type Weekday = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'
 
@@ -257,6 +271,10 @@ export interface RenderState {
   meetings: MeetingRender[]
   /** One per meeting with a turn in progress. */
   bubbles: BubbleRender[]
+  /** Remarks in progress (ADR-0074). */
+  remarks: RemarkRender[]
+  /** The seq the next remark must carry. */
+  nextRemark: number
 }
 
 // ----------------------------------------------------------------------------
@@ -436,5 +454,7 @@ export function demoRenderState(minute: number, day: number): RenderState {
     staff,
     meetings: [],
     bubbles: [],
+    remarks: [],
+    nextRemark: 0,
   }
 }

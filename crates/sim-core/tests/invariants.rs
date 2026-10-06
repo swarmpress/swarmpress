@@ -309,6 +309,14 @@ fn server_command() -> impl Strategy<Value = ServerCommand> {
         (1u32..5).prop_map(|w| ServerCommand::DeployFailed {
             work_item: WorkItemId(w),
         }),
+        (1u32..14, 0u32..14, 0u32..3, 0u32..80).prop_map(|(sp, li, seq, chars)| {
+            ServerCommand::Remark {
+                speaker: StaffId(sp),
+                listener: (li > 0).then_some(StaffId(li)),
+                seq,
+                chars,
+            }
+        }),
         (1u64..12, 1u32..14, 0u8..4, 0u8..6, any::<bool>()).prop_map(
             |(j, ed, start, publish, dep)| ServerCommand::BoardOutcome {
                 job_id: j,

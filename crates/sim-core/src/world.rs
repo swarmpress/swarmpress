@@ -206,6 +206,12 @@ pub struct World {
     pub ids: IdGen,
     /// Times a person could not find a path (should stay 0; connectivity is validated).
     pub nav_failures: u32,
+    /// The latest remark of each person (ADR-0074); a bubble while in progress.
+    #[serde(default)]
+    pub remarks: BTreeMap<StaffId, crate::remarks::Remark>,
+    /// The next remark's seq.
+    #[serde(default)]
+    pub next_remark: u32,
     pending: BTreeMap<(u64, u32), Input>,
     seq_step: u64,
     next_seq: u32,
@@ -256,6 +262,8 @@ impl World {
             praises_today: 0,
             ids: IdGen::default(),
             nav_failures: 0,
+            remarks: BTreeMap::new(),
+            next_remark: 0,
             pending: BTreeMap::new(),
             seq_step: 0,
             next_seq: 0,
@@ -670,6 +678,12 @@ impl World {
                 }
             }
             ServerCommand::SiteSignals(s) => self.company.signals = Some(s),
+            ServerCommand::Remark {
+                speaker,
+                listener,
+                seq,
+                chars,
+            } => self.apply_remark(speaker, listener, seq, chars),
             ServerCommand::AnalyticsSignals {
                 project,
                 day,
