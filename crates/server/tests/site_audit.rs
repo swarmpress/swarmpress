@@ -12,6 +12,20 @@ use serde_json::{json, Value};
 
 const OLD: &str = "old-harvest";
 const FRESH: &str = "fresh-ferry";
+const GALLERY: &str = "old-gallery";
+
+/// An older article whose hero image the media index does not list (as on the live site).
+fn gallery(extra_image: Option<&str>) -> Value {
+    let mut body = vec![
+        json!({"type": "editorial-hero", "image": "https://cdn.test/legacy-hero.jpg", "title": {"en": "Old Gallery"}}),
+        json!({"type": "paragraph", "text": {"en": "The terraces at dusk."}}),
+    ];
+    if let Some(url) = extra_image {
+        body.push(json!({"type": "editorial-hero", "image": url, "title": {"en": "More"}}));
+    }
+    json!({"id": "content-gallery", "slug": {"en": "/en/blog/old-gallery"}, "title": {"en": "Old Gallery"},
+           "page_type": "blog-article", "status": "published", "body": body})
+}
 
 /// An old article (2020), a fresh one, a blog index dating the fresh one, a
 /// page with a broken link and a linking policy the page breaks.
@@ -28,6 +42,10 @@ fn site_files() -> Vec<(&'static str, String)> {
         (
             "content/pages/blog/fresh-ferry.json",
             serde_json::to_string_pretty(&fresh).unwrap(),
+        ),
+        (
+            "content/pages/blog/old-gallery.json",
+            serde_json::to_string_pretty(&gallery(None)).unwrap(),
         ),
         (
             "content/pages/blog-index.json",
@@ -255,4 +273,45 @@ async fn an_update_names_the_blob_it_replaces_and_create_stays_create_only() {
         )
         .await;
     assert_eq!(st, 400);
+}
+
+#[tokio::test]
+async fn an_update_is_refused_only_for_the_unknown_media_it_adds() {
+    let s = TestServer::start().await;
+    let p = player(&s).await;
+    let path = article_path(GALLERY);
+    let res = get(&s, &p, &format!("/api/gateway/file?path={path}"), None).await;
+    let f: Value = res.json().await.unwrap();
+    let sha = f["sha"].as_str().unwrap().to_string();
+    let draft = |page: Value| json!({"content_id": "content-gallery", "path": path, "page": page, "message": "Fix", "update": sha});
+
+    // A create with that image would be refused: it is not in the media index.
+    let mut changed = gallery(None);
+    changed["body"][1]["text"]["en"] = json!("The terraces at dusk, revised.");
+    // The update keeps the page's own unlisted image: accepted.
+    let (st, body) = s.gateway(&p, "draft", draft(changed)).await;
+    assert_eq!(st, 200, "{body}");
+
+    // An update that brings a new unlisted image is refused, and only for that one.
+    let s2 = TestServer::start().await;
+    let p2 = player(&s2).await;
+    let res = get(&s2, &p2, &format!("/api/gateway/file?path={path}"), None).await;
+    let sha2 = json_sha(res).await;
+    let (st, body) = s2
+        .gateway(
+            &p2,
+            "draft",
+            json!({"content_id": "content-gallery", "path": path,
+            "page": gallery(Some("https://cdn.test/new.jpg")), "message": "Fix", "update": sha2}),
+        )
+        .await;
+    assert_eq!(st, 422, "{body}");
+    let text = body.to_string();
+    assert!(text.contains("new.jpg"), "{body}");
+    assert!(!text.contains("legacy-hero.jpg"), "{body}");
+}
+
+async fn json_sha(res: reqwest::Response) -> String {
+    let f: Value = res.json().await.unwrap();
+    f["sha"].as_str().unwrap().to_string()
 }
