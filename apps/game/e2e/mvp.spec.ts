@@ -78,8 +78,11 @@ const state = (page: Page) => session(page, 'state')
 const items = (page: Page) => session(page, 'items')
 const postTypes = async (page: Page) => ((await session(page, 'planText')).posts[ITEM] ?? []).map((p) => p.type)
 /** The command log in the page's store (OPFS), without the standup's `Utterance`s (how many play depends on who sits down when). */
-/** Background signals (the daily site audit and analytics, ADR-0070/0071) arrive whenever they do: not part of the article's story. */
-const SIGNALS = new Set(['SiteSignals', 'AnalyticsSignals'])
+/**
+ * Background digests arrive whenever they do, not as part of the article's story: the daily site audit and
+ * analytics (ADR-0070/0071) and the site's structure and tools as read at boot (ADR-0072).
+ */
+const SIGNALS = new Set(['SiteSignals', 'AnalyticsSignals', 'BlueprintChanged', 'ToolsChanged'])
 const logKinds = async (page: Page) => (await session(page, 'commandLog')).map((c) => c.kind).filter((k) => k !== 'Utterance' && !SIGNALS.has(k))
 /** The whole command log's kinds. */
 const allKinds = async (page: Page) => (await session(page, 'commandLog')).map((c) => c.kind).filter((k) => !SIGNALS.has(k))
