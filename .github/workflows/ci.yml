@@ -66,8 +66,10 @@ jobs:
           JSON
           test "$size" -le 409600
       # The orchestrator bridge is its own lazily loaded module with its own budget:
-      # measured 1,055,980 bytes gzip on 2026-10-02, budget = measured + 20%.
-      - name: orchestrator-wasm size budget (gzip <= 1,267,200 bytes)
+      # measured 1,055,980 bytes gzip on 2026-10-02 and 1,322,854 on 2026-10-07 (the editorial
+      # board, site care, the analysis jobs, site structure and tools); budget = measured + 20%.
+      # wasm-opt -Oz was tried and makes it larger after gzip (1,413,798).
+      - name: orchestrator-wasm size budget (gzip <= 1,587,400 bytes)
         run: |
           size=$(gzip -9 -c crates/orchestrator-wasm/pkg/orchestrator_wasm_bg.wasm | wc -c)
           echo "orchestrator_wasm_bg.wasm gzip: $size bytes"
@@ -76,9 +78,9 @@ jobs:
           { "schema": "cockpit.benchmark.v1", "name": "orchestrator-wasm-size", "component": "agents",
             "provenance": { "commit": "${{ github.sha }}", "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)" },
             "metrics": [ { "name": "orchestrator_wasm_bg.wasm gzip", "unit": "bytes", "value": $size,
-                           "determinism": "deterministic", "direction": "lower_is_better", "budget": { "max": 1267200 } } ] }
+                           "determinism": "deterministic", "direction": "lower_is_better", "budget": { "max": 1587400 } } ] }
           JSON
-          test "$size" -le 1267200
+          test "$size" -le 1587400
       # The construction kit compiler (ADR-0065) is its own module for the renderer:
       # measured 168,221 bytes gzip on 2026-10-04 (name and producers sections stripped),
       # budget = measured + 25%.
