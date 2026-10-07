@@ -2,11 +2,12 @@
 // real central server, with the fake model's fixed chapter (`?story=on`):
 // a remark is logged and its bubble shows the chapter's words, read from the
 // company store's kv by the remark's seq. Fast-forwarded past the 9:00 standup:
-// a scene whose people are in a meeting is skipped.
+// a scene whose people are in a meeting is skipped. Normal speed: a remark lasts
+// long enough in wall time for a slow software renderer to draw its bubble.
 import { expect, test, type Page } from '@playwright/test'
 
 const gameUrl = (engine: string, login: string) =>
-  `/?central=1&login=${login}&llm=fake&store=${engine}&quality=low&ff=11:00&board=off&story=on&speed=10`
+  `/?central=1&login=${login}&llm=fake&store=${engine}&quality=low&ff=11:00&board=off&story=on`
 
 async function boot(page: Page, url: string) {
   await page.goto(url)
