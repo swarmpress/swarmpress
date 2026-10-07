@@ -85,6 +85,8 @@ export type Command =
   | { SetDelegation: { policy: DelegationSlug } }
   // Publishing plan (publishing-plan.md §6, ADR-0031)
   | { UpdateWorkItem: { item: WorkItemRef; update: WorkItemUpdate } }
+  /** Run an installed tool now (ADR-0072): `tool_ref` is 6 bytes of its hash. */
+  | { RunTool: { tool_ref: number } }
   | { AssignPhase: { item: WorkItemRef; phase: number; staff: StaffRef } }
   | { AcceptProposal: { item: WorkItemRef; post: string } }
   | { CompleteTodo: { item: WorkItemRef; todo: string } }
@@ -114,6 +116,7 @@ export const SIM_COMMANDS: readonly CommandName[] = [
   'Praise',
   'SetDelegation',
   'UpdateWorkItem',
+  'RunTool',
 ]
 
 /** Plan commands of publishing-plan.md §6 the sim does not have yet (the mock source applies them). */

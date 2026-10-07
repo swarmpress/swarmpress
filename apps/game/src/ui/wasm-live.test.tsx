@@ -110,6 +110,7 @@ const SAMPLES: Record<string, Command> = {
   Praise: cmd.praise('staff-1'),
   SetDelegation: cmd.setDelegation('low'),
   UpdateWorkItem: cmd.setPriority('work-item-1', 'urgent'),
+  RunTool: { RunTool: { tool_ref: 1 } },
   AssignPhase: cmd.assignPhase('work-item-1', 0, 'staff-1'),
   AcceptProposal: cmd.acceptProposal('work-item-1', 'post-1'),
   CompleteTodo: cmd.completeTodo('work-item-1', 'todo-1'),

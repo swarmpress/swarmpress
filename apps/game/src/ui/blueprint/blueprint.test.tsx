@@ -314,6 +314,6 @@ describe.skipIf(!built)('the brick canvas on the real checker (blueprint-wasm)',
     const teaser = within(cards[1] as HTMLElement)
     expect(teaser.getByText('llm:low')).toBeTruthy()
     expect(teaser.getByText('writer · low')).toBeTruthy()
-    expect(within(panel()).getByText(/editing them on the canvas comes with T-1/)).toBeTruthy()
+    expect(within(panel()).getByText(/Each tool is a machine/)).toBeTruthy()
   })
 })

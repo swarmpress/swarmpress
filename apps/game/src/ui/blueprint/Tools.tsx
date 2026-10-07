@@ -11,6 +11,8 @@ import { layoutTool, triggerText, type MachineNode } from '../../blueprint/model
 import type { SiteModels, SiteTool, ModelIssue } from '../../blueprint/types'
 import { checkTool, toolManifest, type BlueprintApi } from '../../blueprint/wasm'
 import { Badge, Notice } from '../components/common'
+import { useStore } from '../store'
+import { toolRef } from '../../tools/runner'
 import { Issues } from './Inspector'
 
 const COL = 156
@@ -157,6 +159,7 @@ function Machine({ tool }: { tool: SiteTool }) {
 const key = (i: ModelIssue) => `${i.code}|${i.path}|${i.message}`
 
 function ToolCard({ tool, api, ctx }: { tool: SiteTool; api: BlueprintApi | null; ctx: string }) {
+  const store = useStore()
   const live = api ? checkTool(api, tool.graph, ctx) : []
   const seen = new Set(tool.issues.map(key))
   const issues = [...tool.issues, ...live.filter((i) => !seen.has(key(i)))]
@@ -176,6 +179,17 @@ function ToolCard({ tool, api, ctx }: { tool: SiteTool; api: BlueprintApi | null
           {tool.id} · {tool.hash.slice(0, 8)}
         </span>
         {issues.length ? <Badge tone="bad">{issues.length} issues</Badge> : <Badge tone="good">checks</Badge>}
+        {store.can('RunTool') && (
+          <button
+            type="button"
+            class="btn btn-quiet"
+            disabled={issues.length > 0}
+            title={issues.length ? 'A tool with issues does not run' : 'Run it now: the sim asks for a run, the browser runs it in the sandbox'}
+            onClick={() => void store.run({ RunTool: { tool_ref: toolRef(tool.hash) } }, `${tool.id}: run requested`)}
+          >
+            Run now
+          </button>
+        )}
       </header>
       {g.description && <p class="small">{g.description}</p>}
       <p class="small">
@@ -207,7 +221,10 @@ function ToolCard({ tool, api, ctx }: { tool: SiteTool; api: BlueprintApi | null
 export function ToolsDistrict({ models, api, ctx }: { models: SiteModels; api: BlueprintApi | null; ctx: string }) {
   return (
     <div class="bp-district">
-      <Notice title="Read-only for now">The tools are shown as machines; editing them on the canvas comes with T-1.</Notice>
+      <Notice title="The site's tools">
+        Each tool is a machine: what it reads, what it makes, what it may reach. Ask for a new or changed tool on the Blueprint tab ("Ask for a tool"): the web developer builds it and you
+        approve it. Tools run on their schedule, when a bound page is built, or now.
+      </Notice>
       {models.tools.length === 0 && <p class="muted">The site has no tools yet.</p>}
       {models.tools.map((t) => (
         <ToolCard key={t.id} tool={t} api={api} ctx={ctx} />
