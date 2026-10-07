@@ -119,6 +119,10 @@ jobs:
           name: kit-wasm-pkg
           path: crates/kit-wasm/pkg
       - uses: actions/upload-artifact@v4
+        with:
+          name: blueprint-wasm-pkg
+          path: crates/blueprint-wasm/pkg
+      - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
           name: orchestrator-wasm-junit
@@ -155,6 +159,10 @@ jobs:
         with:
           name: kit-wasm-pkg
           path: crates/kit-wasm/pkg
+      - uses: actions/download-artifact@v4
+        with:
+          name: blueprint-wasm-pkg
+          path: crates/blueprint-wasm/pkg
       - run: pnpm schema:check
       - name: Tracker script (tests, size budget, embedded copy in sync)
         run: |
@@ -228,6 +236,10 @@ jobs:
         with:
           name: kit-wasm-pkg
           path: crates/kit-wasm/pkg
+      - uses: actions/download-artifact@v4
+        with:
+          name: blueprint-wasm-pkg
+          path: crates/blueprint-wasm/pkg
       - run: pnpm --filter @swarm-press/game exec playwright install --with-deps chromium
       - name: Playwright orchestrator e2e (turso + sqlite; builds swarmpress-server)
         run: pnpm --filter @swarm-press/game exec playwright test -c playwright.orchestrator.config.ts
