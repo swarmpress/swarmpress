@@ -93,6 +93,12 @@ export interface SiteModels {
   tool_errors: { path: string; error: string }[]
   /** The site facts of the checker's context (`blueprint-wasm` checks edits with them). */
   context: { custom_blocks: string[]; sections: string[]; collections: string[] }
+  /** The theme's block renderers (`theme/blocks/…`), FEAT-094. */
+  theme_files?: string[]
+  /** A site-kit theme (`theme/theme.config.ts`); false: the frozen theme, nothing is generated. */
+  kit_theme?: boolean
+  /** The theme's tokens as CSS variables, `[name, value]`. */
+  tokens?: [string, string][]
   /** The brick town (`swarmpress.design.v1`, provenance `view`). */
   town: Record<string, unknown>
 }

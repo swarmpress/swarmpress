@@ -548,6 +548,16 @@ export class CentralClient {
     return this.json('GET', `/web/fetch?url=${encodeURIComponent(url)}`)
   }
 
+  /** A `Theme` item's components (`PUT /api/site/theme`, FEAT-094): one pull request on `design/<item>`. */
+  putTheme(token: string, body: { item: string; files: Record<string, string>; message?: string }): Promise<{ number: number; branch: string; head_sha: string }> {
+    return this.json('PUT', '/api/site/theme', { json: body, headers: { [LEASE_HEADER]: token } })
+  }
+
+  /** Merges a theme pull request (`POST /api/site/theme/merge`, FEAT-094). */
+  mergeTheme(token: string, number: number, headSha: string): Promise<{ commit: string }> {
+    return this.json('POST', '/api/site/theme/merge', { json: { number, head_sha: headSha }, headers: { [LEASE_HEADER]: token } })
+  }
+
   /** A tool run's output as site data (ADR-0072, FEAT-092): validated against the tool's type, committed. */
   putSiteData(token: string, body: { tool: string; key?: string; port?: string; value: unknown }): Promise<{ path: string; commit: string; changed: boolean }> {
     return this.json('PUT', '/api/site/data', { json: body, headers: { [LEASE_HEADER]: token } })
@@ -870,6 +880,10 @@ export interface OrchestratorGateway {
   putBlueprint?(bodyJson: string): Promise<ModelsPut>
   /** An approved tool, installed through the same PUT on the current base (FEAT-095). Optional. */
   putTool?(graphJson: string, message: string): Promise<ModelsPut>
+  /** A `Theme` item's components as one pull request on `design/<item>` (FEAT-094). Optional. */
+  putTheme?(item: string, filesJson: string, message: string): Promise<{ number: number; branch: string; head_sha: string }>
+  /** Merges a theme pull request after the CEO's approval; the merge commit (FEAT-094). Optional. */
+  mergeTheme?(number: number, headSha: string): Promise<string>
   /** An update of an existing article naming the blob it replaces (ADR-0070). Optional. */
   openUpdate?(
     contentId: string,
@@ -950,6 +964,12 @@ export function centralGateway(client: CentralClient, token: () => string): Orch
     },
     putBlueprint(bodyJson) {
       return putModels(client, token(), JSON.parse(bodyJson) as import('../blueprint/types').PutBlueprintBody)
+    },
+    putTheme(item, filesJson, message) {
+      return client.putTheme(token(), { item, files: JSON.parse(filesJson) as Record<string, string>, message })
+    },
+    async mergeTheme(number, headSha) {
+      return (await client.mergeTheme(token(), number, headSha)).commit
     },
     async putTool(graphJson, message) {
       const graph = JSON.parse(graphJson) as import('../blueprint/types').ToolGraph

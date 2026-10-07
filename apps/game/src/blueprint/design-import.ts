@@ -356,3 +356,35 @@ export async function unzipText(bytes: Uint8Array): Promise<{ files: { path: str
   }
   return { files, skipped }
 }
+
+/**
+ * An imported design merged into a blueprint (the concept's semantic
+ * reconciliation): an imported page type replaces the one with its id (a
+ * re-import of a changed export), any other is added; globals the import
+ * found are added; new page types join the navigation. The result is the
+ * canvas's draft: the CEO sees the diff and saves it, or not.
+ */
+export function mergeDesign(base: Blueprint, imported: Blueprint): Blueprint {
+  const byId = new Map(imported.page_types.map((t) => [t.id, t]))
+  const page_types = base.page_types.map((t) => byId.get(t.id) ?? t)
+  for (const t of imported.page_types) if (!base.page_types.some((b) => b.id === t.id)) page_types.push(t)
+  const known = new Set((base.navigation ?? []).map((n) => n.page_type).filter(Boolean))
+  const navigation = [...(base.navigation ?? []), ...(imported.navigation ?? []).filter((n) => n.page_type && !known.has(n.page_type) && !base.page_types.some((b) => b.id === n.page_type))]
+  const globals = { ...(imported.globals ?? {}), ...(base.globals ?? {}) }
+  return {
+    ...base,
+    ...(Object.keys(globals).length ? { globals } : {}),
+    page_types,
+    ...(navigation.length ? { navigation } : {}),
+  }
+}
+
+/** The pages of a dropped file: an HTML page, or a ZIP of pages. */
+export async function filesOfUpload(name: string, bytes: Uint8Array): Promise<{ files: { path: string; text: string }[]; skipped: { path: string; why: string }[] }> {
+  if (/\.zip$/i.test(name)) return unzipText(bytes)
+  if (/\.html?$/i.test(name)) {
+    if (bytes.length > MAX_FILE_BYTES) return { files: [], skipped: [{ path: name, why: 'too large' }] }
+    return { files: [{ path: name, text: new TextDecoder().decode(bytes) }], skipped: [] }
+  }
+  return { files: [], skipped: [{ path: name, why: 'not HTML or a ZIP' }] }
+}

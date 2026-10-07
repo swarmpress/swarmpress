@@ -47,6 +47,7 @@ mod staged;
 mod standup;
 mod store;
 mod structure;
+mod tool_facts;
 
 pub use agents::article_prompts::LlmProfile;
 pub use analysis::{performance_score, PageNumbers, PerformanceContext};
@@ -64,7 +65,7 @@ pub use board::{
 pub use gateway::GithubGateway;
 pub use gateway::{
     Attribution, DeployState, DraftPr, FakeGateway, FakePr, FakeSite, Gateway, GatewayError,
-    ModelsPut, PageFile, Redeploy,
+    ModelsPut, PageFile, Redeploy, ThemePr,
 };
 pub use run::{CancelToken, Orchestrator, OrchestratorError, SiteBinding};
 pub use site::{

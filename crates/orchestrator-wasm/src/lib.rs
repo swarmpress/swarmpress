@@ -135,6 +135,13 @@ export interface OrchestratorGateway {
    * PUT on the current base; answers as `putBlueprint`.
    */
   putTool?(graphJson: string, message: string): Promise<string | object>
+  /**
+   * Optional (FEAT-094): writes a `Theme` item's components (`filesJson`: path → source) on
+   * `design/<item>` as one pull request (`PUT /api/site/theme`) → `{number, branch, head_sha}`.
+   */
+  putTheme?(item: string, filesJson: string, message: string): Promise<string | object>
+  /** Optional (FEAT-094): merges a theme pull request after the approval → the merge commit sha. */
+  mergeTheme?(number: number, headSha: string): Promise<string>
 }
 
 /**
@@ -388,6 +395,22 @@ impl Progress for JsProgress {
     }
 }
 
+// ---------------------------------------------------------------- Tools (ADR-0072)
+
+/// The site's tools as a Draft's research calls them (`tools#0`): the JS
+/// object's `call(tool, inputJson)` runs one in the sandbox and resolves with
+/// its outputs (an object or JSON text); a rejection is the tool's failure,
+/// shown to the model.
+struct JsTools(JsValue);
+
+#[async_trait(?Send)]
+impl agents::tool_use::ToolCaller for JsTools {
+    async fn call(&self, tool: &str, input: &Value) -> Result<Value, String> {
+        let v = call(&self.0, "call", &[s(tool), s(&input.to_string())]).await?;
+        json_of(&v)?.ok_or_else(|| format!("{tool} returned nothing"))
+    }
+}
+
 // ---------------------------------------------------------------- Gateway
 
 /// [`Gateway`] over a JS `OrchestratorGateway`. The trait carries no work
@@ -604,6 +627,40 @@ impl Gateway for JsGateway {
             .await
             .map_err(gw)?;
         Self::models_put(&v, "putTool")
+    }
+
+    /// `putTheme(item, filesJson, message)`, optional: without it no theme is written.
+    async fn put_theme(
+        &self,
+        item: &str,
+        files: &std::collections::BTreeMap<String, String>,
+        message: &str,
+    ) -> Result<orchestrator::ThemePr, GatewayError> {
+        if !has_method(&self.obj, "putTheme") {
+            return Err(gw("this gateway cannot write theme components".into()));
+        }
+        let files = serde_json::to_string(files).map_err(|e| gw(e.to_string()))?;
+        let v = call(&self.obj, "putTheme", &[s(item), s(&files), s(message)])
+            .await
+            .map_err(gw)?;
+        let v = json_of(&v)
+            .map_err(gw)?
+            .ok_or_else(|| gw("putTheme returned nothing".into()))?;
+        serde_json::from_value(v).map_err(|e| gw(format!("putTheme answer: {e}")))
+    }
+
+    /// `mergeTheme(number, headSha)`, optional: without it a theme never lands.
+    async fn merge_theme(&self, number: u64, head_sha: &str) -> Result<String, GatewayError> {
+        if !has_method(&self.obj, "mergeTheme") {
+            return Err(gw(format!("this gateway cannot merge theme PR #{number}")));
+        }
+        #[allow(clippy::cast_precision_loss)]
+        let n = JsValue::from_f64(number as f64);
+        let v = call(&self.obj, "mergeTheme", &[n, s(head_sha)])
+            .await
+            .map_err(gw)?;
+        v.as_string()
+            .ok_or_else(|| gw("mergeTheme returned no commit sha".into()))
     }
 }
 
@@ -954,6 +1011,7 @@ impl OrchestratorHandle {
         gateway: JsValue,
         llm: JsValue,
         site_json: &str,
+        tools: Option<js_sys::Object>,
     ) -> Result<OrchestratorHandle, JsError> {
         let site = site_binding(site_json).map_err(|e| JsError::new(&e))?;
         let work_item = Rc::new(RefCell::new(None));
@@ -966,10 +1024,15 @@ impl OrchestratorHandle {
         let progress = Rc::new(RefCell::new(None));
         #[allow(clippy::arc_with_non_send_sync)] // wasm32: one thread
         let sink: Arc<dyn Progress> = Arc::new(JsProgress(progress.clone()));
+        let mut orch = Orchestrator::new(JsStore(store), gateway, model, site).with_progress(sink);
+        // Optional (ADR-0072): `{call(tool, inputJson)}` lets Draft research use the site's tools.
+        if let Some(t) = tools.map(JsValue::from) {
+            #[allow(clippy::arc_with_non_send_sync)] // wasm32: one thread
+            let caller: Arc<dyn agents::tool_use::ToolCaller> = Arc::new(JsTools(t));
+            orch = orch.with_tools(caller);
+        }
         Ok(OrchestratorHandle {
-            orch: Rc::new(
-                Orchestrator::new(JsStore(store), gateway, model, site).with_progress(sink),
-            ),
+            orch: Rc::new(orch),
             work_item,
             progress,
             running: Rc::new(RefCell::new(None)),

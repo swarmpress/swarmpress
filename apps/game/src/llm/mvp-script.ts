@@ -645,9 +645,17 @@ export function standupAnswer(prompt: string, later = ''): MvpReply | null {
   // The architects (FEAT-095): an author page type; the ferry tool, else a tool of built-in types.
   if (task === 'site architect') return { json: siteArchitect(p) }
   if (task === 'tool build') return { json: toolBuild(p) }
+  // The web developer's theme components (FEAT-094), `fake_writer::FAKE_COMPONENT`.
+  if (task === 'theme component') return { json: { component: FAKE_COMPONENT, note: "A plain renderer in the theme's tokens." } }
   if (task === 'update review') return { json: { decision: 'approve', score: 8, notes: 'The update is correct and rests on the evidence.', issues: [], high_risk: [] } }
   return null
 }
+
+// ---------------------------------------------------------------- theme components (FEAT-094)
+
+/** `agents::fake_writer::FAKE_COMPONENT`: passes `blueprint::theme::check_component`. */
+export const FAKE_COMPONENT =
+  "---\nconst { block, ctx } = Astro.props\n---\n<section class=\"block\">\n  <h2>{ctx.l(block.title ?? block.heading ?? '')}</h2>\n</section>\n<style>\n  .block { padding: var(--spacing-gutter, 1rem); color: var(--color-fg, inherit); }\n</style>\n"
 
 // ---------------------------------------------------------------- the architects (FEAT-095)
 

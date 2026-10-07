@@ -1110,6 +1110,8 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         {
             return Ok(Err(h));
         }
+        // tools#0: facts from the site's own tools, when the host runs them (ADR-0072 §7.4).
+        self.tool_stage(cx, brief, evidence).await?;
         let mut facts = ctx.facts.clone();
         facts.extend(evidence_lines(evidence));
 

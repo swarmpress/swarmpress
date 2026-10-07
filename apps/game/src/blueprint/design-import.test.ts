@@ -7,7 +7,8 @@ import { deflateRawSync } from 'node:zlib'
 import { existsSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { interpretDesign, mapPage, tokensOf, unzipText } from './design-import'
+import { filesOfUpload, interpretDesign, mapPage, mergeDesign, tokensOf, unzipText } from './design-import'
+import type { Blueprint } from './types'
 
 const home = readFileSync(resolve(__dirname, 'fixtures/design-home.html'), 'utf8')
 
@@ -145,3 +146,38 @@ describe.skipIf(!existsSync(`${PKG}blueprint_wasm.js`))('the imported blueprint 
   })
 })
 
+
+describe('mergeDesign (the Blueprint panel import)', () => {
+  const pt = (id: string, route: string) => ({ id, label: { en: id }, route, source: { kind: 'page' } }) satisfies Blueprint['page_types'][number]
+  const base: Blueprint = {
+    format: 'swarmpress.blueprint.v1',
+    globals: { header: { block: 'site-header' } },
+    page_types: [pt('home', '/'), pt('article', '/articles/:slug')],
+    navigation: [{ page_type: 'home' }],
+  }
+
+  it('replaces a page type with the same id, adds new ones and their navigation, keeps the base globals', () => {
+    const imported: Blueprint = {
+      format: 'swarmpress.blueprint.v1',
+      globals: { header: { block: 'x:other-header' }, footer: { block: 'site-footer' } },
+      page_types: [pt('home', '/start'), pt('pricing', '/pricing')],
+      navigation: [{ page_type: 'home' }, { page_type: 'pricing' }],
+    }
+    const m = mergeDesign(base, imported)
+    expect(m.page_types.map((t) => [t.id, t.route])).toEqual([
+      ['home', '/start'],
+      ['article', '/articles/:slug'],
+      ['pricing', '/pricing'],
+    ])
+    expect(m.navigation).toEqual([{ page_type: 'home' }, { page_type: 'pricing' }])
+    expect(m.globals).toEqual({ header: { block: 'site-header' }, footer: { block: 'site-footer' } })
+  })
+
+  it('reads an HTML file as one page and refuses other files with a reason', async () => {
+    const html = await filesOfUpload('Home.html', new TextEncoder().encode('<html><body><h1>Hi</h1></body></html>'))
+    expect(html.files.map((f) => f.path)).toEqual(['Home.html'])
+    const other = await filesOfUpload('notes.pdf', new Uint8Array([1, 2, 3]))
+    expect(other.files).toEqual([])
+    expect(other.skipped[0].why).toBe('not HTML or a ZIP')
+  })
+})

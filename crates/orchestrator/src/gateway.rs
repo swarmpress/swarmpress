@@ -285,6 +285,40 @@ pub trait Gateway: MaybeSendSync {
             graph["id"].as_str().unwrap_or("?")
         )))
     }
+
+    /// Writes a `Theme` item's components on `design/<item>` and opens (or
+    /// reuses) its pull request (`PUT /api/site/theme`, FEAT-094). The
+    /// default fails loudly (rule 11).
+    async fn put_theme(
+        &self,
+        item: &str,
+        files: &BTreeMap<String, String>,
+        message: &str,
+    ) -> Result<ThemePr, GatewayError> {
+        let _ = (files, message);
+        Err(GatewayError(format!(
+            "this gateway cannot write theme components ({item})"
+        )))
+    }
+
+    /// Squash-merges a theme pull request after the CEO's approval
+    /// (`POST /api/site/theme/merge`); returns the merge commit. The default
+    /// fails loudly (rule 11).
+    async fn merge_theme(&self, number: u64, head_sha: &str) -> Result<String, GatewayError> {
+        let _ = head_sha;
+        Err(GatewayError(format!(
+            "this gateway cannot merge theme PR #{number}"
+        )))
+    }
+}
+
+/// A theme pull request (`PUT /api/site/theme`, FEAT-094): the components of
+/// one `Theme` item on `design/<item>`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThemePr {
+    pub number: u64,
+    pub branch: String,
+    pub head_sha: String,
 }
 
 /// A page read through the gateway: its JSON and the blob sha an update names.
@@ -392,6 +426,17 @@ impl<T: Gateway + ?Sized> Gateway for Arc<T> {
     async fn put_tool(&self, graph: &Value, message: &str) -> Result<ModelsPut, GatewayError> {
         (**self).put_tool(graph, message).await
     }
+    async fn put_theme(
+        &self,
+        item: &str,
+        files: &BTreeMap<String, String>,
+        message: &str,
+    ) -> Result<ThemePr, GatewayError> {
+        (**self).put_theme(item, files, message).await
+    }
+    async fn merge_theme(&self, number: u64, head_sha: &str) -> Result<String, GatewayError> {
+        (**self).merge_theme(number, head_sha).await
+    }
 }
 
 /// A PR in [`FakeGateway`].
@@ -435,6 +480,12 @@ pub struct FakeSite {
     pub context: blueprint::site::SiteContext,
     /// Writes that landed (the commit counter).
     pub writes: u32,
+    /// A site-kit theme (`theme/theme.config.ts`); false: the frozen theme (FEAT-094).
+    pub kit_theme: bool,
+    /// The theme's block renderers.
+    pub theme_files: std::collections::BTreeSet<String>,
+    /// The theme's tokens as CSS variables.
+    pub tokens: Vec<(String, String)>,
 }
 
 impl FakeSite {
@@ -449,6 +500,9 @@ impl FakeSite {
             tools: BTreeMap::new(),
             context,
             writes: 0,
+            kit_theme: false,
+            theme_files: Default::default(),
+            tokens: Vec::new(),
         }
     }
 
@@ -498,6 +552,9 @@ impl FakeSite {
             "context": self.context,
             "tools": tools,
             "tool_errors": [],
+            "theme_files": self.theme_files,
+            "kit_theme": self.kit_theme,
+            "tokens": self.tokens,
         }))
     }
 
@@ -725,6 +782,90 @@ impl Gateway for FakeGateway {
         let mut tools = serde_json::Map::new();
         tools.insert(id, graph.clone());
         site.put(&serde_json::json!({"base_hash": base, "tools": tools, "message": message}))
+    }
+
+    async fn put_theme(
+        &self,
+        item: &str,
+        files: &BTreeMap<String, String>,
+        message: &str,
+    ) -> Result<ThemePr, GatewayError> {
+        let mut s = self.lock();
+        if !s.site.as_ref().is_some_and(|site| site.kit_theme) {
+            return Err(GatewayError(
+                "the site does not run a site-kit theme (409)".into(),
+            ));
+        }
+        for (path, src) in files {
+            if blueprint::theme::block_of_path(path).is_none() {
+                return Err(GatewayError(format!(
+                    "{path}: not a block renderer path (422)"
+                )));
+            }
+            if let Err(why) = blueprint::theme::check_component(src) {
+                return Err(GatewayError(format!("{path}: {} (422)", why.join("; "))));
+            }
+        }
+        let branch = format!("design/{item}");
+        s.commits += 1;
+        let n = s.commits.to_string();
+        let head = fake_sha(&[&branch, message, &n]);
+        let entry = s.files.entry(branch.clone()).or_default();
+        for (path, src) in files {
+            entry.insert(path.clone(), src.clone());
+        }
+        s.heads.insert(branch.clone(), head.clone());
+        let existing = s
+            .prs
+            .values()
+            .find(|p| p.branch == branch && p.merged_sha.is_none())
+            .map(|p| p.number);
+        let number = existing.unwrap_or_else(|| s.prs.keys().last().copied().unwrap_or(0) + 1);
+        s.prs.insert(
+            number,
+            FakePr {
+                number,
+                branch: branch.clone(),
+                head_sha: head.clone(),
+                merged_sha: None,
+            },
+        );
+        Ok(ThemePr {
+            number,
+            branch,
+            head_sha: head,
+        })
+    }
+
+    async fn merge_theme(&self, number: u64, head_sha: &str) -> Result<String, GatewayError> {
+        let mut s = self.lock();
+        let pr = s
+            .prs
+            .get(&number)
+            .cloned()
+            .ok_or_else(|| GatewayError(format!("no PR #{number}")))?;
+        if let Some(sha) = pr.merged_sha {
+            return Ok(sha);
+        }
+        if pr.head_sha != head_sha || !pr.branch.starts_with("design/") {
+            return Err(GatewayError(format!(
+                "PR #{number} moved or is not a theme PR"
+            )));
+        }
+        let files = s.files.get(&pr.branch).cloned().unwrap_or_default();
+        s.files
+            .entry("main".into())
+            .or_default()
+            .extend(files.clone());
+        let sha = fake_sha(&["merge", &pr.branch, head_sha]);
+        s.heads.insert("main".into(), sha.clone());
+        if let Some(p) = s.prs.get_mut(&number) {
+            p.merged_sha = Some(sha.clone());
+        }
+        if let Some(site) = s.site.as_mut() {
+            site.theme_files.extend(files.into_keys());
+        }
+        Ok(sha)
     }
 
     async fn read_page(&self, path: &str) -> Result<Option<PageFile>, GatewayError> {

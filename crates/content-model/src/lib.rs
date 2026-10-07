@@ -27,7 +27,7 @@ pub use blocks::{
     block_meta, core_block_meta, is_core_block, BlockCategory, BlockMeta, EntityMatch, Intent,
     LinkingRules, MediaRequirements, CORE_BLOCK_TYPES, CUSTOM_PREFIX,
 };
-pub use docs::blocks_doc;
+pub use docs::{block_doc, blocks_doc};
 pub use localized::{text_of, Localized, LocalizedString, LocalizedText, FALLBACK_LANG};
 pub use media::{url_identity, MediaRef, MediaRefError};
 pub use page::{classify_block_type, Block, BlockKind, Page, PageSeo, PageStatus};

@@ -231,6 +231,16 @@ fn write_block(out: &mut String, b: &BlockSchema) {
     );
 }
 
+/// The reference of one block type as [`blocks_doc`] writes it (meaning,
+/// media, linking, fields, a minimal example), `None` for a type `registry`
+/// does not know. A theme component's prompt reads it (FEAT-094).
+pub fn block_doc(registry: &SchemaRegistry, block_type: &str) -> Option<String> {
+    let b = registry.get(block_type)?;
+    let mut out = String::new();
+    write_block(&mut out, b);
+    Some(out.trim_end().to_string())
+}
+
 /// Markdown block reference for writer prompts, generated from `registry`.
 pub fn blocks_doc(registry: &SchemaRegistry) -> String {
     let custom = registry.custom_types().len();
@@ -298,6 +308,13 @@ mod tests {
         assert!(doc.contains("- `level`: 2 | 3 | 4 (required)"));
         assert!(doc.contains("`{\"pins\":[],\"type\":\"x:wine-map\"}`"));
         assert!(doc.contains("    - `lat`: number (optional)"));
+        // One block's reference is its part of the whole.
+        let one = block_doc(&r, "heading").unwrap();
+        assert!(
+            one.starts_with("### `heading`") && doc.contains(&one),
+            "{one}"
+        );
+        assert!(block_doc(&r, "nope").is_none());
     }
 
     #[test]

@@ -7,6 +7,8 @@ use serde_json::{json, Value};
 
 /// Largest component, bytes (`blueprint::theme::MAX_COMPONENT_BYTES`).
 pub const MAX_COMPONENT_BYTES: usize = 16 * 1024;
+/// The answer budget of one component, tokens.
+pub const COMPONENT_ANSWER: u32 = 4000;
 
 /// The answer's shape: the component's source and a one-line note.
 pub fn component_schema() -> Value {
@@ -39,7 +41,7 @@ pub fn component_prompt(
             .join("\n")
     };
     format!(
-        "Write the Astro component that renders the `{block}` block for this site's theme.\n\n\
+        "## Task: theme component\n\nWrite the Astro component that renders the `{block}` block for this site's theme.\n\n\
          Block schema and meaning:\n{block_doc}\n\n\
          Its narrative intent: {intent}. Design keywords: {kw}.\n\
          Theme tokens (use them as CSS variables, var(--name)):\n{toks}\n\n\

@@ -59,6 +59,65 @@ pub fn missing_renderers(bp: &Blueprint, theme_files: &BTreeSet<String>) -> Vec<
     out
 }
 
+/// The theme's design tokens file (W3C design tokens).
+pub const TOKENS_PATH: &str = "theme/tokens.json";
+/// Tokens a component prompt names at most.
+pub const MAX_TOKENS: usize = 64;
+
+/// `theme/tokens.json` flattened to CSS variables, `("--color-accent",
+/// "#0d5c63")`, in file order: the group path in kebab case, `$` keys
+/// skipped; a list value is joined with `, `, another non-string value is
+/// its JSON. Approximates the site kit's `flattenTokens` (no namespaces, no
+/// alias resolution): enough for a prompt, which only names them. At most
+/// [`MAX_TOKENS`].
+pub fn flatten_tokens(tokens: &serde_json::Value) -> Vec<(String, String)> {
+    use serde_json::Value;
+    fn kebab(s: &str) -> String {
+        let mut out = String::new();
+        let mut prev_lower = false;
+        for c in s.chars() {
+            if c.is_ascii_uppercase() && prev_lower {
+                out.push('-');
+            }
+            prev_lower = c.is_ascii_lowercase() || c.is_ascii_digit();
+            out.push(if c.is_ascii_alphanumeric() || c == '-' {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            });
+        }
+        out
+    }
+    fn walk(v: &Value, path: &mut Vec<String>, out: &mut Vec<(String, String)>) {
+        let Some(map) = v.as_object() else { return };
+        if let Some(value) = map.get("$value") {
+            let text = match value {
+                Value::String(s) => s.clone(),
+                Value::Array(items) => items
+                    .iter()
+                    .map(|i| i.as_str().map_or_else(|| i.to_string(), String::from))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                other => other.to_string(),
+            };
+            out.push((format!("--{}", path.join("-")), text));
+            return;
+        }
+        for (k, child) in map {
+            if k.starts_with('$') || out.len() >= MAX_TOKENS {
+                continue;
+            }
+            path.push(kebab(k));
+            walk(child, path, out);
+            path.pop();
+        }
+    }
+    let mut out = Vec::new();
+    walk(tokens, &mut Vec::new(), &mut out);
+    out.truncate(MAX_TOKENS);
+    out
+}
+
 /// What a model-written component must be before it is committed. `Err`
 /// lists every problem, as text for the repair turn.
 pub fn check_component(src: &str) -> Result<(), Vec<String>> {
@@ -171,6 +230,26 @@ const { block, ctx } = Astro.props
         );
         assert_eq!(block_of_path("theme/blocks/nope.astro"), None);
         assert_eq!(block_of_path("theme/layouts/Base.astro"), None);
+    }
+
+    #[test]
+    fn tokens_flatten_to_css_variables() {
+        let t = json!({
+            "$description": "x",
+            "color": { "$type": "color", "bg": { "$value": "#fbfaf7" }, "accentSoft": { "$value": "#dcebea" } },
+            "font": { "sans": { "$value": ["system-ui", "Segoe UI"] } },
+            "spacing": { "gutter": { "$value": 4 } }
+        });
+        assert_eq!(
+            flatten_tokens(&t),
+            [
+                ("--color-accent-soft".to_string(), "#dcebea".to_string()),
+                ("--color-bg".into(), "#fbfaf7".into()),
+                ("--font-sans".into(), "system-ui, Segoe UI".into()),
+                ("--spacing-gutter".into(), "4".into()),
+            ]
+        );
+        assert!(flatten_tokens(&json!([1, 2])).is_empty());
     }
 
     #[test]

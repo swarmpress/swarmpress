@@ -172,6 +172,7 @@ function BlueprintEditor({ models, api }: { models: SiteModels; api: BlueprintAp
   const [saving, setSaving] = useState(false)
   const [refused, setRefused] = useState<string[] | null>(null)
   const [stale, setStale] = useState(false)
+  const [imported, setImported] = useState<string | null>(null)
   const canSave = !!store.source.saveBlueprint
   const editing = canSave && (models.source === 'repo' || adopted)
   const ctx = useMemo(() => contextOf(models), [models])
@@ -190,7 +191,23 @@ function BlueprintEditor({ models, api }: { models: SiteModels; api: BlueprintAp
     if (!s || s.blocks.includes(block)) return
     edit(updateSlot(draft, type, slot, { blocks: [...s.blocks, block] }))
   }
+  // A design (HTML or a ZIP export, Claude Design's included) merged into the draft (FEAT-093).
+  const importDesign = async (file: File) => {
+    const { filesOfUpload, interpretDesign, mergeDesign } = await import('../../blueprint/design-import')
+    const { files, skipped } = await filesOfUpload(file.name, new Uint8Array(await file.arrayBuffer()))
+    if (!files.some((f) => /\.html?$/i.test(f.path))) {
+      store.say(`No pages in ${file.name}${skipped.length ? `: ${skipped.map((s) => `${s.path} (${s.why})`).join(', ')}` : ''}`, 'error')
+      return
+    }
+    const d = interpretDesign(files, models.context.custom_blocks)
+    edit(mergeDesign(draft, d.blueprint as BlueprintDoc))
+    const sections = d.pages.reduce((a, p) => a + p.sections.length, 0)
+    setImported(
+      `${file.name}: ${d.pages.length} ${d.pages.length === 1 ? 'page' : 'pages'}, ${sections} sections mapped to blocks, ${Object.keys(d.tokens).length} design tokens${skipped.length + d.skipped.length ? `, ${skipped.length + d.skipped.length} files skipped` : ''}. Review the changes, then save or discard.`,
+    )
+  }
   const discard = () => {
+    setImported(null)
     setDraft(base)
     setRefused(null)
     setSelection(null)
@@ -240,6 +257,27 @@ function BlueprintEditor({ models, api }: { models: SiteModels; api: BlueprintAp
           <button type="button" class="btn" onClick={() => void reload()}>
             Reload the blueprint
           </button>
+        </Notice>
+      )}
+      {editing && (
+        <div class="inline-form">
+          <label class="field-inline">
+            Import a design (HTML or ZIP)
+            <input
+              type="file"
+              accept=".html,.htm,.zip"
+              onChange={(e) => {
+                const f = e.currentTarget.files?.[0]
+                if (f) void importDesign(f)
+                e.currentTarget.value = ''
+              }}
+            />
+          </label>
+        </div>
+      )}
+      {imported && (
+        <Notice title="Design imported">
+          <p class="small">{imported}</p>
         </Notice>
       )}
       <div class={`bp-layout${editing ? ' is-editing' : ''}${selected ? ' has-inspector' : ''}`}>

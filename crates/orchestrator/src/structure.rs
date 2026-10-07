@@ -13,7 +13,9 @@
 //!   → JobCompleted{ok, score: min(changes, 10), qa_defects: issues repaired}
 //! ToolBuild  (Draft, Tool)      the same, the answer a whole tool graph
 //!                               (blueprint::tool_proposal_schema, check_tool)
-//! ThemeCode  (Draft, Theme)     not built (FEAT-094): JobFailed{Infrastructure}
+//! ThemeCode  (Draft, Theme)     the theme's missing block renderers, one model call
+//!                               each (checked, one repair turn), written on design/<item>
+//!                               as a pull request (FEAT-094); the frozen theme fails loudly
 //! Publish    (after Approve)    the artifact applied through the gateway
 //!   (put_blueprint on the stored base hash; put_tool) → JobCompleted{ok, commit}
 //!   a stale base or a refusal   → JobFailed{InvalidOutput} and a status post
@@ -118,6 +120,12 @@ pub struct Proposal {
     /// The checker's issues the first answer had (repaired since).
     #[serde(default)]
     pub repaired: Vec<String>,
+    /// The theme components written (`theme`): renderer path → source.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub files: BTreeMap<String, String>,
+    /// The theme's pull request (`theme`), merged by the item's Publish.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr: Option<crate::gateway::ThemePr>,
 }
 
 /// One line per change: `added page-type author`.
@@ -628,6 +636,8 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             summary: value["summary"].as_str().unwrap_or("").trim().to_string(),
             hash: blueprint::hash(&next),
             repaired,
+            files: BTreeMap::new(),
+            pr: None,
         };
         self.store_proposal(req, &item, &who, proposal).await
     }
@@ -723,33 +733,175 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             changes: vec![change],
             summary: value["summary"].as_str().unwrap_or("").trim().to_string(),
             repaired,
+            files: BTreeMap::new(),
+            pr: None,
         };
         self.store_proposal(req, &item, &who, proposal).await
     }
 
-    /// The `ThemeCode` job: not built (FEAT-094). It fails loudly (rule 11):
-    /// the item is blocked with an escalation, and its thread says why.
+    /// The `ThemeCode` job (FEAT-094): the components of the blocks the
+    /// blueprint uses and the theme has no renderer for, at most
+    /// `blueprint::theme::MAX_COMPONENTS_PER_JOB`, each one model call with
+    /// one repair turn under `blueprint::theme::check_component`, written on
+    /// `design/<item>` as a pull request the item's Publish merges after the
+    /// CEO's approval. A site that still builds the frozen theme fails
+    /// loudly (CLAUDE.md rules 9 and 11); nothing missing completes with
+    /// nothing to merge.
     pub(crate) async fn theme_code(&self, req: &JobRequest) -> Result<Vec<Outcome>> {
-        let who = req.staff.first();
-        self.report_job(req, who, ProgressState::Started, json!({}));
-        if let Some(item) = req.work_item.as_deref() {
+        let item = self.work_item(req)?.to_string();
+        let who = self.architect_of(req)?.clone();
+        self.report_job(req, Some(&who), ProgressState::Started, json!({}));
+        let request = self.structure_request(req).await?;
+        self.name_item(req, &item, "theme", &request).await?;
+        if let Some(reason) = self.cancelled(req) {
+            return Ok(self.failed(req, reason));
+        }
+        let raw = self.gateway.site_models().await?;
+        let models = Models::from_json(&raw)?;
+        if raw["kit_theme"] != json!(true) {
             self.system_post(
                 req,
-                item,
+                &item,
                 "status",
                 0,
-                "Theme generation lands with FEAT-094: nothing was drafted, and the item is blocked until then.",
-                json!({"structure": "not-built", "feature": "FEAT-094"}),
+                "The site still builds the frozen theme: theme generation waits for the cutover, so nothing was written.",
+                json!({"structure": "frozen-theme", "feature": "FEAT-094"}),
             )
             .await?;
+            self.report_job(
+                req,
+                Some(&who),
+                ProgressState::Failed,
+                json!({"error": "frozen theme"}),
+            );
+            return Ok(self.failed(req, JobFailure::Infrastructure));
         }
-        self.report_job(
-            req,
-            who,
-            ProgressState::Failed,
-            json!({"error": "theme generation is not built (FEAT-094)"}),
+        let have: std::collections::BTreeSet<String> = raw["theme_files"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(String::from)
+            .collect();
+        let tokens: Vec<(String, String)> = raw["tokens"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|t| Some((t[0].as_str()?.to_string(), t[1].as_str()?.to_string())))
+            .collect();
+        let keywords: Vec<String> = models
+            .blueprint
+            .intent
+            .keywords
+            .iter()
+            .filter_map(|k| serde_json::to_value(k).ok()?.as_str().map(String::from))
+            .collect();
+        let missing = blueprint::theme::missing_renderers(&models.blueprint, &have);
+        let todo: Vec<String> = missing
+            .iter()
+            .take(blueprint::theme::MAX_COMPONENTS_PER_JOB)
+            .cloned()
+            .collect();
+        if todo.is_empty() {
+            self.system_post(
+                req,
+                &item,
+                "artifact",
+                0,
+                "Every block the blueprint uses already has a renderer in the theme: nothing to write.",
+                json!({"structure": "theme-complete"}),
+            )
+            .await?;
+            let proposal = Proposal {
+                kind: "theme".into(),
+                base_hash: models.hash.clone(),
+                proposal: Value::Null,
+                edits: Vec::new(),
+                graph: Value::Null,
+                changes: Vec::new(),
+                summary: "Nothing to write: the theme renders every block.".into(),
+                hash: models.hash.clone(),
+                repaired: Vec::new(),
+                files: BTreeMap::new(),
+                pr: None,
+            };
+            return self.store_proposal(req, &item, &who, proposal).await;
+        }
+        let registry = content_model::SchemaRegistry::core();
+        let mut files = BTreeMap::new();
+        let mut repaired = Vec::new();
+        for block in &todo {
+            if let Some(reason) = self.cancelled(req) {
+                return Ok(self.failed(req, reason));
+            }
+            let doc = content_model::docs::block_doc(&registry, block).unwrap_or_else(|| {
+                format!("`{block}`: the site's own block (its schema is in theme/blocks).")
+            });
+            let intent = content_model::block_meta(block)
+                .and_then(|m| serde_json::to_value(m.intent).ok())
+                .and_then(|v| v.as_str().map(String::from))
+                .unwrap_or_else(|| "inform".into());
+            let user = agents::theme::component_prompt(block, &doc, &intent, &tokens, &keywords);
+            let schema = agents::theme::component_schema();
+            let check = |v: &Value| {
+                blueprint::theme::check_component(v["component"].as_str().unwrap_or_default())
+            };
+            let stage = format!("theme_code:{block}");
+            let answer = self
+                .propose(
+                    req,
+                    &who,
+                    &templates::web_developer(),
+                    agents::JobKind::ThemeCode,
+                    &stage,
+                    user,
+                    agents::theme::COMPONENT_ANSWER,
+                    &schema,
+                    &check,
+                )
+                .await?;
+            match answer {
+                Ok((v, r)) => {
+                    repaired.extend(r.into_iter().map(|i| format!("{block}: {i}")));
+                    files.insert(
+                        blueprint::theme::renderer_path(block),
+                        v["component"].as_str().unwrap_or_default().to_string(),
+                    );
+                }
+                Err(f) => return self.proposal_failed(req, &item, &who, &f, "theme").await,
+            }
+        }
+        let message = format!("Theme components for {item}: {}", todo.join(", "));
+        let pr = self.gateway.put_theme(&item, &files, &message).await?;
+        let changes: Vec<Value> = files
+            .keys()
+            .map(|p| json!({"kind": "added", "subject": "renderer", "id": p}))
+            .collect();
+        let left = missing.len() - todo.len();
+        let summary = format!(
+            "Components for {}{} (pull request #{}).",
+            todo.join(", "),
+            if left > 0 {
+                format!("; {left} more blocks wait for the next job")
+            } else {
+                String::new()
+            },
+            pr.number
         );
-        Ok(self.failed(req, JobFailure::Infrastructure))
+        let proposal = Proposal {
+            kind: "theme".into(),
+            base_hash: models.hash.clone(),
+            proposal: Value::Null,
+            edits: Vec::new(),
+            graph: Value::Null,
+            changes,
+            summary,
+            hash: pr.head_sha.clone(),
+            repaired,
+            files,
+            pr: Some(pr),
+        };
+        self.store_proposal(req, &item, &who, proposal).await
     }
 
     /// The `ToolRun` job: the orchestrator does not run tools yet (FEAT-091's
@@ -812,6 +964,29 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 .trim(),
             req.job_id
         );
+        // A theme: its pull request merges (nothing to merge when every block had a renderer).
+        if p.kind == "theme" {
+            let commit = match &p.pr {
+                Some(pr) => self.gateway.merge_theme(pr.number, &pr.head_sha).await?,
+                None => p.base_hash.clone(),
+            };
+            art.merged_sha = Some(commit.clone());
+            self.save_artifact(req, item, &art).await?;
+            self.system_post(
+                req,
+                item,
+                "artifact",
+                0,
+                &format!(
+                    "Applied to the site: {} theme components ({})",
+                    p.files.len(),
+                    &commit[..commit.len().min(7)]
+                ),
+                json!({"structure": "applied", "commit": commit, "files": p.files.keys().collect::<Vec<_>>()}),
+            )
+            .await?;
+            return Ok(completed(commit));
+        }
         let put = match p.kind.as_str() {
             "tool" => self.gateway.put_tool(&p.graph, &message).await?,
             _ => {

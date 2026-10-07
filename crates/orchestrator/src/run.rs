@@ -140,6 +140,9 @@ pub struct Orchestrator<S: Store, G: Gateway> {
     pub(crate) site: SiteBinding,
     pub(crate) progress: Option<Arc<dyn Progress>>,
     pub(crate) cancel: CancelToken,
+    /// Runs the site's tools for a Draft's research (`tools#0`, ADR-0072);
+    /// none: the stage does nothing.
+    pub(crate) tools: Option<Arc<dyn agents::tool_use::ToolCaller>>,
 }
 
 pub(crate) fn role_of(r: &str) -> Option<Role> {
@@ -177,7 +180,14 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             site,
             progress: None,
             cancel: CancelToken::default(),
+            tools: None,
         }
+    }
+
+    /// Lets Draft jobs use the site's tools in their research (ADR-0072 §7.4).
+    pub fn with_tools(mut self, caller: Arc<dyn agents::tool_use::ToolCaller>) -> Self {
+        self.tools = Some(caller);
+        self
     }
 
     /// The token that cancels this orchestrator's running jobs (P6).

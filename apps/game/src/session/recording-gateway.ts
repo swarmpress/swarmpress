@@ -55,6 +55,8 @@ export function recordingGateway(inner: OrchestratorGateway, calls: GatewayCall[
     ...(inner.siteModels ? { siteModels: () => inner.siteModels!() } : {}),
     ...(inner.putBlueprint ? { putBlueprint: (body: string) => inner.putBlueprint!(body) } : {}),
     ...(inner.putTool ? { putTool: (graph: string, message: string) => inner.putTool!(graph, message) } : {}),
+    ...(inner.putTheme ? { putTheme: (item: string, files: string, message: string) => inner.putTheme!(item, files, message) } : {}),
+    ...(inner.mergeTheme ? { mergeTheme: (number: number, headSha: string) => inner.mergeTheme!(number, headSha) } : {}),
     ...(inner.openUpdate
       ? {
           async openUpdate(...args: Parameters<NonNullable<OrchestratorGateway['openUpdate']>>) {

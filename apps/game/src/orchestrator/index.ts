@@ -38,6 +38,11 @@ export interface CreateOrchestratorOptions {
   site: SiteBindingJson
   /** Hears every stage of every job (ADR-0058): the HUD chip and the activity log. */
   onProgress?: (event: ProgressEvent) => void
+  /**
+   * The site's tools for a Draft's research (ADR-0072, `tools#0`): `call(tool, inputJson)`
+   * runs one in the sandbox and resolves with its outputs; a rejection is the tool's failure.
+   */
+  tools?: { call(tool: string, inputJson: string): Promise<unknown> }
 }
 
 export async function createOrchestrator(
@@ -47,7 +52,7 @@ export async function createOrchestrator(
   // The browser's repair loop validates with the validator the Rust side
   // re-checks with, so a value never passes here and fails there unrepaired.
   o.llm.useValidator?.(rustValidator(m.validateJson))
-  const handle = new m.OrchestratorHandle(o.store, o.gateway, o.llm, JSON.stringify(o.site))
+  const handle = new m.OrchestratorHandle(o.store, o.gateway, o.llm, JSON.stringify(o.site), o.tools)
   const listener = o.onProgress
   if (listener) handle.setProgress((json: string) => listener(JSON.parse(json) as ProgressEvent))
   return handle

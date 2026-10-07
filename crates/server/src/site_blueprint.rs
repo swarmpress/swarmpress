@@ -13,6 +13,9 @@
 //!   manifest sections and collections, the tools);
 //! * the brick town (a `swarmpress.design.v1` the browser compiles with the
 //!   kit), slots with issues marked;
+//! * the theme as the ThemeCode job needs it: `theme_files` (block
+//!   renderers), `kit_theme` (a site-kit theme, not the frozen one) and
+//!   `tokens` (`[name, value]` CSS variables);
 //! * the site facts of the checker's context (custom blocks, manifest
 //!   sections and collections), so the browser checks edits with
 //!   `blueprint-wasm` exactly as here.
@@ -185,6 +188,26 @@ pub fn models_of(src: &dyn SiteSource, commit: &str) -> Result<Value, String> {
         },
     );
 
+    // The theme as the ThemeCode job sees it (FEAT-094): its block renderers,
+    // whether it is a site-kit theme at all, and its tokens as CSS variables.
+    let theme_files: Vec<String> = src
+        .list("theme/blocks")
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(|p| blueprint::theme::block_of_path(p).is_some())
+        .collect();
+    let kit_theme = src
+        .exists(crate::site_theme::THEME_CONFIG)
+        .map_err(|e| e.to_string())?;
+    let tokens: Vec<Value> = src
+        .read_json(blueprint::theme::TOKENS_PATH)
+        .map_err(|e| e.to_string())?
+        .map(|t| blueprint::theme::flatten_tokens(&t))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(k, v)| json!([k, v]))
+        .collect();
+
     Ok(json!({
         "commit": commit,
         "source": source,
@@ -196,6 +219,9 @@ pub fn models_of(src: &dyn SiteSource, commit: &str) -> Result<Value, String> {
         "tools": tools,
         "tool_errors": tool_errors,
         "town": design,
+        "theme_files": theme_files,
+        "kit_theme": kit_theme,
+        "tokens": tokens,
     }))
 }
 

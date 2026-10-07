@@ -490,7 +490,7 @@ async fn a_site_without_the_ferry_types_gets_a_tool_of_built_in_types() {
 }
 
 #[tokio::test]
-async fn the_theme_and_tool_runs_fail_loudly() {
+async fn the_frozen_theme_and_tool_runs_fail_loudly() {
     let llm = Arc::new(fake_writer::fake_writer([]));
     let o = orch(llm.clone(), "theme", "Regenerate the theme").await;
     let out = o
@@ -500,12 +500,139 @@ async fn the_theme_and_tool_runs_fail_loudly() {
     assert_eq!(failed(&out), JobFailure::Infrastructure);
     assert!(llm.calls().is_empty());
     let ps = posts(&o).await;
-    assert!(ps[0]["text"].as_str().unwrap().contains("FEAT-094"));
+    assert!(
+        ps.iter()
+            .any(|p| p["text"].as_str().unwrap().contains("frozen theme")),
+        "{ps:?}"
+    );
 
     let mut run = job(61, JobKind::ToolRun, 0, webdev());
     run.work_item = None;
     let out = o.run(&run).await.unwrap();
     assert_eq!(failed(&out), JobFailure::Infrastructure);
+}
+
+/// A site-kit theme: the missing renderers are written as one pull request,
+/// merged by the item's Publish (FEAT-094).
+async fn kit_orch(llm: Arc<FakeLlm>, theme_files: &[&str]) -> Orchestrator<MemStore, FakeGateway> {
+    let o = orch(llm, "theme", "Give the site its own look").await;
+    let mut site = fake_site();
+    site.kit_theme = true;
+    site.theme_files = theme_files.iter().map(|s| s.to_string()).collect();
+    site.tokens = vec![("--color-accent".into(), "#c4281c".into())];
+    o.gateway().set_site(site);
+    o
+}
+
+#[tokio::test]
+async fn the_theme_job_writes_the_missing_renderers_and_publish_merges_them() {
+    let llm = Arc::new(fake_writer::fake_writer([]));
+    let o = kit_orch(llm.clone(), &["theme/blocks/paragraph.astro"]).await;
+    let out = o
+        .run(&job(62, JobKind::ThemeCode, 0, webdev()))
+        .await
+        .unwrap();
+    let d = completed(&out);
+    assert!(d.ok);
+    let calls = llm.calls();
+    assert_eq!(
+        calls.len(),
+        blueprint::theme::MAX_COMPONENTS_PER_JOB,
+        "one call per component, at most four"
+    );
+    let first = &calls[0].request.messages[0].text;
+    assert!(
+        first.starts_with("## Task: theme component") && first.contains("--color-accent: #c4281c"),
+        "{first}"
+    );
+    let art: ArtifactRecord = o
+        .store()
+        .get_artifact(COMPANY, ITEM)
+        .await
+        .unwrap()
+        .map(|v| serde_json::from_value(v).unwrap())
+        .unwrap();
+    let p = art.structure.clone().unwrap();
+    assert_eq!(p.kind, "theme");
+    assert_eq!(p.files.len(), 4);
+    let pr = p.pr.clone().unwrap();
+    // Not on the base branch before the approval.
+    let path = p.files.keys().next().unwrap().clone();
+    assert!(o.gateway().file_text("main", &path).is_none());
+    assert!(o.gateway().file_text(&pr.branch, &path).is_some());
+
+    let out = o
+        .run(&job(63, JobKind::Publish, 0, webdev()))
+        .await
+        .unwrap();
+    assert!(completed(&out).ok);
+    assert_eq!(
+        o.gateway().file_text("main", &path).as_deref(),
+        Some(fake_writer::FAKE_COMPONENT)
+    );
+    // Again after a reload: nothing written twice.
+    let again = o
+        .run(&job(63, JobKind::Publish, 0, webdev()))
+        .await
+        .unwrap();
+    assert_eq!(completed(&again).artifact_sha, completed(&out).artifact_sha);
+}
+
+#[tokio::test]
+async fn a_component_that_breaks_the_rules_gets_one_repair_turn() {
+    let bad = json!({ "component": "<div><script>x()</script></div>", "note": "x" });
+    let good = json!({ "component": fake_writer::FAKE_COMPONENT, "note": "fixed" });
+    let mut script = vec![FakeReply::Json(bad), FakeReply::Json(good)];
+    // The other components answer at once.
+    for _ in 1..blueprint::theme::MAX_COMPONENTS_PER_JOB {
+        script.push(FakeReply::Json(
+            json!({ "component": fake_writer::FAKE_COMPONENT, "note": "ok" }),
+        ));
+    }
+    let llm = Arc::new(FakeLlm::new(script));
+    let o = kit_orch(llm.clone(), &[]).await;
+    let out = o
+        .run(&job(64, JobKind::ThemeCode, 0, webdev()))
+        .await
+        .unwrap();
+    let d = completed(&out);
+    assert!(d.ok);
+    assert!(d.qa_defects > 0, "the first answer's issues are counted");
+    assert!(
+        llm.calls()[1]
+            .request
+            .messages
+            .iter()
+            .any(|m| m.text.contains("<script>")),
+        "the repair turn quotes the problem"
+    );
+}
+
+#[tokio::test]
+async fn nothing_missing_means_nothing_to_merge() {
+    let llm = Arc::new(fake_writer::fake_writer([]));
+    // Every block of the mini blueprint has a renderer.
+    let site = fake_site();
+    let all: Vec<String> = site
+        .blueprint
+        .page_types
+        .iter()
+        .flat_map(|t| t.slots.iter().flatten())
+        .flat_map(|s| s.blocks.iter().map(|b| blueprint::theme::renderer_path(b)))
+        .collect();
+    let refs: Vec<&str> = all.iter().map(String::as_str).collect();
+    let o = kit_orch(llm.clone(), &refs).await;
+    let out = o
+        .run(&job(65, JobKind::ThemeCode, 0, webdev()))
+        .await
+        .unwrap();
+    assert!(completed(&out).ok);
+    assert!(llm.calls().is_empty());
+    let out = o
+        .run(&job(66, JobKind::Publish, 0, webdev()))
+        .await
+        .unwrap();
+    assert!(completed(&out).ok);
 }
 
 // ---------------------------------------------------------------- with the sim's gate

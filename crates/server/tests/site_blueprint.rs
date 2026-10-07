@@ -64,6 +64,9 @@ async fn a_site_without_a_blueprint_gets_one_imported_with_its_town() {
     let etag = r.headers()[ETAG].to_str().unwrap().to_string();
     let v: Value = r.json().await.unwrap();
     assert_eq!(v["source"], "imported");
+    // No site-kit theme in the fixture repo: nothing to generate into.
+    assert_eq!(v["kit_theme"], false);
+    assert_eq!(v["theme_files"], json!([]));
     assert_eq!(v["issues"], json!([]));
     let types: Vec<&str> = v["blueprint"]["page_types"]
         .as_array()

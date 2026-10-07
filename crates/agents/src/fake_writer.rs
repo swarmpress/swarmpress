@@ -174,6 +174,34 @@ pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
         // The architects (FEAT-095): an author page type, a ferry tool.
         "site architect" => return FakeReply::Json(site_architect(&p)),
         "tool build" => return FakeReply::Json(tool_build(&p)),
+        // The site's tools in research (ADR-0072): ask for the first offered tool, then state one fact from its result.
+        "tool facts" => {
+            let results = later.iter().find(|m| m.starts_with("Tool results"));
+            return FakeReply::Json(match results {
+                None => {
+                    let tool =
+                        p.0.lines()
+                            .find_map(|l| l.strip_prefix("- ").and_then(|r| r.split(':').next()))
+                            .unwrap_or("none");
+                    json!({ "facts": [], "use_tools": [{ "tool": tool, "input": {} }] })
+                }
+                Some(r) => {
+                    let first = r.lines().nth(1).unwrap_or("[]");
+                    let calls: Value = serde_json::from_str(first).unwrap_or(json!([]));
+                    let c = &calls[0];
+                    let tool = c["tool"].as_str().unwrap_or("none");
+                    let result = c["result"].to_string();
+                    json!({ "facts": [{ "claim": format!("The site's {tool} tool reports {result}"), "tool": tool }] })
+                }
+            });
+        }
+        // The web developer's theme components (FEAT-094): a plain, checked renderer.
+        "theme component" => {
+            return FakeReply::Json(json!({
+                "component": FAKE_COMPONENT,
+                "note": "A plain renderer in the theme's tokens."
+            }))
+        }
         // Every pitch checks out (ADR-0068), on a made-up official source.
         "pitch check" => {
             return FakeReply::Json(json!({"verifiable": true,
@@ -882,6 +910,11 @@ fn commission(p: &Prompt<'_>) -> Value {
     }
     json!({"commission": chosen, "decisions": [], "escalations": []})
 }
+
+// ---------------------------------------------------------------- theme components (FEAT-094)
+
+/// The fake web developer's component: passes `blueprint::theme::check_component`.
+pub const FAKE_COMPONENT: &str = "---\nconst { block, ctx } = Astro.props\n---\n<section class=\"block\">\n  <h2>{ctx.l(block.title ?? block.heading ?? '')}</h2>\n</section>\n<style>\n  .block { padding: var(--spacing-gutter, 1rem); color: var(--color-fg, inherit); }\n</style>\n";
 
 // ---------------------------------------------------------------- the architects (FEAT-095)
 

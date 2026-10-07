@@ -46,6 +46,7 @@ import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResu
 import { CentralClient, centralGateway, companyFor, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type SiteAudit } from '../net/central'
 import type { PutBlueprintBody, PutBlueprintResult, SiteModels } from '../blueprint/types'
 import { packPages, runToolJob } from '../tools/host'
+import { runTool } from '../tools/runner'
 import { blueprintCommand, toolsCommand, type HeldStructure } from '../blueprint/digest'
 import { commission, type CommissionKind } from '../blueprint/commission'
 import type { CommandResult } from '../ui/commands'
@@ -583,6 +584,14 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   llm.onCall = (call) => activity.call(call)
   // Meeting turns (`turn` events, ADR-0062) go to the loop as utterances; set once the loop exists.
   let speak: (e: ProgressEvent) => void = () => undefined
+  // What the site's tools may reach from here (ADR-0072): the central fetch proxy and the hosted model.
+  const toolFacilities = {
+    webFetch: async (url: string) => {
+      const r = await client.webFetch(url)
+      return { status: r.status, contentType: r.content_type, text: r.text }
+    },
+    llm: async (_tier: string, prompt: string) => (await client.llmGenerate(lease.token, { messages: [{ role: 'user', content: prompt }], kind: 'tool-agent' })).text,
+  }
   // Rebound to a new pack at the next job after it changed; refreshes before every standup.
   const orchestrator = new SiteOrchestrator({
     keeper: knowledge,
@@ -597,6 +606,16 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
         onProgress: (e) => {
           activity.progress(e)
           speak(e)
+        },
+        // A Draft's research may ask the site's on-demand tools (ADR-0072 §7.4); they run in the sandbox.
+        tools: {
+          async call(tool: string, inputJson: string) {
+            const t = siteModels?.tools.find((x) => x.id === tool)
+            if (!t) throw new Error(`no tool ${tool}`)
+            const r = await runTool(t, siteModels!.types as Record<string, unknown>, JSON.parse(inputJson), toolFacilities)
+            if (!r.ok) throw new Error(r.error ?? `${tool} failed`)
+            return r.outputs
+          },
         },
       }),
     log,
@@ -627,13 +646,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
         models: siteModels,
         pages: packPages(knowledge.current?.text),
         readPage: async (path) => (await client.gatewayFile(lease.token, path))?.page ?? null,
-        facilities: {
-          webFetch: async (url) => {
-            const r = await client.webFetch(url)
-            return { status: r.status, contentType: r.content_type, text: r.text }
-          },
-          llm: async (_tier, prompt) => (await client.llmGenerate(lease.token, { messages: [{ role: 'user', content: prompt }], kind: 'tool-agent' })).text,
-        },
+        facilities: toolFacilities,
         putData: (body) => client.putSiteData(lease.token, body),
         site: { name: company.name },
         log,
@@ -643,7 +656,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       if (job.kind !== 'publish' || !job.ok || !job.work_item) return
       const items = (JSON.parse(sim.plan_json()) as { items: { id: string; kind?: string }[] }).items
       const kind = items.find((i) => i.id === job.work_item)?.kind
-      if (kind === 'structure' || kind === 'tool') void loadSiteModels().catch((e) => log(`site models failed: ${String(e)}`))
+      if (kind === 'structure' || kind === 'tool' || kind === 'theme') void loadSiteModels().catch((e) => log(`site models failed: ${String(e)}`))
     },
     // The standup's context (ADR-0062): the sim's work in progress, titles from the plan store,
     // the measured model minutes per article from the activity record, and today's date.

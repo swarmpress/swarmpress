@@ -332,6 +332,17 @@ export function refetchAfterMerge(inner: OrchestratorGateway, keeper: SiteKnowle
     // ADR-0070: forwarded as they are.
     ...(inner.readPage ? { readPage: (path: string) => inner.readPage!(path) } : {}),
     ...(inner.openUpdate ? { openUpdate: (...args: Parameters<NonNullable<OrchestratorGateway['openUpdate']>>) => inner.openUpdate!(...args) } : {}),
+    // FEAT-094: theme components; a merged theme moves the base head, like a merge.
+    ...(inner.putTheme ? { putTheme: (item: string, files: string, message: string) => inner.putTheme!(item, files, message) } : {}),
+    ...(inner.mergeTheme
+      ? {
+          async mergeTheme(number: number, headSha: string) {
+            const sha = await inner.mergeTheme!(number, headSha)
+            void keeper.refresh('merge')
+            return sha
+          },
+        }
+      : {}),
     // FEAT-095: a structure change that landed moves the base head, like a merge.
     ...(inner.siteModels ? { siteModels: () => inner.siteModels!() } : {}),
     ...(inner.putBlueprint
