@@ -10,6 +10,10 @@ paths:
   - "crates/blueprint/tests/fixtures/site/**"
   - "apps/game/src/ui/components/Tools*.tsx"
   - "apps/game/src/render/bricks/machines.ts"
+  - "apps/game/src/tools/**"
+  - "crates/agents/src/tool_use.rs"
+  - "crates/orchestrator/src/tool_facts.rs"
+  - "crates/orchestrator/tests/tool_facts.rs"
 adrs:
   - ADR-0072
   - ADR-0042
@@ -36,6 +40,33 @@ joined by tubes with typed couplings. The game must load extensions first.
 Design: [`docs/design/construction-kits.md`](../../design/construction-kits.md) §3.4, §4.3, §7.
 
 Depends on: FEAT-054 (sandbox), FEAT-056 (skills).
+
+## As built (2026-10-07)
+
+- **Format and checker** (`crates/blueprint/src/tools.rs`): the closed node catalogue, typed
+  edges, and a derived manifest with capabilities, origins and limits.
+- **Interpreter** (`packages/toolgraph`): it runs a graph inside the QuickJS sandbox under the
+  graph's derived manifest. The game ships one bundle, `runtime/toolgraph-runtime.js`, with a
+  drift check.
+- **In the game** (`apps/game/src/tools/`):
+  - `runner.ts` runs a tool with its web traffic through the central fetch proxy and its agent
+    step on the hosted model.
+  - `host.ts` answers the sim's `ToolRun` jobs. A tool without inputs runs once; a bound tool
+    runs once per page of its page type. Every output is written as site data, and the sim gets
+    a digest.
+  - "Run now" in the Tools tab logs `RunTool`.
+  - In the sim, a tool is named by the first 6 bytes of its hash.
+- **Agents calling tools** (§7.4):
+  - There is no vendor function calling. `agents::tool_use` adds an optional `use_tools` list to
+    any structured answer's schema; the host runs the requested tools and returns their results
+    as the next message, for at most N rounds. The same loop works on the fake, local and hosted
+    models.
+  - The Draft pipeline's `tools#0` stage (`crates/orchestrator/src/tool_facts.rs`) runs after
+    the web research. It offers the site's on-demand tools that check clean.
+  - Each fact the writer states becomes dossier evidence with the source `tool:<id>`, but only
+    if that tool actually ran and answered. At most 8 facts are kept, and they are stored like
+    every other stage.
+  - In the browser, the orchestrator's tool caller runs the tool in the sandbox.
 
 ## Acceptance criteria
 

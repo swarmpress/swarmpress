@@ -63,6 +63,14 @@ checker in its own context, and its derived registry accepts every page of each 
 The proposal checks clean on the real checker (blueprint-wasm). The semantic reconciliation is
 `diffBlueprints` against the stored blueprint.
 
+**In the Blueprint panel**, while the CEO is editing, "Import a design" takes an HTML file or a
+ZIP:
+- `mergeDesign` merges the interpretation into the draft: an imported page type replaces the one
+  with the same id, any other page type is added, new page types join the navigation, and the
+  site's own globals win.
+- The canvas shows the diff, and the CEO saves it or discards it. A second import of a changed
+  export is therefore a diff, not a replacement.
+
 ## Acceptance criteria
 
 - [ ] The reverse-engineered blueprint of a fixture site is golden-tested and passes the checker.

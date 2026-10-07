@@ -408,6 +408,15 @@ then sees them as function tools:
   function call to the browser, the browser runs the tool in the sandbox, and it posts the result back.
   This round trip is new and needs its own design before T-1.
 
+**As built (2026-10-07):**
+- No vendor function calling is used on either path. `agents::tool_use` offers tools inside the
+  structured answer itself: an optional `use_tools` list whose tool ids are a closed enum.
+- The browser host runs the requested tools in the sandbox and sends the results back as the next
+  message. The hosted model therefore needs no new server round trip: each round is an ordinary
+  structured call through the central server.
+- The first user is the Draft's `tools#0` research stage. Its facts join the dossier with the
+  source `tool:<id>`, and only when the tool actually ran.
+
 ## 8. Creating a blueprint: the concept's three modes
 
 | Mode | In swarm.press | Model? |
@@ -472,8 +481,9 @@ then sees them as function tools:
    any disagreement.
 2. **Request-time tools need compute.** A static site cannot run them. They need an ADR on hosted
    functions, credits and abuse limits. Until then the concept's visitor-weather example is out of scope.
-3. **Function calls on the hosted model** cross server and browser (§7.4). The design is needed before
-   agents use tools.
+3. **Function calls on the hosted model** cross server and browser (§7.4). Resolved without vendor
+   function calling: tool requests are part of the structured answer, and the browser runs them
+   between ordinary calls.
 4. **Scope creep toward n8n.** The closed node catalogue is the guard. A new node kind needs a reason,
    and code goes into skills.
 5. **Town legibility and cost.** A site with 15 page types of 12 storeys each, plus 10 machines, is
@@ -489,3 +499,24 @@ then sees them as function tools:
    - Credentials stay in the proxy (ADR-0054).
 8. **The frozen theme.** Nothing here writes to `packages/site-builder/src/themes/cinque-terre/**`.
    X-2 waits for the cutover.
+
+## 12. As built (2026-10-07)
+
+Every increment of §10 is implemented. Each feature file has an "As built" section with the details.
+
+| # | What landed | Main code |
+|---|---|---|
+| B-0 | The page-type registry and `BlockMeta` as data; `page_type` is a closed-world id | `crates/content-model`, `packages/content-schema` |
+| B-1 | `swarmpress.blueprint.v1`, the type subset, the checker and the semantic hash; the live site's blueprint reverse-engineered without a model; the town compiled to `swarmpress.design.v1`; the model table | `crates/blueprint`, `crates/blueprint-wasm` |
+| B-2 | The Blueprint tab (brick canvas, inspector, live check and diff); `PUT /api/site/blueprint` as the structure actor; `Commission` and the `StructureApproval` ticket; the Information Architect's `Architect` job (closed edits, one repair turn) | `apps/game/src/ui/components/Blueprint*.tsx`, `crates/server/src/site_blueprint.rs`, `crates/orchestrator/src/structure.rs` |
+| T-0 | `swarmpress.tool.v1`, its checker and derived manifest; the interpreter as a sandboxed skill with trace and replay | `crates/blueprint/src/tools.rs`, `packages/toolgraph` |
+| T-1 | The Tools tab and the factory district; the Web Developer's `ToolBuild` job; `ToolRun` jobs on demand, by schedule and through "Run now", run in the browser sandbox | `apps/game/src/tools`, `apps/game/src/render/bricks/machines.ts` |
+| X-1 | Tool output as typed site data (`PUT /api/site/data`), bindings run per page, `ctx.toolData` at build time | `crates/server/src/site_data.rs`, `packages/site-kit` |
+| X-2 | The `ThemeCode` job writes the missing block renderers on `design/<item>`, and Publish merges them; a site on the frozen theme fails loudly | `crates/orchestrator/src/structure.rs`, `crates/server/src/site_theme.rs` |
+| X-3 | HTML/ZIP (Claude Design) import into the draft; n8n import with sealed steps; agents calling tools (`tools#0`) | `apps/game/src/blueprint/design-import.ts`, `packages/toolgraph` (n8n), `crates/orchestrator/src/tool_facts.rs` |
+
+The plan's deviations:
+- The Information Architect is played by the UX designer role (FEAT-095); no new role was added.
+- Agents call tools inside structured answers, without vendor function calling (§7.4).
+- X-2 cannot reach cinqueterre.travel before the cutover (rule 9). On that site the job fails
+  loudly, by design.

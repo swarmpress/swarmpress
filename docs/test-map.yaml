@@ -26,6 +26,14 @@
   features: [FEAT-090]
 - match: { classname: blueprint, title: "import::tests" }
   features: [FEAT-093]
+# Theme components (FEAT-094): the component check and tokens, the Web Developer's prompt and schema.
+- match: { classname: blueprint, title: "theme::tests" }
+  features: [FEAT-094]
+- match: { classname: agents, title: "theme::tests" }
+  features: [FEAT-094]
+# Agents calling the site's tools through use_tools (FEAT-091).
+- match: { classname: agents, title: "tool_use::tests" }
+  features: [FEAT-091]
 - match: { classname: content-schema, title: "the_core_page_types" }
   features: [FEAT-089]
 - match: { classname: content-model, title: "page_types::tests" }
