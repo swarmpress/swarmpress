@@ -96,3 +96,4 @@ Accepted ADRs are never rewritten.
 | [0074](0074-the-story-director.md) | The story director | Accepted |
 | [0075](0075-company-text-travels-with-the-log.md) | Company text travels with the log segments | Accepted |
 | [0076](0076-n8n-workflows-run-as-tools.md) | n8n workflows run as tools | Accepted (supersedes in part ADR-0072) |
+| [0077](0077-the-brick-studio.md) | The Brick Studio | Accepted (extends ADR-0072 §5, §7) |

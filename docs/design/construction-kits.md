@@ -290,6 +290,12 @@ compiles the town like any other design.
 
 ## 5. Editing: simple first, inspectable always
 
+> **Superseded in its UI by the Brick Studio (2026-10-08, [ADR-0077](../adr/0077-the-brick-studio.md),
+> [brick-studio.md](brick-studio.md)).** The editors became full-screen flat workbenches (Town,
+> Building, Factory, Paint shop) with one pick-snap grammar, and every change set is reviewed as an
+> instruction booklet. The rules of this section (closed parts bin, the shared checker, who changes
+> what) still hold.
+
 ### 5.1 The brick canvas
 
 The authoring surface is a **flat, top-down brick canvas** in the overlay, built with Preact and SVG

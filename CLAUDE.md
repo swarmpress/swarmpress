@@ -16,8 +16,8 @@ surfaces (ADR-0063, ADR-0065; decided, kit core and a spike first).
 - The company is extensible through a JS SDK.
 - The user's own company is the imported, still-live **cinqueterre.travel**.
 
-Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0075; ADR-0038 to 0075 define
-the current architecture; ADR-0044 to 0075 are decided and mostly not built yet). Features and
+Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0077; ADR-0038 to 0077 define
+the current architecture; ADR-0044 to 0077 are decided and mostly not built yet). Features and
 their health: `docs/features/` plus Cockpit. The current MVP is `docs/mvp.md` (the owner's
 company for real; inference moves to hosted GPT-6-Luna, ADR-0067); its implementation designs are in
 `docs/design/`.
@@ -202,6 +202,7 @@ cockpit serve --watch                         # http://127.0.0.1:4747
 | MVP implementation designs (runtime, pipeline, publish gate, game time, site path, gap analysis) | `docs/design/`, ADR-0057…0062 |
 | Brick office, construction kit, information surfaces (concept, designs, prototype) | `docs/reference/brick-office.md`, `docs/design/construction-kit.md`, `docs/design/brick-office.md`, ADR-0063…0065 |
 | Site blueprint and tool graphs (page types, n8n-like tools, the brick town; decided, not built) | `docs/reference/construction-kits.md`, `docs/design/construction-kits.md`, ADR-0072 |
+| The builder UI: the Brick Studio (workbenches, pick-snap grammar, instruction booklet) | `docs/design/brick-studio.md`, ADR-0077 |
 | Agent-loop principles (the owner's concept document) and the move to hosted GPT-6-Luna | `docs/reference/browser-agent-studio.md`, `docs/reference/gpt-6-luna-simulation-migration.md`, ADR-0067 |
 | Stage 0 contract, central HTTP API | `docs/mvp.md` (Stage 0), `crates/server/README.md` |
 | Local-first, storage, SDK | ADR-0038…0043, `docs/architecture/sdk.md`, `docs/guides/extending.md` |
