@@ -91,10 +91,10 @@ describe('asking the architects from the Blueprint panel', () => {
     expect((form.getByRole('textbox') as HTMLTextAreaElement).value).toBe('')
   })
 
-  it('asks the Web Developer for a tool on the Tools tab', async () => {
+  it('asks the Web Developer for a tool on the Factory workbench', async () => {
     const commission = vi.fn(async () => ({ ok: true }))
     await openPanel(commission)
-    fireEvent.click(panel().getByRole('tab', { name: 'Tools' }))
+    fireEvent.click(panel().getByRole('tab', { name: 'Factory' }))
     await flush()
     const form = within(panel().getByRole('form', { name: 'Ask for a tool' }))
     fireEvent.input(form.getByRole('textbox'), { target: { value: 'Show the next ferries from each village.' } })

@@ -6,8 +6,12 @@
  * Nothing here draws; the components in `ui/blueprint/` do.
  */
 import type { Blueprint, BlueprintChange, BlueprintPageType, BlueprintSlot, ModelIssue, ToolGraph, ToolNode } from './types'
+import corePageTypes from '../../../../crates/content-schema/schema/page-types.json'
 
 export type Mark = 'added' | 'removed' | 'changed' | null
+
+/** The platform's own page types (`blog-article`, `blog-index`): their storeys are fixed (check.rs refuses any change). */
+export const CORE_TYPES: ReadonlySet<string> = new Set((corePageTypes as { page_types: { id: string }[] }).page_types.map((t) => t.id))
 
 /** Buildings in navigation order, then in declaration order: town.rs `street()`. */
 export function streetOrder(bp: Blueprint): BlueprintPageType[] {
@@ -162,6 +166,23 @@ export function updatePageType(bp: Blueprint, id: string, patch: { label?: strin
 export function addSlot(bp: Blueprint, typeId: string, slot: BlueprintSlot): Blueprint {
   return withType(bp, typeId, (t) => {
     t.slots = [...(t.slots ?? []), slot]
+  })
+}
+
+/** A new storey at `index` of the type's slots (0: the top), for the Studio's gap drops (FEAT-100). */
+export function insertSlot(bp: Blueprint, typeId: string, index: number, slot: BlueprintSlot): Blueprint {
+  return withType(bp, typeId, (t) => {
+    const slots = [...(t.slots ?? [])]
+    slots.splice(Math.max(0, Math.min(index, slots.length)), 0, slot)
+    t.slots = slots
+  })
+}
+
+/** A global (header, footer…) on or off for a page type: its roof or foundation band (FEAT-100). */
+export function toggleUse(bp: Blueprint, typeId: string, global: string): Blueprint {
+  return withType(bp, typeId, (t) => {
+    const uses = t.uses ?? []
+    t.uses = uses.includes(global) ? uses.filter((g) => g !== global) : [...uses, global]
   })
 }
 

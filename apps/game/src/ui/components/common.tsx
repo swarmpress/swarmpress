@@ -96,14 +96,29 @@ export function Meter({ label, value, max = 1, tone, text }: { label: string; va
 }
 
 /** A docked panel: labelled region with a close button. */
-export function Panel({ id, title, wide, actions, children }: { id: PanelId; title: string; wide?: boolean; actions?: ComponentChildren; children: ComponentChildren }) {
+export function Panel({
+  id,
+  title,
+  wide,
+  full,
+  actions,
+  children,
+}: {
+  id: PanelId
+  title: string
+  wide?: boolean
+  /** The whole screen (the Brick Studio, FEAT-100). */
+  full?: boolean
+  actions?: ComponentChildren
+  children: ComponentChildren
+}) {
   const store = useStore()
   const ref = useRef<HTMLElement>(null)
   useEffect(() => {
     ref.current?.focus()
   }, [id])
   return (
-    <section ref={ref} id={`panel-${id}`} class={`panel${wide ? ' is-wide' : ''}`} aria-labelledby={`panel-${id}-title`} tabIndex={-1}>
+    <section ref={ref} id={`panel-${id}`} class={`panel${wide ? ' is-wide' : ''}${full ? ' is-full' : ''}`} aria-labelledby={`panel-${id}-title`} tabIndex={-1}>
       <header class="panel-head">
         <h2 id={`panel-${id}-title`}>{title}</h2>
         <div class="panel-actions">

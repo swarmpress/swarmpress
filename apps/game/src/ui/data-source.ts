@@ -1,4 +1,4 @@
-import type { PutBlueprintBody, PutBlueprintResult, PutToolsBody, SiteModels } from '../blueprint/types'
+import type { Blueprint, BlueprintChange, PutBlueprintBody, PutBlueprintResult, PutToolsBody, SiteModels } from '../blueprint/types'
 import type { CommandResult } from './commands'
 import type { Persona } from './personas'
 import type { PlanJson, PlanPost, PlanText } from './plan-types'
@@ -100,6 +100,21 @@ export interface ArticleRecord {
   editor: string | null
   /** The research the article rests on (ADR-0068), oldest first; empty when none was done. */
   evidence: ArticleEvidence[]
+  /**
+   * A structural work item's proposal (FEAT-095): the whole proposed
+   * blueprint and its changes, for the instruction booklet (FEAT-101). Absent
+   * for articles and tools. Model output: render it as data only.
+   */
+  structure?: StructureRecord | null
+}
+
+export interface StructureRecord {
+  kind: string
+  summary: string
+  /** The blueprint hash the proposal was made on. */
+  baseHash: string
+  proposal: Blueprint
+  changes: BlueprintChange[]
 }
 
 /**

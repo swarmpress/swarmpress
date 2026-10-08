@@ -1,9 +1,15 @@
 /**
- * The Blueprint panel (FEAT-090, ADR-0072, design §5): the site's structure
- * as a flat brick canvas, and its tools as machines. The CEO edits a draft of
- * the blueprint; every edit is checked and diffed in the browser with the
- * server's own code (`blueprint-wasm`), and Save lands it through
- * `PUT /api/site/blueprint` on the hash it was made on.
+ * The Brick Studio (FEAT-100, ADR-0077; FEAT-090, ADR-0072, design §5): the
+ * site's structure, its pages and its tools as flat brick workbenches over the
+ * whole screen. The Town is the site as a street of buildings (page types)
+ * with their storeys (slots); the Building workbench is one page type from
+ * the front, built from a tray of parts (the page builder); the Factory shows
+ * the tools as machines. The CEO edits one draft of the blueprint across the
+ * Town and the Building, with undo and redo; every edit is checked and diffed
+ * in the browser with the server's own code (`blueprint-wasm`). Saving goes
+ * through the instruction booklet (FEAT-101): the draft's changes as building
+ * steps, and "Build it" lands it through `PUT /api/site/blueprint` on the
+ * hash it was made on.
  *
  * Positions on the canvas are editor layout, kept in this component for now:
  * design §5.1 puts them in `blueprint/layout.json` (outside the semantic
@@ -14,21 +20,27 @@
  * designer (or, on the Tools tab, a tool built by the Web Developer), and
  * its proposal comes back as a StructureApproval ticket in the Inbox.
  */
-import { useEffect, useMemo, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
 import { buildingsOf, updateSlot } from '../../blueprint/model'
-import type { Blueprint as BlueprintDoc, SiteModels } from '../../blueprint/types'
-import { checkBlueprint, contextOf, diffBlueprints, loadBlueprintWasm, type BlueprintApi } from '../../blueprint/wasm'
+import type { Blueprint as BlueprintDoc, BlueprintChange, SiteModels } from '../../blueprint/types'
+import { applyChanges, checkBlueprint, contextOf, diffBlueprints, loadBlueprintWasm, type BlueprintApi } from '../../blueprint/wasm'
 import { BrickCanvas, type Layout, type Selection } from '../blueprint/Canvas'
 import { Inspector, Issues } from '../blueprint/Inspector'
 import { PartsBin } from '../blueprint/PartsBin'
 import { ToolsDistrict } from '../blueprint/Tools'
 import { useStore } from '../store'
+import { Booklet } from '../studio/Booklet'
+import { BuildingWorkbench } from '../studio/Building'
+import { setSound, soundOn } from '../studio/bricks'
+import { commit, historyOf, redo, undo, type History } from '../studio/history'
 import { Badge, Notice, Panel, TabPanel, Tabs } from './common'
 
-type Tab = 'blueprint' | 'tools'
+/** The workbenches (ADR-0077): the town map, one building from the front, the tools' factory. */
+type Tab = 'town' | 'building' | 'factory'
 const TABS: Array<{ id: Tab; label: string }> = [
-  { id: 'blueprint', label: 'Blueprint' },
-  { id: 'tools', label: 'Tools' },
+  { id: 'town', label: 'Town' },
+  { id: 'building', label: 'Building' },
+  { id: 'factory', label: 'Factory' },
 ]
 
 type Checker = { state: 'loading' | 'failed'; api: null } | { state: 'ready'; api: BlueprintApi }
@@ -52,10 +64,10 @@ function useChecker(): Checker {
 export function Blueprint() {
   const store = useStore()
   const models = store.siteModels.value
-  const [tab, setTab] = useState<Tab>('blueprint')
+  const [tab, setTab] = useState<Tab>('town')
   const checker = useChecker()
   return (
-    <Panel id="blueprint" title="Site blueprint" wide>
+    <Panel id="blueprint" title="Brick Studio · Site blueprint" full>
       {!models ? (
         <p class="muted" role="status">
           The site's models are not loaded.
@@ -71,14 +83,14 @@ export function Blueprint() {
               Edits are not checked here; the server still checks them when you save.
             </Notice>
           )}
-          <Tabs label="Blueprint views" idPrefix="blueprint" tabs={TABS} value={tab} onChange={setTab} />
+          <Tabs label="Workbenches" idPrefix="blueprint" tabs={TABS} value={tab} onChange={setTab} />
           <TabPanel idPrefix="blueprint" value={tab}>
-            <AskArchitect key={tab} kind={tab === 'tools' ? 'tool' : 'structure'} />
-            {tab === 'blueprint' ? (
-              <BlueprintEditor key={`${models.commit}:${models.hash}`} models={models} api={checker.api} />
-            ) : (
-              <ToolsDistrict models={models} api={checker.api} ctx={contextOf(models)} />
-            )}
+            {tab !== 'building' && <AskArchitect key={tab} kind={tab === 'factory' ? 'tool' : 'structure'} />}
+            {/* The editor stays mounted on the Factory, so its draft and history survive a look at the tools. */}
+            <div hidden={tab === 'factory'}>
+              <BlueprintEditor key={`${models.commit}:${models.hash}`} models={models} api={checker.api} bench={tab === 'building' ? 'building' : 'town'} />
+            </div>
+            {tab === 'factory' && <ToolsDistrict models={models} api={checker.api} ctx={contextOf(models)} />}
           </TabPanel>
         </>
       )}
@@ -161,10 +173,14 @@ function failure(e: unknown): { status: number | null; issues: string[]; message
   return { status: typeof err?.status === 'number' ? err.status : null, issues, message }
 }
 
-function BlueprintEditor({ models, api }: { models: SiteModels; api: BlueprintApi | null }) {
+function BlueprintEditor({ models, api, bench }: { models: SiteModels; api: BlueprintApi | null; bench: 'town' | 'building' }) {
   const store = useStore()
   const base = models.blueprint
-  const [draft, setDraft] = useState<BlueprintDoc>(base)
+  const [history, setHistory] = useState<History<BlueprintDoc>>(() => historyOf(base))
+  const draft = history.present
+  const setDraft = (next: BlueprintDoc) => setHistory((h) => commit(h, next))
+  const [review, setReview] = useState(false)
+  const [sound, setSoundState] = useState(soundOn)
   const [adopted, setAdopted] = useState(false)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [layout, setLayout] = useState<Layout>({})
@@ -186,6 +202,22 @@ function BlueprintEditor({ models, api }: { models: SiteModels; api: BlueprintAp
     setDraft(next)
     setRefused(null)
   }
+  const check = useMemo(() => (api ? (bp: BlueprintDoc) => checkBlueprint(api, bp, ctx) : null), [api, ctx])
+  const apply = useCallback((cs: BlueprintChange[]) => (api ? applyChanges(api, base, draft, cs) : null), [api, base, draft])
+  // Undo and redo (Ctrl/⌘ Z, Ctrl/⌘ Shift Z or Ctrl Y), not while typing in a field.
+  useEffect(() => {
+    if (!editing) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || (e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))) return
+      const k = e.key.toLowerCase()
+      if (k === 'z' && !e.shiftKey) setHistory(undo)
+      else if ((k === 'z' && e.shiftKey) || k === 'y') setHistory(redo)
+      else return
+      e.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editing])
   const addBlock = (type: string, slot: string, block: string) => {
     const s = draft.page_types.find((t) => t.id === type)?.slots?.find((x) => x.id === slot)
     if (!s || s.blocks.includes(block)) return
@@ -208,7 +240,7 @@ function BlueprintEditor({ models, api }: { models: SiteModels; api: BlueprintAp
   }
   const discard = () => {
     setImported(null)
-    setDraft(base)
+    setHistory(historyOf(base))
     setRefused(null)
     setSelection(null)
   }
@@ -221,12 +253,14 @@ function BlueprintEditor({ models, api }: { models: SiteModels; api: BlueprintAp
     setRefused(null)
     try {
       const r = await store.source.saveBlueprint({ blueprint: draft, base_hash: models.hash, ...(message.trim() ? { message: message.trim() } : {}) })
-      store.say(`Blueprint saved: ${r.changes.length} ${r.changes.length === 1 ? 'change' : 'changes'} (commit ${r.commit.slice(0, 7)})`, 'ok')
+      store.say(`Built: ${r.changes.length} ${r.changes.length === 1 ? 'change' : 'changes'} saved (commit ${r.commit.slice(0, 7)})`, 'ok')
       setSaving(false)
+      setReview(false)
       await reload()
     } catch (e) {
       const f = failure(e)
       setSaving(false)
+      setReview(false)
       if (f.status === 422) {
         setRefused(f.issues.length ? f.issues : [f.message])
         store.say('The server refused the blueprint: see its issues', 'error')
@@ -280,6 +314,41 @@ function BlueprintEditor({ models, api }: { models: SiteModels; api: BlueprintAp
           <p class="small">{imported}</p>
         </Notice>
       )}
+      {editing && (
+        <div class="st-bar" role="toolbar" aria-label="Build">
+          <button type="button" class="btn btn-quiet" disabled={!history.past.length} onClick={() => setHistory(undo)} aria-keyshortcuts="Control+Z">
+            ↶ Undo
+          </button>
+          <button type="button" class="btn btn-quiet" disabled={!history.future.length} onClick={() => setHistory(redo)} aria-keyshortcuts="Control+Shift+Z">
+            ↷ Redo
+          </button>
+          <label class="st-chip">
+            <input
+              type="checkbox"
+              checked={sound}
+              onChange={() => {
+                setSound(!sound)
+                setSoundState(!sound)
+              }}
+            />
+            Click sound
+          </label>
+        </div>
+      )}
+      {bench === 'building' ? (
+        <BuildingWorkbench
+          draft={draft}
+          base={base}
+          buildings={buildings}
+          changes={changes}
+          check={check}
+          customBlocks={models.context.custom_blocks}
+          editing={editing}
+          selection={selection}
+          onSelect={setSelection}
+          onEdit={edit}
+        />
+      ) : (
       <div class={`bp-layout${editing ? ' is-editing' : ''}${selected ? ' has-inspector' : ''}`}>
         {editing && <PartsBin draft={draft} customBlocks={models.context.custom_blocks} selection={selection} onChange={edit} onSelect={setSelection} onAddBlock={addBlock} />}
         <div class="bp-scroll">
@@ -306,6 +375,7 @@ function BlueprintEditor({ models, api }: { models: SiteModels; api: BlueprintAp
           <Inspector draft={draft} selection={selection} building={selected} changes={changes} editing={editing} onChange={edit} onSelect={setSelection} onClose={() => setSelection(null)} />
         )}
       </div>
+      )}
       <section class="bp-status" aria-label="Draft">
         <h3 class="small">
           Issues {issues.length > 0 ? <Badge tone="bad">{issues.length}</Badge> : <Badge tone="good">none</Badge>}
@@ -341,8 +411,8 @@ function BlueprintEditor({ models, api }: { models: SiteModels; api: BlueprintAp
                 Note
                 <input value={message} placeholder="What and why (optional)" onInput={(e) => setMessage(e.currentTarget.value)} />
               </label>
-              <button type="button" class="btn is-proposed" disabled={!ready} onClick={() => void save()}>
-                {saving ? 'Saving…' : 'Save'}
+              <button type="button" class="btn is-proposed" disabled={!ready} onClick={() => (api && changes.length ? setReview(true) : void save())}>
+                {saving ? 'Saving…' : api && changes.length ? 'Review your build' : 'Save'}
               </button>
               <button type="button" class="btn btn-quiet" disabled={draft === base || saving} onClick={discard}>
                 Discard
@@ -352,6 +422,20 @@ function BlueprintEditor({ models, api }: { models: SiteModels; api: BlueprintAp
           </>
         )}
       </section>
+      {review && (
+        <Booklet
+          title="Review your build"
+          base={base}
+          proposal={draft}
+          changes={changes}
+          apply={apply}
+          onClose={() => setReview(false)}
+          actions={[
+            { label: 'Keep building', onClick: () => setReview(false) },
+            { label: saving ? 'Building…' : 'Build it', primary: true, disabled: !ready, onClick: () => void save() },
+          ]}
+        />
+      )}
     </div>
   )
 }

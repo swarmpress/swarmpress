@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import type { BlueprintChange } from '../../blueprint/types'
+import { applyChanges, loadBlueprintWasm, type BlueprintApi } from '../../blueprint/wasm'
 import { cmd, kebab, roleVariant, type SecretaryTask } from '../commands'
 import { countdown, eur, gameTime, sentence } from '../format'
 import { humanRole, noSecretaryReason, REQUIRED_ROLES } from '../rules'
 import { useStore } from '../store'
 import type { Delegation, Priority, TicketJson } from '../types'
+import type { StructureRecord } from '../data-source'
+import { Booklet } from '../studio/Booklet'
 import { ArticleJudgement } from './ArticleJudgement'
 import { Badge, Notice, Panel, PersonButton } from './common'
 
@@ -239,7 +243,20 @@ function Ticket({ t }: { t: TicketJson }) {
       </p>
       {t.summary ? <p class="ticket-summary">{t.summary}</p> : info?.about && <p class="ticket-summary small">{info.about}</p>}
       {open && t.workItem && ARTICLE_KINDS.has(kind) && <ArticleJudgement item={t.workItem} id={t.id} missing={kind === 'publish-approval'} />}
-      {t.workItem && kind === 'structure-approval' && <StructureProposal item={t.workItem} />}
+      {t.workItem && kind === 'structure-approval' && (
+        <StructureProposal
+          item={t.workItem}
+          ticket={
+            open
+              ? {
+                  id: t.id,
+                  options: t.options,
+                  onSendBack: () => setSendBack(t.options.find(isSendBack) ?? null),
+                }
+              : null
+          }
+        />
+      )}
       {open ? (
         <>
           {delta != null && (
@@ -305,8 +322,26 @@ interface ProposedChange {
  * posted them to the item's thread from its artifact. Text from the store,
  * never from the sim.
  */
-export function StructureProposal({ item }: { item: string }) {
+export function StructureProposal({ item, ticket = null }: { item: string; ticket?: { id: string; options: string[]; onSendBack: () => void } | null }) {
   const store = useStore()
+  const [record, setRecord] = useState<StructureRecord | null>(null)
+  const [api, setApi] = useState<BlueprintApi | null>(null)
+  const [reading, setReading] = useState(false)
+  // The whole proposal for the booklet (FEAT-101): the artifact in this device's store, and the checker to apply its steps.
+  useEffect(() => {
+    let live = true
+    void store.source
+      .getArticle(item)
+      .then((a) => live && setRecord(a?.structure ?? null))
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [store.source, item])
+  const openBooklet = () => {
+    setReading(true)
+    loadBlueprintWasm().then(setApi, () => setApi(null))
+  }
   const posts = store.planText.value.posts[item] ?? []
   const post = [...posts].reverse().find((p) => {
     const st = p.payload?.structure as { changes?: unknown } | undefined
@@ -336,7 +371,81 @@ export function StructureProposal({ item }: { item: string }) {
           </li>
         ))}
       </ul>
+      {record && st.kind !== 'tool' && (
+        <button type="button" class="btn" onClick={openBooklet}>
+          Open the booklet
+        </button>
+      )}
+      {reading && record && (
+        <ProposalBooklet
+          record={record}
+          api={api}
+          summary={st.summary}
+          ticket={ticket}
+          onClose={() => setReading(false)}
+          onSendBack={() => {
+            setReading(false)
+            ticket?.onSendBack()
+          }}
+        />
+      )}
     </section>
+  )
+}
+
+/**
+ * A staff proposal as an instruction booklet (FEAT-101): from the site's
+ * current blueprint to the proposed one, step by step; its buttons answer the
+ * StructureApproval ticket like the Inbox's own ("Build it" approves). The
+ * proposal was made on a blueprint hash: if the site changed since, the
+ * booklet says so (Approve then fails on the stale hash, ADR-0072).
+ */
+function ProposalBooklet({
+  record,
+  api,
+  summary,
+  ticket,
+  onClose,
+  onSendBack,
+}: {
+  record: StructureRecord
+  api: BlueprintApi | null
+  summary?: string
+  ticket: { id: string; options: string[] } | null
+  onClose: () => void
+  onSendBack: () => void
+}) {
+  const store = useStore()
+  const models = store.siteModels.value
+  const base = models?.blueprint
+  const apply = useCallback((cs: BlueprintChange[]) => (api && base ? applyChanges(api, base, record.proposal, cs) : null), [api, base, record.proposal])
+  if (!base) return null
+  const stale = !!models && !!record.baseHash && record.baseHash !== models.hash
+  const answer = (option: string) => {
+    onClose()
+    void store.run(cmd.answer(ticket!.id, option), `Answered ${ticket!.id}: ${optionLabel(option)}`)
+  }
+  const find = (id: string) => ticket?.options.find((o) => slug(o) === id)
+  const approve = find('approve')
+  const actions = ticket
+    ? [
+        ...(find('defer') ? [{ label: 'Defer', onClick: () => answer(find('defer')!) }] : []),
+        ...(find('kill') ? [{ label: 'Kill', onClick: () => answer(find('kill')!) }] : []),
+        ...(find('send-back') ? [{ label: 'Send back…', onClick: onSendBack }] : []),
+        ...(approve ? [{ label: 'Build it', primary: true, onClick: () => answer(approve) }] : []),
+      ]
+    : [{ label: 'Close', onClick: onClose }]
+  return (
+    <Booklet
+      title="The architect's building instructions"
+      summary={`${summary ?? ''}${stale ? (summary ? ' ' : '') + 'The site changed since this proposal was made: approving it will fail; send it back for a new one.' : ''}`}
+      base={base}
+      proposal={record.proposal}
+      changes={record.changes}
+      apply={apply}
+      actions={actions}
+      onClose={onClose}
+    />
   )
 }
 

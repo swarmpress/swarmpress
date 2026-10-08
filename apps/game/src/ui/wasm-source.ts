@@ -1,3 +1,4 @@
+import type { Blueprint, BlueprintChange } from '../blueprint/types'
 import { SIM_COMMANDS, type CommandResult } from './commands'
 import {
   NO_SITE_LINKS,
@@ -5,6 +6,7 @@ import {
   type ActivityQuery,
   type ArticleBrief,
   type ArticleRecord,
+  type StructureRecord,
   type ArticleReview,
   type DataTopic,
   type GameDataSource,
@@ -206,6 +208,22 @@ export function toArticleRecord(artifact: unknown, briefRecord: unknown): Articl
     writer: strOrNull(b?.writer),
     editor: strOrNull(b?.editor),
     evidence: toEvidence(a.evidence),
+    // Only a structural work item has one: an article's record keeps its old shape.
+    ...(toStructure(a.structure) ? { structure: toStructure(a.structure) } : {}),
+  }
+}
+
+/** A structure proposal (`orchestrator::structure::Proposal`) with a whole blueprint; anything else is null. */
+function toStructure(v: unknown): StructureRecord | null {
+  const s = obj(v)
+  const proposal = obj(s?.proposal)
+  if (!s || !proposal || !Array.isArray(proposal.page_types) || !Array.isArray(s.changes)) return null
+  return {
+    kind: strOrNull(s.kind) ?? 'structure',
+    summary: strOrNull(s.summary) ?? '',
+    baseHash: strOrNull(s.base_hash) ?? '',
+    proposal: proposal as unknown as Blueprint,
+    changes: (s.changes as unknown[]).filter((c): c is BlueprintChange => !!obj(c) && typeof (c as { id?: unknown }).id === 'string'),
   }
 }
 

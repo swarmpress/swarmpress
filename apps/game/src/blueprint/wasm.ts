@@ -15,6 +15,8 @@ export interface BlueprintApi {
   hashBlueprint(bp: string): string
   checkTool(graph: string, ctx: string): string
   toolManifest(graph: string): string
+  /** `apply_changes`: `base` with the chosen `changes` of `proposal` (the booklet's steps); absent in older fakes. */
+  applyChanges?(base: string, proposal: string, changes: string): string
 }
 
 let loading: Promise<BlueprintApi> | null = null
@@ -80,6 +82,19 @@ export function checkTool(api: BlueprintApi, graph: ToolGraph, ctx: string): Mod
 export function toolManifest(api: BlueprintApi, graph: ToolGraph): Record<string, unknown> | null {
   try {
     return JSON.parse(api.toolManifest(JSON.stringify(graph))) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+/**
+ * `base` with the chosen changes of `proposal` applied (the instruction
+ * booklet's step states, FEAT-101); null when the checker cannot do it.
+ */
+export function applyChanges(api: BlueprintApi, base: Blueprint, proposal: Blueprint, changes: BlueprintChange[]): Blueprint | null {
+  if (!api.applyChanges) return null
+  try {
+    return JSON.parse(api.applyChanges(JSON.stringify(base), JSON.stringify(proposal), JSON.stringify(changes))) as Blueprint
   } catch {
     return null
   }

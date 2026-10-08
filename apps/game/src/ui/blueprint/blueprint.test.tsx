@@ -81,6 +81,16 @@ const nav = () => screen.getByRole('navigation', { name: 'CEO tools' })
 const panel = () => screen.getByRole('region', { name: /Site blueprint/ })
 const buildingIds = () => [...document.querySelectorAll('[data-building]')].map((g) => g.getAttribute('data-building'))
 const storey = (id: string) => document.querySelector(`[data-slot="${id}"]`) as SVGGElement | null
+/** Save, or "Review your build" when the draft has changes the checker found (FEAT-101). */
+const SAVE = /^(Save|Review your build)$/
+/** Review your build, then "Build it" in the booklet. */
+async function build() {
+  fireEvent.click(within(panel()).getByRole('button', { name: 'Review your build' }))
+  await flush()
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Review your build' })).getByRole('button', { name: 'Build it' }))
+  await flush()
+  await flush()
+}
 
 /** A checker that knows no issues and no changes: enough for the panel's own wiring. */
 const FAKE: BlueprintApi = {
@@ -102,7 +112,7 @@ describe('the Blueprint panel is offered with the site models only', () => {
     expect(store.panel.value).toBeNull()
   })
 
-  it('appears once the source has the models; B opens it with its two tabs', async () => {
+  it('appears once the source has the models; B opens the Studio on its Town', async () => {
     const store = await open({ models: models() })
     expect(within(nav()).getByRole('button', { name: /Blueprint/ })).toBeTruthy()
     fireEvent.keyDown(document.body, { key: 'b' })
@@ -110,8 +120,9 @@ describe('the Blueprint panel is offered with the site models only', () => {
     await flush()
     expect(store.panel.value).toBe('blueprint')
     const p = within(panel())
-    expect(p.getByRole('tab', { name: 'Blueprint' }).getAttribute('aria-selected')).toBe('true')
-    expect(p.getByRole('tab', { name: 'Tools' })).toBeTruthy()
+    expect(p.getByRole('tab', { name: 'Town' }).getAttribute('aria-selected')).toBe('true')
+    expect(p.getByRole('tab', { name: 'Building' })).toBeTruthy()
+    expect(p.getByRole('tab', { name: 'Factory' })).toBeTruthy()
     expect(buildingIds()).toHaveLength(6)
   })
 })
@@ -194,14 +205,14 @@ describe.skipIf(!built)('the brick canvas on the real checker (blueprint-wasm)',
     await flush()
     expect(storey('author/lead')!.getAttribute('data-mark')).toBe('added')
     expect(storey('author/lead')!.getAttribute('data-issue')).toBe('true')
-    expect((p.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((p.getByRole('button', { name: SAVE }) as HTMLButtonElement).disabled).toBe(true)
 
     // A block from the parts bin into the selected storey: the issue is gone, the storey takes its colour.
     fireEvent.click(bin.getByRole('button', { name: 'Add hero to lead' }))
     await flush()
     expect(storey('author/lead')!.getAttribute('data-issue')).toBeNull()
     expect(storey('author/lead')!.getAttribute('data-colour')).toBe('sand')
-    expect((p.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((p.getByRole('button', { name: SAVE }) as HTMLButtonElement).disabled).toBe(false)
 
     // Discard: back to the blueprint as saved.
     fireEvent.click(p.getByRole('button', { name: 'Discard' }))
@@ -237,15 +248,13 @@ describe.skipIf(!built)('the brick canvas on the real checker (blueprint-wasm)',
     const reload = vi.fn(async () => undefined)
     const store = await openPanel({ models: models(), save, reload })
     await addAuthor()
-    fireEvent.click(within(panel()).getByRole('button', { name: 'Save' }))
-    await flush()
-    await flush()
+    await build()
     expect(save).toHaveBeenCalledTimes(1)
     const body = save.mock.calls[0][0]
     expect(body.base_hash).toBe('hash-base')
     expect(body.blueprint.page_types.at(-1)).toMatchObject({ id: 'author', slots: [{ id: 'storey', blocks: ['paragraph'] }] })
     expect(reload).toHaveBeenCalledTimes(1)
-    expect(store.toast.value).toMatchObject({ tone: 'ok', text: 'Blueprint saved: 1 change (commit abcdef0)' })
+    expect(store.toast.value).toMatchObject({ tone: 'ok', text: 'Built: 1 change saved (commit abcdef0)' })
   })
 
   it('shows the server issues of a 422 and offers a reload on a 409', async () => {
@@ -257,18 +266,14 @@ describe.skipIf(!built)('the brick canvas on the real checker (blueprint-wasm)',
     const store = await openPanel({ models: models(), save, reload })
     await addAuthor()
     const p = within(panel())
-    fireEvent.click(p.getByRole('button', { name: 'Save' }))
-    await flush()
-    await flush()
+    await build()
     expect(p.getByRole('list', { name: 'Server issues' }).textContent).toContain('bad-route at /page_types/6/route')
     expect(store.toast.value?.tone).toBe('error')
 
     status = 409
-    fireEvent.click(p.getByRole('button', { name: 'Save' }))
-    await flush()
-    await flush()
+    await build()
     expect(p.getByText('The blueprint changed since you began editing')).toBeTruthy()
-    expect((p.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((p.getByRole('button', { name: SAVE }) as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(p.getByRole('button', { name: 'Reload the blueprint' }))
     await flush()
     expect(reload).toHaveBeenCalledTimes(1)
@@ -282,18 +287,18 @@ describe.skipIf(!built)('the brick canvas on the real checker (blueprint-wasm)',
     await flush()
     expect(p.getByRole('navigation', { name: 'Parts bin' })).toBeTruthy()
     // Saving the import as it is stores it in the repo.
-    expect((p.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((p.getByRole('button', { name: SAVE }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('is read-only for a source that cannot save', async () => {
     await openPanel({ models: models() })
     expect(within(panel()).queryByRole('navigation', { name: 'Parts bin' })).toBeNull()
-    expect(within(panel()).queryByRole('button', { name: 'Save' })).toBeNull()
+    expect(within(panel()).queryByRole('button', { name: SAVE })).toBeNull()
   })
 
   it('lays the three fixture tools out as machines in layered order, with manifests and triggers', async () => {
     await openPanel({ models: models() })
-    fireEvent.click(within(panel()).getByRole('tab', { name: 'Tools' }))
+    fireEvent.click(within(panel()).getByRole('tab', { name: 'Factory' }))
     await flush()
     const cards = [...document.querySelectorAll('[data-tool]')]
     expect(cards.map((c) => c.getAttribute('data-tool'))).toEqual(['ferry-times', 'story-teaser', 'weather'])

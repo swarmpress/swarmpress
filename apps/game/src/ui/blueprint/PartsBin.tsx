@@ -43,7 +43,7 @@ export function PartsBin({
   return (
     <nav class="bp-bin" aria-label="Parts bin">
       <section aria-labelledby="bp-bin-type">
-        <h4 id="bp-bin-type">New page type</h4>
+        <h3 id="bp-bin-type">New page type</h3>
         <form
           class="bp-bin-form"
           onSubmit={(e) => {
@@ -75,7 +75,7 @@ export function PartsBin({
         </form>
       </section>
       <section aria-labelledby="bp-bin-blocks">
-        <h4 id="bp-bin-blocks">Blocks</h4>
+        <h3 id="bp-bin-blocks">Blocks</h3>
         <p class="small muted">{slot ? `Adds to the storey ${target!.slot} of ${target!.type}.` : 'Select a storey to add blocks to it.'}</p>
         {[...groups.entries()].map(([cat, blocks]) => (
           <details key={cat} open={cat === 'core' || cat === 'custom'}>

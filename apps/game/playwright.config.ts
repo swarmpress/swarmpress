@@ -5,7 +5,7 @@ import { executablePath, webgpuLaunch } from './e2e/webgpu'
 const port = Number(process.env.SWARMPRESS_PREVIEW_PORT ?? 4173)
 // Need the central server: playwright.orchestrator.config.ts, playwright.mvp.config.ts (mvp, takeover, story).
 // Need a GPU and the real model (gated): playwright.bonsai.config.ts.
-const IGNORED = ['orchestrator.spec.ts', 'mvp.spec.ts', 'takeover.spec.ts', 'mvp-bonsai.spec.ts', 'bonsai.spec.ts', 'bonsai-equivalence.spec.ts', 'story.spec.ts']
+const IGNORED = ['orchestrator.spec.ts', 'mvp.spec.ts', 'takeover.spec.ts', 'mvp-bonsai.spec.ts', 'bonsai.spec.ts', 'bonsai-equivalence.spec.ts', 'story.spec.ts', 'studio.spec.ts']
 
 export default defineConfig({
   testDir: 'e2e',
