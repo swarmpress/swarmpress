@@ -100,3 +100,23 @@ test("the architect's proposal is reviewed as a booklet and built from it", asyn
     )
     .toBeGreaterThan(0)
 })
+
+test('the CEO builds a tool in the Factory and saves it', async ({ page }, ti) => {
+  await boot(page, gameUrl(ti.project.name, `studio-tool-${ti.project.name}-${Date.now().toString(36)}`))
+  const studio = await openStudio(page)
+  await studio.getByRole('tab', { name: 'Factory' }).click()
+  await studio.getByRole('tab', { name: 'Workbench' }).click()
+  await studio.getByRole('textbox', { name: 'New tool' }).fill('Digest')
+  await studio.getByRole('button', { name: 'Add tool' }).click()
+  for (const label of ['Feed', 'Limit', 'Output']) await studio.getByRole('button', { name: `Place ${label}` }).click()
+  // Tubes: an outlet, then the inlet it lights green.
+  await studio.locator('[data-outlet="rss.out"]').click()
+  await expect(studio.locator('[data-inlet="limit.in"]')).toHaveClass(/is-ok/)
+  await studio.locator('[data-inlet="limit.in"]').click()
+  await studio.locator('[data-outlet="limit.out"]').click()
+  await studio.locator('[data-inlet="output.in"]').click()
+  await expect(studio.locator('[data-edge]')).toHaveCount(2)
+  await page.screenshot({ path: `test-results/studio/${ti.project.name}-factory.png` })
+  await studio.getByRole('button', { name: 'Save tools' }).click()
+  await expect(page.locator('.toast')).toContainText(/Built: 1 tool saved/, { timeout: 30_000 })
+})

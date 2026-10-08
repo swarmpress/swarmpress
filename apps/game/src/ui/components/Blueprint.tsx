@@ -31,6 +31,7 @@ import { ToolsDistrict } from '../blueprint/Tools'
 import { useStore } from '../store'
 import { Booklet } from '../studio/Booklet'
 import { BuildingWorkbench } from '../studio/Building'
+import { FactoryWorkbench } from '../studio/Factory'
 import { setSound, soundOn } from '../studio/bricks'
 import { commit, historyOf, redo, undo, type History } from '../studio/history'
 import { Badge, Notice, Panel, TabPanel, Tabs } from './common'
@@ -90,11 +91,36 @@ export function Blueprint() {
             <div hidden={tab === 'factory'}>
               <BlueprintEditor key={`${models.commit}:${models.hash}`} models={models} api={checker.api} bench={tab === 'building' ? 'building' : 'town'} />
             </div>
-            {tab === 'factory' && <ToolsDistrict models={models} api={checker.api} ctx={contextOf(models)} />}
+            {tab === 'factory' && <Factory models={models} api={checker.api} />}
           </TabPanel>
         </>
       )}
     </Panel>
+  )
+}
+
+type FactoryView = 'bench' | 'machines'
+const FACTORY_VIEWS: Array<{ id: FactoryView; label: string }> = [
+  { id: 'bench', label: 'Workbench' },
+  { id: 'machines', label: 'Machines and imports' },
+]
+
+/**
+ * The Factory (FEAT-103): the workbench that builds tools in the Studio's
+ * grammar, and the machines overview with n8n import, credentials and Run now.
+ */
+function Factory({ models, api }: { models: SiteModels; api: BlueprintApi | null }) {
+  const store = useStore()
+  const editing = !!store.source.saveBlueprint
+  const [view, setView] = useState<FactoryView>(editing ? 'bench' : 'machines')
+  const ctx = contextOf(models)
+  return (
+    <>
+      <Tabs label="Factory views" idPrefix="factory" tabs={FACTORY_VIEWS} value={view} onChange={setView} />
+      <TabPanel idPrefix="factory" value={view}>
+        {view === 'bench' ? <FactoryWorkbench key={`${models.commit}:${models.hash}`} models={models} api={api} ctx={ctx} editing={editing && !!api} /> : <ToolsDistrict models={models} api={api} ctx={ctx} />}
+      </TabPanel>
+    </>
   )
 }
 

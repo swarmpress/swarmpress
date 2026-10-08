@@ -1,6 +1,6 @@
 # The Brick Studio: the builder as a game
 
-**Status:** decided ([ADR-0077](../adr/0077-the-brick-studio.md)). Slice 1 is built: the Studio, the Building workbench, and the instruction booklet (FEAT-100, FEAT-101). The rest is planned.
+**Status:** decided ([ADR-0077](../adr/0077-the-brick-studio.md)). Built: the Studio, the Building workbench, the instruction booklet (FEAT-100, FEAT-101), and the Factory workbench's core (FEAT-103). The rest is planned.
 **Date:** 2026-10-08
 **Extends:** ADR-0072 §5 and §7, and [construction-kits.md](construction-kits.md) §5.
 
@@ -98,8 +98,8 @@ Key B, or the toolbar's Blueprint button, opens the Studio over the whole screen
 
 ### 3.3 Factory (the tools): supply chains
 
-- **Today:** the tools as machines, read-only, with Run now (FEAT-091).
-- **Planned (FEAT-103):** editing in the same grammar.
+- **Built (FEAT-103):** the Workbench (the machines overview, n8n import, credentials and Run now stay beside it). The tray places machines with complete defaults; tubes run from an outlet to an inlet the checker lights green; the inspector edits a machine in words or JSON, and the tool's name, trigger and types; undo and redo; Save tools.
+- **Planned:** the rest of this list: typed couplings, recipes, test-run replay, n8n as a booklet.
   - **Machines** are the closed node catalogue:
     - input (hopper);
     - connector (dish, mast, telescope, bookshelf);
@@ -192,6 +192,6 @@ The orchestrator owns the transitions (rule 3). No model output is applied witho
 | FEAT-100 | The Studio: workbenches, the grammar, undo, the Building workbench (page builder) | built (slice 1) |
 | FEAT-101 | The instruction booklet: the CEO's draft and staff proposals | built (slice 1) |
 | FEAT-102 | Town: info views and construction-site zoning | planned |
-| FEAT-103 | Factory: the tool graph editor in the grammar, recipes, test-run replay, n8n as a booklet | planned |
+| FEAT-103 | Factory: the tool graph editor in the grammar (built); recipes, typed couplings, test-run replay, n8n as a booklet (planned) | in progress |
 | FEAT-104 | Paint shop: style sets, palette and type tiles, the preview | planned |
 | — | Partial approval; the layout saved to `blueprint/layout.json`; a page preview in the Building workbench; tool binding by tube | later |
