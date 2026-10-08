@@ -14,6 +14,7 @@
 //! | agent | a sand workstation with a plum figure |
 //! | skill | a cork crate (sealed steps too) |
 //! | output | a green chute |
+//! | n8n | the machine of what it does: a request a dish, IF/Filter/Switch a switch, a model a workstation, Code a sage bench, other item steps a gearbox, a type that does not run a crate |
 //!
 //! Edges are flat tubes on the plot, coloured by the type their source
 //! produces ([`type_colour`]). A node with a checker issue wears a red brick.
@@ -37,6 +38,41 @@ pub const PLOT_MARGIN: i64 = 2;
 pub struct MachineInput {
     pub graph: ToolGraph,
     pub broken: BTreeSet<String>,
+}
+
+/// The machine an n8n node type stands as.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum N8nMachine {
+    /// A request: a blue body with a dish.
+    Dish,
+    /// IF, Filter, Switch: an orange switch.
+    Switch,
+    /// A model call: a workstation with a figure.
+    Workstation,
+    /// Code, Function, Date & Time: a sage bench with a screen.
+    Bench,
+    /// A type that does not run here: a cork crate.
+    Crate,
+    /// Everything that reshapes items: a gearbox.
+    Gearbox,
+}
+
+pub fn n8n_machine(ty: &str) -> N8nMachine {
+    match crate::tools::n8n_type(ty) {
+        None => N8nMachine::Crate,
+        Some(t) if t.web || t.tool => N8nMachine::Dish,
+        Some(t) if t.llm => N8nMachine::Workstation,
+        Some(_) => match ty {
+            "n8n-nodes-base.if" | "n8n-nodes-base.filter" | "n8n-nodes-base.switch" => {
+                N8nMachine::Switch
+            }
+            "n8n-nodes-base.code"
+            | "n8n-nodes-base.function"
+            | "n8n-nodes-base.functionItem"
+            | "n8n-nodes-base.dateTime" => N8nMachine::Bench,
+            _ => N8nMachine::Gearbox,
+        },
+    }
 }
 
 /// The colour of a type's tubes: built-in types fixed, others by a stable hash.
@@ -79,6 +115,7 @@ fn produced(g: &ToolGraph, n: &Node) -> Option<String> {
         Node::Connector { returns, .. } | Node::Skill { returns, .. } => Some(returns.clone()),
         Node::Op { returns, .. } => returns.clone(),
         Node::Agent { output, .. } => Some(output.clone()),
+        Node::N8n { returns, .. } => Some(returns.clone().unwrap_or_else(|| "Json[]".into())),
         _ => None,
     }
 }
@@ -196,12 +233,26 @@ pub fn machine_ops(
             Node::Agent { .. } => (3, "sand"),
             Node::Skill { .. } => (4, "cork"),
             Node::Output { .. } => (3, "green"),
+            // An n8n node is the machine of what it does (ADR-0076).
+            Node::N8n { r#type, .. } => match n8n_machine(r#type) {
+                N8nMachine::Dish => (3, "blue"),
+                N8nMachine::Switch => (3, "orange"),
+                N8nMachine::Workstation => (3, "sand"),
+                N8nMachine::Bench => (4, "sage"),
+                N8nMachine::Crate => (4, "cork"),
+                N8nMachine::Gearbox => (6, "grey-dark"),
+            },
         };
         ops.push(region([nx, nz, 2], [NODE, NODE, body], "brick", colour));
         let base = 2 + body;
         let mut top = base;
+        let machine = match n {
+            Node::N8n { r#type, .. } => Some(n8n_machine(r#type)),
+            _ => None,
+        };
         match n {
-            Node::Connector { .. } => {
+            Node::Connector { .. } | Node::N8n { .. } if !matches!(machine, Some(m) if m != N8nMachine::Dish) =>
+            {
                 ops.push(region(
                     [nx + 1, nz + 1, base],
                     [2, 2, 1],
@@ -210,9 +261,21 @@ pub fn machine_ops(
                 ));
                 top = base + 1;
             }
-            Node::Agent { .. } => {
+            Node::Agent { .. } | Node::N8n { .. }
+                if matches!(machine, None | Some(N8nMachine::Workstation)) =>
+            {
                 ops.push(region([nx + 1, nz + 1, base], [1, 1, 6], "brick", "plum"));
                 top = base + 6;
+            }
+            Node::N8n { .. } if machine == Some(N8nMachine::Bench) => {
+                // a code bench: a screen on top
+                ops.push(region(
+                    [nx, nz + 1, base],
+                    [1, 2, 3],
+                    "brick",
+                    "screen-blue",
+                ));
+                top = base + 3;
             }
             _ => {}
         }

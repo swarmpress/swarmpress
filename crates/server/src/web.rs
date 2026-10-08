@@ -17,6 +17,15 @@
 //!
 //! Fetched text is untrusted data, never instructions.
 //!
+//! `POST /web/request` is the same proxy for a site's tools (ADR-0076: an
+//! n8n HTTP Request node): `{url, method, headers?, body?}` with any of GET,
+//! HEAD, POST, PUT, PATCH, DELETE and OPTIONS, a body of at most 256 KiB, the
+//! caller's headers forwarded except hop-by-hop ones, `Host`, `Cookie` and
+//! the proxy's own; redirects are followed (re-checked) for GET and HEAD
+//! only. The answer is `{url, status, content_type, headers, body}` with the
+//! body as it came (no HTML reduction), under the same SSRF guard, limits and
+//! content types; an empty body passes whatever its type.
+//!
 //! `POST /web/firecrawl/{*rest}` is the paid tier: 501 until credits ship.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -26,6 +35,7 @@ use axum::extract::{Query, State};
 use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 
 use crate::app::AppState;
 use crate::auth::CurrentUser;
@@ -326,24 +336,153 @@ pub async fn fetch(
     }
     let start = check_url(&q.url)?;
     let cfg = st.cfg.web.clone();
-    let res = tokio::time::timeout(cfg.timeout, fetch_inner(start, &cfg)).await;
+    let res = tokio::time::timeout(cfg.timeout, fetch_inner(start, &cfg, &Outgoing::page())).await;
     let out = match res {
         Ok(r) => r?,
         Err(_) => return Err(AppError::GatewayTimeout("fetch timed out".into())),
     };
-    tracing::info!(user_id = %user.id, host = %out.0.host_str().unwrap_or(""), status = out.1, "web fetch");
+    tracing::info!(user_id = %user.id, host = %out.url.host_str().unwrap_or(""), status = out.status, "web fetch");
     Ok(Json(json!({
-        "url": out.0.as_str(),
-        "status": out.1,
-        "content_type": out.2,
-        "text": out.3,
+        "url": out.url.as_str(),
+        "status": out.status,
+        "content_type": out.content_type,
+        "text": out.body,
+    })))
+}
+
+/// Largest request body `POST /web/request` forwards.
+pub const MAX_REQUEST_BODY: usize = 256 * 1024;
+const METHODS: [&str; 7] = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+/// Request headers never forwarded.
+const DROPPED_HEADERS: [&str; 11] = [
+    "host",
+    "cookie",
+    "connection",
+    "keep-alive",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+    "content-length",
+    "x-swarmpress-credential",
+];
+
+#[derive(Deserialize)]
+pub struct RequestBody {
+    pub url: String,
+    #[serde(default = "get_method")]
+    pub method: String,
+    #[serde(default)]
+    pub headers: BTreeMap<String, String>,
+    #[serde(default)]
+    pub body: Option<String>,
+}
+
+fn get_method() -> String {
+    "GET".into()
+}
+
+/// What the proxy sends and how it answers.
+struct Outgoing {
+    method: reqwest::Method,
+    headers: Vec<(String, String)>,
+    body: Option<String>,
+    /// The body as it came; otherwise HTML is reduced to text.
+    raw: bool,
+}
+
+impl Outgoing {
+    fn page() -> Outgoing {
+        Outgoing {
+            method: reqwest::Method::GET,
+            headers: vec![(
+                "accept".into(),
+                "text/html,application/xhtml+xml,text/plain,application/json;q=0.9,*/*;q=0.1"
+                    .into(),
+            )],
+            body: None,
+            raw: false,
+        }
+    }
+}
+
+struct Fetched {
+    url: url::Url,
+    status: u16,
+    content_type: String,
+    headers: BTreeMap<String, String>,
+    body: String,
+}
+
+/// `POST /web/request` (module docs).
+pub async fn request(
+    State(st): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<RequestBody>,
+) -> AppResult<Json<Value>> {
+    if !st.web_limiter.allow(user.id.clone(), Instant::now()) {
+        return Err(AppError::TooManyRequests("web fetch rate limit".into()));
+    }
+    let method = req.method.to_ascii_uppercase();
+    if !METHODS.contains(&method.as_str()) {
+        return Err(AppError::BadRequest(format!(
+            "method {method} is not one of {}",
+            METHODS.join(", ")
+        )));
+    }
+    if req
+        .body
+        .as_ref()
+        .is_some_and(|b| b.len() > MAX_REQUEST_BODY)
+    {
+        return Err(AppError::PayloadTooLarge(format!(
+            "request body exceeds {MAX_REQUEST_BODY} bytes"
+        )));
+    }
+    let mut headers = Vec::new();
+    for (k, v) in &req.headers {
+        let lower = k.to_ascii_lowercase();
+        if DROPPED_HEADERS.contains(&lower.as_str()) {
+            continue;
+        }
+        if reqwest::header::HeaderName::from_bytes(lower.as_bytes()).is_err()
+            || reqwest::header::HeaderValue::from_str(v).is_err()
+        {
+            return Err(AppError::BadRequest(format!("header {k:?} is not valid")));
+        }
+        headers.push((lower, v.clone()));
+    }
+    let start = check_url(&req.url)?;
+    let cfg = st.cfg.web.clone();
+    let out = Outgoing {
+        method: reqwest::Method::from_bytes(method.as_bytes())
+            .map_err(|_| AppError::BadRequest("bad method".into()))?,
+        headers,
+        body: req.body,
+        raw: true,
+    };
+    let res = tokio::time::timeout(cfg.timeout, fetch_inner(start, &cfg, &out)).await;
+    let got = match res {
+        Ok(r) => r?,
+        Err(_) => return Err(AppError::GatewayTimeout("request timed out".into())),
+    };
+    tracing::info!(user_id = %user.id, host = %got.url.host_str().unwrap_or(""), method = %method, status = got.status, "web request");
+    Ok(Json(json!({
+        "url": got.url.as_str(),
+        "status": got.status,
+        "content_type": got.content_type,
+        "headers": got.headers,
+        "body": got.body,
     })))
 }
 
 async fn fetch_inner(
     mut u: url::Url,
     cfg: &crate::config::WebConfig,
-) -> AppResult<(url::Url, u16, String, String)> {
+    out: &Outgoing,
+) -> AppResult<Fetched> {
+    let follow = out.method == reqwest::Method::GET || out.method == reqwest::Method::HEAD;
     for _ in 0..=cfg.max_redirects {
         let addrs = resolve_public(&u, cfg.allow_private_for_tests).await?;
         let mut builder = reqwest::Client::builder()
@@ -359,17 +498,19 @@ async fn fetch_inner(
         let client = builder
             .build()
             .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
-        let mut res = client
-            .get(u.clone())
-            .header(
-                reqwest::header::ACCEPT,
-                "text/html,application/xhtml+xml,text/plain,application/json;q=0.9,*/*;q=0.1",
-            )
+        let mut rb = client.request(out.method.clone(), u.clone());
+        for (k, v) in &out.headers {
+            rb = rb.header(k.as_str(), v.as_str());
+        }
+        if let Some(b) = &out.body {
+            rb = rb.body(b.clone());
+        }
+        let mut res = rb
             .send()
             .await
             .map_err(|e| AppError::BadGateway(format!("fetch failed: {e}")))?;
         let status = res.status();
-        if status.is_redirection() {
+        if status.is_redirection() && follow {
             let loc = res
                 .headers()
                 .get(reqwest::header::LOCATION)
@@ -387,11 +528,22 @@ async fn fetch_inner(
             .and_then(|v| v.to_str().ok())
             .unwrap_or("")
             .to_string();
-        if !allowed_content_type(&ct) {
+        let empty = res.content_length() == Some(0) || out.method == reqwest::Method::HEAD;
+        if !empty && !allowed_content_type(&ct) && !(out.raw && ct.is_empty()) {
             return Err(AppError::UnsupportedMediaType(format!(
                 "content type {ct:?} is not html, text or json"
             )));
         }
+        let headers: BTreeMap<String, String> = res
+            .headers()
+            .iter()
+            .filter(|(k, _)| k.as_str() != "set-cookie")
+            .filter_map(|(k, v)| {
+                v.to_str()
+                    .ok()
+                    .map(|v| (k.as_str().to_string(), v.to_string()))
+            })
+            .collect();
         if res
             .content_length()
             .is_some_and(|n| n > cfg.max_bytes as u64)
@@ -411,12 +563,18 @@ async fn fetch_inner(
         }
         let raw = String::from_utf8_lossy(&body);
         let lower = ct.to_ascii_lowercase();
-        let text = if lower.contains("html") {
+        let text = if !out.raw && lower.contains("html") {
             html_to_text(&raw)
         } else {
             raw.into_owned()
         };
-        return Ok((u, status.as_u16(), ct, text));
+        return Ok(Fetched {
+            url: u,
+            status: status.as_u16(),
+            content_type: ct,
+            headers,
+            body: text,
+        });
     }
     Err(AppError::BadGateway("too many redirects".into()))
 }

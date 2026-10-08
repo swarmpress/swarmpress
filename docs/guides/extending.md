@@ -78,7 +78,7 @@ Rules of the road:
 - Return `{artifact, digest}` (use `jobResult`). Never a stage, an approval or a merge: the
   orchestrator decides those.
 - Inside the sandbox you have `Bun.file`/`Bun.write` (your granted `store/<table>/…` paths and your
-  own files under `pack/…`), `fetch` (with `web`), `swarmpress.llm` (with `llm:<tier>`) and `console`.
+  own files under `pack/…`), `fetch` (with `web`), `swarmpress.llm` (with `llm:<tier>`), `swarmpress.code` (with `code`, ADR-0076) and `console`.
   Nothing else: no `process`, `require`, timers or filesystem.
 - Calls have a memory cap, an operation budget and a wall-time budget; a breach fails the call.
 - Sim rules run in deterministic mode: `Math.random` is seeded and `Date` is pinned, and their

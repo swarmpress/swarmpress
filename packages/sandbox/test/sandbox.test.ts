@@ -74,6 +74,39 @@ describe("capabilities", () => {
   });
 });
 
+describe("the code capability (ADR-0076)", () => {
+  const runner = `globalThis.ext = { go: (a) => swarmpress.code.run(a.program, a.arg) }`;
+  const program = (body: string) => `globalThis.ext = { run: async (arg) => { ${body} } }`;
+
+  test("runs a program in a nested sandbox that reaches nothing", async () => {
+    await withSandbox({ capabilities: ["code", "web"], host: { web: okWeb } }, runner, async (call) => {
+      expect(await call("go", { program: program("return arg.n * 2"), arg: { n: 21 } })).toBe(42);
+      const probe = await call("go", { program: program("return { fetch: typeof fetch, sp: typeof swarmpress, bun: Object.keys(Bun).sort() }"), arg: null });
+      expect(probe).toEqual({ fetch: "undefined", sp: "undefined", bun: ["env", "file", "write"] });
+      const read = await call("go", { program: program("return await Bun.file('store/x/y.json').text()"), arg: null }).catch((x) => x);
+      expect(read).toBeInstanceOf(SandboxError);
+      expect(read.message).toContain("store:x");
+    });
+  });
+
+  test("only with the capability, and not in deterministic mode", async () => {
+    await withSandbox({}, runner, async (call) => {
+      expect((await call("go", { program: program("return 1"), arg: null }).catch((x) => x)).message).toContain("'swarmpress' is not defined");
+    });
+    await withSandbox({ capabilities: ["code"], deterministic: { seed: 1, nowMs: 0 } }, runner, async (call) => {
+      expect(await call("go", { program: program("return 1"), arg: null }).catch((x) => x)).toBeInstanceOf(SandboxError);
+    });
+  });
+
+  test("the nested program is bounded by the caller's limits", async () => {
+    await withSandbox({ capabilities: ["code"], limits: { wallMs: 500 } }, runner, async (call) => {
+      const e = await call("go", { program: program("while (true) {}"), arg: null }).catch((x) => x);
+      expect(e).toBeInstanceOf(SandboxError);
+      expect(e.message).toMatch(/budget/);
+    });
+  });
+});
+
 describe("store path scoping (Bun.file / Bun.write)", () => {
   const b = `globalThis.ext = {
     write: (a) => Bun.write(a.path, a.data),

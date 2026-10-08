@@ -12,6 +12,9 @@
  * - `Bun.env`: always `{}`;
  * - `fetch`: only with the `web` capability (and only to `origins`, when given);
  * - `swarmpress.llm.complete`: only with an `llm:<tier>` capability;
+ * - `swarmpress.code.run(program, arg)`: only with the `code` capability; runs
+ *   `program` (it assigns `globalThis.ext.run`) in a fresh nested sandbox with
+ *   no capabilities and this sandbox's remaining wall time (ADR-0076);
  * - `console.*`: routed to `host.log`;
  * - nothing else: no `process`, `require`, timers, filesystem or network.
  *
@@ -99,7 +102,7 @@ export interface SandboxLimits {
 }
 
 export interface SandboxOptions {
-  /** Granted capabilities: `web`, `credits`, `ui`, `llm:<tier>`, `store:<table>`. */
+  /** Granted capabilities: `web`, `credits`, `ui`, `code`, `llm:<tier>`, `store:<table>`. */
   capabilities: readonly string[];
   limits?: Partial<SandboxLimits>;
   /** Deterministic mode (sim rules): seeded `Math.random`, pinned `Date`, no async I/O. */
@@ -292,10 +295,11 @@ const PRELUDE = String.raw`(function (H, CAPS, DET) {
       });
     };
   }
-  if (H.llm) {
-    globalThis.swarmpress = Object.freeze({
-      llm: Object.freeze({ complete: function (req) { return H.llm(JSON.stringify(req)).then(function (t) { return JSON.parse(t); }); } }),
-    });
+  if (H.llm || H.code) {
+    var sp = {};
+    if (H.llm) sp.llm = Object.freeze({ complete: function (req) { return H.llm(JSON.stringify(req)).then(function (t) { return JSON.parse(t); }); } });
+    if (H.code) sp.code = Object.freeze({ run: function (program, arg) { return H.code(String(program), JSON.stringify(arg === undefined ? null : arg)).then(function (t) { return JSON.parse(t); }); } });
+    globalThis.swarmpress = Object.freeze(sp);
   }
 
   var state = 0, NOW = 0;
@@ -551,6 +555,26 @@ export async function createSandbox(opts: SandboxOptions): Promise<Sandbox> {
         const req = JSON.parse(reqJson);
         if (!llmTiers.has(String(req?.tier))) throw new CapabilityError(`llm:${req?.tier}`, `capability not granted: llm:${req?.tier}`);
         return JSON.stringify(await llm(req));
+      }),
+    );
+  }
+
+  if (caps.has("code") && !det) {
+    install(
+      "code",
+      asyncFn("code", async (program: string, argJson: string) => {
+        const wallMs = Math.max(50, Math.min(limits.wallMs, deadline - Date.now()));
+        const nested = await createSandbox({
+          capabilities: [],
+          limits: { memoryBytes: limits.memoryBytes, interruptOps: limits.interruptOps, wallMs },
+          host: { log },
+        });
+        try {
+          await nested.load(program, "code.js");
+          return JSON.stringify(await nested.call("run", JSON.parse(argJson)));
+        } finally {
+          nested.dispose();
+        }
       }),
     );
   }

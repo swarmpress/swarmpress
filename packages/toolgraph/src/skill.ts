@@ -27,10 +27,10 @@ export function inputSchema(graph: ToolGraph, reg: TypeRegistry): Record<string,
 }
 
 /**
- * The interpreter host over an SDK {@link HostContext}: `fetch` via
- * `ctx.web.fetch` (a credential goes by name in the credential header, and
- * the host's proxy swaps it), agents via `ctx.llm.complete`, `store-read` via
- * `ctx.store`. Facilities the context lacks come from `extra`, or fail their
+ * The interpreter host over an SDK {@link HostContext}: `fetch` and n8n
+ * requests via `ctx.web.fetch` (a credential goes by name in the credential
+ * header, and the host's proxy swaps it), agents via `ctx.llm.complete`,
+ * `store-read` via `ctx.store`, n8n JavaScript via `ctx.code`. Facilities the context lacks come from `extra`, or fail their
  * node loudly.
  */
 export function contextHost(ctx: HostContext, extra: Partial<ToolHost> = {}): ToolHost {
@@ -47,6 +47,18 @@ export function contextHost(ctx: HostContext, extra: Partial<ToolHost> = {}): To
     },
     async store(table, key) {
       return await ctx.store.table(table).get(key ?? "latest");
+    },
+    async request(req) {
+      const headers: Record<string, string> = { ...req.headers };
+      if (req.credential) headers[CREDENTIAL_HEADER] = req.credential;
+      const res = await ctx.web.fetch(req.url, { method: req.method, headers, ...(req.body !== null ? { body: req.body } : {}) });
+      const out: Record<string, string> = {};
+      const each = (res.headers as { forEach?: (cb: (v: string, k: string) => void) => void }).forEach;
+      if (typeof each === "function") each.call(res.headers, (v, k) => (out[k] = v));
+      return { status: res.status, headers: out, body: await res.text() };
+    },
+    async code(program, task) {
+      return await ctx.code.run(program, task);
     },
     ...extra,
   };

@@ -44,9 +44,10 @@
 import { Sim } from 'swarm-wasm'
 import { parseClock, restoreSim, stepsUntil, type LoggedCommand, type ReplayResult, type RestoredSim, type SimFactory } from '../catchup/replay'
 import { CentralClient, centralGateway, companyFor, EventStream, leaseHeld, LeaseKeeper, type CentralEvent, type Company, type SiteAudit } from '../net/central'
-import type { PutBlueprintBody, PutBlueprintResult, SiteModels } from '../blueprint/types'
+import type { PutBlueprintBody, PutBlueprintResult, PutToolsBody, SiteModels } from '../blueprint/types'
 import { packPages, runToolJob } from '../tools/host'
 import { runTool } from '../tools/runner'
+import { toolCredentials } from '../tools/credentials'
 import { blueprintCommand, toolsCommand, type HeldStructure } from '../blueprint/digest'
 import { commission, type CommissionKind } from '../blueprint/commission'
 import type { CommandResult } from '../ui/commands'
@@ -273,12 +274,12 @@ class SessionDataSource extends WasmDataSource {
 
   /** How the overlay saves and re-reads the blueprint, and commissions the architects; the session sets it with the lease (null: read-only). */
   siteActions: {
-    save(body: PutBlueprintBody): Promise<PutBlueprintResult>
+    save(body: PutBlueprintBody | PutToolsBody): Promise<PutBlueprintResult>
     reload(): Promise<void>
     commission(kind: CommissionKind, request: string): Promise<CommandResult>
   } | null = null
 
-  saveBlueprint(body: PutBlueprintBody): Promise<PutBlueprintResult> {
+  saveBlueprint(body: PutBlueprintBody | PutToolsBody): Promise<PutBlueprintResult> {
     if (!this.siteActions) return Promise.reject(new Error('This session cannot change the site (read-only).'))
     return this.siteActions.save(body)
   }
@@ -591,6 +592,12 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       return { status: r.status, contentType: r.content_type, text: r.text }
     },
     llm: async (_tier: string, prompt: string) => (await client.llmGenerate(lease.token, { messages: [{ role: 'user', content: prompt }], kind: 'tool-agent' })).text,
+    // ADR-0076: imported n8n requests (any method, raw answers), signed with this browser's credentials.
+    webRequest: async (req: { url: string; method: string; headers: Record<string, string>; body: string | null }) => {
+      const r = await client.webRequest(req)
+      return { status: r.status, contentType: r.content_type, headers: r.headers, body: r.body }
+    },
+    credentials: toolCredentials,
   }
   // Rebound to a new pack at the next job after it changed; refreshes before every standup.
   const orchestrator = new SiteOrchestrator({

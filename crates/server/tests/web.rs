@@ -166,3 +166,141 @@ async fn fetch_reduces_html_and_enforces_limits() {
         400
     );
 }
+
+/// `POST /web/request` (ADR-0076): a tool's n8n HTTP Request node sends any
+/// method with headers and a body and reads the raw answer, under the same guard.
+#[tokio::test]
+async fn request_forwards_methods_headers_and_bodies_raw() {
+    use wiremock::matchers::{body_string, header};
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/items"))
+        .and(header("x-api-key", "k1"))
+        .and(header("content-type", "application/json"))
+        .and(body_string("{\"name\":\"Riomaggiore\"}"))
+        .respond_with(
+            ResponseTemplate::new(201)
+                .set_body_raw("{\"id\":7}", "application/json")
+                .insert_header("x-request-id", "r-1"),
+        )
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/page"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw("<p>raw &amp; html</p>", "text/html"))
+        .mount(&mock)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/items/7"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&mock)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/moved"))
+        .respond_with(ResponseTemplate::new(307).insert_header("location", "/items"))
+        .mount(&mock)
+        .await;
+
+    let s = TestServer::start_with(Opts {
+        tweak: Box::new(|c| {
+            c.web.allow_private_for_tests = true;
+            c.web.burst = 100;
+        }),
+    })
+    .await;
+    let cookie = s.dev_login("ada").await;
+    let base = mock.uri();
+    let req = |m: &str, p: &str, body: Option<&str>| {
+        json!({
+            "url": format!("{base}{p}"),
+            "method": m,
+            "headers": { "X-Api-Key": "k1", "Content-Type": "application/json", "Cookie": "s=1", "Host": "evil" },
+            "body": body,
+        })
+    };
+    assert_eq!(
+        s.post_json("/web/request", None, req("GET", "/page", None))
+            .await
+            .0,
+        401
+    );
+
+    let (st, body) = s
+        .post_json(
+            "/web/request",
+            Some(&cookie),
+            req("POST", "/items", Some("{\"name\":\"Riomaggiore\"}")),
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["status"], 201);
+    assert_eq!(body["body"], "{\"id\":7}");
+    assert_eq!(body["headers"]["x-request-id"], "r-1");
+
+    let (st, body) = s
+        .post_json("/web/request", Some(&cookie), req("GET", "/page", None))
+        .await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        body["body"], "<p>raw &amp; html</p>",
+        "no HTML reduction for tools"
+    );
+
+    let (st, body) = s
+        .post_json(
+            "/web/request",
+            Some(&cookie),
+            req("DELETE", "/items/7", None),
+        )
+        .await;
+    assert_eq!((st, body["status"].clone()), (200, json!(204)), "{body}");
+
+    let (st, body) = s
+        .post_json(
+            "/web/request",
+            Some(&cookie),
+            req("POST", "/moved", Some("{}")),
+        )
+        .await;
+    assert_eq!(
+        (st, body["status"].clone()),
+        (200, json!(307)),
+        "a POST does not follow redirects: {body}"
+    );
+
+    assert_eq!(
+        s.post_json("/web/request", Some(&cookie), req("TRACE", "/page", None))
+            .await
+            .0,
+        400
+    );
+    let big = "x".repeat(256 * 1024 + 1);
+    assert_eq!(
+        s.post_json(
+            "/web/request",
+            Some(&cookie),
+            req("POST", "/items", Some(&big))
+        )
+        .await
+        .0,
+        413
+    );
+
+    // The SSRF guard holds for tools too (a server without the test switch).
+    let guarded = TestServer::start().await;
+    let c = guarded.dev_login("ada").await;
+    for u in [
+        "http://169.254.169.254/latest/meta-data/",
+        "http://127.0.0.1:9/",
+        "http://[::1]/",
+    ] {
+        let (st, body) = guarded
+            .post_json(
+                "/web/request",
+                Some(&c),
+                json!({ "url": u, "method": "POST", "body": "{}" }),
+            )
+            .await;
+        assert_eq!(st, 403, "{u}: {body}");
+    }
+}

@@ -110,11 +110,21 @@ export interface Log {
   error(...args: unknown[]): void;
 }
 
+/**
+ * `code` (ADR-0076): runs a program in a fresh sandbox without capabilities
+ * and returns its `ext.run(arg)` result. Pure computation: the program reaches
+ * nothing but `arg`.
+ */
+export interface CodeFacade {
+  run(program: string, arg: unknown): Promise<unknown>;
+}
+
 /** What every handler gets. Facades throw `CapabilityError` when not granted. */
 export interface HostContext {
   store: StoreFacade;
   llm: LlmFacade;
   web: WebFacade;
+  code: CodeFacade;
   log: Log;
 }
 
@@ -308,7 +318,9 @@ declare const Bun: {
   file(path: string): { text(): Promise<string>; json(): Promise<any>; exists(): Promise<boolean> };
   write(path: string, data: string): Promise<number>;
 };
-declare const swarmpress: { llm: { complete(req: LlmRequest): Promise<LlmResponse> } } | undefined;
+declare const swarmpress:
+  | { llm?: { complete(req: LlmRequest): Promise<LlmResponse> }; code?: { run(program: string, arg: unknown): Promise<unknown> } }
+  | undefined;
 
 class CapabilityMissing extends Error {
   constructor(what: string) {
@@ -356,6 +368,15 @@ function llmFacade(): LlmFacade {
   };
 }
 
+function codeFacade(): CodeFacade {
+  return {
+    async run(program, arg) {
+      if (typeof swarmpress === "undefined" || !swarmpress?.code) throw new CapabilityMissing("code");
+      return swarmpress.code.run(program, arg);
+    },
+  };
+}
+
 const log: Log = {
   info: (...a) => console.log(...a),
   warn: (...a) => console.warn(...a),
@@ -364,7 +385,7 @@ const log: Log = {
 
 /** Builds the host context from the sandbox globals. */
 export function hostContext(): HostContext {
-  return { store: storeFacade(), llm: llmFacade(), web: webFacade(), log };
+  return { store: storeFacade(), llm: llmFacade(), web: webFacade(), code: codeFacade(), log };
 }
 
 // ---------------------------------------------------------------- define* helpers

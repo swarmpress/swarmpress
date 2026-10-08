@@ -47,13 +47,22 @@
       }
     };
   }
+  function codeFacade() {
+    return {
+      async run(program, arg) {
+        if (typeof swarmpress === "undefined" || !swarmpress?.code)
+          throw new CapabilityMissing("code");
+        return swarmpress.code.run(program, arg);
+      }
+    };
+  }
   var log = {
     info: (...a) => console.log(...a),
     warn: (...a) => console.warn(...a),
     error: (...a) => console.error(...a)
   };
   function hostContext() {
-    return { store: storeFacade(), llm: llmFacade(), web: webFacade(), log };
+    return { store: storeFacade(), llm: llmFacade(), web: webFacade(), code: codeFacade(), log };
   }
   function defineSkill(def) {
     const tools = def.tools ?? {};
@@ -301,6 +310,7 @@
       number: { t: "number" },
       boolean: { t: "boolean" },
       LocalizedString: LOC,
+      Json: { t: "json" },
       Media: obj([
         ["id", S, true],
         ["url", S, true],
@@ -553,6 +563,10 @@
               out.push({ path: `${at}.${k}`, message: "not a field of this type" });
           return;
         }
+        case "json":
+          if (v === undefined)
+            want("a JSON value");
+          return;
         case "ref":
           return;
       }
@@ -593,6 +607,7 @@
             properties[n] = this.schemaOf(t.fields[n].ty, depth + 1);
           return { type: "object", additionalProperties: false, required: names.filter((n) => t.fields[n].required), properties };
         }
+        case "json":
         case "ref":
           return {};
       }
@@ -679,7 +694,1525 @@
     return walk(value, parsePath(path), 0);
   }
 
+  // src/n8n/catalogue.ts
+  var N8N_TYPES = {
+    "n8n-nodes-base.httpRequest": { web: true },
+    "n8n-nodes-base.rssFeedRead": { web: true },
+    "n8n-nodes-base.set": {},
+    "n8n-nodes-base.if": {},
+    "n8n-nodes-base.filter": {},
+    "n8n-nodes-base.switch": {},
+    "n8n-nodes-base.merge": {},
+    "n8n-nodes-base.limit": {},
+    "n8n-nodes-base.sort": {},
+    "n8n-nodes-base.removeDuplicates": {},
+    "n8n-nodes-base.splitOut": {},
+    "n8n-nodes-base.aggregate": {},
+    "n8n-nodes-base.summarize": {},
+    "n8n-nodes-base.itemLists": {},
+    "n8n-nodes-base.renameKeys": {},
+    "n8n-nodes-base.dateTime": {},
+    "n8n-nodes-base.code": {},
+    "n8n-nodes-base.function": {},
+    "n8n-nodes-base.functionItem": {},
+    "n8n-nodes-base.noOp": {},
+    "n8n-nodes-base.wait": {},
+    "n8n-nodes-base.stopAndError": {},
+    "n8n-nodes-base.respondToWebhook": {},
+    "n8n-nodes-base.executeWorkflow": { tool: true },
+    "@n8n/n8n-nodes-langchain.chainLlm": { llm: true },
+    "@n8n/n8n-nodes-langchain.openAi": { llm: true }
+  };
+  var N8N_TRIGGERS = new Set([
+    "n8n-nodes-base.manualTrigger",
+    "n8n-nodes-base.scheduleTrigger",
+    "n8n-nodes-base.cron",
+    "n8n-nodes-base.webhook",
+    "n8n-nodes-base.executeWorkflowTrigger"
+  ]);
+  var N8N_IGNORED = new Set(["n8n-nodes-base.stickyNote"]);
+
+  // src/n8n/expr.ts
+  var decodeValue = (v) => v !== null && typeof v === "object" && !Array.isArray(v) && v.$undefined === true && Object.keys(v).length === 1 ? undefined : v;
+  function partEnd(s, from) {
+    let depth = 0;
+    let quote = null;
+    for (let i = from;i < s.length; i++) {
+      const c = s[i];
+      if (quote) {
+        if (c === "\\")
+          i++;
+        else if (c === quote)
+          quote = null;
+        continue;
+      }
+      if (c === '"' || c === "'" || c === "`")
+        quote = c;
+      else if (c === "{")
+        depth++;
+      else if (c === "}") {
+        if (depth === 0 && s[i + 1] === "}")
+          return i;
+        depth = Math.max(0, depth - 1);
+      }
+    }
+    return -1;
+  }
+  function parseTemplate(raw) {
+    if (typeof raw !== "string" || !raw.startsWith("="))
+      return null;
+    const s = raw.slice(1);
+    const parts = [];
+    let at = 0;
+    for (;; ) {
+      const open = s.indexOf("{{", at);
+      if (open < 0) {
+        if (at < s.length)
+          parts.push(s.slice(at));
+        break;
+      }
+      if (open > at)
+        parts.push(s.slice(at, open));
+      const end = partEnd(s, open + 2);
+      if (end < 0)
+        throw new Error(`the expression ${JSON.stringify(raw)} has an unclosed {{`);
+      parts.push({ js: s.slice(open + 2, end).trim() });
+      at = end + 2;
+    }
+    const single = parts.length === 1 && typeof parts[0] !== "string";
+    return { parts, single };
+  }
+  var NATIVE = /^(?:\$json|\$input\.item\.json)((?:\.[A-Za-z_$][\w$]*|\[\d+\]|\[\s*"[^"\\]*"\s*\]|\[\s*'[^'\\]*'\s*\])*)$/;
+  var STEP = /\.([A-Za-z_$][\w$]*)|\[(\d+)\]|\[\s*"([^"\\]*)"\s*\]|\[\s*'([^'\\]*)'\s*\]/g;
+  function nativeSteps(js) {
+    const m = NATIVE.exec(js.trim());
+    if (!m)
+      return null;
+    const steps = [];
+    for (const s of m[1].matchAll(STEP))
+      steps.push(s[1] ?? (s[2] !== undefined ? Number(s[2]) : s[3] ?? s[4]));
+    return steps;
+  }
+  function read(item, steps) {
+    let v = item;
+    for (const s of steps) {
+      if (v === null || typeof v !== "object")
+        return;
+      v = v[s];
+    }
+    return v;
+  }
+  function renderText(v) {
+    if (v === undefined || v === null)
+      return "";
+    if (typeof v === "string")
+      return v;
+    if (typeof v === "number" || typeof v === "boolean")
+      return String(v);
+    return JSON.stringify(v);
+  }
+  function renderTemplate(t, values) {
+    if (t.single)
+      return values[0];
+    let k = 0;
+    return t.parts.map((p) => typeof p === "string" ? p : renderText(values[k++])).join("");
+  }
+  function templatesOf(params, path = [], out = []) {
+    if (typeof params === "string") {
+      const t = parseTemplate(params);
+      if (t)
+        out.push({ path, t });
+    } else if (Array.isArray(params))
+      params.forEach((v, i) => templatesOf(v, [...path, i], out));
+    else if (params && typeof params === "object")
+      for (const k of Object.keys(params))
+        templatesOf(params[k], [...path, k], out);
+    return out;
+  }
+  var isNative = (t) => t.parts.every((p) => typeof p === "string" || nativeSteps(p.js) !== null);
+  function evalNative(t, item) {
+    const values = t.parts.filter((p) => typeof p !== "string").map((p) => read(item, nativeSteps(p.js)));
+    return renderTemplate(t, values);
+  }
+  function referencedNodes(src) {
+    const out = new Set;
+    const res = [
+      /\$\(\s*(["'`])((?:(?!\1)[^\\]|\\.)*)\1\s*\)/g,
+      /\$node\[\s*(["'])((?:(?!\1)[^\\]|\\.)*)\1\s*\]/g,
+      /\$items\(\s*(["'])((?:(?!\1)[^\\]|\\.)*)\1/g
+    ];
+    for (const re of res)
+      for (const m of src.matchAll(re))
+        out.add(m[2].replace(/\\(.)/g, "$1"));
+    for (const m of src.matchAll(/\$node\.([A-Za-z_$][\w$]*)/g))
+      out.add(m[1]);
+    return [...out].sort();
+  }
+  function setAt(root, path, v) {
+    if (!path.length)
+      return v;
+    const [head, ...rest] = path;
+    const container = root;
+    container[head] = setAt(container[head], rest, v);
+    return root;
+  }
+  async function resolveParams(params, items, js, ctx) {
+    const list = items.length ? items : [{}];
+    const found = templatesOf(params);
+    if (!found.length)
+      return list.map(() => params);
+    const foreign = found.filter((f) => !isNative(f.t));
+    let values = [];
+    if (foreign.length) {
+      const refs = new Set;
+      for (const f of foreign)
+        for (const p of f.t.parts)
+          if (typeof p !== "string")
+            referencedNodes(p.js).forEach((n) => refs.add(n));
+      const nodes = {};
+      for (const n of refs)
+        if (ctx.nodes[n])
+          nodes[n] = ctx.nodes[n];
+      values = await js({ op: "exprs", items: list, templates: foreign.map((f) => f.t), nodes, node: ctx.node, workflow: ctx.workflow });
+    }
+    return list.map((item, i) => {
+      const out = JSON.parse(JSON.stringify(params));
+      let k = 0;
+      for (const f of found) {
+        const v = isNative(f.t) ? evalNative(f.t, item) : decodeValue(values[i]?.[k++]);
+        setAt(out, f.path, v);
+      }
+      return out;
+    });
+  }
+
+  // src/n8n/nodes.ts
+  var isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  var clone = (v) => v === undefined ? v : JSON.parse(JSON.stringify(v));
+  var str = (v, d = "") => v === undefined || v === null ? d : typeof v === "string" ? v : typeof v === "object" ? JSON.stringify(v) : String(v);
+  var list = (v) => (Array.isArray(v) ? v.map((x) => str(x)) : str(v).split(",")).map((s) => s.trim()).filter(Boolean);
+  function toItems(v) {
+    if (v === undefined || v === null)
+      return [];
+    const arr = Array.isArray(v) ? v : [v];
+    return arr.map((x) => isObj(x) ? isObj(x.json) && Object.keys(x).every((k) => k === "json" || k === "binary" || k === "pairedItem") ? clone(x.json) : clone(x) : { data: clone(x) });
+  }
+  function getField(item, field, dot = true) {
+    if (!dot)
+      return isObj(item) ? item[field] : undefined;
+    let v = item;
+    for (const k of field.split(".")) {
+      if (Array.isArray(v) && /^\d+$/.test(k))
+        v = v[Number(k)];
+      else if (isObj(v))
+        v = v[k];
+      else
+        return;
+    }
+    return v;
+  }
+  function setField(item, field, value, dot = true) {
+    if (!dot || !field.includes(".")) {
+      item[field] = value;
+      return;
+    }
+    const keys = field.split(".");
+    let cur = item;
+    for (const k of keys.slice(0, -1)) {
+      if (!isObj(cur[k]))
+        cur[k] = {};
+      cur = cur[k];
+    }
+    cur[keys[keys.length - 1]] = value;
+  }
+  var kv = (rows) => {
+    const out = {};
+    for (const r of Array.isArray(rows) ? rows : [])
+      if (isObj(r) && str(r.name))
+        out[str(r.name)] = str(r.value);
+    return out;
+  };
+  var jsonParam = (v, what) => {
+    if (typeof v !== "string")
+      return v;
+    if (!v.trim())
+      return {};
+    try {
+      return JSON.parse(v);
+    } catch (e) {
+      throw new Error(`${what} is not JSON: ${e.message}`);
+    }
+  };
+  var loweredIf = (v, ci) => ci && typeof v === "string" ? v.toLowerCase() : v;
+  var num = (v) => typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : typeof v === "boolean" ? Number(v) : NaN;
+  var time = (v) => typeof v === "number" ? v : Date.parse(str(v));
+  var isEmptyValue = (v) => v === undefined || v === null || v === "" || Array.isArray(v) && v.length === 0 || isObj(v) && Object.keys(v).length === 0;
+  var regex = (p) => {
+    const s = str(p);
+    const m = /^\/(.*)\/([gimsuy]*)$/s.exec(s);
+    return m ? new RegExp(m[1], m[2]) : new RegExp(s);
+  };
+  var same = (a, b) => isObj(a) || Array.isArray(a) ? JSON.stringify(a) === JSON.stringify(b) : a == b;
+  function conditionV2(c, caseSensitive = true) {
+    const op = isObj(c.operator) ? c.operator : {};
+    const type = op.type ?? "string";
+    const operation = op.operation ?? "equals";
+    const ci = !caseSensitive;
+    const a = loweredIf(c.leftValue, ci);
+    const b = loweredIf(c.rightValue, ci);
+    switch (operation) {
+      case "exists":
+        return a !== undefined && a !== null;
+      case "notExists":
+        return a === undefined || a === null;
+      case "empty":
+        return isEmptyValue(a);
+      case "notEmpty":
+        return !isEmptyValue(a);
+      case "true":
+        return a === true || a === "true";
+      case "false":
+        return a === false || a === "false";
+    }
+    if (type === "number") {
+      const x = num(a);
+      const y = num(b);
+      switch (operation) {
+        case "equals":
+          return x === y;
+        case "notEquals":
+          return x !== y;
+        case "gt":
+          return x > y;
+        case "lt":
+          return x < y;
+        case "gte":
+          return x >= y;
+        case "lte":
+          return x <= y;
+      }
+    }
+    if (type === "dateTime") {
+      const x = time(a);
+      const y = time(b);
+      switch (operation) {
+        case "equals":
+          return x === y;
+        case "notEquals":
+          return x !== y;
+        case "after":
+          return x > y;
+        case "before":
+          return x < y;
+        case "afterOrEquals":
+          return x >= y;
+        case "beforeOrEquals":
+          return x <= y;
+      }
+    }
+    if (type === "array") {
+      const arr = Array.isArray(a) ? a : [];
+      switch (operation) {
+        case "contains":
+          return arr.some((x) => same(loweredIf(x, ci), b));
+        case "notContains":
+          return !arr.some((x) => same(loweredIf(x, ci), b));
+        case "lengthEquals":
+          return arr.length === num(b);
+        case "lengthNotEquals":
+          return arr.length !== num(b);
+        case "lengthGt":
+          return arr.length > num(b);
+        case "lengthLt":
+          return arr.length < num(b);
+        case "lengthGte":
+          return arr.length >= num(b);
+        case "lengthLte":
+          return arr.length <= num(b);
+      }
+    }
+    const sa = str(a);
+    const sb = str(b);
+    switch (operation) {
+      case "equals":
+        return type === "boolean" ? String(a) === String(b) : same(a, b);
+      case "notEquals":
+        return type === "boolean" ? String(a) !== String(b) : !same(a, b);
+      case "contains":
+        return sa.includes(sb);
+      case "notContains":
+        return !sa.includes(sb);
+      case "startsWith":
+        return sa.startsWith(sb);
+      case "notStartsWith":
+        return !sa.startsWith(sb);
+      case "endsWith":
+        return sa.endsWith(sb);
+      case "notEndsWith":
+        return !sa.endsWith(sb);
+      case "regex":
+        return regex(c.rightValue).test(str(c.leftValue));
+      case "notRegex":
+        return !regex(c.rightValue).test(str(c.leftValue));
+      case "gt":
+        return num(a) > num(b);
+      case "lt":
+        return num(a) < num(b);
+      case "gte":
+        return num(a) >= num(b);
+      case "lte":
+        return num(a) <= num(b);
+    }
+    throw new Error(`the condition ${type}/${operation} is not supported`);
+  }
+  function conditionsV2(block, opts = {}) {
+    const b = isObj(block) ? block : {};
+    const options = isObj(b.options) ? b.options : {};
+    const ci = options.caseSensitive === false || opts.ignoreCase === true;
+    const conds = Array.isArray(b.conditions) ? b.conditions : [];
+    const results = conds.map((c) => conditionV2(c, !ci));
+    return (b.combinator ?? "and") === "or" ? results.some(Boolean) : results.every(Boolean);
+  }
+  function compareV1(type, operation, a, b) {
+    switch (operation) {
+      case "isEmpty":
+        return isEmptyValue(a);
+      case "isNotEmpty":
+        return !isEmptyValue(a);
+    }
+    if (type === "number") {
+      const x = num(a);
+      const y = num(b);
+      switch (operation) {
+        case "equal":
+          return x === y;
+        case "notEqual":
+          return x !== y;
+        case "smaller":
+          return x < y;
+        case "smallerEqual":
+          return x <= y;
+        case "larger":
+          return x > y;
+        case "largerEqual":
+          return x >= y;
+      }
+    }
+    if (type === "dateTime") {
+      if (operation === "after")
+        return time(a) > time(b);
+      if (operation === "before")
+        return time(a) < time(b);
+    }
+    if (type === "boolean") {
+      if (operation === "equal")
+        return Boolean(a) === Boolean(b);
+      if (operation === "notEqual")
+        return Boolean(a) !== Boolean(b);
+    }
+    const sa = str(a);
+    const sb = str(b);
+    switch (operation) {
+      case "equal":
+        return sa === sb;
+      case "notEqual":
+        return sa !== sb;
+      case "contains":
+        return sa.includes(sb);
+      case "notContains":
+        return !sa.includes(sb);
+      case "startsWith":
+        return sa.startsWith(sb);
+      case "notStartsWith":
+        return !sa.startsWith(sb);
+      case "endsWith":
+        return sa.endsWith(sb);
+      case "notEndsWith":
+        return !sa.endsWith(sb);
+      case "regex":
+        return regex(b).test(sa);
+      case "notRegex":
+        return !regex(b).test(sa);
+    }
+    throw new Error(`the comparison ${type}/${operation} is not supported`);
+  }
+  function conditionsV1(p) {
+    const c = isObj(p.conditions) ? p.conditions : {};
+    const results = [];
+    for (const type of ["string", "number", "boolean", "dateTime"]) {
+      for (const r of Array.isArray(c[type]) ? c[type] : []) {
+        results.push(compareV1(type, str(r.operation, type === "string" ? "equal" : type === "dateTime" ? "after" : "equal"), r.value1, r.value2));
+      }
+    }
+    return (p.combineOperation ?? "all") === "any" ? results.some(Boolean) : results.every(Boolean);
+  }
+  var usesV2 = (n) => (n.version ?? 1) >= 2;
+  function mergeByFields(a, b, pairs, joinMode, from) {
+    const key = (it, side) => JSON.stringify(pairs.map((p) => getField(it, p[side])));
+    const index = new Map;
+    for (const it of b)
+      index.set(key(it, 1), [...index.get(key(it, 1)) ?? [], it]);
+    const matchedB = new Set;
+    const out = [];
+    const unmatchedA = [];
+    for (const x of a) {
+      const ms = index.get(key(x, 0)) ?? [];
+      if (!ms.length) {
+        unmatchedA.push(x);
+        if (joinMode === "enrichInput1")
+          out.push(clone(x));
+        continue;
+      }
+      for (const y of ms) {
+        matchedB.add(y);
+        if (joinMode === "keepMatches" || joinMode === "keepEverything" || joinMode === "enrichInput1" || joinMode === "enrichInput2")
+          out.push(joinMode === "keepMatches" && from === "input1" ? clone(x) : joinMode === "keepMatches" && from === "input2" ? clone(y) : { ...clone(x), ...clone(y) });
+      }
+    }
+    const unmatchedB = b.filter((y) => !matchedB.has(y));
+    if (joinMode === "keepNonMatches")
+      return [...from === "input2" ? [] : unmatchedA, ...from === "input1" ? [] : unmatchedB].map(clone);
+    if (joinMode === "keepEverything")
+      return [...out, ...unmatchedA.map(clone), ...unmatchedB.map(clone)];
+    if (joinMode === "enrichInput2")
+      return [...out, ...unmatchedB.map(clone)];
+    return out;
+  }
+  function mergeNode(n, p, ins) {
+    const [a = [], b = []] = ins;
+    const v = n.version ?? 1;
+    const opts = isObj(p.options) ? p.options : {};
+    const position = (include) => {
+      const len = include ? Math.max(a.length, b.length) : Math.min(a.length, b.length);
+      return Array.from({ length: len }, (_, i) => ({ ...clone(a[i] ?? {}), ...clone(b[i] ?? {}) }));
+    };
+    const all = () => a.flatMap((x) => b.map((y) => ({ ...clone(x), ...clone(y) })));
+    const fieldPairs = () => {
+      if (typeof p.fieldsToMatchString === "string")
+        return list(p.fieldsToMatchString).map((f) => [f, f]);
+      const adv = isObj(p.mergeByFields) && Array.isArray(p.mergeByFields.values) ? p.mergeByFields.values : [];
+      return adv.map((r) => [str(r.field1), str(r.field2)]);
+    };
+    if (v < 2) {
+      switch (p.mode ?? "append") {
+        case "append":
+          return ins.flat().map(clone);
+        case "mergeByIndex":
+          return position(str(p.join, "left") !== "inner");
+        case "mergeByKey":
+        case "keepKeyMatches":
+        case "removeKeyMatches": {
+          const pairs = [[str(p.propertyName1), str(p.propertyName2)]];
+          if (p.mode === "keepKeyMatches")
+            return mergeByFields(a, b, pairs, "keepMatches", "input1");
+          if (p.mode === "removeKeyMatches")
+            return mergeByFields(a, b, pairs, "keepNonMatches", "input1");
+          return mergeByFields(a, b, pairs, "enrichInput1", "both");
+        }
+        case "multiplex":
+          return all();
+        case "passThrough":
+          return (p.output === "input2" ? b : a).map(clone);
+        case "wait":
+          return [];
+      }
+      throw new Error(`the Merge mode ${str(p.mode)} is not supported`);
+    }
+    const mode = str(p.mode, "append");
+    if (mode === "append")
+      return ins.flat().map(clone);
+    if (mode === "chooseBranch") {
+      const which = str(p.output, str(p.chooseBranchMode === "waitForAll" ? "specifiedInput" : "input1"));
+      if (which === "empty")
+        return [{}];
+      if (which === "input2")
+        return b.map(clone);
+      if (which === "specifiedInput")
+        return (ins[Number(p.useDataOfInput ?? 1) - 1] ?? []).map(clone);
+      return a.map(clone);
+    }
+    if (mode === "combineBySql")
+      throw new Error("Merge by SQL query is not supported: use Merge by fields");
+    const by = mode === "combine" ? str(p.combineBy ?? p.combinationMode, "combineByFields") : mode;
+    switch (by) {
+      case "combineByPosition":
+      case "mergeByPosition":
+        return position(opts.includeUnpaired === true);
+      case "combineAll":
+      case "multiplex":
+        return all();
+      case "combineByFields":
+      case "mergeByFields":
+        return mergeByFields(a, b, fieldPairs(), str(p.joinMode, "keepMatches"), str(p.outputDataFrom, "both"));
+    }
+    throw new Error(`the Merge mode ${by} is not supported`);
+  }
+  function sortSimple(items, fields, dot) {
+    const cmp = (x, y) => {
+      if (x === y)
+        return 0;
+      if (x === undefined || x === null)
+        return 1;
+      if (y === undefined || y === null)
+        return -1;
+      if (typeof x === "number" && typeof y === "number")
+        return x - y;
+      return str(x) < str(y) ? -1 : str(x) > str(y) ? 1 : 0;
+    };
+    return items.map((it, i) => ({ it, i })).sort((p, q) => {
+      for (const f of fields) {
+        const c = cmp(getField(p.it, str(f.fieldName), dot), getField(q.it, str(f.fieldName), dot));
+        if (c)
+          return f.order === "descending" ? -c : c;
+      }
+      return p.i - q.i;
+    }).map((x) => clone(x.it));
+  }
+  function removeDuplicates(items, p) {
+    if (p.operation && p.operation !== "removeDuplicateInputItems")
+      throw new Error(`Remove Duplicates "${str(p.operation)}" keeps state between runs, which a tool does not`);
+    const compare = str(p.compare, "allFields");
+    const fieldNames = (v) => isObj(v) && Array.isArray(v.fields) ? v.fields.map((f) => str(f.fieldName)) : list(v);
+    const seen = new Set;
+    return items.filter((it) => {
+      let k = it;
+      if (compare === "selectedFields")
+        k = fieldNames(p.fieldsToCompare).map((f) => getField(it, f));
+      else if (compare === "allFieldsExcept") {
+        const drop = new Set(fieldNames(p.fieldsToExclude));
+        k = Object.keys(it).filter((f) => !drop.has(f)).sort().map((f) => [f, it[f]]);
+      } else
+        k = Object.keys(it).sort().map((f) => [f, it[f]]);
+      const s = JSON.stringify(k);
+      if (seen.has(s))
+        return false;
+      seen.add(s);
+      return true;
+    });
+  }
+  function splitOut(items, p) {
+    const fields = list(p.fieldToSplitOut);
+    if (!fields.length)
+      throw new Error("Split Out needs a field to split out");
+    const include = str(p.include, "noOtherFields");
+    const opts = isObj(p.options) ? p.options : {};
+    const dest = str(opts.destinationFieldName);
+    const keep = list(isObj(p.fieldsToInclude) && Array.isArray(p.fieldsToInclude.fields) ? p.fieldsToInclude.fields.map((f) => f.fieldName) : p.fieldsToInclude);
+    const out = [];
+    for (const it of items) {
+      const arrays = fields.map((f) => {
+        const v = getField(it, f);
+        return Array.isArray(v) ? v : v === undefined ? [] : isObj(v) ? Object.values(v) : [v];
+      });
+      const len = Math.max(0, ...arrays.map((a) => a.length));
+      for (let i = 0;i < len; i++) {
+        let base = {};
+        if (include === "allOtherFields")
+          base = Object.fromEntries(Object.entries(clone(it)).filter(([k]) => !fields.includes(k)));
+        if (include === "selectedOtherFields")
+          for (const k of keep)
+            setField(base, k, clone(getField(it, k)));
+        if (fields.length === 1 && !dest && isObj(arrays[0][i]))
+          out.push({ ...base, ...clone(arrays[0][i]) });
+        else {
+          fields.forEach((f, k) => setField(base, fields.length === 1 && dest ? dest : f, clone(arrays[k][i]), false));
+          out.push(base);
+        }
+      }
+    }
+    return out;
+  }
+  function aggregate(items, p) {
+    const opts = isObj(p.options) ? p.options : {};
+    if (str(p.aggregate, "aggregateIndividualFields") === "aggregateAllItemData") {
+      const include = str(p.include, "allFields");
+      const fields = list(p.fieldsToInclude ?? p.fieldsToExclude);
+      const pick = (it) => include === "specifiedFields" ? Object.fromEntries(fields.map((f) => [f, clone(getField(it, f))])) : include === "allFieldsExcept" ? Object.fromEntries(Object.entries(clone(it)).filter(([k]) => !fields.includes(k))) : clone(it);
+      return [{ [str(p.destinationFieldName, "data")]: items.map(pick) }];
+    }
+    const rows = isObj(p.fieldsToAggregate) && Array.isArray(p.fieldsToAggregate.fieldToAggregate) ? p.fieldsToAggregate.fieldToAggregate : [];
+    const out = {};
+    for (const r of rows) {
+      const field = str(r.fieldToAggregate);
+      const name = r.renameField ? str(r.outputFieldName, field) : field;
+      let values = items.map((it) => getField(it, field, opts.disableDotNotation !== true));
+      if (opts.keepMissing !== true)
+        values = values.filter((v) => v !== undefined && v !== null);
+      if (opts.mergeLists === true)
+        values = values.flatMap((v) => Array.isArray(v) ? v : [v]);
+      setField(out, name, clone(values), false);
+    }
+    return [out];
+  }
+  function summarize(items, p) {
+    const rows = isObj(p.fieldsToSummarize) && Array.isArray(p.fieldsToSummarize.values) ? p.fieldsToSummarize.values : [];
+    const by = list(p.fieldsToSplitBy);
+    const groups = new Map;
+    for (const it of items) {
+      const k = JSON.stringify(by.map((f) => getField(it, f)));
+      groups.set(k, [...groups.get(k) ?? [], it]);
+    }
+    const out = [];
+    for (const [k, group] of groups) {
+      const res = {};
+      const keys = JSON.parse(k);
+      by.forEach((f, i) => res[f] = keys[i]);
+      for (const r of rows) {
+        const agg = str(r.aggregation, "count");
+        const field = str(r.field);
+        const vals = group.map((it) => getField(it, field)).filter((v2) => v2 !== undefined && v2 !== null && v2 !== "");
+        const nums = vals.map(num).filter((x) => !Number.isNaN(x));
+        let v;
+        switch (agg) {
+          case "count":
+            v = vals.length;
+            break;
+          case "countUnique":
+            v = new Set(vals.map((x) => JSON.stringify(x))).size;
+            break;
+          case "sum":
+            v = nums.reduce((s, x) => s + x, 0);
+            break;
+          case "average":
+            v = nums.length ? nums.reduce((s, x) => s + x, 0) / nums.length : null;
+            break;
+          case "min":
+            v = nums.length ? Math.min(...nums) : null;
+            break;
+          case "max":
+            v = nums.length ? Math.max(...nums) : null;
+            break;
+          case "append":
+            v = clone(vals);
+            break;
+          case "concatenate":
+            v = vals.map((x) => str(x)).join(r.separateBy === "other" ? str(r.customSeparator) : r.separateBy === "newLine" ? `
+` : ",");
+            break;
+          default:
+            throw new Error(`Summarize "${agg}" is not supported`);
+        }
+        res[`${agg}_${field}`] = v;
+      }
+      out.push(res);
+    }
+    return out;
+  }
+  function withQuery(url, q) {
+    const pairs = Object.entries(q).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(str(v))}`);
+    if (!pairs.length)
+      return url;
+    return url + (url.includes("?") ? "&" : "?") + pairs.join("&");
+  }
+  function httpRequestOf(n, p) {
+    const v = n.version ?? 1;
+    const opts = isObj(p.options) ? p.options : {};
+    let method;
+    let query = {};
+    let headers = {};
+    let body = null;
+    let format = "autodetect";
+    let full = false;
+    let neverError = false;
+    let dataField = "data";
+    if (opts.pagination)
+      throw new Error("HTTP Request pagination is not supported: request each page with its own node, or use a Code node");
+    if (v >= 3) {
+      method = str(p.method, "GET").toUpperCase();
+      if (p.sendQuery)
+        query = p.specifyQuery === "json" ? jsonParam(p.jsonQuery, "the query") : kv(isObj(p.queryParameters) ? p.queryParameters.parameters : []);
+      if (p.sendHeaders)
+        headers = p.specifyHeaders === "json" ? jsonParam(p.jsonHeaders, "the headers") : kv(isObj(p.headerParameters) ? p.headerParameters.parameters : []);
+      if (p.sendBody) {
+        const ct = str(p.contentType, "json");
+        if (ct === "json") {
+          body = JSON.stringify(p.specifyBody === "json" ? jsonParam(p.jsonBody, "the body") : kv(isObj(p.bodyParameters) ? p.bodyParameters.parameters : []));
+          headers["content-type"] ??= "application/json";
+        } else if (ct === "form-urlencoded") {
+          const f = kv(isObj(p.bodyParameters) ? p.bodyParameters.parameters : []);
+          body = Object.entries(f).map(([k, x]) => `${encodeURIComponent(k)}=${encodeURIComponent(x)}`).join("&");
+          headers["content-type"] ??= "application/x-www-form-urlencoded";
+        } else if (ct === "raw") {
+          body = str(p.body);
+          headers["content-type"] ??= str(p.rawContentType, "text/plain");
+        } else
+          throw new Error(`an HTTP body of type ${ct} is not supported (no binary data in a tool)`);
+      }
+      const resp = isObj(opts.response) && isObj(opts.response.response) ? opts.response.response : {};
+      format = str(resp.responseFormat, "autodetect");
+      full = resp.fullResponse === true;
+      neverError = resp.neverError === true;
+      dataField = str(resp.outputPropertyName, "data");
+    } else {
+      method = str(p.requestMethod, "GET").toUpperCase();
+      if (p.jsonParameters) {
+        query = jsonParam(p.queryParametersJson ?? "{}", "the query");
+        headers = jsonParam(p.headerParametersJson ?? "{}", "the headers");
+        if (method !== "GET" && p.bodyParametersJson !== undefined)
+          body = JSON.stringify(jsonParam(p.bodyParametersJson, "the body"));
+      } else {
+        query = kv(isObj(p.queryParametersUi) ? p.queryParametersUi.parameter : []);
+        headers = kv(isObj(p.headerParametersUi) ? p.headerParametersUi.parameter : []);
+        const b = kv(isObj(p.bodyParametersUi) ? p.bodyParametersUi.parameter : []);
+        if (method !== "GET" && Object.keys(b).length)
+          body = JSON.stringify(b);
+      }
+      if (body !== null)
+        headers["content-type"] ??= "application/json";
+      format = str(p.responseFormat, "json") === "string" ? "text" : str(p.responseFormat, "json");
+      full = opts.fullResponse === true;
+      dataField = str(p.dataPropertyName, "data");
+    }
+    if (format === "file")
+      throw new Error("an HTTP response as a file is not supported (no binary data in a tool)");
+    const auth = str(p.authentication, "none");
+    if (auth !== "none" && !n.credential)
+      throw new Error(`the request uses ${auth} authentication: name the credential on the node`);
+    return {
+      url: withQuery(str(p.url), query),
+      method,
+      headers,
+      body,
+      ...auth !== "none" && n.credential ? { credential: n.credential } : {},
+      format,
+      full,
+      neverError,
+      dataField
+    };
+  }
+  function responseItems(r, req) {
+    let body = r.body;
+    if (req.format !== "text") {
+      try {
+        body = r.body.trim() === "" ? {} : JSON.parse(r.body);
+      } catch (e) {
+        if (req.format === "json")
+          throw new Error(`the response is not JSON: ${e.message}`);
+        body = r.body;
+      }
+    }
+    if (req.full)
+      return [{ body, headers: r.headers, statusCode: r.status, statusMessage: "" }];
+    if (typeof body === "string")
+      return [{ [req.dataField]: body }];
+    return toItems(body);
+  }
+  async function runN8n(ctx) {
+    const n = ctx.node;
+    const ins = ctx.inputs;
+    const items = ins[0] ?? [];
+    const js = (task) => ctx.js(task);
+    const params = (its = items) => resolveParams(n.parameters, its, js, { nodes: ctx.nodes, node: n.name, workflow: ctx.workflow });
+    const one = (xs) => [xs];
+    const refs = (src) => {
+      const out = {};
+      for (const name of referencedNodes(src))
+        if (ctx.nodes[name])
+          out[name] = ctx.nodes[name];
+      return out;
+    };
+    const perItem = async (fn) => {
+      const ps = await params();
+      const out = [];
+      for (let i = 0;i < ps.length; i++) {
+        try {
+          out.push(...await fn(ps[i], items[i] ?? {}, i));
+        } catch (e) {
+          if (n.on_error !== "continue")
+            throw e;
+          out.push({ error: e.message });
+        }
+      }
+      return out;
+    };
+    switch (n.type) {
+      case "n8n-nodes-base.noOp":
+        return one(items.map(clone));
+      case "n8n-nodes-base.wait": {
+        const p = (await params())[0];
+        const resume = str(p.resume, "timeInterval");
+        if (resume === "webhook" || resume === "form")
+          throw new Error(`Wait "${resume}" needs a running workflow to resume: a tool runs to the end`);
+        return one(items.map(clone));
+      }
+      case "n8n-nodes-base.stopAndError": {
+        const p = (await params())[0];
+        throw new Error(p.errorType === "errorObject" ? str(p.errorObject) : str(p.errorMessage, "Stop and Error"));
+      }
+      case "n8n-nodes-base.httpRequest":
+        return one(await perItem(async (p) => {
+          const req = httpRequestOf(n, p);
+          const res = await ctx.request({ url: req.url, method: req.method, headers: req.headers, body: req.body, ...req.credential ? { credential: req.credential } : {} });
+          if ((res.status < 200 || res.status >= 300) && !req.neverError)
+            throw new Error(`${req.method} ${req.url}: HTTP ${res.status}`);
+          return responseItems(res, req);
+        }));
+      case "n8n-nodes-base.rssFeedRead":
+        return one(await perItem(async (p) => {
+          const url = str(p.url);
+          const res = await ctx.request({ url, method: "GET", headers: {}, body: null });
+          if (res.status < 200 || res.status >= 300)
+            throw new Error(`GET ${url}: HTTP ${res.status}`);
+          return parseFeed(res.body).map((f) => {
+            const iso = f.published && Number.isFinite(Date.parse(f.published)) ? new Date(Date.parse(f.published)).toISOString() : undefined;
+            return {
+              title: f.title,
+              link: f.link,
+              ...f.published ? { pubDate: f.published } : {},
+              ...f.summary ? { content: f.summary, contentSnippet: f.summary.replace(/<[^>]*>/g, "").trim() } : {},
+              guid: f.link,
+              ...iso ? { isoDate: iso } : {}
+            };
+          });
+        }));
+      case "n8n-nodes-base.set": {
+        const v = n.version ?? 1;
+        return one(await perItem(async (p, it) => {
+          const opts = isObj(p.options) ? p.options : {};
+          const dot = opts.dotNotation !== false;
+          if (v < 3) {
+            const res2 = p.keepOnlySet === true ? {} : clone(it);
+            const values = isObj(p.values) ? p.values : {};
+            for (const type of Object.keys(values)) {
+              for (const r of Array.isArray(values[type]) ? values[type] : []) {
+                const x = type === "number" ? num(r.value) : type === "boolean" ? r.value === true || r.value === "true" : r.value;
+                setField(res2, str(r.name), x, dot);
+              }
+            }
+            return [res2];
+          }
+          const include = v >= 3.3 ? p.includeOtherFields === true ? str(p.include, "all") : "none" : str(p.include, "none");
+          let res = {};
+          if (include === "all")
+            res = clone(it);
+          else if (include === "selected")
+            for (const f of list(p.includeFields))
+              setField(res, f, clone(getField(it, f)), dot);
+          else if (include === "except") {
+            res = clone(it);
+            for (const f of list(p.excludeFields))
+              delete res[f];
+          }
+          if (str(p.mode, "manual") === "raw") {
+            const raw = jsonParam(p.jsonOutput, "the JSON output");
+            if (!isObj(raw))
+              throw new Error("Edit Fields (JSON) must produce an object");
+            return [{ ...res, ...raw }];
+          }
+          const rows = isObj(p.assignments) && Array.isArray(p.assignments.assignments) ? p.assignments.assignments : isObj(p.fields) && Array.isArray(p.fields.values) ? p.fields.values : [];
+          for (const r of rows) {
+            const type = str(r.type, "string");
+            let x = r.value !== undefined ? r.value : r[`${type}Value`];
+            if (type === "number")
+              x = num(x);
+            else if (type === "boolean")
+              x = x === true || x === "true";
+            else if ((type === "array" || type === "object") && typeof x === "string")
+              x = jsonParam(x, `the field ${str(r.name)}`);
+            else if (type === "string" && x !== undefined && typeof x !== "string")
+              x = str(x);
+            setField(res, str(r.name), x, dot);
+          }
+          return [res];
+        }));
+      }
+      case "n8n-nodes-base.renameKeys":
+        return one(await perItem(async (p, it) => {
+          const res = clone(it);
+          const rows = isObj(p.keys) && Array.isArray(p.keys.key) ? p.keys.key : [];
+          for (const r of rows) {
+            const v = getField(res, str(r.currentKey));
+            if (v === undefined)
+              continue;
+            delete res[str(r.currentKey)];
+            setField(res, str(r.newKey), v);
+          }
+          return [res];
+        }));
+      case "n8n-nodes-base.if": {
+        const ps = await params();
+        const yes = [];
+        const no = [];
+        ps.forEach((p, i) => ((usesV2(n) ? conditionsV2(p.conditions, isObj(p.options) ? p.options : {}) : conditionsV1(p)) ? yes : no).push(clone(items[i] ?? {})));
+        return [yes, no];
+      }
+      case "n8n-nodes-base.filter": {
+        const ps = await params();
+        const kept = ps.flatMap((p, i) => (usesV2(n) ? conditionsV2(p.conditions, isObj(p.options) ? p.options : {}) : conditionsV1(p)) ? [clone(items[i] ?? {})] : []);
+        return [kept];
+      }
+      case "n8n-nodes-base.switch": {
+        const ps = await params();
+        const outs = Array.from({ length: Math.max(1, n.outputs) }, () => []);
+        const route = (k, it) => {
+          if (k >= 0 && k < outs.length)
+            outs[k].push(clone(it));
+        };
+        const v = n.version ?? 1;
+        ps.forEach((p, i) => {
+          const it = items[i] ?? {};
+          const opts = isObj(p.options) ? p.options : {};
+          if (str(p.mode, "rules") === "expression")
+            return route(Number(p.output ?? 0), it);
+          if (v >= 3) {
+            const rules2 = isObj(p.rules) && Array.isArray(p.rules.values) ? p.rules.values : [];
+            const hits = rules2.map((r, k) => conditionsV2(r.conditions, opts) ? k : -1).filter((k) => k >= 0);
+            if (hits.length)
+              return (opts.allMatchingOutputs === true ? hits : hits.slice(0, 1)).forEach((k) => route(k, it));
+            const fb = opts.fallbackOutput;
+            if (fb === "extra")
+              route(rules2.length, it);
+            else if (fb !== undefined && fb !== "none")
+              route(Number(fb), it);
+            return;
+          }
+          const rules = isObj(p.rules) && Array.isArray(p.rules.rules) ? p.rules.rules : [];
+          const type = str(p.dataType, "number");
+          const hit = rules.find((r) => compareV1(type, str(r.operation, "equal"), p.value1, r.value2));
+          if (hit)
+            route(Number(hit.output ?? 0), it);
+          else if (p.fallbackOutput !== undefined && Number(p.fallbackOutput) >= 0)
+            route(Number(p.fallbackOutput), it);
+        });
+        return outs;
+      }
+      case "n8n-nodes-base.merge": {
+        const p = (await params(ins.flat()))[0];
+        return one(mergeNode(n, p, ins));
+      }
+      case "n8n-nodes-base.limit": {
+        const p = (await params())[0];
+        const max = Math.max(0, Number(p.maxItems ?? 1));
+        return one((p.keep === "lastItems" ? items.slice(Math.max(0, items.length - max)) : items.slice(0, max)).map(clone));
+      }
+      case "n8n-nodes-base.sort": {
+        const p = (await params())[0];
+        const type = str(p.type, "simple");
+        if (type === "random") {
+          const a = items.map(clone);
+          for (let i = a.length - 1;i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [a[i], a[j]] = [a[j], a[i]];
+          }
+          return one(a);
+        }
+        if (type === "code")
+          return one(await ctx.js({ op: "sort", items, source: str(p.code), nodes: refs(str(p.code)), node: n.name, workflow: ctx.workflow }));
+        const fields = isObj(p.sortFieldsUi) && Array.isArray(p.sortFieldsUi.sortField) ? p.sortFieldsUi.sortField : [];
+        return one(sortSimple(items, fields, !(isObj(p.options) && p.options.disableDotNotation === true)));
+      }
+      case "n8n-nodes-base.removeDuplicates":
+        return one(removeDuplicates(items, (await params())[0]));
+      case "n8n-nodes-base.splitOut":
+        return one(splitOut(items, (await params())[0]));
+      case "n8n-nodes-base.aggregate":
+        return one(aggregate(items, (await params())[0]));
+      case "n8n-nodes-base.summarize":
+        return one(summarize(items, (await params())[0]));
+      case "n8n-nodes-base.itemLists": {
+        const p = (await params())[0];
+        switch (str(p.operation, "splitOutItems")) {
+          case "splitOutItems":
+            return one(splitOut(items, p));
+          case "aggregateItems":
+            return one(aggregate(items, p));
+          case "concatenateItems":
+            return one(aggregate(items, { ...p, aggregate: "aggregateAllItemData" }));
+          case "removeDuplicates":
+            return one(removeDuplicates(items, { ...p, operation: undefined }));
+          case "sort":
+            return one(sortSimple(items, isObj(p.sortFieldsUi) && Array.isArray(p.sortFieldsUi.sortField) ? p.sortFieldsUi.sortField : [], true));
+          case "limit":
+            return one(p.keep === "lastItems" ? items.slice(-Number(p.maxItems ?? 1)) : items.slice(0, Number(p.maxItems ?? 1)));
+          case "summarize":
+            return one(summarize(items, p));
+        }
+        throw new Error(`Item Lists "${str(p.operation)}" is not supported`);
+      }
+      case "n8n-nodes-base.dateTime": {
+        if ((n.version ?? 1) < 2)
+          throw new Error("Date & Time v1 uses Moment formats: replace it with Date & Time v2");
+        const ps = await params();
+        return one(await ctx.js({ op: "dateTime", items: items.length ? items : [{}], params: ps }));
+      }
+      case "n8n-nodes-base.code":
+      case "n8n-nodes-base.function":
+      case "n8n-nodes-base.functionItem": {
+        const p = n.parameters;
+        let mode;
+        let source;
+        if (n.type === "n8n-nodes-base.code") {
+          const lang = str(p.language, "javaScript");
+          if (lang !== "javaScript")
+            throw new Error(`a ${lang} Code node is not supported: swarm.press runs JavaScript only`);
+          mode = str(p.mode, "runOnceForAllItems") === "runOnceForEachItem" ? "each" : "all";
+          source = str(p.jsCode);
+        } else {
+          mode = n.type === "n8n-nodes-base.function" ? "function" : "functionItem";
+          source = str(p.functionCode);
+        }
+        return one(await ctx.js({ op: "code", mode, source, items: items.length ? items : [{}], nodes: refs(source), node: n.name, workflow: ctx.workflow }));
+      }
+      case "n8n-nodes-base.respondToWebhook": {
+        const p = (await params())[0];
+        switch (str(p.respondWith, "firstIncomingItem")) {
+          case "allIncomingItems":
+            return one(items.map(clone));
+          case "firstIncomingItem":
+            return one(items.slice(0, 1).map(clone));
+          case "json":
+            return one(toItems(jsonParam(p.responseBody, "the response body")));
+          case "text":
+            return one([{ data: str(p.responseBody) }]);
+          case "noData":
+            return one([{}]);
+        }
+        throw new Error(`Respond to Webhook "${str(p.respondWith)}" is not supported`);
+      }
+      case "n8n-nodes-base.executeWorkflow": {
+        if (!n.tool)
+          throw new Error("Execute Workflow names no tool: choose the site tool the sub-workflow became");
+        const p = (await params())[0];
+        const call = async (its) => {
+          const r = await ctx.tool(n.tool, { request: its });
+          if (!isObj(r))
+            return toItems(r);
+          const ports = Object.keys(r).sort();
+          return ports.length === 1 ? toItems(r[ports[0]]) : toItems(r);
+        };
+        if (str(p.mode, "once") === "each")
+          return one((await Promise.all(items.map((it) => call([it])))).flat());
+        return one(await call(items));
+      }
+      case "@n8n/n8n-nodes-langchain.chainLlm":
+        return one(await perItem(async (p, it) => {
+          const auto = str(p.promptType, (n.version ?? 1) >= 1.4 ? "auto" : "define") === "auto";
+          const prompt = auto ? str(it.chatInput ?? p.text ?? p.prompt) : str(p.text ?? p.prompt);
+          if (!prompt.trim())
+            throw new Error("the LLM chain has no prompt");
+          const sys = isObj(p.messages) && Array.isArray(p.messages.messageValues) ? p.messages.messageValues.map((m) => str(m.message)).filter(Boolean) : [];
+          const text = await ctx.llm([...sys, prompt].join(`
+
+`));
+          return [{ text }];
+        }));
+      case "@n8n/n8n-nodes-langchain.openAi":
+        return one(await perItem(async (p) => {
+          const resource = str(p.resource, "text");
+          const op = str(p.operation, "message");
+          if (resource !== "text" || op !== "message")
+            throw new Error(`OpenAI ${resource}/${op} is not supported: only "Message a model"`);
+          const msgs = isObj(p.messages) && Array.isArray(p.messages.values) ? p.messages.values : [];
+          const prompt = msgs.map((m) => str(m.role, "user") === "user" ? str(m.content) : `(${str(m.role)}) ${str(m.content)}`).join(`
+
+`);
+          if (!prompt.trim())
+            throw new Error("the OpenAI node has no message");
+          const reply = await ctx.llm(prompt);
+          let content = reply;
+          if (p.jsonOutput === true)
+            content = jsonParam(reply.trim().replace(/^```[a-z]*\s*|\s*```$/g, ""), "the model's reply");
+          return [{ index: 0, message: { role: "assistant", content }, logprobs: null, finish_reason: "stop" }];
+        }));
+    }
+    throw new Error(`the n8n node type ${n.type} is not supported (a sealed step)`);
+  }
+
+  // src/n8n/prelude.ts
+  var N8N_PRELUDE = String.raw`(function () {
+"use strict";
+var UNDEF = { $undefined: true };
+var hasOwn = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
+var isObj = function (v) { return v !== null && typeof v === "object" && !Array.isArray(v); };
+var clone = function (v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); };
+var fail = function (m) { throw new Error(m); };
+
+// ------------------------------------------------------------ DateTime (Luxon subset, UTC)
+var UNITS = { year: "years", years: "years", quarter: "quarters", quarters: "quarters", month: "months", months: "months", week: "weeks", weeks: "weeks", day: "days", days: "days", hour: "hours", hours: "hours", minute: "minutes", minutes: "minutes", second: "seconds", seconds: "seconds", millisecond: "milliseconds", milliseconds: "milliseconds" };
+var MS = { weeks: 604800000, days: 86400000, hours: 3600000, minutes: 60000, seconds: 1000, milliseconds: 1 };
+var MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+var DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+var pad = function (n, w) { var s = String(Math.abs(n)); while (s.length < w) s = "0" + s; return (n < 0 ? "-" : "") + s; };
+
+function Duration(values) { this.values = values || {}; }
+Duration.fromObject = function (o) { var v = {}; Object.keys(o || {}).forEach(function (k) { var u = UNITS[k]; if (!u) fail("Duration: unknown unit " + k); v[u] = Number(o[k]); }); return new Duration(v); };
+Duration.fromMillis = function (ms) { return new Duration({ milliseconds: ms }); };
+Duration.prototype.toMillis = function () { var t = 0, v = this.values; Object.keys(v).forEach(function (u) { if (MS[u] === undefined) fail("Duration: " + u + " has no fixed length"); t += v[u] * MS[u]; }); return t; };
+Duration.prototype.as = function (unit) { var u = UNITS[unit]; if (!u) fail("Duration: unknown unit " + unit); if (hasOwn(this.values, u) && Object.keys(this.values).length === 1) return this.values[u]; if (u === "months" || u === "years" || u === "quarters") { var d = this.toMillis() / MS.days; return u === "years" ? d / 365.25 : u === "quarters" ? d / 91.3125 : d / 30.4375; } return this.toMillis() / MS[u]; };
+Duration.prototype.toObject = function () { return clone(this.values); };
+Duration.prototype.toJSON = function () { return this.values; };
+["years", "quarters", "months", "weeks", "days", "hours", "minutes", "seconds", "milliseconds"].forEach(function (u) { Object.defineProperty(Duration.prototype, u, { get: function () { return this.values[u] || 0; } }); });
+
+function DateTime(ms) { this.ts = ms; }
+var mkDate = function (ms) { return new DateTime(ms); };
+DateTime.now = function () { return mkDate(Date.now()); };
+DateTime.utc = function () { if (!arguments.length) return DateTime.now(); var a = Array.prototype.slice.call(arguments); return mkDate(Date.UTC(a[0], (a[1] || 1) - 1, a[2] || 1, a[3] || 0, a[4] || 0, a[5] || 0, a[6] || 0)); };
+DateTime.local = DateTime.utc;
+DateTime.fromMillis = function (ms) { return mkDate(Number(ms)); };
+DateTime.fromSeconds = function (s) { return mkDate(Number(s) * 1000); };
+DateTime.fromJSDate = function (d) { return mkDate(d.getTime()); };
+DateTime.fromISO = function (s) { var t = Date.parse(String(s)); return mkDate(t); };
+DateTime.fromSQL = function (s) { return DateTime.fromISO(String(s).replace(" ", "T")); };
+DateTime.fromRFC2822 = function (s) { return mkDate(Date.parse(String(s))); };
+DateTime.fromHTTP = DateTime.fromRFC2822;
+DateTime.fromObject = function (o) { o = o || {}; return mkDate(Date.UTC(o.year || 1970, (o.month || 1) - 1, o.day || 1, o.hour || 0, o.minute || 0, o.second || 0, o.millisecond || 0)); };
+DateTime.fromFormat = function (s, fmt) { fail("DateTime.fromFormat is not available: use DateTime.fromISO"); };
+DateTime.isDateTime = function (v) { return v instanceof DateTime; };
+DateTime.max = function () { var a = Array.prototype.slice.call(arguments); return a.reduce(function (x, y) { return y.ts > x.ts ? y : x; }); };
+DateTime.min = function () { var a = Array.prototype.slice.call(arguments); return a.reduce(function (x, y) { return y.ts < x.ts ? y : x; }); };
+var P = DateTime.prototype;
+var d8 = function (dt) { return new Date(dt.ts); };
+Object.defineProperty(P, "isValid", { get: function () { return isFinite(this.ts); } });
+Object.defineProperty(P, "year", { get: function () { return d8(this).getUTCFullYear(); } });
+Object.defineProperty(P, "month", { get: function () { return d8(this).getUTCMonth() + 1; } });
+Object.defineProperty(P, "quarter", { get: function () { return Math.floor(d8(this).getUTCMonth() / 3) + 1; } });
+Object.defineProperty(P, "day", { get: function () { return d8(this).getUTCDate(); } });
+Object.defineProperty(P, "hour", { get: function () { return d8(this).getUTCHours(); } });
+Object.defineProperty(P, "minute", { get: function () { return d8(this).getUTCMinutes(); } });
+Object.defineProperty(P, "second", { get: function () { return d8(this).getUTCSeconds(); } });
+Object.defineProperty(P, "millisecond", { get: function () { return d8(this).getUTCMilliseconds(); } });
+Object.defineProperty(P, "weekday", { get: function () { var w = d8(this).getUTCDay(); return w === 0 ? 7 : w; } });
+Object.defineProperty(P, "weekdayLong", { get: function () { return DAYS[this.weekday - 1]; } });
+Object.defineProperty(P, "weekdayShort", { get: function () { return DAYS[this.weekday - 1].slice(0, 3); } });
+Object.defineProperty(P, "monthLong", { get: function () { return MONTHS[this.month - 1]; } });
+Object.defineProperty(P, "monthShort", { get: function () { return MONTHS[this.month - 1].slice(0, 3); } });
+Object.defineProperty(P, "ordinal", { get: function () { return Math.floor((this.ts - Date.UTC(this.year, 0, 1)) / MS.days) + 1; } });
+Object.defineProperty(P, "daysInMonth", { get: function () { return new Date(Date.UTC(this.year, this.month, 0)).getUTCDate(); } });
+Object.defineProperty(P, "weekNumber", { get: function () { var d = new Date(Date.UTC(this.year, this.month - 1, this.day)); var n = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - n + 3); var first = new Date(Date.UTC(d.getUTCFullYear(), 0, 4)); return 1 + Math.round(((d - first) / MS.days - 3 + ((first.getUTCDay() + 6) % 7)) / 7); } });
+Object.defineProperty(P, "zoneName", { get: function () { return "UTC"; } });
+Object.defineProperty(P, "offset", { get: function () { return 0; } });
+P.valueOf = function () { return this.ts; };
+P.toMillis = function () { return this.ts; };
+P.toSeconds = function () { return this.ts / 1000; };
+P.toUnixInteger = function () { return Math.floor(this.ts / 1000); };
+P.toJSDate = function () { return new Date(this.ts); };
+P.toISO = function () { if (!this.isValid) return null; return new Date(this.ts).toISOString().replace("Z", "+00:00"); };
+P.toISODate = function () { return this.isValid ? new Date(this.ts).toISOString().slice(0, 10) : null; };
+P.toISOTime = function () { return this.isValid ? new Date(this.ts).toISOString().slice(11, 23) + "+00:00" : null; };
+P.toSQLDate = P.toISODate;
+P.toSQL = function () { return this.isValid ? new Date(this.ts).toISOString().slice(0, 23).replace("T", " ") : null; };
+P.toHTTP = function () { return new Date(this.ts).toUTCString(); };
+P.toRFC2822 = P.toHTTP;
+P.toJSON = function () { return this.toISO(); };
+P.toString = function () { return this.isValid ? this.toISO() : "Invalid DateTime"; };
+P.toLocaleString = function () { return this.toFormat("M/d/yyyy, h:mm:ss a"); };
+P.setZone = function () { return this; };
+P.toUTC = function () { return this; };
+P.toLocal = function () { return this; };
+P.setLocale = function () { return this; };
+P.equals = function (o) { return o instanceof DateTime && o.ts === this.ts; };
+var addUnits = function (dt, dur, sign) {
+  var o = dur instanceof Duration ? dur.values : typeof dur === "number" ? { milliseconds: dur } : Duration.fromObject(dur).values;
+  var d = new Date(dt.ts);
+  if (o.years) d.setUTCFullYear(d.getUTCFullYear() + sign * o.years);
+  if (o.quarters) d.setUTCMonth(d.getUTCMonth() + sign * 3 * o.quarters);
+  if (o.months) d.setUTCMonth(d.getUTCMonth() + sign * o.months);
+  var t = d.getTime();
+  ["weeks", "days", "hours", "minutes", "seconds", "milliseconds"].forEach(function (u) { if (o[u]) t += sign * o[u] * MS[u]; });
+  return mkDate(t);
+};
+P.plus = function (dur) { return addUnits(this, dur, 1); };
+P.minus = function (dur) { return addUnits(this, dur, -1); };
+P.startOf = function (unit) {
+  var u = UNITS[unit] || fail("startOf: unknown unit " + unit), d = new Date(this.ts);
+  var y = d.getUTCFullYear(), m = d.getUTCMonth(), day = d.getUTCDate(), h = d.getUTCHours(), mi = d.getUTCMinutes(), s = d.getUTCSeconds();
+  switch (u) {
+    case "years": return mkDate(Date.UTC(y, 0, 1));
+    case "quarters": return mkDate(Date.UTC(y, m - (m % 3), 1));
+    case "months": return mkDate(Date.UTC(y, m, 1));
+    case "weeks": return mkDate(Date.UTC(y, m, day) - (this.weekday - 1) * MS.days);
+    case "days": return mkDate(Date.UTC(y, m, day));
+    case "hours": return mkDate(Date.UTC(y, m, day, h));
+    case "minutes": return mkDate(Date.UTC(y, m, day, h, mi));
+    case "seconds": return mkDate(Date.UTC(y, m, day, h, mi, s));
+    default: return this;
+  }
+};
+P.endOf = function (unit) { var u = UNITS[unit]; var o = {}; o[u === "quarters" ? "months" : u] = u === "quarters" ? 3 : 1; return this.startOf(unit).plus(o).minus(1); };
+P.set = function (o) { var d = new Date(this.ts); o = o || {};
+  if (o.year !== undefined) d.setUTCFullYear(o.year); if (o.month !== undefined) d.setUTCMonth(o.month - 1); if (o.day !== undefined) d.setUTCDate(o.day);
+  if (o.hour !== undefined) d.setUTCHours(o.hour); if (o.minute !== undefined) d.setUTCMinutes(o.minute); if (o.second !== undefined) d.setUTCSeconds(o.second); if (o.millisecond !== undefined) d.setUTCMilliseconds(o.millisecond);
+  return mkDate(d.getTime()); };
+P.get = function (unit) { return this[unit]; };
+P.diff = function (other, unit) { var ms = this.ts - asDate(other).ts; var units = unit === undefined ? ["milliseconds"] : Array.isArray(unit) ? unit : [unit]; if (units.length === 1) { var u = UNITS[units[0]]; var v = {}; v[u] = new Duration({ milliseconds: ms }).as(u); return new Duration(v); } var out = {}, rest = ms; units.map(function (x) { return UNITS[x]; }).sort(function (a, b) { return (MS[b] || 0) - (MS[a] || 0); }).forEach(function (u) { var size = MS[u] || (u === "months" ? 30.4375 * MS.days : u === "years" ? 365.25 * MS.days : 91.3125 * MS.days); out[u] = Math.trunc(rest / size); rest -= out[u] * size; }); return new Duration(out); };
+P.diffNow = function (unit) { return this.diff(DateTime.now(), unit); };
+P.hasSame = function (other, unit) { return this.startOf(unit).ts === asDate(other).startOf(unit).ts; };
+var TOKENS = /'[^']*'|yyyy|yy|y|MMMM|MMM|MM|M|LLLL|LLL|LL|L|dd|d|EEEE|EEE|E|cccc|ccc|c|HH|H|hh|h|mm|m|ss|s|SSS|S|a|ZZZ|ZZ|Z|ooo|o|kkkk|kk|WW|W|q|X|x/g;
+P.toFormat = function (fmt) { var dt = this; if (!dt.isValid) return "Invalid DateTime";
+  return String(fmt).replace(TOKENS, function (t) {
+    switch (t) {
+      case "yyyy": case "kkkk": return pad(dt.year, 4); case "yy": case "kk": return pad(dt.year % 100, 2); case "y": return String(dt.year);
+      case "MMMM": case "LLLL": return dt.monthLong; case "MMM": case "LLL": return dt.monthShort; case "MM": case "LL": return pad(dt.month, 2); case "M": case "L": return String(dt.month);
+      case "dd": return pad(dt.day, 2); case "d": return String(dt.day);
+      case "EEEE": case "cccc": return dt.weekdayLong; case "EEE": case "ccc": return dt.weekdayShort; case "E": case "c": return String(dt.weekday);
+      case "HH": return pad(dt.hour, 2); case "H": return String(dt.hour);
+      case "hh": return pad(((dt.hour + 11) % 12) + 1, 2); case "h": return String(((dt.hour + 11) % 12) + 1);
+      case "mm": return pad(dt.minute, 2); case "m": return String(dt.minute); case "ss": return pad(dt.second, 2); case "s": return String(dt.second);
+      case "SSS": return pad(dt.millisecond, 3); case "S": return String(dt.millisecond); case "a": return dt.hour < 12 ? "AM" : "PM";
+      case "ZZZ": return "+0000"; case "ZZ": return "+00:00"; case "Z": return "+0";
+      case "ooo": return pad(dt.ordinal, 3); case "o": return String(dt.ordinal); case "WW": return pad(dt.weekNumber, 2); case "W": return String(dt.weekNumber);
+      case "q": return String(dt.quarter); case "X": return String(dt.toUnixInteger()); case "x": return String(dt.ts);
+      default: return t.slice(1, -1);
+    }
+  }); };
+var asDate = function (v) {
+  if (v instanceof DateTime) return v;
+  if (v instanceof Date) return mkDate(v.getTime());
+  if (typeof v === "number") return mkDate(v);
+  if (typeof v === "string") { var t = Date.parse(v); if (!isFinite(t) && /^\d+$/.test(v)) t = Number(v); return mkDate(t); }
+  fail("not a date: " + JSON.stringify(v));
+};
+
+// ------------------------------------------------------------ n8n's helper methods
+var def = function (proto, name, fn) { if (!hasOwn(proto, name)) Object.defineProperty(proto, name, { value: fn, writable: true, configurable: true, enumerable: false }); };
+var S = String.prototype, A = Array.prototype, N = Number.prototype, O = Object.prototype, B = Boolean.prototype;
+var words = function (s) { return String(s).replace(/([a-z])([A-Z])/g, "$1 $2").split(/[^A-Za-z0-9]+/).filter(Boolean); };
+def(S, "isEmpty", function () { return this.length === 0; });
+def(S, "isNotEmpty", function () { return this.length > 0; });
+def(S, "isBlank", function () { return this.trim().length === 0; });
+def(S, "toTitleCase", function () { return this.toLowerCase().replace(/(^|[\s-])(\S)/g, function (m, a, b) { return a + b.toUpperCase(); }); });
+def(S, "toSentenceCase", function () { var s = this.toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1); });
+def(S, "toSnakeCase", function () { return words(this).join("_").toLowerCase(); });
+def(S, "toKebabCase", function () { return words(this).join("-").toLowerCase(); });
+def(S, "toCamelCase", function () { return words(this).map(function (w, i) { w = w.toLowerCase(); return i ? w.charAt(0).toUpperCase() + w.slice(1) : w; }).join(""); });
+def(S, "extractDomain", function () { var m = /^(?:[a-z]+:\/\/)?(?:[^@\/]+@)?([^:\/?#]+)/i.exec(this.trim()); return m ? m[1].replace(/^www\./, "") : undefined; });
+def(S, "extractEmail", function () { var m = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.exec(this); return m ? m[0] : undefined; });
+def(S, "extractUrl", function () { var m = /https?:\/\/[^\s"'<>]+/.exec(this); return m ? m[0] : undefined; });
+def(S, "extractUrlPath", function () { var m = /^[a-z]+:\/\/[^\/]+(\/[^?#]*)?/i.exec(this); return m ? m[1] || "/" : undefined; });
+def(S, "isEmail", function () { return /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(this); });
+def(S, "isUrl", function () { return /^https?:\/\/[^\s]+$/.test(this); });
+def(S, "isDomain", function () { return /^([a-z0-9-]+\.)+[a-z]{2,}$/i.test(this); });
+def(S, "isNumeric", function () { return this.trim() !== "" && isFinite(Number(this)); });
+def(S, "toNumber", function () { var n = Number(this); if (isNaN(n)) fail("cannot convert " + JSON.stringify(String(this)) + " to a number"); return n; });
+def(S, "toFloat", S.toNumber);
+def(S, "toInt", function () { var n = parseInt(this, 10); if (isNaN(n)) fail("cannot convert " + JSON.stringify(String(this)) + " to an integer"); return n; });
+def(S, "toBoolean", function () { return !/^(false|no|0|)$/i.test(this.trim()); });
+def(S, "toDateTime", function () { return asDate(String(this)); });
+def(S, "toDate", S.toDateTime);
+def(S, "toJsonString", function () { return JSON.stringify(String(this)); });
+def(S, "parseJson", function () { return JSON.parse(this); });
+def(S, "urlEncode", function (all) { return all ? encodeURIComponent(this) : encodeURI(this); });
+def(S, "urlDecode", function (all) { return all ? decodeURIComponent(this) : decodeURI(this); });
+def(S, "removeTags", function () { return this.replace(/<[^>]*>/g, ""); });
+def(S, "removeMarkdown", function () { return this.replace(/[#*_>~\x60]/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1"); });
+def(S, "replaceSpecialChars", function () { return this.normalize("NFD").replace(/[̀-ͯ]/g, ""); });
+def(S, "quote", function (q) { q = q || '"'; return q + this.split(q).join("\\" + q) + q; });
+def(A, "first", function () { return this[0]; });
+def(A, "last", function () { return this[this.length - 1]; });
+def(A, "isEmpty", function () { return this.length === 0; });
+def(A, "isNotEmpty", function () { return this.length > 0; });
+def(A, "sum", function () { return this.reduce(function (a, b) { return a + Number(b); }, 0); });
+def(A, "max", function () { return Math.max.apply(null, this.map(Number)); });
+def(A, "min", function () { return Math.min.apply(null, this.map(Number)); });
+def(A, "average", function () { return this.length ? this.sum() / this.length : 0; });
+def(A, "removeDuplicates", function (key) { var seen = {}; return this.filter(function (x) { var k = JSON.stringify(key && isObj(x) ? x[key] : x); if (hasOwn(seen, k)) return false; seen[k] = 1; return true; }); });
+def(A, "unique", A.removeDuplicates);
+def(A, "compact", function () { return this.filter(function (x) { return x !== null && x !== undefined && x !== "" && !(isObj(x) && !Object.keys(x).length); }); });
+def(A, "pluck", function () { var f = Array.prototype.slice.call(arguments); return this.map(function (x) { if (!isObj(x)) return undefined; if (f.length === 1) return x[f[0]]; var o = {}; f.forEach(function (k) { o[k] = x[k]; }); return o; }); });
+def(A, "chunk", function (n) { var out = []; for (var i = 0; i < this.length; i += n) out.push(this.slice(i, i + n)); return out; });
+def(A, "difference", function (o) { var s = (o || []).map(function (x) { return JSON.stringify(x); }); return this.filter(function (x) { return s.indexOf(JSON.stringify(x)) < 0; }); });
+def(A, "intersection", function (o) { var s = (o || []).map(function (x) { return JSON.stringify(x); }); return this.filter(function (x) { return s.indexOf(JSON.stringify(x)) >= 0; }).removeDuplicates(); });
+def(A, "union", function (o) { return this.concat(o || []).removeDuplicates(); });
+def(A, "append", function () { return this.concat(Array.prototype.slice.call(arguments)); });
+def(A, "smartJoin", function (k, v) { var o = {}; this.forEach(function (x) { if (isObj(x)) o[x[k]] = x[v]; }); return o; });
+def(A, "toJsonString", function () { return JSON.stringify(this); });
+def(A, "randomItem", function () { return this[Math.floor(Math.random() * this.length)]; });
+def(N, "round", function (d) { var f = Math.pow(10, d || 0); return Math.round(this * f) / f; });
+def(N, "floor", function () { return Math.floor(this); });
+def(N, "ceil", function () { return Math.ceil(this); });
+def(N, "abs", function () { return Math.abs(this); });
+def(N, "isEven", function () { return this % 2 === 0; });
+def(N, "isOdd", function () { return Math.abs(this % 2) === 1; });
+def(N, "isInteger", function () { return Number.isInteger(Number(this)); });
+def(N, "toInt", function () { return Math.trunc(this); });
+def(N, "toFloat", function () { return Number(this); });
+def(N, "toBoolean", function () { return Number(this) !== 0; });
+def(N, "toDateTime", function (f) { return f === "s" || f === "seconds" ? DateTime.fromSeconds(Number(this)) : DateTime.fromMillis(Number(this)); });
+def(N, "format", function () { var p = String(this).split("."); p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ","); return p.join("."); });
+def(B, "toInt", function () { return this.valueOf() ? 1 : 0; });
+def(B, "toNumber", B.toInt);
+def(O, "isEmpty", function () { return Object.keys(this).length === 0; });
+def(O, "isNotEmpty", function () { return Object.keys(this).length > 0; });
+def(O, "hasField", function (k) { return hasOwn(this, k); });
+def(O, "removeField", function (k) { var o = clone(this); delete o[k]; return o; });
+def(O, "removeFieldsContaining", function (s) { var o = {}, t = this; Object.keys(t).forEach(function (k) { if (String(t[k]).indexOf(s) < 0) o[k] = t[k]; }); return o; });
+def(O, "keepFieldsContaining", function (s) { var o = {}, t = this; Object.keys(t).forEach(function (k) { if (String(t[k]).indexOf(s) >= 0) o[k] = t[k]; }); return o; });
+def(O, "compact", function () { var o = {}, t = this; Object.keys(t).forEach(function (k) { if (t[k] !== null && t[k] !== undefined && t[k] !== "") o[k] = t[k]; }); return o; });
+def(O, "toJsonString", function () { return JSON.stringify(this); });
+def(O, "keys", function () { return Object.keys(this); });
+def(O, "values", function () { return Object.keys(this).map(function (k) { return this[k]; }, this); });
+def(O, "urlEncode", function () { var t = this; return Object.keys(t).map(function (k) { return encodeURIComponent(k) + "=" + encodeURIComponent(String(t[k])); }).join("&"); });
+
+// ------------------------------------------------------------ the environment
+var NAMES = ["$json", "$input", "$", "$node", "$items", "$item", "$itemIndex", "$runIndex", "$now", "$today", "$workflow", "$execution", "$vars", "$env", "$jmespath", "$prevNode", "$if", "$ifEmpty", "$max", "$min", "$binary", "DateTime", "Duration", "items", "item", "require"];
+var envFor = function (task, i) {
+  var list = task.items;
+  var wrap = function (json) { return { json: json, binary: {} }; };
+  var nodeAccess = function (name) {
+    if (!hasOwn(task.nodes || {}, name)) fail("the node " + JSON.stringify(name) + " is not in this tool, or has not run before this one");
+    var its = task.nodes[name];
+    return {
+      all: function () { return its.map(wrap); },
+      first: function () { return its.length ? wrap(its[0]) : undefined; },
+      last: function () { return its.length ? wrap(its[its.length - 1]) : undefined; },
+      get item() { var x = its[i] !== undefined ? its[i] : its[0]; return x === undefined ? undefined : wrap(x); },
+      itemMatching: function (k) { return its[k] === undefined ? undefined : wrap(its[k]); },
+      pairedItem: function (k) { return this.itemMatching(k === undefined ? i : k); },
+      params: {},
+      isExecuted: true,
+    };
+  };
+  var nodeProxy = new Proxy({}, { get: function (_, name) { if (typeof name !== "string") return undefined; var a = nodeAccess(name), it = a.item; return { json: it ? it.json : {}, binary: {}, parameter: {}, runIndex: 0, context: {} }; } });
+  var now = DateTime.now();
+  var cur = list[i] === undefined ? {} : list[i];
+  return {
+    $json: cur,
+    $input: { all: function () { return list.map(wrap); }, first: function () { return list.length ? wrap(list[0]) : undefined; }, last: function () { return list.length ? wrap(list[list.length - 1]) : undefined; }, item: wrap(cur), params: {}, context: {} },
+    $: nodeAccess,
+    $node: nodeProxy,
+    $items: function (name) { return name === undefined ? list.map(wrap) : nodeAccess(name).all(); },
+    $item: function (k) { return { $json: list[k], $node: nodeProxy }; },
+    $itemIndex: i,
+    $runIndex: 0,
+    $now: now,
+    $today: now.startOf("day"),
+    $workflow: { id: task.workflow.id, name: task.workflow.name, active: true },
+    $execution: { id: "swarmpress", mode: "production", resumeUrl: "", customData: { set: function () {}, get: function () {}, setAll: function () {}, getAll: function () { return {}; } } },
+    $vars: {},
+    $env: new Proxy({}, { get: function () { fail("$env is not available in swarm.press: a tool reads only its items"); } }),
+    $jmespath: function () { fail("$jmespath is not available in swarm.press"); },
+    $prevNode: { name: "", outputIndex: 0, runIndex: 0 },
+    $if: function (c, a, b) { return c ? a : b; },
+    $ifEmpty: function (v, alt) { return v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length) || (isObj(v) && !Object.keys(v).length) ? alt : v; },
+    $max: function () { return Math.max.apply(null, arguments); },
+    $min: function () { return Math.min.apply(null, arguments); },
+    $binary: {},
+    DateTime: DateTime,
+    Duration: Duration,
+    items: list.map(wrap),
+    item: cur,
+    require: function (m) { fail("require(" + JSON.stringify(m) + ") is not available: a Code node in swarm.press runs without modules"); },
+  };
+};
+var THIS = { helpers: new Proxy({}, { get: function (_, k) { return function () { fail("this.helpers." + String(k) + " is not available: use an HTTP Request node for requests"); }; } }), getNodeParameter: function () { fail("this.getNodeParameter is not available"); }, getWorkflowStaticData: function () { return {}; } };
+var argsOf = function (env) { return NAMES.map(function (n) { return env[n]; }); };
+var compiled = {};
+var compile = function (key, body) { if (!hasOwn(compiled, key)) compiled[key] = Function.apply(null, NAMES.concat([body])); return compiled[key]; };
+
+var out = function (v) {
+  if (v === undefined) return UNDEF;
+  if (v instanceof DateTime) return v.toISO();
+  if (v instanceof Duration) return v.toObject();
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "function") return UNDEF;
+  if (typeof v === "number" && !isFinite(v)) return null;
+  return JSON.parse(JSON.stringify(v));
+};
+var text = function (v) {
+  if (v === undefined || v === null) return "";
+  if (v instanceof DateTime) return v.toISO();
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  return JSON.stringify(v);
+};
+var exprs = function (task) {
+  return task.items.map(function (_, i) {
+    var env = envFor(task, i), args = argsOf(env);
+    return task.templates.map(function (t) {
+      var values = t.parts.filter(function (p) { return typeof p !== "string"; }).map(function (p) {
+        try { return compile("e:" + p.js, "return (" + p.js + "\n);").apply(THIS, args); }
+        catch (e) { fail("the expression {{ " + p.js + " }} (item " + i + "): " + (e && e.message ? e.message : String(e))); }
+      });
+      if (t.single) return out(values[0]);
+      var k = 0;
+      return t.parts.map(function (p) { return typeof p === "string" ? p : text(values[k++]); }).join("");
+    });
+  });
+};
+var toItems = function (v, where) {
+  if (v === undefined || v === null) fail(where + " returned nothing: return the items (an array of { json })");
+  var list = Array.isArray(v) ? v : [v];
+  return list.map(function (x, k) {
+    var j = isObj(x) && hasOwn(x, "json") ? x.json : x;
+    if (!isObj(j)) fail(where + ": item " + k + " is not an object (return { json: {…} })");
+    return out(j);
+  });
+};
+var code = async function (task) {
+  var body = "return (async function () {\n" + task.source + "\n}).call(this);";
+  var fn = compile("c:" + task.mode + ":" + task.source, body);
+  if (task.mode === "each" || task.mode === "functionItem") {
+    var res = [];
+    for (var i = 0; i < task.items.length; i++) {
+      var env = envFor(task, i);
+      var r = await fn.apply(THIS, argsOf(env));
+      if (task.mode === "functionItem" && r === undefined) r = env.item;
+      if (r === null || r === undefined) continue;
+      res = res.concat(toItems(r, "the code (item " + i + ")"));
+    }
+    return res;
+  }
+  var env0 = envFor(task, 0);
+  var all = await fn.apply(THIS, argsOf(env0));
+  return toItems(all, "the code");
+};
+var sortCode = function (task) {
+  var env = envFor(task, 0), names = NAMES.concat(["a", "b"]);
+  var cmp = Function.apply(null, names.concat([task.source]));
+  var list = task.items.map(function (j) { return { json: j }; });
+  list.sort(function (a, b) { return Number(cmp.apply(THIS, argsOf(env).concat([a, b]))) || 0; });
+  return list.map(function (x) { return x.json; });
+};
+var setField = function (o, name, v) { o[name] = out(v); return o; };
+var dateTime = function (task) {
+  return task.items.map(function (item, i) {
+    var p = task.params[i] || {}, opts = p.options || {};
+    var res = opts.includeInputFields ? clone(item) : {};
+    var field = function (d) { return p.outputFieldName || d; };
+    switch (p.operation || "getCurrentDate") {
+      case "getCurrentDate": { var n = DateTime.now(); return setField(res, field("currentDate"), p.includeTime === false ? n.startOf("day") : n); }
+      case "addToDate": case "subtractFromDate": {
+        var o = {}; o[UNITS[p.timeUnit || "days"] || "days"] = Number(p.duration || 0);
+        var d = asDate(p.magnitude);
+        return setField(res, field("newDate"), p.operation === "addToDate" ? d.plus(o) : d.minus(o));
+      }
+      case "formatDate": {
+        var dd = asDate(p.date), f = p.format === "custom" || p.format === undefined ? p.customFormat || "yyyy-MM-dd" : p.format;
+        return setField(res, field("formattedDate"), dd.toFormat(f));
+      }
+      case "roundDate": {
+        var r = asDate(p.date), unit = p.toNearest || p.to || "day";
+        return setField(res, field("roundedDate"), (p.mode || "roundDown") === "roundUp" ? r.endOf(unit).plus(1).startOf(unit) : r.startOf(unit));
+      }
+      case "getTimeBetweenDates": {
+        var units = Array.isArray(p.units) && p.units.length ? p.units : ["day"];
+        return setField(res, field("timeDifference"), asDate(p.endDate).diff(asDate(p.startDate), units).toObject());
+      }
+      case "extractDate": {
+        var part = p.part || "month", x = asDate(p.date);
+        return setField(res, field("datePart"), part === "week" ? x.weekNumber : x[part]);
+      }
+      default: fail("the Date & Time operation " + JSON.stringify(p.operation) + " is not supported");
+    }
+  });
+};
+
+globalThis.ext = {
+  run: async function (task) {
+    switch (task.op) {
+      case "exprs": return exprs(task);
+      case "code": return code(task);
+      case "sort": return sortCode(task);
+      case "dateTime": return dateTime(task);
+      default: fail("unknown task " + task.op);
+    }
+  },
+};
+})();`;
+
   // src/interpret.ts
+  var N8N_CALLS_PER_NODE = 50;
+
   class NodeError extends Error {
     issues;
     fatal;
@@ -703,6 +2236,8 @@
     switch (n.kind) {
       case "input":
         return [];
+      case "n8n":
+        return Array.from({ length: Math.max(1, n.inputs) }, (_, i) => [i ? `in${i}` : "in", false]);
       case "connector":
         return [["params", false]];
       case "op":
@@ -726,6 +2261,8 @@
       return [];
     if (n.kind === "condition")
       return n.test === "switch" ? [...n.cases, "else"] : ["yes", "no"];
+    if (n.kind === "n8n")
+      return Array.from({ length: Math.max(1, n.outputs) }, (_, i) => i ? `out${i}` : "out");
     return ["out"];
   }
   function parseEdges(g2) {
@@ -790,8 +2327,8 @@
       throw new NodeError("bad-graph: the graph has a cycle");
     return out;
   }
-  var isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-  var clone = (v) => v === undefined ? v : JSON.parse(JSON.stringify(v));
+  var isObj2 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  var clone2 = (v) => v === undefined ? v : JSON.parse(JSON.stringify(v));
   function compare(a, cmp, b) {
     const eq = (x, y) => x !== undefined && canonicalJson(x) === canonicalJson(y);
     switch (cmp) {
@@ -801,8 +2338,8 @@
         return !eq(a, b);
       case "gt":
       case "lt": {
-        const same = typeof a === "number" && typeof b === "number" || typeof a === "string" && typeof b === "string";
-        if (!same)
+        const same2 = typeof a === "number" && typeof b === "number" || typeof a === "string" && typeof b === "string";
+        if (!same2)
           return false;
         return cmp === "gt" ? a > b : a < b;
       }
@@ -862,9 +2399,9 @@
     const names = [...new Set(placeholders(template))];
     if (!names.length)
       return template;
-    const scalar = !isObj(params) && names.length === 1;
+    const scalar = !isObj2(params) && names.length === 1;
     return template.replace(/\{([^{}]*)\}/g, (_, name) => {
-      const v = scalar ? params : isObj(params) ? readPath(params, `$.${name}`) : undefined;
+      const v = scalar ? params : isObj2(params) ? readPath(params, `$.${name}`) : undefined;
       const s = scalarText(v, `placeholder {${name}}`);
       return encode ? encodeURIComponent(s) : s;
     });
@@ -974,7 +2511,7 @@
         return fail(`bad-types: ${e.message}`, e.issues);
       return fail(errMsg(e));
     }
-    if (!isObj(input))
+    if (!isObj2(input))
       return fail("bad-input: the input is an object of the tool's inputs");
     for (const k of Object.keys(input).sort())
       if (!(k in graph.inputs))
@@ -986,8 +2523,9 @@
     }
     const retries = graph.failure.retries;
     const count = (k) => graph.nodes.filter((n) => n.kind === k).length;
-    const fetchLimit = graph.limits.fetches_per_run || count("connector") * (1 + retries);
-    const llmLimit = graph.limits.llm_calls_per_run || count("agent") * (1 + retries) * 2;
+    const n8nCount = (what) => graph.nodes.filter((n) => n.kind === "n8n" && N8N_TYPES[n.type]?.[what]).length;
+    const fetchLimit = graph.limits.fetches_per_run || (count("connector") + (n8nCount("web") + n8nCount("tool")) * N8N_CALLS_PER_NODE) * (1 + retries);
+    const llmLimit = graph.limits.llm_calls_per_run || (count("agent") * 2 + n8nCount("llm") * N8N_CALLS_PER_NODE) * (1 + retries);
     let fetches = 0;
     let llmCalls = 0;
     const spendFetch = () => {
@@ -1029,8 +2567,15 @@
     const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
     const values = new Map;
     const outputs = {};
+    const n8nItems = {};
     for (const id of order) {
       const n = nodes.get(id);
+      if (n.kind === "n8n") {
+        const r = await n8nStep(n);
+        if (r)
+          return r;
+        continue;
+      }
       const inlets = {};
       let taken = true;
       for (const [port] of inPorts(n)) {
@@ -1070,16 +2615,99 @@
       }
     }
     for (const port of Object.keys(graph.outputs).sort())
-      if (!(port in outputs))
+      if (!(port in outputs) && !graph.outputs[port].endsWith("?"))
         return fail(`no-output:${port}`);
     return { ok: true, outputs, trace, recorded };
+    async function n8nStep(n) {
+      const id = n.id;
+      const ports = inPorts(n).map(([p]) => p);
+      const fedBy = ports.map((p) => edges.find((x) => x.to === id && x.toPort === p));
+      const connected = fedBy.some(Boolean);
+      const ins = fedBy.map((e) => e && values.has(`${e.from}.${e.fromPort}`) ? toItems(values.get(`${e.from}.${e.fromPort}`)) : []);
+      if (connected && !fedBy.some((e) => e && values.has(`${e.from}.${e.fromPort}`))) {
+        trace.push({ node: id, state: "not-taken", in_sha: null, out_sha: null, ms: 0 });
+        return;
+      }
+      if (!connected)
+        ins[0] = [{}];
+      const inlets = {};
+      ports.forEach((p, i) => inlets[p] = ins[i]);
+      const inSha = sha(inlets);
+      const t0 = clock();
+      let touched = false;
+      const node = n;
+      try {
+        let outlets;
+        if (replayed(id)) {
+          const rec = clone2(opts.replay[id]);
+          if (!rec || !Array.isArray(rec.outlets))
+            throw new NodeError("the recorded output is not an n8n node's outlets");
+          outlets = rec.outlets;
+          recorded[id] = clone2(rec);
+        } else {
+          outlets = await withRetries(() => runN8n({
+            node,
+            inputs: ins,
+            nodes: n8nItems,
+            workflow: { id: graph.id, name: graph.name.en ?? graph.id },
+            js: async (task) => {
+              touched = true;
+              return await need("code")(N8N_PRELUDE, task);
+            },
+            request: async (req) => {
+              touched = true;
+              spendFetch();
+              return await need("request")(req);
+            },
+            llm: async (prompt) => {
+              touched = true;
+              spendLlm();
+              const text = await need("llm")("mid", prompt, { role: "n8n", node: id });
+              if (typeof text !== "string")
+                throw new NodeError(`${id}: the model returned no text`);
+              return text;
+            },
+            tool: async (tool, input2) => {
+              touched = true;
+              spendFetch();
+              return await need("tool")(tool, input2);
+            }
+          }));
+          if (touched)
+            recorded[id] = { outlets: clone2(outlets) };
+        }
+        if (n.returns) {
+          const want = n.returns;
+          const issues = reg.validate(outlets[0] ?? [], want);
+          if (issues.length)
+            throw typeError(`${id}: the items do not fit ${want}`, issues);
+        }
+        const taken = [];
+        outPorts(n).forEach((p, k) => {
+          const its = outlets[k] ?? [];
+          if (its.length) {
+            values.set(`${id}.${p}`, its);
+            taken.push(p);
+          }
+        });
+        n8nItems[n.name] = outlets.flat();
+        trace.push({ node: id, state: "ok", in_sha: inSha, out_sha: sha(outlets), outlet: taken.join(","), ms: clock() - t0 });
+        return;
+      } catch (e) {
+        if (isCapabilityError(e))
+          throw e;
+        const issues = e instanceof NodeError ? e.issues : undefined;
+        trace.push({ node: id, state: "failed", in_sha: inSha, out_sha: null, ms: clock() - t0, error: errMsg(e), ...issues ? { issues } : {} });
+        return fail(`${id}: ${errMsg(e)}`, issues);
+      }
+    }
     async function step(n, inlets) {
       const out = (value) => ({ value, outlet: "out" });
       switch (n.kind) {
         case "input":
-          return out(clone(inlets[n.port]));
+          return out(clone2(inlets[n.port]));
         case "output":
-          return { value: checked(clone(inlets.in), graph.outputs[n.port], `output ${n.port}`), outlet: "" };
+          return { value: checked(clone2(inlets.in), graph.outputs[n.port], `output ${n.port}`), outlet: "" };
         case "condition": {
           const v = readPath(inlets.in, n.path);
           let outlet;
@@ -1089,26 +2717,28 @@
             outlet = compare(v, n.cmp, n.value) ? "yes" : "no";
           else
             outlet = typeof v === "string" && n.cases.includes(v) ? v : "else";
-          return { value: clone(inlets.in), outlet };
+          return { value: clone2(inlets.in), outlet };
         }
         case "op":
           return out(op(n, inlets));
         case "connector":
           return out(await recordedCall(n.id, n.returns, () => connector(n, inlets.params)));
         case "skill":
-          return out(await recordedCall(n.id, n.returns, async () => checked(await need("skill")(n.extension, n.tool, clone(inlets.in)), n.returns, `skill ${n.extension}/${n.tool}`)));
+          return out(await recordedCall(n.id, n.returns, async () => checked(await need("skill")(n.extension, n.tool, clone2(inlets.in)), n.returns, `skill ${n.extension}/${n.tool}`)));
         case "agent":
           return out(await recordedCall(n.id, n.output, () => agent(n, inlets.in)));
+        case "n8n":
+          throw new NodeError(`${n.id}: an n8n node runs in n8nStep`);
       }
     }
     async function recordedCall(id, returns, call) {
       if (replayed(id)) {
-        const v2 = checked(clone(opts.replay[id]), returns, "the recorded output");
+        const v2 = checked(clone2(opts.replay[id]), returns, "the recorded output");
         recorded[id] = v2;
-        return clone(v2);
+        return clone2(v2);
       }
       const v = await call();
-      recorded[id] = clone(v);
+      recorded[id] = clone2(v);
       return v;
     }
     async function connector(n, params) {
@@ -1169,7 +2799,7 @@
           const tool = need("tool");
           return withRetries(async () => {
             spendFetch();
-            return checked(await tool(n.tool ?? "", clone(params ?? {})), n.returns, what);
+            return checked(await tool(n.tool ?? "", clone2(params ?? {})), n.returns, what);
           });
         }
       }
@@ -1206,8 +2836,8 @@
       return issues.length ? { ok: false, problems: issues.map((i) => `${i.path}: ${i.message}`), issues } : { ok: true, value: v };
     }
     function op(n, inlets) {
-      const v = clone(inlets.in);
-      const list = (what) => {
+      const v = clone2(inlets.in);
+      const list2 = (what) => {
         if (!Array.isArray(v))
           throw new NodeError(`${n.op} ${n.id}: ${what} reads a list`);
         return v;
@@ -1220,7 +2850,7 @@
           return n.returns ? checked(got, n.returns, `pick ${n.id}`) : got;
         }
         case "map": {
-          const items = list("map").map((item) => {
+          const items = list2("map").map((item) => {
             const o = {};
             for (const field of Object.keys(n.fields).sort()) {
               const fv = readPath(item, n.fields[field]);
@@ -1241,11 +2871,11 @@
             if (rhs === undefined)
               throw new NodeError(`filter ${n.id}: ${w.value} is not in the param value`);
           }
-          return list("filter").filter((item) => compare(readPath(item, w.path), w.cmp, rhs));
+          return list2("filter").filter((item) => compare(readPath(item, w.path), w.cmp, rhs));
         }
         case "sort": {
           const path = n.path ?? "$";
-          const keyed = list("sort").map((item, i) => ({ item, key: readPath(item, path), i }));
+          const keyed = list2("sort").map((item, i) => ({ item, key: readPath(item, path), i }));
           keyed.sort((a, b) => {
             const c = sortCompare(a.key, b.key);
             return (n.desc ? -c : c) || a.i - b.i;
@@ -1253,12 +2883,12 @@
           return keyed.map((k) => k.item);
         }
         case "limit":
-          return list("limit").slice(0, n.count ?? 0);
+          return list2("limit").slice(0, n.count ?? 0);
         case "merge": {
-          const b = clone(inlets.b);
+          const b = clone2(inlets.b);
           if (!Array.isArray(b))
             throw new NodeError(`merge ${n.id}: b reads a list`);
-          return [...list("merge"), ...b];
+          return [...list2("merge"), ...b];
         }
         case "split": {
           const s = n.path ? readPath(v, n.path) : v;
@@ -1317,6 +2947,20 @@
       },
       async store(table, key) {
         return await ctx.store.table(table).get(key ?? "latest");
+      },
+      async request(req) {
+        const headers = { ...req.headers };
+        if (req.credential)
+          headers[CREDENTIAL_HEADER] = req.credential;
+        const res = await ctx.web.fetch(req.url, { method: req.method, headers, ...req.body !== null ? { body: req.body } : {} });
+        const out = {};
+        const each = res.headers.forEach;
+        if (typeof each === "function")
+          each.call(res.headers, (v, k) => out[k] = v);
+        return { status: res.status, headers: out, body: await res.text() };
+      },
+      async code(program, task) {
+        return await ctx.code.run(program, task);
       },
       ...extra
     };

@@ -48,7 +48,7 @@
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^(web|credits|ui|llm:(low|mid|high|agency)|store:[a-z][a-z0-9_]{0,31})$"
+        "pattern": "^(web|credits|ui|code|llm:(low|mid|high|agency)|store:[a-z][a-z0-9_]{0,31})$"
       },
       "default": []
     },

@@ -4,8 +4,13 @@
  * path from a source, ordered by id within a layer), its edges as tubes
  * coloured by the type flowing through them. Each card shows the tool's
  * triggers, its derived manifest (capabilities, origins) and its issues, the
- * server's and the browser checker's. Read-only: editing tools is T-1.
+ * server's and the browser checker's. An imported n8n node (ADR-0076) is the
+ * machine of what it does. Above the machines: importing an n8n workflow and
+ * the credentials the tools sign in with.
  */
+import { N8N_TYPES } from '@swarm-press/toolgraph'
+import { CredentialsPanel } from './Credentials'
+import { N8nImportPanel } from './N8nImport'
 import { hexOf, inkOn, typeColour } from '../../blueprint/colours'
 import { layoutTool, triggerText, type MachineNode } from '../../blueprint/model'
 import type { SiteModels, SiteTool, ModelIssue } from '../../blueprint/types'
@@ -29,7 +34,20 @@ const KIND_LABEL: Record<string, string> = {
   condition: 'switch',
   agent: 'workstation',
   skill: 'crate',
+  code: 'code bench',
 }
+
+/** The machine an n8n node stands as (as `n8n_machine` in machines.rs). */
+export function n8nShape(type: string): string {
+  const info = N8N_TYPES[type]
+  if (!info) return 'skill'
+  if (info.web || info.tool) return 'connector'
+  if (info.llm) return 'agent'
+  if (/\.(if|filter|switch)$/.test(type)) return 'condition'
+  if (/\.(code|function|functionItem|dateTime)$/.test(type)) return 'code'
+  return 'op'
+}
+const shapeOf = (n: MachineNode['node']) => (n.kind === 'n8n' ? n8nShape(str(n.type) ?? '') : n.kind)
 
 const str = (v: unknown) => (typeof v === 'string' ? v : null)
 
@@ -60,6 +78,12 @@ export function nodeCaption(n: MachineNode['node']): string {
       return `${str(n.role) ?? 'agent'} · ${str(n.tier) ?? 'tier?'}`
     case 'skill':
       return `${str(n.skill) ?? str(n.extension) ?? 'skill'}`
+    case 'n8n': {
+      const short = (str(n.type) ?? 'n8n').replace(/^.*\./, '')
+      const params = (n.parameters ?? {}) as Record<string, unknown>
+      const host = n8nShape(str(n.type) ?? '') === 'connector' ? hostOf(str(params.url)?.replace(/^=/, '').replace(/\{\{[^}]*\}\}/g, 'x') ?? null) : null
+      return `${short}${host ? ` · ${host}` : ''}`
+    }
     default:
       return n.kind
   }
@@ -94,6 +118,13 @@ function Shape({ kind, x, y }: { kind: string; x: number; y: number }) {
           <rect x={x} y={y} width={W} height={H} rx={3} fill={fill} />
           <circle cx={x + W - 14} cy={y + 11} r={5} fill={hexOf('yellow')} />
           <rect x={x + W - 20} y={y + 17} width={12} height={10} rx={2} fill={hexOf('blue')} />
+        </>
+      )
+    case 'code':
+      return (
+        <>
+          <rect x={x} y={y} width={W} height={H} rx={3} fill={hexOf('sage')} />
+          <rect x={x + W - 26} y={y + 6} width={18} height={12} rx={1} fill={hexOf('screen-blue')} />
         </>
       )
     case 'skill':
@@ -137,12 +168,12 @@ function Machine({ tool }: { tool: SiteTool }) {
       {lay.nodes.map((n) => {
         const { x, y } = at.get(n.node.id)!
         return (
-          <g key={n.node.id} class="bp-node" data-node={n.node.id} data-kind={n.node.kind} data-layer={n.layer} data-row={n.row}>
-            <title>{`${n.node.id}: ${KIND_LABEL[n.node.kind] ?? n.node.kind}${n.type ? `, hands on ${n.type}` : ''}`}</title>
+          <g key={n.node.id} class="bp-node" data-node={n.node.id} data-kind={n.node.kind} data-shape={shapeOf(n.node)} data-layer={n.layer} data-row={n.row}>
+            <title>{`${n.node.kind === 'n8n' ? `${str(n.node.name) ?? n.node.id} (n8n ${str(n.node.type) ?? ''})` : n.node.id}: ${KIND_LABEL[shapeOf(n.node)] ?? n.node.kind}${n.type ? `, hands on ${n.type}` : ''}`}</title>
             {Array.from({ length: 4 }, (_, k) => (
               <rect key={k} x={x + 10 + k * 26} y={y - 4} width={10} height={4} rx={1} fill="#c9ccd1" />
             ))}
-            <Shape kind={n.node.kind} x={x} y={y} />
+            <Shape kind={shapeOf(n.node)} x={x} y={y} />
             <text x={x + 8} y={y + 18} class="bp-label" fill={inkOn('#3a4152')}>
               {n.node.id}
             </text>
@@ -208,7 +239,7 @@ function ToolCard({ tool, api, ctx }: { tool: SiteTool; api: BlueprintApi | null
         ) : (
           'no capabilities'
         )}
-        {origins.length > 0 && <> from {origins.join(', ')}</>}.
+        {origins.length > 0 ? <> from {origins.join(', ')}</> : caps.includes('web') && g.nodes.some((n) => n.kind === 'n8n') ? <strong> from any public website</strong> : null}.
       </p>
       <div class="bp-scroll">
         <Machine tool={tool} />
@@ -223,8 +254,10 @@ export function ToolsDistrict({ models, api, ctx }: { models: SiteModels; api: B
     <div class="bp-district">
       <Notice title="The site's tools">
         Each tool is a machine: what it reads, what it makes, what it may reach. Ask for a new or changed tool on the Blueprint tab ("Ask for a tool"): the web developer builds it and you
-        approve it. Tools run on their schedule, when a bound page is built, or now.
+        approve it. Or import an n8n workflow: it runs as it does in n8n. Tools run on their schedule, when a bound page is built, or now.
       </Notice>
+      <N8nImportPanel models={models} api={api} ctx={ctx} />
+      <CredentialsPanel models={models} />
       {models.tools.length === 0 && <p class="muted">The site has no tools yet.</p>}
       {models.tools.map((t) => (
         <ToolCard key={t.id} tool={t} api={api} ctx={ctx} />

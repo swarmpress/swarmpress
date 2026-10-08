@@ -8,34 +8,59 @@
     "description": "Imported from n8n: News digest.",
     "inputs": {},
     "outputs": {
-      "edit_fields": "NewsDigestEditFields[]"
+      "edit_fields": "Json[]"
     },
     "nodes": [
       {
-        "kind": "connector",
+        "kind": "n8n",
         "id": "rss-read",
-        "connector": "rss",
-        "url": "https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml",
-        "returns": "FeedItem[]"
-      },
-      {
-        "kind": "op",
-        "id": "limit",
-        "op": "limit",
-        "count": 5,
-        "fields": {},
-        "desc": false
-      },
-      {
-        "kind": "op",
-        "id": "edit-fields",
-        "op": "map",
-        "fields": {
-          "title": "$.title",
-          "link": "$.link"
+        "name": "RSS Read",
+        "type": "n8n-nodes-base.rssFeedRead",
+        "version": 1,
+        "parameters": {
+          "url": "https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml"
         },
-        "returns": "NewsDigestEditFields[]",
-        "desc": false
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "limit",
+        "name": "Limit",
+        "type": "n8n-nodes-base.limit",
+        "version": 1,
+        "parameters": {
+          "maxItems": 5
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "edit-fields",
+        "name": "Edit Fields",
+        "type": "n8n-nodes-base.set",
+        "version": 3.4,
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "a",
+                "name": "title",
+                "value": "={{ $json.title }}",
+                "type": "string"
+              },
+              {
+                "id": "b",
+                "name": "link",
+                "value": "={{ $json.link }}",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "inputs": 1,
+        "outputs": 1
       },
       {
         "kind": "output",
@@ -71,22 +96,5 @@
       "fetches_per_run": 0
     }
   },
-  "types": {
-    "NewsDigestEditFields": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "title",
-        "link"
-      ],
-      "properties": {
-        "title": {
-          "type": "string"
-        },
-        "link": {
-          "type": "string"
-        }
-      }
-    }
-  }
+  "types": {}
 }

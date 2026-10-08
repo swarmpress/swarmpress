@@ -225,6 +225,7 @@ pub fn router(st: AppState) -> Router {
         // web access
         .route("/api/llm/generate", post(llm::generate))
         .route("/web/fetch", get(web::fetch))
+        .route("/web/request", post(web::request))
         .route("/web/firecrawl/{*rest}", post(web::firecrawl))
         // tracker
         .route(

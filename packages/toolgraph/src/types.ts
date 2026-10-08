@@ -17,7 +17,9 @@ export type Ty =
   | { t: "enum"; values: string[] }
   | { t: "array"; items: Ty }
   | { t: "object"; fields: Record<string, { ty: Ty; required: boolean }> }
-  | { t: "ref"; name: string };
+  | { t: "ref"; name: string }
+  /** `Json`: any JSON value (what an n8n node passes on, ADR-0076). */
+  | { t: "json" };
 
 export interface TypeExpr {
   name: string;
@@ -90,6 +92,7 @@ export function builtins(): Record<string, Ty> {
     number: { t: "number" },
     boolean: { t: "boolean" },
     LocalizedString: LOC,
+    Json: { t: "json" },
     Media: obj([
       ["id", S, true],
       ["url", S, true],
@@ -327,6 +330,9 @@ export class TypeRegistry {
         for (const k of Object.keys(v).sort()) if (!(k in t.fields)) out.push({ path: `${at}.${k}`, message: "not a field of this type" });
         return;
       }
+      case "json":
+        if (v === undefined) want("a JSON value");
+        return;
       case "ref":
         return;
     }
@@ -367,6 +373,7 @@ export class TypeRegistry {
         for (const n of names) properties[n] = this.schemaOf(t.fields[n].ty, depth + 1);
         return { type: "object", additionalProperties: false, required: names.filter((n) => t.fields[n].required), properties };
       }
+      case "json":
       case "ref":
         return {};
     }

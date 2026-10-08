@@ -129,9 +129,9 @@ fn broken_graphs_are_named() {
         v["nodes"][2] = json!({ "id": "write", "kind": "skill", "extension": "com.example.nope", "tool": "x", "returns": "Teaser" });
     });
     assert_eq!(codes(&g), vec![IssueCode::UnknownTool]);
-    // Too many nodes.
+    // Too many nodes (MAX_NODES, 40 since ADR-0076).
     let g = edit("weather", |v| {
-        for k in 0..12 {
+        for k in 0..blueprint::tools::MAX_NODES {
             v["nodes"]
                 .as_array_mut()
                 .unwrap()

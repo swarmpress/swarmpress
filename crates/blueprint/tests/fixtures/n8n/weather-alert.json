@@ -8,31 +8,53 @@
     "description": "Imported from n8n: Weather alert.",
     "inputs": {},
     "outputs": {
-      "format_alert": "WeatherAlertFormatAlertOut"
+      "format_alert": "Json[]"
     },
     "nodes": [
       {
-        "kind": "connector",
+        "kind": "n8n",
         "id": "forecast",
-        "connector": "http-get",
-        "url": "https://api.open-meteo.com/v1/forecast?latitude=44.1&longitude=9.7&current=temperature_2m",
-        "returns": "WeatherAlertForecastResponse"
+        "name": "Forecast",
+        "type": "n8n-nodes-base.httpRequest",
+        "version": 4.2,
+        "parameters": {
+          "method": "GET",
+          "url": "https://api.open-meteo.com/v1/forecast?latitude=44.1&longitude=9.7&current=temperature_2m"
+        },
+        "inputs": 1,
+        "outputs": 1
       },
       {
-        "kind": "condition",
+        "kind": "n8n",
         "id": "hot",
-        "test": "compare",
-        "path": "$.current.temperature_2m",
-        "cmp": "gt",
-        "value": 30,
-        "cases": []
+        "name": "Hot?",
+        "type": "n8n-nodes-base.if",
+        "version": 1,
+        "parameters": {
+          "conditions": {
+            "number": [
+              {
+                "value1": "={{ $json.current.temperature_2m }}",
+                "operation": "larger",
+                "value2": 30
+              }
+            ]
+          }
+        },
+        "inputs": 1,
+        "outputs": 2
       },
       {
-        "kind": "skill",
+        "kind": "n8n",
         "id": "format-alert",
-        "extension": "press.swarm.sealed",
-        "tool": "n8n-nodes-base.code",
-        "returns": "WeatherAlertFormatAlertOut"
+        "name": "Format alert",
+        "type": "n8n-nodes-base.code",
+        "version": 2,
+        "parameters": {
+          "jsCode": "return [{ json: { text: 'Hot: ' + $json.current.temperature_2m } }]"
+        },
+        "inputs": 1,
+        "outputs": 1
       },
       {
         "kind": "output",
@@ -46,7 +68,7 @@
         "hot.in"
       ],
       [
-        "hot.yes",
+        "hot.out",
         "format-alert.in"
       ],
       [
@@ -69,32 +91,5 @@
       "fetches_per_run": 0
     }
   },
-  "types": {
-    "WeatherAlertForecastResponse": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "current"
-      ],
-      "properties": {
-        "current": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "temperature_2m"
-          ],
-          "properties": {
-            "temperature_2m": {
-              "type": "number"
-            }
-          }
-        }
-      }
-    },
-    "WeatherAlertFormatAlertOut": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {}
-    }
-  }
+  "types": {}
 }

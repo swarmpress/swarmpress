@@ -54,7 +54,7 @@ export interface ModelIssue {
 
 export interface ToolNode {
   id: string
-  kind: 'input' | 'output' | 'connector' | 'op' | 'condition' | 'agent' | 'skill'
+  kind: 'input' | 'output' | 'connector' | 'op' | 'condition' | 'agent' | 'skill' | 'n8n'
   [field: string]: unknown
 }
 

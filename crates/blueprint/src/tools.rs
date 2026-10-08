@@ -1,9 +1,12 @@
 //! Tool graphs (`swarmpress.tool.v1`, FEAT-091, design §3.4 and §7).
 //!
 //! A tool is a small typed graph over a closed node catalogue: `input`,
-//! `output`, `connector`, `op`, `condition`, `agent` and `skill`. There is no
-//! free-code node: code lives in a reviewed SDK skill, which a `skill` node
-//! calls. A graph installs as an SDK `skill` extension whose manifest
+//! `output`, `connector`, `op`, `condition`, `agent`, `skill` and `n8n`. An
+//! `n8n` node (ADR-0076) is one node of an imported n8n workflow, kept as it
+//! is and run with n8n's semantics; only the types in [`N8N_TYPES`] run, and
+//! its JavaScript (Code nodes, expressions) runs in a sandbox without
+//! capabilities. Other code lives in a reviewed SDK skill, which a `skill`
+//! node calls. A graph installs as an SDK `skill` extension whose manifest
 //! ([`manifest`]) grants exactly what its connectors and agents need, and one
 //! shared interpreter (`packages/toolgraph`) runs it in the sandbox.
 //!
@@ -25,8 +28,157 @@ use crate::types::{Ty, TypeExpr, TypeRegistry};
 
 pub const TOOL_FORMAT: &str = "swarmpress.tool.v1";
 pub const TOOL_DOMAIN: &str = "swarmpress:tool:v1";
-/// Most nodes in one graph (v1).
-pub const MAX_NODES: usize = 12;
+/// Most nodes in one graph (12 in ADR-0072; 40 since n8n workflows import node for node, ADR-0076).
+pub const MAX_NODES: usize = 40;
+/// Most inputs of one n8n node (a Merge).
+pub const MAX_N8N_INPUTS: u32 = 10;
+/// Most outputs of one n8n node (a Switch).
+pub const MAX_N8N_OUTPUTS: u32 = 32;
+const IN_PORTS: [&str; MAX_N8N_INPUTS as usize] = [
+    "in", "in1", "in2", "in3", "in4", "in5", "in6", "in7", "in8", "in9",
+];
+
+/// What an n8n node type reaches beyond its items (`packages/toolgraph/src/n8n/catalogue.ts`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct N8nType {
+    pub web: bool,
+    pub llm: bool,
+    pub tool: bool,
+}
+
+const fn t(web: bool, llm: bool, tool: bool) -> N8nType {
+    N8nType { web, llm, tool }
+}
+
+/// The n8n node types a tool runs (ADR-0076). The TypeScript catalogue lists the same.
+pub const N8N_TYPES: [(&str, N8nType); 26] = [
+    ("n8n-nodes-base.httpRequest", t(true, false, false)),
+    ("n8n-nodes-base.rssFeedRead", t(true, false, false)),
+    ("n8n-nodes-base.set", t(false, false, false)),
+    ("n8n-nodes-base.if", t(false, false, false)),
+    ("n8n-nodes-base.filter", t(false, false, false)),
+    ("n8n-nodes-base.switch", t(false, false, false)),
+    ("n8n-nodes-base.merge", t(false, false, false)),
+    ("n8n-nodes-base.limit", t(false, false, false)),
+    ("n8n-nodes-base.sort", t(false, false, false)),
+    ("n8n-nodes-base.removeDuplicates", t(false, false, false)),
+    ("n8n-nodes-base.splitOut", t(false, false, false)),
+    ("n8n-nodes-base.aggregate", t(false, false, false)),
+    ("n8n-nodes-base.summarize", t(false, false, false)),
+    ("n8n-nodes-base.itemLists", t(false, false, false)),
+    ("n8n-nodes-base.renameKeys", t(false, false, false)),
+    ("n8n-nodes-base.dateTime", t(false, false, false)),
+    ("n8n-nodes-base.code", t(false, false, false)),
+    ("n8n-nodes-base.function", t(false, false, false)),
+    ("n8n-nodes-base.functionItem", t(false, false, false)),
+    ("n8n-nodes-base.noOp", t(false, false, false)),
+    ("n8n-nodes-base.wait", t(false, false, false)),
+    ("n8n-nodes-base.stopAndError", t(false, false, false)),
+    ("n8n-nodes-base.respondToWebhook", t(false, false, false)),
+    ("n8n-nodes-base.executeWorkflow", t(false, false, true)),
+    ("@n8n/n8n-nodes-langchain.chainLlm", t(false, true, false)),
+    ("@n8n/n8n-nodes-langchain.openAi", t(false, true, false)),
+];
+
+pub fn n8n_type(name: &str) -> Option<N8nType> {
+    N8N_TYPES.iter().find(|(n, _)| *n == name).map(|(_, t)| *t)
+}
+
+/// Why a node of a supported n8n type cannot run as configured (the TypeScript
+/// `unsupportedReason` refuses the same shapes), or `None`.
+pub fn n8n_unsupported(ty: &str, version: Option<f64>, p: &Value) -> Option<&'static str> {
+    let v = version.unwrap_or(1.0);
+    let opts = &p["options"];
+    let s = |k: &str| p[k].as_str();
+    match ty {
+        "n8n-nodes-base.code" => (s("language").unwrap_or("javaScript") != "javaScript")
+            .then_some("only JavaScript code runs"),
+        "n8n-nodes-base.dateTime" => {
+            (v < 2.0).then_some("Date & Time v1 uses Moment formats: use v2")
+        }
+        "n8n-nodes-base.httpRequest" => {
+            if opts
+                .get("pagination")
+                .is_some_and(|x| !x.is_null() && x != &Value::Bool(false))
+            {
+                Some("pagination")
+            } else if matches!(s("contentType"), Some("multipart-form-data" | "binaryData")) {
+                Some("binary request bodies")
+            } else if opts["response"]["response"]["responseFormat"] == "file"
+                || (v < 3.0 && s("responseFormat") == Some("file"))
+            {
+                Some("file responses")
+            } else {
+                None
+            }
+        }
+        "n8n-nodes-base.wait" => matches!(s("resume"), Some("webhook" | "form"))
+            .then_some("a wait for a webhook or form: a tool runs to its end"),
+        "n8n-nodes-base.removeDuplicates" => s("operation")
+            .is_some_and(|o| o != "removeDuplicateInputItems")
+            .then_some("remembering items between runs"),
+        "n8n-nodes-base.merge" => (s("mode") == Some("combineBySql")).then_some("merging by SQL"),
+        "@n8n/n8n-nodes-langchain.openAi" => (s("resource").unwrap_or("text") != "text"
+            || s("operation").unwrap_or("message") != "message")
+            .then_some("only the OpenAI node's \"Message a model\""),
+        "n8n-nodes-base.executeWorkflow" => (s("source").unwrap_or("database") != "database")
+            .then_some("a sub-workflow given inline or from a file or URL"),
+        _ => None,
+    }
+}
+
+/// Where an n8n URL parameter may go (the TypeScript `urlOrigin`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UrlOrigin {
+    /// A literal `scheme://host[:port]`.
+    Literal(String),
+    /// A host computed by an expression: any public website.
+    Any,
+}
+
+pub fn n8n_url_origin(raw: &Value) -> Option<UrlOrigin> {
+    let raw = raw.as_str()?;
+    let expr = raw.starts_with('=');
+    let s = if expr { &raw[1..] } else { raw }.trim();
+    if expr && s.starts_with("{{") {
+        return Some(UrlOrigin::Any);
+    }
+    let (scheme, rest) = s
+        .strip_prefix("https://")
+        .map(|r| ("https", r))
+        .or_else(|| s.strip_prefix("http://").map(|r| ("http", r)))?;
+    let host = &rest[..rest.find(['/', '?', '#']).unwrap_or(rest.len())];
+    if host.contains("{{") {
+        return expr.then_some(UrlOrigin::Any);
+    }
+    let (name, port) = host.split_once(':').unwrap_or((host, ""));
+    let ok = !name.is_empty()
+        && name.contains('.')
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+        && port.bytes().all(|b| b.is_ascii_digit());
+    ok.then(|| UrlOrigin::Literal(format!("{scheme}://{}", host.to_ascii_lowercase())))
+}
+
+fn one() -> u32 {
+    1
+}
+fn is_one(n: &u32) -> bool {
+    *n == 1
+}
+fn empty_object() -> Value {
+    json!({})
+}
+
+/// What an n8n node does when a request or step fails for an item.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum N8nOnError {
+    Stop,
+    /// The item becomes `{ error }` on the main output.
+    Continue,
+}
 /// The SDK range a derived manifest asks for.
 pub const SDK_RANGE: &str = "^0.1.0";
 
@@ -181,6 +333,33 @@ pub enum Node {
         tool: String,
         returns: String,
     },
+    /// One node of an imported n8n workflow (ADR-0076).
+    N8n {
+        id: String,
+        /// The node's name in the workflow (`$('Name')` refers to it).
+        name: String,
+        r#type: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        version: Option<serde_json::Number>,
+        /// The n8n parameters, unchanged.
+        #[serde(default = "empty_object")]
+        parameters: Value,
+        #[serde(default = "one", skip_serializing_if = "is_one")]
+        inputs: u32,
+        #[serde(default = "one", skip_serializing_if = "is_one")]
+        outputs: u32,
+        /// The credential a request signs in with, by name.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        credential: Option<String>,
+        /// Execute Workflow: the site tool it calls.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tool: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        on_error: Option<N8nOnError>,
+        /// The items' type, when a binding needs one (otherwise `Json[]`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        returns: Option<String>,
+    },
 }
 
 impl Node {
@@ -192,7 +371,8 @@ impl Node {
             | Node::Op { id, .. }
             | Node::Condition { id, .. }
             | Node::Agent { id, .. }
-            | Node::Skill { id, .. } => id,
+            | Node::Skill { id, .. }
+            | Node::N8n { id, .. } => id,
         }
     }
 
@@ -214,6 +394,11 @@ impl Node {
                 op: OpKind::Merge, ..
             } => vec![("in", true), ("b", true)],
             Node::Op { .. } => vec![("in", true)],
+            Node::N8n { inputs, .. } => IN_PORTS
+                .iter()
+                .take((*inputs).clamp(1, MAX_N8N_INPUTS) as usize)
+                .map(|p| (*p, false))
+                .collect(),
         }
     }
 
@@ -231,6 +416,15 @@ impl Node {
                 .chain(std::iter::once("else".to_string()))
                 .collect(),
             Node::Condition { .. } => vec!["yes".into(), "no".into()],
+            Node::N8n { outputs, .. } => (0..(*outputs).clamp(1, MAX_N8N_OUTPUTS))
+                .map(|k| {
+                    if k == 0 {
+                        "out".into()
+                    } else {
+                        format!("out{k}")
+                    }
+                })
+                .collect(),
             _ => vec!["out".into()],
         }
     }
@@ -805,6 +999,93 @@ impl ToolChecker<'_> {
                 }
                 self.texpr(returns, &format!("{path}/returns"));
             }
+            Node::N8n {
+                name,
+                r#type,
+                version,
+                parameters,
+                inputs,
+                outputs,
+                tool,
+                returns,
+                ..
+            } => {
+                if name.trim().is_empty() {
+                    self.push(
+                        IssueCode::BadNode,
+                        path,
+                        "an n8n node has its workflow name",
+                    );
+                }
+                if self
+                    .g
+                    .nodes
+                    .iter()
+                    .filter(|n| matches!(n, Node::N8n { name: m, .. } if m == name))
+                    .count()
+                    > 1
+                {
+                    self.push(
+                        IssueCode::BadId,
+                        format!("{path}/name"),
+                        format!("two n8n nodes are named {name:?}"),
+                    );
+                }
+                if !(1..=MAX_N8N_INPUTS).contains(inputs)
+                    || !(1..=MAX_N8N_OUTPUTS).contains(outputs)
+                {
+                    self.push(
+                        IssueCode::BadNode,
+                        path,
+                        format!("1 to {MAX_N8N_INPUTS} inputs and 1 to {MAX_N8N_OUTPUTS} outputs"),
+                    );
+                }
+                if !parameters.is_object() {
+                    self.push(
+                        IssueCode::BadNode,
+                        format!("{path}/parameters"),
+                        "parameters are an object",
+                    );
+                }
+                let Some(info) = n8n_type(r#type) else {
+                    self.push(
+                        IssueCode::UnknownTool,
+                        format!("{path}/type"),
+                        format!("the n8n node type {type} has no swarm.press equivalent: replace this step", type = r#type),
+                    );
+                    return;
+                };
+                if let Some(why) = n8n_unsupported(
+                    r#type,
+                    version.as_ref().and_then(|v| v.as_f64()),
+                    parameters,
+                ) {
+                    self.push(IssueCode::BadNode, path, format!("{}: {why}", r#type));
+                }
+                if info.web && n8n_url_origin(&parameters["url"]).is_none() {
+                    self.push(
+                        IssueCode::BadOrigin,
+                        format!("{path}/parameters/url"),
+                        "the URL must be http(s):// with a host",
+                    );
+                }
+                if info.tool {
+                    match tool.as_deref() {
+                        Some(t) if t == self.g.id => {
+                            self.push(IssueCode::BadGraph, path, "a tool cannot call itself")
+                        }
+                        Some(t) if self.ctx.tools.contains_key(t) => {}
+                        _ => self.push(
+                            IssueCode::UnknownTool,
+                            path,
+                            format!("{tool:?} is not a tool of the site: choose the tool the sub-workflow became"),
+                        ),
+                    }
+                }
+                if let Some(r) = returns {
+                    self.texpr(r, &format!("{path}/returns"));
+                }
+            }
             _ => {}
         }
     }
@@ -847,6 +1128,10 @@ impl ToolChecker<'_> {
                 None
             }
             Node::Connector { returns, .. } | Node::Skill { returns, .. } => parse(returns),
+            Node::N8n { returns, .. } => match returns {
+                Some(r) => parse(r),
+                None => Some(Ty::Array(Box::new(Ty::Json))),
+            },
             Node::Agent { output, .. } => parse(output),
             Node::Condition { path: p, .. } => {
                 if let Some(t) = &incoming {
@@ -1028,6 +1313,10 @@ pub fn check_tool(g: &ToolGraph, ctx: &ToolContext) -> Vec<Issue> {
 pub struct Needs {
     pub capabilities: BTreeSet<String>,
     pub origins: BTreeSet<String>,
+    /// An n8n request's host is computed: `web` reaches any public website
+    /// (still through the central proxy's guard), and the manifest lists no origins.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub any_origin: bool,
 }
 
 pub fn needs(g: &ToolGraph) -> Needs {
@@ -1059,6 +1348,25 @@ pub fn needs(g: &ToolGraph) -> Needs {
                 n.capabilities.insert(format!("store:{t}"));
             }
             Node::Agent { tier: t, .. } => tier = tier.max(Some(*t)),
+            Node::N8n {
+                r#type, parameters, ..
+            } => {
+                n.capabilities.insert("code".into());
+                let info = n8n_type(r#type).unwrap_or_default();
+                if info.web {
+                    n.capabilities.insert("web".into());
+                    match n8n_url_origin(&parameters["url"]) {
+                        Some(UrlOrigin::Literal(o)) => {
+                            n.origins.insert(o);
+                        }
+                        Some(UrlOrigin::Any) => n.any_origin = true,
+                        None => {}
+                    }
+                }
+                if info.llm {
+                    tier = tier.max(Some(Tier::Mid));
+                }
+            }
             _ => {}
         }
     }
@@ -1097,7 +1405,7 @@ pub fn manifest(g: &ToolGraph) -> Value {
     if !g.description.is_empty() {
         m["description"] = json!(g.description.chars().take(500).collect::<String>());
     }
-    if !needs.origins.is_empty() {
+    if !needs.origins.is_empty() && !needs.any_origin {
         m["origins"] = json!(needs.origins);
     }
     m

@@ -1,0 +1,259 @@
+{
+  "graph": {
+    "format": "swarmpress.tool.v1",
+    "id": "lead-intake",
+    "name": {
+      "en": "Lead intake"
+    },
+    "description": "Imported from n8n: Lead intake.",
+    "inputs": {
+      "request": "Json"
+    },
+    "outputs": {
+      "response": "Json[]"
+    },
+    "nodes": [
+      {
+        "kind": "input",
+        "id": "webhook",
+        "port": "request"
+      },
+      {
+        "kind": "n8n",
+        "id": "normalize",
+        "name": "Normalize",
+        "type": "n8n-nodes-base.set",
+        "version": 3.4,
+        "parameters": {
+          "mode": "manual",
+          "duplicateItem": false,
+          "assignments": {
+            "assignments": [
+              {
+                "id": "e1",
+                "name": "email",
+                "value": "={{ $json.body.email.trim().toLowerCase() }}",
+                "type": "string"
+              },
+              {
+                "id": "e2",
+                "name": "domain",
+                "value": "={{ $json.body.email.trim().toLowerCase().extractDomain() }}",
+                "type": "string"
+              },
+              {
+                "id": "e3",
+                "name": "seats",
+                "value": "={{ $json.body.seats }}",
+                "type": "number"
+              },
+              {
+                "id": "e4",
+                "name": "received",
+                "value": "={{ $now.toISODate() }}",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": false,
+          "options": {}
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "lookup-company",
+        "name": "Lookup company",
+        "type": "n8n-nodes-base.httpRequest",
+        "version": 4.2,
+        "parameters": {
+          "method": "POST",
+          "url": "https://api.example-crm.com/v1/companies/lookup",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Api-Key",
+                "value": "demo-key"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={ \"domain\": \"{{ $json.domain }}\" }",
+          "options": {}
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "big-deal",
+        "name": "Big deal?",
+        "type": "n8n-nodes-base.if",
+        "version": 2,
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict"
+            },
+            "conditions": [
+              {
+                "id": "c1",
+                "leftValue": "={{ $('Normalize').item.json.seats }}",
+                "rightValue": 50,
+                "operator": {
+                  "type": "number",
+                  "operation": "gte"
+                }
+              },
+              {
+                "id": "c2",
+                "leftValue": "={{ $json.company.size }}",
+                "rightValue": "enterprise",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "or"
+          },
+          "options": {}
+        },
+        "inputs": 1,
+        "outputs": 2
+      },
+      {
+        "kind": "n8n",
+        "id": "priority",
+        "name": "Priority",
+        "type": "n8n-nodes-base.code",
+        "version": 2,
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "const lead = $('Normalize').item.json;\nreturn { json: { email: lead.email, company: $json.company.name, tier: 'priority', score: lead.seats * 2 } };"
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "standard",
+        "name": "Standard",
+        "type": "n8n-nodes-base.set",
+        "version": 3.4,
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "f1",
+                "name": "email",
+                "value": "={{ $('Normalize').item.json.email }}",
+                "type": "string"
+              },
+              {
+                "id": "f2",
+                "name": "company",
+                "value": "={{ $json.company.name }}",
+                "type": "string"
+              },
+              {
+                "id": "f3",
+                "name": "tier",
+                "value": "standard",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "merge",
+        "name": "Merge",
+        "type": "n8n-nodes-base.merge",
+        "version": 3,
+        "parameters": {},
+        "inputs": 2,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "respond-to-webhook",
+        "name": "Respond to Webhook",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "version": 1.1,
+        "parameters": {
+          "respondWith": "allIncomingItems",
+          "options": {}
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "output",
+        "id": "respond-to-webhook-out",
+        "port": "response"
+      }
+    ],
+    "edges": [
+      [
+        "webhook.out",
+        "normalize.in"
+      ],
+      [
+        "normalize.out",
+        "lookup-company.in"
+      ],
+      [
+        "lookup-company.out",
+        "big-deal.in"
+      ],
+      [
+        "big-deal.out",
+        "priority.in"
+      ],
+      [
+        "big-deal.out1",
+        "standard.in"
+      ],
+      [
+        "priority.out",
+        "merge.in"
+      ],
+      [
+        "standard.out",
+        "merge.in1"
+      ],
+      [
+        "merge.out",
+        "respond-to-webhook.in"
+      ],
+      [
+        "respond-to-webhook.out",
+        "respond-to-webhook-out.in"
+      ]
+    ],
+    "triggers": [
+      {
+        "kind": "on-demand"
+      }
+    ],
+    "failure": {
+      "retries": 0,
+      "on_error": "fail"
+    },
+    "limits": {
+      "llm_calls_per_run": 0,
+      "fetches_per_run": 0
+    }
+  },
+  "types": {}
+}

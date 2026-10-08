@@ -15,6 +15,7 @@ import { parseToolGraph } from '@swarm-press/toolgraph'
 import type { RunResult } from '@swarm-press/toolgraph/interpret'
 import runtimeJs from '@swarm-press/toolgraph/runtime.js?raw'
 import type { SiteTool } from '../blueprint/types'
+import { signRequest, type CredentialStore } from './credentials'
 
 /** What the browser gives a tool. */
 export interface ToolHostFacilities {
@@ -22,6 +23,13 @@ export interface ToolHostFacilities {
   webFetch(url: string): Promise<{ status: number; contentType: string; text: string }>
   /** One completion on the hosted model for an agent step (`tier` low, mid or high). */
   llm?(tier: string, prompt: string): Promise<string>
+  /**
+   * `POST /web/request` (ADR-0076): any method, the answer raw. With it every
+   * request of a tool goes there; without it a tool may only GET.
+   */
+  webRequest?(req: { url: string; method: string; headers: Record<string, string>; body: string | null }): Promise<{ status: number; contentType: string; headers: Record<string, string>; body: string }>
+  /** The player's credentials: a request naming one is signed here, outside the sandbox. */
+  credentials?: CredentialStore
 }
 
 /** The tool's ref in the sim: the first 6 bytes of its hash, big-endian (exact in a JS number). */
@@ -77,8 +85,15 @@ export async function runTool(
 ): Promise<RunResult> {
   const graph = parseToolGraph(JSON.stringify(tool.graph))
   const manifest = tool.manifest as { capabilities?: string[]; origins?: string[] }
-  const web: HostWeb = async (req) => {
-    if (req.method !== 'GET') throw new Error(`a tool may only GET (${req.method} ${req.url})`)
+  const web: HostWeb = async (raw) => {
+    const named = Object.keys(raw.headers).some((k) => k.toLowerCase() === 'x-swarmpress-credential')
+    if (named && !host.credentials) throw new Error('this tool signs in with a credential, and this browser holds none')
+    const req = named ? signRequest(raw, host.credentials!) : raw
+    if (host.webRequest) {
+      const r = await host.webRequest({ url: req.url, method: req.method, headers: req.headers, body: req.body })
+      return { status: r.status, headers: { ...r.headers, 'content-type': r.contentType }, body: r.body, url: req.url }
+    }
+    if (req.method !== 'GET' || named) throw new Error(`a tool may only GET here (${req.method} ${req.url})`)
     const r = await host.webFetch(req.url)
     return { status: r.status, headers: { 'content-type': r.contentType }, body: r.text, url: req.url }
   }

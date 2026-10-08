@@ -1,0 +1,85 @@
+{
+  "graph": {
+    "format": "swarmpress.tool.v1",
+    "id": "sealed-mix",
+    "name": {
+      "en": "Sealed mix"
+    },
+    "description": "Imported from n8n: Sealed mix.",
+    "inputs": {},
+    "outputs": {
+      "old_step": "Json[]"
+    },
+    "nodes": [
+      {
+        "kind": "n8n",
+        "id": "python",
+        "name": "Python",
+        "type": "n8n-nodes-base.code",
+        "version": 2,
+        "parameters": {
+          "language": "python",
+          "pythonCode": "return items"
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "slack",
+        "name": "Slack",
+        "type": "n8n-nodes-base.slack",
+        "version": 2.2,
+        "parameters": {
+          "channel": "#general",
+          "text": "={{ $json.text }}"
+        },
+        "inputs": 1,
+        "outputs": 1,
+        "credential": "slack-account"
+      },
+      {
+        "kind": "n8n",
+        "id": "old-step",
+        "name": "Old step",
+        "type": "n8n-nodes-base.noOp",
+        "parameters": {},
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "output",
+        "id": "old-step-out",
+        "port": "old_step"
+      }
+    ],
+    "edges": [
+      [
+        "python.out",
+        "slack.in"
+      ],
+      [
+        "slack.out",
+        "old-step.in"
+      ],
+      [
+        "old-step.out",
+        "old-step-out.in"
+      ]
+    ],
+    "triggers": [
+      {
+        "kind": "on-demand"
+      }
+    ],
+    "failure": {
+      "retries": 0,
+      "on_error": "fail"
+    },
+    "limits": {
+      "llm_calls_per_run": 0,
+      "fetches_per_run": 0
+    }
+  },
+  "types": {}
+}

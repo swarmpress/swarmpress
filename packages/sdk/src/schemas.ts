@@ -46,10 +46,10 @@ export type Kind = z.infer<typeof KindSchema>;
 export const BUNDLE_KINDS: readonly Kind[] = ["sim-rule", "skill", "panel", "context-provider", "publish-target", "challenge"];
 
 export const LLM_TIERS = ["low", "mid", "high", "agency"] as const;
-export const CAPABILITY_PATTERN = "^(web|credits|ui|llm:(low|mid|high|agency)|store:[a-z][a-z0-9_]{0,31})$";
+export const CAPABILITY_PATTERN = "^(web|credits|ui|code|llm:(low|mid|high|agency)|store:[a-z][a-z0-9_]{0,31})$";
 export const CapabilitySchema = z
   .string()
-  .regex(new RegExp(CAPABILITY_PATTERN), "capability: web | credits | ui | llm:<low|mid|high|agency> | store:<table>");
+  .regex(new RegExp(CAPABILITY_PATTERN), "capability: web | credits | ui | code | llm:<low|mid|high|agency> | store:<table>");
 
 export const ProvenanceSchema = z.union([
   z

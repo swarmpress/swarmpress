@@ -74,6 +74,22 @@ export const NodeSchema = z.discriminatedUnion("kind", [
     .strict(),
   z.object({ kind: z.literal("agent"), id, role: z.string(), tier: TierSchema, instruction: z.string(), output: z.string() }).strict(),
   z.object({ kind: z.literal("skill"), id, extension: z.string(), tool: z.string(), returns: z.string() }).strict(),
+  z
+    .object({
+      kind: z.literal("n8n"),
+      id,
+      name: z.string(),
+      type: z.string(),
+      version: opt(z.number()),
+      parameters: z.record(z.unknown()).default({}),
+      inputs: U32.default(1),
+      outputs: U32.default(1),
+      credential: opt(z.string()),
+      tool: opt(z.string()),
+      on_error: opt(z.enum(["stop", "continue"])),
+      returns: opt(z.string()),
+    })
+    .strict(),
 ]);
 
 export const TriggerSchema = z.discriminatedUnion("kind", [

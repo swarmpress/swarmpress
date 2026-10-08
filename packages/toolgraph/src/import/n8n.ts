@@ -1,32 +1,31 @@
 /**
- * n8n workflow import (FEAT-096, ADR-0072, design §8): an n8n workflow JSON
- * becomes a `swarmpress.tool.v1` graph by a fixed mapping, without a model.
+ * n8n workflow import (FEAT-096, ADR-0076): an n8n workflow's JSON becomes a
+ * `swarmpress.tool.v1` graph that runs it with n8n's semantics, without a model.
  *
- * | n8n node                                  | tool-graph node                      |
- * |-------------------------------------------|--------------------------------------|
- * | Schedule Trigger, Cron                    | a `schedule` trigger (days, at least 1) |
- * | Manual Trigger, Webhook                   | an `on-demand` trigger, and an input |
- * | HTTP Request (GET)                        | `connector http-get`                 |
- * | RSS Read                                  | `connector rss`                      |
- * | IF                                        | `condition compare` (true → yes, false → no) |
- * | Set / Edit Fields                         | `op map`                             |
- * | Merge                                     | `op merge`                           |
- * | Limit                                     | `op limit`                           |
- * | Sort                                      | `op sort`                            |
- * | anything else, Code and Function included | a **sealed** step                   |
- *
- * A sealed step is a `skill` node naming `press.swarm.sealed` and the n8n
- * node type: no such skill is ever installed, so the checker refuses the
- * tool (`unknown-tool`) and it cannot run until someone replaces the step —
- * stubs fail loudly (CLAUDE.md rule 11). The import also lists every sealed
- * step and every type it could only stub (an HTTP response's fields are not
- * in the workflow) as issues, so the Tool Architect knows what is left.
- *
- * Expressions: `={{ $json.a.b }}` becomes the path `$.a.b`; in a URL it
- * becomes a `{a}` placeholder filled from the `params` port (the host must
- * be literal, else the URL is refused as a bad origin by the checker).
+ * - Every node of a supported type (`../n8n/catalogue.ts`) becomes an `n8n`
+ *   node that keeps the node's name, type, version and parameters
+ *   unchanged: expressions and Code run as they do in n8n (`../n8n/`).
+ * - Triggers become the tool's triggers: Manual → on demand; Schedule and
+ *   Cron → a schedule (at most once a game day); Webhook and Execute Workflow
+ *   Trigger → on demand with a `request` input (`Json`) the next nodes read
+ *   as their items.
+ * - Loop Over Items (Split in Batches v3) is flattened: a tool processes all
+ *   items at once, so the loop's body runs once and its last node feeds what
+ *   followed "done".
+ * - Several connections into one input are joined by an Append merge (n8n
+ *   runs the node once per connection; the items are the same).
+ * - Disabled nodes pass their items through; sticky notes and model
+ *   sub-nodes are dropped (the hosted model stands in for any model).
+ * - A node of any other type, or a supported type used in a way swarm.press
+ *   cannot run (Python, pagination, binary data, waits for a webhook…),
+ *   stays in the graph as it is: the checker refuses it, so the tool is not
+ *   installed until someone replaces that step (CLAUDE.md rule 11). The
+ *   import lists it as `sealed`, with the reason.
+ * - Every node nothing reads becomes a tool output (`Json[]`; optional when
+ *   there are several, since a branch may not run).
  */
 import type { Node, ToolGraph } from "../graph.ts";
+import { N8N_IGNORED, N8N_MODEL_PREFIX, N8N_TRIGGERS, N8N_TYPES, unsupportedReason, urlOrigin } from "../n8n/catalogue.ts";
 
 export interface N8nNode {
   id?: string;
@@ -34,30 +33,48 @@ export interface N8nNode {
   type: string;
   typeVersion?: number;
   parameters?: Record<string, unknown>;
+  disabled?: boolean;
+  credentials?: Record<string, { id?: string; name?: string }>;
+  onError?: string;
+  continueOnFail?: boolean;
 }
 
 export interface N8nWorkflow {
   name?: string;
   nodes: N8nNode[];
-  /** Source node name → `main` outputs → targets. */
-  connections: Record<string, { main?: Array<Array<{ node: string; type?: string; index?: number }> | null> }>;
+  /** Source node name → connection type (`main`, `ai_languageModel`, …) → outputs → targets. */
+  connections: Record<string, Record<string, Array<Array<{ node: string; type?: string; index?: number }> | null> | undefined>>;
 }
 
 export interface ImportIssue {
-  code: "sealed" | "needs-type" | "bad-node";
+  /**
+   * `sealed`: a step the tool cannot run (the checker refuses it);
+   * `needs-credential`: a request signs in with a credential the site must hold;
+   * `needs-tool`: an Execute Workflow names a workflow no site tool is mapped to;
+   * `note`: how the import approximated n8n (it runs);
+   * `bad-node`: the workflow cannot become a tool as it is.
+   */
+  code: "sealed" | "needs-credential" | "needs-tool" | "note" | "bad-node";
   node: string;
   message: string;
 }
 
 export interface N8nImport {
   graph: ToolGraph;
-  /** Types the graph names that the workflow does not define (stubs: closed, no fields). */
+  /** Site types the graph needs (none: n8n items are `Json`). */
   types: Record<string, unknown>;
   issues: ImportIssue[];
+  /** How each n8n node was taken: `n8n` (runs), `sealed`, `trigger`, `input`, `dropped`, `flattened`. */
+  mapping: Array<{ node: string; type: string; as: "n8n" | "sealed" | "trigger" | "input" | "dropped" | "flattened" }>;
 }
 
-/** The extension a sealed step names; never installed. */
-export const SEALED_EXTENSION = "press.swarm.sealed";
+export interface N8nImportOptions {
+  /** n8n workflow id → the site tool an Execute Workflow node calls. */
+  tools?: Record<string, string>;
+}
+
+/** Most nodes one tool has (`MAX_NODES` in tools.rs). */
+export const MAX_IMPORT_NODES = 40;
 
 const kebab = (s: string) =>
   s
@@ -67,306 +84,255 @@ const kebab = (s: string) =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 48) || "node";
 
-const pascal = (s: string) =>
-  kebab(s)
-    .split("-")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join("");
+const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+const outPort = (k: number) => (k ? `out${k}` : "out");
+const inPort = (k: number) => (k ? `in${k}` : "in");
 
-/** `={{ $json.a.b }}` → `$.a.b`; a literal stays a literal (`null` when it is not an expression). */
-export function pathOf(expr: unknown): string | null {
-  if (typeof expr !== "string") return null;
-  const m = /^=\{\{\s*\$json((?:\.[A-Za-z_][A-Za-z0-9_]*|\[\d+\])*)\s*\}\}$/.exec(expr.trim());
-  return m ? `$${m[1]}` : null;
+interface Conn {
+  from: string;
+  out: number;
+  to: string;
+  in: number;
 }
 
-/** A URL with `{{ $json.x }}` expressions as `{x}` placeholders; `null` when an expression is not a plain field. */
-export function urlOf(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  let s = raw.startsWith("=") ? raw.slice(1) : raw;
-  let ok = true;
-  s = s.replace(/\{\{\s*([^}]*)\s*\}\}/g, (_m, inner: string) => {
-    const f = /^\$json\.([A-Za-z_][A-Za-z0-9_]*)\s*$/.exec(inner.trim());
-    if (!f) {
-      ok = false;
-      return "";
+/** How many outputs an n8n node has, from its parameters (the connections may add more). */
+function outputsOf(n: N8nNode): number {
+  const p = n.parameters ?? {};
+  const v = n.typeVersion ?? 1;
+  switch (n.type) {
+    case "n8n-nodes-base.if":
+      return 2;
+    case "n8n-nodes-base.switch": {
+      if (p.mode === "expression") return Math.max(1, Number(p.numberOutputs ?? (v >= 3 ? 4 : (p.outputsAmount ?? 4))));
+      if (v >= 3) {
+        const rules = isObj(p.rules) && Array.isArray(p.rules.values) ? p.rules.values.length : 0;
+        const fb = isObj(p.options) ? p.options.fallbackOutput : undefined;
+        return Math.max(1, rules + (fb === "extra" ? 1 : 0));
+      }
+      return Math.max(1, Number(p.outputsAmount ?? 4));
     }
-    return `{${f[1]}}`;
-  });
-  return ok ? s : null;
+    case "n8n-nodes-base.splitInBatches":
+      return v >= 3 ? 2 : 1;
+  }
+  return 1;
 }
 
-const CMP: Record<string, "eq" | "ne" | "gt" | "lt" | "contains"> = {
-  equal: "eq",
-  equals: "eq",
-  notEqual: "ne",
-  notEquals: "ne",
-  larger: "gt",
-  gt: "gt",
-  smaller: "lt",
-  lt: "lt",
-  contains: "contains",
-};
-
-/** The first condition of an IF node (v1 `conditions.{number,string,boolean}[]` or v2 `conditions.conditions[]`). */
-function ifCondition(p: Record<string, unknown>): { path: string; cmp: string; value: unknown } | null {
-  const c = p.conditions as Record<string, unknown> | undefined;
-  if (!c) return null;
-  const v2 = Array.isArray(c.conditions) ? (c.conditions as Array<Record<string, unknown>>)[0] : null;
-  if (v2) {
-    const path = pathOf(v2.leftValue);
-    const op = (v2.operator as { operation?: string } | undefined)?.operation ?? "";
-    const cmp = CMP[op];
-    return path && cmp ? { path, cmp, value: v2.rightValue ?? null } : null;
-  }
-  for (const k of ["number", "string", "boolean"]) {
-    const list = c[k];
-    if (Array.isArray(list) && list[0]) {
-      const r = list[0] as Record<string, unknown>;
-      const path = pathOf(r.value1);
-      const cmp = CMP[String(r.operation ?? "equal")];
-      return path && cmp ? { path, cmp, value: r.value2 ?? null } : null;
-    }
-  }
-  return null;
+function inputsOf(n: N8nNode): number {
+  if (n.type !== "n8n-nodes-base.merge") return 1;
+  const v = n.typeVersion ?? 1;
+  return v >= 3 ? Math.max(2, Number(n.parameters?.numberInputs ?? 2)) : 2;
 }
 
-/** Field assignments of a Set node (v1 `values.{string,number,boolean}[]`, v3 `assignments.assignments[]`). */
-function setFields(p: Record<string, unknown>): Record<string, string> | null {
-  const out: Record<string, string> = {};
-  const v3 = (p.assignments as { assignments?: Array<{ name: string; value: unknown }> } | undefined)?.assignments;
-  const v1 = p.values as Record<string, Array<{ name: string; value: unknown }>> | undefined;
-  const list = v3 ?? Object.values(v1 ?? {}).flat();
-  for (const a of list) {
-    const path = pathOf(a.value);
-    if (!path) return null;
-    out[kebab(a.name).replace(/-/g, "_")] = path;
+/** Game days between runs for a Schedule Trigger's first rule. */
+function scheduleDays(n: N8nNode): { days: number; note?: string } {
+  if (n.type === "n8n-nodes-base.cron") return { days: 1, note: "a Cron trigger runs once a game day" };
+  const rule = isObj(n.parameters?.rule) && Array.isArray(n.parameters!.rule.interval) ? (n.parameters!.rule.interval[0] as Record<string, unknown> | undefined) : undefined;
+  const field = String(rule?.field ?? "days");
+  const clamp = (d: number) => Math.min(28, Math.max(1, Math.round(d)));
+  switch (field) {
+    case "days":
+      return { days: clamp(Number(rule?.daysInterval ?? 1)) };
+    case "weeks":
+      return { days: clamp(7 * Number(rule?.weeksInterval ?? 1)) };
+    case "months":
+      return { days: 28, note: "a monthly schedule runs every 28 game days" };
+    default:
+      return { days: 1, note: `a schedule every few ${field} runs once a game day (the shortest a tool's schedule is)` };
   }
-  return Object.keys(out).length ? out : null;
 }
-
-const TRIGGERS = new Set([
-  "n8n-nodes-base.manualTrigger",
-  "n8n-nodes-base.webhook",
-  "n8n-nodes-base.scheduleTrigger",
-  "n8n-nodes-base.cron",
-]);
 
 /** The n8n workflow as a tool graph with id `id` (kebab-case). */
-export function importN8n(wf: N8nWorkflow, id: string): N8nImport {
+export function importN8n(wf: N8nWorkflow, id: string, opts: N8nImportOptions = {}): N8nImport {
   const issues: ImportIssue[] = [];
-  const types: Record<string, unknown> = {};
-  const T = pascal(id);
-  const stub = (name: string, node: string, why: string) => {
-    if (!(name in types)) {
-      types[name] = { type: "object", additionalProperties: false, properties: {} };
-      issues.push({ code: "needs-type", node, message: `declare the fields of ${name}: ${why}` });
-    }
-    return name;
-  };
+  const mapping: N8nImport["mapping"] = [];
+  const all = (wf.nodes ?? []).filter((n) => !N8N_IGNORED.has(n.type));
+  const byName = new Map(all.map((n) => [n.name, n]));
 
-  const byName = new Map(wf.nodes.map((n) => [n.name, n]));
-  const nodeId = new Map<string, string>();
+  // Main connections only; sub-nodes (models, memory, parsers) connect by other types.
+  const conns: Conn[] = [];
+  const subNodes = new Set<string>();
+  for (const [from, types] of Object.entries(wf.connections ?? {})) {
+    for (const [ctype, outs] of Object.entries(types ?? {})) {
+      if (ctype !== "main") {
+        subNodes.add(from);
+        continue;
+      }
+      (outs ?? []).forEach((targets, out) => {
+        for (const t of targets ?? []) if (byName.has(from) && byName.has(t.node)) conns.push({ from, out, to: t.node, in: t.index ?? 0 });
+      });
+    }
+  }
+  for (const n of all) if (n.type.startsWith(N8N_MODEL_PREFIX)) subNodes.add(n.name);
+
+  // Ids.
   const used = new Set<string>();
-  for (const n of wf.nodes) {
-    let k = kebab(n.name);
+  const nodeId = new Map<string, string>();
+  const fresh = (base: string) => {
+    let k = kebab(base);
     while (used.has(k)) k = `${k}-x`;
     used.add(k);
-    nodeId.set(n.name, k);
-  }
+    return k;
+  };
+  for (const n of all) nodeId.set(n.name, fresh(n.name));
 
   const nodes: Node[] = [];
   const triggers: ToolGraph["triggers"] = [];
-  const outlets = new Map<string, string[]>(); // n8n name → our out ports by output index
-  let hasInput = false;
+  const inputs: Record<string, string> = {};
+  /** n8n names that produce nothing in the graph (triggers without data, dropped nodes). */
+  const silent = new Set<string>();
 
-  for (const n of wf.nodes) {
+  for (const n of all) {
     const k = nodeId.get(n.name)!;
     const p = (n.parameters ?? {}) as Record<string, unknown>;
-    const sealed = (why: string) => {
-      issues.push({ code: "sealed", node: n.name, message: `${n.type}: ${why}` });
-      nodes.push({ kind: "skill", id: k, extension: SEALED_EXTENSION, tool: n.type, returns: stub(`${T}${pascal(n.name)}Out`, n.name, "a sealed step's output") } as Node);
-      outlets.set(n.name, ["out"]);
+    if (subNodes.has(n.name)) {
+      silent.add(n.name);
+      mapping.push({ node: n.name, type: n.type, as: "dropped" });
+      if (!n.type.startsWith(N8N_MODEL_PREFIX)) issues.push({ code: "note", node: n.name, message: `${n.type}: a sub-node of a chain; the tool ignores it` });
+      continue;
+    }
+    if (N8N_TRIGGERS.has(n.type)) {
+      if (n.type === "n8n-nodes-base.webhook" || n.type === "n8n-nodes-base.executeWorkflowTrigger") {
+        const port = Object.keys(inputs).length ? `request_${Object.keys(inputs).length + 1}` : "request";
+        inputs[port] = "Json";
+        nodes.push({ kind: "input", id: k, port } as Node);
+        if (!triggers.some((t) => t.kind === "on-demand")) triggers.push({ kind: "on-demand" });
+        mapping.push({ node: n.name, type: n.type, as: "input" });
+      } else {
+        if (n.type === "n8n-nodes-base.manualTrigger") {
+          if (!triggers.some((t) => t.kind === "on-demand")) triggers.push({ kind: "on-demand" });
+        } else {
+          const s = scheduleDays(n);
+          if (!triggers.some((t) => t.kind === "schedule")) triggers.push({ kind: "schedule", every_game_days: s.days });
+          if (s.note) issues.push({ code: "note", node: n.name, message: s.note });
+        }
+        silent.add(n.name);
+        mapping.push({ node: n.name, type: n.type, as: "trigger" });
+      }
+      continue;
+    }
+    const disabled = n.disabled === true;
+    const loop = n.type === "n8n-nodes-base.splitInBatches";
+    const type = disabled || loop ? "n8n-nodes-base.noOp" : n.type;
+    const why = disabled || loop ? null : unsupportedReason(n.type, n.typeVersion, p);
+    const node: Record<string, unknown> = {
+      kind: "n8n",
+      id: k,
+      name: n.name,
+      type,
+      ...(disabled || loop ? {} : n.typeVersion !== undefined ? { version: n.typeVersion } : {}),
+      parameters: disabled || loop ? {} : p,
+      inputs: inputsOf({ ...n, type }),
+      outputs: loop ? 1 : outputsOf({ ...n, type }),
     };
-    switch (n.type) {
-      case "n8n-nodes-base.scheduleTrigger":
-      case "n8n-nodes-base.cron": {
-        const rule = (p.rule as { interval?: Array<{ field?: string; daysInterval?: number }> } | undefined)?.interval?.[0];
-        const days = rule?.field === "days" && rule.daysInterval ? Math.min(28, Math.max(1, rule.daysInterval)) : 1;
-        triggers.push({ kind: "schedule", every_game_days: days });
-        outlets.set(n.name, []);
-        break;
-      }
-      case "n8n-nodes-base.manualTrigger":
-        triggers.push({ kind: "on-demand" });
-        outlets.set(n.name, []);
-        break;
-      case "n8n-nodes-base.webhook": {
-        triggers.push({ kind: "on-demand" });
-        nodes.push({ kind: "input", id: k, port: "request" } as Node);
-        hasInput = true;
-        outlets.set(n.name, ["out"]);
-        break;
-      }
-      case "n8n-nodes-base.httpRequest": {
-        const method = String(p.method ?? p.requestMethod ?? "GET").toUpperCase();
-        const url = urlOf(p.url);
-        if (method !== "GET") sealed(`${method} requests are not a connector (only GET)`);
-        else if (!url) sealed("the URL is computed by an expression that is not a plain field");
-        else {
-          nodes.push({ kind: "connector", id: k, connector: "http-get", url, returns: stub(`${T}${pascal(n.name)}Response`, n.name, "the HTTP response's fields are not in the workflow") } as Node);
-          outlets.set(n.name, ["out"]);
-        }
-        break;
-      }
-      case "n8n-nodes-base.rssFeedRead": {
-        const url = urlOf(p.url);
-        if (!url) sealed("the feed URL is computed");
-        else {
-          nodes.push({ kind: "connector", id: k, connector: "rss", url, returns: "FeedItem[]" } as Node);
-          outlets.set(n.name, ["out"]);
-        }
-        break;
-      }
-      case "n8n-nodes-base.if": {
-        const c = ifCondition(p);
-        if (!c) sealed("the condition is not one field compared with a value");
-        else {
-          nodes.push({ kind: "condition", id: k, test: "compare", path: c.path, cmp: c.cmp, value: c.value, cases: [] } as unknown as Node);
-          outlets.set(n.name, ["yes", "no"]);
-        }
-        break;
-      }
-      case "n8n-nodes-base.set": {
-        const fields = setFields(p);
-        if (!fields) sealed("a field is computed by an expression that is not a plain field");
-        else {
-          const item = `${T}${pascal(n.name)}`;
-          types[item] = {
-            type: "object",
-            additionalProperties: false,
-            required: Object.keys(fields),
-            properties: Object.fromEntries(Object.keys(fields).map((f) => [f, { type: "string" }])),
-          };
-          nodes.push({ kind: "op", id: k, op: "map", fields, returns: `${item}[]`, desc: false } as unknown as Node);
-          outlets.set(n.name, ["out"]);
-        }
-        break;
-      }
-      case "n8n-nodes-base.merge":
-        nodes.push({ kind: "op", id: k, op: "merge", fields: {}, desc: false } as unknown as Node);
-        outlets.set(n.name, ["out"]);
-        break;
-      case "n8n-nodes-base.limit":
-        nodes.push({ kind: "op", id: k, op: "limit", count: Math.max(1, Number(p.maxItems ?? 1)), fields: {}, desc: false } as unknown as Node);
-        outlets.set(n.name, ["out"]);
-        break;
-      case "n8n-nodes-base.sort": {
-        const f = (p.sortFieldsUi as { sortField?: Array<{ fieldName?: string; order?: string }> } | undefined)?.sortField?.[0];
-        if (!f?.fieldName) sealed("the sort has no field");
-        else {
-          nodes.push({ kind: "op", id: k, op: "sort", path: `$.${f.fieldName}`, desc: f.order === "descending", fields: {} } as unknown as Node);
-          outlets.set(n.name, ["out"]);
-        }
-        break;
-      }
-      default:
-        sealed(n.type.endsWith(".code") || n.type.endsWith(".function") || n.type.endsWith(".functionItem") ? "code runs only in a reviewed skill" : "no swarm.press equivalent");
+    const cred = Object.values(n.credentials ?? {})[0];
+    if (cred && !disabled) {
+      node.credential = kebab(cred.name ?? cred.id ?? "credential");
+      issues.push({ code: "needs-credential", node: n.name, message: `signs in with the credential "${cred.name ?? cred.id}": add it to the site's credentials as ${node.credential}` });
+    }
+    if (n.onError === "continueRegularOutput" || n.onError === "continueErrorOutput" || n.continueOnFail === true) node.on_error = "continue";
+    if (n.onError === "continueErrorOutput") issues.push({ code: "note", node: n.name, message: "failed items go to the main output as { error } (no separate error output)" });
+    if (type === "n8n-nodes-base.executeWorkflow" && !disabled) {
+      const wid = isObj(p.workflowId) ? String(p.workflowId.value ?? "") : String(p.workflowId ?? "");
+      const tool = opts.tools?.[wid];
+      if (tool) node.tool = tool;
+      else issues.push({ code: "needs-tool", node: n.name, message: `runs the n8n workflow ${wid || "(none)"}: import that workflow as a tool and choose it here` });
+    }
+    if (N8N_TYPES[type]?.web) {
+      const o = urlOrigin(p.url);
+      if (o === "any") issues.push({ code: "note", node: n.name, message: "the URL's host is computed: the tool may reach any public website (the CEO sees this before installing)" });
+      else if (!o) issues.push({ code: "sealed", node: n.name, message: `the URL ${JSON.stringify(p.url)} is not an http(s) URL` });
+    }
+    if (disabled) issues.push({ code: "note", node: n.name, message: "disabled in n8n: passes its items through" });
+    if (loop) {
+      if ((n.typeVersion ?? 1) < 3) issues.push({ code: "sealed", node: n.name, message: "Split in Batches v1/v2 loops by checking noItemsLeft: use Loop Over Items (v3)" });
+      else issues.push({ code: "note", node: n.name, message: "Loop Over Items: the tool processes all items at once, so the loop body runs once" });
+    }
+    if (why) issues.push({ code: "sealed", node: n.name, message: `${n.type}: ${why}` });
+    nodes.push(node as unknown as Node);
+    mapping.push({ node: n.name, type: n.type, as: loop ? "flattened" : why ? "sealed" : "n8n" });
+  }
+
+  // Loop Over Items (v3): output 0 is "done", output 1 the loop body.
+  let edges: Conn[] = conns.filter((c) => !silent.has(c.from) && !silent.has(c.to));
+  for (const n of all) {
+    if (n.type !== "n8n-nodes-base.splitInBatches" || (n.typeVersion ?? 1) < 3 || n.disabled) continue;
+    const body = new Set<string>();
+    const stack = edges.filter((c) => c.from === n.name && c.out === 1).map((c) => c.to);
+    while (stack.length) {
+      const x = stack.pop()!;
+      if (x === n.name || body.has(x)) continue;
+      body.add(x);
+      for (const c of edges) if (c.from === x) stack.push(c.to);
+    }
+    const back = edges.filter((c) => c.to === n.name && body.has(c.from));
+    const done = edges.filter((c) => c.from === n.name && c.out === 0);
+    edges = edges.filter((c) => !back.includes(c) && !done.includes(c)).map((c) => (c.from === n.name && c.out === 1 ? { ...c, out: 0 } : c));
+    const tails = back.map((c) => ({ from: c.from, out: c.out }));
+    for (const d of done) {
+      if (!tails.length) edges.push({ from: n.name, out: 0, to: d.to, in: d.in });
+      for (const t of tails) edges.push({ from: t.from, out: t.out, to: d.to, in: d.in });
     }
   }
 
-  // Edges, from n8n's `main` connections (triggers without nodes drop out).
-  const edges: [string, string][] = [];
-  const fed = new Map<string, number>();
-  for (const [from, conn] of Object.entries(wf.connections ?? {})) {
-    const src = byName.get(from);
-    if (!src) continue;
-    const ports = outlets.get(from) ?? [];
-    (conn.main ?? []).forEach((targets, i) => {
-      const port = ports[i];
-      for (const t of targets ?? []) {
-        const dst = nodeId.get(t.node);
-        if (!port || !dst || !byName.has(t.node) || TRIGGERS.has(byName.get(t.node)!.type)) continue;
-        const n = fed.get(dst) ?? 0;
-        fed.set(dst, n + 1);
-        const target = nodes.find((x) => x.id === dst);
-        // A merge's second input is `b`; a connector reads `params`.
-        const inlet = target?.kind === "connector" ? "params" : target?.kind === "op" && (target as { op?: string }).op === "merge" && n >= 1 ? "b" : "in";
-        edges.push([`${nodeId.get(from)}.${port}`, `${dst}.${inlet}`]);
-      }
-    });
+  // Edges into the graph; an input fed by several connections gets an Append merge.
+  const graphEdges: [string, string][] = [];
+  const inletOf = new Map<string, Conn[]>();
+  for (const c of edges) {
+    const key = `${c.to}\u0000${c.in}`;
+    inletOf.set(key, [...(inletOf.get(key) ?? []), c]);
+  }
+  const node = (name: string) => nodes.find((x) => x.id === nodeId.get(name)) as (Node & { outputs?: number; inputs?: number }) | undefined;
+  for (const [, group] of inletOf) {
+    const to = node(group[0].to);
+    if (!to || to.kind === "input") continue;
+    const portOk = (c: Conn) => {
+      const from = node(c.from);
+      if (!from) return false;
+      if (from.kind === "n8n" && c.out >= (from.outputs ?? 1)) (from as { outputs: number }).outputs = c.out + 1;
+      return true;
+    };
+    if ((to as { inputs?: number }).inputs !== undefined && group[0].in >= (to as { inputs: number }).inputs) (to as { inputs: number }).inputs = group[0].in + 1;
+    const live = group.filter(portOk);
+    if (!live.length) continue;
+    const target = `${to.id}.${inPort(group[0].in)}`;
+    if (live.length === 1) {
+      graphEdges.push([`${nodeId.get(live[0].from)}.${outPort(live[0].out)}`, target]);
+      continue;
+    }
+    const mid = fresh(`${group[0].to} inputs`);
+    nodes.push({ kind: "n8n", id: mid, name: `${group[0].to} (inputs)`, type: "n8n-nodes-base.merge", version: 3, parameters: { mode: "append", numberInputs: live.length }, inputs: live.length, outputs: 1 } as unknown as Node);
+    live.forEach((c, k) => graphEdges.push([`${nodeId.get(c.from)}.${outPort(c.out)}`, `${mid}.${inPort(k)}`]));
+    graphEdges.push([`${mid}.out`, target]);
+    issues.push({ code: "note", node: group[0].to, message: `${live.length} connections into one input: their items are appended and the node runs once` });
   }
 
-  // A stub type downstream nodes read fields of: declare those fields (they
-  // are the workflow's own evidence of the response's shape). A leaf compared
-  // with a number is a number, any other leaf a string; all are required.
-  for (const n of nodes) {
-    const ret = (n as { returns?: string }).returns;
-    if (!ret || !(ret in types) || Object.keys((types[ret] as { properties: object }).properties).length) continue;
-    const readers = edges.filter(([f]) => f.split(".")[0] === n.id).map(([, t]) => nodes.find((x) => x.id === t.split(".")[0])!);
-    const reads: Array<{ path: string; numeric: boolean }> = [];
-    for (const r of readers) {
-      const x = r as unknown as { kind: string; path?: string; cmp?: string; value?: unknown; fields?: Record<string, string>; where?: { path: string } };
-      if (x.kind === "condition" && x.path) reads.push({ path: x.path, numeric: (x.cmp === "gt" || x.cmp === "lt") && typeof Number(x.value) === "number" && !Number.isNaN(Number(x.value)) });
-      if (x.kind === "op") {
-        if (x.path) reads.push({ path: x.path, numeric: false });
-        for (const v of Object.values(x.fields ?? {})) reads.push({ path: v, numeric: false });
-        if (x.where) reads.push({ path: x.where.path, numeric: false });
-      }
-    }
-    if (!reads.length) continue;
-    type Schema = { type: string; additionalProperties?: boolean; required?: string[]; properties?: Record<string, Schema> };
-    const root: Schema = { type: "object", additionalProperties: false, required: [], properties: {} };
-    for (const { path, numeric } of reads) {
-      const segs = path.replace(/^\$\.?/, "").split(".").filter(Boolean);
-      let cur = root;
-      segs.forEach((seg, i) => {
-        const last = i === segs.length - 1;
-        cur.properties![seg] ??= last ? { type: numeric ? "number" : "string" } : { type: "object", additionalProperties: false, required: [], properties: {} };
-        if (!cur.required!.includes(seg)) cur.required!.push(seg);
-        if (!last) cur = cur.properties![seg];
-      });
-    }
-    types[ret] = root;
-    const at = issues.findIndex((i) => i.code === "needs-type" && i.message.startsWith(`declare the fields of ${ret}:`));
-    if (at >= 0) issues[at] = { ...issues[at], message: `check the fields of ${ret}: inferred from what the workflow reads` };
-  }
-
-  // Outputs: every node nothing reads becomes an output port.
-  const read = new Set(edges.map(([f]) => f.split(".")[0]));
+  // Outputs: what nothing reads (the main outlet of each leaf), and every Respond to Webhook.
+  const read = new Set(graphEdges.map(([f]) => f.split(".")[0]));
+  const leaves = nodes.filter((n) => n.kind === "n8n" && (!read.has(n.id) || (n as { type?: string }).type === "n8n-nodes-base.respondToWebhook"));
   const outputs: Record<string, string> = {};
-  for (const n of [...nodes]) {
-    if (n.kind === "input" || read.has(n.id)) continue;
-    const port = n.id.replace(/-/g, "_");
-    const out = `${n.id}-out`;
-    const ty = outputType(n, types);
-    outputs[port] = ty ?? stub(`${T}Result`, n.id, "what the workflow ends with");
+  for (const n of leaves) {
+    const port = (n as { type?: string }).type === "n8n-nodes-base.respondToWebhook" && !("response" in outputs) ? "response" : n.id.replace(/-/g, "_");
+    outputs[port] = leaves.length > 1 ? "Json[]?" : "Json[]";
+    const out = fresh(`${n.id}-out`);
     nodes.push({ kind: "output", id: out, port } as Node);
-    for (const p of n.kind === "condition" ? ["yes"] : ["out"]) edges.push([`${n.id}.${p}`, `${out}.in`]);
+    graphEdges.push([`${n.id}.out`, `${out}.in`]);
   }
+  if (!leaves.length) issues.push({ code: "bad-node", node: "*", message: "the workflow has no node that produces items" });
 
   if (!triggers.length) triggers.push({ kind: "on-demand" });
-  const graph: ToolGraph = {
+  const graph = {
     format: "swarmpress.tool.v1",
     id,
     name: { en: wf.name || id },
     description: `Imported from n8n${wf.name ? `: ${wf.name}` : ""}.`,
-    inputs: hasInput ? { request: stub(`${T}Request`, "trigger", "the request the workflow receives") } : {},
+    inputs,
     outputs,
     nodes,
-    edges,
+    edges: graphEdges,
     triggers,
     failure: { retries: 0, on_error: "fail" },
     limits: { llm_calls_per_run: 0, fetches_per_run: 0 },
   } as ToolGraph;
-  if (nodes.length > 12) issues.push({ code: "bad-node", node: "*", message: `${nodes.length} nodes: a tool has at most 12` });
-  return { graph, types, issues };
-}
-
-function outputType(n: Node, _types: Record<string, unknown>): string | null {
-  const r = n as unknown as { kind: string; returns?: string; output?: string };
-  if (n.kind === "op" && (n as { op?: string }).op === "map") return r.returns ?? null;
-  if (n.kind === "connector" || n.kind === "skill") return r.returns ?? null;
-  if (n.kind === "agent") return r.output ?? null;
-  return null;
+  if (nodes.length > MAX_IMPORT_NODES) issues.push({ code: "bad-node", node: "*", message: `${nodes.length} nodes: a tool has at most ${MAX_IMPORT_NODES}; split the workflow with Execute Workflow` });
+  return { graph, types: {}, issues, mapping };
 }

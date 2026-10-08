@@ -1,4 +1,4 @@
-import type { PutBlueprintBody, PutBlueprintResult, SiteModels } from '../blueprint/types'
+import type { PutBlueprintBody, PutBlueprintResult, PutToolsBody, SiteModels } from '../blueprint/types'
 import type { CommandResult } from './commands'
 import type { Persona } from './personas'
 import type { PlanJson, PlanPost, PlanText } from './plan-types'
@@ -270,11 +270,12 @@ export interface GameDataSource {
    */
   getSiteModels?(): Promise<SiteModels | null>
   /**
-   * The CEO's edit of the blueprint (`PUT /api/site/blueprint`, ADR-0072).
+   * The CEO's edit of the blueprint, or of tools (an imported n8n workflow,
+   * ADR-0076) (`PUT /api/site/blueprint`, ADR-0072).
    * Rejects with an error carrying `status` (422: `body.issues`, 409: a
    * stale `base_hash`) and `body`. Absent: the source cannot save.
    */
-  saveBlueprint?(body: PutBlueprintBody): Promise<PutBlueprintResult>
+  saveBlueprint?(body: PutBlueprintBody | PutToolsBody): Promise<PutBlueprintResult>
   /** Read the site's models again (after a save, or a 409); announced with the `site` topic. */
   reloadSiteModels?(): Promise<void>
   /**

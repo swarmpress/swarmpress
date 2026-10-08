@@ -18,6 +18,13 @@
 import { canonicalJson, sha256Hex } from "@swarm-press/sdk/runtime";
 import type { Cmp, Node, Tier, ToolGraph } from "./graph.ts";
 import { TypeRegistry, TypeSchemaError, readPath, type TypeIssue } from "./types.ts";
+import { N8N_TYPES } from "./n8n/catalogue.ts";
+import type { Item } from "./n8n/expr.ts";
+import { type HttpRequest, type HttpResponse, type N8nNode, runN8n, toItems } from "./n8n/nodes.ts";
+import { N8N_PRELUDE } from "./n8n/prelude.ts";
+
+/** Requests (or model calls) one n8n node makes per run at most, per item list: the default run limit (ADR-0076). */
+export const N8N_CALLS_PER_NODE = 50;
 
 // ---------------------------------------------------------------- host and result
 
@@ -37,6 +44,10 @@ export interface ToolHost {
   llm?(tier: Tier, prompt: string, meta: { role: string; node: string }): Promise<string>;
   /** `skill`: a tool of an installed SDK skill. */
   skill?(extension: string, tool: string, input: unknown): Promise<unknown>;
+  /** n8n HTTP Request and RSS: any method; resolves with the response (any status); throws when no response came. */
+  request?(req: HttpRequest): Promise<HttpResponse>;
+  /** n8n JavaScript: runs `program` in a fresh sandbox without capabilities and calls its `run(task)` (ADR-0076). */
+  code?(program: string, task: unknown): Promise<unknown>;
 }
 
 export type NodeState = "ok" | "not-taken" | "failed";
@@ -116,6 +127,8 @@ export function inPorts(n: Node): Array<[string, boolean]> {
   switch (n.kind) {
     case "input":
       return [];
+    case "n8n":
+      return Array.from({ length: Math.max(1, n.inputs) }, (_, i): [string, boolean] => [i ? `in${i}` : "in", false]);
     case "connector":
       return [["params", false]];
     case "op":
@@ -139,6 +152,7 @@ export function inPorts(n: Node): Array<[string, boolean]> {
 export function outPorts(n: Node): string[] {
   if (n.kind === "output") return [];
   if (n.kind === "condition") return n.test === "switch" ? [...n.cases, "else"] : ["yes", "no"];
+  if (n.kind === "n8n") return Array.from({ length: Math.max(1, n.outputs) }, (_, i) => (i ? `out${i}` : "out"));
   return ["out"];
 }
 
@@ -418,8 +432,9 @@ export async function runGraph(
 
   const retries = graph.failure.retries;
   const count = (k: Node["kind"]) => graph.nodes.filter((n) => n.kind === k).length;
-  const fetchLimit = graph.limits.fetches_per_run || count("connector") * (1 + retries);
-  const llmLimit = graph.limits.llm_calls_per_run || count("agent") * (1 + retries) * 2;
+  const n8nCount = (what: "web" | "llm" | "tool") => graph.nodes.filter((n) => n.kind === "n8n" && N8N_TYPES[n.type]?.[what]).length;
+  const fetchLimit = graph.limits.fetches_per_run || (count("connector") + (n8nCount("web") + n8nCount("tool")) * N8N_CALLS_PER_NODE) * (1 + retries);
+  const llmLimit = graph.limits.llm_calls_per_run || (count("agent") * 2 + n8nCount("llm") * N8N_CALLS_PER_NODE) * (1 + retries);
   let fetches = 0;
   let llmCalls = 0;
   const spendFetch = () => {
@@ -457,9 +472,16 @@ export async function runGraph(
   const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
   const values = new Map<string, unknown>();
   const outputs: Record<string, unknown> = {};
+  /** What each n8n node wrote, by its n8n name (`$('Name')`). */
+  const n8nItems: Record<string, Item[]> = {};
 
   for (const id of order) {
     const n = nodes.get(id)!;
+    if (n.kind === "n8n") {
+      const r = await n8nStep(n);
+      if (r) return r;
+      continue;
+    }
     // Inlets: every connected inlet must have received a value, or the node is not taken.
     const inlets: Record<string, unknown> = {};
     let taken = true;
@@ -491,8 +513,94 @@ export async function runGraph(
       return fail(`${id}: ${errMsg(e)}`, issues);
     }
   }
-  for (const port of Object.keys(graph.outputs).sort()) if (!(port in outputs)) return fail(`no-output:${port}`);
+  // A declared output nobody wrote fails the run, unless its type is optional (`T?`: a branch that did not run).
+  for (const port of Object.keys(graph.outputs).sort()) if (!(port in outputs) && !graph.outputs[port].endsWith("?")) return fail(`no-output:${port}`);
   return { ok: true, outputs, trace, recorded };
+
+  // ------------------------------------------------------------ an n8n node (ADR-0076)
+
+  /** Runs an n8n node; a failed run's result, or nothing when the run goes on. */
+  async function n8nStep(n: Extract<Node, { kind: "n8n" }>): Promise<RunResult | undefined> {
+    const id = n.id;
+    // Inputs: an unconnected node starts from one empty item (as after a trigger);
+    // a connected one runs when at least one of its inputs received items.
+    const ports = inPorts(n).map(([p]) => p);
+    const fedBy = ports.map((p) => edges.find((x) => x.to === id && x.toPort === p));
+    const connected = fedBy.some(Boolean);
+    const ins: Item[][] = fedBy.map((e) => (e && values.has(`${e.from}.${e.fromPort}`) ? toItems(values.get(`${e.from}.${e.fromPort}`)) : []));
+    if (connected && !fedBy.some((e) => e && values.has(`${e.from}.${e.fromPort}`))) {
+      trace.push({ node: id, state: "not-taken", in_sha: null, out_sha: null, ms: 0 });
+      return undefined;
+    }
+    if (!connected) ins[0] = [{}];
+    const inlets: Record<string, unknown> = {};
+    ports.forEach((p, i) => (inlets[p] = ins[i]));
+    const inSha = sha(inlets);
+    const t0 = clock();
+    let touched = false;
+    const node = n as unknown as N8nNode;
+    try {
+      let outlets: Item[][];
+      if (replayed(id)) {
+        const rec = clone(opts.replay![id]) as { outlets?: Item[][] };
+        if (!rec || !Array.isArray(rec.outlets)) throw new NodeError("the recorded output is not an n8n node's outlets");
+        outlets = rec.outlets;
+        recorded[id] = clone(rec);
+      } else {
+        outlets = await withRetries(() =>
+          runN8n({
+            node,
+            inputs: ins,
+            nodes: n8nItems,
+            workflow: { id: graph.id, name: graph.name.en ?? graph.id },
+            js: async (task) => {
+              touched = true;
+              return await need("code")(N8N_PRELUDE, task);
+            },
+            request: async (req) => {
+              touched = true;
+              spendFetch();
+              return await need("request")(req);
+            },
+            llm: async (prompt) => {
+              touched = true;
+              spendLlm();
+              const text = await need("llm")("mid", prompt, { role: "n8n", node: id });
+              if (typeof text !== "string") throw new NodeError(`${id}: the model returned no text`);
+              return text;
+            },
+            tool: async (tool, input) => {
+              touched = true;
+              spendFetch();
+              return await need("tool")(tool, input);
+            },
+          }),
+        );
+        if (touched) recorded[id] = { outlets: clone(outlets) };
+      }
+      if (n.returns) {
+        const want = n.returns;
+        const issues = reg.validate(outlets[0] ?? [], want);
+        if (issues.length) throw typeError(`${id}: the items do not fit ${want}`, issues);
+      }
+      const taken: string[] = [];
+      outPorts(n).forEach((p, k) => {
+        const its = outlets[k] ?? [];
+        if (its.length) {
+          values.set(`${id}.${p}`, its);
+          taken.push(p);
+        }
+      });
+      n8nItems[n.name] = outlets.flat();
+      trace.push({ node: id, state: "ok", in_sha: inSha, out_sha: sha(outlets), outlet: taken.join(","), ms: clock() - t0 });
+      return undefined;
+    } catch (e) {
+      if (isCapabilityError(e)) throw e;
+      const issues = e instanceof NodeError ? e.issues : undefined;
+      trace.push({ node: id, state: "failed", in_sha: inSha, out_sha: null, ms: clock() - t0, error: errMsg(e), ...(issues ? { issues } : {}) });
+      return fail(`${id}: ${errMsg(e)}`, issues);
+    }
+  }
 
   // ------------------------------------------------------------ one node
 
@@ -521,6 +629,8 @@ export async function runGraph(
         );
       case "agent":
         return out(await recordedCall(n.id, n.output, () => agent(n, inlets.in)));
+      case "n8n":
+        throw new NodeError(`${n.id}: an n8n node runs in n8nStep`);
     }
   }
 

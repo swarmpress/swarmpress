@@ -548,6 +548,14 @@ export class CentralClient {
     return this.json('GET', `/web/fetch?url=${encodeURIComponent(url)}`)
   }
 
+  /**
+   * `POST /web/request` (ADR-0076): the same proxy for a tool's n8n HTTP
+   * Request node: any method, headers and a body, the answer raw.
+   */
+  webRequest(req: { url: string; method: string; headers: Record<string, string>; body: string | null }): Promise<{ url: string; status: number; content_type: string; headers: Record<string, string>; body: string }> {
+    return this.json('POST', '/web/request', { json: req })
+  }
+
   /** A `Theme` item's components (`PUT /api/site/theme`, FEAT-094): one pull request on `design/<item>`. */
   putTheme(token: string, body: { item: string; files: Record<string, string>; message?: string }): Promise<{ number: number; branch: string; head_sha: string }> {
     return this.json('PUT', '/api/site/theme', { json: body, headers: { [LEASE_HEADER]: token } })

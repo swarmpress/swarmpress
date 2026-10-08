@@ -70,7 +70,7 @@ Schema: [`packages/sdk/schemas/manifest.schema.json`](../../packages/sdk/schemas
 | `version` | semver |
 | `sdk` | semver range; the runner refuses an extension whose range does not accept its `SDK_VERSION` |
 | `kinds` | one or more of the kinds above, unique |
-| `capabilities` | `web`, `credits`, `ui`, `llm:<low\|mid\|high\|agency>`, `store:<table>` |
+| `capabilities` | `web`, `credits`, `ui`, `code`, `llm:<low\|mid\|high\|agency>`, `store:<table>` |
 | `entry.bundle` | source entry (TS or JS) for every code kind |
 | `entry.content` | `personas`, `happenings`, `prompt_layers`, `props`: lists of `.json`/`.toml` files |
 | `rule.stepInterval` | `sim-rule`: steps between `onStep` calls (12,000 steps per game day, so 500 = one game hour) |
@@ -96,6 +96,7 @@ the VM. There is no ambient authority.
 | `web` | `fetch` (only to `origins` when declared) through `host.web`: the central fetch proxy in the browser (ADR-0040), fixtures or the network in the runner | sandbox origin check, then the host |
 | `credits` | paid web calls (Firecrawl) and `llm:agency` | the central service (not in v0) |
 | `llm:<tier>` | `swarmpress.llm.complete({tier, system?, prompt})` for granted tiers | sandbox tier check |
+| `code` | `swarmpress.code.run(program, arg)`: runs `program` (it assigns `globalThis.ext.run`) in a fresh nested sandbox with no capabilities, under the caller's limits; the SDK's `ctx.code.run` (ADR-0076: n8n Code and expressions) | the sandbox (not in deterministic mode) |
 | `ui` | a panel iframe | the overlay (not in v0) |
 
 Ungranted globals are simply absent (`typeof fetch === "undefined"`); an ungranted path, origin or

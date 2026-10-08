@@ -430,7 +430,10 @@ then sees them as function tools:
 - A live connection (mode B) waits for a public API; nothing here depends on one.
 - The roundtrip (mode C) is the same import run again. It produces a **semantic diff** against the
   blueprint, instead of replacing it.
-- **n8n** (FEAT-096) is a deterministic mapping from n8n JSON:
+- **n8n** (FEAT-096). Superseded by ADR-0076 (2026-10-08): workflows now import node for node as
+  `n8n` nodes and run with n8n's semantics (expressions and Code in a sandbox with no capabilities;
+  26 node types; see §12 and the feature). The first version was a deterministic mapping from
+  n8n JSON:
 
   | n8n node | swarm.press node |
   |---|---|
@@ -484,7 +487,7 @@ then sees them as function tools:
 3. **Function calls on the hosted model** cross server and browser (§7.4). Resolved without vendor
    function calling: tool requests are part of the structured answer, and the browser runs them
    between ordinary calls.
-4. **Scope creep toward n8n.** The closed node catalogue is the guard. A new node kind needs a reason,
+4. **Scope creep toward n8n.** (Since ADR-0076 the owner wants n8n compatibility: the guard is now the closed list of n8n types that run, and the capability-less code sandbox.) The closed node catalogue is the guard. A new node kind needs a reason,
    and code goes into skills.
 5. **Town legibility and cost.** A site with 15 page types of 12 storeys each, plus 10 machines, is
    roughly 4,000 bricks: within the office's budget (`docs/qualification/brick-office-spike.md`), but
@@ -520,3 +523,25 @@ The plan's deviations:
 - Agents call tools inside structured answers, without vendor function calling (§7.4).
 - X-2 cannot reach cinqueterre.travel before the cutover (rule 9). On that site the job fails
   loudly, by design.
+
+### n8n compatibility (2026-10-08, ADR-0076)
+
+The owner asked that tools be compatible with n8n, so existing flows can be reused (import only).
+- **Node for node.** An imported workflow keeps every node as an `n8n` node: name, type, version and
+  parameters unchanged.
+- **n8n's semantics.** Nodes run on item lists: an IF splits items between its outputs, and an empty
+  output does not run what follows.
+- **JavaScript in a sandbox.** Expressions, Code, Function, Date & Time and sort comparators run in a
+  nested QuickJS sandbox with no capabilities (the `code` capability), with n8n's globals and helpers.
+- **Requests.** They go through `POST /web/request` with any method. A credential is signed by the
+  browser, outside the sandbox.
+- **Twenty-six node types run.** The rest stay in the graph as sealed steps the checker refuses.
+- **In bricks.** An n8n node stands as the machine of what it does:
+  - a request is a dish;
+  - IF, Filter and Switch are a switch;
+  - a model call is a workstation;
+  - Code is a sage bench with a screen;
+  - other item steps are a gearbox;
+  - a type that does not run is a crate.
+- **In the game.** The Tools tab imports a workflow (preview, manifest, issues, Install) and manages
+  the credentials.

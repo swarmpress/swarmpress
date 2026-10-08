@@ -1,0 +1,248 @@
+{
+  "graph": {
+    "format": "swarmpress.tool.v1",
+    "id": "trail-roundup",
+    "name": {
+      "en": "Trail roundup"
+    },
+    "description": "Imported from n8n: Trail roundup.",
+    "inputs": {},
+    "outputs": {
+      "compose": "Json[]"
+    },
+    "nodes": [
+      {
+        "kind": "n8n",
+        "id": "get-trails",
+        "name": "Get trails",
+        "type": "n8n-nodes-base.httpRequest",
+        "version": 4.2,
+        "parameters": {
+          "url": "https://trails.example.org/api/trails",
+          "options": {}
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "split-out",
+        "name": "Split Out",
+        "type": "n8n-nodes-base.splitOut",
+        "version": 1,
+        "parameters": {
+          "fieldToSplitOut": "trails",
+          "options": {}
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "open-and-long",
+        "name": "Open and long",
+        "type": "n8n-nodes-base.filter",
+        "version": 2,
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": false,
+              "leftValue": "",
+              "typeValidation": "loose"
+            },
+            "conditions": [
+              {
+                "id": "f1",
+                "leftValue": "={{ $json.status }}",
+                "rightValue": "OPEN",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              },
+              {
+                "id": "f2",
+                "leftValue": "={{ $json.km }}",
+                "rightValue": 3,
+                "operator": {
+                  "type": "number",
+                  "operation": "gt"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "longest-first",
+        "name": "Longest first",
+        "type": "n8n-nodes-base.sort",
+        "version": 1,
+        "parameters": {
+          "sortFieldsUi": {
+            "sortField": [
+              {
+                "fieldName": "km",
+                "order": "descending"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "loop-over-items",
+        "name": "Loop Over Items",
+        "type": "n8n-nodes-base.noOp",
+        "parameters": {},
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "line",
+        "name": "Line",
+        "type": "n8n-nodes-base.set",
+        "version": 3.4,
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "s1",
+                "name": "line",
+                "value": "={{ $json.name.toTitleCase() }} ({{ $json.km.round(1) }} km, {{ $json.village }})",
+                "type": "string"
+              },
+              {
+                "id": "s2",
+                "name": "updated",
+                "value": "={{ $('Get trails').first().json.updated }}",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "aggregate",
+        "name": "Aggregate",
+        "type": "n8n-nodes-base.aggregate",
+        "version": 1,
+        "parameters": {
+          "fieldsToAggregate": {
+            "fieldToAggregate": [
+              {
+                "fieldToAggregate": "line"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "basic-llm-chain",
+        "name": "Basic LLM Chain",
+        "type": "@n8n/n8n-nodes-langchain.chainLlm",
+        "version": 1.5,
+        "parameters": {
+          "promptType": "define",
+          "text": "=Write one sentence inviting hikers to these trails: {{ $json.line.join('; ') }}",
+          "messages": {
+            "messageValues": [
+              {
+                "message": "You write for a travel site about the Cinque Terre."
+              }
+            ]
+          }
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "n8n",
+        "id": "compose",
+        "name": "Compose",
+        "type": "n8n-nodes-base.code",
+        "version": 2,
+        "parameters": {
+          "jsCode": "const lines = $('Aggregate').first().json.line;\nreturn [{ json: { headline: 'Trails of the week ' + $now.toFormat('yyyy-LL-dd'), intro: $input.first().json.text, lines, count: lines.length } }];"
+        },
+        "inputs": 1,
+        "outputs": 1
+      },
+      {
+        "kind": "output",
+        "id": "compose-out",
+        "port": "compose"
+      }
+    ],
+    "edges": [
+      [
+        "get-trails.out",
+        "split-out.in"
+      ],
+      [
+        "split-out.out",
+        "open-and-long.in"
+      ],
+      [
+        "open-and-long.out",
+        "longest-first.in"
+      ],
+      [
+        "longest-first.out",
+        "loop-over-items.in"
+      ],
+      [
+        "loop-over-items.out",
+        "line.in"
+      ],
+      [
+        "aggregate.out",
+        "basic-llm-chain.in"
+      ],
+      [
+        "basic-llm-chain.out",
+        "compose.in"
+      ],
+      [
+        "line.out",
+        "aggregate.in"
+      ],
+      [
+        "compose.out",
+        "compose-out.in"
+      ]
+    ],
+    "triggers": [
+      {
+        "kind": "schedule",
+        "every_game_days": 7
+      }
+    ],
+    "failure": {
+      "retries": 0,
+      "on_error": "fail"
+    },
+    "limits": {
+      "llm_calls_per_run": 0,
+      "fetches_per_run": 0
+    }
+  },
+  "types": {}
+}

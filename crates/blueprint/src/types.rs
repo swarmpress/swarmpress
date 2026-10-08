@@ -37,6 +37,9 @@ pub enum Ty {
     Object(BTreeMap<String, (Ty, bool)>),
     /// Another named type.
     Ref(String),
+    /// `Json`: any JSON value. What an n8n node passes on (ADR-0076); every
+    /// type fits it, it fits only itself, and any path inside it is `Json`.
+    Json,
 }
 
 /// A type expression: `Name`, `Name[]`, `Name?`, `Name[]?`.
@@ -131,6 +134,7 @@ fn builtins() -> BTreeMap<String, Ty> {
     out.insert("number".into(), Ty::Number);
     out.insert("boolean".into(), Ty::Boolean);
     out.insert("LocalizedString".into(), Ty::Localized);
+    out.insert("Json".into(), Ty::Json);
     out.insert(
         "Media".into(),
         obj(&[
@@ -400,6 +404,7 @@ impl TypeRegistry {
                     return None;
                 }
                 match self.resolve(&cur)? {
+                    Ty::Json => return Some(Ty::Json),
                     Ty::Object(f) => cur = f.get(name)?.0.clone(),
                     _ => return None,
                 }
@@ -412,6 +417,7 @@ impl TypeRegistry {
                     return None;
                 }
                 match self.resolve(&cur)? {
+                    Ty::Json => return Some(Ty::Json),
                     Ty::Array(item) => cur = (**item).clone(),
                     _ => return None,
                 }
@@ -532,6 +538,7 @@ impl TypeRegistry {
                 }
             },
             Ty::Ref(_) => why.push(format!("{here}: a reference does not resolve")),
+            Ty::Json => {}
         }
     }
 
@@ -564,7 +571,8 @@ impl TypeRegistry {
             | (Ty::Boolean, Ty::Boolean)
             | (Ty::Localized, Ty::Localized)
             | (Ty::String, Ty::Localized)
-            | (Ty::Enum(_), Ty::String) => {}
+            | (Ty::Enum(_), Ty::String)
+            | (_, Ty::Json) => {}
             (Ty::Enum(a), Ty::Enum(b)) => {
                 let extra: Vec<&String> = a.difference(b).collect();
                 if !extra.is_empty() {
@@ -614,6 +622,7 @@ fn shape(t: &Ty) -> &'static str {
         Ty::Array(_) => "array",
         Ty::Object(_) => "object",
         Ty::Ref(_) => "reference",
+        Ty::Json => "Json",
     }
 }
 

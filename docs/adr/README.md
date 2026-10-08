@@ -95,3 +95,4 @@ Accepted ADRs are never rewritten.
 | [0073](0073-translations-and-distribution.md) | Translations and distribution | Accepted |
 | [0074](0074-the-story-director.md) | The story director | Accepted |
 | [0075](0075-company-text-travels-with-the-log.md) | Company text travels with the log segments | Accepted |
+| [0076](0076-n8n-workflows-run-as-tools.md) | n8n workflows run as tools | Accepted (supersedes in part ADR-0072) |

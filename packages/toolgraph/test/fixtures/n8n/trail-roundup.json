@@ -1,0 +1,46 @@
+{
+  "name": "Trail roundup",
+  "nodes": [
+    { "parameters": { "rule": { "interval": [{ "field": "weeks", "weeksInterval": 1, "triggerAtDay": [1], "triggerAtHour": 7 }] } },
+      "id": "01", "name": "Schedule Trigger", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [0, 0] },
+    { "parameters": { "url": "https://trails.example.org/api/trails", "options": {} },
+      "id": "02", "name": "Get trails", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [200, 0] },
+    { "parameters": { "fieldToSplitOut": "trails", "options": {} },
+      "id": "03", "name": "Split Out", "type": "n8n-nodes-base.splitOut", "typeVersion": 1, "position": [400, 0] },
+    { "parameters": { "conditions": { "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+        "conditions": [ { "id": "f1", "leftValue": "={{ $json.status }}", "rightValue": "OPEN", "operator": { "type": "string", "operation": "equals" } },
+                        { "id": "f2", "leftValue": "={{ $json.km }}", "rightValue": 3, "operator": { "type": "number", "operation": "gt" } } ],
+        "combinator": "and" }, "options": {} },
+      "id": "04", "name": "Open and long", "type": "n8n-nodes-base.filter", "typeVersion": 2, "position": [600, 0] },
+    { "parameters": { "sortFieldsUi": { "sortField": [{ "fieldName": "km", "order": "descending" }] }, "options": {} },
+      "id": "05", "name": "Longest first", "type": "n8n-nodes-base.sort", "typeVersion": 1, "position": [800, 0] },
+    { "parameters": { "options": {} },
+      "id": "06", "name": "Loop Over Items", "type": "n8n-nodes-base.splitInBatches", "typeVersion": 3, "position": [1000, 0] },
+    { "parameters": { "assignments": { "assignments": [
+        { "id": "s1", "name": "line", "value": "={{ $json.name.toTitleCase() }} ({{ $json.km.round(1) }} km, {{ $json.village }})", "type": "string" },
+        { "id": "s2", "name": "updated", "value": "={{ $('Get trails').first().json.updated }}", "type": "string" } ] }, "options": {} },
+      "id": "07", "name": "Line", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [1200, 100] },
+    { "parameters": { "fieldsToAggregate": { "fieldToAggregate": [{ "fieldToAggregate": "line" }] }, "options": {} },
+      "id": "08", "name": "Aggregate", "type": "n8n-nodes-base.aggregate", "typeVersion": 1, "position": [1200, -100] },
+    { "parameters": { "promptType": "define", "text": "=Write one sentence inviting hikers to these trails: {{ $json.line.join('; ') }}", "messages": { "messageValues": [{ "message": "You write for a travel site about the Cinque Terre." }] } },
+      "id": "09", "name": "Basic LLM Chain", "type": "@n8n/n8n-nodes-langchain.chainLlm", "typeVersion": 1.5, "position": [1400, -100] },
+    { "parameters": { "model": "gpt-4o-mini", "options": {} },
+      "id": "10", "name": "OpenAI Chat Model", "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi", "typeVersion": 1, "position": [1400, 100],
+      "credentials": { "openAiApi": { "id": "x", "name": "OpenAi account" } } },
+    { "parameters": { "jsCode": "const lines = $('Aggregate').first().json.line;\nreturn [{ json: { headline: 'Trails of the week ' + $now.toFormat('yyyy-LL-dd'), intro: $input.first().json.text, lines, count: lines.length } }];" },
+      "id": "11", "name": "Compose", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1600, -100] }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Get trails", "type": "main", "index": 0 }]] },
+    "Get trails": { "main": [[{ "node": "Split Out", "type": "main", "index": 0 }]] },
+    "Split Out": { "main": [[{ "node": "Open and long", "type": "main", "index": 0 }]] },
+    "Open and long": { "main": [[{ "node": "Longest first", "type": "main", "index": 0 }]] },
+    "Longest first": { "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]] },
+    "Loop Over Items": { "main": [[{ "node": "Aggregate", "type": "main", "index": 0 }], [{ "node": "Line", "type": "main", "index": 0 }]] },
+    "Line": { "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]] },
+    "Aggregate": { "main": [[{ "node": "Basic LLM Chain", "type": "main", "index": 0 }]] },
+    "OpenAI Chat Model": { "ai_languageModel": [[{ "node": "Basic LLM Chain", "type": "ai_languageModel", "index": 0 }]] },
+    "Basic LLM Chain": { "main": [[{ "node": "Compose", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

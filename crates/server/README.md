@@ -123,6 +123,7 @@ them: if the poller logs 403, merges stay `pending` and time out.
 | `GET /api/sync/{company}/snapshot` | the bytes with `x-swarmpress-step` and `x-swarmpress-sha256`; 404 before the first |
 | `POST /api/llm/generate` (lease) | `{messages, kind?, max_output_tokens?, reasoning_effort?, service_tier?: flex\|default, json_schema?}` → `{job_id, text, finish: stop\|length, service_tier, usage, cost_micros, duration_ms}`; 429 past the daily budget, 503 without a key or credits (FEAT-086) |
 | `GET /web/fetch?url=` | `{url, status, content_type, text}`; see below |
+| `POST /web/request` | signed in. The fetch proxy for a site's tools (ADR-0076: an n8n HTTP Request node): `{url, method?, headers?, body?}` with GET, HEAD, POST, PUT, PATCH, DELETE or OPTIONS and a body of at most 256 KiB (413); `Host`, `Cookie`, hop-by-hop and `X-SwarmPress-Credential` headers are dropped; redirects are followed (re-checked) for GET and HEAD only; the same SSRF guard, rate limit, size cap and content types as `/web/fetch` (an empty body passes); `{url, status, content_type, headers, body}` with the body raw (no HTML reduction) |
 | `POST /web/firecrawl/{*rest}` | 501 `{"error":"firecrawl requires credits (wave 3)"}` |
 | `GET/POST /api/projects` | the company's publications; `POST {simProjectId, slug, name, domain?, repo?}` mints a public `trackerKey` |
 | `GET /api/analytics?project=&days=` | Performance panel data (ADR-0032) |

@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { parseToolGraph, type ToolGraph } from "../src/graph.ts";
 import type { ToolHost } from "../src/interpret.ts";
+import type { HttpRequest, HttpResponse } from "../src/n8n/nodes.ts";
 
 export const ROOT = join(import.meta.dir, "..", "..", "..");
 /** The fixture site shared with `crates/blueprint` (the Rust checker's goldens). */
@@ -40,6 +41,21 @@ export const ARTICLE = {
 
 type Answer = string | Error;
 
+/** An HTTP answer for {@link FakeHost.request}: a body (status 200), or the response, or a function of the request. */
+export type HttpAnswer = string | Error | { status?: number; body: string; headers?: Record<string, string> } | ((req: HttpRequest) => { status?: number; body: string });
+
+/** n8n JavaScript in a real capability-less QuickJS sandbox, as the game and the runner run it. */
+export async function sandboxCode(program: string, task: unknown): Promise<unknown> {
+  const { createSandbox } = await import("@swarm-press/sandbox");
+  const sb = await createSandbox({ capabilities: [], host: {} });
+  try {
+    await sb.load(program, "code.js");
+    return await sb.call("run", task);
+  } finally {
+    sb.dispose();
+  }
+}
+
 /** A recorded host: answers from fixtures (by exact URL, in order), logs every call, and fails loudly. */
 export class FakeHost implements ToolHost {
   readonly calls: string[] = [];
@@ -47,9 +63,30 @@ export class FakeHost implements ToolHost {
   private readonly web: Map<string, Answer[]>;
   private readonly script: Answer[];
 
-  constructor(opts: { web?: Record<string, Answer | Answer[]>; llm?: Answer[] } = {}) {
+  readonly requests: HttpRequest[] = [];
+  private readonly http: Record<string, HttpAnswer>;
+
+  constructor(opts: { web?: Record<string, Answer | Answer[]>; llm?: Answer[]; http?: Record<string, HttpAnswer> } = {}) {
     this.web = new Map(Object.entries(opts.web ?? {}).map(([k, v]) => [k, Array.isArray(v) ? [...v] : [v]]));
     this.script = [...(opts.llm ?? [])];
+    this.http = opts.http ?? {};
+  }
+
+  /** n8n requests: answered by `"METHOD url"` or by the URL alone. */
+  async request(req: HttpRequest): Promise<HttpResponse> {
+    this.calls.push(`${req.method} ${req.url}`);
+    this.requests.push(req);
+    const a = this.http[`${req.method} ${req.url}`] ?? this.http[req.url];
+    if (a === undefined) throw new Error(`fake web: no fixture for ${req.method} ${req.url}`);
+    if (a instanceof Error) throw a;
+    const r = typeof a === "function" ? a(req) : typeof a === "string" ? { body: a } : a;
+    const headers = (r as { headers?: Record<string, string> }).headers ?? {};
+    return { status: r.status ?? 200, headers, body: r.body };
+  }
+
+  async code(program: string, task: unknown): Promise<unknown> {
+    this.calls.push(`code ${(task as { op?: string }).op}`);
+    return await sandboxCode(program, task);
   }
 
   async fetch(url: string): Promise<string> {
