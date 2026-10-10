@@ -1,0 +1,15 @@
+[package]
+name = "content-repo"
+description = "The governed content repository (ADR-0080): WordPress objects with parsed block trees, digest-chained attributed commits, branches, change requests with semantic diffs, three-way merges with typed conflicts, releases and rollback. Pure Rust; compiles to wasm"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+
+[lints]
+workspace = true

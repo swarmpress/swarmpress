@@ -123,3 +123,6 @@
 # The editorial board through the JSON boundary (ADR-0069).
 - match: { classname: client-wasm, title: "the_editorial_board_through_json" }
   features: [FEAT-087]
+# The governed content repository (FEAT-106): commits, branches, change requests, merges, releases.
+- match: { classname: content-repo, title: "tests::" }
+  features: [FEAT-106]

@@ -1,6 +1,6 @@
 [package]
 name = "storage-api"
-description = "The governed layer's storage API for the WordPress fork (ADR-0084): MySQL as WordPress sends it, translated to SQLite and run on a branch's projection, with writes classified as governed or scratch. M0 spike: the translator, the classifier and the corpus replay"
+description = "The governed layer's storage API for the WordPress fork (ADR-0084): MySQL as WordPress sends it, translated to SQLite and run on a branch's projection, with writes classified as governed or scratch: the translator, the classifier, the projection mapping, change capture and the per-branch host"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -8,9 +8,15 @@ publish = false
 
 [dependencies]
 sqlparser = { version = "0.63", features = ["visitor"] }
-rusqlite = { version = "0.32", features = ["bundled", "functions"] }
+rusqlite = { version = "0.32", features = ["bundled", "functions"], optional = true }
+content-repo = { path = "../content-repo" }
 serde.workspace = true
 serde_json.workspace = true
+
+[features]
+default = ["native"]
+# rusqlite underneath (the runner, the server, tests); the browser brings its own SQLite.
+native = ["dep:rusqlite"]
 
 [lints]
 workspace = true

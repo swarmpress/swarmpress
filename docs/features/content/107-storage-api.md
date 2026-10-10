@@ -9,12 +9,15 @@ paths:
   - crates/storage-api/src/classify.rs
   - crates/storage-api/src/projection.rs
   - crates/storage-api/src/ddl.rs
+  - crates/storage-api/src/objects.rs
+  - crates/storage-api/src/host.rs
+  - crates/storage-api/tests/host.rs
   - crates/storage-api/examples/translate.rs
   - crates/storage-api/tests/fixtures/wp-corpus-plugins.jsonl
   - crates/storage-api/examples/host.rs
   - crates/storage-api/tests/replay.rs
   - crates/storage-api/tests/fixtures/wp-corpus.jsonl
-  - crates/storage-api/tests/fixtures/wp-schema.sql
+  - crates/storage-api/schema/wordpress.sql
   - crates/storage-api/tests/fixtures/wp-expected.json
   - docs/qualification/wp-seam-spike.md
 adrs:
@@ -51,6 +54,29 @@ or scratch.
 - Plugins: Contact Form 7, Yoast SEO and WooCommerce replay with 0.08% unhandled. Their tables go
   to the scratch store through the DDL translator (`ddl.rs`).
 - Tests: `crates/storage-api/tests/replay.rs`, and the unit tests in `classify.rs` and `ddl.rs`.
+
+## Built (M3, the governed side)
+
+- **Executor:** the projection runs on any SQLite through `Exec`: rusqlite natively (feature
+  `native`), the game's sqlite-wasm in the browser.
+- **Projection mapping** (`objects.rs`):
+  - posts with their block trees, meta and terms; terms with their taxonomies; settings;
+    users without their password hash; comments; links;
+  - meta keyed by id, so branches merge it field by field;
+  - scratch (auto-drafts, revisions, transients, cron, sessions, edit locks) never becomes an
+    object.
+- **Change capture:** temporary triggers record the objects each request touched.
+- **The host** (`host.rs`):
+  - one projection per branch, brought up to its head incrementally;
+  - each request's governed changes become one attributed commit;
+  - `live` refuses governed writes outside a new company's import phase;
+  - AUTOINCREMENT counters start at the repository's high-water marks, so branches never hand
+    out the same id.
+- **End to end** (`tests/host.rs`), on WordPress's own statements:
+  - the install imports onto `live`;
+  - every later request commits on a work branch, which reaches WordPress's state;
+  - a projection rebuilt from the repository alone holds the same content;
+  - the change request merges into `live`, and `live`'s projection follows.
 
 ## Not built
 

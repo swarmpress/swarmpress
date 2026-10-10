@@ -19,7 +19,7 @@ Under ADR-0084, WordPress's `wpdb` sends every statement across the sandbox boun
    - creating a post through the REST API, editing it, adding a tag and publishing it;
    - the post, tag and archive pages, and wp-admin's post list.
 
-   The corpus has **2,020 statements in 147 distinct shapes** (`crates/storage-api/tests/fixtures/wp-corpus.jsonl`; the two password hashes are scrubbed). WordPress's code is not in this repository: the corpus is statements, and the schema (`wp-schema.sql`) was read from the database WordPress created (rule 16).
+   The corpus has **2,020 statements in 147 distinct shapes** (`crates/storage-api/tests/fixtures/wp-corpus.jsonl`; the two password hashes are scrubbed). WordPress's code is not in this repository: the corpus is statements, and the schema (`crates/storage-api/schema/wordpress.sql`) was read from the database WordPress created (rule 16).
 2. **Replay it** (`crates/storage-api/tests/replay.rs`): every statement in order, translated and run on an empty projection with that schema.
 3. **Check equivalence.** The governed state after the replay (posts, terms and taxonomies, term relationships, key options, users) is compared with what WordPress's own SQLite integration stored for the same statements (`wp-expected.json`).
 4. **Measure the boundary.** The projection runs behind a loopback HTTP host (`examples/host.rs`; keep-alive, JSON results). A native PHP client sends every statement with curl, as the forked `wpdb` will, and times each round trip.

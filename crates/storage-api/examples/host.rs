@@ -10,7 +10,7 @@ use std::net::TcpListener;
 
 use storage_api::Projection;
 
-const SCHEMA: &str = include_str!("../tests/fixtures/wp-schema.sql");
+const SCHEMA: &str = include_str!("../schema/wordpress.sql");
 
 fn main() {
     let addr = std::env::args()

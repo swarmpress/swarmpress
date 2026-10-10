@@ -3,7 +3,7 @@
 //! login, the dashboard, the editor, creating, editing, tagging and
 //! publishing a post through REST, and reading it back
 //! (`fixtures/wp-corpus.jsonl`), replayed in order through the translator
-//! onto a projection with WordPress's schema (`fixtures/wp-schema.sql`, read
+//! onto a projection with WordPress's schema (`schema/wordpress.sql`, read
 //! from the database WordPress created). It reports coverage, the failures
 //! by reason, the write classes, and the time per statement, and holds the
 //! go criterion for coverage: at most 1% of statements unhandled.
@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use storage_api::{classify, Class, Projection, ProjectionError, Translated};
 
-const SCHEMA: &str = include_str!("fixtures/wp-schema.sql");
+const SCHEMA: &str = include_str!("../schema/wordpress.sql");
 const CORPUS: &str = include_str!("fixtures/wp-corpus.jsonl");
 
 #[derive(Default)]

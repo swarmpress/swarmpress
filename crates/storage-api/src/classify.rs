@@ -12,7 +12,7 @@ pub enum Class {
 }
 
 /// Option names (or prefixes) WordPress keeps for itself.
-const SCRATCH_OPTIONS: &[&str] = &[
+pub const SCRATCH_OPTIONS: &[&str] = &[
     "_transient_",
     "_site_transient_",
     "cron",
@@ -33,7 +33,7 @@ const SCRATCH_OPTIONS: &[&str] = &[
 ];
 
 /// User meta WordPress keeps per login or per screen.
-const SCRATCH_USERMETA: &[&str] = &[
+pub const SCRATCH_USERMETA: &[&str] = &[
     "session_tokens",
     "wp_dashboard_quick_press_last_post_id",
     "community-events-location",
@@ -44,7 +44,7 @@ const SCRATCH_USERMETA: &[&str] = &[
 ];
 
 /// Post meta that is editor state, not content.
-const SCRATCH_POSTMETA: &[&str] = &[
+pub const SCRATCH_POSTMETA: &[&str] = &[
     "_edit_lock",
     "_edit_last",
     "_wp_trash_meta_status",
@@ -54,7 +54,7 @@ const SCRATCH_POSTMETA: &[&str] = &[
 ];
 
 /// The governed tables (without the prefix).
-const GOVERNED_TABLES: &[&str] = &[
+pub const GOVERNED_TABLES: &[&str] = &[
     "posts",
     "postmeta",
     "terms",
@@ -68,6 +68,31 @@ const GOVERNED_TABLES: &[&str] = &[
     "links",
     "options",
 ];
+
+/// Post types WordPress keeps for itself: revisions (the repository is the history), caches and
+/// queues.
+pub const SCRATCH_POST_TYPES: &[&str] = &[
+    "revision",
+    "oembed_cache",
+    "customize_changeset",
+    "user_request",
+    "scheduled-action",
+];
+
+/// Whether an option is WordPress's own state rather than a setting.
+pub fn is_scratch_option(name: &str) -> bool {
+    SCRATCH_OPTIONS
+        .iter()
+        .any(|p| name == *p || (p.ends_with('_') && name.starts_with(p)))
+}
+
+pub fn is_scratch_usermeta(key: &str) -> bool {
+    SCRATCH_USERMETA.contains(&key)
+}
+
+pub fn is_scratch_postmeta(key: &str) -> bool {
+    SCRATCH_POSTMETA.contains(&key)
+}
 
 fn mentions(sql: &str, keys: &[&str]) -> bool {
     keys.iter()
