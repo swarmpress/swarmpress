@@ -62,7 +62,7 @@ packages = ["knowledge"]
 id = "knowledge/nextest"
 component = "content"
 [[evidence.split]]
-packages = ["content-schema", "content-model", "blueprint", "blueprint-wasm"]
+packages = ["content-schema", "content-model", "blueprint", "blueprint-wasm", "storage-api"]
 id = "content/nextest"
 component = "content"
 [[evidence.split]]
@@ -461,6 +461,15 @@ repo = "swarmpress/swarmpress"
 workflow = "nightly.yml"
 artifact = "bench-server-load"
 branch = "main"
+
+[[evidence]]
+id = "bench/wp-seam"
+title = "the WordPress storage seam: SQL coverage, projection and boundary latency (M0, ADR-0084)"
+format = "cockpit-benchmark"
+kind = "benchmark"
+path = [".cockpit/evidence/bench__wp-seam/**/*.json", "artifacts/bench/wp-seam*.json"]
+component = "content"
+features = ["FEAT-107"]
 
 [[evidence]]
 id = "bench/model-eval"
