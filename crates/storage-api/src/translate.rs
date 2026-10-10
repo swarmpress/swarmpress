@@ -28,6 +28,8 @@ use std::ops::ControlFlow;
 #[derive(Debug, Clone, Default)]
 pub struct Schema {
     pub unique: BTreeMap<String, Vec<Vec<String>>>,
+    /// Each table's columns (for `ALTER TABLE`), kept by the projection.
+    pub columns: BTreeMap<String, Vec<String>>,
 }
 
 impl Schema {
@@ -100,6 +102,8 @@ pub enum Translated {
     ShowVariables,
     /// `SET …`, `START TRANSACTION`, `COMMIT`, `ROLLBACK`: no effect on the projection's content.
     Session,
+    /// DDL for a plugin's table in the scratch store (`crate::ddl`).
+    Ddl(crate::ddl::Ddl),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -184,6 +188,9 @@ pub fn translate(mysql: &str, schema: &Schema) -> Result<Translated, TranslateEr
     if upper.replace(' ', "").starts_with("SELECTFOUND_ROWS()") {
         return Ok(Translated::FoundRows);
     }
+    if v == "CREATE" || v == "ALTER" || v == "DROP" || v == "TRUNCATE" || v == "RENAME" {
+        return ddl(trimmed, &upper, schema);
+    }
     // Text-level: SQL_CALC_FOUND_ROWS.
     let calc_found_rows = upper.contains("SQL_CALC_FOUND_ROWS");
     let text = if calc_found_rows {
@@ -206,10 +213,110 @@ pub fn translate(mysql: &str, schema: &Schema) -> Result<Translated, TranslateEr
     }
     let write = rewrite(&mut stmt, schema)?;
     Ok(Translated::Sql {
-        sql: stmt.to_string(),
+        sql: strip_mysql_only(&stmt.to_string()),
         write,
         calc_found_rows,
     })
+}
+
+/// Clauses SQLite has no use for, as sqlparser prints them: row locks (a projection has one
+/// writer) and MySQL's `FROM DUAL`.
+fn strip_mysql_only(sql: &str) -> String {
+    let mut out = sql.to_string();
+    for clause in [
+        " FOR UPDATE SKIP LOCKED",
+        " FOR UPDATE NOWAIT",
+        " FOR UPDATE",
+        " FOR SHARE",
+        " LOCK IN SHARE MODE",
+        " FROM DUAL",
+    ] {
+        out = out.replace(clause, "");
+    }
+    out
+}
+
+fn parse_expr(sql: &str) -> Option<Expr> {
+    Parser::new(&sqlparser::dialect::SQLiteDialect {})
+        .try_with_sql(sql)
+        .and_then(|mut p| p.parse_expr())
+        .ok()
+}
+
+/// DDL: plugin tables go to the scratch store (`crate::ddl`); core tables accept only DDL that
+/// changes nothing SQLite keeps.
+fn ddl(sql: &str, upper: &str, schema: &Schema) -> Result<Translated, TranslateError> {
+    use crate::ddl::{alter_table, create_index, create_table, is_core, Ddl};
+    let words: Vec<&str> = sql.split_whitespace().collect();
+    let word = |i: usize| {
+        words
+            .get(i)
+            .map(|w| w.to_ascii_uppercase())
+            .unwrap_or_default()
+    };
+    let unsupported = |m: String| TranslateError::Unsupported(m);
+    let d = if upper.starts_with("CREATE TABLE") || upper.starts_with("CREATE TEMPORARY TABLE") {
+        let d = create_table(sql).map_err(unsupported)?;
+        if is_core(&d.table) || schema.columns.contains_key(&d.table) {
+            // Exists already: CREATE TABLE IF NOT EXISTS semantics (dbDelta checks first anyway).
+            return Ok(Translated::Session);
+        }
+        d
+    } else if upper.starts_with("CREATE INDEX") || upper.starts_with("CREATE UNIQUE INDEX") {
+        // An index changes no content: allowed on core tables too.
+        create_index(sql).map_err(unsupported)?
+    } else if word(0) == "ALTER" && word(1) == "TABLE" {
+        let table = unquote(words.get(2).copied().unwrap_or(""));
+        let existing = schema.columns.get(&table).cloned().unwrap_or_default();
+        let d = alter_table(sql, &existing).map_err(unsupported)?;
+        if is_core(&d.table)
+            && d.stmts.iter().any(|s| {
+                !s.starts_with("CREATE INDEX")
+                    && !s.starts_with("CREATE UNIQUE INDEX")
+                    && !s.starts_with("DROP INDEX")
+            })
+        {
+            return Err(unsupported(format!(
+                "ALTER TABLE on the core table {}",
+                d.table
+            )));
+        }
+        d
+    } else if word(0) == "DROP" && word(1) == "TABLE" {
+        let table = unquote(words.last().copied().unwrap_or("").trim_end_matches(';'));
+        if is_core(&table) {
+            return Err(unsupported(format!("DROP TABLE on the core table {table}")));
+        }
+        Ddl {
+            stmts: vec![format!("DROP TABLE IF EXISTS `{table}`")],
+            table,
+            unique: vec![],
+        }
+    } else if word(0) == "DROP" && word(1) == "INDEX" {
+        let table = unquote(words.last().copied().unwrap_or(""));
+        let name = unquote(words.get(2).copied().unwrap_or(""));
+        if is_core(&table) {
+            return Ok(Translated::Session);
+        }
+        Ddl {
+            stmts: vec![format!("DROP INDEX IF EXISTS `{table}__{name}`")],
+            table,
+            unique: vec![],
+        }
+    } else if word(0) == "TRUNCATE" {
+        let table = unquote(words.last().copied().unwrap_or(""));
+        if is_core(&table) {
+            return Err(unsupported(format!("TRUNCATE on the core table {table}")));
+        }
+        Ddl {
+            stmts: vec![format!("DELETE FROM `{table}`")],
+            table,
+            unique: vec![],
+        }
+    } else {
+        return Err(unsupported(format!("DDL {}", words.first().unwrap_or(&""))));
+    };
+    Ok(Translated::Ddl(d))
 }
 
 /// MySQL's multi-table `DELETE a, b FROM t a, t b WHERE …` (WordPress's expired-transient cleanup).
@@ -331,7 +438,77 @@ fn rewrite(stmt: &mut Statement, schema: &Schema) -> Result<Option<String>, Tran
             }
             Ok(Some(table))
         }
-        Statement::Update(u) => Ok(Some(unquote(&u.table.relation.to_string()))),
+        Statement::Update(u) if !u.table.joins.is_empty() => {
+            // MySQL's multi-table UPDATE t1 JOIN (…) … SET t1.c = v: the joined row set becomes a
+            // rowid subquery; the assignments may name only the updated table.
+            let (table, alias) = match &u.table.relation {
+                sqlparser::ast::TableFactor::Table { name, alias, .. } => {
+                    let t = object_name(name);
+                    (
+                        t.clone(),
+                        alias.as_ref().map(|a| a.name.value.clone()).unwrap_or(t),
+                    )
+                }
+                other => return Err(TranslateError::Unsupported(format!("UPDATE of {other}"))),
+            };
+            let from = u.table.to_string();
+            let mut sub = format!("SELECT {alias}.rowid FROM {from}");
+            if let Some(w) = u.selection.take() {
+                sub.push_str(&format!(" WHERE {w}"));
+            }
+            let prefix = format!("{alias}.");
+            let mut assignments = Vec::new();
+            for a in std::mem::take(&mut u.assignments) {
+                let target = a.target.to_string();
+                let value = a.value.to_string();
+                let col = target.strip_prefix(&prefix).unwrap_or(&target).to_string();
+                let value = value.replace(&prefix, "");
+                if value.contains('.') && !value.starts_with('\'') {
+                    return Err(TranslateError::Unsupported(
+                        "UPDATE … JOIN assigning from a joined table".into(),
+                    ));
+                }
+                assignments.push(format!("{col} = {value}"));
+            }
+            let sql = format!(
+                "UPDATE `{table}` SET {} WHERE rowid IN ({sub})",
+                assignments.join(", ")
+            );
+            let mut parsed = Parser::parse_sql(&sqlparser::dialect::SQLiteDialect {}, &sql)
+                .map_err(|e| TranslateError::Parse(e.to_string()))?;
+            *stmt = parsed.remove(0);
+            Ok(Some(table))
+        }
+        Statement::Update(u) => {
+            let table = unquote(&u.table.relation.to_string());
+            // MySQL's single-table UPDATE … ORDER BY … LIMIT n: SQLite (without its optional
+            // compile flag) needs the row set as a subquery.
+            if u.limit.is_some() || !u.order_by.is_empty() {
+                let mut sub = format!("SELECT rowid FROM `{table}`");
+                if let Some(w) = u.selection.take() {
+                    sub.push_str(&format!(" WHERE {w}"));
+                }
+                if !u.order_by.is_empty() {
+                    sub.push_str(&format!(
+                        " ORDER BY {}",
+                        u.order_by
+                            .iter()
+                            .map(|o| o.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
+                if let Some(l) = u.limit.take() {
+                    sub.push_str(&format!(" LIMIT {l}"));
+                }
+                u.order_by.clear();
+                u.selection = Some(
+                    parse_expr(&format!("rowid IN ({sub})"))
+                        .ok_or_else(|| TranslateError::Unsupported("UPDATE … LIMIT".into()))?,
+                );
+            }
+            Ok(Some(table))
+        }
         Statement::Delete(d) => {
             let from = match &d.from {
                 sqlparser::ast::FromTable::WithFromKeyword(t)
@@ -339,6 +516,30 @@ fn rewrite(stmt: &mut Statement, schema: &Schema) -> Result<Option<String>, Tran
                     t.first().map(|t| unquote(&t.relation.to_string()))
                 }
             };
+            if let (Some(table), true) = (&from, d.limit.is_some() || !d.order_by.is_empty()) {
+                let mut sub = format!("SELECT rowid FROM `{table}`");
+                if let Some(w) = d.selection.take() {
+                    sub.push_str(&format!(" WHERE {w}"));
+                }
+                if !d.order_by.is_empty() {
+                    sub.push_str(&format!(
+                        " ORDER BY {}",
+                        d.order_by
+                            .iter()
+                            .map(|o| o.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
+                if let Some(l) = d.limit.take() {
+                    sub.push_str(&format!(" LIMIT {l}"));
+                }
+                d.order_by.clear();
+                d.selection = Some(
+                    parse_expr(&format!("rowid IN ({sub})"))
+                        .ok_or_else(|| TranslateError::Unsupported("DELETE … LIMIT".into()))?,
+                );
+            }
             Ok(from)
         }
         Statement::Query(_) => Ok(None),
@@ -381,6 +582,21 @@ fn rewrite_functions(stmt: &mut Statement) {
             .ok()
     };
     let _ = visit_expressions_mut(stmt, |e| {
+        // MySQL's `\0` escape arrives as a raw NUL, which ends a statement for SQLite.
+        if let Expr::Value(v) = e {
+            if let sqlparser::ast::Value::SingleQuotedString(s) = &v.value {
+                if s.contains('\0') {
+                    let parts: Vec<String> = s
+                        .split('\0')
+                        .map(|p| format!("'{}'", p.replace('\'', "''")))
+                        .collect();
+                    if let Some(expr) = parse(&parts.join(" || char(0) || ")) {
+                        *e = expr;
+                    }
+                    return ControlFlow::<()>::Continue(());
+                }
+            }
+        }
         // MySQL's LIKE escapes with a backslash by default (WordPress's esc_like relies on it); SQLite needs it said.
         if let Expr::Like {
             pattern,
@@ -451,6 +667,21 @@ fn rewrite_functions(stmt: &mut Statement) {
         }
         if let Expr::Function(f) = e {
             let name = object_name(&f.name).to_ascii_uppercase();
+            let one_arg = match &f.args {
+                FunctionArguments::List(l) if l.args.len() == 1 => Some(l.args[0].to_string()),
+                _ => None,
+            };
+            // Same arguments, a different name.
+            let renamed = match name.as_str() {
+                "IF" => Some("iif"),
+                "GREATEST" => Some("max"),
+                "LEAST" => Some("min"),
+                _ => None,
+            };
+            if let Some(n) = renamed {
+                f.name = ObjectName::from(vec![Ident::new(n)]);
+                return ControlFlow::<()>::Continue(());
+            }
             let replacement = match name.as_str() {
                 "NOW" | "CURRENT_TIMESTAMP" | "SYSDATE" => Some("datetime('now')".to_string()),
                 "UTC_TIMESTAMP" => Some("datetime('now')".to_string()),
@@ -461,6 +692,18 @@ fn rewrite_functions(stmt: &mut Statement) {
                 {
                     Some("CAST(strftime('%s','now') AS INTEGER)".to_string())
                 }
+                "UNIX_TIMESTAMP" => one_arg
+                    .as_ref()
+                    .map(|a| format!("CAST(strftime('%s', {a}) AS INTEGER)")),
+                "FROM_UNIXTIME" => one_arg
+                    .as_ref()
+                    .map(|a| format!("datetime({a}, 'unixepoch')")),
+                "CHAR_LENGTH" | "CHARACTER_LENGTH" => {
+                    one_arg.as_ref().map(|a| format!("length({a})"))
+                }
+                "UCASE" => one_arg.as_ref().map(|a| format!("upper({a})")),
+                "LCASE" => one_arg.as_ref().map(|a| format!("lower({a})")),
+                "RAND" => Some("random()".to_string()),
                 _ => None,
             };
             if let Some(r) = replacement {

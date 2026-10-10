@@ -141,3 +141,46 @@ fn the_replay_reaches_the_state_wordpress_reached() {
         assert_eq!(norm(&rows(sql)), norm(&expected[key]), "{key}");
     }
 }
+
+const PLUGINS: &str = include_str!("fixtures/wp-corpus-plugins.jsonl");
+
+/// Contact Form 7, Yoast SEO and WooCommerce activated after the core corpus, then their pages,
+/// a form page, the shop, a product (created through WooCommerce's REST API), their wp-admin
+/// screens and a post edited with Yoast active. Plugin tables live in the scratch store.
+#[test]
+fn the_plugin_corpus_replays_after_core() {
+    let mut p = Projection::open(SCHEMA).unwrap();
+    for line in CORPUS.lines() {
+        let row: serde_json::Value = serde_json::from_str(line).unwrap();
+        let _ = p.query(row["q"].as_str().unwrap());
+    }
+    let mut failures: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut total = 0;
+    for line in PLUGINS.lines() {
+        let row: serde_json::Value = serde_json::from_str(line).unwrap();
+        let q = row["q"].as_str().unwrap();
+        total += 1;
+        if let Err(e) = p.query(q) {
+            failures.entry(reason(&e)).or_default().push(
+                q.split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .chars()
+                    .take(240)
+                    .collect(),
+            );
+        }
+    }
+    let unhandled: usize = failures.values().map(Vec::len).sum();
+    println!(
+        "plugin statements {total}  unhandled {unhandled} ({:.2}%)",
+        unhandled as f64 * 100.0 / total as f64
+    );
+    for (why, qs) in &failures {
+        println!("  {:4} × {why}\n         e.g. {}", qs.len(), qs[0]);
+    }
+    assert!(
+        unhandled * 100 <= total,
+        "go criterion: at most 1% unhandled"
+    );
+}

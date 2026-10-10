@@ -8,6 +8,9 @@ paths:
   - crates/storage-api/src/translate.rs
   - crates/storage-api/src/classify.rs
   - crates/storage-api/src/projection.rs
+  - crates/storage-api/src/ddl.rs
+  - crates/storage-api/examples/translate.rs
+  - crates/storage-api/tests/fixtures/wp-corpus-plugins.jsonl
   - crates/storage-api/examples/host.rs
   - crates/storage-api/tests/replay.rs
   - crates/storage-api/tests/fixtures/wp-corpus.jsonl
@@ -45,11 +48,11 @@ or scratch.
   - the projection takes p50 12 µs per statement;
   - the boundary over loopback HTTP takes p50 118 µs and p95 220 µs;
   - the front page costs about 21 ms of overhead.
-- Tests: `crates/storage-api/tests/replay.rs`, and the unit tests in `classify.rs`.
+- Plugins: Contact Form 7, Yoast SEO and WooCommerce replay with 0.08% unhandled. Their tables go
+  to the scratch store through the DDL translator (`ddl.rs`).
+- Tests: `crates/storage-api/tests/replay.rs`, and the unit tests in `classify.rs` and `ddl.rs`.
 
 ## Not built
 
-- Plugin coverage (their own tables need DDL translated into the scratch store).
-- The php-wasm transport.
 - The projection built from the repository (FEAT-106), and change sets as commits.
 - The fork's seams themselves (`swarmpress/wordpress`, M3).

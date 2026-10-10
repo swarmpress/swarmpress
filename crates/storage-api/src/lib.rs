@@ -17,6 +17,7 @@
 //! (CLAUDE.md rule 16).
 
 pub mod classify;
+pub mod ddl;
 pub mod projection;
 pub mod translate;
 

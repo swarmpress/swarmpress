@@ -79,11 +79,34 @@ impl Projection {
              CREATE TABLE information_schema.TABLES (TABLE_SCHEMA TEXT, TABLE_NAME TEXT, TABLE_TYPE TEXT, ENGINE TEXT);
              INSERT INTO information_schema.TABLES SELECT 'wordpress', name, 'BASE TABLE', 'InnoDB' FROM main.sqlite_master WHERE type = 'table';",
         )?;
-        Ok(Projection {
+        let mut p = Projection {
             db,
             schema: Schema::from_sqlite_ddl(ddl),
             found_rows: 0,
-        })
+        };
+        p.refresh_columns()?;
+        Ok(p)
+    }
+
+    /// Re-reads every table's columns into the schema (after DDL).
+    fn refresh_columns(&mut self) -> Result<(), ProjectionError> {
+        let tables: Vec<String> = {
+            let mut st = self.db.prepare("SELECT name FROM main.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")?;
+            let rows = st.query_map([], |r| r.get::<_, String>(0))?;
+            rows.collect::<Result<_, _>>()?
+        };
+        self.schema.columns.clear();
+        for t in tables {
+            let mut st = self.db.prepare(&format!(
+                "SELECT name FROM pragma_table_info('{}')",
+                t.replace('\'', "''")
+            ))?;
+            let cols = st
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            self.schema.columns.insert(t, cols);
+        }
+        Ok(())
     }
 
     pub fn schema(&self) -> &Schema {
@@ -119,6 +142,24 @@ impl Projection {
     pub fn run(&mut self, t: &Translated) -> Result<Outcome, ProjectionError> {
         match t {
             Translated::Session | Translated::ShowVariables => Ok(Outcome::default()),
+            Translated::Ddl(d) => {
+                for stmt in &d.stmts {
+                    self.db.execute_batch(stmt)?;
+                }
+                let keys = self.schema.unique.entry(d.table.clone()).or_default();
+                for k in &d.unique {
+                    if !keys.contains(k) {
+                        keys.push(k.clone());
+                    }
+                }
+                self.refresh_columns()?;
+                // MySQL's information_schema learns the new table too.
+                self.db.execute_batch(
+                    "DELETE FROM information_schema.TABLES;
+                     INSERT INTO information_schema.TABLES SELECT 'wordpress', name, 'BASE TABLE', 'InnoDB' FROM main.sqlite_master WHERE type = 'table';",
+                )?;
+                Ok(Outcome::default())
+            }
             Translated::FoundRows => {
                 Ok(Outcome { columns: vec!["FOUND_ROWS()".into()], rows: vec![vec![Value::String(self.found_rows.to_string())]], ..Outcome::default() })
             }
