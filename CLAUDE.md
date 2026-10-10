@@ -15,15 +15,16 @@ surfaces (ADR-0063, ADR-0065; decided, kit core and a spike first).
   and their work produces **one real website per player**.
 - The company is extensible through a JS SDK.
 - The user's own company is the imported, still-live **cinqueterre.travel**.
-- **Decided 2026-10-10, not built (ADR-0078 to ADR-0083):** sites move to **WordPress**, run on a
+- **Decided 2026-10-10, not built (ADR-0078 to ADR-0084):** sites move to **WordPress** (a minimal GPL
+  fork whose storage talks to the governed layer instead of MySQL), run on a
   pluggable PHP backend (php-wasm first) inside a **GPL sandbox reached only through APIs**, with a
   Guardian-style **governed content repository** (objects, commits, branches, change requests,
   merges, releases) as the truth, and the public site as a static export of `live`. Until that is
   built, the rules below about the site repo, JSON blocks and the Astro site kit describe the
   current path.
 
-Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0083; ADR-0038 to 0083 define
-the current architecture; ADR-0044 to 0083 are decided and mostly not built yet). Features and
+Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0084; ADR-0038 to 0084 define
+the current architecture; ADR-0044 to 0084 are decided and mostly not built yet). Features and
 their health: `docs/features/` plus Cockpit. The current MVP is `docs/mvp.md` (the owner's
 company for real; inference moves to hosted GPT-6-Luna, ADR-0067); its implementation designs are in
 `docs/design/`.
@@ -144,12 +145,13 @@ Site repos build with @swarm-press/site-kit + an agent-authored theme on GitHub 
 15. **Decisions change through ADRs.** Write a new ADR in Cockpit's dialect: `# ADR-NNNN —
     Title`, `**Status:**`, `**Date:**`, then Context, Decision and Consequences, including the
     alternatives and the negatives. Accepted ADRs are superseded, never rewritten.
-16. **WordPress stays in its GPL sandbox (ADR-0078).** WordPress, its PHP runtime (php-wasm is
-    GPL-2.0-or-later too) and every WordPress plugin, the swarm.press connector included, live in
-    one separately built and distributed GPL sandbox. Nothing in swarm.press's own code imports,
-    links, bundles or derives from GPL code. Every connection to WordPress is an API call (its REST
-    API, the connector's REST API, or its HTTP pages): no shared memory, no PHP calls, no reading its
-    database file, no hooks from outside.
+16. **WordPress stays in its GPL sandbox (ADR-0078, ADR-0084).** WordPress and its GPL fork
+    (`swarmpress/wordpress`, changed only at named storage seams), its PHP runtime (php-wasm is
+    GPL-2.0-or-later too) and every WordPress plugin live in one separately built and distributed GPL
+    sandbox. Nothing in swarm.press's own code imports, links, bundles or derives from GPL code.
+    Every connection between WordPress and the governed layer is an API call: WordPress's REST API
+    and HTTP pages inward, the storage API outward from the fork's seams. No shared memory, no PHP
+    calls from outside, no hooks registered from outside.
 
 ## Testing and evidence (Cockpit)
 
@@ -215,7 +217,7 @@ cockpit serve --watch                         # http://127.0.0.1:4747
 | Brick office, construction kit, information surfaces (concept, designs, prototype) | `docs/reference/brick-office.md`, `docs/design/construction-kit.md`, `docs/design/brick-office.md`, ADR-0063…0065 |
 | Site blueprint and tool graphs (page types, n8n-like tools, the brick town; decided, not built) | `docs/reference/construction-kits.md`, `docs/design/construction-kits.md`, ADR-0072 |
 | The builder UI: the Brick Studio (workbenches, pick-snap grammar, instruction booklet) | `docs/design/brick-studio.md`, ADR-0077 |
-| WordPress as the site engine: GPL sandbox, PHP backends, governed repository, sync seam, agents, publishing (decided, not built) | ADR-0078…0083 |
+| WordPress as the site engine: GPL sandbox, PHP backends, governed repository, the storage fork, agents, publishing (decided, not built) | ADR-0078…0084 (ADR-0081 superseded by 0084) |
 | Agent-loop principles (the owner's concept document) and the move to hosted GPT-6-Luna | `docs/reference/browser-agent-studio.md`, `docs/reference/gpt-6-luna-simulation-migration.md`, ADR-0067 |
 | Stage 0 contract, central HTTP API | `docs/mvp.md` (Stage 0), `crates/server/README.md` |
 | Local-first, storage, SDK | ADR-0038…0043, `docs/architecture/sdk.md`, `docs/guides/extending.md` |

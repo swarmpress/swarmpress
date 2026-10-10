@@ -1,6 +1,6 @@
 # ADR-0081 — The sync seam: a GPL connector and two APIs
 
-**Status:** Accepted (implements ADR-0078 §3 and §4 between the repository of ADR-0080 and a WordPress sandbox of ADR-0079)
+**Status:** Superseded by [ADR-0084](0084-a-wordpress-fork-whose-storage-is-the-governed-repository.md) (2026-10-10: the owner decided to fork WordPress's storage instead of syncing a working copy). Was: Accepted (implements ADR-0078 §3 and §4 between the repository of ADR-0080 and a WordPress sandbox of ADR-0079)
 **Date:** 2026-10-10
 
 ## Context

@@ -100,6 +100,7 @@ Accepted ADRs are never rewritten.
 | [0078](0078-wordpress-is-the-site-engine-sandboxed-behind-apis.md) | WordPress is the site engine, sandboxed and reached only through APIs | Accepted (supersedes ADR-0047's site engine) |
 | [0079](0079-pluggable-php-backends-php-wasm-first.md) | Pluggable PHP backends; php-wasm first | Accepted |
 | [0080](0080-the-governed-content-repository.md) | The governed content repository | Accepted (supersedes ADR-0047's source of truth, ADR-0056 decision 11 for content) |
-| [0081](0081-the-sync-seam-a-gpl-connector-and-two-apis.md) | The sync seam: a GPL connector and two APIs | Accepted |
+| [0081](0081-the-sync-seam-a-gpl-connector-and-two-apis.md) | The sync seam: a GPL connector and two APIs | Superseded by ADR-0084 |
 | [0082](0082-agents-and-the-studio-work-on-wordpress-through-capabilities.md) | Agents and the Studio work on WordPress through capabilities | Accepted |
 | [0083](0083-publishing-a-wordpress-site-and-migrating-cinqueterre.md) | Publishing a WordPress site, and migrating cinqueterre.travel | Accepted |
+| [0084](0084-a-wordpress-fork-whose-storage-is-the-governed-repository.md) | A WordPress fork whose storage is the governed repository | Accepted (supersedes ADR-0081) |
