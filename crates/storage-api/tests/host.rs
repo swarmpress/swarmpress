@@ -13,8 +13,12 @@ use storage_api::{Host, Native};
 
 const CORPUS: &str = include_str!("fixtures/wp-corpus.jsonl");
 
+/// A new company whose installer (WordPress's SQLite plugin, which recorded the corpus) made the
+/// core tables itself: they are created from the governed definitions before the replay.
 fn host() -> Host<Native> {
-    Host::new(Repo::new(), "wp_", Box::new(Native::memory))
+    let mut h = Host::new(Repo::new(), "wp_", Box::new(Native::memory));
+    h.create_core_tables(LIVE).unwrap();
+    h
 }
 
 /// The corpus as requests: consecutive statements with the same URI.

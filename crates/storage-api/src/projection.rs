@@ -87,9 +87,11 @@ impl<E: Exec> Projection<E> {
             "ATTACH DATABASE ':memory:' AS information_schema;
              CREATE TABLE information_schema.TABLES (TABLE_SCHEMA TEXT, TABLE_NAME TEXT, TABLE_TYPE TEXT, ENGINE TEXT);",
         )?;
+        let mut schema = Schema::from_sqlite_ddl(ddl);
+        schema.core_ddl = Schema::ddl_by_table(WORDPRESS_SCHEMA);
         let mut p = Projection {
             db,
-            schema: Schema::from_sqlite_ddl(ddl),
+            schema,
             found_rows: 0,
         };
         p.refresh_schema()?;

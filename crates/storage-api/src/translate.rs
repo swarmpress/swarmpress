@@ -30,9 +30,35 @@ pub struct Schema {
     pub unique: BTreeMap<String, Vec<Vec<String>>>,
     /// Each table's columns (for `ALTER TABLE`), kept by the projection.
     pub columns: BTreeMap<String, Vec<String>>,
+    /// The governed layer's definition of each core table (its CREATE TABLE and indexes), used
+    /// when WordPress's installer creates one.
+    pub core_ddl: BTreeMap<String, Vec<String>>,
 }
 
 impl Schema {
+    /// Each table's statements in SQLite DDL: its CREATE TABLE, then the indexes on it.
+    pub fn ddl_by_table(ddl: &str) -> BTreeMap<String, Vec<String>> {
+        let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for stmt in ddl.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+            let lower = stmt.to_ascii_lowercase();
+            let table = if lower.starts_with("create table") {
+                stmt.find('(')
+                    .map(|open| unquote(stmt["create table".len()..open].trim()))
+            } else if lower.contains(" index ") {
+                lower.find(" on ").and_then(|on| {
+                    stmt.find('(')
+                        .map(|open| unquote(stmt[on + 4..open].trim()))
+                })
+            } else {
+                None
+            };
+            if let Some(t) = table {
+                out.entry(t).or_default().push(stmt.to_string());
+            }
+        }
+        out
+    }
+
     /// The unique keys of `CREATE [UNIQUE] INDEX` statements and `PRIMARY KEY` columns in SQLite DDL.
     pub fn from_sqlite_ddl(ddl: &str) -> Schema {
         let mut s = Schema::default();
@@ -257,9 +283,27 @@ fn ddl(sql: &str, upper: &str, schema: &Schema) -> Result<Translated, TranslateE
     let unsupported = |m: String| TranslateError::Unsupported(m);
     let d = if upper.starts_with("CREATE TABLE") || upper.starts_with("CREATE TEMPORARY TABLE") {
         let d = create_table(sql).map_err(unsupported)?;
-        if is_core(&d.table) || schema.columns.contains_key(&d.table) {
+        if schema.columns.contains_key(&d.table) {
             // Exists already: CREATE TABLE IF NOT EXISTS semantics (dbDelta checks first anyway).
             return Ok(Translated::Session);
+        }
+        if is_core(&d.table) {
+            // The installer creating a core table gets the governed layer's definition of it.
+            let stmts = schema.core_ddl.get(&d.table).cloned().ok_or_else(|| {
+                unsupported(format!(
+                    "no governed definition of the core table {}",
+                    d.table
+                ))
+            })?;
+            let unique = Schema::from_sqlite_ddl(&stmts.join(";\n"))
+                .unique
+                .remove(&d.table)
+                .unwrap_or_default();
+            return Ok(Translated::Ddl(Ddl {
+                table: d.table,
+                stmts,
+                unique,
+            }));
         }
         d
     } else if upper.starts_with("CREATE INDEX") || upper.starts_with("CREATE UNIQUE INDEX") {

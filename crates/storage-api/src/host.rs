@@ -58,6 +58,8 @@ impl From<String> for HostError {
 struct Branch<E: Exec> {
     p: Projection<E>,
     built_from: Option<Digest>,
+    /// Asset sidecars written during the current request (`asset:<path>` objects).
+    assets: Vec<(String, serde_json::Value)>,
 }
 
 /// Opens an empty SQLite for a new projection.
@@ -101,7 +103,10 @@ impl<E: Exec> Host<E> {
         }
         let prefix = self.prefix.clone();
         if !self.branches.contains_key(branch) {
-            let mut p = Projection::with((self.open)()?, WORDPRESS_SCHEMA)?;
+            // A new company's live starts without tables: WordPress's installer creates them
+            // (from the governed definitions), as it would on an empty MySQL database.
+            let ddl = if head.is_none() { "" } else { WORDPRESS_SCHEMA };
+            let mut p = Projection::with((self.open)()?, ddl)?;
             for (k, v) in self.repo.materialize(branch) {
                 objects::write_object(p.exec(), &prefix, &k, &v)?;
             }
@@ -111,6 +116,7 @@ impl<E: Exec> Host<E> {
                 Branch {
                     p,
                     built_from: head.clone(),
+                    assets: Vec::new(),
                 },
             );
         }
@@ -170,7 +176,15 @@ impl<E: Exec> Host<E> {
                 return Err(ProjectionError::LiveIsReadOnly(table.clone()).into());
             }
         }
-        Ok(b.p.run(&t)?)
+        let out = b.p.run(&t)?;
+        if matches!(t, Translated::Ddl(_)) {
+            let prefix = self.prefix.clone();
+            objects::install_capture(
+                self.branches.get_mut(branch).expect("ensured").p.exec(),
+                &prefix,
+            )?;
+        }
+        Ok(out)
     }
 
     /// Ends a request on `branch`: its governed changes become one commit by `author`.
@@ -187,6 +201,9 @@ impl<E: Exec> Host<E> {
         let mut read = Vec::new();
         for k in keys {
             read.push((k.clone(), objects::read_object(b.p.exec(), &prefix, &k)?));
+        }
+        for (k, v) in std::mem::take(&mut b.assets) {
+            read.push((k, Some(v)));
         }
         let marks = objects::sequences(b.p.exec(), &prefix)?;
         let changes: Vec<(String, Option<serde_json::Value>)> = read
@@ -215,6 +232,64 @@ impl<E: Exec> Host<E> {
             b.built_from = head.clone();
         }
         Ok(head)
+    }
+
+    /// Creates every core table on `branch` from the governed definitions: for an import from a
+    /// database whose installer did not send its own CREATE TABLE statements.
+    pub fn create_core_tables(&mut self, branch: &str) -> Result<(), HostError> {
+        let prefix = self.prefix.clone();
+        let b = self.ensure(branch)?;
+        for (table, stmts) in crate::translate::Schema::ddl_by_table(WORDPRESS_SCHEMA) {
+            if b.p.schema().columns.contains_key(&table) {
+                continue;
+            }
+            let unique = crate::translate::Schema::from_sqlite_ddl(&stmts.join(";\n"))
+                .unique
+                .remove(&table)
+                .unwrap_or_default();
+            b.p.run(&Translated::Ddl(crate::ddl::Ddl {
+                table,
+                stmts,
+                unique,
+            }))?;
+        }
+        objects::install_capture(b.p.exec(), &prefix)?;
+        Ok(())
+    }
+
+    /// Records a file WordPress wrote under its uploads directory: the bytes are in object
+    /// storage under `sha256`; the sidecar (`asset:<path>`) joins the request's commit.
+    pub fn put_asset(
+        &mut self,
+        branch: &str,
+        path: &str,
+        sha256: &str,
+        mime: &str,
+        size: u64,
+    ) -> Result<(), HostError> {
+        let b = self.ensure(branch)?;
+        let key = format!("asset:{path}");
+        b.assets.retain(|(k, _)| *k != key);
+        b.assets.push((
+            key,
+            serde_json::json!({"sha256": sha256, "mime": mime, "size": size}),
+        ));
+        Ok(())
+    }
+
+    /// The object-storage digest of an uploaded file on `branch` (this request's, or committed).
+    pub fn asset(&self, branch: &str, path: &str) -> Option<String> {
+        let key = format!("asset:{path}");
+        let pending = self.branches.get(branch).and_then(|b| {
+            b.assets
+                .iter()
+                .rev()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| v.clone())
+        });
+        pending
+            .or_else(|| self.repo.get(branch, &key).cloned())
+            .and_then(|v| v.get("sha256").and_then(|s| s.as_str()).map(str::to_string))
     }
 
     /// Forgets a branch's projection (its scratch state goes with it).

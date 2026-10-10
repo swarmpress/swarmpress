@@ -8,6 +8,7 @@
 //! | `user:ID` | `users` (without the password hash), its `usermeta` |
 //! | `comment:ID` | `comments`, its `commentmeta` |
 //! | `link:ID` | `links` |
+//! | `asset:path` | none: an uploaded file's sidecar (digest, type, size); the bytes are in object storage |
 //!
 //! Meta rows are keyed by their ids (`{"12": ["_thumbnail_id", "40"]}`) so two branches adding
 //! different meta merge field by field. Scratch never becomes an object: auto-drafts,
@@ -82,11 +83,21 @@ fn without(mut m: Map<String, Value>, cols: &[&str]) -> Map<String, Value> {
     m
 }
 
-/// Installs the capture triggers (temporary: they live with the connection, not the schema).
+/// Installs the capture triggers on the core tables that exist (temporary: they live with the
+/// connection, not the schema). Called again after the installer creates tables.
 pub fn install_capture(db: &mut dyn Exec, prefix: &str) -> Result<(), String> {
+    let existing: BTreeSet<String> = db
+        .query("SELECT name FROM main.sqlite_master WHERE type = 'table'")?
+        .rows
+        .into_iter()
+        .filter_map(|r| r[0].as_str().map(str::to_string))
+        .collect();
     let mut sql = String::from("CREATE TEMP TABLE IF NOT EXISTS _sp_changes (k TEXT NOT NULL);\n");
     for (table, col, kind) in CAPTURE {
         let t = format!("{prefix}{table}");
+        if !existing.contains(&t) {
+            continue;
+        }
         for (event, rows) in [
             ("INSERT", &["NEW"][..]),
             ("UPDATE", &["NEW", "OLD"][..]),
@@ -329,6 +340,9 @@ pub fn delete_object(db: &mut dyn Exec, prefix: &str, key: &str) -> Result<(), S
     let (kind, id) = key
         .split_once(':')
         .ok_or_else(|| format!("bad key {key}"))?;
+    if kind == "asset" {
+        return Ok(());
+    }
     let t = |n: &str| format!("{prefix}{n}");
     let v = if kind == "option" {
         lit(&Value::from(id))
@@ -383,6 +397,9 @@ pub fn write_object(db: &mut dyn Exec, prefix: &str, key: &str, v: &Value) -> Re
     let (kind, id) = key
         .split_once(':')
         .ok_or_else(|| format!("bad key {key}"))?;
+    if kind == "asset" {
+        return Ok(());
+    }
     let t = |n: &str| format!("{prefix}{n}");
     let row = |col: &str, idv: Value| {
         let mut m = v
@@ -537,6 +554,9 @@ pub fn read_all(db: &mut dyn Exec, prefix: &str) -> Result<BTreeMap<String, Valu
 
 /// The table's AUTOINCREMENT high-water marks in the projection.
 pub fn sequences(db: &mut dyn Exec, prefix: &str) -> Result<BTreeMap<String, i64>, String> {
+    if !has_sequences(db)? {
+        return Ok(BTreeMap::new());
+    }
     let r = db.query("SELECT name, seq FROM sqlite_sequence")?;
     Ok(r.rows
         .into_iter()
@@ -556,12 +576,32 @@ pub fn raise_sequences(
     prefix: &str,
     marks: &BTreeMap<String, i64>,
 ) -> Result<(), String> {
+    if !has_sequences(db)? {
+        // No AUTOINCREMENT table exists yet: the installer has not created the tables.
+        return Ok(());
+    }
+    let existing: BTreeSet<String> = db
+        .query("SELECT name FROM main.sqlite_master WHERE type = 'table'")?
+        .rows
+        .into_iter()
+        .filter_map(|r| r[0].as_str().map(str::to_string))
+        .collect();
     for (table, id) in marks {
         let t = format!("{prefix}{table}");
+        if !existing.contains(&t) {
+            continue;
+        }
         db.execute(&format!(
             "UPDATE sqlite_sequence SET seq = max(seq, {id}) WHERE name = '{t}'"
         ))?;
         db.execute(&format!("INSERT INTO sqlite_sequence (name, seq) SELECT '{t}', {id} WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = '{t}')"))?;
     }
     Ok(())
+}
+
+fn has_sequences(db: &mut dyn Exec) -> Result<bool, String> {
+    Ok(!db
+        .query("SELECT 1 FROM main.sqlite_master WHERE name = 'sqlite_sequence'")?
+        .rows
+        .is_empty())
 }

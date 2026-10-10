@@ -12,6 +12,9 @@ paths:
   - crates/storage-api/src/objects.rs
   - crates/storage-api/src/host.rs
   - crates/storage-api/tests/host.rs
+  - crates/storage-api/src/protocol.rs
+  - crates/storage-api/src/derived.rs
+  - crates/storage-api/src/bin/swarmpress-storage.rs
   - crates/storage-api/examples/translate.rs
   - crates/storage-api/tests/fixtures/wp-corpus-plugins.jsonl
   - crates/storage-api/examples/host.rs
@@ -77,6 +80,25 @@ or scratch.
   - every later request commits on a work branch, which reaches WordPress's state;
   - a projection rebuilt from the repository alone holds the same content;
   - the change request merges into `live`, and `live`'s projection follows.
+
+- **The protocol** (`protocol.rs`):
+  - the storage channel the fork's seams speak: `query`, `end`, `session`, `asset.put`,
+    `asset.get`, `mail`, `http`;
+  - the governed API: sessions binding a sandbox to a branch, a signed-in user and an author;
+    branches, change requests with their diffs, the merge queue, releases and rollback;
+  - commit authors come from the session, never from WordPress.
+- **After a merge,** term counts are recomputed from the merged posts (`derived.rs`).
+- **A new company's projection starts without tables.** WordPress's installer creates them from
+  the governed definitions, as it would on an empty MySQL database.
+- **`swarmpress-storage`:** the protocol as a native service, for the runner, the sandbox's Node
+  entry and conformance. The repository persists as verified append-only records, assets by
+  digest, and mail in an outbox. Outgoing HTTP fails loudly until a fetch proxy is configured.
+- **Measured once by hand** with the fork (`swarmpress/wordpress`) on native PHP against
+  `swarmpress-storage`, before conformance automates it:
+  - WordPress's installer imports onto `live`;
+  - a REST post on a work branch becomes a commit attributed to the session's agent, job and
+    model;
+  - the change request merges, and `live`'s front page shows the post.
 
 ## Not built
 

@@ -18,9 +18,11 @@
 
 pub mod classify;
 pub mod ddl;
+pub mod derived;
 pub mod host;
 pub mod objects;
 pub mod projection;
+pub mod protocol;
 pub mod translate;
 
 pub use classify::{classify, Class};
@@ -28,4 +30,5 @@ pub use host::{Host, HostError};
 #[cfg(feature = "native")]
 pub use projection::Native;
 pub use projection::{Exec, Outcome, Projection, ProjectionError, Rows, WORDPRESS_SCHEMA};
+pub use protocol::{Platform, Session};
 pub use translate::{translate, Schema, TranslateError, Translated};
