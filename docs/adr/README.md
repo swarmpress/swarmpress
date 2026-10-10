@@ -97,3 +97,9 @@ Accepted ADRs are never rewritten.
 | [0075](0075-company-text-travels-with-the-log.md) | Company text travels with the log segments | Accepted |
 | [0076](0076-n8n-workflows-run-as-tools.md) | n8n workflows run as tools | Accepted (supersedes in part ADR-0072) |
 | [0077](0077-the-brick-studio.md) | The Brick Studio | Accepted (extends ADR-0072 §5, §7) |
+| [0078](0078-wordpress-is-the-site-engine-sandboxed-behind-apis.md) | WordPress is the site engine, sandboxed and reached only through APIs | Accepted (supersedes ADR-0047's site engine) |
+| [0079](0079-pluggable-php-backends-php-wasm-first.md) | Pluggable PHP backends; php-wasm first | Accepted |
+| [0080](0080-the-governed-content-repository.md) | The governed content repository | Accepted (supersedes ADR-0047's source of truth, ADR-0056 decision 11 for content) |
+| [0081](0081-the-sync-seam-a-gpl-connector-and-two-apis.md) | The sync seam: a GPL connector and two APIs | Accepted |
+| [0082](0082-agents-and-the-studio-work-on-wordpress-through-capabilities.md) | Agents and the Studio work on WordPress through capabilities | Accepted |
+| [0083](0083-publishing-a-wordpress-site-and-migrating-cinqueterre.md) | Publishing a WordPress site, and migrating cinqueterre.travel | Accepted |
