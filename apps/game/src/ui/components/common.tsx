@@ -14,6 +14,9 @@ const ICONS: Record<string, string> = {
   performance: 'M3 17l5-6 4 3 6-8 3 3',
   hiring: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M18 8v6M15 11h6',
   blueprint: 'M4 21V8l8-5 8 5v13zM4 12h16M4 16.5h16M10 21v-3h4v3',
+  town: 'M3 21h18M5 21V11l4-3 4 3v10M13 21V7l4-3 4 3v14M8 14h2M8 17h2M16 10h2M16 13h2M16 16h2',
+  building: 'M4 21V9l8-5 8 5v12zM9 21v-6h6v6M8 11h2M14 11h2',
+  factory: 'M3 21V11l5 3V11l5 3V11l5 3V5h3v16zM7 18h2M12 18h2M17 18h2',
   close: 'M6 6l12 12M18 6L6 18',
   back: 'M15 5l-7 7 7 7',
 }

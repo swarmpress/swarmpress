@@ -1,3 +1,4 @@
+import { SECTIONS, sectionOffered, type SectionId, type StudioTab } from './sections'
 import { createContext } from 'preact'
 import type { SiteModels } from '../blueprint/types'
 import { useContext } from 'preact/hooks'
@@ -84,6 +85,8 @@ export interface OverlayStore {
   /** The site's blueprint, tools and town (ADR-0072); null until the source has them. */
   siteModels: ReadonlySignal<SiteModels | null>
   panel: ReturnType<typeof signal<PanelId | null>>
+  /** The Studio's workbench (the Blueprint panel's tab): the shell's Building and Factory open it there. */
+  studioTab: ReturnType<typeof signal<StudioTab>>
   profile: ReturnType<typeof signal<ProfileTarget | null>>
   selectedProject: ReturnType<typeof signal<string | null>>
   selectedItem: ReturnType<typeof signal<string | null>>
@@ -130,6 +133,8 @@ export interface OverlayStore {
   openProfile(t: ProfileTarget, opener?: HTMLElement | null): void
   closeProfile(): void
   togglePanel(id: PanelId): void
+  /** Opens a section of the shell (ADR-0086): its panel and workbench, or the town (no panel). */
+  openSection(id: SectionId): void
   /** Opens the Activity panel (when the source has a record), on `jobId` if given: the HUD's "Now" strip. */
   openActivity(jobId?: number | null): void
   /** Opens a work item in the Plan panel. */
@@ -268,6 +273,7 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
     live,
     siteModels,
     panel: signal<PanelId | null>(null),
+    studioTab: signal<StudioTab>('town'),
     profile: signal<ProfileTarget | null>(null),
     selectedProject: signal<string | null>(null),
     selectedItem: signal<string | null>(null),
@@ -360,6 +366,14 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
     togglePanel(id) {
       if (!store.panels.some((p) => p.id === id)) return
       store.panel.value = store.panel.value === id ? null : id
+    },
+    openSection(id) {
+      const s = SECTIONS.find((x) => x.id === id)
+      if (!s || !sectionOffered(s, store.panels)) return
+      batch(() => {
+        if (s.studioTab) store.studioTab.value = s.studioTab
+        store.panel.value = s.panel
+      })
     },
     openActivity(jobId) {
       if (!store.panels.some((p) => p.id === 'activity')) return

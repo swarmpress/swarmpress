@@ -72,7 +72,9 @@ function useChecker(): Checker {
 export function Blueprint() {
   const store = useStore()
   const models = store.siteModels.value
-  const [tab, setTab] = useState<Tab>('town')
+  // The workbench lives in the store: the shell's Building and Factory open the Studio on theirs.
+  const tab = (store.studioTab.value ?? 'town') as Tab
+  const setTab = (t: Tab) => (store.studioTab.value = t)
   const checker = useChecker()
   const wp = (models ?? {}) as WordPressParts
   return (

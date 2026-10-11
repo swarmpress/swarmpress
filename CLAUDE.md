@@ -12,6 +12,8 @@ browser tests run on SwiftShader's WebGPU, `apps/game/e2e/webgpu.ts`). The offic
 in bricks from a construction kit that players and staff build with, with live information
 surfaces (ADR-0063, ADR-0065). Since 2026-10-11 it is **bricks everywhere** (ADR-0085): every room,
 the hallway, the street and the people, in the same bricks and palette as the Studio's editors.
+The UI is a warm LEGO app shell (ADR-0086): sections on top, tools on the left, the 3D town between;
+the town of section buildings is always generic, the same for every company.
 - The staff are LLM agents with persistent personas. Their meetings play out as speech bubbles,
   and their work produces **one real website per player**.
 - The company is extensible through a JS SDK.
@@ -27,8 +29,8 @@ the hallway, the street and the people, in the same bricks and palette as the St
   owner. Until then the Astro path is the default and the rules below about the site repo, JSON
   blocks and the site kit describe it.
 
-Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0085; ADR-0038 to 0085 define
-the current architecture; ADR-0044 to 0085 are decided and mostly not built yet). Features and
+Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0086; ADR-0038 to 0086 define
+the current architecture; ADR-0044 to 0086 are decided and mostly not built yet). Features and
 their health: `docs/features/` plus Cockpit. The current MVP is `docs/mvp.md` (the owner's
 company for real; inference moves to hosted GPT-6-Luna, ADR-0067); its implementation designs are in
 `docs/design/`.

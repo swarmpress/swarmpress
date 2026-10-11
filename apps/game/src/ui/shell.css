@@ -1,0 +1,104 @@
+/* The app shell (ADR-0086): the sections on top, the sidebar on the left, the 3D town between
+   them, the panels as the inspector on the right. Applies once the overlay mounts (body.has-shell);
+   frozen screenshot pages without the overlay keep the full-screen scene. */
+
+:root {
+  --shell-top: 72px;
+  --shell-side: 236px;
+  /* The status strip (the HUD) under the top bar, over the town. */
+  --shell-strip: 46px;
+}
+
+body.has-shell { background: #faf6ee; color: #26231f; }
+body.has-shell #stage { top: calc(var(--shell-top) + var(--shell-strip)); left: var(--shell-side); }
+body.has-shell #ui { z-index: 3; }
+
+/* --- Top: the logo and the sections ------------------------------------------------------- */
+.shell-top { position: fixed; top: 0; left: 0; right: 0; height: var(--shell-top); z-index: 2; display: flex; align-items: center; gap: 18px; padding: 0 18px 0 20px;
+             background: var(--ui-page); border-bottom: 1px solid var(--ui-line); }
+.shell-logo { display: flex; align-items: center; gap: 10px; flex: none; width: calc(var(--shell-side) - 38px); }
+.shell-wordmark { font: 600 25px/1 var(--ui-serif); letter-spacing: -0.01em; color: var(--ui-text); }
+.shell-dot { color: #d99a14; }
+.shell-sections ul { display: flex; gap: 8px; }
+.shell-section { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px 0 12px; border: 1px solid var(--ui-line); border-radius: 12px;
+                 background: #fff; color: var(--ui-text); font: inherit; text-align: left; cursor: pointer; box-shadow: 0 1px 0 rgba(60, 45, 20, 0.06); }
+.shell-section:hover { background: var(--ui-card); }
+.shell-section.is-active { background: var(--ui-ink-btn); border-color: var(--ui-ink-btn); color: #fffdf8; box-shadow: 0 4px 12px rgba(38, 35, 31, 0.25); }
+.shell-section.is-active .shell-section-icon { color: var(--ui-accent); }
+.shell-section-icon { display: grid; place-items: center; color: #4a443b; }
+.shell-section-text { display: flex; flex-direction: column; gap: 2px; }
+.shell-section-label { font-size: 15px; font-weight: 600; line-height: 1.1; }
+.shell-section-sub { font: 11px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ui-muted); white-space: nowrap; }
+.shell-section.is-active .shell-section-sub { color: #d9d2c4; }
+@media (max-width: 1560px) { .shell-section-sub { display: none; } .shell-section { height: 44px; } }
+@media (max-width: 1180px) { .shell-wordmark { font-size: 21px; } .shell-section { padding: 0 12px 0 10px; } }
+
+/* --- Side: the site, every tool with its count, quick actions ----------------------------- */
+.shell-side { position: fixed; top: var(--shell-top); left: 0; bottom: 0; width: var(--shell-side); z-index: 2; display: flex; flex-direction: column; gap: 18px;
+              padding: 16px 14px; overflow: auto; background: var(--ui-page); border-right: 1px solid var(--ui-line); }
+.shell-site { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--ui-line); border-radius: 12px; background: #fff; }
+.shell-site-thumb { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 9px; background: #f2b632; color: #26231f; }
+.shell-site-text { display: flex; flex-direction: column; min-width: 0; }
+.shell-site-name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shell-site-sub { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ui-muted); }
+.shell-dot-status { width: 8px; height: 8px; border-radius: 50%; background: #b9b0a1; }
+.shell-dot-status.is-on { background: #1f9d55; }
+.shell-side-title { margin: 0 0 6px 10px !important; font: 600 12px/1.2 system-ui, sans-serif !important; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ui-muted); }
+
+.shell-side .toolbar { position: static; padding: 0; border: 0; border-radius: 0; background: none; backdrop-filter: none; }
+.shell-side .toolbar ul { flex-direction: column; gap: 2px; }
+.shell-side .tool { width: 100%; padding: 9px 10px; border-radius: 10px; color: var(--ui-text); font-size: 15px; }
+.shell-side .tool .ui-icon { width: 20px; height: 20px; color: #4a443b; }
+.shell-side .tool:hover { background: var(--ui-card-hover); }
+.shell-side .tool.is-active { background: #fbe7b4; color: var(--ui-text); }
+.shell-side .tool.is-primary:not(.is-active) { box-shadow: none; }
+.shell-side .tool-label { display: inline !important; }
+.shell-side .tool kbd { display: none; }
+.tool-num { margin-left: auto; color: var(--ui-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.shell-side .tool-count { margin-left: auto; background: var(--ui-info); color: #fff; }
+.shell-side .tool-count.is-high { background: var(--ui-bad); }
+
+.shell-quick { margin-top: auto; }
+.shell-quick ul { display: flex; flex-direction: column; gap: 2px; }
+.shell-quick-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 10px; background: none; color: var(--ui-text);
+                   font: inherit; font-size: 14px; text-align: left; text-decoration: none; cursor: pointer; }
+.shell-quick-btn:hover { background: var(--ui-card-hover); }
+.shell-quick-btn .ui-icon { color: #4a443b; }
+
+/* --- The inspector: panels on the right of the town --------------------------------------- */
+body.has-shell .panel { top: calc(var(--shell-top) + var(--shell-strip) + 12px); right: 12px; bottom: 12px; border-radius: 16px; backdrop-filter: none; }
+body.has-shell .panel.is-full { top: calc(var(--shell-top) + var(--shell-strip) + 8px); left: calc(var(--shell-side) + 8px); right: 8px; bottom: 8px; }
+body.has-shell .panel-head h2 { font-size: 22px; }
+body.has-shell .modal-backdrop { background: rgba(38, 35, 31, 0.35); }
+
+/* --- The HUD as the status strip: the clock and its controls, the company's numbers ------- */
+body.has-shell .hud { top: var(--shell-top); left: var(--shell-side); right: 0; height: var(--shell-strip); max-width: none; box-sizing: border-box; flex-wrap: nowrap;
+                      align-items: center; gap: 14px; padding: 0 16px; overflow: hidden; border-radius: 0; background: var(--ui-page, #faf6ee); color: #26231f;
+                      border-bottom: 1px solid #e6dccb; backdrop-filter: none; white-space: nowrap; }
+body.has-shell .hud.has-clock { max-width: none; }
+body.has-shell .hud-meta { margin-left: auto; }
+@media (max-width: 1400px) { body.has-shell .hud-now, body.has-shell .hud-site { display: none; } }
+body.has-shell .hud-meta { color: #6a6256; opacity: 1; }
+body.has-shell .hud-btn { color: #26231f; }
+body.has-shell .hud-btn:hover { background: #efe7d6; }
+body.has-shell .hud-btn[aria-pressed='true'] { background: #f2b632; color: #26231f; }
+body.has-shell .hud-chip { border-color: #d9cfbd; background: #fff; color: #26231f; }
+body.has-shell .hud-chip.is-running { color: #157a3d; border-color: #9bd3ae; }
+body.has-shell .hud-chip.is-held { color: #8a5a00; border-color: #ecc77a; }
+body.has-shell .hud-chip.is-resting, body.has-shell .hud-chip.is-model-loading { color: #1d4fd8; border-color: #a9bff5; }
+body.has-shell .hud-chip.is-lease-lost, body.has-shell .hud-chip.is-halted { color: #9b1c12; border-color: #f1a39b; background: #fde4e1; }
+body.has-shell .hud-now { color: #1a3f9e; background: #eef3fe; border-color: #a9bff5; }
+body.has-shell .hud-site a { color: #26231f; }
+body.has-shell .hud-site.is-warn a { color: #8a5a00; }
+body.has-shell .hud-unattended input { background: #fff; color: #26231f; border-color: #d9cfbd; }
+body.has-shell .hud-card { top: calc(var(--shell-top) + var(--shell-strip) + 12px); left: calc(var(--shell-side) + 12px); background: #fffdf8; color: #26231f; border-color: #e6dccb;
+                           box-shadow: 0 18px 50px rgba(60, 45, 20, 0.18); }
+body.has-shell .hud-card-text { color: #4a443b; }
+body.has-shell .hud-toasts { top: calc(var(--shell-top) + var(--shell-strip) + 12px); }
+body.has-shell .hud-toast { background: #fffdf8; color: #9b1c12; border-color: #f1a39b; box-shadow: 0 8px 24px rgba(60, 45, 20, 0.16); }
+
+@media (max-width: 1100px) {
+  :root { --shell-side: 200px; }
+  .shell-logo { width: auto; }
+  .shell-section-label { font-size: 14px; }
+}

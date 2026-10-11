@@ -11,6 +11,7 @@ import { Performance } from './Performance'
 import { Plan } from './Plan'
 import { ProfileCard } from './ProfileCard'
 import { Projects } from './Projects'
+import { Sidebar, TopBar, useCounts } from './Shell'
 
 const PANEL_VIEW: Record<PanelId, () => preact.JSX.Element> = {
   plan: Plan,
@@ -29,6 +30,7 @@ export function Toolbar() {
   const active = store.panel.value
   const open = store.inbox.value.tickets.filter((t) => t.status === 'open')
   const high = open.filter((t) => t.priority === 'high').length
+  const counts = useCounts()
   return (
     <nav class="toolbar" aria-label="CEO tools">
       <ul>
@@ -45,6 +47,9 @@ export function Toolbar() {
             >
               <Icon name={p.icon} />
               <span class="tool-label">{p.label}</span>
+              {p.id !== 'inbox' && counts[p.id] !== undefined && (
+                <span class="tool-num">{counts[p.id]}</span>
+              )}
               {p.id === 'inbox' && open.length > 0 && (
                 <span class={`tool-count${high ? ' is-high' : ''}`}>
                   {open.length}
@@ -92,7 +97,10 @@ function Body() {
   const View = id ? PANEL_VIEW[id] : null
   return (
     <>
-      <Toolbar />
+      <TopBar />
+      <Sidebar>
+        <Toolbar />
+      </Sidebar>
       {id && View && (store.ready.value ? <View /> : <Loading id={id} />)}
       <ProfileCard />
       <ArticlePreview />

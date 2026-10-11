@@ -275,6 +275,8 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   }
   engine.runRenderLoop(frame)
   window.addEventListener('resize', () => engine.resize())
+  // The shell (ADR-0086) sizes the stage, not the window: follow the canvas' own box.
+  new ResizeObserver(() => engine.resize()).observe(document.getElementById('stage')!)
 
   // --- device loss (ADR-0064): a new WebGPU engine on a new canvas, the scene rebuilt from the sim ---
   let recoveries = 0
@@ -335,7 +337,12 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     refreshKnowledge: session ? () => session!.refreshKnowledge() : null,
     clock,
     // Everyone on site, where they are drawn this frame and on the canvas (e2e smooth-movement check).
-    people: () => game.people(),
+    // In page coordinates (the shell puts the canvas between its bars), labels too.
+    people: () => {
+      const c = canvas.getBoundingClientRect()
+      const at = <R extends { left: number; top: number; right: number; bottom: number }>(r: R) => ({ ...r, left: r.left + c.left, right: r.right + c.left, top: r.top + c.top, bottom: r.bottom + c.top })
+      return game.people().map((p) => ({ ...p, screenX: p.screenX + c.left, screenY: p.screenY + c.top, label: p.label ? at(p.label) : p.label }))
+    },
     // The brick office's counts and timings.
     bricks: () => bricks.stats(),
   }

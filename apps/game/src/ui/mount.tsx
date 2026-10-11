@@ -8,6 +8,7 @@ import { FIXTURE_NOW, MockDataSource } from './mock-source'
 import { createOverlayStore, type OverlayStore } from './store'
 import { hasOrgApi, WasmDataSource } from './wasm-source'
 import './overlay.css'
+import './shell.css'
 
 export type { GameDataSource } from './data-source'
 export { MockDataSource } from './mock-source'
@@ -44,6 +45,8 @@ export function handleShortcut(store: OverlayStore, e: KeyboardEvent): boolean {
 export function mountOverlay(el: HTMLElement, source: GameDataSource) {
   const store = createOverlayStore(source)
   render(<Overlay store={store} />, el)
+  // The app shell (ADR-0086): the scene moves between the top bar and the sidebar.
+  document.body.classList.add('has-shell')
   const onKey = (e: KeyboardEvent) => {
     if (handleShortcut(store, e)) e.preventDefault()
   }
@@ -81,6 +84,7 @@ export function mountOverlay(el: HTMLElement, source: GameDataSource) {
   return {
     store,
     dispose() {
+      document.body.classList.remove('has-shell')
       window.removeEventListener('keydown', onKey)
       stopHud()
       stopNow()
