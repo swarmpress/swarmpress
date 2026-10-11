@@ -398,3 +398,30 @@ async fn a_fix_reads_the_post_from_live_and_updates_it_on_a_branch() {
     );
     assert_eq!(engine.change_requests().len(), 1);
 }
+
+/// The writer is offered only the block kinds the site's block set can hold (ADR-0082 §1).
+#[test]
+fn section_kinds_follow_the_block_set() {
+    use orchestrator::wordpress::section_kinds;
+    let set = |b: &[&str]| b.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(section_kinds(&[]), None, "not WordPress: every kind");
+    assert_eq!(
+        section_kinds(&set(&[
+            "core/paragraph",
+            "core/list",
+            "core/list-item",
+            "core/quote"
+        ])),
+        Some(vec!["paragraph", "list", "tip"])
+    );
+    assert_eq!(
+        section_kinds(&set(&["core/paragraph", "core/list"])),
+        Some(vec!["paragraph"]),
+        "a list needs its items too"
+    );
+    let schema = agents::article::section_schema_for(&["paragraph"]);
+    assert_eq!(
+        schema["properties"]["blocks"]["items"]["properties"]["type"]["enum"],
+        json!(["paragraph"])
+    );
+}

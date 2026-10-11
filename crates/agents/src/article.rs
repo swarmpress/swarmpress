@@ -232,6 +232,14 @@ pub fn section_schema() -> Value {
     schema_text(SECTION_SCHEMA)
 }
 
+/// The section schema with only `kinds` (of `paragraph`, `list`, `tip`) allowed: a site whose block
+/// set cannot hold a kind never gets it (ADR-0082 §1).
+pub fn section_schema_for(kinds: &[&str]) -> Value {
+    let mut v = section_schema();
+    v["properties"]["blocks"]["items"]["properties"]["type"]["enum"] = serde_json::json!(kinds);
+    v
+}
+
 /// Schema of the `closing#0` stage: the text of the closing note.
 pub fn closing_schema() -> Value {
     schema_text(CLOSING_SCHEMA)

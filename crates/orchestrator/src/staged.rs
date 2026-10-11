@@ -288,6 +288,20 @@ pub fn measured_checks(
 }
 
 impl<S: Store, G: Gateway> Orchestrator<S, G> {
+    /// The section schema for this site: on WordPress only the kinds its block set can hold.
+    fn section_schema(&self) -> Value {
+        let blocks = self
+            .site
+            .knowledge
+            .as_ref()
+            .map(|k| knowledge::wordpress::block_types(&k.pack))
+            .unwrap_or_default();
+        match crate::wordpress::section_kinds(&blocks) {
+            Some(kinds) => agents::article::section_schema_for(&kinds),
+            None => section_schema(),
+        }
+    }
+
     // ------------------------------------------------------------ progress
 
     #[inline(never)]
@@ -618,7 +632,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         make: &(dyn Fn(&SectionSpec, Option<&str>) -> StagePrompt + Sync),
     ) -> Result<Step<SectionDraft>> {
         let style = &self.site.context.style_guide;
-        let schema = section_schema();
+        let schema = self.section_schema();
         let prompt = make(spec, None);
         let key = Key::of("section", index, total, &prompt, &schema);
         if let Some(v) = self.reuse(cx, &key).await? {
@@ -1414,7 +1428,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                             index,
                             total,
                             &prompt,
-                            &section_schema(),
+                            &self.section_schema(),
                             &check,
                             budget,
                         )
@@ -1698,7 +1712,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                     index,
                     total,
                     &prompt,
-                    &section_schema(),
+                    &self.section_schema(),
                     &check,
                     &mut budget,
                 )

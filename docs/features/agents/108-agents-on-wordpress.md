@@ -60,7 +60,16 @@ not change (§2).
   the merge, the export and deploy, `DeployLanded`, and the public site serving the revised
   article.
 
+- **The writer's block kinds follow the site's block set:** on WordPress, the section schema
+  offers only the kinds the block set can hold (paragraph needs `core/paragraph`, list `core/list`
+  and `core/list-item`, tip `core/quote`); other sites keep the schema byte for byte (it is part of
+  the stage cache key).
+- **Checks on trees:** the measured checks and the v2 validator run on the article before the
+  capability layer maps it to blocks, a fixed mapping onto core blocks; the mapped tree is then
+  checked against the block set. A check that would differ between the two shapes does not exist
+  while the mapping is fixed.
+
 ## Not built yet
 
-- Block schemas generated from the site's block registry for the writer's prompts: the writer
-  still drafts the article blocks, which the capability layer maps onto core blocks.
+- Plugin blocks in articles: a block outside WordPress core needs its attributes typed in the block
+  set first (ADR-0082, consequences), and a mapping of its own.

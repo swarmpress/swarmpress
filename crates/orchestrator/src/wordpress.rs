@@ -189,6 +189,26 @@ pub const ARTICLE_BLOCKS: &[&str] = &[
     "core/button",
 ];
 
+/// The section block kinds a WordPress site's block set can hold (paragraph needs `core/paragraph`,
+/// list `core/list` and `core/list-item`, tip `core/quote`); `None` for a site without a block set
+/// (not WordPress), whose writers keep every kind.
+pub fn section_kinds(block_set: &[String]) -> Option<Vec<&'static str>> {
+    if block_set.is_empty() {
+        return None;
+    }
+    let has = |b: &str| block_set.iter().any(|s| s == b);
+    let kinds: Vec<&'static str> = [
+        ("paragraph", &["core/paragraph"][..]),
+        ("list", &["core/list", "core/list-item"][..]),
+        ("tip", &["core/quote"][..]),
+    ]
+    .into_iter()
+    .filter(|(_, needs)| needs.iter().all(|b| has(b)))
+    .map(|(k, _)| k)
+    .collect();
+    Some(kinds)
+}
+
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
