@@ -129,10 +129,15 @@ pub enum Role {
     MarketingManager,
     #[serde(alias = "social-media-manager")]
     SocialMediaManager,
+    // Web Development (ADR-0087 decision 6, FEAT-084): plans and builds the
+    // office's rooms with the construction kit. Last, so the encoding of the
+    // older roles stays.
+    #[serde(alias = "office-designer")]
+    OfficeDesigner,
 }
 
 impl Role {
-    pub const ALL: [Role; 21] = [
+    pub const ALL: [Role; 22] = [
         Role::Cfo,
         Role::Secretary,
         Role::Strategist,
@@ -149,6 +154,7 @@ impl Role {
         Role::ArtDirector,
         Role::WebDeveloper,
         Role::UxDesigner,
+        Role::OfficeDesigner,
         Role::ItEngineer,
         Role::DevOps,
         Role::SeoSpecialist,
@@ -167,7 +173,9 @@ impl Role {
             | Role::Translator
             | Role::FactChecker => Department::Editorial,
             Role::PhotoEditor | Role::Photographer | Role::VideoProducer => Department::PhotoVideo,
-            Role::ArtDirector | Role::WebDeveloper | Role::UxDesigner => Department::WebDevelopment,
+            Role::ArtDirector | Role::WebDeveloper | Role::UxDesigner | Role::OfficeDesigner => {
+                Department::WebDevelopment
+            }
             Role::ItEngineer | Role::DevOps => Department::ItOperations,
             Role::SeoSpecialist | Role::MarketingManager | Role::SocialMediaManager => {
                 Department::SeoMarketing
@@ -188,7 +196,7 @@ impl Role {
             Role::ArtDirector => 1300,
             Role::Strategist | Role::DataScientist | Role::WebDeveloper | Role::DevOps => 1250,
             Role::UxDesigner | Role::ItEngineer => 1200,
-            Role::Editor | Role::MarketingManager => 1150,
+            Role::Editor | Role::MarketingManager | Role::OfficeDesigner => 1150,
             Role::Analyst | Role::PhotoEditor | Role::VideoProducer | Role::SeoSpecialist => 1050,
             Role::Writer | Role::FactChecker | Role::Photographer => 1000,
             Role::Translator | Role::SocialMediaManager => 950,
@@ -221,9 +229,11 @@ impl Role {
         match self {
             Role::Editor | Role::EditorInChief => Schedule::new(hm(8, 30), hm(18, 30), hm(12, 45)),
             Role::Cfo | Role::Secretary => Schedule::new(hm(8, 15), hm(17, 45), hm(12, 30)),
-            Role::WebDeveloper | Role::ArtDirector | Role::UxDesigner | Role::DevOps => {
-                Schedule::new(hm(9, 30), hm(18, 30), hm(13, 0))
-            }
+            Role::WebDeveloper
+            | Role::ArtDirector
+            | Role::UxDesigner
+            | Role::OfficeDesigner
+            | Role::DevOps => Schedule::new(hm(9, 30), hm(18, 30), hm(13, 0)),
             _ => Schedule::new(hm(9, 0), hm(18, 0), hm(12, 30)),
         }
     }
@@ -247,6 +257,7 @@ impl Role {
             Role::ArtDirector => "art-director",
             Role::WebDeveloper => "web-developer",
             Role::UxDesigner => "ux-designer",
+            Role::OfficeDesigner => "office-designer",
             Role::ItEngineer => "it-engineer",
             Role::DevOps => "dev-ops",
             Role::SeoSpecialist => "seo-specialist",

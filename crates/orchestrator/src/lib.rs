@@ -38,6 +38,7 @@
 mod analysis;
 mod article;
 mod board;
+pub mod build;
 pub mod eval;
 mod gateway;
 mod maintain;
@@ -62,6 +63,7 @@ pub use board::{
     workstream_ref_for, BoardContext, BrokenPage, SiteHealth, StalePage, Underperforming,
     UntranslatedPage, PLAN_REPAIRS,
 };
+pub use build::{interior_brief, OnDesk, RoomPlan, RoomPlanItem, ROOM_PLAN_KIND};
 #[cfg(not(target_arch = "wasm32"))]
 pub use gateway::GithubGateway;
 pub use gateway::{
@@ -117,6 +119,12 @@ pub enum JobKind {
     /// One run of an installed tool (FEAT-091; not run by the orchestrator
     /// yet: it fails loudly).
     ToolRun,
+    /// The office designer's room plan: the Draft of an `Interior` item
+    /// (ADR-0087 decision 6, FEAT-084; [`crate::build`]).
+    InteriorDesign,
+    /// The construction of an approved room plan: the sim places the items;
+    /// the job reports the build.
+    Construct,
 }
 
 /// Someone taking part in a job, as the sim knows them.
@@ -231,6 +239,41 @@ pub enum Outcome {
         workstreams: Vec<u64>,
         items: Vec<PlannedOut>,
     },
+    /// The office designer's room plan as the sim's placements (ADR-0087
+    /// decision 6): numbers only, before the job's `JobCompleted`.
+    InteriorPlan {
+        job_id: u64,
+        items: Vec<PlannedItemOut>,
+    },
+}
+
+/// One item of a room plan in the sim's `PlannedEquipment` shape:
+/// `{"kind": "Desk", "at": {"Floor": {"pos": {"x": 31500, "z": 9250}, "rot": 1}}}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlannedItemOut {
+    /// The sim's `EquipmentKind` variant name.
+    pub kind: String,
+    pub at: PlannedAtOut,
+}
+
+/// Where a planned item goes (the sim's `PlannedAt`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlannedAtOut {
+    Floor {
+        pos: PosOut,
+        rot: u8,
+    },
+    /// On the desk at this index of the same plan.
+    OnPlanned(u16),
+    /// On a desk already in the room (`equip-3`).
+    OnDesk(String),
+}
+
+/// A floor position, millimetres.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PosOut {
+    pub x: i32,
+    pub z: i32,
 }
 
 fn article_kind() -> String {

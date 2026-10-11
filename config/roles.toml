@@ -105,6 +105,12 @@ model = "claude-sonnet-5-5"
 effort = "medium"
 vision = true
 
+# The office designer (ADR-0087 decision 6, FEAT-084): plans rooms with the
+# construction kit.
+[roles.office-designer]
+model = "claude-sonnet-5-5"
+effort = "medium"
+
 # --- IT & Operations --------------------------------------------------------
 
 [roles.it-engineer]
@@ -316,6 +322,15 @@ min_tier = "mid"
 role = "web-developer"
 also = ["it-engineer", "dev-ops"]
 max_tokens = 6144
+
+# The office designer's room plan (ADR-0087 decision 6, FEAT-084): a layout
+# by relation and its repair turns; the CEO approves the build in an
+# economic company (BuildApproval).
+[jobs.office-layout]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "office-designer"
+max_tokens = 2048
 
 [jobs.ops-check]
 executor = "browser_then_claude"

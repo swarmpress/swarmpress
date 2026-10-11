@@ -36,6 +36,7 @@ import type { Lighting } from '../lighting'
 import { lampsLightFloor, MAX_LIGHTS_PER_MATERIAL, type OfficeHandles } from '../office'
 import { hallwayRects } from '../walls'
 import { townOf, townPath, type TownLayout, type TownSpot } from './town'
+import type { Arrival } from './arrivals'
 import { buildRoomChunk, exteriorSides, shellOrigin, STUD_HEIGHT, STUD_RADIUS, type ChunkSource, type Region, type RoomChunk, type SurfaceAnchor } from './chunk'
 import { baseplateMesh, floorMesh, paintFloor } from './floor'
 import { envIntensityFor, plasticEnvironment } from './environment'
@@ -157,6 +158,8 @@ export interface BrickOffice {
    */
   townItems: TownItemRect[]
   surfaces: SurfaceHandle[]
+  /** The fresh equipment's nodes (`BrickOfficeOptions.fresh`), in build order; empty without. */
+  arrivals: Arrival[]
   /** Apply a render state (lights, monitors); call after the box office's own update. */
   update(state: RenderState): void
   /** Cutaway and surfaces for this frame (registered before every render). */
@@ -197,6 +200,12 @@ export interface BrickOfficeOptions {
   budget?: number
   /** The houses' signs by section id (the UI's labels); the town's own names otherwise. */
   signs?: Record<string, string>
+  /**
+   * Equipment that has just been placed (FEAT-084, in build order): each is built as its own
+   * meshes under a node (`BrickOffice.arrivals`) for the construction animation (`arrivals.ts`),
+   * a desk with its chair. Absent or empty: every placement goes into its room's batches.
+   */
+  fresh?: readonly string[]
 }
 
 const hex = (h: string) => Color3.FromHexString(h).toLinearSpace()
@@ -317,6 +326,11 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
 
   const roomBuilds = new Map<string, RoomBuild>()
   const surfaceAnchors: SurfaceAnchor[] = []
+  // The construction animation's items: built apart, each under its own node (pivot on its footprint centre).
+  const freshIds = new Set(opts.fresh ?? [])
+  const arrivalsById = new Map<string, Arrival>()
+  /** The surfaces of fresh items: their planes ride with the item's node. */
+  const freshSurface = new Map<string, TransformNode>()
   for (const room of rooms) {
     const c0 = now()
     const sources: ChunkSource[] = []
@@ -327,15 +341,26 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
       sources.push({ build: b, origin: shellOrigin(room, s.offset), shell: true })
     }
     const { placements } = roomPlacements(room, mapping, (d, p) => compiled(d, p).info)
+    /** Fresh items' sources by the equipment id they belong to (a chair goes with its desk). */
+    const freshSources = new Map<string, { at: [number, number]; list: ChunkSource[] }>()
     for (const p of placements) {
       const c = compiled(p.design, p.params)
-      sources.push({
+      const src: ChunkSource = {
         build: c.build,
         placement: p,
         footprint: [c.info.bounds[0], c.info.bounds[1]],
         shell: false,
         surfaces: p.surface ? c.info.surfaces.filter((s) => s.name === p.surface) : [],
-      })
+      }
+      const owner = freshIds.has(p.id) ? p.id : p.desk && freshIds.has(p.desk) ? p.desk : null
+      if (!owner) {
+        sources.push(src)
+        continue
+      }
+      let f = freshSources.get(owner)
+      if (!f) freshSources.set(owner, (f = { at: [p.x, p.z], list: [] }))
+      if (p.id === owner) f.at = [p.x, p.z]
+      f.list.push(src)
     }
     const compileMs = now() - c0
     const m0 = now()
@@ -346,6 +371,26 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
       region: b.region,
     }))
     const studs = chunk.studs.map((b) => ({ mesh: instanced(`studs-${room.id}-${b.key}`, shapes.stud, b.matrices, materialFor(b.colour, room.id)), region: b.region }))
+    for (const [id, f] of freshSources) {
+      // Built where it stands; the node's pivot is its footprint centre on the floor, so it drops and grows in place.
+      const node = new TransformNode(`arrive-${id}`, scene)
+      node.setPivotPoint(new Vector3(f.at[0], 0, f.at[1]))
+      const part = buildRoomChunk(room, exterior, f.list)
+      const own = (name: string, shape: VertexData, matrices: Float32Array, colour: string) => {
+        const m = instanced(name, shape, matrices, materialFor(colour, room.id))
+        // It moves with its node while it arrives: its world matrix is not frozen.
+        m.unfreezeWorldMatrix()
+        m.parent = node
+        return { mesh: m, region: 'base' as Region }
+      }
+      for (const b of part.instances) meshes.push(own(`bricks-${room.id}-${id}-${b.key}`, shapes[b.shape], b.matrices, b.colour))
+      for (const b of part.studs) studs.push(own(`studs-${room.id}-${id}-${b.key}`, shapes.stud, b.matrices, b.colour))
+      for (const a of part.surfaces) freshSurface.set(a.owner, node)
+      chunk.surfaces.push(...part.surfaces)
+      chunk.instanceCount += part.instanceCount
+      chunk.studCount += part.studCount
+      arrivalsById.set(id, { id, room: room.id, node })
+    }
     const floor = floorOf(`bricks-${room.id}-floor`, chunk)
     const meshMs = now() - m0
     surfaceAnchors.push(...chunk.surfaces)
@@ -500,6 +545,8 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     // A plane faces -z: turn it so its front looks along the surface's normal.
     mesh.rotation.y = Math.atan2(-a.normal[0], -a.normal[2])
     mesh.isPickable = false
+    const rides = freshSurface.get(a.owner)
+    if (rides) mesh.parent = rides
     const material = new StandardMaterial(`surface-${i}`, scene)
     material.disableLighting = true
     material.diffuseColor = Color3.Black()
@@ -721,6 +768,7 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     town,
     townItems,
     surfaces,
+    arrivals: (opts.fresh ?? []).flatMap((id) => arrivalsById.get(id) ?? []),
     update,
     frame,
     setSources: (s) => {

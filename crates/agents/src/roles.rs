@@ -79,6 +79,9 @@ wire_enum! {
         ArtDirector = "art-director",
         WebDeveloper = "web-developer",
         UxDesigner = "ux-designer",
+        /// Plans and builds the office's rooms with the construction kit
+        /// (ADR-0087 decision 6, FEAT-084).
+        OfficeDesigner = "office-designer",
         // IT & Operations
         ItEngineer = "it-engineer",
         DevOps = "dev-ops",
@@ -119,6 +122,7 @@ impl Role {
             Role::ArtDirector => "Art Director",
             Role::WebDeveloper => "Web Developer",
             Role::UxDesigner => "UX Designer",
+            Role::OfficeDesigner => "Office Designer",
             Role::ItEngineer => "IT Engineer",
             Role::DevOps => "DevOps Engineer",
             Role::SeoSpecialist => "SEO Specialist",
@@ -141,7 +145,9 @@ impl Role {
             | Role::Translator
             | Role::FactChecker => Department::Editorial,
             Role::PhotoEditor | Role::Photographer | Role::VideoProducer => Department::PhotoVideo,
-            Role::ArtDirector | Role::WebDeveloper | Role::UxDesigner => Department::WebDevelopment,
+            Role::ArtDirector | Role::WebDeveloper | Role::UxDesigner | Role::OfficeDesigner => {
+                Department::WebDevelopment
+            }
             Role::ItEngineer | Role::DevOps => Department::ItOperations,
             Role::SeoSpecialist | Role::MarketingManager | Role::SocialMediaManager => {
                 Department::SeoMarketing
@@ -176,6 +182,7 @@ impl Role {
             Role::ArtDirector => (3_500, 9_500),
             Role::WebDeveloper => (2_400, 7_500),
             Role::UxDesigner => (2_300, 6_500),
+            Role::OfficeDesigner => (2_300, 6_500),
             Role::ItEngineer => (2_400, 7_000),
             Role::DevOps => (2_800, 8_000),
             Role::SeoSpecialist => (2_000, 6_000),
@@ -344,6 +351,9 @@ wire_enum! {
         // Developer's tool graph
         SiteArchitect = "site-architect",
         ToolBuild = "tool-build",
+        // The office designer's room plan (ADR-0087 decision 6, FEAT-084):
+        // the layout and its repair turns, one structured call each
+        OfficeLayout = "office-layout",
         OpsCheck = "ops-check",
         // SEO & Marketing
         SeoPlan = "seo-plan",
@@ -375,6 +385,7 @@ impl JobKind {
             JobKind::ArtDirection | JobKind::VisualReview | JobKind::CriticReview => "art_director",
             JobKind::ThemeCode | JobKind::SiteChange | JobKind::ToolBuild => "web_developer",
             JobKind::SiteArchitect => "information_architect",
+            JobKind::OfficeLayout => "office_designer",
             JobKind::StrategyPitch | JobKind::ProjectBusinessCase | JobKind::WeeklyPlan => {
                 "strategist"
             }

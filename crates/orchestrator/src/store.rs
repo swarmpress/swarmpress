@@ -131,6 +131,10 @@ pub struct ArtifactRecord {
     /// structural one ([`crate::structure`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub structure: Option<crate::structure::Proposal>,
+    /// An interior item's room plan (ADR-0087 decision 6, FEAT-084): what
+    /// the CEO approves and the sim builds ([`crate::build`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room_plan: Option<crate::build::RoomPlan>,
 }
 
 impl ArtifactRecord {

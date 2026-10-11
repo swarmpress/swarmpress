@@ -40,6 +40,9 @@ const WORLD_FORMATS: &[(u32, u64)] = &[
     // FEAT-026, ADR-0087: building in the game (Building.town and layout_rev,
     // Company.build_mode, the town id counter; the script moves a desk and the town)
     (8, 0x16eb_054f_dab5_dacf),
+    // FEAT-084, ADR-0087 decision 6: the office designer (Plan.interiors, the role and
+    // persona, Interior items, BuildApproval; the script commissions a room)
+    (9, 0xf6ce_b7e4_5b6e_77a5),
 ];
 
 /// The golden hash of the current world format.
@@ -89,7 +92,8 @@ fn golden_run_through_snapshots_matches_the_uninterrupted_run() {
     let (w, restores) = golden_through_snapshots(7_919);
     assert_eq!(restores, 6);
     assert_eq!(w.hash(), GOLDEN_HASH, "got {:#018x}", w.hash());
-    assert_eq!(w.plan.items.len(), 5);
+    // five articles and the interior item waiting for an office designer
+    assert_eq!(w.plan.items.len(), 6);
     assert_eq!(
         w.plan.items.values().next().map(|i| i.status),
         Some(WorkItemStatus::Published)

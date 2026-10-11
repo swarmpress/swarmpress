@@ -124,6 +124,12 @@ export type Command =
   | { PlaceTownItem: { kind: TownKindVariant; pos: PosMm; rot: number } }
   | { MoveTownItem: { item: string; pos: PosMm; rot: number } }
   | { RemoveTownItem: { item: string } }
+  /**
+   * The office designer furnishes a room (ADR-0087 decision 6, FEAT-084): the
+   * CEO's words and brief are a store record under `brief_ref` (written first,
+   * `blueprint/interior.ts`); the sim makes an `Interior` work item.
+   */
+  | { CommissionInterior: { room: string; brief_ref: number } }
 
 export type CommandName = Command extends infer C ? (C extends Record<infer K, unknown> ? K : never) : never
 
@@ -157,6 +163,8 @@ export const SIM_COMMANDS: readonly CommandName[] = [
   'PlaceTownItem',
   'MoveTownItem',
   'RemoveTownItem',
+  // the office designer (ADR-0087 decision 6)
+  'CommissionInterior',
 ]
 
 /** Plan commands of publishing-plan.md §6 the sim does not have yet (the mock source applies them). */

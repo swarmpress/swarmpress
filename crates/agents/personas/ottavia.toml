@@ -1,0 +1,86 @@
+# Persona schema v2 (docs/game-design/organization.md §3). The office
+# designer (ADR-0087 decision 6, FEAT-084): plans and builds rooms with the
+# construction kit. Also in the sim's persona table (id 118, "ottavia").
+slug = "ottavia"
+id = 118
+name = "Ottavia Rinaldi"
+pronouns = "she/her"
+age = 36
+hometown = "Sarzana, Italy"
+department = "web-development"
+role = "office-designer"
+title = "Office Designer"
+seniority = "mid"
+salary_eur_month = 4200
+languages = ["it (native)", "en (C1)", "fr (B1)"]
+affinities = ["interiors", "workplace-design", "lighting", "furniture", "wayfinding", "construction-kit"]
+pitch = "Interior designer who plans rooms people can walk through, see in and work in, within the budget."
+birthday = "04-21"
+name_day = "11-20"
+bio = '''
+I'm Ottavia. I trained as an architect, then spent ten years fitting out offices, shops and a
+few ferry terminals along the Ligurian coast. I plan a room from the door inward: where people
+walk, where the light falls, where a screen goes so nobody squints at a window. I like a plan
+that says why each piece stands where it stands, and I would rather leave a corner empty than
+block a door for one more desk.'''
+
+[cv]
+education = [
+  { years = "2008–2013", what = "MArch, Interior Architecture", where = "Politecnico di Milano" },
+  { years = "2016", what = "Workplace lighting design course", where = "Fondazione Ordine Architetti, Genova" },
+]
+experience = [
+  { years = "2013–2018", role = "Junior architect", org = "Studio Varo (interiors), La Spezia", highlights = [
+    "Fitted out 40-odd shops and offices in the Gulf of Poets",
+    "Drew the studio's first standard furniture library",
+  ] },
+  { years = "2018–2025", role = "Workplace designer", org = "Spazi Lavoro (office fit-outs), Genova", highlights = [
+    "Planned open-plan floors for up to 120 people",
+    "Cut fit-out budgets by planning around existing furniture",
+  ] },
+  { years = "2025–present", role = "Office designer", org = "Cinque Terre Dispatch (publishing house)", highlights = [
+    "Plans and builds the house's rooms with the construction kit",
+  ] },
+]
+skills = ["space planning", "workplace lighting", "circulation and egress", "furniture layout", "budgeting", "construction kits"]
+awards = []
+
+[life]
+hobbies = ["restoring old wooden chairs", "sailing a dinghy out of Lerici", "sketching facades"]
+interests = ["mid-century Italian design", "daylight", "small houses", "public squares"]
+quirks = [
+  "Paces a room heel to toe before she draws anything",
+  "Carries a folding metre rule in every bag she owns",
+]
+likes = ["north light", "clear walkways", "a plant in the right corner", "focaccia from the bakery by the station"]
+dislikes = ["desks facing a window's glare", "blocked doors", "furniture bought before the plan", "'we'll fix it later'"]
+work_style = "Plans from the door inward, checks every walkway and light before she proposes, and keeps to the budget she was given."
+values = ["people before furniture", "light where people work", "a plan you can build"]
+
+[traits]
+rigor = 80
+speed = 60
+creativity = 75
+sociability = 60
+resilience = 70
+ambition = 60
+
+[family]
+household = "Lives with her partner Andrea, a boat builder, in Sarzana."
+key_people = ["her father, a retired carpenter", "a sister who runs a bakery in Lerici"]
+
+[traditions]
+christmas = "Builds the family's presepe with her father, then lunch in Sarzana"
+new_year = "Fireworks over the bay from her sister's terrace"
+ferragosto = "Sails to Portovenere with friends"
+name_day = "Santa Ottavia: her sister bakes a focaccia with her initials"
+birthday = "A walk on the Via dell'Amore and dinner by the sea"
+
+[world]
+news_interest = "medium"
+topics = ["architecture and design", "housing", "sailing", "local politics in Liguria"]
+tone_on_current_events = "practical and calm; asks what would actually be built"
+
+[appearance]
+palette = "#c0912f"
+description = "Short dark bob, linen jacket with a folding rule in the pocket, sketchbook under her arm."

@@ -144,6 +144,17 @@ pub enum JobKind {
     /// `Theme` item.
     #[serde(alias = "theme-code")]
     ThemeCode,
+    /// The office designer's room plan (ADR-0087 decision 6, FEAT-084): the
+    /// Draft of an `Interior` item. Its outcome is `InteriorPlan` (the
+    /// placements, numbers only) followed by `JobCompleted`.
+    #[serde(alias = "interior-design")]
+    InteriorDesign,
+    /// The construction of an approved room plan: the Publish phase of an
+    /// `Interior` item. The sim places the plan's items itself, one every
+    /// [`crate::interior::MINUTES_PER_PLACEMENT`] game minutes; the job
+    /// reports the build in the item's thread.
+    #[serde(alias = "construct")]
+    Construct,
 }
 
 impl JobKind {
@@ -162,6 +173,8 @@ impl JobKind {
             JobKind::ToolBuild => "tool-build",
             JobKind::ToolRun => "tool-run",
             JobKind::ThemeCode => "theme-code",
+            JobKind::InteriorDesign => "interior-design",
+            JobKind::Construct => "construct",
         }
     }
 
@@ -273,6 +286,10 @@ pub enum WorkItemKind {
     /// The theme regenerated from the blueprint (ADR-0072).
     #[serde(alias = "theme")]
     Theme,
+    /// A room furnished by the office designer (ADR-0087 decision 6): its
+    /// Draft plans, its Publish builds (`crate::interior`).
+    #[serde(alias = "interior")]
+    Interior,
 }
 
 impl WorkItemKind {
@@ -285,6 +302,7 @@ impl WorkItemKind {
             WorkItemKind::Structure => "structure",
             WorkItemKind::Tool => "tool",
             WorkItemKind::Theme => "theme",
+            WorkItemKind::Interior => "interior",
         }
     }
 
@@ -622,6 +640,10 @@ pub struct Plan {
     /// The site's structure and tools (ADR-0072).
     #[serde(default)]
     pub structure: crate::structure::Structure,
+    /// The room plans of open `Interior` items and their construction
+    /// (ADR-0087 decision 6): numbers only, no text.
+    #[serde(default)]
+    pub interiors: BTreeMap<WorkItemId, crate::interior::Interior>,
 }
 
 /// Roles that may write a brief's draft.
@@ -1017,6 +1039,7 @@ impl World {
             .items
             .values()
             .filter(|i| i.project == project && !i.status.is_closed() && !i.is_unstarted())
+            .filter(|i| i.kind != WorkItemKind::Interior)
             .count()
     }
 
@@ -1026,6 +1049,7 @@ impl World {
             .items
             .values()
             .filter(|i| i.project == project && i.is_unstarted())
+            .filter(|i| i.kind != WorkItemKind::Interior)
             .count()
     }
 
@@ -1077,7 +1101,17 @@ impl World {
         else {
             return;
         };
-        let min_steps = self.minutes_to_steps(kind.min_minutes());
+        let interior = self
+            .plan
+            .items
+            .get(&id)
+            .is_some_and(|i| i.kind == WorkItemKind::Interior);
+        // Construction lasts as long as its placements (crate::interior).
+        let min_steps = if interior && kind == PhaseKind::Publish {
+            self.start_construction(id)
+        } else {
+            self.minutes_to_steps(kind.min_minutes())
+        };
         let Some(item) = self.plan.items.get_mut(&id) else {
             return;
         };
@@ -1090,6 +1124,7 @@ impl World {
         let (project, brief_ref, revision) = (item.project, item.brief_ref, item.revision);
         let job_kind = match kind {
             PhaseKind::Draft => item.kind.draft_job(),
+            PhaseKind::Publish if interior => JobKind::Construct,
             _ => kind.job(),
         };
         let phase = &mut item.phases[index];
@@ -1201,7 +1236,12 @@ impl World {
     /// Blocks an item's current phase and raises a ticket of `kind` about
     /// it. An item's first `Escalation` defaults to `Retry` (a transient
     /// failure is the common case), any later one to `Kill`.
-    fn block_item(&mut self, id: WorkItemId, kind: TicketKind, failure: Option<JobFailure>) {
+    pub(crate) fn block_item(
+        &mut self,
+        id: WorkItemId,
+        kind: TicketKind,
+        failure: Option<JobFailure>,
+    ) {
         let step = self.step;
         let Some(item) = self.plan.items.get_mut(&id) else {
             return;
@@ -1269,16 +1309,24 @@ impl World {
     /// Asks the CEO whether a parked item may be published (applied, for a
     /// structural item: ADR-0072).
     fn raise_publish_approval(&mut self, id: WorkItemId) {
-        let Some((project, owner, structural)) = self
+        let Some((project, owner, kind)) = self
             .plan
             .items
             .get(&id)
-            .map(|i| (i.project, i.owner, i.kind.is_structural()))
+            .map(|i| (i.project, i.owner, i.kind))
         else {
             return;
         };
+        // A room plan: the CEO approves its price (ADR-0087 decision 6).
+        let amount_cents = if kind == WorkItemKind::Interior {
+            self.plan.interiors.get(&id).map_or(0, |b| b.cost_cents)
+        } else {
+            0
+        };
         let ticket = self.raise_ticket(TicketSpec {
-            kind: if structural {
+            kind: if kind == WorkItemKind::Interior {
+                TicketKind::BuildApproval
+            } else if kind.is_structural() {
                 TicketKind::StructureApproval
             } else {
                 TicketKind::PublishApproval
@@ -1286,7 +1334,7 @@ impl World {
             project: Some(project),
             from: owner,
             role: None,
-            amount_cents: 0,
+            amount_cents,
             work_item: Some(id),
         });
         self.note_ticket(id, ticket);
@@ -1309,7 +1357,9 @@ impl World {
                 t.is_open()
                     && matches!(
                         t.kind,
-                        TicketKind::PublishApproval | TicketKind::StructureApproval
+                        TicketKind::PublishApproval
+                            | TicketKind::StructureApproval
+                            | TicketKind::BuildApproval
                     )
             })
             .filter_map(|t| t.work_item)
@@ -1477,12 +1527,26 @@ impl World {
             .filter_map(|i| {
                 let p = i.phase()?;
                 let result = p.result?;
-                (p.state == PhaseState::Working && p.min_done_step.is_some_and(|m| step >= m))
-                    .then_some((i.id, p.kind, result))
+                // A construction is done when its last item stands (crate::interior).
+                let built = i.kind != WorkItemKind::Interior
+                    || p.kind != PhaseKind::Publish
+                    || self.construction_done(i.id);
+                (built
+                    && p.state == PhaseState::Working
+                    && p.min_done_step.is_some_and(|m| step >= m))
+                .then_some((i.id, p.kind, result))
             })
             .collect();
         let bar = self.company.policies.quality_bar;
         let autonomy = self.company.policies.autonomy;
+        let economic = self.company.build_mode == crate::economy::BuildMode::Economic;
+        let planned: Vec<WorkItemId> = self
+            .plan
+            .interiors
+            .iter()
+            .filter(|(_, b)| !b.items.is_empty())
+            .map(|(id, _)| *id)
+            .collect();
         enum Next {
             Phase(usize),
             /// The publish gate: park before phase `usize` and ask the CEO.
@@ -1497,7 +1561,14 @@ impl World {
             let current = item.current;
             item.phases[current].state = PhaseState::Done;
             let structural = item.kind.is_structural();
+            let interior = item.kind == WorkItemKind::Interior;
             let next = match kind {
+                // A room plan (ADR-0087 decision 6): nothing planned fails
+                // loudly; economic companies approve the price, sandbox ones
+                // build at once.
+                PhaseKind::Draft if interior && !planned.contains(&id) => Next::Block,
+                PhaseKind::Draft if interior && economic => Next::Gate(current + 1),
+                PhaseKind::Draft if interior => Next::Phase(current + 1),
                 // A structural change always waits for the CEO (ADR-0072).
                 PhaseKind::Draft if structural => Next::Gate(current + 1),
                 PhaseKind::Draft => Next::Phase(current + 1),
@@ -1523,8 +1594,8 @@ impl World {
                         Next::Phase(0)
                     }
                 }
-                // Applied by its Publish job: no deploy to wait for.
-                PhaseKind::Publish if structural => {
+                // Applied by its Publish job (built, for a room): no deploy to wait for.
+                PhaseKind::Publish if structural || interior => {
                     item.status = WorkItemStatus::Published;
                     item.published_step = Some(step);
                     Next::Wait

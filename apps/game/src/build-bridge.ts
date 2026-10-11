@@ -21,10 +21,26 @@ export interface GhostSpec {
   ok: boolean
 }
 
+/**
+ * One item of a room plan shown as a ghost (the office designer's plan, FEAT-084): an equipment
+ * kind or a kit design ('Desk', 'MeetingTable'), metres and quarter turns like `GhostSpec`. An item
+ * on a desk names the desk: by its index in the same list (a desk of the plan) or by its id (a desk
+ * that stands already); it then stands where that desk does, at its port's height.
+ */
+export interface PlanGhost {
+  kind: string
+  x: number
+  z: number
+  rot: 0 | 1 | 2 | 3
+  onDesk?: number | string
+}
+
 export interface BuildBridge {
   /** The floor point under a client pixel, snapped to the stud grid (1/16 m), metres; the room it is in; what is under it. */
   pick(clientX: number, clientY: number): { x: number; z: number; room: string | null; target: BuildTarget | null } | null
   ghost(g: GhostSpec | null): void
+  /** A whole plan as green ghosts at once (the Build Approval's preview); null hides them. Independent of `ghost`. */
+  ghostPlan(items: PlanGhost[] | null): void
   /** A room's rect while the player picks its corners (metres, north-west corner and size): a green or red slab; null hides it. */
   ghostRect(r: { x: number; z: number; w: number; d: number; ok: boolean } | null): void
   highlight(t: BuildTarget | null): void

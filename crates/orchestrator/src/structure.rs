@@ -271,7 +271,7 @@ fn tool_of(
 
 /// Why a structured call failed, as a job outcome; `Err` when the model is
 /// gone (the host waits and runs the job again).
-fn failure(f: &RepairFailed) -> Result<JobFailure> {
+pub(crate) fn failure(f: &RepairFailed) -> Result<JobFailure> {
     match &f.error {
         LlmError::InvalidOutput { .. } => Ok(JobFailure::InvalidOutput),
         LlmError::Timeout(_) => Ok(JobFailure::Timeout),
@@ -314,7 +314,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             .ok_or_else(|| invalid(format!("job {} has nobody to do it", req.job_id)))
     }
 
-    fn failed(&self, req: &JobRequest, reason: JobFailure) -> Vec<Outcome> {
+    pub(crate) fn failed(&self, req: &JobRequest, reason: JobFailure) -> Vec<Outcome> {
         vec![Outcome::JobFailed {
             job_id: req.job_id,
             reason,
@@ -324,7 +324,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     /// The architect's or the tool builder's model call: one structured call
     /// with one repair turn, cached as the stage `stage#0` of the job.
     #[allow(clippy::too_many_arguments)]
-    async fn propose(
+    pub(crate) async fn propose(
         &self,
         req: &JobRequest,
         who: &StaffRef,
@@ -391,7 +391,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
     }
 
     /// A failed proposal: the issues in the item's thread, the job failed.
-    async fn proposal_failed(
+    pub(crate) async fn proposal_failed(
         &self,
         req: &JobRequest,
         item: &str,

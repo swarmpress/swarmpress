@@ -8,7 +8,7 @@ use agents::{Department, JobKind, Role, RolesConfig};
 #[test]
 fn every_job_kind_has_role_executor_and_template() {
     let c = RolesConfig::builtin();
-    assert_eq!(JobKind::ALL.len(), 35);
+    assert_eq!(JobKind::ALL.len(), 36);
     for &k in JobKind::ALL {
         let p = c.job(k);
         assert!(p.role.is_agent(), "{k}");
@@ -91,7 +91,7 @@ fn every_template_parses() {
 
 #[test]
 fn roles_map_to_exactly_one_department() {
-    assert_eq!(Role::staff().count(), 21);
+    assert_eq!(Role::staff().count(), 22);
     for role in Role::staff() {
         let d = role.department().expect("staff role has a department");
         assert!(d.roles().contains(&role));
@@ -127,7 +127,12 @@ fn roles_map_to_exactly_one_department() {
             ),
             (
                 "web-development",
-                vec!["art-director", "web-developer", "ux-designer"]
+                vec![
+                    "art-director",
+                    "web-developer",
+                    "ux-designer",
+                    "office-designer"
+                ]
             ),
             ("it-operations", vec!["it-engineer", "dev-ops"]),
             (

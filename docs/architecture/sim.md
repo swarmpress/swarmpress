@@ -140,6 +140,32 @@ The room kinds, equipment, staff traits and project kinds are described in the g
   of the role of the tool's agent step, or nobody. `JobCompleted` and `JobFailed` count the run.
 - **World format 7.**
 
+### The office designer (ADR-0087 decision 6, FEAT-084)
+
+`crates/sim-core/src/interior.rs`. The plan is the designer's artifact (store text); only its
+placements enter the sim, as numbers.
+
+- **`Command::CommissionInterior{room, brief_ref}`** creates an `Interior` work item (phases Draft
+  and Publish) filed under the first active project, outside the WIP limit. Refused: an unknown
+  room, a room with a design in progress, four rooms in design at once, no active project. With no
+  office designer (`Role::OfficeDesigner`) the item waits, unstarted, and a `MissingRole` ticket
+  asks for one; it starts when one is on the staff.
+- **Draft:** `RequestJob(InteriorDesign)`; the outcome is `ServerCommand::InteriorPlan{job_id,
+  items: [{kind, at: Floor{pos, rot} | OnPlanned(index) | OnDesk(equip)}]}` (at most 64, an item on a
+  desk only on a desk placed before it), then `JobCompleted`. A completion without a plan blocks the
+  item with an escalation.
+- **The gate:** an economic company parks the item at a `BuildApproval` ticket (CEO-only, High,
+  one day; `Build`, `Defer` (default, also on expiry; re-raised at 08:30), `Decline`; the amount is
+  the plan's price at the sim's prices). `Build` needs the cash for what is left. A sandbox company
+  builds at once.
+- **Construction:** the Publish phase requests a `Construct` job (the orchestrator reports the
+  build) and the sim places the next item every `MINUTES_PER_PLACEMENT` (5) game minutes as a
+  `PlaceEquipment`, validated and priced like the CEO's own (free in a sandbox); an item on a
+  planned desk goes on the id that desk got. A refused placement blocks the item with an escalation
+  and records `refused`; `Retry` resumes with that item. The last item placed and the job's result
+  in: Published. The plans of closed items are dropped.
+- **World format 9.**
+
 ## Snapshots
 
 `crates/sim-core/src/snapshot.rs` (FEAT-060, ADR-0046). A snapshot is the whole world as bytes,

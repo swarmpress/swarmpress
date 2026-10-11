@@ -39,6 +39,11 @@
 //!   founding), `Building.layout_rev`, `Company.build_mode` and the town id
 //!   counter; the script gains a desk move and three town commands.
 //! - `0x16eb_054f_dab5_dacf`: world format 8.
+//! - world format 9 (FEAT-084, ADR-0087 decision 6): `Plan.interiors`, the
+//!   office designer's role and persona (a new face in the hiring pool),
+//!   `Interior` items, `BuildApproval`; the script commissions a room the
+//!   company has no designer for.
+//! - `0xf6ce_b7e4_5b6e_77a5`: world format 9.
 
 use sim_core::commands::JobFailure;
 use sim_core::geom::PosMm;
@@ -48,7 +53,7 @@ use sim_core::plan::{JobKind, WorkItemStatus};
 use sim_core::scenarios::{golden_script, run_golden, DEMO_PROJECT, GOLDEN_STEPS};
 use sim_core::town::TownKind;
 
-const GOLDEN_HASH: u64 = 0x16eb_054f_dab5_dacf;
+const GOLDEN_HASH: u64 = 0xf6ce_b7e4_5b6e_77a5;
 
 #[test]
 fn golden_hash() {
@@ -155,6 +160,16 @@ fn golden_hash() {
         w.building.town[&TownItemId(15)].pos,
         PosMm::new(30_500, -4_500)
     );
+    // The office designer (ADR-0087 decision 6): nobody can furnish the
+    // meeting room yet, so item 6 waits, unstarted, and the CEO is asked to hire.
+    assert_eq!(item(6).kind, sim_core::plan::WorkItemKind::Interior);
+    assert!(item(6).is_unstarted());
+    assert_eq!(
+        w.plan.interiors[&WorkItemId(6)].room,
+        sim_core::ids::RoomId(6)
+    );
+    assert!(w.tickets.values().any(|t| t.kind == TicketKind::MissingRole
+        && t.role == Some(sim_core::roles::Role::OfficeDesigner)));
     println!("golden hash: {:#018x}", w.hash());
     assert_eq!(w.hash(), GOLDEN_HASH, "got {:#018x}", w.hash());
 }

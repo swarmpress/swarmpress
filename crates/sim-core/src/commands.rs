@@ -18,6 +18,7 @@ use crate::ids::{
     CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, TownItemId, WorkItemId,
 };
 use crate::inbox::{DelegationPolicy, SecretaryTaskKind, TicketOption};
+use crate::interior::PlannedEquipment;
 use crate::plan::{BriefStub, PlannedStub, WorkItemKind, WorkItemStatus, WorkPriority};
 use crate::projects::ProjectStatus;
 use crate::structure::ToolStub;
@@ -154,6 +155,14 @@ pub enum Command {
     /// Remove a tree, a street lamp or a bench. Houses stay.
     RemoveTownItem {
         item: TownItemId,
+    },
+    /// The CEO asks the office designer to furnish a room (ADR-0087
+    /// decision 6): an `Interior` work item whose Draft the designer starts
+    /// at once. The request's words and the brief are store text under
+    /// `brief_ref`.
+    CommissionInterior {
+        room: RoomId,
+        brief_ref: u64,
     },
 }
 
@@ -381,6 +390,13 @@ pub enum ServerCommand {
     /// The site's installed tools (ADR-0072): exactly these, each with its
     /// schedule and the role of its agent step.
     ToolsChanged { tools: Vec<ToolStub> },
+    /// The office designer's room plan (ADR-0087 decision 6): the
+    /// placements of an `InteriorDesign` job's plan, in build order, before
+    /// its `JobCompleted`. Numbers only: the plan's text stays in the store.
+    InteriorPlan {
+        job_id: u64,
+        items: Vec<PlannedEquipment>,
+    },
 }
 
 /// Anything that can be applied to a world.
@@ -501,6 +517,10 @@ mod tests {
             },
             Command::RemoveTownItem {
                 item: TownItemId(7),
+            },
+            Command::CommissionInterior {
+                room: RoomId(6),
+                brief_ref: 12,
             },
         ];
         for c in cmds {

@@ -34,6 +34,7 @@
 pub mod analysis;
 pub mod article;
 pub mod article_prompts;
+pub mod build;
 pub mod fake_writer;
 pub mod house_style;
 pub mod jobs;

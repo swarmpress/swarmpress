@@ -19,7 +19,7 @@
 import type { ModelRegistry } from './registry'
 
 /** Every staff role in config/roles.toml (kebab-case). */
-export const STAFF_ROLES = ['cfo', 'secretary', 'strategist', 'analyst', 'data-scientist', 'editor-in-chief', 'editor', 'writer', 'translator', 'fact-checker', 'photo-editor', 'photographer', 'video-producer', 'art-director', 'web-developer', 'ux-designer', 'it-engineer', 'dev-ops', 'seo-specialist', 'marketing-manager', 'social-media-manager'] as const
+export const STAFF_ROLES = ['cfo', 'secretary', 'strategist', 'analyst', 'data-scientist', 'editor-in-chief', 'editor', 'writer', 'translator', 'fact-checker', 'photo-editor', 'photographer', 'video-producer', 'art-director', 'web-developer', 'ux-designer', 'office-designer', 'it-engineer', 'dev-ops', 'seo-specialist', 'marketing-manager', 'social-media-manager'] as const
 
 const MiB = 1024 * 1024
 const GiB = 1024 * MiB

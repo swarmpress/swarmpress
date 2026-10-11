@@ -1,3 +1,4 @@
+import { roomPlanOfArtifact, type RoomPlan } from '../blueprint/interior'
 import type { Blueprint, BlueprintChange } from '../blueprint/types'
 import type { BuildLayout } from './build/types'
 import { SIM_COMMANDS, type CommandResult } from './commands'
@@ -298,7 +299,7 @@ export function companyStoreOptions(
   company: { id: string; site_repo?: string | null },
   site: { style_guide?: unknown } = {},
   recorder?: Pick<ActivityOptions, 'live' | 'version'>,
-): Pick<WasmOptions, 'planText' | 'appendPost' | 'site' | 'article' | 'bannedPhrases' | 'activity'> {
+): Pick<WasmOptions, 'planText' | 'appendPost' | 'site' | 'article' | 'bannedPhrases' | 'activity' | 'roomPlan'> {
   const articles =
     store.getArtifact && store.getBrief
       ? articleFromStore({ getArtifact: (c, w) => store.getArtifact!(c, w), getBrief: (c, r) => store.getBrief!(c, r) }, company.id)
@@ -310,8 +311,17 @@ export function companyStoreOptions(
     article: articles,
     bannedPhrases: bannedPhrasesOf(site.style_guide),
     activity: store.activityPage ? { page: (q) => store.activityPage!(company.id, q), live: recorder?.live, version: recorder?.version } : undefined,
+    roomPlan: store.getArtifact ? roomPlanFromStore({ getArtifact: (c, w) => store.getArtifact!(c, w) }, company.id) : undefined,
   }
 }
+
+/** The room plan of an interior item from the CompanyStore's artifact record (ADR-0087 decision 6); null without one. */
+export const roomPlanFromStore =
+  (store: Pick<ArticleStore, 'getArtifact'>, company: string) =>
+  async (item: string): Promise<RoomPlan | null> => {
+    const text = await store.getArtifact(company, item)
+    return text == null ? null : roomPlanOfArtifact(JSON.parse(text))
+  }
 
 const EMPTY_PERFORMANCE: PerformanceJson = { asOfDay: 0, projects: [], report: null }
 
@@ -350,6 +360,8 @@ export interface WasmOptions {
    * Without either, the poll re-reads every time.
    */
   changeKey?: () => unknown
+  /** The room plan of an interior item (`roomPlanFromStore` for the CompanyStore). Without it no room plan is known. */
+  roomPlan?: (item: string) => Promise<RoomPlan | null>
 }
 
 /** No change key: the views are re-read on every poll. */
@@ -419,6 +431,36 @@ export class WasmDataSource implements GameDataSource {
     for (const [id, list] of Object.entries(mine.posts)) posts[id] = [...(posts[id] ?? []), ...list]
     return { ...base, posts }
   }
+  /** Room plans read since the plan last changed, by item; the last value read of each, to announce only changes. */
+  private roomPlans = new Map<string, RoomPlan | null>()
+  private roomPlansSeen = new Map<string, RoomPlan | null>()
+  private roomPlanReads = new Set<string>()
+
+  roomPlanOf(item: string): RoomPlan | null | undefined {
+    if (!this.opts.roomPlan) return null
+    if (this.roomPlans.has(item)) return this.roomPlans.get(item)
+    if (!this.roomPlanReads.has(item)) {
+      this.roomPlanReads.add(item)
+      void this.opts
+        .roomPlan(item)
+        .catch(() => null)
+        .then((plan) => {
+          this.roomPlanReads.delete(item)
+          const seen = this.roomPlansSeen.has(item)
+          const had = this.roomPlansSeen.get(item)
+          this.roomPlans.set(item, plan)
+          this.roomPlansSeen.set(item, plan)
+          if (!seen || JSON.stringify(had) !== JSON.stringify(plan)) this.emit(['plan'])
+        })
+    }
+    return undefined
+  }
+
+  /** Forgets the room plans read (the store's text changed): the next `roomPlanOf` reads again. */
+  protected forgetRoomPlans() {
+    this.roomPlans.clear()
+  }
+
   async getArticle(item: string): Promise<ArticleRecord | null> {
     return (await this.opts.article?.(item)) ?? null
   }
@@ -542,6 +584,8 @@ export class WasmDataSource implements GameDataSource {
     }
     const changed = (Object.keys(next) as Array<keyof typeof next>).filter((k) => next[k] !== this.cache[k])
     if (changed.length === 0 && this.parsed) return []
+    // An item's stage moved: its room plan may be new (read again when asked).
+    if (changed.includes('plan')) this.forgetRoomPlans()
     this.cache = next
     const plan = next.plan ? splitPlanJson(JSON.parse(next.plan)) : { skeleton: null, text: null }
     this.parsed = {

@@ -84,6 +84,7 @@ function mockBridge() {
     pick: vi.fn(() => at),
     ghost: vi.fn(),
     ghostRect: vi.fn(),
+    ghostPlan: vi.fn(),
     highlight: vi.fn(),
     setCapture: vi.fn(),
     focus: vi.fn(),
@@ -381,7 +382,7 @@ describe('the town', () => {
     await flush()
     fireEvent.keyDown(gesture, { key: 'Enter' })
     await flush()
-    expect(sent(run)).toEqual([{ PlaceTownItem: { kind: 'Tree', pos: { x: 4625, z: 12500 }, rot: 0 } }])
+    expect(sent(run)).toEqual([{ PlaceTownItem: { kind: 'Tree', pos: { x: -3875, z: 3750 }, rot: 0 } }])
     fireEvent.keyDown(gesture, { key: 'Escape' })
     await flush()
     // The Plan house moves and turns, but has no Remove.

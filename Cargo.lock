@@ -1886,6 +1886,7 @@ dependencies = [
  "github",
  "jsonschema",
  "knowledge",
+ "office-designer",
  "serde",
  "serde_json",
  "sim-core",

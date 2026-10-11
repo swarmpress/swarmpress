@@ -102,7 +102,8 @@ function Town({ layout }: { layout: BuildLayout }) {
     catalogue: TOWN_PIECES,
     items,
     desks: [],
-    start: { x: layout.entrance.spawn[0], z: layout.entrance.spawn[1] },
+    // Beside the lot, off the street (the entrance's spawn is on it, where nothing may stand).
+    start: { x: layout.originX - 4, z: layout.originZ + layout.depth * 0.375 },
     place: (kind, spot, rot) => build.placeTown(kind.kind, spot.x, spot.z, rot),
     move: (item, spot, rot) => build.moveTown(item.id, spot.x, spot.z, rot, spot.exact),
     remove: (item) => (item.removable ? build.removeTown(item.id) : null),

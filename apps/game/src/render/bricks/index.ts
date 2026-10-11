@@ -11,6 +11,7 @@ import { boardCards, type PlanItemLike } from './surfaces'
 export type { BrickOffice, BrickOfficeStats, SurfaceSources, TownItemRect } from './office'
 export { townFrame, townOf, type TownSpot, type TownItemLayout } from './town'
 export { loadKit } from './kit'
+export { animateArrivals, arrivalsFor, prefersReducedMotion } from './arrivals'
 // Build mode's renderer side (ADR-0087), in the same lazy chunk as the kit.
 export { createBuildBridge, type BuildBridgeImpl, type BuildBridgeState } from '../build-mode/bridge'
 

@@ -90,10 +90,15 @@ pub enum TicketKind {
     /// ready: the CEO applies it or not (ADR-0072). Its default never applies.
     #[serde(alias = "structure-approval")]
     StructureApproval,
+    /// The office designer's room plan is ready in an economic company: the
+    /// CEO builds it (and pays its price) or not (ADR-0087 decision 6). Its
+    /// default, `Defer`, never builds.
+    #[serde(alias = "build-approval")]
+    BuildApproval,
 }
 
 impl TicketKind {
-    pub const ALL: [TicketKind; 15] = [
+    pub const ALL: [TicketKind; 16] = [
         TicketKind::BudgetOverrun,
         TicketKind::RunwayLow,
         TicketKind::PayrollSpike,
@@ -109,6 +114,7 @@ impl TicketKind {
         TicketKind::NeedsPage,
         TicketKind::BoardFailed,
         TicketKind::StructureApproval,
+        TicketKind::BuildApproval,
     ];
 
     pub const fn slug(self) -> &'static str {
@@ -123,6 +129,7 @@ impl TicketKind {
             TicketKind::Escalation => "escalation",
             TicketKind::PublishApproval => "publish-approval",
             TicketKind::StructureApproval => "structure-approval",
+            TicketKind::BuildApproval => "build-approval",
             TicketKind::StandupFailed => "standup-failed",
             TicketKind::DeployFailed => "deploy-failed",
             TicketKind::NeedsMedia => "needs-media",
@@ -146,6 +153,7 @@ impl TicketKind {
             | TicketKind::Escalation
             | TicketKind::PublishApproval
             | TicketKind::StructureApproval
+            | TicketKind::BuildApproval
             | TicketKind::StandupFailed
             | TicketKind::DeployFailed
             | TicketKind::NeedsMedia
@@ -161,7 +169,7 @@ impl TicketKind {
     pub const fn ceo_only(self) -> bool {
         matches!(
             self,
-            TicketKind::PublishApproval | TicketKind::StructureApproval
+            TicketKind::PublishApproval | TicketKind::StructureApproval | TicketKind::BuildApproval
         )
     }
 
@@ -191,6 +199,7 @@ impl TicketKind {
             TicketKind::Escalation => &[Retry, Kill],
             TicketKind::PublishApproval => &[Publish, SendBack, Kill, Defer],
             TicketKind::StructureApproval => &[Approve, SendBack, Kill, Defer],
+            TicketKind::BuildApproval => &[Build, Defer, Decline],
             TicketKind::StandupFailed | TicketKind::BoardFailed => &[Retry, Skip],
             TicketKind::DeployFailed => &[Retry, Acknowledge],
             TicketKind::NeedsMedia | TicketKind::NeedsPage => &[Retry, Kill],
@@ -212,7 +221,9 @@ impl TicketKind {
             TicketKind::Escalation | TicketKind::NeedsMedia | TicketKind::NeedsPage => {
                 TicketOption::Kill
             }
-            TicketKind::PublishApproval | TicketKind::StructureApproval => TicketOption::Defer,
+            TicketKind::PublishApproval
+            | TicketKind::StructureApproval
+            | TicketKind::BuildApproval => TicketOption::Defer,
             TicketKind::StandupFailed | TicketKind::BoardFailed => TicketOption::Skip,
             TicketKind::DeployFailed => TicketOption::Acknowledge,
         }
@@ -305,6 +316,12 @@ pub enum TicketOption {
     Defer,
     #[serde(alias = "skip")]
     Skip,
+    /// `BuildApproval`: the construction starts (ADR-0087 decision 6).
+    #[serde(alias = "build")]
+    Build,
+    /// `BuildApproval`: the room plan is not built; the item is cancelled.
+    #[serde(alias = "decline")]
+    Decline,
 }
 
 impl TicketOption {
@@ -325,6 +342,8 @@ impl TicketOption {
             TicketOption::SendBack => "send-back",
             TicketOption::Defer => "defer",
             TicketOption::Skip => "skip",
+            TicketOption::Build => "build",
+            TicketOption::Decline => "decline",
         }
     }
 }
@@ -714,6 +733,16 @@ impl World {
                 }
                 Ok(())
             }
+            (TicketKind::BuildApproval, TicketOption::Build) => {
+                let item = t
+                    .work_item
+                    .and_then(|i| self.plan.items.get(&i))
+                    .ok_or("the ticket has no work item")?;
+                if !item.awaiting_approval() {
+                    return Err("the room plan is not waiting for approval");
+                }
+                self.check_construction(item.id)
+            }
             (TicketKind::StandupFailed, TicketOption::Retry) => {
                 let project = t.project.ok_or("the ticket has no project")?;
                 self.standup_possible(project)
@@ -810,6 +839,12 @@ impl World {
                 (O::Kill, Some(id)) => self.cancel_item(id),
                 // Defer: the item stays parked; `raise_morning_approvals`
                 // puts it back on the CEO's desk at the next 08:30.
+                _ => {}
+            },
+            TicketKind::BuildApproval => match (option, t.item) {
+                (O::Build, Some(id)) => self.publish_item(id),
+                (O::Decline, Some(id)) => self.cancel_item(id),
+                // Defer: parked; a fresh ticket at the next 08:30.
                 _ => {}
             },
             TicketKind::StandupFailed => {

@@ -17,6 +17,9 @@ content-repo = { path = "../content-repo" }
 # The site's models (ADR-0072, FEAT-095): the architects' edits are applied
 # and checked in-process, as the server checks them.
 blueprint = { path = "../blueprint" }
+# The office designer's deterministic core (ADR-0087 decision 6, FEAT-084):
+# the layout solver, checks and repair driver of the InteriorDesign job.
+office-designer = { path = "../office-designer" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

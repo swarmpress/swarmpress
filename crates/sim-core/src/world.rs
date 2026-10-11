@@ -367,7 +367,7 @@ impl World {
         self.pending.len()
     }
 
-    fn execute(&mut self, cmd: Command) {
+    pub(crate) fn execute(&mut self, cmd: Command) {
         let cost = price(self, &cmd);
         if is_building_command(&cmd) {
             self.building.layout_rev = self.building.layout_rev.wrapping_add(1);
@@ -644,6 +644,9 @@ impl World {
                 brief_ref,
             } => self.commission(project, kind, brief_ref),
             Command::RunTool { tool_ref } => self.request_tool_run(tool_ref),
+            Command::CommissionInterior { room, brief_ref } => {
+                self.commission_interior(room, brief_ref);
+            }
             Command::Praise { staff } => {
                 let bonus = if self.building.first_room_of(RoomKind::CeoOffice).is_some() {
                     PRAISE_MORALE + PRAISE_MORALE / 5
@@ -746,6 +749,9 @@ impl World {
                 issues,
             } => self.apply_blueprint_changed(hash, page_types, slots, issues),
             ServerCommand::ToolsChanged { tools } => self.apply_tools_changed(&tools),
+            ServerCommand::InteriorPlan { job_id, items } => {
+                self.apply_interior_plan(job_id, &items);
+            }
             ServerCommand::Utterance {
                 meeting,
                 speaker,
@@ -1036,6 +1042,8 @@ impl World {
         //    the CEO's desk; work items whose phase is done
         self.expire_tickets();
         self.raise_morning_approvals(before, now);
+        self.start_waiting_interiors();
+        self.advance_construction();
         self.advance_work();
 
         // 7. staff

@@ -44,6 +44,12 @@ export interface LoopSim extends ReplaySim {
   pending_effects(): number
   /** FEAT-079: the earliest due step of the sim's pending jobs (feature-detected by `dueStepSource`). */
   next_due_step?: () => bigint | number | null | undefined
+  /**
+   * FEAT-084: the office designer's job context for an interior item
+   * (`{room_id, room, build_mode}`, `Sim.interior_context_json`); undefined
+   * when the item has no room. Without it the designer's job fails loudly.
+   */
+  interior_context_json?: (item: string) => string | undefined | null
 }
 
 export interface LoopStore {
@@ -167,6 +173,9 @@ export const DEFAULT_JOB_TIMEOUT_MS: Record<string, number> = {
   draft: 60 * 60_000,
   review: 30 * 60_000,
   publish: 15 * 60_000,
+  // The office designer (FEAT-084): a layout and at most three fixes; the construction only reports.
+  'interior-design': 30 * 60_000,
+  construct: 5 * 60_000,
 }
 /** The limit of a job kind not listed above. */
 export const FALLBACK_JOB_TIMEOUT_MS = 60 * 60_000
@@ -277,7 +286,7 @@ interface QueuedJob {
 const failureKey = (workItem: string, attempt: number) => `${workItem}#${attempt}`
 
 /** Job kinds whose request gets a context from the host. */
-const CONTEXT_KINDS = new Set(['standup', 'board', 'performance', 'kpi-report'])
+const CONTEXT_KINDS = new Set(['standup', 'board', 'performance', 'kpi-report', 'interior-design'])
 
 /** Earliest due step first, ties by job id. */
 const runsBefore = (a: JobRecord, b: JobRecord) => a.due_step < b.due_step || (a.due_step === b.due_step && a.job_id < b.job_id)
@@ -995,6 +1004,11 @@ export class OrchestrationLoop {
     const project = this.where.get(rec.job_id)?.project ?? ''
     const job = { job_id: rec.job_id, project }
     const now = new Date(this.nowMs())
+    if (rec.kind === 'interior-design') {
+      // The room as the office designer sees it (FEAT-084), from the sim: numbers only.
+      const raw = rec.work_item ? this.o.sim.interior_context_json?.(rec.work_item) : null
+      return raw ? JSON.stringify({ ...(JSON.parse(jobJson) as Record<string, unknown>), context: JSON.parse(raw) as unknown }) : jobJson
+    }
     if (rec.kind === 'performance' || rec.kind === 'kpi-report') {
       const context = this.o.analysisContext ? await this.o.analysisContext({ ...job, kind: rec.kind, jobJson }) : null
       // A work-item request's brief ref crosses as decimal text: the parse loses nothing.

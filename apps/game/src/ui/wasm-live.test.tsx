@@ -118,6 +118,7 @@ const SAMPLES: Record<string, Command> = {
   PlaceTownItem: { PlaceTownItem: { kind: 'Tree', pos: { x: 9000, z: -10000 }, rot: 0 } },
   MoveTownItem: { MoveTownItem: { item: 'town-1', pos: { x: 3000, z: -12000 }, rot: 0 } },
   RemoveTownItem: { RemoveTownItem: { item: 'town-14' } },
+  CommissionInterior: { CommissionInterior: { room: 'room-2', brief_ref: 12 } },
   AssignPhase: cmd.assignPhase('work-item-1', 0, 'staff-1'),
   AcceptProposal: cmd.acceptProposal('work-item-1', 'post-1'),
   CompleteTodo: cmd.completeTodo('work-item-1', 'todo-1'),

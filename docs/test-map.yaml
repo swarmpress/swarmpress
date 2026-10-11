@@ -140,3 +140,9 @@
 # The office designer's core (FEAT-084): unit tests in src/ (relation schema, geometry).
 - match: { classname: office-designer }
   features: [FEAT-084]
+# The office designer's jobs (FEAT-084): the prompts and the fake designer in agents, the room
+# plan's wire shape in the orchestrator.
+- match: { classname: agents, title: "build::" }
+  features: [FEAT-084]
+- match: { classname: orchestrator, title: "build::tests" }
+  features: [FEAT-084]

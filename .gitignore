@@ -11,8 +11,8 @@ coverage/
 # Build outputs
 dist/
 build/
-# Not an output: the game's Build section (ADR-0087).
-!apps/game/src/ui/build/
+# Not outputs: source folders named build (the game's Build section, the office designer's job; ADR-0087).
+!**/src/**/build/
 .next/
 .turbo/
 *.tsbuildinfo

@@ -590,6 +590,7 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
             }
             Ok(())
         }
+        Command::CommissionInterior { room, .. } => w.check_commission_interior(*room),
     }
 }
 
@@ -821,6 +822,7 @@ pub fn validate_server(w: &World, cmd: &ServerCommand) -> Result<(), Reject> {
             seq,
             chars,
         } => w.check_remark(*speaker, *listener, *seq, *chars),
+        ServerCommand::InteriorPlan { job_id, items } => w.check_interior_plan(*job_id, items),
         ServerCommand::AnalyticsSignals {
             project,
             day,
@@ -883,6 +885,7 @@ pub fn price(w: &World, cmd: &Command) -> i64 {
         | Command::Commission { .. }
         | Command::RunTool { .. }
         | Command::RemoveTownItem { .. }
+        | Command::CommissionInterior { .. }
         | Command::Praise { .. } => 0,
     }
 }

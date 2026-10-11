@@ -305,7 +305,16 @@ digest's `artifact_sha` may be a hex string (its first 16 bytes are kept),
 {"BlueprintChanged":{"hash":[1,35,69,103,137,171,205,239,1,35,69,103,137,171,205,239],
                      "page_types":6,"slots":14,"issues":0}}       // ADR-0072: the blueprint's digest
 {"ToolsChanged":{"tools":[{"tool_ref":177789920126454,"schedule_days":1,"role":null}]}}
+{"InteriorPlan":{"job_id":7,"items":[{"kind":"Desk","at":{"Floor":{"pos":{"x":31500,"z":9250},"rot":1}}},
+                 {"kind":"Monitor","at":{"OnPlanned":0}},{"kind":"DeskLamp","at":{"OnDesk":"equip-3"}}]}}  // ADR-0087: a room plan as numbers
 ```
+
+The office designer (ADR-0087 decision 6, FEAT-084): the CEO's
+`{"CommissionInterior":{"room":"room-6","brief_ref":12}}`; `Sim.interior_context_json("work-item-4")`
+gives the designer's job its room (`{room_id, room, build_mode}`, `room` in
+`office_designer::Room`'s shape); `plan_json` items and `inbox_json` tickets about an
+interior item carry `interior: {room, items, placed, placedIds, costCents, costEur, refused,
+nextPlaceStep, nextPlaceMinute}`.
 
 A rejected command throws (or, for `validate_command_json`, returns) the
 player-facing reason, e.g. `staff-1 would be allocated 120% (max 100%)`,

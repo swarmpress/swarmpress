@@ -355,3 +355,68 @@ describe.skipIf(!built)('build mode in the scene (kit-wasm, NullEngine)', () => 
     expect({ meshes: c.game.scene.meshes.length, materials: c.game.scene.materials.length, textures: c.game.scene.textures.length }).toEqual(count)
   })
 })
+
+describe.skipIf(!built)('a whole plan as ghosts (FEAT-084, kit-wasm, NullEngine)', () => {
+  // The meeting room (room-6: x 0..6, z 8..16) and the newsroom's first desk (equip-17).
+  const PLAN = [
+    { kind: 'Desk', x: 2, z: 11, rot: 1 as const },
+    { kind: 'Monitor', x: 0, z: 0, rot: 0 as const, onDesk: 0 },
+    { kind: 'DeskLamp', x: 0, z: 0, rot: 0 as const, onDesk: 'equip-17' },
+    { kind: 'MeetingTable', x: 4, z: 13, rot: 0 as const },
+    { kind: 'Plant', x: 5.5, z: 8.5, rot: 0 as const },
+    // No kit design of that name: left out, the rest still drawn.
+    { kind: 'Spaceship', x: 1, z: 9, rot: 0 as const },
+    // On a desk that does not exist: left out.
+    { kind: 'Monitor', x: 0, z: 0, rot: 0 as const, onDesk: 'equip-999' },
+  ]
+
+  it('draws every item at once, green, where it stands (an item on a desk where its desk does), and clears', () => {
+    const { bridge, game } = setup()
+    bridge.ghostPlan(PLAN)
+    const plan = bridge.debug().plan
+    expect(plan).toHaveLength(5)
+    const at = plan.map((g) => [g.node.position.x, g.node.position.z])
+    const desk = layout.rooms.flatMap((r) => r.desks).find((d) => d.id === 'equip-17')!
+    expect(at).toEqual([
+      [2, 11],
+      [2, 11],
+      [desk.x, desk.z],
+      [4, 13],
+      [5.5, 8.5],
+    ])
+    // The monitor turns with its planned desk, and stands on it (its bricks above the desk top).
+    expect(plan[1].node.rotation.y).toBeCloseTo(plan[0].node.rotation.y)
+    const top = (ms: Mesh[]) => Math.min(...centres(ms).map((c) => c[1]))
+    expect(top(plan[1].meshes)).toBeGreaterThan(0.5)
+    expect(top(plan[3].meshes)).toBeLessThan(0.3)
+    for (const g of plan) {
+      expect(g.meshes.length).toBeGreaterThan(0)
+      for (const m of g.meshes) {
+        expect(m.material?.name).toBe('ghost-ok')
+        expect(m.isPickable).toBe(false)
+      }
+    }
+    // The single ghost is its own thing: placing one does not touch the plan.
+    bridge.ghost({ kind: 'Plant', family: 'equipment', x: 1, z: 1, rot: 0, ok: false })
+    expect(bridge.debug().plan).toHaveLength(5)
+    const meshes = plan.flatMap((g) => g.meshes)
+    bridge.ghostPlan(null)
+    expect(bridge.debug().plan).toEqual([])
+    expect(meshes.every((m) => m.isDisposed())).toBe(true)
+    expect(game.scene.meshes.some((m) => m.name.startsWith('ghost-plan-'))).toBe(false)
+  })
+
+  it('carries the plan over to the next scene, and frees it on dispose', () => {
+    const first = setup()
+    first.bridge.ghostPlan(PLAN.slice(0, 2))
+    const carry = first.bridge.state()
+    expect(carry.plan).toEqual(PLAN.slice(0, 2))
+    const second = setup()
+    const canvas = { getBoundingClientRect: () => ({ left: 0, top: 0, right: 512, bottom: 256, width: 512, height: 256 }) } as unknown as HTMLCanvasElement
+    const bridge = createBuildBridge({ game: second.game, bricks: second.bricks, kit, layout, canvas: () => canvas }, carry)
+    expect(bridge.debug().plan).toHaveLength(2)
+    const meshes = bridge.debug().plan.flatMap((g) => g.meshes)
+    bridge.dispose()
+    expect(meshes.every((m) => m.isDisposed())).toBe(true)
+  })
+})

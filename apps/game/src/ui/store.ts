@@ -10,6 +10,7 @@ import type { PlanJson, PlanText, PostType } from './plan-types'
 import { EMPTY_PLAN, EMPTY_PLAN_TEXT, withBoardText, withTextOnlyItems } from './plan-wire'
 import type { FinanceJson, InboxJson, OrgJson, PerformanceJson, StaffJson } from './types'
 import type { BuildLayout } from './build/types'
+import { interiorSource, type InteriorBrief, type RoomPlan } from './build/interior'
 
 export type PanelId = 'plan' | 'org' | 'projects' | 'finance' | 'inbox' | 'activity' | 'hiring' | 'performance' | 'blueprint' | 'build'
 
@@ -94,6 +95,17 @@ export interface OverlayStore {
    * `undefined` while the source answers, `null` when it does not say (no number is shown then).
    */
   price(cmd: Command): number | null | undefined
+  /** Whether the source can ask the office designer for a room (FEAT-084); the form is disabled without. */
+  readonly canCommissionInterior: boolean
+  /**
+   * Ask the office designer to furnish a room (FEAT-084): the source stores the words and the brief
+   * and logs `CommissionInterior`; the sim's verdict comes back. Re-reads the source when taken.
+   */
+  commissionInterior(input: { room: string; words: string; brief: InteriorBrief }): Promise<CommandResult>
+  /** Whether the source can read the office designer's room plans (the Build Approval's content). */
+  readonly hasRoomPlans: boolean
+  /** The office designer's plan for a work item: `undefined` while it loads, `null` when there is none (or no source for it). */
+  roomPlanOf(item: string): RoomPlan | null | undefined
   panel: ReturnType<typeof signal<PanelId | null>>
   /** The Studio's workbench (the Blueprint panel's tab): the shell's Building and Factory open it there. */
   studioTab: ReturnType<typeof signal<StudioTab>>
@@ -340,6 +352,24 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
       }
       source.price(json).then(settle, () => settle(null))
       return undefined
+    },
+    canCommissionInterior: !!interiorSource(source).commissionInterior,
+    async commissionInterior(input) {
+      const s = interiorSource(source)
+      if (!s.commissionInterior) return UNAVAILABLE
+      let r: CommandResult
+      try {
+        r = await s.commissionInterior(input)
+      } catch (e) {
+        r = { ok: false, reason: e instanceof Error ? e.message : String(e) }
+      }
+      if (r.ok) await load()
+      return r
+    },
+    hasRoomPlans: !!interiorSource(source).roomPlanOf,
+    roomPlanOf(item) {
+      const s = interiorSource(source)
+      return s.roomPlanOf ? s.roomPlanOf(item) : null
     },
     comment: (item, text) => store.post(item, 'comment', text),
     async post(item, type, text, payload) {

@@ -9,6 +9,7 @@ import type { Delegation, Priority, TicketJson } from '../types'
 import type { StructureRecord } from '../data-source'
 import { Booklet } from '../studio/Booklet'
 import { ArticleJudgement } from './ArticleJudgement'
+import { BuildApprovalPlan } from './BuildApproval'
 import { Badge, Notice, Panel, PersonButton } from './common'
 
 const PRIORITY_RANK: Record<Priority, number> = { high: 0, medium: 1, low: 2 }
@@ -58,6 +59,12 @@ const TICKET_KINDS: Record<string, KindInfo> = {
     label: 'Structure approval',
     about: 'A proposed change to the site’s structure or tools. Approve applies it to the site. Send back asks for a new proposal; Kill drops it. Defer asks again at 08:30 and never applies it.',
   },
+  // ADR-0087 decision 6, FEAT-084: the office designer's plan for a room (Economic mode only).
+  'build-approval': {
+    label: 'Build approval',
+    about: 'The office designer’s plan for a room. Build pays for it and sends the builders. Decline drops it. Defer asks again later and never builds.',
+    amount: (a) => `${a} to build`,
+  },
 }
 
 const OPTION_LABELS: Record<string, string> = {
@@ -69,6 +76,8 @@ const OPTION_LABELS: Record<string, string> = {
   retry: 'Retry',
   skip: 'Skip',
   acknowledge: 'Acknowledge',
+  build: 'Build',
+  decline: 'Decline',
 }
 
 /** `PublishApproval`, `publish_approval` and `publish-approval` are the same id. */
@@ -257,6 +266,7 @@ function Ticket({ t }: { t: TicketJson }) {
           }
         />
       )}
+      {t.workItem && kind === 'build-approval' && <BuildApprovalPlan item={t.workItem} room={(t as TicketJson & { room?: string | null }).room} open={open} />}
       {open ? (
         <>
           {delta != null && (

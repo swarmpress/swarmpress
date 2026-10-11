@@ -3,12 +3,14 @@
  * demolishing a room (`Demolish Room`, enabled only when the sim accepts it, with its reason when
  * not), and a new room from a template: pick two corners on the floor (snapped to the 1 m tiles of
  * geom.rs), or type the rectangle; choose the side of its door; the sim checks and prices the
- * `PlaceRoom` live before it is sent.
+ * `PlaceRoom` live before it is sent. And asking the office designer to furnish a room (FEAT-084,
+ * `OfficeDesigner.tsx`).
  */
 import { useEffect, useLayoutEffect, useState } from 'preact/hooks'
 import { useStore } from '../store'
 import { panelKey, useBridge, useCanvas, type Pick } from './gesture'
 import { asCommand, CommandButton, useVerdict, Verdict } from './parts'
+import { AskOfficeDesigner } from './OfficeDesigner'
 import { build, ROOM_TEMPLATES, SIDES, type BuildLayout, type RoomTemplate, type SideVariant } from './types'
 
 interface Rect {
@@ -165,6 +167,8 @@ export function Rooms({ layout }: { layout: BuildLayout }) {
           </div>
         )}
       </section>
+
+      <AskOfficeDesigner layout={layout} room={selected} onRoom={(id) => (setTemplate(null), setSelected(id || null))} />
 
       <section aria-labelledby="build-new-h">
         <h3 id="build-new-h" class="build-h">New room</h3>

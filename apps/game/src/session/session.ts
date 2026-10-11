@@ -50,6 +50,7 @@ import { runTool } from '../tools/runner'
 import { toolCredentials } from '../tools/credentials'
 import { blueprintCommand, toolsCommand, type HeldStructure } from '../blueprint/digest'
 import { commission, type CommissionKind } from '../blueprint/commission'
+import { commissionInterior, type InteriorBrief } from '../blueprint/interior'
 import type { CommandResult } from '../ui/commands'
 import { OrchestrationLoop, type JobRecord } from '../orchestration/loop'
 import { withApprover } from '../orchestration/approver'
@@ -268,6 +269,8 @@ class SessionDataSource extends WasmDataSource {
   }
 
   planTextChanged() {
+    // A job wrote text: an interior item's room plan may be new.
+    this.forgetRoomPlans()
     this.planListeners.forEach((l) => l(['plan']))
   }
 
@@ -325,6 +328,14 @@ class SessionDataSource extends WasmDataSource {
   commission(kind: CommissionKind, request: string): Promise<CommandResult> {
     if (!this.siteActions) return Promise.resolve({ ok: false, reason: 'This session cannot change the site (read-only).' })
     return this.siteActions.commission(kind, request)
+  }
+
+  /** How the overlay asks the office designer for a room (ADR-0087 decision 6); the session sets it with the lease (null: read-only). */
+  interiorActions: { commission(input: { room: string; words: string; brief: InteriorBrief }): Promise<CommandResult> } | null = null
+
+  commissionInterior(input: { room: string; words: string; brief: InteriorBrief }): Promise<CommandResult> {
+    if (!this.interiorActions) return Promise.resolve({ ok: false, reason: 'This session cannot change the office (read-only).' })
+    return this.interiorActions.commission(input)
   }
 }
 
@@ -1193,6 +1204,19 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
               request,
             )
           },
+        }
+      // FEAT-084: the CEO's words and the brief are a store record, the command carries its ref.
+      if (!readOnly)
+        s.interiorActions = {
+          commission: (input) =>
+            commissionInterior(
+              {
+                validate: (json) => sim.validate_command_json(json),
+                apply: (json) => loop.apply(json),
+                putBrief: (ref, record) => store.putBrief(company.id, ref, record),
+              },
+              input,
+            ),
         }
       // The wp-admin door of a company on WordPress (ADR-0082 §5).
       if (wpSite && !readOnly) s.doorOpener = () => wpSite.openDoor()

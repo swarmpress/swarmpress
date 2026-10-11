@@ -10,13 +10,13 @@
  * here (rule 8): the UI asks, the sim judges.
  */
 import { Color3, Matrix, Mesh, MeshBuilder, StandardMaterial, TransformNode, VertexData, type Scene } from '@babylonjs/core'
-import type { BuildBridge, BuildTarget, GhostSpec } from '../../build-bridge'
+import type { BuildBridge, BuildTarget, GhostSpec, PlanGhost } from '../../build-bridge'
 import type { BuildingLayout } from '../../state/render-state'
 import type { GameScene } from '../scene'
 import { buildRoomChunk, STUD_HEIGHT, STUD_RADIUS, type ChunkSource } from '../bricks/chunk'
 import { mappingOf, type KitApi, type KitBuildLike, type KitMapping } from '../bricks/kit'
 import { footprintRect, type BrickOffice } from '../bricks/office'
-import { FLOOR_TOP, PLATE, roomPlacements, WALL_TOP, type DesignInfo, type Turn } from '../bricks/placements'
+import { FLOOR_TOP, PLATE, roomPlacements, turnOf, WALL_TOP, type DesignInfo, type Turn } from '../bricks/placements'
 import { TOWN_DESIGN, TOWN_HOUSES, HOUSE_SECTION, townFrame, treeParams, type TownItemKind } from '../bricks/town'
 import { frameBars, inRect, itemUnder, kebabKind, rayToPlane, snapStud, type PickItem, type Rect } from './pick'
 
@@ -37,6 +37,7 @@ export interface BuildBridgeState {
   ghost: GhostSpec | null
   highlight: BuildTarget | null
   rect?: { x: number; z: number; w: number; d: number; ok: boolean } | null
+  plan?: PlanGhost[] | null
 }
 
 export interface BuildBridgeImpl extends BuildBridge {
@@ -44,7 +45,13 @@ export interface BuildBridgeImpl extends BuildBridge {
   /** Frees the compiled designs and the ghost's and highlight's meshes. */
   dispose(): void
   /** Tests: the ghost's root node and meshes when one is shown, the highlight's bars, the room rect's meshes. */
-  debug(): { ghost: { node: TransformNode; meshes: Mesh[]; ok: boolean } | null; highlight: Mesh[]; rect: Mesh[] }
+  debug(): {
+    ghost: { node: TransformNode; meshes: Mesh[]; ok: boolean } | null
+    highlight: Mesh[]
+    rect: Mesh[]
+    /** The plan's ghosts, one node per item drawn (an item without a design is left out). */
+    plan: Array<{ node: TransformNode; meshes: Mesh[] }>
+  }
 }
 
 const GHOST_ALPHA = 0.5
@@ -108,8 +115,9 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
     if (!c) {
       const build = kit.compileShipped(design, params)
       if (!build.ok()) {
+        const issues = build.issuesJson()
         build.free()
-        throw new Error(`kit: ${design} did not compile: ${build.issuesJson()}`)
+        throw new Error(`kit: ${design} did not compile: ${issues}`)
       }
       const i = JSON.parse(build.infoJson())
       c = { build, info: { bounds: i.bounds, mount: i.mount, ports: i.ports } }
@@ -169,6 +177,29 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
   const ghostMaterial = (ok: boolean) =>
     ok ? (okMaterial ??= material('ghost-ok', GHOST_OK, GHOST_ALPHA)) : (badMaterial ??= material('ghost-bad', GHOST_BAD, GHOST_ALPHA))
 
+  /** A design's bricks under one node, built at the origin unturned; the node moves and turns it. */
+  const makeGhost = (name: string, d: { design: string; params: string; y: number }) => {
+    const c = compiled(d.design, d.params)
+    const placement = { id: name, role: 'prop' as const, design: d.design, params: d.params, x: 0, y: d.y, z: 0, turn: 0 as Turn, standIn: true }
+    const at = { id: name, x: -50, z: -50, w: 100, d: 100 } as unknown as BuildingLayout['rooms'][number]
+    const src: ChunkSource = { build: c.build, placement, footprint: [c.info.bounds[0], c.info.bounds[1]], shell: false }
+    const chunk = buildRoomChunk(at, [], [src])
+    const node = new TransformNode(name, scene)
+    const meshes: Mesh[] = []
+    const add = (mesh: string, shape: VertexData, matrices: Float32Array) => {
+      const m = new Mesh(mesh, scene)
+      shape.applyToMesh(m)
+      m.thinInstanceSetBuffer('matrix', matrices, 16, true)
+      m.thinInstanceRefreshBoundingInfo(false)
+      m.isPickable = false
+      m.parent = node
+      meshes.push(m)
+    }
+    for (const b of chunk.instances) add(`${name}-${b.key}`, shapes()[b.shape], b.matrices)
+    for (const b of chunk.studs) add(`${name}-studs-${b.key}`, shapes().stud, b.matrices)
+    return { node, meshes }
+  }
+
   const ghosts = new Map<string, { node: TransformNode; meshes: Mesh[] } | null>()
   const ghostOf = (g: GhostSpec) => {
     const key = `${g.family}|${g.kind}`
@@ -179,32 +210,39 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
       ghosts.set(key, null)
       return null
     }
-    const c = compiled(d.design, d.params)
-    // Built at the origin unturned; the node moves and turns it.
-    const placement = { id: `ghost-${key}`, role: 'prop' as const, design: d.design, params: d.params, x: 0, y: d.y, z: 0, turn: 0 as Turn, standIn: true }
-    const at = { id: `ghost-${key}`, x: -50, z: -50, w: 100, d: 100 } as unknown as BuildingLayout['rooms'][number]
-    const src: ChunkSource = { build: c.build, placement, footprint: [c.info.bounds[0], c.info.bounds[1]], shell: false }
-    const chunk = buildRoomChunk(at, [], [src])
-    const node = new TransformNode(`ghost-${key}`, scene)
-    const meshes: Mesh[] = []
-    const add = (name: string, shape: VertexData, matrices: Float32Array) => {
-      const m = new Mesh(name, scene)
-      shape.applyToMesh(m)
-      m.thinInstanceSetBuffer('matrix', matrices, 16, true)
-      m.thinInstanceRefreshBoundingInfo(false)
-      m.isPickable = false
-      m.parent = node
-      meshes.push(m)
-    }
-    for (const b of chunk.instances) add(`ghost-${key}-${b.key}`, shapes()[b.shape], b.matrices)
-    for (const b of chunk.studs) add(`ghost-${key}-studs-${b.key}`, shapes().stud, b.matrices)
-    node.setEnabled(false)
-    const gh = { node, meshes }
+    const gh = makeGhost(`ghost-${key}`, d)
+    gh.node.setEnabled(false)
     ghosts.set(key, gh)
     return gh
   }
   let shownGhost: { node: TransformNode; meshes: Mesh[]; ok: boolean } | null = null
   let ghostSpec: GhostSpec | null = null
+
+  // --- a whole plan's ghosts (the office designer's preview): one node per item, all green ---
+  let planSpec: PlanGhost[] | null = null
+  let planGhosts: Array<{ node: TransformNode; meshes: Mesh[] }> = []
+  const clearPlan = () => {
+    for (const g of planGhosts) {
+      for (const m of g.meshes) m.dispose()
+      g.node.dispose()
+    }
+    planGhosts = []
+  }
+  /** Where a plan item stands: its own spot, or the desk it goes on (a planned desk by index, a placed one by id). */
+  const planSpot = (items: PlanGhost[], i: PlanGhost): { x: number; z: number; turn: Turn } | null => {
+    if (i.onDesk === undefined) return { x: i.x, z: i.z, turn: i.rot }
+    if (typeof i.onDesk === 'number') {
+      const desk = items[i.onDesk]
+      return desk && desk.onDesk === undefined ? { x: desk.x, z: desk.z, turn: desk.rot } : null
+    }
+    for (const r of layout.rooms) {
+      const d = r.desks.find((x) => x.id === i.onDesk)
+      if (d) return { x: d.x, z: d.z, turn: turnOf(d.rot) }
+    }
+    return null
+  }
+  /** The design of a plan item: an equipment kind by the kit mapping, else a kit design by its own id (a table, a stool). */
+  const planDesign = (kind: string) => ghostDesign({ kind, family: 'equipment' }, mapping, infoOf) ?? { design: kebabKind(kind), params: '{}', y: 0 }
 
   // --- the highlight: a yellow frame around a footprint ---------------------
   let highlightMaterial: StandardMaterial | null = null
@@ -247,6 +285,27 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
       for (const mesh of next.meshes) mesh.material = m
       next.node.setEnabled(true)
       shownGhost = { ...next, ok: g.ok }
+    },
+    ghostPlan(items) {
+      planSpec = items
+      clearPlan()
+      if (!items) return
+      const m = ghostMaterial(true)
+      items.forEach((i, n) => {
+        const at = planSpot(items, i)
+        if (!at) return
+        let g: { node: TransformNode; meshes: Mesh[] }
+        try {
+          g = makeGhost(`ghost-plan-${n}`, planDesign(i.kind))
+        } catch (err) {
+          console.warn(`[build] no kit design for the plan's ${i.kind}`, err)
+          return
+        }
+        g.node.position.set(at.x, 0, at.z)
+        g.node.rotation.y = ghostRotation(at.turn)
+        for (const mesh of g.meshes) mesh.material = m
+        planGhosts.push(g)
+      })
     },
     ghostRect(r) {
       rectSpec = r
@@ -299,8 +358,9 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
       if (r) game.iso.frame({ x: r.x, z: r.z, w: r.w, d: r.d, h: layout.wallHeight }, covered)
     },
     canvas: () => deps.canvas(),
-    state: () => ({ capture, ghost: ghostSpec, highlight: highlighted, rect: rectSpec }),
+    state: () => ({ capture, ghost: ghostSpec, highlight: highlighted, rect: rectSpec, plan: planSpec }),
     dispose() {
+      clearPlan()
       for (const m of rectMeshes) m.dispose()
       rectMeshes = []
       outlineOk?.dispose()
@@ -320,7 +380,7 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
       for (const c of builds.values()) c.build.free()
       builds.clear()
     },
-    debug: () => ({ ghost: shownGhost, highlight: bars, rect: rectMeshes }),
+    debug: () => ({ ghost: shownGhost, highlight: bars, rect: rectMeshes, plan: planGhosts }),
   }
   if (carry) {
     if (carry.capture) bridge.setCapture(true)
@@ -332,6 +392,7 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
     }
     bridge.highlight(carry.highlight)
     bridge.ghostRect(carry.rect ?? null)
+    bridge.ghostPlan(carry.plan ?? null)
   }
   return bridge
 }

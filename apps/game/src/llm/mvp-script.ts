@@ -648,7 +648,115 @@ export function standupAnswer(prompt: string, later = ''): MvpReply | null {
   // The web developer's theme components (FEAT-094), `fake_writer::FAKE_COMPONENT`.
   if (task === 'theme component') return { json: { component: FAKE_COMPONENT, note: "A plain renderer in the theme's tokens." } }
   if (task === 'update review') return { json: { decision: 'approve', score: 8, notes: 'The update is correct and rests on the evidence.', issues: [], high_risk: [] } }
+  // The office designer (FEAT-084): a plan from the brief, a fix that moves what is named.
+  if (task === 'office layout') return { json: officeLayout(prompt) }
+  if (task === 'office layout fix') return { json: officeFix(prompt) }
   return null
+}
+
+// ---------------------------------------------------------------- the office designer (FEAT-084)
+
+const SIDES = ['north', 'east', 'south', 'west'] as const
+/** `agents::build::BRIEF_FIELDS`: the brief's keys and how the prompt names them. */
+const BRIEF_FIELDS: [string, string][] = [
+  ['workstations', 'workstations'],
+  ['meeting_seats', 'meeting seats'],
+  ['storage', 'storage'],
+  ['writing_surfaces', 'writing surfaces'],
+  ['coffee', 'coffee'],
+  ['plants', 'plants'],
+]
+const neighbours = (side: string): [string, string] => (side === 'north' || side === 'south' ? ['west', 'east'] : ['north', 'south'])
+
+/** `agents::build::fake::layout`: a plan from the brief and the room doc of an `office layout` prompt. */
+export function officeLayout(prompt: string): { placements: Record<string, unknown>[] } {
+  const wants: Record<string, number> = {}
+  const doors: string[] = []
+  const windows: [string, number][] = []
+  const existing: string[] = []
+  for (const line of prompt.split('\n')) {
+    for (const [key, words] of BRIEF_FIELDS) {
+      const pre = `- ${words}: `
+      if (line.startsWith(pre) && /^\d+$/.test(line.slice(pre.length).trim())) wants[key] = Number(line.slice(pre.length).trim())
+    }
+    if (line.startsWith('- wall:')) {
+      const rest = line.slice('- wall:'.length)
+      const side = rest.split(/\s+/)[0] ?? ''
+      if (rest.includes('door:')) doors.push(side)
+      const w = /window:(\d+)/.exec(rest)
+      if (w) windows.push([side, Number(w[1])])
+    }
+    if (line.startsWith('- equipment:')) {
+      const design = line.slice('- equipment:'.length).split(': ')[1]?.split(' ')[0]
+      if (design) existing.push(design)
+    }
+  }
+  const need = (key: string, designs: string[]) => Math.max(0, (wants[key] ?? 0) - existing.filter((d) => designs.includes(d)).length)
+  const freeSides = SIDES.filter((s) => !doors.includes(s))
+  const free: string[] = freeSides.length ? [...freeSides] : [...SIDES]
+  const used: string[] = []
+  const nextWall = () => {
+    const side = free.find((f) => !used.includes(f)) ?? free[used.length % free.length]
+    used.push(side)
+    return side
+  }
+  const row = (design: string, anchor: string, n: number, spacing: number) => (n > 1 ? { design, anchor, count: Math.min(n, 8), spacing } : { design, anchor })
+  const placements: Record<string, unknown>[] = []
+  const desks = need('workstations', ['monitor', 'color-monitor'])
+  if (desks > 0) {
+    const byWindow = windows.find(([side]) => free.includes(side))
+    let anchor: string
+    if (byWindow) {
+      used.push(byWindow[0])
+      anchor = `window:${byWindow[1]}`
+    } else anchor = `wall:${nextWall()}`
+    const at = placements.length
+    placements.push(row('desk', anchor, desks, 4))
+    placements.push({ design: 'monitor', anchor: `placement:${at}` })
+  }
+  const shelves = need('storage', ['archive-shelf'])
+  if (shelves > 0) placements.push(row('archive-shelf', `wall:${nextWall()}`, shelves, 2))
+  const boards = need('writing_surfaces', ['whiteboard', 'mood-board-wall'])
+  if (boards > 0) placements.push(row('whiteboard', `wall:${nextWall()}`, boards, 4))
+  // Coffee and plants go in corners: the walls used least first.
+  const corners: [string, string][] = []
+  for (const pass of [false, true]) for (const side of free) if (used.includes(side) === pass) for (const n of neighbours(side)) corners.push([side, n])
+  let c = 0
+  for (let i = 0; i < need('coffee', ['coffee-machine']); i++, c++) if (corners[c]) placements.push({ design: 'coffee-machine', anchor: `wall:${corners[c][0]}`, from: `wall:${corners[c][1]}` })
+  for (let i = 0; i < need('plants', ['plant']); i++, c++) if (corners[c]) placements.push({ design: 'plant', anchor: `wall:${corners[c][0]}`, from: `wall:${corners[c][1]}` })
+  return { placements }
+}
+
+/** `agents::build::fake::fix`: each placement named for repair moves to the next wall, its row kept. */
+export function officeFix(prompt: string): { replace: { index: number; placement: Record<string, unknown> }[] } {
+  const replace: { index: number; placement: Record<string, unknown> }[] = []
+  let fixing = false
+  for (const line of prompt.split('\n')) {
+    if (line.startsWith('Placements to fix')) {
+      fixing = true
+      continue
+    }
+    if (!fixing) continue
+    const m = /^(\d+): (.*)$/.exec(line)
+    if (!m) {
+      if (!line.trim()) continue
+      break
+    }
+    let p: Record<string, unknown>
+    try {
+      p = JSON.parse(m[2]) as Record<string, unknown>
+    } catch {
+      break
+    }
+    const anchor = typeof p.anchor === 'string' ? p.anchor : ''
+    const at = anchor.startsWith('wall:') ? SIDES.indexOf(anchor.slice(5) as (typeof SIDES)[number]) : -1
+    const next = SIDES[at < 0 ? 0 : (at + 1) % 4]
+    for (const k of ['from', 'side', 'gap', 'offset', 'facing']) delete p[k]
+    // An attachment stays on its desk; only floor items move.
+    if (!anchor.startsWith('placement:') && !anchor.startsWith('equipment:')) p.anchor = `wall:${next}`
+    replace.push({ index: Number(m[1]), placement: p })
+  }
+  return { replace }
 }
 
 // ---------------------------------------------------------------- theme components (FEAT-094)

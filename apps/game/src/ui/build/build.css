@@ -68,3 +68,17 @@
 .build-field select { width: auto; min-width: 96px; }
 .build-room-pick { margin: 14px 0 8px; }
 .build-room-pick select { min-width: 220px; }
+
+/* The office designer (FEAT-084): the request form and, in the Inbox, the Build Approval's plan. */
+.build-designer { margin-top: 0; }
+.build-designer-set { margin: 0; padding: 0; border: 0; min-width: 0; }
+.build-designer-set .build-room-pick { margin: 0 0 6px; }
+.build-designer textarea { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #c9bea9; border-radius: 8px; background: #fff; font: inherit; font-size: 13px; resize: vertical; }
+.build-designer .build-field input { width: 84px; }
+.build-designer-hire { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.build-designer-hire p { margin: 0; }
+.build-approval { margin: 8px 0; }
+.build-approval-room { margin: 0 0 4px; }
+.build-approval-facts { margin: 4px 0; font-variant-numeric: tabular-nums; }
+.build-approval-items, .build-approval-issues { display: flex; flex-direction: column; gap: 3px; margin: 6px 0; padding: 0; list-style: none; font-size: 13px; }
+.build-approval-count { display: inline-block; min-width: 2.4em; font-variant-numeric: tabular-nums; color: var(--ui-muted); }

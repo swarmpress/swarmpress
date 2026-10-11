@@ -277,6 +277,8 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             JobKind::ToolBuild => self.tool_build(req).await,
             JobKind::ThemeCode => self.theme_code(req).await,
             JobKind::ToolRun => self.tool_run(req).await,
+            JobKind::InteriorDesign => self.interior_design(req).await,
+            JobKind::Construct => self.construct(req).await,
             JobKind::Draft => self.staged_draft(req).await,
             JobKind::Review => self.staged_review(req).await,
             JobKind::Publish => {

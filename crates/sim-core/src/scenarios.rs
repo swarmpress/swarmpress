@@ -52,7 +52,7 @@ use crate::ids::{
 use crate::inbox::{DelegationPolicy, FollowUpTopic, SecretaryTaskKind, TicketOption};
 use crate::plan::{BriefStub, PlannedStub, WorkItemKind, WorkPriority};
 use crate::projects::ProjectStatus;
-use crate::staff::{persona, persona_by_key, Schedule, Traits};
+use crate::staff::{persona, persona_by_key, Schedule, Traits, PERSONAS};
 use crate::town::TownKind;
 use crate::world::World;
 
@@ -316,11 +316,13 @@ fn demo_props() -> [(EquipmentKind, PosMm); 8] {
 }
 
 /// Scenario names accepted by [`scenario`].
-pub const SCENARIOS: [&str; 3] = ["cinqueterre", "demo", "empty"];
+pub const SCENARIOS: [&str; 4] = ["cinqueterre", "demo", "designer", "empty"];
 
 /// A world by scenario name: `"cinqueterre"` (alias `"demo"`) is the
 /// cinqueterre.travel starting company ([`demo_office`], 13 people,
-/// staff-1..staff-13); `"empty"` is an empty company on the default lot.
+/// staff-1..staff-13); `"designer"` is that company with an office designer
+/// on the staff (staff-14, [`hire_office_designer`], ADR-0087 decision 6);
+/// `"empty"` is an empty company on the default lot.
 pub fn scenario(name: &str, seed: u64) -> Option<World> {
     scenario_with_mode(name, seed, BuildMode::Economic)
 }
@@ -331,6 +333,11 @@ pub fn scenario(name: &str, seed: u64) -> Option<World> {
 pub fn scenario_with_mode(name: &str, seed: u64, mode: BuildMode) -> Option<World> {
     match name {
         "cinqueterre" | "demo" => Some(demo_office_with_mode(seed, SimConfig::default(), mode)),
+        "designer" => {
+            let mut w = demo_office_with_mode(seed, SimConfig::default(), mode);
+            hire_office_designer(&mut w);
+            Some(w)
+        }
         "empty" => Some(World::with_parts(
             seed,
             SimConfig::default(),
@@ -339,6 +346,28 @@ pub fn scenario_with_mode(name: &str, seed: u64, mode: BuildMode) -> Option<Worl
         )),
         _ => None,
     }
+}
+
+/// Puts the catalogue's office designer (Ottavia, ADR-0087 decision 6) on
+/// the staff at the lowest free desk, unstaffed on projects (the designer
+/// works for the company). A scenario builder, like [`World::add_staff`].
+pub fn hire_office_designer(w: &mut World) -> StaffId {
+    let pid = PERSONAS
+        .iter()
+        .find(|p| p.role == crate::roles::Role::OfficeDesigner)
+        .map(crate::personas::Persona::persona_id)
+        .expect("the catalogue has an office designer");
+    let p = persona(pid).expect("persona exists");
+    let desk = w.free_desks().first().copied();
+    w.add_staff(
+        pid,
+        p.role,
+        p.seniority,
+        Traits::even(650),
+        p.salary_cents_per_day(),
+        p.role.base_schedule(),
+        desk,
+    )
 }
 
 /// The demo office with the default clock (20 real minutes per day, 07:00 start).
@@ -499,7 +528,9 @@ pub fn demo_office_with_mode(seed: u64, config: SimConfig, mode: BuildMode) -> W
 /// the second project and splitting a writer across both, placing and
 /// removing a plant, demolishing the archive at night, rearranging the
 /// office and the town (ADR-0087: a desk moved, a tree planted, a house
-/// moved, a tree removed) and widening the delegation.
+/// moved, a tree removed), a room commissioned from an office designer the
+/// company does not have yet (it waits, with a missing-role ticket) and
+/// widening the delegation.
 pub fn golden_script() -> Vec<(u64, Input)> {
     let p = |c: Command| Input::Player(c);
     let s = |c: ServerCommand| Input::Server(c);
@@ -918,6 +949,15 @@ pub fn golden_script() -> Vec<(u64, Input)> {
                         depends_on: vec![0],
                     },
                 ],
+            }),
+        ),
+        // ADR-0087 decision 6: the office designer is asked to furnish the
+        // meeting room (item 6); nobody can, so it waits and the CEO is asked to hire
+        (
+            49_800,
+            p(Command::CommissionInterior {
+                room: RoomId(6),
+                brief_ref: 701,
             }),
         ),
     ]

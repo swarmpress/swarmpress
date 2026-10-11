@@ -174,6 +174,9 @@ pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
         // The architects (FEAT-095): an author page type, a ferry tool.
         "site architect" => return FakeReply::Json(site_architect(&p)),
         "tool build" => return FakeReply::Json(tool_build(&p)),
+        // The office designer (FEAT-084): a plan from the brief, a fix that moves what is named.
+        "office layout" => return FakeReply::Json(crate::build::fake::layout(p.0)),
+        "office layout fix" => return FakeReply::Json(crate::build::fake::fix(p.0)),
         // The site's tools in research (ADR-0072): ask for the first offered tool, then state one fact from its result.
         "tool facts" => {
             let results = later.iter().find(|m| m.starts_with("Tool results"));

@@ -13,7 +13,10 @@ in bricks from a construction kit that players and staff build with, with live i
 surfaces (ADR-0063, ADR-0065). Since 2026-10-11 it is **bricks everywhere** (ADR-0085): every room,
 the hallway, the street and the people, in the same bricks and palette as the Studio's editors.
 The UI is a warm LEGO app shell (ADR-0086): sections on top, tools on the left, the 3D town between;
-the town of section buildings is always generic, the same for every company.
+the town of section buildings is always generic, the same for every company. Players build (ADR-0087):
+the Build section places rooms, furniture and town pieces through sim commands (sandbox or economic),
+a design editor edits kit designs brick by brick, and an office designer on the staff plans rooms
+(`crates/office-designer`) that are built item by item after the CEO's Build Approval.
 - The staff are LLM agents with persistent personas. Their meetings play out as speech bubbles,
   and their work produces **one real website per player**.
 - The company is extensible through a JS SDK.
@@ -29,8 +32,8 @@ the town of section buildings is always generic, the same for every company.
   owner. Until then the Astro path is the default and the rules below about the site repo, JSON
   blocks and the site kit describe it.
 
-Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0086; ADR-0038 to 0086 define
-the current architecture; ADR-0044 to 0086 are decided and mostly not built yet). Features and
+Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0087; ADR-0038 to 0087 define
+the current architecture; ADR-0044 to 0087 are decided and mostly not built yet). Features and
 their health: `docs/features/` plus Cockpit. The current MVP is `docs/mvp.md` (the owner's
 company for real; inference moves to hosted GPT-6-Luna, ADR-0067); its implementation designs are in
 `docs/design/`.
@@ -67,6 +70,7 @@ Site repos build with @swarm-press/site-kit + an agent-authored theme on GitHub 
 | `crates/kit`, `kit/` | construction kit (ADR-0065): part catalogue, palette, design format and hash, the deterministic compiler (bricks per colour, studs, summary), room shells; data, schemas and shipped designs in `kit/`; `crates/kit-wasm` is its wasm facade |
 | `crates/server` | central service (axum, sqlx-sqlite) |
 | `crates/{content-schema,knowledge,github,protocol,testkit}` | page validation, indexes, GitHub client and fakes, wire types, test helpers |
+| `crates/office-designer` | the office designer's core: relation plans, the deterministic layout solver, checks, catalogue slices, the repair loop (ADR-0087) |
 | `crates/{storage-api,storage-api-wasm,content-repo,site-export,content-import-wp}` | the WordPress engine's governed side: MySQL→SQLite projection per branch and the storage protocol, the repository, the static export, the migration of a JSON-block site (`swarmpress-wp-migrate`) |
 | `apps/game` | Babylon client, overlay UI, local LLM runtime |
 | `packages/sdk`, `packages/sandbox`, `packages/runner` | extension SDK, QuickJS sandbox, the `swarmpress` CLI (Bun) |

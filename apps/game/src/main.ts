@@ -97,14 +97,14 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   const brickMod = await import('./render/bricks')
   // The quality the GPU scheduler last asked for; a rebuilt scene starts at the tier, then takes it.
   let liveQuality = QUALITY[tier]
-  const buildScene = async (on: WebGPUEngine, facing: number | null) => {
+  const buildScene = async (on: WebGPUEngine, facing: number | null, fresh: readonly string[] = []) => {
     const g = createGameScene(on, canvas, layout, { quality: QUALITY[tier], postFx: true })
     if (facing !== null) g.iso.setFacing(facing)
     g.iso.snap()
     if (liveQuality !== QUALITY[tier]) g.setQuality(liveQuality)
     // The low tier draws merged walls (level of detail, ADR-0063).
     const signs = Object.fromEntries(SECTIONS.map((s) => [s.id, s.label]))
-    const b = await brickMod.attachBrickOffice(g, layout, { detail: tier === 'low' ? 'merged' : 'full', signs })
+    const b = await brickMod.attachBrickOffice(g, layout, { detail: tier === 'low' ? 'merged' : 'full', signs, fresh })
     return { game: g, bricks: b }
   }
   let { game, bricks } = await buildScene(engine, params.has('facing') ? Number(params.get('facing')) : null)
@@ -386,8 +386,13 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     const old = { game, bricks }
     const facing = old.game.iso.facing()
     const view = old.game.iso.view()
+    const before = layout
     layout = JSON.parse(sim.layout_json()) as BuildingLayout
-    const next = await buildScene(engine, facing)
+    // Construction (FEAT-084): the equipment that was not there before drops into place; never on
+    // frozen pages, nor for a viewer who prefers reduced motion.
+    const fresh = brickMod.arrivalsFor(before, layout, { frozen: !!frozen, reducedMotion: brickMod.prefersReducedMotion() })
+    const next = await buildScene(engine, facing, fresh)
+    brickMod.animateArrivals(next.game.scene, next.bricks.arrivals)
     next.game.iso.setView(view)
     ;({ game, bricks } = next)
     wireScene(game, bricks)

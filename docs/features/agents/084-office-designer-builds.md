@@ -9,6 +9,12 @@ paths:
   - "crates/agents/src/build/**"
   - "crates/agents/prompts/office_designer.md"
   - "crates/orchestrator/src/build.rs"
+  - "crates/orchestrator/tests/build.rs"
+  - "crates/sim-core/src/interior.rs"
+  - "crates/sim-core/tests/interior.rs"
+  - "crates/agents/personas/ottavia.toml"
+  - "apps/game/src/blueprint/interior.ts"
+  - "apps/game/src/blueprint/interior.test.ts"
 adrs:
   - ADR-0065
   - ADR-0087
@@ -73,13 +79,49 @@ ADR-0087 decision 6. MIT, wasm-compatible, integers only (mm, studs, cents), no 
   command by command and accepted; and a generated property test: whatever the designer
   accepts, the sim accepts.
 
+## Built (2026-10-12): the staff job, the gate and the construction
+
+- **The role and a person:** `OfficeDesigner` (`office-designer`, Web Development department) in
+  the sim and in `agents`, with Ottavia Rinaldi (`ottavia`, id 118) in both catalogues; the CEO
+  hires her like anyone (she is in the daily pool, and `ArrangeHiring` for the role finds her).
+  The `designer` scenario is the demo company with her on the staff. Her company prompt is
+  `prompts/office_designer.md`, her job kind `office-layout`.
+- **The command** (`crates/sim-core/src/interior.rs`): `CommissionInterior{room, brief_ref}`; the
+  host first stores `{words, brief}` under `brief_ref` (`apps/game/src/blueprint/interior.ts`,
+  `orchestrator::interior_brief`). An `Interior` work item (Draft, Publish) outside the WIP limit;
+  no designer: it waits with a `MissingRole` ticket and starts once one is hired.
+- **The Draft** (`crates/orchestrator/src/build.rs`, job `interior-design`): the room comes from
+  the host (`Sim.interior_context_json`, the sim's `World::designer_room`), the brief from the
+  store; `layout_context` + `plan_schema(slice, room)` → one structured `office layout` call →
+  `evaluate` → `next_step`, at most `MAX_REPAIR_ROUNDS` `office layout fix` calls (`fix_schema`,
+  `apply_fix`), each cached as a stage. Done: the item's artifact is a `RoomPlan` (items in build
+  order, `on_desk` `{planned: i}` or `{existing: id}`, cost, parts, summary, warnings), an
+  `artifact` post, then `InteriorPlan{job_id, items}` (numbers only) and `JobCompleted{ok, score:
+  min(items, 10), qa_defects: repair rounds}`. GiveUp or a model failure: a status post and
+  `JobFailed` (rule 11).
+- **The gate:** economic companies park the item at `BuildApproval` (CEO-only; `Build`, `Defer`
+  (default, also on expiry), `Decline`; amount: the plan's price); sandbox companies build at once.
+- **The construction:** the Publish phase requests `construct` (the job posts the build's start)
+  and the sim places one item every 5 game minutes as a `PlaceEquipment`, validated and charged at
+  its own price; a refused item stops the build with an escalation naming the item (`refused`),
+  `Retry` resumes. The last item placed: Published.
+- **The fake designer** (`agents::build::fake`, its twin in `apps/game/src/llm/mvp-script.ts`):
+  a plan from the brief and the room doc, and a fix that moves each named placement to the next
+  wall.
+- **Tests:** `crates/sim-core/tests/interior.rs` (the item, the gate per mode, the ticket, the
+  construction and a refusal, the waiting item, validation, determinism),
+  `crates/orchestrator/tests/build.rs` (the Draft with the fake, a repair round, the failure
+  paths, the construction job, and commission → draft → Build → construction end to end on the
+  sim, twice, the same hash), `apps/game/src/blueprint/interior.test.ts` (the host side, the fake's
+  twin, the real sim's view). The golden script commissions a room with no designer (world
+  format 9).
+
 ## Not built yet
 
-- The model stages in the orchestrator (`brief#0`, `layout#0`, `fix#i`, `decor#0`, `design#0`,
-  `preview`) with the stage store, repair limits and activity rows, and the office designer's
-  persona and prompt.
-- The Build Approval ticket (economic mode, default Defer) and the construction job, with the
-  renderer animating the bricks in build order.
+- The other model stages of construction-kit.md §7 (`brief#0` from words alone, `decor#0`,
+  `design#0`, `preview`); the brief comes from the CEO's form.
+- The renderer animating the bricks in build order (the sim places the items one by one; the
+  renderer follows `layoutRev`).
 - Custom designs (needs the sim's `PlaceObject`, K-4); removing or moving existing equipment in a
   plan.
 
@@ -93,6 +135,6 @@ ADR-0087 decision 6. MIT, wasm-compatible, integers only (mm, studs, cents), no 
 
 ## Evidence
 
-- `swarmpress/nextest` (the `office-designer` crate's cases, until a split routes them)
+- `swarmpress/nextest` (the `office-designer`, `sim-core` and `orchestrator` crates' cases, until a split routes them)
 - `agents/nextest`
 - `game/vitest`

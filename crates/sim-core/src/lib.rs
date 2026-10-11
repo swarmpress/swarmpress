@@ -20,6 +20,7 @@
 //! - [`projects`]: publications, teams, work routing, missing roles, analytics KPIs
 //! - [`finance`]: per-project ledgers, month close, runway, CFO alerts
 //! - [`inbox`]: tickets, the executive office, secretary triage and delegation
+//! - [`interior`]: the office designer's rooms: room plans and their construction
 //! - [`plan`]: work items and the sim ↔ orchestrator job contract (effects)
 //! - [`pathfinding`]: deterministic A* on the tile grid through doors
 //! - [`commands`]: player [`Command`]s and [`ServerCommand`]s
@@ -41,6 +42,7 @@ pub mod finance;
 pub mod geom;
 pub mod ids;
 pub mod inbox;
+pub mod interior;
 pub mod pathfinding;
 pub mod personas;
 pub mod plan;

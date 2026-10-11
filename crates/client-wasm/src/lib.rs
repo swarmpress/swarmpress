@@ -281,6 +281,21 @@ impl Sim {
         json::plan(&self.world, project.as_deref()).to_string()
     }
 
+    /// The context of an office designer's job (ADR-0087 decision 6) for
+    /// work item `item` (`"work-item-4"`): `{room_id, room, build_mode}`,
+    /// `room` in `office_designer::Room`'s shape (millimetres, doors in its
+    /// walls, windows facing outside, its equipment). `undefined` when the
+    /// item is not an open interior item.
+    pub fn interior_context_json(&self, item: &str) -> Option<String> {
+        let id = self
+            .world
+            .plan
+            .interiors
+            .keys()
+            .find(|i| i.to_string() == item)?;
+        json::interior_context(&self.world, *id).map(|v| v.to_string())
+    }
+
     /// The earliest step at which a pending job is due (ADR-0060): a
     /// work-item job when its phase's minimum time has passed, a standup 30
     /// game minutes after it was requested. `undefined` with no pending job.
@@ -305,7 +320,7 @@ fn parse_build_mode(s: &str) -> Result<sim_core::economy::BuildMode, String> {
 
 /// `ServerCommand` variant names: a JSON command with one of these tags is a
 /// server command, anything else a player command.
-const SERVER_VARIANTS: [&str; 12] = [
+const SERVER_VARIANTS: [&str; 13] = [
     "Remark",
     "JobCompleted",
     "MeetingOutcome",
@@ -319,6 +334,8 @@ const SERVER_VARIANTS: [&str; 12] = [
     // The site's models as digests (ADR-0072, FEAT-095).
     "BlueprintChanged",
     "ToolsChanged",
+    // The office designer's room plan as numbers (ADR-0087 decision 6).
+    "InteriorPlan",
 ];
 
 fn tag(v: &Value) -> Option<&str> {

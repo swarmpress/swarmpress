@@ -1,3 +1,4 @@
+import type { InteriorBrief, RoomPlan } from '../blueprint/interior'
 import type { Blueprint, BlueprintChange, PutBlueprintBody, PutBlueprintResult, PutToolsBody, SiteModels } from '../blueprint/types'
 import type { BuildLayout } from './build/types'
 import type { CommandResult } from './commands'
@@ -311,6 +312,22 @@ export interface GameDataSource {
    * Web Developer (a tool). Absent: the source cannot commission.
    */
   commission?(kind: 'structure' | 'tool', request: string): Promise<CommandResult>
+  /**
+   * Ask the office designer to furnish a room (ADR-0087 decision 6, FEAT-084):
+   * the CEO's words and the brief go to the store as the item's brief and
+   * `Command::CommissionInterior{room, brief_ref}` is logged
+   * (`blueprint/interior.ts`). The sim refuses an unknown room or one being
+   * designed already; without an office designer the item waits and a
+   * MissingRole ticket asks for one. Absent: the source cannot commission.
+   */
+  commissionInterior?(input: { room: string; words: string; brief: InteriorBrief }): Promise<CommandResult>
+  /**
+   * The room plan of an interior work item (`ArtifactRecord.room_plan`, the
+   * office designer's artifact): `undefined` while it is being read (the
+   * source announces it with the `plan` topic once read), `null` when the
+   * item has none. Model-made data: render it as data only.
+   */
+  roomPlanOf?(item: string): RoomPlan | null | undefined
   /**
    * The building and the town as the sim lays them out (`Sim.layout_json()`, ADR-0087), parsed;
    * read with every snapshot by the Build panel. Absent: the source has no building (no Build panel).

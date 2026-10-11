@@ -10,7 +10,7 @@ use sim_core::economy::REVENUE_IS_STUB;
 use sim_core::equipment::{DeviceState, EquipmentKind};
 use sim_core::finance::CostBreakdown;
 use sim_core::geom::PosMm;
-use sim_core::ids::{PersonaId, ProjectId, StaffId};
+use sim_core::ids::{PersonaId, ProjectId, StaffId, WorkItemId};
 use sim_core::inbox::TicketKind;
 use sim_core::plan::{can_draft, Effect, PhaseKind, WorkItemStatus, MAX_PLANNED, WIP_LIMIT};
 use sim_core::projects::{ProjectStatus, MONTH_DAYS};
@@ -625,6 +625,9 @@ pub fn inbox(w: &World) -> Value {
                 "createdMinute": minute_of_step(w, t.created_step),
                 "deadlineMinute": minute_of_step(w, t.deadline_step),
                 "deadlineStep": t.deadline_step,
+                // A room plan's numbers (ADR-0087 decision 6): a BuildApproval, or an
+                // escalation of a construction the sim stopped.
+                "interior": t.work_item.and_then(|i| interior(w, i)),
             })
         })
         .collect();
@@ -646,6 +649,35 @@ pub fn inbox(w: &World) -> Value {
         "tickets": tickets,
         "secretaryQueue": queue,
     })
+}
+
+/// An interior item's room plan as numbers (ADR-0087 decision 6): the room,
+/// the plan's item count and price, how far the construction is, the item
+/// the sim refused, and when the next item goes up. `null` for other items.
+pub fn interior(w: &World, item: WorkItemId) -> Option<Value> {
+    let b = w.plan.interiors.get(&item)?;
+    Some(json!({
+        "room": b.room.to_string(),
+        "items": b.items.len(),
+        "placed": b.placed.len(),
+        "placedIds": b.placed.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        "costCents": b.cost_cents,
+        "costEur": eur(b.cost_cents),
+        "refused": b.refused,
+        "nextPlaceStep": b.next_step,
+        "nextPlaceMinute": b.next_step.map(|s| minute_of_step(w, s)),
+    }))
+}
+
+/// The context of an office designer's job (`Sim.interior_context_json`):
+/// the item's room, as its id and as the designer sees it.
+pub fn interior_context(w: &World, item: WorkItemId) -> Option<Value> {
+    let b = w.plan.interiors.get(&item)?;
+    Some(json!({
+        "room_id": b.room.to_string(),
+        "room": serde_json::to_value(w.designer_room(b.room)?).ok()?,
+        "build_mode": w.company.build_mode.slug(),
+    }))
 }
 
 /// Someone on a job, resolved to names: the orchestrator's `StaffRef`.
@@ -744,6 +776,8 @@ pub fn plan(w: &World, project: Option<&str>) -> Value {
                 "createdDay": day_of(i.created_step),
                 "meeting": opt_id(i.meeting),
                 "tickets": i.tickets.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                // An interior item's room and construction (ADR-0087 decision 6).
+                "interior": interior(w, i.id),
             })
         })
         .collect();
