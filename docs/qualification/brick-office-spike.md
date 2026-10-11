@@ -131,3 +131,31 @@ lowest tier"), open the harness by hand in Chrome:
 and the Bonsai engine installed, `docs/runbooks/model-qualification.md`), press Start, and compare
 its frame report with the same URL at `office=boxes`. To look at the game itself:
 `http://localhost:5173/?office=bricks` under `pnpm dev`.
+
+## 6. Every room in bricks, measured on the M3 Max (2026-10-11)
+
+After ADR-0085 (bricks everywhere): the demo office's eleven rooms, the hallway and the street, the
+floors baked into planes, the low tier's walls merged (commit `ace8850`, with the bench drawing the
+low tier merged as the game does). `bench.html` from `vite build --mode harness`, opened **in the
+owner's own Chrome 155** (WebGPU on the M3 Max's GPU, a 1493 × 812 window at DPR 2, the scripted
+model at 40 ms per answer, 8 s idle), one page per tier and office:
+
+| Tier | Office | Idle p50 | Idle p95 | Generating p95 | Draw calls |
+|---|---|---|---|---|---|
+| low | bricks | 8.0 ms | 16.8 ms | 18.7 ms | 493 |
+| medium | bricks | 9.2 ms | 11.7 ms | 12.1 ms | 795 |
+| high | bricks | 11.3 ms | 14.4 ms | 13.8 ms | 800 |
+| high | boxes | 8.1 ms | 11.1 ms | 12.1 ms | 669 |
+
+Chunk builds, from the bench's own run: 47 ms for the newsroom, 9 to 17 ms for every other room.
+
+**Against the criteria:** p95 ≤ 33 ms idle and ≤ 50 ms while generating at the lowest tier: **go**
+(16.8 and 18.7 ms); a room chunk in < 200 ms: **go** (47 ms at most). The game itself, at the high
+tier with all thirteen staff in at a 3456 × 1992 canvas, ran at 75 fps.
+
+**What does not count:** the same bench driven by Playwright in a Chrome it launches
+(`BRICKS_CHANNEL=chrome`) measured 150 to 580 ms per frame for the bricks and 25 to 98 ms for the
+boxes on the same machine, at the same time, with load averages of 7 to 27 (a stuck esbuild process
+and Microsoft Defender). The boxes alone being ten times slower there than here says the launched
+browser, not the scene, was slow; its `artifacts/bench/frame-time-bricks-*.webgpu.json` are not the
+go/no-go numbers. The real model generating (`llm=bonsai`) is still to be measured by hand as above.

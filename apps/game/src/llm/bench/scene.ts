@@ -61,8 +61,9 @@ export async function startScene(host: HTMLElement, quality: Quality, frames: Fr
   const built0 = performance.now()
   const game = createGameScene(engine, canvas, layout, { quality: QUALITY[quality], postFx: true })
   game.iso.snap()
-  // The brick office spike (FEAT-081): a lazy chunk, loaded only for office=bricks.
-  const bricks = office === 'bricks' ? await (await import('../../render/bricks')).attachBrickOffice(game, layout) : null
+  // The brick office (FEAT-081, ADR-0085) as the game draws it, against the box office it replaced
+  // (office=boxes): a lazy chunk; the low tier draws merged walls as in main.ts.
+  const bricks = office === 'bricks' ? await (await import('../../render/bricks')).attachBrickOffice(game, layout, { detail: quality === 'low' ? 'merged' : 'full' }) : null
   const buildMs = performance.now() - built0
   const instrumentation = new SceneInstrumentation(game.scene)
   let lastCounts: SceneCounts | null = null

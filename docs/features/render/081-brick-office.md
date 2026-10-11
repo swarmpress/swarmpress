@@ -58,9 +58,10 @@ Design: [`docs/design/brick-office.md`](../../design/brick-office.md). Concept a
 
 ## Acceptance criteria
 
-- [ ] Every room, the hallway and the street hold p95 ≤ 33 ms idle and ≤ 50 ms while generating at
-      the lowest tier on the qualification machine; a room chunk builds in < 200 ms (today: the
-      largest about 420 ms, 1.5 s for the office).
+- [x] Every room, the hallway and the street hold p95 ≤ 33 ms idle and ≤ 50 ms while generating
+      (the scripted load) at the lowest tier on the qualification machine; a room chunk builds in
+      < 200 ms: 16.8 and 18.7 ms, 47 ms at most (2026-10-11, the report's section 6). With the real
+      model generating: still to measure.
 - [x] Same layout and seed give identical instance buffers (NullEngine test).
 - [x] Every layout prop kind has a shipped kit design; the office matches the sim's doors and desks.
 - [ ] Visual baselines regenerated on Linux on SwiftShader WebGPU.
