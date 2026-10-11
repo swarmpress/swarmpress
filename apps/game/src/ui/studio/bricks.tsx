@@ -49,6 +49,41 @@ export function Brick({
   )
 }
 
+/** Shade a `#rrggbb` colour by `k` (below 1 darker). */
+function shade(hex: string, k: number): string {
+  const n = Number.parseInt(hex.replace('#', ''), 16)
+  const c = (v: number) => Math.max(0, Math.min(255, Math.round(v * k)))
+  return `rgb(${c((n >> 16) & 255)}, ${c((n >> 8) & 255)}, ${c(n & 255)})`
+}
+
+/**
+ * A 2 × 2 brick seen from above at an angle, in a part's colour: the dock's
+ * icon for a block (the mockups' bottom palette, ADR-0086). Top lit, the
+ * left face a little darker, the right face darker still, four studs.
+ */
+export function BrickIcon({ colour, size = 52 }: { colour: string; size?: number }) {
+  const top = colour
+  const left = shade(colour, 0.82)
+  const right = shade(colour, 0.66)
+  const stud = (cx: number, cy: number, k: number) => (
+    <g key={`${cx}-${cy}`}>
+      <path d={`M${cx - 5} ${cy} v4 a5 2.6 0 0 0 10 0 v-4`} fill={shade(colour, 0.78)} />
+      <ellipse cx={cx} cy={cy} rx={5} ry={2.6} fill={shade(colour, k)} />
+    </g>
+  )
+  return (
+    <svg class="st-brick-icon" width={size} height={size} viewBox="0 0 44 44" aria-hidden="true" focusable="false">
+      <path d="M22 6 L40 15 L22 24 L4 15 Z" fill={top} />
+      <path d="M4 15 L22 24 L22 38 L4 29 Z" fill={left} />
+      <path d="M40 15 L22 24 L22 38 L40 29 Z" fill={right} />
+      {stud(22, 10, 1.08)}
+      {stud(13, 14.5, 1.08)}
+      {stud(31, 14.5, 1.08)}
+      {stud(22, 19, 1.08)}
+    </svg>
+  )
+}
+
 /** The tray's parts: the closed block catalogue by category, plus the site's own blocks. */
 export function trayGroups(customBlocks: string[]): Array<{ id: string; label: string; parts: CatalogueBlock[] }> {
   const groups = new Map<string, CatalogueBlock[]>()
@@ -117,8 +152,8 @@ export function Tray({
                   onDragStart(p.type, e)
                 }}
               >
-                <span class="st-part-studs" aria-hidden="true" />
-                {p.type}
+                <BrickIcon colour={hexOf(colour)} />
+                <span class="st-part-label">{p.type}</span>
               </button>
             </li>
           )

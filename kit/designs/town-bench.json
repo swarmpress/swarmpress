@@ -1,0 +1,22 @@
+{
+  "$schema": "../schema/design.schema.json",
+  "format": "swarmpress.design.v1",
+  "id": "town-bench",
+  "name": "Town bench",
+  "footprint": [16, 6],
+  "height": 30,
+  "params": {
+    "wood": { "type": "colour", "default": "caramel" }
+  },
+  "ops": [
+    { "op": "mirror", "axis": "x", "ops": [
+      { "op": "box", "at": [1, 1, 0], "size": [2, 4, 15], "part": "brick", "colour": "black" },
+      { "op": "box", "at": [1, 0, 15], "size": [2, 1, 15], "part": "brick", "colour": "black" }
+    ] },
+    { "op": "box", "at": [0, 0, 15], "size": [16, 5, 1], "part": "plate", "colour": "$wood" },
+    { "op": "box", "at": [0, 0, 16], "size": [16, 5, 1], "part": "tile", "colour": "$wood" },
+    { "op": "box", "at": [0, 0, 20], "size": [16, 1, 8], "part": "brick", "colour": "$wood" }
+  ],
+  "tags": ["town"],
+  "provenance": { "kind": "kit" }
+}

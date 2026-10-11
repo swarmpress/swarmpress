@@ -35,7 +35,7 @@ import { isCutAway } from '../cutaway'
 import type { Lighting } from '../lighting'
 import { lampsLightFloor, MAX_LIGHTS_PER_MATERIAL, type OfficeHandles } from '../office'
 import { hallwayRects } from '../walls'
-import { townPath, townSpots, type TownSpot } from './town'
+import { townPath, townScenery, townSpots, type TownSpot } from './town'
 import { buildRoomChunk, exteriorSides, shellOrigin, STUD_HEIGHT, STUD_RADIUS, type ChunkSource, type Region, type RoomChunk, type SurfaceAnchor } from './chunk'
 import { baseplateMesh, floorMesh, paintFloor } from './floor'
 import { envIntensityFor, plasticEnvironment } from './environment'
@@ -390,6 +390,19 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     for (const b of chunk.studs) townMeshes.push(instanced(`studs-town-${spot.id}-${b.key}`, shapes.stud, b.matrices, materialFor(b.colour, `town-${spot.id}`)))
     const sign = signMesh(scene, spot, opts.signs?.[spot.id] ?? spot.label)
     if (sign) townMeshes.push(sign)
+  }
+  // The town's furniture: lamps, benches, trees; one chunk for all of it.
+  {
+    const sources: ChunkSource[] = townScenery(layout, town).map((p) => {
+      const params = JSON.stringify(p.params)
+      const c = compiled(p.design, params)
+      const placement = { id: `town-${p.id}`, role: 'prop' as const, design: p.design, params, x: p.x, y: -FLOOR_TOP, z: p.z, turn: p.turn, standIn: true }
+      return { build: c.build, placement, footprint: [c.info.bounds[0], c.info.bounds[1]] as [number, number], shell: false, merge: true }
+    })
+    const at = { id: 'town-scenery', x: layout.originX, z: layout.originZ, w: layout.width, d: layout.depth } as unknown as RoomLayout
+    const chunk = buildRoomChunk(at, [], sources, { merge: opts.detail === 'merged' })
+    for (const b of chunk.instances) townMeshes.push(instanced(`bricks-town-scenery-${b.key}`, shapes[b.shape], b.matrices, materialFor(b.colour, 'town')))
+    for (const b of chunk.studs) townMeshes.push(instanced(`studs-town-scenery-${b.key}`, shapes.stud, b.matrices, materialFor(b.colour, 'town')))
   }
   for (const m of townMeshes) {
     m.receiveShadows = true

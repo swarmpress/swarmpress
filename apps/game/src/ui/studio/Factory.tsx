@@ -22,7 +22,7 @@ import { Issues } from '../blueprint/Inspector'
 import { n8nShape, nodeCaption } from '../blueprint/Tools'
 import { Badge, Notice, TabPanel, Tabs } from '../components/common'
 import { useStore } from '../store'
-import { snapClick } from './bricks'
+import { snapClick, BrickIcon } from './bricks'
 import { addMachine, disconnect, judgeTubes, MACHINE_GROUPS, MACHINE_PARTS, newTool, portsOf, removeMachine, updateMachine, type MachinePart, type TubeVerdict } from './machines'
 import { commit, historyOf, redo, undo, type History } from './history'
 
@@ -462,8 +462,8 @@ function MachineTray({ disabled, onPlace }: { disabled: boolean; onPlace: (p: Ma
                 return (
                   <li key={p.id}>
                     <button type="button" class="st-part" disabled={disabled} title={p.description} aria-label={`Place ${p.label}`} data-machine-part={p.id} style={{ '--part': colour, '--part-ink': inkOn(colour) } as Record<string, string>} onClick={() => onPlace(p)}>
-                      <span class="st-part-studs" aria-hidden="true" />
-                      {p.label}
+                      <BrickIcon colour={colour} />
+                      <span class="st-part-label">{p.label}</span>
                     </button>
                   </li>
                 )

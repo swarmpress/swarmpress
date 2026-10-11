@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import layoutJson from '../../state/fixtures/demo-layout.json'
 import type { BuildingLayout, Side } from '../../state/render-state'
-import { TOWN_HOUSES, townFrame, townPath, townSpots } from './town'
+import { TOWN_HOUSES, townFrame, townPath, townScenery, townSpots } from './town'
 
 const layout = layoutJson as unknown as BuildingLayout
 const overlaps = (a: { x: number; z: number; w: number; d: number }, b: { x: number; z: number; w: number; d: number }) =>
@@ -50,5 +50,19 @@ describe('the town', () => {
     const town = townFrame(layout, spots, 'town')
     expect(town.z).toBeLessThan(layout.originZ)
     expect(town.x + town.w).toBeGreaterThanOrEqual(layout.originX + layout.width)
+  })
+
+  it('furnishes the town generically: lamps between the houses, a bench at each, trees clear of the lot', () => {
+    const spots = townSpots(layout)
+    const props = townScenery(layout, spots)
+    expect(props.filter((p) => p.design === 'street-lamp')).toHaveLength(spots.length + 1)
+    expect(props.filter((p) => p.design === 'town-bench')).toHaveLength(spots.length)
+    const trees = props.filter((p) => p.design === 'town-tree')
+    expect(trees.length).toBeGreaterThanOrEqual(4)
+    const inLot = (x: number, z: number) => x > layout.originX && x < layout.originX + layout.width && z > layout.originZ && z < layout.originZ + layout.depth
+    for (const p of props) expect(inLot(p.x, p.z), p.id).toBe(false)
+    // Benches face the office (the houses' turn); the same layout gives the same town.
+    for (const b of props.filter((p) => p.design === 'town-bench')) expect(b.turn).toBe(spots[0].turn)
+    expect(townScenery(layout, spots)).toEqual(props)
   })
 })

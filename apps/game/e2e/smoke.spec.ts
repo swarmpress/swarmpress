@@ -71,7 +71,8 @@ test('people walk smoothly between sim steps and open their profile on click', a
   // spans six frames on any machine.
   await page.clock.install()
   await boot(page, '/?quality=low&speed=10')
-  await page.waitForFunction(() => (window as unknown as { __swarmpress: Hook }).__swarmpress.people().some((p) => p.walking), null, { timeout: 120_000 })
+  // Pause at once and step page time from here: on a slow runner the real-time wait for a walker
+  // let the sim day run on to the evening, where the clock rests and nobody walks.
   // pauseAt must name a future instant; on a loaded runner the page's clock can pass a small
   // margin before the call lands, so retry with a growing one.
   for (let margin = 250; ; margin *= 2) {
@@ -82,11 +83,10 @@ test('people walk smoothly between sim steps and open their profile on click', a
       if (margin >= 8000 || !String(e).includes('fast-forward to the past')) throw e
     }
   }
-  // Wait, in fake time, until the sim is stepping again and someone is still walking: on a slow
-  // CI runner the first frames after the pause can all land in the same sim slice.
+  // In fake time, until the sim is stepping and someone walks (the morning's arrivals).
   const stepNow = () => page.evaluate(() => Number((window as unknown as { __swarmpress: Hook }).__swarmpress.sim.step()))
   const before = await stepNow()
-  for (let i = 0; i < 240; i++) {
+  for (let i = 0; i < 600; i++) {
     await page.clock.runFor(16)
     if ((await stepNow()) > before && (await people(page)).some((p) => p.walking)) break
   }

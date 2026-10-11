@@ -1,0 +1,23 @@
+{
+  "$schema": "../schema/design.schema.json",
+  "format": "swarmpress.design.v1",
+  "id": "town-tree",
+  "name": "Town tree",
+  "footprint": [24, 24],
+  "height": "$size",
+  "params": {
+    "size": { "type": "int", "min": 90, "max": 150, "default": 120 },
+    "leaves": { "type": "colour", "default": "green" }
+  },
+  "ops": [
+    { "op": "box", "at": [9, 9, 0], "size": [6, 6, 2], "part": "plate", "colour": "chocolate", "shape": "disc" },
+    { "op": "box", "at": [10, 10, 2], "size": [4, 4, "$size - 52"], "part": "brick", "colour": "chocolate", "shape": "disc" },
+    { "op": "box", "at": [4, 4, "$size - 54"], "size": [16, 16, 12], "part": "plate", "colour": "forest", "shape": "disc" },
+    { "op": "box", "at": [0, 0, "$size - 42"], "size": [24, 24, 15], "part": "plate", "colour": "$leaves", "shape": "disc" },
+    { "op": "box", "at": [2, 2, "$size - 27"], "size": [20, 20, 12], "part": "plate", "colour": "leaf", "shape": "disc" },
+    { "op": "box", "at": [5, 5, "$size - 15"], "size": [14, 14, 9], "part": "plate", "colour": "$leaves", "shape": "disc" },
+    { "op": "box", "at": [8, 8, "$size - 6"], "size": [8, 8, 6], "part": "plate", "colour": "leaf", "shape": "disc" }
+  ],
+  "tags": ["town"],
+  "provenance": { "kind": "kit" }
+}

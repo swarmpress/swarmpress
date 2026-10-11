@@ -93,3 +93,66 @@ export function townFrame(layout: BuildingLayout, spots: readonly TownSpot[], se
   }
   return { x: x0, z: z0, w: x1 - x0, d: z1 - z0, h: 4 }
 }
+
+/** A piece of the town's furniture: a kit design at a footprint centre, turned. */
+export interface TownProp {
+  id: string
+  design: 'town-tree' | 'street-lamp' | 'town-bench'
+  x: number
+  z: number
+  turn: Turn
+  params: Record<string, string | number>
+}
+
+/**
+ * The town's furniture, generic like its houses: a street lamp between
+ * every two houses and at the row's ends, a bench in front of each house
+ * looking at the office, trees past the row's ends and along the lot's two
+ * other sides. Placed from the layout's bounds and entrance only, in a
+ * frame along the row (`u` along it, `v` away from the lot).
+ */
+export function townScenery(layout: Pick<BuildingLayout, 'originX' | 'originZ' | 'width' | 'depth' | 'entrance'>, spots: readonly TownSpot[]): TownProp[] {
+  const side = OPPOSITE[layout.entrance.side]
+  const { originX: ox, originZ: oz, width: W, depth: D } = layout
+  const alongX = side === 'north' || side === 'south'
+  const at = (u: number, v: number): [number, number] =>
+    side === 'north' ? [u, oz - v] : side === 'south' ? [u, oz + D + v] : side === 'west' ? [ox - v, u] : [ox + W + v, u]
+  const uOf = (s: TownSpot) => (alongX ? s.x : s.z)
+  const facing = FACING_LOT[side]
+  const out: TownProp[] = []
+  const lamp = (u: number) => {
+    const [x, z] = at(u, 1.7)
+    out.push({ id: `lamp-${out.length}`, design: 'street-lamp', x, z, turn: 0, params: {} })
+  }
+  const us = spots.map(uOf)
+  if (us.length) {
+    const half = us.length > 1 ? (us[1] - us[0]) / 2 : 3
+    lamp(us[0] - half)
+    for (let i = 0; i + 1 < us.length; i++) lamp((us[i] + us[i + 1]) / 2)
+    lamp(us[us.length - 1] + half)
+    for (const [i, u] of us.entries()) {
+      const [x, z] = at(u + 1.7, 1.1)
+      out.push({ id: `bench-${i}`, design: 'town-bench', x, z, turn: facing, params: {} })
+    }
+  }
+  const leaves = ['green', 'leaf', 'forest']
+  const tree = (u: number, v: number) => {
+    const n = out.filter((p) => p.design === 'town-tree').length
+    const [x, z] = at(u, v)
+    out.push({ id: `tree-${n}`, design: 'town-tree', x, z, turn: (n % 4) as Turn, params: { leaves: leaves[n % 3], size: 104 + ((n * 23) % 40) } })
+  }
+  if (us.length) {
+    const reach = (alongX ? HOUSE_W : HOUSE_D) / 2 + 2.2
+    tree(us[0] - reach - 0.8, 4.5)
+    tree(us[us.length - 1] + reach + 0.8, 4.5)
+  }
+  // Along the lot's two sides across the row: the near-row half of each, clear of the street.
+  const across = alongX ? D : W
+  const lo = alongX ? ox : oz
+  const hi = alongX ? ox + W : oz + D
+  for (const f of [0.2, 0.55]) {
+    tree(lo - 2.2, -across * f)
+    tree(hi + 2.2, -across * f)
+  }
+  return out
+}

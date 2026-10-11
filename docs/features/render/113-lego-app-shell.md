@@ -13,7 +13,12 @@ paths:
   - apps/game/src/render/bricks/town.ts
   - apps/game/src/render/bricks/town.test.ts
   - apps/game/src/render/camera.ts
+  - apps/game/src/render/tiltshift.ts
+  - apps/game/src/render/postfx.ts
   - kit/designs/town-house.json
+  - kit/designs/town-tree.json
+  - kit/designs/street-lamp.json
+  - kit/designs/town-bench.json
 adrs:
   - ADR-0086
   - ADR-0018
@@ -49,11 +54,17 @@ as the inspector on the right, in warm cream and brick yellow.
   in the part of the stage the inspector leaves visible; Town frames the whole town; the boot view
   still frames the office.
 - **The low tier** draws the plastic without clear coat and reflections (software WebGPU in CI).
+- **The town's furniture** (`townScenery`): a street lamp between every two houses and at the row's
+  ends, a bench in front of each house looking at the office, trees past the row's ends and along
+  the lot's sides; the kit's new `town-tree`, `street-lamp` and `town-bench` designs. Generic too.
+- **The miniature look** (`tiltshift.ts`): the view's middle band sharp, the top and bottom blurred,
+  on the medium and high tiers; golden hour as a warm colour grade and a soft warm vignette.
+- **The block dock**: the Studio's parts trays (Building and Factory) show each part as a 2 × 2 brick
+  in its colour with its name under it (`BrickIcon`), as in the mockups' bottom palette.
 
 ## Not built yet
 
-- The town's scenery (trees, lamps, benches) and the tilt-shift and golden light of the mockups.
-- The mockups' section views in their new form: the block dock, the Plan's timeline, calendar,
+- The mockups' section views in their new form: the Plan's timeline, calendar,
   workload and goals restyled, the Data Studio, the inspector's breadcrumb and status pill.
 
 ## Evidence

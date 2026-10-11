@@ -15,7 +15,7 @@ pub const MAPPING: &str = include_str!("../../../kit/mapping.json");
 
 /// Shipped designs as `(file stem, JSON)`; a test checks this list against
 /// the files in `kit/designs/`.
-pub const DESIGNS: [(&str, &str); 19] = [
+pub const DESIGNS: [(&str, &str); 22] = [
     (
         "archive-shelf",
         include_str!("../../../kit/designs/archive-shelf.json"),
@@ -67,8 +67,20 @@ pub const DESIGNS: [(&str, &str); 19] = [
     ("plant", include_str!("../../../kit/designs/plant.json")),
     ("stool", include_str!("../../../kit/designs/stool.json")),
     (
+        "street-lamp",
+        include_str!("../../../kit/designs/street-lamp.json"),
+    ),
+    (
+        "town-bench",
+        include_str!("../../../kit/designs/town-bench.json"),
+    ),
+    (
         "town-house",
         include_str!("../../../kit/designs/town-house.json"),
+    ),
+    (
+        "town-tree",
+        include_str!("../../../kit/designs/town-tree.json"),
     ),
     (
         "whiteboard",
