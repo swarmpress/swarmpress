@@ -9,6 +9,7 @@ import { buildBrickOffice, type BrickOffice, type BrickOfficeOptions, type Surfa
 import { boardCards, type PlanItemLike } from './surfaces'
 
 export type { BrickOffice, BrickOfficeStats, SurfaceSources } from './office'
+export { townFrame, type TownSpot } from './town'
 
 /**
  * Loads the kit, builds the brick rooms into a running game scene and hooks

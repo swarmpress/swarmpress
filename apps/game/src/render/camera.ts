@@ -10,6 +10,13 @@ export interface IsoCamera {
   setFacing(index: number): void
   /** Finish any rotation animation instantly (deterministic screenshots). */
   snap(): void
+  /**
+   * Glide to a rect on the floor (`x`, `z` its corner, metres) and zoom to fit
+   * it and `h` of height: the shell's sections (ADR-0086). A drag or the wheel
+   * takes over at once. `coveredRight` is the share of the view a panel
+   * covers on the right: the rect is framed in what stays visible.
+   */
+  frame(rect: { x: number; z: number; w: number; d: number; h: number }, coveredRight?: number): void
 }
 
 /**
@@ -54,6 +61,7 @@ export function createIsoCamera(
     'wheel',
     (e) => {
       e.preventDefault()
+      glide = null
       zoom = clampZoom(zoom * (e.deltaY > 0 ? 1.1 : 1 / 1.1))
       applyOrtho()
     },
@@ -66,6 +74,7 @@ export function createIsoCamera(
     if (info.type === PointerEventTypes.POINTERDOWN) dragging = true
     else if (info.type === PointerEventTypes.POINTERUP) dragging = false
     else if (info.type === PointerEventTypes.POINTERMOVE && dragging) {
+      glide = null
       const engine = scene.getEngine()
       const metresPerPixel = (2 * zoom) / engine.getRenderHeight()
       const right = camera.getDirection(Vector3.Right())
@@ -78,10 +87,19 @@ export function createIsoCamera(
     }
   })
 
-  // Smoothly animate rotation between the four snapped angles.
+  // A section's frame to glide to (target and zoom), until reached or the player moves the camera.
+  let glide: { target: Vector3; zoom: number } | null = null
+  // Smoothly animate rotation between the four snapped angles, and the glide.
   scene.onBeforeRenderObservable.add(() => {
     const dt = scene.getEngine().getDeltaTime() / 1000
     camera.alpha += (targetAlpha - camera.alpha) * Math.min(1, dt * 10)
+    if (glide) {
+      const k = Math.min(1, dt * 5)
+      camera.target.addInPlace(glide.target.subtract(camera.target).scaleInPlace(k))
+      zoom += (glide.zoom - zoom) * k
+      applyOrtho()
+      if (Vector3.Distance(camera.target, glide.target) < 0.01 && Math.abs(zoom - glide.zoom) < 0.01) glide = null
+    }
   })
 
   return {
@@ -97,6 +115,19 @@ export function createIsoCamera(
     },
     snap() {
       camera.alpha = targetAlpha
+    },
+    frame(r, coveredRight = 0) {
+      const aspect = scene.getEngine().getRenderWidth() / Math.max(1, scene.getEngine().getRenderHeight())
+      const share = Math.min(0.7, Math.max(0, coveredRight))
+      const z = fitZoom(r.w, r.d, r.h, aspect * (1 - share))
+      const target = new Vector3(r.x + r.w / 2, 0, r.z + r.d / 2)
+      if (share > 0) {
+        // Move the view right by half the covered width, so the rect sits in the visible part.
+        const right = camera.getDirection(Vector3.Right())
+        const flat = new Vector3(right.x, 0, right.z).normalize()
+        target.addInPlace(flat.scale(share * z * aspect))
+      }
+      glide = { target, zoom: z }
     },
   }
 }

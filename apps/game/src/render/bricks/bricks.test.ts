@@ -224,6 +224,12 @@ describe.skipIf(!built)('brick office (kit-wasm, NullEngine)', () => {
     expect(game.scene.getMeshByName('bricks-baseplate')).toBeTruthy()
   })
 
+  it('builds the town: a house per section with its bricks, from the kit', () => {
+    const { game, bricks } = scene()
+    expect(bricks.town.map((t) => t.id)).toEqual(['plan', 'building', 'factory', 'projects'])
+    for (const t of bricks.town) expect(game.scene.meshes.some((m) => m.name.startsWith(`bricks-town-${t.id}-`)), t.id).toBe(true)
+  })
+
   it('only the spike rooms when asked (the bench compares)', () => {
     const engine = new NullEngine()
     engines.push(engine)

@@ -10,6 +10,10 @@ paths:
   - apps/game/src/ui/shell.test.tsx
   - apps/game/src/ui/overlay.css
   - apps/game/src/ui/mount.tsx
+  - apps/game/src/render/bricks/town.ts
+  - apps/game/src/render/bricks/town.test.ts
+  - apps/game/src/render/camera.ts
+  - kit/designs/town-house.json
 adrs:
   - ADR-0086
   - ADR-0018
@@ -36,11 +40,19 @@ as the inspector on the right, in warm cream and brick yellow.
   the company's numbers, the site binding, the renderer.
 - **Light theme**: the overlay's tokens and every hard-coded dark colour; axe clean in jsdom.
 - **The stage** sits between the bars once the overlay mounts (`body.has-shell`) and follows its box.
+- **The generic town** (`render/bricks/town.ts`): the office is the Staff building; Plan, Building,
+  Factory and Projects are houses of the kit's new `town-house` design (two storeys, windows, a
+  door, a stepped tile roof, a dark plaque) in a row opposite the entrance, fronts to the office,
+  a tiled path between, each with its section's name on the plaque. The same for every company:
+  placed from the layout's bounds and entrance only, in fixed colours.
+- **The camera follows the sections**: choosing one glides to its building (`IsoCamera.frame`), framed
+  in the part of the stage the inspector leaves visible; Town frames the whole town; the boot view
+  still frames the office.
+- **The low tier** draws the plastic without clear coat and reflections (software WebGPU in CI).
 
 ## Not built yet
 
-- The generic town of section buildings with signs and the camera moving between them (ADR-0086
-  decision 4).
+- The town's scenery (trees, lamps, benches) and the tilt-shift and golden light of the mockups.
 - The mockups' section views in their new form: the block dock, the Plan's timeline, calendar,
   workload and goals restyled, the Data Studio, the inspector's breadcrumb and status pill.
 

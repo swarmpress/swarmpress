@@ -108,6 +108,8 @@ export interface ChunkSource {
   /** `[w, d]` footprint in studs (placements, for the centre). */
   footprint?: [number, number]
   shell: boolean
+  /** Merged like a shell at the low tier though placed (the town's houses). */
+  merge?: boolean
   /** The design's surfaces (from `infoJson().surfaces`), design frame. */
   surfaces?: Array<{ name: string; centre: [number, number, number]; size: [number, number]; normal: [number, number, number] }>
 }
@@ -234,7 +236,7 @@ export function buildRoomChunk(room: RoomLayout, exterior: Side[], sources: read
         let e = inst.get(key)
         if (!e) inst.set(key, (e = { region, colour, shape, buf: new Growable() }))
         instanceCount++
-        if (opts.merge && src.shell && shape === 'box') {
+        if (opts.merge && (src.shell || src.merge) && shape === 'box') {
           const odd = ((t[i + 6] + turn) & 1) === 1
           let list = raw.get(key)
           if (!list) raw.set(key, (list = []))

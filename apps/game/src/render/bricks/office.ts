@@ -16,6 +16,7 @@
 import {
   Color3,
   Constants,
+  DynamicTexture,
   Mesh,
   MeshBuilder,
   PBRMaterial,
@@ -34,13 +35,14 @@ import { isCutAway } from '../cutaway'
 import type { Lighting } from '../lighting'
 import { lampsLightFloor, MAX_LIGHTS_PER_MATERIAL, type OfficeHandles } from '../office'
 import { hallwayRects } from '../walls'
+import { townPath, townSpots, type TownSpot } from './town'
 import { buildRoomChunk, exteriorSides, shellOrigin, STUD_HEIGHT, STUD_RADIUS, type ChunkSource, type Region, type RoomChunk, type SurfaceAnchor } from './chunk'
 import { baseplateMesh, floorMesh, paintFloor } from './floor'
 import { envIntensityFor, plasticEnvironment } from './environment'
 import { BrickSeamPlugin } from './seams'
 import { mappingOf, paletteOf, type KitApi, type KitBuildLike, type PaletteColour } from './kit'
 import { modelPlacement, modelRoom } from './model'
-import { FLOOR_TOP, roomPlacements, type DesignInfo } from './placements'
+import { FLOOR_TOP, roomPlacements, turnXZ, type DesignInfo } from './placements'
 import {
   boardView,
   CLOSE_PX,
@@ -146,6 +148,8 @@ interface RoomBuild {
 
 export interface BrickOffice {
   rooms: Map<string, RoomBuild>
+  /** The town's houses (ADR-0086): where each section stands. */
+  town: TownSpot[]
   surfaces: SurfaceHandle[]
   /** Apply a render state (lights, monitors); call after the box office's own update. */
   update(state: RenderState): void
@@ -168,13 +172,16 @@ export interface BrickOfficeOptions {
    * Level of detail (ADR-0063 decision 5): `full` draws every brick of the
    * shells; `merged` (the low tier) merges each colour's touching shell
    * bricks into a few boxes, so walls lose their seams and the office costs
-   * a fraction of the vertices.
+   * a fraction of the vertices, and the plastic loses its clear coat and
+   * reflections.
    */
   detail?: 'full' | 'merged'
   kitLoadMs?: number | null
   now?: () => number
   /** Redraw budget per frame. */
   budget?: number
+  /** The houses' signs by section id (the UI's labels); the town's own names otherwise. */
+  signs?: Record<string, string>
 }
 
 const hex = (h: string) => Color3.FromHexString(h).toLinearSpace()
@@ -183,7 +190,7 @@ const hex = (h: string) => Color3.FromHexString(h).toLinearSpace()
 export const PLASTIC_ROUGHNESS = 0.24
 
 /** Materials per palette colour (PBR, the prototype's look); glowing colours emissive. */
-function makeMaterial(scene: Scene, c: PaletteColour, name = `brick-${c.id}`): PBRMaterial {
+function makeMaterial(scene: Scene, c: PaletteColour, name = `brick-${c.id}`, gloss = true): PBRMaterial {
   const m = new PBRMaterial(name, scene)
   m.albedoColor = hex(c.hex)
   m.metallic = (c.metal ?? 0) / 1000
@@ -200,7 +207,7 @@ function makeMaterial(scene: Scene, c: PaletteColour, name = `brick-${c.id}`): P
   // Solid plastic: glossy ABS with a clear coat for the glints, and its seams; glass and light are not.
   if (c.class === 'solid' && !c.emissive) {
     m.roughness = c.rough !== undefined ? c.rough / 1000 : PLASTIC_ROUGHNESS
-    m.clearCoat.isEnabled = true
+    m.clearCoat.isEnabled = gloss
     m.clearCoat.intensity = 0.55
     m.clearCoat.roughness = 0.12
   }
@@ -219,6 +226,8 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
   const now = opts.now ?? now0
   const t0 = now()
   const kinds = new Set(opts.rooms ?? ALL_ROOMS)
+  // The low tier (merged) skips the clear coat and the reflections: the cheaper plastic.
+  const gloss = opts.detail !== 'merged'
   const mapping = mappingOf(kit)
   const palette = new Map(paletteOf(kit).map((c) => [c.id, c]))
   const rooms = layout.rooms.filter((r) => kinds.has(r.kind))
@@ -249,11 +258,11 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     const c = palette.get(colour) ?? { id: colour, name: colour, hex: '#ff00ff', class: 'solid' }
     if (colour === 'bulb') {
       let m = roomBulbs.get(room)
-      if (!m) roomBulbs.set(room, (m = makeMaterial(scene, c, `brick-bulb-${room}`)))
+      if (!m) roomBulbs.set(room, (m = makeMaterial(scene, c, `brick-bulb-${room}`, gloss)))
       return m
     }
     let m = materials.get(colour)
-    if (!m) materials.set(colour, (m = makeMaterial(scene, c)))
+    if (!m) materials.set(colour, (m = makeMaterial(scene, c, undefined, gloss)))
     return m
   }
 
@@ -368,6 +377,25 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     const floor = floorOf(`bricks-${g.id}-floor`, chunk)
     if (floor) groundMeshes.push(floor)
   }
+  // --- the town (ADR-0086): the sections' houses, generic, their fronts to the office ---------
+  const town = townSpots(layout)
+  const townMeshes: Mesh[] = []
+  for (const spot of town) {
+    const params = JSON.stringify(spot.params)
+    const c = compiled('town-house', params)
+    const at = { id: `town-${spot.id}`, ...spot.rect } as unknown as RoomLayout
+    const placement = { id: `town-${spot.id}`, role: 'prop' as const, design: 'town-house', params, x: spot.x, y: -FLOOR_TOP, z: spot.z, turn: spot.turn, standIn: true }
+    const chunk = buildRoomChunk(at, [], [{ build: c.build, placement, footprint: [c.info.bounds[0], c.info.bounds[1]], shell: false, merge: true }], { merge: opts.detail === 'merged' })
+    for (const b of chunk.instances) townMeshes.push(instanced(`bricks-town-${spot.id}-${b.key}`, shapes[b.shape], b.matrices, materialFor(b.colour, `town-${spot.id}`)))
+    for (const b of chunk.studs) townMeshes.push(instanced(`studs-town-${spot.id}-${b.key}`, shapes.stud, b.matrices, materialFor(b.colour, `town-${spot.id}`)))
+    const sign = signMesh(scene, spot, opts.signs?.[spot.id] ?? spot.label)
+    if (sign) townMeshes.push(sign)
+  }
+  for (const m of townMeshes) {
+    m.receiveShadows = true
+    if (lighting?.shadows && m.name.startsWith('bricks-')) lighting.shadows.addShadowCaster(m)
+  }
+
   // The world the office stands on: a green baseplate, studs and all, well past the street.
   {
     const margin = 16
@@ -456,7 +484,7 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
   let maxRedrawsPerFrame = 0
   const real = typeof document !== 'undefined' && scene.getEngine().name !== 'NullEngine'
   // What the plastic reflects (a generated studio; not under NullEngine).
-  if (real) void plasticEnvironment(scene)
+  if (real && gloss) void plasticEnvironment(scene)
 
   const ensureCanvas = (s: SurfaceHandle) => {
     if (s.canvas) return s.canvas
@@ -658,6 +686,7 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
   const buildMs = now() - t0
   return {
     rooms: roomBuilds,
+    town,
     surfaces,
     update,
     frame,
@@ -720,5 +749,40 @@ export function groundRects(layout: BuildingLayout): Array<{ id: string; style: 
   const d = alongX ? outside : D + 4
   const x = e.side === 'west' ? ox - outside : e.side === 'east' ? ox + W : ox - 2
   const z = e.side === 'north' ? oz - outside : e.side === 'south' ? oz + D : oz - 2
-  return [...halls, { id: 'street', style: 'street', x, z, w, d }]
+  return [...halls, { id: 'street', style: 'street', x, z, w, d }, { id: 'town-path', style: 'hallway', ...townPath(layout) }]
+}
+
+/**
+ * The section's name on its house's plaque (the design's black plaque over
+ * the door, 2.25 × 0.55 m): a plane just in front of it, unlit so it reads
+ * at night too. Null without a canvas (NullEngine tests).
+ */
+function signMesh(scene: Scene, spot: TownSpot, label: string): Mesh | null {
+  if (typeof document === 'undefined' || scene.getEngine().name === 'NullEngine') return null
+  const W = 512
+  const H = 128
+  const texture = new DynamicTexture(`sign-${spot.id}`, { width: W, height: H }, scene, true)
+  const ctx = texture.getContext() as unknown as CanvasRenderingContext2D
+  ctx.fillStyle = '#26231f'
+  ctx.fillRect(0, 0, W, H)
+  ctx.fillStyle = '#fffdf8'
+  ctx.font = '600 72px Georgia, "Iowan Old Style", serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(label, W / 2, H / 2 + 4)
+  texture.update()
+  const mesh = MeshBuilder.CreatePlane(`sign-${spot.id}`, { width: 2.2, height: 0.52 }, scene)
+  // The plaque's centre in the design's frame: on its front (+z) face, 1.875 m from the footprint's centre, 2.575 m up.
+  const [dx, dz] = turnXZ(0, 1.875 + 0.006, spot.turn)
+  mesh.position.set(spot.x + dx, -FLOOR_TOP + 2.575, spot.z + dz)
+  const [nx, nz] = turnXZ(0, 1, spot.turn)
+  mesh.rotation.y = Math.atan2(-nx, -nz)
+  const material = new StandardMaterial(`sign-${spot.id}`, scene)
+  material.disableLighting = true
+  material.emissiveTexture = texture
+  material.diffuseColor = Color3.Black()
+  material.specularColor = Color3.Black()
+  mesh.material = material
+  mesh.isPickable = false
+  return mesh
 }

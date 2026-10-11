@@ -14,6 +14,8 @@ import { DEMO_STAGES, mountBootScreen, SESSION_STAGES, type BootScreen } from '.
 import { hudNotify, mountHud } from './ui/hud'
 import { mountOverlay, selectDataSource } from './ui/mount'
 import { bubblesOf, mountBubbles } from './ui/bubbles/BubbleLayer'
+import { effect } from '@preact/signals'
+import { SECTIONS, sectionOf } from './ui/sections'
 
 /**
  * URL parameters (also used by the e2e and visual tests):
@@ -95,7 +97,8 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     g.iso.snap()
     if (liveQuality !== QUALITY[tier]) g.setQuality(liveQuality)
     // The low tier draws merged walls (level of detail, ADR-0063).
-    const b = await brickMod.attachBrickOffice(g, layout, { detail: tier === 'low' ? 'merged' : 'full' })
+    const signs = Object.fromEntries(SECTIONS.map((s) => [s.id, s.label]))
+    const b = await brickMod.attachBrickOffice(g, layout, { detail: tier === 'low' ? 'merged' : 'full', signs })
     return { game: g, bricks: b }
   }
   let { game, bricks } = await buildScene(engine, params.has('facing') ? Number(params.get('facing')) : null)
@@ -195,6 +198,7 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   }
   // (again on every scene a device recovery builds)
   let unwatchModel: (() => void) | null = null
+  let unwatchSection: (() => void) | null = null
   const wireScene = (game: GameScene, bricks: Awaited<ReturnType<typeof buildScene>>['bricks']) => {
     if (overlay) {
       const store = overlay.store
@@ -218,6 +222,26 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     // The model table (ADR-0072): the site's brick town, kept current from the store.
     unwatchModel?.()
     unwatchModel = overlay ? brickMod.watchModel(overlay.store, bricks) : null
+    // The shell's sections move the camera to their building (ADR-0086); not at boot, which frames the office.
+    unwatchSection?.()
+    unwatchSection = null
+    if (overlay && !frozen) {
+      const store = overlay.store
+      let last: string | null = null
+      unwatchSection = effect(() => {
+        const section = sectionOf(store.panel.value ?? null, store.studioTab.value ?? 'town')
+        if (last !== null && section !== last) {
+          // After the panel has rendered: how much of the stage it covers.
+          requestAnimationFrame(() => {
+            const stage = canvas.getBoundingClientRect()
+            const panel = document.querySelector('.panel:not(.is-full)')?.getBoundingClientRect()
+            const covered = panel && stage.width > 0 ? Math.max(0, stage.right - panel.left) / stage.width : 0
+            game.iso.frame(brickMod.townFrame(layout, bricks.town, section), covered)
+          })
+        }
+        last = section
+      })
+    }
   }
   wireScene(game, bricks)
   // --- end scene ↔ overlay ---
