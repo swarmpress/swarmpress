@@ -7,6 +7,11 @@ paths:
   - crates/site-export/src/lib.rs
   - crates/site-export/src/tests.rs
   - crates/site-export/Cargo.toml
+  - crates/server/src/releases.rs
+  - crates/server/tests/releases.rs
+  - apps/game/src/php/wp-site-engine.ts
+  - apps/game/src/session/wordpress-site.ts
+  - apps/game/e2e/wp-publish.spec.ts
 adrs:
   - ADR-0083
 ---
@@ -33,7 +38,19 @@ crawled over HTTP and written as a content-addressed release; no WordPress is ev
     page are fetched again, new links followed, the rest carried; a touched page that is gone
     leaves the release.
 
+- **After a merge** (`apps/game/src/session/wordpress-site.ts`): `live` is crawled through the
+  sandbox (orchestrator-wasm's `ExportCrawler`), incrementally from the release this device last
+  deployed with the touched permalinks; the new files' bytes go to object storage, then the
+  release to the server.
+- **The deploy** (`crates/server/src/releases.rs`): `PUT /api/releases/{id}` under the lease, only
+  with the manifest's own id and every file's bytes uploaded; the release is written to the static
+  data plane (a directory per release, the `current` pointer moved last), served under
+  `/sites/{company}/`, and `DeployLanded` (`source: export`) reaches the sim; a failure to write is
+  `DeployFailed`.
+- **The sandbox** (`wp-sandbox` 0.3.x) installs public sites with pretty permalinks: a URL with a
+  query string cannot be a static page.
+
 ## Not built yet
 
-- Running the export after a merge, the deploy to the static data plane, and `DeployLanded`.
+- A Cloudflare Pages or R2 plane (the filesystem plane serves one server).
 - Forms and comments to platform endpoints; previews in the review UI.

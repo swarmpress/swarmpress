@@ -49,6 +49,8 @@ rand = "0.8"
 sha2 = "0.10"
 hex = "0.4"
 base64 = "0.22"
+# Releases of WordPress sites (ADR-0083): the manifest and its id.
+site-export = { path = "../site-export" }
 url = "2"
 time = "0.3"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }

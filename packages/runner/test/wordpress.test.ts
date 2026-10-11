@@ -52,6 +52,7 @@ describe.skipIf(!ready)("WordPress on the runner (Node entry + swarmpress-storag
       let page = "";
       let post = 0;
       let port = 0;
+      let path = "";
       try {
         const a = await startNodeWordPress({ root: REPO_ROOT, dataDir: data });
         // The site's URL is part of its content (siteurl): the fresh boot serves it at the same address.
@@ -70,9 +71,12 @@ describe.skipIf(!ready)("WordPress on the runner (Node entry + swarmpress-storag
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ title: "Same on every boot", status: "publish", content: "<!-- wp:paragraph -->\n<p>Byte for byte.</p>\n<!-- /wp:paragraph -->" }),
           });
-          post = ((await created.json()) as { id: number }).id;
+          const saved = (await created.json()) as { id: number; link: string };
+          post = saved.id;
+          // Pretty permalinks (the sandbox sets them at install): the post's own path.
+          path = new URL(saved.link).pathname;
           await a.repo({ op: "session.set", branch: "wi-2", user_id: 0, author: { kind: "system", id: "visitor" } });
-          page = await (await a.request(`/?p=${post}`)).text();
+          page = await (await a.request(path)).text();
           expect(page).toContain("Byte for byte.");
         } finally {
           await a.stop();
@@ -80,7 +84,7 @@ describe.skipIf(!ready)("WordPress on the runner (Node entry + swarmpress-storag
         const b = await startNodeWordPress({ root: REPO_ROOT, dataDir: data, port });
         try {
           await b.repo({ op: "session.set", branch: "wi-2", user_id: 0, author: { kind: "system", id: "visitor" } });
-          const again = await b.request(`/?p=${post}`);
+          const again = await b.request(path);
           expect(`${again.status} ${again.headers.get("location") ?? ""}`).toBe("200 ");
           expect(await again.text()).toBe(page);
         } finally {

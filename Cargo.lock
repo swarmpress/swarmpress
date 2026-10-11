@@ -1879,8 +1879,10 @@ dependencies = [
  "async-trait",
  "claude",
  "js-sys",
+ "knowledge",
  "orchestrator",
  "serde_json",
+ "site-export",
  "wasm-bindgen",
  "wasm-bindgen-futures",
 ]
@@ -2634,6 +2636,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "site-export",
  "sqlx",
  "testkit",
  "thiserror",

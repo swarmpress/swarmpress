@@ -43,6 +43,9 @@ use agents::llm::DeltaSink;
 use agents::{Llm, LlmError, LlmRequest};
 use async_trait::async_trait;
 use js_sys::{Array, Function, Promise, Reflect, JSON};
+use orchestrator::wordpress::{
+    ChangeRequestRef, EngineGateway, PostRef, SiteEngine, WpPost, WpPostFile,
+};
 use orchestrator::{
     Attribution, DeployState, DraftPr, Gateway, GatewayError, JobFailure, JobRequest, ModelsPut,
     Orchestrator, Outcome, PageFile, Progress, ProgressEvent, Redeploy, SiteBinding, StageRow,
@@ -142,6 +145,29 @@ export interface OrchestratorGateway {
   putTheme?(item: string, filesJson: string, message: string): Promise<string | object>
   /** Optional (FEAT-094): merges a theme pull request after the approval → the merge commit sha. */
   mergeTheme?(number: number, headSha: string): Promise<string>
+}
+
+/**
+ * A company on WordPress (ADR-0082, plan M4): the site capabilities the governed layer runs as
+ * REST calls into a branch's sandbox. Pass one instead of an `OrchestratorGateway` (it is told
+ * apart by `savePost`): the jobs then reach the site through `orchestrator::wordpress`, with the
+ * site's block set from the knowledge pack. Posts and attributions cross as JSON text.
+ */
+export interface OrchestratorSiteEngine {
+  /** The branch `name`, created from `live` when missing. */
+  branchFor(name: string): Promise<string>
+  /** `{id, post: WpPost, version, featured_url?}` or `null`. */
+  findPost(branch: string, postType: string, slug: string): Promise<string | object | null>
+  /** Creates (`id` null) or updates a post; one commit by the attribution → `{id, link}`. */
+  savePost(branch: string, id: number | null, postJson: string, attributionJson: string): Promise<string | object>
+  /** The open change request from `branch` (opened when missing) → `{id, branch, head}`. */
+  openChangeRequest(branch: string, title: string, attributionJson: string): Promise<string | object>
+  /** Merges into live if the source is still at `head` → live's new head. */
+  merge(id: number, head: string, attributionJson: string): Promise<string>
+  /** The release and export after a merge: `pending`, `landed`, `failed`… or `null`. */
+  releaseStatus(id: number): Promise<string | null>
+  /** Runs a failed export and deploy again → `{state, requested, attempt, detail}`. */
+  redeploy(id: number): Promise<string | object>
 }
 
 /**
@@ -674,6 +700,119 @@ impl JsGateway {
     }
 }
 
+// ---------------------------------------------------------------- SiteEngine
+
+/// [`SiteEngine`] over a JS `OrchestratorSiteEngine`.
+struct JsSiteEngine(JsValue);
+
+fn attribution_json(a: &Attribution) -> Result<JsValue, GatewayError> {
+    a.check().map_err(gw)?;
+    Ok(s(&serde_json::to_string(a).map_err(|e| gw(e.to_string()))?))
+}
+
+impl JsSiteEngine {
+    async fn json(&self, method: &str, args: &[JsValue]) -> Result<Option<Value>, GatewayError> {
+        let v = call(&self.0, method, args).await.map_err(gw)?;
+        Ok(json_of(&v).map_err(gw)?.filter(|v| !v.is_null()))
+    }
+
+    async fn text(&self, method: &str, args: &[JsValue]) -> Result<String, GatewayError> {
+        let v = call(&self.0, method, args).await.map_err(gw)?;
+        v.as_string()
+            .ok_or_else(|| gw(format!("{method} must return a string")))
+    }
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn num(n: u64) -> JsValue {
+    JsValue::from_f64(n as f64)
+}
+
+#[async_trait(?Send)]
+impl SiteEngine for JsSiteEngine {
+    async fn branch_for(&self, name: &str) -> Result<String, GatewayError> {
+        self.text("branchFor", &[s(name)]).await
+    }
+
+    async fn find_post(
+        &self,
+        branch: &str,
+        post_type: &str,
+        slug: &str,
+    ) -> Result<Option<WpPostFile>, GatewayError> {
+        match self
+            .json("findPost", &[s(branch), s(post_type), s(slug)])
+            .await?
+        {
+            Some(v) => serde_json::from_value(v)
+                .map(Some)
+                .map_err(|e| gw(format!("findPost answer: {e}"))),
+            None => Ok(None),
+        }
+    }
+
+    async fn save_post(
+        &self,
+        branch: &str,
+        id: Option<u64>,
+        post: &WpPost,
+        author: &Attribution,
+    ) -> Result<PostRef, GatewayError> {
+        let post = serde_json::to_string(post).map_err(|e| gw(e.to_string()))?;
+        let id = id.map(num).unwrap_or(JsValue::NULL);
+        let v = self
+            .json(
+                "savePost",
+                &[s(branch), id, s(&post), attribution_json(author)?],
+            )
+            .await?
+            .ok_or_else(|| gw("savePost returned nothing".into()))?;
+        serde_json::from_value(v).map_err(|e| gw(format!("savePost answer: {e}")))
+    }
+
+    async fn open_change_request(
+        &self,
+        branch: &str,
+        title: &str,
+        author: &Attribution,
+    ) -> Result<ChangeRequestRef, GatewayError> {
+        let v = self
+            .json(
+                "openChangeRequest",
+                &[s(branch), s(title), attribution_json(author)?],
+            )
+            .await?
+            .ok_or_else(|| gw("openChangeRequest returned nothing".into()))?;
+        serde_json::from_value(v).map_err(|e| gw(format!("openChangeRequest answer: {e}")))
+    }
+
+    async fn merge(
+        &self,
+        id: u64,
+        head: &str,
+        author: &Attribution,
+    ) -> Result<String, GatewayError> {
+        self.text("merge", &[num(id), s(head), attribution_json(author)?])
+            .await
+    }
+
+    async fn release_status(&self, id: u64) -> Result<Option<DeployState>, GatewayError> {
+        let v = call(&self.0, "releaseStatus", &[num(id)])
+            .await
+            .map_err(gw)?;
+        Ok(v.as_string()
+            .map(|t| serde_json::from_value(Value::String(t)).unwrap_or(DeployState::Unknown)))
+    }
+
+    async fn redeploy(&self, id: u64) -> Result<Redeploy, GatewayError> {
+        let v = self
+            .json("redeploy", &[num(id)])
+            .await?
+            .ok_or_else(|| gw("redeploy returned nothing".into()))?;
+        serde_json::from_value(v).map_err(|e| gw(format!("redeploy answer: {e}")))
+    }
+}
+
 /// Whether the JS object has a callable `name`.
 fn has_method(obj: &JsValue, name: &str) -> bool {
     Reflect::get(obj, &JsValue::from_str(name)).is_ok_and(|f| f.is_function())
@@ -984,6 +1123,142 @@ fn eval_op(site: &SiteBinding, op: &str, args_json: &str) -> Result<String, Stri
 }
 
 /// The module version (the crate version).
+/// The static export of a WordPress site's `live` (ADR-0083, `site_export`), driven from JS:
+/// `nextPath()` names what to fetch from the sandbox checked out on `live`, `feed()` takes the
+/// answer, `finish()` gives `{release, report, blobs: [{sha256, bytes}]}` (the bytes of this
+/// export's files; the store keeps each digest once).
+#[wasm_bindgen]
+pub struct ExportCrawler(Option<site_export::Crawler>);
+
+#[wasm_bindgen]
+impl ExportCrawler {
+    /// `options_json`: `{origin, public_origin, seeds?, max_files?}`. With `prev_release_json`
+    /// (the previous release), `prev_search_json` (its `/search-index.json`) and `touched_json`
+    /// (URL paths), an incremental export.
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        options_json: &str,
+        prev_release_json: Option<String>,
+        prev_search_json: Option<String>,
+        touched_json: Option<String>,
+    ) -> Result<ExportCrawler, JsError> {
+        let v: Value = serde_json::from_str(options_json)
+            .map_err(|e| JsError::new(&format!("options: {e}")))?;
+        let mut opts = site_export::Options::new(
+            v["origin"].as_str().unwrap_or(""),
+            v["public_origin"].as_str().unwrap_or(""),
+        );
+        if let Some(seeds) = v["seeds"].as_array() {
+            opts.seeds = seeds
+                .iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect();
+        }
+        if let Some(n) = v["max_files"].as_u64() {
+            opts.max_files = usize::try_from(n).unwrap_or(usize::MAX);
+        }
+        let crawler = match prev_release_json {
+            Some(prev) => {
+                let prev: site_export::Release = serde_json::from_str(&prev)
+                    .map_err(|e| JsError::new(&format!("previous release: {e}")))?;
+                let search: Vec<site_export::SearchEntry> = prev_search_json
+                    .map(|t| serde_json::from_str(&t))
+                    .transpose()
+                    .map_err(|e| JsError::new(&format!("previous search index: {e}")))?
+                    .unwrap_or_default();
+                let touched: Vec<String> = touched_json
+                    .map(|t| serde_json::from_str(&t))
+                    .transpose()
+                    .map_err(|e| JsError::new(&format!("touched: {e}")))?
+                    .unwrap_or_default();
+                site_export::Crawler::incremental(opts, prev, search, &touched)
+            }
+            None => site_export::Crawler::full(opts),
+        };
+        Ok(ExportCrawler(Some(crawler)))
+    }
+
+    /// The next path to fetch, or `undefined` when the crawl is done.
+    #[wasm_bindgen(js_name = nextPath)]
+    pub fn next_path(&mut self) -> Option<String> {
+        self.0.as_mut()?.next_path()
+    }
+
+    /// The sandbox's answer to the path `nextPath()` gave.
+    pub fn feed(
+        &mut self,
+        status: u16,
+        content_type: &str,
+        location: Option<String>,
+        body: &[u8],
+    ) -> Result<(), JsError> {
+        let c = self
+            .0
+            .as_mut()
+            .ok_or_else(|| JsError::new("the export is finished"))?;
+        c.feed(site_export::Response {
+            status,
+            content_type: content_type.to_string(),
+            location,
+            body: body.to_vec(),
+        });
+        Ok(())
+    }
+
+    /// The release, the report and this export's blobs.
+    pub fn finish(&mut self) -> Result<JsValue, JsError> {
+        let c = self
+            .0
+            .take()
+            .ok_or_else(|| JsError::new("the export is finished"))?;
+        let e = c.finish();
+        let out = js_sys::Object::new();
+        let release =
+            serde_json::to_string(&e.release).map_err(|err| JsError::new(&err.to_string()))?;
+        let report =
+            serde_json::to_string(&e.report).map_err(|err| JsError::new(&err.to_string()))?;
+        Reflect::set(
+            &out,
+            &"release".into(),
+            &JSON::parse(&release).map_err(|_| JsError::new("release"))?,
+        )
+        .map_err(|_| JsError::new("release"))?;
+        Reflect::set(
+            &out,
+            &"report".into(),
+            &JSON::parse(&report).map_err(|_| JsError::new("report"))?,
+        )
+        .map_err(|_| JsError::new("report"))?;
+        let blobs = Array::new();
+        for (sha, bytes) in e.blobs {
+            let b = js_sys::Object::new();
+            Reflect::set(&b, &"sha256".into(), &s(&sha)).map_err(|_| JsError::new("blob"))?;
+            Reflect::set(
+                &b,
+                &"bytes".into(),
+                &js_sys::Uint8Array::from(bytes.as_slice()),
+            )
+            .map_err(|_| JsError::new("blob"))?;
+            blobs.push(&b);
+        }
+        Reflect::set(&out, &"blobs".into(), &blobs).map_err(|_| JsError::new("blobs"))?;
+        Ok(out.into())
+    }
+}
+
+/// The knowledge pack of a WordPress site (ADR-0082, `knowledge::wordpress`): `registries_json` is
+/// what the governed layer read through its REST API (`{site, posts, pages, terms, media,
+/// block_types}`), `commit` the `live` head it read them at. Returns the pack's JSON text.
+#[wasm_bindgen]
+pub fn wordpress_pack(registries_json: &str, commit: &str) -> Result<String, JsError> {
+    let reg: knowledge::wordpress::Registries = serde_json::from_str(registries_json)
+        .map_err(|e| JsError::new(&format!("registries: {e}")))?;
+    let pack =
+        knowledge::wordpress::pack(&reg, commit).map_err(|e| JsError::new(&e.to_string()))?;
+    pack.to_json().map_err(|e| JsError::new(&e.to_string()))
+}
+
 #[wasm_bindgen]
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -992,7 +1267,7 @@ pub fn version() -> String {
 /// One orchestrator over JS store, gateway and LLM objects.
 #[wasm_bindgen]
 pub struct OrchestratorHandle {
-    orch: Rc<Orchestrator<JsStore, JsGateway>>,
+    orch: Rc<Orchestrator<JsStore, Arc<dyn Gateway>>>,
     work_item: Rc<RefCell<Option<String>>>,
     progress: Rc<RefCell<Option<Function>>>,
     /// The job `run` is running, for `cancel`.
@@ -1015,9 +1290,20 @@ impl OrchestratorHandle {
     ) -> Result<OrchestratorHandle, JsError> {
         let site = site_binding(site_json).map_err(|e| JsError::new(&e))?;
         let work_item = Rc::new(RefCell::new(None));
-        let gateway = JsGateway {
-            obj: gateway,
-            work_item: work_item.clone(),
+        // A site engine (a company on WordPress, ADR-0082) or the central gateway.
+        #[allow(clippy::arc_with_non_send_sync)] // wasm32: one thread
+        let gateway: Arc<dyn Gateway> = if has_method(&gateway, "savePost") {
+            let blocks = site
+                .knowledge
+                .as_ref()
+                .map(|k| knowledge::wordpress::block_types(&k.pack))
+                .unwrap_or_default();
+            Arc::new(EngineGateway::new(JsSiteEngine(gateway), blocks))
+        } else {
+            Arc::new(JsGateway {
+                obj: gateway,
+                work_item: work_item.clone(),
+            })
         };
         #[allow(clippy::arc_with_non_send_sync)] // wasm32: one thread
         let model: Arc<dyn Llm> = Arc::new(JsLlm(llm.clone()));

@@ -83,7 +83,9 @@ test('WordPress installs, an agent writes on a work branch, and the merge reache
     content: '<!-- wp:paragraph -->\n<p>The grapes come in by monorail.</p>\n<!-- /wp:paragraph -->',
   }))
   expect(created.status, created.text.slice(0, 300)).toBe(201)
-  const post = (JSON.parse(created.text) as { id: number }).id
+  const saved = JSON.parse(created.text) as { id: number; link: string }
+  // Pretty permalinks (the sandbox sets them at install): the post's own path.
+  const postPath = new URL(saved.link).pathname
   const [head] = await repo<{ author: { id: string; job: string } }[]>(page, { op: 'log', branch: 'wi-1', limit: 1 })
   expect(head.author).toMatchObject({ id: 'writer-1', job: 'e2e-1' })
 
@@ -97,7 +99,7 @@ test('WordPress installs, an agent writes on a work branch, and the merge reache
   const merged = await repo<{ head?: string }>(page, { op: 'cr.merge', id, author: { kind: 'human', id: 'ceo' } })
   expect(merged.head).toBeTruthy()
   await repo(page, { op: 'session.set', branch: 'live', user_id: 0, author: { kind: 'system', id: 'visitor' } })
-  const single = await timed('single post', () => request(page, { url: `/?p=${post}` }))
+  const single = await timed('single post', () => request(page, { url: postPath }))
   expect(single.status).toBe(200)
   expect(single.text).toContain('The grapes come in by monorail.')
 

@@ -10,7 +10,7 @@ fn html(title: &str, body: &str) -> Response {
         status: 200,
         content_type: "text/html; charset=UTF-8".into(),
         location: None,
-        body: format!("<!doctype html><html><head><title>{title}</title><link rel=\"stylesheet\" href=\"{O}/wp-content/themes/t/style.css?ver=1.2\"></head><body><main>{body}</main><script>var x = \"http:\\/\\/sandbox.invalid\\/wp-json\";</script></body></html>").into_bytes(),
+        body: format!("<!doctype html><html><head><title>{title}</title><link rel=\"stylesheet\" href=\"{O}/wp-content/themes/t/style.css?ver=1.2\"></head><body><main>{body}</main><link rel=\"alternate\" href=\"/oembed?url=http%3A%2F%2Fsandbox.invalid%2Fpost-a%2F\"><script>var x = \"http:\\/\\/sandbox.invalid\\/wp-json\";</script></body></html>").into_bytes(),
     }
 }
 
@@ -151,7 +151,10 @@ fn a_full_export_crawls_the_static_site_and_nothing_dynamic() {
             .iter()
             .map(|s| s.url.as_str())
             .collect::<Vec<_>>(),
-        ["/?s=search"]
+        [
+            "/?s=search",
+            "/oembed?url=http%3A%2F%2Fsandbox.invalid%2Fpost-a%2F"
+        ]
     );
     // robots.txt is a seed that does not exist: not reported as broken.
     assert!(e.report.broken.is_empty(), "{:?}", e.report.broken);
@@ -164,6 +167,10 @@ fn a_full_export_crawls_the_static_site_and_nothing_dynamic() {
     assert!(
         home.contains("https:\\/\\/cinqueterre.travel\\/wp-json"),
         "JSON-escaped origin rewritten"
+    );
+    assert!(
+        home.contains("url=https%3A%2F%2Fcinqueterre.travel%2Fpost-a%2F"),
+        "URL-encoded origin rewritten"
     );
 
     let index: Vec<SearchEntry> =

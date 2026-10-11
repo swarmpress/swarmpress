@@ -13,6 +13,10 @@ crate-type = ["cdylib", "rlib"]
 # the workspace still builds, lints and tests.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 orchestrator = { path = "../orchestrator" }
+# A WordPress site's knowledge pack and block set (ADR-0082).
+knowledge = { path = "../knowledge" }
+# The static export of a WordPress site's live branch (ADR-0083), crawled through the sandbox.
+site-export = { path = "../site-export" }
 agents = { path = "../agents" }
 claude = { path = "../claude", default-features = false }
 serde_json.workspace = true

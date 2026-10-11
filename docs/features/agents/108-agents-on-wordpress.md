@@ -8,6 +8,11 @@ paths:
   - crates/orchestrator/src/wordpress/fake.rs
   - crates/orchestrator/tests/wordpress.rs
   - crates/knowledge/src/wordpress.rs
+  - crates/orchestrator-wasm/src/lib.rs
+  - apps/game/src/php/wp-site-engine.ts
+  - apps/game/src/php/wp-site-engine.test.ts
+  - apps/game/src/session/wordpress-site.ts
+  - apps/game/e2e/wp-publish.spec.ts
 adrs:
   - ADR-0082
   - ADR-0080
@@ -42,9 +47,20 @@ not change (§2).
   the writer's, editor's and approver's attribution; a fix of a broken link on a post read from
   `live`; the article ↔ post mapping both ways.
 
+- **In the browser:** orchestrator-wasm takes a site engine in place of the gateway (told apart by
+  `savePost`) and builds `EngineGateway` over it (`JsSiteEngine`), with the block set from the pack;
+  `wordpress_pack` shapes registries into a pack. `WpSiteEngine` (`apps/game/src/php`) runs each
+  capability as REST into the sandbox, with the sandbox's session bound to the capability's branch
+  and author, one capability at a time; the merge is refused when the branch moved since the
+  approval. The knowledge client reads the registries from `live` and rebuilds the pack when
+  `live`'s head moved.
+- **End to end** (`e2e/wp-publish.spec.ts`, the real game page on the central server): a company on
+  WordPress, its media seeded by the CEO on a branch and merged; standup, draft (a post on its
+  branch with a change request, nothing on live), review 6, revision, review 8, the CEO's Publish,
+  the merge, the export and deploy, `DeployLanded`, and the public site serving the revised
+  article.
+
 ## Not built yet
 
-- The browser's engine over the sandbox (`JsSiteEngine`, `wpSiteEngine`), the pack read from a
-  sandbox on `live`, and the game-page e2e test (a flagged company publishes into `live`).
 - Block schemas generated from the site's block registry for the writer's prompts: the writer
   still drafts the article blocks, which the capability layer maps onto core blocks.

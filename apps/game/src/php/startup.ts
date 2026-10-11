@@ -118,7 +118,8 @@ export async function startWordPress(deps: WordPressStartupDeps, onEvent: (e: Wp
           admin_password2: password,
           pw_weak: 'on',
           admin_email: deps.site.adminEmail,
-          blog_public: '0',
+          // The site is public (its export is the public site, ADR-0083): sitemaps on, robots allowed.
+          blog_public: '1',
           Submit: 'Install',
         }),
       })

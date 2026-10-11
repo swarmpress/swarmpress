@@ -65,6 +65,7 @@ import type { DataTopic } from '../ui/data-source'
 import { mountModelCard } from '../ui/model-card'
 import { mountWordPressCard } from '../ui/wordpress-card'
 import { resolveSiteEngine, WordPressRuntime, type SiteEngineId } from './wordpress-runtime'
+import { wordpressSite, type WordPressSite } from './wordpress-site'
 import { companyStoreOptions, WasmDataSource, type SimOrgApi } from '../ui/wasm-source'
 import { showBootBinding } from '../ui/boot-screen'
 import { hudSite } from '../ui/hud'
@@ -236,6 +237,10 @@ export interface GameSession {
   siteEngine: SiteEngineId
   /** The company's WordPress, on the WordPress engine (null on Astro and read-only). */
   wordpress: WordPressRuntime | null
+  /** Its site engine, knowledge and exports (null without WordPress). */
+  wordpressSite: WordPressSite | null
+  /** Refetches the site's knowledge pack now (after the CEO changed the site, and in tests). */
+  refreshKnowledge(): Promise<string>
   /** The overlay's data source: the sim (commands logged through the loop) plus the store's plan text. */
   dataSource(): WasmDataSource
   /** Speech bubbles (FEAT-025): a meeting turn's words from the transcript, and how long a turn lasts. */
@@ -550,18 +555,48 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     `company ${company.id} restored from ${restored.source} at step ${restored.step} (${restored.snapshot ? 'snapshot + ' : ''}${restored.replayed} commands replayed, ${restored.ms} ms)`,
   )
 
+  // The site engine (ADR-0078, plan M1): a company on WordPress starts its sandbox in the
+  // background too; the card shows the stages, and a failure stays on it with the reason.
+  const siteEngine = await resolveSiteEngine(location.search, store)
+  const wordpress =
+    siteEngine === 'wordpress' && !readOnly
+      ? await WordPressRuntime.open({ companyId: company.id, store, search: location.search, site: { title: company.name, adminEmail: `${me.user.login}@users.swarm.press` },
+          // Asset bytes to object storage and WordPress's outgoing HTTP through the fetch proxy, under the lease (ADR-0050, ADR-0084 §2).
+          platform: {
+            putAsset: async (sha, bytes, mime) => void (await client.putAsset(lease.token, sha, bytes, mime)),
+            getAsset: (sha) => client.getAsset(sha),
+            http: async (req) => {
+              const r = await client.wpRequest(lease.token, { url: req.url, method: req.method, headers: req.headers, body: req.body || null })
+              return { status: r.status, headers: r.headers, ...(r.body_b64 !== undefined ? { body_b64: r.body_b64 } : { body: r.body ?? '' }) }
+            },
+          },
+          log: (line) => log(`wordpress: ${line}`),
+        })
+      : null
+  if (wordpress) {
+    mountWordPressCard(wordpress)
+    wordpress.start().catch((e: unknown) => opts.onError?.(`WordPress did not start: ${String((e as Error)?.message ?? e)}`))
+  }
+  // Its site capabilities, its knowledge read from live, and the export after a merge (ADR-0082, ADR-0083).
+  const wpSite = wordpress
+    ? await wordpressSite({ wordpress, client, token: () => lease.token, store, companyId: company.id, publicOrigin: `${location.origin}/sites/${company.id}`, log: (line) => log(`wordpress: ${line}`) })
+    : null
+
   stage('orchestrator')
   // The site's knowledge pack (ADR-0061): the store's newest (an earlier
   // session's), then the server's at the base head, before the first
   // standup. A failed fetch keeps the stored pack (site-knowledge.ts).
-  const knowledge = new SiteKnowledgeKeeper(readOnly ? null : { knowledge: (etag) => client.knowledge(lease.token, etag) }, store, {
+  const knowledge = new SiteKnowledgeKeeper(readOnly ? null : wpSite ? wpSite.knowledgeClient : { knowledge: (etag) => client.knowledge(lease.token, etag) }, store, {
     log,
     onError: opts.onError,
   })
   await knowledge.load()
   if (!readOnly) await knowledge.refresh('start')
   const calls: GatewayCall[] = []
-  const gateway = refetchAfterMerge(recordingGateway(centralGateway(client, () => lease.token), calls), knowledge)
+  // A company on WordPress works through its site engine (ADR-0082); the others through the central gateway.
+  const gateway = wpSite
+    ? wpSite.orchestratorEngine(() => void knowledge.refresh('merge'))
+    : refetchAfterMerge(recordingGateway(centralGateway(client, () => lease.token), calls), knowledge)
   // The model (ADR-0067): the backend is chosen here (`?llm=`, else the company's stored choice,
   // else the hosted GPT-6-Luna through this server); it starts once the clock exists (below).
   // `?llm=fake` is the scripted model; `?llm=gemma` the opt-in local one.
@@ -957,28 +992,6 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   models.onChange(() => setModelStatus(models.status()))
   mountModelCard(models)
 
-  // The site engine (ADR-0078, plan M1): a company on WordPress starts its sandbox in the
-  // background too; the card shows the stages, and a failure stays on it with the reason.
-  const siteEngine = await resolveSiteEngine(location.search, store)
-  const wordpress =
-    siteEngine === 'wordpress' && !readOnly
-      ? await WordPressRuntime.open({ companyId: company.id, store, search: location.search, site: { title: company.name, adminEmail: `${me.user.login}@users.swarm.press` },
-          // Asset bytes to object storage and WordPress's outgoing HTTP through the fetch proxy, under the lease (ADR-0050, ADR-0084 §2).
-          platform: {
-            putAsset: async (sha, bytes, mime) => void (await client.putAsset(lease.token, sha, bytes, mime)),
-            getAsset: (sha) => client.getAsset(sha),
-            http: async (req) => {
-              const r = await client.wpRequest(lease.token, { url: req.url, method: req.method, headers: req.headers, body: req.body || null })
-              return { status: r.status, headers: r.headers, ...(r.body_b64 !== undefined ? { body_b64: r.body_b64 } : { body: r.body ?? '' }) }
-            },
-          },
-          log: (line) => log(`wordpress: ${line}`),
-        })
-      : null
-  if (wordpress) {
-    mountWordPressCard(wordpress)
-    wordpress.start().catch((e: unknown) => opts.onError?.(`WordPress did not start: ${String((e as Error)?.message ?? e)}`))
-  }
 
   // The story director (ADR-0074): ten-minute chapters of studio life as remarks, on the hosted
   // model by default (`?story=on|off` overrides); only running clock time counts.
@@ -1117,6 +1130,8 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     models,
     siteEngine,
     wordpress,
+    wordpressSite: wpSite,
+    refreshKnowledge: () => knowledge.refresh('job'),
     speech: {
       // The loop knows which transcript row each utterance it applied spoke; after a reload the seqs coincide.
       text: async (meeting, seq, job) => {

@@ -59,6 +59,11 @@ pub struct Release {
 }
 
 impl Release {
+    /// The id this release's manifest gives: a release whose `id` differs was altered.
+    pub fn computed_id(&self) -> String {
+        Release::digest(&self.files, &self.redirects)
+    }
+
     fn digest(files: &BTreeMap<String, FileEntry>, redirects: &BTreeMap<String, String>) -> String {
         let manifest = serde_json::json!({ "files": files, "redirects": redirects });
         let mut h = Sha256::new();
@@ -477,10 +482,28 @@ impl Crawler {
         let text = String::from_utf8_lossy(body);
         let o = &self.opts.origin;
         let p = &self.opts.public_origin;
-        text.replace(o.as_str(), p.as_str())
-            .replace(&o.replace('/', "\\/"), &p.replace('/', "\\/"))
-            .into_bytes()
+        let mut out = text
+            .replace(o.as_str(), p.as_str())
+            .replace(&o.replace('/', "\\/"), &p.replace('/', "\\/"));
+        // URL-encoded, as WordPress puts its own URLs in query strings (oEmbed discovery links).
+        for upper in [true, false] {
+            out = out.replace(&url_encode(o, upper), &url_encode(p, upper));
+        }
+        out.into_bytes()
     }
+}
+
+/// `s` percent-encoded as `encodeURIComponent` does, with upper- or lower-case hex.
+fn url_encode(s: &str, upper: bool) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ if upper => format!("%{b:02X}"),
+            _ => format!("%{b:02x}"),
+        })
+        .collect()
 }
 
 /// `/a/./b/../c` → `/a/c`; keeps a trailing slash and the query.

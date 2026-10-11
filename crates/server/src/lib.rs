@@ -38,6 +38,7 @@ pub mod events;
 pub mod finalize;
 pub mod gateway;
 pub mod llm;
+pub mod releases;
 pub mod site_audit;
 pub mod site_blueprint;
 pub mod site_data;

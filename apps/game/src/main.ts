@@ -330,6 +330,9 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     session: session?.hook ?? null,
     // The company's WordPress (?site=wordpress, ADR-0078): its runtime, both channels included; else null.
     wordpress: session?.wordpress ?? null,
+    // Its site engine and exports, and a knowledge refresh (the WordPress e2e seeds media, then refreshes).
+    wordpressSite: session?.wordpressSite ?? null,
+    refreshKnowledge: session ? () => session!.refreshKnowledge() : null,
     clock,
     // Everyone on site, where they are drawn this frame and on the canvas (e2e smooth-movement check).
     people: () => game.people(),

@@ -572,6 +572,15 @@ export class CentralClient {
     }
   }
 
+  /**
+   * A WordPress site's release to the static data plane (`PUT /api/releases/{id}`, ADR-0083):
+   * every file's bytes uploaded first; the server serves it and reports `DeployLanded` for
+   * `workItem`.
+   */
+  putRelease(token: string, release: { id: string }, workItem: string | null, changeRequest: number): Promise<{ id: string; url: string; files: number }> {
+    return this.json('PUT', `/api/releases/${release.id}`, { json: { release, work_item: workItem, change_request: changeRequest }, headers: { [LEASE_HEADER]: token } })
+  }
+
   /** The hosts the company's WordPress may reach (`/api/web/grants`, ADR-0084 §2). */
   webGrants(): Promise<{ hosts: string[] }> {
     return this.json('GET', '/api/web/grants')

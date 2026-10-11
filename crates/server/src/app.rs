@@ -58,6 +58,8 @@ pub struct AppState {
     pub signal_sink: Arc<dyn AnalyticsSignalSink>,
     /// Asset bytes by `c/{company}/sha256/{hash}` ([`crate::assets`], ADR-0050).
     pub objects: Arc<dyn crate::assets::ObjectStore>,
+    /// Where WordPress sites' releases are served from ([`crate::releases`], ADR-0083).
+    pub static_plane: Arc<dyn crate::releases::StaticPlane>,
 }
 
 impl AppState {
@@ -83,6 +85,9 @@ impl AppState {
         let objects: Arc<dyn crate::assets::ObjectStore> = Arc::new(
             crate::assets::FsObjectStore::new(cfg.data_dir.join("objects")),
         );
+        let static_plane: Arc<dyn crate::releases::StaticPlane> = Arc::new(
+            crate::releases::FsStaticPlane::new(cfg.data_dir.join("sites"), &cfg.public_url),
+        );
         Self {
             cfg: Arc::new(cfg),
             db,
@@ -98,6 +103,7 @@ impl AppState {
             company_locks: CompanyLocks::default(),
             repo_locks: CompanyLocks::default(),
             objects,
+            static_plane,
             tracker,
             signal_sink: Arc::new(PendingSignalSink),
         }
@@ -234,6 +240,16 @@ pub fn router(st: AppState) -> Router {
         .route("/web/request", post(web::request))
         .route("/web/wp-request", post(web::wp_request))
         .route("/api/web/grants", get(web::get_grants).put(web::put_grants))
+        .route(
+            "/api/releases/current",
+            get(crate::releases::current_release),
+        )
+        .route(
+            "/api/releases/{id}",
+            put(crate::releases::put_release).layer(DefaultBodyLimit::max(16 * 1024 * 1024)),
+        )
+        .route("/sites/{company}/", get(crate::releases::site_root))
+        .route("/sites/{company}/{*path}", get(crate::releases::site_file))
         .route(
             "/api/assets/{sha256}",
             get(crate::assets::get_asset)

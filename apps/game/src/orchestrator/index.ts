@@ -10,6 +10,7 @@
  * ```
  */
 import type { OrchestratorGateway } from '../net/central'
+import type { OrchestratorSiteEngine } from '../php/wp-site-engine'
 import type { OrchestratorStore } from '../store/company-store'
 import { FakeLlm } from '../llm/fake-llm'
 import type { LocalLlm, Validator } from '../llm/types'
@@ -33,7 +34,8 @@ export function loadOrchestratorWasm(): Promise<WasmModule> {
 
 export interface CreateOrchestratorOptions {
   store: OrchestratorStore
-  gateway: OrchestratorGateway
+  /** The central gateway, or a company on WordPress's site engine (ADR-0082). */
+  gateway: OrchestratorGateway | OrchestratorSiteEngine
   llm: OrchestratorLlm
   site: SiteBindingJson
   /** Hears every stage of every job (ADR-0058): the HUD chip and the activity log. */
