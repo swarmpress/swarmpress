@@ -82,7 +82,7 @@ Accepted ADRs are never rewritten.
 | [0060](0060-game-time-is-independent-of-gpu-speed.md) | Game time is independent of GPU speed | Accepted |
 | [0061](0061-knowledge-pack-and-gateway-read-finalise-close.md) | Knowledge pack; gateway read, finalise and close; create-only article paths | Accepted |
 | [0062](0062-local-standup-protocol-the-pitch-round.md) | Local standup protocol: the pitch round | Accepted |
-| [0063](0063-brick-office-and-live-information-surfaces.md) | The brick office and live information surfaces | Accepted |
+| [0063](0063-brick-office-and-live-information-surfaces.md) | The brick office and live information surfaces | Accepted (decision 7 amended by ADR-0085) |
 | [0064](0064-webgpu-only.md) | WebGPU only | Accepted |
 | [0065](0065-the-construction-kit.md) | The construction kit | Accepted |
 | [0066](0066-gemma-4-e4b-with-mtp-on-upstream-llama-cpp-webgpu.md) | Gemma 4 E4B with MTP on upstream llama.cpp (WebGPU) | Superseded in part by ADR-0067 |
@@ -104,3 +104,4 @@ Accepted ADRs are never rewritten.
 | [0082](0082-agents-and-the-studio-work-on-wordpress-through-capabilities.md) | Agents and the Studio work on WordPress through capabilities | Accepted |
 | [0083](0083-publishing-a-wordpress-site-and-migrating-cinqueterre.md) | Publishing a WordPress site, and migrating cinqueterre.travel | Accepted |
 | [0084](0084-a-wordpress-fork-whose-storage-is-the-governed-repository.md) | A WordPress fork whose storage is the governed repository | Accepted (supersedes ADR-0081) |
+| [0085](0085-the-office-is-bricks-everywhere.md) | The office is bricks everywhere | Accepted (amends ADR-0063 decision 7) |

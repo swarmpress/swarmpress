@@ -1,10 +1,9 @@
 /**
- * The brick office spike behind `?office=bricks` (FEAT-081, FEAT-082):
- * boots on software WebGPU (SwiftShader, ADR-0064; e2e/webgpu.ts),
- * checks the brick rooms through the `__swarmpress.bricks()` hook, zooms
- * onto the newsroom so the surfaces reach their close level, and attaches
- * screenshots. The screenshots are evidence for the report, not baselines:
- * the flag is off by default and visual.spec.ts' baselines do not move.
+ * The brick office (FEAT-081, FEAT-082, ADR-0085): boots on software WebGPU
+ * (SwiftShader, ADR-0064; e2e/webgpu.ts), checks every room, the hallway and
+ * the street through the `__swarmpress.bricks()` hook, zooms onto the
+ * newsroom so the surfaces reach their close level, and attaches
+ * screenshots (evidence; visual.spec.ts holds the baselines).
  */
 import { expect, test, type Page } from '@playwright/test'
 import { boot } from './helpers'
@@ -18,6 +17,7 @@ interface Stats {
   kitLoadMs: number | null
   buildMs: number
   surfaces: { monitors: number; boards: number; close: number; redraws: number; maxRedrawsPerFrame: number }
+  grounds?: { count: number; instances: number; meshes: number }
 }
 type Hook = { bricks: (() => Stats) | null; frames(): number; scene: { activeCamera: unknown } }
 
@@ -35,27 +35,28 @@ const framesAfter = async (page: Page, n: number, log: string[]) => {
   }
 }
 
-test('?office=bricks builds the newsroom and the editor’s office from the kit, with live surfaces', async ({ page }, info) => {
+test('the office is bricks: every room, the hallway and the street from the kit, with live surfaces', async ({ page }, info) => {
   const consoleErrors: string[] = []
   const consoleLog: string[] = []
   page.on('console', (m) => {
     consoleLog.push(`${m.type()}: ${m.text()}`)
     if (m.type() === 'error') consoleErrors.push(m.text())
   })
-  const { errors, renderer } = await boot(page, '/?office=bricks&quality=low')
+  const { errors, renderer } = await boot(page, '/?quality=low')
   expect(renderer).toBe('webgpu')
 
   const s = (await stats(page))!
   expect(s, 'the bricks hook is set').not.toBeNull()
-  expect(s.rooms.map((r) => r.kind).sort()).toEqual(['editor-office', 'newsroom'])
+  expect(s.rooms).toHaveLength(11)
+  expect(s.grounds!.count).toBeGreaterThan(1)
   for (const r of s.rooms) {
-    expect(r.instances, r.room).toBeGreaterThan(2000)
+    expect(r.instances, r.room).toBeGreaterThan(1000)
     expect(r.instances).toBe(r.kitInstances)
     expect(r.studs).toBe(r.kitStuds)
   }
-  // Every desk in the two rooms has a monitor surface; the newsroom has its board.
-  expect(s.surfaces.monitors).toBe(8)
-  expect(s.surfaces.boards).toBe(1)
+  // Every desk has a monitor surface; the newsroom has its board, the meeting and strategy rooms theirs.
+  expect(s.surfaces.monitors).toBe(16)
+  expect(s.surfaces.boards).toBe(3)
   // Brick meshes exist in the scene under their room ids.
   const names = await page.evaluate(() =>
     (window as unknown as { __swarmpress: { scene: { meshes: Array<{ name: string }> } } }).__swarmpress.scene.meshes.map((m) => m.name).filter((n) => n.startsWith('bricks-')),

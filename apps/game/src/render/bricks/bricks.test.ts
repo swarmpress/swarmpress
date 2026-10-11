@@ -1,9 +1,9 @@
-// The brick office spike (FEAT-081) under NullEngine, on the real kit
+// The brick office (FEAT-081, ADR-0085) under NullEngine, on the real kit
 // (crates/kit-wasm/pkg from `cargo xtask wasm`; skipped without it, like
-// the sim's wasm drift test): deterministic instance buffers, counts per
-// room equal to the kit's, placement at the layout's positions and turns,
-// separable studs, the cutaway, and the box office switched off in the
-// brick rooms only.
+// the sim's wasm drift test): every room and the floors between them in
+// bricks, deterministic instance buffers, counts per room equal to the
+// kit's, placement at the layout's positions and turns, separable studs,
+// the cutaway, and the box office switched off.
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -18,7 +18,7 @@ import { QUALITY } from '../postfx'
 import { createGameScene, type GameScene } from '../scene'
 import { buildRoomChunk, exteriorSides, regionOf, shellOrigin, type ChunkSource } from './chunk'
 import { mappingOf, type KitApi } from './kit'
-import { buildBrickOffice, SPIKE_ROOMS, type BrickOffice } from './office'
+import { ALL_ROOMS, buildBrickOffice, groundRects, SPIKE_ROOMS, type BrickOffice } from './office'
 import { PLATE, roomPlacements, STUD, turnOf, type DesignInfo } from './placements'
 import townJson from '../../../../../crates/blueprint/tests/fixtures/cinqueterre-mini.town.json'
 
@@ -56,25 +56,29 @@ const infoOf = (design: string, params: string): DesignInfo => {
 
 const room = (kind: string) => layout.rooms.find((r) => r.kind === kind)!
 
-describe.skipIf(!built)('brick office spike (kit-wasm, NullEngine)', () => {
-  it('builds the newsroom and the editor’s office, and only those', () => {
+describe.skipIf(!built)('brick office (kit-wasm, NullEngine)', () => {
+  it('builds every room of the layout in bricks', () => {
     const { bricks } = scene()
     const kinds = [...bricks.rooms.values()].map((r) => r.stats.kind)
-    expect(kinds.sort()).toEqual([...SPIKE_ROOMS].sort())
+    expect(kinds.sort()).toEqual(layout.rooms.map((r) => r.kind).sort())
+    expect(layout.rooms.every((r) => ALL_ROOMS.includes(r.kind))).toBe(true)
     for (const r of bricks.rooms.values()) {
-      expect(r.stats.instances).toBeGreaterThan(2000)
+      expect(r.stats.instances, r.stats.room).toBeGreaterThan(1000)
       expect(r.meshes.length).toBeGreaterThan(5)
     }
   })
 
-  it('draws exactly the instances and studs the kit compiled, per room', () => {
+  it('draws exactly the instances and studs the kit compiled, per room (the floor as one plane)', () => {
     const { bricks } = scene()
     for (const r of bricks.rooms.values()) {
       expect(r.stats.instances).toBe(r.stats.kitInstances)
       expect(r.stats.studs).toBe(r.stats.kitStuds)
       const drawn = r.meshes.reduce((a, m) => a + m.mesh.thinInstanceCount, 0)
       const studs = r.studs.reduce((a, m) => a + m.mesh.thinInstanceCount, 0)
-      expect(drawn).toBe(r.stats.instances)
+      // The floor's tiles are painted into one plane instead of drawn.
+      expect(r.stats.floorTiles).toBeGreaterThan(0)
+      expect(r.floor).not.toBeNull()
+      expect(drawn + r.stats.floorTiles!).toBe(r.stats.instances)
       expect(studs).toBe(r.stats.studs)
     }
   })
@@ -192,14 +196,43 @@ describe.skipIf(!built)('brick office spike (kit-wasm, NullEngine)', () => {
     expect(shellOrigin({ x: 8, z: 0 }, [0, 0])[1]).toBeCloseTo(-2 * PLATE, 6)
   })
 
-  it('switches the box office off in the brick rooms only', () => {
+  it('switches the box office off: rooms, desks, walls, the hallway and the street', () => {
     const { game } = scene()
-    const brickIds = new Set(layout.rooms.filter((r) => SPIKE_ROOMS.includes(r.kind)).map((r) => r.id))
-    for (const [id, h] of game.office.rooms) expect(h.floor.isEnabled(), id).toBe(!brickIds.has(id))
-    for (const d of game.office.desks.values()) for (const m of d.meshes) expect(m.isEnabled(), m.name).toBe(!brickIds.has(d.roomId))
-    // The kitchen keeps its walls; the newsroom's north wall is bricks now.
-    const enabledNorth = game.office.walls.filter((w) => w.side === 'north' && w.mesh.isEnabled()).map((w) => w.mesh.getBoundingInfo().boundingBox.centerWorld.x)
-    expect(enabledNorth.every((x) => x > 12)).toBe(true)
+    for (const [id, h] of game.office.rooms) expect(h.floor.isEnabled(), id).toBe(false)
+    for (const d of game.office.desks.values()) for (const m of d.meshes) expect(m.isEnabled(), m.name).toBe(false)
+    expect(game.office.walls.filter((w) => w.side === 'north' && w.mesh.isEnabled())).toEqual([])
+    expect(game.office.hall?.isEnabled()).toBe(false)
+    expect(game.office.street.isEnabled()).toBe(false)
+  })
+
+  it('merges the shells at the low tier: far fewer boxes, the same parts compiled', () => {
+    const full = scene().bricks
+    const engine = new NullEngine()
+    engines.push(engine)
+    const game = createGameScene(engine, null, layout, { quality: QUALITY.low, postFx: false })
+    const merged = buildBrickOffice(game.scene, kit, layout, game.office, game.lighting, { detail: 'merged' })
+    const drawn = (b: BrickOffice) => [...b.rooms.values()].reduce((a, r) => a + r.meshes.reduce((n, m) => n + m.mesh.thinInstanceCount, 0), 0)
+    expect(drawn(merged)).toBeLessThan(drawn(full) / 3)
+    expect(merged.stats().instances).toBe(full.stats().instances)
+  })
+
+  it('only the spike rooms when asked (the bench compares)', () => {
+    const engine = new NullEngine()
+    engines.push(engine)
+    const game = createGameScene(engine, null, layout, { quality: QUALITY.low, postFx: false })
+    const bricks = buildBrickOffice(game.scene, kit, layout, game.office, game.lighting, { rooms: SPIKE_ROOMS })
+    expect([...bricks.rooms.values()].map((r) => r.stats.kind).sort()).toEqual([...SPIKE_ROOMS].sort())
+  })
+
+  it('lays the hallway and the street as kit grounds in whole studs', () => {
+    const grounds = groundRects(layout)
+    expect(grounds.filter((g) => g.style === 'street')).toHaveLength(1)
+    expect(grounds.filter((g) => g.style === 'hallway').length).toBeGreaterThan(0)
+    for (const g of grounds) for (const v of [g.w, g.d]) expect(Number.isInteger(v * 16), `${g.id} ${v}`).toBe(true)
+    const { bricks } = scene()
+    const st = bricks.stats().grounds!
+    expect(st.count).toBe(grounds.length)
+    expect(st.instances).toBeGreaterThan(grounds.length)
   })
 
   it('reaches the brick meshes with the room’s ceiling lights, within the light budget', () => {
@@ -211,12 +244,17 @@ describe.skipIf(!built)('brick office spike (kit-wasm, NullEngine)', () => {
     }
   })
 
-  it('has a monitor surface per desk and the newsroom whiteboard, and glows from the render state', () => {
+  it('has a monitor surface per desk and one per whiteboard, and glows from the render state', () => {
     const { game, bricks } = scene()
-    const desks = layout.rooms.filter((r) => SPIKE_ROOMS.includes(r.kind)).flatMap((r) => r.desks.map((d) => d.id))
+    const desks = layout.rooms.flatMap((r) => r.desks.map((d) => d.id))
     const monitors = bricks.surfaces.filter((s) => s.kind === 'monitor')
     expect(monitors.map((s) => s.anchor.desk).sort()).toEqual([...desks].sort())
-    expect(bricks.surfaces.filter((s) => s.kind === 'whiteboard')).toHaveLength(1)
+    // The layout's whiteboards, and the newsroom's own (its Plan board).
+    const boards = layout.rooms.flatMap((r) => r.props.filter((p) => p.kind === 'whiteboard').map((p) => p.id))
+    const owners = bricks.surfaces.filter((s) => s.kind === 'whiteboard').map((s) => s.anchor.owner)
+    expect(owners).toHaveLength(boards.length + 1)
+    for (const b of boards) expect(owners).toContain(b)
+    expect(owners).toContain(`${room('newsroom').id}/whiteboard`)
     const state = workingJson as unknown as RenderState
     game.update(state)
     bricks.update(state)
@@ -224,8 +262,9 @@ describe.skipIf(!built)('brick office spike (kit-wasm, NullEngine)', () => {
       const on = state.monitors[s.anchor.desk!] === true
       expect(s.material.emissiveColor.b > 0, s.id).toBe(on)
     }
-    // Surfaces face into the room, in front of their screen.
-    for (const s of monitors) expect(s.anchor.normal).toEqual([0, 0, 1])
+    // Surfaces face into the room, in front of their screen: the newsroom's desks all face south.
+    const news = new Set(room('newsroom').desks.map((d) => d.id))
+    for (const s of monitors.filter((m) => news.has(m.anchor.desk!))) expect(s.anchor.normal).toEqual([0, 0, 1])
   })
 
   it('puts the site’s brick town on a model table, scaled, and rebuilds only on change (ADR-0072)', () => {
@@ -242,7 +281,7 @@ describe.skipIf(!built)('brick office spike (kit-wasm, NullEngine)', () => {
     expect(bricks.stats().model!.shown).toBe(true)
     bricks.update({ ...state, siteModel: null })
     expect(bricks.stats().model!.shown).toBe(false)
-    expect(m.room).toBe(room('editor-office').id)
+    expect(m.room).toBe(room('strategy-room').id)
     expect(m.instances).toBe(m.kitInstances)
     expect(m.instances).toBeGreaterThan(20)
     expect(m.scale).toBeGreaterThan(0)

@@ -14,7 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::catalogue::{Floor, Kit, ShellStyle};
+use crate::catalogue::{Floor, GroundStyle, Kit, ShellStyle};
 use crate::design::{
     valid_id, Design, Mount, Op, PartOp, Provenance, Region, Shape, DESIGN_FORMAT,
 };
@@ -240,6 +240,8 @@ struct Builder<'s> {
     w: i64,
     d: i64,
     style: &'s ShellStyle,
+    /// Studs the floor keeps clear at the edges (1: the walls stand there; 0: a ground).
+    inset: i64,
     items: Vec<Item>,
 }
 
@@ -309,17 +311,17 @@ impl Builder<'_> {
     }
 
     fn floor(&mut self) {
-        let (w, d) = (self.w, self.d);
+        let (w, d, e) = (self.w, self.d, self.inset);
         let y = FLOOR_Y;
         match self.style.floor.clone() {
             Floor::Planks { colours } => {
                 // The prototype's planks: 20 studs long, rows staggered by 7.
-                for z in 1..d - 1 {
+                for z in e..d - e {
                     let shift = (z * 7) % 20;
-                    let mut x = 1;
-                    while x < w - 1 {
+                    let mut x = e;
+                    while x < w - e {
                         let s = (x + shift) / 20;
-                        let end = ((s + 1) * 20 - shift).min(w - 1);
+                        let end = ((s + 1) * 20 - shift).min(w - e);
                         let pick = ((z as u64 * 92_821) ^ (s as u64 * 40_503)) % 4;
                         let c = colours[pick as usize].clone();
                         self.bx([x, z, y], [end - x, 1, 1], "tile", Some(&c));
@@ -328,24 +330,25 @@ impl Builder<'_> {
                 }
             }
             Floor::Checker { colours } => {
-                for z0 in (1..d - 1).step_by(4) {
-                    for x0 in (1..w - 1).step_by(4) {
+                for z0 in (e..d - e).step_by(4) {
+                    for x0 in (e..w - e).step_by(4) {
                         let c = colours[(((x0 / 4) + (z0 / 4)) % 2) as usize].clone();
-                        let size = [(w - 1 - x0).min(4), (d - 1 - z0).min(4), 1];
+                        let size = [(w - e - x0).min(4), (d - e - z0).min(4), 1];
                         self.bx([x0, z0, y], size, "tile", Some(&c));
                     }
                 }
             }
             Floor::Carpet { field, border } => {
-                self.bx([1, 1, y], [w - 2, d - 2, 1], "tile", Some(&field));
-                let b = 2.min((w - 2) / 2).min((d - 2) / 2);
-                self.bx([1, 1, y], [w - 2, b, 1], "tile", Some(&border));
-                self.bx([1, d - 1 - b, y], [w - 2, b, 1], "tile", Some(&border));
-                self.bx([1, 1, y], [b, d - 2, 1], "tile", Some(&border));
-                self.bx([w - 1 - b, 1, y], [b, d - 2, 1], "tile", Some(&border));
+                let (iw, id) = (w - 2 * e, d - 2 * e);
+                self.bx([e, e, y], [iw, id, 1], "tile", Some(&field));
+                let b = 2.min(iw / 2).min(id / 2);
+                self.bx([e, e, y], [iw, b, 1], "tile", Some(&border));
+                self.bx([e, d - e - b, y], [iw, b, 1], "tile", Some(&border));
+                self.bx([e, e, y], [b, id, 1], "tile", Some(&border));
+                self.bx([w - e - b, e, y], [b, id, 1], "tile", Some(&border));
             }
             Floor::Plain { colour } => {
-                self.bx([1, 1, y], [w - 2, d - 2, 1], "tile", Some(&colour));
+                self.bx([e, e, y], [w - 2 * e, d - 2 * e, 1], "tile", Some(&colour));
             }
         }
     }
@@ -580,6 +583,7 @@ pub fn room_shell(room: &RoomSpec, kit: &Kit) -> Result<Vec<ShellChunk>, Vec<Iss
         w,
         d,
         style,
+        inset: 1,
         items: Vec::new(),
     };
     b.baseplates();
@@ -604,6 +608,96 @@ pub fn room_shell(room: &RoomSpec, kit: &Kit) -> Result<Vec<ShellChunk>, Vec<Iss
     if !errs.is_empty() {
         return Err(errs.into_iter().flat_map(fail).collect());
     }
+    Ok(chunked(
+        &b.items,
+        w,
+        d,
+        &base_id,
+        &format!("Shell of {} ({})", room.id, room.kind),
+        WALL_TOP,
+        "shell",
+    ))
+}
+
+/// A ground's id, size and style: a floor-only shell (no walls) over a rect,
+/// for what lies between and around the rooms.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GroundSpec {
+    pub id: String,
+    /// A ground style in `kit/rooms.json` (`hallway`, `street`).
+    pub style: String,
+    pub w_mm: i32,
+    pub d_mm: i32,
+}
+
+/// A floor-only shell: baseplates and the style's floor edge to edge, cut
+/// into chunks like a room's.
+pub fn ground_shell(g: &GroundSpec, kit: &Kit) -> Result<Vec<ShellChunk>, Vec<Issue>> {
+    let base_id = format!("ground-{}", g.id);
+    let fail = |m: String| vec![Issue::design(IssueCode::BadParam, &base_id, m)];
+    if !valid_id(&base_id) {
+        return Err(fail(format!(
+            "ground id {:?} is not usable in a design id",
+            g.id
+        )));
+    }
+    let GroundStyle { floor, base } = kit
+        .rooms()
+        .grounds
+        .get(&g.style)
+        .ok_or_else(|| fail(format!("no ground style {:?}", g.style)))?
+        .clone();
+    let exact = |mm: i32| i64::from(mm) * STUDS_PER_M % 1000 == 0;
+    let (w, d) = (mm_to_studs(g.w_mm), mm_to_studs(g.d_mm));
+    if !exact(g.w_mm) || !exact(g.d_mm) || w < 1 || d < 1 {
+        return Err(fail(format!(
+            "ground size {} × {} mm must be whole studs",
+            g.w_mm, g.d_mm
+        )));
+    }
+    // Only the floor and the baseplates are drawn; the wall colours are unused.
+    let style = ShellStyle {
+        floor,
+        wall: base.clone(),
+        wainscot: base.clone(),
+        rail: base.clone(),
+        cap: base.clone(),
+        skirting: base.clone(),
+        frame: base.clone(),
+        window: base.clone(),
+        door: base.clone(),
+        base,
+    };
+    let mut b = Builder {
+        w,
+        d,
+        style: &style,
+        inset: 0,
+        items: Vec::new(),
+    };
+    b.baseplates();
+    b.floor();
+    Ok(chunked(
+        &b.items,
+        w,
+        d,
+        &base_id,
+        &format!("Ground {} ({})", g.id, g.style),
+        FLOOR_Y + 1,
+        "ground",
+    ))
+}
+
+/// Cuts a shell's items into designs of at most [`CHUNK`] studs a side.
+fn chunked(
+    items: &[Item],
+    w: i64,
+    d: i64,
+    base_id: &str,
+    name: &str,
+    height: i64,
+    tag: &str,
+) -> Vec<ShellChunk> {
     let chunks_x: Vec<i64> = (0..w).step_by(CHUNK as usize).collect();
     let chunks_z: Vec<i64> = (0..d).step_by(CHUNK as usize).collect();
     let single = chunks_x.len() == 1 && chunks_z.len() == 1;
@@ -612,7 +706,7 @@ pub fn room_shell(room: &RoomSpec, kit: &Kit) -> Result<Vec<ShellChunk>, Vec<Iss
         for &cx in &chunks_x {
             let (cw, cd) = ((w - cx).min(CHUNK), (d - cz).min(CHUNK));
             let id = if single {
-                base_id.clone()
+                base_id.to_string()
             } else {
                 format!("{base_id}-{}-{}", cx / CHUNK, cz / CHUNK)
             };
@@ -620,14 +714,14 @@ pub fn room_shell(room: &RoomSpec, kit: &Kit) -> Result<Vec<ShellChunk>, Vec<Iss
                 schema: None,
                 format: DESIGN_FORMAT.to_string(),
                 id,
-                name: format!("Shell of {} ({})", room.id, room.kind),
+                name: name.to_string(),
                 mount: Mount::Floor,
                 footprint: [Num::Int(cw), Num::Int(cd)],
-                height: Num::Int(WALL_TOP),
+                height: Num::Int(height),
                 params: Default::default(),
-                ops: chunk_ops(&b.items, cx, cz, cw, cd),
+                ops: chunk_ops(items, cx, cz, cw, cd),
                 ports: Vec::new(),
-                tags: vec!["shell".to_string()],
+                tags: vec![tag.to_string()],
                 budget: None,
                 provenance: Provenance::Kit,
             };
@@ -637,7 +731,7 @@ pub fn room_shell(room: &RoomSpec, kit: &Kit) -> Result<Vec<ShellChunk>, Vec<Iss
             });
         }
     }
-    Ok(out)
+    out
 }
 
 #[cfg(test)]
@@ -697,5 +791,35 @@ mod tests {
             side_box(Side::East, 64, 48, 8, 16, 1, 1, 1, 5),
             ([62, 8, 1], [1, 16, 5])
         );
+    }
+
+    #[test]
+    fn a_ground_is_a_floor_edge_to_edge_in_chunks() {
+        let kit = Kit::shipped();
+        let g = GroundSpec {
+            id: "hall-0".into(),
+            style: "hallway".into(),
+            w_mm: 10_000,
+            d_mm: 2_000,
+        };
+        let chunks = ground_shell(&g, kit).unwrap();
+        // 160 × 32 studs: two chunks along x.
+        assert_eq!(
+            chunks.iter().map(|c| c.at).collect::<Vec<_>>(),
+            vec![[0, 0], [128, 0]]
+        );
+        assert_eq!(chunks[0].design.id, "ground-hall-0-0-0");
+        assert_eq!(chunks[0].design.tags, vec!["ground".to_string()]);
+        for c in &chunks {
+            let built = crate::compile(&c.design, &Default::default(), kit);
+            assert!(built.is_ok(), "{:?}", built.err());
+        }
+        let bad = GroundSpec {
+            style: "garden".into(),
+            ..g.clone()
+        };
+        assert!(ground_shell(&bad, kit).is_err());
+        let odd = GroundSpec { w_mm: 1_030, ..g };
+        assert!(ground_shell(&odd, kit).is_err());
     }
 }

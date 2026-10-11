@@ -67,5 +67,9 @@
       "base": "grey-light", "wall": "white", "wainscot": "plum", "rail": "chocolate", "cap": "grey-light",
       "skirting": "chocolate", "frame": "chocolate", "window": "black", "door": "plum"
     }
+  },
+  "grounds": {
+    "hallway": { "floor": { "kind": "checker", "colours": ["grey-light", "white"] }, "base": "grey-light" },
+    "street": { "floor": { "kind": "plain", "colour": "grey-dark" }, "base": "grey-dark" }
   }
 }

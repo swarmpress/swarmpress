@@ -25,7 +25,6 @@ import { bubblesOf, mountBubbles } from './ui/bubbles/BubbleLayer'
  *   seed=N             sim seed, default 42
  *   tz=Area/City       HQ timezone for the real-time wall clocks, default Europe/Rome
  *   ui=mock            CEO overlay on the fixture data source (also mounts it on t= pages)
- *   office=bricks      the brick office spike (FEAT-081): newsroom and editor's office from the kit
  *   central=1          the MVP loop: dev login, company store, central server, orchestrator
  *                      (src/session/session.ts; also login=, llm=fake, store=, ff=HH:MM)
  * With t=, the loop stops once the scene is ready and 20 frames are drawn
@@ -86,8 +85,8 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   const sim = session?.sim ?? Sim.demo(seed)
   const layout = JSON.parse(sim.layout_json()) as BuildingLayout
   const tier: Quality = isQuality(quality) ? quality : 'high'
-  // FEAT-081 spike: ?office=bricks builds the newsroom and the editor's office from the construction kit (a lazy chunk).
-  const brickMod = params.get('office') === 'bricks' ? await import('./render/bricks') : null
+  // The office is bricks (FEAT-081, ADR-0085): every room, the hallway and the street from the construction kit.
+  const brickMod = await import('./render/bricks')
   // The quality the GPU scheduler last asked for; a rebuilt scene starts at the tier, then takes it.
   let liveQuality = QUALITY[tier]
   const buildScene = async (on: WebGPUEngine, facing: number | null) => {
@@ -95,7 +94,8 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     if (facing !== null) g.iso.setFacing(facing)
     g.iso.snap()
     if (liveQuality !== QUALITY[tier]) g.setQuality(liveQuality)
-    const b = brickMod ? await brickMod.attachBrickOffice(g, layout) : null
+    // The low tier draws merged walls (level of detail, ADR-0063).
+    const b = await brickMod.attachBrickOffice(g, layout, { detail: tier === 'low' ? 'merged' : 'full' })
     return { game: g, bricks: b }
   }
   let { game, bricks } = await buildScene(engine, params.has('facing') ? Number(params.get('facing')) : null)
@@ -214,10 +214,10 @@ async function main(params: URLSearchParams, boot: BootScreen) {
       })
     }
     if (!frozen) game.setOccluders(screenRects)
-    if (overlay && brickMod && bricks) bricks.setSources(brickMod.surfaceSourcesFrom(overlay.store))
+    if (overlay) bricks.setSources(brickMod.surfaceSourcesFrom(overlay.store))
     // The model table (ADR-0072): the site's brick town, kept current from the store.
     unwatchModel?.()
-    unwatchModel = overlay && brickMod && bricks ? brickMod.watchModel(overlay.store, bricks) : null
+    unwatchModel = overlay ? brickMod.watchModel(overlay.store, bricks) : null
   }
   wireScene(game, bricks)
   // --- end scene ↔ overlay ---
@@ -336,8 +336,8 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     clock,
     // Everyone on site, where they are drawn this frame and on the canvas (e2e smooth-movement check).
     people: () => game.people(),
-    // The brick office spike's counts and timings (?office=bricks), else null.
-    bricks: bricks ? () => bricks!.stats() : null,
+    // The brick office's counts and timings.
+    bricks: () => bricks.stats(),
   }
 }
 

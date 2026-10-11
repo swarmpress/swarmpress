@@ -2,8 +2,7 @@
  * The construction kit's wasm facade (`crates/kit-wasm`, ADR-0065) as the
  * brick office uses it. Only the subset the renderer calls is typed here, so
  * tests can hand in the real module (`initSync` under Node) and the page loads
- * it lazily (`loadKit`), only behind `?office=bricks`: the default bundle
- * never contains the kit's glue or fetches its wasm.
+ * it lazily (`loadKit`), as its own chunk after the scene is up.
  */
 
 /** A compiled design (`KitBuild`): instance buffers per colour and geometry template. */
@@ -37,6 +36,8 @@ export interface KitApi {
   compileShipped(id: string, paramsJson: string): KitBuildLike
   /** `{"room-1": [{at, offset, hash, design}, …], …}`; throws the issues as JSON. */
   roomShells(layoutJson: string): string
+  /** `[{at, offset, hash, design}, …]` for `{id, style, w, d}` (metres); throws the issues as JSON. */
+  groundShell(groundJson: string): string
 }
 
 /** `kit/mapping.json` as `mappingJson()` returns it. */

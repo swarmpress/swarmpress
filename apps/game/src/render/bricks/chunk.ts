@@ -17,7 +17,7 @@
  */
 import type { BuildingLayout, RoomLayout, Side } from '../../state/render-state'
 import type { KitBuildLike } from './kit'
-import { FLOOR_TOP, STUD, turnXZ, type Placement } from './placements'
+import { FLOOR_TOP, PLATE, STUD, turnXZ, type Placement } from './placements'
 
 /** Interior walls are drawn up to this height (the box office's `PARTITION_HEIGHT`). */
 export const PARTITION_TOP = 1.1
@@ -68,12 +68,30 @@ export interface SurfaceAnchor {
   normal: [number, number, number]
 }
 
+/** A floor tile of a shell, baked into the room's floor texture instead of drawn as a brick. */
+export interface FloorTile {
+  /** World metres: west, north, east, south edges. */
+  x0: number
+  z0: number
+  x1: number
+  z1: number
+  colour: string
+}
+
 export interface RoomChunk {
   room: string
   instances: InstanceBatch[]
+  /**
+   * The shell's floor layer (`tile` parts at the floor): flat, studless and
+   * seen from above, so it is painted into one textured plane per room
+   * (`floor.ts`) rather than drawn as thousands of boxes.
+   */
+  floor: FloorTile[]
+  /** World height of the floor layer's top (y = 0 with the shells lowered). */
+  floorTop: number
   studs: StudBatch[]
   surfaces: SurfaceAnchor[]
-  /** Instances and studs per source, for checks against the kit's own counts. */
+  /** Instances (the floor's tiles included) and studs, for checks against the kit's own counts. */
   instanceCount: number
   studCount: number
   /** The lot sides this room's walls stand on (cut away like exterior walls). */
@@ -170,10 +188,14 @@ class Growable {
  * shells are lowered by `FLOOR_TOP` so the floor's top is at y = 0, where
  * the people walk and the placements stand.
  */
-export function buildRoomChunk(room: RoomLayout, exterior: Side[], sources: readonly ChunkSource[]): RoomChunk {
+export function buildRoomChunk(room: RoomLayout, exterior: Side[], sources: readonly ChunkSource[], opts: { merge?: boolean } = {}): RoomChunk {
   const inst = new Map<string, { region: Region; colour: string; shape: Shape; buf: Growable }>()
+  // Level of detail (ADR-0063 decision 5, the low tier): a shell's boxes per batch, merged before writing.
+  const raw = new Map<string, RawBox[]>()
   const studs = new Map<string, { region: Region; colour: string; buf: Growable }>()
   const surfaces: SurfaceAnchor[] = []
+  const floor: FloorTile[] = []
+  let floorTop = 0
   let instanceCount = 0
   let studCount = 0
 
@@ -197,13 +219,30 @@ export function buildRoomChunk(room: RoomLayout, exterior: Side[], sources: read
       const t = b.groupTransforms(g)
       for (let i = 0; i + 7 <= t.length; i += 7) {
         const [wx, wy, wz] = world(t[i], t[i + 1], t[i + 2])
+        // The floor layer: one plate thick, its bottom on the baseplates (the floor's top at y = 0).
+        if (src.shell && template === 'tile' && Math.abs(wy - t[i + 4] / 2 + FLOOR_TOP - PLATE) < 0.004) {
+          const odd = (t[i + 6] & 1) === 1
+          const hx = (odd ? t[i + 5] : t[i + 3]) / 2
+          const hz = (odd ? t[i + 3] : t[i + 5]) / 2
+          floor.push({ x0: wx - hx, z0: wz - hz, x1: wx + hx, z1: wz + hz, colour })
+          floorTop = wy + t[i + 4] / 2
+          instanceCount++
+          continue
+        }
         const region = src.shell ? regionOf(room, exterior, wx - room.x, wy - t[i + 4] / 2, wz - room.z) : 'base'
         const key = `${region}|${colour}|${shape}`
         let e = inst.get(key)
         if (!e) inst.set(key, (e = { region, colour, shape, buf: new Growable() }))
+        instanceCount++
+        if (opts.merge && src.shell && shape === 'box') {
+          const odd = ((t[i + 6] + turn) & 1) === 1
+          let list = raw.get(key)
+          if (!list) raw.set(key, (list = []))
+          list.push({ x: wx, y: wy, z: wz, sx: odd ? t[i + 5] : t[i + 3], sy: t[i + 4], sz: odd ? t[i + 3] : t[i + 5] })
+          continue
+        }
         const o = e.buf.push()
         writeMatrix(e.buf.data, o, t[i + 3] - GAP, t[i + 4] - GAP_Y, t[i + 5] - GAP, t[i + 6] + turn, wx, wy, wz)
-        instanceCount++
       }
     }
     for (let g = 0; g < b.studGroupCount(); g++) {
@@ -227,16 +266,82 @@ export function buildRoomChunk(room: RoomLayout, exterior: Side[], sources: read
     }
   }
 
+  for (const [key, list] of raw) {
+    const e = inst.get(key)!
+    for (const b of mergeBoxes(list)) writeMatrix(e.buf.data, e.buf.push(), b.sx - GAP, b.sy - GAP_Y, b.sz - GAP, 0, b.x, b.y, b.z)
+  }
+
   const sorted = <T>(m: Map<string, T>) => [...m.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
   return {
     room: room.id,
     instances: sorted(inst).map(([key, e]) => ({ key, region: e.region, colour: e.colour, shape: e.shape, matrices: e.buf.done(), count: e.buf.count })),
+    floor,
+    floorTop,
     studs: sorted(studs).map(([key, e]) => ({ key, region: e.region, colour: e.colour, matrices: e.buf.done(), count: e.buf.count })),
     surfaces,
     instanceCount,
     studCount,
     exterior,
   }
+}
+
+/** An axis-aligned box: centre and size, metres. */
+export interface RawBox {
+  x: number
+  y: number
+  z: number
+  sx: number
+  sy: number
+  sz: number
+}
+
+const TOL = 1e-4
+const q = (v: number) => Math.round(v / TOL)
+
+/**
+ * Merges touching boxes of one batch (one colour) into fewer, larger ones:
+ * runs along x, then stacks along y, then runs along z, each where the other
+ * two extents match. The bricks' look (seams, studs) is the cost; the outline
+ * stays. Deterministic: the input order does not matter.
+ */
+export function mergeBoxes(boxes: readonly RawBox[]): RawBox[] {
+  let out = boxes.map((b) => ({ ...b }))
+  const axes: Array<['x' | 'y' | 'z', 'sx' | 'sy' | 'sz']> = [
+    ['x', 'sx'],
+    ['y', 'sy'],
+    ['z', 'sz'],
+  ]
+  for (const [a, sa] of axes) {
+    const others = axes.filter(([o]) => o !== a)
+    const groups = new Map<string, RawBox[]>()
+    for (const b of out) {
+      const k = others.map(([o, so]) => `${q(b[o] - b[so] / 2)},${q(b[so])}`).join('|')
+      let g = groups.get(k)
+      if (!g) groups.set(k, (g = []))
+      g.push(b)
+    }
+    const next: RawBox[] = []
+    for (const k of [...groups.keys()].sort()) {
+      const g = groups.get(k)!.sort((p, r) => p[a] - p[sa] / 2 - (r[a] - r[sa] / 2))
+      let cur = g[0]
+      for (let i = 1; i < g.length; i++) {
+        const b = g[i]
+        const end = cur[a] + cur[sa] / 2
+        const start = b[a] - b[sa] / 2
+        if (Math.abs(end - start) < TOL) {
+          const lo = cur[a] - cur[sa] / 2
+          const hi = b[a] + b[sa] / 2
+          cur = { ...cur, [a]: (lo + hi) / 2, [sa]: hi - lo }
+        } else {
+          next.push(cur)
+          cur = b
+        }
+      }
+      next.push(cur)
+    }
+    out = next
+  }
+  return out
 }
 
 /** World origin of a shell chunk (`roomShells` gives `offset` in metres from the room's corner). */

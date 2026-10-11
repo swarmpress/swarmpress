@@ -165,7 +165,8 @@ In order, if the spike says go:
 
 ## 10. Open questions
 
-- **MVP or after:** the owner decides after the spike.
+- **MVP or after:** decided 2026-10-11 (ADR-0085): bricks everywhere in the MVP, people included,
+  without waiting for the spike's run; its numbers are a budget.
 - **Camera:** the concept orbits freely; swarm.press uses four snapped isometric angles. The spike
   keeps the isometric camera; a free orbit would amend ADR-0005.
 - **How much the building affects work:** light, distance and noise as sim rules would be new

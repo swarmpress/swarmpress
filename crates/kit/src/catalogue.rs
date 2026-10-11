@@ -243,6 +243,27 @@ pub enum Floor {
     Plain { colour: String },
 }
 
+/// How a floor-only shell looks (the hallway, the street): a floor on baseplates.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GroundStyle {
+    pub floor: Floor,
+    /// Baseplates under the floor.
+    pub base: String,
+}
+
+impl Floor {
+    /// The palette colours the floor uses.
+    pub fn colours(&self) -> Vec<&String> {
+        match self {
+            Floor::Planks { colours } => colours.iter().collect(),
+            Floor::Checker { colours } => colours.iter().collect(),
+            Floor::Carpet { field, border } => vec![field, border],
+            Floor::Plain { colour } => vec![colour],
+        }
+    }
+}
+
 /// How a room kind's shell looks.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -272,6 +293,9 @@ pub struct Rooms {
     pub format: String,
     /// Shell style per room kind slug (the sim's `RoomKind::slug`).
     pub styles: BTreeMap<String, ShellStyle>,
+    /// Floor-only shells outside the rooms: `hallway`, `street`.
+    #[serde(default)]
+    pub grounds: BTreeMap<String, GroundStyle>,
 }
 
 /// Which shipped design draws what (the MVP renderer's mapping, ADR-0065
@@ -434,13 +458,15 @@ impl Kit {
                 &s.window,
                 &s.door,
             ];
-            match &s.floor {
-                Floor::Planks { colours: c } => colours.extend(c.iter()),
-                Floor::Checker { colours: c } => colours.extend(c.iter()),
-                Floor::Carpet { field, border } => colours.extend([field, border]),
-                Floor::Plain { colour } => colours.push(colour),
-            }
+            colours.extend(s.floor.colours());
             for c in colours {
+                if !colour_ix.contains_key(c) {
+                    issues.push(bad("rooms", format!("{kind}: unknown colour {c}")));
+                }
+            }
+        }
+        for (kind, g) in &rooms.grounds {
+            for c in std::iter::once(&g.base).chain(g.floor.colours()) {
                 if !colour_ix.contains_key(c) {
                     issues.push(bad("rooms", format!("{kind}: unknown colour {c}")));
                 }

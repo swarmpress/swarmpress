@@ -17,6 +17,7 @@
 //! export function compileShipped(id: string, paramsJson: string): KitBuild
 //! export function roomShell(roomJson: string): string  // [{at:[x,z] studs, offset:[x,z] m, hash, design}]; throws issues JSON
 //! export function roomShells(layoutJson: string): string // {"room-1": [chunks…], …} for Sim.layout_json(); throws
+//! export function groundShell(groundJson: string): string // [chunks…] for {id, style, w, d} (metres); throws
 //! export class KitBuild {
 //!   ok(): boolean
 //!   hash(): string
@@ -340,8 +341,10 @@ fn openings(list: &[JsOpening]) -> Vec<Opening> {
 }
 
 fn chunks_json(spec: &RoomSpec) -> Result<Value, Vec<Issue>> {
-    let kit = Kit::shipped();
-    let chunks = kit::room_shell(spec, kit)?;
+    shell_json(kit::room_shell(spec, Kit::shipped())?)
+}
+
+fn shell_json(chunks: Vec<kit::ShellChunk>) -> Result<Value, Vec<Issue>> {
     let mut out = Vec::new();
     for c in chunks {
         out.push(json!({
@@ -352,6 +355,37 @@ fn chunks_json(spec: &RoomSpec) -> Result<Value, Vec<Issue>> {
         }));
     }
     Ok(Value::Array(out))
+}
+
+#[derive(Deserialize)]
+struct JsGround {
+    id: String,
+    style: String,
+    w: f64,
+    d: f64,
+}
+
+/// A floor-only shell (`{id, style, w, d}`, metres; a ground style of
+/// `kit/rooms.json`) as design chunks: the hallway, the street.
+#[wasm_bindgen(js_name = groundShell)]
+pub fn ground_shell(ground_json: &str) -> Result<String, String> {
+    let g: JsGround = serde_json::from_str(ground_json).map_err(|e| {
+        issues_json(&[Issue::design(
+            kit::IssueCode::BadFormat,
+            "",
+            format!("ground: {e}"),
+        )])
+    })?;
+    let spec = kit::GroundSpec {
+        id: g.id,
+        style: g.style,
+        w_mm: mm(g.w),
+        d_mm: mm(g.d),
+    };
+    kit::ground_shell(&spec, Kit::shipped())
+        .and_then(shell_json)
+        .map(|v| v.to_string())
+        .map_err(|e| issues_json(&e))
 }
 
 /// The shell of one room (a `Sim.layout_json()` room, metres) as design chunks.

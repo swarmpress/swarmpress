@@ -1,6 +1,6 @@
 /**
- * `?office=bricks` (FEAT-081 spike): the entry `main.ts` and the bench
- * harness import lazily, so the default bundle carries none of it.
+ * The brick office (FEAT-081, ADR-0085): `main.ts` and the bench harness
+ * import it as a lazy chunk, with the kit's wasm.
  */
 import type { BuildingLayout, RenderState } from '../../state/render-state'
 import type { GameScene } from '../scene'

@@ -2,14 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://swarm.press/schema/kit/rooms.schema.json",
   "title": "swarmpress.rooms.v1",
-  "description": "Room shell style per sim room kind slug: floor, walls, rail, cap, skirting, frames, windows and doors (colour ids from the palette).",
+  "description": "Room shell style per sim room kind slug: floor, walls, rail, cap, skirting, frames, windows and doors; and floor-only grounds (hallway, street). Colour ids from the palette.",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "styles"],
   "properties": {
     "$schema": { "type": "string" },
     "format": { "const": "swarmpress.rooms.v1" },
-    "styles": { "type": "object", "additionalProperties": { "$ref": "#/$defs/style" } }
+    "styles": { "type": "object", "additionalProperties": { "$ref": "#/$defs/style" } },
+    "grounds": { "type": "object", "additionalProperties": { "$ref": "#/$defs/ground" } }
   },
   "$defs": {
     "colour": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$" },
@@ -32,6 +33,13 @@
           "properties": { "kind": { "const": "plain" }, "colour": { "$ref": "#/$defs/colour" } }
         }
       ]
+    },
+    "ground": {
+      "description": "A floor-only shell between and around the rooms (hallway, street).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["floor", "base"],
+      "properties": { "floor": { "$ref": "#/$defs/floor" }, "base": { "$ref": "#/$defs/colour" } }
     },
     "style": {
       "type": "object",

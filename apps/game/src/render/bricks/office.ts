@@ -1,11 +1,11 @@
 /**
- * The brick office spike (FEAT-081, ADR-0063, ADR-0065 increment K-3):
- * chosen rooms built from the construction kit instead of boxes, behind
- * `?office=bricks`. The rest of the office, the people, the lights and the
- * labels stay the box office's (`../office.ts`); its meshes in the brick
- * rooms are switched off, its lights reach the brick meshes the same way
- * (ADR-0006 scopes), and the cutaway (ADR-0005) hides brick walls by the
- * same rule as box walls.
+ * The brick office (FEAT-081, ADR-0063, ADR-0065, ADR-0085): every room, the
+ * hallway and the street built from the construction kit. The box office
+ * (`../office.ts`) stays the scene's skeleton (lights, labels, picking, the
+ * people) and its geometry is switched off; its lights reach the brick
+ * meshes the same way (ADR-0006 scopes), and the cutaway (ADR-0005) hides
+ * brick walls by the same rule as box walls. `rooms` narrows it to some
+ * kinds (the bench compares the spike's two rooms).
  *
  * One thin-instanced mesh per region, colour and template shape per room,
  * plus one stud mesh per region and colour (`chunk.ts`); one material per
@@ -29,11 +29,13 @@ import {
   VertexData,
   type Scene,
 } from '@babylonjs/core'
-import type { BuildingLayout, RenderState, RoomKind, Side } from '../../state/render-state'
+import type { BuildingLayout, RenderState, RoomKind, RoomLayout, Side } from '../../state/render-state'
 import { isCutAway } from '../cutaway'
 import type { Lighting } from '../lighting'
 import { lampsLightFloor, MAX_LIGHTS_PER_MATERIAL, type OfficeHandles } from '../office'
+import { hallwayRects } from '../walls'
 import { buildRoomChunk, exteriorSides, shellOrigin, STUD_HEIGHT, STUD_RADIUS, type ChunkSource, type Region, type RoomChunk, type SurfaceAnchor } from './chunk'
+import { floorMesh, paintFloor } from './floor'
 import { mappingOf, paletteOf, type KitApi, type KitBuildLike, type PaletteColour } from './kit'
 import { modelPlacement, modelRoom } from './model'
 import { roomPlacements, type DesignInfo } from './placements'
@@ -55,6 +57,23 @@ import {
 /** The spike's rooms (docs/design/brick-office.md section 8). */
 export const SPIKE_ROOMS: readonly RoomKind[] = ['newsroom', 'editor-office']
 
+/** Every room kind: the office is bricks throughout. */
+export const ALL_ROOMS: readonly RoomKind[] = [
+  'newsroom',
+  'editor-office',
+  'meeting-room',
+  'archive',
+  'photo-studio',
+  'seo-lab',
+  'translation-desk',
+  'design-studio',
+  'ceo-office',
+  'kitchen',
+  'server-room',
+  'finance-office',
+  'strategy-room',
+]
+
 /** Text for the surfaces, from the browser store (rule 2); `main.ts` wires it. */
 export interface SurfaceSources {
   person(staffId: string): { name: string } | undefined
@@ -65,8 +84,10 @@ export interface SurfaceSources {
 export interface BrickRoomStats {
   room: string
   kind: RoomKind
-  /** Bricks (parts) and studs drawn for the room, and what the kit says it compiled. */
+  /** Bricks (parts) and studs for the room, and what the kit says it compiled. */
   instances: number
+  /** Of the instances, the floor tiles painted into the floor plane instead of drawn. */
+  floorTiles?: number
   studs: number
   kitInstances: number
   kitStuds: number
@@ -91,6 +112,8 @@ export interface BrickOfficeStats {
   kitLoadMs: number | null
   /** `roomShells(layout)`: the shell designs of every room of the layout (the kit makes them all at once). */
   shellsMs: number
+  /** The hallway and the street, from the kit's ground shells. */
+  grounds?: { count: number; instances: number; meshes: number }
   buildMs: number
   surfaces: { monitors: number; boards: number; close: number; redraws: number; maxRedrawsPerFrame: number }
   studsShown: boolean
@@ -114,6 +137,8 @@ interface RoomBuild {
   chunk: RoomChunk
   meshes: Array<{ mesh: Mesh; region: Region }>
   studs: Array<{ mesh: Mesh; region: Region }>
+  /** The floor layer, one textured plane (`floor.ts`), or null when the shell has none. */
+  floor: Mesh | null
   stats: BrickRoomStats
 }
 
@@ -137,6 +162,13 @@ export interface BrickOffice {
 
 export interface BrickOfficeOptions {
   rooms?: readonly RoomKind[]
+  /**
+   * Level of detail (ADR-0063 decision 5): `full` draws every brick of the
+   * shells; `merged` (the low tier) merges each colour's touching shell
+   * bricks into a few boxes, so walls lose their seams and the office costs
+   * a fraction of the vertices.
+   */
+  detail?: 'full' | 'merged'
   kitLoadMs?: number | null
   now?: () => number
   /** Redraw budget per frame. */
@@ -173,7 +205,7 @@ const now0 = () => (typeof performance === 'undefined' ? Date.now() : performanc
 export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayout, office: OfficeHandles, lighting: Lighting | null, opts: BrickOfficeOptions = {}): BrickOffice {
   const now = opts.now ?? now0
   const t0 = now()
-  const kinds = new Set(opts.rooms ?? SPIKE_ROOMS)
+  const kinds = new Set(opts.rooms ?? ALL_ROOMS)
   const mapping = mappingOf(kit)
   const palette = new Map(paletteOf(kit).map((c) => [c.id, c]))
   const rooms = layout.rooms.filter((r) => kinds.has(r.kind))
@@ -237,6 +269,15 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     return m
   }
 
+  const hexOf = (colour: string) => palette.get(colour)?.hex ?? '#ff00ff'
+  const floorOf = (name: string, chunk: RoomChunk) => {
+    const image = paintFloor(chunk.floor, hexOf)
+    if (!image) return null
+    const m = floorMesh(scene, name, image, chunk.floorTop)
+    ;(m.material as PBRMaterial).maxSimultaneousLights = MAX_LIGHTS_PER_MATERIAL
+    return m
+  }
+
   const roomBuilds = new Map<string, RoomBuild>()
   const surfaceAnchors: SurfaceAnchor[] = []
   for (const room of rooms) {
@@ -262,22 +303,25 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     const compileMs = now() - c0
     const m0 = now()
     const exterior = exteriorSides(room, layout)
-    const chunk = buildRoomChunk(room, exterior, sources)
+    const chunk = buildRoomChunk(room, exterior, sources, { merge: opts.detail === 'merged' })
     const meshes = chunk.instances.map((b) => ({
       mesh: instanced(`bricks-${room.id}-${b.key}`, shapes[b.shape], b.matrices, materialFor(b.colour, room.id)),
       region: b.region,
     }))
     const studs = chunk.studs.map((b) => ({ mesh: instanced(`studs-${room.id}-${b.key}`, shapes.stud, b.matrices, materialFor(b.colour, room.id)), region: b.region }))
+    const floor = floorOf(`bricks-${room.id}-floor`, chunk)
     const meshMs = now() - m0
     surfaceAnchors.push(...chunk.surfaces)
     roomBuilds.set(room.id, {
       chunk,
       meshes,
       studs,
+      floor,
       stats: {
         room: room.id,
         kind: room.kind,
         instances: chunk.instanceCount,
+        floorTiles: chunk.floor.length,
         studs: chunk.studCount,
         kitInstances: sources.reduce((a, s) => a + s.build.instanceCount(), 0),
         kitStuds: sources.reduce((a, s) => a + s.build.studCount(), 0),
@@ -289,6 +333,32 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
         meshMs,
       },
     })
+  }
+
+  // --- the grounds: the hallway between the rooms and the street outside ---
+  const groundMeshes: Mesh[] = []
+  let groundInstances = 0
+  const groundList = groundRects(layout)
+  for (const g of groundList) {
+    const chunks = JSON.parse(kit.groundShell(JSON.stringify({ id: g.id, style: g.style, w: g.w, d: g.d }))) as Array<{ offset: [number, number]; design: unknown }>
+    const at = { id: g.id, x: g.x, z: g.z, w: g.w, d: g.d } as RoomLayout
+    const sources: ChunkSource[] = chunks.map((s) => {
+      const b = kit.compile(JSON.stringify(s.design), '')
+      if (!b.ok()) throw new Error(`kit: the ground ${g.id} did not compile: ${b.issuesJson()}`)
+      ownBuilds.push(b)
+      return { build: b, origin: shellOrigin(at, s.offset), shell: true }
+    })
+    const chunk = buildRoomChunk(at, [], sources, { merge: opts.detail === 'merged' })
+    groundInstances += chunk.instanceCount
+    for (const b of chunk.instances) groundMeshes.push(instanced(`bricks-${g.id}-${b.key}`, shapes[b.shape], b.matrices, materialFor(b.colour, g.id)))
+    for (const b of chunk.studs) groundMeshes.push(instanced(`studs-${g.id}-${b.key}`, shapes.stud, b.matrices, materialFor(b.colour, g.id)))
+    const floor = floorOf(`bricks-${g.id}-floor`, chunk)
+    if (floor) groundMeshes.push(floor)
+  }
+  for (const m of groundMeshes) m.receiveShadows = true
+  if (groundMeshes.length) {
+    office.hall?.setEnabled(false)
+    office.street.setEnabled(false)
   }
 
   // --- the box office in those rooms: off --------------------------------
@@ -323,11 +393,12 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
 
   // --- lights (ADR-0006 scopes) and shadows --------------------------------
   for (const [id, rb] of roomBuilds) {
-    const all = [...rb.meshes, ...rb.studs].map((m) => m.mesh)
+    const all = [...rb.meshes, ...rb.studs].map((m) => m.mesh).concat(rb.floor ? [rb.floor] : [])
     const h = office.rooms.get(id)
     for (const l of h?.lights ?? []) l.includedOnlyMeshes.push(...all)
     const lampsReach = lampsLightFloor(brickRooms.get(id)!.desks.length)
-    for (const d of office.desks.values()) if (d.roomId === id && lampsReach) d.lamp.includedOnlyMeshes.push(...rb.meshes.map((m) => m.mesh))
+    for (const d of office.desks.values()) if (d.roomId === id && lampsReach) d.lamp.includedOnlyMeshes.push(...rb.meshes.map((m) => m.mesh), ...(rb.floor ? [rb.floor] : []))
+    if (rb.floor) rb.floor.receiveShadows = true
     if (lighting?.shadows) {
       for (const { mesh } of rb.meshes) {
         mesh.receiveShadows = true
@@ -586,6 +657,7 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
         drawCalls: instrumentation.drawCallsCounter.current,
         kitLoadMs: opts.kitLoadMs ?? null,
         shellsMs,
+        grounds: { count: groundList.length, instances: groundInstances, meshes: groundMeshes.length },
         buildMs,
         surfaces: {
           monitors: surfaces.filter((s) => s.kind === 'monitor').length,
@@ -606,4 +678,23 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
       for (const c of cache.values()) c.build.free()
     },
   }
+}
+
+/**
+ * The floors outside the rooms as ground shells (`kit/rooms.json`
+ * `grounds`): the hallway (lot minus rooms, whole metres) and the street
+ * outside the entrance, as the box office lays them out, rounded out to
+ * whole metres so every side is whole studs.
+ */
+export function groundRects(layout: BuildingLayout): Array<{ id: string; style: 'hallway' | 'street'; x: number; z: number; w: number; d: number }> {
+  const halls = hallwayRects(layout).map((r, i) => ({ id: `hall-${i}`, style: 'hallway' as const, ...r }))
+  const { originX: ox, originZ: oz, width: W, depth: D } = layout
+  const e = layout.entrance
+  const outside = Math.ceil(Math.max(2, Math.hypot(e.spawn[0] - e.x, e.spawn[1] - e.z) + 1))
+  const alongX = e.side === 'north' || e.side === 'south'
+  const w = alongX ? W + 4 : outside
+  const d = alongX ? outside : D + 4
+  const x = e.side === 'west' ? ox - outside : e.side === 'east' ? ox + W : ox - 2
+  const z = e.side === 'north' ? oz - outside : e.side === 'south' ? oz + D : oz - 2
+  return [...halls, { id: 'street', style: 'street', x, z, w, d }]
 }

@@ -204,7 +204,7 @@ the labelled mode.
 | U4 | Activity panel and a "Now" strip in the HUD | M |
 | U5 | Speech bubbles: transcript row per turn, `Utterance` commands at step boundaries, Preact bubble layer | M |
 | U6 | Construction kit core (ADR-0065, FEAT-083): part catalogue, design format and hash, the `crates/kit` compiler (bricks and capability summaries), shipped designs for every equipment and room kind | L |
-| U6b | Brick office spike on the kit (ADR-0063, FEAT-081): two rooms and two live surfaces behind `?office=bricks`, measured idle and while generating; then all rooms. Player and staff building come after the MVP | M |
+| U6b | Brick office on the kit (ADR-0063, ADR-0085, FEAT-081): the spike's two rooms, then (2026-10-11) every room, the hallway, the street and the people in bricks by default; level of detail to meet the frame budget. Player and staff building come after the MVP | M |
 | U7 | WebGPU only (ADR-0064, FEAT-017): remove the WebGL2 fallback, a no-WebGPU screen, all browser tests and baselines on SwiftShader WebGPU | M |
 
 ### W — a week without stalls — [design §7](design/mvp-pipeline.md)

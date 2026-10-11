@@ -50,7 +50,9 @@ pub use compile::{compile, compile_with, summary, Compiled, Limits};
 pub use design::{Design, ParamValue, Params, DESIGN_DOMAIN, DESIGN_FORMAT};
 pub use export::{buffers, Buffers};
 pub use issue::{Issue, IssueCode};
-pub use shell::{room_shell, room_specs, LayoutRoom, RoomSpec, ShellChunk};
+pub use shell::{
+    ground_shell, room_shell, room_specs, GroundSpec, LayoutRoom, RoomSpec, ShellChunk,
+};
 pub use summary::Summary;
 
 /// The design hash: `sha256("swarmpress:design:v1" ‖ canonical JSON)`, hex.
