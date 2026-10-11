@@ -64,8 +64,8 @@ says what stands between the comparison and the switch.
 
 ## Not built yet
 
-- **Parity** (2026-10-11): 631 of 663 URLs pass, no status or title differs, the median page keeps
-  998‰ of its live content. The 32 others are in the runbook's table: the home pages and the village
+- **Parity** (2026-10-11): 635 of 663 URLs pass, no status or title differs, the median page keeps
+  998‰ of its live content. The 28 others are in the runbook's table: the home pages and the village
   template (the frozen theme's own sections, to be composed in the Studio), eight article URLs the
   live site renders as `[object Object]` (fixed by the export), and the weather and team pages'
   theme labels.

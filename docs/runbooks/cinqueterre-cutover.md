@@ -82,9 +82,9 @@ the export 3½):
 | | |
 |---|---|
 | URLs compared | 663 |
-| pass | **631** |
+| pass | **635** |
 | status mismatches | 0 |
-| content below 900‰ | 32 (median 998‰) |
+| content below 900‰ | 28 (median 998‰) |
 | missing links to live pages | 141 (all on the 9 home and village-template pages) |
 | titles that differ | 0 |
 | live links to live 404s (fixed by the import) | 345 |
@@ -97,8 +97,7 @@ the export 3½):
 | `/`, `/{en,de,fr,it}/` (5) | the home renders the frozen theme's own sections (hero, carousels, trending, places to stay, latest stories, newsletter): none of it is content, so none of it imports | a home composed in the Studio (the latest stories as a query block, the villages, the newsletter form to `/f/`); the owner reviews it |
 | `/{lang}/village/` (4) | the village template: the theme's default stories | decide: retire the URL (a redirect to `/{lang}/cinque-terre/`) or compose it |
 | two articles × 4 languages (8) | **live renders `[object Object]`** (a live bug); the export has the whole article | nothing: the export fixes it |
-| the weather pages (11: `/weather`, `/wetter`, `/meteo`, `/cinque-terre/…`) at 770–865‰ | the frozen theme prints the forecast as a table with labels of its own (days, `°`, "The Week Ahead") | style the forecast in Coast, or accept |
-| `/{lang}/team/` (4) at 851‰ | the theme's labels around the editors' cards | accept, or label in Coast |
+| the weather pages (11: `/weather`, `/wetter`, `/meteo`, `/cinque-terre/…`) at 770–865‰ | the frozen theme's weather blocks print sample data from their own code (a fixed forecast, "The Week Ahead", "Giulia's Weather Journal"), not content | accept, or a live forecast block in Coast |
 
 Every other URL keeps its content (median 998‰), its links to live pages and its status. Images stay
 where the live site has them (Unsplash and the site's R2 bucket, hot-linked); the theme's two local

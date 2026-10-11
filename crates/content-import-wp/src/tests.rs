@@ -193,6 +193,13 @@ fn a_block_keeps_every_string_as_core_blocks() {
         "{i}"
     );
 
+    let team = json!({"type": "team-grid", "editors": [{"name": "Giulia", "persona": "Early mornings on the rocks.", "love": "Rain."}]});
+    let t = markup::block(&team, "en", &mut notes);
+    assert!(t.contains("<p>Early mornings on the rocks.</p>"), "{t}");
+    let byline = json!({"type": "quote", "quote": "Fish.", "persona": "giulia"});
+    let q = markup::block(&byline, "en", &mut notes);
+    assert!(!q.contains("giulia"), "an editor's id is left out: {q}");
+
     assert!(notes.empty_blocks.is_empty());
     markup::block(&json!({"type": "hero-section"}), "en", &mut notes);
     assert_eq!(notes.empty_blocks, vec!["hero-section".to_string()]);

@@ -15,8 +15,9 @@
 //! - `faqs` → `core/details` (the question as its summary);
 //! - an object → a nested group (`ct-{key}`), a list of objects → one nested group per item; a
 //!   story in a listing (`slug` with an `excerpt` or `readTime`) has its title link its article;
-//! - presentation and bookkeeping (`id`, `variant`, `layout`, `display`, `accent`, `icon`…) are
-//!   left out; short scalars (`priceRange`, `distance`, `googleRating`…) → a `key: value` line.
+//! - presentation and bookkeeping (`id`, `variant`, `layout`, `display`, `accent`, `icon`, a
+//!   `persona` id…) are left out; short scalars (`priceRange`, `distance`, `googleRating`…) → a
+//!   `key: value` line.
 //!
 //! The source's inline Markdown (`**bold**`, `*em*`, `[text](url)`) and `<br/>` become HTML;
 //! everything else is escaped. A block with no fields (the theme renders it from its own code)
@@ -41,7 +42,6 @@ const SKIP: &[&str] = &[
     "collectionType",
     "afterIndex",
     "isLead",
-    "persona",
     "slug",
     "coordinates",
     "lat",
@@ -203,6 +203,8 @@ fn fields(o: &Map<String, Value>, lang: &str, level: u8) -> String {
         }
         if SKIP.contains(&k)
             || (k == "author" && has_quote)
+            // An editor's id (`"persona": "giulia"`); the team grid's persona is prose.
+            || (k == "persona" && v.as_str().is_some_and(|s| !s.contains(' ')))
             || matches!(k, "alt" | "caption" | "imageAlt")
         {
             continue;
