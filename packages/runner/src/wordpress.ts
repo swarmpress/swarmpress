@@ -8,7 +8,7 @@
  *   repo     POST /repo on the storage service: the governed API
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -29,10 +29,11 @@ export function sandboxRelease(root: string): string | null {
   return dir && existsSync(join(dir, ".verified")) ? dir : null;
 }
 
-/** The built `swarmpress-storage` binary (release first, then debug), or null. */
+/** The built `swarmpress-storage` binary, the newer of the release and debug builds, or null. */
 export function storageBinary(root: string): string | null {
-  for (const p of ["target/release/swarmpress-storage", "target/debug/swarmpress-storage"]) if (existsSync(join(root, p))) return join(root, p);
-  return null;
+  const built = ["target/release/swarmpress-storage", "target/debug/swarmpress-storage"].map((p) => join(root, p)).filter((p) => existsSync(p));
+  built.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+  return built[0] ?? null;
 }
 
 export function freePort(): Promise<number> {
@@ -146,10 +147,23 @@ export async function runConformance(opts: NodeWordPressOptions & { junit: strin
       [join(release, "conformance/run.mjs"), "--sandbox", wp.url, "--repo", `${wp.storageUrl}/repo`, "--junit", opts.junit, "--bench", raw, "--backend", "php-wasm-node"],
       { stdio: "inherit" },
     );
-    const code = await new Promise<number>((resolve) => child.once("exit", (c) => resolve(c ?? 1)));
+    let code = await new Promise<number>((resolve) => child.once("exit", (c) => resolve(c ?? 1)));
+    // Storage messages per kind of page (ADR-0084 §4), on a fresh site of their own.
+    const queries = join(dirname(raw), "queries.json");
+    const fresh = await startNodeWordPress({ ...opts, dataDir: undefined, port: undefined, storagePort: undefined });
+    try {
+      const q = spawn("node", [join(release, "conformance/queries.mjs"), "--sandbox", fresh.url, "--repo", `${fresh.storageUrl}/repo`, "--out", queries], { stdio: "inherit" });
+      const qc = await new Promise<number>((resolve) => q.once("exit", (c) => resolve(c ?? 1)));
+      if (qc !== 0) code = qc;
+    } finally {
+      await fresh.stop();
+    }
     if (existsSync(raw)) {
+      const counts = existsSync(queries) ? (JSON.parse(readFileSync(queries, "utf8")) as Record<string, number>) : {};
+      const doc = benchmarkDoc(JSON.parse(readFileSync(raw, "utf8")), opts.root, counts);
       mkdirSync(dirname(opts.bench), { recursive: true });
-      writeFileSync(opts.bench, JSON.stringify(benchmarkDoc(JSON.parse(readFileSync(raw, "utf8")), opts.root), null, 2) + "\n");
+      writeFileSync(opts.bench, JSON.stringify(doc, null, 2) + "\n");
+      if (doc.metrics.some((m) => m.status === "fail")) code = code || 1;
     }
     return code;
   } finally {
@@ -159,7 +173,13 @@ export async function runConformance(opts: NodeWordPressOptions & { junit: strin
 }
 
 /** The sandbox's raw numbers as a Cockpit benchmark document (`cockpit.benchmark.v1`, evidence `bench/wp-seam`). */
-export function benchmarkDoc(raw: { backend: string; channel?: { messages: number; p50_us: number; p95_us: number; p99_us: number } | null; pages_ms?: Record<string, { n: number; median: number }> }, root: string) {
+/**
+ * Storage messages a page may cost (ADR-0084 §4, Generation 2): measured on 2026-10-11 (front page
+ * 15, single post 22, category archive 19, tag archive 17, REST posts 13) plus 20%.
+ */
+export const MESSAGE_BUDGETS: Record<string, number> = { "front page": 18, "single post": 27, "category archive": 23, "tag archive": 21, "REST posts": 16 };
+
+export function benchmarkDoc(raw: { backend: string; channel?: { messages: number; p50_us: number; p95_us: number; p99_us: number } | null; pages_ms?: Record<string, { n: number; median: number }> }, root: string, messages: Record<string, number> = {}) {
   const git = (...a: string[]) => {
     const r = spawnSync("git", a, { cwd: root, encoding: "utf8" });
     return r.status === 0 ? r.stdout.trim() : "";
@@ -200,6 +220,13 @@ export function benchmarkDoc(raw: { backend: string; channel?: { messages: numbe
           ]
         : []),
       ...Object.entries(raw.pages_ms ?? {}).map(([page, v]) => m(`page.${page.replace(/\s+/g, "_")}_ms`, `${page} (median of ${v.n})`, "ms", v.median)),
+      ...Object.entries(messages).map(([page, n]) => {
+        const max = MESSAGE_BUDGETS[page];
+        return m(`messages.${page.replace(/\s+/g, "_")}`, `storage messages for one ${page}`, "count", n, {
+          determinism: "deterministic",
+          ...(max ? { budget: { max }, status: n <= max ? "pass" : "fail" } : {}),
+        });
+      }),
     ],
   };
 }

@@ -84,6 +84,15 @@ pub fn storage<E: Exec>(
     msg: &Value,
 ) -> Value {
     let s = |k: &str| msg.get(k).and_then(Value::as_str).unwrap_or("");
+    // The object API (Generation 2): readers' requests run in their savepoint like any query.
+    if session.read_only && s("op") != "end" {
+        if let Err(e) = host.begin_read(&session.branch) {
+            return err(e);
+        }
+    }
+    if let Some(reply) = crate::object_api::handle(host, &session.branch, msg) {
+        return reply;
+    }
     match s("op") {
         "query" if session.read_only => match host
             .begin_read(&session.branch)

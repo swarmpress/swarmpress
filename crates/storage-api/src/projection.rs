@@ -166,6 +166,16 @@ impl<E: Exec> Projection<E> {
         Ok(())
     }
 
+    /// Ends a reader's request keeping what it wrote (scratch only: caches, transients).
+    pub fn keep_read(&mut self) -> Result<(), ProjectionError> {
+        if self.reading {
+            self.db.batch("RELEASE wp_ro")?;
+            self.reading = false;
+            self.in_tx = false;
+        }
+        Ok(())
+    }
+
     /// Whether a reader's request is open.
     pub fn is_reading(&self) -> bool {
         self.reading

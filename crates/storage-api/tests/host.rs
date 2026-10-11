@@ -478,3 +478,146 @@ fn a_read_only_session_commits_nothing() {
         );
     }
 }
+
+/// A reader keeps what it wrote to scratch (a transient), so WordPress's caches survive between
+/// requests; a governed write in the same request rolls the whole request back.
+#[test]
+fn a_reader_keeps_scratch_but_never_governed_writes() {
+    use storage_api::protocol::{self, Session};
+    let mut h = host();
+    h.query(LIVE, "INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('blogname', 'Cinque Terre', 'yes')").unwrap();
+    h.end_request(LIVE, Author::system("install"), "install")
+        .unwrap();
+    h.finish_import();
+    let mut session = Session::default();
+    protocol::repo(
+        &mut h,
+        &mut session,
+        &serde_json::json!({"op": "session.set", "branch": LIVE, "user_id": 0, "read_only": true}),
+    );
+    h.begin_read(LIVE).unwrap();
+    h.query(LIVE, "INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('_transient_cache', 'x', 'off')").unwrap();
+    h.end_read(LIVE).unwrap();
+    assert_eq!(
+        rows(
+            &mut h,
+            LIVE,
+            "SELECT COUNT(*) FROM wp_options WHERE option_name = '_transient_cache'"
+        ),
+        "[[1]]",
+        "scratch kept"
+    );
+    h.begin_read(LIVE).unwrap();
+    h.query(LIVE, "INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('_transient_other', 'y', 'off')").unwrap();
+    h.query(
+        LIVE,
+        "UPDATE wp_options SET option_value = 'Hacked' WHERE option_name = 'blogname'",
+    )
+    .unwrap();
+    h.end_read(LIVE).unwrap();
+    assert_eq!(
+        rows(
+            &mut h,
+            LIVE,
+            "SELECT option_value FROM wp_options WHERE option_name = 'blogname'"
+        ),
+        "[[Cinque Terre]]"
+    );
+    assert_eq!(
+        rows(
+            &mut h,
+            LIVE,
+            "SELECT COUNT(*) FROM wp_options WHERE option_name = '_transient_other'"
+        ),
+        "[[0]]",
+        "the request rolled back whole"
+    );
+}
+
+/// The object API (Generation 2): options, posts with their meta and terms, WP_Query's main path
+/// with its found rows, meta and terms of any object type, and post saves, each in one message.
+#[test]
+fn the_object_api_answers_in_one_message() {
+    use storage_api::object_api;
+    let mut h = host();
+    for sql in [
+        "INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('blogname', 'Cinque Terre', 'on'), ('theme_mods_x', 'a:0:{}', 'off')",
+        "INSERT INTO wp_terms (term_id, name, slug) VALUES (3, 'Villages', 'villages'), (4, 'Harbour', 'harbour')",
+        "INSERT INTO wp_term_taxonomy (term_taxonomy_id, term_id, taxonomy, description) VALUES (3, 3, 'category', ''), (4, 4, 'post_tag', '')",
+    ] {
+        h.query(LIVE, sql).unwrap();
+    }
+    let save =
+        |h: &mut Host<Native>, msg: serde_json::Value| object_api::handle(h, LIVE, &msg).unwrap();
+    for i in 1..=3 {
+        let r = save(
+            &mut h,
+            serde_json::json!({"op": "post.save", "data": {"post_title": format!("Note {i}"), "post_type": "post", "post_status": "publish", "post_date": format!("2026-10-0{i} 10:00:00"), "post_content": "", "post_excerpt": "", "to_ping": "", "pinged": "", "post_content_filtered": ""}}),
+        );
+        assert_eq!(r["id"], serde_json::json!(i), "{r}");
+        h.query(LIVE, &format!("INSERT INTO wp_postmeta (post_id, meta_key, meta_value) VALUES ({i}, '_mood', 'calm')")).unwrap();
+        h.query(LIVE, &format!("INSERT INTO wp_term_relationships (object_id, term_taxonomy_id) VALUES ({i}, 3), ({i}, 4)")).unwrap();
+    }
+    let r = save(
+        &mut h,
+        serde_json::json!({"op": "post.save", "id": 2, "data": {"post_title": "Note two"}}),
+    );
+    assert_eq!(r["rows_affected"], serde_json::json!(1));
+
+    let opts = save(&mut h, serde_json::json!({"op": "options.all"}));
+    assert_eq!(
+        opts["columns"],
+        serde_json::json!(["option_name", "option_value", "autoload"])
+    );
+    assert_eq!(opts["rows"].as_array().unwrap().len(), 2);
+
+    let q = save(
+        &mut h,
+        serde_json::json!({"op": "posts.query", "sql": "SELECT SQL_CALC_FOUND_ROWS wp_posts.ID FROM wp_posts WHERE 1=1 AND wp_posts.post_type = 'post' ORDER BY wp_posts.post_date DESC LIMIT 0, 2", "meta": true, "taxonomies": ["category", "post_tag"]}),
+    );
+    assert_eq!(
+        (q["ids"].clone(), q["found_rows"].clone()),
+        (serde_json::json!([3, 2]), serde_json::json!(3))
+    );
+    let titles: Vec<String> = q["posts"]["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            r[q["posts"]["columns"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .position(|c| c == "post_title")
+                .unwrap()]
+            .as_str()
+            .unwrap()
+            .to_string()
+        })
+        .collect();
+    assert!(titles.contains(&"Note two".to_string()), "{titles:?}");
+    assert_eq!(q["meta"]["rows"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        q["terms"]["rows"].as_array().unwrap().len(),
+        4,
+        "two terms for each of two posts"
+    );
+
+    let m = save(
+        &mut h,
+        serde_json::json!({"op": "meta.load", "type": "post", "ids": [1]}),
+    );
+    assert_eq!(
+        m["columns"],
+        serde_json::json!(["post_id", "meta_key", "meta_value"])
+    );
+    let t = save(
+        &mut h,
+        serde_json::json!({"op": "terms.of", "ids": [1], "taxonomies": ["post_tag"]}),
+    );
+    assert_eq!(t["rows"].as_array().unwrap().len(), 1);
+    assert!(
+        object_api::handle(&mut h, LIVE, &serde_json::json!({"op": "query"})).is_none(),
+        "not an object op"
+    );
+}

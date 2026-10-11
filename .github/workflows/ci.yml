@@ -423,7 +423,7 @@ jobs:
         run: |
           test -n "$GH_TOKEN" || { echo "::error::WP_SANDBOX_TOKEN is not set: the sandbox release cannot be fetched"; exit 1; }
           cargo xtask sandbox-fetch --node
-      - run: cargo build -p storage-api --bin swarmpress-storage
+      - run: cargo build --release -p storage-api --bin swarmpress-storage
       - run: pnpm install --frozen-lockfile
       - name: Conformance (Node entry + swarmpress-storage)
         run: bun packages/runner/src/cli.ts wp-conformance --junit packages/runner/reports/wp-conformance.xml --bench artifacts/bench/wp-seam-sandbox-node.json

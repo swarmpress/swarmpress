@@ -20,6 +20,7 @@ pub mod classify;
 pub mod ddl;
 pub mod derived;
 pub mod host;
+pub mod object_api;
 pub mod objects;
 pub mod projection;
 pub mod protocol;

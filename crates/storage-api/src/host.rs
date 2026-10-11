@@ -199,6 +199,11 @@ impl<E: Exec> Host<E> {
         Ok(out)
     }
 
+    /// The table prefix (`wp_`).
+    pub fn prefix(&self) -> &str {
+        &self.prefix
+    }
+
     /// Opens a reader's request on `branch` (once per request): a savepoint [`Host::end_read`] rolls back.
     pub fn begin_read(&mut self, branch: &str) -> Result<(), HostError> {
         let b = self.ensure(branch)?;
@@ -206,10 +211,27 @@ impl<E: Exec> Host<E> {
         Ok(())
     }
 
-    /// Ends a reader's request: everything it wrote is rolled back; nothing is committed.
+    /// Ends a reader's request; nothing is committed. What it wrote to scratch (caches, transients,
+    /// WordPress's lazy defaults) is kept; if it changed governed content, the whole request is
+    /// rolled back.
     pub fn end_read(&mut self, branch: &str) -> Result<(), HostError> {
+        let prefix = self.prefix.clone();
         let b = self.ensure(branch)?;
-        b.p.end_read()?;
+        let keys = objects::take_changes(b.p.exec())?;
+        let mut read = Vec::new();
+        for k in keys {
+            read.push((k.clone(), objects::read_object(b.p.exec(), &prefix, &k)?));
+        }
+        let governed = read.iter().any(|(k, v)| {
+            let before = self.repo.get(branch, k);
+            before != v.as_ref() && !(before.is_none() && is_lazy_default(k, v.as_ref()))
+        });
+        let b = self.ensure(branch)?;
+        if governed {
+            b.p.end_read()?;
+        } else {
+            b.p.keep_read()?;
+        }
         b.assets.clear();
         Ok(())
     }
