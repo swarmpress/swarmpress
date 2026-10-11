@@ -357,6 +357,8 @@ export interface ExportDeps {
   /** The origin WordPress believes it has, and the public one. */
   origin: string
   publicOrigin: string
+  /** Where the site's forms and comments post instead of WordPress (the platform, ADR-0083 §3). */
+  formsEndpoint?: string
   /** The previous release and its search index (incremental), and where the new one is kept. */
   previous(): Promise<{ release: Release; search: string } | null>
   keep(release: Release, search: string): Promise<void>
@@ -369,7 +371,7 @@ export interface ExportDeps {
 export async function exportAndDeploy(d: ExportDeps, merged: Merged): Promise<{ release: Release; report: unknown }> {
   const prev = await d.previous()
   const crawler = d.crawler(
-    JSON.stringify({ origin: d.origin, public_origin: d.publicOrigin }),
+    JSON.stringify({ origin: d.origin, public_origin: d.publicOrigin, ...(d.formsEndpoint ? { forms_endpoint: d.formsEndpoint } : {}) }),
     prev ? JSON.stringify(prev.release) : undefined,
     prev ? prev.search : undefined,
     prev ? JSON.stringify(merged.touched) : undefined,

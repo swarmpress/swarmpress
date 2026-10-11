@@ -1132,7 +1132,7 @@ pub struct ExportCrawler(Option<site_export::Crawler>);
 
 #[wasm_bindgen]
 impl ExportCrawler {
-    /// `options_json`: `{origin, public_origin, seeds?, max_files?}`. With `prev_release_json`
+    /// `options_json`: `{origin, public_origin, forms_endpoint?, seeds?, max_files?}`. With `prev_release_json`
     /// (the previous release), `prev_search_json` (its `/search-index.json`) and `touched_json`
     /// (URL paths), an incremental export.
     #[wasm_bindgen(constructor)]
@@ -1154,6 +1154,9 @@ impl ExportCrawler {
                 .filter_map(Value::as_str)
                 .map(String::from)
                 .collect();
+        }
+        if let Some(f) = v["forms_endpoint"].as_str() {
+            opts.forms_endpoint = Some(f.to_string());
         }
         if let Some(n) = v["max_files"].as_u64() {
             opts.max_files = usize::try_from(n).unwrap_or(usize::MAX);

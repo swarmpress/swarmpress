@@ -271,3 +271,24 @@ fn paths_normalize_and_map_to_files() {
         "wp-content/a.png"
     );
 }
+
+#[test]
+fn forms_that_post_to_wordpress_post_to_the_platform() {
+    let mut o = opts();
+    o.forms_endpoint = Some("https://swarm.press/f/c1".into());
+    let mut site = site("A.", true);
+    site.insert(
+        "/post-a/".into(),
+        html("Post A", &format!("<form id=\"commentform\" action=\"{O}/wp-comments-post.php\" method=\"post\"><input name=\"comment\"></form><form role=\"search\" action=\"{O}/\" method=\"get\"></form>")),
+    );
+    let e = crawl(Crawler::full(o), &site, &mut vec![]);
+    let page = String::from_utf8(e.blobs[&e.release.files["/post-a/"].sha256].clone()).unwrap();
+    assert!(
+        page.contains("action=\"https://swarm.press/f/c1?to=/wp-comments-post.php\""),
+        "{page}"
+    );
+    assert!(
+        page.contains("action=\"https://cinqueterre.travel/\""),
+        "the search form is left as it is"
+    );
+}

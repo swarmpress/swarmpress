@@ -586,7 +586,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   }
   // Its site capabilities, its knowledge read from live, and the export after a merge (ADR-0082, ADR-0083).
   const wpSite = wordpress
-    ? await wordpressSite({ wordpress, client, token: () => lease.token, store, companyId: company.id, publicOrigin: `${location.origin}/sites/${company.id}`, log: (line) => log(`wordpress: ${line}`) })
+    ? await wordpressSite({ wordpress, client, token: () => lease.token, store, companyId: company.id, publicOrigin: `${location.origin}/sites/${company.id}`, formsEndpoint: `${location.origin}/f/${company.id}`, log: (line) => log(`wordpress: ${line}`) })
     : null
 
   stage('orchestrator')

@@ -60,6 +60,8 @@ pub struct AppState {
     pub objects: Arc<dyn crate::assets::ObjectStore>,
     /// Where WordPress sites' releases are served from ([`crate::releases`], ADR-0083).
     pub static_plane: Arc<dyn crate::releases::StaticPlane>,
+    /// Per client address and company, for the exported sites' forms ([`crate::forms`]).
+    pub forms_limiter: Arc<RateLimiter<(std::net::IpAddr, String)>>,
 }
 
 impl AppState {
@@ -104,6 +106,7 @@ impl AppState {
             repo_locks: CompanyLocks::default(),
             objects,
             static_plane,
+            forms_limiter: Arc::new(RateLimiter::new(10, 10)),
             tracker,
             signal_sink: Arc::new(PendingSignalSink),
         }
@@ -247,6 +250,11 @@ pub fn router(st: AppState) -> Router {
         .route(
             "/api/releases/{id}",
             put(crate::releases::put_release).layer(DefaultBodyLimit::max(16 * 1024 * 1024)),
+        )
+        .route(
+            "/f/{company}",
+            post(crate::forms::submit)
+                .layer(DefaultBodyLimit::max(crate::forms::MAX_FORM_BYTES + 1024)),
         )
         .route("/sites/{company}/", get(crate::releases::site_root))
         .route("/sites/{company}/{*path}", get(crate::releases::site_file))

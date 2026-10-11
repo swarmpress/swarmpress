@@ -47,6 +47,9 @@ pub mod kinds {
     /// login, `epoch` the lease that made the change, `retired` how many
     /// settled gateway pull requests of the old repository were retired.
     pub const SITE_REBOUND: &str = "SiteRebound";
+    /// A form or comment of a WordPress company's exported site (`crate::forms`): `{to, page,
+    /// fields}`; the text is untrusted data.
+    pub const FORM_SUBMITTED: &str = "FormSubmitted";
 }
 
 const PAGE: i64 = 500;

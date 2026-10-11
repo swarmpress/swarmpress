@@ -36,6 +36,7 @@ pub mod deploys;
 pub mod error;
 pub mod events;
 pub mod finalize;
+pub mod forms;
 pub mod gateway;
 pub mod llm;
 pub mod releases;

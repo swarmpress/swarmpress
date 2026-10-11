@@ -31,6 +31,8 @@ export interface WordPressSiteOptions {
   companyId: string
   /** The public site's origin (the server's `/sites/{company}` until the company has a domain). */
   publicOrigin: string
+  /** Where its forms and comments post (the server's `/f/{company}`). */
+  formsEndpoint?: string
   log?: (line: string) => void
 }
 
@@ -58,6 +60,7 @@ export async function wordpressSite(o: WordPressSiteOptions): Promise<WordPressS
           crawler: (opts, prev, search, touched) => new m.ExportCrawler(opts, prev, search, touched),
           origin: SANDBOX_ORIGIN,
           publicOrigin: o.publicOrigin,
+          formsEndpoint: o.formsEndpoint,
           async previous() {
             const r = await o.store.getKv(RELEASE_KEY)
             return r ? { release: JSON.parse(r) as Release, search: (await o.store.getKv(RELEASE_SEARCH_KEY)) ?? '[]' } : null

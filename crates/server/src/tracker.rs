@@ -430,7 +430,7 @@ fn request_origin(h: &HeaderMap) -> Option<(String, String)> {
     Some((u.origin().ascii_serialization(), host))
 }
 
-fn client_ip(h: &HeaderMap, peer: SocketAddr, trust_xff: bool) -> IpAddr {
+pub(crate) fn client_ip(h: &HeaderMap, peer: SocketAddr, trust_xff: bool) -> IpAddr {
     if trust_xff {
         if let Some(ip) = header_str(h, "x-forwarded-for")
             .and_then(|v| v.split(',').next())

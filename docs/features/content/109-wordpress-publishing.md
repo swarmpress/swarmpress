@@ -9,6 +9,8 @@ paths:
   - crates/site-export/Cargo.toml
   - crates/server/src/releases.rs
   - crates/server/tests/releases.rs
+  - crates/server/src/forms.rs
+  - crates/server/tests/forms.rs
   - apps/game/src/php/wp-site-engine.ts
   - apps/game/src/session/wordpress-site.ts
   - apps/game/e2e/wp-publish.spec.ts
@@ -50,7 +52,14 @@ crawled over HTTP and written as a content-addressed release; no WordPress is ev
 - **The sandbox** (`wp-sandbox` 0.3.x) installs public sites with pretty permalinks: a URL with a
   query string cannot be a static page.
 
+- **Forms and comments** (`crates/server/src/forms.rs`): the export sends forms that post to
+  WordPress (`wp-comments-post.php`, `admin-post.php`, `admin-ajax.php`) to `POST /f/{company}`, a
+  public, rate-limited endpoint that records each submission as a `FormSubmitted` event in the
+  company's inbox and sends the visitor back to the page.
+- **Previews:** the review UI shows a WordPress company's draft as its sandbox renders the item's
+  branch, in an inert frame; readers' sessions commit nothing.
+
 ## Not built yet
 
 - A Cloudflare Pages or R2 plane (the filesystem plane serves one server).
-- Forms and comments to platform endpoints; previews in the review UI.
+- A search page over the static index (the index is in every release).

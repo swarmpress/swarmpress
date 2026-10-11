@@ -7,7 +7,8 @@
 //   → standup → draft (a post of Gutenberg blocks on its branch, a change request) → review 6
 //   → revision → review 8 → the CEO's Publish at the gate → the change request merges into live
 //   → live is exported through the sandbox, the release deployed → DeployLanded → published
-//   → the public site (/sites/{company}/) serves the article, the revised text in it
+//   → the public site (/sites/{company}/) serves the article, the revised text in it, and its
+//     comment form posts to the platform, where a comment becomes an inbox event
 //
 // Needs the sandbox release (`cargo xtask sandbox-fetch`); skipped without it. Run with
 // `playwright test -c playwright.mvp.config.ts`.
@@ -151,6 +152,14 @@ test('a company on WordPress drafts, reviews, publishes, exports and deploys an 
   expect(site.html).toContain(TITLE)
   expect(site.html).toContain(MVP_REVISION_LINE)
   expect(site.html).not.toContain('sandbox.invalid')
+  // Its comment form posts to the platform (ADR-0083 §3), and a comment becomes an inbox event.
+  expect(site.html).toContain(`/f/${info.companyId}?to=/wp-comments-post.php`)
+  const commented = await page.evaluate(async (company) => {
+    const r = await fetch(`/f/${company}?to=/wp-comments-post.php`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'author=Rosa&comment=Lovely+piece%21', redirect: 'manual' })
+    const events = (await (await fetch('/api/events?after=0')).json()) as { events: { kind: string; payload: { fields: Record<string, string> } }[] }
+    return { status: r.status, comments: events.events.filter((e) => e.kind === 'FormSubmitted').map((e) => e.payload.fields.comment) }
+  }, info.companyId)
+  expect(commented.comments).toEqual(['Lovely piece!'])
   const current = await page.evaluate(async () => (await fetch('/api/releases/current')).json())
   expect(current.id).toBe(exported!.release.id)
   expect(errors).toEqual([])

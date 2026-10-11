@@ -105,6 +105,10 @@ pub struct Options {
     pub seeds: Vec<String>,
     /// A guard against a runaway crawl.
     pub max_files: usize,
+    /// Where forms that post to WordPress go instead (ADR-0083 §3: the platform's endpoint, which
+    /// records each submission in the company's inbox); `None` leaves forms as they are.
+    #[serde(default)]
+    pub forms_endpoint: Option<String>,
 }
 
 impl Options {
@@ -116,6 +120,7 @@ impl Options {
                 .map(String::from)
                 .to_vec(),
             max_files: 20_000,
+            forms_endpoint: None,
         }
     }
 }
@@ -154,6 +159,13 @@ pub struct SearchEntry {
     pub title: String,
     pub text: String,
 }
+
+/// WordPress endpoints a form may post to; the export sends those forms to the platform.
+const FORM_TARGETS: &[&str] = &[
+    "/wp-comments-post.php",
+    "/wp-admin/admin-post.php",
+    "/wp-admin/admin-ajax.php",
+];
 
 const DYNAMIC: &[&str] = &[
     "/wp-admin",
@@ -293,11 +305,19 @@ impl Crawler {
         }
         let ct = response.content_type.clone();
         let textual = is_text(&ct);
-        let body = if textual {
+        let mut body = if textual {
             self.rewrite(&response.body)
         } else {
             response.body.clone()
         };
+        if let (true, Some(endpoint)) = (is_type(&ct, "html"), &self.opts.forms_endpoint) {
+            body = rewrite_forms(
+                &String::from_utf8_lossy(&body),
+                &self.opts.public_origin,
+                endpoint,
+            )
+            .into_bytes();
+        }
         if textual {
             let text = String::from_utf8_lossy(&response.body).into_owned();
             let links = if is_type(&ct, "html") {
@@ -491,6 +511,38 @@ impl Crawler {
         }
         out.into_bytes()
     }
+}
+
+/// Forms that post to one of WordPress's endpoints ([`FORM_TARGETS`]) post to `endpoint` instead,
+/// with the endpoint they were meant for as `?to=`.
+fn rewrite_forms(html: &str, public_origin: &str, endpoint: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(i) = rest.to_ascii_lowercase().find("<form") {
+        out.push_str(&rest[..i]);
+        let tag_end = rest[i..].find('>').map(|j| i + j + 1).unwrap_or(rest.len());
+        let mut tag = rest[i..tag_end].to_string();
+        if let Some(a) = tag.to_ascii_lowercase().find("action=\"") {
+            let start = a + 8;
+            if let Some(len) = tag[start..].find('"') {
+                let value = tag[start..start + len].to_string();
+                let path = value
+                    .strip_prefix(public_origin)
+                    .unwrap_or(&value)
+                    .split('?')
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
+                if FORM_TARGETS.contains(&path.as_str()) {
+                    tag.replace_range(start..start + len, &format!("{endpoint}?to={path}"));
+                }
+            }
+        }
+        out.push_str(&tag);
+        rest = &rest[tag_end..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// `s` percent-encoded as `encodeURIComponent` does, with upper- or lower-case hex.

@@ -14,6 +14,8 @@ const proxy: Record<string, ProxyOptions> = {
   '/web': { target: central, changeOrigin: false },
   // A WordPress company's released site (ADR-0083), served by the central server's static plane.
   '/sites': { target: central, changeOrigin: false },
+  // Its forms and comments (ADR-0083 §3), recorded as inbox events.
+  '/f/': { target: central, changeOrigin: false },
 }
 
 // Cross-origin isolation (ADR-0041): Turso wasm's threads need
