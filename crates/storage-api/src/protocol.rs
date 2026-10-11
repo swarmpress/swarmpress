@@ -37,6 +37,10 @@ pub struct Session {
     pub user_id: i64,
     /// Who commits made in this session are attributed to.
     pub author: Author,
+    /// A reader (a preview, an export, a capability reading a post): each request runs in a
+    /// savepoint that its end rolls back, so what WordPress writes while it renders a page (lazy
+    /// defaults, a fallback navigation) is never committed, and `live` never refuses a read.
+    pub read_only: bool,
 }
 
 impl Default for Session {
@@ -45,6 +49,7 @@ impl Default for Session {
             branch: LIVE.into(),
             user_id: 0,
             author: Author::system("install"),
+            read_only: false,
         }
     }
 }
@@ -80,6 +85,20 @@ pub fn storage<E: Exec>(
 ) -> Value {
     let s = |k: &str| msg.get(k).and_then(Value::as_str).unwrap_or("");
     match s("op") {
+        "query" if session.read_only => match host
+            .begin_read(&session.branch)
+            .and_then(|()| host.query(&session.branch, s("sql")))
+        {
+            Ok(out) => {
+                json!({"columns": out.columns, "rows": out.rows, "rows_affected": out.rows_affected, "insert_id": out.insert_id})
+            }
+            Err(e) => err(e),
+        },
+        "end" if session.read_only => match host.end_read(&session.branch) {
+            Ok(()) => json!({"commit": null, "read_only": true}),
+            Err(e) => err(e),
+        },
+        "asset.put" if session.read_only => err("asset.put: this session only reads"),
         "query" => match host.query(&session.branch, s("sql")) {
             Ok(out) => {
                 json!({"columns": out.columns, "rows": out.rows, "rows_affected": out.rows_affected, "insert_id": out.insert_id})
@@ -181,7 +200,11 @@ pub fn repo<E: Exec>(host: &mut Host<E>, session: &mut Session, msg: &Value) -> 
             if msg.get("author").is_some() {
                 session.author = author_of(msg.get("author"));
             }
-            json!({"branch": session.branch, "user_id": session.user_id, "author": session.author})
+            session.read_only = msg
+                .get("read_only")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            json!({"branch": session.branch, "user_id": session.user_id, "author": session.author, "read_only": session.read_only})
         }
         "import.finish" => {
             host.finish_import();

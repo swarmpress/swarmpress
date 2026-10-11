@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { articleHtml, articleSummary } from '../article-preview'
 import { pullRequestUrl } from '../links'
 import { useStore } from '../store'
@@ -6,6 +6,8 @@ import { Badge, External, Icon, trapTab } from './common'
 
 /** What the dialog says the preview is. It is never the live theme. */
 export const PREVIEW_LABEL = 'Preview (approximation of the live theme)'
+/** A company on WordPress: the draft branch as its sandbox renders it, with the site's theme. */
+export const SITE_PREVIEW_LABEL = 'Preview (the draft branch, rendered by WordPress)'
 
 /**
  * Opens the article preview of a work item. Renders nothing until the store
@@ -48,7 +50,23 @@ export function ArticlePreview() {
   const planTitle = item ? store.planText.value.items[item]?.title || '' : ''
   const lang = store.site.language || 'en'
   // The document changes only with the page: the frame is not reloaded by clock ticks.
-  const html = useMemo(() => (page == null ? null : articleHtml(page, { lang, fallbackTitle: planTitle })), [page, lang, planTitle])
+  const blocksHtml = useMemo(() => (page == null ? null : articleHtml(page, { lang, fallbackTitle: planTitle })), [page, lang, planTitle])
+  // A company on WordPress: the branch rendered by its sandbox (ADR-0083 §4), when the source has it.
+  const [siteHtml, setSiteHtml] = useState<string | null>(null)
+  const head = record?.headSha ?? null
+  useEffect(() => {
+    setSiteHtml(null)
+    if (!item || !store.source.sitePreview) return
+    let live = true
+    store.source.sitePreview(item).then(
+      (h) => live && setSiteHtml(h),
+      () => undefined,
+    )
+    return () => {
+      live = false
+    }
+  }, [item, head])
+  const html = siteHtml ?? blocksHtml
   if (!item) return null
 
   const title = (page != null && articleSummary(page, lang).title) || planTitle || item
@@ -73,7 +91,7 @@ export function ArticlePreview() {
         <header class="preview-head">
           <div class="grow">
             <p class="preview-label">
-              <Badge tone="warn">{PREVIEW_LABEL}</Badge>
+              <Badge tone="warn">{siteHtml ? SITE_PREVIEW_LABEL : PREVIEW_LABEL}</Badge>
             </p>
             <h2 id="article-preview-title">{title}</h2>
             {record && (

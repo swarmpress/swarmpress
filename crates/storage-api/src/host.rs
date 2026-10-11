@@ -73,6 +73,16 @@ pub struct Host<E: Exec> {
     importing: bool,
 }
 
+/// WordPress's empty multi-widget (`array('_multiwidget' => 1)`), which it adds for every widget
+/// type the first time a page renders, on any branch: a default, not content.
+const EMPTY_MULTIWIDGET: &str = "a:1:{s:12:\"_multiwidget\";i:1;}";
+
+/// An option WordPress creates lazily with its default value: not a governed change.
+fn is_lazy_default(key: &str, value: Option<&serde_json::Value>) -> bool {
+    key.starts_with("option:widget_")
+        && value.and_then(|v| v["value"].as_str()) == Some(EMPTY_MULTIWIDGET)
+}
+
 impl<E: Exec> Host<E> {
     /// A host over `repo`. A repository without `live` starts in its import phase.
     pub fn new(repo: Repo, prefix: &str, open: Opener<E>) -> Host<E> {
@@ -158,8 +168,10 @@ impl<E: Exec> Host<E> {
 
     /// Runs one statement from WordPress on `branch`.
     pub fn query(&mut self, branch: &str, sql: &str) -> Result<Outcome, HostError> {
-        let read_only_live = branch == LIVE && !self.importing;
+        let importing = self.importing;
         let b = self.ensure(branch)?;
+        // A reader's writes are rolled back at its end: live need not refuse them.
+        let read_only_live = branch == LIVE && !importing && !b.p.is_reading();
         let t = translate(sql, b.p.schema()).map_err(ProjectionError::Translate)?;
         if read_only_live {
             let tables: Vec<&String> = match &t {
@@ -187,6 +199,21 @@ impl<E: Exec> Host<E> {
         Ok(out)
     }
 
+    /// Opens a reader's request on `branch` (once per request): a savepoint [`Host::end_read`] rolls back.
+    pub fn begin_read(&mut self, branch: &str) -> Result<(), HostError> {
+        let b = self.ensure(branch)?;
+        b.p.begin_read()?;
+        Ok(())
+    }
+
+    /// Ends a reader's request: everything it wrote is rolled back; nothing is committed.
+    pub fn end_read(&mut self, branch: &str) -> Result<(), HostError> {
+        let b = self.ensure(branch)?;
+        b.p.end_read()?;
+        b.assets.clear();
+        Ok(())
+    }
+
     /// Ends a request on `branch`: its governed changes become one commit by `author`.
     /// Returns the new head, or `None` when the request changed only scratch state.
     pub fn end_request(
@@ -211,6 +238,9 @@ impl<E: Exec> Host<E> {
         let changes: Vec<(String, Option<serde_json::Value>)> = read
             .into_iter()
             .filter(|(k, v)| self.repo.get(branch, k) != v.as_ref())
+            .filter(|(k, v)| {
+                !(self.repo.get(branch, k).is_none() && is_lazy_default(k, v.as_ref()))
+            })
             .collect();
         for (t, id) in marks {
             self.repo.note_id(&t, id);

@@ -229,6 +229,12 @@ export interface SourceCapabilities {
 export interface GameDataSource {
   /** Which commands, panels and links this source has. */
   capabilities(): SourceCapabilities
+  /**
+   * A work item's draft as the company's site engine renders it (ADR-0083 §4: a WordPress
+   * company's branch, rendered by its sandbox), as a document for an isolated frame; null when
+   * the source has no such preview (the page is rendered from its blocks instead).
+   */
+  sitePreview?(item: string): Promise<string | null>
   /** `Sim.org_json()` (organization.md §9). */
   getOrg(): Promise<OrgJson>
   /** `Sim.finance_json()` (organization.md §9). */

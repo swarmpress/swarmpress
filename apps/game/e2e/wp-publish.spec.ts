@@ -113,6 +113,13 @@ test('a company on WordPress drafts, reviews, publishes, exports and deploys an 
   const inbox = page.getByRole('region', { name: 'Inbox', exact: true })
   const ticket = inbox.getByRole('article', { name: 'Publish approval', exact: true })
   await expect(ticket).toContainText(TITLE)
+  // The preview is the draft branch as WordPress renders it (ADR-0083 §4), shown as data.
+  await ticket.getByRole('button', { name: 'Read article' }).click()
+  const preview = page.getByRole('dialog', { name: TITLE })
+  await expect(preview).toContainText('rendered by WordPress')
+  await expect(preview.locator('iframe')).toHaveAttribute('sandbox', '')
+  await expect(page.frameLocator('.article-preview iframe').getByText(MVP_REVISION_LINE).first()).toBeVisible()
+  await page.keyboard.press('Escape')
   await inbox.getByRole('group', { name: 'Answer Publish approval' }).getByRole('button', { name: /^Publish/ }).click()
   await page.keyboard.press('Escape')
   await hook(page, (h) => h.session.resume())

@@ -132,8 +132,9 @@ export class WpSiteEngine {
     return run
   }
 
-  private session(branch: string, author: object, userId = 1) {
-    return this.wp.repo({ op: 'session.set', branch, user_id: userId, author })
+  /** Binds the sandbox's session; a reader's (`readOnly`) requests commit nothing (ADR-0084 §3). */
+  private session(branch: string, author: object, userId = 1, readOnly = false) {
+    return this.wp.repo({ op: 'session.set', branch, user_id: userId, author, read_only: readOnly })
   }
 
   private async head(branch: string): Promise<string> {
@@ -149,7 +150,7 @@ export class WpSiteEngine {
 
   findPost(branch: string, postType: string, slug: string) {
     return this.exclusive(async () => {
-      await this.session(branch, { kind: 'system', id: 'reader' })
+      await this.session(branch, { kind: 'system', id: 'reader' }, 1, true)
       const found = await json<Record<string, any>[]>(
         await this.wp.request({ url: `/?rest_route=/wp/v2/${typePath(postType)}&slug=${encodeURIComponent(slug)}&status=any&context=edit&_fields=id,slug,title,excerpt,content,status,featured_media,categories,modified_gmt` }),
         `find ${slug}`,
@@ -245,12 +246,39 @@ export class WpSiteEngine {
     return { state: 'pending', requested: true, attempt: 1 }
   }
 
+  /**
+   * The post as WordPress renders it on `branch` (ADR-0083 §4): a preview that is never
+   * published, shown as data. Scripts are removed, a strict Content-Security-Policy is put in,
+   * and the uploads it shows are inlined (the sandbox's origin is not reachable from a frame).
+   */
+  preview(branch: string, postType: string, slug: string): Promise<string> {
+    return this.exclusive(async () => {
+      await this.session(branch, { kind: 'system', id: 'preview' }, 0, true)
+      // Posts and pages share the permalink shape (/%postname%/); the type is checked on the page.
+      const r = await this.wp.request({ url: `/${slug}/` })
+      if (r.status !== 200) throw new Error(`the preview of ${slug} on ${branch}: WordPress answered ${r.status}`)
+      if (postType === 'page' ? !/\bpage-id-\d+/.test(r.text()) : !/\bpostid-\d+/.test(r.text())) throw new Error(`/${slug}/ on ${branch} is not a ${postType}`)
+      let html = r.text().replace(/<script\b[\s\S]*?<\/script>/gi, '')
+      const images = [...new Set([...html.matchAll(/src="(https?:\/\/[^"]+\/wp-content\/uploads\/[^"]+)"/g)].map((m) => m[1]))]
+      for (const url of images.slice(0, 12)) {
+        const img = await this.wp.request({ url: new URL(url).pathname })
+        const type = img.headers['content-type']?.[0] ?? ''
+        if (img.status !== 200 || !type.startsWith('image/') || img.body.length > 2_000_000) continue
+        let bin = ''
+        for (let i = 0; i < img.body.length; i += 0x8000) bin += String.fromCharCode(...img.body.subarray(i, i + 0x8000))
+        html = html.split(url).join(`data:${type};base64,${btoa(bin)}`)
+      }
+      const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer">`
+      return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (h) => h + csp) : csp + html
+    })
+  }
+
   // ---------------------------------------------------------------- knowledge (ADR-0082 §1)
 
   /** WordPress's registries on `live`, through REST, every page of each list. */
   readRegistries() {
     return this.exclusive(async () => {
-      await this.session(LIVE, { kind: 'system', id: 'reader' })
+      await this.session(LIVE, { kind: 'system', id: 'reader' }, 1, true)
       const all = async <T>(route: string, fields: string): Promise<T[]> => {
         const out: T[] = []
         for (let page = 1; ; page++) {
@@ -347,7 +375,7 @@ export async function exportAndDeploy(d: ExportDeps, merged: Merged): Promise<{ 
     prev ? JSON.stringify(merged.touched) : undefined,
   )
   const out = await d.engine.exclusive(async () => {
-    await d.wp.repo({ op: 'session.set', branch: LIVE, user_id: 0, author: { kind: 'system', id: 'export' } })
+    await d.wp.repo({ op: 'session.set', branch: LIVE, user_id: 0, author: { kind: 'system', id: 'export' }, read_only: true })
     for (let path = crawler.nextPath(); path !== undefined; path = crawler.nextPath()) {
       const r = await d.wp.request({ url: path })
       crawler.feed(r.status, r.headers['content-type']?.[0] ?? '', r.headers['location']?.[0], r.body)

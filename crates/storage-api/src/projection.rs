@@ -73,6 +73,8 @@ pub struct Projection<E: Exec> {
     in_tx: bool,
     /// MySQL's `autocommit` (on unless `SET autocommit = 0`).
     autocommit: bool,
+    /// A reader's request is open: its savepoint `wp_ro` is rolled back at its end.
+    reading: bool,
 }
 
 fn as_text(v: Value) -> Value {
@@ -100,6 +102,7 @@ impl<E: Exec> Projection<E> {
             found_rows: 0,
             in_tx: false,
             autocommit: true,
+            reading: false,
         };
         p.refresh_schema()?;
         Ok(p)
@@ -151,6 +154,31 @@ impl<E: Exec> Projection<E> {
                 .collect(),
             ..Outcome::default()
         })
+    }
+
+    /// Starts a reader's request (idempotent within it): the savepoint `wp_ro`, outside any
+    /// transaction WordPress opens.
+    pub fn begin_read(&mut self) -> Result<(), ProjectionError> {
+        if !self.reading {
+            self.db.batch("SAVEPOINT wp_ro")?;
+            self.reading = true;
+        }
+        Ok(())
+    }
+
+    /// Whether a reader's request is open.
+    pub fn is_reading(&self) -> bool {
+        self.reading
+    }
+
+    /// Ends a reader's request: everything since [`Projection::begin_read`] is undone.
+    pub fn end_read(&mut self) -> Result<(), ProjectionError> {
+        if self.reading {
+            self.db.batch("ROLLBACK TO wp_ro; RELEASE wp_ro")?;
+            self.reading = false;
+            self.in_tx = false;
+        }
+        Ok(())
     }
 
     /// Undoes a transaction left open, as MySQL does when the connection closes.

@@ -283,6 +283,13 @@ class SessionDataSource extends WasmDataSource {
     return Promise.resolve(this.models)
   }
 
+  /** Renders a work item's draft through the site engine (a company on WordPress); null otherwise. */
+  sitePreviewer: ((item: string) => Promise<string | null>) | null = null
+
+  sitePreview(item: string): Promise<string | null> {
+    return this.sitePreviewer ? this.sitePreviewer(item) : Promise.resolve(null)
+  }
+
   /** How the overlay saves and re-reads the blueprint, and commissions the architects; the session sets it with the lease (null: read-only). */
   siteActions: {
     save(body: PutBlueprintBody | PutToolsBody): Promise<PutBlueprintResult>
@@ -1169,6 +1176,14 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
               request,
             )
           },
+        }
+      // A company on WordPress previews its drafts as its sandbox renders the item's branch (ADR-0083 §4).
+      if (wpSite)
+        s.sitePreviewer = async (item) => {
+          const art = await store.getArtifact(company.id, item)
+          const rec = art ? (JSON.parse(art) as { branch?: string; page?: { slug?: { en?: string } } }) : null
+          const slug = rec?.page?.slug?.en?.split('/').filter(Boolean).pop()
+          return rec?.branch && slug ? wpSite.engine.preview(rec.branch, 'post', slug) : null
         }
       sources.add(s)
       return s

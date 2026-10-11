@@ -30,6 +30,8 @@ pub const SCRATCH_OPTIONS: &[&str] = &[
     "theme_mods_",
     "user_count",
     "db_upgraded",
+    // Caches WordPress fills while it renders a page.
+    "wp_calendar_block_has_published_posts",
 ];
 
 /// User meta WordPress keeps per login or per screen.

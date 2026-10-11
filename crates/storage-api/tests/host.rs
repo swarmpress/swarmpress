@@ -414,3 +414,67 @@ fn invalid_dates_become_the_zero_date() {
         "[[0000-00-00 00:00:00,2023-02-29]]"
     );
 }
+
+/// A reader's session (a preview, an export): what WordPress writes while it renders a page is
+/// rolled back at the request's end and never committed, on a branch or on live.
+#[test]
+fn a_read_only_session_commits_nothing() {
+    use storage_api::protocol::{self, Platform, Session};
+    struct NoPlatform;
+    impl Platform for NoPlatform {
+        fn put_bytes(&mut self, _: &[u8]) -> Result<String, String> {
+            Err("no".into())
+        }
+        fn get_bytes(&mut self, _: &str) -> Result<Vec<u8>, String> {
+            Err("no".into())
+        }
+        fn mail(&mut self, _: serde_json::Value) -> Result<(), String> {
+            Ok(())
+        }
+        fn http(&mut self, _: serde_json::Value) -> Result<serde_json::Value, String> {
+            Err("no".into())
+        }
+    }
+    let mut h = host();
+    h.query(LIVE, "INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('blogname', 'Cinque Terre', 'yes')").unwrap();
+    h.end_request(LIVE, Author::system("install"), "install")
+        .unwrap();
+    h.finish_import();
+    h.repo.create_branch("wi-1", LIVE).unwrap();
+    let mut session = Session::default();
+    for branch in ["wi-1", LIVE] {
+        let head = h.repo.head(branch).cloned();
+        protocol::repo(
+            &mut h,
+            &mut session,
+            &serde_json::json!({"op": "session.set", "branch": branch, "user_id": 0, "read_only": true}),
+        );
+        let q = |h: &mut Host<Native>, s: &Session, sql: &str| {
+            protocol::storage(
+                h,
+                s,
+                &mut NoPlatform,
+                &serde_json::json!({"op": "query", "rid": "r", "sql": sql}),
+            )
+        };
+        let out = q(&mut h, &session, "INSERT INTO wp_posts (ID, post_title, post_type, post_content, post_excerpt, to_ping, pinged, post_content_filtered) VALUES (77, 'Navigation', 'wp_navigation', '', '', '', '', '')");
+        assert!(out.get("error").is_none(), "{out}");
+        let end = protocol::storage(
+            &mut h,
+            &session,
+            &mut NoPlatform,
+            &serde_json::json!({"op": "end", "rid": "r", "uri": "/", "method": "GET"}),
+        );
+        assert_eq!(end["commit"], serde_json::Value::Null, "{end}");
+        assert_eq!(h.repo.head(branch).cloned(), head, "{branch} did not move");
+        assert_eq!(
+            rows(
+                &mut h,
+                branch,
+                "SELECT COUNT(*) FROM wp_posts WHERE ID = 77"
+            ),
+            "[[0]]",
+            "{branch}: rolled back"
+        );
+    }
+}
