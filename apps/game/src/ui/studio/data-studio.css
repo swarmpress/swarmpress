@@ -1,0 +1,136 @@
+/* studio/data-studio.css: owned by its workbench (ADR-0086, the light Studio). Loaded after overlay.css and shell.css. */
+
+/* The Data Studio: a head, the baseplate with its cards and a strip of bricks, the inspector on the right. */
+.ds { display: flex; flex-direction: column; gap: 10px; min-height: 0; height: 100%; }
+.ds-head { display: flex; align-items: center; gap: 12px; }
+.ds-head-icon { color: var(--ui-text); flex: none; }
+.ceo-overlay .ds-title { margin: 0; font: 600 22px/1.15 var(--ui-serif); color: var(--ui-text); }
+.ds-sub { margin: 2px 0 0; font-size: 13px; color: var(--ui-muted); }
+
+.ds-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; min-height: 0; flex: 1; }
+.ds-stage { position: relative; min-width: 0; min-height: 0; }
+
+/* The baseplate: a light plate of studs, scrolled when the models outgrow it. */
+.ds-canvas {
+  position: relative; height: max(380px, calc(100vh - 360px)); overflow: auto; border-radius: 16px;
+  background-color: #efe7d6;
+  background-image:
+    radial-gradient(circle at 12px 11px, rgba(255, 255, 255, 0.85) 0 4.2px, transparent 4.8px),
+    radial-gradient(circle at 12px 13px, rgba(120, 96, 60, 0.16) 0 5.6px, transparent 6.2px);
+  background-size: 24px 24px;
+  box-shadow: inset 0 0 0 1px #e2d6c0, inset 0 -8px 0 rgba(120, 96, 60, 0.08);
+}
+.ds-plate { position: relative; margin: 0 auto 128px; }
+.ds-lines { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+
+/* Relations: a purple tube over a white rim; the selected model's tubes stand out. */
+.ds-edge-under { fill: none; stroke: #fff; stroke-width: 7; stroke-linecap: round; opacity: 0.9; }
+.ds-edge-line { fill: none; stroke: #5b4fa8; stroke-width: 3; stroke-linecap: round; }
+.ds-edge.is-on .ds-edge-line { stroke: #3f3364; stroke-width: 4; }
+.ds-edge.is-dim { opacity: 0.4; }
+.ds-caption {
+  position: absolute; z-index: 3; transform: translate(-50%, 14px); width: max-content; max-width: 78px; padding: 4px 6px; border-radius: 8px;
+  background: #fff; border: 1px solid #d9d1f0; box-shadow: 0 3px 8px rgba(60, 45, 20, 0.12);
+  font-size: 11px; line-height: 1.3; color: #2f2a4a; text-align: left; pointer-events: none;
+}
+.ds-caption.is-on { border-color: #5b4fa8; box-shadow: 0 0 0 1px #5b4fa8, 0 3px 8px rgba(60, 45, 20, 0.14); }
+.ds-caption-to { display: block; margin-top: 1px; font-weight: 700; color: #3f3364; }
+
+/* The cards: a white tile on a coloured brick, studs along its top edge. */
+.ds-cards { position: absolute; inset: 0; }
+.ds-card {
+  --tone: #f5c518; --tone-edge: #b88f0a; --tone-ink: #26231f;
+  position: absolute; z-index: 2; display: flex; flex-direction: column; box-sizing: border-box;
+  border-radius: 12px; background: #fff; border: 1px solid #e3d8c4; cursor: pointer; text-align: left;
+  box-shadow: 0 6px 0 var(--tone-edge), 0 14px 22px rgba(60, 45, 20, 0.16);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.ds-card::before {
+  content: ''; position: absolute; left: 14px; right: 14px; top: -6px; height: 7px; border-radius: 3px 3px 0 0;
+  background: radial-gradient(ellipse 7px 4px at 50% 100%, var(--tone) 0 6px, transparent 6.5px) 0 0 / 22px 7px repeat-x;
+}
+.ds-card:hover { transform: translateY(-2px); }
+.ceo-overlay .ds-card:focus-visible { outline: 3px solid #26231f; outline-offset: 3px; }
+.ds-card.is-selected { border-color: #f2b632; box-shadow: 0 0 0 3px #f2b632, 0 6px 0 var(--tone-edge), 0 18px 30px rgba(242, 182, 50, 0.35); }
+.ds-tone-yellow { --tone: #f5c518; --tone-edge: #c79c0c; }
+.ds-tone-blue { --tone: #6f9ad8; --tone-edge: #1e5aa8; }
+.ds-tone-green { --tone: #7cc06a; --tone-edge: #2a7a46; }
+.ds-tone-red { --tone: #e2766c; --tone-edge: #a3241a; }
+.ds-tone-plum { --tone: #a497d8; --tone-edge: #3f3364; }
+.ds-tone-orange { --tone: #f0a35e; --tone-edge: #b0581a; }
+
+.ds-card-head { display: flex; align-items: center; gap: 7px; height: 46px; padding: 0 10px 0 12px; box-sizing: border-box; border-bottom: 1px solid #efe7d6; }
+.ds-card-chip { flex: none; width: 14px; height: 14px; border-radius: 4px; background: var(--tone); box-shadow: inset 0 -3px 0 var(--tone-edge); }
+.ds-card-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; font-size: 14px; color: var(--ui-text); }
+.ds-card-count { flex: none; min-width: 20px; padding: 1px 6px; border-radius: 9px; background: #f3ede2; color: #5a5246; font-size: 11px; font-weight: 600; text-align: center; }
+.ds-card-fields { display: flex; flex-direction: column; padding: 0 12px; }
+.ds-card-field { display: flex; align-items: center; gap: 8px; height: 24px; font-size: 12.5px; color: #3a342c; }
+.ds-card-field + .ds-card-field { border-top: 1px dashed #f0e9dc; }
+.ds-card-field.is-shape { color: var(--ui-muted); font-style: italic; }
+.ds-card-field .ds-icon { flex: none; color: #5a5246; }
+.ds-card-field-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-star { color: #a3241a; font-weight: 700; }
+
+/* The strip of field types: a 2 × 2 brick each, counted. */
+.ds-strip { position: absolute; left: 14px; right: 14px; bottom: 14px; z-index: 4; padding: 10px 14px 12px; border-radius: 14px; background: #fff; border: 1px solid var(--ui-line); box-shadow: 0 6px 18px rgba(60, 45, 20, 0.08); }
+.ceo-overlay .ds-strip-title { margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.02em; text-transform: none; color: var(--ui-text); }
+.ds-bricks { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; }
+.ds-brick { display: grid; justify-items: center; min-width: 64px; }
+.ds-brick-label { font-size: 12px; font-weight: 600; color: var(--ui-text); }
+.ds-brick-count { font-size: 11px; color: var(--ui-muted); }
+
+/* The inspector: the selected model, its tabs, where it is used. */
+.ds-inspector { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow: auto; padding: 14px; border-radius: 14px; background: #fff; border: 1px solid var(--ui-line); }
+.ds-insp-head { padding-bottom: 4px; }
+.ceo-overlay .ds-insp-name { margin: 0; font: 600 20px/1.2 var(--ui-serif); color: var(--ui-text); }
+.ds-insp-title { margin: 2px 0 0; font-weight: 600; font-size: 13px; }
+.ds-insp-desc { margin: 2px 0 0; font-size: 13px; color: var(--ui-muted); }
+.ds-insp-meta { margin: 4px 0 0; font-size: 12px; color: var(--ui-muted); }
+.ds-inspector .tabpanel { padding-top: 6px; }
+
+.ds-fields { margin: 0; padding: 0; list-style: none; }
+.ds-fields.is-nested { margin: 4px 0 2px 22px; padding-left: 8px; border-left: 2px solid #efe7d6; }
+.ds-field { padding: 6px 2px; border-bottom: 1px solid #f1eadf; }
+.ds-field:last-child { border-bottom: 0; }
+.ds-field-row { display: flex; align-items: center; gap: 8px; }
+.ds-field-row .ds-icon { flex: none; color: #5a5246; }
+.ds-field-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; color: var(--ui-text); }
+.ds-field-row .ds-field-name { flex: 1; }
+.ds-field-note { display: block; margin: 2px 0 0 24px; font-size: 11.5px; color: var(--ui-muted); }
+.ds-req { padding: 0 6px; border-radius: 8px; background: #fbe3e1; color: #8f1f16; font-size: 10.5px; font-weight: 600; }
+
+/* Type pills: a tint of the kind's brick, its ink dark enough to read (AA). */
+.ds-pill { flex: none; padding: 2px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 600; white-space: nowrap; background: #eef1f5; color: #2f3a4a; }
+.ds-pill-localized { background: #f6ecd6; color: #6b4a10; }
+.ds-pill-number, .ds-pill-integer { background: #e4ecfa; color: #1b4a96; }
+.ds-pill-boolean { background: #e3f3e6; color: #1d6b35; }
+.ds-pill-enum { background: #fdf1cf; color: #6f4b00; }
+.ds-pill-relation { background: #ece8f8; color: #45378a; }
+.ds-pill-media { background: #fde8d6; color: #8a3d08; }
+.ds-pill-object { background: #e8efeb; color: #34503f; }
+.ds-pill-builtin { background: #efeae0; color: #54482f; }
+.ds-pill-json { background: #eeeeee; color: #424242; }
+.ds-pill-unknown { background: #fbe3e1; color: #9a2017; }
+
+.ds-rels { margin: 0; padding: 0; list-style: none; }
+.ds-rels li { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid #f1eadf; font-size: 13px; }
+.ds-rel-card { font-size: 11.5px; color: var(--ui-muted); }
+.ds-rel-link { padding: 2px 8px; border: 1px solid #d9d1f0; border-radius: 6px; background: #f6f3fd; color: #3f3364; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.ds-rel-link:hover { background: #ece8f8; }
+.ds-rules { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+
+.ds-usage { margin-top: 6px; padding-top: 4px; border-top: 1px solid var(--ui-line); }
+.ds-settings { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 8px; font-size: 12.5px; }
+.ds-settings dt { color: var(--ui-muted); }
+.ds-settings dd { margin: 0; padding: 1px 8px; border-radius: 6px; background: #faf6ee; border: 1px solid #ece3d3; color: var(--ui-text); overflow-wrap: anywhere; }
+
+.ds-empty { display: grid; justify-items: center; gap: 6px; max-width: 460px; margin: 40px auto; padding: 28px; border-radius: 16px; background: #fff; border: 1px solid var(--ui-line); text-align: center; }
+.ds-empty p { margin: 0; color: var(--ui-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-card { transition: none; }
+  .ds-card:hover { transform: none; }
+}
+@media (max-width: 900px) {
+  .ds-body { grid-template-columns: minmax(0, 1fr); }
+}

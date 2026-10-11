@@ -5,16 +5,22 @@
  * block's intent; relationships are walkways, collections warehouses. Diff
  * marks: added outlined green, removed ghosted, changed yellow; a storey with
  * an issue is red. Text from the blueprint is data: JSX text only.
+ *
+ * The look (ADR-0086, the light Studio): a cream studded baseplate; each page
+ * type a white brick house on its own grey lot, with a sign plaque (its name,
+ * in its first storey's colour) and its route under the sign; walkways are
+ * tiled paths; collections are stacks of cork bricks.
  */
 import { useRef } from 'preact/hooks'
-import { blockColour, hexOf, inkOn } from '../../blueprint/colours'
+import { blockColour, hexOf } from '../../blueprint/colours'
 import { repeated, type BuildingView, type Mark } from '../../blueprint/model'
 import type { Blueprint } from '../../blueprint/types'
+import { INK_DARK, inkFor, tint } from '../studio/bricks'
 
 export const STUD = 8
 export const BUILDING_W = 16 * STUD
 const GAP = 5 * STUD
-const LABEL_H = 5 * STUD
+const LABEL_H = 6 * STUD
 const BAND_H = STUD + 2
 const STOREY_H = 3 * STUD + 2
 const TOP = 2 * STUD
@@ -28,13 +34,28 @@ export interface Selection {
 export type Layout = Record<string, { dx: number; dy: number }>
 
 const MARK_STROKE: Record<Exclude<Mark, null>, string> = {
-  added: '#7fcf9a',
-  removed: '#a9adb8',
-  changed: '#f0c060',
+  added: '#157a3d',
+  removed: '#8a8f99',
+  changed: '#c98a00',
 }
-const ISSUE = '#ff5a4f'
+const ISSUE = '#c4281c'
+/** The house walls and the lot it stands on. */
+const WALL = '#fbfaf6'
+const WALL_EDGE = '#bdb4a3'
+const LOT = '#ddd5c5'
+const LOT_EDGE = '#c4baa6'
 
 const footer = (g: string) => g.includes('footer')
+
+/** A sign's colour: the intent most of the type's blocks share (the first such on a tie), slate for a type without slots. */
+function signColour(blocks: string[]): string {
+  const count = new Map<string, number>()
+  for (const b of blocks) count.set(blockColour(b), (count.get(blockColour(b)) ?? 0) + 1)
+  let best = 'grey-dark'
+  let n = 0
+  for (const [c, k] of count) if (k > n) [best, n] = [c, k]
+  return best
+}
 
 interface Placed {
   view: BuildingView
@@ -85,11 +106,11 @@ export function BrickCanvas({
   const byId = new Map(placed.map((p) => [p.view.type.id, p]))
   const rels = bp.relationships ?? []
   const bottom = Math.max(TOP + LABEL_H + STOREY_H, ...placed.map((p) => p.y + p.h))
-  const laneTop = bottom + 2 * STUD
+  const laneTop = bottom + 5 * STUD
   const collections = bp.collections ?? []
   const wareTop = laneTop + rels.length * 2 * STUD + 3 * STUD
   const width = Math.max(placed.reduce((m, p) => Math.max(m, p.x + BUILDING_W + GAP / 2), 0), collections.length * 12 * STUD + GAP, 60 * STUD)
-  const height = wareTop + (collections.length ? 12 * STUD : 0) + 2 * STUD
+  const height = wareTop + (collections.length ? 13 * STUD : 0) + 2 * STUD
   const drag = useRef<{ type: string; x: number; y: number; moved: boolean } | null>(null)
 
   const nudge = (e: KeyboardEvent, id: string) => {
@@ -127,10 +148,12 @@ export function BrickCanvas({
     >
       <defs>
         <pattern id="bp-studs" width={2 * STUD} height={2 * STUD} patternUnits="userSpaceOnUse">
-          <circle cx={STUD} cy={STUD} r={1.6} class="bp-stud" />
+          {/* A stud on the baseplate: its shadow, then its lit top. */}
+          <circle cx={STUD + 0.6} cy={STUD + 0.9} r={2.6} class="bp-stud-shade" />
+          <circle cx={STUD} cy={STUD} r={2.4} class="bp-stud" />
         </pattern>
         <pattern id="bp-stripes" width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <rect width={3} height={6} fill="rgba(255,255,255,0.35)" />
+          <rect width={3} height={6} fill="rgba(38,35,31,0.22)" />
         </pattern>
       </defs>
       <rect class="bp-plate" x={0} y={0} width={width} height={height} />
@@ -147,8 +170,10 @@ export function BrickCanvas({
         const double = r.cardinality === 'many-to-many'
         return (
           <g key={`rel-${k}`} class="bp-walkway" data-relationship={`${r.from}>${r.to}:${r.kind}`}>
-            <path d={`M${ax} ${a.y + a.h} V${y} H${bx} V${b.y + b.h}`} fill="none" stroke="#c7b48a" stroke-width={double ? 6 : 3} stroke-linejoin="round" />
-            <text x={(ax + bx) / 2} y={y - 3} class="bp-small" text-anchor="middle">
+            {/* A tiled path: a grey edge, light tiles with seams. */}
+            <path d={`M${ax} ${a.y + a.h + 22} V${y} H${bx} V${b.y + b.h + 22}`} fill="none" stroke="#b3aa97" stroke-width={double ? 14 : 10} stroke-linejoin="round" />
+            <path d={`M${ax} ${a.y + a.h + 22} V${y} H${bx} V${b.y + b.h + 22}`} fill="none" stroke="#ece6d8" stroke-width={double ? 10 : 6} stroke-dasharray="10 2" stroke-linejoin="round" />
+            <text x={(ax + bx) / 2} y={y - 9} class="bp-small bp-path-text" text-anchor="middle">
               {r.kind}
               {r.via ? ` · via ${r.via}` : ''}
             </text>
@@ -182,13 +207,18 @@ export function BrickCanvas({
         return (
           <g key={c.id} class="bp-warehouse" data-collection={c.id}>
             <title>{`Collection ${c.id}: ${c.items ?? '?'} items of ${c.type}, from ${c.from}`}</title>
+            <rect x={x - 2} y={wareTop - 8} width={8 * STUD + 12} height={6 * 8 + 16} rx={4} fill={LOT} stroke={LOT_EDGE} />
             {Array.from({ length: tiles }, (_, t) => (
-              <rect key={t} x={x + 4} y={wareTop + (5 - t) * 8} width={8 * STUD} height={6} rx={1} fill={hexOf('cork')} stroke="#00000055" />
+              <g key={t}>
+                {t === tiles - 1 &&
+                  Array.from({ length: 4 }, (_, k) => <rect key={k} x={x + 10 + k * 2 * STUD} y={wareTop + (5 - t) * 8 - 3} width={STUD - 2} height={3} rx={1} fill={hexOf('cork')} />)}
+                <rect x={x + 4} y={wareTop + (5 - t) * 8} width={8 * STUD} height={7} rx={1.5} fill={hexOf('cork')} stroke="#6e624a" stroke-width={0.75} />
+              </g>
             ))}
-            <text x={x + 4} y={wareTop + 6 * 8 + 12} class="bp-label">
+            <text x={x + 4} y={wareTop + 6 * 8 + 24} class="bp-label">
               {c.id}
             </text>
-            <text x={x + 4} y={wareTop + 6 * 8 + 24} class="bp-small">
+            <text x={x + 4} y={wareTop + 6 * 8 + 37} class="bp-small">
               {c.items ?? '?'} × {c.type}
             </text>
           </g>
@@ -225,8 +255,13 @@ function Building({
   const floors = uses.filter(footer)
   const bodyTop = y + LABEL_H
   const bodyH = p.h - LABEL_H
-  const outline = view.issues.length ? ISSUE : view.mark ? MARK_STROKE[view.mark] : isSel ? '#e3b864' : '#00000080'
+  const outline = view.issues.length ? ISSUE : view.mark ? MARK_STROKE[view.mark] : isSel ? INK_DARK : WALL_EDGE
   const globalColour = (g: string) => hexOf(blockColour(bp.globals?.[g]?.block))
+  // The sign plaque: the first storey's colour, the name in whichever ink reads on it.
+  const plaque = hexOf(signColour(t.slots?.flatMap((s) => s.blocks) ?? []))
+  const sign = `${label.length > 17 ? `${label.slice(0, 16)}…` : label}${view.nav ? ' ★' : ''}`
+  const signW = Math.min(BUILDING_W + 8, Math.max(56, sign.length * 7 + 18))
+  const route = t.route ?? (t.source.kind === 'collection-item' ? `item of ${t.source.collection}` : t.id)
   const activate = (e: Event, s: Selection) => {
     e.stopPropagation()
     onSelect(s)
@@ -254,19 +289,29 @@ function Building({
         }}
         onPointerDown={(e) => !ghost && onGrab?.(e)}
       >
-        <text x={x} y={y + 12} class="bp-label">
-          {label}
-          {view.nav ? ' ★' : ''}
+        {/* The lot: a grey plate the house stands on, a shade of depth below it. */}
+        <rect x={x - 6} y={bodyTop - 10} width={BUILDING_W + 12} height={bodyH + 32} rx={4} fill={isSel ? '#b98a1c' : LOT_EDGE} />
+        <rect x={x - 6} y={bodyTop - 10} width={BUILDING_W + 12} height={bodyH + 29} rx={4} fill={isSel ? '#f6d77e' : LOT} stroke={isSel ? INK_DARK : 'none'} stroke-width={1.5} />
+        {t.pages != null && (
+          <text x={x + BUILDING_W / 2} y={y + p.h + 15} text-anchor="middle" class="bp-small bp-pages">
+            {t.pages} pages
+          </text>
+        )}
+        {/* The sign: a plaque on two posts, the route on the lot's edge below it. */}
+        <rect x={x + BUILDING_W / 2 - 14} y={y + 18} width={3} height={bodyTop - y - 18} fill="#8f8574" />
+        <rect x={x + BUILDING_W / 2 + 11} y={y + 18} width={3} height={bodyTop - y - 18} fill="#8f8574" />
+        <rect x={x + BUILDING_W / 2 - signW / 2} y={y + 1} width={signW} height={20} rx={4} fill={plaque} stroke="rgba(38,35,31,0.35)" class="bp-sign" />
+        <text x={x + BUILDING_W / 2} y={y + 15} text-anchor="middle" class="bp-label bp-sign-text" fill={inkFor(plaque)}>
+          {sign}
         </text>
-        <text x={x} y={y + 24} class="bp-small">
-          {t.route ?? (t.source.kind === 'collection-item' ? `item of ${t.source.collection}` : t.id)}
-          {t.pages != null ? ` · ${t.pages} pages` : ''}
+        <text x={x + BUILDING_W / 2} y={y + 33} text-anchor="middle" class="bp-small bp-route">
+          {route.length > 28 ? `${route.slice(0, 27)}…` : route}
         </text>
         {/* The studded top edge. */}
         {Array.from({ length: BUILDING_W / (2 * STUD) }, (_, k) => (
-          <rect key={k} x={x + k * 2 * STUD + STUD / 2 + 1} y={bodyTop - 4} width={STUD - 2} height={4} rx={1} fill="#c9ccd1" />
+          <rect key={k} x={x + k * 2 * STUD + STUD / 2 + 1} y={bodyTop - 4} width={STUD - 2} height={4} rx={1} fill={roofs[0] ? globalColour(roofs[0]) : '#e7e3da'} stroke="rgba(38,35,31,0.25)" stroke-width={0.5} />
         ))}
-        <rect x={x} y={bodyTop} width={BUILDING_W} height={bodyH} rx={2} fill="#2a2f3a" stroke={outline} stroke-width={view.mark || isSel || view.issues.length ? 3 : 1} stroke-dasharray={ghost ? '4 3' : undefined} />
+        <rect x={x} y={bodyTop} width={BUILDING_W} height={bodyH} rx={2} fill={WALL} stroke={outline} stroke-width={view.mark || isSel || view.issues.length ? 3 : 1} stroke-dasharray={ghost ? '4 3' : undefined} />
       </g>
       {roofs.map((g, k) => (
         <rect key={g} class="bp-band" data-global={g} x={x} y={bodyTop + k * BAND_H} width={BUILDING_W} height={BAND_H - 1} fill={globalColour(g)}>
@@ -274,19 +319,21 @@ function Building({
         </rect>
       ))}
       {t.slots === undefined && (
-        <rect x={x + 1} y={bodyTop + roofs.length * BAND_H} width={BUILDING_W - 2} height={STOREY_H - 1} fill={hexOf('grey-light')}>
+        <rect x={x + 3} y={bodyTop + roofs.length * BAND_H + 1} width={BUILDING_W - 6} height={STOREY_H - 3} rx={1.5} fill={hexOf('grey-light')}>
           <title>Any blocks: the type does not constrain its body</title>
         </rect>
       )}
       {view.storeys.map((s, j) => {
-        const sy = p.storeyY[j]
-        const h = (repeated(s.slot) ? STOREY_H * 1.5 : STOREY_H) - 1
+        const sy = p.storeyY[j] + 1
+        const h = (repeated(s.slot) ? STOREY_H * 1.5 : STOREY_H) - 3
         const first = s.slot.blocks[0]
-        const fill = hexOf(blockColour(first))
         const optional = (s.slot.min ?? 0) === 0
+        // An optional storey is a paler brick (and striped at its end), its ink read on that pale colour.
+        const fill = optional ? tint(hexOf(blockColour(first)), 0.45) : hexOf(blockColour(first))
         const isS = selected?.type === t.id && selected.slot === s.slot.id
         const sGhost = s.mark === 'removed' || ghost
-        const stroke = s.issues.length ? ISSUE : s.mark ? MARK_STROKE[s.mark] : isS ? '#e3b864' : 'none'
+        const stroke = s.issues.length ? ISSUE : s.mark ? MARK_STROKE[s.mark] : isS ? INK_DARK : 'rgba(38,35,31,0.3)'
+        const strong = !!(s.issues.length || s.mark || isS)
         return (
           <g
             key={`${s.slot.id}-${j}`}
@@ -319,9 +366,11 @@ function Building({
               }
             }}
           >
-            <rect x={x + 1} y={sy} width={BUILDING_W - 2} height={h} fill={fill} fill-opacity={optional ? 0.55 : 1} stroke={stroke} stroke-width={stroke === 'none' ? 0 : 2.5} stroke-dasharray={s.mark === 'removed' ? '4 3' : undefined} />
-            {optional && <rect x={x + 1} y={sy} width={BUILDING_W - 2} height={h} fill="url(#bp-stripes)" pointer-events="none" />}
-            <text x={x + 6} y={sy + 16} class="bp-storey-text" fill={inkOn(fill)}>
+            <rect x={x + 3} y={sy} width={BUILDING_W - 6} height={h} rx={1.5} fill={fill} stroke={stroke} stroke-width={strong ? 2.5 : 0.75} stroke-dasharray={s.mark === 'removed' || (optional && !strong) ? '4 3' : undefined} />
+            {/* The brick's lit top edge. */}
+            <rect x={x + 5} y={sy + 2} width={BUILDING_W - 10} height={2} rx={1} fill="rgba(255,255,255,0.35)" pointer-events="none" />
+            {optional && <rect x={x + BUILDING_W - 20} y={sy + 1} width={16} height={h - 2} fill="url(#bp-stripes)" pointer-events="none" />}
+            <text x={x + 8} y={sy + 15} class="bp-storey-text" fill={inkFor(fill)}>
               {s.slot.id}
               {s.slot.blocks.length > 1 ? ` · ${s.slot.blocks.length} blocks` : first ? ` · ${first}` : ''}
             </text>
@@ -333,7 +382,7 @@ function Building({
                 <rect x={x + BUILDING_W - 8} y={sy - 2} width={6} height={10} rx={1} fill="#5f625d" />
               </g>
             )}
-            {s.issues.length > 0 && <rect x={x + BUILDING_W - 9} y={sy + h - 8} width={7} height={7} fill={ISSUE} />}
+            {s.issues.length > 0 && <rect x={x + BUILDING_W - 11} y={sy + h - 9} width={7} height={7} rx={1} fill={ISSUE} stroke="#fff" />}
           </g>
         )
       })}

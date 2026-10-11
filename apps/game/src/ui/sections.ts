@@ -6,9 +6,9 @@
  */
 import type { PanelId } from './store'
 
-export type StudioTab = 'town' | 'building' | 'factory' | 'paint'
+export type StudioTab = 'town' | 'building' | 'factory' | 'paint' | 'data'
 
-export type SectionId = 'town' | 'building' | 'plan' | 'factory' | 'staff' | 'projects'
+export type SectionId = 'town' | 'building' | 'plan' | 'factory' | 'data' | 'staff' | 'projects'
 
 export interface SectionDef {
   id: SectionId
@@ -29,13 +29,14 @@ export const SECTIONS: readonly SectionDef[] = [
   { id: 'building', label: 'Building', sub: 'Pages & design', icon: 'building', panel: 'blueprint', studioTab: 'building', owns: [] },
   { id: 'plan', label: 'Plan', sub: 'Editorial board', icon: 'plan', panel: 'plan', owns: ['plan', 'inbox'] },
   { id: 'factory', label: 'Factory', sub: 'Tools & automation', icon: 'factory', panel: 'blueprint', studioTab: 'factory', owns: [] },
+  { id: 'data', label: 'Data Studio', sub: 'Content models', icon: 'data', panel: 'blueprint', studioTab: 'data', owns: [] },
   { id: 'staff', label: 'Staff', sub: 'People & teams', icon: 'org', panel: 'org', owns: ['org', 'hiring', 'performance'] },
   { id: 'projects', label: 'Projects', sub: 'All sites', icon: 'projects', panel: 'projects', owns: ['projects'] },
 ]
 
 /** The section lit for what is open: the panel's section, the Studio by its workbench, else the town. */
 export function sectionOf(panel: PanelId | null, studioTab: StudioTab): SectionId {
-  if (panel === 'blueprint') return studioTab === 'factory' ? 'factory' : 'building'
+  if (panel === 'blueprint') return studioTab === 'factory' ? 'factory' : studioTab === 'data' ? 'data' : 'building'
   if (!panel) return 'town'
   return SECTIONS.find((s) => s.owns.includes(panel))?.id ?? 'town'
 }

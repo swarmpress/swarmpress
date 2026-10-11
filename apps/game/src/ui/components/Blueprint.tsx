@@ -33,17 +33,19 @@ import { Booklet } from '../studio/Booklet'
 import { BuildingWorkbench } from '../studio/Building'
 import { FactoryWorkbench } from '../studio/Factory'
 import { setSound, soundOn } from '../studio/bricks'
+import { DataStudio } from '../studio/DataStudio'
 import { PaintShop, PluginSets, type PaletteColor as PaintColor } from '../studio/PaintShop'
 import { WpAdminButton } from '../studio/WpAdminDoor'
 import { commit, historyOf, redo, undo, type History } from '../studio/history'
 import { Badge, Notice, Panel, TabPanel, Tabs } from './common'
 
 /** The workbenches (ADR-0077): the town map, one building from the front, the tools' factory. */
-type Tab = 'town' | 'building' | 'factory' | 'paint'
+type Tab = 'town' | 'building' | 'factory' | 'paint' | 'data'
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'town', label: 'Town' },
   { id: 'building', label: 'Building' },
   { id: 'factory', label: 'Factory' },
+  { id: 'data', label: 'Data Studio' },
 ]
 /** A site with a palette to paint (a company on WordPress, FEAT-104) gets the Paint shop. */
 const PAINT_TAB: { id: Tab; label: string } = { id: 'paint', label: 'Paint shop' }
@@ -96,12 +98,13 @@ export function Blueprint() {
           )}
           <Tabs label="Workbenches" idPrefix="blueprint" tabs={wp.engine === 'wordpress' && wp.palette ? [...TABS, PAINT_TAB] : TABS} value={tab} onChange={setTab} />
           <TabPanel idPrefix="blueprint" value={tab}>
-            {tab !== 'building' && tab !== 'paint' && wp.engine !== 'wordpress' && <AskArchitect key={tab} kind={tab === 'factory' ? 'tool' : 'structure'} />}
+            {tab !== 'building' && tab !== 'paint' && tab !== 'data' && wp.engine !== 'wordpress' && <AskArchitect key={tab} kind={tab === 'factory' ? 'tool' : 'structure'} />}
             {/* The editor stays mounted on the Factory, so its draft and history survive a look at the tools. */}
-            <div hidden={tab === 'factory' || tab === 'paint'}>
+            <div hidden={tab === 'factory' || tab === 'paint' || tab === 'data'}>
               <BlueprintEditor key={`${models.commit}:${models.hash}`} models={models} api={checker.api} bench={tab === 'building' ? 'building' : 'town'} />
             </div>
             {tab === 'factory' && <Factory models={models} api={checker.api} />}
+            {tab === 'data' && <DataStudio models={models} />}
             {tab === 'paint' && wp.palette && <PaintShop key={models.commit} palette={wp.palette} />}
             {tab === 'town' && wp.plugins && (
               <section aria-label="Sets">

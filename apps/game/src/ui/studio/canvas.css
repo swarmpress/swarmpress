@@ -1,0 +1,59 @@
+/* studio/canvas.css: owned by its workbench (ADR-0086, the light Studio). Loaded after overlay.css and shell.css. */
+
+/*
+ * The Studio's light workbenches: the Town (blueprint/Canvas.tsx) and the
+ * Building (studio/Building.tsx). A cream studded baseplate, white brick
+ * houses and pages, charcoal ink. Scoped to `.bp-canvas` and `.st-elevation`
+ * so the Factory's and the Tools' boards (their own sheets) are untouched.
+ */
+:root {
+  --cv-plate: #efe7d6;
+  --cv-stud: #f6f0e3;
+  --cv-stud-shade: #ddd1b8;
+  --cv-ink: #26231f;
+  --cv-muted: #5a5246;
+  --cv-page: #fbfaf6;
+  --cv-page-edge: #d6cebd;
+  --cv-ok: #157a3d;
+  --cv-no: #b42318;
+}
+
+/* ---- the Town */
+.bp-scroll:has(> .bp-canvas) { border: 1px solid var(--ui-line); background: var(--cv-plate); box-shadow: inset 0 -3px 0 rgba(60, 45, 20, 0.08); }
+.bp-canvas .bp-plate { fill: var(--cv-plate); }
+.bp-canvas .bp-stud { fill: var(--cv-stud); }
+.bp-canvas .bp-stud-shade { fill: var(--cv-stud-shade); }
+.bp-canvas .bp-label { font-size: 12px; font-weight: 700; fill: var(--cv-ink); }
+.bp-canvas .bp-small { font-size: 10px; fill: var(--cv-muted); }
+.bp-canvas .bp-sign-text { font-size: 11.5px; letter-spacing: 0.01em; }
+.bp-canvas .bp-route { font-weight: 600; }
+/* Text on the plate and on the paths keeps a halo of the plate, so tiles and studs never cut it. */
+.bp-canvas .bp-route, .bp-canvas .bp-path-text, .bp-canvas .bp-warehouse text { paint-order: stroke; stroke: var(--cv-plate); stroke-width: 3px; stroke-linejoin: round; }
+.bp-canvas .bp-storey-text { font-size: 10.5px; font-weight: 700; }
+.bp-canvas .bp-hit:hover > rect:last-child { stroke: var(--cv-ink); }
+.bp-canvas .bp-storey:hover > rect:first-child { stroke: var(--cv-ink); stroke-width: 1.5px; }
+.bp-canvas .bp-hit:focus-visible > rect:last-child, .bp-canvas .bp-storey:focus-visible > rect:first-child { stroke: var(--cv-ink); stroke-width: 3px; stroke-dasharray: none; }
+.bp-canvas .bp-hit:focus-visible > .bp-sign { stroke: var(--cv-ink); stroke-width: 2px; }
+
+/* ---- the Building: the page as a white studded baseplate */
+.st-building .st-scroll, .st-booklet-model .st-scroll {
+  padding: 14px;
+  border: 1px solid var(--ui-line);
+  background: var(--cv-plate);
+}
+.st-booklet-model { background: var(--cv-plate); }
+.st-elevation { filter: drop-shadow(0 4px 0 rgba(120, 104, 76, 0.35)) drop-shadow(0 10px 14px rgba(60, 45, 20, 0.12)); }
+.st-elevation .st-title { font: 600 16px/1 var(--ui-serif); fill: var(--cv-ink); }
+.st-elevation .bp-small, .st-elevation .st-small { font-size: 10.5px; fill: var(--cv-muted); }
+.st-elevation .st-route { font-size: 10.5px; font-weight: 600; fill: var(--cv-muted); }
+.st-elevation .st-storey-name { font-size: 12.5px; font-weight: 700; fill: var(--cv-ink); }
+.st-elevation .st-band-text { font-size: 10.5px; font-weight: 700; pointer-events: none; }
+.st-elevation .st-brick-text { font-size: 10.5px; font-weight: 700; pointer-events: none; }
+.st-elevation .st-gap-text { font-size: 11px; font-weight: 700; fill: var(--cv-ok); }
+.st-elevation .st-storey:hover:not(.st-target) > rect:first-of-type { stroke: var(--cv-ink); }
+.st-elevation .st-target.is-ok:hover > rect:first-of-type { fill: #e6f3ea; }
+.st-elevation .st-storey:focus-visible > rect:first-of-type, .st-elevation .st-target:focus-visible > rect { stroke: var(--cv-ink) !important; stroke-width: 3px; }
+.st-elevation .st-remove circle { fill: var(--cv-ink); stroke: #fff; }
+.st-elevation .st-remove-x { fill: #fff; }
+.st-elevation .st-remove:hover circle, .st-elevation .st-remove:focus-visible circle { fill: var(--cv-no); }
+.st-building .st-mini { background: #fff; box-shadow: 0 0 0 1px var(--ui-line); }

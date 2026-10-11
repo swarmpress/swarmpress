@@ -19,6 +19,12 @@ paths:
   - kit/designs/town-tree.json
   - kit/designs/street-lamp.json
   - kit/designs/town-bench.json
+  - apps/game/src/ui/studio/DataStudio.tsx
+  - apps/game/src/ui/studio/data-model.ts
+  - apps/game/src/ui/studio/data-studio.test.tsx
+  - apps/game/src/ui/studio/canvas.css
+  - apps/game/src/ui/studio/factory.css
+  - apps/game/src/ui/studio/data-studio.css
 adrs:
   - ADR-0086
   - ADR-0018
@@ -62,10 +68,29 @@ as the inspector on the right, in warm cream and brick yellow.
 - **The block dock**: the Studio's parts trays (Building and Factory) show each part as a 2 × 2 brick
   in its colour with its name under it (`BrickIcon`), as in the mockups' bottom palette.
 
+- **The Studio's editors in the LEGO look** (2026-10-11):
+  - *Sitemap* (the Town workbench, `blueprint/Canvas.tsx`): page types as white brick houses on lots
+    on a cream studded baseplate, a sign plaque in their blocks' intent colour with the route under
+    it, links as tiled paths, collections as stud stacks; ink picked by WCAG contrast (`inkFor`).
+  - *Page types* (Building, `studio/Building.tsx`): the page as a white studded baseplate, its header
+    with the route pill, regions as white rows with an intent strip, blocks as bricks; drop targets
+    green, refusals faint red.
+  - *Tools and n8n* (Factory, `studio/Factory.tsx`, `blueprint/Tools.tsx`): each tool as brick
+    machines on a light baseplate, numbered plaques, conveyor belts with a crate in the tube's type
+    colour, a row of step cards that select their machine; the tools and the n8n import as white
+    cards.
+  - *Data Studio* (new, `studio/DataStudio.tsx`, `data-model.ts`; a section of its own): the site's
+    content types as cards with a type icon per field and required marks, relations (a `$ref` to
+    another of the site's types) as captioned curves, a deterministic layout; the selected type's
+    fields, relations, validation, the collections that store it and the tools that read or make
+    it; the field types in use as 2 × 2 bricks. Read-only, like the rest of this build: no add or
+    save controls without an action behind them. On WordPress, whose models carry no typed fields
+    yet, an honest empty state.
+
 ## Not built yet
 
-- The mockups' section views in their new form: the Plan's timeline, calendar,
-  workload and goals restyled, the Data Studio, the inspector's breadcrumb and status pill.
+- The mockups' remaining views: the Plan's timeline, calendar, workload and goals restyled; tool
+  runs and versions (no data yet); editing in the Data Studio.
 
 ## Evidence
 

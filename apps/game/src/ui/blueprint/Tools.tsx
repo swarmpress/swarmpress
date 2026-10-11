@@ -20,11 +20,11 @@ import { useStore } from '../store'
 import { toolRef } from '../../tools/runner'
 import { Issues } from './Inspector'
 
-const COL = 156
-const ROW = 72
-const W = 116
-const H = 46
-const PAD = 16
+const COL = 172
+const ROW = 118
+const W = 112
+const H = 56
+const PAD = 20
 
 const KIND_LABEL: Record<string, string> = {
   input: 'hopper',
@@ -47,7 +47,7 @@ export function n8nShape(type: string): string {
   if (/\.(code|function|functionItem|dateTime)$/.test(type)) return 'code'
   return 'op'
 }
-const shapeOf = (n: MachineNode['node']) => (n.kind === 'n8n' ? n8nShape(str(n.type) ?? '') : n.kind)
+export const shapeOf = (n: MachineNode['node']) => (n.kind === 'n8n' ? n8nShape(str(n.type) ?? '') : n.kind)
 
 const str = (v: unknown) => (typeof v === 'string' ? v : null)
 
@@ -89,79 +89,230 @@ export function nodeCaption(n: MachineNode['node']): string {
   }
 }
 
-function Shape({ kind, x, y }: { kind: string; x: number; y: number }) {
-  const fill = '#3a4152'
-  switch (kind) {
-    case 'input':
-      return <polygon points={`${x},${y} ${x + W},${y} ${x + W - 14},${y + H} ${x + 14},${y + H}`} fill={fill} />
-    case 'output':
-      return <polygon points={`${x + 14},${y} ${x + W - 14},${y} ${x + W},${y + H} ${x},${y + H}`} fill={fill} />
-    case 'condition':
-      return <polygon points={`${x + 12},${y} ${x + W - 12},${y} ${x + W},${y + H / 2} ${x + W - 12},${y + H} ${x + 12},${y + H} ${x},${y + H / 2}`} fill={fill} />
-    case 'connector':
-      return (
-        <>
-          <rect x={x} y={y} width={W} height={H} rx={3} fill={fill} />
-          <path d={`M${x + W - 26} ${y + 6} a12 12 0 0 0 18 18 z`} fill="#c9ccd1" />
-        </>
-      )
-    case 'op':
-      return (
-        <>
-          <rect x={x} y={y} width={W} height={H} rx={3} fill={fill} />
-          <circle cx={x + W - 14} cy={y + 14} r={7} fill="none" stroke="#c9ccd1" stroke-width={3} stroke-dasharray="3 2" />
-        </>
-      )
-    case 'agent':
-      return (
-        <>
-          <rect x={x} y={y} width={W} height={H} rx={3} fill={fill} />
-          <circle cx={x + W - 14} cy={y + 11} r={5} fill={hexOf('yellow')} />
-          <rect x={x + W - 20} y={y + 17} width={12} height={10} rx={2} fill={hexOf('blue')} />
-        </>
-      )
-    case 'code':
-      return (
-        <>
-          <rect x={x} y={y} width={W} height={H} rx={3} fill={hexOf('sage')} />
-          <rect x={x + W - 26} y={y + 6} width={18} height={12} rx={1} fill={hexOf('screen-blue')} />
-        </>
-      )
-    case 'skill':
-      return (
-        <>
-          <rect x={x} y={y} width={W} height={H} rx={2} fill={hexOf('caramel')} />
-          <path d={`M${x} ${y} L${x + W} ${y + H} M${x + W} ${y} L${x} ${y + H}`} stroke="#00000040" stroke-width={2} />
-        </>
-      )
-    default:
-      return <rect x={x} y={y} width={W} height={H} rx={3} fill={fill} />
-  }
+/** A machine's brick colour (a palette id) by what it does, like the stations of a line: start green, fetch blue, shape orange, decide plum, staff yellow, ship red. */
+export const SHAPE_FILL: Readonly<Record<string, string>> = { input: 'green', output: 'red', connector: 'blue', op: 'orange', condition: 'plum', agent: 'yellow', skill: 'caramel', code: 'sage' }
+export const machineFill = (shape: string) => hexOf(SHAPE_FILL[shape] ?? 'grey-dark')
+
+/** Shade a `#rrggbb` colour by `k` (below 1 darker, above lighter). */
+function shade(hex: string, k: number): string {
+  const n = Number.parseInt(hex.replace('#', ''), 16)
+  const c = (v: number) => Math.max(0, Math.min(255, Math.round(k > 1 ? v + (255 - v) * (k - 1) : v * k)))
+  return `rgb(${c((n >> 16) & 255)}, ${c((n >> 8) & 255)}, ${c(n & 255)})`
 }
 
-function Machine({ tool }: { tool: SiteTool }) {
-  const lay = layoutTool(tool.graph)
-  const at = new Map(lay.nodes.map((n) => [n.node.id, { x: PAD + n.layer * COL, y: PAD + 6 + n.row * ROW }]))
-  const width = PAD * 2 + Math.max(1, lay.layers) * COL - (COL - W)
-  const height = PAD * 2 + 6 + Math.max(1, lay.rows) * ROW - (ROW - H)
+/** The big icon on a machine's face (a 24-unit drawing): what the machine does. */
+export function MachineGlyph({ shape, x, y, size, ink }: { shape: string; x: number; y: number; size: number; ink: string }) {
+  const body = (() => {
+    switch (shape) {
+      case 'input':
+        return <path d="M8 4.5v15l12-7.5z" fill={ink} stroke="none" />
+      case 'output':
+        return <path d="M12 3.5v11M7.5 8l4.5-4.5 4.5 4.5M4.5 14v5.5h15V14" />
+      case 'connector':
+        return (
+          <>
+            <circle cx={10} cy={10} r={6} />
+            <path d="M14.5 14.5l5.5 5.5" />
+          </>
+        )
+      case 'op':
+        return (
+          <>
+            <circle cx={12} cy={12} r={3.6} />
+            <path d="M12 3v3.2M12 17.8V21M3 12h3.2M17.8 12H21M5.6 5.6l2.3 2.3M16.1 16.1l2.3 2.3M5.6 18.4l2.3-2.3M16.1 7.9l2.3-2.3" />
+          </>
+        )
+      case 'condition':
+        return <path d="M3.5 12h6l5-6.5h6M9.5 12l5 6.5h6M17.5 3l3 2.5-3 2.5M17.5 16l3 2.5-3 2.5" />
+      case 'agent':
+        return (
+          <>
+            <circle cx={12} cy={8} r={4} />
+            <path d="M4.5 21c0-4.2 3.4-6.5 7.5-6.5s7.5 2.3 7.5 6.5" />
+          </>
+        )
+      case 'skill':
+        return <path d="M4 7h16v13H4zM4 11h16M10 7v4M14 7v4" />
+      case 'code':
+        return <path d="M8.5 6.5L3 12l5.5 5.5M15.5 6.5L21 12l-5.5 5.5" />
+      default:
+        return <rect x={5} y={5} width={14} height={14} rx={2} />
+    }
+  })()
   return (
-    <svg class="bp-machine" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Machine ${tool.id}: ${lay.nodes.length} nodes in ${lay.layers} layers`}>
-      <rect class="bp-plate" x={0} y={0} width={width} height={height} />
+    <g transform={`translate(${x} ${y}) scale(${size / 24})`} fill="none" stroke={ink} stroke-width={2.4} stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="fx-glyph">
+      {body}
+    </g>
+  )
+}
+
+/** How deep a machine's top and side faces are drawn. */
+export const DEPTH = 10
+/** The plaque under a machine: its number and id. */
+export const PLAQUE = 22
+
+/**
+ * A machine as a brick block on the line: the front face in its colour with
+ * the big icon, the lit top with studs, the shaded side, and the dark plaque
+ * under it with the station's number and the node's id (cut short to fit; the
+ * whole id is in the title). A selected machine stands in a yellow glow; one
+ * the checker flags wears a red seam and a red pin.
+ */
+export function MachineBlock({ x, y, w, h, shape, number, id, flagged, selected }: { x: number; y: number; w: number; h: number; shape: string; number: number; id: string; flagged?: boolean; selected?: boolean }) {
+  const fill = machineFill(shape)
+  const d = DEPTH
+  const studs = Math.max(2, Math.min(4, Math.round(w / 32)))
+  const gap = (w - 8) / studs
+  const fit = Math.max(4, Math.floor((w - 30) / 6.6))
+  const glyph = Math.min(30, h - 22)
+  return (
+    <g class="fx-block" data-fill={fill}>
+      {selected && <rect class="fx-halo" x={x - 9} y={y - d - 11} width={w + d + 18} height={h + d + PLAQUE + 42} rx={10} fill="rgba(242, 182, 50, 0.2)" stroke="#f2b632" stroke-width={3} />}
+      <rect x={x + 3} y={y + h - 2} width={w + d} height={8} rx={4} fill="rgba(60, 45, 20, 0.16)" />
+      <path d={`M${x} ${y} L${x + d} ${y - d} L${x + w + d} ${y - d} L${x + w} ${y} Z`} fill={shade(fill, 1.22)} />
+      <path d={`M${x + w} ${y} L${x + w + d} ${y - d} L${x + w + d} ${y + h - d} L${x + w} ${y + h} Z`} fill={shade(fill, 0.72)} />
+      {Array.from({ length: studs }, (_, k) => {
+        const cx = x + 4 + gap * (k + 0.5) + d / 2
+        const cy = y - d / 2
+        return (
+          <g key={k}>
+            <path d={`M${cx - 5} ${cy - 1} v3 a5 2.2 0 0 0 10 0 v-3`} fill={shade(fill, 0.8)} />
+            <ellipse cx={cx} cy={cy - 1} rx={5} ry={2.2} fill={shade(fill, 1.32)} />
+          </g>
+        )
+      })}
+      <rect class="fx-front" x={x} y={y} width={w} height={h} rx={3} fill={fill} stroke={flagged ? '#c4281c' : 'rgba(0, 0, 0, 0.28)'} stroke-width={flagged ? 3 : 1} />
+      <rect x={x + 3} y={y + 3} width={w - 6} height={3} rx={1.5} fill="rgba(255, 255, 255, 0.28)" pointer-events="none" />
+      <MachineGlyph shape={shape} x={x + w / 2 - glyph / 2} y={y + (h - glyph) / 2 + 1} size={glyph} ink={inkOn(fill)} />
+      {flagged && (
+        <g class="fx-pin">
+          <circle cx={x + w - 2} cy={y + 2} r={8} fill="#c4281c" stroke="#ffffff" stroke-width={1.5} />
+          <text x={x + w - 2} y={y + 6} text-anchor="middle" class="fx-pin-text" fill="#ffffff">
+            !
+          </text>
+        </g>
+      )}
+      <rect x={x + 2} y={y + h + 7} width={w - 4} height={PLAQUE} rx={6} fill="#26231f" />
+      <circle cx={x + 14} cy={y + h + 7 + PLAQUE / 2} r={8} fill="#f2b632" />
+      <text x={x + 14} y={y + h + 7 + PLAQUE / 2 + 4} text-anchor="middle" class="fx-plaque-no" fill="#26231f">
+        {number}
+      </text>
+      <text x={x + 27} y={y + h + 7 + PLAQUE / 2 + 4} class="fx-plaque-id" fill="#ffffff">
+        {id.length > fit ? `${id.slice(0, fit - 1)}…` : id}
+      </text>
+    </g>
+  )
+}
+
+/** A belt between two machines (outlet to inlet), its rollers, and a crate riding it in the colour of the type it carries. */
+export function Belt({ x1, y1, x2, y2, colour, selected }: { x1: number; y1: number; x2: number; y2: number; colour: string; selected?: boolean }) {
+  const mid = (x1 + x2) / 2
+  const d = `M${x1} ${y1} C${mid} ${y1} ${mid} ${y2} ${x2} ${y2}`
+  // The curve's midpoint (t = 0.5 of this cubic) carries the crate.
+  const cx = mid
+  const cy = (y1 + y2) / 2
+  return (
+    <>
+      {selected && <path d={d} fill="none" stroke="#f2b632" stroke-width={17} stroke-linecap="round" />}
+      <path d={d} fill="none" stroke="#4d4f4b" stroke-width={11} stroke-linecap="round" />
+      <path d={d} fill="none" stroke="#a3a8ab" stroke-width={6} stroke-dasharray="2.5 5" class="fx-rollers" />
+      <rect x={cx - 7} y={cy - 9} width={14} height={11} rx={1.5} fill={hexOf(colour)} stroke="rgba(0, 0, 0, 0.45)" stroke-width={1} />
+      <rect x={cx - 4} y={cy - 11} width={8} height={2.5} rx={1} fill={hexOf(colour)} stroke="rgba(0, 0, 0, 0.35)" stroke-width={0.8} />
+    </>
+  )
+}
+
+/** The light studded baseplate under a line (a pattern per drawing, so ids stay unique). */
+export function Baseplate({ id, width, height }: { id: string; width: number; height: number }) {
+  const pid = `fx-plate-${id.replace(/[^a-zA-Z0-9_-]/g, '_')}`
+  return (
+    <>
+      <defs>
+        <pattern id={pid} width={20} height={20} patternUnits="userSpaceOnUse">
+          <rect width={20} height={20} fill="#ece7dc" />
+          <circle cx={10} cy={10.8} r={5} fill="#dcd5c6" />
+          <circle cx={10} cy={10} r={4.6} fill="#f3efe6" />
+        </pattern>
+      </defs>
+      <rect class="bp-plate" x={0} y={0} width={width} height={height} rx={8} style={{ fill: `url(#${pid})` }} />
+    </>
+  )
+}
+
+/** The node ids an issue list points at (`/nodes/N…`). */
+export function flaggedNodes(graph: { nodes: Array<{ id: string }> }, issues: ModelIssue[]): Set<string> {
+  return new Set(issues.map((i) => i.path.match(/^\/nodes\/(\d+)/)?.[1]).filter((k): k is string => !!k).map((k) => graph.nodes[Number(k)]?.id).filter((id): id is string => !!id))
+}
+
+/**
+ * The line's steps as a row of cards in the layered order (the mockup's
+ * workflow card): the machine's colour and icon, its number and id, what it
+ * does, and whether the checker flags it. With `onSelect`, a card is a button.
+ */
+export function StepCards({ nodes, flagged, selected, onSelect, label }: { nodes: MachineNode[]; flagged: Set<string>; selected?: string | null; onSelect?: (id: string) => void; label: string }) {
+  if (!nodes.length) return null
+  return (
+    <ol class="fx-steps" aria-label={label}>
+      {nodes.map(({ node: n }, k) => {
+        const shape = shapeOf(n)
+        const fill = machineFill(shape)
+        const bad = flagged.has(n.id)
+        const on = selected === n.id
+        const body = (
+          <>
+            <span class="fx-step-tile" style={{ background: fill }} aria-hidden="true">
+              <svg width={26} height={26} viewBox="0 0 26 26" focusable="false">
+                <MachineGlyph shape={shape} x={1} y={1} size={24} ink={inkOn(fill)} />
+              </svg>
+            </span>
+            <span class="fx-step-text">
+              <span class="fx-step-title">
+                <span class="fx-step-no" aria-hidden="true">
+                  {k + 1}
+                </span>
+                {n.id}
+              </span>
+              <span class="fx-step-caption">{nodeCaption(n)}</span>
+            </span>
+            <span class={`fx-step-status${bad ? ' is-bad' : ' is-ok'}`} role="img" aria-label={bad ? 'has issues' : 'checks'}>
+              {bad ? '!' : '✓'}
+            </span>
+          </>
+        )
+        return (
+          <li key={n.id} class={`fx-step${on ? ' is-selected' : ''}${bad ? ' is-flagged' : ''}`} data-step={n.id}>
+            {onSelect ? (
+              <button type="button" class="fx-step-card" aria-pressed={on} aria-label={`Step ${k + 1}: ${n.id}, ${nodeCaption(n)}${bad ? ', has issues' : ''}`} onClick={() => onSelect(n.id)}>
+                {body}
+              </button>
+            ) : (
+              <div class="fx-step-card">{body}</div>
+            )}
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+function Machine({ tool, flagged }: { tool: SiteTool; flagged: Set<string> }) {
+  const lay = layoutTool(tool.graph)
+  const at = new Map(lay.nodes.map((n) => [n.node.id, { x: PAD + n.layer * COL, y: PAD + DEPTH + 4 + n.row * ROW }]))
+  const width = PAD * 2 + Math.max(1, lay.layers) * COL - (COL - W) + DEPTH
+  const height = PAD * 2 + DEPTH + 4 + Math.max(1, lay.rows) * ROW - (ROW - H) + PLAQUE + 22
+  const number = new Map(lay.nodes.map((n, k) => [n.node.id, k + 1]))
+  return (
+    <svg class="bp-machine fx-line" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Machine ${tool.id}: ${lay.nodes.length} nodes in ${lay.layers} layers`}>
+      <Baseplate id={`tool-${tool.id}`} width={width} height={height} />
       {lay.edges.map((e, k) => {
         const a = at.get(e.from)
         const b = at.get(e.to)
         if (!a || !b) return null
-        const x1 = a.x + W
-        const y1 = a.y + H / 2
-        const x2 = b.x
-        const y2 = b.y + H / 2
-        const mid = (x1 + x2) / 2
         const colour = typeColour(e.type)
         return (
           <g key={k} class="bp-tube" data-edge={`${e.from}.${e.fromPort}>${e.to}.${e.toPort}`} data-type={e.type ?? ''} data-colour={colour}>
             <title>{`${e.from}.${e.fromPort} → ${e.to}.${e.toPort}${e.type ? `: ${e.type}` : ''}`}</title>
-            <path d={`M${x1} ${y1} C${mid} ${y1} ${mid} ${y2} ${x2} ${y2}`} fill="none" stroke="#00000080" stroke-width={8} />
-            <path d={`M${x1} ${y1} C${mid} ${y1} ${mid} ${y2} ${x2} ${y2}`} fill="none" stroke={hexOf(colour)} stroke-width={5} />
+            <Belt x1={a.x + W} y1={a.y + H / 2} x2={b.x} y2={b.y + H / 2} colour={colour} />
           </g>
         )
       })}
@@ -170,16 +321,12 @@ function Machine({ tool }: { tool: SiteTool }) {
         return (
           <g key={n.node.id} class="bp-node" data-node={n.node.id} data-kind={n.node.kind} data-shape={shapeOf(n.node)} data-layer={n.layer} data-row={n.row}>
             <title>{`${n.node.kind === 'n8n' ? `${str(n.node.name) ?? n.node.id} (n8n ${str(n.node.type) ?? ''})` : n.node.id}: ${KIND_LABEL[shapeOf(n.node)] ?? n.node.kind}${n.type ? `, hands on ${n.type}` : ''}`}</title>
-            {Array.from({ length: 4 }, (_, k) => (
-              <rect key={k} x={x + 10 + k * 26} y={y - 4} width={10} height={4} rx={1} fill="#c9ccd1" />
-            ))}
-            <Shape kind={shapeOf(n.node)} x={x} y={y} />
-            <text x={x + 8} y={y + 18} class="bp-label" fill={inkOn('#3a4152')}>
-              {n.node.id}
-            </text>
-            <text x={x + 8} y={y + 34} class="bp-small">
-              {nodeCaption(n.node)}
-            </text>
+            <MachineBlock x={x} y={y} w={W} h={H} shape={shapeOf(n.node)} number={number.get(n.node.id) ?? 0} id={n.node.id} flagged={flagged.has(n.node.id)} />
+            {n.type && (
+              <text x={x + 2} y={y + H + PLAQUE + 20} class="fx-type">
+                {n.type.length > 20 ? `${n.type.slice(0, 19)}…` : n.type}
+              </text>
+            )}
           </g>
         )
       })}
@@ -202,18 +349,20 @@ function ToolCard({ tool, api, ctx }: { tool: SiteTool; api: BlueprintApi | null
     Object.entries(m ?? {})
       .map(([k, v]) => `${k}: ${v}`)
       .join(', ') || 'none'
+  const flagged = flaggedNodes(g, issues)
+  const lay = layoutTool(g)
   return (
-    <article class="card bp-tool" aria-labelledby={`bp-tool-${tool.id}`} data-tool={tool.id}>
-      <header class="bp-tool-head">
+    <article class="card bp-tool fx-card" aria-labelledby={`bp-tool-${tool.id}`} data-tool={tool.id}>
+      <header class="bp-tool-head fx-card-head">
         <h3 id={`bp-tool-${tool.id}`}>{g.name.en ?? Object.values(g.name)[0] ?? tool.id}</h3>
-        <span class="muted small">
+        <span class="muted small fx-card-id">
           {tool.id} · {tool.hash.slice(0, 8)}
         </span>
         {issues.length ? <Badge tone="bad">{issues.length} issues</Badge> : <Badge tone="good">checks</Badge>}
         {store.can('RunTool') && (
           <button
             type="button"
-            class="btn btn-quiet"
+            class="btn fx-run"
             disabled={issues.length > 0}
             title={issues.length ? 'A tool with issues does not run' : 'Run it now: the sim asks for a run, the browser runs it in the sandbox'}
             onClick={() => void store.run({ RunTool: { tool_ref: toolRef(tool.hash) } }, `${tool.id}: run requested`)}
@@ -222,7 +371,7 @@ function ToolCard({ tool, api, ctx }: { tool: SiteTool; api: BlueprintApi | null
           </button>
         )}
       </header>
-      {g.description && <p class="small">{g.description}</p>}
+      {g.description && <p class="small fx-card-description">{g.description}</p>}
       <p class="small">
         Takes {sig(g.inputs)}; makes {sig(g.outputs)}. Runs {(g.triggers ?? []).map(triggerText).join(', ') || 'never (no trigger)'}.
       </p>
@@ -241,9 +390,10 @@ function ToolCard({ tool, api, ctx }: { tool: SiteTool; api: BlueprintApi | null
         )}
         {origins.length > 0 ? <> from {origins.join(', ')}</> : caps.includes('web') && g.nodes.some((n) => n.kind === 'n8n') ? <strong> from any public website</strong> : null}.
       </p>
-      <div class="bp-scroll">
-        <Machine tool={tool} />
+      <div class="bp-scroll fx-scroll">
+        <Machine tool={tool} flagged={flagged} />
       </div>
+      <StepCards nodes={lay.nodes} flagged={flagged} label={`Steps of ${tool.id}`} />
       <Issues issues={issues} />
     </article>
   )
@@ -251,7 +401,7 @@ function ToolCard({ tool, api, ctx }: { tool: SiteTool; api: BlueprintApi | null
 
 export function ToolsDistrict({ models, api, ctx }: { models: SiteModels; api: BlueprintApi | null; ctx: string }) {
   return (
-    <div class="bp-district">
+    <div class="bp-district fx-district">
       <Notice title="The site's tools">
         Each tool is a machine: what it reads, what it makes, what it may reach. Ask for a new or changed tool on the Blueprint tab ("Ask for a tool"): the web developer builds it and you
         approve it. Or import an n8n workflow: it runs as it does in n8n. Tools run on their schedule, when a bound page is built, or now.

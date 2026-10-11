@@ -1,0 +1,99 @@
+/* studio/factory.css: owned by its workbench (ADR-0086, the light Studio). Loaded after overlay.css and shell.css. */
+
+/*
+ * The Factory in the LEGO look (the owner's factory mockup): each tool is a
+ * line of brick machines on a light studded baseplate, joined by belts with
+ * crates riding them; under it the steps as white cards. Scoped to the
+ * Factory's own containers (`.st-factory-bench`, `.fx-district`), so the
+ * other workbenches keep their rules.
+ */
+
+/* ---- the drawing (both views) ---- */
+.fx-line, .st-factory { display: block; }
+.fx-plaque-id { font-size: 11.5px; font-weight: 700; letter-spacing: 0.01em; pointer-events: none; }
+.fx-plaque-no { font-size: 10.5px; font-weight: 800; pointer-events: none; }
+.fx-pin-text { font-size: 11px; font-weight: 800; pointer-events: none; }
+.fx-type { font-size: 10.5px; font-weight: 600; fill: #4f483e; pointer-events: none; }
+.fx-glyph { pointer-events: none; }
+.fx-rollers { animation: fx-roll 1.2s linear infinite; }
+@keyframes fx-roll { to { stroke-dashoffset: -15; } }
+@media (prefers-reduced-motion: reduce) { .fx-rollers { animation: none; } }
+
+/* ---- the workbench ---- */
+.st-factory-bench .st-bar { padding: 6px 10px; border: 1px solid var(--ui-line); border-radius: 12px; background: #fff; }
+.st-factory-grid { grid-template-columns: 200px minmax(0, 1fr) 300px; gap: 14px; }
+.st-factory-grid .st-street { gap: 6px; padding: 8px; border: 1px solid var(--ui-line); border-radius: 14px; background: #fff; }
+.st-factory-grid .st-street-item { padding: 8px 10px; border: 1px solid var(--ui-line); border-radius: 10px; background: #fff; font-weight: 600; box-shadow: 0 1px 0 rgba(60, 45, 20, 0.06); }
+.st-factory-grid .st-street-item:hover { background: var(--ui-card); }
+.st-factory-grid .st-street-item.is-active { border-color: var(--ui-accent); background: #fff7e3; box-shadow: 0 0 0 2px var(--ui-accent) inset; }
+.st-factory-grid .st-scroll { max-height: 58vh; padding: 0; border: 1px solid var(--ui-line); border-radius: 14px; background: #ece7dc; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6); }
+.st-factory .st-port-text { fill: #3d3830; font-weight: 600; }
+.st-factory .st-machine [role='button']:focus-visible .fx-front { stroke: #1d4fd8; stroke-width: 3px; }
+.st-factory .st-tube:focus-visible > path:first-of-type { stroke: rgba(29, 79, 216, 0.45); }
+.st-factory .st-outlet:focus-visible circle, .st-factory .st-inlet:focus-visible rect { stroke: #1d4fd8; stroke-width: 3px; }
+.st-factory-grid > .bp-inspector { padding: 12px 14px; border: 1px solid var(--ui-line); border-radius: 14px; background: #fff; box-shadow: 0 1px 2px rgba(60, 45, 20, 0.06); }
+.st-factory-grid > .bp-inspector h3 { font-family: var(--ui-serif); font-size: 18px; }
+.st-factory-grid > .st-tray { background: #fff; border-radius: 14px; }
+.st-factory-bench .bp-status .inline-form { padding: 8px 12px; border: 1px solid var(--ui-line); border-radius: 12px; background: #fff; }
+.st-factory-bench .btn.is-proposed:not(:disabled) { background: var(--ui-ink-btn); border-color: var(--ui-ink-btn); color: #fff; }
+
+/* The workflow card under the line: the steps in a row. */
+.fx-workflow { margin: 12px 0 6px; padding: 10px 12px 12px; border: 1px solid var(--ui-line); border-radius: 14px; background: #fff; box-shadow: 0 1px 2px rgba(60, 45, 20, 0.06); }
+.fx-workflow-title { margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--ui-line); font-size: 14px; }
+
+/* ---- the step cards ---- */
+.fx-steps { list-style: none; margin: 0; padding: 2px 2px 4px; display: flex; gap: 26px; overflow-x: auto; }
+.fx-step { position: relative; flex: 0 0 auto; }
+.fx-step + .fx-step::before { content: '→'; position: absolute; left: -19px; top: 50%; transform: translateY(-50%); color: #6a6256; font-size: 15px; }
+.fx-step-card { display: flex; align-items: center; gap: 10px; min-width: 168px; max-width: 230px; padding: 8px 10px; border: 1px solid var(--ui-line); border-radius: 10px; background: #fff; color: var(--ui-text); font: inherit; text-align: left; box-shadow: 0 1px 0 rgba(60, 45, 20, 0.06); }
+button.fx-step-card { cursor: pointer; }
+button.fx-step-card:hover { background: #fffaf0; }
+button.fx-step-card:focus-visible { outline: 2px solid #1d4fd8; outline-offset: 2px; }
+.fx-step.is-selected .fx-step-card { border-color: var(--ui-accent); box-shadow: 0 0 0 2px var(--ui-accent); background: #fffaf0; }
+.fx-step-tile { flex: 0 0 auto; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 8px; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.18), inset 0 2px 0 rgba(255, 255, 255, 0.25); }
+.fx-step-text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.fx-step-title { display: flex; align-items: baseline; gap: 6px; font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fx-step-no { font-size: 11px; font-weight: 700; color: #6a6256; }
+.fx-step-caption { font-size: 11.5px; color: #5c554a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fx-step-status { flex: 0 0 auto; display: grid; place-items: center; align-self: flex-start; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 800; line-height: 1; }
+.fx-step-status.is-ok { background: #157a3d; color: #fff; }
+.fx-step-status.is-bad { background: #b42318; color: #fff; }
+
+/* ---- machines and imports ---- */
+.fx-district { gap: 14px; }
+.fx-district > .notice { background: #fff; }
+.fx-district > .card { padding: 14px 16px; border: 1px solid var(--ui-line); border-radius: 14px; background: #fff; box-shadow: 0 1px 2px rgba(60, 45, 20, 0.06); }
+.fx-card-head { align-items: center; margin-bottom: 4px; }
+.fx-card-head h3 { margin: 0; font-family: var(--ui-serif); font-size: 19px; }
+.fx-card-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+.fx-card-head .fx-run { margin-left: auto; background: var(--ui-ink-btn); border-color: var(--ui-ink-btn); color: #fff; font-weight: 600; }
+.fx-card-head .fx-run::before { content: '▶'; margin-right: 6px; font-size: 10px; }
+.fx-card-head .fx-run:hover:not(:disabled) { background: #000; }
+.fx-card-description { margin: 2px 0; }
+.fx-scroll { margin: 10px 0; border: 1px solid var(--ui-line); border-radius: 12px; background: #ece7dc; }
+.fx-card .fx-steps { margin-bottom: 6px; }
+
+/* The n8n import and the credentials: tidy white cards with a header row. */
+.fx-district > details.card > summary { display: flex; align-items: center; gap: 8px; margin: -2px 0; cursor: pointer; font-family: var(--ui-serif); font-size: 17px; font-weight: 600; list-style: none; }
+.fx-district > details.card > summary::-webkit-details-marker { display: none; }
+.fx-district > details.card > summary::after { content: '▾'; margin-left: auto; color: #6a6256; font-family: system-ui, sans-serif; font-size: 16px; transition: transform 0.15s; }
+.fx-district > details.card:not([open]) > summary::after { transform: rotate(-90deg); }
+.fx-district > details.card[open] > summary { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--ui-line); }
+.fx-district > details.card > summary:focus-visible { outline: 2px solid #1d4fd8; outline-offset: 3px; border-radius: 4px; }
+.bp-n8n .inline-form { margin: 8px 0; }
+.bp-n8n input[type='file'] { font: inherit; font-size: 12.5px; }
+.bp-n8n-paste { box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px dashed #cfc4b0; border-radius: 10px; background: #fffdf8; color: var(--ui-text); font: inherit; font-size: 12.5px; resize: vertical; }
+.bp-n8n-paste:focus-visible { outline: 2px solid #1d4fd8; outline-offset: 1px; }
+.bp-n8n-preview { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--ui-line); border-radius: 12px; background: #fffdf8; }
+.bp-n8n-preview h4 { margin: 8px 0 4px; font-size: 14px; }
+.bp-n8n-map { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.bp-n8n-map li { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; border: 1px solid var(--ui-line); border-radius: 10px; background: #fff; font-size: 12.5px; font-weight: 600; }
+.bp-n8n-map li .muted { font-weight: 400; }
+.bp-n8n-issues { margin: 6px 0; padding-left: 18px; }
+.bp-n8n-preview > .btn:not(:disabled) { background: var(--ui-ink-btn); border-color: var(--ui-ink-btn); color: #fff; font-weight: 600; }
+.bp-cred-list { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.bp-cred-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--ui-line); border-radius: 10px; background: #fffdf8; }
+
+@media (max-width: 900px) {
+  .st-factory-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'street' 'stage' 'inspector' 'tray'; }
+}

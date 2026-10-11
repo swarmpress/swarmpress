@@ -19,27 +19,27 @@ import { freshId, layoutTool } from '../../blueprint/model'
 import type { ModelIssue, SiteModels, ToolGraph, ToolNode } from '../../blueprint/types'
 import { checkTool, type BlueprintApi } from '../../blueprint/wasm'
 import { Issues } from '../blueprint/Inspector'
-import { n8nShape, nodeCaption } from '../blueprint/Tools'
+import { Baseplate, Belt, DEPTH, flaggedNodes, MachineBlock, n8nShape, nodeCaption, PLAQUE, SHAPE_FILL, StepCards } from '../blueprint/Tools'
 import { Badge, Notice, TabPanel, Tabs } from '../components/common'
 import { useStore } from '../store'
 import { snapClick, BrickIcon } from './bricks'
 import { addMachine, disconnect, judgeTubes, MACHINE_GROUPS, MACHINE_PARTS, newTool, portsOf, removeMachine, updateMachine, type MachinePart, type TubeVerdict } from './machines'
 import { commit, historyOf, redo, undo, type History } from './history'
 
-const COL = 190
-const ROW = 92
-const W = 132
-const H = 52
-const PAD = 52
-const OK = '#7fcf9a'
-const NO = '#ff5a4f'
+const COL = 200
+const ROW = 136
+const W = 124
+const H = 60
+const PAD = 48
+const TOP = PAD + DEPTH + 6
+const OK = '#2a9d55'
+const NO = '#c4281c'
 
 type Tools = Record<string, ToolGraph>
 type Selection = { node: string } | { tube: [string, string] } | null
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 const shapeOf = (n: ToolNode) => (n.kind === 'n8n' ? n8nShape(str(n.type)) : n.kind)
-const SHAPE_FILL: Record<string, string> = { input: 'sand', output: 'sand', connector: 'denim', op: 'grey-dark', condition: 'olive', agent: 'blue', skill: 'caramel', code: 'sage' }
 
 /** What a failed save carries (`CentralError`). */
 function failure(e: unknown): { status: number | null; issues: string[]; message: string } {
@@ -75,7 +75,7 @@ function MachineBench({
   onConnect: (to: string) => void
 }) {
   const lay = layoutTool(graph)
-  const at = new Map(lay.nodes.map((n) => [n.node.id, { x: PAD + n.layer * COL, y: PAD + 10 + n.row * ROW }]))
+  const at = new Map(lay.nodes.map((n) => [n.node.id, { x: PAD + n.layer * COL, y: TOP + n.row * ROW }]))
   const nodeById = new Map(graph.nodes.map((n) => [n.id, n]))
   const portY = (y: number, k: number, n: number) => y + (H * (k + 1)) / (n + 1)
   const outAt = (id: string, port: string) => {
@@ -92,9 +92,10 @@ function MachineBench({
     const ins = portsOf(n).ins.map((x) => x.port)
     return { x: p.x, y: portY(p.y, Math.max(0, ins.indexOf(port)), ins.length) }
   }
-  const width = Math.max(560, PAD * 2 + Math.max(1, lay.layers) * COL - (COL - W))
-  const height = Math.max(200, PAD * 2 + 10 + Math.max(1, lay.rows) * ROW - (ROW - H))
-  const flagged = new Set(issues.map((i) => i.path.match(/^\/nodes\/(\d+)/)?.[1]).filter(Boolean).map((k) => graph.nodes[Number(k)]?.id))
+  const width = Math.max(560, PAD * 2 + Math.max(1, lay.layers) * COL - (COL - W) + DEPTH)
+  const height = Math.max(220, TOP + PAD + Math.max(1, lay.rows) * ROW - (ROW - H) + PLAQUE + 24)
+  const flagged = flaggedNodes(graph, issues)
+  const number = new Map(lay.nodes.map((n, k) => [n.node.id, k + 1]))
   const key = (e: KeyboardEvent, f: () => void) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
@@ -103,7 +104,7 @@ function MachineBench({
   }
   return (
     <svg class="st-factory" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="group" aria-label={`Machine ${graph.id}: ${graph.nodes.length} machines, ${graph.edges.length} tubes`} data-factory={graph.id}>
-      <rect class="bp-plate" x={0} y={0} width={width} height={height} />
+      <Baseplate id={`bench-${graph.id}`} width={width} height={height} />
       {graph.edges.map(([a, b]) => {
         const [fa, pa] = a.split('.')
         const [fb, pb] = b.split('.')
@@ -112,7 +113,7 @@ function MachineBench({
         if (!s || !t) return null
         const mid = (s.x + t.x) / 2
         const type = lay.nodes.find((n) => n.node.id === fa)?.type ?? null
-        const sel = selection && 'tube' in selection && selection.tube[0] === a && selection.tube[1] === b
+        const sel = !!selection && 'tube' in selection && selection.tube[0] === a && selection.tube[1] === b
         const d = `M${s.x} ${s.y} C${mid} ${s.y} ${mid} ${t.y} ${t.x} ${t.y}`
         return (
           <g
@@ -127,34 +128,22 @@ function MachineBench({
             onKeyDown={(e) => key(e, () => onSelect({ tube: [a, b] }))}
           >
             <title>{`${a} → ${b}${type ? `: ${type}` : ''}`}</title>
-            <path d={d} fill="none" stroke="transparent" stroke-width={14} />
-            <path d={d} fill="none" stroke={sel ? '#e3b864' : '#00000080'} stroke-width={sel ? 10 : 8} />
-            <path d={d} fill="none" stroke={hexOf(typeColour(type))} stroke-width={5} />
+            <path d={d} fill="none" stroke="transparent" stroke-width={18} />
+            <Belt x1={s.x} y1={s.y} x2={t.x} y2={t.y} colour={typeColour(type)} selected={sel} />
           </g>
         )
       })}
       {lay.nodes.map(({ node: n, type }) => {
         const { x, y } = at.get(n.id)!
         const ports = portsOf(n)
-        const sel = selection && 'node' in selection && selection.node === n.id
-        const fill = hexOf(SHAPE_FILL[shapeOf(n)] ?? 'grey-dark')
+        const sel = !!selection && 'node' in selection && selection.node === n.id
         return (
           <g key={n.id} class="st-machine" data-node={n.id} data-kind={n.kind}>
-            <g role="button" tabIndex={0} aria-pressed={!!sel} aria-label={`Machine ${n.id}: ${nodeCaption(n)}${flagged.has(n.id) ? ', has issues' : ''}`} onClick={() => onSelect({ node: n.id })} onKeyDown={(e) => key(e, () => onSelect({ node: n.id }))}>
-              {Array.from({ length: 4 }, (_, k) => (
-                <rect key={k} x={x + 14 + k * 30} y={y - 4} width={12} height={4} rx={1.5} fill={fill} />
-              ))}
-              <rect x={x} y={y} width={W} height={H} rx={4} fill={fill} stroke={flagged.has(n.id) ? NO : sel ? '#e3b864' : 'rgba(0,0,0,0.45)'} stroke-width={flagged.has(n.id) || sel ? 3 : 1} />
-              <rect x={x + 2} y={y + 2} width={W - 4} height={3} rx={1.5} fill="rgba(255,255,255,0.2)" />
-              <text x={x + 10} y={y + 21} class="st-machine-id" fill={inkOn(fill)}>
-                {n.id}
-              </text>
-              <text x={x + 10} y={y + 37} class="st-machine-caption" fill={inkOn(fill)}>
-                {nodeCaption(n).slice(0, 22)}
-              </text>
+            <g role="button" tabIndex={0} aria-pressed={sel} aria-label={`Machine ${n.id}: ${nodeCaption(n)}${flagged.has(n.id) ? ', has issues' : ''}`} onClick={() => onSelect({ node: n.id })} onKeyDown={(e) => key(e, () => onSelect({ node: n.id }))}>
+              <MachineBlock x={x} y={y} w={W} h={H} shape={shapeOf(n)} number={number.get(n.id) ?? 0} id={n.id} flagged={flagged.has(n.id)} selected={sel} />
               {type && (
-                <text x={x + 10} y={y + H + 13} class="bp-small">
-                  {type}
+                <text x={x + 2} y={y + H + PLAQUE + 22} class="fx-type">
+                  {type.length > 22 ? `${type.slice(0, 21)}…` : type}
                 </text>
               )}
             </g>
@@ -179,7 +168,7 @@ function MachineBench({
                   onKeyDown={(e) => key(e, () => v?.ok && onConnect(ref))}
                 >
                   <title>{v ? (v.ok ? `Into ${ref}` : (v.reason ?? 'Not here')) : `${p.port}${p.required ? ' (needed)' : ''}`}</title>
-                  <rect x={x - 7} y={cy - 6} width={8} height={12} rx={2} fill={v ? (v.ok ? OK : NO) : '#c9ccd1'} opacity={v && !v.ok ? 0.6 : 1} />
+                  <rect x={x - 7} y={cy - 6} width={8} height={12} rx={2} fill={v ? (v.ok ? OK : NO) : '#a3a8ab'} stroke="#4d4f4b" stroke-width={1} opacity={v && !v.ok ? 0.6 : 1} />
                   <text x={x - 10} y={cy + 3} text-anchor="end" class="st-port-text">
                     {p.port === 'in' ? '' : p.port}
                   </text>
@@ -208,7 +197,7 @@ function MachineBench({
                   onKeyDown={(e) => key(e, () => editing && onPickOutlet(on ? null : ref))}
                 >
                   <title>{`Out: ${port}`}</title>
-                  <circle cx={x + W} cy={cy} r={on ? 8 : 6} fill={on ? '#e3b864' : '#e8e6e3'} stroke="#1b1f2a" stroke-width={1.5} />
+                  <circle cx={x + W} cy={cy} r={on ? 8 : 6} fill={on ? '#f2b632' : '#ffffff'} stroke="#26231f" stroke-width={1.5} />
                   {port !== 'out' && (
                     <text x={x + W - 10} y={cy + 3} text-anchor="end" class="st-port-text">
                       {port}
@@ -221,7 +210,7 @@ function MachineBench({
         )
       })}
       {!graph.nodes.length && (
-        <text x={PAD} y={PAD + 30} class="bp-small">
+        <text x={PAD} y={PAD + 30} class="fx-type">
           An empty machine: place parts from the tray below (an input, something to fetch, an output).
         </text>
       )}
@@ -536,6 +525,7 @@ export function FactoryWorkbench({ models, api, ctx, editing }: { models: SiteMo
     }
   }
 
+  const stepNodes = useMemo(() => (graph ? layoutTool(graph).nodes : []), [graph])
   const selectedNode = graph && selection && 'node' in selection ? graph.nodes.find((n) => n.id === selection.node) : undefined
   const holdVerdictOk = verdicts ? [...verdicts.values()].filter((v) => v.ok).length : 0
   return (
@@ -630,6 +620,19 @@ export function FactoryWorkbench({ models, api, ctx, editing }: { models: SiteMo
                   }}
                 />
               </div>
+              <section class="fx-workflow" aria-label={`Steps of ${graph.id}`}>
+                <h3 class="fx-workflow-title">{graph.name.en ?? graph.id}</h3>
+                <StepCards
+                  nodes={stepNodes}
+                  flagged={flaggedNodes(graph, issues)}
+                  selected={selection && 'node' in selection ? selection.node : null}
+                  label="Steps"
+                  onSelect={(id) => {
+                    setSelection({ node: id })
+                    setHolding(null)
+                  }}
+                />
+              </section>
               <h3 class="small">Issues {issues.length ? <Badge tone="bad">{issues.length}</Badge> : <Badge tone="good">none</Badge>}</h3>
               <Issues issues={issues} />
             </>

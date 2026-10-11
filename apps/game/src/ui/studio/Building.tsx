@@ -10,31 +10,43 @@
  *
  * `Elevation` is also the booklet's model view (FEAT-101): read-only, with
  * the step's storeys outlined and the rest dimmed.
+ *
+ * The look (ADR-0086, the light Studio): the page is a white studded
+ * baseplate, its storeys rows of bricks on it with their names and
+ * cardinalities in charcoal; the roof and the foundation are full-width
+ * bands that name their global.
  */
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useEffect, useId, useMemo, useRef, useState } from 'preact/hooks'
 import { blockColour, hexOf } from '../../blueprint/colours'
 import { CORE_TYPES, removeSlot, repeated, streetOrder, toggleUse, updateSlot, type BuildingView, type Mark } from '../../blueprint/model'
 import type { Blueprint, BlueprintChange, ModelIssue } from '../../blueprint/types'
 import type { Selection } from '../blueprint/Canvas'
 import { Inspector } from '../blueprint/Inspector'
-import { Brick, snapClick, Tray } from './bricks'
+import { Brick, INK_DARK, inkFor, snapClick, Tray } from './bricks'
 import { judgeAll, targetKey, type DropTarget, type Verdict } from './snap'
 
-const W = 440
-const PAD = 14
+const W = 560
+const PAD = 16
+/** The storey's name column, left of its bricks. */
+const NAME_W = 92
 const BRICK_W = 128
 const BRICK_H = 24
 const BRICK_GAP = 8
-const PER_ROW = Math.floor((W - 2 * PAD - 70) / (BRICK_W + BRICK_GAP))
+const PER_ROW = Math.floor((W - 2 * PAD - NAME_W - 12) / (BRICK_W + BRICK_GAP))
 const ROW_H = BRICK_H + 12
-const BAND_H = 14
+const BAND_H = 24
 const GAP_H = 10
 const GAP_H_ARMED = 26
-const HEAD_H = 34
+const HEAD_H = 52
+const STUD = 16
 
-const MARK_STROKE: Record<Exclude<Mark, null>, string> = { added: '#7fcf9a', removed: '#a9adb8', changed: '#f0c060' }
-const ISSUE = '#ff5a4f'
-const OK = '#7fcf9a'
+const MARK_STROKE: Record<Exclude<Mark, null>, string> = { added: '#157a3d', removed: '#8a8f99', changed: '#c98a00' }
+const ISSUE = '#c4281c'
+const OK = '#157a3d'
+/** The page's baseplate and a storey's panel on it. */
+const PAGE = '#fbfaf6'
+const PAGE_EDGE = '#d6cebd'
+const PANEL = 'rgba(255,255,255,0.9)'
 const footer = (g: string) => g.includes('footer')
 
 export interface ElevationProps {
@@ -80,25 +92,49 @@ export function Elevation({ bp, view, verdicts = null, selectedSlot = null, high
   }
   if (t.slots === undefined) y += ROW_H + 8
   const floorTop = y
-  const height = floorTop + floors.length * BAND_H + 18
+  const height = floorTop + floors.length * BAND_H + 14
   const globalFill = (g: string) => hexOf(blockColour(bp.globals?.[g]?.block))
   const verdictOf = (target: DropTarget) => verdicts?.get(targetKey(target))
+  const route = t.route ?? (t.source.kind === 'collection-item' ? `item of ${t.source.collection}` : t.id)
+  const studs = `st-studs-${useId()}`
+  const band = (g: string, k: number, top: number, kind: 'Roof' | 'Foundation') => {
+    const fill = globalFill(g)
+    return (
+      <g key={g} data-global={g}>
+        <title>{`${kind} (${kind === 'Roof' ? 'header' : 'footer'}): ${g}`}</title>
+        <rect x={PAD} y={top + k * BAND_H} width={W - 2 * PAD} height={BAND_H - 3} rx={3} fill={fill} stroke="rgba(38,35,31,0.3)" />
+        <text x={PAD + 12} y={top + k * BAND_H + 15} class="st-band-text" fill={inkFor(fill)}>
+          {kind}: {g}
+        </text>
+      </g>
+    )
+  }
 
   return (
     <svg class="st-elevation" width={W} height={height} viewBox={`0 0 ${W} ${height}`} role="group" aria-label={`Building ${label} (${t.id}) from the front: ${live} storeys`} data-elevation={t.id}>
-      <text x={PAD} y={18} class="st-title">
+      <defs>
+        <pattern id={studs} width={STUD} height={STUD} patternUnits="userSpaceOnUse">
+          <circle cx={STUD / 2 + 0.5} cy={STUD / 2 + 0.8} r={3.4} fill="#e2ddd2" />
+          <circle cx={STUD / 2} cy={STUD / 2} r={3.2} fill="#f4f2ec" />
+        </pattern>
+      </defs>
+      {/* The page: a white studded baseplate. */}
+      <rect x={0.5} y={0.5} width={W - 1} height={height - 1} rx={8} fill={PAGE} stroke={PAGE_EDGE} />
+      <rect x={4} y={4} width={W - 8} height={height - 8} rx={6} fill={`url(#${studs})`} />
+      {/* The header plate: the page type's name and its route as a tile. */}
+      <rect x={PAD - 6} y={8} width={W - 2 * PAD + 12} height={HEAD_H - 14} rx={6} fill={PANEL} stroke={PAGE_EDGE} />
+      <text x={PAD + 4} y={33} class="st-title">
         {label}
       </text>
-      <text x={PAD} y={30} class="bp-small">
-        {t.route ?? (t.source.kind === 'collection-item' ? `item of ${t.source.collection}` : t.id)}
+      <g aria-hidden="true">
+        <rect x={W - PAD - Math.min(220, route.length * 6.4 + 18)} y={16} width={Math.min(220, route.length * 6.4 + 18)} height={22} rx={11} fill="#efe9dc" />
+      </g>
+      <text x={W - PAD - Math.min(220, route.length * 6.4 + 18) / 2} y={31} text-anchor="middle" class="st-route">
+        {route.length > 32 ? `${route.slice(0, 31)}…` : route}
       </text>
-      {roofs.map((g, k) => (
-        <rect key={g} x={PAD} y={HEAD_H + k * BAND_H} width={W - 2 * PAD} height={BAND_H - 2} rx={2} fill={globalFill(g)} data-global={g}>
-          <title>{`Roof (header): ${g}`}</title>
-        </rect>
-      ))}
+      {roofs.map((g, k) => band(g, k, HEAD_H, 'Roof'))}
       {t.slots === undefined && (
-        <rect x={PAD} y={HEAD_H + roofs.length * BAND_H} width={W - 2 * PAD} height={ROW_H} fill={hexOf('grey-light')} opacity={0.6}>
+        <rect x={PAD} y={HEAD_H + roofs.length * BAND_H} width={W - 2 * PAD} height={ROW_H} rx={3} fill={hexOf('grey-light')} opacity={0.6}>
           <title>Any blocks: this page type does not constrain its body</title>
         </rect>
       )}
@@ -125,8 +161,8 @@ export function Elevation({ bp, view, verdicts = null, selectedSlot = null, high
               }}
             >
               <title>{v?.ok ? 'A new storey here' : (v?.reason ?? 'Not here')}</title>
-              <rect x={PAD} y={r.y + 3} width={W - 2 * PAD} height={gapH - 6} rx={3} fill={v?.ok ? 'rgba(127,207,154,0.18)' : 'transparent'} stroke={v?.ok ? OK : ISSUE} stroke-dasharray="5 4" stroke-width={1.5} opacity={v?.ok ? 1 : 0.45} />
-              <text x={W / 2} y={r.y + gapH / 2 + 4} text-anchor="middle" class="bp-small">
+              <rect x={PAD} y={r.y + 3} width={W - 2 * PAD} height={gapH - 6} rx={3} fill={v?.ok ? 'rgba(21,122,61,0.08)' : 'transparent'} stroke={v?.ok ? OK : ISSUE} stroke-dasharray="5 4" stroke-width={1.5} opacity={v?.ok ? 1 : 0.45} />
+              <text x={W / 2} y={r.y + gapH / 2 + 4} text-anchor="middle" class="st-gap-text">
                 {v?.ok ? '+ new storey' : ''}
               </text>
             </g>
@@ -139,9 +175,9 @@ export function Elevation({ bp, view, verdicts = null, selectedSlot = null, high
         const optional = (s.slot.min ?? 0) === 0
         const sel = selectedSlot === s.slot.id
         const dim = (highlight && !highlight.has(s.slot.id)) || ghost
-        const stroke = s.issues.length ? ISSUE : s.mark ? MARK_STROKE[s.mark] : highlight?.has(s.slot.id) ? '#e3b864' : sel ? '#e3b864' : armed ? (v?.ok ? OK : 'rgba(255,90,79,0.6)') : 'rgba(0,0,0,0.5)'
+        const stroke = s.issues.length ? ISSUE : s.mark ? MARK_STROKE[s.mark] : highlight?.has(s.slot.id) ? '#c98a00' : sel ? INK_DARK : armed ? (v?.ok ? OK : 'rgba(180,35,24,0.5)') : PAGE_EDGE
         const strokeW = s.issues.length || s.mark || sel || highlight?.has(s.slot.id) || (armed && v?.ok) ? 3 : 1
-        const x0 = PAD + 60
+        const x0 = PAD + NAME_W
         return (
           <g
             key={`storey-${s.slot.id}-${s.index ?? 'gone'}`}
@@ -178,19 +214,19 @@ export function Elevation({ bp, view, verdicts = null, selectedSlot = null, high
             }}
           >
             <title>{armed ? (v?.ok ? `Into ${s.slot.id}` : (v?.reason ?? 'Not here')) : `${s.slot.id}: ${s.slot.blocks.join(', ')}`}</title>
-            <rect x={PAD} y={r.y} width={W - 2 * PAD} height={r.h} rx={3} fill="#2a2f3a" stroke={stroke} stroke-width={strokeW} stroke-dasharray={optional || ghost ? '6 4' : undefined} />
+            <rect x={PAD} y={r.y} width={W - 2 * PAD} height={r.h} rx={4} fill={PANEL} stroke={stroke} stroke-width={strokeW} stroke-dasharray={optional || ghost ? '6 4' : undefined} />
             {/* The storey's colour strip: its first block's intent. */}
-            <rect x={PAD} y={r.y} width={8} height={r.h} rx={2} fill={hexOf(blockColour(s.slot.blocks[0]))} />
-            <text x={PAD + 14} y={r.y + 16} class="st-storey-name">
-              {s.slot.id}
+            <rect x={PAD + 3} y={r.y + 3} width={6} height={r.h - 6} rx={2} fill={hexOf(blockColour(s.slot.blocks[0]))} />
+            <text x={PAD + 16} y={r.y + 19} class="st-storey-name">
+              {s.slot.id.length > 12 ? `${s.slot.id.slice(0, 11)}…` : s.slot.id}
             </text>
-            <text x={PAD + 14} y={r.y + 30} class="bp-small">
-              {`${s.slot.min ?? 0}–${s.slot.max ?? '∞'}`}
+            <text x={PAD + 16} y={r.y + 33} class="st-small">
+              {`${s.slot.min ?? 0}–${s.slot.max ?? '∞'}${optional ? ' · optional' : ''}`}
             </text>
             {repeated(s.slot) && (
               <g aria-hidden="true">
                 {[0, 1, 2].map((k) => (
-                  <rect key={k} x={W - PAD - 10 - k * 7} y={r.y + 4} width={3} height={r.h - 8} rx={1} fill="rgba(255,255,255,0.25)" />
+                  <rect key={k} x={W - PAD - 10 - k * 7} y={r.y + 4} width={3} height={r.h - 8} rx={1} fill="rgba(38,35,31,0.18)" />
                 ))}
               </g>
             )}
@@ -199,7 +235,10 @@ export function Elevation({ bp, view, verdicts = null, selectedSlot = null, high
               const by = r.y + 10 + Math.floor(k / PER_ROW) * ROW_H
               return (
                 <g key={b} class="st-block" data-block={b}>
-                  <Brick x={bx} y={by} w={BRICK_W} h={BRICK_H} colour={blockColour(b)} label={b} />
+                  <Brick x={bx} y={by} w={BRICK_W} h={BRICK_H} colour={blockColour(b)} />
+                  <text x={bx + BRICK_W / 2} y={by + BRICK_H / 2 + 4} text-anchor="middle" class="st-brick-text" fill={inkFor(hexOf(blockColour(b)))}>
+                    {b.length > 16 ? `${b.slice(0, 15)}…` : b}
+                  </text>
                   {sel && onRemoveBlock && !armed && (
                     <g
                       class="st-remove"
@@ -218,7 +257,7 @@ export function Elevation({ bp, view, verdicts = null, selectedSlot = null, high
                         }
                       }}
                     >
-                      <circle cx={bx + BRICK_W - 2} cy={by + 2} r={7} fill="#1b1f2a" stroke="#e8e6e3" />
+                      <circle cx={bx + BRICK_W - 2} cy={by + 2} r={7} fill={INK_DARK} stroke="#fff" />
                       <text x={bx + BRICK_W - 2} y={by + 6} text-anchor="middle" class="st-remove-x">
                         ×
                       </text>
@@ -228,19 +267,14 @@ export function Elevation({ bp, view, verdicts = null, selectedSlot = null, high
               )
             })}
             {!s.slot.blocks.length && (
-              <text x={x0} y={r.y + 24} class="bp-small">
+              <text x={x0} y={r.y + 24} class="st-small">
                 empty
               </text>
             )}
           </g>
         )
       })}
-      {floors.map((g, k) => (
-        <rect key={g} x={PAD} y={floorTop + k * BAND_H} width={W - 2 * PAD} height={BAND_H - 2} rx={2} fill={globalFill(g)} data-global={g}>
-          <title>{`Foundation (footer): ${g}`}</title>
-        </rect>
-      ))}
-      <rect x={4} y={height - 12} width={W - 8} height={8} rx={2} fill={hexOf('green')} opacity={0.8} />
+      {floors.map((g, k) => band(g, k, floorTop, 'Foundation'))}
     </svg>
   )
 }

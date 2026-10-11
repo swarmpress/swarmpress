@@ -56,6 +56,37 @@ function shade(hex: string, k: number): string {
   return `rgb(${c((n >> 16) & 255)}, ${c((n >> 8) & 255)}, ${c(n & 255)})`
 }
 
+/** WCAG relative luminance of a `#rrggbb` colour. */
+function luminance(hex: string): number {
+  const n = Number.parseInt(hex.replace('#', ''), 16)
+  const lin = (v: number) => {
+    const c = v / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255)
+}
+
+/** The light Studio's two inks: charcoal and brick white. */
+export const INK_DARK = '#26231f'
+export const INK_LIGHT = '#ffffff'
+
+/**
+ * The ink for text on a `#rrggbb` brick: whichever of charcoal and white has
+ * the higher contrast (WCAG), so a label on orange or yellow stays readable
+ * where a plain luminance cut would pick white.
+ */
+export function inkFor(hex: string): string {
+  const l = luminance(hex)
+  return (l + 0.05) / (luminance(INK_DARK) + 0.05) >= (1.05) / (l + 0.05) ? INK_DARK : INK_LIGHT
+}
+
+/** A `#rrggbb` colour mixed towards white by `t` (0: unchanged, 1: white), as `#rrggbb`. */
+export function tint(hex: string, t: number): string {
+  const n = Number.parseInt(hex.replace('#', ''), 16)
+  const m = (v: number) => Math.round(v + (255 - v) * t).toString(16).padStart(2, '0')
+  return `#${m((n >> 16) & 255)}${m((n >> 8) & 255)}${m(n & 255)}`
+}
+
 /**
  * A 2 × 2 brick seen from above at an angle, in a part's colour: the dock's
  * icon for a block (the mockups' bottom palette, ADR-0086). Top lit, the
