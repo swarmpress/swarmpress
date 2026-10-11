@@ -388,7 +388,28 @@ kind = "e2e"
 path = [".cockpit/evidence/game__playwright-wordpress/**/*.json", "apps/game/reports/playwright-wordpress.json"]
 component = "content"
 features = ["FEAT-105", "FEAT-107"]
-note = "local until the wp-sandbox CI job fetches the release (plan M1)"
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "game-playwright-wordpress"
+branch = "main"
+
+# The sandbox's own conformance suite (shipped in the release) against a fresh Node WordPress:
+# the Node entry and swarmpress-storage as separate processes on loopback HTTP (ADR-0079).
+# `bun packages/runner/src/cli.ts wp-conformance --junit packages/runner/reports/wp-conformance.xml`
+[[evidence]]
+id = "wp-sandbox/conformance"
+title = "the WordPress sandbox's conformance suite (Node entry, swarmpress-storage)"
+format = "junit"
+kind = "integration"
+path = [".cockpit/evidence/wp-sandbox__conformance/**/*.xml", "packages/runner/reports/wp-conformance.xml"]
+component = "content"
+features = ["FEAT-105", "FEAT-107"]
+[evidence.github]
+repo = "swarmpress/swarmpress"
+workflow = "ci.yml"
+artifact = "wp-sandbox-conformance"
+branch = "main"
 
 [[evidence]]
 id = "site-kit/playwright"

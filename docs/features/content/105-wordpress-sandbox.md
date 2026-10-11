@@ -16,6 +16,14 @@ paths:
   - apps/game/e2e/wordpress.spec.ts
   - apps/game/playwright.wordpress.config.ts
   - apps/game/vite.config.ts
+  - apps/game/src/php/startup.ts
+  - apps/game/src/php/startup.test.ts
+  - apps/game/src/session/wordpress-runtime.ts
+  - apps/game/src/session/wordpress-runtime.test.ts
+  - apps/game/src/ui/wordpress-card.ts
+  - apps/game/e2e/wp-sandbox.spec.ts
+  - packages/runner/src/wordpress.ts
+  - packages/runner/test/wordpress.test.ts
   - config/wp-sandbox.toml
   - xtask/src/sandbox.rs
 adrs:
@@ -34,16 +42,19 @@ Milestone M1 of [the build plan](../../design/wordpress-site-engine.md):
 
 Open before any public release: a legal review of the channel model (ADR-0078 §3).
 
-Built so far (browser side):
+Built (M1):
 - `cargo xtask sandbox-fetch [--node]` downloads the release pinned in `config/wp-sandbox.toml` into
   the git-ignored `vendor/wp-sandbox/` and checks its sha256; nothing of it is bundled or linked;
 - Vite serves its browser entry on its own origin (`:5181`, CORP and COEP) in dev and preview;
 - `PhpBackend` and `PhpWasmSandbox`: a hidden cross-origin iframe and one MessagePort carrying
   requests and storage messages; `?php=` and `php.backend.<company>` choose the backend;
-- `e2e/wordpress.spec.ts` (`playwright.wordpress.config.ts`): the real sandbox in the browser
-  installs onto live, commits an agent's REST post on a work branch, refuses a write on live, and
-  serves the merged post on live.
+- the startup stages (restore the repository, start WordPress, install a new site onto live,
+  one qualification request) and the WordPress card; `?site=wordpress` opts a company in and is
+  kept as its `site.engine` setting; the repository's records go to the company's text journal;
+- the runner's Node backend: the sandbox's Node entry and `swarmpress-storage` as separate
+  processes on loopback HTTP, and `swarmpress wp-conformance`, which runs the sandbox's own suite;
+- evidence: `e2e/wordpress.spec.ts` (the harness page), `e2e/wp-sandbox.spec.ts` (the game page on
+  the central server: install, REST, restore after a reload), `wp-sandbox/conformance`, and the
+  CI job `wp-sandbox` (needs the `WP_SANDBOX_TOKEN` secret while the release is private).
 
-Open: the startup stages and WordPress card, `?site=wordpress` in the session, the runner's Node
-backend, and the conformance suite as a CI job.
-
+Open before any public release: a legal review of the channel model (ADR-0078 §3).

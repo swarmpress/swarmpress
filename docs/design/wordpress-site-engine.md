@@ -1,6 +1,6 @@
 # WordPress as the site engine: the build plan (ADR-0078 to ADR-0084)
 
-**Status:** approved by the owner 2026-10-10; M0 (the wpdb seam spike) in progress.
+**Status:** approved by the owner 2026-10-10; M0 passed; M1 built, M2 and M3 in progress (2026-10-11).
 
 ## Context
 
@@ -128,6 +128,7 @@ The reports go to `artifacts/bench/wp-seam*.json` (`cockpit.benchmark.v1`), with
 **Persistence:**
 - company store migration v5 (tables `repo_objects`, `repo_commits`, `repo_refs`, `repo_change_requests`, in the plain SQLite subset);
 - central sealing: commits travel in sync segments next to the text journal (`encodeSegment` gains `commits`, kept byte-identical without them), and heads are fenced by the lease epoch;
+  - *as built (2026-10-11):* the repository's records are a text-journal kind, `repo` (ADR-0075), not a table set and a segment field of their own: they seal, sync and restore through the journal's existing paths (`CompanyStore.appendRepoRecords`, `repoRecords`), and segments without them stay byte-identical. The tables listed above are not needed: `content-repo` restores from the records;
 - restore replays commits into the empty store, like ADR-0075's texts.
 
 **Sim digests** (rule 2):

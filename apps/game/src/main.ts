@@ -328,6 +328,8 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     still: () => still,
     overlay: overlay?.store ?? null,
     session: session?.hook ?? null,
+    // The company's WordPress (?site=wordpress, ADR-0078): its runtime, both channels included; else null.
+    wordpress: session?.wordpress ?? null,
     clock,
     // Everyone on site, where they are drawn this frame and on the canvas (e2e smooth-movement check).
     people: () => game.people(),

@@ -15,7 +15,7 @@ export default defineConfig({
   testDir: 'e2e',
   // takeover.spec.ts (the executor lease, ADR-0045) needs the same two servers, and so does
   // mvp-bonsai.spec.ts (the game page on the real model; gated by BONSAI_E2E=1, project `bonsai`).
-  testMatch: ['mvp.spec.ts', 'takeover.spec.ts', 'mvp-bonsai.spec.ts', 'story.spec.ts', 'studio.spec.ts'],
+  testMatch: ['mvp.spec.ts', 'takeover.spec.ts', 'mvp-bonsai.spec.ts', 'story.spec.ts', 'studio.spec.ts', 'wp-sandbox.spec.ts'],
   timeout: 300_000,
   workers: 1,
   reporter: [['list'], ['json', { outputFile: process.env.PW_JSON ?? 'reports/playwright-mvp.json' }]],

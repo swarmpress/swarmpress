@@ -63,6 +63,8 @@ import { commandBytes, decodeSnapshot, encodeSnapshot, type Checkpoint } from '.
 import { fetchRemote, NEXT_SEGMENT_KEY, SEALED_SEQ_KEY, SEALED_TEXT_KEY, SyncUploader, toLogged, type SealResult } from '../sync/uploader'
 import type { DataTopic } from '../ui/data-source'
 import { mountModelCard } from '../ui/model-card'
+import { mountWordPressCard } from '../ui/wordpress-card'
+import { resolveSiteEngine, WordPressRuntime, type SiteEngineId } from './wordpress-runtime'
 import { companyStoreOptions, WasmDataSource, type SimOrgApi } from '../ui/wasm-source'
 import { showBootBinding } from '../ui/boot-screen'
 import { hudSite } from '../ui/hud'
@@ -230,6 +232,10 @@ export interface GameSession {
   setModelStatus(status: ModelStatus): void
   /** The local model runtime; main.ts attaches the scene's renderer hooks to it (GPU sharing). */
   models: ModelRuntime
+  /** Which engine builds the company's site (`?site=wordpress` opts in, ADR-0078). */
+  siteEngine: SiteEngineId
+  /** The company's WordPress, on the WordPress engine (null on Astro and read-only). */
+  wordpress: WordPressRuntime | null
   /** The overlay's data source: the sim (commands logged through the loop) plus the store's plan text. */
   dataSource(): WasmDataSource
   /** Speech bubbles (FEAT-025): a meeting turn's words from the transcript, and how long a turn lasts. */
@@ -951,6 +957,18 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   models.onChange(() => setModelStatus(models.status()))
   mountModelCard(models)
 
+  // The site engine (ADR-0078, plan M1): a company on WordPress starts its sandbox in the
+  // background too; the card shows the stages, and a failure stays on it with the reason.
+  const siteEngine = await resolveSiteEngine(location.search, store)
+  const wordpress =
+    siteEngine === 'wordpress' && !readOnly
+      ? await WordPressRuntime.open({ companyId: company.id, store, search: location.search, site: { title: company.name, adminEmail: `${me.user.login}@users.swarm.press` }, log: (line) => log(`wordpress: ${line}`) })
+      : null
+  if (wordpress) {
+    mountWordPressCard(wordpress)
+    wordpress.start().catch((e: unknown) => opts.onError?.(`WordPress did not start: ${String((e as Error)?.message ?? e)}`))
+  }
+
   // The story director (ADR-0074): ten-minute chapters of studio life as remarks, on the hosted
   // model by default (`?story=on|off` overrides); only running clock time counts.
   const storyParam = params.get('story')
@@ -1086,6 +1104,8 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
     status,
     setModelStatus,
     models,
+    siteEngine,
+    wordpress,
     speech: {
       // The loop knows which transcript row each utterance it applied spoke; after a reload the seqs coincide.
       text: async (meeting, seq, job) => {

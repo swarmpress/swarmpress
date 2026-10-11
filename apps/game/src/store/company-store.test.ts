@@ -210,6 +210,25 @@ describe('CompanyStore (memory engine)', () => {
     expect(await fresh.lastText()).toBe(9)
   })
 
+  it('journals repository records in order and restores them through the journal', async () => {
+    const s = await store()
+    const records = [
+      { r: 'object', digest: 'aa', value: { kind: 'option', name: 'blogname', value: 'Cinque Terre' } },
+      { r: 'commit', id: 'c1', parents: [], tree: { 'option:blogname': 'aa' }, author: { kind: 'system', id: 'install' }, message: 'install', seq: 1 },
+      { r: 'ref', name: 'live', head: 'c1' },
+    ]
+    await s.appendRepoRecords(records)
+    await s.appendRepoRecords([])
+    await s.appendPost('c1', 'work-item-1', JSON.stringify({ type: 'status', author: 'ceo', text: 'go' }))
+    const texts = await s.textsAfter(0)
+    expect(texts.map((t) => `${t.kind} ${t.key}`)).toEqual(['repo object:aa', 'repo commit:c1', 'repo ref:live', 'post work-item-1'])
+    expect(await s.repoRecords()).toEqual(records)
+    const fresh = await store()
+    await fresh.applyTexts('c1', texts)
+    expect(await fresh.repoRecords()).toEqual(records)
+    expect(await fresh.lastText()).toBe(4)
+  })
+
   it('journals the text of a store that predates the journal, once', async () => {
     const s = await store()
     await s.putBrief('c1', '9', JSON.stringify({ job_id: 1, brief: {}, writer: '', editor: 'staff-5', minutes: [], work_item: null, staff: [] }))

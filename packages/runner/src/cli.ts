@@ -8,6 +8,8 @@ import { pathToFileURL } from "node:url";
 import { SDK_VERSION } from "@swarm-press/sdk";
 import { cmdBuild, cmdCheck, cmdNew, cmdPack, cmdRun, cmdTest, consoleOut, type Out } from "./commands.ts";
 import { TEMPLATE_KINDS } from "./templates.ts";
+import { REPO_ROOT } from "./wasm.ts";
+import { runConformance } from "./wordpress.ts";
 
 export const USAGE = `swarmpress ${SDK_VERSION} — headless swarm.press host and extension toolkit
 
@@ -24,8 +26,12 @@ usage:
       --json                       print one JSON report instead of text
   swarmpress test <dir>              run every *.scenario.json under <dir>
   swarmpress pack <dir> [--out f]    check, build and write <id>-<version>.swarmpress.tgz with sha256 integrity
+  swarmpress wp-conformance          the WordPress sandbox's conformance suite against a fresh Node WordPress
+      --junit <file>               JUnit report (default reports/wp-conformance.xml)
+      --bench <file>               benchmark document (default reports/wp-seam-sandbox.json)
 
-The client-wasm build must exist (cargo xtask wasm) for run, test and sim-rule checks.`;
+The client-wasm build must exist (cargo xtask wasm) for run, test and sim-rule checks.
+wp-conformance needs \`cargo xtask sandbox-fetch --node\` and \`cargo build -p storage-api --bin swarmpress-storage\`.`;
 
 export async function main(argv: string[], out: Out = consoleOut): Promise<number> {
   const [cmd, ...rest] = argv;
@@ -76,6 +82,13 @@ export async function main(argv: string[], out: Out = consoleOut): Promise<numbe
           out,
         );
       }
+      case "wp-conformance":
+        return await runConformance({
+          root: REPO_ROOT,
+          junit: one("junit") ?? "reports/wp-conformance.xml",
+          bench: one("bench") ?? "reports/wp-seam-sandbox.json",
+          log: (line) => out.error(line),
+        });
       case undefined:
       case "help":
       case "--help":

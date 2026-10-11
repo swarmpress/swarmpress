@@ -53,7 +53,13 @@ export interface TextRecord {
   value: string
 }
 
-export const TEXT_KINDS = ['brief', 'brief-claim', 'artifact', 'transcript', 'item', 'post', 'kv'] as const
+/**
+ * `repo`: a record of the company's governed content repository (ADR-0080, `content-repo`'s
+ * `Record`: objects, commits, refs, change requests, releases), journalled as it is written, so
+ * the repository seals, syncs and restores with the company's other text. The journal is its only
+ * table: `repoRecords()` reads it back in order.
+ */
+export const TEXT_KINDS = ['brief', 'brief-claim', 'artifact', 'transcript', 'item', 'post', 'kv', 'repo'] as const
 export type TextKind = (typeof TEXT_KINDS)[number]
 
 /** kv keys whose values are company text: the story director's lines (ADR-0074), not its per-device playback state. */
@@ -717,6 +723,17 @@ export class CompanyStore implements OrchestratorStore {
     return rows.map(textRecord)
   }
 
+  /** Journals repository records in the order the repository wrote them (one batch). */
+  async appendRepoRecords(records: unknown[]): Promise<void> {
+    if (records.length) await this.driver.batch(records.map((r) => this.journal('repo', repoRecordKey(r), JSON.stringify(r))))
+  }
+
+  /** The company's repository records, oldest first: what `content-repo` restores from. */
+  async repoRecords(): Promise<unknown[]> {
+    const rows = await this.driver.all<{ value: string }>("SELECT value FROM text_journal WHERE kind = 'repo' ORDER BY n")
+    return rows.map((r) => JSON.parse(String(r.value)) as unknown)
+  }
+
   /** The newest journal number (0 when empty). */
   async lastText(): Promise<number> {
     const rows = await this.driver.all<{ n: number | null }>('SELECT MAX(n) AS n FROM text_journal')
@@ -795,9 +812,19 @@ export class CompanyStore implements OrchestratorStore {
         case 'kv':
           await this.setKv(t.key, t.value)
           break
+        case 'repo':
+          await this.driver.batch([this.journal('repo', t.key, t.value)])
+          break
       }
     }
   }
+}
+
+/** A repository record's journal key: its type and identity (`commit:<id>`, `ref:live`…). */
+function repoRecordKey(r: unknown): string {
+  const v = (r ?? {}) as Record<string, unknown>
+  const id = v.digest ?? v.id ?? v.name ?? v.table ?? ''
+  return `${String(v.r ?? 'record')}:${String(id)}`
 }
 
 function textRecord(r: { n: number; kind: string; key: string; value: string }): TextRecord {

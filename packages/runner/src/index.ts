@@ -5,5 +5,6 @@ export * from "./engine.ts";
 export * from "./extension.ts";
 export * from "./fakes.ts";
 export * from "./wasm.ts";
+export * from "./wordpress.ts";
 export { tar, untar, gzip, gunzip } from "./tar.ts";
 export { TEMPLATE_KINDS, template } from "./templates.ts";
