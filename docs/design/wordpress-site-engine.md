@@ -1,6 +1,6 @@
 # WordPress as the site engine: the build plan (ADR-0078 to ADR-0084)
 
-**Status:** approved by the owner 2026-10-10; M0 passed; M1 to M3 built (2026-10-11).
+**Status:** approved by the owner 2026-10-10; M0 passed; M1 to M7 built, M8 steps 1 to 3 built (2026-10-11): cinqueterre.travel imports, renders in the Coast theme, exports and compares URL by URL (`docs/runbooks/cinqueterre-cutover.md`). Step 4, the switch of the live deploy, waits for the owner.
 
 ## Context
 

@@ -9,7 +9,7 @@ import { SDK_VERSION } from "@swarm-press/sdk";
 import { cmdBuild, cmdCheck, cmdNew, cmdPack, cmdRun, cmdTest, consoleOut, type Out } from "./commands.ts";
 import { TEMPLATE_KINDS } from "./templates.ts";
 import { REPO_ROOT } from "./wasm.ts";
-import { runConformance } from "./wordpress.ts";
+import { runConformance, runMigration } from "./wordpress.ts";
 
 export const USAGE = `swarmpress ${SDK_VERSION} — headless swarm.press host and extension toolkit
 
@@ -31,7 +31,15 @@ usage:
       --bench <file>               benchmark document (default reports/wp-seam-sandbox.json)
 
 The client-wasm build must exist (cargo xtask wasm) for run, test and sim-rule checks.
-wp-conformance needs \`cargo xtask sandbox-fetch --node\` and \`cargo build -p storage-api --bin swarmpress-storage\`.`;
+  swarmpress wp-migrate <content>    a JSON-block site moved onto a fresh Node WordPress, exported and compared
+      --out <dir>                  plan, export and comparison (default reports/wp-migrate)
+      --origin <url>               the live site (default https://cinqueterre.travel)
+      --reference <dir>            a build of the frozen theme: its URLs are compared with the live site
+      --cache <dir>                live pages fetched once, kept here
+      --assets <dir>               the site's own images the pages name by path, uploaded as media
+
+wp-conformance needs \`cargo xtask sandbox-fetch --node\` and \`cargo build -p storage-api --bin swarmpress-storage\`;
+wp-migrate also \`cargo build -p content-import-wp --features cli\`.`;
 
 export async function main(argv: string[], out: Out = consoleOut): Promise<number> {
   const [cmd, ...rest] = argv;
@@ -87,6 +95,17 @@ export async function main(argv: string[], out: Out = consoleOut): Promise<numbe
           root: REPO_ROOT,
           junit: one("junit") ?? "reports/wp-conformance.xml",
           bench: one("bench") ?? "reports/wp-seam-sandbox.json",
+          log: (line) => out.error(line),
+        });
+      case "wp-migrate":
+        return await runMigration({
+          root: REPO_ROOT,
+          content: needDir("wp-migrate"),
+          out: one("out") ?? "reports/wp-migrate",
+          publicOrigin: one("origin") ?? "https://cinqueterre.travel",
+          reference: one("reference"),
+          cache: one("cache"),
+          assets: one("assets"),
           log: (line) => out.error(line),
         });
       case undefined:

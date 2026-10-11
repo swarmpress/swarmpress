@@ -135,3 +135,5 @@
 # The static export (FEAT-109): its unit tests are its own suite.
 - match: { classname: site-export }
   features: [FEAT-109]
+- match: { classname: content-import-wp }
+  features: [FEAT-112]

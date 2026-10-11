@@ -28,6 +28,7 @@ jobs:
       - uses: taiki-e/install-action@nextest
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy -p content-import-wp --features cli --all-targets -- -D warnings
       - run: cargo nextest run --workspace --profile ci
       - run: cargo test --workspace --doc
       - uses: actions/upload-artifact@v4
@@ -424,9 +425,12 @@ jobs:
           test -n "$GH_TOKEN" || { echo "::error::WP_SANDBOX_TOKEN is not set: the sandbox release cannot be fetched"; exit 1; }
           cargo xtask sandbox-fetch --node
       - run: cargo build --release -p storage-api --bin swarmpress-storage
+      - run: cargo build --release -p content-import-wp --features cli
       - run: pnpm install --frozen-lockfile
       - name: Conformance (Node entry + swarmpress-storage)
         run: bun packages/runner/src/cli.ts wp-conformance --junit packages/runner/reports/wp-conformance.xml --bench artifacts/bench/wp-seam-sandbox-node.json
+      - name: A site moved onto WordPress (the runner's WordPress tests, wp-migrate)
+        run: cd packages/runner && bun test test/wordpress.test.ts
       - uses: actions/download-artifact@v4
         with:
           name: wasm-pkg

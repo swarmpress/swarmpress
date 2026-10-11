@@ -1,0 +1,27 @@
+[package]
+name = "content-import-wp"
+description = "A JSON-block site moved onto WordPress (ADR-0083 §5): its routes, its pages as core blocks, the import plan the sandbox's REST API runs, and the URL-by-URL comparison of the export with the live site"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow = { workspace = true, optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+site-export = { path = "../site-export", optional = true }
+
+[features]
+# The migration CLI (`swarmpress-wp-migrate`): applies a plan over HTTP, exports, compares.
+cli = ["dep:anyhow", "dep:tokio", "dep:reqwest", "dep:site-export"]
+
+[[bin]]
+name = "swarmpress-wp-migrate"
+path = "src/bin/swarmpress-wp-migrate.rs"
+required-features = ["cli"]
+
+[lints]
+workspace = true

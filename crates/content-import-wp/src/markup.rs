@@ -1,0 +1,585 @@
+//! A JSON block as core block markup in one language (the import's block mapping).
+//!
+//! Every block becomes a `core/group` with the class `ct-{type}` (the theme styles the kinds),
+//! holding its fields in their order as core blocks, so every string the live page shows is in
+//! the post and WordPress's editor opens it as ordinary blocks:
+//!
+//! - a title-like field (`title`, `name`, `heading`, `question`…) → `core/heading`, one level
+//!   below its group's; a badge-like field (`badge`, `category`, `eyebrow`…) → a small paragraph;
+//! - an image field (`image`, `src`, `heroImage`…, a URL) → `core/image`, with `alt`/`caption`;
+//! - a quote (`quote`, with `author`) → `core/quote`;
+//! - text → `core/paragraph`s (a list of strings: one paragraph each; `callouts`, `tags`,
+//!   `recommendations`, `highlights`… → `core/list`);
+//! - `{text, url}`, `{label, href}` and `buttons` → `core/buttons`; a site link is given the
+//!   page's language;
+//! - `faqs` → `core/details` (the question as its summary);
+//! - an object → a nested group (`ct-{key}`), a list of objects → one nested group per item; a
+//!   story in a listing (`slug` with an `excerpt` or `readTime`) has its title link its article;
+//! - presentation and bookkeeping (`id`, `variant`, `layout`, `display`, `accent`, `icon`…) are
+//!   left out; short scalars (`priceRange`, `distance`, `googleRating`…) → a `key: value` line.
+//!
+//! The source's inline Markdown (`**bold**`, `*em*`, `[text](url)`) and `<br/>` become HTML;
+//! everything else is escaped. A block with no fields (the theme renders it from its own code)
+//! becomes an empty group, and the import reports it.
+
+use serde_json::{Map, Value};
+
+use crate::{is_localized, localized, LANGS};
+
+const SKIP: &[&str] = &[
+    "type",
+    "id",
+    "variant",
+    "layout",
+    "display",
+    "accent",
+    "icon",
+    "headingLevel",
+    "showViewAll",
+    "showOverview",
+    "itemType",
+    "collectionType",
+    "afterIndex",
+    "isLead",
+    "persona",
+    "slug",
+    "coordinates",
+    "lat",
+    "lng",
+    "color",
+    "style",
+    "theme",
+    "number",
+];
+
+const TITLES: &[&str] = &[
+    "title", "name", "heading", "question", "headline", "label", "day",
+];
+const BADGES: &[&str] = &[
+    "badge",
+    "category",
+    "eyebrow",
+    "kicker",
+    "subtitle_small",
+    "village",
+    "date",
+    "readTime",
+    "role",
+    "duration",
+    "pace",
+    "effort",
+    "bestSeason",
+];
+const IMAGES: &[&str] = &[
+    "image",
+    "src",
+    "heroImage",
+    "photo",
+    "thumbnail",
+    "cover",
+    "avatar",
+];
+const LISTS: &[&str] = &[
+    "callouts",
+    "tags",
+    "recommendations",
+    "highlights",
+    "tips",
+    "items_text",
+    "moments",
+    "hobbies",
+    "features",
+    "amenities",
+    "categories",
+];
+
+/// What the mapping met: kinds with no fields, for the import's report.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Notes {
+    pub empty_blocks: Vec<String>,
+}
+
+/// The page's body (a list of JSON blocks) as block markup in `lang`.
+pub fn body(blocks: &[Value], lang: &str, notes: &mut Notes) -> String {
+    let mut out = String::new();
+    for b in blocks {
+        out.push_str(&block(b, lang, notes));
+    }
+    out
+}
+
+/// One JSON block as a `core/group` with the class `ct-{type}`.
+pub fn block(b: &Value, lang: &str, notes: &mut Notes) -> String {
+    let kind = b.get("type").and_then(Value::as_str).unwrap_or("block");
+    let inner = match b {
+        Value::Object(o) => fields(o, lang, 2),
+        _ => String::new(),
+    };
+    if inner.is_empty() {
+        notes.empty_blocks.push(kind.to_string());
+    }
+    localize_links(&group(&format!("ct-{}", class_name(kind)), &inner), lang)
+}
+
+/// Every site link (`href="/…"`) in the page's language, wherever the source wrote it.
+fn localize_links(html: &str, lang: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(i) = rest.find("href=\"/") {
+        out.push_str(&rest[..i + 6]);
+        rest = &rest[i + 6..];
+        let end = rest.find('"').unwrap_or(rest.len());
+        out.push_str(&attr(&link(&decode_amp(&rest[..end]), lang)));
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn decode_amp(s: &str) -> String {
+    s.replace("&quot;", "\"")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+}
+
+fn class_name(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+fn kebab(key: &str) -> String {
+    let mut out = String::new();
+    for c in key.chars() {
+        if c.is_ascii_uppercase() {
+            out.push('-');
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    class_name(&out)
+}
+
+/// An object's fields in order, at heading `level`.
+fn fields(o: &Map<String, Value>, lang: &str, level: u8) -> String {
+    let mut out = String::new();
+    // A quote's author travels with the quote.
+    let author = o.get("author").and_then(|a| localized(a, lang));
+    let has_quote = o.get("quote").is_some_and(|q| localized(q, lang).is_some());
+    // A button: {text, url}.
+    if let (Some(text), Some(url)) = (
+        o.get("text")
+            .or(o.get("label"))
+            .and_then(|t| localized(t, lang)),
+        o.get("url").or(o.get("href")).and_then(Value::as_str),
+    ) {
+        if o.len() <= 4 {
+            return buttons(&[(text.to_string(), link(url, lang))]);
+        }
+    }
+    // A story in a listing links to its article (`slug` under a `stories` list).
+    let story_link = (o.get("excerpt").is_some() || o.get("readTime").is_some())
+        .then(|| o.get("slug").and_then(Value::as_str))
+        .flatten()
+        .map(|slug| link(&format!("/blog/{slug}"), lang));
+    for (key, v) in o {
+        let k = key.as_str();
+        if let (Some(href), "title") = (&story_link, k) {
+            if let Some(t) = localized(v, lang) {
+                out.push_str(&heading(
+                    &format!("<a href=\"{}\">{}</a>", attr(href), inline(t)),
+                    level,
+                ));
+                continue;
+            }
+        }
+        if SKIP.contains(&k)
+            || (k == "author" && has_quote)
+            || matches!(k, "alt" | "caption" | "imageAlt")
+        {
+            continue;
+        }
+        if v.is_null() || v == &Value::Bool(false) || v == &Value::Bool(true) {
+            continue;
+        }
+        if IMAGES.contains(&k) {
+            if let Some(src) = v.as_str().filter(|s| is_url(s)) {
+                let alt = o
+                    .get("alt")
+                    .or(o.get("imageAlt"))
+                    .and_then(|a| localized(a, lang))
+                    .unwrap_or("");
+                let caption = o.get("caption").and_then(|c| localized(c, lang));
+                out.push_str(&image(src, alt, caption));
+                continue;
+            }
+        }
+        if k == "quote" {
+            if let Some(q) = localized(v, lang) {
+                out.push_str(&quote(q, author));
+                continue;
+            }
+        }
+        if k == "faqs" {
+            if let Some(items) = v.as_array() {
+                for f in items {
+                    let q = f.get("question").and_then(|q| localized(q, lang));
+                    let a = f.get("answer").and_then(|a| localized(a, lang));
+                    if let (Some(q), Some(a)) = (q, a) {
+                        out.push_str(&details(q, a));
+                    }
+                }
+                continue;
+            }
+        }
+        if k == "buttons" {
+            if let Some(items) = v.as_array() {
+                let bs: Vec<(String, String)> = items
+                    .iter()
+                    .filter_map(|b| {
+                        let t = b.get("text").and_then(|t| localized(t, lang))?;
+                        let u = b.get("url").and_then(Value::as_str).unwrap_or("#");
+                        Some((t.to_string(), link(u, lang)))
+                    })
+                    .collect();
+                if !bs.is_empty() {
+                    out.push_str(&buttons(&bs));
+                }
+                continue;
+            }
+        }
+        out.push_str(&value(k, v, lang, level));
+    }
+    out
+}
+
+/// One field's value.
+fn value(key: &str, v: &Value, lang: &str, level: u8) -> String {
+    match v {
+        Value::String(_) => text_field(key, localized(v, lang).unwrap_or(""), lang, level),
+        Value::Object(o) if is_localized(o) => match o.get(lang).or_else(|| o.get("en")) {
+            Some(Value::Array(a)) => list_field(key, a, lang, level),
+            Some(s @ Value::String(_)) => text_field(key, s.as_str().unwrap_or(""), lang, level),
+            _ => o
+                .values()
+                .find_map(Value::as_str)
+                .map(|s| text_field(key, s, lang, level))
+                .unwrap_or_default(),
+        },
+        Value::Object(o) => {
+            let inner = fields(o, lang, (level + 1).min(6));
+            if inner.is_empty() {
+                String::new()
+            } else {
+                group(&format!("ct-{}", kebab(key)), &inner)
+            }
+        }
+        Value::Array(a) => list_field(key, a, lang, level),
+        Value::Number(n) => meta_line(key, &n.to_string()),
+        Value::Bool(_) | Value::Null => String::new(),
+    }
+}
+
+fn text_field(key: &str, s: &str, lang: &str, level: u8) -> String {
+    let s = s.trim();
+    if s.is_empty() {
+        return String::new();
+    }
+    if is_url(s) {
+        // A bare link field (`viewAllUrl`, `website`): a link paragraph.
+        if key.to_ascii_lowercase().contains("url") || key == "website" || key == "link" {
+            let href = link(s, lang);
+            return paragraph_html(
+                &format!("<a href=\"{}\">{}</a>", attr(&href), escape(&href)),
+                Some(&format!("ct-{}", kebab(key))),
+            );
+        }
+        return String::new();
+    }
+    if TITLES.contains(&key) {
+        return heading(&inline(s), level);
+    }
+    if BADGES.contains(&key) {
+        return paragraph_html(&inline(s), Some(&format!("ct-{}", kebab(key))));
+    }
+    if s.len() <= 24
+        && !s.contains(' ')
+        && !s.contains("\n\n")
+        && s.chars()
+            .any(|c| c.is_ascii_digit() || c == '$' || c == '€')
+    {
+        return meta_line(key, s);
+    }
+    s.split("\n\n")
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| paragraph_html(&inline(p.trim()), None))
+        .collect()
+}
+
+fn list_field(key: &str, a: &[Value], lang: &str, level: u8) -> String {
+    if a.is_empty() {
+        return String::new();
+    }
+    if a.iter().all(|x| localized(x, lang).is_some()) {
+        let items: Vec<&str> = a.iter().filter_map(|x| localized(x, lang)).collect();
+        if LISTS.contains(&key) {
+            return list(&items);
+        }
+        return items
+            .iter()
+            .map(|s| text_field(key, s, lang, level))
+            .collect();
+    }
+    let mut out = String::new();
+    for item in a {
+        match item {
+            Value::Object(o) => {
+                let inner = fields(o, lang, (level + 1).min(6));
+                if !inner.is_empty() {
+                    out.push_str(&group(&format!("ct-{}-item", kebab(key)), &inner));
+                }
+            }
+            other => out.push_str(&value(key, other, lang, level)),
+        }
+    }
+    out
+}
+
+fn meta_line(key: &str, v: &str) -> String {
+    paragraph_html(
+        &format!(
+            "<span class=\"ct-meta-key\">{}</span> {}",
+            escape(&humanize(key)),
+            escape(v)
+        ),
+        Some(&format!("ct-meta ct-{}", kebab(key))),
+    )
+}
+
+fn humanize(key: &str) -> String {
+    let k = kebab(key).replace('-', " ");
+    let mut c = k.chars();
+    c.next()
+        .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+        .unwrap_or_default()
+}
+
+fn is_url(s: &str) -> bool {
+    s.starts_with("https://")
+        || s.starts_with("http://")
+        || (s.starts_with('/') && !s.contains(' ') && s.len() > 1)
+}
+
+/// A site link in `lang`: `/itinerary` → `/de/itinerary/`; other links as they are.
+pub fn link(url: &str, lang: &str) -> String {
+    if !url.starts_with('/') || url.starts_with("//") {
+        return url.to_string();
+    }
+    let (path, rest) = match url.find(['?', '#']) {
+        Some(i) => (&url[..i], &url[i..]),
+        None => (url, ""),
+    };
+    if path.contains('.') {
+        return url.to_string();
+    }
+    let first = path.trim_start_matches('/').split('/').next().unwrap_or("");
+    let path = if LANGS.contains(&first) {
+        crate::routes::normalize(path)
+    } else {
+        crate::routes::normalize(&format!("/{lang}{path}"))
+    };
+    format!("{path}{rest}")
+}
+
+// ------------------------------------------------------------------ inline text
+
+pub fn escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn attr(s: &str) -> String {
+    escape(s).replace('"', "&quot;")
+}
+
+/// The source's inline Markdown and `<br/>` as HTML, everything else escaped.
+pub fn inline(s: &str) -> String {
+    let s = s
+        .replace("<br/>", "\n")
+        .replace("<br />", "\n")
+        .replace("<br>", "\n");
+    let mut out = String::new();
+    let chars: Vec<char> = s.chars().collect();
+    let mut i = 0;
+    let mut bold = false;
+    let mut em = false;
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '*' && chars.get(i + 1) == Some(&'*') {
+            out.push_str(if bold { "</strong>" } else { "<strong>" });
+            bold = !bold;
+            i += 2;
+            continue;
+        }
+        if c == '*' && (em || chars.get(i + 1).is_some_and(|n| !n.is_whitespace())) {
+            out.push_str(if em { "</em>" } else { "<em>" });
+            em = !em;
+            i += 1;
+            continue;
+        }
+        if c == '[' {
+            if let Some((text, url, used)) = md_link(&chars[i..]) {
+                out.push_str(&format!("<a href=\"{}\">{}</a>", attr(&url), escape(&text)));
+                i += used;
+                continue;
+            }
+        }
+        match c {
+            '\n' => out.push_str("<br>"),
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            _ => out.push(c),
+        }
+        i += 1;
+    }
+    if em {
+        out.push_str("</em>");
+    }
+    if bold {
+        out.push_str("</strong>");
+    }
+    out
+}
+
+fn md_link(chars: &[char]) -> Option<(String, String, usize)> {
+    let close = chars.iter().position(|c| *c == ']')?;
+    if chars.get(close + 1) != Some(&'(') {
+        return None;
+    }
+    let end = chars[close + 2..].iter().position(|c| *c == ')')? + close + 2;
+    let text: String = chars[1..close].iter().collect();
+    let url: String = chars[close + 2..end].iter().collect();
+    Some((text, url, end + 1))
+}
+
+// ------------------------------------------------------------------ core blocks
+
+fn json_attrs(attrs: &Value) -> String {
+    match attrs {
+        Value::Object(o) if !o.is_empty() => format!(" {}", attrs),
+        _ => String::new(),
+    }
+}
+
+pub fn group(class: &str, inner: &str) -> String {
+    let attrs = serde_json::json!({"className": class, "layout": {"type": "constrained"}});
+    format!(
+        "<!-- wp:group{} -->\n<div class=\"wp-block-group {}\">{}</div>\n<!-- /wp:group -->\n",
+        json_attrs(&attrs),
+        attr(class),
+        inner
+    )
+}
+
+pub fn heading(html: &str, level: u8) -> String {
+    let level = level.clamp(1, 6);
+    let attrs = if level == 2 {
+        Value::Null
+    } else {
+        serde_json::json!({ "level": level })
+    };
+    format!(
+        "<!-- wp:heading{} -->\n<h{level} class=\"wp-block-heading\">{html}</h{level}>\n<!-- /wp:heading -->\n",
+        json_attrs(&attrs)
+    )
+}
+
+pub fn paragraph_html(html: &str, class: Option<&str>) -> String {
+    match class {
+        Some(c) => format!(
+            "<!-- wp:paragraph {} -->\n<p class=\"{}\">{html}</p>\n<!-- /wp:paragraph -->\n",
+            serde_json::json!({ "className": c }),
+            attr(c)
+        ),
+        None => format!("<!-- wp:paragraph -->\n<p>{html}</p>\n<!-- /wp:paragraph -->\n"),
+    }
+}
+
+pub fn image(src: &str, alt: &str, caption: Option<&str>) -> String {
+    let cap = caption
+        .filter(|c| !c.trim().is_empty())
+        .map(|c| {
+            format!(
+                "<figcaption class=\"wp-element-caption\">{}</figcaption>",
+                inline(c)
+            )
+        })
+        .unwrap_or_default();
+    format!(
+        "<!-- wp:image -->\n<figure class=\"wp-block-image\"><img src=\"{}\" alt=\"{}\"/>{cap}</figure>\n<!-- /wp:image -->\n",
+        attr(src),
+        attr(alt)
+    )
+}
+
+pub fn quote(text: &str, author: Option<&str>) -> String {
+    let cite = author
+        .filter(|a| !a.trim().is_empty())
+        .map(|a| format!("<cite>{}</cite>", escape(a)))
+        .unwrap_or_default();
+    format!(
+        "<!-- wp:quote -->\n<blockquote class=\"wp-block-quote\">{}{cite}</blockquote>\n<!-- /wp:quote -->\n",
+        paragraph_html(&inline(text), None)
+    )
+}
+
+pub fn list(items: &[&str]) -> String {
+    let lis: String = items
+        .iter()
+        .map(|i| {
+            format!(
+                "<!-- wp:list-item -->\n<li>{}</li>\n<!-- /wp:list-item -->\n",
+                inline(i)
+            )
+        })
+        .collect();
+    format!("<!-- wp:list -->\n<ul class=\"wp-block-list\">{lis}</ul>\n<!-- /wp:list -->\n")
+}
+
+pub fn details(summary: &str, body: &str) -> String {
+    let paras: String = body
+        .split("\n\n")
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| paragraph_html(&inline(p.trim()), None))
+        .collect();
+    format!(
+        "<!-- wp:details -->\n<details class=\"wp-block-details\"><summary>{}</summary>{paras}</details>\n<!-- /wp:details -->\n",
+        inline(summary)
+    )
+}
+
+pub fn buttons(items: &[(String, String)]) -> String {
+    let bs: String = items
+        .iter()
+        .map(|(text, url)| {
+            format!(
+                "<!-- wp:button -->\n<div class=\"wp-block-button\"><a class=\"wp-block-button__link wp-element-button\" href=\"{}\">{}</a></div>\n<!-- /wp:button -->\n",
+                attr(url),
+                inline(text)
+            )
+        })
+        .collect();
+    format!(
+        "<!-- wp:buttons -->\n<div class=\"wp-block-buttons\">{bs}</div>\n<!-- /wp:buttons -->\n"
+    )
+}

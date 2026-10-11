@@ -1,0 +1,1 @@
+{ "name": "Coast", "description": "Five villages, one coast", "navigation": { "main": [ { "title": { "en": "Sights", "de": "Sehenswürdigkeiten" }, "url": "/sights" } ] } }

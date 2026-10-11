@@ -1,215 +1,127 @@
-# Runbook: cinqueterre.travel cutover
+# Runbook: cinqueterre.travel cutover (onto WordPress)
 
-This runbook moves the live cinqueterre.travel site from "built from the swarmpress monorepo" to
-"site-kit plus an agent-authored theme, operated by the game", **without the live site ever
-breaking** ([ADR-0023](../adr/0023-cinqueterre-migration-and-cutover.md)). Feature: FEAT-050.
-Agent pull requests reach a fork of the site first: [the fork rehearsal](fork-rehearsal.md)
-applies step 0 to the fork, and ends with the checklist for the first live article.
+This runbook moves the live cinqueterre.travel from "built by the frozen Astro theme" to "a static
+export of the company's WordPress", **without the live site ever breaking**
+([ADR-0083 §5](../adr/0083-publishing-a-wordpress-site-and-migrating-cinqueterre.md); plan M8 in
+[the WordPress site engine](../design/wordpress-site-engine.md); feature FEAT-112). It replaces the
+site-kit runbook of ADR-0023, whose steps 1 to 7 are superseded by ADR-0078 to ADR-0084 (they are in
+this file's history). Step 0 below was applied under that runbook and stays.
+
+**The switch (step 4) is the owner's decision.** Everything before it runs beside the live site and
+changes nothing a visitor sees.
 
 ## Where we start
 
 `swarmpress/cinqueterre.travel` `.github/workflows/deploy.yml` (on push to `main`, plus manual
-dispatch) does this:
-1. Checks out the content repo into `content/`.
-2. Checks out **`swarmpress/swarmpress` at its default branch** into `swarmpress/`, with
-   `token: ${{ secrets.MONOREPO_PAT }}`.
-3. Runs `pnpm install` at the monorepo root (pnpm 9, Node 20).
-4. Builds `swarmpress/packages/site-builder/src/themes/cinque-terre` with
-   `CONTENT_DIR=$GITHUB_WORKSPACE/content/content/pages` into `dist/`.
-5. Writes `CNAME` and `.nojekyll`, then verifies that the `de/en/fr/it` folders exist and there
-   are at least 100 HTML pages.
-6. Deploys with `actions/deploy-pages@v4`.
+dispatch) checks out the content repo, checks out swarmpress **pinned at `391d5de` (`legacy-final`)**,
+builds `packages/site-builder/src/themes/cinque-terre` with
+`CONTENT_DIR=$GITHUB_WORKSPACE/content/content/pages`, and deploys `dist/` to GitHub Pages.
 
-Consequence: **any change to swarmpress `main` changes the live site on its next deploy.** Until
-step 0 is applied, the fresh tree must keep
-`packages/site-builder/src/themes/cinque-terre/**`, its pnpm workspace glob and its lockfile
-entries intact.
+### Step 0: decouple (applied 2026-10-04)
 
-### Findings to verify before step 1
+The monorepo checkout is pinned to `legacy-final`
+([cinqueterre.travel#7](https://github.com/swarmpress/cinqueterre.travel/pull/7), `914f867`); the
+deploy went green and a crawl before and after was identical. swarmpress `main` changes freely since;
+the frozen theme path stays byte-identical in swarmpress until step 4 (CLAUDE.md rule 9).
 
-| Finding | How to verify | Status |
-|---|---|---|
-| `COLLECTIONS_DIR` / `BLOG_DIR` resolve to an empty gitlink in CI, so collections and `content/blog` may not render live | Compare the theme's content-path resolution with the CI checkout layout; fetch live collection URLs (e.g. `/en/riomaggiore/restaurants/`) and check for empty lists or 404s | to verify (M0) |
-| `content/blog` (18 files) duplicates `content/pages/blog` (19, canonical; 2 differ) | `diff -r` of the two trees; list the URLs each produces in a local build | to verify |
-| Languages and villages are hardcoded in the theme | grep the theme for `['en','de','fr','it']` and village slugs | known |
-| Other repos check out `swarmpress/swarmpress` | `gh search code "repository: swarmpress/swarmpress" --owner swarmpress`, plus the org's workflow files | to verify before replacing `main` |
+### What the live build really does (verified 2026-10-11)
 
-## Baseline crawl (taken in step 0, used by every gate)
-
-- **URL set:** every URL in `sitemap.xml`, plus a crawl from `/` (internal links only), per
-  language.
-- **HTML snapshots** of about 40 representative URLs: home ×4 languages, each village ×2
-  languages, collection indexes, 5 blog posts, 404, and the about and legal pages. Normalised by
-  stripping build hashes and timestamps.
-- **Screenshots** of the same 40 URLs at 375 and 1280 px.
-- **Lighthouse** for home and one article, in en and de.
-
-Store these as a CI artifact named `cutover-baseline`, plus a `cockpit.visual.v1` document for the
-screenshots.
-
-## Steps
-
-Each step is **one PR on the site repo**, gated against the baseline. Merge only when the gate
-holds. Each step is reverted with one revert commit.
-
-### Step 0: decouple (one line)
-
-1. Tag the current swarmpress `main` (`391d5de` at the time of writing) as **`legacy-final`**,
-   and also as **`legacy-ts`**:
-
-   ```sh
-   git tag legacy-final origin/main && git tag legacy-ts origin/main
-   git push origin legacy-final legacy-ts
-   ```
-
-2. Pin the monorepo checkout in the site repo's `.github/workflows/deploy.yml`:
-
-   ```diff
-          - name: Checkout monorepo (for theme)
-            uses: actions/checkout@v4
-            with:
-              repository: swarmpress/swarmpress
-   +          # Pinned to the last TypeScript-era commit (tag legacy-final).
-   +          ref: 391d5de8fe4eae3184dfd3f845f7e418239123f9
-              path: swarmpress
-              token: ${{ secrets.MONOREPO_PAT }}
-   ```
-
-   The ref is the full commit SHA rather than the tag name so the pin works even before the
-   tags are pushed. A ready-made commit with exactly this change exists on the local branch
-   `swarmpress/cutover-step-0` of the site repo checkout (also exported as a `git format-patch`
-   file); apply it with `git am` if the session cannot push.
-
-3. Run the workflow (`workflow_dispatch`) and capture the baseline crawl.
-
-**Gate:**
-- the deploy is green;
-- the crawl is identical to the pre-change production crawl (URL set and normalised HTML).
-
-**Rollback:** revert the one-line PR.
-
-**Applied 2026-10-04 (G1):** tag `legacy-final` → `391d5de` pushed on swarmpress; the pin merged as
-[swarmpress/cinqueterre.travel#7](https://github.com/swarmpress/cinqueterre.travel/pull/7)
-(`914f867`); its push deploy (run 37222745324) checked out `391d5de` and went green;
-delete-branch-on-merge enabled. Gate: a crawl from `/` (internal links, normalised HTML hashes)
-before and after the deploy is identical: 79 URLs, 71 × 200, unchanged. The crawl also found live
-bugs that predate the change: `/en/[object Object]` links on the home page and each village page
-(6), and `/blog` and `/sights` answer 404 (linked from the site).
-
-**After step 0,** swarmpress `main` can change freely, because the live site no longer follows
-it. The fresh tree may then drop the frozen theme path, but it is only deleted after step 1
-(M5).
-
-> This session cannot push to `swarmpress/cinqueterre.travel`. Either install the Claude GitHub
-> App on that repo, or have a maintainer apply the patch above.
-
-### Step 1: vendor the theme
-
-- Copy `packages/site-builder/src/themes/cinque-terre` at `legacy-final` into **`theme-legacy/`**
-  in the site repo, with its own `package.json` and lockfile.
-- Change `deploy.yml` to build in place, reproducing today's content-path behaviour exactly
-  (including the empty-gitlink quirk, if confirmed).
-- **Remove the monorepo checkout step and the `MONOREPO_PAT` secret.**
-
-**Gate:** identical URL set and identical normalised HTML for the 40 URLs.
-
-**Rollback:** revert. Step 0's pin still works, because the tag is immutable.
-
-### Step 2: the intended fix
-
-- Point the build at a real `CONTENT_ROOT`, so collections render.
-- **Dedupe the blog:** `content/pages/blog` is canonical, with one route per URL. Resolve the 2
-  differing files by human review, and delete `content/blog`.
-
-**Gate:**
-- **human review of new URLs**: this step is *meant* to add pages, so strict parity does not
-  apply;
-- no baseline URL disappears;
-- the visual diff on unchanged URLs is ≤ 0.5%.
-
-### Step 3: `site.manifest.json`
-
-- Add the manifest with:
-  - `languages`;
-  - a brand/voice reference;
-  - `regions` (villages: slug, name, order, colour, geo, entity ref);
-  - `sections`;
-  - `collections` (dir, schema, detail route, region field);
-  - `routes`;
-  - `screenshotPages`.
-- Homepage blocks and navigation read the manifest instead of hardcoded lists.
-
-**Gate:** visual diff ≤ 0.5% on all 40 URLs, and an identical URL set.
-
-### Step 4: site-kit
-
-- Extract `packages/site-kit` in swarmpress and publish `@swarm-press/site-kit` to npm
-  ([ADR-0016](../adr/0016-site-kit-distribution-via-npm.md)).
-- Restructure the site into `theme/` under `defineTheme`, and convert the Cinque Terre blocks to
-  `x:` custom blocks.
-- Add the platform-owned `site-ci.yml`, and slim `deploy.yml` down to "install, build with the
-  kit, deploy".
-
-**Gate:**
-- URL-set parity;
-- visual diff ≤ 0.5%;
-- Lighthouse no worse than the baseline;
-- `kit check --strict` green.
-
-### Step 5: schema v2
-
-- Text fields become localized (`string | Partial<Record<Lang,string>>`). Add a real
-  `blog-article` block and `MediaRef`.
-- Run `kit migrate` codemods over the content. Use a ratcheting `kit check --baseline`, so
-  existing violations can only decrease.
-- Regenerate the Rust `page.schema.json` from the same source (`pnpm schema:export`), and keep the
-  shared fixtures green on both sides.
-
-**Gate:**
-- `kit check --baseline` green;
-- visual ≤ 0.5%;
-- conformance tests green in swarmpress.
-
-### Step 6: import into the game
-
-Run the `ImportSite` job against the repo at a SHA. Only **derived indexes** are created, and
-content stays in the repo.
-
-| Source | Target |
+| Finding | Evidence |
 |---|---|
-| `entity-index` | entities |
-| `media-index` | closed media (338 images) |
-| `sitemap-index` + crawl | page registry |
-| `style-guide`, `linking-policy`, `writer-prompt`, `media-guidelines`, `blog-workflow` | house-style documents |
-| `content-calendar` | pitch backlog |
-| `collection-research` | research templates |
+| The theme resolves `content/blog`, `collections/` and `config/villages/` relative to a checkout layout CI does not have, so **none of them render live** | A build with those paths missing (below) gives exactly the live URL set; `/de/blog/5-hidden-gelaterias-you-need-to-try/` is a 404 live; village intros show the theme's default stories |
+| Blog articles live are the files of `content/pages/blog/`, served at their slugs | the URL set |
+| 18 slugs are claimed by two files; the later file in the theme's walk wins (`things-to-do.json` over `cinque-terre/things-to-do-editorial.json` for `/de/aktivitaeten/`) | live titles |
+| Live bugs: two articles render `[object Object]` (8 URLs), titles show a literal `<br/>`, content links without a language (`/itinerary`, `/village`, …) are 404s | the comparison's `live_broken_links` |
+| The home pages (`/`, `/{lang}/`) and the `/{lang}/village/` template render sections the theme keeps in its own code (hero, carousels, trending, newsletter…), not content | the import's report of blocks without fields |
 
-- **Staff:** Giulia, Isabella, Lorenzo, Sophia and Marco as Senior Writers, and Francesca as
-  Senior MediaEditor. Then generate an EiC, an Editor, a QA, an Art Director and a Front-end Dev.
-- The company starts as a **"Legacy publication"**: level 3, with reputation from the first
-  SiteAudit.
-- The repo is a **linked external repo**. It is **not** transferred into the platform org, because
-  that would break the Pages custom domain.
+## The migration (repeatable, local)
 
-**Gate:**
-- re-running the import at the same SHA produces identical indexes;
-- the SiteAudit page count matches the crawl.
+```sh
+# 1. a reference build of the frozen theme as CI builds it: from a copy (the build writes
+#    .astro/ inside the theme, which rule 9 forbids), with the paths CI cannot resolve missing
+T=packages/site-builder/src/themes/cinque-terre; R=$(mktemp -d)
+rsync -a --exclude node_modules --exclude .astro $T/ $R/theme/ && ln -s $PWD/$T/node_modules $R/theme/node_modules
+(cd $R/theme && CONTENT_DIR=$PWD/../../cinqueterre.travel/content/pages CONTENT_ROOT=/nonexistent \
+   VILLAGE_CONFIG_DIR=/nonexistent ./node_modules/.bin/astro build --outDir $R/reference)
 
-### Step 7: shadow mode
+# 2. the import, the export and the comparison (a fresh Node WordPress; see FEAT-112)
+cargo xtask sandbox-fetch --node
+cargo build --release -p storage-api --bin swarmpress-storage
+cargo build --release -p content-import-wp --features cli
+pnpm swarmpress wp-migrate cinqueterre.travel/content --out reports/wp-migrate \
+   --reference $R/reference --cache reports/wp-migrate/live \
+   --assets $T/public
+```
 
-- Set `autonomy = ApproveAll` for **2 weeks**: every pitch, merge and redesign is a CEO ticket.
-- Limit design to **ThemeTweak** until **3 clean cycles** (merged, deployed, smoke green, no
-  rollback).
-- Then switch to `ApproveMajor`.
+What it does:
+1. **Import** (`content-import-wp`): one WordPress post or page per live URL, by the frozen theme's
+   routing rules (the plan's URL set must equal the reference build's: it does, 663 URLs), each with
+   its route, language, SEO title and description as meta; the JSON blocks as core blocks; blog
+   articles as posts with categories and tags; one menu per language; the theme's two local images
+   uploaded as media. Written through the REST API on the branch `import-site` as the CEO, merged
+   into `live` by one change request, release `import`.
+2. **Theme:** Coast, the sandbox's editorial block theme (the frozen theme's palette and type).
+3. **Export:** `live` crawled into a content-addressed release (`export/release.json`, `export/files/`).
+4. **Comparison** (`compare.json`): every URL of the reference build, fetched from the live site
+   (4 at a time, cached), against the export.
 
-**Gate:**
-- zero unreviewed merges during shadow mode;
-- no rollback in the last 3 design cycles.
+## The gate
 
-## After cutover (M5)
+A URL passes when:
+- its **status** equals the live one;
+- its **content** keeps at least 900‰ of the live page's word trigrams (within a text block, so the
+  order of fields does not count; what more live pages repeat than any one source is published on,
+  24, is the theme's chrome and does not count);
+- it **lacks no link** to a page the live site serves (links to live 404s are counted, not required).
 
-- Delete `packages/site-builder/src/themes/cinque-terre` and its pnpm workspace glob from
-  swarmpress.
-- Replace swarmpress `main` with the fresh tree by a **normal merge commit**, never a force-push.
-  Do this only after the search for other repos that check out swarmpress comes back clean.
-- Keep the `legacy-final` tag forever, since step 0's history references it.
+The title is reported, not required.
+
+**Result, 2026-10-11** (the live site against the export of sandbox 0.6.0; the import took 3 minutes,
+the export 3½):
+
+| | |
+|---|---|
+| URLs compared | 663 |
+| pass | **631** |
+| status mismatches | 0 |
+| content below 900‰ | 32 (median 998‰) |
+| missing links to live pages | 141 (all on the 9 home and village-template pages) |
+| titles that differ | 0 |
+| live links to live 404s (fixed by the import) | 345 |
+| pages only in the export (category, tag and author archives, the sitemap's pages) | 218 |
+
+**What fails, and what it needs before the switch:**
+
+| URLs | What | Needs |
+|---|---|---|
+| `/`, `/{en,de,fr,it}/` (5) | the home renders the frozen theme's own sections (hero, carousels, trending, places to stay, latest stories, newsletter): none of it is content, so none of it imports | a home composed in the Studio (the latest stories as a query block, the villages, the newsletter form to `/f/`); the owner reviews it |
+| `/{lang}/village/` (4) | the village template: the theme's default stories | decide: retire the URL (a redirect to `/{lang}/cinque-terre/`) or compose it |
+| two articles × 4 languages (8) | **live renders `[object Object]`** (a live bug); the export has the whole article | nothing: the export fixes it |
+| the weather pages (11: `/weather`, `/wetter`, `/meteo`, `/cinque-terre/…`) at 770–865‰ | the frozen theme prints the forecast as a table with labels of its own (days, `°`, "The Week Ahead") | style the forecast in Coast, or accept |
+| `/{lang}/team/` (4) at 851‰ | the theme's labels around the editors' cards | accept, or label in Coast |
+
+Every other URL keeps its content (median 998‰), its links to live pages and its status. Images stay
+where the live site has them (Unsplash and the site's R2 bucket, hot-linked); the theme's two local
+images are uploaded as media.
+
+## Step 4: the switch (owner's decision)
+
+Before it:
+- the gate's failures above are resolved or accepted by the owner, one by one;
+- the export is deployed somewhere public that is not the domain (a preview), and the owner has
+  read it;
+- the static plane for the domain is chosen: GitHub Pages fed by the release (the workflow uploads
+  `export/files/` instead of building), or the platform's static plane (ADR-0049; not built for
+  custom domains yet).
+
+The switch is one PR on the site repo: `deploy.yml` stops building the Astro theme and deploys the
+export of `live` (the release the platform publishes for the company). **Rollback:** revert that PR;
+the pinned Astro build still works, because the tag is immutable.
+
+## After the switch
+
+- Rule 9 ends: delete `packages/site-builder/src/themes/cinque-terre`, its pnpm workspace glob and its
+  lockfile entries.
+- The legacy modules retire: `GithubGateway`, PathPolicy uses, `check_draft`, `finalize.rs`,
+  `site-kit`, `themes/starter`.
+- Keep the `legacy-final` tag forever: step 0 references it.

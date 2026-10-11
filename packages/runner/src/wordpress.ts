@@ -236,3 +236,69 @@ export function describeSandbox(root: string): string {
   const vendor = join(root, "vendor/wp-sandbox");
   return existsSync(vendor) ? readdirSync(vendor).join(", ") || "(empty)" : "(no vendor/wp-sandbox)";
 }
+
+/** The built `swarmpress-wp-migrate` CLI (content-import-wp, feature `cli`), the newer build, or null. */
+export function migrateBinary(root: string): string | null {
+  const built = ["target/release/swarmpress-wp-migrate", "target/debug/swarmpress-wp-migrate"].map((p) => join(root, p)).filter((p) => existsSync(p));
+  return built.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0] ?? null;
+}
+
+export interface MigrationOptions extends NodeWordPressOptions {
+  /** The site repo's `content/` directory. */
+  content: string;
+  /** Where the plan, the export and the comparison go. */
+  out: string;
+  /** The live site's origin (the export's public origin, and what is compared against). */
+  publicOrigin: string;
+  /** A build of the frozen theme: its `index.html` files are the URLs compared. Without it, no comparison. */
+  reference?: string;
+  /** Live pages fetched once, kept here. */
+  cache?: string;
+  /** The site's own images the pages name by path (`/giulia_rossi.png`), uploaded as media. */
+  assets?: string;
+}
+
+/**
+ * A JSON-block site moved onto a fresh Node WordPress (plan M8): WordPress installed, the import
+ * plan applied on a branch and merged into live, live exported, and (with a reference build) the
+ * export compared with the live site URL by URL. Returns the exit code of the first failing step.
+ */
+export async function runMigration(opts: MigrationOptions): Promise<number> {
+  const bin = migrateBinary(opts.root);
+  if (!bin) throw new WordPressUnavailableError("swarmpress-wp-migrate is not built: cargo build -p content-import-wp --features cli --release");
+  mkdirSync(opts.out, { recursive: true });
+  const run = (args: string[]) =>
+    new Promise<number>((resolve) => spawn(bin, args, { stdio: "inherit" }).once("exit", (c) => resolve(c ?? 1)));
+  const planFile = join(opts.out, "plan.json");
+  let code = await run(["plan", "--content", opts.content, "--out", planFile]);
+  if (code !== 0) return code;
+  const wp = await startNodeWordPress({ ...opts, timeoutMs: opts.timeoutMs ?? 300_000 });
+  try {
+    const install = await wp.request("/wp-admin/install.php?step=2", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "weblog_title=Import&user_name=admin&admin_password=import-pass-1&admin_password2=import-pass-1&pw_weak=on&admin_email=ceo%40example.org&blog_public=1&Submit=Install",
+    });
+    const text = await install.text();
+    if (install.status !== 200 || !text.includes("Success")) throw new Error(`install: ${install.status} ${text.slice(0, 200)}`);
+    await wp.repo({ op: "import.finish" });
+    code = await run(["apply", "--plan", planFile, "--sandbox", wp.url, "--repo", `${wp.storageUrl}/repo`, "--branch", "import-site", ...(opts.assets ? ["--assets", opts.assets] : [])]);
+    if (code !== 0) return code;
+    rmSync(join(opts.out, "export"), { recursive: true, force: true });
+    code = await run(["export", "--sandbox", wp.url, "--repo", `${wp.storageUrl}/repo`, "--public-origin", opts.publicOrigin, "--out", join(opts.out, "export")]);
+    if (code !== 0) return code;
+  } finally {
+    await wp.stop();
+  }
+  if (!opts.reference) return 0;
+  return run([
+    "compare",
+    "--reference", opts.reference,
+    "--live", opts.publicOrigin,
+    "--export", join(opts.out, "export"),
+    "--out", join(opts.out, "compare.json"),
+    "--plan", planFile,
+    "--skip", "/test-", "--skip", "/template-",
+    ...(opts.cache ? ["--cache", opts.cache] : []),
+  ]);
+}

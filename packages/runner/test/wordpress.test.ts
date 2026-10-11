@@ -7,7 +7,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
 import { REPO_ROOT, sandboxRelease, startNodeWordPress, storageBinary } from "../src/index.ts";
+import { migrateBinary, runMigration } from "../src/wordpress.ts";
 
 const ready = !!sandboxRelease(REPO_ROOT) && !!storageBinary(REPO_ROOT);
 
@@ -95,5 +97,39 @@ describe.skipIf(!ready)("WordPress on the runner (Node entry + swarmpress-storag
       }
     },
     240_000,
+  );
+});
+
+// The migration (FEAT-112, plan M8): a JSON-block site onto a fresh Node WordPress, exported.
+describe.skipIf(!ready || !migrateBinary(REPO_ROOT))("a site moved onto WordPress (swarmpress wp-migrate)", () => {
+  test(
+    "keeps every URL, its text, its SEO title and its language links",
+    async () => {
+      const out = mkdtempSync(join(tmpdir(), "swarmpress-migrate-"));
+      try {
+        const code = await runMigration({ root: REPO_ROOT, content: join(import.meta.dir, "fixtures/migrate-site/content"), out, publicOrigin: "https://coast.example" });
+        expect(code).toBe(0);
+        const release = JSON.parse(readFileSync(join(out, "export/release.json"), "utf8")) as { files: Record<string, { content_type: string }> };
+        const page = (p: string) => readFileSync(join(out, "export/files", p.slice(1), "index.html"), "utf8");
+        // One URL per page and language, as the live site has them; the blog article a post.
+        for (const p of ["/", "/en/", "/de/sights/", "/en/vernazza/restaurants/", "/it/blog/harbour-days/", "/de/blog/hafentage/", "/fr/vernazza/", "/en/manarola/sights/"]) {
+          expect(release.files[p]?.content_type ?? `missing ${p}`).toContain("text/html");
+        }
+        const de = page("/de/sights/");
+        expect(de).toContain("Der Hafen ist der Marktplatz.");
+        expect(de).toContain("<title>Sehenswürdigkeiten | Coast</title>");
+        expect(de).toContain('lang="de"');
+        // A site link takes the page's language, and points at the public origin.
+        expect(page("/en/sights/")).toContain('href="/en/blog/harbour-days/"');
+        expect(page("/en/vernazza/restaurants/")).toContain("<summary>Do I need to book?</summary>");
+        expect(page("/en/vernazza/")).toContain("Where the towers meet the sea.");
+        // The language switch links the page's translations.
+        expect(de).toContain('hreflang="fr"');
+        expect(existsSync(join(out, "plan.json"))).toBe(true);
+      } finally {
+        rmSync(out, { recursive: true, force: true });
+      }
+    },
+    600_000,
   );
 });

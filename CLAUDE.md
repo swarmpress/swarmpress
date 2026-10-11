@@ -1,6 +1,6 @@
 # swarm.press: development guide
 
-> **Last updated:** 2026-10-02 · **Milestone:** the first real MVP: the owner's company for real (`docs/mvp.md`) · **Branch:** `main`
+> **Last updated:** 2026-10-11 · **Milestone:** the first real MVP: the owner's company for real (`docs/mvp.md`); the WordPress engine (`docs/design/wordpress-site-engine.md`) · **Branch:** `main`
 > **Legacy:** the TypeScript swarm.press is at tag `legacy-ts` (`git show legacy-ts:<path>`).
 > Don't port legacy files; re-specify the concepts.
 
@@ -15,13 +15,16 @@ surfaces (ADR-0063, ADR-0065; decided, kit core and a spike first).
   and their work produces **one real website per player**.
 - The company is extensible through a JS SDK.
 - The user's own company is the imported, still-live **cinqueterre.travel**.
-- **Decided 2026-10-10, not built (ADR-0078 to ADR-0084):** sites move to **WordPress** (a minimal GPL
-  fork whose storage talks to the governed layer instead of MySQL), run on a
-  pluggable PHP backend (php-wasm first) inside a **GPL sandbox reached only through APIs**, with a
-  Guardian-style **governed content repository** (objects, commits, branches, change requests,
-  merges, releases) as the truth, and the public site as a static export of `live`. Until that is
-  built, the rules below about the site repo, JSON blocks and the Astro site kit describe the
-  current path.
+- **Decided 2026-10-10 (ADR-0078 to ADR-0084), built 2026-10-11 behind `?site=wordpress`:** sites run
+  on **WordPress** (a minimal GPL fork whose storage talks to the governed layer instead of MySQL) on
+  a pluggable PHP backend (php-wasm in the browser and in Node) inside a **GPL sandbox reached only
+  through APIs** (`swarmpress/wp-sandbox`, pinned in `config/wp-sandbox.toml`), with a Guardian-style
+  **governed content repository** (`crates/content-repo`: objects, commits, branches, change
+  requests, merges, releases) as the truth, and the public site as a static export of `live`
+  (`crates/site-export`). cinqueterre.travel imports and compares URL by URL
+  (`crates/content-import-wp`, `docs/runbooks/cinqueterre-cutover.md`); the live switch waits for the
+  owner. Until then the Astro path is the default and the rules below about the site repo, JSON
+  blocks and the site kit describe it.
 
 Full docs: `docs/index.md`. Decisions: `docs/adr/` (ADR-0001…0084; ADR-0038 to 0084 define
 the current architecture; ADR-0044 to 0084 are decided and mostly not built yet). Features and
@@ -61,6 +64,7 @@ Site repos build with @swarm-press/site-kit + an agent-authored theme on GitHub 
 | `crates/kit`, `kit/` | construction kit (ADR-0065): part catalogue, palette, design format and hash, the deterministic compiler (bricks per colour, studs, summary), room shells; data, schemas and shipped designs in `kit/`; `crates/kit-wasm` is its wasm facade |
 | `crates/server` | central service (axum, sqlx-sqlite) |
 | `crates/{content-schema,knowledge,github,protocol,testkit}` | page validation, indexes, GitHub client and fakes, wire types, test helpers |
+| `crates/{storage-api,storage-api-wasm,content-repo,site-export,content-import-wp}` | the WordPress engine's governed side: MySQL→SQLite projection per branch and the storage protocol, the repository, the static export, the migration of a JSON-block site (`swarmpress-wp-migrate`) |
 | `apps/game` | Babylon client, overlay UI, local LLM runtime |
 | `packages/sdk`, `packages/sandbox`, `packages/runner` | extension SDK, QuickJS sandbox, the `swarmpress` CLI (Bun) |
 | `packages/content-schema`, `packages/tracker` | Zod page schema → `page.schema.json`; cookieless tracker |
@@ -185,6 +189,9 @@ cp .env.example .env && set -a && . ./.env && set +a
 cargo run -p server --bin swarmpress-server    # central service, SQLite in ./data, fake GitHub + dev login
 pnpm dev                                      # cargo xtask wasm + Vite (apps/game)
 pnpm swarmpress run --days 3                    # headless game on Bun (SDK runner)
+cargo xtask sandbox-fetch --node                # the pinned GPL sandbox → vendor/wp-sandbox/
+pnpm swarmpress wp-conformance                  # the sandbox's conformance suite (Node WordPress)
+pnpm swarmpress wp-migrate cinqueterre.travel/content --reference <astro build>   # M8 (runbook)
 cargo xtask wasm --release
 
 # checks
