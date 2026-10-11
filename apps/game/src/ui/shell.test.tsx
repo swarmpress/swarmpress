@@ -42,7 +42,9 @@ describe('the shell', () => {
     expect(within(top).queryByRole('button', { name: /^Building/ })).toBeNull()
     fireEvent.click(within(top).getByRole('button', { name: /^Staff/ }))
     await flush()
-    expect(screen.getByRole('region', { name: /Org chart/ })).toBeTruthy()
+    const org = screen.getByRole('region', { name: /Org chart/ })
+    // The inspector's breadcrumb: the section, then the tool.
+    expect(org.querySelector('.panel-crumb')?.textContent).toBe('Staff · Org chart')
     expect(within(top).getByRole('button', { name: /^Staff/ }).getAttribute('aria-current')).toBe('page')
     fireEvent.click(within(top).getByRole('button', { name: /^Town/ }))
     await flush()

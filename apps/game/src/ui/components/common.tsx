@@ -2,6 +2,7 @@ import type { ComponentChildren } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 import { initials, type Persona } from '../personas'
 import { textOn } from '../format'
+import { SECTIONS, sectionOf } from '../sections'
 import { useStore, type PanelId } from '../store'
 
 const ICONS: Record<string, string> = {
@@ -120,10 +121,17 @@ export function Panel({
   useEffect(() => {
     ref.current?.focus()
   }, [id])
+  // The inspector's breadcrumb (ADR-0086): the section, then the tool.
+  const section = SECTIONS.find((x) => x.id === sectionOf(id, store.studioTab?.value ?? 'town'))
+  const tool = store.panels.find((p) => p.id === id)?.label ?? title
+  const crumb = section && section.label !== tool ? `${section.label} · ${tool}` : tool
   return (
     <section ref={ref} id={`panel-${id}`} class={`panel${wide ? ' is-wide' : ''}${full ? ' is-full' : ''}`} aria-labelledby={`panel-${id}-title`} tabIndex={-1}>
       <header class="panel-head">
-        <h2 id={`panel-${id}-title`}>{title}</h2>
+        <div class="panel-titles">
+          <p class="panel-crumb">{crumb}</p>
+          <h2 id={`panel-${id}-title`}>{title}</h2>
+        </div>
         <div class="panel-actions">
           {actions}
           <button type="button" class="icon-btn" onClick={() => (store.panel.value = null)} aria-label={`Close ${title}`}>

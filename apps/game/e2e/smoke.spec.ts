@@ -128,7 +128,12 @@ test('people walk smoothly between sim steps and open their profile on click', a
       const crowded = (p: Person) => all.some((o) => o.id !== p.id && Math.hypot(o.screenX - p.screenX, o.screenY - p.screenY) < 30)
       return all.find((p) => !p.walking && p.screenY > 80 && p.screenY < 700 && p.screenX > 40 && p.screenX < 1240 && !covered(p) && !crowded(p)) ?? null
     })
-    if (!sitter) await page.clock.runFor(1000)
+    // Jump the sim a few minutes and draw a couple of frames: a second of page time is 60 frames,
+    // minutes on CI's software renderer.
+    if (!sitter) {
+      await page.evaluate(() => (window as unknown as { __swarmpress: { sim: { advance(n: number): void } } }).__swarmpress.sim.advance(30))
+      await page.clock.runFor(48)
+    }
   }
   expect(sitter, 'someone seated and clickable').toBeTruthy()
   await page.mouse.click(sitter!.screenX, sitter!.screenY)

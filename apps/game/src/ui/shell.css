@@ -67,8 +67,12 @@ body.has-shell #ui { z-index: 3; }
 
 /* --- The inspector: panels on the right of the town --------------------------------------- */
 body.has-shell .panel { top: calc(var(--shell-top) + var(--shell-strip) + 12px); right: 12px; bottom: 12px; border-radius: 16px; backdrop-filter: none; }
+body.has-shell .panel.is-wide { width: min(1080px, calc(100vw - var(--shell-side) - 24px)); }
+body.has-shell .panel { max-width: calc(100vw - var(--shell-side) - 24px); }
 body.has-shell .panel.is-full { top: calc(var(--shell-top) + var(--shell-strip) + 8px); left: calc(var(--shell-side) + 8px); right: 8px; bottom: 8px; }
 body.has-shell .panel-head h2 { font-size: 22px; }
+.panel-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.panel-crumb { margin: 0 !important; font: 600 11px/1.2 system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ui-muted); }
 body.has-shell .modal-backdrop { background: rgba(38, 35, 31, 0.35); }
 
 /* --- The HUD as the status strip: the clock and its controls, the company's numbers ------- */
@@ -102,3 +106,20 @@ body.has-shell .hud-toast { background: #fffdf8; color: #9b1c12; border-color: #
   .shell-logo { width: auto; }
   .shell-section-label { font-size: 14px; }
 }
+
+/* --- The Plan board as in the mockups: a pastel column per stage, white cards ----------------- */
+body.has-shell .board { gap: 12px; }
+body.has-shell .board-col { padding: 10px 8px; border-radius: 14px; border: 1px solid transparent; }
+body.has-shell .board-col h3 { margin: 0 4px 10px; font-size: 13px; letter-spacing: 0.04em; }
+body.has-shell .board-col ul { gap: 8px; }
+body.has-shell .board-col .item-card { background: #fff; border: 1px solid var(--ui-line); border-left-width: 3px; box-shadow: 0 2px 6px rgba(60, 45, 20, 0.08); }
+body.has-shell .col-backlog { background: #efeafb; border-color: #ded3f6; } body.has-shell .col-backlog h3 { color: #4b2e8f; }
+body.has-shell .col-planned { background: #e6eefc; border-color: #cddcf8; } body.has-shell .col-planned h3 { color: #1a3f9e; }
+body.has-shell .col-in-progress { background: #fdf3d6; border-color: #f4e1a8; } body.has-shell .col-in-progress h3 { color: #6e4a00; }
+body.has-shell .col-in-review { background: #fde9d5; border-color: #f6d0a9; } body.has-shell .col-in-review h3 { color: #7a3d00; }
+body.has-shell .col-approved { background: #e2f4e7; border-color: #bfe5ca; } body.has-shell .col-approved h3 { color: #12632f; }
+body.has-shell .col-scheduled { background: #e0f2f5; border-color: #bfe2e8; } body.has-shell .col-scheduled h3 { color: #0d5560; }
+body.has-shell .col-published { background: #fbe4ea; border-color: #f3c6d2; } body.has-shell .col-published h3 { color: #8b1d3c; }
+body.has-shell .col-blocked { background: #fde4e1; border-color: #f6c3bd; } body.has-shell .col-blocked h3 { color: #9b1c12; }
+body.has-shell .col-cancelled { background: #f1eee9; border-color: #e2ddd4; } body.has-shell .col-cancelled h3 { color: #4a443b; }
+body.has-shell .board-col h3 .muted { color: inherit; }
