@@ -15,6 +15,8 @@ export interface BlueprintApi {
   hashBlueprint(bp: string): string
   checkTool(graph: string, ctx: string): string
   toolManifest(graph: string): string
+  /** `town_design`: the brick town of a blueprint (`swarmpress.design.v1`); absent in older fakes. */
+  townDesign?(bp: string, flagged: string): string
   /** `apply_changes`: `base` with the chosen `changes` of `proposal` (the booklet's steps); absent in older fakes. */
   applyChanges?(base: string, proposal: string, changes: string): string
 }

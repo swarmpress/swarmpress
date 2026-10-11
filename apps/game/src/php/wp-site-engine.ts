@@ -10,6 +10,7 @@
  * `wordpress_pack`), and the export and deploy that follow a merge (ADR-0083).
  */
 import type { KnowledgeFetch } from '../net/central'
+import type { WpPaletteColor, WpStudio, WpTemplates } from './wp-studio'
 import type { PhpRequest, PhpResponse } from './types'
 
 /** What orchestrator-wasm calls for a company on WordPress (its `OrchestratorSiteEngine`). */
@@ -270,6 +271,72 @@ export class WpSiteEngine {
       }
       const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer">`
       return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (h) => h + csp) : csp + html
+    })
+  }
+
+  // ---------------------------------------------------------------- the Brick Studio (ADR-0082 §4)
+
+  /** The site's structures on `live` for the Studio: post types, their regions, blocks, plugins, palette. */
+  readStudio(): Promise<WpStudio> {
+    return this.exclusive(async () => {
+      await this.session(LIVE, { kind: 'system', id: 'studio' }, 1, true)
+      // No `_fields`: WordPress filters the types map as if it were a list and answers [].
+      const types = await json<Record<string, { slug: string; name: string; hierarchical: boolean }>>(await this.wp.request({ url: '/?rest_route=/wp/v2/types' }), 'post types')
+      const settings = await json<{ swarmpress_post_type_templates?: string }>(await this.wp.request({ url: '/?rest_route=/wp/v2/settings' }), 'settings')
+      let templates: WpTemplates = {}
+      try {
+        templates = JSON.parse(settings.swarmpress_post_type_templates || '{}') as WpTemplates
+      } catch {
+        templates = {}
+      }
+      const blockTypes = (await json<{ name: string }[]>(await this.wp.request({ url: '/?rest_route=/wp/v2/block-types&_fields=name' }), 'block types')).map((b) => b.name)
+      const plugins = (await json<{ plugin: string; name: string; status: string }[]>(await this.wp.request({ url: '/?rest_route=/wp/v2/plugins&_fields=plugin,name,status' }), 'plugins')).map((p) => ({ ...p, governed: false }))
+      const themes = await json<{ stylesheet: string }[]>(await this.wp.request({ url: '/?rest_route=/wp/v2/themes&status=active&_fields=stylesheet' }), 'themes')
+      const stylesheet = themes[0]?.stylesheet
+      const base = stylesheet ? await json<{ settings?: { color?: { palette?: WpPaletteColor[] | { theme?: WpPaletteColor[] } } } }>(await this.wp.request({ url: `/?rest_route=/wp/v2/global-styles/themes/${encodeURIComponent(stylesheet)}` }), 'theme styles') : {}
+      const raw = base.settings?.color?.palette
+      const palette = (Array.isArray(raw) ? raw : (raw?.theme ?? [])).map((c) => ({ slug: c.slug, name: decode(c.name), color: c.color }))
+      return { head: await this.head(LIVE), postTypes: Object.values(types).map((t) => ({ slug: t.slug, name: t.name, hierarchical: t.hierarchical })), templates, blockTypes, plugins, palette, userStylesId: null }
+    })
+  }
+
+  /**
+   * A Studio edit as the CEO's build (ADR-0077 §3): `write` runs on a new `studio-…` branch as the
+   * CEO, then its change request merges into live. Returns live's new head.
+   */
+  async buildStudio(title: string, write: () => Promise<void>): Promise<string> {
+    const branch = await this.branchFor(`studio-${Date.now().toString(36)}`)
+    const ceo = { kind: 'human', id: 'ceo' }
+    await this.exclusive(async () => {
+      await this.session(branch, ceo)
+      await write()
+    })
+    const { id } = check(await this.wp.repo<{ id: number }>({ op: 'cr.open', source: branch, title, author: ceo }), `open ${branch}`)
+    const merged = check(await this.wp.repo<{ head: string }>({ op: 'cr.merge', id, author: ceo }), `merge ${branch}`)
+    return merged.head
+  }
+
+  /** The post types' regions (the option the sandbox applies), built by the CEO. */
+  saveTemplates(templates: WpTemplates): Promise<string> {
+    return this.buildStudio('Studio: buildings', async () => {
+      await json(
+        await this.wp.request({ method: 'POST', url: '/?rest_route=/wp/v2/settings', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ swarmpress_post_type_templates: JSON.stringify(templates) }) }),
+        'save the buildings',
+      )
+    })
+  }
+
+  /** The Paint shop's palette, into the user's global styles (created on the branch when missing). */
+  savePalette(palette: WpPaletteColor[]): Promise<string> {
+    return this.buildStudio('Paint shop: palette', async () => {
+      const themes = await json<{ _links?: Record<string, { href: string }[]> }[]>(await this.wp.request({ url: '/?rest_route=/wp/v2/themes&status=active' }), 'themes')
+      const href = themes[0]?._links?.['wp:user-global-styles']?.[0]?.href ?? ''
+      const id = Number(href.match(/global-styles\/(\d+)/)?.[1])
+      if (!id) throw new Error('the active theme has no user global styles')
+      await json(
+        await this.wp.request({ method: 'POST', url: `/?rest_route=/wp/v2/global-styles/${id}`, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings: { color: { palette: { theme: palette } } } }) }),
+        'save the palette',
+      )
     })
   }
 

@@ -235,6 +235,10 @@ export interface GameDataSource {
    * the source has no such preview (the page is rendered from its blocks instead).
    */
   sitePreview?(item: string): Promise<string | null>
+  /** The wp-admin door on a new branch (a company on WordPress, ADR-0082 §5); absent elsewhere. */
+  openDoor?(): Promise<{ branch: string; url: string; storage(payload: string): Promise<string>; build(): Promise<string | null>; discard(): Promise<void> }>
+  /** The Paint shop's palette, saved and built (a company on WordPress, FEAT-104); absent elsewhere. */
+  savePalette?(palette: { slug: string; name: string; color: string }[]): Promise<string>
   /** `Sim.org_json()` (organization.md §9). */
   getOrg(): Promise<OrgJson>
   /** `Sim.finance_json()` (organization.md §9). */

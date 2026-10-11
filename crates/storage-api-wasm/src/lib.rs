@@ -96,8 +96,17 @@ impl Platform for Outbox {
 #[wasm_bindgen]
 pub struct StorageHost {
     host: Host<JsExec>,
-    session: Session,
+    /// One session per channel: the sandbox (`main`) and the wp-admin door (`door`) are bound to
+    /// their own branch and author. A message names its channel (`channel`, default `main`).
+    sessions: std::collections::BTreeMap<String, Session>,
     outbox: Outbox,
+}
+
+fn channel_of(msg: &Value) -> String {
+    msg.get("channel")
+        .and_then(Value::as_str)
+        .unwrap_or("main")
+        .to_string()
 }
 
 #[wasm_bindgen]
@@ -119,7 +128,7 @@ impl StorageHost {
         });
         Ok(StorageHost {
             host: Host::new(repo, prefix, opener),
-            session: Session::default(),
+            sessions: std::collections::BTreeMap::new(),
             outbox: Outbox::default(),
         })
     }
@@ -127,29 +136,48 @@ impl StorageHost {
     /// One storage-channel message from the sandbox (JSON in, JSON out).
     pub fn storage(&mut self, msg: &str) -> String {
         let msg: Value = serde_json::from_str(msg).unwrap_or(Value::Null);
-        protocol::storage(&mut self.host, &self.session, &mut self.outbox, &msg).to_string()
+        let session = self.sessions.entry(channel_of(&msg)).or_default().clone();
+        protocol::storage(&mut self.host, &session, &mut self.outbox, &msg).to_string()
     }
 
     /// One governed-API message (JSON in, JSON out).
     pub fn repo(&mut self, msg: &str) -> String {
         let msg: Value = serde_json::from_str(msg).unwrap_or(Value::Null);
-        protocol::repo(&mut self.host, &mut self.session, &msg).to_string()
+        let session = self.sessions.entry(channel_of(&msg)).or_default();
+        protocol::repo(&mut self.host, session, &msg).to_string()
     }
 
-    /// Records an upload whose bytes the worker stored under `sha256`.
-    pub fn put_asset(&mut self, path: &str, sha256: &str, mime: &str, size: f64) -> String {
+    /// Records an upload whose bytes the worker stored under `sha256`, on `channel`'s branch.
+    pub fn put_asset(
+        &mut self,
+        channel: &str,
+        path: &str,
+        sha256: &str,
+        mime: &str,
+        size: f64,
+    ) -> String {
+        let branch = self
+            .sessions
+            .get(channel)
+            .map(|s| s.branch.clone())
+            .unwrap_or_else(|| Session::default().branch);
         match self
             .host
-            .put_asset(&self.session.branch, path, sha256, mime, size as u64)
+            .put_asset(&branch, path, sha256, mime, size as u64)
         {
             Ok(()) => json!({"sha256": sha256}).to_string(),
             Err(e) => json!({"error": e.to_string()}).to_string(),
         }
     }
 
-    /// The digest of the upload at `path` on the session's branch.
-    pub fn asset_sha(&self, path: &str) -> Option<String> {
-        self.host.asset(&self.session.branch, path)
+    /// The digest of the upload at `path` on `channel`'s branch.
+    pub fn asset_sha(&self, channel: &str, path: &str) -> Option<String> {
+        let branch = self
+            .sessions
+            .get(channel)
+            .map(|s| s.branch.clone())
+            .unwrap_or_else(|| Session::default().branch);
+        self.host.asset(&branch, path)
     }
 
     /// The repository records written since the last call (JSON array), for the company store.

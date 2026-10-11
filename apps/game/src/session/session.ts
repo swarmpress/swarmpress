@@ -283,6 +283,22 @@ class SessionDataSource extends WasmDataSource {
     return Promise.resolve(this.models)
   }
 
+  /** Opens the wp-admin door (a company on WordPress); null otherwise. */
+  doorOpener: (() => ReturnType<NonNullable<import('../ui/data-source').GameDataSource['openDoor']>>) | null = null
+
+  openDoor() {
+    if (!this.doorOpener) return Promise.reject(new Error('This site has no wp-admin.'))
+    return this.doorOpener()
+  }
+
+  /** Saves the Paint shop's palette (a company on WordPress); null otherwise. */
+  paletteSaver: ((palette: { slug: string; name: string; color: string }[]) => Promise<string>) | null = null
+
+  savePalette(palette: { slug: string; name: string; color: string }[]): Promise<string> {
+    if (!this.paletteSaver) return Promise.reject(new Error('This site has no palette to edit here.'))
+    return this.paletteSaver(palette)
+  }
+
   /** Renders a work item's draft through the site engine (a company on WordPress); null otherwise. */
   sitePreviewer: ((item: string) => Promise<string | null>) | null = null
 
@@ -920,7 +936,8 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   // The site's blueprint, tools and brick town (ADR-0072): read at boot and with each audit, cached per commit by the server.
   loadSiteModels = async () => {
     if (readOnly || loop.halted) return
-    const m = await client.siteBlueprint(lease.token)
+    // A company on WordPress shows its post types, regions and palette (ADR-0082 §4).
+    const m = wpSite ? await wpSite.studioModels() : await client.siteBlueprint(lease.token)
     siteModels = m
     sources.forEach((s) => s.setSiteModels(m))
     log(`site models at ${m.commit.slice(0, 7)}: ${m.source} blueprint, ${m.blueprint.page_types.length} page types, ${m.tools.length} tools, ${m.issues.length} issues`)
@@ -1159,7 +1176,7 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
       const s = new SessionDataSource(orgApi, { ...companyStoreOptions(store, company, site, recorder), changeKey: () => `${sim.step()}:${loop.lastSeq}` })
       if (!readOnly)
         s.siteActions = {
-          save: (body) => client.putBlueprint(lease.token, body),
+          save: (body) => (wpSite ? wpSite.saveBlueprint(body) : client.putBlueprint(lease.token, body)),
           reload: () => loadSiteModels(),
           // FEAT-095: the request is a brief in the store, the command carries its ref.
           commission: (kind, request) => {
@@ -1176,6 +1193,15 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
               request,
             )
           },
+        }
+      // The wp-admin door of a company on WordPress (ADR-0082 §5).
+      if (wpSite && !readOnly) s.doorOpener = () => wpSite.openDoor()
+      // The Paint shop of a company on WordPress (FEAT-104): the theme's palette, built by the CEO.
+      if (wpSite && !readOnly)
+        s.paletteSaver = async (palette) => {
+          const head = await wpSite.savePalette(palette)
+          await loadSiteModels()
+          return head
         }
       // A company on WordPress previews its drafts as its sandbox renders the item's branch (ADR-0083 §4).
       if (wpSite)

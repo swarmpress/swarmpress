@@ -14,8 +14,8 @@ import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 export interface StorageHostApi {
   storage(msg: string): string
   repo(msg: string): string
-  put_asset(path: string, sha256: string, mime: string, size: number): string
-  asset_sha(path: string): string | undefined
+  put_asset(channel: string, path: string, sha256: string, mime: string, size: number): string
+  asset_sha(channel: string, path: string): string | undefined
   take_records(): string
   take_outbox(): string
   free?(): void
@@ -118,10 +118,10 @@ export class GameStorage {
         const bytes = b64.decode(msg.data ?? '')
         const sha = await sha256Hex(bytes)
         await this.assets.put(sha, bytes, msg.mime ?? '')
-        return this.host.put_asset(msg.path ?? '', sha, msg.mime ?? '', bytes.length)
+        return this.host.put_asset(String(msg.channel ?? 'main'), msg.path ?? '', sha, msg.mime ?? '', bytes.length)
       }
       case 'asset.get': {
-        const sha = this.host.asset_sha(msg.path ?? '')
+        const sha = this.host.asset_sha(String(msg.channel ?? 'main'), msg.path ?? '')
         const bytes = sha ? await this.assets.get(sha) : null
         return JSON.stringify(bytes ? { sha256: sha, data: b64.encode(bytes) } : { error: `asset.get: no asset at ${msg.path}` })
       }

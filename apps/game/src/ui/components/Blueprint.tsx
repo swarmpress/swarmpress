@@ -33,16 +33,23 @@ import { Booklet } from '../studio/Booklet'
 import { BuildingWorkbench } from '../studio/Building'
 import { FactoryWorkbench } from '../studio/Factory'
 import { setSound, soundOn } from '../studio/bricks'
+import { PaintShop, PluginSets, type PaletteColor as PaintColor } from '../studio/PaintShop'
+import { WpAdminButton } from '../studio/WpAdminDoor'
 import { commit, historyOf, redo, undo, type History } from '../studio/history'
 import { Badge, Notice, Panel, TabPanel, Tabs } from './common'
 
 /** The workbenches (ADR-0077): the town map, one building from the front, the tools' factory. */
-type Tab = 'town' | 'building' | 'factory'
+type Tab = 'town' | 'building' | 'factory' | 'paint'
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'town', label: 'Town' },
   { id: 'building', label: 'Building' },
   { id: 'factory', label: 'Factory' },
 ]
+/** A site with a palette to paint (a company on WordPress, FEAT-104) gets the Paint shop. */
+const PAINT_TAB: { id: Tab; label: string } = { id: 'paint', label: 'Paint shop' }
+
+/** The WordPress-only parts of a site's models (ADR-0082 §4). */
+type WordPressParts = { engine?: 'wordpress'; palette?: PaintColor[]; plugins?: { plugin: string; name: string; status: string; governed: boolean }[] }
 
 type Checker = { state: 'loading' | 'failed'; api: null } | { state: 'ready'; api: BlueprintApi }
 
@@ -67,6 +74,7 @@ export function Blueprint() {
   const models = store.siteModels.value
   const [tab, setTab] = useState<Tab>('town')
   const checker = useChecker()
+  const wp = (models ?? {}) as WordPressParts
   return (
     <Panel id="blueprint" title="Brick Studio · Site blueprint" full>
       {!models ? (
@@ -76,22 +84,31 @@ export function Blueprint() {
       ) : (
         <>
           <p class="small muted" data-checker={checker.state}>
-            {models.source === 'repo' ? 'From blueprint/site.json' : 'Read from the pages (imported)'} at {models.commit.slice(0, 7)} · hash {models.hash.slice(0, 12)} ·{' '}
-            {models.blueprint.page_types.length} page types · {models.tools.length} tools
+            {wp.engine === 'wordpress' ? 'WordPress: post types and their regions' : models.source === 'repo' ? 'From blueprint/site.json' : 'Read from the pages (imported)'} at {models.commit.slice(0, 7)} · hash{' '}
+            {models.hash.slice(0, 12)} · {models.blueprint.page_types.length} page types · {models.tools.length} tools
           </p>
           {checker.state === 'failed' && (
             <Notice tone="warn" title="The checker could not load">
               Edits are not checked here; the server still checks them when you save.
             </Notice>
           )}
-          <Tabs label="Workbenches" idPrefix="blueprint" tabs={TABS} value={tab} onChange={setTab} />
+          <Tabs label="Workbenches" idPrefix="blueprint" tabs={wp.engine === 'wordpress' && wp.palette ? [...TABS, PAINT_TAB] : TABS} value={tab} onChange={setTab} />
           <TabPanel idPrefix="blueprint" value={tab}>
-            {tab !== 'building' && <AskArchitect key={tab} kind={tab === 'factory' ? 'tool' : 'structure'} />}
+            {tab !== 'building' && tab !== 'paint' && wp.engine !== 'wordpress' && <AskArchitect key={tab} kind={tab === 'factory' ? 'tool' : 'structure'} />}
             {/* The editor stays mounted on the Factory, so its draft and history survive a look at the tools. */}
-            <div hidden={tab === 'factory'}>
+            <div hidden={tab === 'factory' || tab === 'paint'}>
               <BlueprintEditor key={`${models.commit}:${models.hash}`} models={models} api={checker.api} bench={tab === 'building' ? 'building' : 'town'} />
             </div>
             {tab === 'factory' && <Factory models={models} api={checker.api} />}
+            {tab === 'paint' && wp.palette && <PaintShop key={models.commit} palette={wp.palette} />}
+            {tab === 'town' && wp.plugins && (
+              <section aria-label="Sets">
+                <h3>Sets</h3>
+                <PluginSets plugins={wp.plugins} />
+                <p class="small muted">For what the Studio does not cover, wp-admin is a door: it opens on a branch of its own.</p>
+                <WpAdminButton />
+              </section>
+            )}
           </TabPanel>
         </>
       )}

@@ -24,7 +24,7 @@ const TITLE = 'Harvest week in Manarola'
 type Hook = {
   session: Record<string, (...a: unknown[]) => unknown>
   wordpress: { info(): { phase: string; error: string | null }; request(r: unknown): Promise<{ status: number; text(): string }>; repo(m: unknown): Promise<any> }
-  wordpressSite: { lastExport(): { release: { id: string; files: Record<string, unknown> } } | null }
+  wordpressSite: { lastExport(): { release: { id: string; files: Record<string, unknown> } } | null; engine: { exclusive<T>(fn: () => Promise<T>): Promise<T> } }
   refreshKnowledge(): Promise<string>
   sim: { plan_json(): string }
 }
@@ -55,9 +55,11 @@ test('a company on WordPress drafts, reviews, publishes, exports and deploys an 
   await hook(page, (h) => h.session.pause())
 
   // The CEO seeds the media library: two landscape images uploaded on a branch, merged into live.
+  // Through the engine's lock, as every capability is: the sandbox's session is one binding.
   const seeded = await hook(page, async (h) => {
     const wp = h.wordpress
     const ceo = { kind: 'human', id: 'ceo' }
+    return h.wordpressSite.engine.exclusive(async () => {
     await wp.repo({ op: 'branch.create', name: 'seed-media', from: 'live' })
     await wp.repo({ op: 'session.set', branch: 'seed-media', user_id: 1, author: ceo })
     const ids: number[] = []
@@ -77,7 +79,8 @@ test('a company on WordPress drafts, reviews, publishes, exports and deploys an 
     const { id } = await wp.repo({ op: 'cr.open', source: 'seed-media', title: 'Media library', author: ceo })
     const merged = await wp.repo({ op: 'cr.merge', id, author: ceo })
     if (!merged.head) throw new Error(`merge: ${JSON.stringify(merged)}`)
-    return { ids, refreshed: await h.refreshKnowledge() }
+    return { ids }
+    }).then(async (r: { ids: number[] }) => ({ ...r, refreshed: await h.refreshKnowledge() }))
   })
   expect(seeded.ids).toHaveLength(2)
   expect(seeded.refreshed).toBe('fetched')

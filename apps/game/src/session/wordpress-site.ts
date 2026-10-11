@@ -11,8 +11,12 @@
  *   storage and the release to the server, which serves it as the company's site and reports
  *   `DeployLanded` for the work item.
  */
-import type { CentralClient } from '../net/central'
+import type { BlueprintChange, PutBlueprintBody, PutBlueprintResult, PutToolsBody } from '../blueprint/types'
+import { loadBlueprintWasm } from '../blueprint/wasm'
+import { CentralError, type CentralClient } from '../net/central'
+import { regionsOf, wordpressModels, type WordPressModels, type WpPaletteColor } from '../php/wp-studio'
 import { loadOrchestratorWasm } from '../orchestrator'
+import { sandboxUrl } from '../php/wordpress'
 import type { WordPressRuntime } from './wordpress-runtime'
 import { exportAndDeploy, wpKnowledgeClient, WpSiteEngine, type Merged, type OrchestratorSiteEngine, type Release, type WpChannels } from '../php/wp-site-engine'
 
@@ -44,6 +48,29 @@ export interface WordPressSite {
   orchestratorEngine(onMerged: () => void): OrchestratorSiteEngine
   /** The last export and deploy (for the HUD and tests). */
   lastExport(): { release: Release; report: unknown } | null
+  /** The Brick Studio's models of `live` (ADR-0082 §4). */
+  studioModels(): Promise<WordPressModels>
+  /** The CEO's build of a Studio draft: the post types' regions, merged into live (409 when stale, 422 when refused). */
+  saveBlueprint(body: PutBlueprintBody | PutToolsBody): Promise<PutBlueprintResult>
+  /** The Paint shop's palette, merged into live. */
+  savePalette(palette: WpPaletteColor[]): Promise<string>
+  /** Opens the wp-admin door on a new branch (ADR-0082 §5). */
+  openDoor(): Promise<WpDoor>
+}
+
+/**
+ * The wp-admin door (ADR-0082 §5): WordPress's admin on its own branch, as the CEO. The door's
+ * sandbox speaks on the `door` channel; what it changes is commits on that branch, built into live
+ * or discarded like any other change.
+ */
+export interface WpDoor {
+  branch: string
+  /** The door page on the sandbox's origin. */
+  url: string
+  storage(payload: string): Promise<string>
+  /** Merges the branch into live (nothing changed: nothing to merge). */
+  build(): Promise<string | null>
+  discard(): Promise<void>
 }
 
 export async function wordpressSite(o: WordPressSiteOptions): Promise<WordPressSite> {
@@ -98,5 +125,48 @@ export async function wordpressSite(o: WordPressSiteOptions): Promise<WordPressS
       }
     },
     lastExport: () => last,
+    async studioModels() {
+      const api = await loadBlueprintWasm()
+      return wordpressModels(await engine.readStudio(), api as Parameters<typeof wordpressModels>[1])
+    },
+    async saveBlueprint(body) {
+      if (!('blueprint' in body)) throw new CentralError(422, 'tools on a WordPress site are not built yet', { issues: ['A WordPress site has no tools yet.'] })
+      const api = await loadBlueprintWasm()
+      const studio = await engine.readStudio()
+      const current = wordpressModels(studio, api as Parameters<typeof wordpressModels>[1])
+      if (body.base_hash !== current.hash) throw new CentralError(409, 'the site changed since the draft began', null)
+      const { templates, refused } = regionsOf(body.blueprint, studio)
+      if (refused.length) throw new CentralError(422, 'refused', { issues: refused })
+      const changes = JSON.parse(api.diffBlueprints(JSON.stringify(current.blueprint), JSON.stringify(body.blueprint))) as BlueprintChange[]
+      const commit = await engine.saveTemplates(templates)
+      const next = wordpressModels({ ...studio, templates, head: commit }, api as Parameters<typeof wordpressModels>[1])
+      return { commit, hash: next.hash, changes, tools: [] }
+    },
+    savePalette: (palette) => engine.savePalette(palette),
+    async openDoor() {
+      const branch = await engine.branchFor(`admin-${Date.now().toString(36)}`)
+      const ceo = { kind: 'human', id: 'ceo' }
+      await o.wordpress.repo({ op: 'session.set', channel: 'door', branch, user_id: 1, author: ceo })
+      const base = await o.wordpress.repo<{ id: string }[]>({ op: 'log', branch, limit: 1 })
+      return {
+        branch,
+        url: new URL('door.html', sandboxUrl()).href,
+        storage: (payload) => {
+          const msg = JSON.parse(payload) as Record<string, unknown>
+          return o.wordpress.storage(JSON.stringify({ ...msg, channel: 'door' }))
+        },
+        async build() {
+          const now = await o.wordpress.repo<{ id: string }[]>({ op: 'log', branch, limit: 1 })
+          if (now[0]?.id === base[0]?.id) return null
+          const { id } = await o.wordpress.repo<{ id: number }>({ op: 'cr.open', source: branch, title: 'wp-admin', author: ceo })
+          const merged = await o.wordpress.repo<{ head?: string; error?: string }>({ op: 'cr.merge', id, author: ceo })
+          if (!merged.head) throw new Error(merged.error ?? 'the merge was refused')
+          return merged.head
+        },
+        async discard() {
+          await o.wordpress.repo({ op: 'branch.delete', name: branch })
+        },
+      }
+    },
   }
 }

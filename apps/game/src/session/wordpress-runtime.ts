@@ -64,7 +64,7 @@ export class WordPressRuntime {
   private readonly listeners = new Set<(i: WordPressRuntimeInfo) => void>()
   private started: Promise<StartedWordPress> | null = null
   private wp: StartedWordPress | null = null
-  private storage: WpStorage | null = null
+  private endpoint: WpStorage | null = null
   private persisting: Promise<void> = Promise.resolve()
 
   private constructor(
@@ -109,7 +109,13 @@ export class WordPressRuntime {
   /** One governed-API message (branches, sessions, change requests, merges, releases). */
   async repo<T = unknown>(msg: Record<string, unknown>): Promise<T> {
     await this.start()
-    return this.storage!.repo<T>(msg)
+    return this.endpoint!.repo<T>(msg)
+  }
+
+  /** One storage-channel message (the wp-admin door's sandbox sends its own, tagged `door`). */
+  async storage(payload: string): Promise<string> {
+    await this.start()
+    return this.endpoint!.storage(payload)
   }
 
   /** Resolves once every record handed back so far is in the company store. */
@@ -119,9 +125,9 @@ export class WordPressRuntime {
 
   stop(): void {
     this.wp?.php.stop()
-    this.storage?.stop?.()
+    this.endpoint?.stop?.()
     this.wp = null
-    this.storage = null
+    this.endpoint = null
   }
 
   private async run(): Promise<StartedWordPress> {
@@ -129,8 +135,8 @@ export class WordPressRuntime {
     const persist = (records: unknown[]) => {
       this.persisting = this.persisting.then(() => store.appendRepoRecords(records)).catch((e: unknown) => this.opts.log?.(`repository records were not stored: ${String(e)}`))
     }
-    this.storage = this.opts.storage ? this.opts.storage(persist) : StorageClient.start(persist, this.opts.platform)
-    const storage = this.storage
+    this.endpoint = this.opts.storage ? this.opts.storage(persist) : StorageClient.start(persist, this.opts.platform)
+    const storage = this.endpoint
     try {
       const wp = await startWordPress(
         {
