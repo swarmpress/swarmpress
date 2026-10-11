@@ -12,6 +12,8 @@ content-schema.workspace = true
 # the link and media checks of the v2 validator. Both build for wasm32.
 content-model = { path = "../content-model" }
 knowledge = { path = "../knowledge" }
+# WordPress companies (ADR-0082): article pages become Gutenberg block trees, parsed back for updates.
+content-repo = { path = "../content-repo" }
 # The site's models (ADR-0072, FEAT-095): the architects' edits are applied
 # and checked in-process, as the server checks them.
 blueprint = { path = "../blueprint" }

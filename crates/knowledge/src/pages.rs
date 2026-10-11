@@ -216,8 +216,9 @@ impl PageRegistry {
     fn insert(&mut self, e: PageEntry) {
         let i = self.pages.len();
         self.by_id.entry(e.id.clone()).or_default().push(i);
+        // Keyed as lookups normalize them (a WordPress permalink keeps its trailing slash).
         for r in e.routes.values() {
-            self.by_route.entry(r.clone()).or_default().push(i);
+            self.by_route.entry(normalize_route(r)).or_default().push(i);
         }
         self.pages.push(e);
     }

@@ -48,6 +48,7 @@ mod standup;
 mod store;
 mod structure;
 mod tool_facts;
+pub mod wordpress;
 
 pub use agents::article_prompts::LlmProfile;
 pub use analysis::{performance_score, PageNumbers, PerformanceContext};

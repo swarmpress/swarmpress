@@ -462,6 +462,10 @@ impl KnowledgeBase {
                 Err("no page at this route".into())
             };
         }
+        // A site whose routes carry no language (WordPress permalinks, ADR-0082) has the page as written.
+        if self.pages.by_route(&route).is_some() {
+            return Ok(true);
+        }
         let candidates: Vec<String> = langs
             .iter()
             .map(|l| {

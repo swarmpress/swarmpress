@@ -31,6 +31,7 @@ pub mod pack;
 pub mod pages;
 pub mod source;
 pub mod summary;
+pub mod wordpress;
 
 pub use collections::{CollectionFile, CollectionIndex, CollectionItem, FileShape};
 pub use entities::{Entity, EntityIndex, EntityKind};

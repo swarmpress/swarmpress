@@ -1,0 +1,15 @@
+[package]
+name = "site-export"
+description = "The static export of a WordPress site's live branch (ADR-0083): a sans-IO crawler over HTTP-shaped responses, URL rewriting to the public origin, a content-addressed release with a static search index, and incremental exports. Pure Rust; compiles to wasm"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+
+[lints]
+workspace = true

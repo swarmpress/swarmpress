@@ -129,3 +129,9 @@
 # The sandbox pin (FEAT-105): config/wp-sandbox.toml's fields move together.
 - match: { classname: xtask, title: "sandbox::tests" }
   features: [FEAT-105]
+# The knowledge pack of a WordPress site (FEAT-108).
+- match: { classname: knowledge, title: "wordpress::tests" }
+  features: [FEAT-108]
+# The static export (FEAT-109): its unit tests are its own suite.
+- match: { classname: site-export }
+  features: [FEAT-109]
