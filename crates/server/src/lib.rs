@@ -27,6 +27,7 @@
 pub mod analytics_loop;
 pub mod app;
 pub mod article;
+pub mod assets;
 pub mod auth;
 pub mod companies;
 pub mod config;

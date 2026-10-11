@@ -7,7 +7,7 @@
 
 use serde_json::Value;
 
-use crate::translate::{translate, Schema, TranslateError, Translated};
+use crate::translate::{translate, Schema, TranslateError, Translated, Tx};
 
 /// WordPress's core schema, as the governed layer keeps it (read from the database WordPress
 /// created; tables only, no WordPress code).
@@ -69,6 +69,10 @@ pub struct Projection<E: Exec> {
     pub(crate) db: E,
     schema: Schema,
     found_rows: i64,
+    /// A transaction is open (a savepoint): MySQL's one level, no nesting.
+    in_tx: bool,
+    /// MySQL's `autocommit` (on unless `SET autocommit = 0`).
+    autocommit: bool,
 }
 
 fn as_text(v: Value) -> Value {
@@ -89,10 +93,13 @@ impl<E: Exec> Projection<E> {
         )?;
         let mut schema = Schema::from_sqlite_ddl(ddl);
         schema.core_ddl = Schema::ddl_by_table(WORDPRESS_SCHEMA);
+        schema.datetime = Schema::from_sqlite_ddl(WORDPRESS_SCHEMA).datetime;
         let mut p = Projection {
             db,
             schema,
             found_rows: 0,
+            in_tx: false,
+            autocommit: true,
         };
         p.refresh_schema()?;
         Ok(p)
@@ -146,6 +153,15 @@ impl<E: Exec> Projection<E> {
         })
     }
 
+    /// Undoes a transaction left open, as MySQL does when the connection closes.
+    pub fn abort_transaction(&mut self) -> Result<(), ProjectionError> {
+        if self.in_tx {
+            self.db.batch("ROLLBACK TO wp_tx; RELEASE wp_tx")?;
+            self.in_tx = false;
+        }
+        Ok(())
+    }
+
     /// Translates and runs one MySQL statement.
     pub fn query(&mut self, mysql: &str) -> Result<(Translated, Outcome), ProjectionError> {
         let t = translate(mysql, &self.schema).map_err(ProjectionError::Translate)?;
@@ -155,7 +171,53 @@ impl<E: Exec> Projection<E> {
 
     pub fn run(&mut self, t: &Translated) -> Result<Outcome, ProjectionError> {
         match t {
+            // DDL commits an open transaction first (MySQL's implicit commit).
+            Translated::Ddl(_) if self.in_tx => {
+                self.db.batch("RELEASE wp_tx")?;
+                self.in_tx = false;
+            }
+            // With autocommit off, a statement outside a transaction opens one.
+            Translated::Sql { .. } | Translated::MultiDelete { .. }
+                if !self.autocommit && !self.in_tx =>
+            {
+                self.db.batch("SAVEPOINT wp_tx")?;
+                self.in_tx = true;
+            }
+            _ => {}
+        }
+        match t {
             Translated::Session | Translated::ShowVariables => Ok(Outcome::default()),
+            Translated::Transaction(tx) => {
+                match tx {
+                    // MySQL commits an open transaction when a new one starts.
+                    Tx::Begin => {
+                        if self.in_tx {
+                            self.db.batch("RELEASE wp_tx")?;
+                        }
+                        self.db.batch("SAVEPOINT wp_tx")?;
+                        self.in_tx = true;
+                    }
+                    Tx::Commit if self.in_tx => {
+                        self.db.batch("RELEASE wp_tx")?;
+                        self.in_tx = false;
+                    }
+                    Tx::Rollback if self.in_tx => {
+                        self.db.batch("ROLLBACK TO wp_tx; RELEASE wp_tx")?;
+                        self.in_tx = false;
+                    }
+                    // Outside a transaction (autocommit) there is nothing to commit or undo.
+                    Tx::Commit | Tx::Rollback => {}
+                    Tx::Autocommit(on) => {
+                        // Turning autocommit on commits an open transaction.
+                        if *on && self.in_tx {
+                            self.db.batch("RELEASE wp_tx")?;
+                            self.in_tx = false;
+                        }
+                        self.autocommit = *on;
+                    }
+                }
+                Ok(Outcome::default())
+            }
             Translated::Ddl(d) => {
                 for stmt in &d.stmts {
                     self.db.batch(stmt)?;
@@ -258,20 +320,25 @@ mod native {
     impl Native {
         pub fn memory() -> Result<Native, String> {
             let db = Connection::open_in_memory().map_err(|e| e.to_string())?;
-            db.create_scalar_function(
-                "regexp",
-                2,
-                FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
-                |ctx| {
-                    // MySQL's REGEXP as a literal-substring match (anchors trimmed) until a regex engine is needed.
-                    let pattern: String = ctx.get(0)?;
-                    let text: Option<String> = ctx.get(1)?;
-                    Ok(text
-                        .map(|t| t.contains(pattern.trim_matches('^').trim_matches('$')))
-                        .unwrap_or(false))
-                },
-            )
-            .map_err(|e| e.to_string())?;
+            // MySQL's REGEXP: case-insensitive (the default collation), and regexp_binary() for a
+            // BINARY side (the translator's rewrite).
+            for (name, insensitive) in [("regexp", true), ("regexp_binary", false)] {
+                db.create_scalar_function(
+                    name,
+                    2,
+                    FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+                    move |ctx| {
+                        let pattern: String = ctx.get(0)?;
+                        let text: Option<String> = ctx.get(1)?;
+                        let re = regex::RegexBuilder::new(&pattern)
+                            .case_insensitive(insensitive)
+                            .build()
+                            .map_err(|e| rusqlite::Error::UserFunctionError(Box::new(e)))?;
+                        Ok(text.map(|t| re.is_match(&t)).unwrap_or(false))
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+            }
             Ok(Native(db))
         }
     }

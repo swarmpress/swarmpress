@@ -220,3 +220,197 @@ fn two_branches_never_hand_out_the_same_id() {
     h.end_request("b", editor(), "b").unwrap();
     assert_ne!(a, b);
 }
+
+/// WordPress's test suite isolates every test with a transaction (`START TRANSACTION` …
+/// `ROLLBACK`): a rolled-back write leaves neither the projection nor a commit; a committed one
+/// commits; a transaction left open at the end of a request is rolled back, as MySQL does.
+#[test]
+fn transactions_are_savepoints_on_the_projection() {
+    let mut h = host();
+    h.query(LIVE, "INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('blogname', 'Cinque Terre', 'yes')").unwrap();
+    h.end_request(LIVE, Author::system("install"), "install")
+        .unwrap();
+    h.finish_import();
+    h.repo.create_branch("wi-1", LIVE).unwrap();
+    let count = |h: &mut Host<Native>| {
+        rows(
+            h,
+            "wi-1",
+            "SELECT COUNT(*) FROM wp_options WHERE option_name = 'tagline'",
+        )
+    };
+
+    h.query("wi-1", "START TRANSACTION").unwrap();
+    h.query("wi-1", "INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('tagline', 'Five villages', 'yes')").unwrap();
+    assert_eq!(count(&mut h), "[[1]]");
+    h.query("wi-1", "ROLLBACK").unwrap();
+    assert_eq!(count(&mut h), "[[0]]");
+    assert_eq!(
+        h.end_request("wi-1", editor(), "rolled back").unwrap(),
+        None
+    );
+
+    h.query("wi-1", "START TRANSACTION").unwrap();
+    h.query("wi-1", "INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('tagline', 'Five villages', 'yes')").unwrap();
+    h.query("wi-1", "COMMIT").unwrap();
+    assert!(h
+        .end_request("wi-1", editor(), "committed")
+        .unwrap()
+        .is_some());
+
+    h.query("wi-1", "START TRANSACTION").unwrap();
+    h.query(
+        "wi-1",
+        "UPDATE wp_options SET option_value = 'Six villages' WHERE option_name = 'tagline'",
+    )
+    .unwrap();
+    assert_eq!(h.end_request("wi-1", editor(), "left open").unwrap(), None);
+    assert_eq!(
+        rows(
+            &mut h,
+            "wi-1",
+            "SELECT option_value FROM wp_options WHERE option_name = 'tagline'"
+        ),
+        "[[Five villages]]"
+    );
+}
+
+/// What WordPress's own PHPUnit suite found missing: `ORDER BY FIELD(…)` (post__in, include
+/// ordering) and upserts on a table whose unique key is its composite primary key.
+#[test]
+fn field_ordering_and_upserts_on_composite_primary_keys() {
+    let mut h = host();
+    for (id, name) in [(1, "a"), (2, "b"), (3, "c")] {
+        h.query(
+            LIVE,
+            &format!(
+                "INSERT INTO wp_terms (term_id, name, slug) VALUES ({id}, '{name}', '{name}')"
+            ),
+        )
+        .unwrap();
+    }
+    assert_eq!(rows(&mut h, LIVE, "SELECT term_id FROM wp_terms WHERE term_id IN (1, 2, 3) ORDER BY FIELD(term_id, 3, 1, 2)"), "[[3],[1],[2]]");
+    assert_eq!(
+        rows(
+            &mut h,
+            LIVE,
+            "SELECT slug FROM wp_terms ORDER BY FIELD(slug, 'b', 'c', 'a') ASC"
+        ),
+        "[[b],[c],[a]]"
+    );
+    h.query(LIVE, "INSERT INTO wp_term_relationships (object_id, term_taxonomy_id, term_order) VALUES (9, 1, 1),(9, 2, 2) ON DUPLICATE KEY UPDATE term_order = VALUES(term_order)").unwrap();
+    h.query(LIVE, "INSERT INTO wp_term_relationships (object_id, term_taxonomy_id, term_order) VALUES (9, 2, 1),(9, 1, 2) ON DUPLICATE KEY UPDATE term_order = VALUES(term_order)").unwrap();
+    assert_eq!(rows(&mut h, LIVE, "SELECT term_taxonomy_id, term_order FROM wp_term_relationships WHERE object_id = 9 ORDER BY term_order"), "[[2,1],[1,2]]");
+}
+
+/// With `SET autocommit = 0` (how WordPress's test case opens its transactions), writes between a
+/// ROLLBACK and the next START TRANSACTION are in an implicit transaction the next ROLLBACK undoes;
+/// and a string with a backslash before a quote reaches SQLite intact.
+#[test]
+fn autocommit_off_and_backslashed_quotes() {
+    let mut h = host();
+    h.query(LIVE, "SET autocommit = 0").unwrap();
+    h.query(LIVE, "START TRANSACTION").unwrap();
+    h.query(LIVE, "ROLLBACK").unwrap();
+    h.query(
+        LIVE,
+        "INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('leak', '1', 'yes')",
+    )
+    .unwrap();
+    h.query(LIVE, "ROLLBACK").unwrap();
+    assert_eq!(
+        rows(
+            &mut h,
+            LIVE,
+            "SELECT COUNT(*) FROM wp_options WHERE option_name = 'leak'"
+        ),
+        "[[0]]"
+    );
+    h.query(
+        LIVE,
+        "INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('kept', '1', 'yes')",
+    )
+    .unwrap();
+    h.query(LIVE, "COMMIT").unwrap();
+    h.query(LIVE, "SET autocommit = 1").unwrap();
+    assert_eq!(
+        rows(
+            &mut h,
+            LIVE,
+            "SELECT COUNT(*) FROM wp_options WHERE option_name = 'kept'"
+        ),
+        "[[1]]"
+    );
+
+    h.query(LIVE, r#"INSERT INTO `wp_options` (`option_name`, `option_value`) VALUES ('slashed', 'This \\\'is\\\' an example \n of a \"quoted\" string')"#).unwrap();
+    let out = h
+        .query(
+            LIVE,
+            "SELECT option_value FROM wp_options WHERE option_name = 'slashed'",
+        )
+        .unwrap();
+    assert_eq!(
+        out.rows[0][0],
+        serde_json::json!("This \\'is\\' an example \n of a \"quoted\" string")
+    );
+}
+
+/// MySQL's REGEXP is case-insensitive under WordPress's collation and case-sensitive with BINARY
+/// (`meta_compare_key => REGEXP` with `meta_type_key => BINARY`); `CAST(x AS BINARY)` stays text.
+#[test]
+fn regexp_and_binary() {
+    let mut h = host();
+    for (id, key) in [(1, "AAA_FOO_AAA"), (2, "aaa_bar_aaa"), (3, "aaa_foo_bbb")] {
+        h.query(LIVE, &format!("INSERT INTO wp_postmeta (meta_id, post_id, meta_key, meta_value) VALUES ({id}, {id}, '{key}', 'abc')")).unwrap();
+    }
+    assert_eq!(
+        rows(
+            &mut h,
+            LIVE,
+            "SELECT post_id FROM wp_postmeta WHERE meta_key REGEXP 'AAA_foo_.*' ORDER BY post_id"
+        ),
+        "[[1],[3]]"
+    );
+    assert_eq!(rows(&mut h, LIVE, "SELECT post_id FROM wp_postmeta WHERE CAST(meta_key AS BINARY) REGEXP BINARY 'AAA_FOO_.*' ORDER BY post_id"), "[[1]]");
+    assert_eq!(
+        rows(
+            &mut h,
+            LIVE,
+            "SELECT post_id FROM wp_postmeta WHERE meta_key NOT REGEXP '^aaa_' ORDER BY post_id"
+        ),
+        "[]"
+    );
+    assert_eq!(
+        rows(
+            &mut h,
+            LIVE,
+            "SELECT post_id FROM wp_postmeta WHERE CAST(meta_key AS BINARY) = 'aaa_bar_aaa'"
+        ),
+        "[[2]]"
+    );
+}
+
+/// An invalid date in a DATETIME column becomes MySQL's zero date (WordPress turns strict mode off
+/// and relies on it: `wp_insert_post` with `post_date_gmt => '2020-12-41 …'`).
+#[test]
+fn invalid_dates_become_the_zero_date() {
+    let mut h = host();
+    h.query(LIVE, "INSERT INTO wp_posts (ID, post_title, post_date, post_date_gmt, post_content, post_excerpt, to_ping, pinged, post_content_filtered) VALUES (5, 'x', '2024-02-29 10:00:00', '2020-12-41 14:15:27', '', '', '', '', '')").unwrap();
+    assert_eq!(
+        rows(
+            &mut h,
+            LIVE,
+            "SELECT post_date, post_date_gmt FROM wp_posts WHERE ID = 5"
+        ),
+        "[[2024-02-29 10:00:00,0000-00-00 00:00:00]]"
+    );
+    h.query(LIVE, "UPDATE wp_posts SET post_date = '2023-02-29 00:00:00', post_title = '2023-02-29' WHERE ID = 5").unwrap();
+    assert_eq!(
+        rows(
+            &mut h,
+            LIVE,
+            "SELECT post_date, post_title FROM wp_posts WHERE ID = 5"
+        ),
+        "[[0000-00-00 00:00:00,2023-02-29]]"
+    );
+}

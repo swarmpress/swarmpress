@@ -197,6 +197,8 @@ impl<E: Exec> Host<E> {
     ) -> Result<Option<Digest>, HostError> {
         let prefix = self.prefix.clone();
         let b = self.ensure(branch)?;
+        // A request that left a transaction open did not commit it (MySQL rolls back on close).
+        b.p.abort_transaction()?;
         let keys = objects::take_changes(b.p.exec())?;
         let mut read = Vec::new();
         for k in keys {

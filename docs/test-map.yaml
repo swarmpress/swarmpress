@@ -126,3 +126,6 @@
 # The governed content repository (FEAT-106): commits, branches, change requests, merges, releases.
 - match: { classname: content-repo, title: "tests::" }
   features: [FEAT-106]
+# The sandbox pin (FEAT-105): config/wp-sandbox.toml's fields move together.
+- match: { classname: xtask, title: "sandbox::tests" }
+  features: [FEAT-105]

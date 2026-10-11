@@ -122,3 +122,22 @@ pub fn fetch(root: PathBuf, node: bool) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    /// The pin's fields move together: a new release changes all of them in one commit.
+    #[test]
+    fn the_pinned_release_is_consistent() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap();
+        let p = super::pin(root).unwrap();
+        assert_eq!(p.tag, format!("v{}", p.version));
+        assert_eq!(p.asset, format!("wp-sandbox-{}.tar.gz", p.version));
+        assert_eq!(p.repo, "swarmpress/wp-sandbox");
+        assert!(p
+            .sha256
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+    }
+}

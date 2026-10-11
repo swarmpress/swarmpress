@@ -1,6 +1,6 @@
 # WordPress as the site engine: the build plan (ADR-0078 to ADR-0084)
 
-**Status:** approved by the owner 2026-10-10; M0 passed; M1 built, M2 and M3 in progress (2026-10-11).
+**Status:** approved by the owner 2026-10-10; M0 passed; M1 to M3 built (2026-10-11).
 
 ## Context
 

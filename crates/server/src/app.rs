@@ -56,6 +56,8 @@ pub struct AppState {
     pub tracker: Arc<Tracker>,
     /// Where nightly analytics signals go.
     pub signal_sink: Arc<dyn AnalyticsSignalSink>,
+    /// Asset bytes by `c/{company}/sha256/{hash}` ([`crate::assets`], ADR-0050).
+    pub objects: Arc<dyn crate::assets::ObjectStore>,
 }
 
 impl AppState {
@@ -78,6 +80,9 @@ impl AppState {
             .expect("http client");
         let tracker = Arc::new(Tracker::new(cfg.tracker.clone()));
         let web_limiter = Arc::new(RateLimiter::new(cfg.web.rate_per_min, cfg.web.burst));
+        let objects: Arc<dyn crate::assets::ObjectStore> = Arc::new(
+            crate::assets::FsObjectStore::new(cfg.data_dir.join("objects")),
+        );
         Self {
             cfg: Arc::new(cfg),
             db,
@@ -92,6 +97,7 @@ impl AppState {
             sync_lock: Arc::new(tokio::sync::Mutex::new(())),
             company_locks: CompanyLocks::default(),
             repo_locks: CompanyLocks::default(),
+            objects,
             tracker,
             signal_sink: Arc::new(PendingSignalSink),
         }
@@ -226,6 +232,14 @@ pub fn router(st: AppState) -> Router {
         .route("/api/llm/generate", post(llm::generate))
         .route("/web/fetch", get(web::fetch))
         .route("/web/request", post(web::request))
+        .route("/web/wp-request", post(web::wp_request))
+        .route("/api/web/grants", get(web::get_grants).put(web::put_grants))
+        .route(
+            "/api/assets/{sha256}",
+            get(crate::assets::get_asset)
+                .put(crate::assets::put_asset)
+                .layer(DefaultBodyLimit::max(crate::assets::MAX_ASSET_BYTES + 1024)),
+        )
         .route("/web/firecrawl/{*rest}", post(web::firecrawl))
         // tracker
         .route(

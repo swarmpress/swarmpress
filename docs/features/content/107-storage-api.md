@@ -32,6 +32,11 @@ paths:
   - apps/game/src/php/storage-worker.ts
   - apps/game/src/php/storage-wasm-load.ts
   - apps/game/e2e/wordpress.spec.ts
+  - apps/game/src/php/storage-client.test.ts
+  - crates/server/src/assets.rs
+  - crates/server/src/db/assets.rs
+  - crates/server/migrations/0008_assets_grants.sql
+  - crates/server/tests/assets.rs
 adrs:
   - ADR-0084
   - ADR-0080
@@ -109,7 +114,32 @@ or scratch.
     model;
   - the change request merges, and `live`'s front page shows the post.
 
+## Built (M3, hosting, media and conformance)
+
+- **Hosting:** in the browser in the storage worker (`crates/storage-api-wasm` on sqlite-wasm);
+  natively as `swarmpress-storage` for the runner and conformance.
+- **Media** (ADR-0050): an `ObjectStore` in `crates/server` (the filesystem first, keys
+  `c/{company}/sha256/{hash}`); `PUT /api/assets/{sha256}` is lease-checked and content-addressed,
+  `GET` is per company. The storage worker asks the session for the bytes (it holds the lease)
+  and keeps the session's in memory.
+- **Outgoing HTTP** (ADR-0084 §2): `POST /web/wp-request` under the lease, only to the hosts in
+  the company's grant record (`/api/web/grants`, exact or `*.domain`), with media back as base64;
+  the fork decodes `body_b64` (`wp-7.1.3-sp.2`).
+- **Transactions:** `START TRANSACTION`, `COMMIT`, `ROLLBACK` and `SET autocommit` are savepoints
+  on the projection; a request that leaves one open is rolled back, as MySQL does.
+- **MySQL behaviours WordPress relies on:** `FIELD()`, a real `REGEXP` (case-insensitive, and
+  case-sensitive with `BINARY`), `CAST(x AS BINARY)` as a binary collation, invalid dates as the
+  zero date, upserts on composite primary keys, quotes after backslashes, and `''` for a missing
+  NOT NULL text column.
+- **Conformance:**
+  - WordPress's own PHPUnit suite on the fork over `swarmpress-storage` (`wp-sandbox`'s
+    `conformance/phpunit.mjs`, groups option, post, meta and term): **2,116 tests pass**. The
+    test installer imports onto `live`, and the tests run on a work branch;
+  - attribution, and governed against scratch (`tests/host.rs`, the sandbox's conformance suite);
+  - a branch switch is a fresh boot: a new sandbox on the same repository serves the same page
+    byte for byte (`packages/runner/test/wordpress.test.ts`).
+
 ## Not built
 
-- The projection built from the repository (FEAT-106), and change sets as commits.
-- The fork's seams themselves (`swarmpress/wordpress`, M3).
+- An object store with an S3 or R2 API (the filesystem one serves one server).
+- The rest of WordPress's PHPUnit suite (the subset covers options, posts, meta and terms).

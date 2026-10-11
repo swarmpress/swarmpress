@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http'
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin, type ProxyOptions } from 'vite'
@@ -35,7 +35,9 @@ const isolation: Record<string, string> =
 function sandboxOrigin(): Plugin {
   const port = Number(process.env.SWARMPRESS_SANDBOX_PORT ?? 5181)
   const vendor = fileURLToPath(new URL('../../vendor/wp-sandbox/', import.meta.url))
-  const release = existsSync(vendor) ? readdirSync(vendor).filter((d) => d.startsWith('wp-sandbox-') && existsSync(join(vendor, d, '.verified'))).sort().pop() : undefined
+  // The release config/wp-sandbox.toml pins, once fetched and verified.
+  const pinned = readFileSync(fileURLToPath(new URL('../../config/wp-sandbox.toml', import.meta.url)), 'utf8').match(/^version\s*=\s*"([^"]+)"/m)?.[1]
+  const release = pinned && existsSync(join(vendor, `wp-sandbox-${pinned}`, '.verified')) ? `wp-sandbox-${pinned}` : undefined
   const types: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.gz': 'application/gzip', '.so': 'application/octet-stream', '.dat': 'application/octet-stream' }
   const headers = { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'require-corp', 'Cross-Origin-Resource-Policy': 'cross-origin' }
   let server: Server | null = null

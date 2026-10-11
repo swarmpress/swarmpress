@@ -962,7 +962,18 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
   const siteEngine = await resolveSiteEngine(location.search, store)
   const wordpress =
     siteEngine === 'wordpress' && !readOnly
-      ? await WordPressRuntime.open({ companyId: company.id, store, search: location.search, site: { title: company.name, adminEmail: `${me.user.login}@users.swarm.press` }, log: (line) => log(`wordpress: ${line}`) })
+      ? await WordPressRuntime.open({ companyId: company.id, store, search: location.search, site: { title: company.name, adminEmail: `${me.user.login}@users.swarm.press` },
+          // Asset bytes to object storage and WordPress's outgoing HTTP through the fetch proxy, under the lease (ADR-0050, ADR-0084 §2).
+          platform: {
+            putAsset: async (sha, bytes, mime) => void (await client.putAsset(lease.token, sha, bytes, mime)),
+            getAsset: (sha) => client.getAsset(sha),
+            http: async (req) => {
+              const r = await client.wpRequest(lease.token, { url: req.url, method: req.method, headers: req.headers, body: req.body || null })
+              return { status: r.status, headers: r.headers, ...(r.body_b64 !== undefined ? { body_b64: r.body_b64 } : { body: r.body ?? '' }) }
+            },
+          },
+          log: (line) => log(`wordpress: ${line}`),
+        })
       : null
   if (wordpress) {
     mountWordPressCard(wordpress)

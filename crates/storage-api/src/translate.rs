@@ -13,7 +13,7 @@
 //!   key>) DO UPDATE`, with `VALUES(col)` as `excluded.col`;
 //! - MySQL functions WordPress uses become SQLite expressions.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use sqlparser::ast::{
     visit_expressions_mut, Assignment, AssignmentTarget, ConflictTarget, DoUpdate, Expr,
@@ -33,6 +33,9 @@ pub struct Schema {
     /// The governed layer's definition of each core table (its CREATE TABLE and indexes), used
     /// when WordPress's installer creates one.
     pub core_ddl: BTreeMap<String, Vec<String>>,
+    /// Each table's DATETIME columns (declared with MySQL's zero date as their default): an
+    /// invalid date written to one becomes the zero date, as MySQL does outside strict mode.
+    pub datetime: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl Schema {
@@ -82,6 +85,21 @@ impl Schema {
                     let table = unquote(t["create table".len()..open].trim());
                     for line in t[open + 1..].lines() {
                         let l = line.trim();
+                        if l.contains("DEFAULT '0000-00-00 00:00:00'") {
+                            s.datetime
+                                .entry(table.clone())
+                                .or_default()
+                                .insert(unquote(l.split_whitespace().next().unwrap_or("")));
+                        }
+                        // A table-level `PRIMARY KEY (a, b)` is a unique key too.
+                        if l.to_ascii_lowercase().starts_with("primary key") {
+                            if let (Some(o), Some(c)) = (l.find('('), l.rfind(')')) {
+                                let cols: Vec<String> =
+                                    l[o + 1..c].split(',').map(|c| unquote(c.trim())).collect();
+                                s.unique.entry(table.clone()).or_default().insert(0, cols);
+                            }
+                            continue;
+                        }
                         if l.to_ascii_lowercase().contains("primary key")
                             && !l.to_ascii_lowercase().starts_with("primary key")
                         {
@@ -126,10 +144,22 @@ pub enum Translated {
     ShowTables(Option<String>),
     ShowIndex(String),
     ShowVariables,
-    /// `SET …`, `START TRANSACTION`, `COMMIT`, `ROLLBACK`: no effect on the projection's content.
+    /// `SET …` and DDL that needs nothing: no effect on the projection's content.
     Session,
+    /// `START TRANSACTION`/`BEGIN`, `COMMIT`, `ROLLBACK`: a savepoint on the projection (WordPress's
+    /// test suite isolates every test with them).
+    Transaction(Tx),
     /// DDL for a plugin's table in the scratch store (`crate::ddl`).
     Ddl(crate::ddl::Ddl),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tx {
+    Begin,
+    Commit,
+    Rollback,
+    /// `SET autocommit = 0|1`: off, every statement after a COMMIT or ROLLBACK opens a transaction.
+    Autocommit(bool),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -208,7 +238,35 @@ pub fn translate(mysql: &str, schema: &Schema) -> Result<Translated, TranslateEr
         }
         return Err(TranslateError::Unsupported(format!("SHOW {}", w(1))));
     }
-    if v == "SET" || v == "START" || v == "BEGIN" || v == "COMMIT" || v == "ROLLBACK" {
+    if v == "SET" {
+        let compact: String = upper.split_whitespace().collect::<Vec<_>>().join("");
+        for (pat, on) in [
+            ("SETAUTOCOMMIT=0", false),
+            ("SETAUTOCOMMIT=1", true),
+            ("SETSESSIONAUTOCOMMIT=0", false),
+            ("SETSESSIONAUTOCOMMIT=1", true),
+        ] {
+            if compact.trim_end_matches(';') == pat {
+                return Ok(Translated::Transaction(Tx::Autocommit(on)));
+            }
+        }
+        return Ok(Translated::Session);
+    }
+    if (v == "START" && upper.split_whitespace().nth(1) == Some("TRANSACTION"))
+        || (v == "BEGIN" && upper.split_whitespace().count() <= 2)
+    {
+        return Ok(Translated::Transaction(Tx::Begin));
+    }
+    if v == "COMMIT" {
+        return Ok(Translated::Transaction(Tx::Commit));
+    }
+    if v == "ROLLBACK" {
+        if upper.split_whitespace().nth(1) == Some("TO") {
+            return Err(TranslateError::Unsupported("ROLLBACK TO SAVEPOINT".into()));
+        }
+        return Ok(Translated::Transaction(Tx::Rollback));
+    }
+    if v == "START" {
         return Ok(Translated::Session);
     }
     if upper.replace(' ', "").starts_with("SELECTFOUND_ROWS()") {
@@ -435,8 +493,91 @@ fn object_name(n: &ObjectName) -> String {
         .unwrap_or_default()
 }
 
+/// Whether `s` is a date MySQL keeps: the zero date, or a real calendar date and time.
+fn valid_mysql_datetime(s: &str) -> bool {
+    if s == "0000-00-00 00:00:00" || s == "0000-00-00" {
+        return true;
+    }
+    let (date, time) = s.split_once(' ').unwrap_or((s, "00:00:00"));
+    let d: Vec<u32> = date.split('-').filter_map(|p| p.parse().ok()).collect();
+    let t: Vec<u32> = time.split(':').filter_map(|p| p.parse().ok()).collect();
+    if d.len() != 3 || t.len() != 3 {
+        return false;
+    }
+    let (y, m, day) = (d[0], d[1], d[2]);
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let days = match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return false,
+    };
+    (1..=days).contains(&day) && t[0] < 24 && t[1] < 60 && t[2] < 60
+}
+
+/// An invalid date literal written to a DATETIME column becomes the zero date (MySQL outside
+/// strict mode, which WordPress turns off).
+fn zero_invalid_dates(stmt: &mut Statement, schema: &Schema) {
+    let fix = |e: &mut Expr| {
+        if let Expr::Value(v) = e {
+            if let sqlparser::ast::Value::SingleQuotedString(s) = &mut v.value {
+                if !valid_mysql_datetime(s) {
+                    *s = "0000-00-00 00:00:00".into();
+                }
+            }
+        }
+    };
+    match stmt {
+        Statement::Insert(ins) => {
+            let Some(cols) = schema.datetime.get(&table_name(&ins.table)) else {
+                return;
+            };
+            let idx: Vec<usize> = ins
+                .columns
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| cols.contains(&object_name(c)))
+                .map(|(i, _)| i)
+                .collect();
+            if idx.is_empty() {
+                return;
+            }
+            if let Some(src) = ins.source.as_mut() {
+                if let sqlparser::ast::SetExpr::Values(values) = src.body.as_mut() {
+                    for row in &mut values.rows {
+                        for &i in &idx {
+                            if let Some(e) = row.get_mut(i) {
+                                fix(e);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Statement::Update(u) => {
+            let Some(cols) = schema.datetime.get(&unquote(&u.table.relation.to_string())) else {
+                return;
+            };
+            for a in &mut u.assignments {
+                if let AssignmentTarget::ColumnName(n) = &a.target {
+                    let col =
+                        n.0.last()
+                            .map(|p| unquote(&p.to_string()))
+                            .unwrap_or_default();
+                    if cols.contains(&col) {
+                        fix(&mut a.value);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Statement-level rewrites; returns the table a write goes to.
 fn rewrite(stmt: &mut Statement, schema: &Schema) -> Result<Option<String>, TranslateError> {
+    zero_invalid_dates(stmt, schema);
     match stmt {
         Statement::Insert(ins) => {
             let table = table_name(&ins.table);
@@ -626,19 +767,65 @@ fn rewrite_functions(stmt: &mut Statement) {
             .ok()
     };
     let _ = visit_expressions_mut(stmt, |e| {
-        // MySQL's `\0` escape arrives as a raw NUL, which ends a statement for SQLite.
+        // MySQL's `\0` escape arrives as a raw NUL, which ends a statement for SQLite; and the
+        // printer leaves a quote after a backslash unescaped (`'a\'b'`). Such a string is
+        // rebuilt from pieces without either: `'a\' || char(39) || 'b'`.
         if let Expr::Value(v) = e {
             if let sqlparser::ast::Value::SingleQuotedString(s) = &v.value {
-                if s.contains('\0') {
+                if s.contains('\0') || (s.contains('\\') && s.contains('\'')) {
                     let parts: Vec<String> = s
                         .split('\0')
-                        .map(|p| format!("'{}'", p.replace('\'', "''")))
+                        .map(|chunk| {
+                            chunk
+                                .split('\'')
+                                .map(|p| format!("'{p}'"))
+                                .collect::<Vec<_>>()
+                                .join(" || char(39) || ")
+                        })
                         .collect();
                     if let Some(expr) = parse(&parts.join(" || char(0) || ")) {
                         *e = expr;
                     }
                     return ControlFlow::<()>::Continue(());
                 }
+            }
+        }
+        // CAST(x AS BINARY): SQLite would give it numeric affinity; MySQL means "compare as bytes".
+        if let Expr::Cast {
+            expr, data_type, ..
+        } = e
+        {
+            if data_type
+                .to_string()
+                .to_ascii_uppercase()
+                .starts_with("BINARY")
+            {
+                if let Some(x) = parse(&format!("({expr} COLLATE BINARY)")) {
+                    *e = x;
+                }
+                return ControlFlow::<()>::Continue(());
+            }
+        }
+        // REGEXP is case-insensitive like MySQL's default collation (SQLite's regexp()); with a
+        // BINARY side it is case-sensitive (regexp_binary()).
+        if let Expr::RLike {
+            negated,
+            expr,
+            pattern,
+            ..
+        } = e
+        {
+            let (x, p) = (expr.to_string(), pattern.to_string());
+            if x.contains("COLLATE BINARY") || p.contains("COLLATE BINARY") {
+                let call = format!("regexp_binary({p}, {x})");
+                if let Some(c) = parse(&if *negated {
+                    format!("NOT {call}")
+                } else {
+                    call
+                }) {
+                    *e = c;
+                }
+                return ControlFlow::<()>::Continue(());
             }
         }
         // MySQL's LIKE escapes with a backslash by default (WordPress's esc_like relies on it); SQLite needs it said.
@@ -725,6 +912,25 @@ fn rewrite_functions(stmt: &mut Statement) {
             if let Some(n) = renamed {
                 f.name = ObjectName::from(vec![Ident::new(n)]);
                 return ControlFlow::<()>::Continue(());
+            }
+            // FIELD(x, a, b, …) → the 1-based position of x among a, b, …, else 0 (ORDER BY FIELD).
+            if name == "FIELD" {
+                if let FunctionArguments::List(l) = &f.args {
+                    if l.args.len() >= 2 {
+                        let x = l.args[0].to_string();
+                        let arms: Vec<String> = l.args[1..]
+                            .iter()
+                            .enumerate()
+                            .map(|(i, a)| format!("WHEN {a} THEN {}", i + 1))
+                            .collect();
+                        if let Some(expr) =
+                            parse(&format!("(CASE {x} {} ELSE 0 END)", arms.join(" ")))
+                        {
+                            *e = expr;
+                            return ControlFlow::<()>::Continue(());
+                        }
+                    }
+                }
             }
             let replacement = match name.as_str() {
                 "NOW" | "CURRENT_TIMESTAMP" | "SYSDATE" => Some("datetime('now')".to_string()),

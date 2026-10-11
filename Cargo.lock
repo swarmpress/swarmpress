@@ -2619,6 +2619,7 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-extra",
+ "base64 0.22.1",
  "blueprint",
  "chrono",
  "content-model",
@@ -3027,6 +3028,7 @@ version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "content-repo",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

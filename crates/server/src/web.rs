@@ -26,6 +26,13 @@
 //! body as it came (no HTML reduction), under the same SSRF guard, limits and
 //! content types; an empty body passes whatever its type.
 //!
+//! `POST /web/wp-request` is the proxy for a company's WordPress (ADR-0084 §2, the fork's HTTP
+//! seam): the company lease is required, and the URL's host must be in the company's grant record
+//! (`GET`/`PUT /api/web/grants`, `{hosts: ["api.example.org", "*.example.org"]}`; 403 otherwise).
+//! Besides HTML, text and JSON it passes media (images, audio, video, PDF, fonts, octet streams)
+//! for media fetches: their bodies come back base64 in `body_b64` instead of `body`. Same SSRF
+//! guard, limits, timeout and redirect rules as `/web/request`.
+//!
 //! `POST /web/firecrawl/{*rest}` is the paid tier: 501 until credits ship.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -37,8 +44,10 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
-use crate::app::AppState;
+use crate::app::{require_company, AppState};
 use crate::auth::CurrentUser;
+use crate::companies::require_lease;
+use crate::db::assets as grants_db;
 use crate::error::{AppError, AppResult};
 
 pub const USER_AGENT: &str = concat!(
@@ -390,6 +399,8 @@ struct Outgoing {
     body: Option<String>,
     /// The body as it came; otherwise HTML is reduced to text.
     raw: bool,
+    /// Media types pass too (a WordPress media fetch); their bytes are in `Fetched::bytes`.
+    binary: bool,
 }
 
 impl Outgoing {
@@ -403,6 +414,7 @@ impl Outgoing {
             )],
             body: None,
             raw: false,
+            binary: false,
         }
     }
 }
@@ -413,6 +425,8 @@ struct Fetched {
     content_type: String,
     headers: BTreeMap<String, String>,
     body: String,
+    /// The bytes as they came (kept for media fetches).
+    bytes: Vec<u8>,
 }
 
 /// `POST /web/request` (module docs).
@@ -461,6 +475,7 @@ pub async fn request(
         headers,
         body: req.body,
         raw: true,
+        binary: false,
     };
     let res = tokio::time::timeout(cfg.timeout, fetch_inner(start, &cfg, &out)).await;
     let got = match res {
@@ -529,7 +544,11 @@ async fn fetch_inner(
             .unwrap_or("")
             .to_string();
         let empty = res.content_length() == Some(0) || out.method == reqwest::Method::HEAD;
-        if !empty && !allowed_content_type(&ct) && !(out.raw && ct.is_empty()) {
+        if !empty
+            && !allowed_content_type(&ct)
+            && !(out.raw && ct.is_empty())
+            && !(out.binary && is_media_type(&ct))
+        {
             return Err(AppError::UnsupportedMediaType(format!(
                 "content type {ct:?} is not html, text or json"
             )));
@@ -574,9 +593,166 @@ async fn fetch_inner(
             content_type: ct,
             headers,
             body: text,
+            bytes: if out.binary { body } else { Vec::new() },
         });
     }
     Err(AppError::BadGateway("too many redirects".into()))
+}
+
+/// Images, audio, video, PDF, fonts and octet streams: what a WordPress media fetch may bring.
+fn is_media_type(ct: &str) -> bool {
+    let t = ct
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    ["image/", "audio/", "video/", "font/"]
+        .iter()
+        .any(|p| t.starts_with(p))
+        || t == "application/pdf"
+        || t == "application/octet-stream"
+}
+
+/// Whether `host` is covered by `grants`: an exact host, or `*.domain` for its subdomains.
+pub fn host_granted(host: &str, grants: &[String]) -> bool {
+    let host = host.to_ascii_lowercase();
+    grants.iter().any(|g| {
+        let g = g.to_ascii_lowercase();
+        match g.strip_prefix("*.") {
+            Some(domain) => host.ends_with(&format!(".{domain}")),
+            None => host == g,
+        }
+    })
+}
+
+#[derive(Deserialize)]
+pub struct GrantsBody {
+    hosts: Vec<String>,
+}
+
+/// `GET /api/web/grants`: the hosts the company's WordPress may reach.
+pub async fn get_grants(
+    State(st): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> AppResult<Json<Value>> {
+    let company = require_company(&st, &user.id).await?;
+    Ok(Json(
+        json!({ "hosts": grants_db::grants(&st.db, &company.id).await? }),
+    ))
+}
+
+/// `PUT /api/web/grants` with the company lease: replaces the grant record.
+pub async fn put_grants(
+    State(st): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<GrantsBody>,
+) -> AppResult<Json<Value>> {
+    let fenced = require_lease(&st, &headers, &user).await?;
+    let mut hosts = Vec::new();
+    for h in body.hosts {
+        let h = h.trim().to_ascii_lowercase();
+        let bare = h.strip_prefix("*.").unwrap_or(&h);
+        if bare.is_empty()
+            || bare.len() > 253
+            || !bare
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
+            || !bare.contains('.')
+        {
+            return Err(AppError::BadRequest(format!("{h:?} is not a host name")));
+        }
+        if !hosts.contains(&h) {
+            hosts.push(h);
+        }
+    }
+    grants_db::set_grants(&st.db, &fenced.company.id, &hosts, st.now_ms()).await?;
+    tracing::info!(company = %fenced.company.id, hosts = hosts.len(), "web grants set");
+    Ok(Json(json!({ "hosts": hosts })))
+}
+
+/// `POST /web/wp-request` (module docs).
+pub async fn wp_request(
+    State(st): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<RequestBody>,
+) -> AppResult<Json<Value>> {
+    let fenced = require_lease(&st, &headers, &user).await?;
+    let company = fenced.company.id.clone();
+    // The lease is checked; the fetch itself does not hold the company's lock.
+    drop(fenced);
+    if !st.web_limiter.allow(user.id.clone(), Instant::now()) {
+        return Err(AppError::TooManyRequests("web fetch rate limit".into()));
+    }
+    let method = req.method.to_ascii_uppercase();
+    if !METHODS.contains(&method.as_str()) {
+        return Err(AppError::BadRequest(format!(
+            "method {method} is not one of {}",
+            METHODS.join(", ")
+        )));
+    }
+    if req
+        .body
+        .as_ref()
+        .is_some_and(|b| b.len() > MAX_REQUEST_BODY)
+    {
+        return Err(AppError::PayloadTooLarge(format!(
+            "request body exceeds {MAX_REQUEST_BODY} bytes"
+        )));
+    }
+    let start = check_url(&req.url)?;
+    let grants = grants_db::grants(&st.db, &company).await?;
+    let host = start.host_str().unwrap_or("").to_string();
+    if !host_granted(&host, &grants) {
+        return Err(AppError::Forbidden(format!(
+            "the company's WordPress has no grant for {host}"
+        )));
+    }
+    let mut out_headers = Vec::new();
+    for (k, v) in &req.headers {
+        let lower = k.to_ascii_lowercase();
+        if DROPPED_HEADERS.contains(&lower.as_str()) {
+            continue;
+        }
+        if reqwest::header::HeaderName::from_bytes(lower.as_bytes()).is_err()
+            || reqwest::header::HeaderValue::from_str(v).is_err()
+        {
+            return Err(AppError::BadRequest(format!("header {k:?} is not valid")));
+        }
+        out_headers.push((lower, v.clone()));
+    }
+    let cfg = st.cfg.web.clone();
+    let out = Outgoing {
+        method: reqwest::Method::from_bytes(method.as_bytes())
+            .map_err(|_| AppError::BadRequest("bad method".into()))?,
+        headers: out_headers,
+        body: req.body,
+        raw: true,
+        binary: true,
+    };
+    let got = match tokio::time::timeout(cfg.timeout, fetch_inner(start, &cfg, &out)).await {
+        Ok(r) => r?,
+        Err(_) => return Err(AppError::GatewayTimeout("request timed out".into())),
+    };
+    // A redirect may leave the granted hosts: the final host must be granted too.
+    let final_host = got.url.host_str().unwrap_or("").to_string();
+    if !host_granted(&final_host, &grants) {
+        return Err(AppError::Forbidden(format!(
+            "the request was redirected to {final_host}, which has no grant"
+        )));
+    }
+    tracing::info!(company = %company, host = %final_host, method = %method, status = got.status, "wp request");
+    let mut reply = json!({ "url": got.url.as_str(), "status": got.status, "content_type": got.content_type, "headers": got.headers });
+    if is_media_type(&got.content_type) {
+        use base64::Engine as _;
+        reply["body_b64"] =
+            Value::String(base64::engine::general_purpose::STANDARD.encode(&got.bytes));
+    } else {
+        reply["body"] = Value::String(got.body);
+    }
+    Ok(Json(reply))
 }
 
 /// `POST /web/firecrawl/{*rest}`: the credits-metered tier (wave 3).

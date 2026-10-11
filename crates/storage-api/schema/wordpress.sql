@@ -41,7 +41,7 @@ CREATE TABLE `wp_term_taxonomy` (
   `term_taxonomy_id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   `term_id` INTEGER NOT NULL DEFAULT '0',
   `taxonomy` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
-  `description` TEXT COLLATE NOCASE NOT NULL,
+  `description` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
   `parent` INTEGER NOT NULL DEFAULT '0',
   `count` INTEGER NOT NULL DEFAULT '0'
 );
@@ -65,13 +65,13 @@ CREATE INDEX `wp_commentmeta__meta_key` ON `wp_commentmeta` (`meta_key`);
 CREATE TABLE `wp_comments` (
   `comment_ID` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   `comment_post_ID` INTEGER NOT NULL DEFAULT '0',
-  `comment_author` TEXT COLLATE NOCASE NOT NULL,
+  `comment_author` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
   `comment_author_email` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
   `comment_author_url` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
   `comment_author_IP` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
   `comment_date` TEXT COLLATE NOCASE NOT NULL DEFAULT '0000-00-00 00:00:00',
   `comment_date_gmt` TEXT COLLATE NOCASE NOT NULL DEFAULT '0000-00-00 00:00:00',
-  `comment_content` TEXT COLLATE NOCASE NOT NULL,
+  `comment_content` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
   `comment_karma` INTEGER NOT NULL DEFAULT '0',
   `comment_approved` TEXT COLLATE NOCASE NOT NULL DEFAULT '1',
   `comment_agent` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
@@ -96,14 +96,14 @@ CREATE TABLE `wp_links` (
   `link_rating` INTEGER NOT NULL DEFAULT '0',
   `link_updated` TEXT COLLATE NOCASE NOT NULL DEFAULT '0000-00-00 00:00:00',
   `link_rel` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
-  `link_notes` TEXT COLLATE NOCASE NOT NULL,
+  `link_notes` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
   `link_rss` TEXT COLLATE NOCASE NOT NULL DEFAULT ''
 );
 CREATE INDEX `wp_links__link_visible` ON `wp_links` (`link_visible`);
 CREATE TABLE `wp_options` (
   `option_id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   `option_name` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
-  `option_value` TEXT COLLATE NOCASE NOT NULL,
+  `option_value` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
   `autoload` TEXT COLLATE NOCASE NOT NULL DEFAULT 'yes'
 );
 CREATE UNIQUE INDEX `wp_options__option_name` ON `wp_options` (`option_name`);
@@ -121,19 +121,19 @@ CREATE TABLE `wp_posts` (
   `post_author` INTEGER NOT NULL DEFAULT '0',
   `post_date` TEXT COLLATE NOCASE NOT NULL DEFAULT '0000-00-00 00:00:00',
   `post_date_gmt` TEXT COLLATE NOCASE NOT NULL DEFAULT '0000-00-00 00:00:00',
-  `post_content` TEXT COLLATE NOCASE NOT NULL,
-  `post_title` TEXT COLLATE NOCASE NOT NULL,
-  `post_excerpt` TEXT COLLATE NOCASE NOT NULL,
+  `post_content` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
+  `post_title` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
+  `post_excerpt` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
   `post_status` TEXT COLLATE NOCASE NOT NULL DEFAULT 'publish',
   `comment_status` TEXT COLLATE NOCASE NOT NULL DEFAULT 'open',
   `ping_status` TEXT COLLATE NOCASE NOT NULL DEFAULT 'open',
   `post_password` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
   `post_name` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
-  `to_ping` TEXT COLLATE NOCASE NOT NULL,
-  `pinged` TEXT COLLATE NOCASE NOT NULL,
+  `to_ping` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
+  `pinged` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
   `post_modified` TEXT COLLATE NOCASE NOT NULL DEFAULT '0000-00-00 00:00:00',
   `post_modified_gmt` TEXT COLLATE NOCASE NOT NULL DEFAULT '0000-00-00 00:00:00',
-  `post_content_filtered` TEXT COLLATE NOCASE NOT NULL,
+  `post_content_filtered` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
   `post_parent` INTEGER NOT NULL DEFAULT '0',
   `guid` TEXT COLLATE NOCASE NOT NULL DEFAULT '',
   `menu_order` INTEGER NOT NULL DEFAULT '0',

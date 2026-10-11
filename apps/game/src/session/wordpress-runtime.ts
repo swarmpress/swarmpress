@@ -10,7 +10,7 @@
 import { PHP_BACKENDS, phpBackendKey, resolvePhpBackend, wordpressEngineFromQuery, type PhpBackendId } from '../php/backend'
 import { iframeConnector, PhpWasmSandbox } from '../php/sandbox-host'
 import { sandboxUrl } from '../php/wordpress'
-import { StorageClient, type StorageEndpoint } from '../php/storage-client'
+import { StorageClient, type StorageEndpoint, type StoragePlatform } from '../php/storage-client'
 import { startWordPress, WP_STAGES, type StartedWordPress, type WpStageId, type WpStageState, type WpStartupEvent } from '../php/startup'
 import { PhpUnavailableError, type PhpBackend, type PhpRequest, type PhpResponse } from '../php/types'
 
@@ -50,6 +50,8 @@ export interface WordPressRuntimeOptions {
   store: Kv & { repoRecords(): Promise<unknown[]>; appendRepoRecords(records: unknown[]): Promise<void> }
   search?: string
   site: { title: string; adminEmail: string }
+  /** Object storage and the fetch proxy under the company lease (absent: uploads stay in memory, outgoing HTTP is refused). */
+  platform?: StoragePlatform
   /** Tests: makes the storage endpoint, which hands records back to `onRecords` (default: a storage worker). */
   storage?: (onRecords: (records: unknown[]) => void) => WpStorage
   /** Tests: the backend (default: the one `?php=` or the company's setting chooses). */
@@ -127,7 +129,7 @@ export class WordPressRuntime {
     const persist = (records: unknown[]) => {
       this.persisting = this.persisting.then(() => store.appendRepoRecords(records)).catch((e: unknown) => this.opts.log?.(`repository records were not stored: ${String(e)}`))
     }
-    this.storage = this.opts.storage ? this.opts.storage(persist) : StorageClient.start(persist)
+    this.storage = this.opts.storage ? this.opts.storage(persist) : StorageClient.start(persist, this.opts.platform)
     const storage = this.storage
     try {
       const wp = await startWordPress(

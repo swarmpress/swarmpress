@@ -42,14 +42,16 @@ export class MemoryAssets implements AssetStore {
 }
 
 /** Outgoing HTTP from WordPress; `null` refuses (rule 11: fail loudly, never fake a response). */
-export type HttpProxy = ((request: { method: string; url: string; headers: Record<string, string>; body: string; timeout: number }) => Promise<{ status: number; headers: Record<string, string>; body: string }>) | null
+export type HttpProxy = ((request: { method: string; url: string; headers: Record<string, string>; body: string; timeout: number }) => Promise<{ status: number; headers: Record<string, string>; body?: string; body_b64?: string }>) | null
 
 /** A sqlite-wasm database as the facade's executor: JSON rows, `[changes, lastInsertRowid]`. */
 export function sqliteExecutor(sqlite3: Sqlite3Static): () => unknown {
   return () => {
     const db: Database = new sqlite3.oo1.DB(':memory:', 'c')
-    // MySQL's REGEXP as a literal-substring match (anchors trimmed), as the native projection does.
-    db.createFunction('regexp', (_ctx: number, pattern: unknown, text: unknown) => (text != null && String(text).includes(String(pattern).replace(/^\^|\$$/g, '')) ? 1 : 0), { arity: 2, deterministic: true })
+    // MySQL's REGEXP: case-insensitive (WordPress's collation), regexp_binary() for a BINARY side, as natively.
+    const re = (flags: string) => (_ctx: number, pattern: unknown, text: unknown) => (text != null && new RegExp(String(pattern), flags).test(String(text)) ? 1 : 0)
+    db.createFunction('regexp', re('iu'), { arity: 2, deterministic: true })
+    db.createFunction('regexp_binary', re('u'), { arity: 2, deterministic: true })
     return {
       query(sql: string): string {
         const columns: string[] = []

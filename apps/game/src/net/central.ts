@@ -556,6 +556,39 @@ export class CentralClient {
     return this.json('POST', '/web/request', { json: req })
   }
 
+  /** Stores asset bytes by their SHA-256 (`PUT /api/assets/{sha}`, ADR-0050); true when they were new. */
+  async putAsset(token: string, sha256: string, bytes: Uint8Array, mime: string): Promise<boolean> {
+    const res = await this.request('PUT', `/api/assets/${sha256}`, { body: bytes.slice().buffer, headers: { [LEASE_HEADER]: token, 'content-type': mime || 'application/octet-stream' } })
+    return res.status === 201
+  }
+
+  /** The company's asset bytes (`GET /api/assets/{sha}`); null when it has none by that digest. */
+  async getAsset(sha256: string): Promise<Uint8Array | null> {
+    try {
+      return new Uint8Array(await (await this.request('GET', `/api/assets/${sha256}`)).arrayBuffer())
+    } catch (e) {
+      if (e instanceof CentralError && e.status === 404) return null
+      throw e
+    }
+  }
+
+  /** The hosts the company's WordPress may reach (`/api/web/grants`, ADR-0084 §2). */
+  webGrants(): Promise<{ hosts: string[] }> {
+    return this.json('GET', '/api/web/grants')
+  }
+
+  setWebGrants(token: string, hosts: string[]): Promise<{ hosts: string[] }> {
+    return this.json('PUT', '/api/web/grants', { json: { hosts }, headers: { [LEASE_HEADER]: token } })
+  }
+
+  /** WordPress's outgoing request through the fetch proxy, within the company's grants (`POST /web/wp-request`). */
+  wpRequest(
+    token: string,
+    req: { url: string; method: string; headers: Record<string, string>; body: string | null },
+  ): Promise<{ url: string; status: number; content_type: string; headers: Record<string, string>; body?: string; body_b64?: string }> {
+    return this.json('POST', '/web/wp-request', { json: req, headers: { [LEASE_HEADER]: token } })
+  }
+
   /** A `Theme` item's components (`PUT /api/site/theme`, FEAT-094): one pull request on `design/<item>`. */
   putTheme(token: string, body: { item: string; files: Record<string, string>; message?: string }): Promise<{ number: number; branch: string; head_sha: string }> {
     return this.json('PUT', '/api/site/theme', { json: body, headers: { [LEASE_HEADER]: token } })
