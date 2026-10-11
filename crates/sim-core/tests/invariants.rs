@@ -634,7 +634,10 @@ fn check_plan(w: &World) {
                 "{} has a job before it started",
                 item.id
             );
-            assert!(item.start_day.is_some(), "{} has no start day", item.id);
+            // Planned by the board: a start day. An interior waits for an office designer instead.
+            if item.kind != WorkItemKind::Interior {
+                assert!(item.start_day.is_some(), "{} has no start day", item.id);
+            }
         } else if !item.status.is_closed() {
             if let Some(p) = item.phase().filter(|p| p.kind == PhaseKind::Draft) {
                 let writer = p.assignee.expect("a draft has a writer");

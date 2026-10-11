@@ -420,6 +420,24 @@ fn without_a_designer_the_room_waits_and_the_ceo_is_asked_to_hire() {
     let item = *w.plan.interiors.keys().next().unwrap();
     assert!(w.plan.items[&item].is_unstarted());
     assert!(reqs(&mut w).is_empty(), "no job without a designer");
+    // A due day set by the CEO gives it a start day, but the board's standup never starts an
+    // interior with a writer: it waits for a designer.
+    let today = w.clock().day;
+    w.apply(Command::UpdateWorkItem {
+        item,
+        update: sim_core::commands::WorkItemUpdate::DueDay(today + 1),
+    })
+    .unwrap();
+    let day = w.clock().day;
+    steps_until(&mut w, |w| w.clock().day >= day + 2);
+    assert!(w.plan.items[&item].is_unstarted(), "still waiting");
+    assert!(
+        w.plan.items[&item]
+            .phases
+            .iter()
+            .all(|p| p.assignee.is_none()),
+        "nobody but a designer takes it"
+    );
     let t = w
         .tickets
         .values()

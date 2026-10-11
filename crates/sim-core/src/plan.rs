@@ -929,6 +929,8 @@ impl World {
             .items
             .values()
             .filter(|i| i.project == project && i.is_unstarted())
+            // An interior waits for an office designer, never for a start day (ADR-0087).
+            .filter(|i| i.kind != WorkItemKind::Interior)
             .filter(|i| i.start_day.is_some_and(|d| d <= day))
             .filter(|i| {
                 i.depends_on.iter().all(|d| {
