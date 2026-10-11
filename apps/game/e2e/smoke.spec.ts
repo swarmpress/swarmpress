@@ -69,6 +69,8 @@ test('people walk smoothly between sim steps and open their profile on click', a
   // Fake time (Date, performance.now, requestAnimationFrame): frames come exactly every
   // 16 ms of page time however slow the software renderer is, so one 10 Hz sim slice
   // spans six frames on any machine.
+  // The frame count is fixed (fake time), but a software-rendered frame takes seconds on a CI runner.
+  test.setTimeout(360_000)
   await page.clock.install()
   await boot(page, '/?quality=low&speed=10')
   // Pause at once and step page time from here: on a slow runner the real-time wait for a walker
@@ -95,9 +97,9 @@ test('people walk smoothly between sim steps and open their profile on click', a
   const walking = (await people(page)).filter((p) => p.walking)
   expect(walking.length).toBeGreaterThan(0)
   const samples: Array<{ id: string; step: number; at: string }> = []
-  // 72 frames (seven sim slices): long enough that some walk spans more than 12 of them even when
-  // the sample starts near the end of the walks in progress (36 frames flaked 1 in 20).
-  for (let i = 0; i < 72; i++) {
+  // 40 frames (four sim slices): the sample starts with the morning's first walks, which span all of
+  // it; each frame is a page evaluation, seconds each on CI's software renderer.
+  for (let i = 0; i < 40; i++) {
     await page.clock.runFor(16)
     const frame = await page.evaluate(() => {
       const h = (window as unknown as { __swarmpress: Hook }).__swarmpress
