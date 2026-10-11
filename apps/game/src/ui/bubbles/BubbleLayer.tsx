@@ -69,10 +69,20 @@ export function bubblesOf(state: (Pick<RenderState, 'bubbles' | 'meetings'> & Pa
 }
 
 interface Known {
+  view: BubbleView
   text: string | null
   /** When the words were first shown (ms). */
   since: number | null
+  /** When the turn left the render state (ms), or null while it runs. */
+  gone: number | null
 }
+
+/**
+ * How long a turn whose words came only after it ended still shows its line
+ * (ms): at high speed a turn can be shorter than reading the store, or than a
+ * frame of a slow renderer, and every turn should be seen once.
+ */
+export const LATE_LINE_MS = 1500
 
 export function BubbleLayer({ source }: { source: BubbleSource }) {
   const now = () => (source.now ?? (() => performance.now()))()
@@ -91,7 +101,8 @@ export function BubbleLayer({ source }: { source: BubbleSource }) {
     const frame = () => {
       const list = source.current()
       const sig = list.map(keyOf).join(',')
-      if (list.length || sig !== shown.current) setTick((n) => n + 1)
+      const late = [...known.current.values()].some((e) => e.gone != null)
+      if (list.length || late || sig !== shown.current) setTick((n) => n + 1)
       shown.current = sig
       cancel = schedule(frame)
     }
@@ -99,13 +110,22 @@ export function BubbleLayer({ source }: { source: BubbleSource }) {
     return () => cancel()
   }, [source])
 
-  const list = source.current()
-  const live = new Set(list.map(keyOf))
-  for (const k of known.current.keys()) if (!live.has(k)) known.current.delete(k)
-  for (const b of list) {
+  const t = now()
+  const live = source.current()
+  const liveKeys = new Set(live.map(keyOf))
+  // A turn that ended: gone at once if its line was shown, else kept for a late line (LATE_LINE_MS).
+  for (const [k, e] of known.current) {
+    if (liveKeys.has(k)) continue
+    if (e.since != null && e.gone == null) known.current.delete(k)
+    else if (e.gone == null) e.gone = t
+    else if (t - e.gone > LATE_LINE_MS || (e.since != null && t - e.since > LATE_LINE_MS)) known.current.delete(k)
+  }
+  const late = [...known.current.entries()].filter(([k, e]) => !liveKeys.has(k) && e.gone != null).map(([, e]) => e.view)
+  const list = [...live, ...late]
+  for (const b of live) {
     const k = keyOf(b)
     if (known.current.has(k)) continue
-    const entry: Known = { text: null, since: null }
+    const entry: Known = { view: b, text: null, since: null, gone: null }
     known.current.set(k, entry)
     void source
       .text(b)
@@ -136,7 +156,6 @@ export function BubbleLayer({ source }: { source: BubbleSource }) {
     }
   })
 
-  const t = now()
   return (
     <div class="speech-bubbles" aria-live="polite" aria-label="Meeting speech">
       {list.map((b) => {
@@ -160,7 +179,7 @@ export function BubbleLayer({ source }: { source: BubbleSource }) {
           >
             {name ? <span class="speech-bubble-name">{name}</span> : null}
             <span class="speech-bubble-typed" aria-hidden="true">
-              {typed(entry.text, t - entry.since, source.durationMs(b.chars))}
+              {liveKeys.has(k) ? typed(entry.text, t - entry.since, source.durationMs(b.chars)) : entry.text}
             </span>
             <span class="speech-bubble-full">{entry.text}</span>
           </div>

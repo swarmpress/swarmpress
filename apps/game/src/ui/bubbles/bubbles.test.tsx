@@ -2,7 +2,7 @@
 import { render } from 'preact'
 import { act } from 'preact/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
-import { BubbleLayer, bubblesOf, type BubbleSource, type BubbleView } from './BubbleLayer'
+import { BubbleLayer, LATE_LINE_MS, bubblesOf, type BubbleSource, type BubbleView } from './BubbleLayer'
 import { BUBBLE_GAP, BUBBLE_MARGIN, overlaps, placeBubble, typed, typedLength, type Rect } from './layout'
 
 const VIEW = { w: 1280, h: 800 }
@@ -83,13 +83,13 @@ describe('BubbleLayer (FEAT-025)', () => {
     root?.remove()
   })
 
-  function harness(texts: Record<string, string>) {
+  function harness(texts: Record<string, string>, text?: BubbleSource['text']) {
     let now = 0
     let frame: (() => void) | null = null
     const s = { current: [] as BubbleView[] }
     const source: BubbleSource = {
       current: () => s.current,
-      text: async (b) => texts[`${b.meeting}:${b.seq}`] ?? null,
+      text: text ?? (async (b) => texts[`${b.meeting}:${b.seq}`] ?? null),
       name: (id) => ({ 'staff-1': 'Giulia' })[id],
       // A fake projection: everyone's head at (400, 300), the label just above it.
       anchor: () => ({ x: 400, y: 300, label: { left: 355, top: 280, right: 445, bottom: 296 } }),
@@ -138,6 +138,25 @@ describe('BubbleLayer (FEAT-025)', () => {
     // The meeting ends: the bubble goes.
     h.s.current = []
     await h.step(16)
+    expect(h.el()).toBeNull()
+  })
+
+  it('still shows a line whose words came after its turn ended, in full and briefly', async () => {
+    let resolve: (t: string) => void = () => undefined
+    const words = new Promise<string>((r) => (resolve = r))
+    const h = harness({}, () => words)
+    h.s.current = [{ meeting: 'meeting-1', seq: 2, speaker: 'staff-1', job: 3, chars: 12 }]
+    await h.step(0)
+    // The turn ends before the store has answered.
+    h.s.current = []
+    await h.step(16)
+    expect(h.el()).toBeNull()
+    resolve('Fish, always.')
+    await h.step(16)
+    await h.step(16)
+    const el = h.el()!
+    expect(el.querySelector('.speech-bubble-typed')!.textContent).toBe('Fish, always.')
+    await h.step(LATE_LINE_MS + 20)
     expect(h.el()).toBeNull()
   })
 
