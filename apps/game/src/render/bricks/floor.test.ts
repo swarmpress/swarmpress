@@ -3,7 +3,7 @@
 // covers the tiles' rect at PX_PER_STUD texels per stud.
 import { describe, expect, it } from 'vitest'
 import { mergeBoxes } from './chunk'
-import { paintFloor, PX_PER_STUD } from './floor'
+import { paintFloor, paintStud, PX_PER_STUD } from './floor'
 import { STUD } from './placements'
 
 const hex = (c: string) => ({ red: '#ff0000', blue: '#0000ff' })[c] ?? '#000000'
@@ -52,5 +52,18 @@ describe('mergeBoxes (the low tier’s level of detail)', () => {
     const a = { x: 0, y: 0, z: 0, sx: 1, sy: 1, sz: 1 }
     expect(mergeBoxes([a, { ...a, x: 1.5 }])).toHaveLength(2)
     expect(mergeBoxes([a, { ...a, x: 1, sz: 0.5 }])).toHaveLength(2)
+  })
+})
+
+describe('paintStud (the baseplate under the office)', () => {
+  it('draws a stud brighter than its plate, with a shadow to the south-east', () => {
+    const size = 32
+    const px = paintStud('#2a7a46', size)
+    const g = (x: number, y: number) => px[(y * size + x) * 4 + 1]
+    const plate = g(1, 1)
+    expect(plate).toBe(0x7a)
+    expect(g(16, 16)).toBeGreaterThan(plate)
+    // Just past the stud's rim to the south-east: the shadow.
+    expect(g(16 + 11, 16 + 3)).toBeLessThan(plate)
   })
 })

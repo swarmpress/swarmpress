@@ -92,3 +92,53 @@ export function floorMesh(scene: Scene, name: string, image: FloorImage, top: nu
   mesh.freezeWorldMatrix()
   return mesh
 }
+
+/** One stud of a baseplate as RGBA texels (`size` square): the plate's colour, a stud with a lit and a shaded rim. */
+export function paintStud(hex: string, size = 32): Uint8Array {
+  const [r, g, b] = rgbOf(hex)
+  const px = new Uint8Array(size * size * 4)
+  const c = (size - 1) / 2
+  const radius = size * 0.3
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = x - c
+      const dy = y - c
+      const d = Math.hypot(dx, dy)
+      // Light from the north-west: the stud's rim is brighter there, darker to the south-east,
+      // and it throws a short shadow on the plate.
+      let k = 1
+      const rim = size / 16
+      if (d <= radius) k = d > radius - rim ? 1 - ((dx + dy) / (2 * radius)) * 0.6 : 1.18
+      else if (Math.hypot(dx - rim, dy - rim) <= radius + 0.5) k = 0.62
+      // The plate's seam at the stud cell's edge.
+      if (x === size - 1 || y === size - 1) k *= 0.9
+      const o = (y * size + x) * 4
+      px[o] = Math.min(255, r * k)
+      px[o + 1] = Math.min(255, g * k)
+      px[o + 2] = Math.min(255, b * k)
+      px[o + 3] = 255
+    }
+  }
+  return px
+}
+
+/** A baseplate under everything: `w` × `d` metres at `y`, its studs a repeating texture. */
+export function baseplateMesh(scene: Scene, name: string, x0: number, z0: number, w: number, d: number, y: number, hex: string): Mesh {
+  const mesh = MeshBuilder.CreateGround(name, { width: w, height: d }, scene)
+  mesh.position.set(x0 + w / 2, y, z0 + d / 2)
+  mesh.isPickable = false
+  const size = 32
+  const texture = new RawTexture(paintStud(hex, size), size, size, Constants.TEXTUREFORMAT_RGBA, scene, true, false, Texture.TRILINEAR_SAMPLINGMODE)
+  texture.wrapU = texture.wrapV = Texture.WRAP_ADDRESSMODE
+  texture.uScale = w / STUD
+  texture.vScale = d / STUD
+  texture.anisotropicFilteringLevel = 8
+  const material = new PBRMaterial(`${name}-material`, scene)
+  material.albedoTexture = texture
+  material.metallic = 0
+  material.roughness = 0.4
+  mesh.material = material
+  mesh.receiveShadows = true
+  mesh.freezeWorldMatrix()
+  return mesh
+}

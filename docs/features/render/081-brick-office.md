@@ -53,6 +53,12 @@ Design: [`docs/design/brick-office.md`](../../design/brick-office.md). Concept a
    low tier the shells' touching bricks merged per colour (`mergeBoxes`, walls without seams).
    Software WebGPU (CI's SwiftShader) went from 1.8 to about 5 fps on the demo office; per-chunk
    L0/L1/L2 by distance is still to do.
+4b. **The toy look** (2026-10-11): every solid brick shows its seams (`seams.ts`, a material plugin
+   darkening each face towards its edges from the instance's own scale), solid plastic is glossy
+   ABS with a clear coat, the plastic reflects a generated studio (`environment.ts`, half floats,
+   prefiltered once; its strength follows the sky, so night stays dark), and the office stands on a
+   green studded baseplate (`floor.ts` `baseplateMesh`). About 96 fps on the owner's machine at
+   the high tier.
 5. The box office reduced to the scene's skeleton (lights, labels, picking), its builders removed.
 6. Object-level placement on the stud grid (with FEAT-026).
 

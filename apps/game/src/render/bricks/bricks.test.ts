@@ -216,6 +216,14 @@ describe.skipIf(!built)('brick office (kit-wasm, NullEngine)', () => {
     expect(merged.stats().instances).toBe(full.stats().instances)
   })
 
+  it('shows brick seams on solid plastic, not on glass or light, and stands on a baseplate', () => {
+    const { game } = scene()
+    const brick = (id: string) => game.scene.getMaterialByName(`brick-${id}`)
+    expect(brick('white')?.pluginManager?.getPlugin('BrickSeam')).toBeTruthy()
+    expect(brick('glass')?.pluginManager?.getPlugin('BrickSeam') ?? null).toBeNull()
+    expect(game.scene.getMeshByName('bricks-baseplate')).toBeTruthy()
+  })
+
   it('only the spike rooms when asked (the bench compares)', () => {
     const engine = new NullEngine()
     engines.push(engine)

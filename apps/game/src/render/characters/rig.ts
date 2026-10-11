@@ -76,12 +76,16 @@ export interface RigFactory {
   materials: PBRMaterial[]
 }
 
+/** The people are plastic like the bricks: glossy, with a clear coat. */
 function pbr(scene: Scene, name: string, albedo: Color3, roughness: number, maxLights: number): PBRMaterial {
   const m = new PBRMaterial(name, scene)
   m.albedoColor = albedo
-  m.roughness = roughness
+  m.roughness = Math.min(roughness, 0.3)
   m.metallic = 0
   m.maxSimultaneousLights = maxLights
+  m.clearCoat.isEnabled = true
+  m.clearCoat.intensity = 0.5
+  m.clearCoat.roughness = 0.12
   return m
 }
 

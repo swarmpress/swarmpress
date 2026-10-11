@@ -35,10 +35,12 @@ import type { Lighting } from '../lighting'
 import { lampsLightFloor, MAX_LIGHTS_PER_MATERIAL, type OfficeHandles } from '../office'
 import { hallwayRects } from '../walls'
 import { buildRoomChunk, exteriorSides, shellOrigin, STUD_HEIGHT, STUD_RADIUS, type ChunkSource, type Region, type RoomChunk, type SurfaceAnchor } from './chunk'
-import { floorMesh, paintFloor } from './floor'
+import { baseplateMesh, floorMesh, paintFloor } from './floor'
+import { envIntensityFor, plasticEnvironment } from './environment'
+import { BrickSeamPlugin } from './seams'
 import { mappingOf, paletteOf, type KitApi, type KitBuildLike, type PaletteColour } from './kit'
 import { modelPlacement, modelRoom } from './model'
-import { roomPlacements, type DesignInfo } from './placements'
+import { FLOOR_TOP, roomPlacements, type DesignInfo } from './placements'
 import {
   boardView,
   CLOSE_PX,
@@ -177,6 +179,9 @@ export interface BrickOfficeOptions {
 
 const hex = (h: string) => Color3.FromHexString(h).toLinearSpace()
 
+/** ABS plastic: glossy, never matte. */
+export const PLASTIC_ROUGHNESS = 0.24
+
 /** Materials per palette colour (PBR, the prototype's look); glowing colours emissive. */
 function makeMaterial(scene: Scene, c: PaletteColour, name = `brick-${c.id}`): PBRMaterial {
   const m = new PBRMaterial(name, scene)
@@ -192,6 +197,14 @@ function makeMaterial(scene: Scene, c: PaletteColour, name = `brick-${c.id}`): P
     m.emissiveColor = hex(c.emissive)
     m.emissiveIntensity = (c.glow ?? 1000) / 1000
   }
+  // Solid plastic: glossy ABS with a clear coat for the glints, and its seams; glass and light are not.
+  if (c.class === 'solid' && !c.emissive) {
+    m.roughness = c.rough !== undefined ? c.rough / 1000 : PLASTIC_ROUGHNESS
+    m.clearCoat.isEnabled = true
+    m.clearCoat.intensity = 0.55
+    m.clearCoat.roughness = 0.12
+  }
+  if (c.class !== 'transparent' && !c.emissive) new BrickSeamPlugin(m)
   return m
 }
 
@@ -355,6 +368,13 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     const floor = floorOf(`bricks-${g.id}-floor`, chunk)
     if (floor) groundMeshes.push(floor)
   }
+  // The world the office stands on: a green baseplate, studs and all, well past the street.
+  {
+    const margin = 16
+    const plate = baseplateMesh(scene, 'bricks-baseplate', layout.originX - margin, layout.originZ - margin, layout.width + 2 * margin, layout.depth + 2 * margin, -FLOOR_TOP - 0.002, hexOf('green'))
+    ;(plate.material as PBRMaterial).maxSimultaneousLights = MAX_LIGHTS_PER_MATERIAL
+    groundMeshes.push(plate)
+  }
   for (const m of groundMeshes) m.receiveShadows = true
   if (groundMeshes.length) {
     office.hall?.setEnabled(false)
@@ -435,6 +455,8 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
   let redraws = 0
   let maxRedrawsPerFrame = 0
   const real = typeof document !== 'undefined' && scene.getEngine().name !== 'NullEngine'
+  // What the plastic reflects (a generated studio; not under NullEngine).
+  if (real) void plasticEnvironment(scene)
 
   const ensureCanvas = (s: SurfaceHandle) => {
     if (s.canvas) return s.canvas
@@ -491,6 +513,8 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
   const frame = () => {
     const camera = scene.activeCamera
     if (!camera) return
+    // The glints follow the sky (lighting is sim state, ADR-0006): faint at night.
+    scene.environmentIntensity = envIntensityFor(lighting?.sky.intensity ?? 0.5)
     // Cutaway: the box office's rule on the brick walls.
     const alpha = (camera as unknown as { alpha?: number }).alpha ?? 0
     for (const rb of roomBuilds.values()) {
