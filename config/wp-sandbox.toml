@@ -1,0 +1,15 @@
+# The GPL sandbox swarm.press runs WordPress in (ADR-0078, ADR-0079, ADR-0084): php-wasm, the
+# WordPress fork and pinned plugins, built and released by swarmpress/wp-sandbox. swarm.press never
+# links it: `cargo xtask sandbox-fetch` downloads this release into vendor/wp-sandbox/ (git-ignored),
+# checks it against `sha256`, and the game embeds its browser entry from its own origin; the
+# runner and conformance start its Node entry as a separate process.
+#
+# A new sandbox release changes every field below in one commit.
+version = "0.1.0"
+repo = "swarmpress/wp-sandbox"
+tag = "v0.1.0"
+asset = "wp-sandbox-0.1.0.tar.gz"
+sha256 = "5f14c80fb09eb9929ab2f2fcbf509404630d16083846375cbb139d8fd2e6be59"
+size_bytes = 91822268
+php = "8.4"
+wordpress = "swarmpress/wordpress@wp-7.1.3-sp.1"

@@ -70,6 +70,7 @@ temp/
 /crates/orchestrator-wasm/pkg/
 /crates/kit-wasm/pkg/
 /crates/blueprint-wasm/pkg/
+/crates/storage-api-wasm/pkg/
 /crates/orchestrator-wasm/reports/
 # vite build --mode harness (test harness pages, never in the production build)
 apps/game/dist-harness/
@@ -100,3 +101,6 @@ apps/game/.bonsai-profile/
 
 # Local clone of the live site repository (docs/runbooks/fork-rehearsal.md); its own repo.
 /cinqueterre.travel/
+
+# The GPL sandbox release (cargo xtask sandbox-fetch; ADR-0078: never committed, never linked)
+/vendor/wp-sandbox/

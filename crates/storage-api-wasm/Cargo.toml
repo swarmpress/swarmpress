@@ -1,0 +1,22 @@
+[package]
+name = "storage-api-wasm"
+description = "wasm-bindgen facade over the storage API (ADR-0084) for the browser: the governed side of the WordPress sandbox's storage channel, on the game's sqlite-wasm; a separate module with its own size budget"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# JS values are not `Send`; on native targets the crate is empty, so the workspace still builds.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+storage-api = { path = "../storage-api", default-features = false }
+content-repo = { path = "../content-repo" }
+serde_json.workspace = true
+# Pinned to the releases paired with wasm-bindgen 0.2.100 (the CLI pin).
+wasm-bindgen = "=0.2.100"
+js-sys = "=0.3.77"
+
+[lints]
+workspace = true

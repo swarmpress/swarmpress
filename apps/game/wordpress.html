@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>swarm.press WordPress harness</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; background: #1b1f2a; color: #e8e6e3; font: 14px system-ui, sans-serif; }
+      main { max-width: 900px; margin: 0 auto; padding: 16px; display: grid; gap: 12px; }
+      h1 { font-size: 18px; margin: 0; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #12151d; padding: 10px; border-radius: 8px; margin: 0; font: 12px ui-monospace, Menlo, monospace; }
+      .muted { opacity: 0.7; font-size: 12px; margin: 0; }
+    </style>
+  </head>
+  <body data-wp="loading">
+    <main>
+      <h1>swarm.press WordPress harness</h1>
+      <p class="muted">
+        Test page, not part of the production build (FEAT-105, FEAT-107). Embeds the GPL sandbox from its
+        own origin (<code>cargo xtask sandbox-fetch</code>, served by Vite on <code>:5181</code>) and answers
+        its storage channel from the game's storage worker (<code>storage-api-wasm</code> on sqlite-wasm).
+        Driven by <code>e2e/wordpress.spec.ts</code> through <code>window.__wp</code>.
+      </p>
+      <pre id="status">loading</pre>
+    </main>
+    <script type="module" src="/src/harness/wordpress-harness.ts"></script>
+  </body>
+</html>

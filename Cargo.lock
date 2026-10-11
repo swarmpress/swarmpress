@@ -3035,6 +3035,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "storage-api-wasm"
+version = "0.2.0"
+dependencies = [
+ "content-repo",
+ "js-sys",
+ "serde_json",
+ "storage-api",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "stringprep"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

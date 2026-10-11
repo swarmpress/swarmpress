@@ -376,6 +376,20 @@ workflow = "ci.yml"
 artifact = "game-playwright-eval"
 branch = "main"
 
+# A company's WordPress in the game (wordpress.html, FEAT-105, FEAT-107): the real GPL sandbox from
+# its own origin, its storage channel answered by the storage worker (storage-api-wasm on
+# sqlite-wasm): install onto live, an agent's commit on a work branch, live refusing writes, a merge.
+# `cargo xtask sandbox-fetch && PW_JSON=reports/playwright-wordpress.json playwright test -c playwright.wordpress.config.ts`
+[[evidence]]
+id = "game/playwright-wordpress"
+title = "apps/game WordPress in the browser (sandbox origin, storage worker, governed merge)"
+format = "playwright"
+kind = "e2e"
+path = [".cockpit/evidence/game__playwright-wordpress/**/*.json", "apps/game/reports/playwright-wordpress.json"]
+component = "content"
+features = ["FEAT-105", "FEAT-107"]
+note = "local until the wp-sandbox CI job fetches the release (plan M1)"
+
 [[evidence]]
 id = "site-kit/playwright"
 title = "packages/site-kit fixture-site screenshots"

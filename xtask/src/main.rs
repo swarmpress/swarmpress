@@ -7,11 +7,15 @@
 //!   (the orchestrator bridge) → `crates/orchestrator-wasm/pkg`, `kit-wasm`
 //!   (the construction kit compiler, ADR-0065) → `crates/kit-wasm/pkg`,
 //!   `blueprint-wasm` (site blueprints and tool graphs, ADR-0072) →
-//!   `crates/blueprint-wasm/pkg`. They
+//!   `crates/blueprint-wasm/pkg`, `storage-api-wasm` (the storage API for the WordPress
+//!   sandbox, ADR-0084) → `crates/storage-api-wasm/pkg`. They
 //!   are separate modules with separate size budgets. `--only <crate>` builds one.
 //! - `site-pack <site-dir> [--out <file>] [--commit <sha>]`: build the
 //!   knowledge pack of a local site clone (see [`site_pack`]).
+//! - `sandbox-fetch [--node]`: the pinned GPL sandbox release into `vendor/wp-sandbox/`,
+//!   verified against its sha256 (see [`sandbox`]).
 
+mod sandbox;
 mod site_pack;
 
 use std::{
@@ -34,11 +38,13 @@ fn main() -> Result<()> {
             wasm(args.iter().any(|a| a == "--release"), only)
         }
         Some("site-pack") => site_pack::run(&args[1..]),
+        Some("sandbox-fetch") => sandbox::fetch(root()?, args.iter().any(|a| a == "--node")),
         _ => {
             eprintln!(
-                "usage: cargo xtask wasm [--release] [--only client-wasm|orchestrator-wasm|kit-wasm|blueprint-wasm]"
+                "usage: cargo xtask wasm [--release] [--only client-wasm|orchestrator-wasm|kit-wasm|blueprint-wasm|storage-api-wasm]"
             );
             eprintln!("       {}", site_pack::USAGE);
+            eprintln!("       cargo xtask sandbox-fetch [--node]");
             std::process::exit(2);
         }
     }
@@ -78,6 +84,7 @@ const WASM_CRATES: &[(&str, &str)] = &[
     ("orchestrator-wasm", "orchestrator_wasm"),
     ("kit-wasm", "kit_wasm"),
     ("blueprint-wasm", "blueprint_wasm"),
+    ("storage-api-wasm", "storage_api_wasm"),
 ];
 
 fn wasm(release: bool, only: Option<&str>) -> Result<()> {

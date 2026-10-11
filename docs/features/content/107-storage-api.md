@@ -23,6 +23,15 @@ paths:
   - crates/storage-api/schema/wordpress.sql
   - crates/storage-api/tests/fixtures/wp-expected.json
   - docs/qualification/wp-seam-spike.md
+  - crates/storage-api-wasm/src/lib.rs
+  - crates/storage-api-wasm/Cargo.toml
+  - apps/game/src/php/storage-host.ts
+  - apps/game/src/php/storage-host.test.ts
+  - apps/game/src/php/storage-client.ts
+  - apps/game/src/php/storage-protocol.ts
+  - apps/game/src/php/storage-worker.ts
+  - apps/game/src/php/storage-wasm-load.ts
+  - apps/game/e2e/wordpress.spec.ts
 adrs:
   - ADR-0084
   - ADR-0080

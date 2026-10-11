@@ -1,5 +1,8 @@
+import { createServer, type Server } from 'node:http'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { defineConfig, type ProxyOptions } from 'vite'
+import { defineConfig, type Plugin, type ProxyOptions } from 'vite'
 import preact from '@preact/preset-vite'
 
 // The central server (crates/server, `SWARMPRESS_BIND` default 127.0.0.1:8080).
@@ -24,6 +27,41 @@ const isolation: Record<string, string> =
         'Cross-Origin-Embedder-Policy': process.env.SWARMPRESS_COEP ?? 'credentialless',
       }
 
+// The WordPress sandbox's origin in dev and preview (ADR-0078 §3, plan M1): the pinned GPL
+// release's browser entry (`cargo xtask sandbox-fetch`, vendor/wp-sandbox/, never bundled) on
+// its own port, so the game embeds it cross-origin. The game is isolated: the sandbox's files
+// carry CORP and its page its own COEP. Absent release: no server, and `?site=wordpress` fails
+// loudly when the iframe does not load.
+function sandboxOrigin(): Plugin {
+  const port = Number(process.env.SWARMPRESS_SANDBOX_PORT ?? 5181)
+  const vendor = fileURLToPath(new URL('../../vendor/wp-sandbox/', import.meta.url))
+  const release = existsSync(vendor) ? readdirSync(vendor).filter((d) => d.startsWith('wp-sandbox-') && existsSync(join(vendor, d, '.verified'))).sort().pop() : undefined
+  const types: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.gz': 'application/gzip', '.so': 'application/octet-stream', '.dat': 'application/octet-stream' }
+  const headers = { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'require-corp', 'Cross-Origin-Resource-Policy': 'cross-origin' }
+  let server: Server | null = null
+  const start = (log: (m: string) => void) => {
+    if (!release || server) return
+    const root = join(vendor, release, 'browser')
+    server = createServer((req, res) => {
+      const path = normalize(join(root, decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)))
+      const file = existsSync(path) && statSync(path).isDirectory() ? join(path, 'index.html') : path
+      if (!file.startsWith(root) || !existsSync(file)) {
+        res.writeHead(404, headers).end('not found')
+        return
+      }
+      res.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-cache', ...headers }).end(readFileSync(file))
+    })
+    server.on('error', (e) => log(`wp-sandbox origin on :${port}: ${e.message}`))
+    server.listen(port)
+    log(`wp-sandbox ${release.slice('wp-sandbox-'.length)} served on :${port}`)
+  }
+  return {
+    name: 'swarmpress-wp-sandbox-origin',
+    configureServer: (s) => start((m) => s.config.logger.info(m)),
+    configurePreviewServer: (s) => start((m) => s.config.logger.info(m)),
+  }
+}
+
 export default defineConfig(({ mode }) => {
   // `vite build --mode harness` builds only the test harnesses (orchestrator.html,
   // bonsai.html, bench.html, eval.html) into dist-harness/; the production build never contains them.
@@ -36,13 +74,15 @@ export default defineConfig(({ mode }) => {
         bench: fileURLToPath(new URL('./bench.html', import.meta.url)),
         // The pipeline eval (src/harness/eval-harness.ts, e2e/eval.spec.ts, docs/runbooks/eval.md).
         eval: fileURLToPath(new URL('./eval.html', import.meta.url)),
+        // WordPress in the game (FEAT-105, FEAT-107; e2e/wordpress.spec.ts).
+        wordpress: fileURLToPath(new URL('./wordpress.html', import.meta.url)),
       }
     : {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         llm: fileURLToPath(new URL('./llm.html', import.meta.url)),
       }
   return {
-    plugins: [preact()],
+    plugins: [preact(), sandboxOrigin()],
     resolve: {
       alias: {
         // Built by `cargo xtask wasm` (wasm-bindgen --target web).
@@ -52,6 +92,8 @@ export default defineConfig(({ mode }) => {
         'kit-wasm': fileURLToPath(new URL('../../crates/kit-wasm/pkg/kit_wasm.js', import.meta.url)),
         // Site blueprints and tool graphs (ADR-0072): the blueprint canvas checks and diffs with it.
         'blueprint-wasm': fileURLToPath(new URL('../../crates/blueprint-wasm/pkg/blueprint_wasm.js', import.meta.url)),
+        // The storage API for the WordPress sandbox (ADR-0084), loaded only for a company on the WordPress engine.
+        'storage-api-wasm': fileURLToPath(new URL('../../crates/storage-api-wasm/pkg/storage_api_wasm.js', import.meta.url)),
       },
     },
     server: {
