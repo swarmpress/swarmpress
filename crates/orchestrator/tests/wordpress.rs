@@ -425,3 +425,82 @@ fn section_kinds_follow_the_block_set() {
         json!(["paragraph"])
     );
 }
+
+/// The architects work on WordPress too (ADR-0082 §4): the structural job reads the site's models
+/// from the engine (post types and regions) and proposes; nothing reaches the site; the publish of
+/// the CEO's approval builds it through the engine.
+#[tokio::test]
+async fn an_architects_proposal_is_built_through_the_engine() {
+    let engine = Arc::new(FakeSiteEngine::new());
+    let blueprint = json!({
+        "format": "swarmpress.blueprint.v1",
+        "page_types": [
+            {"id": "post", "label": {"en": "Posts"}, "route": "/{slug}/", "source": {"kind": "page"}, "slots": [{"id": "content", "blocks": ["paragraph", "heading"], "min": 0}]},
+            {"id": "page", "label": {"en": "Pages"}, "route": "/{slug}/", "source": {"kind": "page"}, "slots": [{"id": "content", "blocks": ["paragraph"], "min": 0}]}
+        ],
+        "navigation": [{"page_type": "post"}, {"page_type": "page"}]
+    });
+    let hash = blueprint::hash(&blueprint::Blueprint::from_value(&blueprint).unwrap());
+    engine.set_models(json!({"blueprint": blueprint, "types": {}, "context": {"custom_blocks": [], "sections": [], "collections": []}, "tools": [], "hash": hash}));
+    let o = Orchestrator::new(
+        MemStore::new(),
+        EngineGateway::new(engine.clone(), vec![]),
+        Arc::new(fake_writer::fake_writer(Vec::<FakeReply>::new())),
+        binding(),
+    );
+    o.store()
+        .put_brief(
+            COMPANY,
+            9,
+            orchestrator::structure_brief(
+                "structure",
+                "Add an author page type and link articles to it",
+            ),
+        )
+        .await
+        .unwrap();
+    let architect = JobRequest {
+        work_item: Some("work-item-9".into()),
+        brief_ref: Some(9),
+        staff: vec![StaffRef {
+            id: "staff-3".into(),
+            persona: "rafael".into(),
+            role: "ux-designer".into(),
+        }],
+        ..job(30, JobKind::Architect, None, 0)
+    };
+    let out = o.run(&architect).await.unwrap();
+    assert!(completed(&out).ok, "{out:?}");
+    let p = o
+        .store()
+        .get_artifact(COMPANY, "work-item-9")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(p["structure"]["base_hash"], json!(hash));
+    assert_eq!(
+        engine.models().unwrap()["hash"],
+        json!(hash),
+        "nothing reached the site"
+    );
+
+    let publish = JobRequest {
+        approved_by: Some(APPROVER.into()),
+        ..JobRequest {
+            kind: JobKind::Publish,
+            job_id: 31,
+            ..architect
+        }
+    };
+    let out = o.run(&publish).await.unwrap();
+    assert!(completed(&out).ok, "{out:?}");
+    let built = engine.models().unwrap();
+    assert!(
+        built["blueprint"]["page_types"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["id"] == "author"),
+        "{built}"
+    );
+}

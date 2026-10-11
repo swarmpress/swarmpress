@@ -125,6 +125,22 @@ pub trait SiteEngine: MaybeSendSync {
     async fn release_status(&self, id: u64) -> Result<Option<DeployState>, GatewayError>;
     /// Runs a failed export and deploy of change request `id` again.
     async fn redeploy(&self, id: u64) -> Result<Redeploy, GatewayError>;
+    /// The site's structures in the Studio's models (ADR-0082 §4): post types, their regions and
+    /// the block set, for the architects' structural jobs.
+    async fn site_models(&self) -> Result<Value, GatewayError> {
+        Err(GatewayError(
+            "this site engine has no structural models".into(),
+        ))
+    }
+    /// An approved structural proposal built into live (the regions of its post types).
+    async fn put_blueprint(
+        &self,
+        _body: &Value,
+    ) -> Result<crate::gateway::ModelsPut, GatewayError> {
+        Err(GatewayError(
+            "this site engine cannot build structures".into(),
+        ))
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -171,6 +187,12 @@ impl<T: SiteEngine + ?Sized> SiteEngine for std::sync::Arc<T> {
     }
     async fn redeploy(&self, id: u64) -> Result<Redeploy, GatewayError> {
         (**self).redeploy(id).await
+    }
+    async fn site_models(&self) -> Result<Value, GatewayError> {
+        (**self).site_models().await
+    }
+    async fn put_blueprint(&self, body: &Value) -> Result<crate::gateway::ModelsPut, GatewayError> {
+        (**self).put_blueprint(body).await
     }
 }
 
@@ -864,18 +886,11 @@ impl<E: SiteEngine> Gateway for EngineGateway<E> {
     }
 
     async fn site_models(&self) -> Result<Value, GatewayError> {
-        Err(GatewayError(
-            "the site's models on WordPress are edited in the Studio (plan M6)".into(),
-        ))
+        self.engine.site_models().await
     }
 
-    async fn put_blueprint(
-        &self,
-        _body: &Value,
-    ) -> Result<crate::gateway::ModelsPut, GatewayError> {
-        Err(GatewayError(
-            "blueprints do not apply to a WordPress site".into(),
-        ))
+    async fn put_blueprint(&self, body: &Value) -> Result<crate::gateway::ModelsPut, GatewayError> {
+        self.engine.put_blueprint(body).await
     }
 
     async fn put_tool(

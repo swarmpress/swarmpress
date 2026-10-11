@@ -22,6 +22,10 @@ export interface OrchestratorSiteEngine {
   merge(id: number, head: string, attributionJson: string): Promise<string>
   releaseStatus(id: number): Promise<string | null>
   redeploy(id: number): Promise<object>
+  /** The Studio's models of the site, for the architects' structural jobs (ADR-0082 §4). */
+  siteModels?(): Promise<object>
+  /** An approved structural proposal built into live: `{status: 'landed'|'stale'|'refused', …}`. */
+  putBlueprint?(bodyJson: string): Promise<object>
 }
 
 /** What the engine needs: both channels of the company's WordPress. */

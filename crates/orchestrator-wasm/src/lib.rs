@@ -811,6 +811,27 @@ impl SiteEngine for JsSiteEngine {
             .ok_or_else(|| gw("redeploy returned nothing".into()))?;
         serde_json::from_value(v).map_err(|e| gw(format!("redeploy answer: {e}")))
     }
+    /// `siteModels()` → the Studio's models of the WordPress site (optional).
+    async fn site_models(&self) -> Result<Value, GatewayError> {
+        if !has_method(&self.0, "siteModels") {
+            return Err(gw("this site engine has no structural models".into()));
+        }
+        self.json("siteModels", &[])
+            .await?
+            .ok_or_else(|| gw("siteModels returned nothing".into()))
+    }
+
+    /// `putBlueprint(bodyJson)` → `{status: 'landed'|'stale'|'refused', …}` (optional).
+    async fn put_blueprint(&self, body: &Value) -> Result<ModelsPut, GatewayError> {
+        if !has_method(&self.0, "putBlueprint") {
+            return Err(gw("this site engine cannot build structures".into()));
+        }
+        let v = self
+            .json("putBlueprint", &[s(&body.to_string())])
+            .await?
+            .ok_or_else(|| gw("putBlueprint returned nothing".into()))?;
+        serde_json::from_value(v).map_err(|e| gw(format!("putBlueprint answer: {e}")))
+    }
 }
 
 /// Whether the JS object has a callable `name`.

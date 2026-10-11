@@ -71,6 +71,10 @@ test('the Studio builds a WordPress site: regions, palette, sets, and wp-admin a
   const templates = JSON.parse((await liveObject(page, 'option:swarmpress_post_type_templates')).value)
   expect(templates.post.regions.map((r: { id: string }) => r.id)).toEqual(['intro', 'body'])
   await expect(studio.locator('[data-slot="post/intro"]')).toBeVisible({ timeout: 30_000 })
+  // The architects' structural jobs read the same models through the orchestrator's engine.
+  const forJobs = await page.evaluate(async () => (await (window as any).__swarmpress.wordpressSite.orchestratorEngine(() => {}).siteModels()) as { hash: string; blueprint: { page_types: { id: string }[] }; types: object; tools: unknown[] })
+  expect(forJobs.blueprint.page_types.map((t) => t.id)).toContain('post')
+  expect(forJobs.hash).toBeTruthy()
 
   // ---------------------------------------------------------------- the Paint shop: the palette
   await studio.getByRole('tab', { name: 'Paint shop' }).click()

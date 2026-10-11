@@ -12,6 +12,8 @@ paths:
   - apps/game/src/ui/studio/PaintShop.tsx
   - apps/game/src/ui/components/Blueprint.tsx
   - crates/storage-api-wasm/src/lib.rs
+  - crates/orchestrator/src/wordpress.rs
+  - crates/orchestrator/tests/wordpress.rs
   - apps/game/e2e/wp-studio.spec.ts
 adrs:
   - ADR-0082
@@ -41,12 +43,15 @@ work unchanged on WordPress's structures.
   branch of its own; its sandbox speaks on the storage API's `door` channel (a session of its own,
   as the CEO), so every save in wp-admin is a commit on that branch. "Build it" merges it, "Discard"
   drops it. The sandbox serves wp-admin through a service worker under `/door`.
+- **The architects work on WordPress too:** their structural jobs read the same models through the
+  site engine (`SiteEngine::site_models`) and an approved proposal is built through it
+  (`put_blueprint`: the regions, merged into live), so the staff's proposals and the CEO's builds
+  share one path (`tests/wordpress.rs`).
 - **Verified** (`e2e/wp-studio.spec.ts`, turso and sqlite): the Town and Building show WordPress's
   structures; new regions for posts land on live; a repainted colour lands in live's global styles;
   the plugin sets show; wp-admin opens through the door, a setting saved there is built into live.
 
 ## Not built yet
 
-- The staff's structural proposals on WordPress (the architects' jobs) and their booklet read from
-  change-request diffs; today the CEO edits, and the staff's structure jobs refuse loudly.
+- The booklet read from change-request diffs (today from the blueprint diff).
 - The Factory over WordPress (tools feeding blocks through bindings).

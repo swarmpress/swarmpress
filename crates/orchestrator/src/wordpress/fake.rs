@@ -31,6 +31,7 @@ struct State {
     commits: BTreeMap<String, Attribution>,
     merges: u32,
     deploy: BTreeMap<u64, DeployState>,
+    models: Option<serde_json::Value>,
 }
 
 /// The fake: `live` starts empty; [`FakeSiteEngine::put_live`] seeds it.
@@ -97,6 +98,15 @@ impl FakeSiteEngine {
 
     pub fn change_requests(&self) -> Vec<FakeCr> {
         self.st().crs.values().cloned().collect()
+    }
+
+    /// The site's structural models (as `site_models` answers them).
+    pub fn set_models(&self, models: serde_json::Value) {
+        self.st().models = Some(models);
+    }
+
+    pub fn models(&self) -> Option<serde_json::Value> {
+        self.st().models.clone()
     }
 
     pub fn set_deploy_state(&self, cr: u64, state: DeployState) {
@@ -258,6 +268,38 @@ impl SiteEngine for FakeSiteEngine {
             run_id: None,
             attempt: 1,
             detail: None,
+        })
+    }
+    async fn site_models(&self) -> Result<serde_json::Value, GatewayError> {
+        self.st()
+            .models
+            .clone()
+            .ok_or_else(|| GatewayError("no models in the fake".into()))
+    }
+
+    async fn put_blueprint(
+        &self,
+        body: &serde_json::Value,
+    ) -> Result<crate::gateway::ModelsPut, GatewayError> {
+        let mut s = self.st();
+        let models = s
+            .models
+            .as_mut()
+            .ok_or_else(|| GatewayError("no models in the fake".into()))?;
+        if body["base_hash"] != models["hash"] {
+            return Ok(crate::gateway::ModelsPut::Stale {
+                error: "the site's structure changed".into(),
+            });
+        }
+        models["blueprint"] = body["blueprint"].clone();
+        models["hash"] = serde_json::json!(format!("{}+", models["hash"].as_str().unwrap_or("")));
+        s.next_commit += 1;
+        let c = sha(s.next_commit);
+        Ok(crate::gateway::ModelsPut::Landed {
+            commit: c,
+            hash: String::new(),
+            changes: vec![],
+            tools: vec![],
         })
     }
 }

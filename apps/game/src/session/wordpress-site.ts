@@ -105,7 +105,7 @@ export async function wordpressSite(o: WordPressSiteOptions): Promise<WordPressS
     },
   })
   const knowledgeClient = wpKnowledgeClient(engine, channels, (reg, commit) => m.wordpress_pack(reg, commit))
-  return {
+  const site: WordPressSite = {
     engine,
     channels,
     knowledgeClient,
@@ -122,6 +122,21 @@ export async function wordpressSite(o: WordPressSiteOptions): Promise<WordPressS
         },
         releaseStatus: (id: number) => engine.releaseStatus(id),
         redeploy: (id: number) => engine.redeploy(id),
+        siteModels: () => site.studioModels(),
+        putBlueprint: async (bodyJson: string) => {
+          try {
+            const r = await site.saveBlueprint(JSON.parse(bodyJson) as PutBlueprintBody)
+            onMerged()
+            return { status: 'landed', ...r }
+          } catch (e) {
+            if (e instanceof CentralError && e.status === 409) return { status: 'stale', error: e.message }
+            if (e instanceof CentralError && e.status === 422) {
+              const issues = ((e.body as { issues?: string[] } | null)?.issues ?? []).map(String)
+              return { status: 'refused', error: e.message, issues }
+            }
+            throw e
+          }
+        },
       }
     },
     lastExport: () => last,
@@ -169,4 +184,5 @@ export async function wordpressSite(o: WordPressSiteOptions): Promise<WordPressS
       }
     },
   }
+  return site
 }
