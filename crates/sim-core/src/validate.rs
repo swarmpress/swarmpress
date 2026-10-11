@@ -8,12 +8,15 @@ use thiserror::Error;
 
 use crate::building::{Building, Room, RoomKind, MAX_LOT_SIDE, MAX_OPENINGS, MAX_ROOM_SIDE};
 use crate::commands::{Command, DemolishTarget, Input, Placement, Policy, ServerCommand};
+use crate::economy::BuildMode;
 use crate::economy::LAND_PER_TILE;
 use crate::equipment::{
     seat_pos, EquipmentKind, MAX_ITEMS_PER_ROOM, SEAT_CLEARANCE_MM, WALL_CLEARANCE_MM,
 };
 use crate::geom::{PosMm, Side, TileRect, TILE_MM};
-use crate::ids::{CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId};
+use crate::ids::{
+    CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, TownItemId,
+};
 use crate::inbox::{SecretaryTaskKind, MAX_MEETING_ATTENDEES, MAX_SECRETARY_QUEUE};
 use crate::projects::{valid_domain, valid_name, valid_slug, ProjectStatus};
 use crate::roles::Role;
@@ -87,6 +90,8 @@ pub enum Reject {
     ProjectLimit { level: u8, limit: usize },
     #[error("there is no Executive Secretary to delegate to")]
     NoSecretary,
+    #[error("unknown {0}")]
+    UnknownTownItem(TownItemId),
 }
 
 /// Validates any input.
@@ -115,6 +120,18 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
             }
             funds(w, price(w, cmd))?;
             no_staff_in(w, &strip.expanded(1))?;
+            let town = crate::town::after_growth(
+                &w.building.town,
+                &w.building.lot,
+                *side,
+                i32::from(*tiles),
+            );
+            let grown = crate::town::Footprint::of_tiles(&lot, 0);
+            if town.values().any(|t| t.footprint().overlaps(&grown)) {
+                return Err(Reject::Occupied(
+                    "the town stands there; move its items first",
+                ));
+            }
             let mut b = w.building.clone();
             b.lot = lot;
             check_structure(w, &b)
@@ -536,7 +553,167 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
             }
             Ok(())
         }
+        Command::MoveEquipment {
+            equipment,
+            placement,
+        } => {
+            check_move_equipment(w, *equipment, placement)?;
+            funds(w, price(w, cmd))
+        }
+        Command::PlaceTownItem { kind, pos, rot } => {
+            if kind.is_house() {
+                return Err(Reject::Invalid("the sections' houses cannot be placed"));
+            }
+            if w.building.town.len() >= crate::town::MAX_TOWN_ITEMS {
+                return Err(Reject::Limit("town items (64)"));
+            }
+            crate::town::check_spot(&w.building, *kind, *pos, *rot, None)?;
+            funds(w, price(w, cmd))
+        }
+        Command::MoveTownItem { item, pos, rot } => {
+            let t = w
+                .building
+                .town
+                .get(item)
+                .ok_or(Reject::UnknownTownItem(*item))?;
+            crate::town::check_spot(&w.building, t.kind, *pos, *rot, Some(*item))?;
+            funds(w, price(w, cmd))
+        }
+        Command::RemoveTownItem { item } => {
+            let t = w
+                .building
+                .town
+                .get(item)
+                .ok_or(Reject::UnknownTownItem(*item))?;
+            if t.kind.is_house() {
+                return Err(Reject::Invalid("the sections' houses cannot be removed"));
+            }
+            Ok(())
+        }
     }
+}
+
+/// `MoveEquipment`: the item exists and nobody uses it; the new placement is
+/// valid like a `PlaceEquipment` of its kind, checked against everything but
+/// the item and the items on it.
+fn check_move_equipment(w: &World, id: EquipId, placement: &Placement) -> Result<(), Reject> {
+    let e = w
+        .building
+        .equipment
+        .get(&id)
+        .ok_or(Reject::UnknownEquipment(id))?;
+    // In use: someone sits at (or is on the way to) the desk it is or sits
+    // on; a whiteboard while a meeting is held in its room.
+    let in_use = |desk: EquipId| w.staff.values().any(|s| s.spot == Some(Spot::Desk(desk)));
+    let desk_now = if e.kind == EquipmentKind::Desk {
+        Some(id)
+    } else {
+        e.attached_to
+    };
+    if desk_now.is_some_and(in_use) {
+        return Err(Reject::Occupied("someone is working at this desk"));
+    }
+    if e.kind == EquipmentKind::Whiteboard
+        && w.meetings
+            .values()
+            .any(|m| m.room == e.room && m.is_active(w.clock()))
+    {
+        return Err(Reject::Occupied("a meeting is using this whiteboard"));
+    }
+    // Moving with it: the items on a desk.
+    let riders = w
+        .building
+        .equipment
+        .values()
+        .filter(|o| o.attached_to == Some(id))
+        .count();
+    let room_id = match placement {
+        Placement::OnDesk(desk_id) => {
+            let Some(slot) = e.kind.desk_slot() else {
+                return Err(Reject::Invalid("only monitors and lamps sit on desks"));
+            };
+            let desk = w
+                .building
+                .equipment
+                .get(desk_id)
+                .ok_or(Reject::UnknownEquipment(*desk_id))?;
+            if desk.kind != EquipmentKind::Desk {
+                return Err(Reject::Invalid("that is not a desk"));
+            }
+            if in_use(*desk_id) {
+                return Err(Reject::Occupied("someone is working at that desk"));
+            }
+            if w.building.equipment.values().any(|o| {
+                o.id != id && o.attached_to == Some(*desk_id) && o.kind.desk_slot() == Some(slot)
+            }) {
+                return Err(Reject::Occupied("that desk already has one"));
+            }
+            desk.room
+        }
+        Placement::Floor { pos, rot } => {
+            if e.kind.desk_slot().is_some() {
+                return Err(Reject::Invalid("monitors and lamps go on a desk"));
+            }
+            if *rot > 3 {
+                return Err(Reject::Invalid("rotation is 0..=3 quarter turns"));
+            }
+            if pos.x.abs() > MAX_COORD_MM || pos.z.abs() > MAX_COORD_MM {
+                return Err(Reject::OutOfLot);
+            }
+            let room_id = w
+                .building
+                .room_at(pos.tile())
+                .ok_or(Reject::Invalid("equipment goes inside a room"))?;
+            let room = &w.building.rooms[&room_id];
+            if let Some(req) = e.kind.required_room() {
+                if room.kind != req {
+                    return Err(Reject::Invalid("this item needs a different room"));
+                }
+            }
+            if !room.rect.contains_pos_inset(*pos, WALL_CLEARANCE_MM) {
+                return Err(Reject::Invalid("too close to a wall"));
+            }
+            if e.kind == EquipmentKind::Desk
+                && !room
+                    .rect
+                    .contains_pos_inset(seat_pos(*pos, *rot), SEAT_CLEARANCE_MM)
+            {
+                return Err(Reject::Invalid("the chair would be in the wall"));
+            }
+            if overlaps_except(w, room_id, e.kind, *pos, Some(id)) {
+                return Err(Reject::Overlap);
+            }
+            room_id
+        }
+    };
+    if room_id != e.room {
+        let items = w
+            .building
+            .equipment
+            .values()
+            .filter(|o| o.room == room_id)
+            .count();
+        if items + 1 + riders > MAX_ITEMS_PER_ROOM {
+            return Err(Reject::Limit("items per room"));
+        }
+    }
+    Ok(())
+}
+
+/// The building commands (ADR-0087): they change the layout, raise
+/// `Building::layout_rev`, and cost nothing in a sandbox company.
+pub const fn is_building_command(cmd: &Command) -> bool {
+    matches!(
+        cmd,
+        Command::BuyFloorSpace { .. }
+            | Command::PlaceRoom { .. }
+            | Command::Demolish(_)
+            | Command::PlaceEquipment { .. }
+            | Command::MoveEquipment { .. }
+            | Command::PlaceTownItem { .. }
+            | Command::MoveTownItem { .. }
+            | Command::RemoveTownItem { .. }
+    )
 }
 
 fn active_staff(w: &World, id: StaffId) -> Result<&Staff, Reject> {
@@ -664,7 +841,10 @@ pub fn validate_server(w: &World, cmd: &ServerCommand) -> Result<(), Reject> {
 
 /// Cash a command costs (0 for free ones). Used by both validation and
 /// execution so they can never disagree.
-pub(crate) fn price(w: &World, cmd: &Command) -> i64 {
+pub fn price(w: &World, cmd: &Command) -> i64 {
+    if w.company.build_mode == BuildMode::Sandbox && is_building_command(cmd) {
+        return 0;
+    }
     match cmd {
         Command::BuyFloorSpace { side, tiles } => {
             let (_, strip) = grown_lot(&w.building.lot, *side, i32::from(*tiles));
@@ -672,6 +852,15 @@ pub(crate) fn price(w: &World, cmd: &Command) -> i64 {
         }
         Command::PlaceRoom { kind, rect, .. } => rect.area() * kind.build_cost_per_tile(),
         Command::PlaceEquipment { kind, .. } => kind.cost(),
+        Command::MoveEquipment { equipment, .. } => w
+            .building
+            .equipment
+            .get(equipment)
+            .map_or(0, |e| e.kind.move_cost()),
+        Command::PlaceTownItem { kind, .. } => kind.price(),
+        Command::MoveTownItem { item, .. } => {
+            w.building.town.get(item).map_or(0, |t| t.kind.move_cost())
+        }
         Command::Hire { candidate } => w.candidates.get(candidate).map_or(0, |c| c.signing_fee()),
         Command::Fire { staff } => w
             .staff
@@ -693,6 +882,7 @@ pub(crate) fn price(w: &World, cmd: &Command) -> i64 {
         | Command::UpdateWorkItem { .. }
         | Command::Commission { .. }
         | Command::RunTool { .. }
+        | Command::RemoveTownItem { .. }
         | Command::Praise { .. } => 0,
     }
 }
@@ -784,10 +974,22 @@ fn spot_in_room(w: &World, spot: Spot, room: RoomId) -> bool {
 }
 
 fn overlaps(w: &World, room: RoomId, kind: EquipmentKind, pos: PosMm) -> bool {
+    overlaps_except(w, room, kind, pos, None)
+}
+
+/// Like [`overlaps`], ignoring the item `except` (and what sits on it:
+/// attachments never take floor space).
+fn overlaps_except(
+    w: &World,
+    room: RoomId,
+    kind: EquipmentKind,
+    pos: PosMm,
+    except: Option<EquipId>,
+) -> bool {
     w.building
         .equipment
         .values()
-        .filter(|e| e.room == room && e.attached_to.is_none())
+        .filter(|e| e.room == room && e.attached_to.is_none() && Some(e.id) != except)
         .any(|e| {
             if kind == EquipmentKind::CeilingLight || e.kind == EquipmentKind::CeilingLight {
                 kind == e.kind && e.pos.chebyshev(pos) < CEILING_LIGHT_SPACING_MM

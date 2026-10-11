@@ -10,7 +10,34 @@
  * and `signs` paints the section names on the houses' plaques.
  */
 import type { BuildingLayout, Side } from '../../state/render-state'
-import type { Turn } from './placements'
+import { turnOf, type Turn } from './placements'
+
+/**
+ * The town as company state (ADR-0087 decision 4): `layout.town`, one entry
+ * per house, tree, lamp and bench. Declared here until the render-state
+ * types carry it (read optionally: older layouts have none).
+ */
+export type TownItemKind = 'PlanHouse' | 'BuildingHouse' | 'FactoryHouse' | 'ProjectsHouse' | 'Tree' | 'StreetLamp' | 'Bench'
+export interface TownItemLayout {
+  id: string
+  kind: TownItemKind
+  /** Footprint centre, metres; `rot` radians like the layout's props. */
+  x: number
+  z: number
+  rot: number
+}
+/** The layout fields the town reads, `town` optional. */
+export type TownLayout = Pick<BuildingLayout, 'originX' | 'originZ' | 'width' | 'depth' | 'entrance'> & { town?: readonly TownItemLayout[] }
+
+/** A house kind's section (the row's order of `TOWN_HOUSES`). */
+export const HOUSE_SECTION: Partial<Record<TownItemKind, string>> = {
+  PlanHouse: 'plan',
+  BuildingHouse: 'building',
+  FactoryHouse: 'factory',
+  ProjectsHouse: 'projects',
+}
+/** The kit design of each furniture kind. */
+export const TOWN_DESIGN = { Tree: 'town-tree', StreetLamp: 'street-lamp', Bench: 'town-bench' } as const
 
 /** The houses' sections and their (generic) colours, in the row's order. */
 export const TOWN_HOUSES = [
@@ -35,6 +62,8 @@ export interface TownSpot {
   /** The world rect it covers. */
   rect: { x: number; z: number; w: number; d: number }
   params: { wall: string; roof: string; door: string; trim: string }
+  /** The layout's town item it draws (`town-1`), when the town comes from the layout. */
+  item?: string
 }
 
 const OPPOSITE: Record<Side, Side> = { north: 'south', south: 'north', east: 'west', west: 'east' }
@@ -102,6 +131,8 @@ export interface TownProp {
   z: number
   turn: Turn
   params: Record<string, string | number>
+  /** The layout's town item it draws, when the town comes from the layout. */
+  item?: string
 }
 
 /**
@@ -135,11 +166,10 @@ export function townScenery(layout: Pick<BuildingLayout, 'originX' | 'originZ' |
       out.push({ id: `bench-${i}`, design: 'town-bench', x, z, turn: facing, params: {} })
     }
   }
-  const leaves = ['green', 'leaf', 'forest']
   const tree = (u: number, v: number) => {
     const n = out.filter((p) => p.design === 'town-tree').length
     const [x, z] = at(u, v)
-    out.push({ id: `tree-${n}`, design: 'town-tree', x, z, turn: (n % 4) as Turn, params: { leaves: leaves[n % 3], size: 104 + ((n * 23) % 40) } })
+    out.push({ id: `tree-${n}`, design: 'town-tree', x, z, turn: (n % 4) as Turn, params: treeParams(n) })
   }
   if (us.length) {
     const reach = (alongX ? HOUSE_W : HOUSE_D) / 2 + 2.2
@@ -155,4 +185,59 @@ export function townScenery(layout: Pick<BuildingLayout, 'originX' | 'originZ' |
     tree(hi + 2.2, -across * f)
   }
   return out
+}
+
+const LEAVES = ['green', 'leaf', 'forest']
+/** A tree's leaves and size from its number: the same tree looks the same everywhere. */
+export function treeParams(n: number): { leaves: string; size: number } {
+  return { leaves: LEAVES[((n % 3) + 3) % 3], size: 104 + ((((n * 23) % 40) + 40) % 40) }
+}
+
+/** A stable number from an item id: its trailing digits (`town-12` → 12), else a hash of the id. */
+export function itemNumber(id: string): number {
+  const m = /(\d+)$/.exec(id)
+  if (m) return Number(m[1])
+  let h = 0x811c9dc5
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193) >>> 0
+  return h
+}
+
+/**
+ * The town to draw: from the layout's `town` when it has one (ADR-0087), each
+ * house and piece of furniture carrying its item id; otherwise the generic
+ * arrangement computed from the lot (`townSpots`, `townScenery`). A house's
+ * spot keeps its section's id (the camera frames sections by it).
+ */
+export function townOf(layout: TownLayout): { spots: TownSpot[]; props: TownProp[] } {
+  if (!layout.town) {
+    const spots = townSpots(layout)
+    return { spots, props: townScenery(layout, spots) }
+  }
+  const spots: TownSpot[] = []
+  const props: TownProp[] = []
+  for (const it of layout.town) {
+    const turn = turnOf(it.rot)
+    const section = HOUSE_SECTION[it.kind]
+    if (section) {
+      const h = TOWN_HOUSES.find((x) => x.id === section)!
+      const w = turn % 2 === 0 ? HOUSE_W : HOUSE_D
+      const d = turn % 2 === 0 ? HOUSE_D : HOUSE_W
+      spots.push({
+        id: h.id,
+        label: h.label,
+        x: it.x,
+        z: it.z,
+        turn,
+        rect: { x: it.x - w / 2, z: it.z - d / 2, w, d },
+        params: { wall: h.wall, roof: h.roof, door: h.door, trim: h.trim },
+        item: it.id,
+      })
+      continue
+    }
+    const design = TOWN_DESIGN[it.kind as keyof typeof TOWN_DESIGN]
+    if (!design) continue
+    const params = design === 'town-tree' ? treeParams(itemNumber(it.id)) : {}
+    props.push({ id: it.id, design, x: it.x, z: it.z, turn, params, item: it.id })
+  }
+  return { spots, props }
 }

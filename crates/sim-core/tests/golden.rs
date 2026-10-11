@@ -34,14 +34,21 @@
 //! - world format 7 (FEAT-090, FEAT-091, ADR-0072): `Plan.structure` (the
 //!   blueprint's digest and the installed tools) and `PendingJob.tool`; the
 //!   script is unchanged.
+//! - `0xb5dd_1e08_70d7_ce56`: world format 7.
+//! - world format 8 (FEAT-026, ADR-0087): `Building.town` (seeded at
+//!   founding), `Building.layout_rev`, `Company.build_mode` and the town id
+//!   counter; the script gains a desk move and three town commands.
+//! - `0x16eb_054f_dab5_dacf`: world format 8.
 
 use sim_core::commands::JobFailure;
-use sim_core::ids::{StaffId, TicketId, WorkItemId};
+use sim_core::geom::PosMm;
+use sim_core::ids::{EquipId, StaffId, TicketId, TownItemId, WorkItemId};
 use sim_core::inbox::{ResolvedBy, TicketKind, TicketOption, TicketStatus};
 use sim_core::plan::{JobKind, WorkItemStatus};
 use sim_core::scenarios::{golden_script, run_golden, DEMO_PROJECT, GOLDEN_STEPS};
+use sim_core::town::TownKind;
 
-const GOLDEN_HASH: u64 = 0xb5dd_1e08_70d7_ce56;
+const GOLDEN_HASH: u64 = 0x16eb_054f_dab5_dacf;
 
 #[test]
 fn golden_hash() {
@@ -126,6 +133,27 @@ fn golden_hash() {
             (JobKind::Draft, Some(WorkItemId(2))),
             (JobKind::Draft, Some(WorkItemId(4)))
         ]
+    );
+    // The rearrangement (ADR-0087): the desk turned with what sits on it,
+    // the town one tree up and one down, the Plan house moved back.
+    let desk = &w.building.equipment[&EquipId(62)];
+    assert_eq!((desk.pos, desk.rot), (PosMm::new(6_500, 4_200), 2));
+    for e in w.building.equipment.values() {
+        if e.attached_to == Some(EquipId(62)) {
+            assert_eq!((e.pos, e.rot), (desk.pos, desk.rot));
+        }
+    }
+    assert_eq!(w.building.town.len(), 19);
+    assert!(!w.building.town.contains_key(&TownItemId(14)));
+    assert_eq!(w.building.town[&TownItemId(20)].kind, TownKind::Tree);
+    assert_eq!(
+        w.building.town[&TownItemId(1)].pos,
+        PosMm::new(3_000, -11_000)
+    );
+    // the trees and the lamp past the lot's east end moved out with the land
+    assert_eq!(
+        w.building.town[&TownItemId(15)].pos,
+        PosMm::new(30_500, -4_500)
     );
     println!("golden hash: {:#018x}", w.hash());
     assert_eq!(w.hash(), GOLDEN_HASH, "got {:#018x}", w.hash());

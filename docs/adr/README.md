@@ -105,4 +105,5 @@ Accepted ADRs are never rewritten.
 | [0083](0083-publishing-a-wordpress-site-and-migrating-cinqueterre.md) | Publishing a WordPress site, and migrating cinqueterre.travel | Accepted |
 | [0084](0084-a-wordpress-fork-whose-storage-is-the-governed-repository.md) | A WordPress fork whose storage is the governed repository | Accepted (supersedes ADR-0081) |
 | [0085](0085-the-office-is-bricks-everywhere.md) | The office is bricks everywhere | Accepted (amends ADR-0063 decision 7) |
-| [0086](0086-the-lego-app-shell-and-a-generic-town-of-sections.md) | The LEGO app shell and a generic town of sections | Accepted (amends ADR-0018) |
+| [0086](0086-the-lego-app-shell-and-a-generic-town-of-sections.md) | The LEGO app shell and a generic town of sections | Accepted (amends ADR-0018; decision 4 amended by ADR-0087) |
+| [0087](0087-building-in-the-game-build-mode-the-town-and-the-office-designer.md) | Building in the game: build mode, the town designer and the office designer | Accepted (amends ADR-0086 decision 4) |

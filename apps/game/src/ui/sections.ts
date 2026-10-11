@@ -8,7 +8,7 @@ import type { PanelId } from './store'
 
 export type StudioTab = 'town' | 'building' | 'factory' | 'paint' | 'data'
 
-export type SectionId = 'town' | 'building' | 'plan' | 'factory' | 'data' | 'staff' | 'projects'
+export type SectionId = 'town' | 'build' | 'building' | 'plan' | 'factory' | 'data' | 'staff' | 'projects'
 
 export interface SectionDef {
   id: SectionId
@@ -26,6 +26,8 @@ export interface SectionDef {
 
 export const SECTIONS: readonly SectionDef[] = [
   { id: 'town', label: 'Town', sub: 'Your studio', icon: 'town', panel: null, owns: ['activity', 'finance'] },
+  // Build mode (ADR-0087): rooms, furniture and the town's pieces, every change a sim command.
+  { id: 'build', label: 'Build', sub: 'Rooms & town', icon: 'build', panel: 'build', owns: ['build'] },
   { id: 'building', label: 'Building', sub: 'Pages & design', icon: 'building', panel: 'blueprint', studioTab: 'building', owns: [] },
   { id: 'plan', label: 'Plan', sub: 'Editorial board', icon: 'plan', panel: 'plan', owns: ['plan', 'inbox'] },
   { id: 'factory', label: 'Factory', sub: 'Tools & automation', icon: 'factory', panel: 'blueprint', studioTab: 'factory', owns: [] },

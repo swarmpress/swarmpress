@@ -65,6 +65,12 @@ export interface GameScene {
    * The shadow map's size stays what the page started with.
    */
   setQuality(q: QualitySettings): void
+  /**
+   * Disposes the scene, everything in it (meshes, materials, textures, the
+   * labels' layer) and its canvas and engine listeners; the engine stays
+   * (a layout change rebuilds the scene on it, ADR-0087).
+   */
+  dispose(): void
 }
 
 export interface SceneOptions {
@@ -130,11 +136,12 @@ export function createGameScene(
     if (hit.workItem && picks.workItem) picks.workItem(hit.workItem, hit.staff)
     else picks.person?.(hit.staff)
   })
-  canvas?.addEventListener('pointermove', (e) => {
-    if (e.buttons) return
+  const onMove = (e: PointerEvent) => {
+    if (e.buttons || !canvas) return
     const rect = canvas.getBoundingClientRect()
     canvas.style.cursor = staff.pick(e.clientX - rect.left, e.clientY - rect.top) ? 'pointer' : ''
-  })
+  }
+  canvas?.addEventListener('pointermove', onMove)
 
   return {
     scene,
@@ -167,6 +174,11 @@ export function createGameScene(
       // Shadows can only come back if the page started with them (the generator exists).
       scene.shadowsEnabled = q.shadows
       postFx?.apply(q)
+    },
+    dispose: () => {
+      canvas?.removeEventListener('pointermove', onMove)
+      iso.dispose()
+      scene.dispose()
     },
   }
 }

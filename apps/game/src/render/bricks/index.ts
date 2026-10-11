@@ -8,8 +8,11 @@ import { loadKit } from './kit'
 import { buildBrickOffice, type BrickOffice, type BrickOfficeOptions, type SurfaceSources } from './office'
 import { boardCards, type PlanItemLike } from './surfaces'
 
-export type { BrickOffice, BrickOfficeStats, SurfaceSources } from './office'
-export { townFrame, type TownSpot } from './town'
+export type { BrickOffice, BrickOfficeStats, SurfaceSources, TownItemRect } from './office'
+export { townFrame, townOf, type TownSpot, type TownItemLayout } from './town'
+export { loadKit } from './kit'
+// Build mode's renderer side (ADR-0087), in the same lazy chunk as the kit.
+export { createBuildBridge, type BuildBridgeImpl, type BuildBridgeState } from '../build-mode/bridge'
 
 /**
  * Loads the kit, builds the brick rooms into a running game scene and hooks

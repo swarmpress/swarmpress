@@ -125,6 +125,10 @@ pub struct RenderState {
     /// store, like a surface's close content).
     #[serde(default)]
     pub site_model: Option<SiteModelRender>,
+    /// `Building::layout_rev`: raised by every applied building change
+    /// (ADR-0087). When it moves, the renderer reads the layout again.
+    #[serde(default)]
+    pub layout_rev: u32,
 }
 
 /// What the office shows of the site's structure and tools (ADR-0072).
@@ -346,6 +350,7 @@ pub fn render_state(w: &World) -> RenderState {
     RenderState {
         remarks,
         site_model,
+        layout_rev: w.building.layout_rev,
         step: w.step,
         day: now.day,
         minute: now.minute,

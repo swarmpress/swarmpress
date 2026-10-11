@@ -16,6 +16,7 @@ import { mountOverlay, selectDataSource } from './ui/mount'
 import { bubblesOf, mountBubbles } from './ui/bubbles/BubbleLayer'
 import { effect } from '@preact/signals'
 import { SECTIONS, sectionOf } from './ui/sections'
+import { buildBridge } from './build-bridge'
 
 /**
  * URL parameters (also used by the e2e and visual tests):
@@ -35,6 +36,8 @@ import { SECTIONS, sectionOf } from './ui/sections'
  * The renderer is WebGPU only (ADR-0064, src/render/engine.ts). Without it the
  * page shows the no-WebGPU screen (src/render/no-webgpu.ts). A lost device is
  * recovered on a new WebGPU engine and a rebuilt scene, the clock held meanwhile.
+ * A building change (the render state's `layoutRev`, ADR-0087) rebuilds the
+ * scene on the same engine from the sim's new layout, the camera kept.
  *
  * The clock (ADR-0060, src/session/clock-driver.ts): wall time is clamped
  * before it becomes sim steps, so a tab that was hidden never bursts; a
@@ -45,6 +48,8 @@ import { SECTIONS, sectionOf } from './ui/sections'
 /** Device losses recovered per page before the no-WebGPU screen; and the wait before each new engine. */
 const MAX_DEVICE_RECOVERIES = 3
 const RECOVERY_DELAY_MS = 250
+/** How often a page whose step stands still looks for a building change (`layoutRev`). */
+const LAYOUT_POLL_MS = 400
 
 async function main(params: URLSearchParams, boot: BootScreen) {
   boot.stage('wasm')
@@ -85,7 +90,8 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   }
   boot.stage('scene')
   const sim = session?.sim ?? Sim.demo(seed)
-  const layout = JSON.parse(sim.layout_json()) as BuildingLayout
+  // Read again on every building change (`layoutRev`, ADR-0087).
+  let layout = JSON.parse(sim.layout_json()) as BuildingLayout
   const tier: Quality = isQuality(quality) ? quality : 'high'
   // The office is bricks (FEAT-081, ADR-0085): every room, the hallway and the street from the construction kit.
   const brickMod = await import('./render/bricks')
@@ -102,6 +108,8 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     return { game: g, bricks: b }
   }
   let { game, bricks } = await buildScene(engine, params.has('facing') ? Number(params.get('facing')) : null)
+  // Build mode's bridge (ADR-0087): picking, ghost, highlight and camera for the Build section.
+  const kit = await brickMod.loadKit()
   // GPU sharing with the local model (ADR-0057, FEAT-040): while it generates, the scene drops
   // a tier, pauses SSAO and bloom, and draws at most `fpsCap` frames a second; then it comes back.
   let fpsCap: number | null = null
@@ -196,7 +204,14 @@ async function main(params: URLSearchParams, boot: BootScreen) {
       return { left: r.left - c.left, top: r.top - c.top, right: r.right - c.left, bottom: r.bottom - c.top }
     })
   }
-  // (again on every scene a device recovery builds)
+  // The share of the stage a side panel covers (sections frame their building in what stays visible).
+  const coveredShare = () => {
+    const stage = canvas.getBoundingClientRect()
+    const panel = document.querySelector('.panel:not(.is-full)')?.getBoundingClientRect()
+    return panel && stage.width > 0 ? Math.max(0, stage.right - panel.left) / stage.width : 0
+  }
+  // (again on every scene a device recovery or a building change builds)
+  let bridge: ReturnType<typeof brickMod.createBuildBridge> | null = null
   let unwatchModel: (() => void) | null = null
   let unwatchSection: (() => void) | null = null
   const wireScene = (game: GameScene, bricks: Awaited<ReturnType<typeof buildScene>>['bricks']) => {
@@ -232,16 +247,16 @@ async function main(params: URLSearchParams, boot: BootScreen) {
         const section = sectionOf(store.panel.value ?? null, store.studioTab.value ?? 'town')
         if (last !== null && section !== last) {
           // After the panel has rendered: how much of the stage it covers.
-          requestAnimationFrame(() => {
-            const stage = canvas.getBoundingClientRect()
-            const panel = document.querySelector('.panel:not(.is-full)')?.getBoundingClientRect()
-            const covered = panel && stage.width > 0 ? Math.max(0, stage.right - panel.left) / stage.width : 0
-            game.iso.frame(brickMod.townFrame(layout, bricks.town, section), covered)
-          })
+          requestAnimationFrame(() => game.iso.frame(brickMod.townFrame(layout, bricks.town, section), coveredShare()))
         }
         last = section
       })
     }
+    // The bridge to the new scene; a gesture under way (capture, ghost, highlight) carries over.
+    const carry = bridge?.state()
+    bridge?.dispose()
+    bridge = brickMod.createBuildBridge({ game, bricks, kit, layout, canvas: () => canvas, covered: coveredShare }, carry)
+    buildBridge.value = bridge
   }
   wireScene(game, bricks)
   // --- end scene ↔ overlay ---
@@ -261,6 +276,18 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   }
   let lastStep = -1n
   let lastSeq = -1
+  // The layout revision drawn; a new one rebuilds the scene (not on frozen pages).
+  let lastRev: number | null = null
+  let lastRead = 0
+  const followLayout = (state: RenderState) => {
+    const rev = (state as RenderState & { layoutRev?: number }).layoutRev
+    if (frozen || typeof rev !== 'number') return
+    if (lastRev !== null && rev !== lastRev) {
+      latest = state
+      requestRebuild()
+    }
+    lastRev = rev
+  }
   let stillFrames = 0
   let still = false
   boot.done()
@@ -277,6 +304,13 @@ async function main(params: URLSearchParams, boot: BootScreen) {
       game.update(latest)
       lastStep = step
       lastSeq = seq
+      lastRead = now
+      followLayout(latest)
+    } else if (!frozen && now - lastRead > LAYOUT_POLL_MS) {
+      // A build command applied while the clock stands (paused, sandbox) changes no step:
+      // look at the layout's revision now and then, without redrawing anything else.
+      lastRead = now
+      followLayout(JSON.parse(sim.render_state_json()) as RenderState)
     }
     game.setClock(frozenInstant ?? new Date(), frozenInstant ? 'UTC' : timeZone)
     // The clock always ticks; under the generation cap only the drawing waits.
@@ -306,12 +340,12 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   let recoveries = 0
   let framesBefore = 0
   let lastLoss: DeviceLossInfo | null = null
-  // Recoveries run one after another: a new device lost while its scene is built waits its turn.
-  let recoveryChain: Promise<void> = Promise.resolve()
+  // Recoveries and layout rebuilds run one after another: a new device lost while its scene is built waits its turn.
+  let sceneChain: Promise<void> = Promise.resolve()
   const onLost = (info: DeviceLossInfo) => {
     lastLoss = info
     console.warn(`[render] WebGPU device lost (${info.reason}): ${info.message}`)
-    recoveryChain = recoveryChain.then(recover).catch((err) => {
+    sceneChain = sceneChain.then(recover).catch((err) => {
       recovering = false
       showFailure(err)
     })
@@ -322,6 +356,7 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     engine.stopRenderLoop()
     framesBefore += engine.frameId
     const facing = game.iso.facing()
+    const view = game.iso.view()
     device.dispose()
     if (++recoveries > MAX_DEVICE_RECOVERIES) throw new NoWebGpuError('device-lost', `lost ${recoveries} times; last: ${lastLoss?.reason}: ${lastLoss?.message}`)
     await new Promise((r) => setTimeout(r, RECOVERY_DELAY_MS))
@@ -331,11 +366,46 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     engine = await createEngine(canvas)
     device = watchDeviceLoss(engine, onLost)
     ;({ game, bricks } = await buildScene(engine, facing))
+    game.iso.setView(view)
     wireScene(game, bricks)
     lastStep = -1n
     stillFrames = 0
     recovering = false
     engine.runRenderLoop(frame)
+  }
+
+  // --- building changes (ADR-0087): the sim's new layout, a new scene on the same engine ---
+  // The whole scene is rebuilt (the box office, lights, labels and staff hang on the layout too),
+  // then swapped in between two frames; the old one is disposed with everything in it.
+  let rebuilds = 0
+  let rebuildMs: number | null = null
+  let rebuildQueued = false
+  const rebuildLayout = async () => {
+    rebuildQueued = false
+    const t0 = performance.now()
+    const old = { game, bricks }
+    const facing = old.game.iso.facing()
+    const view = old.game.iso.view()
+    layout = JSON.parse(sim.layout_json()) as BuildingLayout
+    const next = await buildScene(engine, facing)
+    next.game.iso.setView(view)
+    ;({ game, bricks } = next)
+    wireScene(game, bricks)
+    if (latest) game.update(latest)
+    // The overlay's lookups and the model table were wired to the new scene: the old one goes.
+    old.bricks.dispose()
+    old.game.dispose()
+    rebuilds++
+    rebuildMs = performance.now() - t0
+  }
+  const requestRebuild = () => {
+    if (rebuildQueued) return
+    rebuildQueued = true
+    sceneChain = sceneChain.then(rebuildLayout).catch((err) => {
+      rebuildQueued = false
+      console.error('[render] the layout rebuild failed', err)
+      hudNotify(`The office could not be redrawn: ${String(err)}`)
+    })
   }
 
   ;(window as unknown as { __swarmpress: unknown }).__swarmpress = {
@@ -369,6 +439,8 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     },
     // The brick office's counts and timings.
     bricks: () => bricks.stats(),
+    // Layout rebuilds so far (ADR-0087) and the last one's duration, ms.
+    layoutRebuilds: () => ({ count: rebuilds, lastMs: rebuildMs }),
   }
 }
 

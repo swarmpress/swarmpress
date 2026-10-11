@@ -15,8 +15,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::equipment::Equipment;
 use crate::geom::{PosMm, Side, Tile, TileRect, TILE_MM};
-use crate::ids::{EquipId, RoomId};
+use crate::ids::{EquipId, RoomId, TownItemId};
 use crate::pathfinding::NavGrid;
+use crate::town::TownItem;
 
 /// Street tiles kept around the lot for pathfinding (arrivals walk in from here).
 pub const STREET_MARGIN: i32 = 4;
@@ -282,6 +283,12 @@ pub struct Building {
     pub entrance: Entrance,
     pub rooms: BTreeMap<RoomId, Room>,
     pub equipment: BTreeMap<EquipId, Equipment>,
+    /// The town around the lot (ADR-0087): the sections' houses and the
+    /// town's furniture. Seeded at founding ([`crate::World::with_parts`]).
+    pub town: BTreeMap<TownItemId, TownItem>,
+    /// Raised by one on every applied building change (rooms, equipment,
+    /// land, town); the renderer rebuilds when it moves (render-state.md).
+    pub layout_rev: u32,
 }
 
 impl Building {
@@ -292,6 +299,8 @@ impl Building {
             entrance,
             rooms: BTreeMap::new(),
             equipment: BTreeMap::new(),
+            town: BTreeMap::new(),
+            layout_rev: 0,
         }
     }
 

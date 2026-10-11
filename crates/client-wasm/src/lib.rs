@@ -50,6 +50,33 @@ impl Sim {
         }
     }
 
+    /// The cinqueterre.travel starting company founded in a build mode
+    /// (ADR-0087): `"sandbox"` (every building command is free, the starting
+    /// office too) or `"economic"` (the same as [`Sim::demo`]). Throws on any
+    /// other mode.
+    pub fn demo_with(seed: u64, build_mode: &str) -> Result<Sim, String> {
+        Sim::scenario_with("cinqueterre", seed, build_mode)
+    }
+
+    /// [`Sim::scenario`] founded in a build mode, `"sandbox"` or
+    /// `"economic"` (`sim_core::scenarios::scenario_with_mode`).
+    pub fn scenario_with(name: &str, seed: u64, build_mode: &str) -> Result<Sim, String> {
+        let mode = parse_build_mode(build_mode)?;
+        sim_core::scenarios::scenario_with_mode(name, seed, mode)
+            .map(|world| Sim { world })
+            .ok_or_else(|| {
+                format!(
+                    "unknown scenario {name:?} (known: {})",
+                    sim_core::scenarios::SCENARIOS.join(", ")
+                )
+            })
+    }
+
+    /// The company's build mode, `"sandbox"` or `"economic"`.
+    pub fn build_mode(&self) -> String {
+        self.world.company.build_mode.slug().to_string()
+    }
+
     /// A world by scenario name (`sim_core::scenarios::scenario`):
     /// `"cinqueterre"` (alias `"demo"`, same as [`Sim::demo`]) or `"empty"`.
     /// Throws on an unknown name.
@@ -172,7 +199,7 @@ impl Sim {
 
     /// The building layout as JSON (metres), shaped like the TS `BuildingLayout`.
     pub fn layout_json(&self) -> String {
-        json::layout(&self.world.building).to_string()
+        json::layout(&self.world).to_string()
     }
 
     /// Org chart, people and projects (organization.md §9).
@@ -214,6 +241,18 @@ impl Sim {
         }
     }
 
+    /// What a JSON player command would cost now, in cents
+    /// (`sim_core::validate::price`): 0 for free commands and for every
+    /// building command of a sandbox company. `undefined` when the JSON is
+    /// not a player command. Says nothing about whether it would apply
+    /// ([`Sim::validate_command_json`] does).
+    pub fn price_command_json(&self, json: &str) -> Option<i64> {
+        match parse_input(json).ok()? {
+            Input::Player(cmd) => Some(sim_core::validate::price(&self.world, &cmd)),
+            Input::Server(_) => None,
+        }
+    }
+
     /// Like [`Sim::apply_command_json`], but only accepts a [`ServerCommand`].
     pub fn apply_server_command_json(&mut self, json: &str) -> Result<(), String> {
         let cmd = parse_server_command(json)?;
@@ -249,6 +288,18 @@ impl Sim {
     /// hash. Per job it is `jobs[].dueStep` in [`Sim::plan_json`].
     pub fn next_due_step(&self) -> Option<u64> {
         self.world.next_due_step()
+    }
+}
+
+/// `"sandbox"` / `"economic"` (or the variant names) → the build mode.
+fn parse_build_mode(s: &str) -> Result<sim_core::economy::BuildMode, String> {
+    use sim_core::economy::BuildMode;
+    match s {
+        "sandbox" | "Sandbox" => Ok(BuildMode::Sandbox),
+        "economic" | "Economic" => Ok(BuildMode::Economic),
+        _ => Err(format!(
+            "unknown build mode {s:?} (known: sandbox, economic)"
+        )),
     }
 }
 
@@ -369,6 +420,78 @@ mod tests {
             .map(|r| r["desks"].as_array().unwrap().len())
             .sum();
         assert_eq!(total_desks, 16, "13 people + 3 spare");
+    }
+
+    #[test]
+    fn layout_json_has_the_town_and_the_build_mode() {
+        let sim = Sim::demo(1);
+        let v: Value = serde_json::from_str(&sim.layout_json()).unwrap();
+        assert_eq!(v["buildMode"], "economic");
+        let town = v["town"].as_array().unwrap();
+        assert_eq!(town.len(), 19);
+        assert_eq!(
+            town[0],
+            serde_json::json!({"id": "town-1", "kind": "PlanHouse", "x": 3.0, "z": -4.5, "rot": 0.0})
+        );
+        // the second tree is turned a quarter: rot in radians
+        assert_eq!(town[14]["kind"], "Tree");
+        assert_eq!(town[14]["rot"], std::f64::consts::FRAC_PI_2);
+        let sandbox = Sim::demo_with(1, "sandbox").unwrap();
+        let v: Value = serde_json::from_str(&sandbox.layout_json()).unwrap();
+        assert_eq!(v["buildMode"], "sandbox");
+        assert_eq!(sandbox.build_mode(), "sandbox");
+        assert!(Sim::demo_with(1, "free").is_err());
+        assert_eq!(
+            Sim::scenario_with("empty", 1, "economic").unwrap().hash(),
+            Sim::scenario("empty", 1).unwrap().hash()
+        );
+    }
+
+    #[test]
+    fn building_commands_move_the_layout_revision_and_have_prices() {
+        let mut sim = Sim::demo(1);
+        let rev = |sim: &Sim| {
+            let v: Value = serde_json::from_str(&sim.render_state_json()).unwrap();
+            v["layoutRev"].as_u64().unwrap()
+        };
+        let before = rev(&sim);
+        let tree = r#"{"PlaceTownItem":{"kind":"Tree","pos":{"x":9000,"z":-10000},"rot":0}}"#;
+        let desk = r#"{"MoveEquipment":{"equipment":"equip-62","placement":{"Floor":{"pos":{"x":6500,"z":4200},"rot":2}}}}"#;
+        assert_eq!(sim.price_command_json(tree), Some(15_000));
+        assert_eq!(sim.price_command_json(desk), Some(4_000));
+        assert_eq!(
+            sim.price_command_json(r#"{"Praise":{"staff":"staff-1"}}"#),
+            Some(0)
+        );
+        assert_eq!(sim.price_command_json("{nope"), None);
+        assert_eq!(
+            sim.price_command_json(r#"{"DeployLanded":{"work_item":"work-item-1"}}"#),
+            None
+        );
+        assert_eq!(sim.validate_command_json(tree), None);
+        sim.apply_command_json(tree).unwrap();
+        sim.apply_command_json(desk).unwrap();
+        sim.apply_command_json(
+            r#"{"MoveTownItem":{"item":"town-1","pos":{"x":3000,"z":-12000},"rot":2}}"#,
+        )
+        .unwrap();
+        sim.apply_command_json(r#"{"RemoveTownItem":{"item":"town-20"}}"#)
+            .unwrap();
+        assert_eq!(rev(&sim), before + 4);
+        let v: Value = serde_json::from_str(&sim.layout_json()).unwrap();
+        let plan = &v["town"][0];
+        assert_eq!(
+            (plan["z"].as_f64(), plan["rot"].as_f64()),
+            (Some(-12.0), Some(std::f64::consts::PI))
+        );
+        assert!(sim
+            .validate_command_json(r#"{"RemoveTownItem":{"item":"town-2"}}"#)
+            .unwrap()
+            .contains("houses cannot be removed"));
+        // a sandbox company builds for free
+        let sandbox = Sim::demo_with(1, "sandbox").unwrap();
+        assert_eq!(sandbox.price_command_json(tree), Some(0));
+        assert_eq!(sandbox.price_command_json(desk), Some(0));
     }
 
     #[test]

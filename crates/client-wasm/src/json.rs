@@ -76,8 +76,10 @@ fn point(p: PosMm) -> Value {
 }
 
 /// Building layout in the shape of the TS `BuildingLayout`
-/// (`apps/game/src/state/render-state.ts`), plus doors, entrance and props.
-pub fn layout(b: &Building) -> Value {
+/// (`apps/game/src/state/render-state.ts`), plus doors, entrance and props,
+/// the company's build mode and the town (ADR-0087).
+pub fn layout(w: &World) -> Value {
+    let b = &w.building;
     let rooms: Vec<Value> = b
         .rooms
         .values()
@@ -159,7 +161,26 @@ pub fn layout(b: &Building) -> Value {
             "spawn": point(b.spawn_pos()),
         },
         "rooms": rooms,
+        "buildMode": w.company.build_mode.slug(),
+        "town": town(b),
     })
+}
+
+/// The town's items in id order: footprint centre in metres, `rot` in
+/// radians like the layout's props (the renderer's `turnOf`).
+fn town(b: &Building) -> Vec<Value> {
+    b.town
+        .values()
+        .map(|t| {
+            json!({
+                "id": t.id.to_string(),
+                "kind": t.kind,
+                "x": m(t.pos.x),
+                "z": m(t.pos.z),
+                "rot": radians(t.rot),
+            })
+        })
+        .collect()
 }
 
 /// Render state in the shape of the TS `RenderState` (minute, day,
@@ -304,6 +325,8 @@ pub fn render_state(w: &World, rs: &RenderState) -> Value {
         "bubbles": bubbles,
         "remarks": remarks,
         "nextRemark": w.next_remark,
+        // Raised by every building change (ADR-0087): read `layout_json` again.
+        "layoutRev": rs.layout_rev,
         // The site's model (ADR-0072): the renderer stands the model table when set.
         "siteModel": rs.site_model.map(|m| json!({
             "pageTypes": m.page_types,

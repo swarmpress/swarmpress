@@ -13,6 +13,7 @@
 //! - [`geom`]: tiles (1 tile = 1 m), millimetre positions, rects, sides
 //! - [`building`]: lot, rooms, doors, windows, walls, connectivity
 //! - [`equipment`]: desks, monitors, lamps, lights, props
+//! - [`town`]: the town around the office: houses, trees, lamps, benches
 //! - [`roles`]: departments and roles (`Role::department()`)
 //! - [`personas`]: the sim's slice of the persona catalog (ids, slugs, salaries)
 //! - [`staff`]: seniority, traits, schedules, project allocations, the staff FSM types
@@ -51,6 +52,7 @@ pub mod scenarios;
 pub mod snapshot;
 pub mod staff;
 pub mod structure;
+pub mod town;
 pub mod validate;
 pub mod world;
 

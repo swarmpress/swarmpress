@@ -163,6 +163,12 @@ id_type!(
     WorkstreamId,
     "workstream-"
 );
+id_type!(
+    /// A piece of the town around the office (ADR-0087): a section's house,
+    /// a tree, a street lamp or a bench.
+    TownItemId,
+    "town-"
+);
 
 /// Stable persona number from the catalog (`crates/agents/personas/*.toml`,
 /// field `id`); see [`crate::staff::PERSONAS`]. Serialized as a plain number.
@@ -182,6 +188,7 @@ pub struct IdGen {
     project: u32,
     ticket: u32,
     task: u32,
+    town: u32,
 }
 
 impl IdGen {
@@ -217,6 +224,10 @@ impl IdGen {
         self.task += 1;
         TaskId(self.task)
     }
+    pub fn town(&mut self) -> TownItemId {
+        self.town += 1;
+        TownItemId(self.town)
+    }
     /// The id the next [`IdGen::equip`] call will return.
     pub fn peek_equip(&self) -> EquipId {
         EquipId(self.equip + 1)
@@ -250,6 +261,8 @@ mod tests {
         assert_eq!(g.ticket(), TicketId(1));
         assert_eq!(g.task(), TaskId(1));
         assert_eq!(WorkItemId(4).to_string(), "work-item-4");
+        assert_eq!(g.town(), TownItemId(1));
+        assert_eq!(TownItemId(3).to_string(), "town-3");
     }
 
     #[test]

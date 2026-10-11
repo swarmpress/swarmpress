@@ -37,6 +37,9 @@ const WORLD_FORMATS: &[(u32, u64)] = &[
     // FEAT-090, FEAT-091, ADR-0072: the site's structure and tools (Plan.structure,
     // PendingJob.tool, structural work items, StructureApproval)
     (7, 0xb5dd_1e08_70d7_ce56),
+    // FEAT-026, ADR-0087: building in the game (Building.town and layout_rev,
+    // Company.build_mode, the town id counter; the script moves a desk and the town)
+    (8, 0x16eb_054f_dab5_dacf),
 ];
 
 /// The golden hash of the current world format.

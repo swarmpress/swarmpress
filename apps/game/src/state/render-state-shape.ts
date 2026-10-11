@@ -30,6 +30,8 @@ import type {
   RoomRender,
   Side,
   StaffRender,
+  TownItemKind,
+  TownItemLayout,
   Weekday,
 } from './render-state'
 
@@ -47,7 +49,12 @@ export function valuesOf<T extends string>() {
     values
 }
 
-export const LAYOUT_KEYS = keysOf<BuildingLayout>()('originX', 'originZ', 'width', 'depth', 'wallHeight', 'floors', 'entrance', 'rooms')
+export const LAYOUT_KEYS = keysOf<BuildingLayout>()('originX', 'originZ', 'width', 'depth', 'wallHeight', 'floors', 'entrance', 'rooms', 'buildMode', 'town')
+/** Layout keys older layouts (and hand-written ones) may leave out; the sim always writes them. */
+export const LAYOUT_OPTIONAL_KEYS: readonly string[] = ['buildMode', 'town']
+export const TOWN_ITEM_KEYS = keysOf<TownItemLayout>()('id', 'kind', 'x', 'z', 'rot')
+export const TOWN_KINDS = valuesOf<TownItemKind>()('PlanHouse', 'BuildingHouse', 'FactoryHouse', 'ProjectsHouse', 'Tree', 'StreetLamp', 'Bench')
+export const BUILD_MODES = valuesOf<NonNullable<BuildingLayout['buildMode']>>()('sandbox', 'economic')
 export const ENTRANCE_KEYS = keysOf<EntranceLayout>()('side', 'x', 'z', 'spawn')
 export const ROOM_LAYOUT_KEYS = keysOf<RoomLayout>()(
   'id',
@@ -90,6 +97,7 @@ export const STATE_KEYS = keysOf<RenderState>()(
   'remarks',
   'nextRemark',
   'siteModel',
+  'layoutRev',
 )
 export const ROOM_KEYS = keysOf<RoomRender>()('id', 'kind', 'light', 'occupancy', 'capacity')
 export const DEVICE_KEYS = keysOf<DeviceRender>()('id', 'room', 'kind', 'state', 'user', 'attachedTo')
@@ -171,14 +179,14 @@ type Json = Record<string, unknown>
 export class ShapeReport {
   readonly problems: string[] = []
 
-  keys(value: unknown, keys: readonly string[], path: string): value is Json {
+  keys(value: unknown, keys: readonly string[], path: string, optional: readonly string[] = []): value is Json {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
       this.problems.push(`${path}: expected an object, got ${JSON.stringify(value)}`)
       return false
     }
     const have = Object.keys(value)
     for (const k of have) if (!keys.includes(k)) this.problems.push(`${path}.${k}: unknown field (not in render-state.ts)`)
-    for (const k of keys) if (!have.includes(k)) this.problems.push(`${path}.${k}: missing field`)
+    for (const k of keys) if (!have.includes(k) && !optional.includes(k)) this.problems.push(`${path}.${k}: missing field`)
     return true
   }
 
@@ -205,12 +213,19 @@ export class ShapeReport {
 }
 
 export function checkLayout(layout: unknown, r = new ShapeReport()): ShapeReport {
-  if (!r.keys(layout, LAYOUT_KEYS, 'layout')) return r
+  if (!r.keys(layout, LAYOUT_KEYS, 'layout', LAYOUT_OPTIONAL_KEYS)) return r
   for (const k of ['originX', 'originZ', 'width', 'depth', 'wallHeight', 'floors']) r.type(layout[k], 'number', `layout.${k}`)
   if (r.keys(layout.entrance, ENTRANCE_KEYS, 'layout.entrance')) {
     r.oneOf(layout.entrance.side, SIDES, 'layout.entrance.side')
     r.point(layout.entrance.spawn, 'layout.entrance.spawn')
   }
+  if ('buildMode' in layout) r.oneOf(layout.buildMode, BUILD_MODES, 'layout.buildMode')
+  if ('town' in layout) r.list(layout.town, 'layout.town', (t, p) => {
+    if (!r.keys(t, TOWN_ITEM_KEYS, p)) return
+    r.oneOf(t.kind, TOWN_KINDS, `${p}.kind`)
+    r.type(t.id, 'string', `${p}.id`)
+    for (const k of ['x', 'z', 'rot']) r.type(t[k], 'number', `${p}.${k}`)
+  })
   r.list(layout.rooms, 'layout.rooms', (room, p) => {
     if (!r.keys(room, ROOM_LAYOUT_KEYS, p)) return
     r.oneOf(room.kind, ROOM_KINDS, `${p}.kind`)
@@ -237,7 +252,7 @@ export function checkRenderState(state: unknown, r = new ShapeReport()): ShapeRe
   r.oneOf(state.weekday, WEEKDAYS, 'state.weekday')
   r.oneOf(state.phase, DAY_PHASES, 'state.phase')
   r.type(state.daylight, 'boolean', 'state.daylight')
-  for (const k of ['step', 'day', 'minute', 'cashCents']) r.type(state[k], 'number', `state.${k}`)
+  for (const k of ['step', 'day', 'minute', 'cashCents', 'layoutRev']) r.type(state[k], 'number', `state.${k}`)
   r.list(state.rooms, 'state.rooms', (room, p) => {
     if (!r.keys(room, ROOM_KEYS, p)) return
     r.oneOf(room.kind, ROOM_KINDS, `${p}.kind`)

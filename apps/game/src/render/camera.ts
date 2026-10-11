@@ -17,6 +17,13 @@ export interface IsoCamera {
    * covers on the right: the rect is framed in what stays visible.
    */
   frame(rect: { x: number; z: number; w: number; d: number; h: number }, coveredRight?: number): void
+  /** While off, a left drag does not pan (build mode's gestures own it, ADR-0087); on by default. */
+  setPan(on: boolean): void
+  /** Where the camera looks and how far it is zoomed (half the view's height, metres): kept across a rebuild. */
+  view(): { target: [number, number, number]; zoom: number }
+  setView(v: { target: [number, number, number]; zoom: number }): void
+  /** Removes the canvas and engine listeners (the scene's own are disposed with it). */
+  dispose(): void
 }
 
 /**
@@ -55,23 +62,22 @@ export function createIsoCamera(
     camera.orthoRight = e.right
   }
   applyOrtho()
-  scene.getEngine().onResizeObservable.add(applyOrtho)
+  const resizeObserver = scene.getEngine().onResizeObservable.add(applyOrtho)
 
-  canvas?.addEventListener(
-    'wheel',
-    (e) => {
-      e.preventDefault()
-      glide = null
-      zoom = clampZoom(zoom * (e.deltaY > 0 ? 1.1 : 1 / 1.1))
-      applyOrtho()
-    },
-    { passive: false },
-  )
+  const onWheel = (e: WheelEvent) => {
+    e.preventDefault()
+    glide = null
+    zoom = clampZoom(zoom * (e.deltaY > 0 ? 1.1 : 1 / 1.1))
+    applyOrtho()
+  }
+  canvas?.addEventListener('wheel', onWheel, { passive: false })
 
   let dragging = false
+  let pan = true
   scene.onPointerObservable.add((info) => {
     const ev = info.event as PointerEvent
-    if (info.type === PointerEventTypes.POINTERDOWN) dragging = true
+    // Build mode (ADR-0087) owns the left drag; another button still pans.
+    if (info.type === PointerEventTypes.POINTERDOWN) dragging = pan || ev.button !== 0
     else if (info.type === PointerEventTypes.POINTERUP) dragging = false
     else if (info.type === PointerEventTypes.POINTERMOVE && dragging) {
       glide = null
@@ -128,6 +134,21 @@ export function createIsoCamera(
         target.addInPlace(flat.scale(share * z * aspect))
       }
       glide = { target, zoom: z }
+    },
+    setPan(on) {
+      pan = on
+      if (!on) dragging = false
+    },
+    view: () => ({ target: [camera.target.x, camera.target.y, camera.target.z], zoom }),
+    setView(v) {
+      glide = null
+      camera.target.set(v.target[0], v.target[1], v.target[2])
+      zoom = clampZoom(v.zoom)
+      applyOrtho()
+    },
+    dispose() {
+      canvas?.removeEventListener('wheel', onWheel)
+      scene.getEngine().onResizeObservable.remove(resizeObserver)
     },
   }
 }

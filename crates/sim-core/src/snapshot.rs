@@ -52,7 +52,9 @@ pub const SNAPSHOT_FORMAT: u16 = 1;
 ///   `tests/snapshot.rs`).
 /// - 7: the site's structure and tools (ADR-0072): `Plan.structure`,
 ///   `PendingJob.tool`, structural work items and `StructureApproval`.
-pub const WORLD_FORMAT: u32 = 7;
+/// - 8: building in the game (ADR-0087): `Building.town` and `layout_rev`,
+///   `Company.build_mode`, the town id counter.
+pub const WORLD_FORMAT: u32 = 8;
 /// Bytes before the body.
 pub const HEADER_LEN: usize = 42;
 

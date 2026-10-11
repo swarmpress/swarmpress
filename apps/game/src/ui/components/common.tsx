@@ -19,6 +19,8 @@ const ICONS: Record<string, string> = {
   building: 'M4 21V9l8-5 8 5v12zM9 21v-6h6v6M8 11h2M14 11h2',
   factory: 'M3 21V11l5 3V11l5 3V11l5 3V5h3v16zM7 18h2M12 18h2M17 18h2',
   data: 'M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
+  // Build mode (ADR-0087): two bricks with their studs.
+  build: 'M3 12h18v8H3zM12 12v8M5 12V9h4v3M15 12V9h4v3',
   close: 'M6 6l12 12M18 6L6 18',
   back: 'M15 5l-7 7 7 7',
 }

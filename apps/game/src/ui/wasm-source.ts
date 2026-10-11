@@ -1,4 +1,5 @@
 import type { Blueprint, BlueprintChange } from '../blueprint/types'
+import type { BuildLayout } from './build/types'
 import { SIM_COMMANDS, type CommandResult } from './commands'
 import {
   NO_SITE_LINKS,
@@ -49,6 +50,13 @@ export interface SimOrgApi {
   minute_of_day(): number
   /** The sim step (the wasm `Sim` has it): the poll's default change key. */
   step?(): number | bigint
+  /** The building and the town (`BuildingLayout` JSON, ADR-0087); the Build panel reads it. */
+  layout_json?(): string
+  /**
+   * Cents a command would cost (the sim's `price`), as a number or its decimal text; feature-detected
+   * (ADR-0087). Without it the Build panel shows no prices, only the sim's verdicts.
+   */
+  price_command_json?(json: string): unknown
 }
 
 export function hasOrgApi(sim: unknown): sim is SimOrgApi {
@@ -436,6 +444,23 @@ export class WasmDataSource implements GameDataSource {
   }
   async now() {
     return this.sim.day() * 1440 + this.sim.minute_of_day()
+  }
+
+  async getLayout(): Promise<BuildLayout | null> {
+    const json = this.sim.layout_json?.()
+    return json ? (JSON.parse(json) as BuildLayout) : null
+  }
+
+  async price(commandJson: string): Promise<number | null> {
+    if (!this.sim.price_command_json) return null
+    try {
+      const raw = this.sim.price_command_json(commandJson)
+      if (raw === null || raw === undefined || raw === '') return null
+      const v = Number(raw)
+      return Number.isFinite(v) ? v : null
+    } catch {
+      return null
+    }
   }
 
   async validate(commandJson: string): Promise<CommandResult> {

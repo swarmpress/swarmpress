@@ -1,0 +1,23 @@
+{
+  "name": "A meeting room for eight (the demo office's, with its whiteboard by the door)",
+  "sim_room": "meeting-room",
+  "room": {"kind":"meeting-room","x_mm":0,"z_mm":8000,"w_mm":6000,"d_mm":8000,"doors":[{"side":"north","at_mm":3000,"width_mm":1000}],"windows":[{"side":"west","at_mm":2000,"width_mm":3000},{"side":"south","at_mm":1500,"width_mm":3000}],"equipment":[{"id":"equip-7","design":"ceiling-light","x_mm":3000,"z_mm":10000,"rot":0},{"id":"equip-8","design":"ceiling-light","x_mm":3000,"z_mm":14000,"rot":0},{"id":"equip-69","design":"whiteboard","x_mm":3000,"z_mm":8600,"rot":0}]},
+  "brief": {"meeting_seats": 8, "writing_surfaces": 2, "plants": 2, "max_cost_cents": 50000},
+  "good": {"placements": [
+    {"design": "whiteboard", "anchor": "wall:east"},
+    {"design": "plant", "anchor": "wall:south", "from": "wall:west"},
+    {"design": "plant", "anchor": "wall:south", "from": "wall:east"}
+  ]},
+  "bad": [
+    {"why": "a desk on the table", "plan": {"placements": [{"design": "desk", "anchor": "room-centre"}]},
+     "codes": ["blocks-table", "requirement-missing", "unreachable"], "placement": 0, "code": "blocks-table"},
+    {"why": "a plant beside the door runs into the whiteboard", "plan": {"placements": [{"design": "plant", "anchor": "door:0"}]},
+     "codes": ["collision", "requirement-missing"], "placement": 0, "code": "collision"},
+    {"why": "a camera rig belongs in the photo studio", "plan": {"placements": [{"design": "camera-rig", "anchor": "wall:east"}]},
+     "codes": ["requirement-missing", "wrong-room"], "placement": 0, "code": "wrong-room"},
+    {"why": "a reference to a later placement", "plan": {"placements": [{"design": "plant", "anchor": "placement:1"}, {"design": "plant", "anchor": "wall:south"}]},
+     "codes": ["forward-reference", "requirement-missing"], "placement": 0, "code": "forward-reference"},
+    {"why": "over budget", "plan": {"placements": [{"design": "whiteboard", "anchor": "wall:east"}, {"design": "mood-board-wall", "anchor": "wall:south"}, {"design": "coffee-machine", "anchor": "wall:south", "from": "wall:west"}, {"design": "plant", "anchor": "wall:south", "from": "wall:east"}, {"design": "plant", "anchor": "wall:west", "from": "wall:north"}]},
+     "codes": ["over-budget", "wrong-room"], "placement": 1, "code": "wrong-room"}
+  ]
+}

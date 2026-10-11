@@ -46,7 +46,7 @@ packages = ["server"]
 id = "server/nextest"
 component = "server"
 [[evidence.split]]
-packages = ["agents", "orchestrator"]
+packages = ["agents", "orchestrator", "office-designer"]
 id = "agents/nextest"
 component = "agents"
 [[evidence.split]]

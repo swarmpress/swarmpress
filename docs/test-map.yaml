@@ -137,3 +137,6 @@
   features: [FEAT-109]
 - match: { classname: content-import-wp }
   features: [FEAT-112]
+# The office designer's core (FEAT-084): unit tests in src/ (relation schema, geometry).
+- match: { classname: office-designer }
+  features: [FEAT-084]

@@ -1,0 +1,22 @@
+[package]
+name = "office-designer"
+description = "The office designer's deterministic core (ADR-0065 §7, ADR-0087 decision 6): placements by relation, the layout solver, checks, catalogue slices and the repair loop driver"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# Footprints, part counts and capabilities of the shipped designs (read only).
+kit = { path = "../kit" }
+
+[dev-dependencies]
+# Contract tests only: the mirrored rules against the sim's own, and every
+# solved placement through the sim's validation. Never a runtime dependency.
+sim-core.workspace = true
+jsonschema = { version = "0.33", default-features = false }
+
+[lints]
+workspace = true

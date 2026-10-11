@@ -9,8 +9,9 @@ import { placeholderPersona, type Persona } from './personas'
 import type { PlanJson, PlanText, PostType } from './plan-types'
 import { EMPTY_PLAN, EMPTY_PLAN_TEXT, withBoardText, withTextOnlyItems } from './plan-wire'
 import type { FinanceJson, InboxJson, OrgJson, PerformanceJson, StaffJson } from './types'
+import type { BuildLayout } from './build/types'
 
-export type PanelId = 'plan' | 'org' | 'projects' | 'finance' | 'inbox' | 'activity' | 'hiring' | 'performance' | 'blueprint'
+export type PanelId = 'plan' | 'org' | 'projects' | 'finance' | 'inbox' | 'activity' | 'hiring' | 'performance' | 'blueprint' | 'build'
 
 export interface PanelDef {
   id: PanelId
@@ -36,6 +37,8 @@ export const PANELS: PanelDef[] = [
   { id: 'hiring', label: 'Hiring', key: 'h', icon: 'hiring' },
   // The site's structure and tools (ADR-0072): only while the source has the site's models.
   { id: 'blueprint', label: 'Blueprint', key: 'b', icon: 'blueprint' },
+  // Build mode (ADR-0087): rooms, furniture and the town; only while the source has the building's layout.
+  { id: 'build', label: 'Build', key: 'u', icon: 'build' },
 ]
 
 /** Who a profile card shows: an employee (staff id) or a catalog persona (candidate). */
@@ -84,6 +87,13 @@ export interface OverlayStore {
   live: ReadonlySignal<LiveJob[]>
   /** The site's blueprint, tools and town (ADR-0072); null until the source has them. */
   siteModels: ReadonlySignal<SiteModels | null>
+  /** The building and the town (`Sim.layout_json()`, ADR-0087), read with every snapshot; null without one. */
+  layout: ReadonlySignal<BuildLayout | null>
+  /**
+   * What a command would cost in cents, as the sim prices it (ADR-0087). Synchronous like `check`:
+   * `undefined` while the source answers, `null` when it does not say (no number is shown then).
+   */
+  price(cmd: Command): number | null | undefined
   panel: ReturnType<typeof signal<PanelId | null>>
   /** The Studio's workbench (the Blueprint panel's tab): the shell's Building and Factory open it there. */
   studioTab: ReturnType<typeof signal<StudioTab>>
@@ -176,6 +186,10 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
   /** Validation verdicts for the current snapshot, keyed by command JSON. */
   const checks = signal(new Map<string, CommandResult>())
   const asked = new Set<string>()
+  /** Prices for the current snapshot, keyed by command JSON (null: the source does not say). */
+  const prices = signal(new Map<string, number | null>())
+  const priced = new Set<string>()
+  const layout = signal<BuildLayout | null>(null)
   let generation = 0
   let disposed = false
   const toast = signal<Toast | null>(null)
@@ -204,12 +218,15 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
     inflight = (async () => {
       do {
         again = false
-        const next = await readSnapshot(source)
+        const [next, nextLayout] = await Promise.all([readSnapshot(source), source.getLayout ? source.getLayout().catch(() => null) : Promise.resolve(null)])
         if (disposed) return
         generation++
         asked.clear()
+        priced.clear()
         batch(() => {
           checks.value = new Map()
+          prices.value = new Map()
+          layout.value = nextLayout
           snap.value = next
           clock.value = next.now
           ready.value = true
@@ -251,7 +268,7 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
   }
 
   const offered = PANELS.filter((p) => (p.id !== 'performance' || caps.performance) && (p.id !== 'activity' || !!caps.activity))
-  const withSite = computed(() => (siteModels.value ? offered : offered.filter((p) => p.id !== 'blueprint')))
+  const withSite = computed(() => offered.filter((p) => (p.id !== 'blueprint' || !!siteModels.value) && (p.id !== 'build' || !!layout.value)))
 
   const store: OverlayStore = {
     source,
@@ -272,6 +289,7 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
     now: clock,
     live,
     siteModels,
+    layout,
     panel: signal<PanelId | null>(null),
     studioTab: signal<StudioTab>('town'),
     profile: signal<ProfileTarget | null>(null),
@@ -307,6 +325,21 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
       }
       source.validate(json).then(settle, (e: unknown) => settle({ ok: false, reason: e instanceof Error ? e.message : String(e) }))
       return PENDING
+    },
+    price(cmd) {
+      if (!source.price) return null
+      const json = toJson(cmd)
+      const have = prices.value.get(json)
+      if (have !== undefined) return have
+      if (priced.has(json)) return undefined
+      priced.add(json)
+      const gen = generation
+      const settle = (v: number | null) => {
+        if (disposed || gen !== generation) return
+        prices.value = new Map(prices.peek()).set(json, v)
+      }
+      source.price(json).then(settle, () => settle(null))
+      return undefined
     },
     comment: (item, text) => store.post(item, 'comment', text),
     async post(item, type, text, payload) {

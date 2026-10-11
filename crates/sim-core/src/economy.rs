@@ -162,6 +162,30 @@ impl Default for Policies {
     }
 }
 
+/// How the company builds (ADR-0065 §5, ADR-0087 decision 3), chosen at
+/// founding: in a `Sandbox` company every building command
+/// ([`crate::validate::is_building_command`]) costs nothing; an `Economic`
+/// company pays each its price. Sandbox companies are unranked.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub enum BuildMode {
+    #[serde(alias = "sandbox")]
+    Sandbox,
+    #[default]
+    #[serde(alias = "economic")]
+    Economic,
+}
+
+impl BuildMode {
+    pub const fn slug(self) -> &'static str {
+        match self {
+            BuildMode::Sandbox => "sandbox",
+            BuildMode::Economic => "economic",
+        }
+    }
+}
+
 /// The player's company.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Company {
@@ -179,6 +203,9 @@ pub struct Company {
     pub signals: Option<SiteSignals>,
     /// Outstanding bank loan.
     pub loan: Option<Loan>,
+    /// Sandbox or economic building, fixed at founding.
+    #[serde(default)]
+    pub build_mode: BuildMode,
 }
 
 impl Company {
@@ -192,7 +219,14 @@ impl Company {
             negative_days: 0,
             signals: None,
             loan: None,
+            build_mode: BuildMode::Economic,
         }
+    }
+
+    /// A company that builds in `mode`.
+    pub fn with_build_mode(mut self, mode: BuildMode) -> Company {
+        self.build_mode = mode;
+        self
     }
 
     /// Receivership: hiring frozen.

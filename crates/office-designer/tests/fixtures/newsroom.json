@@ -1,0 +1,26 @@
+{
+  "name": "A newsroom for three writers",
+  "sim_room": "newsroom",
+  "room": {"kind":"newsroom","x_mm":26000,"z_mm":8000,"w_mm":6000,"d_mm":6000,"doors":[{"side":"north","at_mm":1000,"width_mm":1000}],"windows":[{"side":"east","at_mm":1000,"width_mm":4000}],"equipment":[{"id":"equip-74","design":"ceiling-light","x_mm":29000,"z_mm":11000,"rot":0}]},
+  "brief": {"workstations": 3, "plants": 1},
+  "good": {"placements": [
+    {"design": "desk", "anchor": "window:0", "count": 3, "spacing": 4},
+    {"design": "monitor", "anchor": "placement:0"},
+    {"design": "desk-lamp", "anchor": "placement:0"},
+    {"design": "plant", "anchor": "wall:north", "from": "wall:west"}
+  ]},
+  "bad": [
+    {"why": "desks turned to the wall put the chairs in it", "plan": {"placements": [{"design": "desk", "anchor": "window:0", "count": 3, "spacing": 4, "facing": "toward"}, {"design": "monitor", "anchor": "placement:0"}, {"design": "plant", "anchor": "wall:north", "from": "wall:west"}]},
+     "codes": ["into-wall", "unreachable"], "placement": 0, "code": "into-wall"},
+    {"why": "desks without screens are not workstations", "plan": {"placements": [{"design": "desk", "anchor": "window:0", "count": 3, "spacing": 4}, {"design": "plant", "anchor": "wall:north", "from": "wall:west"}]},
+     "codes": ["requirement-missing"]},
+    {"why": "a row of desks from the west corner runs into the door", "plan": {"placements": [{"design": "desk", "anchor": "wall:north", "from": "wall:west", "count": 3}, {"design": "monitor", "anchor": "placement:0"}, {"design": "plant", "anchor": "wall:south", "from": "wall:west"}]},
+     "codes": ["blocks-door", "no-light", "unreachable"], "placement": 0, "code": "blocks-door"},
+    {"why": "a monitor on a plant", "plan": {"placements": [{"design": "plant", "anchor": "wall:north", "from": "wall:west"}, {"design": "monitor", "anchor": "placement:0"}]},
+     "codes": ["not-a-desk", "requirement-missing"], "placement": 1, "code": "not-a-desk"},
+    {"why": "two screens on one desk", "plan": {"placements": [{"design": "desk", "anchor": "window:0", "count": 3, "spacing": 4}, {"design": "monitor", "anchor": "placement:0"}, {"design": "color-monitor", "anchor": "placement:0"}, {"design": "plant", "anchor": "wall:north", "from": "wall:west"}]},
+     "codes": ["slot-taken"], "placement": 2, "code": "slot-taken"},
+    {"why": "desks back to back closer than the sim allows", "plan": {"placements": [{"design": "desk", "anchor": "room-centre", "facing": "north"}, {"design": "desk", "anchor": "placement:0"}, {"design": "monitor", "anchor": "placement:0"}, {"design": "monitor", "anchor": "placement:1"}, {"design": "plant", "anchor": "wall:north", "from": "wall:west"}]},
+     "codes": ["collision", "requirement-missing"], "placement": 1, "code": "collision"}
+  ]
+}

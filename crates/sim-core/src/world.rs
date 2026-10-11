@@ -58,7 +58,7 @@ use crate::staff::{
     persona, salary_for, Activity, Candidate, Role, Schedule, Seniority, Spot, Staff, Traits,
     LATEST_LEAVE, PERSONAS, ROUND_TABLE_SEATS,
 };
-use crate::validate::{grown_lot, price, validate, validate_server, Reject};
+use crate::validate::{grown_lot, is_building_command, price, validate, validate_server, Reject};
 
 /// Starting cash for a new company, cents ($200,000).
 pub const DEFAULT_START_CASH: i64 = 20_000_000;
@@ -269,8 +269,26 @@ impl World {
             next_seq: 0,
         };
         w.finance.month_open_totals = w.ledger.totals.clone();
+        w.seed_town();
         w.refresh_candidates();
         w
+    }
+
+    /// Founds the town (ADR-0087): the generic arrangement around the lot
+    /// and its entrance ([`crate::town::seed_arrangement`]), unless the
+    /// building already has one.
+    fn seed_town(&mut self) {
+        if !self.building.town.is_empty() {
+            return;
+        }
+        let arrangement =
+            crate::town::seed_arrangement(&self.building.lot, &self.building.entrance);
+        for (kind, pos, rot) in arrangement {
+            let id = self.ids.town();
+            self.building
+                .town
+                .insert(id, crate::town::TownItem { id, kind, pos, rot });
+        }
     }
 
     /// In-game clock. Integer math: minute = start + step * 1440 / steps_per_day.
@@ -351,9 +369,18 @@ impl World {
 
     fn execute(&mut self, cmd: Command) {
         let cost = price(self, &cmd);
+        if is_building_command(&cmd) {
+            self.building.layout_rev = self.building.layout_rev.wrapping_add(1);
+        }
         match cmd {
             Command::BuyFloorSpace { side, tiles } => {
                 let (lot, _) = grown_lot(&self.building.lot, side, i32::from(tiles));
+                self.building.town = crate::town::after_growth(
+                    &self.building.town,
+                    &self.building.lot,
+                    side,
+                    i32::from(tiles),
+                );
                 self.building.lot = lot;
                 self.post(LedgerKind::Land, -cost);
                 self.replan_walkers();
@@ -429,6 +456,50 @@ impl World {
                     },
                 );
                 self.post(LedgerKind::Equipment, -cost);
+            }
+            Command::MoveEquipment {
+                equipment,
+                placement,
+            } => {
+                let (room, pos, rot, attached_to) = match placement {
+                    Placement::OnDesk(d) => {
+                        let desk = &self.building.equipment[&d];
+                        (desk.room, desk.pos, desk.rot, Some(d))
+                    }
+                    Placement::Floor { pos, rot } => {
+                        let room = self.building.room_at(pos.tile()).unwrap_or_default();
+                        (room, pos, rot, None)
+                    }
+                };
+                // the item, and what sits on it: attachments share their desk's position and turn
+                for e in self.building.equipment.values_mut() {
+                    if e.id == equipment || e.attached_to == Some(equipment) {
+                        e.room = room;
+                        e.pos = pos;
+                        e.rot = rot;
+                    }
+                    if e.id == equipment {
+                        e.attached_to = attached_to;
+                    }
+                }
+                self.charge(LedgerKind::Equipment, cost);
+            }
+            Command::PlaceTownItem { kind, pos, rot } => {
+                let id = self.ids.town();
+                self.building
+                    .town
+                    .insert(id, crate::town::TownItem { id, kind, pos, rot });
+                self.charge(LedgerKind::Construction, cost);
+            }
+            Command::MoveTownItem { item, pos, rot } => {
+                if let Some(t) = self.building.town.get_mut(&item) {
+                    t.pos = pos;
+                    t.rot = rot;
+                }
+                self.charge(LedgerKind::Construction, cost);
+            }
+            Command::RemoveTownItem { item } => {
+                self.building.town.remove(&item);
             }
             Command::Hire { candidate } => {
                 if let Some(c) = self.candidates.remove(&candidate) {
@@ -724,6 +795,14 @@ impl World {
 
     fn post(&mut self, kind: LedgerKind, amount: i64) {
         self.ledger.post(&mut self.company.cash, kind, amount);
+    }
+
+    /// Books a cost of the new building commands; a free one (a sandbox
+    /// company's) books nothing.
+    fn charge(&mut self, kind: LedgerKind, cost: i64) {
+        if cost != 0 {
+            self.post(kind, -cost);
+        }
     }
 
     // ------------------------------------------------------------------

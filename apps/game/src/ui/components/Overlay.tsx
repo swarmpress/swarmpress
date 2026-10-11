@@ -2,6 +2,7 @@ import { PANELS, StoreContext, useStore, type OverlayStore, type PanelId } from 
 import { Activity } from './Activity'
 import { ArticlePreview } from './ArticlePreview'
 import { Blueprint } from './Blueprint'
+import { BuildPanel } from '../build/BuildPanel'
 import { Icon, Panel } from './common'
 import { Finance } from './Finance'
 import { Hiring } from './Hiring'
@@ -23,6 +24,7 @@ const PANEL_VIEW: Record<PanelId, () => preact.JSX.Element> = {
   hiring: Hiring,
   performance: Performance,
   blueprint: Blueprint,
+  build: BuildPanel,
 }
 
 export function Toolbar() {

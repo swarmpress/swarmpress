@@ -1,0 +1,16 @@
+{
+  "name": "An editor's office without windows or lights, cut in two by whiteboards",
+  "room": {"kind":"editor-office","x_mm":0,"z_mm":0,"w_mm":4000,"d_mm":5000,"doors":[{"side":"south","at_mm":1000,"width_mm":1000}],"windows":[],"equipment":[]},
+  "brief": {"workstations": 1},
+  "good": {"placements": [
+    {"design": "desk", "anchor": "wall:north"},
+    {"design": "monitor", "anchor": "placement:0"},
+    {"design": "ceiling-light", "anchor": "placement:0"}
+  ]},
+  "bad": [
+    {"why": "no light at the desk", "plan": {"placements": [{"design": "desk", "anchor": "wall:north"}, {"design": "monitor", "anchor": "placement:0"}]},
+     "codes": ["no-light"], "placement": 0, "code": "no-light"},
+    {"why": "whiteboards from wall to wall cut the desk off from the door", "plan": {"placements": [{"design": "desk", "anchor": "wall:north"}, {"design": "monitor", "anchor": "placement:0"}, {"design": "ceiling-light", "anchor": "placement:0"}, {"design": "whiteboard", "anchor": "wall:north", "gap": 35, "count": 3}]},
+     "codes": ["unreachable"], "placement": 0, "code": "unreachable"}
+  ]
+}

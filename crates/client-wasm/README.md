@@ -20,6 +20,9 @@ export class Sim {
   constructor(seed: bigint)              // empty company on the default lot
   static demo(seed: bigint): Sim         // the cinqueterre.travel starting company (13 staff)
   static scenario(name: string, seed: bigint): Sim  // "cinqueterre" (= demo) | "empty"; throws otherwise
+  static demo_with(seed: bigint, build_mode: string): Sim  // demo founded "sandbox" | "economic" (ADR-0087)
+  static scenario_with(name: string, seed: bigint, build_mode: string): Sim  // scenario() in a build mode
+  build_mode(): string                   // "sandbox" | "economic", fixed at founding
   static from_snapshot(bytes: Uint8Array): Sim      // a world from snapshot(); throws unless it is this build's and intact
   snapshot(): Uint8Array                 // the whole world (42-byte header + postcard World), without pending effects
   reissue_pending_jobs(): number         // re-emit the requests of jobs still pending (after from_snapshot)
@@ -37,6 +40,7 @@ export class Sim {
   validate_command(bytes: Uint8Array): string | undefined  // undefined = would apply
   apply_command_json(json: string): void            // JSON Command or ServerCommand (below); throws the reason
   validate_command_json(json: string): string | undefined  // same, without applying
+  price_command_json(json: string): bigint | undefined     // cents the player command would cost now (0 in sandbox for building); undefined if not one
   apply_server_command_json(json: string): void     // JSON ServerCommand only
   drain_effects_json(): string           // JSON RequestJob[] since the last drain (job contract)
   pending_effects(): number              // effects waiting to be drained
@@ -70,7 +74,13 @@ radians and `seat`), `ceilingLights` and other `props`. Room `kind` values are
 the sim's kebab-case kinds (`newsroom`, `editor-office`, `meeting-room`,
 `ceo-office`, `finance-office`, `strategy-room`, `photo-studio`,
 `design-studio`, `seo-lab`, `server-room`, `kitchen`, …); ids are strings like
-`room-1`, `equip-7`, `staff-3`.
+`room-1`, `equip-7`, `staff-3`. Since ADR-0087 it also carries `buildMode`
+(`"sandbox"` or `"economic"`) and `town[]`: `{id: "town-1", kind, x, z, rot}`
+in id order, `kind` one of `PlanHouse`, `BuildingHouse`, `FactoryHouse`,
+`ProjectsHouse`, `Tree`, `StreetLamp`, `Bench`, the footprint centre in metres
+and `rot` in radians like the props. `render_state_json()` carries
+`layoutRev`, raised by every applied building command: read `layout_json()`
+again when it moves.
 
 ### Organization views
 
@@ -231,6 +241,11 @@ Every command, with an example:
 {"Demolish":{"Room":"room-12"}}            // or {"Demolish":{"Equipment":"equip-75"}}
 {"PlaceEquipment":{"kind":"Plant","placement":{"Floor":{"pos":{"x":12600,"z":15400},"rot":0}}}}
 {"PlaceEquipment":{"kind":"Monitor","placement":{"OnDesk":"equip-56"}}}
+{"MoveEquipment":{"equipment":"equip-17","placement":{"Floor":{"pos":{"x":4000,"z":3000},"rot":1}}}}
+                                           // keeps the id; what sits on a desk moves with it; or {"OnDesk":"equip-3"}
+{"PlaceTownItem":{"kind":"Tree","pos":{"x":9000,"z":-10000},"rot":0}}   // Tree | StreetLamp | Bench
+{"MoveTownItem":{"item":"town-1","pos":{"x":3000,"z":-12000},"rot":2}}  // houses too
+{"RemoveTownItem":{"item":"town-14"}}      // not a house
 // people
 {"Hire":{"candidate":"candidate-6"}}
 {"Fire":{"staff":"staff-6"}}

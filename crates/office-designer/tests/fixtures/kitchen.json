@@ -1,0 +1,21 @@
+{
+  "name": "The kitchen: lunch for six, coffee, a plant (the demo office's)",
+  "sim_room": "kitchen",
+  "room": {"kind":"kitchen","x_mm":12000,"z_mm":0,"w_mm":4000,"d_mm":6000,"doors":[{"side":"south","at_mm":1000,"width_mm":1000}],"windows":[{"side":"north","at_mm":1000,"width_mm":2000}],"equipment":[{"id":"equip-4","design":"ceiling-light","x_mm":14000,"z_mm":3000,"rot":0},{"id":"equip-65","design":"coffee-machine","x_mm":15300,"z_mm":700,"rot":0}]},
+  "brief": {"meeting_seats": 6, "coffee": 1, "plants": 2},
+  "good": {"placements": [
+    {"design": "plant", "anchor": "wall:north", "from": "wall:west"},
+    {"design": "plant", "anchor": "wall:south", "from": "wall:east"}
+  ]},
+  "bad": [
+    {"why": "a plant in front of the door", "plan": {"placements": [{"design": "plant", "anchor": "wall:south", "from": "wall:west", "offset": 16}, {"design": "plant", "anchor": "wall:north", "from": "wall:west"}]},
+     "codes": ["blocks-door", "unreachable"], "placement": 0, "code": "blocks-door"},
+    {"why": "ten at a table for eight", "plan": {"placements": [{"design": "plant", "anchor": "wall:north", "from": "wall:west"}, {"design": "plant", "anchor": "wall:south", "from": "wall:east"}]},
+     "brief": {"meeting_seats": 10},
+     "codes": ["room-too-small"]},
+    {"why": "a second coffee machine on top of the first", "plan": {"placements": [{"design": "coffee-machine", "anchor": "equipment:equip-65", "side": "south"}]},
+     "codes": ["collision", "requirement-missing"], "placement": 0, "code": "collision"},
+    {"why": "an unknown window", "plan": {"placements": [{"design": "plant", "anchor": "window:3"}]},
+     "codes": ["requirement-missing", "unknown-anchor"], "placement": 0, "code": "unknown-anchor"}
+  ]
+}

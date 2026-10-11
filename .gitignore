@@ -11,6 +11,8 @@ coverage/
 # Build outputs
 dist/
 build/
+# Not an output: the game's Build section (ADR-0087).
+!apps/game/src/ui/build/
 .next/
 .turbo/
 *.tsbuildinfo

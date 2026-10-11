@@ -71,6 +71,13 @@ impl EquipmentKind {
         }
     }
 
+    /// Labour for moving it (`MoveEquipment`) in an economic company, cents:
+    /// [`crate::town::MOVE_LABOUR_PCT`] of its price. The items on a desk
+    /// ride along for free.
+    pub const fn move_cost(self) -> i64 {
+        self.cost() * crate::town::MOVE_LABOUR_PCT / 100
+    }
+
     /// Daily upkeep (power, consumables), cents.
     pub const fn upkeep(self) -> i64 {
         match self {

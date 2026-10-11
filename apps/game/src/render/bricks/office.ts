@@ -35,14 +35,14 @@ import { isCutAway } from '../cutaway'
 import type { Lighting } from '../lighting'
 import { lampsLightFloor, MAX_LIGHTS_PER_MATERIAL, type OfficeHandles } from '../office'
 import { hallwayRects } from '../walls'
-import { townPath, townScenery, townSpots, type TownSpot } from './town'
+import { townOf, townPath, type TownLayout, type TownSpot } from './town'
 import { buildRoomChunk, exteriorSides, shellOrigin, STUD_HEIGHT, STUD_RADIUS, type ChunkSource, type Region, type RoomChunk, type SurfaceAnchor } from './chunk'
 import { baseplateMesh, floorMesh, paintFloor } from './floor'
 import { envIntensityFor, plasticEnvironment } from './environment'
 import { BrickSeamPlugin } from './seams'
 import { mappingOf, paletteOf, type KitApi, type KitBuildLike, type PaletteColour } from './kit'
 import { modelPlacement, modelRoom } from './model'
-import { FLOOR_TOP, roomPlacements, turnXZ, type DesignInfo } from './placements'
+import { FLOOR_TOP, roomPlacements, STUD, turnXZ, type DesignInfo, type Turn } from './placements'
 import {
   boardView,
   CLOSE_PX,
@@ -150,6 +150,12 @@ export interface BrickOffice {
   rooms: Map<string, RoomBuild>
   /** The town's houses (ADR-0086): where each section stands. */
   town: TownSpot[]
+  /**
+   * The layout's town items as drawn (ADR-0087): id, design and the world
+   * rect each covers, for picking and highlighting. Empty when the town is
+   * the generic arrangement (the layout has no `town`).
+   */
+  townItems: TownItemRect[]
   surfaces: SurfaceHandle[]
   /** Apply a render state (lights, monitors); call after the box office's own update. */
   update(state: RenderState): void
@@ -164,6 +170,15 @@ export interface BrickOffice {
   setModel(designJson: string | null): void
   stats(): BrickOfficeStats
   dispose(): void
+}
+
+export interface TownItemRect {
+  id: string
+  design: string
+  x: number
+  z: number
+  turn: Turn
+  rect: { x: number; z: number; w: number; d: number }
 }
 
 export interface BrickOfficeOptions {
@@ -377,9 +392,11 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     const floor = floorOf(`bricks-${g.id}-floor`, chunk)
     if (floor) groundMeshes.push(floor)
   }
-  // --- the town (ADR-0086): the sections' houses, generic, their fronts to the office ---------
-  const town = townSpots(layout)
+  // --- the town (ADR-0086, ADR-0087): the sections' houses and the furniture, from the layout's
+  // `town` when it has one, else the generic arrangement; their fronts to the office ---------
+  const { spots: town, props: scenery } = townOf(layout as TownLayout)
   const townMeshes: Mesh[] = []
+  const townItems: TownItemRect[] = []
   for (const spot of town) {
     const params = JSON.stringify(spot.params)
     const c = compiled('town-house', params)
@@ -390,13 +407,15 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     for (const b of chunk.studs) townMeshes.push(instanced(`studs-town-${spot.id}-${b.key}`, shapes.stud, b.matrices, materialFor(b.colour, `town-${spot.id}`)))
     const sign = signMesh(scene, spot, opts.signs?.[spot.id] ?? spot.label)
     if (sign) townMeshes.push(sign)
+    if (spot.item) townItems.push({ id: spot.item, design: 'town-house', x: spot.x, z: spot.z, turn: spot.turn, rect: spot.rect })
   }
   // The town's furniture: lamps, benches, trees; one chunk for all of it.
   {
-    const sources: ChunkSource[] = townScenery(layout, town).map((p) => {
+    const sources: ChunkSource[] = scenery.map((p) => {
       const params = JSON.stringify(p.params)
       const c = compiled(p.design, params)
       const placement = { id: `town-${p.id}`, role: 'prop' as const, design: p.design, params, x: p.x, y: -FLOOR_TOP, z: p.z, turn: p.turn, standIn: true }
+      if (p.item) townItems.push({ id: p.item, design: p.design, x: p.x, z: p.z, turn: p.turn, rect: footprintRect(p.x, p.z, c.info.bounds, p.turn) })
       return { build: c.build, placement, footprint: [c.info.bounds[0], c.info.bounds[1]] as [number, number], shell: false, merge: true }
     })
     const at = { id: 'town-scenery', x: layout.originX, z: layout.originZ, w: layout.width, d: layout.depth } as unknown as RoomLayout
@@ -700,6 +719,7 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
   return {
     rooms: roomBuilds,
     town,
+    townItems,
     surfaces,
     update,
     frame,
@@ -744,6 +764,14 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
       for (const c of cache.values()) c.build.free()
     },
   }
+}
+
+/** The world rect of a design's footprint (`bounds` in studs) centred at `(x, z)`, turned. */
+export function footprintRect(x: number, z: number, bounds: readonly number[], turn: number): { x: number; z: number; w: number; d: number } {
+  const odd = turn % 2 === 1
+  const w = (odd ? bounds[1] : bounds[0]) * STUD
+  const d = (odd ? bounds[0] : bounds[1]) * STUD
+  return { x: x - w / 2, z: z - d / 2, w, d }
 }
 
 /**

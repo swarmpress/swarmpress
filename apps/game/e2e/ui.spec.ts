@@ -189,8 +189,10 @@ test.describe('CEO overlay', () => {
     await expect(region(page, 'Finance').getByRole('note')).toContainText('Revenue is not modelled yet')
     await shot(page, 'live-finance')
     expect(await contrast(page), 'live finance contrast').toEqual([])
-    // No KPI source live: the Performance panel is not offered, by button or by key.
-    await expect(toolbar(page).getByRole('button')).toHaveCount(PANELS.length - 1)
+    // No KPI source live: the Performance panel is not offered, by button or by key; the live sim
+    // has a layout, so Build is (ADR-0087).
+    await expect(toolbar(page).getByRole('button')).toHaveCount(PANELS.length - 1 + 1)
+    await expect(toolbar(page).getByRole('button', { name: /^Build/ })).toHaveCount(1)
     await expect(toolbar(page).getByRole('button', { name: /^Performance/ })).toHaveCount(0)
     await page.keyboard.press('k')
     await expect(region(page, 'Performance')).toHaveCount(0)

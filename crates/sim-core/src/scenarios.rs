@@ -43,16 +43,17 @@ use crate::commands::{
     AutonomyPolicy, Command, DemolishTarget, Input, JobDigest, JobFailure, OvertimePolicy,
     Placement, Policy, ServerCommand, SiteSignals,
 };
-use crate::economy::Company;
+use crate::economy::{BuildMode, Company};
 use crate::equipment::EquipmentKind;
 use crate::geom::{PosMm, Side, Tile, TileRect};
 use crate::ids::{
-    CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId,
+    CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, TownItemId, WorkItemId,
 };
 use crate::inbox::{DelegationPolicy, FollowUpTopic, SecretaryTaskKind, TicketOption};
 use crate::plan::{BriefStub, PlannedStub, WorkItemKind, WorkPriority};
 use crate::projects::ProjectStatus;
 use crate::staff::{persona, persona_by_key, Schedule, Traits};
+use crate::town::TownKind;
 use crate::world::World;
 
 /// Starting cash of the cinqueterre.travel company before construction,
@@ -321,9 +322,21 @@ pub const SCENARIOS: [&str; 3] = ["cinqueterre", "demo", "empty"];
 /// cinqueterre.travel starting company ([`demo_office`], 13 people,
 /// staff-1..staff-13); `"empty"` is an empty company on the default lot.
 pub fn scenario(name: &str, seed: u64) -> Option<World> {
+    scenario_with_mode(name, seed, BuildMode::Economic)
+}
+
+/// [`scenario`], founded in a build mode (ADR-0087 decision 3). A sandbox
+/// company also builds its starting office for free, so it starts with the
+/// construction money an economic one spent; `Economic` is [`scenario`].
+pub fn scenario_with_mode(name: &str, seed: u64, mode: BuildMode) -> Option<World> {
     match name {
-        "cinqueterre" | "demo" => Some(demo_office(seed)),
-        "empty" => Some(World::new(seed)),
+        "cinqueterre" | "demo" => Some(demo_office_with_mode(seed, SimConfig::default(), mode)),
+        "empty" => Some(World::with_parts(
+            seed,
+            SimConfig::default(),
+            Building::default_lot(),
+            Company::new(crate::world::DEFAULT_START_CASH, 1).with_build_mode(mode),
+        )),
         _ => None,
     }
 }
@@ -335,6 +348,12 @@ pub fn demo_office(seed: u64) -> World {
 
 /// The cinqueterre.travel starting company with a custom clock.
 pub fn demo_office_with_config(seed: u64, config: SimConfig) -> World {
+    demo_office_with_mode(seed, config, BuildMode::Economic)
+}
+
+/// The cinqueterre.travel starting company with a custom clock, founded in
+/// a build mode.
+pub fn demo_office_with_mode(seed: u64, config: SimConfig, mode: BuildMode) -> World {
     let building = Building::new(
         TileRect::new(0, 0, 24, 16),
         Entrance {
@@ -343,7 +362,12 @@ pub fn demo_office_with_config(seed: u64, config: SimConfig) -> World {
         },
     );
     // Built at level 4 (design studio), then set to the legacy level 3.
-    let mut w = World::with_parts(seed, config, building, Company::new(DEMO_START_CASH, 4));
+    let mut w = World::with_parts(
+        seed,
+        config,
+        building,
+        Company::new(DEMO_START_CASH, 4).with_build_mode(mode),
+    );
     let must = |w: &mut World, c: Command| {
         w.apply(c).expect("demo command is valid");
     };
@@ -473,8 +497,9 @@ pub fn demo_office_with_config(seed: u64, config: SimConfig) -> World {
 /// site and analytics signals, overtime policy changes, firing the
 /// photographer mid-shift (missing-role ticket) and answering it, activating
 /// the second project and splitting a writer across both, placing and
-/// removing a plant, demolishing the archive at night and widening the
-/// delegation.
+/// removing a plant, demolishing the archive at night, rearranging the
+/// office and the town (ADR-0087: a desk moved, a tree planted, a house
+/// moved, a tree removed) and widening the delegation.
 pub fn golden_script() -> Vec<(u64, Input)> {
     let p = |c: Command| Input::Player(c);
     let s = |c: ServerCommand| Input::Server(c);
@@ -819,6 +844,41 @@ pub fn golden_script() -> Vec<(u64, Input)> {
         (
             46_000,
             p(Command::Demolish(DemolishTarget::Room(RoomId(12)))),
+        ),
+        // ...and the CEO rearranges (ADR-0087): a spare desk turned round
+        // with its monitor and lamp, a tree planted, the Plan house moved
+        // back, a tree past the row's west end cut down
+        (
+            46_050,
+            p(Command::MoveEquipment {
+                equipment: EquipId(62),
+                placement: Placement::Floor {
+                    pos: PosMm::new(6_500, 4_200),
+                    rot: 2,
+                },
+            }),
+        ),
+        (
+            46_100,
+            p(Command::PlaceTownItem {
+                kind: TownKind::Tree,
+                pos: PosMm::new(-8_000, -10_000),
+                rot: 1,
+            }),
+        ),
+        (
+            46_150,
+            p(Command::MoveTownItem {
+                item: TownItemId(1),
+                pos: PosMm::new(3_000, -11_000),
+                rot: 0,
+            }),
+        ),
+        (
+            46_200,
+            p(Command::RemoveTownItem {
+                item: TownItemId(14),
+            }),
         ),
         // day 3, 21:00: the editorial board is turned on (ADR-0069)
         (39_500, p(Command::SetPolicy(Policy::EditorialBoard(true)))),

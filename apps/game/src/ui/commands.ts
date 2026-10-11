@@ -68,6 +68,21 @@ export type SecretaryTask =
   | { FollowUp: { staff: StaffRef; topic: string } }
 
 
+/** Millimetres on the floor plan (`sim_core::geom::PosMm`). */
+export interface PosMm {
+  x: number
+  z: number
+}
+/** `sim_core::Placement`: on the floor turned `rot` quarter turns (0..=3), or on a desk. */
+export type EquipmentPlacement = { Floor: { pos: PosMm; rot: number } } | { OnDesk: string }
+/** `sim_core::town::TownKind` (ADR-0087); only the furniture kinds can be placed or removed. */
+export type TownKindVariant = 'PlanHouse' | 'BuildingHouse' | 'FactoryHouse' | 'ProjectsHouse' | 'Tree' | 'StreetLamp' | 'Bench'
+/** `sim_core::RoomKind` variant name or slug (`Kitchen`, `meeting-room`). */
+export type RoomKindVariant = string
+/** `sim_core::EquipmentKind` variant name or slug (`Desk`, `coffee-machine`). */
+export type EquipmentKindVariant = string
+export type SideVariant = 'North' | 'East' | 'South' | 'West'
+
 export type Command =
   | { Hire: { candidate: CandidateRef } }
   | { Fire: { staff: StaffRef } }
@@ -92,6 +107,23 @@ export type Command =
   | { CompleteTodo: { item: WorkItemRef; todo: string } }
   /** Proposed (not yet in §6): outsource a phase to the Agency (Claude), billed as an in-game fee. */
   | { SendToAgency: { item: WorkItemRef; phase: number } }
+  // Building (ADR-0087): tile rects in metres-as-tiles, positions in millimetres, ids as strings.
+  | {
+      PlaceRoom: {
+        kind: RoomKindVariant
+        rect: { x: number; z: number; w: number; d: number }
+        floor: number
+        doors: Array<{ side: SideVariant; at: number }>
+        windows: Array<{ side: SideVariant; at_mm: number; width_mm: number }>
+      }
+    }
+  | { Demolish: { Room: string } | { Equipment: string } }
+  | { PlaceEquipment: { kind: EquipmentKindVariant; placement: EquipmentPlacement } }
+  /** Keeps the id and the desk assignment; what sits on a desk moves with it. */
+  | { MoveEquipment: { equipment: string; placement: EquipmentPlacement } }
+  | { PlaceTownItem: { kind: TownKindVariant; pos: PosMm; rot: number } }
+  | { MoveTownItem: { item: string; pos: PosMm; rot: number } }
+  | { RemoveTownItem: { item: string } }
 
 export type CommandName = Command extends infer C ? (C extends Record<infer K, unknown> ? K : never) : never
 
@@ -117,6 +149,14 @@ export const SIM_COMMANDS: readonly CommandName[] = [
   'SetDelegation',
   'UpdateWorkItem',
   'RunTool',
+  // building (ADR-0087)
+  'PlaceRoom',
+  'Demolish',
+  'PlaceEquipment',
+  'MoveEquipment',
+  'PlaceTownItem',
+  'MoveTownItem',
+  'RemoveTownItem',
 ]
 
 /** Plan commands of publishing-plan.md §6 the sim does not have yet (the mock source applies them). */

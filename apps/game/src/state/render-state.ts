@@ -118,6 +118,25 @@ export interface BuildingLayout {
   floors: number
   entrance: EntranceLayout
   rooms: RoomLayout[]
+  /** The company's build mode, fixed at founding (ADR-0087); absent in older layouts. */
+  buildMode?: 'sandbox' | 'economic'
+  /** The town around the lot (ADR-0087), in id order; absent in older layouts. */
+  town?: TownItemLayout[]
+}
+
+/** `sim_core::town::TownKind`. */
+export type TownItemKind = 'PlanHouse' | 'BuildingHouse' | 'FactoryHouse' | 'ProjectsHouse' | 'Tree' | 'StreetLamp' | 'Bench'
+
+/** A piece of the town: a section's house, a tree, a street lamp or a bench. */
+export interface TownItemLayout {
+  /** `town-N` */
+  id: string
+  kind: TownItemKind
+  /** Footprint centre, metres. */
+  x: number
+  z: number
+  /** Radians like the layout's props (`turnOf(rot)` is the quarter turn). */
+  rot: number
 }
 
 export type Pose = 'walk' | 'sit' | 'type' | 'talk' | 'listen' | 'idle'
@@ -277,6 +296,8 @@ export interface RenderState {
   siteModel: { pageTypes: number; slots: number; issues: number; tools: number; failingTools: number } | null
   /** The seq the next remark must carry. */
   nextRemark: number
+  /** Raised by one on every building change (ADR-0087): when it moves, read `layout_json()` again. */
+  layoutRev: number
 }
 
 // ----------------------------------------------------------------------------
@@ -458,6 +479,7 @@ export function demoRenderState(minute: number, day: number): RenderState {
     bubbles: [],
     remarks: [],
     nextRemark: 0,
+    layoutRev: 0,
     siteModel: null,
   }
 }

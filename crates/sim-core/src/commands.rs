@@ -15,12 +15,13 @@ use crate::building::{Door, RoomKind, Window};
 use crate::equipment::EquipmentKind;
 use crate::geom::{PosMm, Side, TileRect};
 use crate::ids::{
-    CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId,
+    CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, TownItemId, WorkItemId,
 };
 use crate::inbox::{DelegationPolicy, SecretaryTaskKind, TicketOption};
 use crate::plan::{BriefStub, PlannedStub, WorkItemKind, WorkItemStatus, WorkPriority};
 use crate::projects::ProjectStatus;
 use crate::structure::ToolStub;
+use crate::town::TownKind;
 
 /// What the player can do.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,6 +131,29 @@ pub enum Command {
     /// The CEO runs an installed tool now (ADR-0072).
     RunTool {
         tool_ref: u64,
+    },
+    /// Move (and turn) a placed item (ADR-0087 decision 2). It keeps its id
+    /// and its desk assignment; the items on a moved desk move with it.
+    MoveEquipment {
+        equipment: EquipId,
+        placement: Placement,
+    },
+    /// Place a tree, a street lamp or a bench in the town (ADR-0087
+    /// decision 4). The sections' houses are never placed.
+    PlaceTownItem {
+        kind: TownKind,
+        pos: PosMm,
+        rot: u8,
+    },
+    /// Move (and turn) any town item, houses included.
+    MoveTownItem {
+        item: TownItemId,
+        pos: PosMm,
+        rot: u8,
+    },
+    /// Remove a tree, a street lamp or a bench. Houses stay.
+    RemoveTownItem {
+        item: TownItemId,
     },
 }
 
@@ -458,6 +482,26 @@ mod tests {
                 policy: DelegationPolicy::Low,
             },
             Command::Praise { staff: StaffId(2) },
+            Command::MoveEquipment {
+                equipment: EquipId(17),
+                placement: Placement::Floor {
+                    pos: PosMm::new(4_000, 3_000),
+                    rot: 1,
+                },
+            },
+            Command::PlaceTownItem {
+                kind: TownKind::Bench,
+                pos: PosMm::new(-3_000, -8_000),
+                rot: 2,
+            },
+            Command::MoveTownItem {
+                item: TownItemId(3),
+                pos: PosMm::new(1_000, -9_000),
+                rot: 0,
+            },
+            Command::RemoveTownItem {
+                item: TownItemId(7),
+            },
         ];
         for c in cmds {
             let bytes = postcard::to_allocvec(&c).unwrap();
@@ -551,6 +595,57 @@ mod tests {
         assert_eq!(
             c,
             Command::SetPolicy(Policy::Autonomy(AutonomyPolicy::ApproveMajor))
+        );
+        // building (ADR-0087)
+        let c: Command = serde_json::from_str(
+            r#"{"MoveEquipment":{"equipment":"equip-17","placement":{"Floor":{"pos":{"x":4000,"z":3000},"rot":1}}}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            c,
+            Command::MoveEquipment {
+                equipment: EquipId(17),
+                placement: Placement::Floor {
+                    pos: PosMm::new(4_000, 3_000),
+                    rot: 1
+                }
+            }
+        );
+        let c: Command = serde_json::from_str(
+            r#"{"MoveEquipment":{"equipment":"equip-20","placement":{"OnDesk":"equip-3"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            c,
+            Command::MoveEquipment {
+                equipment: EquipId(20),
+                placement: Placement::OnDesk(EquipId(3))
+            }
+        );
+        let c = Command::PlaceTownItem {
+            kind: TownKind::StreetLamp,
+            pos: PosMm::new(-3_000, -8_000),
+            rot: 0,
+        };
+        assert_eq!(
+            serde_json::to_string(&c).unwrap(),
+            r#"{"PlaceTownItem":{"kind":"StreetLamp","pos":{"x":-3000,"z":-8000},"rot":0}}"#
+        );
+        let c = Command::MoveTownItem {
+            item: TownItemId(1),
+            pos: PosMm::new(3_000, -10_000),
+            rot: 2,
+        };
+        assert_eq!(
+            serde_json::to_string(&c).unwrap(),
+            r#"{"MoveTownItem":{"item":"town-1","pos":{"x":3000,"z":-10000},"rot":2}}"#
+        );
+        let c: Command = serde_json::from_str(r#"{"RemoveTownItem":{"item":"town-14"}}"#).unwrap();
+        assert_eq!(
+            c,
+            Command::RemoveTownItem {
+                item: TownItemId(14)
+            }
         );
         let s: ServerCommand =
             serde_json::from_str(r#"{"JobFailed":{"job_id":7,"reason":"needs-media"}}"#).unwrap();

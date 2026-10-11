@@ -1,0 +1,19 @@
+{
+  "name": "An archive with five shelves",
+  "sim_room": "archive",
+  "room": {"kind":"archive","x_mm":24000,"z_mm":0,"w_mm":4000,"d_mm":6000,"doors":[{"side":"south","at_mm":2000,"width_mm":1000}],"windows":[{"side":"north","at_mm":1000,"width_mm":2000}],"equipment":[{"id":"equip-73","design":"ceiling-light","x_mm":26000,"z_mm":3000,"rot":0}]},
+  "brief": {"storage": 5, "plants": 1},
+  "good": {"placements": [
+    {"design": "archive-shelf", "anchor": "wall:west", "count": 3, "spacing": 2},
+    {"design": "archive-shelf", "anchor": "wall:east", "count": 2, "spacing": 8},
+    {"design": "plant", "anchor": "wall:north", "from": "wall:east"}
+  ]},
+  "bad": [
+    {"why": "four wide-spaced shelves do not fit on the west wall", "plan": {"placements": [{"design": "archive-shelf", "anchor": "wall:west", "count": 4, "spacing": 8}, {"design": "plant", "anchor": "wall:north", "from": "wall:east"}]},
+     "codes": ["does-not-fit", "requirement-missing"], "placement": 0, "code": "does-not-fit"},
+    {"why": "a shelf in front of the door", "plan": {"placements": [{"design": "archive-shelf", "anchor": "wall:south"}, {"design": "archive-shelf", "anchor": "wall:west", "count": 3, "spacing": 2}, {"design": "archive-shelf", "anchor": "wall:east"}, {"design": "plant", "anchor": "wall:north", "from": "wall:east"}]},
+     "codes": ["blocks-door", "unreachable"], "placement": 0, "code": "blocks-door"},
+    {"why": "from a parallel wall", "plan": {"placements": [{"design": "archive-shelf", "anchor": "wall:west", "from": "wall:east", "count": 5}]},
+     "codes": ["bad-relation", "requirement-missing"], "placement": 0, "code": "bad-relation"}
+  ]
+}

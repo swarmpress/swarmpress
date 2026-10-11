@@ -1,4 +1,5 @@
 import type { Blueprint, BlueprintChange, PutBlueprintBody, PutBlueprintResult, PutToolsBody, SiteModels } from '../blueprint/types'
+import type { BuildLayout } from './build/types'
 import type { CommandResult } from './commands'
 import type { Persona } from './personas'
 import type { PlanJson, PlanPost, PlanText } from './plan-types'
@@ -310,6 +311,16 @@ export interface GameDataSource {
    * Web Developer (a tool). Absent: the source cannot commission.
    */
   commission?(kind: 'structure' | 'tool', request: string): Promise<CommandResult>
+  /**
+   * The building and the town as the sim lays them out (`Sim.layout_json()`, ADR-0087), parsed;
+   * read with every snapshot by the Build panel. Absent: the source has no building (no Build panel).
+   */
+  getLayout?(): Promise<BuildLayout | null>
+  /**
+   * What a command would cost, in cents, as the sim prices it (ADR-0087: the sandbox builds for
+   * free). Absent, or `null`: the source does not say; the UI then shows no number.
+   */
+  price?(commandJson: string): Promise<number | null>
 }
 
 /** Everything the overlay renders from, read in one go. */

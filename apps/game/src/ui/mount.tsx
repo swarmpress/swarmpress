@@ -12,6 +12,8 @@ import './shell.css'
 import './studio/canvas.css'
 import './studio/factory.css'
 import './studio/data-studio.css'
+import './build/build.css'
+import './build/design-editor.css'
 
 export type { GameDataSource } from './data-source'
 export { MockDataSource } from './mock-source'

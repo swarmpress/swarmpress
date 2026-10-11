@@ -111,6 +111,13 @@ const SAMPLES: Record<string, Command> = {
   SetDelegation: cmd.setDelegation('low'),
   UpdateWorkItem: cmd.setPriority('work-item-1', 'urgent'),
   RunTool: { RunTool: { tool_ref: 1 } },
+  PlaceRoom: { PlaceRoom: { kind: 'Kitchen', rect: { x: 30, z: 0, w: 3, d: 3 }, floor: 0, doors: [], windows: [] } },
+  Demolish: { Demolish: { Equipment: 'equip-1' } },
+  PlaceEquipment: { PlaceEquipment: { kind: 'Plant', placement: { Floor: { pos: { x: 2000, z: 14000 }, rot: 0 } } } },
+  MoveEquipment: { MoveEquipment: { equipment: 'equip-62', placement: { Floor: { pos: { x: 6500, z: 4200 }, rot: 2 } } } },
+  PlaceTownItem: { PlaceTownItem: { kind: 'Tree', pos: { x: 9000, z: -10000 }, rot: 0 } },
+  MoveTownItem: { MoveTownItem: { item: 'town-1', pos: { x: 3000, z: -12000 }, rot: 0 } },
+  RemoveTownItem: { RemoveTownItem: { item: 'town-14' } },
   AssignPhase: cmd.assignPhase('work-item-1', 0, 'staff-1'),
   AcceptProposal: cmd.acceptProposal('work-item-1', 'post-1'),
   CompleteTodo: cmd.completeTodo('work-item-1', 'todo-1'),
@@ -295,7 +302,8 @@ describe.skipIf(!built)('WasmDataSource over the real sim', () => {
     await h.store.refresh()
     await flush()
     const tools = within(screen.getByRole('navigation', { name: 'CEO tools' })).getAllByRole('button').map((b) => b.querySelector('.tool-label')!.textContent)
-    expect(tools).toEqual(['Plan', 'Inbox', 'Org chart', 'Projects', 'Finance', 'Hiring'])
+    // Build mode (ADR-0087): the real sim lays out its building, so the Build tool is offered.
+    expect(tools).toEqual(['Plan', 'Inbox', 'Org chart', 'Projects', 'Finance', 'Hiring', 'Build'])
 
     // No schedule before the first editorial board; the sim's goal per project from the start (ADR-0069).
     expect(availableViews(h.store.plan.value)).toEqual(['board', 'goals'])
