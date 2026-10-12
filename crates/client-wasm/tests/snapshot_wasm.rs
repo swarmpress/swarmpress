@@ -16,7 +16,7 @@ use sim_core::World;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::wasm_bindgen_test;
 
-const GOLDEN_HASH: u64 = 0xecf3_fa83_82cc_eebf;
+const GOLDEN_HASH: u64 = 0xa754_6031_a1f4_9977;
 const GOLDEN: &str = include_str!("../../../packages/runner/test/fixtures/golden.json");
 
 /// The scripted 50,000-step run with commands, jobs and queued inputs,

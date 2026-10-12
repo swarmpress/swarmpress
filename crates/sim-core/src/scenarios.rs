@@ -310,7 +310,8 @@ fn demo_props() -> [(EquipmentKind, PosMm); 8] {
         (EquipmentKind::Plant, PosMm::new(19_400, 600)),
         (EquipmentKind::ArchiveShelf, PosMm::new(16_800, 800)),
         (EquipmentKind::Plant, PosMm::new(23_400, 5_400)),
-        (EquipmentKind::Whiteboard, PosMm::new(3_000, 8_600)),
+        // On the meeting room's north wall, west of its door (x 3 to 4 m) and its 1 m clear zone.
+        (EquipmentKind::Whiteboard, PosMm::new(1_500, 8_600)),
         (EquipmentKind::CameraRig, PosMm::new(8_000, 13_500)),
         (EquipmentKind::Whiteboard, PosMm::new(14_000, 15_300)),
         (EquipmentKind::MoodBoardWall, PosMm::new(17_500, 14_500)),

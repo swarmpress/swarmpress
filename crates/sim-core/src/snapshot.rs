@@ -58,7 +58,8 @@ pub const SNAPSHOT_FORMAT: u16 = 1;
 ///   `OfficeDesigner` role and persona, `Interior` items, `BuildApproval`.
 /// - 10: players' own designs (ADR-0065 §4, ADR-0087 decision 7):
 ///   `Building.objects` and the object id counter.
-pub const WORLD_FORMAT: u32 = 10;
+/// - 11: the demo office's meeting-room whiteboard stands clear of its door.
+pub const WORLD_FORMAT: u32 = 11;
 /// Bytes before the body.
 pub const HEADER_LEN: usize = 42;
 

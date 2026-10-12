@@ -50,6 +50,9 @@
 //!   demolished, places two in the meeting room, moves one and removes the
 //!   other.
 //! - `0xecf3_fa83_82cc_eebf`: world format 10.
+//! - world format 11: the demo office's meeting-room whiteboard moves west,
+//!   out of its door's clear zone (the office designer's door check found it).
+//! - `0xa754_6031_a1f4_9977`: world format 11.
 
 use sim_core::commands::JobFailure;
 use sim_core::geom::PosMm;
@@ -59,7 +62,7 @@ use sim_core::plan::{JobKind, WorkItemStatus};
 use sim_core::scenarios::{golden_script, run_golden, DEMO_PROJECT, GOLDEN_STEPS};
 use sim_core::town::TownKind;
 
-const GOLDEN_HASH: u64 = 0xecf3_fa83_82cc_eebf;
+const GOLDEN_HASH: u64 = 0xa754_6031_a1f4_9977;
 
 #[test]
 fn golden_hash() {

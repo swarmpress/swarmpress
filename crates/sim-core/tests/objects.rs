@@ -15,7 +15,7 @@ use sim_core::scenarios::{demo_office, scenario_with_mode};
 use sim_core::{validate, Reject, World};
 
 /// The meeting room: 0..6 m × 8..16 m, its door on the north side at 3 m,
-/// a whiteboard at (3 m, 8.6 m).
+/// a whiteboard at (1.5 m, 8.6 m), west of the door.
 const MEETING: RoomId = RoomId(6);
 const KITCHEN: RoomId = RoomId(3);
 
@@ -221,13 +221,13 @@ fn rejects_bad_spots() {
         check(place(boxed(8), 3_750, 8_600, 0)),
         Err(Reject::Invalid("the object would block a door"))
     );
-    // the whiteboard's square (2.5..3.5 m, 8.1..9.1 m): overlapping is
+    // the whiteboard's square (1..2 m, 8.1..9.1 m): overlapping is
     // refused, touching is not
     assert_eq!(
-        check(place(boxed(8), 3_000, 9_300, 0)),
+        check(place(boxed(8), 1_500, 9_300, 0)),
         Err(Reject::Overlap)
     );
-    assert_eq!(check(place(boxed(8), 3_000, 9_350, 0)), Ok(()));
+    assert_eq!(check(place(boxed(8), 1_500, 9_350, 0)), Ok(()));
     // a desk's chair (Giulia's desk at 1.5 m, 1.5 m; her chair 0.75 m south)
     assert_eq!(
         check(place(boxed(4), 1_500, 2_300, 0)),
@@ -278,7 +278,7 @@ fn objects_and_equipment_keep_apart() {
     assert_eq!(validate(&w, &wb), Err(Reject::Overlap));
     // an object moved onto the whiteboard
     assert_eq!(
-        validate(&w, &move_obj(1, 3_000, 9_800, 0)),
+        validate(&w, &move_obj(1, 1_500, 9_800, 0)),
         Err(Reject::Overlap)
     );
     assert_eq!(

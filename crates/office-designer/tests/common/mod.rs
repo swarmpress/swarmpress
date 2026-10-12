@@ -13,7 +13,7 @@ use sim_core::World;
 
 pub const ARCHIVE: TileRect = TileRect::new(24, 0, 4, 6);
 pub const NEWSROOM: TileRect = TileRect::new(26, 8, 6, 6);
-/// The demo office's meeting room (a whiteboard stands by its door).
+/// The demo office's meeting room (a whiteboard stands west of its door).
 pub const MEETING_ROOM: TileRect = TileRect::new(0, 8, 6, 8);
 /// The demo office's kitchen (a coffee machine stands in it).
 pub const KITCHEN: TileRect = TileRect::new(12, 0, 4, 6);
