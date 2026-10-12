@@ -64,3 +64,9 @@ The owner decided on 2026-10-12:
 - **Objects stay decorative:** no sim change, but players' furniture would be scenery only.
 - **Free placement on the desk top:** richer, but needs the desk sizes reconciled first and moves
   every layout.
+
+## Owner's confirmation (2026-10-12)
+
+The owner confirmed how decision 2 was built: "in use" means its owner is sitting there, so a
+workstation object can be moved while its owner is away; it cannot be removed while it is anyone's
+home; and its seat must have clearance (the seat's square is kept free and walkable).
