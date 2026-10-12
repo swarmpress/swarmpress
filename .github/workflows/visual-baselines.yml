@@ -1,6 +1,6 @@
 name: visual baselines
 # Renders the visual regression views (apps/game/e2e/visual.spec.ts) on the same Linux runner and
-# SwiftShader WebGPU as ci.yml's Web job, with --update-snapshots, and uploads the PNGs as the
+# SwiftShader WebGPU as ci.yml's Web job, with --update-snapshots=all, and uploads the PNGs as the
 # artifact `visual-baselines`. Started by hand (Actions → visual baselines → Run workflow) after a
 # deliberate change to the office's look; a person checks each image before committing it to
 # apps/game/e2e/visual.spec.ts-snapshots/ (docs/guides/testing.md).
@@ -36,8 +36,8 @@ jobs:
       - name: Build client (wasm prebuilt)
         run: pnpm --filter @swarm-press/game exec vite build
       - run: pnpm --filter @swarm-press/game exec playwright install --with-deps chromium
-      - name: Render the views with --update-snapshots
-        run: pnpm --filter @swarm-press/game exec playwright test e2e/visual.spec.ts --update-snapshots
+      - name: Render every view anew (--update-snapshots=all; plain --update-snapshots keeps passing ones)
+        run: pnpm --filter @swarm-press/game exec playwright test e2e/visual.spec.ts --update-snapshots=all
         env:
           CI: '1'
       - uses: actions/upload-artifact@v4
