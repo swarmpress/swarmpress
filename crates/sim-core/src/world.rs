@@ -906,18 +906,26 @@ impl World {
     }
 
     /// Adds a candidate for `role` to today's shortlist: a pool persona with
-    /// that role nobody plays yet, else a generic one.
+    /// that role nobody plays yet. Nobody is added when the shortlist already
+    /// has a candidate for the role, or when every persona for it is taken: a
+    /// candidate without a persona would be hired without a name or a voice, and
+    /// every job they took would fail.
     pub fn add_candidate_for_role(&mut self, role: Role) {
+        if self.candidates.values().any(|c| c.role == role) {
+            return;
+        }
         let taken = |p: PersonaId, w: &World| {
             w.staff.values().any(|s| s.persona == p)
                 || w.candidates.values().any(|c| c.persona == p)
         };
-        let pid = PERSONAS
+        let Some(pid) = PERSONAS
             .iter()
             .filter(|p| p.role == role)
             .map(|p| p.persona_id())
             .find(|p| !taken(*p, self))
-            .unwrap_or(PersonaId(0));
+        else {
+            return;
+        };
         let seniority = persona(pid).map_or(Seniority::Mid, |p| p.seniority);
         let seniority = if seniority == Seniority::Star && self.company.level < 5 {
             Seniority::Senior

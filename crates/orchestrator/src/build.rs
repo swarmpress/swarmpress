@@ -12,6 +12,7 @@
 //!       Repair{fix, issues} → `office layout fix` (fix_schema) → apply_fix → evaluate …
 //!       (at most office_designer::MAX_REPAIR_ROUNDS)
 //!       GiveUp → a status post with the issues, JobFailed{InvalidOutput}
+//!       Done, no items → a status post (nothing to build), JobFailed{InvalidOutput}
 //!       Done   → the item's artifact: RoomPlan{room, items in build order, cost, parts,
 //!                summary, warnings}, an `artifact` post with the summary
 //!                → InteriorPlan{job_id, items} (the placements, numbers only)
@@ -450,6 +451,14 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 }
             }
         };
+
+        // A plan that places nothing is no room plan: the sim refuses an empty
+        // `InteriorPlan`, and the CEO would approve nothing (rule 11).
+        if eval.items.is_empty() {
+            let f = invalid_answer(Vec::new());
+            let why = "the plan places nothing, so there is nothing to build (the room may already have what the brief asks for)";
+            return self.room_plan_failed(req, &item, &who, &f, why).await;
+        }
 
         // The artifact: the room plan, as the CEO approves it and the sim builds it.
         let items = plan_items(&eval);

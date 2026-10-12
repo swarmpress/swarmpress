@@ -112,8 +112,9 @@ fn job(job_id: u64, kind: JobKind, context: Value) -> JobRequest {
     }
 }
 
-async fn orch(llm: FakeLlm) -> Orchestrator<MemStore, FakeGateway> {
-    let o = Orchestrator::new(MemStore::new(), FakeGateway::new(), Arc::new(llm), site());
+async fn orch(llm: impl Into<Arc<FakeLlm>>) -> Orchestrator<MemStore, FakeGateway> {
+    let llm: Arc<FakeLlm> = llm.into();
+    let o = Orchestrator::new(MemStore::new(), FakeGateway::new(), llm, site());
     o.store()
         .put_brief(
             COMPANY,
@@ -221,7 +222,8 @@ async fn the_checkers_issues_are_repaired() {
         {"design": "monitor", "anchor": "placement:0"},
         {"design": "plant", "anchor": "wall:south", "from": "wall:west"}
     ]}))]);
-    let o = orch(llm).await;
+    let llm = Arc::new(llm);
+    let o = orch(llm.clone()).await;
     let out = o
         .run(&job(42, JobKind::InteriorDesign, context(&w, room)))
         .await
@@ -229,6 +231,17 @@ async fn the_checkers_issues_are_repaired() {
     let d = completed(&out);
     assert!(d.ok, "{out:?}");
     assert_eq!(d.qa_defects, 1, "one repair round");
+    // The layout and the fix think with the designer's own reasoning budget, and still fit
+    // a local model's window.
+    let calls = llm.calls();
+    assert_eq!(calls.len(), 2, "a layout and a fix");
+    for call in &calls {
+        assert_eq!(
+            call.request.reasoning_tokens,
+            Some(agents::build::LAYOUT_REASONING)
+        );
+        assert!(agents::article_prompts::LlmProfile::LOCAL.fits(&call.request));
+    }
     let art = o
         .store()
         .get_artifact(COMPANY, ITEM)
@@ -504,4 +517,55 @@ async fn the_fake_plans_the_meeting_room() {
         .unwrap();
     assert_eq!(art["room_plan"]["items"].as_array().unwrap().len(), 1);
     assert_eq!(art["room_plan"]["items"][0]["design"], "plant");
+}
+
+/// A room that already has what the brief asks for: a plan that places
+/// nothing is not a room plan (the sim refuses an empty `InteriorPlan`). The
+/// job fails with the reason in the thread instead of completing with
+/// nothing to build (found by the Luna eval driver's dry run on the scripted
+/// model, 2026-10-12: a room asked for again after it was built).
+#[tokio::test]
+async fn a_plan_that_places_nothing_fails_with_the_reason() {
+    let (w, _) = world();
+    let room = w
+        .building
+        .rooms
+        .values()
+        .find(|r| r.kind == RoomKind::MeetingRoom)
+        .unwrap()
+        .id;
+    let o = Orchestrator::new(
+        MemStore::new(),
+        FakeGateway::new(),
+        Arc::new(fake_writer([FakeReply::Json(json!({"placements": []}))])),
+        site(),
+    );
+    // The meeting room's table seats eight and a whiteboard stands in it.
+    let brief = json!({"meeting_seats": 8, "writing_surfaces": 1});
+    o.store()
+        .put_brief(
+            COMPANY,
+            BRIEF,
+            interior_brief("A whiteboard for the meeting room.", &brief),
+        )
+        .await
+        .unwrap();
+    let out = o
+        .run(&job(51, JobKind::InteriorDesign, context(&w, room)))
+        .await
+        .unwrap();
+    assert_eq!(failed(&out), JobFailure::InvalidOutput, "{out:?}");
+    let ps = posts(&o).await;
+    let s = ps.iter().find(|p| p["type"] == "status").unwrap();
+    assert_eq!(s["payload"]["room_plan"], "failed");
+    assert!(
+        s["text"].as_str().unwrap().contains("nothing to build"),
+        "{s}"
+    );
+    assert!(o
+        .store()
+        .get_artifact(COMPANY, ITEM)
+        .await
+        .unwrap()
+        .is_none_or(|a| a["room_plan"].is_null()));
 }

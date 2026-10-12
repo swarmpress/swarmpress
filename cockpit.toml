@@ -483,6 +483,19 @@ workflow = "ci.yml"
 artifact = "bench-agent-pipeline"
 branch = "main"
 
+# The office designer on GPT-6-Luna (FEAT-084): five room briefs per company, the plan or the
+# failure, repairs, brief fulfilment, cost against the budget, calls and tokens, one Build carried
+# out by the sim. Not in CI (the hosted model, a call budget):
+# `cd apps/game && bun e2e/luna-interior.eval.mts --bench ../../artifacts/bench/office-designer-luna.json`
+[[evidence]]
+id = "bench/office-designer"
+title = "the office designer's room plans on the real model (plans, repairs, briefs met, calls)"
+format = "cockpit-benchmark"
+kind = "benchmark"
+path = ["artifacts/bench/office-designer*.json"]
+component = "agents"
+features = ["FEAT-084"]
+
 [[evidence]]
 id = "bench/server-load"
 title = "server load test (companies per core)"

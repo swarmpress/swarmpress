@@ -53,6 +53,9 @@
 //! - world format 11: the demo office's meeting-room whiteboard moves west,
 //!   out of its door's clear zone (the office designer's door check found it).
 //! - `0xa754_6031_a1f4_9977`: world format 11.
+//! - world format 12: asking for a role's candidate adds none while one is
+//!   listed or when every persona for the role is taken (no nameless hires).
+//! - `0x5903_aa40_d249_346b`: world format 12.
 
 use sim_core::commands::JobFailure;
 use sim_core::geom::PosMm;
@@ -62,7 +65,7 @@ use sim_core::plan::{JobKind, WorkItemStatus};
 use sim_core::scenarios::{golden_script, run_golden, DEMO_PROJECT, GOLDEN_STEPS};
 use sim_core::town::TownKind;
 
-const GOLDEN_HASH: u64 = 0xa754_6031_a1f4_9977;
+const GOLDEN_HASH: u64 = 0x5903_aa40_d249_346b;
 
 #[test]
 fn golden_hash() {

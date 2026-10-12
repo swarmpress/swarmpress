@@ -579,3 +579,30 @@ fn construction_is_deterministic() {
     };
     assert_eq!(run(), run());
 }
+
+#[test]
+fn hiring_twice_never_makes_a_nameless_designer() {
+    let (mut w, _) = world(BuildMode::Economic, false);
+    let designers = |w: &World| {
+        w.candidates
+            .values()
+            .filter(|c| c.role == Role::OfficeDesigner)
+            .map(|c| sim_core::personas::persona_slug(c.persona))
+            .collect::<Vec<_>>()
+    };
+    // The ticket's ArrangeHiring and the Secretary's both ask: one candidate, Ottavia.
+    w.add_candidate_for_role(Role::OfficeDesigner);
+    w.add_candidate_for_role(Role::OfficeDesigner);
+    assert_eq!(designers(&w), vec!["ottavia"]);
+    // Once she is on the staff there is nobody left to shortlist.
+    let ottavia = w
+        .candidates
+        .values()
+        .find(|c| c.role == Role::OfficeDesigner)
+        .unwrap()
+        .id;
+    w.apply(Command::Hire { candidate: ottavia }).unwrap();
+    assert!(w.office_designer().is_some());
+    w.add_candidate_for_role(Role::OfficeDesigner);
+    assert!(designers(&w).is_empty());
+}

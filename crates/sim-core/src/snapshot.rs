@@ -59,7 +59,8 @@ pub const SNAPSHOT_FORMAT: u16 = 1;
 /// - 10: players' own designs (ADR-0065 §4, ADR-0087 decision 7):
 ///   `Building.objects` and the object id counter.
 /// - 11: the demo office's meeting-room whiteboard stands clear of its door.
-pub const WORLD_FORMAT: u32 = 11;
+/// - 12: the shortlist never offers a candidate without a persona, nor a second one for a role.
+pub const WORLD_FORMAT: u32 = 12;
 /// Bytes before the body.
 pub const HEADER_LEN: usize = 42;
 

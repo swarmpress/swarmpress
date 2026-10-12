@@ -808,16 +808,15 @@ fn hiring_a_cfo_fills_the_slot_once() {
         .find(|c| c.role == Role::Cfo)
         .unwrap()
         .id;
+    // A second CFO on the list (the shortlist never offers one while a CFO
+    // candidate is listed, so the test makes it): hiring them is refused.
+    let mut twin = w.candidates[&cand].clone();
     w.apply(Command::Hire { candidate: cand }).unwrap();
     let cfo = w.cfo().expect("new CFO");
     assert_eq!(w.staff[&cfo].role, Role::Cfo);
-    w.add_candidate_for_role(Role::Cfo);
-    let second = w
-        .candidates
-        .values()
-        .find(|c| c.role == Role::Cfo)
-        .unwrap()
-        .id;
+    twin.id = w.ids.candidate();
+    let second = twin.id;
+    w.candidates.insert(second, twin);
     assert!(matches!(
         w.apply(Command::Hire { candidate: second }),
         Err(Reject::Occupied(_))

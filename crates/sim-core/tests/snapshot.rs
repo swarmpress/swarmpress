@@ -47,6 +47,7 @@ const WORLD_FORMATS: &[(u32, u64)] = &[
     // (Building.objects, the object id counter; the script places, moves and removes)
     (10, 0xecf3_fa83_82cc_eebf),
     (11, 0xa754_6031_a1f4_9977),
+    (12, 0x5903_aa40_d249_346b),
 ];
 
 /// The golden hash of the current world format.

@@ -221,6 +221,28 @@ As for articles (FEAT-036): a set of build briefs per room kind, measured for sc
 try, repairs per stage, requirements met, solver failures, part counts and cost; plus the owner's
 judgement of a sample. New-design generation is evaluated separately and enabled only if it passes.
 
+**Evaluation on GPT-6-Luna (2026-10-12).** Driver `apps/game/e2e/luna-interior.eval.mts`, results
+`artifacts/bench/office-designer-luna.json`, details in FEAT-084. Two fresh companies, five briefs
+each (a newsroom for three, a meeting room for eight with two writing surfaces, the kitchen with
+coffee, an archive with five shelves, and three workstations in the SEO lab within €1,500), the
+`layout#0` and `fix#i` stages only:
+
+- 10 of 10 plans, all schema-valid after at most one structured repair turn; 10 of 10 briefs met by
+  count; both budgets kept (€1,450 of €1,500); no solver GiveUp; 7 `fix#i` rounds in all (0 to 2 per
+  brief); no warnings in a stored plan. One plan per company was built: 10 of 10 items placed, the
+  price charged was the plan's.
+- The issues the repairs fixed: `no-light` (desks out of reach of light: ceiling lights added),
+  `does-not-fit` (rows of shelves or desks longer than the free wall) and their consequences.
+- 20 designer calls (12 layouts, 8 fixes), 55k input and 18k output tokens (17k of them
+  reasoning), $0.0096; 14 to 118 s per brief, the model's time.
+- 3 of 20 calls spent the whole output allowance on reasoning (answer budget + 512 at effort
+  `medium`) and ended with `length`, all on the tight-budget brief; the repair turn recovered them.
+  The designer's calls now reason within 2,048 tokens (`LAYOUT_REASONING`); a re-run of the five
+  briefs had no truncated call, 5 of 5 plans and every brief met in 8 designer calls.
+- Two defects outside the model: an empty plan was handed to the sim as a completed job (fixed:
+  the job fails with the reason); `ArrangeHiring` could add a persona-0 office designer whom no job
+  can prompt (fixed: the shortlist never offers a candidate without a persona).
+
 ## 8. Extensions (SDK)
 
 ADR-0043's `prop-pack` becomes a **design pack**: designs (and parts, if the pack's part catalogue

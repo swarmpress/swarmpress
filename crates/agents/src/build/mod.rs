@@ -17,6 +17,9 @@ pub mod fake;
 pub const LAYOUT_ANSWER: u32 = 1600;
 /// Answer budget of a fix, tokens.
 pub const FIX_ANSWER: u32 = 1200;
+/// Reasoning budget of a layout or a fix, tokens. A room is a spatial puzzle: on GPT-6-Luna
+/// (2026-10-12) 3 of 20 calls spent the shared 512 on reasoning and returned no answer.
+pub const LAYOUT_REASONING: u32 = 2048;
 /// The CEO's words are cut to this many characters.
 pub const WORDS_CHARS: usize = 800;
 

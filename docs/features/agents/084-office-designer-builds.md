@@ -15,6 +15,7 @@ paths:
   - "crates/agents/personas/ottavia.toml"
   - "apps/game/src/blueprint/interior.ts"
   - "apps/game/src/blueprint/interior.test.ts"
+  - "apps/game/e2e/luna-interior.eval.mts"
 adrs:
   - ADR-0065
   - ADR-0087
@@ -116,6 +117,72 @@ ADR-0087 decision 6. MIT, wasm-compatible, integers only (mm, studs, cents), no 
   twin, the real sim's view). The golden script commissions a room with no designer (world
   format 9).
 
+## Evaluation on GPT-6-Luna (2026-10-12)
+
+The driver `apps/game/e2e/luna-interior.eval.mts` (run with `bun`, not a Playwright test) founds a
+fresh company through the dev login on the central server, buys land and adds the fixture world's
+empty archive and newsroom, hires the office designer through the `MissingRole` ticket, commissions
+five rooms one after the other through the overlay store's `commissionInterior`, waits for each plan
+or failure, builds the first plan (economic `Build`) and declines the others. Only the designer's
+calls (and the model's warm-up and qualification turns) reach the model; every other staff call is
+answered by the driver with an empty text, so the rest of the company fails its jobs at no cost.
+Results: `artifacts/bench/office-designer-luna.json` (`bench/office-designer`).
+
+Two companies, five briefs each, 26 hosted calls in all (20 by the designer, 6 startup turns, two
+of them in a session aborted for the hiring defect below):
+
+| Brief (room) | Plans | Repairs (run 1, 2) | Items | Cost | Brief met | Designer calls | Wall time |
+|---|---|---|---|---|---|---|---|
+| Newsroom, 3 workstations, 1 plant (new 6×6 m) | 2 of 2 | 1, 1 | 10: 3 desks, 3 monitors, 3 ceiling lights, 1 plant | €2,510 | yes, yes | 2, 2 | 56 s, 62 s |
+| Meeting room, 8 seats, 2 writing surfaces, 2 plants (demo, has a whiteboard) | 2 of 2 | 1, 0 | 3: whiteboard, 2 plants | €300 | yes, yes | 2, 1 | 26 s, 34 s |
+| Kitchen, 6 seats, coffee, 2 plants (demo, has the coffee machine) | 2 of 2 | 0, 0 | 2 plants | €100 | yes, yes | 1, 1 | 30 s, 22 s |
+| Archive, 5 storage, 1 plant (new 4×6 m) | 2 of 2 | 0, 1 | 6: 5 shelves, 1 plant | €1,800 | yes, yes | 1, 2 | 14 s, 30 s |
+| SEO lab, 3 workstations (has 1), 1 plant, budget €1,500 | 2 of 2 | 1, 2 | 5: 2 desks, 2 monitors, 1 plant | €1,450 | yes, yes | 3, 5 | 90 s, 118 s |
+
+- **10 of 10 plans, 10 of 10 briefs met by count, both budgets kept, no GiveUp, no warnings** in
+  any stored plan; 7 repair rounds in all (at most 2 per brief, the limit is 3).
+- **What the repairs fixed** (the issues each fix call was given, recorded in run 2): `no-light`
+  (a newsroom desk with no ceiling light within 2.5 m and no window within 3 m: the fix added
+  ceiling lights), `does-not-fit` (a row of 5 shelves needing 6.13 m on a 5.87 m wall; a row of 2
+  desks needing 5 m on a 3.87 m wall, then 4.5 m on 4.31 m) with its `depends-on-failed` and
+  `requirement-missing` consequences.
+- **The construction:** the newsroom's Build in both companies placed 10 of 10 items, the item was
+  Published, and the company paid exactly the plan's €2,510.
+- **Calls and tokens** (20 designer calls): 55,252 input tokens (20,507 cached), 18,311 output of
+  which 17,230 reasoning; $0.0096 by the server's ledger. A layout call took 12 to 78 s, a fix 2 to
+  19 s; a brief 14 to 118 s (mean 48 s), almost all of it the model.
+- **Failure mode: the reasoning eats the answer.** The bridge sends `max_output_tokens` = the answer
+  budget plus a 512-token reasoning allowance (2,112 for a layout, 1,712 for a fix) at effort
+  `medium`; Luna spent 375 to 2,112 reasoning tokens per layout. 3 of 20 designer calls ended with
+  `length` and no answer, all three on the tight-budget brief (its layout in both runs, a fix in
+  run 2). The structured repair turn recovered each one (answered with no reasoning, 65 to 79
+  tokens), at the price of an extra call. The cap is set in the orchestrator's shared `propose`
+  (`reasoning_tokens: Some(512)`) and `agents::build::{LAYOUT_ANSWER, FIX_ANSWER}`. Since the
+  evaluation the designer's layouts and fixes have their own allowance,
+  `agents::build::LAYOUT_REASONING` = 2,048 (still within a local model's window; test
+  `the_checkers_issues_are_repaired`). Re-run once after both fixes (one company, the same five
+  briefs): 5 of 5 plans, every brief met, the tight budget kept (€1,450 of €1,500), 8 designer
+  calls (5 layouts, 3 fixes; repairs 0, 0, 0, 1, 2), **no call ended with `length`** (the newsroom
+  layout reasoned 1,915 tokens), the office designer shortlisted once, and the newsroom's Build
+  placed 7 of 7 items for exactly the plan's €2,150.
+- **Defect, fixed:** a plan that places nothing (the room already has what the brief asks for)
+  completed the job with an empty `InteriorPlan`, which the sim refuses ("a room plan places at
+  least one item"), leaving the item Blocked behind a generic escalation and an artifact post
+  "€0.00, 0 parts". Seen in the driver's dry run on the scripted model (a room asked for again after
+  it was built, and a brief the editor's office already met), not in the Luna runs. The job now
+  fails with the reason in the thread (`build.rs`; test `a_plan_that_places_nothing_fails_with_the_reason`).
+- **Defect, fixed (world format 12):** `ArrangeHiring` for the office designer adds a candidate with
+  persona 0 when Ottavia, the catalogue's only office designer, is already on today's list
+  (`World::add_candidate_for_role` falls back to `PersonaId(0)`). In one company today's list held
+  `candidate-4 ottavia` and the ticket added `candidate-7 office-designer persona-0`; hiring the
+  latter makes every `interior-design` job fail before any call ("prompt: unknown persona
+  persona-0") and the session retries it without end. The shortlist now adds no candidate while
+  one for the role is listed, nor one without a persona (test
+  `hiring_twice_never_makes_a_nameless_designer`). The driver still picks the candidate by trying
+  each hire on a snapshot copy of the world.
+- Not measured: the owner's judgement of the layouts; the browser model; sandbox mode; the
+  `brief#0`, `decor#0` and `design#0` stages (not built).
+
 ## Not built yet
 
 - The other model stages of construction-kit.md §7 (`brief#0` from words alone, `decor#0`,
@@ -138,3 +205,4 @@ ADR-0087 decision 6. MIT, wasm-compatible, integers only (mm, studs, cents), no 
 - `swarmpress/nextest` (the `office-designer`, `sim-core` and `orchestrator` crates' cases, until a split routes them)
 - `agents/nextest`
 - `game/vitest`
+- `bench/office-designer` (`artifacts/bench/office-designer-luna.json`, the GPT-6-Luna eval above; run by hand)

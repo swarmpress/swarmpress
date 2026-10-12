@@ -282,6 +282,15 @@ pub(crate) fn failure(f: &RepairFailed) -> Result<JobFailure> {
     }
 }
 
+/// The reasoning budget of a structured call: the office designer's layouts get their own
+/// (`agents::build::LAYOUT_REASONING`), every other structured job 512 tokens.
+fn reasoning_budget(job: agents::JobKind) -> u32 {
+    match job {
+        agents::JobKind::OfficeLayout => agents::build::LAYOUT_REASONING,
+        _ => 512,
+    }
+}
+
 impl<S: Store, G: Gateway> Orchestrator<S, G> {
     /// The request text of a structural item: its brief's `angle` (or a
     /// `request` field).
@@ -359,7 +368,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             system: vec![system],
             messages: vec![LlmMessage::user(user)],
             max_tokens,
-            reasoning_tokens: Some(512),
+            reasoning_tokens: Some(reasoning_budget(job)),
         };
         // The first answer's issues, for the digest (the repair turn quotes them).
         let first: std::sync::Mutex<Option<Vec<String>>> = std::sync::Mutex::new(None);
