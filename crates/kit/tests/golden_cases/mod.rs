@@ -10,7 +10,7 @@ use kit::{compile, Design, Kit, ParamValue, Params, RoomSpec};
 
 /// Update when the catalogue, a shipped design, the shell generator or the
 /// compiler's output changes on purpose (the failing test prints the new value).
-pub const GOLDEN: &str = "129bbf5251c8aea1bb789ef6db2062a093e2c3cb89945a5b8d02abdbae18def1";
+pub const GOLDEN: &str = "9a62cc0a7a0954287107a81a6c88d58ac6b8e70e323887c8eb1536d2165e9f75";
 
 fn params(pairs: &[(&str, ParamValue)]) -> Params {
     pairs

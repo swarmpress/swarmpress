@@ -3,6 +3,7 @@
   "format": "swarmpress.design.v1",
   "id": "book-row",
   "name": "Row of books",
+  "mount": "surface",
   "footprint": [8, 5],
   "height": 12,
   "ops": [

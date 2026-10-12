@@ -3,6 +3,7 @@
   "format": "swarmpress.design.v1",
   "id": "paper-stack",
   "name": "Paper stack",
+  "mount": "surface",
   "footprint": [3, 5],
   "height": "$count + 1",
   "params": {

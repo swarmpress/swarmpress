@@ -3,6 +3,7 @@
   "format": "swarmpress.design.v1",
   "id": "mug",
   "name": "Mug",
+  "mount": "surface",
   "footprint": [2, 1],
   "height": 4,
   "params": {
