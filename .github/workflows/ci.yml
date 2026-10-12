@@ -396,8 +396,12 @@ jobs:
   # runner, and WordPress in the game's harness page (storage worker, sandbox origin). The
   # release is private until the legal review: the job needs the WP_SANDBOX_TOKEN secret (read
   # access to swarmpress/wp-sandbox) and fails loudly without it.
+  # Off on GitHub until the owner turns it on (owner, 2026-10-12): the WordPress engine is checked
+  # locally for now (`cargo xtask sandbox-fetch --node && pnpm swarmpress wp-conformance`). To turn
+  # it on, remove the `if:` below and set the WP_SANDBOX_TOKEN secret.
   wp-sandbox:
     name: WordPress sandbox (conformance, browser)
+    if: ${{ false }}
     runs-on: ubuntu-latest
     needs: wasm
     steps:

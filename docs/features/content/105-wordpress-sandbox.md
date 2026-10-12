@@ -55,6 +55,7 @@ Built (M1):
   processes on loopback HTTP, and `swarmpress wp-conformance`, which runs the sandbox's own suite;
 - evidence: `e2e/wordpress.spec.ts` (the harness page), `e2e/wp-sandbox.spec.ts` (the game page on
   the central server: install, REST, restore after a reload), `wp-sandbox/conformance`, and the
-  CI job `wp-sandbox` (needs the `WP_SANDBOX_TOKEN` secret while the release is private).
+  CI job `wp-sandbox` (needs the `WP_SANDBOX_TOKEN` secret while the release is private; switched
+  off on GitHub by the owner on 2026-10-12, run locally until it is turned back on).
 
 Open before any public release: a legal review of the channel model (ADR-0078 §3).
