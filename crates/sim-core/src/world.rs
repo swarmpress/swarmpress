@@ -424,6 +424,7 @@ impl World {
             }
             Command::Demolish(DemolishTarget::Room(id)) => {
                 self.building.equipment.retain(|_, e| e.room != id);
+                self.building.objects.retain(|_, o| o.room != id);
                 self.building.rooms.remove(&id);
                 self.replan_walkers();
             }
@@ -500,6 +501,39 @@ impl World {
             }
             Command::RemoveTownItem { item } => {
                 self.building.town.remove(&item);
+            }
+            Command::PlaceObject {
+                design,
+                pos,
+                rot,
+                summary,
+            } => {
+                let room = self.building.room_at(pos.tile()).unwrap_or_default();
+                let id = self.ids.object();
+                self.building.objects.insert(
+                    id,
+                    crate::objects::PlacedObject {
+                        id,
+                        design,
+                        room,
+                        pos,
+                        rot,
+                        summary,
+                    },
+                );
+                self.charge(LedgerKind::Equipment, cost);
+            }
+            Command::MoveObject { object, pos, rot } => {
+                let room = self.building.room_at(pos.tile()).unwrap_or_default();
+                if let Some(o) = self.building.objects.get_mut(&object) {
+                    o.room = room;
+                    o.pos = pos;
+                    o.rot = rot;
+                }
+                self.charge(LedgerKind::Equipment, cost);
+            }
+            Command::RemoveObject { object } => {
+                self.building.objects.remove(&object);
             }
             Command::Hire { candidate } => {
                 if let Some(c) = self.candidates.remove(&candidate) {

@@ -17,6 +17,8 @@
 //! - the plan (ADR-0059): open items per project stay within the
 //!   work-in-progress limit; a writer has at most one active draft; an item
 //!   parked at the publish gate has no pending job
+//! - objects (ADR-0065 §4): every placed object stands inside its room, and
+//!   no two objects of a room overlap
 
 use proptest::prelude::*;
 use proptest::sample::select;
@@ -31,12 +33,13 @@ use sim_core::equipment::EquipmentKind;
 use sim_core::finance::CostBreakdown;
 use sim_core::geom::{PosMm, Side, TileRect};
 use sim_core::ids::{
-    CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, WorkItemId,
+    CandidateId, EquipId, MeetingId, ObjectId, ProjectId, RoomId, StaffId, TicketId, WorkItemId,
 };
 use sim_core::inbox::{
     DelegationPolicy, FollowUpTopic, Priority, ResolvedBy, SecretaryTaskKind, TicketKind,
     TicketOption,
 };
+use sim_core::objects::{Mount, ObjectSummary, Rect};
 use sim_core::plan::{
     BriefStub, JobKind, PhaseKind, PhaseState, PlannedStub, WorkItemKind, WorkItemStatus,
     WorkPriority, MAX_PLANNED, MAX_REVISIONS, WIP_LIMIT,
@@ -71,6 +74,62 @@ fn placement() -> impl Strategy<Value = Placement> {
     prop_oneof![
         (pos(), 0u8..5).prop_map(|(pos, rot)| Placement::Floor { pos, rot }),
         (1u32..40).prop_map(|d| Placement::OnDesk(EquipId(d))),
+    ]
+}
+
+fn summary() -> impl Strategy<Value = ObjectSummary> {
+    (
+        (0u32..40, 0u32..40, 0u32..500),
+        select(vec![
+            Mount::Floor,
+            Mount::Floor,
+            Mount::Surface,
+            Mount::Ceiling,
+        ]),
+        (0u8..3, any::<bool>(), 0u8..3, 0u32..600, 0u8..3),
+        (0u32..300, 0u64..20_000),
+    )
+        .prop_map(
+            |(
+                (w, d, height),
+                mount,
+                (seats, workstation, lights, storage, screens),
+                (parts, cost),
+            )| {
+                ObjectSummary {
+                    footprint: [w, d],
+                    height,
+                    mount,
+                    seats,
+                    workstation,
+                    lights,
+                    storage,
+                    screens,
+                    parts,
+                    cost,
+                }
+            },
+        )
+}
+
+fn design() -> impl Strategy<Value = String> {
+    prop_oneof![
+        8 => (0u8..4).prop_map(|n| format!("{n:02x}").repeat(32)),
+        1 => "[0-9a-fA-F]{0,66}",
+    ]
+}
+
+fn object_command() -> impl Strategy<Value = Command> {
+    prop_oneof![
+        3 => (design(), pos(), 0u8..5, summary()).prop_map(|(design, pos, rot, summary)| {
+            Command::PlaceObject { design, pos, rot, summary }
+        }),
+        2 => (1u32..6, pos(), 0u8..5).prop_map(|(o, pos, rot)| Command::MoveObject {
+            object: ObjectId(o),
+            pos,
+            rot,
+        }),
+        1 => (1u32..6).prop_map(|o| Command::RemoveObject { object: ObjectId(o) }),
     ]
 }
 
@@ -126,6 +185,7 @@ fn command() -> impl Strategy<Value = Command> {
         1 => (1u32..10).prop_map(|s| Command::Fire { staff: StaffId(s) }),
         1 => policy().prop_map(Command::SetPolicy),
         3 => org_command(),
+        2 => object_command(),
     ]
 }
 
@@ -388,6 +448,14 @@ enum Action {
     FireKey {
         pick: usize,
     },
+    /// A small floor object somewhere inside a room.
+    Object {
+        pick: usize,
+        fx: i32,
+        fz: i32,
+        n: u32,
+        rot: u8,
+    },
 }
 
 fn action() -> impl Strategy<Value = Action> {
@@ -399,6 +467,8 @@ fn action() -> impl Strategy<Value = Action> {
         1 => (0usize..8, 1u32..300).prop_map(|(pick, chars)| Action::Speak { pick, chars }),
         2 => (0usize..16, 0usize..4).prop_map(|(pick, option)| Action::Answer { pick, option }),
         1 => (0usize..5).prop_map(|pick| Action::FireKey { pick }),
+        2 => (0usize..16, 0i32..1000, 0i32..1000, 1u32..24, 0u8..4)
+            .prop_map(|(pick, fx, fz, n, rot)| Action::Object { pick, fx, fz, n, rot }),
     ]
 }
 
@@ -451,6 +521,36 @@ fn resolve(w: &World, a: Action) -> Input {
             let key = [7, 8, 6, 13, 9][pick % 5];
             Input::Player(Command::Fire {
                 staff: StaffId(key),
+            })
+        }
+        Action::Object {
+            pick,
+            fx,
+            fz,
+            n,
+            rot,
+        } => {
+            let rooms: Vec<_> = w.building.rooms.values().collect();
+            let Some(r) = rooms.get(pick % rooms.len().max(1)) else {
+                return Input::Player(Command::Praise { staff: StaffId(1) });
+            };
+            let (x0, z0) = (r.rect.x * 1_000, r.rect.z * 1_000);
+            Input::Player(Command::PlaceObject {
+                design: "5e".repeat(32),
+                pos: PosMm::new(x0 + r.rect.w * fx, z0 + r.rect.d * fz),
+                rot,
+                summary: ObjectSummary {
+                    footprint: [n, n / 2 + 1],
+                    height: 20,
+                    mount: Mount::Floor,
+                    seats: 1,
+                    workstation: false,
+                    lights: 0,
+                    storage: 0,
+                    screens: 0,
+                    parts: 3,
+                    cost: 500,
+                },
             })
         }
         Action::Desk { gx, gz, rot } => Input::Player(Command::PlaceEquipment {
@@ -512,7 +612,33 @@ fn check(w: &World) {
         );
     }
     assert_eq!(w.nav_failures, 0, "everyone can always find a path");
+    check_objects(w);
     check_org(w);
+}
+
+fn check_objects(w: &World) {
+    let objects: Vec<_> = w.building.objects.values().collect();
+    for (i, o) in objects.iter().enumerate() {
+        let room = w
+            .building
+            .rooms
+            .get(&o.room)
+            .unwrap_or_else(|| panic!("{} stands in no room", o.id));
+        assert!(
+            Rect::of_tiles(&room.rect, 0).contains(&o.rect()),
+            "{} sticks out of {}",
+            o.id,
+            o.room
+        );
+        for p in &objects[..i] {
+            assert!(
+                p.room != o.room || !p.rect().overlaps(&o.rect()),
+                "{} overlaps {}",
+                o.id,
+                p.id
+            );
+        }
+    }
 }
 
 fn ledger_total(w: &World, k: LedgerKind) -> i64 {

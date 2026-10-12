@@ -98,6 +98,65 @@ export interface RoomLayout {
   desks: DeskLayout[]
   ceilingLights: Array<{ id: string; x: number; z: number }>
   props: PropLayout[]
+  /**
+   * The totals of the room's placed objects' summaries (ADR-0065 §4). They do
+   * not change staff behaviour yet: staff still use equipment. The sim always
+   * writes it; absent in older and hand-written layouts.
+   */
+  objectCapabilities?: ObjectCapabilities
+}
+
+/** Totals of a room's objects' capabilities (`sim_core::objects::ObjectCapabilities`). */
+export interface ObjectCapabilities {
+  seats: number
+  workstations: number
+  lights: number
+  /** Shelf area, stud². */
+  storage: number
+  screens: number
+}
+
+/** `sim_core::objects::Mount`; only `Floor` designs can be placed for now. */
+export type ObjectMount = 'Floor' | 'Surface' | 'Ceiling'
+
+/**
+ * What a placed design can do: the numbers of the kit's compiled `Summary`
+ * (`sim_core::objects::ObjectSummary`), exactly as `PlaceObject` carried them.
+ * Field names are the Rust ones.
+ */
+export interface ObjectSummary {
+  /** `[w, d]` at turn 0, studs (a stud is 62.5 mm). */
+  footprint: [number, number]
+  /** Plates (a plate is 25 mm). */
+  height: number
+  mount: ObjectMount
+  seats: number
+  workstation: boolean
+  lights: number
+  /** Shelf area, stud². */
+  storage: number
+  screens: number
+  parts: number
+  /** The parts' price, cents. */
+  cost: number
+}
+
+/** A player's own kit design placed in a room (ADR-0065 §4, ADR-0087 decision 7). */
+export interface PlacedObjectLayout {
+  /** `object-N` */
+  id: string
+  /** The design's hash, 64 lowercase hex characters. */
+  design: string
+  /** `room-N` */
+  room: string
+  /** Footprint centre, metres. */
+  x: number
+  z: number
+  /** Radians like the layout's props (`turnOf(rot)` is the quarter turn). */
+  rot: number
+  /** The design's own `[w, d]` in metres at turn 0; `rot` turns it. */
+  footprint: [number, number]
+  summary: ObjectSummary
 }
 
 /** The street door: its centre on the lot boundary, and where people appear outside. */
@@ -122,6 +181,8 @@ export interface BuildingLayout {
   buildMode?: 'sandbox' | 'economic'
   /** The town around the lot (ADR-0087), in id order; absent in older layouts. */
   town?: TownItemLayout[]
+  /** Players' own designs placed in rooms (ADR-0065 §4), in id order; absent in older layouts. */
+  objects?: PlacedObjectLayout[]
 }
 
 /** `sim_core::town::TownKind`. */

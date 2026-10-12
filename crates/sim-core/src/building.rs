@@ -15,7 +15,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::equipment::Equipment;
 use crate::geom::{PosMm, Side, Tile, TileRect, TILE_MM};
-use crate::ids::{EquipId, RoomId, TownItemId};
+use crate::ids::{EquipId, ObjectId, RoomId, TownItemId};
+use crate::objects::PlacedObject;
 use crate::pathfinding::NavGrid;
 use crate::town::TownItem;
 
@@ -286,8 +287,12 @@ pub struct Building {
     /// The town around the lot (ADR-0087): the sections' houses and the
     /// town's furniture. Seeded at founding ([`crate::World::with_parts`]).
     pub town: BTreeMap<TownItemId, TownItem>,
+    /// Players' own kit designs placed in rooms (ADR-0065 §4, ADR-0087
+    /// decision 7): hash and summary only, see [`crate::objects`].
+    pub objects: BTreeMap<ObjectId, PlacedObject>,
     /// Raised by one on every applied building change (rooms, equipment,
-    /// land, town); the renderer rebuilds when it moves (render-state.md).
+    /// objects, land, town); the renderer rebuilds when it moves
+    /// (render-state.md).
     pub layout_rev: u32,
 }
 
@@ -300,6 +305,7 @@ impl Building {
             rooms: BTreeMap::new(),
             equipment: BTreeMap::new(),
             town: BTreeMap::new(),
+            objects: BTreeMap::new(),
             layout_rev: 0,
         }
     }

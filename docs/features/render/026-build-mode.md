@@ -9,6 +9,10 @@ paths:
   - apps/game/src/build-bridge.ts
   - crates/sim-core/src/town.rs
   - crates/sim-core/tests/building.rs
+  - crates/sim-core/src/objects.rs
+  - crates/sim-core/tests/objects.rs
+  - "apps/game/src/render/bricks/objects*.ts"
+  - "apps/game/src/session/design-store*.ts"
   - "apps/game/e2e/build*.spec.ts"
 adrs:
   - ADR-0087
@@ -60,6 +64,13 @@ Decisions: [ADR-0003](../../adr/0003-deterministic-lockstep-server-authority.md)
 - **Design editor** (`ui/build/DesignEditor.tsx`, `design-*.ts`): a shipped design opened as a copy
   or an empty one, edited layer by layer on the stud grid (place, remove, paint, box fill, copy and
   stamp, turn, mirror, undo and redo), compiled live by the kit (issues, parts, cost, hash, what it
-  provides), kept in a library in this browser. Placing a design of one's own waits for the sim's
-  `PlaceObject` (ADR-0065 §4, K-4).
+  provides), kept in the company's library (text records keyed by the design's hash; in this
+  browser for the offline demo).
+- **Own designs in the office** (2026-10-12, ADR-0065 §4 K-4): `PlaceObject`, `MoveObject`,
+  `RemoveObject` carry a design's hash and its compiled summary (numbers only, rule 2); the sim
+  checks the room, walls, doors, other items and the room's limit, and prices the parts (moves 10%)
+  in an economic company; `layout_json` writes `objects` and each room's `objectCapabilities`. The
+  Furniture tab's "My designs" places, moves, turns and removes them with the design itself as the
+  ghost; the office draws each from the company's design, a placeholder box until it is loaded.
+  Staff do not use objects yet: they still work with the kit's equipment.
 

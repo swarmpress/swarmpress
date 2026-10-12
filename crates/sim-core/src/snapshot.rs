@@ -56,7 +56,9 @@ pub const SNAPSHOT_FORMAT: u16 = 1;
 ///   `Company.build_mode`, the town id counter.
 /// - 9: the office designer (ADR-0087 decision 6): `Plan.interiors`, the
 ///   `OfficeDesigner` role and persona, `Interior` items, `BuildApproval`.
-pub const WORLD_FORMAT: u32 = 9;
+/// - 10: players' own designs (ADR-0065 §4, ADR-0087 decision 7):
+///   `Building.objects` and the object id counter.
+pub const WORLD_FORMAT: u32 = 10;
 /// Bytes before the body.
 pub const HEADER_LEN: usize = 42;
 

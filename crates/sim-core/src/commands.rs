@@ -15,10 +15,12 @@ use crate::building::{Door, RoomKind, Window};
 use crate::equipment::EquipmentKind;
 use crate::geom::{PosMm, Side, TileRect};
 use crate::ids::{
-    CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, TownItemId, WorkItemId,
+    CandidateId, EquipId, MeetingId, ObjectId, ProjectId, RoomId, StaffId, TicketId, TownItemId,
+    WorkItemId,
 };
 use crate::inbox::{DelegationPolicy, SecretaryTaskKind, TicketOption};
 use crate::interior::PlannedEquipment;
+use crate::objects::ObjectSummary;
 use crate::plan::{BriefStub, PlannedStub, WorkItemKind, WorkItemStatus, WorkPriority};
 use crate::projects::ProjectStatus;
 use crate::structure::ToolStub;
@@ -163,6 +165,26 @@ pub enum Command {
     CommissionInterior {
         room: RoomId,
         brief_ref: u64,
+    },
+    /// Place one of the player's own kit designs in a room (ADR-0065 §4,
+    /// ADR-0087 decision 7): the design's hash (64 lowercase hex characters,
+    /// a reference, not text) and its compiled summary. Bricks never enter
+    /// the sim; see [`crate::objects`].
+    PlaceObject {
+        design: String,
+        pos: PosMm,
+        rot: u8,
+        summary: ObjectSummary,
+    },
+    /// Move (and turn) a placed object; it keeps its id.
+    MoveObject {
+        object: ObjectId,
+        pos: PosMm,
+        rot: u8,
+    },
+    /// Take a placed object away (no refund).
+    RemoveObject {
+        object: ObjectId,
     },
 }
 
@@ -522,6 +544,20 @@ mod tests {
                 room: RoomId(6),
                 brief_ref: 12,
             },
+            Command::PlaceObject {
+                design: "ab".repeat(32),
+                pos: PosMm::new(27_000, 9_000),
+                rot: 1,
+                summary: sample_summary(),
+            },
+            Command::MoveObject {
+                object: ObjectId(2),
+                pos: PosMm::new(26_000, 8_000),
+                rot: 3,
+            },
+            Command::RemoveObject {
+                object: ObjectId(2),
+            },
         ];
         for c in cmds {
             let bytes = postcard::to_allocvec(&c).unwrap();
@@ -564,6 +600,74 @@ mod tests {
         });
         let bytes = postcard::to_allocvec(&d).unwrap();
         assert_eq!(postcard::from_bytes::<Input>(&bytes).unwrap(), d);
+    }
+
+    fn sample_summary() -> ObjectSummary {
+        ObjectSummary {
+            footprint: [24, 12],
+            height: 34,
+            mount: crate::objects::Mount::Floor,
+            seats: 0,
+            workstation: true,
+            lights: 1,
+            storage: 0,
+            screens: 1,
+            parts: 204,
+            cost: 3_199,
+        }
+    }
+
+    #[test]
+    fn object_commands_json() {
+        let hash = "0123456789abcdef".repeat(4);
+        let c = Command::PlaceObject {
+            design: hash.clone(),
+            pos: PosMm::new(27_000, 9_000),
+            rot: 1,
+            summary: sample_summary(),
+        };
+        let json = format!(
+            r#"{{"PlaceObject":{{"design":"{hash}","pos":{{"x":27000,"z":9000}},"rot":1,"summary":{{"footprint":[24,12],"height":34,"mount":"Floor","seats":0,"workstation":true,"lights":1,"storage":0,"screens":1,"parts":204,"cost":3199}}}}}}"#
+        );
+        assert_eq!(serde_json::to_string(&c).unwrap(), json);
+        assert_eq!(serde_json::from_str::<Command>(&json).unwrap(), c);
+        // the kit's kebab-case mount is read too
+        let kit = json.replace("\"Floor\"", "\"floor\"");
+        assert_eq!(serde_json::from_str::<Command>(&kit).unwrap(), c);
+        let c = Command::MoveObject {
+            object: ObjectId(1),
+            pos: PosMm::new(26_000, 8_000),
+            rot: 0,
+        };
+        let json = r#"{"MoveObject":{"object":"object-1","pos":{"x":26000,"z":8000},"rot":0}}"#;
+        assert_eq!(serde_json::to_string(&c).unwrap(), json);
+        assert_eq!(serde_json::from_str::<Command>(json).unwrap(), c);
+        let c = Command::RemoveObject {
+            object: ObjectId(1),
+        };
+        let json = r#"{"RemoveObject":{"object":"object-1"}}"#;
+        assert_eq!(serde_json::to_string(&c).unwrap(), json);
+        assert_eq!(serde_json::from_str::<Command>(json).unwrap(), c);
+    }
+
+    #[test]
+    fn earlier_commands_keep_their_postcard_tags() {
+        // New variants go at the end of the enum: the logged bytes of the
+        // earlier ones never change.
+        let tag = |c: &Command| postcard::to_allocvec(c).unwrap()[0];
+        assert_eq!(
+            tag(&Command::CommissionInterior {
+                room: RoomId(1),
+                brief_ref: 1
+            }),
+            26
+        );
+        assert_eq!(
+            tag(&Command::RemoveObject {
+                object: ObjectId(1)
+            }),
+            29
+        );
     }
 
     #[test]

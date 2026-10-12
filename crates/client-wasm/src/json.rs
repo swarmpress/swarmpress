@@ -77,7 +77,9 @@ fn point(p: PosMm) -> Value {
 
 /// Building layout in the shape of the TS `BuildingLayout`
 /// (`apps/game/src/state/render-state.ts`), plus doors, entrance and props,
-/// the company's build mode and the town (ADR-0087).
+/// the company's build mode, the town (ADR-0087) and the players' own designs
+/// placed as objects (ADR-0065 §4): `objects` in id order, and on each room
+/// `objectCapabilities`, the totals of its objects' summaries.
 pub fn layout(w: &World) -> Value {
     let b = &w.building;
     let rooms: Vec<Value> = b
@@ -136,6 +138,7 @@ pub fn layout(w: &World) -> Value {
                 "desks": desks,
                 "ceilingLights": lights,
                 "props": props,
+                "objectCapabilities": room_capabilities(b, r.id),
             })
         })
         .collect();
@@ -163,7 +166,50 @@ pub fn layout(w: &World) -> Value {
         "rooms": rooms,
         "buildMode": w.company.build_mode.slug(),
         "town": town(b),
+        "objects": objects(b),
     })
+}
+
+/// Studs → metres (a stud is 62.5 mm; exact in f64).
+#[allow(clippy::float_arithmetic)]
+fn studs(n: u32) -> f64 {
+    f64::from(n) * 0.0625
+}
+
+/// The totals of a room's objects' capabilities (they do not change staff
+/// behaviour yet, `sim_core::objects`).
+fn room_capabilities(b: &Building, room: sim_core::ids::RoomId) -> Value {
+    let c = sim_core::objects::room_capabilities(b, room);
+    json!({
+        "seats": c.seats,
+        "workstations": c.workstations,
+        "lights": c.lights,
+        "storage": c.storage,
+        "screens": c.screens,
+    })
+}
+
+/// The placed objects in id order: footprint centre in metres, `rot` in
+/// radians like the layout's props, `footprint` the design's own `[w, d]` in
+/// metres at turn 0 (`rot` turns it), and the summary as the command carried
+/// it (studs, plates, cents).
+fn objects(b: &Building) -> Vec<Value> {
+    b.objects
+        .values()
+        .map(|o| {
+            let [w, d] = o.summary.footprint;
+            json!({
+                "id": o.id.to_string(),
+                "design": o.design,
+                "room": o.room.to_string(),
+                "x": m(o.pos.x),
+                "z": m(o.pos.z),
+                "rot": radians(o.rot),
+                "footprint": [studs(w), studs(d)],
+                "summary": o.summary,
+            })
+        })
+        .collect()
 }
 
 /// The town's items in id order: footprint centre in metres, `rot` in

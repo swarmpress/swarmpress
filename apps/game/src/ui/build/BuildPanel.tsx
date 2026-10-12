@@ -1,6 +1,7 @@
 /**
  * Build mode (FEAT-026, ADR-0087): the Build section's inspector. Rooms (build from templates,
- * demolish), Furniture (the kit's equipment as 2 × 2 bricks: place, move, turn, remove), the Town
+ * demolish), Furniture (the kit's equipment as 2 × 2 bricks, and the company's own designs, K-4:
+ * place, move, turn, remove), the Town
  * (move the sections' houses; place, move and remove trees, lamps and benches) and Designs (the
  * design editor). The company's build mode is the badge in the header: Sandbox builds cost
  * nothing, Economic builds cost their price (decision 3).
@@ -14,7 +15,8 @@ import { useEffect, useMemo, useState } from 'preact/hooks'
 import { Badge, Panel, TabPanel, Tabs } from '../components/common'
 import { useStore } from '../store'
 import { useBridge } from './gesture'
-import { Placer, type Placed, type PlacerConfig } from './Placer'
+import { Placer, type CatalogueGroup, type Placed, type PlacerConfig } from './Placer'
+import { myDesignItems, placedObject, useEditorKit } from './my-designs'
 import { Rooms } from './Rooms'
 import {
   build,
@@ -42,32 +44,70 @@ const TABS: Array<{ id: BuildTab; label: string }> = [
 /** The tab the panel opens on (kept while the page lives). */
 let lastTab: BuildTab = 'furniture'
 
+/** The company's designs as a catalogue group (K-4), or null when the source keeps none. */
+function useMyDesigns(): CatalogueGroup | null {
+  const store = useStore()
+  const kept = store.designsKept
+  const { kit, error } = useEditorKit(!!kept)
+  if (!kept) return null
+  const designs = store.designs()
+  const label = 'My designs'
+  if (error) return { label, items: [], note: `The construction kit did not load: ${error}` }
+  if (!kit || !designs) return { label, items: [], note: <span role="status">Reading your designs…</span> }
+  const { items, left } = myDesignItems(kit, designs)
+  const leftNote = left ? ` ${left} ${left === 1 ? 'design stands' : 'designs stand'} on a desk, a wall or the ceiling, or the kit refuses ${left === 1 ? 'it' : 'them'}: not placeable.` : ''
+  if (!designs.length) return { label, items, note: 'None yet: make one in the Designs tab and save it.' }
+  return { label, items, note: leftNote ? leftNote.trim() : undefined }
+}
+
 function Furniture({ layout }: { layout: BuildLayout }) {
+  const store = useStore()
   const bridge = useBridge()
+  const mine = useMyDesigns()
   const [room, setRoom] = useState<string>(layout.rooms[0]?.id ?? '')
   const current = layout.rooms.find((r) => r.id === room) ?? layout.rooms[0]
   useEffect(() => {
     if (bridge && current) bridge.focus({ room: current.id })
   }, [bridge, current?.id])
   const all = useMemo(() => itemsOf(layout), [layout])
+  // The player's objects (K-4) in this room, after the equipment; their designs resolved by hash.
+  const objects = (layout.objects ?? []).filter((o) => o.room === current?.id).map((o) => placedObject(o, store.designOf(o.design)))
   const cfg: PlacerConfig = {
     family: 'equipment',
     target: 'equipment',
     catalogue: EQUIPMENT,
-    items: [...all.values()]
-      .filter((i) => i.room === current?.id)
-      .map((i): Placed => {
-        const c = equipmentBySlug(i.slug)
-        return { id: i.id, kind: c?.kind ?? i.slug, name: c?.name ?? i.slug, colour: c?.colour ?? 'grey-light', x: i.x, z: i.z, rot: i.rot, on: i.on, removable: true }
-      }),
+    groups: mine ? [mine] : [],
+    items: [
+      ...[...all.values()]
+        .filter((i) => i.room === current?.id)
+        .map((i): Placed => {
+          const c = equipmentBySlug(i.slug)
+          return { id: i.id, kind: c?.kind ?? i.slug, name: c?.name ?? i.slug, colour: c?.colour ?? 'grey-light', x: i.x, z: i.z, rot: i.rot, on: i.on, removable: true }
+        }),
+      ...objects,
+    ],
     desks: (current?.desks ?? []).map((d) => ({ id: d.id, x: d.x, z: d.z })),
     start: current ? { x: current.x + current.w / 2, z: current.z + current.d / 2 } : null,
-    place: (kind, spot, rot) => (kind.onDesk ? (spot.desk ? build.placeEquipment(kind.kind, build.onDesk(spot.desk)) : null) : build.placeEquipment(kind.kind, build.floor(spot.x, spot.z, rot))),
-    move: (item, spot, rot) => (item.on ? (spot.desk ? build.moveEquipment(item.id, build.onDesk(spot.desk)) : null) : build.moveEquipment(item.id, build.floor(spot.x, spot.z, rot, spot.exact))),
-    remove: (item) => build.demolishEquipment(item.id),
-    // The sim prices equipment by its kind (`EquipmentKind::cost`), wherever it goes.
-    priceProbe: (kind) => build.placeEquipment(kind.kind, build.floor(0, 0, 0)),
-    resolve: (p) => (p.target?.kind === 'equipment' ? p.target.id : null),
+    place: (kind, spot, rot) =>
+      kind.hash && kind.summary
+        ? build.placeObject(kind.hash, kind.summary, spot.x, spot.z, rot)
+        : kind.onDesk
+          ? spot.desk
+            ? build.placeEquipment(kind.kind, build.onDesk(spot.desk))
+            : null
+          : build.placeEquipment(kind.kind, build.floor(spot.x, spot.z, rot)),
+    move: (item, spot, rot) =>
+      item.target === 'object'
+        ? build.moveObject(item.id, spot.x, spot.z, rot, spot.exact)
+        : item.on
+          ? spot.desk
+            ? build.moveEquipment(item.id, build.onDesk(spot.desk))
+            : null
+          : build.moveEquipment(item.id, build.floor(spot.x, spot.z, rot, spot.exact)),
+    remove: (item) => (item.target === 'object' ? build.removeObject(item.id) : build.demolishEquipment(item.id)),
+    // The sim prices equipment by its kind (`EquipmentKind::cost`) and a design by its summary, wherever it goes.
+    priceProbe: (kind) => (kind.hash && kind.summary ? build.placeObject(kind.hash, kind.summary, 0, 0, 0) : build.placeEquipment(kind.kind, build.floor(0, 0, 0))),
+    resolve: (p) => (p.target?.kind === 'equipment' || p.target?.kind === 'object' ? p.target.id : null),
     listHead: (
       <label class="build-field build-room-pick" for="build-furniture-room">
         <span>In the room</span>

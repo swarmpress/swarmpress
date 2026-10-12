@@ -64,6 +64,17 @@ describe.skipIf(!built)('render state from the wasm sim (drift)', () => {
     sim.free()
   })
 
+  it('layout_json lists placed objects and their rooms\' capabilities (ADR-0065 §4)', () => {
+    const sim = wasm.Sim.demo(42n)
+    const summary = { footprint: [24, 12], height: 34, mount: 'Floor', seats: 1, workstation: true, lights: 1, storage: 0, screens: 1, parts: 204, cost: 3199 }
+    sim.apply_command_json(JSON.stringify({ PlaceObject: { design: 'ab'.repeat(32), pos: { x: 1500, z: 13500 }, rot: 1, summary } }))
+    const layout = JSON.parse(sim.layout_json()) as BuildingLayout
+    expect(checkLayout(layout).problems).toEqual([])
+    expect(layout.objects).toEqual([{ id: 'object-1', design: 'ab'.repeat(32), room: 'room-6', x: 1.5, z: 13.5, rot: Math.PI / 2, footprint: [1.5, 0.75], summary }])
+    expect(layout.rooms.find((r) => r.id === 'room-6')?.objectCapabilities).toEqual({ seats: 1, workstations: 1, lights: 1, storage: 0, screens: 1 })
+    sim.free()
+  })
+
   it('render_state_json has exactly the declared fields through a whole day, a meeting turn and a job', () => {
     const sim = wasm.Sim.demo(42n)
     const seen = new Set<string>()

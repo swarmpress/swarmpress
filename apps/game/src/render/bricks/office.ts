@@ -42,8 +42,9 @@ import { baseplateMesh, floorMesh, paintFloor } from './floor'
 import { envIntensityFor, plasticEnvironment } from './environment'
 import { BrickSeamPlugin } from './seams'
 import { mappingOf, paletteOf, type KitApi, type KitBuildLike, type PaletteColour } from './kit'
+import { designText, objectRect, objectsOf, objectTurn, type DesignResolver, type PlacedObjectLayout } from './objects'
 import { modelPlacement, modelRoom } from './model'
-import { FLOOR_TOP, roomPlacements, STUD, turnXZ, type DesignInfo, type Turn } from './placements'
+import { FLOOR_TOP, PLATE, roomPlacements, STUD, turnXZ, type DesignInfo, type Placement, type Turn } from './placements'
 import {
   boardView,
   CLOSE_PX,
@@ -122,6 +123,8 @@ export interface BrickOfficeStats {
   buildMs: number
   surfaces: { monitors: number; boards: number; close: number; redraws: number; maxRedrawsPerFrame: number }
   studsShown: boolean
+  /** The player's placed objects (K-4): drawn from their designs, or as placeholders while a design is not at hand. */
+  objects?: { drawn: number; placeholders: number }
   /** The model table's town, or null when there is none. */
   model?: { room: string; hash: string; instances: number; kitInstances: number; scale: number; shown: boolean } | null
 }
@@ -158,8 +161,15 @@ export interface BrickOffice {
    */
   townItems: TownItemRect[]
   surfaces: SurfaceHandle[]
-  /** The fresh equipment's nodes (`BrickOfficeOptions.fresh`), in build order; empty without. */
+  /** The fresh equipment's and objects' nodes (`BrickOfficeOptions.fresh`), in build order; empty without. */
   arrivals: Arrival[]
+  /**
+   * The layout's placed objects (K-4) as drawn: from their design (`design`), or as a translucent
+   * footprint box (`placeholder`) while the design is being read or the company has none.
+   */
+  objects: ObjectDrawn[]
+  /** The design hashes drawn as placeholders: a rebuild draws them once the resolver has them. */
+  pendingDesigns(): string[]
   /** Apply a render state (lights, monitors); call after the box office's own update. */
   update(state: RenderState): void
   /** Cutaway and surfaces for this frame (registered before every render). */
@@ -173,6 +183,16 @@ export interface BrickOffice {
   setModel(designJson: string | null): void
   stats(): BrickOfficeStats
   dispose(): void
+}
+
+export interface ObjectDrawn {
+  id: string
+  room: string
+  /** The design's hash. */
+  design: string
+  drawn: 'design' | 'placeholder'
+  /** The world rect it covers (picking and highlighting use the layout's own, `objectRect`). */
+  rect: { x: number; z: number; w: number; d: number }
 }
 
 export interface TownItemRect {
@@ -206,7 +226,15 @@ export interface BrickOfficeOptions {
    * a desk with its chair. Absent or empty: every placement goes into its room's batches.
    */
   fresh?: readonly string[]
+  /**
+   * The company's designs by hash (K-4): how placed objects (`layout.objects`) are drawn. Without
+   * it, or while it answers `undefined` / `null` for a hash, the object is a translucent footprint box.
+   */
+  designOf?: DesignResolver
 }
+
+/** A placeholder's height when the object's summary gives none, metres. */
+const PLACEHOLDER_H = 0.4
 
 const hex = (h: string) => Color3.FromHexString(h).toLinearSpace()
 
@@ -270,6 +298,35 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     }
     return c
   }
+  // Placed objects' designs (K-4), compiled once per hash; null when unresolved or refused by the kit.
+  const objectBuilds = new Map<string, { build: KitBuildLike; info: DesignInfo } | null>()
+  const objectBuild = (hash: string) => {
+    if (objectBuilds.has(hash)) return objectBuilds.get(hash)!
+    const json = designText(opts.designOf?.(hash))
+    let c: { build: KitBuildLike; info: DesignInfo } | null = null
+    if (json) {
+      try {
+        const build = kit.compile(json, '')
+        if (build.ok()) {
+          const info = JSON.parse(build.infoJson())
+          c = { build, info: { bounds: info.bounds, mount: info.mount, ports: info.ports ?? [] } }
+        } else {
+          console.warn(`[bricks] the design ${hash.slice(0, 12)} did not compile: ${build.issuesJson()}`)
+          build.free()
+        }
+      } catch (err) {
+        console.warn(`[bricks] the design ${hash.slice(0, 12)} could not be compiled`, err)
+      }
+    }
+    // For this build only: an unresolved design is asked for again by the next build.
+    objectBuilds.set(hash, c)
+    return c
+  }
+  const objectsByRoom = new Map<string, PlacedObjectLayout[]>()
+  for (const o of objectsOf(layout)) objectsByRoom.set(o.room, [...(objectsByRoom.get(o.room) ?? []), o])
+  const objectsDrawn: ObjectDrawn[] = []
+  const placeholders: Array<{ o: PlacedObjectLayout; room: string }> = []
+
   const shellsStart = now()
   const shells = JSON.parse(kit.roomShells(JSON.stringify(layout))) as Record<string, Array<{ offset: [number, number]; design: unknown }>>
   const shellsMs = now() - shellsStart
@@ -361,6 +418,23 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
       if (!f) freshSources.set(owner, (f = { at: [p.x, p.z], list: [] }))
       if (p.id === owner) f.at = [p.x, p.z]
       f.list.push(src)
+    }
+    // The player's objects (K-4): placed like equipment, lit by this room.
+    for (const o of objectsByRoom.get(room.id) ?? []) {
+      const c = objectBuild(o.design)
+      if (!c) {
+        placeholders.push({ o, room: room.id })
+        objectsDrawn.push({ id: o.id, room: room.id, design: o.design, drawn: 'placeholder', rect: objectRect(o) })
+        continue
+      }
+      const placement: Placement = { id: o.id, role: 'prop', design: `object:${o.design}`, params: '{}', x: o.x, y: 0, z: o.z, turn: objectTurn(o) }
+      const src: ChunkSource = { build: c.build, placement, footprint: [c.info.bounds[0], c.info.bounds[1]], shell: false, surfaces: [] }
+      objectsDrawn.push({ id: o.id, room: room.id, design: o.design, drawn: 'design', rect: footprintRect(o.x, o.z, c.info.bounds, objectTurn(o)) })
+      if (!freshIds.has(o.id)) {
+        sources.push(src)
+        continue
+      }
+      freshSources.set(o.id, { at: [o.x, o.z], list: [src] })
     }
     const compileMs = now() - c0
     const m0 = now()
@@ -533,6 +607,26 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     }
   }
   // The room names stay paint on the floor: the shells are lowered so the brick floor's top is y = 0.
+
+  // --- objects whose design is not at hand: a translucent footprint box each ---
+  const placeholderMeshes: Mesh[] = []
+  if (placeholders.length) {
+    const m = new StandardMaterial('object-placeholder', scene)
+    m.disableLighting = true
+    m.emissiveColor = new Color3(0.62, 0.58, 0.5)
+    m.diffuseColor = Color3.Black()
+    m.specularColor = Color3.Black()
+    m.alpha = 0.35
+    for (const { o } of placeholders) {
+      const r = objectRect(o)
+      const h = o.summary?.height ? o.summary.height * PLATE : PLACEHOLDER_H
+      const box = MeshBuilder.CreateBox(`object-placeholder-${o.id}`, { width: r.w, depth: r.d, height: h }, scene)
+      box.position.set(r.x + r.w / 2, h / 2, r.z + r.d / 2)
+      box.material = m
+      box.isPickable = false
+      placeholderMeshes.push(box)
+    }
+  }
 
   // --- surfaces ------------------------------------------------------------
   const surfaces: SurfaceHandle[] = surfaceAnchors.map((a, i) => {
@@ -769,6 +863,8 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     townItems,
     surfaces,
     arrivals: (opts.fresh ?? []).flatMap((id) => arrivalsById.get(id) ?? []),
+    objects: objectsDrawn,
+    pendingDesigns: () => [...new Set(placeholders.map((p) => p.o.design))],
     update,
     frame,
     setSources: (s) => {
@@ -801,6 +897,7 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
           maxRedrawsPerFrame,
         },
         studsShown,
+        objects: { drawn: objectsDrawn.filter((o) => o.drawn === 'design').length, placeholders: placeholderMeshes.length },
         model: model ? { ...model.stats, shown: modelShown } : null,
       }
     },
@@ -810,6 +907,8 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
       instrumentation.dispose()
       for (const b of ownBuilds) b.free()
       for (const c of cache.values()) c.build.free()
+      for (const c of objectBuilds.values()) c?.build.free()
+      objectBuilds.clear()
     },
   }
 }

@@ -44,6 +44,12 @@
 //!   `Interior` items, `BuildApproval`; the script commissions a room the
 //!   company has no designer for.
 //! - `0xf6ce_b7e4_5b6e_77a5`: world format 9.
+//! - world format 10 (ADR-0065 §4, ADR-0087 decision 7): `Building.objects`
+//!   (players' own kit designs: hash and summary) and the object id
+//!   counter; the script places an object in the archive before it is
+//!   demolished, places two in the meeting room, moves one and removes the
+//!   other.
+//! - `0xecf3_fa83_82cc_eebf`: world format 10.
 
 use sim_core::commands::JobFailure;
 use sim_core::geom::PosMm;
@@ -53,7 +59,7 @@ use sim_core::plan::{JobKind, WorkItemStatus};
 use sim_core::scenarios::{golden_script, run_golden, DEMO_PROJECT, GOLDEN_STEPS};
 use sim_core::town::TownKind;
 
-const GOLDEN_HASH: u64 = 0xf6ce_b7e4_5b6e_77a5;
+const GOLDEN_HASH: u64 = 0xecf3_fa83_82cc_eebf;
 
 #[test]
 fn golden_hash() {
@@ -170,6 +176,16 @@ fn golden_hash() {
     );
     assert!(w.tickets.values().any(|t| t.kind == TicketKind::MissingRole
         && t.role == Some(sim_core::roles::Role::OfficeDesigner)));
+    // Players' own designs (ADR-0065 §4): the archive's went with the
+    // room, the meeting room keeps the moved shelf, the table is gone.
+    let objects: Vec<_> = w.building.objects.values().collect();
+    assert_eq!(objects.len(), 1);
+    let shelf = objects[0];
+    assert_eq!(shelf.id, sim_core::ids::ObjectId(3));
+    assert_eq!(shelf.design, "3c".repeat(32));
+    assert_eq!(shelf.room, sim_core::ids::RoomId(6));
+    assert_eq!((shelf.pos, shelf.rot), (PosMm::new(5_500, 14_000), 1));
+    assert_eq!(shelf.summary.storage, 480);
     println!("golden hash: {:#018x}", w.hash());
     assert_eq!(w.hash(), GOLDEN_HASH, "got {:#018x}", w.hash());
 }

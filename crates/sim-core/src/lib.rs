@@ -13,6 +13,7 @@
 //! - [`geom`]: tiles (1 tile = 1 m), millimetre positions, rects, sides
 //! - [`building`]: lot, rooms, doors, windows, walls, connectivity
 //! - [`equipment`]: desks, monitors, lamps, lights, props
+//! - [`objects`]: players' own kit designs placed in rooms (summaries, footprints)
 //! - [`town`]: the town around the office: houses, trees, lamps, benches
 //! - [`roles`]: departments and roles (`Role::department()`)
 //! - [`personas`]: the sim's slice of the persona catalog (ids, slugs, salaries)
@@ -43,6 +44,7 @@ pub mod geom;
 pub mod ids;
 pub mod inbox;
 pub mod interior;
+pub mod objects;
 pub mod pathfinding;
 pub mod personas;
 pub mod plan;

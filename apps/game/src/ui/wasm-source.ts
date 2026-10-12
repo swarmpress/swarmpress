@@ -1,6 +1,8 @@
 import { roomPlanOfArtifact, type RoomPlan } from '../blueprint/interior'
 import type { Blueprint, BlueprintChange } from '../blueprint/types'
 import type { BuildLayout } from './build/types'
+import { acceptedHash, memoryDesignStore, type CompanyDesign, type DesignStore } from './build/company-designs'
+import { getDesignKit } from './build/design-kit'
 import { SIM_COMMANDS, type CommandResult } from './commands'
 import {
   NO_SITE_LINKS,
@@ -362,6 +364,12 @@ export interface WasmOptions {
   changeKey?: () => unknown
   /** The room plan of an interior item (`roomPlanFromStore` for the CompanyStore). Without it no room plan is known. */
   roomPlan?: (item: string) => Promise<RoomPlan | null>
+  /**
+   * Where the company's designs are kept (K-4): the session's company store
+   * (`session/design-store.ts`). Without it the offline demo keeps them in memory, cached in this
+   * browser's localStorage (`memoryDesignStore`).
+   */
+  designs?: DesignStore
 }
 
 /** No change key: the views are re-read on every poll. */
@@ -486,6 +494,31 @@ export class WasmDataSource implements GameDataSource {
   }
   async now() {
     return this.sim.day() * 1440 + this.sim.minute_of_day()
+  }
+
+  // --- the company's designs (K-4) -------------------------------------------------------------
+  private designStore: DesignStore | null = null
+  private designs(): DesignStore {
+    if (!this.designStore) {
+      this.designStore = this.opts.designs ?? memoryDesignStore(async (json) => acceptedHash(await getDesignKit(), json))
+      this.designStore.subscribe(() => this.emit(['designs']))
+    }
+    return this.designStore
+  }
+  saveDesign(design: object): Promise<{ hash: string }> {
+    return this.designs().save(design)
+  }
+  designOf(hash: string): object | null | undefined {
+    return this.designs().get(hash)
+  }
+  listDesigns(): CompanyDesign[] | undefined {
+    return this.designs().list()
+  }
+  retireDesign(hash: string): Promise<void> {
+    return this.designs().retire(hash)
+  }
+  designsWhere(): 'company' | 'browser' {
+    return this.designs().where
   }
 
   async getLayout(): Promise<BuildLayout | null> {

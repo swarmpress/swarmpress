@@ -43,6 +43,9 @@ const WORLD_FORMATS: &[(u32, u64)] = &[
     // FEAT-084, ADR-0087 decision 6: the office designer (Plan.interiors, the role and
     // persona, Interior items, BuildApproval; the script commissions a room)
     (9, 0xf6ce_b7e4_5b6e_77a5),
+    // ADR-0065 §4, ADR-0087 decision 7: players' own designs placed as objects
+    // (Building.objects, the object id counter; the script places, moves and removes)
+    (10, 0xecf3_fa83_82cc_eebf),
 ];
 
 /// The golden hash of the current world format.

@@ -11,6 +11,7 @@ import { EMPTY_PLAN, EMPTY_PLAN_TEXT, withBoardText, withTextOnlyItems } from '.
 import type { FinanceJson, InboxJson, OrgJson, PerformanceJson, StaffJson } from './types'
 import type { BuildLayout } from './build/types'
 import { interiorSource, type InteriorBrief, type RoomPlan } from './build/interior'
+import type { CompanyDesign } from './build/company-designs'
 
 export type PanelId = 'plan' | 'org' | 'projects' | 'finance' | 'inbox' | 'activity' | 'hiring' | 'performance' | 'blueprint' | 'build'
 
@@ -106,6 +107,22 @@ export interface OverlayStore {
   readonly hasRoomPlans: boolean
   /** The office designer's plan for a work item: `undefined` while it loads, `null` when there is none (or no source for it). */
   roomPlanOf(item: string): RoomPlan | null | undefined
+  /**
+   * Whether the source keeps designs (K-4): with the company (`company`, synced with its records),
+   * in this browser (`browser`, the offline demo), or not at all (`null`: the editor's library then
+   * lives in this browser only and nothing can be placed).
+   */
+  readonly designsKept: 'company' | 'browser' | null
+  /** Moves whenever the company's designs change or a design is read (render reads it through `designOf`/`designs`). */
+  designRev: ReadonlySignal<number>
+  /** Keep a design the kit accepts with the company; resolves with its hash. Rejects without a source for it. */
+  saveDesign(design: object): Promise<{ hash: string }>
+  /** A design by hash: `undefined` while it is read, `null` when the company has none (or the source keeps none). */
+  designOf(hash: string): object | null | undefined
+  /** The company's design library by name: `undefined` while it is read, `[]` without a source for it. */
+  designs(): CompanyDesign[] | undefined
+  /** Take a design out of the library (it stays resolvable: objects may stand on it). */
+  retireDesign(hash: string): Promise<void>
   panel: ReturnType<typeof signal<PanelId | null>>
   /** The Studio's workbench (the Blueprint panel's tab): the shell's Building and Factory open it there. */
   studioTab: ReturnType<typeof signal<StudioTab>>
@@ -202,6 +219,7 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
   const prices = signal(new Map<string, number | null>())
   const priced = new Set<string>()
   const layout = signal<BuildLayout | null>(null)
+  const designRev = signal(0)
   let generation = 0
   let disposed = false
   const toast = signal<Toast | null>(null)
@@ -371,6 +389,23 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
       const s = interiorSource(source)
       return s.roomPlanOf ? s.roomPlanOf(item) : null
     },
+    designsKept: source.saveDesign ? (source.designsWhere?.() ?? 'company') : null,
+    designRev,
+    saveDesign(design) {
+      if (!source.saveDesign) return Promise.reject(new Error('This company keeps no designs.'))
+      return source.saveDesign(design)
+    },
+    designOf(hash) {
+      void designRev.value
+      return source.designOf ? source.designOf(hash) : null
+    },
+    designs() {
+      void designRev.value
+      return source.listDesigns ? source.listDesigns() : []
+    },
+    retireDesign(hash) {
+      return source.retireDesign ? source.retireDesign(hash) : Promise.resolve()
+    },
     comment: (item, text) => store.post(item, 'comment', text),
     async post(item, type, text, payload) {
       const now = clock.peek()
@@ -462,7 +497,9 @@ export function createOverlayStore(source: GameDataSource): OverlayStore {
   const unsubscribe = source.subscribe((topics) => {
     // Game time and the activity record need no snapshot (the Activity panel reads its rows itself).
     if (topics?.includes('site')) refreshSite()
-    if (topics && topics.length > 0 && topics.every((t) => t === 'site')) return
+    // The company's designs (K-4): read through `designOf`/`designs`, which follow this revision.
+    if (topics?.includes('designs')) designRev.value++
+    if (topics && topics.length > 0 && topics.every((t) => t === 'site' || t === 'designs')) return
     if (topics && topics.length > 0 && topics.every((t) => t === 'clock' || t === 'activity')) tickClock()
     else void load()
   })

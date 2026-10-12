@@ -47,9 +47,11 @@ use crate::economy::{BuildMode, Company};
 use crate::equipment::EquipmentKind;
 use crate::geom::{PosMm, Side, Tile, TileRect};
 use crate::ids::{
-    CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, TownItemId, WorkItemId,
+    CandidateId, EquipId, MeetingId, ObjectId, ProjectId, RoomId, StaffId, TicketId, TownItemId,
+    WorkItemId,
 };
 use crate::inbox::{DelegationPolicy, FollowUpTopic, SecretaryTaskKind, TicketOption};
+use crate::objects::{Mount, ObjectSummary};
 use crate::plan::{BriefStub, PlannedStub, WorkItemKind, WorkPriority};
 use crate::projects::ProjectStatus;
 use crate::staff::{persona, persona_by_key, Schedule, Traits, PERSONAS};
@@ -871,6 +873,16 @@ pub fn golden_script() -> Vec<(u64, Input)> {
             40_000,
             p(Command::Demolish(DemolishTarget::Equipment(EquipId(75)))),
         ),
+        // a player's own design in the archive (ADR-0065 §4): it goes with the room
+        (
+            45_900,
+            p(Command::PlaceObject {
+                design: "8d".repeat(32),
+                pos: PosMm::new(27_000, 5_000),
+                rot: 0,
+                summary: golden_summary([8, 8], 56, 0, 0, 1_385),
+            }),
+        ),
         // day 4, 03:00: nobody in; the archive goes
         (
             46_000,
@@ -909,6 +921,40 @@ pub fn golden_script() -> Vec<(u64, Input)> {
             46_200,
             p(Command::RemoveTownItem {
                 item: TownItemId(14),
+            }),
+        ),
+        // ...and furnishes the meeting room with designs of their own: a
+        // table and a shelf; the shelf moves, the table goes again
+        (
+            46_250,
+            p(Command::PlaceObject {
+                design: "7a".repeat(32),
+                pos: PosMm::new(1_500, 13_500),
+                rot: 0,
+                summary: golden_summary([24, 24], 30, 0, 0, 1_604),
+            }),
+        ),
+        (
+            46_300,
+            p(Command::PlaceObject {
+                design: "3c".repeat(32),
+                pos: PosMm::new(5_000, 12_000),
+                rot: 1,
+                summary: golden_summary([18, 7], 78, 480, 0, 7_695),
+            }),
+        ),
+        (
+            46_350,
+            p(Command::MoveObject {
+                object: ObjectId(3),
+                pos: PosMm::new(5_500, 14_000),
+                rot: 1,
+            }),
+        ),
+        (
+            46_400,
+            p(Command::RemoveObject {
+                object: ObjectId(2),
             }),
         ),
         // day 3, 21:00: the editorial board is turned on (ADR-0069)
@@ -961,6 +1007,29 @@ pub fn golden_script() -> Vec<(u64, Input)> {
             }),
         ),
     ]
+}
+
+/// A floor design's summary for the golden script: `footprint` in studs,
+/// `height` in plates, `storage` in stud², `seats`, `cost` in cents.
+fn golden_summary(
+    footprint: [u32; 2],
+    height: u32,
+    storage: u32,
+    seats: u8,
+    cost: u64,
+) -> ObjectSummary {
+    ObjectSummary {
+        footprint,
+        height,
+        mount: Mount::Floor,
+        seats,
+        workstation: false,
+        lights: 0,
+        storage,
+        screens: 0,
+        parts: u32::try_from(cost / 10).unwrap_or(1).max(1),
+        cost,
+    }
 }
 
 /// A successful job result with no artifact.

@@ -5,16 +5,19 @@
  * one plate layer at a time, with local undo and redo. Every edit is compiled
  * live by the kit (`crates/kit-wasm`): its splitter merges the cells into
  * bricks, its checks report issues (a floating brick), and its summary says
- * what the design provides. Finished designs go to the design library;
- * placing them waits for the sim's `PlaceObject` (K-4).
+ * what the design provides. Finished designs go to the design library: the
+ * company's (K-4, kept with its records, keyed by the kit's hash) when the
+ * source keeps designs, else this browser's; from the company's, the Build
+ * panel's Furniture tab places them (`PlaceObject`).
  */
 import { useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { hexOf, PALETTE } from '../../blueprint/colours'
+import { SIM_COMMANDS } from '../commands'
 import { StoreContext } from '../store'
 import { BrickIcon } from '../studio/bricks'
 import { commit, historyOf, redo, undo, type History } from '../studio/history'
 import { brickAt, compileDesign, compileShipped, getDesignKit, importCompiled, partSize, shippedDesigns, type EditorKit, type KitIssue } from './design-kit'
-import { localStorageLibrary, type DesignLibrary, type SavedDesign } from './design-library'
+import { companyLibrary, localStorageLibrary, type DesignLibrary, type SavedDesign } from './design-library'
 import {
   boxFill,
   brushById,
@@ -91,8 +94,20 @@ function problemRegions(issues: readonly KitIssue[], ops: ReturnType<typeof toDe
 export function DesignEditor() {
   const store = useContext(StoreContext)
   const scope = store?.site.repo ?? undefined
-  const library = useMemo<DesignLibrary>(() => localStorageLibrary(scope), [scope])
   const [kit, setKit] = useState<EditorKit | null>(null)
+  // The company's library when the source keeps designs (K-4), else this browser's.
+  const kept = store?.designsKept ?? null
+  const library = useMemo<DesignLibrary>(
+    () =>
+      store && kept
+        ? companyLibrary(store, (d) => {
+            if (!kit) return null
+            const c = compileDesign(kit, d)
+            return c.summary?.parts ?? c.bricks.length
+          })
+        : localStorageLibrary(scope),
+    [store, kept, scope, kit],
+  )
   const [kitError, setKitError] = useState<string | null>(null)
   const [hist, setHist] = useState<History<EditorDesign> | null>(null)
   const [tool, setTool] = useState<Tool>('place')
@@ -123,7 +138,8 @@ export function DesignEditor() {
   const json = useMemo(() => (design ? toDesignJson(design, PLAYER) : null), [design])
   const compiled = useMemo(() => (kit && json ? compileDesign(kit, json) : null), [kit, json])
   const drawnBoxes = useMemo(() => (json ? json.ops.flatMap((o) => (o.op === 'box' ? [{ at: o.at, size: o.size, colour: o.colour, template: 'box', part: '', kind: o.part, turn: 0, seq: 0 }] : [])) : []), [json])
-  const saved = useMemo(() => library.list(), [library, libRev])
+  const designRev = store?.designRev.value ?? 0
+  const saved = useMemo(() => library.list(), [library, libRev, designRev])
 
   const edit = (next: EditorDesign, what: string) => {
     if (!hist || next === hist.present) {
@@ -273,11 +289,16 @@ export function DesignEditor() {
     if (d) start(d, `Opened ${s.name}`)
   }
 
-  const save = () => {
+  const save = async () => {
     if (!design || !json || !compiled || !ok) return
-    library.save({ id: design.id, name: design.name, hash: compiled.hash, parts: compiled.summary?.parts ?? compiled.bricks.length, colour: dominantColour(design) ?? 'grey-light', design: json }, compiled)
+    try {
+      await library.save({ id: design.id, name: design.name, hash: compiled.hash, parts: compiled.summary?.parts ?? compiled.bricks.length, colour: dominantColour(design) ?? 'grey-light', design: json }, compiled)
+    } catch (e) {
+      setStatus(`${design.name} was not saved: ${e instanceof Error ? e.message : String(e)}`)
+      return
+    }
     setLibRev((r) => r + 1)
-    setStatus(`Saved ${design.name} to the library`)
+    setStatus(library.where === 'company' ? `Saved ${design.name} with the company's designs` : `Saved ${design.name} to the library`)
   }
 
   return (
@@ -420,7 +441,7 @@ export function DesignEditor() {
           <aside class="de-side" aria-label="The compiled design">
             <IsoPreview design={design} boxes={previewBoxes} label={`${design.name}, ${compiled?.ok ? 'as the kit builds it' : 'as drawn (the kit does not accept it yet)'}`} />
             <CompiledFacts compiled={compiled} merged={mergeBoxes(design.cells).length} />
-            <button type="button" class="de-btn is-primary" disabled={!ok} onClick={save}>
+            <button type="button" class="de-btn is-primary" disabled={!ok} onClick={() => void save()}>
               Save to library
             </button>
             {!ok && <p class="de-small">Only a design the kit accepts can be saved.</p>}
@@ -431,6 +452,7 @@ export function DesignEditor() {
       <LibraryList
         saved={saved}
         library={library}
+        kept={kept}
         kit={kit}
         currentId={design?.id ?? null}
         onOpen={openSaved}
@@ -559,16 +581,35 @@ function CompiledFacts({ compiled, merged }: { compiled: ReturnType<typeof compi
   )
 }
 
+/** Whether the sim places designs of the player's own (`PlaceObject`, K-4). */
+const SIM_PLACES_OBJECTS = (SIM_COMMANDS as readonly string[]).includes('PlaceObject')
+
+/** What the library says about where its designs live and whether they can be placed. */
+function libraryNote(kept: 'company' | 'browser' | null): string {
+  const where =
+    kept === 'company'
+      ? 'Kept with the company: they travel with its records to every device that runs it.'
+      : kept === 'browser'
+        ? 'Kept in this browser: the offline demo has no company store to keep them in.'
+        : 'Kept in this browser only: this company cannot keep designs, so they cannot be placed.'
+  if (!kept) return where
+  return SIM_PLACES_OBJECTS
+    ? `${where} Place them from Build, Furniture, My designs.`
+    : `${where} Placing a design of your own in the office waits for the sim to take placed designs (PlaceObject, K-4).`
+}
+
 function LibraryList({
   saved,
   library,
+  kept,
   kit,
   currentId,
   onOpen,
   onChanged,
 }: {
-  saved: SavedDesign[]
+  saved: SavedDesign[] | undefined
   library: DesignLibrary
+  kept: 'company' | 'browser' | null
   kit: EditorKit
   currentId: string | null
   onOpen: (s: SavedDesign) => void
@@ -576,16 +617,29 @@ function LibraryList({
 }) {
   const [renaming, setRenaming] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<string | null>(null)
+  const act = async (what: () => void | Promise<void>, done: string) => {
+    try {
+      await what()
+      onChanged(done)
+    } catch (e) {
+      onChanged(`Not done: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
   return (
     <section class="de-library" aria-labelledby="de-library-title">
       <h3 id="de-library-title">Your designs</h3>
-      <p class="de-note">
-        Kept and previewed here. Placing a design of your own in the office waits for the sim to take placed designs (PlaceObject, K-4); until then the library lives in this browser.
+      <p class="de-note" data-testid="de-library-note">
+        {libraryNote(kept)}
       </p>
-      {!saved.length && <p class="de-small">No designs yet. Save one the kit accepts.</p>}
+      {!saved && (
+        <p class="de-small" role="status">
+          Reading the company's designs…
+        </p>
+      )}
+      {saved && !saved.length && <p class="de-small">No designs yet. Save one the kit accepts.</p>}
       <ul class="de-lib-list" role="list">
-        {saved.map((s) => (
-          <li key={s.id} class={`de-lib-item${s.id === currentId ? ' is-current' : ''}`}>
+        {(saved ?? []).map((s) => (
+          <li key={s.id} class={`de-lib-item${s.design.id === currentId ? ' is-current' : ''}`}>
             <BrickIcon colour={hexOf(s.colour)} size={40} />
             <div class="de-lib-text">
               {renaming === s.id ? (
@@ -593,9 +647,8 @@ function LibraryList({
                   onSubmit={(e) => {
                     e.preventDefault()
                     const v = (e.currentTarget.elements.namedItem('name') as HTMLInputElement).value
-                    library.rename(s.id, v, (j) => kit.hashDesign(JSON.stringify(j)))
                     setRenaming(null)
-                    onChanged(`Renamed to ${v.trim()}`)
+                    void act(() => library.rename(s.id, v, (j) => kit.hashDesign(JSON.stringify(j))), `Renamed to ${v.trim()}`)
                   }}
                 >
                   <label class="sr-only" for={`de-rn-${s.id}`}>
@@ -616,7 +669,7 @@ function LibraryList({
             <div class="de-lib-actions">
               {confirm === s.id ? (
                 <>
-                  <button type="button" class="de-btn is-danger" onClick={() => (library.delete(s.id), setConfirm(null), onChanged(`Deleted ${s.name}`))}>
+                  <button type="button" class="de-btn is-danger" onClick={() => (setConfirm(null), void act(() => library.delete(s.id), `Deleted ${s.name}`))}>
                     Delete {s.name}
                   </button>
                   <button type="button" class="de-btn" onClick={() => setConfirm(null)}>

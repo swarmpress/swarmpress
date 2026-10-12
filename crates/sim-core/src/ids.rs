@@ -169,6 +169,12 @@ id_type!(
     TownItemId,
     "town-"
 );
+id_type!(
+    /// A player's own kit design placed in a room (ADR-0065 §4, ADR-0087
+    /// decision 7): see [`crate::objects`].
+    ObjectId,
+    "object-"
+);
 
 /// Stable persona number from the catalog (`crates/agents/personas/*.toml`,
 /// field `id`); see [`crate::staff::PERSONAS`]. Serialized as a plain number.
@@ -189,6 +195,7 @@ pub struct IdGen {
     ticket: u32,
     task: u32,
     town: u32,
+    object: u32,
 }
 
 impl IdGen {
@@ -228,6 +235,14 @@ impl IdGen {
         self.town += 1;
         TownItemId(self.town)
     }
+    pub fn object(&mut self) -> ObjectId {
+        self.object += 1;
+        ObjectId(self.object)
+    }
+    /// The id the next [`IdGen::object`] call will return.
+    pub fn peek_object(&self) -> ObjectId {
+        ObjectId(self.object + 1)
+    }
     /// The id the next [`IdGen::equip`] call will return.
     pub fn peek_equip(&self) -> EquipId {
         EquipId(self.equip + 1)
@@ -263,6 +278,9 @@ mod tests {
         assert_eq!(WorkItemId(4).to_string(), "work-item-4");
         assert_eq!(g.town(), TownItemId(1));
         assert_eq!(TownItemId(3).to_string(), "town-3");
+        assert_eq!(g.peek_object(), ObjectId(1));
+        assert_eq!(g.object(), ObjectId(1));
+        assert_eq!(ObjectId(4).to_string(), "object-4");
     }
 
     #[test]

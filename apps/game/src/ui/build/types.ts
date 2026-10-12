@@ -11,6 +11,8 @@
 import designs from './kit-designs'
 import mapping from '../../../../../kit/mapping.json'
 import type { BuildingLayout } from '../../state/render-state'
+import type { PlacedObjectLayout, ObjectSummary } from '../../render/bricks/objects'
+import type { KitSummary } from './design-kit'
 import { pascal } from '../commands'
 
 /** A piece of the town (ADR-0087 decision 4), as the layout writes it: metres, radians. */
@@ -24,8 +26,10 @@ export interface TownItemLayout {
 
 export type BuildMode = 'sandbox' | 'economic'
 
-/** `BuildingLayout` plus what ADR-0087 adds: the town and the company's build mode. */
-export type BuildLayout = BuildingLayout & { town?: TownItemLayout[]; buildMode?: BuildMode }
+export type { PlacedObjectLayout, ObjectSummary }
+
+/** `BuildingLayout` plus what ADR-0087 adds: the town and the company's build mode; and the placed objects (K-4). */
+export type BuildLayout = BuildingLayout & { town?: TownItemLayout[]; buildMode?: BuildMode; objects?: PlacedObjectLayout[] }
 
 export type Rot = 0 | 1 | 2 | 3
 export interface PosMm {
@@ -52,6 +56,10 @@ export type BuildCommand =
   | { PlaceTownItem: { kind: string; pos: PosMm; rot: Rot } }
   | { MoveTownItem: { item: string; pos: PosMm; rot: Rot } }
   | { RemoveTownItem: { item: string } }
+  /** A design of the player's own (ADR-0065 §4, K-4): by its hash, with the kit's summary of it (rule 2). */
+  | { PlaceObject: { design: string; pos: PosMm; rot: Rot; summary: ObjectSummary } }
+  | { MoveObject: { object: string; pos: PosMm; rot: Rot } }
+  | { RemoveObject: { object: string } }
 
 /** Metres to the sim's millimetres. */
 export const mm = (m: number) => Math.round(m * 1000)
@@ -78,6 +86,11 @@ export interface CatalogueItem {
   colour: string
   /** Monitors and lamps go on a desk (`Placement::OnDesk`). */
   onDesk: boolean
+  /** A design of the player's own (K-4): its hash, its JSON (the ghost), its compiled summary (the command), its parts. */
+  hash?: string
+  design?: string
+  summary?: ObjectSummary
+  parts?: number
 }
 
 const deskPorts = (mapping as { desk_ports: Record<string, string> }).desk_ports
@@ -195,7 +208,35 @@ export const build = {
   placeTown: (kind: string, x: number, z: number, rot: Rot): BuildCommand => ({ PlaceTownItem: { kind, pos: posOf(x, z, false), rot } }),
   moveTown: (item: string, x: number, z: number, rot: Rot, exact = false): BuildCommand => ({ MoveTownItem: { item, pos: posOf(x, z, exact), rot } }),
   removeTown: (item: string): BuildCommand => ({ RemoveTownItem: { item } }),
+  placeObject: (design: string, summary: ObjectSummary, x: number, z: number, rot: Rot): BuildCommand => ({ PlaceObject: { design, pos: posOf(x, z, false), rot, summary } }),
+  moveObject: (object: string, x: number, z: number, rot: Rot, exact = false): BuildCommand => ({ MoveObject: { object, pos: posOf(x, z, exact), rot } }),
+  removeObject: (object: string): BuildCommand => ({ RemoveObject: { object } }),
 }
+
+/** The sim's mount variant for the kit's (`floor` → `Floor`). */
+const mountVariant = (m: string) => (m ? m[0].toUpperCase() + m.slice(1) : 'Floor') as ObjectSummary['mount']
+
+/**
+ * What `PlaceObject` carries about a design: the numbers of the kit's compiled summary
+ * (`KitBuild.summaryJson()`), never its text (rule 2). The sim validates and prices by them.
+ */
+export function objectSummary(s: KitSummary): ObjectSummary {
+  return {
+    footprint: [s.footprint[0], s.footprint[1]],
+    height: s.height,
+    mount: mountVariant(s.mount),
+    seats: s.seats,
+    workstation: s.workstation,
+    lights: s.lights,
+    storage: s.storage,
+    screens: s.screens,
+    parts: s.parts,
+    cost: s.cost,
+  }
+}
+
+/** Only floor-mounted designs can be placed (the sim's `PlaceObject` takes `Floor`). */
+export const placeable = (s: Pick<KitSummary, 'mount'> | null | undefined) => !!s && s.mount.toLowerCase() === 'floor'
 
 /** Cents as the shell shows money; zero is free (the sandbox, ADR-0087 decision 3). */
 export function priceText(cents: number | null | undefined): string | null {

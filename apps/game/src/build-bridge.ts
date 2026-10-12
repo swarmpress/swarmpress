@@ -7,7 +7,8 @@
  */
 import { signal } from '@preact/signals'
 
-export type BuildTarget = { kind: 'equipment'; id: string } | { kind: 'town'; id: string } | { kind: 'room'; id: string }
+/** What a pick lands on, or what is highlighted: a piece of equipment, a placed object (K-4), a town item, a room. */
+export type BuildTarget = { kind: 'equipment'; id: string } | { kind: 'object'; id: string } | { kind: 'town'; id: string } | { kind: 'room'; id: string }
 
 export interface GhostSpec {
   /** An equipment kind (sim EquipmentKind name, e.g. 'Desk') or a town kind ('Tree'). */
@@ -19,6 +20,11 @@ export interface GhostSpec {
   rot: 0 | 1 | 2 | 3
   /** Green when the sim would accept, red when not. */
   ok: boolean
+  /**
+   * A design of the player's own (K-4): its design JSON, compiled by the renderer with the kit and
+   * drawn instead of the kit mapping's design for `kind`. It stands on the floor.
+   */
+  design?: string
 }
 
 /**

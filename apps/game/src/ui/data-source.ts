@@ -1,6 +1,7 @@
 import type { InteriorBrief, RoomPlan } from '../blueprint/interior'
 import type { Blueprint, BlueprintChange, PutBlueprintBody, PutBlueprintResult, PutToolsBody, SiteModels } from '../blueprint/types'
 import type { BuildLayout } from './build/types'
+import type { CompanyDesign } from './build/company-designs'
 import type { CommandResult } from './commands'
 import type { Persona } from './personas'
 import type { PlanJson, PlanPost, PlanText } from './plan-types'
@@ -9,9 +10,10 @@ import type { FinanceJson, InboxJson, OrgJson, PerformanceJson } from './types'
 /**
  * What changed, so a subscriber can re-read only that (a hint; `undefined` =
  * anything). `clock` and `activity` need no snapshot: game time, and the
- * activity record or the jobs in flight; nor does `site`, the site's models.
+ * activity record or the jobs in flight; nor does `site`, the site's models,
+ * nor `designs`, the company's designs (K-4).
  */
-export type DataTopic = 'org' | 'finance' | 'inbox' | 'plan' | 'performance' | 'clock' | 'activity' | 'site'
+export type DataTopic = 'org' | 'finance' | 'inbox' | 'plan' | 'performance' | 'clock' | 'activity' | 'site' | 'designs'
 
 /** A post the CEO adds to a work item's thread (the source assigns `id`, and game time if missing). */
 export type NewPlanPost = Omit<PlanPost, 'id'>
@@ -338,6 +340,24 @@ export interface GameDataSource {
    * free). Absent, or `null`: the source does not say; the UI then shows no number.
    */
   price?(commandJson: string): Promise<number | null>
+  /**
+   * Keep a design of the player's own with the company (K-4, ADR-0087 decision 7): only a design
+   * the kit accepts; resolves with the kit's design hash, the key a `PlaceObject` names it by.
+   * Announced with the `designs` topic. Absent: the source keeps no designs (the editor's library
+   * then lives in this browser only).
+   */
+  saveDesign?(design: object): Promise<{ hash: string }>
+  /**
+   * A design by its hash: `undefined` while it is being read (announced with `designs` once read),
+   * `null` when the company has none. How placed objects are drawn and listed.
+   */
+  designOf?(hash: string): object | null | undefined
+  /** The company's design library (kept, not retired), by name; `undefined` while it is being read. */
+  listDesigns?(): CompanyDesign[] | undefined
+  /** Take a design out of the library; it stays resolvable by its hash (objects may stand on it). */
+  retireDesign?(hash: string): Promise<void>
+  /** Where the source keeps designs: with the company (synced) or in this browser only. */
+  designsWhere?(): 'company' | 'browser'
 }
 
 /** Everything the overlay renders from, read in one go. */

@@ -2,12 +2,14 @@
  * The design library (ADR-0087 decision 7): the player's finished designs,
  * kept and previewed. Only designs the kit's compiler accepts are saved.
  *
- * Interim storage: the browser's localStorage, one key per scope (a company
- * when the caller knows it, else one shared key). A custom design cannot be
- * placed until the sim takes `PlaceObject` with a design summary (ADR-0065
- * §4, K-4); then designs travel with the company's work records (ADR-0056)
- * and this store goes.
+ * Two libraries: `companyLibrary`, over the data source's design store (K-4:
+ * the designs live with the company, keyed by the kit's hash, so placed
+ * objects resolve to them on every device; CLAUDE.md rule 6), and
+ * `localStorageLibrary`, the fallback for a source that keeps no designs:
+ * this browser's localStorage, one key per scope. The editor says which one
+ * is in use.
  */
+import { designColour, type CompanyDesign } from './company-designs'
 import type { DesignJson } from './design-model'
 
 export interface SavedDesign {
@@ -23,13 +25,60 @@ export interface SavedDesign {
 }
 
 export interface DesignLibrary {
-  list(): SavedDesign[]
+  /** Where the designs live: with the company (synced with its records) or in this browser only. */
+  readonly where: 'company' | 'browser'
+  /** The designs; `undefined` while the company's are being read. */
+  list(): SavedDesign[] | undefined
   get(id: string): SavedDesign | null
-  /** Save or replace by id. Throws unless the compiler accepted the design. */
-  save(entry: SavedDesign, compiled: { ok: boolean }): void
+  /** Save, or replace the entry of the same design id. Throws (rejects) unless the compiler accepted the design. */
+  save(entry: SavedDesign, compiled: { ok: boolean }): void | Promise<void>
   /** Rename; the name is part of the design, so its new hash comes along when known. */
-  rename(id: string, name: string, hash?: (design: DesignJson) => string): void
-  delete(id: string): void
+  rename(id: string, name: string, hash?: (design: DesignJson) => string): void | Promise<void>
+  delete(id: string): void | Promise<void>
+}
+
+/** The overlay store's design methods the company library uses (structurally `OverlayStore`). */
+export interface DesignKeeper {
+  designs(): CompanyDesign[] | undefined
+  saveDesign(design: object): Promise<{ hash: string }>
+  retireDesign(hash: string): Promise<void>
+}
+
+/**
+ * The library over the company's design store: an entry's id is its design hash. Saving a design
+ * again under the same design id keeps the new version and retires the earlier ones (they stay
+ * resolvable for objects placed with them); renaming saves the renamed design (a new hash).
+ * `partsOf` counts a design's parts (the kit's compile), once per hash.
+ */
+export function companyLibrary(keeper: DesignKeeper, partsOf: (design: DesignJson) => number | null): DesignLibrary {
+  const parts = new Map<string, number | null>()
+  const entry = (d: CompanyDesign): SavedDesign => {
+    if (!parts.has(d.hash)) parts.set(d.hash, partsOf(d.design))
+    return { id: d.hash, name: d.design.name, hash: d.hash, parts: parts.get(d.hash) ?? 0, colour: designColour(d.design), design: d.design }
+  }
+  const list = () => keeper.designs()?.map(entry)
+  /** Retire the library's other versions of a design id (not `keep`). */
+  const retireOthers = async (designId: string, keep: string) => {
+    for (const d of keeper.designs() ?? []) if (d.design.id === designId && d.hash !== keep) await keeper.retireDesign(d.hash)
+  }
+  return {
+    where: 'company',
+    list,
+    get: (id) => list()?.find((d) => d.id === id) ?? null,
+    async save(e, compiled) {
+      if (!compiled.ok) throw new Error('only a design the kit compiles can be saved')
+      const { hash } = await keeper.saveDesign(e.design)
+      await retireOthers(e.design.id, hash)
+    },
+    async rename(id, name) {
+      const n = name.trim()
+      const d = keeper.designs()?.find((x) => x.hash === id)
+      if (!n || !d || n === d.design.name) return
+      const { hash } = await keeper.saveDesign({ ...d.design, name: n })
+      if (hash !== id) await keeper.retireDesign(id)
+    },
+    delete: (id) => keeper.retireDesign(id),
+  }
 }
 
 export const LIBRARY_KEY = 'swarmpress.designs.v1'
@@ -49,7 +98,7 @@ function defaultStorage(): StorageLike | null {
  * The library over localStorage under `swarmpress.designs.v1[.scope]`. Without
  * storage it keeps the designs in memory for this page.
  */
-export function localStorageLibrary(scope?: string, storage: StorageLike | null = defaultStorage()): DesignLibrary {
+export function localStorageLibrary(scope?: string, storage: StorageLike | null = defaultStorage()): Omit<DesignLibrary, 'list'> & { list(): SavedDesign[] } {
   const storageKey = scope ? `${LIBRARY_KEY}.${scope}` : LIBRARY_KEY
   let memory: SavedDesign[] = []
   const read = (): SavedDesign[] => {
@@ -72,6 +121,7 @@ export function localStorageLibrary(scope?: string, storage: StorageLike | null 
     }
   }
   return {
+    where: 'browser',
     list: () => read().sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
     get: (id) => read().find((d) => d.id === id) ?? null,
     save(entry, compiled) {

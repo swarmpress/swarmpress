@@ -246,6 +246,12 @@ Every command, with an example:
 {"PlaceTownItem":{"kind":"Tree","pos":{"x":9000,"z":-10000},"rot":0}}   // Tree | StreetLamp | Bench
 {"MoveTownItem":{"item":"town-1","pos":{"x":3000,"z":-12000},"rot":2}}  // houses too
 {"RemoveTownItem":{"item":"town-14"}}      // not a house
+{"PlaceObject":{"design":"<64 lowercase hex>","pos":{"x":1500,"z":13500},"rot":1,
+               "summary":{"footprint":[24,12],"height":34,"mount":"Floor","seats":1,"workstation":true,
+                          "lights":1,"storage":0,"screens":1,"parts":204,"cost":3199}}}
+                                           // a player's own kit design (ADR-0065 §4): hash + summary, floor designs only
+{"MoveObject":{"object":"object-1","pos":{"x":1500,"z":12500},"rot":0}}   // 10% of the summary's cost
+{"RemoveObject":{"object":"object-1"}}     // free
 // people
 {"Hire":{"candidate":"candidate-6"}}
 {"Fire":{"staff":"staff-6"}}

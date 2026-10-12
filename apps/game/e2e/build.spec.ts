@@ -6,7 +6,11 @@
 import { expect, test, type Page } from '@playwright/test'
 import { boot } from './helpers'
 
-type Layout = { rooms: Array<{ id: string; props: Array<{ id: string; kind: string }> }>; town?: Array<{ id: string; kind: string }> }
+type Layout = {
+  rooms: Array<{ id: string; props: Array<{ id: string; kind: string }> }>
+  town?: Array<{ id: string; kind: string }>
+  objects?: Array<{ id: string; design: string; room: string; summary: { parts: number; mount: string } }>
+}
 type Hook = { sim: { layout_json(): string }; layoutRebuilds(): { count: number } }
 
 const layout = (page: Page) => page.evaluate(() => JSON.parse((window as unknown as { __swarmpress: Hook }).__swarmpress.sim.layout_json()) as Layout)
@@ -50,6 +54,37 @@ test('the Build section places a plant in a room and a tree in the town, and the
   await page.locator('.build-tiles').getByRole('button', { name: /Town tree/ }).click()
   await placeWhereAccepted(page)
   await expect.poll(async () => ((await layout(page)).town ?? []).filter((t) => t.kind === 'Tree').length).toBe(trees + 1)
+
+  expect(errors).toEqual([])
+})
+
+test('a design saved in the editor is placed from My designs and stands in the office', async ({ page }) => {
+  test.setTimeout(300_000)
+  const { errors } = await boot(page, '/?quality=low')
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: /^Build/ }).click()
+
+  // The editor: a copy of the kit's plant, saved to the company's library.
+  await page.getByRole('tab', { name: /Designs/ }).click()
+  const editor = page.getByRole('region', { name: 'Design editor' })
+  await editor.getByLabel('Start from a kit design').selectOption({ label: 'Potted plant' })
+  await editor.getByRole('button', { name: 'Open a copy' }).click()
+  await editor.getByRole('button', { name: 'Save to library' }).click()
+  await expect(editor.getByRole('button', { name: 'Open Potted plant (mine)' })).toBeVisible()
+
+  // Furniture, My designs: the saved design goes into the CEO's office through PlaceObject.
+  await page.getByRole('tab', { name: /Furniture/ }).click()
+  await page.locator('#build-furniture-room').selectOption('room-4')
+  expect((await layout(page)).objects ?? []).toEqual([])
+  const rebuilt0 = await rebuilds(page)
+  await page.locator('.build-tiles').getByRole('button', { name: /Potted plant \(mine\)/ }).click()
+  await placeWhereAccepted(page)
+  await expect.poll(async () => ((await layout(page)).objects ?? []).length).toBe(1)
+  const [object] = (await layout(page)).objects!
+  expect(object.room).toBe('room-4')
+  expect(object.design).toMatch(/^[0-9a-f]{64}$/)
+  expect(object.summary.mount).toBe('Floor')
+  expect(object.summary.parts).toBeGreaterThan(0)
+  await expect.poll(() => rebuilds(page), { timeout: 60_000 }).toBeGreaterThan(rebuilt0)
 
   expect(errors).toEqual([])
 })

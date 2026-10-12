@@ -19,8 +19,12 @@ import type {
   EntranceLayout,
   LightLevel,
   MeetingRender,
+  ObjectCapabilities,
+  ObjectMount,
+  ObjectSummary,
   Opening,
   PathRender,
+  PlacedObjectLayout,
   Pose,
   PropKind,
   PropLayout,
@@ -49,9 +53,13 @@ export function valuesOf<T extends string>() {
     values
 }
 
-export const LAYOUT_KEYS = keysOf<BuildingLayout>()('originX', 'originZ', 'width', 'depth', 'wallHeight', 'floors', 'entrance', 'rooms', 'buildMode', 'town')
+export const LAYOUT_KEYS = keysOf<BuildingLayout>()('originX', 'originZ', 'width', 'depth', 'wallHeight', 'floors', 'entrance', 'rooms', 'buildMode', 'town', 'objects')
 /** Layout keys older layouts (and hand-written ones) may leave out; the sim always writes them. */
-export const LAYOUT_OPTIONAL_KEYS: readonly string[] = ['buildMode', 'town']
+export const LAYOUT_OPTIONAL_KEYS: readonly string[] = ['buildMode', 'town', 'objects']
+export const OBJECT_KEYS = keysOf<PlacedObjectLayout>()('id', 'design', 'room', 'x', 'z', 'rot', 'footprint', 'summary')
+export const OBJECT_SUMMARY_KEYS = keysOf<ObjectSummary>()('footprint', 'height', 'mount', 'seats', 'workstation', 'lights', 'storage', 'screens', 'parts', 'cost')
+export const OBJECT_MOUNTS = valuesOf<ObjectMount>()('Floor', 'Surface', 'Ceiling')
+export const OBJECT_CAPABILITY_KEYS = keysOf<ObjectCapabilities>()('seats', 'workstations', 'lights', 'storage', 'screens')
 export const TOWN_ITEM_KEYS = keysOf<TownItemLayout>()('id', 'kind', 'x', 'z', 'rot')
 export const TOWN_KINDS = valuesOf<TownItemKind>()('PlanHouse', 'BuildingHouse', 'FactoryHouse', 'ProjectsHouse', 'Tree', 'StreetLamp', 'Bench')
 export const BUILD_MODES = valuesOf<NonNullable<BuildingLayout['buildMode']>>()('sandbox', 'economic')
@@ -72,7 +80,10 @@ export const ROOM_LAYOUT_KEYS = keysOf<RoomLayout>()(
   'desks',
   'ceilingLights',
   'props',
+  'objectCapabilities',
 )
+/** Room keys older layouts (and hand-written ones) may leave out; the sim always writes them. */
+export const ROOM_LAYOUT_OPTIONAL_KEYS: readonly string[] = ['objectCapabilities']
 export const OPENING_KEYS = keysOf<Opening>()('side', 'at', 'width')
 export const DESK_KEYS = keysOf<DeskLayout>()('id', 'x', 'z', 'rot', 'seat')
 export const CEILING_LIGHT_KEYS = keysOf<RoomLayout['ceilingLights'][number]>()('id', 'x', 'z')
@@ -226,8 +237,21 @@ export function checkLayout(layout: unknown, r = new ShapeReport()): ShapeReport
     r.type(t.id, 'string', `${p}.id`)
     for (const k of ['x', 'z', 'rot']) r.type(t[k], 'number', `${p}.${k}`)
   })
+  if ('objects' in layout) r.list(layout.objects, 'layout.objects', (o, p) => {
+    if (!r.keys(o, OBJECT_KEYS, p)) return
+    for (const k of ['id', 'design', 'room']) r.type(o[k], 'string', `${p}.${k}`)
+    for (const k of ['x', 'z', 'rot']) r.type(o[k], 'number', `${p}.${k}`)
+    r.point(o.footprint, `${p}.footprint`)
+    if (!r.keys(o.summary, OBJECT_SUMMARY_KEYS, `${p}.summary`)) return
+    r.point(o.summary.footprint, `${p}.summary.footprint`)
+    r.oneOf(o.summary.mount, OBJECT_MOUNTS, `${p}.summary.mount`)
+    r.type(o.summary.workstation, 'boolean', `${p}.summary.workstation`)
+    for (const k of ['height', 'seats', 'lights', 'storage', 'screens', 'parts', 'cost']) r.type(o.summary[k], 'number', `${p}.summary.${k}`)
+  })
   r.list(layout.rooms, 'layout.rooms', (room, p) => {
-    if (!r.keys(room, ROOM_LAYOUT_KEYS, p)) return
+    if (!r.keys(room, ROOM_LAYOUT_KEYS, p, ROOM_LAYOUT_OPTIONAL_KEYS)) return
+    if ('objectCapabilities' in room && r.keys(room.objectCapabilities, OBJECT_CAPABILITY_KEYS, `${p}.objectCapabilities`))
+      for (const k of OBJECT_CAPABILITY_KEYS) r.type(room.objectCapabilities[k], 'number', `${p}.objectCapabilities.${k}`)
     r.oneOf(room.kind, ROOM_KINDS, `${p}.kind`)
     r.type(room.label, 'string', `${p}.label`)
     for (const list of ['windows', 'doors'])

@@ -512,6 +512,68 @@ mod tests {
     }
 
     #[test]
+    fn objects_are_placed_priced_and_laid_out() {
+        let mut sim = Sim::demo(1);
+        let rev = |sim: &Sim| {
+            let v: Value = serde_json::from_str(&sim.render_state_json()).unwrap();
+            v["layoutRev"].as_u64().unwrap()
+        };
+        let before = rev(&sim);
+        let hash = "0123456789abcdef".repeat(4);
+        let place = format!(
+            r#"{{"PlaceObject":{{"design":"{hash}","pos":{{"x":1500,"z":13500}},"rot":1,"summary":{{"footprint":[24,12],"height":34,"mount":"Floor","seats":1,"workstation":true,"lights":1,"storage":0,"screens":1,"parts":204,"cost":3199}}}}}}"#
+        );
+        let moved = r#"{"MoveObject":{"object":"object-1","pos":{"x":1500,"z":12500},"rot":0}}"#;
+        let remove = r#"{"RemoveObject":{"object":"object-1"}}"#;
+        assert_eq!(sim.price_command_json(&place), Some(3_199));
+        assert_eq!(sim.validate_command_json(&place), None);
+        sim.apply_command_json(&place).unwrap();
+        assert_eq!(sim.price_command_json(moved), Some(319));
+        assert_eq!(sim.price_command_json(remove), Some(0));
+        let v: Value = serde_json::from_str(&sim.layout_json()).unwrap();
+        let o = &v["objects"][0];
+        assert_eq!(o["id"], "object-1");
+        assert_eq!(o["design"], hash.as_str());
+        assert_eq!(o["room"], "room-6");
+        assert_eq!((o["x"].as_f64(), o["z"].as_f64()), (Some(1.5), Some(13.5)));
+        assert_eq!(o["rot"], std::f64::consts::FRAC_PI_2);
+        assert_eq!(o["footprint"], serde_json::json!([1.5, 0.75]));
+        assert_eq!(
+            o["summary"],
+            serde_json::json!({"footprint":[24,12],"height":34,"mount":"Floor","seats":1,
+                "workstation":true,"lights":1,"storage":0,"screens":1,"parts":204,"cost":3199})
+        );
+        let meeting = v["rooms"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["id"] == "room-6")
+            .unwrap();
+        assert_eq!(
+            meeting["objectCapabilities"],
+            serde_json::json!({"seats":1,"workstations":1,"lights":1,"storage":0,"screens":1})
+        );
+        // the same spot again overlaps; a ceiling design is not placeable yet
+        assert!(sim
+            .validate_command_json(&place)
+            .unwrap()
+            .contains("overlaps"));
+        let ceiling = place.replace("\"Floor\"", "\"ceiling\"");
+        assert!(sim
+            .validate_command_json(&ceiling)
+            .unwrap()
+            .contains("not supported"));
+        sim.apply_command_json(moved).unwrap();
+        sim.apply_command_json(remove).unwrap();
+        assert_eq!(rev(&sim), before + 3);
+        let v: Value = serde_json::from_str(&sim.layout_json()).unwrap();
+        assert_eq!(v["objects"], serde_json::json!([]));
+        // a sandbox company places for free
+        let sandbox = Sim::demo_with(1, "sandbox").unwrap();
+        assert_eq!(sandbox.price_command_json(&place), Some(0));
+    }
+
+    #[test]
     fn render_state_json_tracks_the_day() {
         let mut sim = Sim::demo(1);
         // 07:00 → 10:30

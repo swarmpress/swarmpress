@@ -82,6 +82,23 @@ export type RoomKindVariant = string
 /** `sim_core::EquipmentKind` variant name or slug (`Desk`, `coffee-machine`). */
 export type EquipmentKindVariant = string
 export type SideVariant = 'North' | 'East' | 'South' | 'West'
+/**
+ * `sim_core::objects::ObjectSummary`: the numbers of a design's compiled kit
+ * summary (studs, plates, stud², cents). Only `mount: 'Floor'` is placeable
+ * for now; the kit's kebab-case mounts (`floor`) are accepted too.
+ */
+export interface ObjectSummaryWire {
+  footprint: [number, number]
+  height: number
+  mount: 'Floor' | 'Surface' | 'Ceiling'
+  seats: number
+  workstation: boolean
+  lights: number
+  storage: number
+  screens: number
+  parts: number
+  cost: number
+}
 
 export type Command =
   | { Hire: { candidate: CandidateRef } }
@@ -130,6 +147,14 @@ export type Command =
    * `blueprint/interior.ts`); the sim makes an `Interior` work item.
    */
   | { CommissionInterior: { room: string; brief_ref: number } }
+  /**
+   * A player's own kit design placed in a room (ADR-0065 §4, ADR-0087 decision 7):
+   * `design` is its 64-hex hash, `pos` the footprint centre in mm, `rot` quarter
+   * turns. Economic: costs `summary.cost`; moving 10% of it; removing is free.
+   */
+  | { PlaceObject: { design: string; pos: PosMm; rot: number; summary: ObjectSummaryWire } }
+  | { MoveObject: { object: string; pos: PosMm; rot: number } }
+  | { RemoveObject: { object: string } }
 
 export type CommandName = Command extends infer C ? (C extends Record<infer K, unknown> ? K : never) : never
 
@@ -165,6 +190,10 @@ export const SIM_COMMANDS: readonly CommandName[] = [
   'RemoveTownItem',
   // the office designer (ADR-0087 decision 6)
   'CommissionInterior',
+  // players' own designs (ADR-0065 §4, ADR-0087 decision 7)
+  'PlaceObject',
+  'MoveObject',
+  'RemoveObject',
 ]
 
 /** Plan commands of publishing-plan.md §6 the sim does not have yet (the mock source applies them). */

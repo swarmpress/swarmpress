@@ -97,6 +97,8 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   const brickMod = await import('./render/bricks')
   // The quality the GPU scheduler last asked for; a rebuilt scene starts at the tier, then takes it.
   let liveQuality = QUALITY[tier]
+  // The company's designs by hash (K-4): how placed objects are drawn; the overlay's store once it is up.
+  let resolveDesign: (hash: string) => object | null | undefined = () => undefined
   const buildScene = async (on: WebGPUEngine, facing: number | null, fresh: readonly string[] = []) => {
     const g = createGameScene(on, canvas, layout, { quality: QUALITY[tier], postFx: true })
     if (facing !== null) g.iso.setFacing(facing)
@@ -104,7 +106,7 @@ async function main(params: URLSearchParams, boot: BootScreen) {
     if (liveQuality !== QUALITY[tier]) g.setQuality(liveQuality)
     // The low tier draws merged walls (level of detail, ADR-0063).
     const signs = Object.fromEntries(SECTIONS.map((s) => [s.id, s.label]))
-    const b = await brickMod.attachBrickOffice(g, layout, { detail: tier === 'low' ? 'merged' : 'full', signs, fresh })
+    const b = await brickMod.attachBrickOffice(g, layout, { detail: tier === 'low' ? 'merged' : 'full', signs, fresh, designOf: (h) => resolveDesign(h) })
     return { game: g, bricks: b }
   }
   let { game, bricks } = await buildScene(engine, params.has('facing') ? Number(params.get('facing')) : null)
@@ -194,6 +196,7 @@ async function main(params: URLSearchParams, boot: BootScreen) {
           session?.dataSource() ?? selectDataSource(sim, params, () => sim.day() * 1440 + sim.minute_of_day()),
         )
   // --- end CEO overlay ---
+  if (overlay) resolveDesign = (h) => overlay.store.designOf(h)
   // --- scene ↔ overlay (FEAT-024): label texts and picking come from the store here; render/ reads none ---
   // Labels never cover the HUD or the overlay's toolbar and panels. Live pages only: on frozen
   // screenshot pages the HUD's text (fps) varies, and the labels must not vary with it.
@@ -214,6 +217,9 @@ async function main(params: URLSearchParams, boot: BootScreen) {
   let bridge: ReturnType<typeof brickMod.createBuildBridge> | null = null
   let unwatchModel: (() => void) | null = null
   let unwatchSection: (() => void) | null = null
+  let unwatchDesigns: (() => void) | null = null
+  /** Designs a rebuild was asked for once they arrived (a design the kit then refuses stays a placeholder). */
+  const designsAsked = new Set<string>()
   const wireScene = (game: GameScene, bricks: Awaited<ReturnType<typeof buildScene>>['bricks']) => {
     if (overlay) {
       const store = overlay.store
@@ -250,6 +256,20 @@ async function main(params: URLSearchParams, boot: BootScreen) {
           requestAnimationFrame(() => game.iso.frame(brickMod.townFrame(layout, bricks.town, section), coveredShare()))
         }
         last = section
+      })
+    }
+    // Placed objects whose design was not at hand (K-4): once the store has one, the scene is rebuilt to draw it.
+    unwatchDesigns?.()
+    unwatchDesigns = null
+    if (overlay && !frozen) {
+      const store = overlay.store
+      unwatchDesigns = effect(() => {
+        void store.designRev.value
+        const arrived = bricks.pendingDesigns().filter((h) => !designsAsked.has(h) && store.designOf(h))
+        if (!arrived.length) return
+        for (const h of arrived) designsAsked.add(h)
+        // After this function's caller has finished (the rebuild chain is set up below).
+        queueMicrotask(() => requestRebuild())
       })
     }
     // The bridge to the new scene; a gesture under way (capture, ghost, highlight) carries over.

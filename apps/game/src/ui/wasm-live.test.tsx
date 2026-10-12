@@ -119,6 +119,16 @@ const SAMPLES: Record<string, Command> = {
   MoveTownItem: { MoveTownItem: { item: 'town-1', pos: { x: 3000, z: -12000 }, rot: 0 } },
   RemoveTownItem: { RemoveTownItem: { item: 'town-14' } },
   CommissionInterior: { CommissionInterior: { room: 'room-2', brief_ref: 12 } },
+  PlaceObject: {
+    PlaceObject: {
+      design: '0123456789abcdef'.repeat(4),
+      pos: { x: 1500, z: 13500 },
+      rot: 1,
+      summary: { footprint: [24, 12], height: 34, mount: 'Floor', seats: 1, workstation: true, lights: 1, storage: 0, screens: 1, parts: 204, cost: 3199 },
+    },
+  },
+  MoveObject: { MoveObject: { object: 'object-1', pos: { x: 1500, z: 12500 }, rot: 0 } },
+  RemoveObject: { RemoveObject: { object: 'object-1' } },
   AssignPhase: cmd.assignPhase('work-item-1', 0, 'staff-1'),
   AcceptProposal: cmd.acceptProposal('work-item-1', 'post-1'),
   CompleteTodo: cmd.completeTodo('work-item-1', 'todo-1'),
@@ -176,6 +186,11 @@ describe.skipIf(!built)('WasmDataSource over the real sim', () => {
     expect(over.reason).toBeTruthy()
     expect(await s.validate(toJson(cmd.setDelegation('low-and-medium')))).toEqual({ ok: true })
     expect(await s.validate(toJson(cmd.createProject({ name: 'Amalfi Dispatch', slug: 'amalfi-dispatch', domain: 'amalfi.travel' })))).toBeDefined()
+    // A player's own design (ADR-0065 §4): placed, moved and removed by the sim.
+    expect(await s.apply(toJson(SAMPLES.PlaceObject))).toEqual({ ok: true })
+    expect(await s.validate(toJson(SAMPLES.PlaceObject))).toMatchObject({ ok: false, reason: expect.stringMatching(/overlaps/) })
+    expect(await s.apply(toJson(SAMPLES.MoveObject))).toEqual({ ok: true })
+    expect(await s.apply(toJson(SAMPLES.RemoveObject))).toEqual({ ok: true })
     // Plan commands are not in the sim yet: the sim itself rejects them (the store never sends one, see below).
     const plan = await s.validate(toJson(cmd.assignPhase('work-item-1', 0, 'staff-1')))
     expect(plan).toMatchObject({ ok: false, reason: expect.stringMatching(/unknown variant `AssignPhase`/) })

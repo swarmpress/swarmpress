@@ -15,7 +15,7 @@ use crate::equipment::{
 };
 use crate::geom::{PosMm, Side, TileRect, TILE_MM};
 use crate::ids::{
-    CandidateId, EquipId, MeetingId, ProjectId, RoomId, StaffId, TicketId, TownItemId,
+    CandidateId, EquipId, MeetingId, ObjectId, ProjectId, RoomId, StaffId, TicketId, TownItemId,
 };
 use crate::inbox::{SecretaryTaskKind, MAX_MEETING_ATTENDEES, MAX_SECRETARY_QUEUE};
 use crate::projects::{valid_domain, valid_name, valid_slug, ProjectStatus};
@@ -92,6 +92,8 @@ pub enum Reject {
     NoSecretary,
     #[error("unknown {0}")]
     UnknownTownItem(TownItemId),
+    #[error("unknown {0}")]
+    UnknownObject(ObjectId),
 }
 
 /// Validates any input.
@@ -297,19 +299,21 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
                     {
                         return Err(Reject::Invalid("the chair would be in the wall"));
                     }
-                    if overlaps(w, room_id, *kind, *pos) {
+                    if overlaps(w, room_id, *kind, *pos)
+                        || crate::objects::equipment_hits_object(
+                            &w.building,
+                            room_id,
+                            *kind,
+                            *pos,
+                            *rot,
+                        )
+                    {
                         return Err(Reject::Overlap);
                     }
                     room_id
                 }
             };
-            let items = w
-                .building
-                .equipment
-                .values()
-                .filter(|e| e.room == room_id)
-                .count();
-            if items >= MAX_ITEMS_PER_ROOM {
+            if crate::objects::items_in_room(&w.building, room_id) >= MAX_ITEMS_PER_ROOM {
                 return Err(Reject::Limit("items per room"));
             }
             funds(w, price(w, cmd))
@@ -591,6 +595,37 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
             Ok(())
         }
         Command::CommissionInterior { room, .. } => w.check_commission_interior(*room),
+        Command::PlaceObject {
+            design,
+            pos,
+            rot,
+            summary,
+        } => {
+            if !crate::objects::valid_design_hash(design) {
+                return Err(Reject::Invalid(
+                    "a design is named by its hash: 64 lowercase hex characters",
+                ));
+            }
+            crate::objects::check_summary(summary)?;
+            crate::objects::check_spot(&w.building, summary, *pos, *rot, None)?;
+            funds(w, price(w, cmd))
+        }
+        Command::MoveObject { object, pos, rot } => {
+            let o = w
+                .building
+                .objects
+                .get(object)
+                .ok_or(Reject::UnknownObject(*object))?;
+            crate::objects::check_spot(&w.building, &o.summary, *pos, *rot, Some(*object))?;
+            funds(w, price(w, cmd))
+        }
+        // Nobody uses an object yet (see `crate::objects`), so one can always go.
+        Command::RemoveObject { object } => w
+            .building
+            .objects
+            .get(object)
+            .map(|_| ())
+            .ok_or(Reject::UnknownObject(*object)),
     }
 }
 
@@ -681,19 +716,16 @@ fn check_move_equipment(w: &World, id: EquipId, placement: &Placement) -> Result
             {
                 return Err(Reject::Invalid("the chair would be in the wall"));
             }
-            if overlaps_except(w, room_id, e.kind, *pos, Some(id)) {
+            if overlaps_except(w, room_id, e.kind, *pos, Some(id))
+                || crate::objects::equipment_hits_object(&w.building, room_id, e.kind, *pos, *rot)
+            {
                 return Err(Reject::Overlap);
             }
             room_id
         }
     };
     if room_id != e.room {
-        let items = w
-            .building
-            .equipment
-            .values()
-            .filter(|o| o.room == room_id)
-            .count();
+        let items = crate::objects::items_in_room(&w.building, room_id);
         if items + 1 + riders > MAX_ITEMS_PER_ROOM {
             return Err(Reject::Limit("items per room"));
         }
@@ -714,6 +746,9 @@ pub const fn is_building_command(cmd: &Command) -> bool {
             | Command::PlaceTownItem { .. }
             | Command::MoveTownItem { .. }
             | Command::RemoveTownItem { .. }
+            | Command::PlaceObject { .. }
+            | Command::MoveObject { .. }
+            | Command::RemoveObject { .. }
     )
 }
 
@@ -863,6 +898,14 @@ pub fn price(w: &World, cmd: &Command) -> i64 {
         Command::MoveTownItem { item, .. } => {
             w.building.town.get(item).map_or(0, |t| t.kind.move_cost())
         }
+        // The parts' price from the summary: the client's word until the
+        // central audit recomputes it (ADR-0065 §4, leagues ADR-0055).
+        Command::PlaceObject { summary, .. } => summary.price(),
+        Command::MoveObject { object, .. } => w
+            .building
+            .objects
+            .get(object)
+            .map_or(0, |o| o.summary.move_cost()),
         Command::Hire { candidate } => w.candidates.get(candidate).map_or(0, |c| c.signing_fee()),
         Command::Fire { staff } => w
             .staff
@@ -885,6 +928,7 @@ pub fn price(w: &World, cmd: &Command) -> i64 {
         | Command::Commission { .. }
         | Command::RunTool { .. }
         | Command::RemoveTownItem { .. }
+        | Command::RemoveObject { .. }
         | Command::CommissionInterior { .. }
         | Command::Praise { .. } => 0,
     }

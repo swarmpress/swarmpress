@@ -3,8 +3,9 @@
  * scene and its brick office. Picking casts the camera's ray onto the floor
  * (y = 0) and snaps it to the stud grid; what stands there is resolved from
  * the layout (each placement's footprint, from its kit design) and the
- * town's item rects, never from meshes. The ghost is the kit design the
- * player is about to place, compiled once per kind and drawn translucent,
+ * town's item rects and the placed objects' footprints (K-4), never from
+ * meshes. The ghost is the kit design the player is about to place (or a
+ * design of the player's own, by its JSON), compiled once per kind and drawn translucent,
  * green or red as the UI says the sim would answer; the highlight is a
  * yellow frame around a footprint or a room. The renderer decides nothing
  * here (rule 8): the UI asks, the sim judges.
@@ -16,6 +17,7 @@ import type { GameScene } from '../scene'
 import { buildRoomChunk, STUD_HEIGHT, STUD_RADIUS, type ChunkSource } from '../bricks/chunk'
 import { mappingOf, type KitApi, type KitBuildLike, type KitMapping } from '../bricks/kit'
 import { footprintRect, type BrickOffice } from '../bricks/office'
+import { objectRect, objectsOf } from '../bricks/objects'
 import { FLOOR_TOP, PLATE, roomPlacements, turnOf, WALL_TOP, type DesignInfo, type Turn } from '../bricks/placements'
 import { TOWN_DESIGN, TOWN_HOUSES, HOUSE_SECTION, townFrame, treeParams, type TownItemKind } from '../bricks/town'
 import { frameBars, inRect, itemUnder, kebabKind, rayToPlane, snapStud, type PickItem, type Rect } from './pick'
@@ -99,6 +101,16 @@ export function ghostDesign(
   return { design, params: '{}', y: 0 }
 }
 
+/** Marks an object's pick item among the equipment's (ids of both are the sim's, in different spaces). */
+const OBJECT_MARK = '\u0000object:'
+
+/** A short, stable digest of a text (FNV-1a), to key ghosts by their design text. */
+function hashText(s: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193)
+  return (h >>> 0).toString(16)
+}
+
 /** Babylon's `rotation.y` for a quarter turn as the kit counts it (clockwise seen from above). */
 export const ghostRotation = (turn: number) => (-turn * Math.PI) / 2
 
@@ -126,6 +138,23 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
     return c
   }
   const infoOf = (design: string, params: string) => compiled(design, params).info
+  /** A design of the player's own (K-4), by its JSON; compiled once per text. Throws when the kit refuses it. */
+  const ownBuilds = new Map<string, { build: KitBuildLike; info: DesignInfo }>()
+  const compiledOwn = (json: string) => {
+    let c = ownBuilds.get(json)
+    if (!c) {
+      const build = kit.compile(json, '')
+      if (!build.ok()) {
+        const issues = build.issuesJson()
+        build.free()
+        throw new Error(`kit: the design did not compile: ${issues}`)
+      }
+      const i = JSON.parse(build.infoJson())
+      c = { build, info: { bounds: i.bounds, mount: i.mount, ports: i.ports ?? [] } }
+      ownBuilds.set(json, c)
+    }
+    return c
+  }
 
   // --- what can be picked: every placement of the layout, by its footprint ---
   let equipment: PickItem[] | null = null
@@ -145,10 +174,13 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
     return equipment
   }
   const townItems = (): PickItem[] => bricks.townItems.map((t) => ({ id: t.id, rect: t.rect, y: 0, rank: RANK.floor }))
+  /** The placed objects (K-4) by the footprint the sim keeps for them: no design needs to be at hand. */
+  const objectItems = (): PickItem[] => objectsOf(layout).map((o) => ({ id: o.id, rect: objectRect(o), y: 0, rank: RANK.floor }))
 
   const rectOf = (t: BuildTarget): Rect | null => {
     if (t.kind === 'room') return layout.rooms.find((r) => r.id === t.id) ?? null
     if (t.kind === 'town') return bricks.townItems.find((x) => x.id === t.id)?.rect ?? null
+    if (t.kind === 'object') return objectItems().find((x) => x.id === t.id)?.rect ?? null
     return equipmentItems().find((x) => x.id === t.id)?.rect ?? null
   }
 
@@ -178,8 +210,8 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
     ok ? (okMaterial ??= material('ghost-ok', GHOST_OK, GHOST_ALPHA)) : (badMaterial ??= material('ghost-bad', GHOST_BAD, GHOST_ALPHA))
 
   /** A design's bricks under one node, built at the origin unturned; the node moves and turns it. */
-  const makeGhost = (name: string, d: { design: string; params: string; y: number }) => {
-    const c = compiled(d.design, d.params)
+  const makeGhost = (name: string, d: { design: string; params: string; y: number; json?: string }) => {
+    const c = d.json !== undefined ? compiledOwn(d.json) : compiled(d.design, d.params)
     const placement = { id: name, role: 'prop' as const, design: d.design, params: d.params, x: 0, y: d.y, z: 0, turn: 0 as Turn, standIn: true }
     const at = { id: name, x: -50, z: -50, w: 100, d: 100 } as unknown as BuildingLayout['rooms'][number]
     const src: ChunkSource = { build: c.build, placement, footprint: [c.info.bounds[0], c.info.bounds[1]], shell: false }
@@ -202,8 +234,20 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
 
   const ghosts = new Map<string, { node: TransformNode; meshes: Mesh[] } | null>()
   const ghostOf = (g: GhostSpec) => {
-    const key = `${g.family}|${g.kind}`
+    // A design of the player's own is keyed by its text (a kind names it, the text is what is drawn).
+    const key = g.design !== undefined ? `own|${g.kind}|${g.design.length}|${hashText(g.design)}` : `${g.family}|${g.kind}`
     if (ghosts.has(key)) return ghosts.get(key)!
+    if (g.design !== undefined) {
+      let gh: { node: TransformNode; meshes: Mesh[] } | null = null
+      try {
+        gh = makeGhost(`ghost-own-${ghosts.size}`, { design: g.kind, params: '', y: 0, json: g.design })
+        gh.node.setEnabled(false)
+      } catch (err) {
+        console.warn(`[build] the ghost of ${g.kind} could not be drawn`, err)
+      }
+      ghosts.set(key, gh)
+      return gh
+    }
     const d = ghostDesign(g, mapping, infoOf)
     if (!d) {
       console.warn(`[build] no kit design for ${g.family} ${g.kind}`)
@@ -268,9 +312,18 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
       const x = snapStud(floor.x)
       const z = snapStud(floor.z)
       const room = layout.rooms.find((r) => inRect(r, floor.x, floor.z))?.id ?? null
-      const eq = itemUnder(equipmentItems(), o, dir)
+      // Equipment and placed objects are picked together (the item on top wins), then the town.
+      const eq = itemUnder([...equipmentItems(), ...objectItems().map((x) => ({ ...x, id: `${OBJECT_MARK}${x.id}` }))], o, dir)
       const town = eq ? null : itemUnder(townItems(), o, dir)
-      const target: BuildTarget | null = eq ? { kind: 'equipment', id: eq.id } : town ? { kind: 'town', id: town.id } : room ? { kind: 'room', id: room } : null
+      const target: BuildTarget | null = eq
+        ? eq.id.startsWith(OBJECT_MARK)
+          ? { kind: 'object', id: eq.id.slice(OBJECT_MARK.length) }
+          : { kind: 'equipment', id: eq.id }
+        : town
+          ? { kind: 'town', id: town.id }
+          : room
+            ? { kind: 'room', id: room }
+            : null
       return { x, z, room, target }
     },
     ghost(g) {
@@ -379,6 +432,8 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
       highlightMaterial?.dispose()
       for (const c of builds.values()) c.build.free()
       builds.clear()
+      for (const c of ownBuilds.values()) c.build.free()
+      ownBuilds.clear()
     },
     debug: () => ({ ghost: shownGhost, highlight: bars, rect: rectMeshes, plan: planGhosts }),
   }

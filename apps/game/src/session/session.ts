@@ -68,6 +68,7 @@ import { mountWordPressCard } from '../ui/wordpress-card'
 import { resolveSiteEngine, WordPressRuntime, type SiteEngineId } from './wordpress-runtime'
 import { wordpressSite, type WordPressSite } from './wordpress-site'
 import { companyStoreOptions, WasmDataSource, type SimOrgApi } from '../ui/wasm-source'
+import { companyDesignStore } from './design-store'
 import { showBootBinding } from '../ui/boot-screen'
 import { hudSite } from '../ui/hud'
 import { siteBindingView } from '../ui/site-binding'
@@ -1184,7 +1185,9 @@ export async function startSession(opts: SessionOptions): Promise<GameSession> {
         live: () => activity.live().filter((j) => loop.jobs.some((r) => r.job_id === j.jobId && r.state === 'running')),
         version: () => activity.written,
       }
-      const s = new SessionDataSource(orgApi, { ...companyStoreOptions(store, company, site, recorder), changeKey: () => `${sim.step()}:${loop.lastSeq}` })
+      // K-4: the player's designs are company text (rule 6), kept and synced with the company's records.
+      const designs = companyDesignStore(store, company.id, { readOnly: () => (readOnly ? `This session cannot change the company (read-only: ${readOnly}).` : null) })
+      const s = new SessionDataSource(orgApi, { ...companyStoreOptions(store, company, site, recorder), designs, changeKey: () => `${sim.step()}:${loop.lastSeq}` })
       if (!readOnly)
         s.siteActions = {
           save: (body) => (wpSite ? wpSite.saveBlueprint(body) : client.putBlueprint(lease.token, body)),

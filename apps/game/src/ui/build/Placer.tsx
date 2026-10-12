@@ -32,6 +32,18 @@ export interface Placed {
   on: string | null
   /** Houses move but stay. */
   removable: boolean
+  /** What picking and highlighting call it, when not the family's target (a placed object, K-4). */
+  target?: BuildTarget['kind']
+  /** A design of the player's own (K-4): its JSON, for the ghost while it moves. */
+  design?: string
+}
+
+/** More tiles beside the catalogue: the company's own designs (K-4). */
+export interface CatalogueGroup {
+  label: string
+  items: readonly CatalogueItem[]
+  /** Shown under the heading: why the group is empty, or what it leaves out. */
+  note?: ComponentChildren
 }
 
 /** Where the ghost is: a floor point, and the desk under it (desk items). */
@@ -48,6 +60,8 @@ export interface PlacerConfig {
   /** The picking target's kind for this family. */
   target: BuildTarget['kind']
   catalogue: readonly CatalogueItem[]
+  /** Further catalogue groups after the catalogue (the company's designs). */
+  groups?: readonly CatalogueGroup[]
   items: readonly Placed[]
   /** The desks one may put a desk item on (equipment only), in order. */
   desks: ReadonlyArray<{ id: string; x: number; z: number }>
@@ -81,8 +95,14 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
 
   const sel = selected ? (cfg.items.find((i) => i.id === selected) ?? null) : null
   const moving = tool?.op === 'move' ? (cfg.items.find((i) => i.id === tool.id) ?? null) : null
+  const allItems = [...cfg.catalogue, ...(cfg.groups ?? []).flatMap((g) => g.items)]
   const toolItem: CatalogueItem | null =
-    tool?.op === 'place' ? tool.item : moving ? (cfg.catalogue.find((c) => c.kind === moving.kind) ?? { kind: moving.kind, slug: '', name: moving.name, colour: moving.colour, onDesk: !!moving.on }) : null
+    tool?.op === 'place'
+      ? tool.item
+      : moving
+        ? (allItems.find((c) => c.kind === moving.kind) ?? { kind: moving.kind, slug: '', name: moving.name, colour: moving.colour, onDesk: !!moving.on, ...(moving.design ? { design: moving.design } : {}) })
+        : null
+  const targetOf = (i: Placed) => i.target ?? cfg.target
 
   // The command the gesture stands for, and the sim's verdict on it.
   const pending: BuildCommand | null = !tool || !spot ? null : tool.op === 'place' ? cfg.place(tool.item, spot, tool.rot) : moving ? cfg.move(moving, spot, tool.rot) : null
@@ -94,9 +114,10 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
   }, [selected, sel])
 
   // The highlight follows the selection.
+  const selTarget = sel ? targetOf(sel) : cfg.target
   useEffect(() => {
-    bridge?.highlight(selected ? ({ kind: cfg.target, id: selected } as BuildTarget) : null)
-  }, [bridge, selected, cfg.target])
+    bridge?.highlight(selected ? ({ kind: selTarget, id: selected } as BuildTarget) : null)
+  }, [bridge, selected, selTarget])
 
   // The ghost follows the gesture, coloured by the sim's verdict (right after the render: it tracks the pointer).
   const ghostX = spot ? spot.x : null
@@ -107,8 +128,8 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
       bridge.ghost(null)
       return
     }
-    bridge.ghost({ kind: toolItem.kind, family: cfg.family, x: ghostX, z: ghostZ, rot: tool.rot, ok: r.ok })
-  }, [bridge, tool, toolItem?.kind, ghostX, ghostZ, r.ok, cfg.family])
+    bridge.ghost({ kind: toolItem.kind, family: cfg.family, x: ghostX, z: ghostZ, rot: tool.rot, ok: r.ok, ...(toolItem.design ? { design: toolItem.design } : {}) })
+  }, [bridge, tool, toolItem?.kind, toolItem?.design, ghostX, ghostZ, r.ok, cfg.family])
 
   const spotOf = (p: Pick): Spot => {
     const id = p.target ? cfg.resolve(p) : null
@@ -233,6 +254,28 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
           ))}
         </div>
       </section>
+
+      {(cfg.groups ?? []).map((g) => (
+        <section key={g.label} aria-label={g.label}>
+          <h3 class="build-h">{g.label}</h3>
+          {g.note && <p class="build-hint muted">{g.note}</p>}
+          {g.items.length > 0 && (
+            <div class="build-tiles">
+              {g.items.map((c) => (
+                <BrickTile
+                  key={c.kind}
+                  colour={c.colour}
+                  name={c.name}
+                  price={store.price(asCommand(cfg.priceProbe(c)))}
+                  pressed={tool?.op === 'place' && tool.item.kind === c.kind}
+                  onClick={() => startPlace(c)}
+                  note={c.parts !== undefined ? `${c.parts} parts` : undefined}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      ))}
 
       {tool && (
         <section class="build-gesture" aria-label="Pending action">

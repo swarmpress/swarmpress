@@ -140,6 +140,18 @@ Bricks never enter the sim; a design's **summary** and **hash** do, the same rul
     a central audit can recompute every summary from its design and refuse a forged one (leagues,
     ADR-0055).
 
+**Built (K-4, the placement half; world format 10):** `PlaceObject{design: <64-hex hash>, pos, rot,
+summary}`, `MoveObject{object, pos, rot}` and `RemoveObject{object}` (`crates/sim-core/src/objects.rs`,
+`tests/objects.rs`). The summary is numbers only (`footprint` in studs, `height`, `mount`, `seats`,
+`workstation`, `lights`, `storage`, `screens`, `parts`, `cost`); only floor designs are placed. A
+footprint lies inside one room clear of its walls' thickness and off its door tiles, and overlaps
+no equipment's spacing square, desk chair or other object (axis-aligned rectangles, touching
+allowed); objects count towards the room's item limit. Economic companies pay the summary's
+`cost` (moving 10% of it, removing is free); sandbox companies nothing. The summary is the
+client's word until the central audit recomputes it. Not built yet: `params` and
+`ReplaceDesign`, and equipment kinds as capability tags: staff still use equipment, so an
+object's capabilities are only totalled per room for the UI.
+
 ## 5. Modes: sandbox and economic
 
 Chosen per company at founding and shown in the HUD.
@@ -232,7 +244,7 @@ validates its output like any other design.
 | K-1 | `crates/kit`: part catalogue and schema, design format and hash, brick script expansion, validation, brick splitter, summary; wasm build; property and golden tests | MVP (FEAT-083) |
 | K-2 | Shipped designs: the prototype's builders ported to brick script, one design per `EquipmentKind`, room shells per `RoomKind`; summaries checked against the sim's equipment | MVP (FEAT-083) |
 | K-3 | Brick office renderer from kit output: the spike (two rooms, two surfaces, measurements), then all rooms with levels of detail | MVP (FEAT-081) |
-| K-4 | Sim capabilities: `PlaceObject` with summaries, equipment kinds to tags, staff use tags; goldens move once | after MVP |
+| K-4 | Sim capabilities: `PlaceObject` with summaries, equipment kinds to tags, staff use tags; goldens move once | after MVP; the placement half is built (below) |
 | K-5 | Player building: placement, configuration, design editor, templates, modes | after MVP (FEAT-026) |
 | K-6 | Office designer and the build job: layout solver, catalogue slices, staged job, Build Approval, construction animation, eval | after MVP (FEAT-084) |
 | K-7 | Design packs and `.room` / `.building` sharing | after MVP |

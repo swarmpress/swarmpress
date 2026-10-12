@@ -12,6 +12,7 @@
  */
 import type { Observer, Scene, TransformNode } from '@babylonjs/core'
 import type { BuildingLayout } from '../../state/render-state'
+import { objectsOf } from './objects'
 
 /** How long one item takes to land, how far it falls, how much it grows, and the gap between two items. */
 export const ARRIVAL_MS = 600
@@ -31,7 +32,7 @@ export interface Arrival {
   node: TransformNode
 }
 
-/** The ids of every piece of equipment of a layout (desks, ceiling lights, props). */
+/** The ids of every piece of equipment of a layout (desks, ceiling lights, props) and of its placed objects (K-4). */
 function equipmentIds(layout: BuildingLayout): string[] {
   const out: string[] = []
   for (const r of layout.rooms) {
@@ -39,6 +40,7 @@ function equipmentIds(layout: BuildingLayout): string[] {
     for (const l of r.ceilingLights) out.push(l.id)
     for (const p of r.props) out.push(p.id)
   }
+  for (const o of objectsOf(layout)) out.push(o.id)
   return out
 }
 
@@ -50,7 +52,7 @@ export function byBuildOrder(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
 
-/** The equipment the next layout has and the previous one had not, in build order. None without a previous layout. */
+/** The equipment (and placed objects) the next layout has and the previous one had not, in build order. None without a previous layout. */
 export function freshEquipment(prev: BuildingLayout | null, next: BuildingLayout): string[] {
   if (!prev) return []
   const before = new Set(equipmentIds(prev))

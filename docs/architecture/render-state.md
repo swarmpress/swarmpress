@@ -12,10 +12,18 @@ FEAT-024 (people), FEAT-020 (the office).
   and size, wall height, floors, the street `entrance` (door centre and `spawn` point), and per
   room its rect, kind, label, level, capacity, `windows`, `doors`, `desks` (with their `seat`),
   `ceilingLights` and `props` (equipment that is not a desk or a ceiling light, with
-  `attachedTo` for desk-top items); the company's `buildMode` (`sandbox` or `economic`) and the
-  `town` (ADR-0087): `{id, kind, x, z, rot}` per house, tree, street lamp and bench, in id
-  order, `rot` in radians like the props. Read at boot and again whenever the render state's
-  `layoutRev` moves.
+  `attachedTo` for desk-top items) and `objectCapabilities` (`{seats, workstations, lights,
+  storage, screens}`, the totals of its placed objects' summaries; they change no staff behaviour
+  yet); the company's `buildMode` (`sandbox` or `economic`), the `town` (ADR-0087): `{id, kind,
+  x, z, rot}` per house, tree, street lamp and bench, in id order, `rot` in radians like the
+  props; and `objects` (ADR-0065 §4, ADR-0087 decision 7): the players' own kit designs placed in
+  rooms, in id order, `{id: "object-N", design: <64-hex hash>, room, x, z, rot, footprint: [w, d],
+  summary}` with the footprint centre in metres, `rot` in radians, `footprint` the design's own
+  size in metres at turn 0 (`rot` turns it) and `summary` exactly as `PlaceObject` carried it
+  (`footprint` in studs, `height` in plates, `mount`, `seats`, `workstation`, `lights`, `storage`
+  in stud², `screens`, `parts`, `cost` in cents). The bricks are the renderer's: it compiles the
+  design named by the hash from the company's design library. Read at boot and again whenever
+  the render state's `layoutRev` moves.
 - `Sim.render_state_json()`: the state, parsed once per sim step (10 Hz at speed 1; once per
   100 ms slice at higher speeds). Units are metres and radians; ids are strings (`staff-3`).
 - Planned, not built: a postcard `render_state_bytes()` and a flat staff buffer read every frame
@@ -49,7 +57,7 @@ tests and are checked by the same functions.
 | Bubbles | `bubbles[]`: `meeting`, `seq`, `speaker`, `startedStep`, `untilStep`, `chars` | | one per meeting with a turn in progress; text is fetched by reference |
 | Remarks | `remarks[]`: `seq`, `speaker`, `listener`, `startedStep`, `untilStep`, `chars`; `nextRemark` | | lines outside meetings (ADR-0074, the story director); the speaker's pose is `talk`, the listener's `listen`; text by `seq` from the kv (`story.line.<seq>`) |
 | Site model | `siteModel`: `pageTypes`, `slots`, `issues`, `tools`, `failingTools`, or null | | the site's blueprint digest and installed tools (ADR-0072); the brick office stands the model table only while it is set, and the town's geometry comes from the store (`GET /api/site/blueprint`), like a surface's close content |
-| Layout | `layoutRev` | u32 | `Building::layout_rev`, raised by one by every applied building command (`BuyFloorSpace`, `PlaceRoom`, `Demolish`, `PlaceEquipment`, `MoveEquipment`, `PlaceTownItem`, `MoveTownItem`, `RemoveTownItem`; ADR-0087). The renderer draws the layout of the last `layout_json()`; when `layoutRev` differs from the one it read with, it reads the layout again and rebuilds. The town is sim state: the renderer draws `layout.town` and computes no arrangement of its own |
+| Layout | `layoutRev` | u32 | `Building::layout_rev`, raised by one by every applied building command (`BuyFloorSpace`, `PlaceRoom`, `Demolish`, `PlaceEquipment`, `MoveEquipment`, `PlaceTownItem`, `MoveTownItem`, `RemoveTownItem`, `PlaceObject`, `MoveObject`, `RemoveObject`; ADR-0087, ADR-0065 §4). The renderer draws the layout of the last `layout_json()`; when `layoutRev` differs from the one it read with, it reads the layout again and rebuilds. The town is sim state: the renderer draws `layout.town` and computes no arrangement of its own |
 | Planned | screen content, poses beyond the six, props' content (moodboard, whiteboard), HUD levels | | need a contract change before the renderer may show them |
 
 ## Bubbles and who works on what (built, FEAT-079)
