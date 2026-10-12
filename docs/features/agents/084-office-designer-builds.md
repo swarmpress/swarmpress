@@ -19,6 +19,7 @@ paths:
 adrs:
   - ADR-0065
   - ADR-0087
+  - ADR-0088
   - ADR-0057
   - ADR-0058
   - ADR-0059
@@ -117,6 +118,34 @@ ADR-0087 decision 6. MIT, wasm-compatible, integers only (mm, studs, cents), no 
   twin, the real sim's view). The golden script commissions a room with no designer (world
   format 9).
 
+## Built (2026-10-12): the designer sees the players' own designs (ADR-0087 decision 7, ADR-0088)
+
+- **The room context:** `World::designer_room` lists the room's placed objects
+  (`DesignerRoom.objects`, serde default for older JSON): `{id, x_mm, z_mm, rot, footprint_mm
+  (studs × 62.5 rounded up, unturned), workstation, seat_at_mm (unturned), on_desk {desk, slot},
+  seats, lights, storage, screens}`; numbers only, in id order. `office_designer::Room.objects`
+  (`ExistingObject`) reads it.
+- **Checks, mirroring the sim** (`objects::equipment_hits_object`, `desk_slot_taken`,
+  `items_in_room`): a planned floor item whose spacing square, desk chair square, kit footprint or
+  chair overlaps an object's turned footprint or a workstation object's 0.5 m seat square is a
+  `collision` naming `equipment:object-N (the CEO's own design)`; a slot a desk-top design holds is
+  `slot-taken`; objects count towards the 64 items; floor objects are walking obstacles and a
+  workstation object's seat must stay reachable; workstation objects count as workstations, a
+  screen design on a desk makes it one, shelf designs count as storage, and a floor design with a
+  light lights desks within 2.5 m. Object seats do not count as meeting seats (ADR-0088 decision 4).
+- **The prompt:** the room doc lists each object as `- equipment:object-N: the CEO's own design,
+  W × D at …; a workstation, its seat at … (keep 0.5 m around the seat free); it has storage. Keep
+  off it.` or `… on equip-N's lamp slot (that slot is taken).`; floor objects are anchors
+  (`equipment:object-N`, in the closed schema); desk-top ones are not. The fakes (Rust and the
+  browser twin) count the CEO's workstation and storage designs.
+- **Tests:** the `studio` fixture (a built-in desk with a desk-top design, a workstation design and
+  a shelf design; good and bad plans), `sim_contract.rs` (the fixture rooms equal the sim's
+  `designer_room` JSON; the property test furnishes every other case with random objects and
+  desks, `PROPTEST_CASES` cases per room), `sim-core/tests/interior.rs`
+  (`the_designer_room_lists_the_players_objects`), `orchestrator/tests/build.rs` (a fake row on
+  the CEO's desk never reaches the sim; a lamp on a slot a design holds is refused; commission →
+  Build → construction end to end with the CEO's desk in the room, no escalation).
+
 ## Evaluation on GPT-6-Luna (2026-10-12)
 
 The driver `apps/game/e2e/luna-interior.eval.mts` (run with `bun`, not a Playwright test) founds a
@@ -189,8 +218,8 @@ of them in a session aborted for the hiring defect below):
   `design#0`, `preview`); the brief comes from the CEO's form.
 - The renderer animating the bricks in build order (the sim places the items one by one; the
   renderer follows `layoutRev`).
-- Custom designs (needs the sim's `PlaceObject`, K-4); removing or moving existing equipment in a
-  plan.
+- Placing the players' own designs from a plan (the designer sees them, but plans only the
+  sim's equipment kinds); removing or moving existing equipment or objects in a plan.
 
 ## Acceptance criteria
 

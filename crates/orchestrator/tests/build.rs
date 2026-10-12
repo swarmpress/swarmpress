@@ -19,9 +19,10 @@ use sim_core::building::{Door, RoomKind, Window};
 use sim_core::clock::SimConfig;
 use sim_core::commands::{Command, ServerCommand};
 use sim_core::economy::BuildMode;
-use sim_core::geom::{Side, TileRect};
+use sim_core::geom::{PosMm, Side, TileRect};
 use sim_core::ids::RoomId;
 use sim_core::inbox::{TicketKind, TicketOption};
+use sim_core::objects::{Mount, ObjectSummary};
 use sim_core::plan::{Effect, JobKind as SimJob, WorkItemStatus};
 use sim_core::scenarios::{demo_office_with_mode, hire_office_designer};
 use sim_core::World;
@@ -416,7 +417,14 @@ async fn play(
 }
 
 async fn commission_and_build() -> (World, Vec<u64>) {
-    let (mut w, room) = world();
+    let (w, room) = world();
+    build_room(w, room, 3, 0).await
+}
+
+/// Commissions the room, lets the fake design it, answers Build and plays
+/// the construction to the end: `desks` desks (each with a monitor) and a
+/// plant go up, the room's `objects` stay, and no escalation is ever raised.
+async fn build_room(mut w: World, room: RoomId, desks: usize, objects: usize) -> (World, Vec<u64>) {
     let o = orch(fake_writer([])).await;
     w.apply(Command::CommissionInterior {
         room,
@@ -437,7 +445,8 @@ async fn commission_and_build() -> (World, Vec<u64>) {
         .find(|t| t.is_open() && t.kind == TicketKind::BuildApproval)
         .unwrap();
     assert_eq!(t.work_item, Some(item));
-    assert_eq!(t.amount_cents, 3 * 40_000 + 3 * 30_000 + 5_000);
+    let price = i64::try_from(desks).unwrap() * (40_000 + 30_000) + 5_000;
+    assert_eq!(t.amount_cents, price);
     let ticket = t.id;
     let in_room = |w: &World| {
         w.building
@@ -461,9 +470,161 @@ async fn commission_and_build() -> (World, Vec<u64>) {
     })
     .await;
     seen.push(w.hash());
-    assert_eq!(in_room(&w), 7);
-    assert_eq!(cash - w.company.cash, 3 * 40_000 + 3 * 30_000 + 5_000);
+    assert_eq!(in_room(&w), 2 * desks + 1);
+    assert_eq!(cash - w.company.cash, price);
+    assert_eq!(
+        w.building
+            .objects
+            .values()
+            .filter(|o| o.room == room)
+            .count(),
+        objects
+    );
+    assert!(
+        !w.tickets.values().any(|t| t.kind == TicketKind::Escalation),
+        "the build never stopped"
+    );
+    assert_eq!(w.plan.interiors.get(&item).and_then(|b| b.refused), None);
     (w, seen)
+}
+
+/// A player's desk (1.5 × 0.75 m) whose seat is 750 mm south of its centre
+/// at turn 0 (ADR-0088): a workstation.
+fn my_desk() -> ObjectSummary {
+    ObjectSummary {
+        footprint: [24, 12],
+        height: 34,
+        mount: Mount::Floor,
+        seats: 1,
+        workstation: true,
+        seat_at: Some([0, 750]),
+        lights: 1,
+        storage: 0,
+        screens: 1,
+        parts: 204,
+        cost: 3_199,
+    }
+}
+
+/// The newsroom with the CEO's own desk placed at `pos` turned `rot`.
+fn world_with_my_desk_at(pos: PosMm, rot: u8) -> (World, RoomId) {
+    let (mut w, room) = world();
+    w.apply(Command::PlaceObject {
+        design: "d5".repeat(32),
+        pos,
+        rot,
+        summary: my_desk(),
+    })
+    .unwrap();
+    assert_eq!(w.designer_room(room).unwrap().objects.len(), 1);
+    (w, room)
+}
+
+/// The CEO's own desk against the newsroom's west wall, facing east.
+fn world_with_my_desk() -> (World, RoomId) {
+    world_with_my_desk_at(PosMm::new(26_500, 11_000), 3)
+}
+
+/// The designer sees the CEO's own desk (ADR-0088): the room doc names it,
+/// it counts as one of the three workstations, and a row of desks the fake
+/// puts on it (by the window, where the CEO's desk stands) is named to the
+/// model as a collision with it and never reaches the sim: the fake's fixes
+/// (the next wall each round) find no place, so the plan fails loudly.
+#[tokio::test]
+async fn the_ceos_own_desk_is_counted_and_kept_clear() {
+    let (w, room) = world_with_my_desk_at(PosMm::new(31_000, 11_000), 1);
+    let llm = Arc::new(fake_writer([]));
+    let o = orch(llm.clone()).await;
+    let out = o
+        .run(&job(52, JobKind::InteriorDesign, context(&w, room)))
+        .await
+        .unwrap();
+    assert_eq!(failed(&out), JobFailure::InvalidOutput, "{out:?}");
+    assert!(!out
+        .iter()
+        .any(|o| matches!(o, Outcome::InteriorPlan { .. })));
+    let calls = llm.calls();
+    let layout = &calls[0].request.messages.last().unwrap().text;
+    assert!(
+        layout.contains("- equipment:object-1: the CEO's own design, 0.75 m (west to east) × 1.5 m (north to south), at 5 m from the west wall, 3 m from the north wall; a workstation, its seat at 4.25 m from the west wall, 3 m from the north wall"),
+        "{layout}"
+    );
+    let fix = &calls[1].request.messages.last().unwrap().text;
+    // two desks for three workstations: the CEO's desk is one
+    assert!(
+        fix.contains(r#"{"design":"desk","anchor":"window:0","count":2,"spacing":4}"#),
+        "{fix}"
+    );
+    assert!(
+        fix.contains("[collision] placement 0, desk 1 of 2: it overlaps equipment:object-1 (the CEO's own design)"),
+        "{fix}"
+    );
+}
+
+/// A lamp planned for a desk whose lamp slot holds the CEO's own desk-top
+/// design is refused by the checker, never handed to the sim to stop the
+/// build: the plan fails loudly when the model does not move it.
+#[tokio::test]
+async fn a_lamp_on_a_slot_the_ceos_design_holds_is_refused() {
+    let (mut w, room) = world();
+    w.apply(Command::PlaceEquipment {
+        kind: sim_core::equipment::EquipmentKind::Desk,
+        placement: sim_core::commands::Placement::Floor {
+            pos: PosMm::new(30_000, 11_000),
+            rot: 0,
+        },
+    })
+    .unwrap();
+    let desk = *w.building.equipment.keys().last().unwrap();
+    w.apply(Command::PlaceObjectOnDesk {
+        design: "70".repeat(32),
+        desk,
+        summary: ObjectSummary {
+            footprint: [4, 4],
+            mount: Mount::Surface,
+            workstation: false,
+            seat_at: None,
+            seats: 0,
+            lights: 0,
+            screens: 0,
+            ..my_desk()
+        },
+    })
+    .unwrap();
+    let plan = json!({"placements": [
+        {"design": "desk-lamp", "anchor": format!("equipment:{desk}")},
+        {"design": "plant", "anchor": "wall:south", "from": "wall:west"}
+    ]});
+    let mut script = vec![FakeReply::Json(plan)];
+    for _ in 0..3 {
+        script.push(FakeReply::Json(json!({"replace": []})));
+    }
+    let o = orch(fake_writer(script)).await;
+    let out = o
+        .run(&job(53, JobKind::InteriorDesign, context(&w, room)))
+        .await
+        .unwrap();
+    assert_eq!(failed(&out), JobFailure::InvalidOutput, "{out:?}");
+    let ps = posts(&o).await;
+    let s = ps.iter().find(|p| p["type"] == "status").unwrap();
+    assert!(
+        s["text"].as_str().unwrap().contains("[slot-taken]")
+            && s["text"].as_str().unwrap().contains("the CEO's own design"),
+        "{s}"
+    );
+}
+
+/// Commission, draft, approve and build a room the CEO already put a desk
+/// of their own in: two desks for three workstations, nothing built over
+/// the CEO's desk or its seat, no escalation; the same world twice.
+#[tokio::test]
+async fn a_room_with_the_ceos_own_desk_is_built_end_to_end() {
+    let (w, room) = world_with_my_desk();
+    let (a, ha) = build_room(w, room, 2, 1).await;
+    let (w, room) = world_with_my_desk();
+    let (b, hb) = build_room(w, room, 2, 1).await;
+    assert_eq!(ha, hb);
+    assert_eq!(a.hash(), b.hash());
 }
 
 #[tokio::test]

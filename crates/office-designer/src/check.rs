@@ -5,12 +5,13 @@
 //! |---|---|
 //! | walls | the kit footprint (and a desk's chair) stays inside the walls' inner faces; the sim's clearances hold (centre 0.3 m, a desk's chair 0.2 m from the wall line) |
 //! | collisions | two floor items: the sim's rule (centres at least the sum of their spacing radii apart, Chebyshev) **and** their kit footprints and chairs do not overlap; ceiling lights 0.5 m apart |
+//! | objects | a floor item keeps off the players' own designs (ADR-0088): neither its sim square (centre ± its spacing radius), a desk's 0.5 m chair square, nor its kit footprint and chair overlap an object's turned footprint or a workstation object's 0.5 m seat square (the sim's `objects::equipment_hits_object`) |
 //! | table | in rooms with a table, nothing stands on the table or its seats |
 //! | doors | nothing stands in the 1 m in front of a door, over the door's width |
-//! | walkability | on a 125 mm grid, with walls and items grown by half a person (0.25 m), every new desk's chair, every other door, every table seat and every existing chair can still be reached from door 0 (4-connected, fixed order, as the sim's pathfinding) |
-//! | light | every new desk has a ceiling light within 2.5 m of its centre or a window opening within 3 m |
-//! | items | at most the sim's 64 items in the room |
-//! | brief | the room's counts (existing plus planned) meet the brief |
+//! | walkability | on a 125 mm grid, with walls, items and the players' floor objects grown by half a person (0.25 m), every new desk's chair, every other door, every table seat, every existing chair and every workstation object's seat can still be reached from door 0 (4-connected, fixed order, as the sim's pathfinding) |
+//! | light | every new desk has a ceiling light (or a floor object with a light) within 2.5 m of its centre or a window opening within 3 m |
+//! | items | at most the sim's 64 items in the room, objects included |
+//! | brief | the room's counts (existing plus planned, workstation objects and screens and shelves of objects included) meet the brief |
 //! | cost | the sim's prices of the planned items stay within the brief's budget |
 //!
 //! Things the room already had wrong are warnings, never errors.
@@ -23,9 +24,9 @@ use crate::brief::{Brief, Need};
 use crate::catalogue::Catalogue;
 use crate::issue::{label, number, Issue, IssueCode};
 use crate::model::{
-    fmt_cents, fmt_m, seat_pos, EquipmentDesign, Pos, Rect, Room, Side, BODY_MM,
-    CEILING_LIGHT_SPACING_MM, LIGHT_REACH_MM, MAX_ITEMS_PER_ROOM, REACH_MM, SEAT_CLEARANCE_MM,
-    WALK_CELL_MM, WALL_CLEARANCE_MM, WALL_MM, WINDOW_REACH_MM,
+    fmt_cents, fmt_m, seat_pos, DeskSlot, EquipmentDesign, ExistingObject, Pos, Rect, Room, Side,
+    BODY_MM, CEILING_LIGHT_SPACING_MM, CHAIR_HALF_MM, LIGHT_REACH_MM, MAX_ITEMS_PER_ROOM, REACH_MM,
+    SEAT_CLEARANCE_MM, WALK_CELL_MM, WALL_CLEARANCE_MM, WALL_MM, WINDOW_REACH_MM,
 };
 use crate::plan::Plan;
 use crate::solve::{solve, At, DeskRef, Solution, SolvedItem};
@@ -76,6 +77,7 @@ struct Body {
     who: Who,
     design: EquipmentDesign,
     pos: Pos,
+    rot: u8,
     rect: Rect,
     chair: Option<Rect>,
     seat: Option<Pos>,
@@ -109,6 +111,7 @@ fn body(cat: &Catalogue, who: Who, design: EquipmentDesign, pos: Pos, rot: u8, c
         who,
         design,
         pos,
+        rot,
         rect: Rect::around(pos, hx, hz),
         chair: seat.map(|s| Rect::around(s, cx, cz)),
         seat,
@@ -178,19 +181,24 @@ pub fn check(
                 issues.push(at(IssueCode::Collision, b, m));
             }
         }
+        for o in room.objects.iter().filter(|o| o.is_floor()) {
+            if let Some(m) = object_collision(b, o) {
+                issues.push(at(IssueCode::Collision, b, m));
+            }
+        }
         if !b.design.is_ceiling() {
             issues.extend(table(room, cat, b));
             issues.extend(doors(room, b));
         }
     }
 
-    let total = room.equipment.len() + sol.items.len();
+    let total = room.equipment.len() + room.objects.len() + sol.items.len();
     if total > MAX_ITEMS_PER_ROOM {
         issues.push(Issue::new(
             IssueCode::TooManyItems,
             None,
             format!(
-                "the room would hold {total} items; the sim allows {MAX_ITEMS_PER_ROOM} (monitors and lamps count)"
+                "the room would hold {total} items; the sim allows {MAX_ITEMS_PER_ROOM} (monitors, lamps and the CEO's own designs count)"
             ),
         ));
     }
@@ -346,6 +354,68 @@ fn collision(b: &Body, o: &Body) -> Option<String> {
     None
 }
 
+/// How a player's design is named to the model (it anchors as `equipment:ID`).
+pub(crate) fn object_name(o: &ExistingObject) -> String {
+    format!("equipment:{} (the CEO's own design)", o.id)
+}
+
+/// A planned floor item against a player's floor object: the sim's rule
+/// (`objects::equipment_hits_object`: the item's spacing square and a desk's
+/// chair square must not overlap the object's footprint or a workstation's
+/// seat square) and the kit's (its footprint and chair likewise).
+fn object_collision(b: &Body, o: &ExistingObject) -> Option<String> {
+    if b.design.is_ceiling() || !b.design.is_floor() {
+        return None;
+    }
+    let f = b.design.sim_footprint_mm();
+    let mut body = vec![b.rect];
+    if f > 0 {
+        body.push(Rect::around(b.pos, f, f));
+    }
+    let mut chair: Vec<Rect> = b.chair.into_iter().collect();
+    if b.design == EquipmentDesign::Desk {
+        chair.push(Rect::around(
+            seat_pos(b.pos, b.rot),
+            CHAIR_HALF_MM,
+            CHAIR_HALF_MM,
+        ));
+    }
+    let name = object_name(o);
+    let fp = o.rect();
+    if body.iter().any(|r| r.intersects(&fp)) {
+        let (ox, oz) = b.rect.overlap(&fp);
+        return Some(if ox > 0 && oz > 0 {
+            format!(
+                "it overlaps {name} by {} × {}; keep off it",
+                fmt_m(i64::from(ox)),
+                fmt_m(i64::from(oz))
+            )
+        } else {
+            format!(
+                "its centre is closer than {} to {name}; the sim keeps a {}'s centre that far from it",
+                fmt_m(i64::from(f)),
+                b.design.slug()
+            )
+        });
+    }
+    if chair.iter().any(|r| r.intersects(&fp)) {
+        return Some(format!("its chair runs into {name}"));
+    }
+    if let Some(s) = o.seat() {
+        let seat = Rect::around(s, CHAIR_HALF_MM, CHAIR_HALF_MM);
+        if body.iter().any(|r| r.intersects(&seat)) {
+            return Some(format!(
+                "it stands on the seat of {name}, a workstation; keep {} around that seat free",
+                fmt_m(i64::from(2 * CHAIR_HALF_MM))
+            ));
+        }
+        if chair.iter().any(|r| r.intersects(&seat)) {
+            return Some(format!("its chair and the seat of {name} collide"));
+        }
+    }
+    None
+}
+
 fn table_rect(room: &Room, cat: &Catalogue) -> Rect {
     let (hx, hz) = cat.table.half();
     Rect::around(room.centre(), hx, hz)
@@ -396,12 +466,19 @@ fn doors(room: &Room, b: &Body) -> Vec<Issue> {
 }
 
 fn light(room: &Room, existing: &[Body], planned: &[Body]) -> Vec<Issue> {
-    let lights: Vec<Pos> = existing
+    let mut lights: Vec<Pos> = existing
         .iter()
         .chain(planned)
         .filter(|b| b.design.is_ceiling())
         .map(|b| b.pos)
         .collect();
+    // a player's floor design with a light lights from where it stands
+    lights.extend(
+        room.objects
+            .iter()
+            .filter(|o| o.is_floor() && o.lights > 0)
+            .map(ExistingObject::pos),
+    );
     let l2 = i64::from(LIGHT_REACH_MM) * i64::from(LIGHT_REACH_MM);
     let w2 = i64::from(WINDOW_REACH_MM) * i64::from(WINDOW_REACH_MM);
     let mut out = Vec::new();
@@ -588,6 +665,12 @@ fn walkability(room: &Room, cat: &Catalogue, existing: &[Body], planned: &[Body]
         .filter(|b| !b.design.is_ceiling())
         .map(|b| b.rect)
         .collect();
+    fixed.extend(
+        room.objects
+            .iter()
+            .filter(|o| o.is_floor())
+            .map(ExistingObject::rect),
+    );
     if room.table_seats() > 0 {
         fixed.push(table_rect(room, cat));
     }
@@ -617,6 +700,11 @@ fn walkability(room: &Room, cat: &Catalogue, existing: &[Body], planned: &[Body]
     for b in existing {
         if let Some(s) = b.seat {
             goals.push(Goal::Point(s, format!("the chair of {}", b.name())));
+        }
+    }
+    for o in &room.objects {
+        if let Some(s) = o.seat() {
+            goals.push(Goal::Point(s, format!("the seat of {}", object_name(o))));
         }
     }
     let mut out = Vec::new();
@@ -721,14 +809,21 @@ fn walkability(room: &Room, cat: &Catalogue, existing: &[Body], planned: &[Body]
 fn requirements(room: &Room, brief: &Brief, sol: &Solution) -> Vec<Requirement> {
     let screen_on = |desk: &DeskRef| -> bool {
         let planned = sol.items.iter().any(|it| {
-            it.design.desk_slot() == Some(crate::model::DeskSlot::Screen)
+            it.design.desk_slot() == Some(DeskSlot::Screen)
                 && matches!(&it.at, At::OnDesk { desk: d } if d == desk)
         });
         let existing = match desk {
-            DeskRef::Existing { id } => room.equipment.iter().any(|e| {
-                e.on_desk.as_deref() == Some(id.as_str())
-                    && e.design.desk_slot() == Some(crate::model::DeskSlot::Screen)
-            }),
+            DeskRef::Existing { id } => {
+                room.equipment.iter().any(|e| {
+                    e.on_desk.as_deref() == Some(id.as_str())
+                        && e.design.desk_slot() == Some(DeskSlot::Screen)
+                }) || room.objects.iter().any(|o| {
+                    o.screens > 0
+                        && o.on_desk
+                            .as_ref()
+                            .is_some_and(|d| d.desk == *id && d.slot == DeskSlot::Screen)
+                })
+            }
             DeskRef::Planned { .. } => false,
         };
         planned || existing
@@ -753,16 +848,21 @@ fn requirements(room: &Room, brief: &Brief, sol: &Solution) -> Vec<Requirement> 
             + sol.items.iter().filter(|it| f(it.design)).count();
         u32::try_from(n).unwrap_or(u32::MAX)
     };
+    let objects = |f: &dyn Fn(&ExistingObject) -> bool| -> u32 {
+        u32::try_from(room.objects.iter().filter(|o| f(o)).count()).unwrap_or(u32::MAX)
+    };
     Need::ALL
         .into_iter()
         .filter(|n| brief.wants(*n) > 0)
         .map(|need| {
             let have = match need {
-                Need::Workstations => {
-                    u32::try_from(desks.iter().filter(|d| screen_on(d)).count()).unwrap_or(0)
-                }
+                Need::Workstations => u32::try_from(desks.iter().filter(|d| screen_on(d)).count())
+                    .unwrap_or(0)
+                    .saturating_add(objects(&ExistingObject::is_workstation)),
+                // seats of objects seat nobody at the table yet (ADR-0088 decision 4)
                 Need::MeetingSeats => u32::try_from(room.table_seats()).unwrap_or(0),
-                Need::Storage => count(&|d| d == EquipmentDesign::ArchiveShelf),
+                Need::Storage => count(&|d| d == EquipmentDesign::ArchiveShelf)
+                    .saturating_add(objects(&|o| o.is_floor() && o.storage > 0)),
                 Need::WritingSurfaces => count(&|d| {
                     matches!(
                         d,
@@ -807,7 +907,7 @@ fn requirement_issues(room: &Room, reqs: &[Requirement]) -> Vec<Issue> {
                 IssueCode::RequirementMissing,
                 None,
                 format!(
-                    "the brief asks for {} workstations; the room will have {} (a workstation is a desk with a monitor or color-monitor on it)",
+                    "the brief asks for {} workstations; the room will have {} (a workstation is a desk with a monitor or color-monitor on it, or the CEO's own workstation design)",
                     r.wanted, r.have
                 ),
             ),

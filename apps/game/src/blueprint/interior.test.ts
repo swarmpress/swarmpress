@@ -90,6 +90,9 @@ describe('the fake office designer (the twin of agents::build::fake)', () => {
       replace: [{ index: 2, placement: { design: 'plant', anchor: 'wall:west' } }],
     })
     expect(standupAnswer(ROOM)).toEqual({ json: officeLayout(ROOM) })
+    // the CEO's own workstation counts: two desks for three (as the Rust twin)
+    const own = `${ROOM}\n- equipment:object-1: the CEO's own design, 1.5 m (west to east) × 0.75 m (north to south), at 1 m from the west wall, 1.5 m from the north wall; a workstation, its seat at 1 m from the west wall, 2.25 m from the north wall (keep 0.5 m around the seat free). Keep off it.`
+    expect(officeLayout(own).placements[0]).toEqual({ design: 'desk', anchor: 'window:0', count: 2, spacing: 4 })
     expect(standupAnswer('## Task: office layout fix\nPlacements to fix (change only these):\n0: {"design":"monitor","anchor":"placement:1"}')).toEqual({
       json: { replace: [{ index: 0, placement: { design: 'monitor', anchor: 'placement:1' } }] },
     })
@@ -139,10 +142,12 @@ describe.skipIf(!built)('with the real sim', () => {
     const item = (JSON.parse(sim.plan_json()) as { items: { id: string; kind: string; interior: unknown }[] }).items.find((i) => i.kind === 'interior')!
     expect(item.id).toBe(effects[0].work_item)
     expect(item.interior).toMatchObject({ room: 'room-6', items: 0, placed: 0, costCents: 0, refused: null })
-    const ctx = JSON.parse(sim.interior_context_json(item.id)!) as { room_id: string; room: { kind: string; doors: unknown[]; equipment: { design: string }[] } }
+    const ctx = JSON.parse(sim.interior_context_json(item.id)!) as { room_id: string; room: { kind: string; doors: unknown[]; equipment: { design: string }[]; objects: unknown[] } }
     expect(ctx.room_id).toBe('room-6')
     expect(ctx.room.kind).toBe('meeting-room')
     expect(ctx.room.equipment.some((e) => e.design === 'whiteboard')).toBe(true)
+    // the players' own designs in the room (ADR-0088): none here
+    expect(ctx.room.objects).toEqual([])
     expect(sim.interior_context_json('work-item-999')).toBeUndefined()
     // The room is being designed: a second request is refused.
     expect(sim.validate_command_json(commissionInteriorCommand('room-6', 13))).toMatch(/design in progress/)

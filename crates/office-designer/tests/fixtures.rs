@@ -222,6 +222,12 @@ fn slices_and_docs_are_generated_from_the_kit() {
         for e in &f.room.equipment {
             assert!(text.contains(&format!("equipment:{}", e.id)), "{name}");
         }
+        for o in &f.room.objects {
+            assert!(
+                text.contains(&format!("- equipment:{}: the CEO's own design", o.id)),
+                "{name}"
+            );
+        }
         assert!(text.contains("placement:N"));
     }
     // the slice follows the brief and the room
@@ -269,4 +275,65 @@ fn parse_errors_name_the_placement_and_the_vocabulary() {
     );
     let issues = Plan::from_json("not json").unwrap_err();
     assert!(issues[0].message.contains("not valid JSON"));
+}
+
+/// The players' own designs (ADR-0088): described to the model, anchored to
+/// like equipment (floor designs only), counted towards the brief.
+#[test]
+fn the_ceos_own_designs_are_described_anchored_and_counted() {
+    let cat = Catalogue::shipped();
+    let f = common::fixtures()
+        .into_iter()
+        .find(|(n, _)| *n == "studio")
+        .unwrap()
+        .1;
+    let doc = office_designer::room_doc(&f.room);
+    assert!(
+        doc.contains("- equipment:object-1: the CEO's own design, 1.5 m (west to east) × 0.75 m (north to south), at 1 m from the west wall, 1.5 m from the north wall; a workstation, its seat at 1 m from the west wall, 2.25 m from the north wall (keep 0.5 m around the seat free); it has a light. Keep off it."),
+        "{doc}"
+    );
+    assert!(
+        doc.contains("- equipment:object-3: the CEO's own design on equip-76's lamp slot (that slot is taken)."),
+        "{doc}"
+    );
+    let closed = validator(&plan_schema(
+        &slice(f.room.kind, &f.brief, cat),
+        Some(&f.room),
+    ));
+    let at =
+        |anchor: &str| serde_json::json!({"placements": [{"design": "plant", "anchor": anchor}]});
+    assert!(closed.is_valid(&at("equipment:object-1")));
+    assert!(closed.is_valid(&at("equipment:object-2")));
+    assert!(
+        !closed.is_valid(&at("equipment:object-3")),
+        "a desk-top design is no anchor"
+    );
+    let eval = evaluate(&f.room, &common::plan(&f.good), &f.brief, cat);
+    let have: Vec<(String, u32)> = eval
+        .requirements
+        .iter()
+        .map(|r| {
+            (
+                serde_json::to_value(r.need)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_owned(),
+                r.have,
+            )
+        })
+        .collect();
+    // the CEO's desk and the built-in desk with its new monitor; the CEO's shelf
+    assert_eq!(
+        have,
+        [
+            ("workstations".into(), 2),
+            ("storage".into(), 1),
+            ("plants".into(), 1)
+        ]
+    );
+    // a plant behind the CEO's desk is fine (one in its seat is not: the fixture)
+    let ok = Plan::from_json(r#"{"placements":[{"design":"plant","anchor":"equipment:object-1","side":"north","gap":5}]}"#).unwrap();
+    let e = evaluate(&f.room, &ok, &office_designer::Brief::default(), cat);
+    assert!(e.ok, "{:#?}", e.issues);
 }

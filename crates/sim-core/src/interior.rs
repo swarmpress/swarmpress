@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::commands::{Command, Placement};
 use crate::economy::BuildMode;
-use crate::equipment::{EquipmentKind, MAX_ITEMS_PER_ROOM};
+use crate::equipment::{DeskSlot, EquipmentKind, MAX_ITEMS_PER_ROOM};
 use crate::geom::{PosMm, Side, TILE_MM};
 use crate::ids::{EquipId, ProjectId, RoomId, StaffId, WorkItemId};
 use crate::inbox::{TicketKind, TicketSpec};
@@ -120,10 +120,48 @@ pub struct DesignerItem {
     pub on_desk: Option<String>,
 }
 
+/// A desk-top object's desk and slot, as the office designer sees it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DesignerDeskSpot {
+    /// `equip-3`.
+    pub desk: String,
+    /// `screen` or `lamp`.
+    pub slot: String,
+}
+
+/// A player's own design placed in the room (ADR-0087 decision 7,
+/// ADR-0088), as the office designer sees it: numbers only, never the
+/// design itself.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DesignerObject {
+    /// `object-3`.
+    pub id: String,
+    /// Footprint centre (a desk-top object's: its desk's), mm.
+    pub x_mm: i32,
+    pub z_mm: i32,
+    pub rot: u8,
+    /// `[w, d]` at turn 0, mm: studs × 62.5, rounded up (the sim's own
+    /// rectangle, in quarter millimetres, never reaches past it).
+    pub footprint_mm: [i32; 2],
+    /// A floor workstation: a home for staff.
+    pub workstation: bool,
+    /// Where its seat is, relative to the centre at turn 0, mm.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seat_at_mm: Option<[i32; 2]>,
+    /// A desk-top object's desk and slot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_desk: Option<DesignerDeskSpot>,
+    pub seats: u8,
+    pub lights: u8,
+    /// Shelf area, stud².
+    pub storage: u32,
+    pub screens: u8,
+}
+
 /// A room as the office designer plans for it: the JSON shape of
 /// `office_designer::Room` (millimetres; every door in its walls, its own
 /// and those other rooms open into it; the windows that face outside; its
-/// equipment). A view, never stored.
+/// equipment and the players' own designs in it). A view, never stored.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DesignerRoom {
     /// The room kind's slug.
@@ -135,6 +173,9 @@ pub struct DesignerRoom {
     pub doors: Vec<DesignerOpening>,
     pub windows: Vec<DesignerOpening>,
     pub equipment: Vec<DesignerItem>,
+    /// Absent in older JSON.
+    #[serde(default)]
+    pub objects: Vec<DesignerObject>,
 }
 
 const fn side_slug(s: Side) -> &'static str {
@@ -195,6 +236,41 @@ impl World {
                 on_desk: e.attached_to.map(|d| d.to_string()),
             })
             .collect();
+        // half up, as studs × 62.5 mm: the sim's exact side never exceeds it
+        let stud_mm = |n: u32| i32::try_from((u64::from(n) * 125).div_ceil(2)).unwrap_or(i32::MAX);
+        let objects = b
+            .objects
+            .values()
+            .filter(|o| o.room == id)
+            .map(|o| DesignerObject {
+                id: o.id.to_string(),
+                x_mm: o.pos.x,
+                z_mm: o.pos.z,
+                rot: o.rot,
+                footprint_mm: [
+                    stud_mm(o.summary.footprint[0]),
+                    stud_mm(o.summary.footprint[1]),
+                ],
+                workstation: o.is_workstation(),
+                seat_at_mm: if o.is_workstation() {
+                    o.summary.seat_at
+                } else {
+                    None
+                },
+                on_desk: o.on_desk.map(|(desk, slot)| DesignerDeskSpot {
+                    desk: desk.to_string(),
+                    slot: match slot {
+                        DeskSlot::Screen => "screen",
+                        DeskSlot::Lamp => "lamp",
+                    }
+                    .to_string(),
+                }),
+                seats: o.summary.seats,
+                lights: o.summary.lights,
+                storage: o.summary.storage,
+                screens: o.summary.screens,
+            })
+            .collect();
         Some(DesignerRoom {
             kind: r.kind.slug().to_string(),
             x_mm: r.rect.x * TILE_MM,
@@ -204,6 +280,7 @@ impl World {
             doors,
             windows,
             equipment,
+            objects,
         })
     }
 

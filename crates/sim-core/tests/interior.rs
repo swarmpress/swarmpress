@@ -606,3 +606,105 @@ fn hiring_twice_never_makes_a_nameless_designer() {
     w.add_candidate_for_role(Role::OfficeDesigner);
     assert!(designers(&w).is_empty());
 }
+
+/// The office designer sees the players' own designs in the room (ADR-0088):
+/// numbers only, in id order; a desk-top design names its desk and slot; a
+/// footprint is studs × 62.5 mm rounded up; older JSON without objects parses.
+#[test]
+fn the_designer_room_lists_the_players_objects() {
+    use sim_core::interior::DesignerRoom;
+    use sim_core::objects::{Mount, ObjectSummary};
+    let (mut w, room) = world(BuildMode::Sandbox, false);
+    let summary = |footprint: [u32; 2], mount: Mount| ObjectSummary {
+        footprint,
+        height: 30,
+        mount,
+        seats: 0,
+        workstation: false,
+        seat_at: None,
+        lights: 0,
+        storage: 0,
+        screens: 0,
+        parts: 40,
+        cost: 900,
+    };
+    w.apply(Command::PlaceEquipment {
+        kind: EquipmentKind::Desk,
+        placement: Placement::Floor {
+            pos: PosMm::new(30_000, 12_000),
+            rot: 0,
+        },
+    })
+    .unwrap();
+    let desk = *w.building.equipment.keys().last().unwrap();
+    // a player's desk turned a quarter: its seat 750 mm south at turn 0
+    w.apply(Command::PlaceObject {
+        design: "d5".repeat(32),
+        pos: PosMm::new(28_000, 11_000),
+        rot: 1,
+        summary: ObjectSummary {
+            workstation: true,
+            seat_at: Some([0, 750]),
+            seats: 1,
+            screens: 1,
+            lights: 1,
+            ..summary([24, 12], Mount::Floor)
+        },
+    })
+    .unwrap();
+    w.apply(Command::PlaceObject {
+        design: "5e".repeat(32),
+        pos: PosMm::new(31_000, 9_000),
+        rot: 0,
+        summary: ObjectSummary {
+            storage: 96,
+            ..summary([17, 9], Mount::Floor)
+        },
+    })
+    .unwrap();
+    // a mug on the desk: the lamp slot
+    w.apply(Command::PlaceObjectOnDesk {
+        design: "70".repeat(32),
+        desk,
+        summary: summary([4, 4], Mount::Surface),
+    })
+    .unwrap();
+    let r = w.designer_room(room).unwrap();
+    let ids: Vec<String> = w
+        .building
+        .objects
+        .values()
+        .filter(|o| o.room == room)
+        .map(|o| o.id.to_string())
+        .collect();
+    assert_eq!(r.objects.len(), 3);
+    let v = serde_json::to_value(&r.objects).unwrap();
+    assert_eq!(
+        v,
+        serde_json::json!([
+            {"id": ids[0], "x_mm": 28_000, "z_mm": 11_000, "rot": 1, "footprint_mm": [1_500, 750],
+             "workstation": true, "seat_at_mm": [0, 750], "seats": 1, "lights": 1, "storage": 0, "screens": 1},
+            {"id": ids[1], "x_mm": 31_000, "z_mm": 9_000, "rot": 0, "footprint_mm": [1_063, 563],
+             "workstation": false, "seats": 0, "lights": 0, "storage": 96, "screens": 0},
+            {"id": ids[2], "x_mm": 30_000, "z_mm": 12_000, "rot": 0, "footprint_mm": [250, 250],
+             "workstation": false, "on_desk": {"desk": desk.to_string(), "slot": "lamp"},
+             "seats": 0, "lights": 0, "storage": 0, "screens": 0}
+        ])
+    );
+    println!("{}", serde_json::to_string_pretty(&r.objects).unwrap());
+    // older JSON (before objects) still parses
+    let mut old = serde_json::to_value(&r).unwrap();
+    old.as_object_mut().unwrap().remove("objects");
+    let back: DesignerRoom = serde_json::from_value(old).unwrap();
+    assert!(back.objects.is_empty());
+    assert_eq!(back.equipment, r.equipment);
+    // other rooms do not see them
+    let other = w
+        .building
+        .rooms
+        .keys()
+        .find(|k| **k != room)
+        .copied()
+        .unwrap();
+    assert!(w.designer_room(other).unwrap().objects.is_empty());
+}

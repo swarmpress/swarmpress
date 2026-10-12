@@ -266,7 +266,18 @@ fn attach(
                 .equipment
                 .iter()
                 .find(|e| e.on_desk.as_deref() == Some(id) && e.design.desk_slot() == Some(slot))
-                .map(|e| format!("equipment:{} ({})", e.id, e.design.slug())),
+                .map(|e| format!("equipment:{} ({})", e.id, e.design.slug()))
+                .or_else(|| {
+                    // a player's desk-top design holds the slot too (ADR-0088 decision 3)
+                    room.objects
+                        .iter()
+                        .find(|o| {
+                            o.on_desk
+                                .as_ref()
+                                .is_some_and(|d| d.desk == *id && d.slot == slot)
+                        })
+                        .map(crate::check::object_name)
+                }),
             DeskRef::Planned { .. } => None,
         };
         let taken_planned = items
@@ -361,6 +372,32 @@ fn target(
                 }
             }
         }
+        Anchor::Equipment(id) if room.existing(id).is_none() && room.object(id).is_some() => {
+            let o = room
+                .object(id)
+                .ok_or_else(|| rel(i, format!("{anchor} is not an item")))?;
+            if let Some(d) = &o.on_desk {
+                return Err(rel(
+                    i,
+                    format!(
+                        "equipment:{} is the CEO's own design on {}; anchor to equipment:{} instead",
+                        o.id, d.desk, d.desk
+                    ),
+                ));
+            }
+            // a workstation's front is its seat's side
+            let front = o
+                .seat()
+                .and_then(|s| toward(o.pos(), s))
+                .unwrap_or(Side::of_rot(o.rot));
+            Ok(Target {
+                rect: o.rect(),
+                centre: o.pos(),
+                front,
+                desks: Vec::new(),
+                name: crate::check::object_name(o),
+            })
+        }
         Anchor::Equipment(id) => {
             let e = room.existing(id).ok_or_else(|| {
                 let ids: Vec<String> = room
@@ -368,6 +405,12 @@ fn target(
                     .iter()
                     .filter(|e| e.on_desk.is_none())
                     .map(|e| format!("equipment:{}", e.id))
+                    .chain(
+                        room.objects
+                            .iter()
+                            .filter(|o| o.is_floor())
+                            .map(|o| format!("equipment:{}", o.id)),
+                    )
                     .collect();
                 let have = if ids.is_empty() {
                     "the room has no equipment".to_string()

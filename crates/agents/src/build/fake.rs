@@ -8,6 +8,9 @@
 use serde_json::{json, Map, Value};
 
 const SIDES: [&str; 4] = ["north", "east", "south", "west"];
+/// What the fake notes for the CEO's own workstation and storage designs.
+const OWN_WORKSTATION: &str = "own-workstation";
+const OWN_STORAGE: &str = "own-storage";
 
 fn neighbours(side: &str) -> [&'static str; 2] {
     match side {
@@ -58,6 +61,16 @@ fn read(prompt: &str) -> Seen {
             }
         }
         if let Some(rest) = line.strip_prefix("- equipment:") {
+            // the CEO's own designs (ADR-0088): what they provide, not a slug
+            if rest.contains(": the CEO's own design") {
+                if rest.contains("; a workstation") {
+                    s.existing.push(OWN_WORKSTATION.to_string());
+                }
+                if rest.contains("it has storage") {
+                    s.existing.push(OWN_STORAGE.to_string());
+                }
+                continue;
+            }
             if let Some(design) = rest.split(": ").nth(1).and_then(|d| d.split(' ').next()) {
                 s.existing.push(design.to_string());
             }
@@ -118,7 +131,10 @@ pub fn layout(prompt: &str) -> Value {
         side
     };
     let mut placements: Vec<Value> = Vec::new();
-    let desks = s.need("workstations", &["monitor", "color-monitor"]);
+    let desks = s.need(
+        "workstations",
+        &["monitor", "color-monitor", OWN_WORKSTATION],
+    );
     if desks > 0 {
         let by_window = s
             .windows
@@ -135,7 +151,7 @@ pub fn layout(prompt: &str) -> Value {
         placements.push(row("desk", anchor, desks, 4));
         placements.push(json!({"design": "monitor", "anchor": format!("placement:{at}")}));
     }
-    let shelves = s.need("storage", &["archive-shelf"]);
+    let shelves = s.need("storage", &["archive-shelf", OWN_STORAGE]);
     if shelves > 0 {
         let wall = next_wall(&mut used);
         placements.push(row("archive-shelf", format!("wall:{wall}"), shelves, 2));
@@ -235,6 +251,11 @@ mod tests {
                 {"design": "plant", "anchor": "wall:south", "from": "wall:west"}
             ]})
         );
+        // the CEO's own workstation counts: two desks for three
+        let own = format!(
+            "{ROOM}\n- equipment:object-1: the CEO's own design, 1.5 m (west to east) × 0.75 m (north to south), at 1 m from the west wall, 1.5 m from the north wall; a workstation, its seat at 1 m from the west wall, 2.25 m from the north wall (keep 0.5 m around the seat free). Keep off it."
+        );
+        assert_eq!(layout(&own)["placements"][0]["count"], 2);
         let f = fix("x\nPlacements to fix (change only these):\n2: {\"design\":\"plant\",\"anchor\":\"wall:south\",\"from\":\"wall:west\"}\n\nAnswer");
         assert_eq!(
             f,

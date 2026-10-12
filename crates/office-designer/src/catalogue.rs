@@ -339,6 +339,51 @@ pub fn room_doc(room: &Room) -> String {
             Side::of_rot(e.rot).slug()
         );
     }
+    for o in &room.objects {
+        if let Some(d) = &o.on_desk {
+            let slot = match d.slot {
+                crate::model::DeskSlot::Screen => "screen",
+                crate::model::DeskSlot::Lamp => "lamp",
+            };
+            let _ = write!(
+                s,
+                "\n- equipment:{}: the CEO's own design on {}'s {slot} slot (that slot is taken).",
+                o.id, d.desk
+            );
+            continue;
+        }
+        let fp = o.rect();
+        let p = o.pos();
+        let _ = write!(
+            s,
+            "\n- equipment:{}: the CEO's own design, {} (west to east) × {} (north to south), at {} from the west wall, {} from the north wall",
+            o.id,
+            fmt_m(i64::from(fp.x1 - fp.x0)),
+            fmt_m(i64::from(fp.z1 - fp.z0)),
+            fmt_m(i64::from(p.x - r.x0)),
+            fmt_m(i64::from(p.z - r.z0)),
+        );
+        if let Some(seat) = o.seat() {
+            let _ = write!(
+                s,
+                "; a workstation, its seat at {} from the west wall, {} from the north wall (keep {} around the seat free)",
+                fmt_m(i64::from(seat.x - r.x0)),
+                fmt_m(i64::from(seat.z - r.z0)),
+                fmt_m(i64::from(2 * crate::model::CHAIR_HALF_MM)),
+            );
+        }
+        let mut has = Vec::new();
+        if o.storage > 0 {
+            has.push("storage");
+        }
+        if o.lights > 0 {
+            has.push("a light");
+        }
+        if !has.is_empty() {
+            let _ = write!(s, "; it has {}", has.join(" and "));
+        }
+        s.push_str(". Keep off it.");
+    }
     s
 }
 

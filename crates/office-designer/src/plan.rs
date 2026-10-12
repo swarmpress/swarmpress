@@ -341,7 +341,18 @@ pub fn anchor_pattern(room: Option<&Room>) -> String {
             if !r.doors.is_empty() {
                 alts.push(format!("door:({})", alternation(&ix(r.doors.len()))));
             }
-            let ids: Vec<String> = r.equipment.iter().map(|e| e.id.clone()).collect();
+            // the players' floor designs anchor like equipment (`equipment:object-3`)
+            let ids: Vec<String> = r
+                .equipment
+                .iter()
+                .map(|e| e.id.clone())
+                .chain(
+                    r.objects
+                        .iter()
+                        .filter(|o| o.is_floor())
+                        .map(|o| o.id.clone()),
+                )
+                .collect();
             if !ids.is_empty() {
                 alts.push(format!("equipment:({})", alternation(&ids)));
             }

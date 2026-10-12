@@ -214,6 +214,16 @@ model with an 8–16K context and no vision.
 4. **Closed vocabulary.** Design ids, colour ids and relation kinds are enums in the schemas, so an
    unknown id is a validation error returned to the model (rule 5's closed world).
 
+The room the designer plans for is the sim's own view of it (`World::designer_room`, the JSON of
+`office_designer::Room`): its size, doors and windows, its equipment and, since ADR-0088, the
+players' own designs placed in it, as numbers only (`objects`: id, centre, turn, footprint in mm,
+whether it is a workstation and where its seat is, the desk and slot of a desk-top design, and its
+seats, lights, storage and screens). The model reads them as `equipment:object-N` lines and may
+anchor to a floor design like to equipment; the checks keep planned items off an object's footprint
+and a workstation's seat square exactly as the sim's `PlaceEquipment` does, keep its seat reachable,
+treat a slot a desk-top design holds as taken, and count workstation designs (and shelves of
+designs) towards the brief.
+
 ### 7.2 The build job, in stages
 
 | Stage | Model call | Output |

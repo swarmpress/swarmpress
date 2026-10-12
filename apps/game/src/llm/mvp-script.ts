@@ -687,6 +687,12 @@ export function officeLayout(prompt: string): { placements: Record<string, unkno
       if (w) windows.push([side, Number(w[1])])
     }
     if (line.startsWith('- equipment:')) {
+      // the CEO's own designs (ADR-0088): what they provide, not a slug
+      if (line.includes(": the CEO's own design")) {
+        if (line.includes('; a workstation')) existing.push('own-workstation')
+        if (line.includes('it has storage')) existing.push('own-storage')
+        continue
+      }
       const design = line.slice('- equipment:'.length).split(': ')[1]?.split(' ')[0]
       if (design) existing.push(design)
     }
@@ -702,7 +708,7 @@ export function officeLayout(prompt: string): { placements: Record<string, unkno
   }
   const row = (design: string, anchor: string, n: number, spacing: number) => (n > 1 ? { design, anchor, count: Math.min(n, 8), spacing } : { design, anchor })
   const placements: Record<string, unknown>[] = []
-  const desks = need('workstations', ['monitor', 'color-monitor'])
+  const desks = need('workstations', ['monitor', 'color-monitor', 'own-workstation'])
   if (desks > 0) {
     const byWindow = windows.find(([side]) => free.includes(side))
     let anchor: string
@@ -714,7 +720,7 @@ export function officeLayout(prompt: string): { placements: Record<string, unkno
     placements.push(row('desk', anchor, desks, 4))
     placements.push({ design: 'monitor', anchor: `placement:${at}` })
   }
-  const shelves = need('storage', ['archive-shelf'])
+  const shelves = need('storage', ['archive-shelf', 'own-storage'])
   if (shelves > 0) placements.push(row('archive-shelf', `wall:${nextWall()}`, shelves, 2))
   const boards = need('writing_surfaces', ['whiteboard', 'mood-board-wall'])
   if (boards > 0) placements.push(row('whiteboard', `wall:${nextWall()}`, boards, 4))

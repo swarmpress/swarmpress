@@ -1,0 +1,24 @@
+{
+  "name": "A newsroom the CEO furnished with designs of their own (ADR-0088)",
+  "sim_room": "studio",
+  "room": {"kind":"newsroom","x_mm":28000,"z_mm":0,"w_mm":4000,"d_mm":6000,"doors":[{"side":"south","at_mm":1000,"width_mm":1000}],"windows":[{"side":"north","at_mm":1000,"width_mm":2000}],"equipment":[{"id":"equip-75","design":"ceiling-light","x_mm":30000,"z_mm":3000,"rot":0},{"id":"equip-76","design":"desk","x_mm":31000,"z_mm":2000,"rot":1}],"objects":[{"id":"object-1","x_mm":29000,"z_mm":1500,"rot":0,"footprint_mm":[1500,750],"workstation":true,"seat_at_mm":[0,750],"seats":1,"lights":1,"storage":0,"screens":1},{"id":"object-2","x_mm":28750,"z_mm":3500,"rot":1,"footprint_mm":[1063,563],"workstation":false,"seats":0,"lights":0,"storage":120,"screens":0},{"id":"object-3","x_mm":31000,"z_mm":2000,"rot":1,"footprint_mm":[250,250],"workstation":false,"on_desk":{"desk":"equip-76","slot":"lamp"},"seats":0,"lights":0,"storage":0,"screens":0}]},
+  "brief": {"workstations": 2, "storage": 1, "plants": 1},
+  "good": {"placements": [
+    {"design": "monitor", "anchor": "equipment:equip-76"},
+    {"design": "plant", "anchor": "equipment:object-2", "side": "south"}
+  ]},
+  "bad": [
+    {"why": "the desk's lamp slot holds the CEO's mug", "plan": {"placements": [{"design": "monitor", "anchor": "equipment:equip-76"}, {"design": "desk-lamp", "anchor": "equipment:equip-76"}, {"design": "plant", "anchor": "equipment:object-2", "side": "south"}]},
+     "codes": ["slot-taken"], "placement": 1, "code": "slot-taken"},
+    {"why": "a plant on the CEO's own desk", "plan": {"placements": [{"design": "monitor", "anchor": "equipment:equip-76"}, {"design": "plant", "anchor": "wall:north", "from": "wall:west", "offset": 8, "gap": 16}]},
+     "codes": ["collision"], "placement": 1, "code": "collision"},
+    {"why": "a shelf on the seat of the CEO's own desk", "plan": {"placements": [{"design": "monitor", "anchor": "equipment:equip-76"}, {"design": "plant", "anchor": "equipment:object-2", "side": "south"}, {"design": "archive-shelf", "anchor": "equipment:object-1", "side": "south", "gap": 8}]},
+     "codes": ["collision", "unreachable"], "placement": 2, "code": "collision"},
+    {"why": "a shelf over the CEO's own shelf", "plan": {"placements": [{"design": "monitor", "anchor": "equipment:equip-76"}, {"design": "plant", "anchor": "equipment:object-2", "side": "south"}, {"design": "archive-shelf", "anchor": "wall:west", "from": "wall:north", "offset": 40, "facing": "east"}]},
+     "codes": ["collision"], "placement": 2, "code": "collision"},
+    {"why": "a monitor on the CEO's desk design (only built-in desks have slots)", "plan": {"placements": [{"design": "monitor", "anchor": "equipment:object-1"}, {"design": "plant", "anchor": "equipment:object-2", "side": "south"}]},
+     "codes": ["not-a-desk", "requirement-missing"], "placement": 0, "code": "not-a-desk"},
+    {"why": "the CEO's design counts as a workstation: three need one more", "brief": {"workstations": 3, "storage": 1, "plants": 1}, "plan": {"placements": [{"design": "monitor", "anchor": "equipment:equip-76"}, {"design": "plant", "anchor": "equipment:object-2", "side": "south"}]},
+     "codes": ["requirement-missing"]}
+  ]
+}

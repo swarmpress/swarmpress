@@ -15,6 +15,7 @@ use sim_core::commands::{Command, Placement};
 use sim_core::equipment::{DeskSlot, EquipmentKind};
 use sim_core::geom::{PosMm, TileRect};
 use sim_core::ids::EquipId;
+use sim_core::objects::{Mount, ObjectSummary};
 use sim_core::World;
 
 fn kind(d: EquipmentDesign) -> EquipmentKind {
@@ -72,6 +73,13 @@ fn the_mirrored_rules_are_the_sims() {
     );
     assert_eq!(model::TABLE_SEATS, sim_core::staff::ROUND_TABLE_SEATS);
     assert_eq!(model::TILE_MM, sim_core::geom::TILE_MM);
+    assert_eq!(model::CHAIR_HALF_MM, sim_core::objects::CHAIR_HALF_MM);
+    for rot in 0..4 {
+        assert_eq!(
+            model::turn_offset([100, 40], rot),
+            sim_core::objects::turn_offset([100, 40], rot)
+        );
+    }
     for rot in 0..4 {
         let p = sim_core::equipment::seat_pos(PosMm::new(5_000, 7_000), rot);
         assert_eq!(seat_pos(Pos::new(5_000, 7_000), rot), Pos::new(p.x, p.z));
@@ -87,6 +95,8 @@ fn the_fixture_rooms_are_the_sims_rooms() {
         };
         let rect = common::sim_rect(sim);
         assert_eq!(common::room_input(&w, rect), f.room, "{name}");
+        // the JSON the sim hands the orchestrator (`World::designer_room`) is the same room
+        assert_eq!(common::designer_room(&w, rect), f.room, "{name}");
         let r = &w.building.rooms[&common::room_id(&w, rect)];
         assert_eq!(f.room.capacity(), i64::from(r.capacity()), "{name}");
     }
@@ -184,7 +194,21 @@ fn random_plan(g: &mut Lcg, room: &office_designer::Room) -> Plan {
     ];
     let designs: Vec<EquipmentDesign> = EquipmentDesign::ALL
         .into_iter()
-        .filter(|d| d.desk_slot().is_none() && d.allowed_in(room.kind))
+        .filter(|d| {
+            (d.desk_slot().is_none() || !room.objects.is_empty()) && d.allowed_in(room.kind)
+        })
+        .collect();
+    // what an item anchor may name: equipment and the players' floor designs
+    let items: Vec<String> = room
+        .equipment
+        .iter()
+        .map(|e| e.id.clone())
+        .chain(
+            room.objects
+                .iter()
+                .filter(|o| o.is_floor())
+                .map(|o| o.id.clone()),
+        )
         .collect();
     let n = 1 + g.next(3);
     let mut list = Vec::new();
@@ -193,10 +217,9 @@ fn random_plan(g: &mut Lcg, room: &office_designer::Room) -> Plan {
         let anchor = match g.next(5) {
             0 => "room-centre".to_string(),
             1 if i > 0 => format!("placement:{}", g.next(i)),
-            2 if !room.equipment.is_empty() => {
-                let e = &room.equipment
-                    [usize::try_from(g.next(room.equipment.len() as u64)).unwrap_or(0)];
-                format!("equipment:{}", e.id)
+            2 if !items.is_empty() => {
+                let e = &items[usize::try_from(g.next(items.len() as u64)).unwrap_or(0)];
+                format!("equipment:{e}")
             }
             _ => walls[usize::try_from(g.next(4)).unwrap_or(0)].to_string(),
         };
@@ -223,9 +246,107 @@ fn random_plan(g: &mut Lcg, room: &office_designer::Room) -> Plan {
     Plan::from_value(&serde_json::json!({ "placements": list })).expect("generated plan parses")
 }
 
+/// Furnishes a room of `w` at random with what the sim accepts: a desk or
+/// two, the players' floor designs (some of them workstations, their seat
+/// somewhere within reach) and desk-top designs on the room's desks.
+/// Returns how many objects stand in the room.
+fn random_objects(g: &mut Lcg, w: &mut World, rect: TileRect) -> usize {
+    let room = common::room_id(w, rect);
+    let spot = |g: &mut Lcg| {
+        let (x0, z0) = (rect.x * 1_000, rect.z * 1_000);
+        let x =
+            x0 + i32::try_from(g.next(u64::try_from(rect.w).unwrap_or(1) * 8)).unwrap_or(0) * 125;
+        let z =
+            z0 + i32::try_from(g.next(u64::try_from(rect.d).unwrap_or(1) * 8)).unwrap_or(0) * 125;
+        PosMm::new(x, z)
+    };
+    for _ in 0..g.next(3) {
+        let pos = spot(g);
+        let rot = u8::try_from(g.next(4)).unwrap_or(0);
+        let _ = w.apply(Command::PlaceEquipment {
+            kind: EquipmentKind::Desk,
+            placement: Placement::Floor { pos, rot },
+        });
+    }
+    for n in 0..(2 + g.next(8)) {
+        let mut s = ObjectSummary {
+            footprint: [
+                u32::try_from(2 + g.next(30)).unwrap_or(2),
+                u32::try_from(2 + g.next(30)).unwrap_or(2),
+            ],
+            height: 30,
+            mount: Mount::Floor,
+            seats: 0,
+            workstation: false,
+            seat_at: None,
+            lights: u8::try_from(g.next(2)).unwrap_or(0),
+            storage: u32::try_from(g.next(2) * 100).unwrap_or(0),
+            screens: u8::try_from(g.next(2)).unwrap_or(0),
+            parts: 50,
+            cost: 1_000,
+        };
+        let design = common::design_hash(u8::try_from(n).unwrap_or(0));
+        if g.next(4) == 0 {
+            // a desk-top design on one of the room's desks
+            let desks: Vec<EquipId> = w
+                .building
+                .equipment
+                .values()
+                .filter(|e| e.room == room && e.kind == EquipmentKind::Desk)
+                .map(|e| e.id)
+                .collect();
+            if desks.is_empty() {
+                continue;
+            }
+            s.mount = Mount::Surface;
+            s.footprint = [4, 4];
+            let desk = desks[usize::try_from(g.next(desks.len() as u64)).unwrap_or(0)];
+            let _ = w.apply(Command::PlaceObjectOnDesk {
+                design,
+                desk,
+                summary: s,
+            });
+            continue;
+        }
+        if g.next(2) == 0 {
+            // a workstation: its seat in front, behind or beside it, within reach
+            let (hw, hd) = (
+                i32::try_from(s.footprint[0] * 125 / 4).unwrap_or(0),
+                i32::try_from(s.footprint[1] * 125 / 4).unwrap_or(0),
+            );
+            let out = i32::try_from(g.next(900)).unwrap_or(0);
+            let along = i32::try_from(g.next(200)).unwrap_or(0) - 100;
+            s.workstation = true;
+            s.seats = 1;
+            s.seat_at = Some(match g.next(4) {
+                0 => [along, hd + out],
+                1 => [along, -hd - out],
+                2 => [hw + out, along],
+                _ => [-hw - out, along],
+            });
+        }
+        let pos = spot(g);
+        let rot = u8::try_from(g.next(4)).unwrap_or(0);
+        let _ = w.apply(Command::PlaceObject {
+            design,
+            pos,
+            rot,
+            summary: s,
+        });
+    }
+    w.building
+        .objects
+        .values()
+        .filter(|o| o.room == room)
+        .count()
+}
+
 /// The checks are at least as strict as the sim: whenever the designer
 /// reports none of the issues the sim also judges (walls, collisions, room
-/// kind, items per room), the sim accepts every command.
+/// kind, items per room), the sim accepts every command. Every other case
+/// first furnishes the room at random with the players' own designs (and a
+/// desk or two) and plans for the room as the sim hands it over
+/// (`World::designer_room`). `PROPTEST_CASES` sets the cases per room (250).
 #[test]
 fn whatever_the_designer_accepts_the_sim_accepts() {
     let base = common::world();
@@ -237,26 +358,59 @@ fn whatever_the_designer_accepts_the_sim_accepts() {
         IssueCode::WrongRoom,
         IssueCode::TooManyItems,
     ];
+    let cases: usize = std::env::var("PROPTEST_CASES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(250);
     let mut g = Lcg(0x5eed);
     let mut accepted = 0;
     let mut flagged = 0;
+    let (mut with_objects, mut objects, mut by_objects) = (0, 0, 0);
     for (_, f) in common::fixtures() {
         let Some(sim) = f.sim_room.as_deref() else {
             continue;
         };
-        for _ in 0..250 {
-            let plan = random_plan(&mut g, &f.room);
-            let eval = evaluate(&f.room, &plan, &Brief::default(), cat);
+        let rect = common::sim_rect(sim);
+        for n in 0..cases {
+            let mut w = base.clone();
+            let room = if n % 2 == 1 {
+                objects += random_objects(&mut g, &mut w, rect);
+                common::designer_room(&w, rect)
+            } else {
+                f.room.clone()
+            };
+            let plan = random_plan(&mut g, &room);
+            let eval = evaluate(&room, &plan, &Brief::default(), cat);
             if eval.errors().any(|i| sim_judges.contains(&i.code)) {
                 flagged += 1;
+                if eval
+                    .errors()
+                    .any(|i| i.message.contains("the CEO's own design"))
+                {
+                    by_objects += 1;
+                }
                 continue;
             }
-            let mut w = base.clone();
-            apply(&mut w, common::sim_rect(sim), &eval.items)
-                .unwrap_or_else(|e| panic!("{}\n{e}", plan.to_json()));
+            apply(&mut w, rect, &eval.items).unwrap_or_else(|e| {
+                panic!(
+                    "{}\n{}\n{e}",
+                    serde_json::to_string(&room).unwrap_or_default(),
+                    plan.to_json()
+                )
+            });
             accepted += eval.items.len();
+            if !room.objects.is_empty() {
+                with_objects += eval.items.len();
+            }
         }
     }
-    assert!(accepted > 300, "accepted {accepted}");
-    assert!(flagged > 100, "flagged {flagged}");
+    let scale = cases / 250;
+    assert!(accepted > 300 * scale, "accepted {accepted}");
+    assert!(flagged > 100 * scale, "flagged {flagged}");
+    assert!(objects > 500 * scale, "objects placed {objects}");
+    assert!(
+        with_objects > 100 * scale,
+        "accepted with objects {with_objects}"
+    );
+    assert!(by_objects > 50 * scale, "flagged for objects {by_objects}");
 }

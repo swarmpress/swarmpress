@@ -29,7 +29,7 @@
 //!     kind: RoomKind::Newsroom, x_mm: 0, z_mm: 0, w_mm: 6000, d_mm: 5000,
 //!     doors: vec![Opening { side: Side::South, at_mm: 1000, width_mm: 1000 }],
 //!     windows: vec![Opening { side: Side::North, at_mm: 1000, width_mm: 4000 }],
-//!     equipment: vec![],
+//!     equipment: vec![], objects: vec![],
 //! };
 //! let plan = Plan::from_json(r#"{"placements": [
 //!   {"design": "desk", "anchor": "wall:north", "count": 3, "spacing": 4},
@@ -58,7 +58,10 @@ pub use catalogue::{
 };
 pub use check::{check, evaluate, Evaluation, Requirement};
 pub use issue::{Issue, IssueCode, Severity};
-pub use model::{EquipmentDesign, ExistingItem, Opening, Pos, Rect, Room, RoomKind, Side};
+pub use model::{
+    EquipmentDesign, ExistingItem, ExistingObject, ObjectOnDesk, Opening, Pos, Rect, Room,
+    RoomKind, Side,
+};
 pub use plan::{fix_schema, plan_schema, Anchor, Facing, Placement, Plan};
 pub use repair::{apply_fix, next_step, PlanFix, RepairTask, Step, MAX_REPAIR_ROUNDS};
 pub use solve::{solve, At, DeskRef, Solution, SolvedItem};

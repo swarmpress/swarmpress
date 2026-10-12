@@ -415,6 +415,111 @@ impl ExistingItem {
     }
 }
 
+/// A desk-top object's desk and the slot it takes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObjectOnDesk {
+    /// The desk's id (`equip-3`).
+    pub desk: String,
+    pub slot: DeskSlot,
+}
+
+/// A player's own kit design already placed in the room (ADR-0087 decision
+/// 7, ADR-0088; the sim's `DesignerObject`): numbers only. A floor object
+/// stands on its turned footprint and, if it is a workstation, keeps its
+/// seat's square free like a desk's chair; a desk-top object takes a slot
+/// of an existing desk and no floor.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExistingObject {
+    /// The sim's id (`object-3`).
+    pub id: String,
+    pub x_mm: i32,
+    pub z_mm: i32,
+    #[serde(default)]
+    pub rot: u8,
+    /// `[w, d]` at turn 0, mm (studs × 62.5, rounded up).
+    pub footprint_mm: [i32; 2],
+    #[serde(default)]
+    pub workstation: bool,
+    /// The seat relative to the centre at turn 0, mm.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seat_at_mm: Option<[i32; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_desk: Option<ObjectOnDesk>,
+    #[serde(default)]
+    pub seats: u8,
+    #[serde(default)]
+    pub lights: u8,
+    /// Shelf area, stud².
+    #[serde(default)]
+    pub storage: u32,
+    #[serde(default)]
+    pub screens: u8,
+}
+
+/// The sim's `CHAIR_HALF_MM`: half the side of the square a desk's chair and
+/// a workstation object's seat keep free.
+pub const CHAIR_HALF_MM: i32 = 250;
+
+/// `offset` turned `rot` quarter turns clockwise seen from above (the sim's
+/// `objects::turn_offset`).
+pub const fn turn_offset(offset: [i32; 2], rot: u8) -> [i32; 2] {
+    let [x, z] = offset;
+    match rot % 4 {
+        0 => [x, z],
+        1 => [-z, x],
+        2 => [-x, -z],
+        _ => [z, -x],
+    }
+}
+
+impl ExistingObject {
+    pub fn pos(&self) -> Pos {
+        Pos::new(self.x_mm, self.z_mm)
+    }
+
+    /// On the floor (not on a desk).
+    pub fn is_floor(&self) -> bool {
+        self.on_desk.is_none()
+    }
+
+    /// A floor workstation: a home for staff, with a seat.
+    pub fn is_workstation(&self) -> bool {
+        self.is_floor() && self.workstation && self.seat_at_mm.is_some()
+    }
+
+    /// Its turned footprint, rounded outward to whole millimetres (never
+    /// smaller than the sim's).
+    pub fn rect(&self) -> Rect {
+        let [w, d] = self.footprint_mm;
+        let (w, d) = if self.rot & 1 == 0 { (w, d) } else { (d, w) };
+        Rect::around(self.pos(), (w + 1) / 2, (d + 1) / 2)
+    }
+
+    /// Where a person sits at it, if it is a workstation.
+    pub fn seat(&self) -> Option<Pos> {
+        if !self.is_workstation() {
+            return None;
+        }
+        let [dx, dz] = turn_offset(self.seat_at_mm?, self.rot);
+        Some(Pos::new(self.x_mm + dx, self.z_mm + dz))
+    }
+
+    /// The floor it takes, as the sim judges it: its footprint and its
+    /// seat's square. None for a desk-top object.
+    pub fn floor_rects(&self) -> Vec<Rect> {
+        if !self.is_floor() {
+            return Vec::new();
+        }
+        let mut v = vec![self.rect()];
+        if let Some(s) = self.seat() {
+            v.push(Rect::around(s, CHAIR_HALF_MM, CHAIR_HALF_MM));
+        }
+        v
+    }
+}
+
 /// The room the designer plans for: the sim's room in millimetres (the shape
 /// of `layout_json`'s rooms, integers). `doors` are every door in the room's
 /// walls, including doors other rooms declare into it; `windows` only those
@@ -433,6 +538,9 @@ pub struct Room {
     pub windows: Vec<Opening>,
     #[serde(default)]
     pub equipment: Vec<ExistingItem>,
+    /// The players' own designs in the room.
+    #[serde(default)]
+    pub objects: Vec<ExistingObject>,
 }
 
 impl Room {
@@ -497,6 +605,10 @@ impl Room {
 
     pub fn existing(&self, id: &str) -> Option<&ExistingItem> {
         self.equipment.iter().find(|e| e.id == id)
+    }
+
+    pub fn object(&self, id: &str) -> Option<&ExistingObject> {
+        self.objects.iter().find(|o| o.id == id)
     }
 
     /// People the room holds (`Room::capacity`).
