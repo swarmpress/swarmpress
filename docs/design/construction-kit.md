@@ -374,7 +374,7 @@ door and a doorway in the room it opens into (`room_specs` finds them in the lay
 8 m a side are cut into chunks of at most 8 × 8 m; a window module across a chunk edge is left
 out. The demo office's eleven shells have 2,365 to 4,443 parts.
 
-### 12.4 Summary rules (for owner review before K-4)
+### 12.4 Summary rules (accepted by the owner 2026-10-12, ADR-0088)
 
 Derived only from geometry and part tags:
 

@@ -247,7 +247,11 @@ in `apps/game/e2e/webgpu.ts`. On Linux all four of `--use-angle=swiftshader`,
 device is lost on the first frame. The investigation is in
 [webgpu-headless.md](../qualification/webgpu-headless.md). Visual baselines are taken on Linux
 x86_64 in `mcr.microsoft.com/playwright:v1.56.1-noble` (`--platform linux/amd64`) with
-`--update-snapshots`.
+`--update-snapshots`, or, preferred since 2026-10-12, by the **visual baselines** workflow
+(`.github/workflows/visual-baselines.yml`, started by hand from the Actions tab): it renders the
+views on the same runner and SwiftShader WebGPU as CI's Web job and uploads them as the artifact
+`visual-baselines` (`gh run download <run> -n visual-baselines`); check each image, then commit it
+to `apps/game/e2e/visual.spec.ts-snapshots/`.
 
 Earlier failures recorded here (the `fallback` project's `'webgl'` assertion, and
 `createBuffer failed ... mappedAtCreation`) were both consequences of that lost device and are
