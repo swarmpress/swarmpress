@@ -149,3 +149,7 @@
   features: [FEAT-084]
 - match: { classname: orchestrator, title: "build::tests" }
   features: [FEAT-084]
+# Players' own designs in the office (ADR-0087 decision 7, ADR-0088…0090): placement, stations,
+# desk slots, seat places and ceiling designs in sim-core's src/objects.rs.
+- match: { classname: sim-core, title: "objects::tests" }
+  features: [FEAT-026]
