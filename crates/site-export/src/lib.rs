@@ -23,6 +23,15 @@
 //!   semantic diff), the seeds, and the pages one link away from a touched page are fetched again;
 //!   new links are followed; everything else is carried over from the previous release. A touched
 //!   page that answers 404 leaves the release.
+//! - **Not found:** [`Crawler::feed_not_found`] takes WordPress's answer to a path that does not
+//!   exist and keeps it as `/404.html`, the page a static host answers unknown paths with.
+//! - **The forecast block** ([`forecast`]): pages that ask for a weather forecast are filled at
+//!   export with forecasts the caller fetched ([`Export::fill_forecasts`], [`fill_release`]).
+//! - **Cloudflare Pages** ([`cloudflare_pages`]): the release's redirects and the rewrites a
+//!   static host needs for non-HTML directory indexes (`/feed/`) as `_redirects`, and `_headers`
+//!   (ADR-0091).
+
+pub mod forecast;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -152,6 +161,127 @@ pub struct Export {
     pub report: Report,
 }
 
+impl Export {
+    /// The places the exported pages' forecast markers ask for.
+    pub fn forecast_places(&self) -> Result<BTreeSet<forecast::Place>, String> {
+        release_places(&self.release, &|sha: &str| self.blobs.get(sha).cloned())
+    }
+
+    /// Fills the exported pages' forecast markers ([`forecast`]); the release's entries and id
+    /// follow. Returns how many pages changed.
+    pub fn fill_forecasts(
+        &mut self,
+        forecasts: &BTreeMap<String, forecast::Forecast>,
+    ) -> Result<usize, String> {
+        let blobs = &self.blobs;
+        let changed = fill_release(
+            &mut self.release,
+            &|sha: &str| blobs.get(sha).cloned(),
+            forecasts,
+        )?;
+        let n = changed.len();
+        for (_, body) in changed {
+            let sha = hex(&Sha256::digest(&body));
+            self.blobs.entry(sha).or_insert(body);
+        }
+        Ok(n)
+    }
+}
+
+/// The places the forecast markers of `release`'s HTML files ask for; `read` gives a file's
+/// bytes by SHA-256 (a file it cannot give is skipped: an incremental export's carried files).
+pub fn release_places(
+    release: &Release,
+    read: &dyn Fn(&str) -> Option<Vec<u8>>,
+) -> Result<BTreeSet<forecast::Place>, String> {
+    let mut out = BTreeSet::new();
+    for (path, f) in &release.files {
+        if !is_type(&f.content_type, "html") {
+            continue;
+        }
+        if let Some(body) = read(&f.sha256) {
+            out.extend(
+                forecast::needed(&String::from_utf8_lossy(&body))
+                    .map_err(|e| format!("{path}: {e}"))?,
+            );
+        }
+    }
+    Ok(out)
+}
+
+/// Fills the forecast markers of `release`'s HTML files from `forecasts` (by
+/// [`forecast::Place::key`]): each changed file's entry gets its new SHA-256 and size, the
+/// release its new id. Returns the changed files' new bytes by URL path.
+pub fn fill_release(
+    release: &mut Release,
+    read: &dyn Fn(&str) -> Option<Vec<u8>>,
+    forecasts: &BTreeMap<String, forecast::Forecast>,
+) -> Result<BTreeMap<String, Vec<u8>>, String> {
+    let mut changed = BTreeMap::new();
+    for (path, f) in release.files.iter_mut() {
+        if !is_type(&f.content_type, "html") {
+            continue;
+        }
+        let Some(body) = read(&f.sha256) else {
+            continue;
+        };
+        let html = String::from_utf8_lossy(&body);
+        let Some(filled) = forecast::fill(&html, forecasts).map_err(|e| format!("{path}: {e}"))?
+        else {
+            continue;
+        };
+        let bytes = filled.into_bytes();
+        f.sha256 = hex(&Sha256::digest(&bytes));
+        f.size = bytes.len() as u64;
+        changed.insert(path.clone(), bytes);
+    }
+    release.id = release.computed_id();
+    Ok(changed)
+}
+
+/// Cloudflare Pages' rule files for `release` (ADR-0091), by file name:
+/// - `_redirects`: the release's redirects (301), and a rewrite (200) for each directory index
+///   that is not HTML (`/feed/` → `/feed/index.xml`), which Pages would not find on its own;
+/// - `_headers`: `nosniff` and a referrer policy for every path.
+///
+/// More rules than Pages accepts (2,000) is an error, not a silently cut list.
+pub fn cloudflare_pages(release: &Release) -> Result<Vec<(String, Vec<u8>)>, String> {
+    const MAX_RULES: usize = 2_000;
+    let mut rules = Vec::new();
+    for (from, to) in &release.redirects {
+        rules.push(format!("{} {} 301", url_safe(from), url_safe(to)));
+    }
+    for (path, f) in &release.files {
+        if path.ends_with('/') && !is_type(&f.content_type, "html") {
+            let file = Release::file_path(path, &f.content_type);
+            rules.push(format!("{} /{} 200", url_safe(path), url_safe(&file)));
+        }
+    }
+    if rules.len() > MAX_RULES {
+        return Err(format!(
+            "{} redirect rules, more than Cloudflare Pages accepts ({MAX_RULES})",
+            rules.len()
+        ));
+    }
+    let mut redirects = String::from(
+        "# The release's redirects and rewrites (swarm.press site-export, ADR-0091).\n",
+    );
+    for r in rules {
+        redirects.push_str(&r);
+        redirects.push('\n');
+    }
+    let headers = "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n";
+    Ok(vec![
+        ("_redirects".into(), redirects.into_bytes()),
+        ("_headers".into(), headers.as_bytes().to_vec()),
+    ])
+}
+
+/// A path or URL with its spaces encoded (a `_redirects` line is space-separated).
+fn url_safe(s: &str) -> String {
+    s.replace(' ', "%20")
+}
+
 /// A page's text for the search index.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SearchEntry {
@@ -179,6 +309,9 @@ const DYNAMIC: &[&str] = &[
     "/wp-trackback.php",
 ];
 const SEARCH_INDEX: &str = "/search-index.json";
+/// Where the not-found page lives (Cloudflare Pages and most static hosts answer unknown paths
+/// with it, status 404).
+pub const NOT_FOUND: &str = "/404.html";
 const SEARCH_TEXT_CHARS: usize = 2_000;
 
 pub struct Crawler {
@@ -194,6 +327,8 @@ pub struct Crawler {
     search: BTreeMap<String, SearchEntry>,
     report: Report,
     in_flight: Option<(String, Option<String>)>,
+    /// WordPress's page for an unknown path, kept as `/404.html`.
+    not_found: Option<Vec<u8>>,
     /// Incremental: the previous release, the touched paths and the pages to refresh (one hop).
     prev: Option<Release>,
     prev_search: BTreeMap<String, SearchEntry>,
@@ -214,6 +349,7 @@ impl Crawler {
             search: BTreeMap::new(),
             report: Report::default(),
             in_flight: None,
+            not_found: None,
             prev: None,
             prev_search: BTreeMap::new(),
             touched: BTreeSet::new(),
@@ -354,6 +490,25 @@ impl Crawler {
         self.blobs.entry(sha).or_insert(body);
     }
 
+    /// WordPress's answer to a path that does not exist (a 404 with an HTML page), kept as
+    /// `/404.html` with the public origin and the forms rewritten like any page. Anything else
+    /// (a 200 for an unknown path) is ignored: the export then has no not-found page.
+    pub fn feed_not_found(&mut self, response: Response) {
+        if response.status != 404 || !is_type(&response.content_type, "html") {
+            return;
+        }
+        let mut body = self.rewrite(&response.body);
+        if let Some(endpoint) = &self.opts.forms_endpoint {
+            body = rewrite_forms(
+                &String::from_utf8_lossy(&body),
+                &self.opts.public_origin,
+                endpoint,
+            )
+            .into_bytes();
+        }
+        self.not_found = Some(body);
+    }
+
     /// The release: this export's files over the previous release's (incremental), plus the
     /// search index.
     pub fn finish(mut self) -> Export {
@@ -378,6 +533,18 @@ impl Crawler {
             }
         }
         files.extend(std::mem::take(&mut self.files));
+        if let Some(body) = self.not_found.take() {
+            let sha = hex(&Sha256::digest(&body));
+            files.insert(
+                NOT_FOUND.into(),
+                FileEntry {
+                    sha256: sha.clone(),
+                    content_type: "text/html; charset=UTF-8".into(),
+                    size: body.len() as u64,
+                },
+            );
+            self.blobs.entry(sha).or_insert(body);
+        }
         redirects.extend(std::mem::take(&mut self.redirects));
         search.extend(std::mem::take(&mut self.search));
         search.retain(|url, _| files.contains_key(url));

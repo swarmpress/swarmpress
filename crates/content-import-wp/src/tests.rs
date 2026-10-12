@@ -260,7 +260,8 @@ fn the_plan_has_one_document_per_url_with_its_route_as_meta() {
     assert_eq!(post.post_type, "post");
     assert_eq!(post.slug, "gelato-de");
     assert_eq!(post.category.as_deref(), Some("Food"));
-    assert_eq!(post.tags, vec!["Gelato", "Summer"]);
+    // Its language is a tag too: the home lists the stories in its own language.
+    assert_eq!(post.tags, vec!["Gelato", "Summer", "Deutsch"]);
     assert_eq!(post.meta["_swarmpress_byline"], "Marco");
     assert_eq!(post.date.as_deref(), Some("2023-10-14T12:00:00"));
     assert!(
@@ -268,8 +269,8 @@ fn the_plan_has_one_document_per_url_with_its_route_as_meta() {
         "{}",
         post.content
     );
-    // What the import cannot carry is reported.
-    assert_eq!(p.report.empty_blocks.get("hero-section"), Some(&5));
+    // What the import cannot carry is reported; the home's sections are composed, not carried.
+    assert_eq!(p.report.empty_blocks.get("hero-section"), None);
     assert!(p
         .report
         .empty_routes
@@ -294,10 +295,11 @@ fn the_plan_has_one_document_per_url_with_its_route_as_meta() {
         v.content
     );
     assert_eq!(v.meta["_swarmpress_seo_title"], "Vernazza | Coast");
-    // The template stands in at /{lang}/village/ and for the four other villages, index and overview.
+    // The template stands in for the four other villages, index and overview; at
+    // /{lang}/village/ the village overview is composed.
     assert_eq!(
         p.report.empty_blocks.get("village-intro"),
-        Some(&(4 + 4 * 4 + 4 * 4))
+        Some(&(4 * 4 + 4 * 4))
     );
     // The menus, one per language, links in that language.
     assert_eq!(p.menus["de"][0].label, "Dörfer");
@@ -436,4 +438,161 @@ fn the_themes_chrome_and_the_live_sites_broken_links_are_not_required() {
         r.summary.live_broken_links, 0,
         "a link on every page is chrome, not counted"
     );
+}
+
+fn doc_at<'a>(p: &'a crate::plan::Plan, route: &str) -> &'a crate::plan::Doc {
+    p.docs
+        .iter()
+        .find(|d| d.route == route)
+        .unwrap_or_else(|| panic!("no {route}"))
+}
+
+/// The owner's decisions of 2026-10-12: the home is composed (the villages, the latest stories in
+/// its language as a query block, the newsletter form), and so is the village overview.
+#[test]
+fn the_home_and_the_village_overview_are_composed() {
+    let p = plan(&site());
+    for (route, lang, tag) in [("/", "en", "English"), ("/de/", "de", "Deutsch")] {
+        let home = doc_at(&p, route);
+        let c = &home.content;
+        // The site's name as the page's heading, the villages linking their pages.
+        assert!(
+            c.contains("<h1 class=\"wp-block-heading\">Coast Dispatch</h1>"),
+            "{c}"
+        );
+        assert!(
+            c.contains(&format!("<a href=\"/{lang}/vernazza/\">Vernazza</a>")),
+            "{c}"
+        );
+        assert!(
+            c.contains(&format!("<a href=\"/{lang}/monterosso/\">")),
+            "{c}"
+        );
+        // Vernazza's own hero image and line.
+        assert!(c.contains("alt=\"The harbour\""), "{c}");
+        // The latest stories: a query of the posts tagged with the page's language.
+        assert!(c.contains("<!-- wp:query "), "{c}");
+        assert!(
+            c.contains(&format!(
+                "\"post_tag\":[\"swarmpress-term:post_tag:{tag}\"]"
+            )),
+            "{c}"
+        );
+        assert!(c.contains(&format!("<a href=\"/{lang}/blog/\">")), "{c}");
+        // The newsletter form posts to WordPress's admin-post.php; the export sends it to /f/.
+        assert!(c.contains("action=\"/wp-admin/admin-post.php\""), "{c}");
+        assert!(c.contains("type=\"email\" name=\"email\" required"), "{c}");
+        assert!(
+            c.contains(&format!("name=\"lang\" value=\"{lang}\"")),
+            "{c}"
+        );
+        // The theme's empty sections are gone.
+        assert!(!c.contains("ct-hero-section"), "{c}");
+    }
+    let villages = doc_at(&p, "/fr/village/");
+    assert_eq!(villages.title, "Les cinq villages");
+    assert_eq!(
+        villages.meta["_swarmpress_seo_title"],
+        "Les cinq villages | Coast Dispatch"
+    );
+    for v in [
+        "riomaggiore",
+        "manarola",
+        "corniglia",
+        "vernazza",
+        "monterosso",
+    ] {
+        assert!(
+            villages.content.contains(&format!("href=\"/fr/{v}/\"")),
+            "{v}: {}",
+            villages.content
+        );
+        assert!(villages
+            .content
+            .contains(&format!("href=\"/fr/{v}/weather/\">Météo</a>")));
+    }
+    assert!(!villages.content.contains("ct-village-intro"));
+    // Only /{lang}/village/ is the overview: a village still has its own intro.
+    assert!(doc_at(&p, "/en/vernazza/")
+        .content
+        .contains("Where history meets the sea"));
+}
+
+/// The weather pages: the sample forecast is not content; a live forecast block takes its place,
+/// the five villages on a general page, the village itself on its own weather page.
+#[test]
+fn weather_pages_carry_a_live_forecast_block_instead_of_sample_data() {
+    let mut s = site();
+    s.pages.insert(
+        "weather.json".into(),
+        json!({"slug": {"en": "/en/weather", "de": "/de/wetter"}, "title": {"en": "Weather"}, "body": [
+            {"type": "weather-live", "title": {"en": "Atmosphere", "de": "Atmosphäre"}, "badge": {"en": "Live"},
+             "currentWeather": {"temp": 12, "condition": {"en": "Partly Cloudy"}},
+             "forecast": [{"day": {"en": "Fri"}, "high": 13, "condition": {"en": "Sunny"}}]},
+            {"type": "closing-note", "title": {"en": "Plan with intention"}}
+        ]}),
+    );
+    let p = plan(&s);
+    let de = &doc_at(&p, "/de/wetter/").content;
+    assert!(de.contains("Atmosphäre"), "{de}");
+    assert!(
+        !de.contains("Partly Cloudy") && !de.contains("Sunny"),
+        "{de}"
+    );
+    let markers = site_export::forecast::needed(de).unwrap();
+    assert_eq!(markers.len(), 5, "{de}");
+    assert!(markers.iter().any(|p| p.name == "Monterosso al Mare"));
+    assert!(de.contains("data-lang=\"de\""));
+    assert!(de.contains("Die kommende Woche"));
+    // After the live block, before what follows it.
+    let at = de.find("data-sp-forecast").unwrap();
+    assert!(de.find("Atmosphäre").unwrap() < at && at < de.find("Plan with intention").unwrap());
+    // A village's weather page (the hub standing in): that village only.
+    let v = &doc_at(&p, "/en/manarola/weather/").content;
+    let places: Vec<_> = site_export::forecast::needed(v)
+        .unwrap()
+        .into_iter()
+        .collect();
+    assert_eq!(places.len(), 1);
+    assert_eq!(places[0].name, "Manarola");
+    assert_eq!(places[0].key(), "44.1069,9.7286");
+    // Other pages have none.
+    assert!(
+        site_export::forecast::needed(&doc_at(&p, "/en/sights/").content)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// The site repo's deploy to Cloudflare Pages (ADR-0091), as swarmpress keeps it: the export is
+/// what is uploaded, the forecast is filled first, credentials come only from the repo's secrets.
+#[test]
+fn the_site_repos_cloudflare_pages_workflow() {
+    let w = include_str!("../../../templates/site-repo/.github/workflows/deploy.yml");
+    let at = |needle: &str| {
+        w.find(needle)
+            .unwrap_or_else(|| panic!("the workflow lacks {needle}"))
+    };
+    // The export, after its forecast is filled, goes to Pages with wrangler.
+    let fill = at("swarmpress-wp-migrate forecast --export site/export");
+    let deploy = at("uses: cloudflare/wrangler-action@v3");
+    assert!(fill < deploy);
+    assert!(w.contains("command: pages deploy site/export/files --project-name="));
+    // Credentials are the repo's secrets, never a value in the file.
+    assert!(w.contains("apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}"));
+    assert!(w.contains("accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"));
+    for line in w
+        .lines()
+        .filter(|l| l.contains("apiToken:") || l.contains("accountId:"))
+    {
+        assert!(line.contains("${{ secrets."), "{line}");
+    }
+    // A daily rebuild keeps the forecast fresh; branches other than main are previews.
+    assert!(w.contains("schedule:") && w.contains("cron:"));
+    assert!(w.contains("branches: [\"**\"]"));
+    // swarmpress is pinned (a repo variable), and a missing setting fails loudly.
+    assert!(w.contains("ref: ${{ vars.SWARMPRESS_REF }}"));
+    assert!(w.contains("::error::not set in the site repo"));
+    // Nothing GitHub Pages is left.
+    assert!(!w.contains("deploy-pages") && !w.contains("upload-pages-artifact"));
 }

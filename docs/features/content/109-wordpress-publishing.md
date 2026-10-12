@@ -16,6 +16,7 @@ paths:
   - apps/game/e2e/wp-publish.spec.ts
 adrs:
   - ADR-0083
+  - ADR-0091
 ---
 
 # Publishing a WordPress site as a static export
@@ -59,7 +60,20 @@ crawled over HTTP and written as a content-addressed release; no WordPress is ev
 - **Previews:** the review UI shows a WordPress company's draft as its sandbox renders the item's
   branch, in an inert frame; readers' sessions commit nothing.
 
+- **For a static host** (ADR-0091, 2026-10-12): WordPress's not-found page is exported as
+  `/404.html` (`Crawler::feed_not_found`; without it Cloudflare Pages would answer every unknown
+  path with the home and status 200), and `cloudflare_pages` writes Pages' `_redirects` (the
+  release's redirects, and rewrites for directory indexes that are not HTML, `/feed/` →
+  `/feed/index.xml`; more than Pages' 2,000 rules is an error) and `_headers`.
+- **Build-time data** (`site_export::forecast`): a forecast marker in a page is filled at export with
+  forecasts the caller fetched (`Export::fill_forecasts`, `fill_release` for a release on disk); see
+  FEAT-112.
+
 ## Not built yet
 
-- A Cloudflare Pages or R2 plane (the filesystem plane serves one server).
+- A Cloudflare Pages plane in the server (the server deploys a company's release through the Pages
+  API, ADR-0091 §4); today the filesystem plane serves one server, and cinqueterre.travel deploys from
+  its site repo's workflow.
+- The forecast fill in the browser's export after a merge (it would fetch through the server's
+  `/web/request`); only the native CLI fills forecasts today.
 - A search page over the static index (the index is in every release).

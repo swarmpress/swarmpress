@@ -11,9 +11,12 @@
 //!   routing rules (read, never changed: CLAUDE.md rule 9).
 //! - [`markup`]: a JSON block as core block markup, every string of it kept, in one language.
 //! - [`plan`]: the import plan: options, the theme, one document per URL, the menus.
+//! - [`compose`]: the pages the frozen theme drew from its own code (the home, the village
+//!   overview) composed as core blocks, and the weather pages' live forecast block.
 //! - [`compare`]: the export against the live site, URL by URL: status, title, content, links.
 
 pub mod compare;
+pub mod compose;
 pub mod markup;
 pub mod plan;
 pub mod routes;

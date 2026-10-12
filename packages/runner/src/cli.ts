@@ -37,6 +37,8 @@ The client-wasm build must exist (cargo xtask wasm) for run, test and sim-rule c
       --reference <dir>            a build of the frozen theme: its URLs are compared with the live site
       --cache <dir>                live pages fetched once, kept here
       --assets <dir>               the site's own images the pages name by path, uploaded as media
+      --forms-endpoint <url>       where the export's forms post (the platform's /f/{company})
+      --forecasts <dir>            recorded Open-Meteo answers ({lat},{lng}.json) instead of the network
 
 wp-conformance needs \`cargo xtask sandbox-fetch --node\` and \`cargo build -p storage-api --bin swarmpress-storage\`;
 wp-migrate also \`cargo build -p content-import-wp --features cli\`.`;
@@ -106,6 +108,8 @@ export async function main(argv: string[], out: Out = consoleOut): Promise<numbe
           reference: one("reference"),
           cache: one("cache"),
           assets: one("assets"),
+          formsEndpoint: one("forms-endpoint"),
+          forecasts: one("forecasts"),
           log: (line) => out.error(line),
         });
       case undefined:

@@ -256,6 +256,10 @@ export interface MigrationOptions extends NodeWordPressOptions {
   cache?: string;
   /** The site's own images the pages name by path (`/giulia_rossi.png`), uploaded as media. */
   assets?: string;
+  /** Where the export's forms post instead of WordPress (the platform's `/f/{company}`). */
+  formsEndpoint?: string;
+  /** Recorded Open-Meteo answers (`{lat},{lng}.json`) for the forecast blocks, instead of the network. */
+  forecasts?: string;
 }
 
 /**
@@ -285,7 +289,11 @@ export async function runMigration(opts: MigrationOptions): Promise<number> {
     code = await run(["apply", "--plan", planFile, "--sandbox", wp.url, "--repo", `${wp.storageUrl}/repo`, "--branch", "import-site", ...(opts.assets ? ["--assets", opts.assets] : [])]);
     if (code !== 0) return code;
     rmSync(join(opts.out, "export"), { recursive: true, force: true });
-    code = await run(["export", "--sandbox", wp.url, "--repo", `${wp.storageUrl}/repo`, "--public-origin", opts.publicOrigin, "--out", join(opts.out, "export")]);
+    code = await run([
+      "export", "--sandbox", wp.url, "--repo", `${wp.storageUrl}/repo`, "--public-origin", opts.publicOrigin, "--out", join(opts.out, "export"),
+      ...(opts.formsEndpoint ? ["--forms-endpoint", opts.formsEndpoint] : []),
+      ...(opts.forecasts ? ["--forecasts", opts.forecasts] : []),
+    ]);
     if (code !== 0) return code;
   } finally {
     await wp.stop();

@@ -132,6 +132,9 @@
 # The knowledge pack of a WordPress site (FEAT-108).
 - match: { classname: knowledge, title: "wordpress::tests" }
   features: [FEAT-108]
+# The export's forecast block (FEAT-112, the cutover gate's weather pages; FEAT-109, publishing).
+- match: { classname: site-export, title: "forecast::" }
+  features: [FEAT-112, FEAT-109]
 # The static export (FEAT-109): its unit tests are its own suite.
 - match: { classname: site-export }
   features: [FEAT-109]

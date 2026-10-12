@@ -292,3 +292,73 @@ fn forms_that_post_to_wordpress_post_to_the_platform() {
         "the search form is left as it is"
     );
 }
+
+#[test]
+fn a_not_found_page_is_kept_as_404_html() {
+    let mut opts = Options::new(O, "https://cinqueterre.travel");
+    opts.seeds = vec!["/".into()];
+    opts.forms_endpoint = Some("https://platform.example/f/acme".into());
+    let mut c = Crawler::full(opts.clone());
+    while c.next_path().is_some() {
+        c.feed(html("Home", "<p>home</p>"));
+    }
+    c.feed_not_found(Response {
+        status: 404,
+        content_type: "text/html; charset=UTF-8".into(),
+        location: None,
+        body: format!("<html><head><title>Not found</title></head><body><a href=\"{O}/\">Home</a><form action=\"{O}/wp-admin/admin-post.php\" method=\"post\"></form></body></html>").into_bytes(),
+    });
+    let e = c.finish();
+    let f = &e.release.files[NOT_FOUND];
+    assert!(f.content_type.starts_with("text/html"));
+    let body = String::from_utf8(e.blobs[&f.sha256].clone()).unwrap();
+    assert!(body.contains("href=\"https://cinqueterre.travel/\""));
+    assert!(body.contains("action=\"https://platform.example/f/acme?to=/wp-admin/admin-post.php\""));
+    assert_eq!(Release::file_path(NOT_FOUND, &f.content_type), "404.html");
+    // A sandbox that answers an unknown path with 200 gives no not-found page.
+    let mut c = Crawler::full(opts);
+    while c.next_path().is_some() {
+        c.feed(html("Home", "<p>home</p>"));
+    }
+    c.feed_not_found(html("Home", "<p>home</p>"));
+    assert!(!c.finish().release.files.contains_key(NOT_FOUND));
+}
+
+#[test]
+fn cloudflare_pages_gets_the_redirects_and_the_rewrites_it_cannot_infer() {
+    let mut release = Release::default();
+    let entry = |ct: &str| FileEntry {
+        sha256: "00".into(),
+        content_type: ct.into(),
+        size: 1,
+    };
+    release.files.insert("/".into(), entry("text/html"));
+    release.files.insert("/en/".into(), entry("text/html"));
+    release
+        .files
+        .insert("/feed/".into(), entry("application/rss+xml; charset=UTF-8"));
+    release
+        .files
+        .insert("/wp-sitemap.xml".into(), entry("application/xml"));
+    release.redirects.insert("/old page/".into(), "/en/".into());
+    release.id = release.computed_id();
+    let files: BTreeMap<String, String> = cloudflare_pages(&release)
+        .unwrap()
+        .into_iter()
+        .map(|(n, b)| (n, String::from_utf8(b).unwrap()))
+        .collect();
+    let redirects = &files["_redirects"];
+    assert!(redirects.contains("\n/old%20page/ /en/ 301\n"));
+    assert!(redirects.contains("\n/feed/ /feed/index.xml 200\n"));
+    // HTML directory indexes and files with a name need no rule.
+    assert!(!redirects.contains("/en/index.html"));
+    assert!(!redirects.contains("wp-sitemap"));
+    assert!(files["_headers"].starts_with("/*\n  X-Content-Type-Options: nosniff\n"));
+    // More rules than Pages accepts is an error.
+    for i in 0..2_001 {
+        release.redirects.insert(format!("/r{i}/"), "/".into());
+    }
+    assert!(cloudflare_pages(&release)
+        .unwrap_err()
+        .contains("2003 redirect rules"));
+}

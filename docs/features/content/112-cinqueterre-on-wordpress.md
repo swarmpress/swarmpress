@@ -8,14 +8,21 @@ paths:
   - crates/content-import-wp/src/routes.rs
   - crates/content-import-wp/src/markup.rs
   - crates/content-import-wp/src/plan.rs
+  - crates/content-import-wp/src/compose.rs
   - crates/content-import-wp/src/compare.rs
   - crates/content-import-wp/src/tests.rs
   - crates/content-import-wp/src/bin/swarmpress-wp-migrate.rs
   - packages/runner/src/wordpress.ts
   - packages/runner/test/wordpress.test.ts
   - packages/runner/test/fixtures/migrate-site/content/site.json
+  - packages/runner/test/fixtures/migrate-site/content/pages/weather.json
+  - "packages/runner/test/fixtures/open-meteo/**"
+  - crates/site-export/src/forecast.rs
+  - crates/site-export/src/forecast/tests.rs
+  - templates/site-repo/.github/workflows/deploy.yml
   - docs/runbooks/cinqueterre-cutover.md
 adrs:
+  - ADR-0091
   - ADR-0083
   - ADR-0082
   - ADR-0078
@@ -58,15 +65,35 @@ says what stands between the comparison and the switch.
   language; the theme switched through the API; a menu per language; no shortlinks, no guessed
   redirects) and **Coast**, the block theme (the frozen theme's palette, display serif and editorial
   sections).
+- **The gate's compositions** (the owner's decisions of 2026-10-12, `compose.rs`):
+  - **the home** (`/`, `/{lang}/`): a hero, the five villages, the latest stories as a `core/query`
+    block of the posts in the page's language (every article carries its language as a tag; the
+    import resolves the block's term reference to the tag's id when it applies the plan), and the
+    newsletter form, which the export sends to the platform's `/f/{company}`;
+  - **the village overview** (`/{lang}/village/`): the five villages with links to their sections;
+  - **the weather pages**: the content's sample forecast is left out and a live forecast block takes
+    its place (the five villages on the general pages, the village on its own weather page).
+- **The live forecast** (`site_export::forecast`, owner's decision 3): a marker the import writes, filled
+  at export from Open-Meteo (fetched by `swarmpress-wp-migrate export`, or again in place by
+  `swarmpress-wp-migrate forecast` for the daily rebuild; recorded answers with `--forecasts`), in four
+  languages, with Open-Meteo's attribution; a missing forecast fails the export.
+- **Cloudflare Pages** (ADR-0091): the export writes `404.html`, `_redirects` and `_headers`; the site
+  repo's deploy workflow is the template `templates/site-repo/.github/workflows/deploy.yml` (fill the
+  forecast, check, `wrangler pages deploy`; previews per branch; a daily rebuild).
 - **Verified:** the crate's tests (routes, mapping, plan, comparison, and the live site's content
   when it is checked out), and `test/wordpress.test.ts` in the runner (a fixture site migrated into
-  a fresh Node WordPress: every URL, its text, SEO title, language and links).
+  a fresh Node WordPress: every URL, its text, SEO title, language and links; the composed home's
+  query listing the posts of its language and its form sent to the platform; the weather pages'
+  forecast filled from recorded Open-Meteo answers; `404.html`, `_redirects` and `_headers`). The
+  forecast's own tests (`site-export`, `forecast::tests`) never reach the network.
 
 ## Not built yet
 
-- **Parity** (2026-10-11): 635 of 663 URLs pass, no status or title differs, the median page keeps
-  998‰ of its live content. The 28 others are in the runbook's table: the home pages and the village
-  template (the frozen theme's own sections, to be composed in the Studio), eight article URLs the
-  live site renders as `[object Object]` (fixed by the export), and the weather and team pages'
-  theme labels.
+- **The owner's review** (2026-10-12): 635 of 663 URLs pass, no status differs, the median page keeps
+  998‰ of its live content. The 28 others are composed or replaced by the owner's decisions (the 9
+  home and village-overview pages, the 11 weather pages) or fixed by the export (8 article URLs the
+  live site renders as `[object Object]`); the composed pages and the forecast wait for the owner's
+  review in a Cloudflare Pages preview (the runbook's step 4).
+- **The newsletter's endpoint** in the export (the central server's public `/f/{company}`) and the
+  check of Open-Meteo's terms for a commercial site (runbook).
 - **The switch** (plan M8 step 4) and the retirement of the legacy path: the owner's decision.

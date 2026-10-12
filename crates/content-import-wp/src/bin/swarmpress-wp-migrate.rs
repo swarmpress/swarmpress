@@ -4,6 +4,8 @@
 //! swarmpress-wp-migrate plan    --content DIR --out plan.json
 //! swarmpress-wp-migrate apply   --plan plan.json --sandbox URL --repo URL [--branch NAME] [--assets DIR]
 //! swarmpress-wp-migrate export  --sandbox URL --repo URL --public-origin URL --out DIR
+//!                               [--forms-endpoint URL] [--forecasts DIR]
+//! swarmpress-wp-migrate forecast --export DIR [--forecasts DIR]
 //! swarmpress-wp-migrate compare --reference DIR --live URL --export DIR --out report.json
 //!                               [--plan plan.json] [--cache DIR] [--skip PREFIX]…
 //! ```
@@ -12,7 +14,12 @@
 //! opens a change request and merges it into `live` (ADR-0083 §5). A site image the pages name by
 //! path (`/giulia_rossi.png`) and `--assets` holds is uploaded as media first, and the pages point
 //! at the upload. `export` crawls `live` as a
-//! visitor into a release directory (`release.json` and the files by path). `compare` takes the URL
+//! visitor into a release directory (`release.json` and the files by path, plus WordPress's
+//! not-found page as `404.html` and Cloudflare Pages' `_redirects` and `_headers`, ADR-0091); forms
+//! that post to WordPress post to `--forms-endpoint` (the platform's `/f/{company}`) instead; pages
+//! with a forecast block get the forecast, fetched from Open-Meteo (or read from `--forecasts`, a
+//! directory of recorded answers named `{lat},{lng}.json`). `forecast` fetches the forecasts again
+//! and fills an export directory in place: the daily rebuild of a static site. `compare` takes the URL
 //! list from a build of the frozen theme (`--reference`, every `index.html` under it), fetches each
 //! URL from the live site (cached under `--cache`), and compares it with the export.
 
@@ -22,6 +29,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context, Result};
 use content_import_wp::compare::{compare_with, Facts};
+use content_import_wp::compose;
 use content_import_wp::plan::{plan, Doc, MenuItem, Plan};
 use content_import_wp::Site;
 use serde_json::{json, Value};
@@ -80,6 +88,15 @@ async fn main() -> Result<()> {
                 &wp,
                 &need(&args, "--public-origin")?,
                 Path::new(&need(&args, "--out")?),
+                arg(&args, "--forms-endpoint"),
+                arg(&args, "--forecasts").map(PathBuf::from).as_deref(),
+            )
+            .await
+        }
+        Some("forecast") => {
+            refill_forecasts(
+                Path::new(&need(&args, "--export")?),
+                arg(&args, "--forecasts").map(PathBuf::from).as_deref(),
             )
             .await
         }
@@ -120,7 +137,7 @@ async fn main() -> Result<()> {
             Ok(())
         }
         _ => bail!(
-            "usage: swarmpress-wp-migrate plan|apply|export|compare (see the source's header)"
+            "usage: swarmpress-wp-migrate plan|apply|export|forecast|compare (see the source's header)"
         ),
     }
 }
@@ -235,6 +252,25 @@ async fn apply(wp: &Wp, p: &Plan, branch: &str, assets: Option<&Path>) -> Result
         for t in &d.tags {
             if !tags.contains_key(t) {
                 tags.insert(t.clone(), term(wp, "tags", t).await?);
+            }
+        }
+    }
+
+    // Terms the composed pages refer to (the latest stories' language tag), even without a post.
+    for d in &p.docs {
+        for (tax, name) in compose::term_refs(&d.content) {
+            let map = match tax.as_str() {
+                "post_tag" => &mut tags,
+                "category" => &mut categories,
+                other => bail!("{}: a reference to a {other} term", d.route),
+            };
+            if !map.contains_key(&name) {
+                let rest = if tax == "post_tag" {
+                    "tags"
+                } else {
+                    "categories"
+                };
+                map.insert(name.clone(), term(wp, rest, &name).await?);
             }
         }
     }
@@ -377,11 +413,16 @@ async fn write_doc(
     categories: &BTreeMap<String, u64>,
     tags: &BTreeMap<String, u64>,
 ) -> Result<u64> {
+    let ids = BTreeMap::from([
+        ("post_tag".to_string(), tags.clone()),
+        ("category".to_string(), categories.clone()),
+    ]);
+    let content = compose::resolve_terms(&d.content, &ids).map_err(|e| anyhow!(e))?;
     let mut body = json!({
         "title": d.title,
         "slug": d.slug,
         "status": "publish",
-        "content": d.content,
+        "content": content,
         "excerpt": d.excerpt,
         "meta": d.meta,
     });
@@ -420,11 +461,18 @@ fn nav_markup(item: &MenuItem) -> String {
 
 // ------------------------------------------------------------------ the export
 
-async fn export(wp: &Wp, public_origin: &str, out: &Path) -> Result<()> {
+async fn export(
+    wp: &Wp,
+    public_origin: &str,
+    out: &Path,
+    forms_endpoint: Option<String>,
+    recorded: Option<&Path>,
+) -> Result<()> {
     wp.repo(json!({"op": "session.set", "branch": "live", "user_id": 0, "author": {"kind": "system", "id": "visitor"}, "read_only": true}))
         .await?;
-    let mut crawler =
-        site_export::Crawler::full(site_export::Options::new(&wp.sandbox, public_origin));
+    let mut opts = site_export::Options::new(&wp.sandbox, public_origin);
+    opts.forms_endpoint = forms_endpoint;
+    let mut crawler = site_export::Crawler::full(opts);
     let started = std::time::Instant::now();
     let mut n = 0usize;
     while let Some(path) = crawler.next_path() {
@@ -457,7 +505,34 @@ async fn export(wp: &Wp, public_origin: &str, out: &Path) -> Result<()> {
             eprintln!("{n} fetched ({}s)", started.elapsed().as_secs());
         }
     }
-    let e = crawler.finish();
+    // WordPress's page for a path that does not exist: the static host's 404.html.
+    let res = wp
+        .http
+        .get(format!("{}/swarmpress-not-found/", wp.sandbox))
+        .send()
+        .await?;
+    let status = res.status().as_u16();
+    let content_type = res
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let body = res.bytes().await?.to_vec();
+    crawler.feed_not_found(site_export::Response {
+        status,
+        content_type,
+        location: None,
+        body,
+    });
+    let mut e = crawler.finish();
+    // The forecast blocks, filled when the site is published (never in WordPress).
+    let places = e.forecast_places().map_err(|err| anyhow!(err))?;
+    if !places.is_empty() {
+        let forecasts = fetch_forecasts(&places, recorded).await?;
+        let n = e.fill_forecasts(&forecasts).map_err(|err| anyhow!(err))?;
+        eprintln!("{n} pages got the forecast for {} places", places.len());
+    }
     std::fs::create_dir_all(out.join("files"))?;
     for (path, f) in &e.release.files {
         let file = out
@@ -472,6 +547,7 @@ async fn export(wp: &Wp, public_origin: &str, out: &Path) -> Result<()> {
             .ok_or_else(|| anyhow!("no blob for {path}"))?;
         std::fs::write(file, blob)?;
     }
+    write_cloudflare_pages(out, &e.release)?;
     std::fs::write(
         out.join("release.json"),
         serde_json::to_string_pretty(&e.release)?,
@@ -488,6 +564,116 @@ async fn export(wp: &Wp, public_origin: &str, out: &Path) -> Result<()> {
         e.report.broken.len(),
         e.report.skipped.len(),
         started.elapsed().as_secs()
+    );
+    Ok(())
+}
+
+/// Cloudflare Pages' `_redirects` and `_headers` beside the files (ADR-0091).
+fn write_cloudflare_pages(out: &Path, release: &site_export::Release) -> Result<()> {
+    for (name, bytes) in site_export::cloudflare_pages(release).map_err(|e| anyhow!(e))? {
+        std::fs::write(out.join("files").join(name), bytes)?;
+    }
+    Ok(())
+}
+
+// ------------------------------------------------------------------ the forecast
+
+/// Each place's forecast: from Open-Meteo, or from `recorded` (`{lat},{lng}.json`, the answers
+/// tests and offline runs use). A place without a forecast fails the export.
+async fn fetch_forecasts(
+    places: &std::collections::BTreeSet<site_export::forecast::Place>,
+    recorded: Option<&Path>,
+) -> Result<BTreeMap<String, site_export::forecast::Forecast>> {
+    use site_export::forecast;
+    let http = reqwest::Client::builder()
+        .user_agent("swarm.press site export (cinqueterre.travel)")
+        .timeout(std::time::Duration::from_secs(20))
+        .build()?;
+    let mut out = BTreeMap::new();
+    for p in places {
+        let key = p.key();
+        if out.contains_key(&key) {
+            continue;
+        }
+        let body = match recorded {
+            Some(dir) => {
+                let file = dir.join(format!("{key}.json"));
+                std::fs::read(&file).with_context(|| {
+                    format!("{}: no recorded forecast for {}", file.display(), p.name)
+                })?
+            }
+            None => {
+                let url = forecast::request_url(p);
+                let mut tries = 0;
+                loop {
+                    tries += 1;
+                    let res = http.get(&url).send().await;
+                    match res {
+                        Ok(r) if r.status().is_success() => break r.bytes().await?.to_vec(),
+                        Ok(r) if tries >= 3 => {
+                            bail!("Open-Meteo answered {} for {}", r.status(), p.name)
+                        }
+                        Err(e) if tries >= 3 => {
+                            return Err(e).with_context(|| format!("Open-Meteo for {}", p.name))
+                        }
+                        _ => tokio::time::sleep(std::time::Duration::from_secs(2 * tries)).await,
+                    }
+                }
+            }
+        };
+        let f = forecast::parse(&body).map_err(|e| anyhow!("the forecast for {}: {e}", p.name))?;
+        out.insert(key, f);
+    }
+    Ok(out)
+}
+
+/// The daily rebuild: an export directory's forecast blocks filled again, in place.
+async fn refill_forecasts(export_dir: &Path, recorded: Option<&Path>) -> Result<()> {
+    let manifest = export_dir.join("release.json");
+    let mut release: site_export::Release = serde_json::from_str(
+        &std::fs::read_to_string(&manifest).with_context(|| manifest.display().to_string())?,
+    )?;
+    if release.id != release.computed_id() {
+        bail!(
+            "{}: the release's id is not its manifest's",
+            manifest.display()
+        );
+    }
+    let by_sha: BTreeMap<String, PathBuf> = release
+        .files
+        .iter()
+        .filter(|(_, f)| f.content_type.starts_with("text/html"))
+        .map(|(path, f)| {
+            (
+                f.sha256.clone(),
+                export_dir.join("files").join(
+                    site_export::Release::file_path(path, &f.content_type).trim_start_matches('/'),
+                ),
+            )
+        })
+        .collect();
+    let read = |sha: &str| by_sha.get(sha).and_then(|p| std::fs::read(p).ok());
+    let places = site_export::release_places(&release, &read).map_err(|e| anyhow!(e))?;
+    if places.is_empty() {
+        eprintln!("no forecast blocks in {}", export_dir.display());
+        return Ok(());
+    }
+    let forecasts = fetch_forecasts(&places, recorded).await?;
+    let changed =
+        site_export::fill_release(&mut release, &read, &forecasts).map_err(|e| anyhow!(e))?;
+    for (path, bytes) in &changed {
+        let f = &release.files[path];
+        let file = export_dir
+            .join("files")
+            .join(site_export::Release::file_path(path, &f.content_type).trim_start_matches('/'));
+        std::fs::write(file, bytes)?;
+    }
+    std::fs::write(&manifest, serde_json::to_string_pretty(&release)?)?;
+    eprintln!(
+        "{} pages got the forecast for {} places; release {}",
+        changed.len(),
+        places.len(),
+        release.id
     );
     Ok(())
 }

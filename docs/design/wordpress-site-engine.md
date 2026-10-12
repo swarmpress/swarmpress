@@ -1,6 +1,6 @@
 # WordPress as the site engine: the build plan (ADR-0078 to ADR-0084)
 
-**Status:** approved by the owner 2026-10-10; M0 passed; M1 to M7 built, M8 steps 1 to 3 built (2026-10-11): cinqueterre.travel imports, renders in the Coast theme, exports and compares URL by URL (`docs/runbooks/cinqueterre-cutover.md`). Step 4, the switch of the live deploy, waits for the owner.
+**Status:** approved by the owner 2026-10-10; M0 passed; M1 to M7 built, M8 steps 1 to 3 built (2026-10-11): cinqueterre.travel imports, renders in the Coast theme, exports and compares URL by URL (`docs/runbooks/cinqueterre-cutover.md`). On 2026-10-12 the owner decided how the gate is cleared, and it is built: the home and village overview pages composed, a live Open-Meteo forecast filled at export, Cloudflare Pages as the static plane with a site-repo workflow (ADR-0091). Step 4, the switch of the live deploy, waits for the owner's review of a preview.
 
 ## Context
 
@@ -243,7 +243,7 @@ Plugins keep the Generation 1 SQL path. The exit gate is conformance plus a lowe
 1. Import the site's JSON pages, terms, menus and media sidecars into `content-repo` as WordPress objects, with a block mapping (`crates/content-import-wp`, reusing `crates/blueprint/src/import.rs`'s readers).
 2. Build a block theme that matches the frozen theme's look (`swarmpress/wp-sandbox` themes, or a theme package), reviewed in the Studio.
 3. Export, then compare **URL by URL** with the live site: content, links, status codes. `docs/runbooks/cinqueterre-cutover.md` is rewritten for this.
-4. Switch the deploy. Rule 9 ends, and the legacy modules retire: `GithubGateway`, PathPolicy uses, `check_draft`, `finalize.rs`, `site-kit`, `themes/starter`, the frozen theme.
+4. Switch the deploy (to Cloudflare Pages, ADR-0091: preview first, then the domain). Rule 9 ends, and the legacy modules retire: `GithubGateway`, PathPolicy uses, `check_draft`, `finalize.rs`, `site-kit`, `themes/starter`, the frozen theme.
 
 **Feature:** FEAT-112.
 

@@ -107,7 +107,15 @@ describe.skipIf(!ready || !migrateBinary(REPO_ROOT))("a site moved onto WordPres
     async () => {
       const out = mkdtempSync(join(tmpdir(), "swarmpress-migrate-"));
       try {
-        const code = await runMigration({ root: REPO_ROOT, content: join(import.meta.dir, "fixtures/migrate-site/content"), out, publicOrigin: "https://coast.example" });
+        const code = await runMigration({
+          root: REPO_ROOT,
+          content: join(import.meta.dir, "fixtures/migrate-site/content"),
+          out,
+          publicOrigin: "https://coast.example",
+          formsEndpoint: "https://platform.example/f/coast",
+          // Recorded Open-Meteo answers: the test never reaches the network.
+          forecasts: join(import.meta.dir, "fixtures/open-meteo"),
+        });
         expect(code).toBe(0);
         const release = JSON.parse(readFileSync(join(out, "export/release.json"), "utf8")) as { files: Record<string, { content_type: string }> };
         const page = (p: string) => readFileSync(join(out, "export/files", p.slice(1), "index.html"), "utf8");
@@ -126,6 +134,26 @@ describe.skipIf(!ready || !migrateBinary(REPO_ROOT))("a site moved onto WordPres
         // The language switch links the page's translations.
         expect(de).toContain('hreflang="fr"');
         expect(existsSync(join(out, "plan.json"))).toBe(true);
+        // The composed home (the owner's decision of 2026-10-12): the latest stories in its own
+        // language, rendered by WordPress's query block; the villages; the newsletter form, sent
+        // to the platform by the export.
+        const home = page("/de/");
+        expect(home).toContain('href="https://coast.example/de/blog/hafentage/"');
+        expect(home).not.toContain("/en/blog/harbour-days/");
+        expect(home).toContain('href="/de/vernazza/"');
+        expect(home).toContain('action="https://platform.example/f/coast?to=/wp-admin/admin-post.php"');
+        expect(home).toContain("Fünf Dörfer");
+        // The weather pages: the live forecast filled at export, the sample data gone.
+        const weather = page("/de/wetter/");
+        expect(weather).toContain("Vorhersage vom 12. Oktober 2026");
+        expect(weather).toContain("Monterosso al Mare");
+        expect(weather).toContain("Open-Meteo.com");
+        expect(weather).not.toContain("Sample cloud");
+        const village = page("/en/vernazza/weather/");
+        expect(village).toContain('<th scope="row">Mon 12</th>');
+        expect(village).not.toContain("Monterosso");
+        // What Cloudflare Pages needs beside the pages (ADR-0091).
+        for (const f of ["404.html", "_redirects", "_headers"]) expect(existsSync(join(out, "export/files", f))).toBe(true);
       } finally {
         rmSync(out, { recursive: true, force: true });
       }

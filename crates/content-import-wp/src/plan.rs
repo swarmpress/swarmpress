@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::compose;
 use crate::markup::{self, Notes};
 use crate::routes::{routes, Route, Source, SECTIONS, VILLAGES};
 use crate::{localized, Site, LANGS};
@@ -86,14 +87,7 @@ pub fn plan(site: &Site) -> Plan {
         }
         docs.push(doc);
     }
-    let home = site.pages.get("index.json");
-    let title = home
-        .and_then(|h| h.get("seo").and_then(|s| s.get("title")))
-        .and_then(|t| localized(t, "en"))
-        .and_then(|t| t.split(" | ").next())
-        .or_else(|| site.site.get("name").and_then(Value::as_str))
-        .unwrap_or("Site")
-        .to_string();
+    let title = site_name(site);
     let tagline = site
         .site
         .get("description")
@@ -112,6 +106,18 @@ pub fn plan(site: &Site) -> Plan {
         menus,
         report,
     }
+}
+
+/// The site's name: the home's SEO title before ` | `, else `site.json`'s name.
+pub fn site_name(site: &Site) -> String {
+    site.pages
+        .get("index.json")
+        .and_then(|h| h.get("seo").and_then(|s| s.get("title")))
+        .and_then(|t| localized(t, "en"))
+        .and_then(|t| t.split(" | ").next())
+        .or_else(|| site.site.get("name").and_then(Value::as_str))
+        .unwrap_or("Site")
+        .to_string()
 }
 
 fn last_segment(path: &str) -> String {
@@ -180,16 +186,58 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes) -> Doc {
     } else {
         seo
     };
-    let mut content = markup::body(&blocks, lang, notes);
+    // The pages the frozen theme drew from its own code are composed (the owner's decisions of
+    // 2026-10-12): the home, the village overview, the weather pages' live forecast.
+    let home = compose::is_home(r);
+    let overview = compose::is_village_overview(r);
+    let mut content = String::new();
+    if home || overview {
+        content = if home {
+            let description = seo
+                .get("description")
+                .and_then(|t| localized(t, lang))
+                .unwrap_or("");
+            compose::home(site, lang, &site_name(site), description)
+        } else {
+            compose::village_overview(site, lang)
+        };
+        // The page's own blocks with content follow; the empty ones are what was composed.
+        for b in &blocks {
+            let mut own = Notes::default();
+            let m = markup::block(b, lang, &mut own);
+            if own.empty_blocks.is_empty() {
+                content.push_str(&m);
+            }
+        }
+    } else {
+        let forecast = compose::weather(&mut blocks, r);
+        for (i, b) in blocks.iter().enumerate() {
+            content.push_str(&markup::block(b, lang, notes));
+            if let Some((_, f)) = forecast.as_ref().filter(|(at, _)| *at == i) {
+                content.push_str(f);
+            }
+        }
+        if let (Some((_, f)), true) = (&forecast, blocks.is_empty()) {
+            content.push_str(f);
+        }
+    }
     content.push_str(&collections(site, &blocks, r, lang));
-    let seo_title = seo
+    let mut seo_title = seo
         .get("title")
         .and_then(|t| localized(t, lang))
-        .unwrap_or("");
-    let description = seo
+        .unwrap_or("")
+        .to_string();
+    let mut description = seo
         .get("description")
         .and_then(|t| localized(t, lang))
-        .unwrap_or("");
+        .unwrap_or("")
+        .to_string();
+    if overview {
+        let (t, d) = compose::village_overview_title(lang);
+        title = t.to_string();
+        seo_title = format!("{t} | {}", site_name(site));
+        description = d.to_string();
+    }
     let post = page.get("page_type").and_then(Value::as_str) == Some("blog-article");
     let article = blocks
         .iter()
@@ -205,7 +253,7 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes) -> Doc {
     let document_title = if seo_title.is_empty() {
         title.as_str()
     } else {
-        seo_title
+        seo_title.as_str()
     };
     if !document_title.is_empty() {
         meta.insert(
@@ -236,23 +284,30 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes) -> Doc {
         post_type: if post { "post" } else { "page" }.into(),
         slug,
         title,
-        excerpt: description.to_string(),
+        excerpt: description.clone(),
         content,
         meta,
         category: article
             .and_then(|a| a.get("category"))
             .and_then(|c| localized(c, lang))
             .map(String::from),
-        tags: article
-            .and_then(|a| a.get("tags"))
-            .and_then(Value::as_array)
-            .map(|t| {
-                t.iter()
-                    .filter_map(|x| localized(x, lang))
-                    .map(String::from)
-                    .collect()
-            })
-            .unwrap_or_default(),
+        tags: if post {
+            // Every article carries its language as a tag: the home lists the stories in its own.
+            let mut tags: Vec<String> = article
+                .and_then(|a| a.get("tags"))
+                .and_then(Value::as_array)
+                .map(|t| {
+                    t.iter()
+                        .filter_map(|x| localized(x, lang))
+                        .map(String::from)
+                        .collect()
+                })
+                .unwrap_or_default();
+            tags.push(compose::language_tag(lang).to_string());
+            tags
+        } else {
+            vec![]
+        },
         date: page
             .get("created_at")
             .and_then(Value::as_str)

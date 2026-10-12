@@ -1,0 +1,125 @@
+# The site repo's deploy to Cloudflare Pages (ADR-0091; docs/runbooks/cinqueterre-cutover.md, step 4).
+# A template kept in swarmpress (templates/site-repo/); a site repo copies it to
+# .github/workflows/deploy.yml.
+#
+# The site repo holds the static export of the company's `live` branch under export/ (release.json
+# and files/, written by `swarmpress-wp-migrate export`). This workflow fills the pages' forecast
+# blocks with the forecast of the day (Open-Meteo, fetched here, never by WordPress) and uploads
+# export/files/ to Cloudflare Pages:
+# - a push to main deploys production (the domain, once it is attached to the Pages project);
+# - a push to any other branch deploys a preview, with a URL of its own;
+# - every morning the forecast is fetched again and production redeployed (the daily rebuild).
+#
+# Set in the site repo's settings, by the owner, never in a file:
+# - secrets: CLOUDFLARE_API_TOKEN (Account, Cloudflare Pages: Edit), CLOUDFLARE_ACCOUNT_ID,
+#   MONOREPO_PAT (reads swarmpress/swarmpress, as the Astro deploy already does);
+# - variables: CLOUDFLARE_PAGES_PROJECT (the Pages project, e.g. cinqueterre-travel), SWARMPRESS_REF
+#   (the swarmpress commit whose swarmpress-wp-migrate fills the forecasts).
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: ["**"]
+  schedule:
+    # 04:15 UTC, 06:15 in Italy in summer: the forecast starts with today.
+    - cron: "15 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the settings
+        env:
+          PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+          SWARMPRESS_REF: ${{ vars.SWARMPRESS_REF }}
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          HAS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+          HAS_PAT: ${{ secrets.MONOREPO_PAT != '' }}
+        run: |
+          missing=""
+          [ -n "$PROJECT" ] || missing="$missing vars.CLOUDFLARE_PAGES_PROJECT"
+          [ -n "$SWARMPRESS_REF" ] || missing="$missing vars.SWARMPRESS_REF"
+          [ "$HAS_TOKEN" = "true" ] || missing="$missing secrets.CLOUDFLARE_API_TOKEN"
+          [ "$HAS_ACCOUNT" = "true" ] || missing="$missing secrets.CLOUDFLARE_ACCOUNT_ID"
+          [ "$HAS_PAT" = "true" ] || missing="$missing secrets.MONOREPO_PAT"
+          if [ -n "$missing" ]; then
+            echo "::error::not set in the site repo:$missing"
+            exit 1
+          fi
+
+      - name: Check out the site repo
+        uses: actions/checkout@v4
+        with:
+          path: site
+
+      - name: Check out swarmpress (pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: swarmpress/swarmpress
+          ref: ${{ vars.SWARMPRESS_REF }}
+          path: swarmpress
+          token: ${{ secrets.MONOREPO_PAT }}
+
+      - name: Cache the build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: swarmpress
+          key: swarmpress-wp-migrate
+
+      # The toolchain comes from swarmpress's rust-toolchain.toml.
+      - name: Build swarmpress-wp-migrate
+        working-directory: swarmpress
+        run: cargo build --release --locked -p content-import-wp --features cli --bin swarmpress-wp-migrate
+
+      - name: Fill the forecast blocks (Open-Meteo, now)
+        run: swarmpress/target/release/swarmpress-wp-migrate forecast --export site/export
+
+      - name: Check the export
+        run: |
+          test -f site/export/files/index.html
+          test -f site/export/files/404.html
+          test -f site/export/files/_redirects
+          test -f site/export/files/_headers
+          pages=$(find site/export/files -name '*.html' | wc -l)
+          echo "$pages HTML pages"
+          if [ "$pages" -lt 100 ]; then
+            echo "::error::the export has fewer than 100 pages"
+            exit 1
+          fi
+
+      - name: Name the deployment's branch
+        id: branch
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          # Pages takes the branch as an alias (preview URL); only letters, digits and dashes.
+          branch=$(printf '%s' "$REF_NAME" | tr -c 'A-Za-z0-9-' '-' | cut -c1-28)
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Cloudflare Pages
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site/export/files --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=${{ steps.branch.outputs.name }} --commit-hash=${{ github.sha }}
+
+      - name: The deployment's URL
+        env:
+          URL: ${{ steps.deploy.outputs.deployment-url }}
+          ALIAS: ${{ steps.deploy.outputs.pages-deployment-alias-url }}
+        run: |
+          {
+            echo "### Cloudflare Pages"
+            echo "- deployment: $URL"
+            [ -z "$ALIAS" ] || echo "- branch alias: $ALIAS"
+          } >> "$GITHUB_STEP_SUMMARY"

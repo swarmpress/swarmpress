@@ -12,11 +12,11 @@ serde_json.workspace = true
 anyhow = { workspace = true, optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"], optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
-site-export = { path = "../site-export", optional = true }
+site-export = { path = "../site-export" }
 
 [features]
 # The migration CLI (`swarmpress-wp-migrate`): applies a plan over HTTP, exports, compares.
-cli = ["dep:anyhow", "dep:tokio", "dep:reqwest", "dep:site-export"]
+cli = ["dep:anyhow", "dep:tokio", "dep:reqwest"]
 
 [[bin]]
 name = "swarmpress-wp-migrate"
