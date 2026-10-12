@@ -51,7 +51,7 @@ World
 ├─ rooms:     BTreeMap<RoomId, Room { kind, floor, rect, level, doors, capacity, light: Off|Dim|On, alerts }>
 ├─ devices:   BTreeMap<DeviceId, Device { kind, room, cell, rot, state: Off|On|InUse, screen, upkeep_cents }>
 ├─ staff:     BTreeMap<StaffId, Staff { persona, role, seniority, traits, skills, morale, fatigue,
-│                                       salary_cents, home_desk, assignment, activity, pos, path, pose }>
+│                                       salary_cents, home: Station, assignment, activity, pos, path, pose }>
 ├─ projects:  BTreeMap<ProjectId, Project { kind, stage, owner, revisions, deadline_step, … }>
 ├─ plan:      Plan { items: BTreeMap<WorkItemId, WorkItem>, jobs: BTreeMap<u64, PendingJob>,
 │                     jobs_requested, standup_days, feed, workstreams, next_workstream,
@@ -89,7 +89,8 @@ The room kinds, equipment, staff traits and project kinds are described in the g
 
 ## Commands and effects
 
-- **`Command`** (player): building (`BuyFloorSpace`, `PlaceRoom`, `PlaceEquipment`, `Demolish`),
+- **`Command`** (player): building (`BuyFloorSpace`, `PlaceRoom`, `PlaceEquipment`, `Demolish`,
+  `MoveEquipment`, the town's, `PlaceObject`, `MoveObject`, `RemoveObject`, `PlaceObjectOnDesk`),
   people (`Hire`, `Fire`, `Promote`, `SetSalary`, `Praise`), projects (`AssignToProject`,
   `RemoveFromProject`, `SetProjectLead`, `CreateProject`, `SetProjectStatus`,
   `SetProjectBudget`), `SetPolicy`, the Inbox (`AnswerTicket{ticket, option}`, `Delegate`,
@@ -165,6 +166,37 @@ placements enter the sim, as numbers.
   and records `refused`; `Retry` resumes with that item. The last item placed and the job's result
   in: Published. The plans of closed items are dropped.
 - **World format 9.**
+
+### Players' designs and stations (ADR-0065 §4, ADR-0087 decision 7, ADR-0088)
+
+`crates/sim-core/src/objects.rs`. A placed design is its hash and its compiled summary (numbers
+only: footprint, height, mount, seats, workstation, `seat_at`, lights, storage, screens, parts,
+cost); replay applies the summary as logged and never re-runs the kit's compiler.
+
+- **`PlaceObject{design, pos, rot, summary}`** places a `Floor` design in a room; `MoveObject`,
+  `RemoveObject` move and remove it. **`PlaceObjectOnDesk{design, desk, summary}`** (ADR-0088
+  decision 3) puts a `Surface` design on a built-in desk: the screen slot when `screens > 0`, the
+  lamp slot otherwise, refused when that slot holds a monitor, a lamp or another object. A desk-top
+  object (`PlacedObject.on_desk = Some((desk, slot))`) shares the desk's position, turn and room,
+  moves with it (`MoveEquipment`), goes with it (`Demolish`), is removed by `RemoveObject`, and
+  is never moved on its own. `Ceiling` designs are not placeable yet.
+- **Summary bounds** (decision 5): a workstation carries `seat_at` (mm from the footprint centre at
+  turn 0, at most 1 m outside the footprint on each axis); anything else carries none; a desk-top
+  design is never a workstation; a workstation is one home whatever its `seats`.
+- **Stations** (decision 2): `Staff.home: Option<Station>`, `Station = Desk(EquipId) |
+  Object(ObjectId)` (JSON `{"Desk":"equip-3"}`, `{"Object":"object-2"}`). Free workstations
+  (`World::free_stations`) are the built-in desks nobody calls home, then the floor workstation
+  objects nobody calls home, each by id; `Hire` takes the first (`NoFreeDesk` when there is none),
+  `free_desks` lists only the desks. A person at an object sits at `Spot::Object(id)`, the
+  object's position plus `seat_at` turned by its `rot` (the desks' chair turn: `(x, z)` →
+  `(−z, x)` per quarter turn); a workstation's seat lies in its room, 200 mm clear of the walls,
+  and its 0.5 m square is floor nothing else may take. Productivity is a desk's (ADR-0088
+  decision 4).
+- **In use**, as for desks: `RemoveObject` of someone's home or seat is refused (`Occupied`), as
+  is demolishing its room; `MoveObject` is refused while someone sits at it or walks to it, and
+  allowed while its owner is away (the seat moves with it). A hire into an object, or the firing
+  of its owner, raises `layout_rev` (the layout names the owner).
+- **World format 13.**
 
 ## Snapshots
 

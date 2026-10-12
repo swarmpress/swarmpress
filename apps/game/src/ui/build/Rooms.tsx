@@ -12,6 +12,7 @@ import { panelKey, useBridge, useCanvas, type Pick } from './gesture'
 import { asCommand, CommandButton, useVerdict, Verdict } from './parts'
 import { AskOfficeDesigner } from './OfficeDesigner'
 import { build, ROOM_TEMPLATES, SIDES, type BuildLayout, type RoomTemplate, type SideVariant } from './types'
+import { RoomProvides } from './provides'
 
 interface Rect {
   x: number
@@ -163,6 +164,7 @@ export function Rooms({ layout }: { layout: BuildLayout }) {
             <p>
               <strong>{room.label}</strong> <span class="muted">{room.id}</span> · {room.desks.length} desks · seats {room.capacity}
             </p>
+            <RoomProvides room={room} objects={layout.objects ?? []} />
             <CommandButton idBase={`demolish-${room.id}`} cmd={build.demolishRoom(room.id)} label="Demolish" success="Room demolished" tone="danger" onDone={() => setSelected(null)} />
           </div>
         )}

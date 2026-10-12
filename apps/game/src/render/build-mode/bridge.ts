@@ -17,8 +17,8 @@ import type { GameScene } from '../scene'
 import { buildRoomChunk, STUD_HEIGHT, STUD_RADIUS, type ChunkSource } from '../bricks/chunk'
 import { mappingOf, type KitApi, type KitBuildLike, type KitMapping } from '../bricks/kit'
 import { footprintRect, type BrickOffice } from '../bricks/office'
-import { objectRect, objectsOf } from '../bricks/objects'
-import { FLOOR_TOP, PLATE, roomPlacements, turnOf, WALL_TOP, type DesignInfo, type Turn } from '../bricks/placements'
+import { deskById, deskTopOf, footprintM, objectRect, objectsOf, objectSpot, rectAt } from '../bricks/objects'
+import { deskSlotAt, FLOOR_TOP, PLATE, roomPlacements, turnOf, WALL_TOP, type DesignInfo, type Turn } from '../bricks/placements'
 import { TOWN_DESIGN, TOWN_HOUSES, HOUSE_SECTION, townFrame, treeParams, type TownItemKind } from '../bricks/town'
 import { frameBars, inRect, itemUnder, kebabKind, rayToPlane, snapStud, type PickItem, type Rect } from './pick'
 
@@ -174,8 +174,16 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
     return equipment
   }
   const townItems = (): PickItem[] => bricks.townItems.map((t) => ({ id: t.id, rect: t.rect, y: 0, rank: RANK.floor }))
-  /** The placed objects (K-4) by the footprint the sim keeps for them: no design needs to be at hand. */
-  const objectItems = (): PickItem[] => objectsOf(layout).map((o) => ({ id: o.id, rect: objectRect(o), y: 0, rank: RANK.floor }))
+  /**
+   * The placed objects (K-4) by the footprint the sim keeps for them: no design needs to be at hand.
+   * A desk-top object (ADR-0088) is picked at its desk's slot port, at the port's height, before the desk.
+   */
+  const objectItems = (): PickItem[] =>
+    objectsOf(layout).flatMap((o): PickItem[] => {
+      if (!deskTopOf(o)) return [{ id: o.id, rect: objectRect(o), y: 0, rank: RANK.floor }]
+      const at = objectSpot(o, layout, mapping, infoOf)
+      return at ? [{ id: o.id, rect: rectAt(at.x, at.z, footprintM(o), at.turn), y: at.y, rank: RANK.attached }] : []
+    })
 
   const rectOf = (t: BuildTarget): Rect | null => {
     if (t.kind === 'room') return layout.rooms.find((r) => r.id === t.id) ?? null
@@ -332,8 +340,16 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
       if (shownGhost && shownGhost.node !== next?.node) shownGhost.node.setEnabled(false)
       shownGhost = null
       if (!g || !next) return
-      next.node.position.set(g.x, 0, g.z)
-      next.node.rotation.y = ghostRotation(g.rot)
+      // On a desk: at the desk's slot port (a kit design of the mapping already has the port's height).
+      const found = g.onDesk ? deskById(layout, g.onDesk.desk) : null
+      const slot = found && g.onDesk ? deskSlotAt(found.desk, g.onDesk.slot, mapping, infoOf) : null
+      if (slot) {
+        next.node.position.set(slot.x, g.design !== undefined ? slot.y : 0, slot.z)
+        next.node.rotation.y = ghostRotation(slot.turn)
+      } else {
+        next.node.position.set(g.x, 0, g.z)
+        next.node.rotation.y = ghostRotation(g.rot)
+      }
       const m = ghostMaterial(g.ok)
       for (const mesh of next.meshes) mesh.material = m
       next.node.setEnabled(true)

@@ -1379,6 +1379,7 @@ pub fn compile_with(
         capabilities: Vec::new(),
         seats: 0,
         workstation: false,
+        seat_at: None,
         work_surface: 0,
         lights: 0,
         storage: 0,
@@ -1479,8 +1480,14 @@ pub fn compile_with(
         .map(|g| u32::try_from(g.studs.len()).unwrap_or(u32::MAX))
         .sum();
     s.work_surface = work_surface(grid);
-    let seat_port = ports.iter().any(|p| p.accepts.iter().any(|a| a == "seat"));
-    s.workstation = s.work_surface >= MIN_WORK_SURFACE && paper_or_screen && seat_port;
+    let seat_port = ports.iter().find(|p| p.accepts.iter().any(|a| a == "seat"));
+    s.workstation = s.work_surface >= MIN_WORK_SURFACE && paper_or_screen && seat_port.is_some();
+    s.seat_at = seat_port.filter(|_| s.workstation).map(|p| {
+        [
+            crate::summary::stud_offset_mm(p.at[0], gw),
+            crate::summary::stud_offset_mm(p.at[1], gd),
+        ]
+    });
     s.derive_capabilities();
     for t in &s.tags {
         if CAPABILITIES.contains(&t.as_str()) && !s.has_capability(t) {

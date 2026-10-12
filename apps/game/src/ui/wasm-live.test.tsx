@@ -124,11 +124,18 @@ const SAMPLES: Record<string, Command> = {
       design: '0123456789abcdef'.repeat(4),
       pos: { x: 1500, z: 13500 },
       rot: 1,
-      summary: { footprint: [24, 12], height: 34, mount: 'Floor', seats: 1, workstation: true, lights: 1, storage: 0, screens: 1, parts: 204, cost: 3199 },
+      summary: { footprint: [24, 12], height: 34, mount: 'Floor', seats: 1, workstation: true, seat_at: [0, 750], lights: 1, storage: 0, screens: 1, parts: 204, cost: 3199 },
     },
   },
   MoveObject: { MoveObject: { object: 'object-1', pos: { x: 1500, z: 12500 }, rot: 0 } },
   RemoveObject: { RemoveObject: { object: 'object-1' } },
+  PlaceObjectOnDesk: {
+    PlaceObjectOnDesk: {
+      design: 'fedcba9876543210'.repeat(4),
+      desk: 'equip-17',
+      summary: { footprint: [4, 4], height: 12, mount: 'Surface', seats: 0, workstation: false, seat_at: null, lights: 0, storage: 0, screens: 0, parts: 9, cost: 120 },
+    },
+  },
   AssignPhase: cmd.assignPhase('work-item-1', 0, 'staff-1'),
   AcceptProposal: cmd.acceptProposal('work-item-1', 'post-1'),
   CompleteTodo: cmd.completeTodo('work-item-1', 'todo-1'),
@@ -191,6 +198,10 @@ describe.skipIf(!built)('WasmDataSource over the real sim', () => {
     expect(await s.validate(toJson(SAMPLES.PlaceObject))).toMatchObject({ ok: false, reason: expect.stringMatching(/overlaps/) })
     expect(await s.apply(toJson(SAMPLES.MoveObject))).toEqual({ ok: true })
     expect(await s.apply(toJson(SAMPLES.RemoveObject))).toEqual({ ok: true })
+    // A desk-top design takes a desk's lamp slot (ADR-0088): refused while the desk's lamp is there.
+    expect(await s.validate(toJson(SAMPLES.PlaceObjectOnDesk))).toMatchObject({ ok: false, reason: expect.stringMatching(/already has one/) })
+    expect(await s.apply(toJson({ Demolish: { Equipment: 'equip-19' } }))).toEqual({ ok: true })
+    expect(await s.apply(toJson(SAMPLES.PlaceObjectOnDesk))).toEqual({ ok: true })
     // Plan commands are not in the sim yet: the sim itself rejects them (the store never sends one, see below).
     const plan = await s.validate(toJson(cmd.assignPhase('work-item-1', 0, 'staff-1')))
     expect(plan).toMatchObject({ ok: false, reason: expect.stringMatching(/unknown variant `AssignPhase`/) })

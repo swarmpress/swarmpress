@@ -10,6 +10,10 @@
 //!   ([`DESK_TOP`], 70–80 cm) whose cells have nothing but parts on them;
 //! - **workstation**: a work surface of at least [`MIN_WORK_SURFACE`], a
 //!   `screen` or `paper` part, and a port that accepts a `seat`;
+//! - **seat position** (`seat_at`, ADR-0088): for a workstation, its first
+//!   port accepting a `seat`, relative to the footprint's centre in
+//!   millimetres (x east, z south, before any turn; a stud is 62.5 mm),
+//!   rounded half away from zero to whole millimetres;
 //! - **light**: parts tagged `light-emitter`;
 //! - **storage**: the top area (stud²) of parts tagged `shelf`;
 //! - **screens**, **doors**, **windows**: parts with those tags;
@@ -64,6 +68,10 @@ pub struct Summary {
     pub capabilities: Vec<String>,
     pub seats: u32,
     pub workstation: bool,
+    /// Where a person sits at a workstation: its seat port relative to the
+    /// footprint's centre, millimetres `[x, z]` (x east, z south) before any
+    /// turn; `None` unless `workstation` (ADR-0088 decision 2).
+    pub seat_at: Option<[i32; 2]>,
     /// Work surface at desk height, stud².
     pub work_surface: u32,
     pub lights: u32,
@@ -80,6 +88,16 @@ pub struct Summary {
     pub studs: u32,
     /// Price of the parts, cents of in-game money.
     pub cost: u64,
+}
+
+/// Millimetres from the footprint's centre of a grid point `at` (studs from
+/// the footprint's min corner) on a footprint side of `side` studs, rounded
+/// half away from zero: `(at - side / 2) × 62.5 mm`.
+pub fn stud_offset_mm(at: i64, side: u32) -> i32 {
+    // (2·at − side) × 31.25 mm = (2·at − side) × 125 / 4
+    let n = (2 * at - i64::from(side)) * 125;
+    let q = (n.abs() + 2) / 4;
+    i32::try_from(if n < 0 { -q } else { q }).unwrap_or(if n < 0 { i32::MIN } else { i32::MAX })
 }
 
 impl Summary {

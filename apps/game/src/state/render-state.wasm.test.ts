@@ -66,11 +66,18 @@ describe.skipIf(!built)('render state from the wasm sim (drift)', () => {
 
   it('layout_json lists placed objects and their rooms\' capabilities (ADR-0065 §4)', () => {
     const sim = wasm.Sim.demo(42n)
-    const summary = { footprint: [24, 12], height: 34, mount: 'Floor', seats: 1, workstation: true, lights: 1, storage: 0, screens: 1, parts: 204, cost: 3199 }
+    const summary = { footprint: [24, 12], height: 34, mount: 'Floor', seats: 1, workstation: true, seat_at: [0, 750], lights: 1, storage: 0, screens: 1, parts: 204, cost: 3199 }
     sim.apply_command_json(JSON.stringify({ PlaceObject: { design: 'ab'.repeat(32), pos: { x: 1500, z: 13500 }, rot: 1, summary } }))
+    // a desk-top design on Giulia's desk once its lamp is gone (ADR-0088)
+    const mug = { footprint: [4, 4], height: 12, mount: 'Surface', seats: 0, workstation: false, seat_at: null, lights: 0, storage: 0, screens: 0, parts: 9, cost: 120 }
+    sim.apply_command_json(JSON.stringify({ Demolish: { Equipment: 'equip-19' } }))
+    sim.apply_command_json(JSON.stringify({ PlaceObjectOnDesk: { design: 'cd'.repeat(32), desk: 'equip-17', summary: mug } }))
     const layout = JSON.parse(sim.layout_json()) as BuildingLayout
     expect(checkLayout(layout).problems).toEqual([])
-    expect(layout.objects).toEqual([{ id: 'object-1', design: 'ab'.repeat(32), room: 'room-6', x: 1.5, z: 13.5, rot: Math.PI / 2, footprint: [1.5, 0.75], summary }])
+    expect(layout.objects).toEqual([
+      { id: 'object-1', design: 'ab'.repeat(32), room: 'room-6', x: 1.5, z: 13.5, rot: Math.PI / 2, footprint: [1.5, 0.75], summary, seatAt: [0, 0.75], onDesk: null, assignedTo: null },
+      { id: 'object-2', design: 'cd'.repeat(32), room: 'room-1', x: 1.5, z: 1.5, rot: 0, footprint: [0.25, 0.25], summary: mug, seatAt: null, onDesk: { desk: 'equip-17', slot: 'lamp' }, assignedTo: null },
+    ])
     expect(layout.rooms.find((r) => r.id === 'room-6')?.objectCapabilities).toEqual({ seats: 1, workstations: 1, lights: 1, storage: 0, screens: 1 })
     sim.free()
   })

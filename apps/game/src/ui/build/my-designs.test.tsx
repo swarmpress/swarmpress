@@ -39,7 +39,7 @@ beforeAll(async () => {
 })
 afterAll(() => setDesignKit(null))
 
-const COMMANDS = [...ALL_COMMANDS, 'PlaceRoom', 'Demolish', 'PlaceEquipment', 'MoveEquipment', 'PlaceObject', 'MoveObject', 'RemoveObject'] as CommandName[]
+const COMMANDS = [...ALL_COMMANDS, 'PlaceRoom', 'Demolish', 'PlaceEquipment', 'MoveEquipment', 'PlaceObject', 'PlaceObjectOnDesk', 'MoveObject', 'RemoveObject'] as CommandName[]
 
 const cube: DesignJson = {
   format: 'swarmpress.design.v1',
@@ -50,8 +50,10 @@ const cube: DesignJson = {
   ops: [{ op: 'box', at: [0, 0, 0], size: [8, 8, 6], part: 'brick', colour: 'red' }],
   provenance: { kind: 'player', player: 'local' },
 }
-/** A design that hangs on a wall: kept, but not placeable on the floor. */
-const shelf: DesignJson = { ...cube, id: 'shelf-1', name: 'Wall shelf', mount: 'surface', ops: [{ op: 'box', at: [0, 0, 0], size: [8, 2, 3], part: 'brick', colour: 'blue' }], footprint: [8, 2], height: 3 }
+/** A design that stands on a desk (ADR-0088): a tile too, placed on a desk's lamp slot (it has no screen). */
+const shelf: DesignJson = { ...cube, id: 'shelf-1', name: 'Desk shelf', mount: 'surface', ops: [{ op: 'box', at: [0, 0, 0], size: [8, 2, 3], part: 'brick', colour: 'blue' }], footprint: [8, 2], height: 3 }
+/** A design that hangs from the ceiling: kept, but not placeable yet. */
+const pendant: DesignJson = { ...cube, id: 'pendant-1', name: 'Pendant', mount: 'ceiling', ops: [{ op: 'box', at: [0, 0, 0], size: [2, 2, 3], part: 'brick', colour: 'yellow' }], footprint: [2, 2], height: 3 }
 
 function layoutWith(objects: BuildLayout['objects']): BuildLayout {
   return {
@@ -128,10 +130,13 @@ afterEach(() => {
   localStorage.clear()
 })
 
-async function open(layout: (hash: string) => BuildLayout, opts: { designs?: boolean } = {}) {
+async function open(layout: (hash: string) => BuildLayout, opts: { designs?: boolean; extra?: DesignJson[]; validate?: (json: string) => { ok: boolean; reason?: string } } = {}) {
   const designs = opts.designs === false ? null : memoryDesignStore(async (j) => acceptedHash(kit, j), null)
   const { hash } = designs ? await designs.save(cube) : { hash: '' }
   if (designs) await designs.save(shelf)
+  if (designs) await designs.save(pendant)
+  const extra: string[] = []
+  for (const d of opts.extra ?? []) if (designs) extra.push((await designs.save(d)).hash)
   const source = sourceWithDesigns(designs)
   const s = source as unknown as Record<string, unknown>
   s.getLayout = async () => structuredClone(layout(hash))
@@ -139,7 +144,7 @@ async function open(layout: (hash: string) => BuildLayout, opts: { designs?: boo
     const c = JSON.parse(json) as { PlaceObject?: { summary: { cost: number } } }
     return c.PlaceObject ? c.PlaceObject.summary.cost : null
   }
-  s.validate = async () => ({ ok: true })
+  s.validate = async (json: string) => opts.validate?.(json) ?? { ok: true }
   s.apply = async () => ({ ok: true })
   const mb = mockBridge()
   buildBridge.value = mb.bridge
@@ -159,7 +164,7 @@ async function open(layout: (hash: string) => BuildLayout, opts: { designs?: boo
   fireEvent.click(within(panel).getByRole('tab', { name: 'Furniture' }))
   await settle()
   const run = vi.spyOn(handle.store, 'run')
-  return { panel, run, mb, hash, store: handle.store }
+  return { panel, run, mb, hash, extra, store: handle.store }
 }
 
 const sent = (run: { mock: { calls: unknown[][] } }) => run.mock.calls.map((c) => c[0])
@@ -168,15 +173,19 @@ describe.skipIf(!built)('my designs in the Furniture tab', () => {
   it('shows the company’s placeable designs as brick tiles with parts and the sim price', async () => {
     const { panel } = await open(() => layoutWith([]))
     const mine = within(panel).getByRole('region', { name: 'My designs' })
-    const tiles = within(mine).getAllByRole('button')
-    expect(tiles).toHaveLength(1)
+    const all = within(mine).getAllByRole('button')
+    // The cube on the floor, the shelf on a desk; the pendant hangs from the ceiling.
+    expect(all).toHaveLength(2)
+    const shelfTile = all.find((t) => t.textContent!.includes('Desk shelf'))!
+    expect(shelfTile.textContent).toContain('On a desk')
+    const tiles = all.filter((t) => t !== shelfTile)
     const facts = compileDesign(kit, cube)
     expect(tiles[0].textContent).toContain('Red cube')
     expect(tiles[0].textContent).toContain(`${facts.summary!.parts} parts`)
     expect(tiles[0].textContent).toContain(`€${(facts.summary!.cost / 100).toLocaleString('en', { maximumFractionDigits: facts.summary!.cost % 100 ? 2 : 0 })}`)
     expect(tiles[0].querySelector('svg.st-brick-icon')).toBeTruthy()
-    // The wall shelf is kept but not placeable on the floor.
-    expect(within(mine).getByText(/not placeable/)).toBeTruthy()
+    // The pendant is kept but not placeable.
+    expect(within(mine).getByText(/1 design hangs from the ceiling.*not placeable yet/)).toBeTruthy()
     expect(await audit(panel)).toEqual([])
   })
 
@@ -202,6 +211,7 @@ describe.skipIf(!built)('my designs in the Furniture tab', () => {
             mount: 'Floor',
             seats: summary.seats,
             workstation: summary.workstation,
+            seat_at: null,
             lights: summary.lights,
             storage: summary.storage,
             screens: summary.screens,
@@ -214,7 +224,7 @@ describe.skipIf(!built)('my designs in the Furniture tab', () => {
     expect(objectSummary(summary).mount).toBe('Floor')
     // The command's JSON as the sim reads it.
     expect(JSON.stringify(sent(run)[0])).toBe(
-      `{"PlaceObject":{"design":"${hash}","pos":{"x":4000,"z":3000},"rot":1,"summary":{"footprint":[8,8],"height":6,"mount":"Floor","seats":${summary.seats},"workstation":${summary.workstation},"lights":${summary.lights},"storage":${summary.storage},"screens":${summary.screens},"parts":${summary.parts},"cost":${summary.cost}}}}`,
+      `{"PlaceObject":{"design":"${hash}","pos":{"x":4000,"z":3000},"rot":1,"summary":{"footprint":[8,8],"height":6,"mount":"Floor","seats":${summary.seats},"workstation":${summary.workstation},"seat_at":null,"lights":${summary.lights},"storage":${summary.storage},"screens":${summary.screens},"parts":${summary.parts},"cost":${summary.cost}}}}`,
     )
   })
 
@@ -257,6 +267,139 @@ describe.skipIf(!built)('my designs in the Furniture tab', () => {
   it('offers no designs of its own when the source keeps none', async () => {
     const { panel } = await open(() => layoutWith([]), { designs: false })
     expect(within(panel).queryByRole('region', { name: 'My designs' })).toBeNull()
+  })
+})
+
+/** A tablet: a surface design with a screen, so it takes a desk's screen slot. */
+const tablet: DesignJson = {
+  ...cube,
+  id: 'tablet-1',
+  name: 'Tablet',
+  mount: 'surface',
+  footprint: [4, 2],
+  height: 6,
+  ops: [
+    { op: 'box', at: [0, 0, 0], size: [4, 2, 1], part: 'plate', colour: 'grey-dark' },
+    { op: 'part', part: 'screen-2x2', at: [1, 0, 1], colour: 'screen-blue' },
+  ],
+}
+/** A workstation of the player's (ADR-0088): a desk-high top, a screen, a seat port 0.75 m south of its centre. */
+const myDesk: DesignJson = {
+  ...cube,
+  id: 'my-desk',
+  name: 'My desk',
+  footprint: [16, 12],
+  height: 40,
+  ops: [
+    { op: 'box', at: [0, 0, 0], size: [16, 12, 29], part: 'brick', colour: 'sand' },
+    { op: 'box', at: [0, 0, 29], size: [16, 12, 1], part: 'plate', colour: 'sand' },
+    { op: 'part', part: 'screen-2x2', at: [7, 2, 30], colour: 'screen-blue', surface: 'monitor' },
+  ],
+  ports: [{ id: 'seat', at: [8, 18, 0], accepts: ['seat'] }],
+} as DesignJson
+
+/** The newsroom with two desks (and, for the totals, what its objects provide). */
+function deskLayout(objects: BuildLayout['objects'], caps?: { seats: number; workstations: number; lights: number; storage: number; screens: number }): BuildLayout {
+  const l = layoutWith(objects)
+  l.rooms[0].desks = [
+    { id: 'equip-3', x: 3, z: 3, rot: 0, seat: [3, 3.6] },
+    { id: 'equip-4', x: 6, z: 3, rot: 0, seat: [6, 3.6] },
+  ]
+  if (caps) l.rooms[0].objectCapabilities = caps
+  return l
+}
+
+describe.skipIf(!built)('desk-top designs and workstations (ADR-0088)', () => {
+  it('places a surface design on a desk: the ghost at the desk’s lamp slot, PlaceObjectOnDesk with the compiled summary', async () => {
+    const { panel, run, mb, store } = await open(() => deskLayout([]))
+    const shelfHash = store.designs()!.find((d) => d.design.id === 'shelf-1')!.hash
+    fireEvent.click(within(within(panel).getByRole('region', { name: 'My designs' })).getByRole('button', { name: /^Desk shelf/ }))
+    await settle()
+    // It starts on the room's first desk; no Turn on a desk.
+    expect(mb.bridge.ghost).toHaveBeenLastCalledWith(expect.objectContaining({ kind: `design:${shelfHash}`, design: JSON.stringify(shelf), onDesk: { desk: 'equip-3', slot: 'lamp' } }))
+    const gesture = within(panel).getByRole('region', { name: 'Pending action' })
+    expect(within(gesture).queryByRole('button', { name: /Turn/ })).toBeNull()
+    // Pointing at the floor is no place for it; pointing at a desk is.
+    await mb.hover({ x: 8, z: 8, room: 'room-1', target: { kind: 'room', id: 'room-1' } })
+    expect(mb.bridge.ghost).toHaveBeenLastCalledWith(expect.not.objectContaining({ onDesk: expect.anything() }))
+    expect(within(gesture).getByRole('button', { name: 'Place here' }).hasAttribute('disabled')).toBe(true)
+    await mb.click({ x: 6, z: 3, room: 'room-1', target: { kind: 'equipment', id: 'equip-4' } })
+    expect(mb.bridge.ghost).toHaveBeenLastCalledWith(expect.objectContaining({ onDesk: { desk: 'equip-4', slot: 'lamp' }, ok: true }))
+    // Or chosen from the room's desks.
+    fireEvent.change(within(gesture).getByRole('combobox', { name: 'On the desk' }), { target: { value: 'equip-3' } })
+    await settle()
+    expect(mb.bridge.ghost).toHaveBeenLastCalledWith(expect.objectContaining({ onDesk: { desk: 'equip-3', slot: 'lamp' } }))
+    fireEvent.click(within(gesture).getByRole('button', { name: 'Place here' }))
+    await settle()
+    const summary = compileDesign(kit, shelf).summary!
+    expect(sent(run)).toHaveLength(2)
+    expect(JSON.stringify(sent(run)[0])).toBe(
+      `{"PlaceObjectOnDesk":{"design":"${shelfHash}","desk":"equip-4","summary":{"footprint":[8,2],"height":${summary.height},"mount":"Surface","seats":0,"workstation":false,"seat_at":null,"lights":0,"storage":0,"screens":0,"parts":${summary.parts},"cost":${summary.cost}}}}`,
+    )
+    expect(sent(run)[1]).toEqual({ PlaceObjectOnDesk: expect.objectContaining({ design: shelfHash, desk: 'equip-3' }) })
+    expect(await audit(panel)).toEqual([])
+  })
+
+  it('stands a design with a screen at the desk’s screen slot, and shows the sim’s refusal when it is taken', async () => {
+    const { panel, mb, extra } = await open(() => deskLayout([]), {
+      extra: [tablet],
+      validate: (json) => (json.includes('"desk":"equip-3"') ? { ok: false, reason: 'equip-3 has a screen already' } : { ok: true }),
+    })
+    expect(compileDesign(kit, tablet).ok).toBe(true)
+    fireEvent.click(within(within(panel).getByRole('region', { name: 'My designs' })).getByRole('button', { name: /^Tablet/ }))
+    await settle()
+    expect(mb.bridge.ghost).toHaveBeenLastCalledWith(expect.objectContaining({ kind: `design:${extra[0]}`, onDesk: { desk: 'equip-3', slot: 'screen' }, ok: false }))
+    expect(within(panel).getByText(/refused, equip-3 has a screen already/)).toBeTruthy()
+  })
+
+  it('lists a desk-top object on its desk: no Move or Turn (it moves with its desk), Remove sends RemoveObject', async () => {
+    const { panel, run } = await open((h) =>
+      deskLayout([{ id: 'object-5', design: h, room: 'room-1', x: 3, z: 3, rot: 0, footprint: [0.5, 0.5], summary: { ...summaryOf(0.5, 0.5), mount: 'Surface' }, onDesk: { desk: 'equip-3', slot: 'lamp' } }]),
+    )
+    fireEvent.click(within(panel).getByRole('button', { name: /^Red cube object-5 · on equip-3/ }))
+    await settle()
+    const sel = within(panel).getByRole('region', { name: /Selected: Red cube/ })
+    const move = within(sel).getByRole('button', { name: 'Move' })
+    expect(move.hasAttribute('disabled')).toBe(true)
+    expect(document.getElementById(move.getAttribute('aria-describedby')!)!.textContent).toBe('It moves with its desk: move the desk instead.')
+    expect(within(sel).queryByRole('button', { name: 'Turn' })).toBeNull()
+    fireEvent.click(within(sel).getByRole('button', { name: 'Remove' }))
+    await settle()
+    expect(sent(run)).toEqual([{ RemoveObject: { object: 'object-5' } }])
+    expect(await audit(panel)).toEqual([])
+  })
+
+  it('says who calls a workstation object home, disables its Move and Remove with the sim’s reason, and totals the room', async () => {
+    const reason = 'Ada works at object-6'
+    const { panel, run } = await open(
+      (h) => {
+        const ws = { ...summaryOf(1, 0.75), workstation: true, screens: 1 }
+        return deskLayout(
+          [
+            { id: 'object-6', design: h, room: 'room-1', x: 3, z: 6, rot: 0, footprint: [1, 0.75], summary: ws, seatAt: [0, 0.75], assignedTo: 'staff-1' },
+            { id: 'object-7', design: h, room: 'room-1', x: 6, z: 6, rot: 0, footprint: [1, 0.75], summary: ws, seatAt: [0, 0.75], assignedTo: null },
+          ],
+          { seats: 0, workstations: 2, lights: 0, storage: 0, screens: 2 },
+        )
+      },
+      { validate: (json) => (json.includes('object-6') ? { ok: false, reason } : { ok: true }) },
+    )
+    expect(within(panel).getByTestId('room-provides').textContent).toBe('Your designs here provide: 2 workstations (1 free) · 2 screens')
+    expect(within(panel).getByRole('button', { name: /^Red cube object-7 · a free workstation/ })).toBeTruthy()
+    fireEvent.click(within(panel).getByRole('button', { name: /^Red cube object-6 · Giulia Rossi works here/ }))
+    await settle()
+    const sel = within(panel).getByRole('region', { name: /Selected: Red cube/ })
+    expect(within(sel).getByText('A workstation: Giulia Rossi calls it home.')).toBeTruthy()
+    const move = within(sel).getByRole('button', { name: 'Move' })
+    expect(move.hasAttribute('disabled')).toBe(true)
+    expect(document.getElementById(move.getAttribute('aria-describedby')!)!.textContent).toBe(reason)
+    const remove = within(sel).getByRole('button', { name: 'Remove' })
+    expect(remove.hasAttribute('disabled')).toBe(true)
+    expect(document.getElementById(remove.getAttribute('aria-describedby')!)!.textContent).toBe(reason)
+    fireEvent.click(remove)
+    await settle()
+    expect(sent(run)).toEqual([])
+    expect(await audit(panel)).toEqual([])
   })
 })
 

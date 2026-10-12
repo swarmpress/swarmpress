@@ -110,7 +110,7 @@ fn moving_a_desk_keeps_its_id_and_takes_what_sits_on_it() {
     w.staff.get_mut(&StaffId(1)).unwrap().spot = None;
     w.apply(move_to(GIULIA_DESK, floor(1_500, 1_600, 0)))
         .unwrap();
-    assert_eq!(w.staff[&StaffId(1)].home_desk, Some(GIULIA_DESK));
+    assert_eq!(w.staff[&StaffId(1)].home_desk(), Some(GIULIA_DESK));
     assert_eq!(
         w.building.equipment[&GIULIA_DESK].pos,
         PosMm::new(1_500, 1_600)

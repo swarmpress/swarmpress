@@ -11,7 +11,9 @@ paths:
   - crates/sim-core/tests/building.rs
   - crates/sim-core/src/objects.rs
   - crates/sim-core/tests/objects.rs
+  - crates/sim-core/tests/stations.rs
   - "apps/game/src/render/bricks/objects*.ts"
+  - "apps/game/src/render/bricks/workstations*.ts"
   - "apps/game/src/session/design-store*.ts"
   - "apps/game/e2e/build*.spec.ts"
 adrs:
@@ -19,6 +21,7 @@ adrs:
   - ADR-0003
   - ADR-0065
   - ADR-0005
+  - ADR-0088
 ---
 
 # Build mode and placement
@@ -73,4 +76,13 @@ Decisions: [ADR-0003](../../adr/0003-deterministic-lockstep-server-authority.md)
   Furniture tab's "My designs" places, moves, turns and removes them with the design itself as the
   ghost; the office draws each from the company's design, a placeholder box until it is loaded.
   Staff do not use objects yet: they still work with the kit's equipment.
+- **Staff use what the bricks provide** (2026-10-12, ADR-0088, the sim and kit side): the kit's
+  summary carries a workstation's seat (`seat_at`, mm from its centre); a floor workstation object
+  is a home for staff like a desk (`Staff.home: Station`; hires take free desks, then free
+  workstation objects, each by id; the person sits at the turned seat; in use, it is neither moved
+  nor removed); desk-top designs take a desk's screen or lamp slot with `PlaceObjectOnDesk` and move
+  and go with the desk. `layout_json` writes each object's `seatAt`, `onDesk` and `assignedTo`;
+  `seatedAt` names an object when someone sits at one. Tests: `crates/sim-core/tests/stations.rs`,
+  the invariants (every home exists, no two people share one, one item per desk slot), the
+  goldens (world format 13).
 

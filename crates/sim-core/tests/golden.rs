@@ -56,16 +56,25 @@
 //! - world format 12: asking for a role's candidate adds none while one is
 //!   listed or when every persona for the role is taken (no nameless hires).
 //! - `0x5903_aa40_d249_346b`: world format 12.
+//! - world format 13 (FEAT-026, ADR-0088): staff use what the bricks
+//!   provide: `Staff.home` is a `Station` (a desk or a workstation object),
+//!   `Spot::Object`, the summary's `seat_at`, `PlacedObject.on_desk` and
+//!   `PlaceObjectOnDesk`; the script removes a spare desk, places a desk of
+//!   the player's design, hires three (the third gets the object) and puts
+//!   a mug of the player's design on a desk's lamp slot.
+//! - `0xb779_a495_3fc3_f821`: world format 13.
 
 use sim_core::commands::JobFailure;
+use sim_core::equipment::DeskSlot;
 use sim_core::geom::PosMm;
-use sim_core::ids::{EquipId, StaffId, TicketId, TownItemId, WorkItemId};
+use sim_core::ids::{EquipId, ObjectId, StaffId, TicketId, TownItemId, WorkItemId};
 use sim_core::inbox::{ResolvedBy, TicketKind, TicketOption, TicketStatus};
 use sim_core::plan::{JobKind, WorkItemStatus};
 use sim_core::scenarios::{golden_script, run_golden, DEMO_PROJECT, GOLDEN_STEPS};
+use sim_core::staff::Station;
 use sim_core::town::TownKind;
 
-const GOLDEN_HASH: u64 = 0x5903_aa40_d249_346b;
+const GOLDEN_HASH: u64 = 0xb779_a495_3fc3_f821;
 
 #[test]
 fn golden_hash() {
@@ -185,13 +194,26 @@ fn golden_hash() {
     // Players' own designs (ADR-0065 §4): the archive's went with the
     // room, the meeting room keeps the moved shelf, the table is gone.
     let objects: Vec<_> = w.building.objects.values().collect();
-    assert_eq!(objects.len(), 1);
+    assert_eq!(objects.len(), 3);
     let shelf = objects[0];
     assert_eq!(shelf.id, sim_core::ids::ObjectId(3));
     assert_eq!(shelf.design, "3c".repeat(32));
     assert_eq!(shelf.room, sim_core::ids::RoomId(6));
     assert_eq!((shelf.pos, shelf.rot), (PosMm::new(5_500, 14_000), 1));
     assert_eq!(shelf.summary.storage, 480);
+    // ADR-0088: the third hire works at the player's desk, seated 750 mm
+    // west of it (turned once); a mug of the player's design holds a desk's
+    // lamp slot.
+    let my_desk = Station::Object(ObjectId(4));
+    let hire = w.station_owner(my_desk).expect("someone calls it home");
+    assert_eq!(hire, StaffId(17));
+    assert_eq!(w.staff[&hire].pos, PosMm::new(750, 12_000));
+    assert_eq!(w.staff[&hire].seated_station(), Some(my_desk));
+    assert!(w.free_stations().is_empty());
+    assert_eq!(
+        w.building.objects[&ObjectId(5)].on_desk,
+        Some((EquipId(59), DeskSlot::Lamp))
+    );
     println!("golden hash: {:#018x}", w.hash());
     assert_eq!(w.hash(), GOLDEN_HASH, "got {:#018x}", w.hash());
 }

@@ -8,6 +8,10 @@
  *
  * Without a mouse: the tiles and the lists are buttons; while placing or moving, the arrow keys
  * nudge the ghost on the stud grid (a desk item steps from desk to desk), R turns, Enter places.
+ *
+ * Desk items (monitors, lamps, the player's desk-top designs, ADR-0088) target a desk instead of a
+ * floor spot: point at a desk (or at something on it) in the scene, or choose the desk from the
+ * room's list; the ghost stands at that desk's slot port. Things on a desk move with it.
  */
 import type { ComponentChildren } from 'preact'
 import { useEffect, useLayoutEffect, useState } from 'preact/hooks'
@@ -36,6 +40,12 @@ export interface Placed {
   target?: BuildTarget['kind']
   /** A design of the player's own (K-4): its JSON, for the ghost while it moves. */
   design?: string
+  /** Why it has no Move (a desk-top object moves with its desk, ADR-0088). */
+  fixed?: string
+  /** A workstation object (ADR-0088): staff can call it home. */
+  workstation?: boolean
+  /** Who calls it home (`staff-N`), null when free; absent when the layout does not say. */
+  home?: string | null
 }
 
 /** More tiles beside the catalogue: the company's own designs (K-4). */
@@ -128,8 +138,9 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
       bridge.ghost(null)
       return
     }
-    bridge.ghost({ kind: toolItem.kind, family: cfg.family, x: ghostX, z: ghostZ, rot: tool.rot, ok: r.ok, ...(toolItem.design ? { design: toolItem.design } : {}) })
-  }, [bridge, tool, toolItem?.kind, toolItem?.design, ghostX, ghostZ, r.ok, cfg.family])
+    const desk = toolItem.onDesk && toolItem.deskSlot && spot?.desk ? { onDesk: { desk: spot.desk, slot: toolItem.deskSlot } } : {}
+    bridge.ghost({ kind: toolItem.kind, family: cfg.family, x: ghostX, z: ghostZ, rot: tool.rot, ok: r.ok, ...(toolItem.design ? { design: toolItem.design } : {}), ...desk })
+  }, [bridge, tool, toolItem?.kind, toolItem?.design, toolItem?.deskSlot, ghostX, ghostZ, spot?.desk, r.ok, cfg.family])
 
   const spotOf = (p: Pick): Spot => {
     const id = p.target ? cfg.resolve(p) : null
@@ -167,7 +178,17 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
     setSpot(d ? { x: d.x, z: d.z, desk: d.id } : cfg.start ? { ...cfg.start, desk: null } : null)
   }
 
+  /** Why `item` cannot move now: on a desk, or a workstation someone calls home (the sim's reason when it gives one). */
+  const moveBlock = (item: Placed): string | null => {
+    if (item.fixed) return item.fixed
+    if (!item.home) return null
+    const probe = cfg.move(item, { x: item.x, z: item.z, desk: null, exact: true }, item.rot)
+    const v = probe ? store.check(asCommand(probe)) : null
+    return v && !v.ok && v !== PENDING && v.reason ? v.reason : `${store.nameOf(item.home)} works here`
+  }
+
   const startMove = (item: Placed) => {
+    if (moveBlock(item)) return
     setTool({ op: 'move', id: item.id, rot: item.rot })
     setSpot({ x: item.x, z: item.z, desk: item.on })
   }
@@ -227,7 +248,7 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
     },
     onPress: (p) => {
       // A press on the selected thing drags it.
-      if (tool || !sel || cfg.resolve(p) !== sel.id) return false
+      if (tool || !sel || cfg.resolve(p) !== sel.id || moveBlock(sel)) return false
       startMove(sel)
       return true
     },
@@ -235,6 +256,7 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
     onKey,
   })
 
+  const selBlock = sel ? moveBlock(sel) : null
   const toolLabel = tool ? (tool.op === 'place' ? `Place ${tool.item.name.toLowerCase()}` : `Move ${moving?.name.toLowerCase() ?? ''}`) : ''
   return (
     <div class="build-placer" onKeyDown={(e) => panelKey(e, onKey)}>
@@ -269,7 +291,7 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
                   price={store.price(asCommand(cfg.priceProbe(c)))}
                   pressed={tool?.op === 'place' && tool.item.kind === c.kind}
                   onClick={() => startPlace(c)}
-                  note={c.parts !== undefined ? `${c.parts} parts` : undefined}
+                  note={c.parts !== undefined ? `${c.onDesk ? 'On a desk · ' : ''}${c.parts} parts` : c.onDesk ? 'On a desk' : undefined}
                 />
               ))}
             </div>
@@ -283,6 +305,27 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
             <strong>{toolLabel}</strong>
             <span class="muted">{spot ? (toolItem?.onDesk ? (spot.desk ? `on ${spot.desk}` : 'point at a desk') : `${spot.x.toFixed(2)} m, ${spot.z.toFixed(2)} m`) : 'point at the floor'}</span>
           </div>
+          {toolItem?.onDesk && (
+            <label class="build-field build-room-pick" for="build-desk-pick">
+              <span>On the desk</span>
+              <select
+                id="build-desk-pick"
+                value={spot?.desk ?? ''}
+                onChange={(e) => {
+                  const d = cfg.desks.find((x) => x.id === (e.currentTarget as HTMLSelectElement).value)
+                  if (d) setSpot({ x: d.x, z: d.z, desk: d.id })
+                }}
+              >
+                {!spot?.desk && <option value="">Choose a desk</option>}
+                {cfg.desks.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {toolItem?.onDesk && cfg.desks.length === 0 && <p class="build-hint muted">This room has no desk to put it on.</p>}
           <Verdict r={r} price={price} what={toolLabel} />
           <div class="build-row">
             {!toolItem?.onDesk && (
@@ -314,7 +357,11 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
                 <button type="button" class={`build-item${selected === i.id ? ' is-active' : ''}`} aria-pressed={selected === i.id} onClick={() => setSelected(selected === i.id ? null : i.id)}>
                   <span class="build-swatch" style={{ background: hexOf(i.colour) }} aria-hidden="true" />
                   <span class="build-item-name">{i.name}</span>{' '}
-                  <span class="build-item-id muted">{i.id}</span>
+                  <span class="build-item-id muted">
+                    {i.id}
+                    {i.target === 'object' && i.on ? ` · on ${i.on}` : ''}
+                    {i.workstation ? (i.home ? ` · ${store.nameOf(i.home)} works here` : i.home === null ? ' · a free workstation' : ' · a workstation') : ''}
+                  </span>
                 </button>
               </li>
             ))}
@@ -327,12 +374,17 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
           <h3 class="build-h">
             {sel.name} <span class="muted">{sel.id}</span>
           </h3>
+          {sel.workstation && (
+            <p class="build-hint muted">{sel.home ? `A workstation: ${store.nameOf(sel.home)} calls it home.` : 'A workstation: staff can work here.'}</p>
+          )}
           <div class="build-actions">
             <div class="build-action">
-              <button type="button" class="btn" onClick={() => startMove(sel)}>
+              <button type="button" class="btn" disabled={!!selBlock} aria-describedby={`move-${sel.id}-note`} onClick={() => startMove(sel)}>
                 Move
               </button>
-              <span class="build-action-note">{bridge ? 'then click, or drag it in the scene' : 'then arrow keys and Enter'}</span>
+              <span id={`move-${sel.id}-note`} class={`build-action-note${selBlock ? ' is-bad' : ''}`}>
+                {selBlock ?? (bridge ? 'then click, or drag it in the scene' : 'then arrow keys and Enter')}
+              </span>
             </div>
             {!sel.on && cfg.move(sel, { x: sel.x, z: sel.z, desk: null, exact: true }, turn(sel.rot)) && (
               <CommandButton idBase={`turn-${sel.id}`} cmd={cfg.move(sel, { x: sel.x, z: sel.z, desk: null, exact: true }, turn(sel.rot))!} label="Turn" success="Turned" />

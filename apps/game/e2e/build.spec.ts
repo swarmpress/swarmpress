@@ -7,9 +7,17 @@ import { expect, test, type Page } from '@playwright/test'
 import { boot } from './helpers'
 
 type Layout = {
-  rooms: Array<{ id: string; props: Array<{ id: string; kind: string }> }>
+  rooms: Array<{ id: string; props: Array<{ id: string; kind: string; attachedTo?: string | null }> }>
   town?: Array<{ id: string; kind: string }>
-  objects?: Array<{ id: string; design: string; room: string; summary: { parts: number; mount: string } }>
+  objects?: Array<{
+    id: string
+    design: string
+    room: string
+    summary: { parts: number; mount: string; workstation: boolean }
+    seatAt?: [number, number] | null
+    onDesk?: { desk: string; slot: string } | null
+    assignedTo?: string | null
+  }>
 }
 type Hook = { sim: { layout_json(): string }; layoutRebuilds(): { count: number } }
 
@@ -85,6 +93,54 @@ test('a design saved in the editor is placed from My designs and stands in the o
   expect(object.summary.mount).toBe('Floor')
   expect(object.summary.parts).toBeGreaterThan(0)
   await expect.poll(() => rebuilds(page), { timeout: 60_000 }).toBeGreaterThan(rebuilt0)
+
+  expect(errors).toEqual([])
+})
+
+test('a desk of your own is a workstation, and a lamp of your own takes a desk\'s lamp slot', async ({ page }) => {
+  test.setTimeout(300_000)
+  const { errors } = await boot(page, '/?quality=low')
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: /^Build/ }).click()
+
+  // The editor: copies of the kit's desk and desk lamp, saved; the desk is a workstation (ADR-0088).
+  await page.getByRole('tab', { name: /Designs/ }).click()
+  const editor = page.getByRole('region', { name: 'Design editor' })
+  for (const name of ['Desk', 'Desk lamp']) {
+    await editor.getByLabel('Start from a kit design').selectOption({ label: name })
+    await editor.getByRole('button', { name: 'Open a copy' }).click()
+    if (name === 'Desk') await expect(editor.locator('.de-facts')).toContainText(/Workstation\s*Yes/)
+    await editor.getByRole('button', { name: 'Save to library' }).click()
+    await expect(editor.getByRole('button', { name: `Open ${name} (mine)` })).toBeVisible()
+  }
+
+  // The desk goes into the meeting room: a free workstation with its seat.
+  await page.getByRole('tab', { name: /Furniture/ }).click()
+  await page.locator('#build-furniture-room').selectOption('room-6')
+  await page.locator('.build-tiles').getByRole('button', { name: /Desk \(mine\)/ }).click()
+  await placeWhereAccepted(page)
+  await expect.poll(async () => ((await layout(page)).objects ?? []).length).toBe(1)
+  const desk = (await layout(page)).objects![0]
+  expect(desk.summary.workstation).toBe(true)
+  expect(desk.seatAt).toEqual([0, 0.75])
+  expect(desk.assignedTo ?? null).toBeNull()
+  await expect(page.getByRole('region', { name: 'Placed' })).toContainText('a free workstation')
+
+  // The CEO's desk: its lamp removed, the lamp of one's own takes the lamp slot.
+  await page.locator('#build-furniture-room').selectOption('room-4')
+  const ceo = (await layout(page)).rooms.find((r) => r.id === 'room-4')!
+  const lamp = ceo.props.find((p) => p.kind === 'desk-lamp')!
+  await page.getByRole('region', { name: 'Placed' }).getByRole('button', { name: new RegExp(lamp.id + '\\b') }).click()
+  await page.getByRole('region', { name: /^Selected/ }).getByRole('button', { name: 'Remove' }).click()
+  await expect.poll(async () => (await layout(page)).rooms.find((r) => r.id === 'room-4')!.props.some((p) => p.id === lamp.id)).toBe(false)
+  await page.locator('.build-tiles').getByRole('button', { name: /Desk lamp \(mine\)/ }).click()
+  await page.locator('#build-desk-pick').selectOption(lamp.attachedTo!)
+  const place = page.getByRole('button', { name: /^Place here/ })
+  await expect(place).toBeEnabled()
+  await place.click()
+  await expect.poll(async () => ((await layout(page)).objects ?? []).length).toBe(2)
+  const own = (await layout(page)).objects!.find((o) => o.id !== desk.id)!
+  expect(own.summary.mount).toBe('Surface')
+  expect(own.onDesk).toEqual({ desk: lamp.attachedTo, slot: 'lamp' })
 
   expect(errors).toEqual([])
 })

@@ -13,15 +13,22 @@ FEAT-024 (people), FEAT-020 (the office).
   room its rect, kind, label, level, capacity, `windows`, `doors`, `desks` (with their `seat`),
   `ceilingLights` and `props` (equipment that is not a desk or a ceiling light, with
   `attachedTo` for desk-top items) and `objectCapabilities` (`{seats, workstations, lights,
-  storage, screens}`, the totals of its placed objects' summaries; they change no staff behaviour
-  yet); the company's `buildMode` (`sandbox` or `economic`), the `town` (ADR-0087): `{id, kind,
+  storage, screens}`, the totals of its placed objects' summaries; `workstations` counts floor
+  workstation objects, which are homes for staff (ADR-0088), the rest only count here); the company's `buildMode` (`sandbox` or `economic`), the `town` (ADR-0087): `{id, kind,
   x, z, rot}` per house, tree, street lamp and bench, in id order, `rot` in radians like the
   props; and `objects` (ADR-0065 §4, ADR-0087 decision 7): the players' own kit designs placed in
   rooms, in id order, `{id: "object-N", design: <64-hex hash>, room, x, z, rot, footprint: [w, d],
   summary}` with the footprint centre in metres, `rot` in radians, `footprint` the design's own
   size in metres at turn 0 (`rot` turns it) and `summary` exactly as `PlaceObject` carried it
-  (`footprint` in studs, `height` in plates, `mount`, `seats`, `workstation`, `lights`, `storage`
-  in stud², `screens`, `parts`, `cost` in cents). The bricks are the renderer's: it compiles the
+  (`footprint` in studs, `height` in plates, `mount`, `seats`, `workstation`, `seat_at` (a
+  workstation's seat in mm from the footprint centre at turn 0, else null), `lights`, `storage`
+  in stud², `screens`, `parts`, `cost` in cents). ADR-0088 adds per object `seatAt` (a floor
+  workstation's seat relative to its centre in metres at turn 0, `rot` turns it like the
+  footprint; null otherwise), `onDesk` (`{desk: "equip-N", slot: "screen" | "lamp"}` for a
+  desk-top design placed with `PlaceObjectOnDesk`, which then shares the desk's `x`, `z` and
+  `rot` and moves with it; null on the floor) and `assignedTo` (`staff-N` who calls a
+  workstation object home, null when free; a hire into an object and the firing of its owner
+  raise `layoutRev`). The bricks are the renderer's: it compiles the
   design named by the hash from the company's design library. Read at boot and again whenever
   the render state's `layoutRev` moves.
 - `Sim.render_state_json()`: the state, parsed once per sim step (10 Hz at speed 1; once per
@@ -51,13 +58,13 @@ tests and are checked by the same functions.
 | | `path` | `{ waypoints, startStep, speed }` or null | see [Interpolation](#interpolation) |
 | | `pose` | walk, sit, type, talk, listen, idle | `type` is seated at the desk with a `workItem`; `talk` is the meeting's speaker |
 | | `activity` | arriving, working, walking-to-meeting, in-meeting, walking-to-lunch, lunch, returning-to-desk, leaving | |
-| | `seatedAt`, `meeting`, `workItem` | ids or null | the desk sat at; the meeting with a seat for them; the work item whose active phase they work on (`World::busy_with`) |
+| | `seatedAt`, `meeting`, `workItem` | ids or null | the workstation sat at: a desk (`equip-N`) or a workstation object (`object-N`, ADR-0088; `x`, `z` are then its turned seat); the meeting with a seat for them; the work item whose active phase they work on (`World::busy_with`) |
 | | `fatigue`, `morale` | permille | |
 | Meetings | `meetings[]`: `id`, `kind`, `project`, `room`, `day`, `start`, `end`, `active`, `attendees`, `speaker`, `job` | | |
 | Bubbles | `bubbles[]`: `meeting`, `seq`, `speaker`, `startedStep`, `untilStep`, `chars` | | one per meeting with a turn in progress; text is fetched by reference |
 | Remarks | `remarks[]`: `seq`, `speaker`, `listener`, `startedStep`, `untilStep`, `chars`; `nextRemark` | | lines outside meetings (ADR-0074, the story director); the speaker's pose is `talk`, the listener's `listen`; text by `seq` from the kv (`story.line.<seq>`) |
 | Site model | `siteModel`: `pageTypes`, `slots`, `issues`, `tools`, `failingTools`, or null | | the site's blueprint digest and installed tools (ADR-0072); the brick office stands the model table only while it is set, and the town's geometry comes from the store (`GET /api/site/blueprint`), like a surface's close content |
-| Layout | `layoutRev` | u32 | `Building::layout_rev`, raised by one by every applied building command (`BuyFloorSpace`, `PlaceRoom`, `Demolish`, `PlaceEquipment`, `MoveEquipment`, `PlaceTownItem`, `MoveTownItem`, `RemoveTownItem`, `PlaceObject`, `MoveObject`, `RemoveObject`; ADR-0087, ADR-0065 §4). The renderer draws the layout of the last `layout_json()`; when `layoutRev` differs from the one it read with, it reads the layout again and rebuilds. The town is sim state: the renderer draws `layout.town` and computes no arrangement of its own |
+| Layout | `layoutRev` | u32 | `Building::layout_rev`, raised by one by every applied building command (`BuyFloorSpace`, `PlaceRoom`, `Demolish`, `PlaceEquipment`, `MoveEquipment`, `PlaceTownItem`, `MoveTownItem`, `RemoveTownItem`, `PlaceObject`, `MoveObject`, `RemoveObject`, `PlaceObjectOnDesk`; ADR-0087, ADR-0065 §4, ADR-0088; also a hire into a workstation object and the firing of its owner). The renderer draws the layout of the last `layout_json()`; when `layoutRev` differs from the one it read with, it reads the layout again and rebuilds. The town is sim state: the renderer draws `layout.town` and computes no arrangement of its own |
 | Planned | screen content, poses beyond the six, props' content (moodboard, whiteboard), HUD levels | | need a contract change before the renderer may show them |
 
 ## Bubbles and who works on what (built, FEAT-079)

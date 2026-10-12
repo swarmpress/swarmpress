@@ -84,8 +84,11 @@ export type EquipmentKindVariant = string
 export type SideVariant = 'North' | 'East' | 'South' | 'West'
 /**
  * `sim_core::objects::ObjectSummary`: the numbers of a design's compiled kit
- * summary (studs, plates, stud², cents). Only `mount: 'Floor'` is placeable
- * for now; the kit's kebab-case mounts (`floor`) are accepted too.
+ * summary (studs, plates, stud², cents). `Floor` designs go with
+ * `PlaceObject`, `Surface` ones on a desk with `PlaceObjectOnDesk`; `Ceiling`
+ * is not placeable yet. The kit's kebab-case mounts (`floor`) are accepted
+ * too. `seat_at` is a workstation's seat (mm from the footprint centre at
+ * turn 0; required when `workstation`, null otherwise, ADR-0088).
  */
 export interface ObjectSummaryWire {
   footprint: [number, number]
@@ -93,6 +96,7 @@ export interface ObjectSummaryWire {
   mount: 'Floor' | 'Surface' | 'Ceiling'
   seats: number
   workstation: boolean
+  seat_at?: [number, number] | null
   lights: number
   storage: number
   screens: number
@@ -155,6 +159,13 @@ export type Command =
   | { PlaceObject: { design: string; pos: PosMm; rot: number; summary: ObjectSummaryWire } }
   | { MoveObject: { object: string; pos: PosMm; rot: number } }
   | { RemoveObject: { object: string } }
+  /**
+   * A desk-top design (`mount: 'Surface'`) on a built-in desk (ADR-0088): it
+   * takes the desk's screen slot when `summary.screens > 0`, its lamp slot
+   * otherwise; refused when that slot is taken. It moves and goes with the
+   * desk. Economic: costs `summary.cost`.
+   */
+  | { PlaceObjectOnDesk: { design: string; desk: string; summary: ObjectSummaryWire } }
 
 export type CommandName = Command extends infer C ? (C extends Record<infer K, unknown> ? K : never) : never
 
@@ -194,6 +205,8 @@ export const SIM_COMMANDS: readonly CommandName[] = [
   'PlaceObject',
   'MoveObject',
   'RemoveObject',
+  // staff use what the bricks provide (ADR-0088)
+  'PlaceObjectOnDesk',
 ]
 
 /** Plan commands of publishing-plan.md §6 the sim does not have yet (the mock source applies them). */

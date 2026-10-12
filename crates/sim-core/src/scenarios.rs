@@ -54,7 +54,7 @@ use crate::inbox::{DelegationPolicy, FollowUpTopic, SecretaryTaskKind, TicketOpt
 use crate::objects::{Mount, ObjectSummary};
 use crate::plan::{BriefStub, PlannedStub, WorkItemKind, WorkPriority};
 use crate::projects::ProjectStatus;
-use crate::staff::{persona, persona_by_key, Schedule, Traits, PERSONAS};
+use crate::staff::{persona, persona_by_key, Schedule, Station, Traits, PERSONAS};
 use crate::town::TownKind;
 use crate::world::World;
 
@@ -361,7 +361,7 @@ pub fn hire_office_designer(w: &mut World) -> StaffId {
         .map(crate::personas::Persona::persona_id)
         .expect("the catalogue has an office designer");
     let p = persona(pid).expect("persona exists");
-    let desk = w.free_desks().first().copied();
+    let home = w.free_stations().first().copied();
     w.add_staff(
         pid,
         p.role,
@@ -369,7 +369,7 @@ pub fn hire_office_designer(w: &mut World) -> StaffId {
         Traits::even(650),
         p.salary_cents_per_day(),
         p.role.base_schedule(),
-        desk,
+        home,
     )
 }
 
@@ -458,7 +458,7 @@ pub fn demo_office_with_mode(seed: u64, config: SimConfig, mode: BuildMode) -> W
             traits,
             p.salary_cents_per_day(),
             Schedule::new(arrive, leave, lunch),
-            Some(desk),
+            Some(Station::Desk(desk)),
         );
         if allocation > 0 {
             staffed.push((id, allocation));
@@ -958,6 +958,62 @@ pub fn golden_script() -> Vec<(u64, Input)> {
                 object: ObjectId(2),
             }),
         ),
+        // ...and staff use what the bricks provide (ADR-0088): a spare desk
+        // goes, a desk of the player's own design takes its place in the
+        // meeting room, and three hires take the two spare desks and then
+        // the object; a mug of the player's design takes a desk's lamp slot
+        (
+            46_420,
+            p(Command::Demolish(DemolishTarget::Equipment(EquipId(32)))),
+        ),
+        (
+            46_440,
+            p(Command::PlaceObject {
+                design: "d5".repeat(32),
+                pos: PosMm::new(1_500, 12_000),
+                rot: 1,
+                summary: ObjectSummary {
+                    workstation: true,
+                    seat_at: Some([0, 750]),
+                    screens: 1,
+                    lights: 1,
+                    ..golden_summary([24, 12], 34, 0, 0, 3_199)
+                },
+            }),
+        ),
+        (
+            46_460,
+            p(Command::Hire {
+                candidate: CandidateId(17),
+            }),
+        ),
+        (
+            46_480,
+            p(Command::Hire {
+                candidate: CandidateId(18),
+            }),
+        ),
+        (
+            46_500,
+            p(Command::Hire {
+                candidate: CandidateId(19),
+            }),
+        ),
+        (
+            46_520,
+            p(Command::Demolish(DemolishTarget::Equipment(EquipId(61)))),
+        ),
+        (
+            46_540,
+            p(Command::PlaceObjectOnDesk {
+                design: "a9".repeat(32),
+                desk: EquipId(59),
+                summary: ObjectSummary {
+                    mount: Mount::Surface,
+                    ..golden_summary([4, 4], 12, 0, 0, 120)
+                },
+            }),
+        ),
         // day 3, 21:00: the editorial board is turned on (ADR-0069)
         (39_500, p(Command::SetPolicy(Policy::EditorialBoard(true)))),
         (
@@ -1025,6 +1081,7 @@ fn golden_summary(
         mount: Mount::Floor,
         seats,
         workstation: false,
+        seat_at: None,
         lights: 0,
         storage,
         screens: 0,

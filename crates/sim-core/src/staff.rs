@@ -4,7 +4,7 @@
 //! FSM (driven by [`crate::world::World::step`]):
 //!
 //! ```text
-//! OffSite ──arrive──► Arriving(path) ──► Working (seated at home desk)
+//! OffSite ──arrive──► Arriving(path) ──► Working (seated at home station)
 //!    ▲                                    │  ▲
 //!    │                    standup 09:00   ▼  │ 09:20
 //!    │                     WalkingToMeeting ─► InMeeting ─► ReturningToDesk
@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::clock::hm;
 use crate::geom::PosMm;
-use crate::ids::{EquipId, MeetingId, PersonaId, ProjectId, RoomId, StaffId};
+use crate::ids::{EquipId, MeetingId, ObjectId, PersonaId, ProjectId, RoomId, StaffId};
 use crate::pathfinding::Path;
 
 /// Permille stat, 0..=1000.
@@ -207,6 +207,66 @@ pub enum Spot {
     MeetingSeat { meeting: MeetingId, seat: u8 },
     /// A seat at the kitchen table.
     KitchenSeat { room: RoomId, seat: u8 },
+    /// The seat of a workstation object (ADR-0088): the object's position
+    /// plus its summary's `seat_at`, turned with it.
+    Object(ObjectId),
+}
+
+impl Spot {
+    /// The workstation this spot is the seat of, if any.
+    pub const fn station(self) -> Option<Station> {
+        match self {
+            Spot::Desk(d) => Some(Station::Desk(d)),
+            Spot::Object(o) => Some(Station::Object(o)),
+            Spot::MeetingSeat { .. } | Spot::KitchenSeat { .. } => None,
+        }
+    }
+}
+
+/// A workstation someone can call home (ADR-0088 decision 2): a built-in
+/// desk, or a placed object whose summary says `workstation`. Ordered desks
+/// first, then objects, each by id: the order free workstations are handed
+/// out in.
+///
+/// JSON: `{"Desk":"equip-3"}` / `{"Object":"object-2"}`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum Station {
+    Desk(EquipId),
+    Object(ObjectId),
+}
+
+impl Station {
+    /// The spot a person works at.
+    pub const fn spot(self) -> Spot {
+        match self {
+            Station::Desk(d) => Spot::Desk(d),
+            Station::Object(o) => Spot::Object(o),
+        }
+    }
+
+    pub const fn desk(self) -> Option<EquipId> {
+        match self {
+            Station::Desk(d) => Some(d),
+            Station::Object(_) => None,
+        }
+    }
+
+    pub const fn object(self) -> Option<ObjectId> {
+        match self {
+            Station::Object(o) => Some(o),
+            Station::Desk(_) => None,
+        }
+    }
+}
+
+impl core::fmt::Display for Station {
+    /// The id's own string: `equip-3` or `object-2`.
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Station::Desk(d) => d.fmt(f),
+            Station::Object(o) => o.fmt(f),
+        }
+    }
 }
 
 /// Where a person is in their day.
@@ -283,7 +343,9 @@ pub struct Staff {
     pub fatigue: Permille,
     /// Daily salary, cents.
     pub salary: i64,
-    pub home_desk: Option<EquipId>,
+    /// The workstation this person calls home (ADR-0088): a desk or a
+    /// workstation object.
+    pub home: Option<Station>,
     /// Usual hours.
     pub base_schedule: Schedule,
     /// Today's hours (base + seeded jitter, re-rolled at 00:00).
@@ -326,12 +388,27 @@ impl Staff {
         self.activity != Activity::OffSite
     }
 
-    /// The desk this person is sitting at right now.
-    pub fn seated_at(&self) -> Option<EquipId> {
+    /// The home desk, when home is a built-in desk.
+    pub fn home_desk(&self) -> Option<EquipId> {
+        self.home.and_then(Station::desk)
+    }
+
+    /// The home workstation object, when home is one.
+    pub fn home_object(&self) -> Option<ObjectId> {
+        self.home.and_then(Station::object)
+    }
+
+    /// The workstation (desk or object) this person is sitting at right now.
+    pub fn seated_station(&self) -> Option<Station> {
         match (self.spot, &self.path) {
-            (Some(Spot::Desk(d)), None) if self.is_on_site() => Some(d),
+            (Some(sp), None) if self.is_on_site() => sp.station(),
             _ => None,
         }
+    }
+
+    /// The desk this person is sitting at right now.
+    pub fn seated_at(&self) -> Option<EquipId> {
+        self.seated_station().and_then(Station::desk)
     }
 }
 

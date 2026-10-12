@@ -7,6 +7,7 @@
  */
 import type { BuildingLayout, DeskLayout, MeetingRender, Pose, RoomLayout, StaffRender } from '../../state/render-state'
 import { POSES } from '../../state/render-state-shape'
+import { deskTopOf, objectSeat, objectsOf } from '../bricks/objects'
 
 export type Stance = 'stand' | 'sit'
 /** What the person sits on: the chair at a desk or a stool at a table (both part of the office). */
@@ -38,19 +39,45 @@ export interface PoseContext {
   meeting(id: string): MeetingRender | undefined
   /** A person on site, for where the speaker sits. */
   person(id: string): { x: number; z: number } | undefined
+  /** A workstation object by id (ADR-0088): its centre and its seat in the world. */
+  workstation?(id: string): WorkstationSeat | undefined
+  /** The workstation object a person calls home (the layout's `assignedTo`), if any. */
+  homeOf?(staffId: string): WorkstationSeat | undefined
 }
 
-export function layoutContext(layout: BuildingLayout): Pick<PoseContext, 'desk' | 'room' | 'roomAt'> {
+/** A placed workstation object as the pose needs it: what the person faces, and where they sit. */
+export interface WorkstationSeat {
+  id: string
+  x: number
+  z: number
+  seat: [number, number]
+}
+
+/** How near the seat (metres) a person the sim has seated counts as sitting at their workstation object. */
+const AT_SEAT = 0.35
+
+export function layoutContext(layout: BuildingLayout): Pick<PoseContext, 'desk' | 'room' | 'roomAt' | 'workstation' | 'homeOf'> {
   const desks = new Map<string, DeskLayout>()
   const rooms = new Map<string, RoomLayout>()
   for (const r of layout.rooms) {
     rooms.set(r.id, r)
     for (const d of r.desks) desks.set(d.id, d)
   }
+  const stations = new Map<string, WorkstationSeat>()
+  const homes = new Map<string, WorkstationSeat>()
+  for (const o of objectsOf(layout)) {
+    const seat = objectSeat(o)
+    if (!seat || deskTopOf(o)) continue
+    const w = { id: o.id, x: o.x, z: o.z, seat }
+    stations.set(o.id, w)
+    if (typeof o.assignedTo === 'string') homes.set(o.assignedTo, w)
+  }
   return {
     desk: (id) => desks.get(id),
     room: (id) => rooms.get(id),
     roomAt: (x, z) => layout.rooms.find((r) => x >= r.x && x < r.x + r.w && z >= r.z && z < r.z + r.d),
+    workstation: (id) => stations.get(id),
+    homeOf: (id) => homes.get(id),
   }
 }
 
@@ -95,6 +122,18 @@ export function poseView(s: StaffRender, ctx: PoseContext, out: PoseView, dev = 
     out.faceX = desk.x
     out.faceZ = desk.z
     // Idle at the desk (lunch without a kitchen): leaning back.
+    if (pose === 'idle') out.lean = -0.1
+    return out
+  }
+
+  // At a workstation object of the player's (ADR-0088): the sim seats the person at its seat (their
+  // position is the render state's); they sit there facing the object, as at a desk.
+  const home = s.seatedAt ? ctx.workstation?.(s.seatedAt) : (pose === 'sit' || pose === 'type' || pose === 'idle') && !s.meeting ? ctx.homeOf?.(s.id) : undefined
+  if (home && (s.seatedAt === home.id || Math.hypot(s.x - home.seat[0], s.z - home.seat[1]) <= AT_SEAT)) {
+    out.stance = 'sit'
+    out.seat = 'desk'
+    out.faceX = home.x
+    out.faceZ = home.z
     if (pose === 'idle') out.lean = -0.1
     return out
   }

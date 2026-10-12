@@ -60,7 +60,10 @@ pub const SNAPSHOT_FORMAT: u16 = 1;
 ///   `Building.objects` and the object id counter.
 /// - 11: the demo office's meeting-room whiteboard stands clear of its door.
 /// - 12: the shortlist never offers a candidate without a persona, nor a second one for a role.
-pub const WORLD_FORMAT: u32 = 12;
+/// - 13: staff use what the bricks provide (ADR-0088): `Staff.home` is a
+///   `Station`, `Spot::Object`, `ObjectSummary.seat_at`,
+///   `PlacedObject.on_desk`.
+pub const WORLD_FORMAT: u32 = 13;
 /// Bytes before the body.
 pub const HEADER_LEN: usize = 42;
 

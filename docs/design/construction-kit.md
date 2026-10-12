@@ -148,9 +148,25 @@ footprint lies inside one room clear of its walls' thickness and off its door ti
 no equipment's spacing square, desk chair or other object (axis-aligned rectangles, touching
 allowed); objects count towards the room's item limit. Economic companies pay the summary's
 `cost` (moving 10% of it, removing is free); sandbox companies nothing. The summary is the
-client's word until the central audit recomputes it. Not built yet: `params` and
-`ReplaceDesign`, and equipment kinds as capability tags: staff still use equipment, so an
-object's capabilities are only totalled per room for the UI.
+client's word until the central audit recomputes it.
+
+**Built (K-4, staff use what the bricks provide, ADR-0088; world format 13):** the summary rules
+of §12.4 bind every design. The kit's summary gains `seat_at` (`crates/kit/src/summary.rs`): for
+a workstation, its first port accepting a `seat`, relative to the footprint's centre in
+millimetres (x east, z south, before any turn), rounded half away from zero; `null` otherwise
+(the shipped desk: `[0, 750]`, the sim's `SEAT_OFFSET_MM`). A floor object whose summary says
+`workstation` is a home for staff like a built-in desk: hiring takes the free desks first, then
+the free workstation objects, each by id (`World::free_stations`); the person sits at the
+object's position plus `seat_at` turned with the object (`Staff.home: Station`,
+`Spot::Object`); the seat lies in the room and its square is kept clear like a desk's chair; a
+workstation in use is not moved or removed, as for desks. Desk-top designs (`mount: surface`) go
+on a built-in desk with `PlaceObjectOnDesk{design, desk, summary}` and take its screen slot (with a
+screen) or its lamp slot (anything else), refused when the slot is taken, by equipment or another
+object; they move and go with the desk. The sim bounds the summary: a workstation's seat at most
+1 m outside its footprint, one home per workstation whatever its seats, no desk-top workstation
+(`crates/sim-core/tests/stations.rs`). Not built yet: `params` and `ReplaceDesign`; meeting and
+kitchen seats, lights and storage from objects (they only count towards the room's totals);
+ceiling designs; the office designer's plans do not count workstation objects yet.
 
 ## 5. Modes: sandbox and economic
 
@@ -266,7 +282,7 @@ validates its output like any other design.
 | K-1 | `crates/kit`: part catalogue and schema, design format and hash, brick script expansion, validation, brick splitter, summary; wasm build; property and golden tests | MVP (FEAT-083) |
 | K-2 | Shipped designs: the prototype's builders ported to brick script, one design per `EquipmentKind`, room shells per `RoomKind`; summaries checked against the sim's equipment | MVP (FEAT-083) |
 | K-3 | Brick office renderer from kit output: the spike (two rooms, two surfaces, measurements), then all rooms with levels of detail | MVP (FEAT-081) |
-| K-4 | Sim capabilities: `PlaceObject` with summaries, equipment kinds to tags, staff use tags; goldens move once | after MVP; the placement half is built (below) |
+| K-4 | Sim capabilities: `PlaceObject` with summaries, equipment kinds to tags, staff use tags; goldens move once | after MVP; placement and workstations are built (§4); seats, lights and storage from objects are not |
 | K-5 | Player building: placement, configuration, design editor, templates, modes | after MVP (FEAT-026) |
 | K-6 | Office designer and the build job: layout solver, catalogue slices, staged job, Build Approval, construction animation, eval | after MVP (FEAT-084) |
 | K-7 | Design packs and `.room` / `.building` sharing | after MVP |

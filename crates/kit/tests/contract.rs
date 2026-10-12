@@ -211,6 +211,72 @@ fn the_desk_seat_port_is_where_the_sim_seats_people() {
         i64::from(sim_core::equipment::SEAT_OFFSET_MM),
         "seat 750 mm in front of the desk centre at turn 0"
     );
+    // The summary says the same (ADR-0088): the sim seats people there.
+    assert_eq!(
+        c.summary.seat_at,
+        Some([0, sim_core::equipment::SEAT_OFFSET_MM])
+    );
+}
+
+/// A player's own workstation: its seat port, relative to the footprint's
+/// centre in millimetres, rounded half away from zero (ADR-0088).
+#[test]
+fn a_workstations_seat_is_measured_from_its_centre() {
+    let kit = Kit::shipped();
+    let design = |port: serde_json::Value| {
+        let v = serde_json::json!({
+            "format": "swarmpress.design.v1",
+            "id": "my-desk",
+            "name": "My desk",
+            "footprint": [9, 10],
+            "height": 30,
+            "ops": [
+                { "op": "box", "at": [0, 0, 0], "size": [9, 10, 27], "part": "brick", "colour": "sand" },
+                { "op": "box", "at": [0, 0, 27], "size": [9, 10, 1], "part": "plate", "colour": "sand" },
+                { "op": "part", "part": "paper-1x2", "at": [1, 1, 28], "colour": "white" }
+            ],
+            "ports": port,
+            "provenance": { "kind": "player", "player": "ceo" }
+        });
+        let d = kit::Design::from_json(&v.to_string()).unwrap();
+        compile(&d, &Params::new(), kit).unwrap().summary
+    };
+    // x: (3 − 4.5) studs = −93.75 mm → −94; z: (13 − 5) studs = 500 mm
+    let s = design(serde_json::json!([{ "id": "seat", "at": [3, 13, 0], "accepts": ["seat"] }]));
+    assert!(s.workstation, "{s:?}");
+    assert_eq!(s.seat_at, Some([-94, 500]));
+    // the first seat port counts; behind and to the east, +93.75 → 94
+    let s = design(serde_json::json!([
+        { "id": "back", "at": [6, -3, 0], "accepts": ["seat"] },
+        { "id": "front", "at": [3, 13, 0], "accepts": ["seat"] }
+    ]));
+    assert_eq!(s.seat_at, Some([94, -500]));
+    // no seat port: no workstation, no seat
+    let s = design(serde_json::json!([]));
+    assert!(!s.workstation);
+    assert_eq!(s.seat_at, None);
+    assert_eq!(kit::summary::stud_offset_mm(0, 1), -31);
+    assert_eq!(kit::summary::stud_offset_mm(1, 2), 0);
+    assert_eq!(kit::summary::stud_offset_mm(-16, 24), -1_750);
+}
+
+/// Only workstations have a seat position; chairs, tables and monitors don't.
+#[test]
+fn only_workstations_have_a_seat_position() {
+    let kit = Kit::shipped();
+    for (id, d) in kit.designs() {
+        let c = compile(d, &Params::new(), kit).unwrap();
+        assert_eq!(
+            c.summary.seat_at.is_some(),
+            c.summary.workstation,
+            "{id}: {:?}",
+            c.summary.seat_at
+        );
+    }
+    let json = serde_json::to_value(summary_of(kit, "desk")).unwrap();
+    assert_eq!(json["seat_at"], serde_json::json!([0, 750]));
+    let json = serde_json::to_value(summary_of(kit, "chair")).unwrap();
+    assert_eq!(json["seat_at"], serde_json::Value::Null);
 }
 
 #[test]

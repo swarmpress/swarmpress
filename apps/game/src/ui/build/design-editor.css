@@ -109,3 +109,4 @@
 .de-lib-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .de-lib-actions { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
 .de-lib-actions .de-btn { min-height: 28px; padding: 0 8px; font-size: 12px; }
+.de-dl dd.de-office-why { grid-column: 1 / -1; color: var(--de-muted); font-variant-numeric: normal; }

@@ -75,7 +75,7 @@ fn cinqueterre_starting_company() {
         assert_eq!(persona_slug(s.persona), *slug);
         assert_eq!(s.role, *role, "{slug}");
         assert_eq!(s.allocation(DEMO_PROJECT), *pct, "{slug}");
-        assert!(s.home_desk.is_some(), "{slug} has a desk");
+        assert!(s.home_desk().is_some(), "{slug} has a desk");
     }
     // every department is populated
     for d in Department::ALL {
@@ -124,7 +124,7 @@ fn cinqueterre_starting_company() {
     assert_eq!(w.building.first_unreachable_room(), None);
     // desks sit in the department's room
     let room_of = |id: u32| {
-        let desk = w.staff[&StaffId(id)].home_desk.unwrap();
+        let desk = w.staff[&StaffId(id)].home_desk().unwrap();
         w.building.rooms[&w.building.equipment[&desk].room].kind
     };
     assert_eq!(room_of(7), RoomKind::FinanceOffice);
@@ -822,7 +822,7 @@ fn hiring_a_cfo_fills_the_slot_once() {
         Err(Reject::Occupied(_))
     ));
     // a desk for the new CFO came from the spares
-    assert!(w.staff[&cfo].home_desk.is_some());
+    assert!(w.staff[&cfo].home_desk().is_some());
     assert!(w
         .building
         .equipment

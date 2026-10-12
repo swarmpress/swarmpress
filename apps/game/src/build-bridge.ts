@@ -22,9 +22,15 @@ export interface GhostSpec {
   ok: boolean
   /**
    * A design of the player's own (K-4): its design JSON, compiled by the renderer with the kit and
-   * drawn instead of the kit mapping's design for `kind`. It stands on the floor.
+   * drawn instead of the kit mapping's design for `kind`. It stands on the floor unless `onDesk`.
    */
   design?: string
+  /**
+   * On a desk (a monitor, a lamp, a desk-top design of the player's, ADR-0088): the desk and the
+   * slot. The ghost then stands at that desk's slot port, where the office draws what is on it;
+   * `x`, `z` and `rot` are ignored.
+   */
+  onDesk?: { desk: string; slot: 'screen' | 'lamp' }
 }
 
 /**

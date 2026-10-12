@@ -102,6 +102,8 @@ export interface KitSummary {
   capabilities: string[]
   seats: number
   workstation: boolean
+  /** A workstation's seat port from the footprint centre, mm `[x, z]`, unturned (ADR-0088); null otherwise; absent from older kits. */
+  seat_at?: [number, number] | null
   work_surface: number
   lights: number
   storage: number

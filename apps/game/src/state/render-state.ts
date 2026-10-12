@@ -99,9 +99,10 @@ export interface RoomLayout {
   ceilingLights: Array<{ id: string; x: number; z: number }>
   props: PropLayout[]
   /**
-   * The totals of the room's placed objects' summaries (ADR-0065 §4). They do
-   * not change staff behaviour yet: staff still use equipment. The sim always
-   * writes it; absent in older and hand-written layouts.
+   * The totals of the room's placed objects' summaries (ADR-0065 §4).
+   * `workstations` counts floor workstation objects, which are homes for
+   * staff (ADR-0088); seats, lights and storage only count here. The sim
+   * always writes it; absent in older and hand-written layouts.
    */
   objectCapabilities?: ObjectCapabilities
 }
@@ -116,7 +117,11 @@ export interface ObjectCapabilities {
   screens: number
 }
 
-/** `sim_core::objects::Mount`; only `Floor` designs can be placed for now. */
+/**
+ * `sim_core::objects::Mount`: `Floor` designs are placed with `PlaceObject`,
+ * `Surface` ones on a desk with `PlaceObjectOnDesk` (ADR-0088); `Ceiling`
+ * ones cannot be placed yet.
+ */
 export type ObjectMount = 'Floor' | 'Surface' | 'Ceiling'
 
 /**
@@ -132,6 +137,12 @@ export interface ObjectSummary {
   mount: ObjectMount
   seats: number
   workstation: boolean
+  /**
+   * A workstation's seat relative to its footprint centre, mm `[x, z]` (x
+   * east, z south) before any turn; null otherwise (ADR-0088). The sim always
+   * writes it; absent in summaries written before it.
+   */
+  seat_at?: [number, number] | null
   lights: number
   /** Shelf area, stud². */
   storage: number
@@ -139,6 +150,16 @@ export interface ObjectSummary {
   parts: number
   /** The parts' price, cents. */
   cost: number
+}
+
+/** A desk slot (`sim_core::equipment::DeskSlot`). */
+export type ObjectDeskSlot = 'screen' | 'lamp'
+
+/** The desk and slot a desk-top object sits on (ADR-0088). */
+export interface ObjectOnDesk {
+  /** `equip-N`, a built-in desk. */
+  desk: string
+  slot: ObjectDeskSlot
 }
 
 /** A player's own kit design placed in a room (ADR-0065 §4, ADR-0087 decision 7). */
@@ -157,6 +178,19 @@ export interface PlacedObjectLayout {
   /** The design's own `[w, d]` in metres at turn 0; `rot` turns it. */
   footprint: [number, number]
   summary: ObjectSummary
+  /**
+   * A floor workstation's seat relative to its centre, metres `[x, z]` at
+   * turn 0 (`rot` turns it like the footprint); null otherwise. People who
+   * call it home sit there (ADR-0088).
+   */
+  seatAt?: [number, number] | null
+  /**
+   * A desk-top object's desk and slot; null on the floor. It then shares the
+   * desk's position and turn (`x`, `z`, `rot`) and moves with it.
+   */
+  onDesk?: ObjectOnDesk | null
+  /** `staff-N` who calls this workstation object home; null when free (or not a workstation). */
+  assignedTo?: string | null
 }
 
 /** The street door: its centre on the lot boundary, and where people appear outside. */
@@ -241,7 +275,10 @@ export interface StaffRender {
   z: number
   pose: Pose
   activity: Activity
-  /** Desk the person is seated at, if any (turns that monitor on). */
+  /**
+   * The workstation the person is seated at, if any: a desk (`equip-N`,
+   * turns that monitor on) or a workstation object (`object-N`, ADR-0088).
+   */
   seatedAt: string | null
   /** The meeting whose table the person has a seat at (walking there or seated). */
   meeting: string | null

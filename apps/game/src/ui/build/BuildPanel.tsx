@@ -17,6 +17,7 @@ import { useStore } from '../store'
 import { useBridge } from './gesture'
 import { Placer, type CatalogueGroup, type Placed, type PlacerConfig } from './Placer'
 import { myDesignItems, placedObject, useEditorKit } from './my-designs'
+import { RoomProvides } from './provides'
 import { Rooms } from './Rooms'
 import {
   build,
@@ -55,7 +56,7 @@ function useMyDesigns(): CatalogueGroup | null {
   if (error) return { label, items: [], note: `The construction kit did not load: ${error}` }
   if (!kit || !designs) return { label, items: [], note: <span role="status">Reading your designs…</span> }
   const { items, left } = myDesignItems(kit, designs)
-  const leftNote = left ? ` ${left} ${left === 1 ? 'design stands' : 'designs stand'} on a desk, a wall or the ceiling, or the kit refuses ${left === 1 ? 'it' : 'them'}: not placeable.` : ''
+  const leftNote = left ? ` ${left} ${left === 1 ? 'design hangs' : 'designs hang'} from the ceiling, or the kit refuses ${left === 1 ? 'it' : 'them'}: not placeable yet.` : ''
   if (!designs.length) return { label, items, note: 'None yet: make one in the Designs tab and save it.' }
   return { label, items, note: leftNote ? leftNote.trim() : undefined }
 }
@@ -90,7 +91,11 @@ function Furniture({ layout }: { layout: BuildLayout }) {
     start: current ? { x: current.x + current.w / 2, z: current.z + current.d / 2 } : null,
     place: (kind, spot, rot) =>
       kind.hash && kind.summary
-        ? build.placeObject(kind.hash, kind.summary, spot.x, spot.z, rot)
+        ? kind.onDesk
+          ? spot.desk
+            ? build.placeObjectOnDesk(kind.hash, spot.desk, kind.summary)
+            : null
+          : build.placeObject(kind.hash, kind.summary, spot.x, spot.z, rot)
         : kind.onDesk
           ? spot.desk
             ? build.placeEquipment(kind.kind, build.onDesk(spot.desk))
@@ -98,7 +103,9 @@ function Furniture({ layout }: { layout: BuildLayout }) {
           : build.placeEquipment(kind.kind, build.floor(spot.x, spot.z, rot)),
     move: (item, spot, rot) =>
       item.target === 'object'
-        ? build.moveObject(item.id, spot.x, spot.z, rot, spot.exact)
+        ? item.on
+          ? null // a desk-top object moves with its desk (ADR-0088)
+          : build.moveObject(item.id, spot.x, spot.z, rot, spot.exact)
         : item.on
           ? spot.desk
             ? build.moveEquipment(item.id, build.onDesk(spot.desk))
@@ -106,19 +113,27 @@ function Furniture({ layout }: { layout: BuildLayout }) {
           : build.moveEquipment(item.id, build.floor(spot.x, spot.z, rot, spot.exact)),
     remove: (item) => (item.target === 'object' ? build.removeObject(item.id) : build.demolishEquipment(item.id)),
     // The sim prices equipment by its kind (`EquipmentKind::cost`) and a design by its summary, wherever it goes.
-    priceProbe: (kind) => (kind.hash && kind.summary ? build.placeObject(kind.hash, kind.summary, 0, 0, 0) : build.placeEquipment(kind.kind, build.floor(0, 0, 0))),
+    priceProbe: (kind) =>
+      kind.hash && kind.summary
+        ? kind.onDesk
+          ? build.placeObjectOnDesk(kind.hash, current?.desks[0]?.id ?? 'equip-1', kind.summary)
+          : build.placeObject(kind.hash, kind.summary, 0, 0, 0)
+        : build.placeEquipment(kind.kind, build.floor(0, 0, 0)),
     resolve: (p) => (p.target?.kind === 'equipment' || p.target?.kind === 'object' ? p.target.id : null),
     listHead: (
-      <label class="build-field build-room-pick" for="build-furniture-room">
-        <span>In the room</span>
-        <select id="build-furniture-room" value={current?.id ?? ''} onChange={(e) => setRoom((e.currentTarget as HTMLSelectElement).value)}>
-          {layout.rooms.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.label} ({r.id})
-            </option>
-          ))}
-        </select>
-      </label>
+      <>
+        <label class="build-field build-room-pick" for="build-furniture-room">
+          <span>In the room</span>
+          <select id="build-furniture-room" value={current?.id ?? ''} onChange={(e) => setRoom((e.currentTarget as HTMLSelectElement).value)}>
+            {layout.rooms.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label} ({r.id})
+              </option>
+            ))}
+          </select>
+        </label>
+        {current && <RoomProvides room={current} objects={layout.objects ?? []} />}
+      </>
     ),
     emptyText: 'Nothing placed in this room yet.',
     catalogueLabel: 'Furniture catalogue',

@@ -20,7 +20,7 @@ use crate::ids::{
 use crate::inbox::{SecretaryTaskKind, MAX_MEETING_ATTENDEES, MAX_SECRETARY_QUEUE};
 use crate::projects::{valid_domain, valid_name, valid_slug, ProjectStatus};
 use crate::roles::Role;
-use crate::staff::{Seniority, Spot, Staff};
+use crate::staff::{Seniority, Spot, Staff, Station};
 use crate::world::{World, MAX_STAFF, PRAISES_PER_DAY};
 
 /// Highest daily salary `SetSalary` accepts, cents (€100 000 a day).
@@ -215,9 +215,8 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
         }
         Command::Demolish(DemolishTarget::Room(id)) => {
             let room = w.building.rooms.get(id).ok_or(Reject::UnknownRoom(*id))?;
-            let in_room = |e: &EquipId| w.building.equipment.get(e).is_some_and(|e| e.room == *id);
             for s in w.staff.values() {
-                if s.home_desk.as_ref().is_some_and(in_room) {
+                if s.home.is_some_and(|h| w.station_room(h) == Some(*id)) {
                     return Err(Reject::Occupied("someone's desk is in this room"));
                 }
                 if s.spot.is_some_and(|sp| spot_in_room(w, sp, *id)) {
@@ -242,7 +241,7 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
             if e.kind == EquipmentKind::Desk
                 && w.staff
                     .values()
-                    .any(|s| s.home_desk == Some(*id) || s.spot == Some(Spot::Desk(*id)))
+                    .any(|s| s.home_desk() == Some(*id) || s.spot == Some(Spot::Desk(*id)))
             {
                 return Err(Reject::Occupied("this desk is assigned"));
             }
@@ -262,9 +261,7 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
                     if desk.kind != EquipmentKind::Desk {
                         return Err(Reject::Invalid("that is not a desk"));
                     }
-                    if w.building.equipment.values().any(|e| {
-                        e.attached_to == Some(*desk_id) && e.kind.desk_slot() == Some(slot)
-                    }) {
+                    if crate::objects::desk_slot_taken(&w.building, *desk_id, slot, None) {
                         return Err(Reject::Occupied("that desk already has one"));
                     }
                     desk.room
@@ -335,7 +332,7 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
             if w.staff.len() >= MAX_STAFF {
                 return Err(Reject::Limit("staff"));
             }
-            if w.free_desks().is_empty() {
+            if w.free_stations().is_empty() {
                 return Err(Reject::NoFreeDesk);
             }
             funds(w, price(w, cmd))
@@ -607,25 +604,76 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
                 ));
             }
             crate::objects::check_summary(summary)?;
+            if summary.mount != crate::objects::Mount::Floor {
+                return Err(Reject::Invalid("a desk-top design goes on a desk"));
+            }
             crate::objects::check_spot(&w.building, summary, *pos, *rot, None)?;
             funds(w, price(w, cmd))
         }
+        // Like a desk (`check_move_equipment`): not while someone sits at it
+        // or walks to it; the seat of its owner moves with it.
         Command::MoveObject { object, pos, rot } => {
             let o = w
                 .building
                 .objects
                 .get(object)
                 .ok_or(Reject::UnknownObject(*object))?;
+            if o.on_desk.is_some() {
+                return Err(Reject::Invalid("a desk-top object moves with its desk"));
+            }
+            if w.staff
+                .values()
+                .any(|s| s.spot == Some(Spot::Object(*object)))
+            {
+                return Err(Reject::Occupied("someone is working at this object"));
+            }
             crate::objects::check_spot(&w.building, &o.summary, *pos, *rot, Some(*object))?;
             funds(w, price(w, cmd))
         }
-        // Nobody uses an object yet (see `crate::objects`), so one can always go.
-        Command::RemoveObject { object } => w
-            .building
-            .objects
-            .get(object)
-            .map(|_| ())
-            .ok_or(Reject::UnknownObject(*object)),
+        // Like demolishing a desk: not while it is someone's home or seat.
+        Command::RemoveObject { object } => {
+            w.building
+                .objects
+                .get(object)
+                .ok_or(Reject::UnknownObject(*object))?;
+            if w.staff.values().any(|s| {
+                s.home == Some(Station::Object(*object)) || s.spot == Some(Spot::Object(*object))
+            }) {
+                return Err(Reject::Occupied("this workstation is assigned"));
+            }
+            Ok(())
+        }
+        Command::PlaceObjectOnDesk {
+            design,
+            desk,
+            summary,
+        } => {
+            if !crate::objects::valid_design_hash(design) {
+                return Err(Reject::Invalid(
+                    "a design is named by its hash: 64 lowercase hex characters",
+                ));
+            }
+            crate::objects::check_summary(summary)?;
+            if summary.mount != crate::objects::Mount::Surface {
+                return Err(Reject::Invalid("only desk-top designs go on a desk"));
+            }
+            let d = w
+                .building
+                .equipment
+                .get(desk)
+                .ok_or(Reject::UnknownEquipment(*desk))?;
+            if d.kind != EquipmentKind::Desk {
+                return Err(Reject::Invalid("that is not a desk"));
+            }
+            let slot = crate::objects::desk_slot_for(summary);
+            if crate::objects::desk_slot_taken(&w.building, *desk, slot, None) {
+                return Err(Reject::Occupied("that desk already has one"));
+            }
+            if crate::objects::items_in_room(&w.building, d.room) >= MAX_ITEMS_PER_ROOM {
+                return Err(Reject::Limit("items per room"));
+            }
+            funds(w, price(w, cmd))
+        }
     }
 }
 
@@ -656,13 +704,18 @@ fn check_move_equipment(w: &World, id: EquipId, placement: &Placement) -> Result
     {
         return Err(Reject::Occupied("a meeting is using this whiteboard"));
     }
-    // Moving with it: the items on a desk.
+    // Moving with it: the items on a desk, equipment and desk-top objects.
     let riders = w
         .building
         .equipment
         .values()
         .filter(|o| o.attached_to == Some(id))
-        .count();
+        .count()
+        + w.building
+            .objects
+            .values()
+            .filter(|o| o.on_desk.is_some_and(|(d, _)| d == id))
+            .count();
     let room_id = match placement {
         Placement::OnDesk(desk_id) => {
             let Some(slot) = e.kind.desk_slot() else {
@@ -679,9 +732,7 @@ fn check_move_equipment(w: &World, id: EquipId, placement: &Placement) -> Result
             if in_use(*desk_id) {
                 return Err(Reject::Occupied("someone is working at that desk"));
             }
-            if w.building.equipment.values().any(|o| {
-                o.id != id && o.attached_to == Some(*desk_id) && o.kind.desk_slot() == Some(slot)
-            }) {
+            if crate::objects::desk_slot_taken(&w.building, *desk_id, slot, Some(id)) {
                 return Err(Reject::Occupied("that desk already has one"));
             }
             desk.room
@@ -749,6 +800,7 @@ pub const fn is_building_command(cmd: &Command) -> bool {
             | Command::PlaceObject { .. }
             | Command::MoveObject { .. }
             | Command::RemoveObject { .. }
+            | Command::PlaceObjectOnDesk { .. }
     )
 }
 
@@ -900,7 +952,9 @@ pub fn price(w: &World, cmd: &Command) -> i64 {
         }
         // The parts' price from the summary: the client's word until the
         // central audit recomputes it (ADR-0065 §4, leagues ADR-0055).
-        Command::PlaceObject { summary, .. } => summary.price(),
+        Command::PlaceObject { summary, .. } | Command::PlaceObjectOnDesk { summary, .. } => {
+            summary.price()
+        }
         Command::MoveObject { object, .. } => w
             .building
             .objects
@@ -1017,6 +1071,7 @@ fn spot_in_room(w: &World, spot: Spot, room: RoomId) -> bool {
             w.meetings.get(&meeting).is_some_and(|m| m.room == room)
         }
         Spot::KitchenSeat { room: r, .. } => r == room,
+        Spot::Object(o) => w.building.objects.get(&o).is_some_and(|o| o.room == room),
     }
 }
 

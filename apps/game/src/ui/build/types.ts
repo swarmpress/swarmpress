@@ -11,7 +11,7 @@
 import designs from './kit-designs'
 import mapping from '../../../../../kit/mapping.json'
 import type { BuildingLayout } from '../../state/render-state'
-import type { PlacedObjectLayout, ObjectSummary } from '../../render/bricks/objects'
+import type { DeskSlot, DeskTop, PlacedObjectLayout, ObjectSummary } from '../../render/bricks/objects'
 import type { KitSummary } from './design-kit'
 import { pascal } from '../commands'
 
@@ -26,7 +26,7 @@ export interface TownItemLayout {
 
 export type BuildMode = 'sandbox' | 'economic'
 
-export type { PlacedObjectLayout, ObjectSummary }
+export type { DeskSlot, DeskTop, PlacedObjectLayout, ObjectSummary }
 
 /** `BuildingLayout` plus what ADR-0087 adds: the town and the company's build mode; and the placed objects (K-4). */
 export type BuildLayout = BuildingLayout & { town?: TownItemLayout[]; buildMode?: BuildMode; objects?: PlacedObjectLayout[] }
@@ -58,6 +58,8 @@ export type BuildCommand =
   | { RemoveTownItem: { item: string } }
   /** A design of the player's own (ADR-0065 §4, K-4): by its hash, with the kit's summary of it (rule 2). */
   | { PlaceObject: { design: string; pos: PosMm; rot: Rot; summary: ObjectSummary } }
+  /** A desk-top design (ADR-0088 decision 3): onto a desk's screen slot (it has a screen) or its lamp slot. */
+  | { PlaceObjectOnDesk: { design: string; desk: string; summary: ObjectSummary } }
   | { MoveObject: { object: string; pos: PosMm; rot: Rot } }
   | { RemoveObject: { object: string } }
 
@@ -84,8 +86,10 @@ export interface CatalogueItem {
   name: string
   /** A palette id of `kit/palette.json`: the icon's colour, the kit design's own main colour. */
   colour: string
-  /** Monitors and lamps go on a desk (`Placement::OnDesk`). */
+  /** Monitors and lamps go on a desk (`Placement::OnDesk`), and so do desk-top designs (`PlaceObjectOnDesk`). */
   onDesk: boolean
+  /** The desk slot it takes (`kit/mapping.json` `desk_ports`; a design's by `deskSlotOf`): where its ghost stands. */
+  deskSlot?: DeskSlot
   /** A design of the player's own (K-4): its hash, its JSON (the ghost), its compiled summary (the command), its parts. */
   hash?: string
   design?: string
@@ -99,7 +103,8 @@ const equipmentDesigns = (mapping as { equipment: Record<string, string> }).equi
 /** The equipment kinds, in the kit mapping's order (the sim's `EquipmentKind::ALL`). */
 export const EQUIPMENT: readonly CatalogueItem[] = Object.entries(equipmentDesigns).map(([slug, design]) => {
   const d = designs[design]
-  return { kind: pascal(slug), slug, name: d?.name ?? slug, colour: d?.colour ?? 'grey-light', onDesk: slug in deskPorts }
+  const slot = deskPorts[slug] as DeskSlot | undefined
+  return { kind: pascal(slug), slug, name: d?.name ?? slug, colour: d?.colour ?? 'grey-light', onDesk: slug in deskPorts, ...(slot ? { deskSlot: slot } : {}) }
 })
 
 export const equipmentBySlug = (slug: string) => EQUIPMENT.find((e) => e.slug === slug)
@@ -209,6 +214,7 @@ export const build = {
   moveTown: (item: string, x: number, z: number, rot: Rot, exact = false): BuildCommand => ({ MoveTownItem: { item, pos: posOf(x, z, exact), rot } }),
   removeTown: (item: string): BuildCommand => ({ RemoveTownItem: { item } }),
   placeObject: (design: string, summary: ObjectSummary, x: number, z: number, rot: Rot): BuildCommand => ({ PlaceObject: { design, pos: posOf(x, z, false), rot, summary } }),
+  placeObjectOnDesk: (design: string, desk: string, summary: ObjectSummary): BuildCommand => ({ PlaceObjectOnDesk: { design, desk, summary } }),
   moveObject: (object: string, x: number, z: number, rot: Rot, exact = false): BuildCommand => ({ MoveObject: { object, pos: posOf(x, z, exact), rot } }),
   removeObject: (object: string): BuildCommand => ({ RemoveObject: { object } }),
 }
@@ -227,6 +233,8 @@ export function objectSummary(s: KitSummary): ObjectSummary {
     mount: mountVariant(s.mount),
     seats: s.seats,
     workstation: s.workstation,
+    // Where a person sits at a workstation (ADR-0088): mm from the footprint centre, unturned; null otherwise.
+    seat_at: Array.isArray(s.seat_at) ? [s.seat_at[0], s.seat_at[1]] : null,
     lights: s.lights,
     storage: s.storage,
     screens: s.screens,
@@ -235,8 +243,16 @@ export function objectSummary(s: KitSummary): ObjectSummary {
   }
 }
 
-/** Only floor-mounted designs can be placed (the sim's `PlaceObject` takes `Floor`). */
-export const placeable = (s: Pick<KitSummary, 'mount'> | null | undefined) => !!s && s.mount.toLowerCase() === 'floor'
+/** Floor designs stand in a room (`PlaceObject`), surface designs on a desk (`PlaceObjectOnDesk`, ADR-0088); ceiling designs not yet. */
+export const placeable = (s: Pick<KitSummary, 'mount'> | null | undefined) => !!s && ['floor', 'surface'].includes(s.mount.toLowerCase())
+/** A design that goes on a desk (mounted on a surface). */
+export const onDeskDesign = (s: Pick<KitSummary, 'mount'> | Pick<ObjectSummary, 'mount'> | null | undefined) => !!s && s.mount.toLowerCase() === 'surface'
+/**
+ * The desk slot a desk-top design takes, as ADR-0088 decision 3 states the sim's rule: the screen
+ * slot when it has a screen, else the lamp slot. Only the ghost's spot uses it; the sim decides and
+ * the layout's `onDesk.slot` is where it is drawn.
+ */
+export const deskSlotOf = (s: Pick<ObjectSummary, 'screens'>): DeskSlot => (s.screens > 0 ? 'screen' : 'lamp')
 
 /** Cents as the shell shows money; zero is free (the sandbox, ADR-0087 decision 3). */
 export function priceText(cents: number | null | undefined): string | null {

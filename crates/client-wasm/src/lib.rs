@@ -521,7 +521,7 @@ mod tests {
         let before = rev(&sim);
         let hash = "0123456789abcdef".repeat(4);
         let place = format!(
-            r#"{{"PlaceObject":{{"design":"{hash}","pos":{{"x":1500,"z":13500}},"rot":1,"summary":{{"footprint":[24,12],"height":34,"mount":"Floor","seats":1,"workstation":true,"lights":1,"storage":0,"screens":1,"parts":204,"cost":3199}}}}}}"#
+            r#"{{"PlaceObject":{{"design":"{hash}","pos":{{"x":1500,"z":13500}},"rot":1,"summary":{{"footprint":[24,12],"height":34,"mount":"Floor","seats":1,"workstation":true,"seat_at":[0,750],"lights":1,"storage":0,"screens":1,"parts":204,"cost":3199}}}}}}"#
         );
         let moved = r#"{"MoveObject":{"object":"object-1","pos":{"x":1500,"z":12500},"rot":0}}"#;
         let remove = r#"{"RemoveObject":{"object":"object-1"}}"#;
@@ -541,8 +541,13 @@ mod tests {
         assert_eq!(
             o["summary"],
             serde_json::json!({"footprint":[24,12],"height":34,"mount":"Floor","seats":1,
-                "workstation":true,"lights":1,"storage":0,"screens":1,"parts":204,"cost":3199})
+                "workstation":true,"seat_at":[0,750],"lights":1,"storage":0,"screens":1,
+                "parts":204,"cost":3199})
         );
+        // ADR-0088: the seat in metres at turn 0, no desk, nobody's home yet
+        assert_eq!(o["seatAt"], serde_json::json!([0.0, 0.75]));
+        assert_eq!(o["onDesk"], Value::Null);
+        assert_eq!(o["assignedTo"], Value::Null);
         let meeting = v["rooms"]
             .as_array()
             .unwrap()
@@ -571,6 +576,90 @@ mod tests {
         // a sandbox company places for free
         let sandbox = Sim::demo_with(1, "sandbox").unwrap();
         assert_eq!(sandbox.price_command_json(&place), Some(0));
+    }
+
+    #[test]
+    fn staff_use_workstation_objects_and_desk_slots_through_json() {
+        // ADR-0088: the spare desks go, a desk of the player's own design
+        // is the only free workstation, a hire sits at its seat
+        let mut sim = Sim::demo(1);
+        for desk in sim.world.free_desks() {
+            sim.apply_command_json(&format!(r#"{{"Demolish":{{"Equipment":"{desk}"}}}}"#))
+                .unwrap();
+        }
+        let hash = "0123456789abcdef".repeat(4);
+        let place = format!(
+            r#"{{"PlaceObject":{{"design":"{hash}","pos":{{"x":1500,"z":12000}},"rot":1,"summary":{{"footprint":[24,12],"height":34,"mount":"Floor","seats":0,"workstation":true,"seat_at":[0,750],"lights":1,"storage":0,"screens":1,"parts":204,"cost":3199}}}}}}"#
+        );
+        sim.apply_command_json(&place).unwrap();
+        let candidate = *sim
+            .world
+            .candidates
+            .keys()
+            .find(|c| sim_core::validate(&sim.world, &Command::Hire { candidate: **c }).is_ok())
+            .unwrap();
+        sim.apply_command_json(&format!(r#"{{"Hire":{{"candidate":"{candidate}"}}}}"#))
+            .unwrap();
+        let hire = sim.world.staff.keys().last().copied().unwrap();
+        let v: Value = serde_json::from_str(&sim.layout_json()).unwrap();
+        let o = &v["objects"][0];
+        assert_eq!(o["assignedTo"], hire.to_string());
+        assert_eq!(o["seatAt"], serde_json::json!([0.0, 0.75]));
+        let mut seated = None;
+        for _ in 0..30 {
+            sim.advance(600);
+            let v: Value = serde_json::from_str(&sim.render_state_json()).unwrap();
+            seated = v["staff"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["id"] == hire.to_string() && s["seatedAt"] == "object-1")
+                .cloned();
+            if seated.is_some() {
+                break;
+            }
+        }
+        let s = seated.expect("the hire sits at the object");
+        // turned once: the seat is 0.75 m west of the centre
+        assert_eq!((s["x"].as_f64(), s["z"].as_f64()), (Some(0.75), Some(12.0)));
+
+        // a desk-top design takes a desk's lamp slot (Giulia's has a lamp:
+        // refused; once the lamp is gone, placed)
+        let mug = |desk: &str| {
+            format!(
+                r#"{{"PlaceObjectOnDesk":{{"design":"{hash}","desk":"{desk}","summary":{{"footprint":[4,4],"height":12,"mount":"surface","seats":0,"workstation":false,"lights":0,"storage":0,"screens":0,"parts":9,"cost":120}}}}}}"#
+            )
+        };
+        let desk = sim.world.staff[&sim_core::ids::StaffId(1)]
+            .home_desk()
+            .unwrap();
+        let lamp = sim
+            .world
+            .building
+            .equipment
+            .values()
+            .find(|e| {
+                e.attached_to == Some(desk)
+                    && e.kind == sim_core::equipment::EquipmentKind::DeskLamp
+            })
+            .map(|e| e.id)
+            .unwrap();
+        assert!(sim
+            .validate_command_json(&mug(&desk.to_string()))
+            .unwrap()
+            .contains("already has one"));
+        sim.apply_command_json(&format!(r#"{{"Demolish":{{"Equipment":"{lamp}"}}}}"#))
+            .unwrap();
+        assert_eq!(sim.price_command_json(&mug(&desk.to_string())), Some(120));
+        sim.apply_command_json(&mug(&desk.to_string())).unwrap();
+        let v: Value = serde_json::from_str(&sim.layout_json()).unwrap();
+        let o = &v["objects"][1];
+        assert_eq!(
+            o["onDesk"],
+            serde_json::json!({"desk": desk.to_string(), "slot": "lamp"})
+        );
+        assert_eq!(o["seatAt"], Value::Null);
+        assert_eq!(o["assignedTo"], Value::Null);
     }
 
     #[test]

@@ -20,7 +20,9 @@ import type {
   LightLevel,
   MeetingRender,
   ObjectCapabilities,
+  ObjectDeskSlot,
   ObjectMount,
+  ObjectOnDesk,
   ObjectSummary,
   Opening,
   PathRender,
@@ -56,8 +58,14 @@ export function valuesOf<T extends string>() {
 export const LAYOUT_KEYS = keysOf<BuildingLayout>()('originX', 'originZ', 'width', 'depth', 'wallHeight', 'floors', 'entrance', 'rooms', 'buildMode', 'town', 'objects')
 /** Layout keys older layouts (and hand-written ones) may leave out; the sim always writes them. */
 export const LAYOUT_OPTIONAL_KEYS: readonly string[] = ['buildMode', 'town', 'objects']
-export const OBJECT_KEYS = keysOf<PlacedObjectLayout>()('id', 'design', 'room', 'x', 'z', 'rot', 'footprint', 'summary')
-export const OBJECT_SUMMARY_KEYS = keysOf<ObjectSummary>()('footprint', 'height', 'mount', 'seats', 'workstation', 'lights', 'storage', 'screens', 'parts', 'cost')
+export const OBJECT_KEYS = keysOf<PlacedObjectLayout>()('id', 'design', 'room', 'x', 'z', 'rot', 'footprint', 'summary', 'seatAt', 'onDesk', 'assignedTo')
+/** Object keys older layouts (and hand-written ones) may leave out; the sim always writes them (ADR-0088). */
+export const OBJECT_OPTIONAL_KEYS: readonly string[] = ['seatAt', 'onDesk', 'assignedTo']
+export const OBJECT_SUMMARY_KEYS = keysOf<ObjectSummary>()('footprint', 'height', 'mount', 'seats', 'workstation', 'seat_at', 'lights', 'storage', 'screens', 'parts', 'cost')
+/** Summary keys written before ADR-0088 may leave out. */
+export const OBJECT_SUMMARY_OPTIONAL_KEYS: readonly string[] = ['seat_at']
+export const OBJECT_ON_DESK_KEYS = keysOf<ObjectOnDesk>()('desk', 'slot')
+export const OBJECT_DESK_SLOTS = valuesOf<ObjectDeskSlot>()('screen', 'lamp')
 export const OBJECT_MOUNTS = valuesOf<ObjectMount>()('Floor', 'Surface', 'Ceiling')
 export const OBJECT_CAPABILITY_KEYS = keysOf<ObjectCapabilities>()('seats', 'workstations', 'lights', 'storage', 'screens')
 export const TOWN_ITEM_KEYS = keysOf<TownItemLayout>()('id', 'kind', 'x', 'z', 'rot')
@@ -238,12 +246,19 @@ export function checkLayout(layout: unknown, r = new ShapeReport()): ShapeReport
     for (const k of ['x', 'z', 'rot']) r.type(t[k], 'number', `${p}.${k}`)
   })
   if ('objects' in layout) r.list(layout.objects, 'layout.objects', (o, p) => {
-    if (!r.keys(o, OBJECT_KEYS, p)) return
+    if (!r.keys(o, OBJECT_KEYS, p, OBJECT_OPTIONAL_KEYS)) return
     for (const k of ['id', 'design', 'room']) r.type(o[k], 'string', `${p}.${k}`)
     for (const k of ['x', 'z', 'rot']) r.type(o[k], 'number', `${p}.${k}`)
     r.point(o.footprint, `${p}.footprint`)
-    if (!r.keys(o.summary, OBJECT_SUMMARY_KEYS, `${p}.summary`)) return
+    if ('seatAt' in o && o.seatAt !== null) r.point(o.seatAt, `${p}.seatAt`)
+    if ('onDesk' in o && o.onDesk !== null && r.keys(o.onDesk, OBJECT_ON_DESK_KEYS, `${p}.onDesk`)) {
+      r.type(o.onDesk.desk, 'string', `${p}.onDesk.desk`)
+      r.oneOf(o.onDesk.slot, OBJECT_DESK_SLOTS, `${p}.onDesk.slot`)
+    }
+    if ('assignedTo' in o) r.type(o.assignedTo, 'string', `${p}.assignedTo`, true)
+    if (!r.keys(o.summary, OBJECT_SUMMARY_KEYS, `${p}.summary`, OBJECT_SUMMARY_OPTIONAL_KEYS)) return
     r.point(o.summary.footprint, `${p}.summary.footprint`)
+    if ('seat_at' in o.summary && o.summary.seat_at !== null) r.point(o.summary.seat_at, `${p}.summary.seat_at`)
     r.oneOf(o.summary.mount, OBJECT_MOUNTS, `${p}.summary.mount`)
     r.type(o.summary.workstation, 'boolean', `${p}.summary.workstation`)
     for (const k of ['height', 'seats', 'lights', 'storage', 'screens', 'parts', 'cost']) r.type(o.summary[k], 'number', `${p}.summary.${k}`)

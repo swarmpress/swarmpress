@@ -89,6 +89,26 @@ export function portWorld(p: Placement, info: DesignInfo, at: [number, number]):
   return [p.x + dx, p.z + dz]
 }
 
+/**
+ * Where a desk's slot is (ADR-0088 decision 3): the shipped desk design's port of that id (`screen`,
+ * `lamp`, as `kit/mapping.json` `desk_ports` names them) in the world, for a desk at `(x, z)` turned
+ * by `rot` radians: the footprint centre of what stands there, the port's height, and the turn of
+ * the desk plus the port's. The same spot a monitor or a lamp of that desk is drawn at.
+ */
+export function deskSlotAt(
+  desk: { x: number; z: number; rot: number },
+  slot: string,
+  mapping: KitMapping,
+  infoOf: DesignInfoOf,
+): { x: number; y: number; z: number; turn: Turn } | null {
+  const placement: Placement = { id: 'desk', role: 'desk', design: mapping.equipment.desk, params: '{}', x: desk.x, y: 0, z: desk.z, turn: turnOf(desk.rot) }
+  const info = infoOf(placement.design, placement.params)
+  const port = info.ports.find((p) => p.id === slot)
+  if (!port) return null
+  const [x, z] = portWorld(placement, info, [port.at[0], port.at[1]])
+  return { x, y: port.at[2] * PLATE, z, turn: ((placement.turn + (port.turn ?? 0)) % 4) as Turn }
+}
+
 const DESK_TOP_PORTS = new Set(['monitor', 'color-monitor', 'desk-lamp'])
 
 /**

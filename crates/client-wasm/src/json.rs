@@ -7,7 +7,7 @@
 use serde_json::{json, Map, Value};
 use sim_core::building::Building;
 use sim_core::economy::REVENUE_IS_STUB;
-use sim_core::equipment::{DeviceState, EquipmentKind};
+use sim_core::equipment::{DeskSlot, DeviceState, EquipmentKind};
 use sim_core::finance::CostBreakdown;
 use sim_core::geom::PosMm;
 use sim_core::ids::{PersonaId, ProjectId, StaffId, WorkItemId};
@@ -16,7 +16,7 @@ use sim_core::plan::{can_draft, Effect, PhaseKind, WorkItemStatus, MAX_PLANNED, 
 use sim_core::projects::{ProjectStatus, MONTH_DAYS};
 use sim_core::render_state::{Light, RenderState};
 use sim_core::roles::Department;
-use sim_core::staff::{persona, persona_slug, Spot, Staff};
+use sim_core::staff::{persona, persona_slug, Spot, Staff, Station};
 use sim_core::World;
 
 /// Wall height in metres (single storey in M1).
@@ -166,7 +166,7 @@ pub fn layout(w: &World) -> Value {
         "rooms": rooms,
         "buildMode": w.company.build_mode.slug(),
         "town": town(b),
-        "objects": objects(b),
+        "objects": objects(w),
     })
 }
 
@@ -192,12 +192,17 @@ fn room_capabilities(b: &Building, room: sim_core::ids::RoomId) -> Value {
 /// The placed objects in id order: footprint centre in metres, `rot` in
 /// radians like the layout's props, `footprint` the design's own `[w, d]` in
 /// metres at turn 0 (`rot` turns it), and the summary as the command carried
-/// it (studs, plates, cents).
-fn objects(b: &Building) -> Vec<Value> {
-    b.objects
+/// it (studs, plates, cents). ADR-0088: `seatAt` is a workstation's seat
+/// relative to the centre in metres at turn 0 (`rot` turns it like the
+/// footprint; null otherwise), `onDesk` a desk-top object's desk and slot
+/// (null on the floor; it then shares the desk's position and turn), and
+/// `assignedTo` who calls a workstation object home (null when free).
+fn objects(w: &World) -> Vec<Value> {
+    w.building
+        .objects
         .values()
         .map(|o| {
-            let [w, d] = o.summary.footprint;
+            let [fw, fd] = o.summary.footprint;
             json!({
                 "id": o.id.to_string(),
                 "design": o.design,
@@ -205,8 +210,19 @@ fn objects(b: &Building) -> Vec<Value> {
                 "x": m(o.pos.x),
                 "z": m(o.pos.z),
                 "rot": radians(o.rot),
-                "footprint": [studs(w), studs(d)],
+                "footprint": [studs(fw), studs(fd)],
                 "summary": o.summary,
+                "seatAt": o.summary.seat_at.filter(|_| o.is_workstation()).map(|[x, z]| [m(x), m(z)]),
+                "onDesk": o.on_desk.map(|(desk, slot)| json!({
+                    "desk": desk.to_string(),
+                    "slot": match slot {
+                        DeskSlot::Screen => "screen",
+                        DeskSlot::Lamp => "lamp",
+                    },
+                })),
+                "assignedTo": w
+                    .station_owner(Station::Object(o.id))
+                    .map(|s| s.to_string()),
             })
         })
         .collect()
@@ -299,7 +315,7 @@ pub fn render_state(w: &World, rs: &RenderState) -> Value {
                 "z": m(s.pos_mm.z),
                 "pose": s.pose.slug(),
                 "activity": s.activity.slug(),
-                "seatedAt": s.seated_at.map(|d| d.to_string()),
+                "seatedAt": s.seated_at.map(|st| st.to_string()),
                 "meeting": meeting,
                 "workItem": opt_id(s.work_item),
                 "fatigue": s.fatigue,

@@ -14,17 +14,29 @@
 //! forged one before a company is ranked (leagues, ADR-0055). The sim only
 //! bounds the numbers ([`check_summary`]).
 //!
-//! **Capabilities do not change staff behaviour yet.** Staff still look for
-//! equipment kinds (a `Desk` to work at, the meeting room's table, the
-//! kitchen); an object's seats, workstation, lights, storage and screens are
-//! recorded and totalled per room ([`room_capabilities`], shown by the UI)
-//! but nobody sits at, works at or is lit by an object until the equipment
-//! kinds become capability tags (K-4's second half).
+//! **Staff use what the bricks provide** (ADR-0088). A floor object whose
+//! summary says `workstation` is a home for staff like a built-in `Desk`:
+//! hiring hands out free workstations (desks first, then objects, each by
+//! id; [`crate::World::free_stations`]) and the person sits at the object's
+//! seat ([`PlacedObject::seat_pos`]: its position plus the summary's
+//! `seat_at`, turned with the object). A workstation object somebody calls
+//! home, or anyone sits at, follows the desk rules: it is not removed while
+//! it is someone's home, not moved while someone sits at it or walks to it.
+//! Seats, lights and storage of objects still only count towards the room's
+//! totals ([`room_capabilities`]); meeting and kitchen seats come from the
+//! room's table (ADR-0088 decision 4).
+//!
+//! **Desk-top designs** ([`Mount::Surface`]) take a built-in desk's slot
+//! (`PlaceObjectOnDesk`): one with a screen takes the screen slot, any other
+//! the lamp slot. They sit at the desk's position and turn, move with it and
+//! are removed with it, like monitors and lamps; a slot holds one item,
+//! equipment or object. They take no floor space.
 //!
 //! # Placement
 //!
-//! - Only [`Mount::Floor`] designs are placed; `Surface` and `Ceiling` are
-//!   `NotSupported` until objects can sit on other objects or hang.
+//! - [`Mount::Floor`] designs are placed with `PlaceObject`, `Surface` ones
+//!   on a desk with `PlaceObjectOnDesk`; `Ceiling` designs are
+//!   `NotSupported` until objects can hang.
 //! - `pos` is the footprint's centre in millimetres; `rot` turns it by
 //!   quarter turns clockwise seen from above (an odd turn swaps width and
 //!   depth). A stud is 62.5 mm, so the footprint is
@@ -42,8 +54,10 @@
 //!   `EquipmentKind::footprint_mm()`, the same square two equipment items
 //!   keep apart by Chebyshev distance); a desk's chair is the square
 //!   [`CHAIR_HALF_MM`] around its seat position, so nobody's chair is built
-//!   over. Items without floor space (desk attachments, ceiling lights) are
-//!   ignored. The same rule keeps new equipment off objects
+//!   over; a workstation object's seat is the same square around its seat
+//!   position, and it lies inside the room, [`SEAT_CLEARANCE_MM`] clear of
+//!   the walls, like a desk's chair. Items without floor space (desk
+//!   attachments, desk-top objects, ceiling lights) are ignored. The same rule keeps new equipment off objects
 //!   (`PlaceEquipment`, `MoveEquipment`, the office designer's builds).
 //! - Objects count towards the room's item limit
 //!   (`equipment::MAX_ITEMS_PER_ROOM`), as equipment counts towards theirs.
@@ -53,9 +67,9 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 use crate::building::{Building, WALL_HALF_MM};
-use crate::equipment::{EquipmentKind, MAX_ITEMS_PER_ROOM};
+use crate::equipment::{DeskSlot, EquipmentKind, MAX_ITEMS_PER_ROOM, SEAT_CLEARANCE_MM};
 use crate::geom::{PosMm, Side, Tile, TileRect, TILE_MM};
-use crate::ids::{ObjectId, RoomId};
+use crate::ids::{EquipId, ObjectId, RoomId};
 use crate::validate::{Reject, MAX_COORD_MM};
 
 /// Quarter millimetres per stud (a stud is 62.5 mm).
@@ -74,6 +88,9 @@ pub const OBJECT_WALL_CLEARANCE_MM: i32 = WALL_HALF_MM;
 /// Half the side of the square a desk's chair keeps free, mm (the shipped
 /// chair is 50 × 50 cm).
 pub const CHAIR_HALF_MM: i32 = 250;
+/// How far outside its footprint a workstation's seat may lie, mm (the
+/// kit's `SEAT_REACH`, 16 studs).
+pub const SEAT_REACH_MM: i32 = 1_000;
 /// Labour for moving an object, percent of its parts' price.
 pub const OBJECT_MOVE_PCT: u64 = crate::town::MOVE_LABOUR_PCT as u64;
 
@@ -100,6 +117,11 @@ pub struct ObjectSummary {
     pub mount: Mount,
     pub seats: u8,
     pub workstation: bool,
+    /// Where a person sits at a workstation: the seat port relative to the
+    /// footprint's centre, mm `[x, z]` at turn 0 (ADR-0088). `None` unless
+    /// `workstation`; absent in older JSON.
+    #[serde(default)]
+    pub seat_at: Option<[i32; 2]>,
     pub lights: u8,
     /// Shelf area, stud².
     pub storage: u32,
@@ -133,12 +155,92 @@ pub struct PlacedObject {
     /// Quarter turns clockwise seen from above, 0..=3.
     pub rot: u8,
     pub summary: ObjectSummary,
+    /// A desk-top design's desk and slot (ADR-0088 decision 3); it then
+    /// shares the desk's position, turn and room. `None` on the floor.
+    #[serde(default)]
+    pub on_desk: Option<(EquipId, DeskSlot)>,
 }
 
 impl PlacedObject {
     pub fn rect(&self) -> Rect {
         object_rect(&self.summary, self.pos, self.rot)
     }
+
+    /// A floor workstation: a home for staff (ADR-0088 decision 2).
+    pub fn is_workstation(&self) -> bool {
+        self.on_desk.is_none() && self.summary.workstation && self.summary.seat_at.is_some()
+    }
+
+    /// Where a person sits to work at it: the position plus `seat_at`
+    /// turned with the object. `None` unless it is a workstation.
+    pub fn seat_pos(&self) -> Option<PosMm> {
+        if !self.is_workstation() {
+            return None;
+        }
+        self.summary.seat_at.map(|a| seat_of(self.pos, self.rot, a))
+    }
+
+    /// The floor it takes: its footprint and, for a workstation, the square
+    /// of its seat. A desk-top object takes none.
+    pub fn floor_rects(&self) -> Vec<Rect> {
+        if self.on_desk.is_some() {
+            return Vec::new();
+        }
+        floor_rects(&self.summary, self.pos, self.rot)
+    }
+}
+
+/// `offset` (mm, at turn 0) turned `rot` quarter turns clockwise seen from
+/// above, the turn of desks' chairs (`equipment::seat_pos`): `(x, z)` →
+/// `(−z, x)` per quarter turn.
+pub const fn turn_offset(offset: [i32; 2], rot: u8) -> [i32; 2] {
+    let [x, z] = offset;
+    match rot % 4 {
+        0 => [x, z],
+        1 => [-z, x],
+        2 => [-x, -z],
+        _ => [z, -x],
+    }
+}
+
+/// The seat of a workstation at `pos` turned `rot` whose summary puts the
+/// seat at `seat_at`.
+pub const fn seat_of(pos: PosMm, rot: u8, seat_at: [i32; 2]) -> PosMm {
+    let [dx, dz] = turn_offset(seat_at, rot);
+    PosMm::new(pos.x + dx, pos.z + dz)
+}
+
+/// The floor a floor design takes at `pos` turned `rot`: its footprint,
+/// and its seat's square when it is a workstation.
+fn floor_rects(summary: &ObjectSummary, pos: PosMm, rot: u8) -> Vec<Rect> {
+    let mut v = vec![object_rect(summary, pos, rot)];
+    if let (true, Some(a)) = (summary.workstation, summary.seat_at) {
+        v.push(Rect::square(seat_of(pos, rot, a), CHAIR_HALF_MM));
+    }
+    v
+}
+
+/// The slot a desk-top design takes: the screen slot when it has a screen,
+/// the lamp slot otherwise (ADR-0088 decision 3).
+pub const fn desk_slot_for(summary: &ObjectSummary) -> DeskSlot {
+    if summary.screens > 0 {
+        DeskSlot::Screen
+    } else {
+        DeskSlot::Lamp
+    }
+}
+
+/// Whether `desk`'s `slot` holds equipment (other than `except`) or an
+/// object.
+pub fn desk_slot_taken(
+    b: &Building,
+    desk: EquipId,
+    slot: DeskSlot,
+    except: Option<EquipId>,
+) -> bool {
+    b.equipment.values().any(|e| {
+        Some(e.id) != except && e.attached_to == Some(desk) && e.kind.desk_slot() == Some(slot)
+    }) || b.objects.values().any(|o| o.on_desk == Some((desk, slot)))
 }
 
 /// Capabilities of a room's objects, totalled.
@@ -224,12 +326,16 @@ pub fn valid_design_hash(s: &str) -> bool {
 }
 
 /// Bounds on a summary's numbers (the sim cannot check them against the
-/// design; see the module docs).
+/// design; see the module docs). The mount is the command's to check, except
+/// that ceiling designs are not placed yet.
+///
+/// A workstation carries its seat position, at most [`SEAT_REACH_MM`]
+/// outside its footprint on each axis; anything else carries none. A
+/// workstation is one home whatever its `seats` say (ADR-0088 decision 5),
+/// and a desk-top design is never one.
 pub fn check_summary(s: &ObjectSummary) -> Result<(), Reject> {
-    if s.mount != Mount::Floor {
-        return Err(Reject::NotSupported(
-            "only floor designs can be placed for now",
-        ));
+    if s.mount == Mount::Ceiling {
+        return Err(Reject::NotSupported("ceiling designs cannot be placed yet"));
     }
     let side = 1..=MAX_OBJECT_STUDS;
     if !side.contains(&s.footprint[0]) || !side.contains(&s.footprint[1]) {
@@ -243,6 +349,28 @@ pub fn check_summary(s: &ObjectSummary) -> Result<(), Reject> {
     }
     if s.cost > MAX_OBJECT_COST_CENTS {
         return Err(Reject::Invalid("an object costs at most €100 000"));
+    }
+    match (s.workstation, s.seat_at) {
+        (false, Some(_)) => {
+            return Err(Reject::Invalid("only a workstation has a seat position"));
+        }
+        (true, None) => return Err(Reject::Invalid("a workstation needs its seat position")),
+        (true, Some([x, z])) => {
+            // half a side of n studs = n × 125 quarter millimetres
+            let reach = 4 * i64::from(SEAT_REACH_MM);
+            let within = |v: i32, studs: u32| {
+                4 * i64::from(v).abs() <= i64::from(studs) * STUD_QMM / 2 + reach
+            };
+            if !within(x, s.footprint[0]) || !within(z, s.footprint[1]) {
+                return Err(Reject::Invalid(
+                    "a workstation's seat is at most 1 m outside its footprint",
+                ));
+            }
+            if s.mount != Mount::Floor {
+                return Err(Reject::Invalid("a desk-top design is not a workstation"));
+            }
+        }
+        (false, None) => {}
     }
     Ok(())
 }
@@ -287,7 +415,8 @@ pub fn equipment_hits_object(
     b.objects
         .values()
         .filter(|o| o.room == room)
-        .any(|o| rects.iter().any(|r| r.overlaps(&o.rect())))
+        .flat_map(PlacedObject::floor_rects)
+        .any(|o| rects.iter().any(|r| r.overlaps(&o)))
 }
 
 /// Items in `room`: equipment and objects.
@@ -336,18 +465,30 @@ pub fn check_spot(
     if !Rect::of_tiles(&room.rect, OBJECT_WALL_CLEARANCE_MM).contains(&fp) {
         return Err(Reject::Invalid("the object does not fit inside the room"));
     }
+    if let (true, Some(a)) = (summary.workstation, summary.seat_at) {
+        if !room
+            .rect
+            .contains_pos_inset(seat_of(pos, rot, a), SEAT_CLEARANCE_MM)
+        {
+            return Err(Reject::Invalid("the seat would be in the wall"));
+        }
+    }
+    let rects = floor_rects(summary, pos, rot);
     if door_tiles(b, &room.rect)
         .into_iter()
         .any(|t| Rect::of_tile(t).overlaps(&fp))
     {
         return Err(Reject::Invalid("the object would block a door"));
     }
-    if equipment_rects(b, room_id).any(|r| r.overlaps(&fp)) {
+    let hits = |r: &Rect| rects.iter().any(|m| m.overlaps(r));
+    if equipment_rects(b, room_id).any(|r| hits(&r)) {
         return Err(Reject::Overlap);
     }
     if b.objects
         .values()
-        .any(|o| Some(o.id) != except && o.room == room_id && o.rect().overlaps(&fp))
+        .filter(|o| Some(o.id) != except && o.room == room_id)
+        .flat_map(PlacedObject::floor_rects)
+        .any(|r| hits(&r))
     {
         return Err(Reject::Overlap);
     }
@@ -366,7 +507,7 @@ pub fn room_capabilities(b: &Building, room: RoomId) -> ObjectCapabilities {
     for o in b.objects.values().filter(|o| o.room == room) {
         let s = &o.summary;
         c.seats += u32::from(s.seats);
-        c.workstations += u32::from(s.workstation);
+        c.workstations += u32::from(o.is_workstation());
         c.lights += u32::from(s.lights);
         c.storage += u64::from(s.storage);
         c.screens += u32::from(s.screens);
@@ -385,6 +526,7 @@ mod tests {
             mount: Mount::Floor,
             seats: 0,
             workstation: false,
+            seat_at: None,
             lights: 0,
             storage: 0,
             screens: 0,
@@ -435,6 +577,27 @@ mod tests {
         let mut s = summary(24, 12);
         s.mount = Mount::Ceiling;
         assert!(matches!(check_summary(&s), Err(Reject::NotSupported(_))));
+        s.mount = Mount::Surface;
+        assert_eq!(check_summary(&s), Ok(()));
+        // a workstation's seat: present, and within 1 m of its footprint
+        // (24 × 12 studs: 750 × 375 mm half sides)
+        let mut s = summary(24, 12);
+        s.workstation = true;
+        assert!(check_summary(&s).is_err());
+        s.seat_at = Some([0, 750]);
+        assert_eq!(check_summary(&s), Ok(()));
+        s.seat_at = Some([-1_750, 1_375]);
+        assert_eq!(check_summary(&s), Ok(()));
+        s.seat_at = Some([-1_751, 0]);
+        assert!(check_summary(&s).is_err());
+        s.seat_at = Some([0, 1_376]);
+        assert!(check_summary(&s).is_err());
+        s.seat_at = Some([0, 750]);
+        s.mount = Mount::Surface;
+        assert!(check_summary(&s).is_err());
+        let mut s = summary(24, 12);
+        s.seat_at = Some([0, 750]);
+        assert!(check_summary(&s).is_err(), "a seat without a workstation");
         assert!(check_summary(&summary(0, 12)).is_err());
         assert!(check_summary(&summary(193, 12)).is_err());
         let mut s = summary(2, 2);
@@ -449,6 +612,20 @@ mod tests {
         s.cost = 3_199;
         assert_eq!(s.price(), 3_199);
         assert_eq!(s.move_cost(), 319);
+    }
+
+    #[test]
+    fn seats_turn_like_desk_chairs() {
+        let p = PosMm::new(13_000, 2_500);
+        for rot in 0..4 {
+            assert_eq!(
+                seat_of(p, rot, [0, crate::equipment::SEAT_OFFSET_MM]),
+                crate::equipment::seat_pos(p, rot)
+            );
+        }
+        assert_eq!(turn_offset([100, 40], 1), [-40, 100]);
+        assert_eq!(turn_offset([100, 40], 2), [-100, -40]);
+        assert_eq!(turn_offset([100, 40], 3), [40, -100]);
     }
 
     #[test]

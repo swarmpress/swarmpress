@@ -17,6 +17,7 @@ import { StoreContext } from '../store'
 import { BrickIcon } from '../studio/bricks'
 import { commit, historyOf, redo, undo, type History } from '../studio/history'
 import { brickAt, compileDesign, compileShipped, getDesignKit, importCompiled, partSize, shippedDesigns, type EditorKit, type KitIssue } from './design-kit'
+import { mountFact, workstationFacts } from './provides'
 import { companyLibrary, localStorageLibrary, type DesignLibrary, type SavedDesign } from './design-library'
 import {
   boxFill,
@@ -568,6 +569,7 @@ function CompiledFacts({ compiled, merged }: { compiled: ReturnType<typeof compi
           {s.work_surface ? ` · work surface ${s.work_surface} stud²` : ''}
         </p>
       )}
+      {s && <OfficeFacts compiled={compiled} />}
       {compiled.issues.length > 0 && (
         <ul class="de-issues" role="list" aria-label="Issues">
           {compiled.issues.slice(0, 8).map((i, k) => (
@@ -578,6 +580,33 @@ function CompiledFacts({ compiled, merged }: { compiled: ReturnType<typeof compi
         </ul>
       )}
     </div>
+  )
+}
+
+/** What staff can do with the design in the office (ADR-0088): a workstation and its seat, or why not; where it goes. */
+function OfficeFacts({ compiled }: { compiled: ReturnType<typeof compileDesign> }) {
+  const s = compiled.summary!
+  const mount = s.mount.toLowerCase()
+  const w = mount === 'floor' ? workstationFacts({ summary: s, ports: compiled.ports, bounds: compiled.bounds }) : null
+  return (
+    <dl class="de-dl" data-testid="de-office">
+      <dt>Workstation</dt>
+      <dd data-testid="de-workstation" title={w?.text}>
+        {w ? (w.workstation ? 'Yes' : 'No') : 'No (not on the floor)'}
+      </dd>
+      <dt>Seats</dt>
+      <dd>{s.seats}</dd>
+      <dt>In the office</dt>
+      <dd>{mountFact(s)}</dd>
+      {w && (
+        <>
+          <dt class="sr-only">Staff</dt>
+          <dd class="de-office-why" data-testid="de-workstation-why">
+            {w.text}
+          </dd>
+        </>
+      )}
+    </dl>
   )
 }
 

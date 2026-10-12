@@ -8,6 +8,9 @@
 //!   has no exterior window; **Dim** when people are only passing through
 //!   under the same conditions; otherwise **Off**
 //! - a monitor is on (`InUse`) while its desk's owner is seated at the desk
+//! - a person at a workstation object sits at its seat (ADR-0088): their
+//!   `pos_mm` is the object's position plus its summary's `seat_at`, turned
+//!   with the object, and `seated_at` names the object
 //! - a desk lamp is on while its desk is in use and the time is ≥ 17:00
 //! - ceiling lights follow their room; the coffee machine is on while anyone
 //!   is in; a whiteboard is on during a meeting in its room (`InUse` by the
@@ -20,7 +23,7 @@ use crate::clock::{DayPhase, DESK_LAMP_ON};
 use crate::equipment::{DeviceState, EquipmentKind};
 use crate::geom::{PosMm, TileRect};
 use crate::ids::{EquipId, MeetingId, PersonaId, RoomId, StaffId, WorkItemId};
-use crate::staff::{Activity, Pose, Role, Spot};
+use crate::staff::{Activity, Pose, Role, Spot, Station};
 use crate::world::World;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -81,7 +84,9 @@ pub struct StaffRender {
     pub path: Option<PathRender>,
     pub pose: Pose,
     pub activity: Activity,
-    pub seated_at: Option<EquipId>,
+    /// The workstation the person sits at right now: a desk, or a
+    /// workstation object (ADR-0088).
+    pub seated_at: Option<Station>,
     pub fatigue: u16,
     pub morale: u16,
     /// The work item whose active phase this person works on
@@ -221,7 +226,7 @@ pub fn render_state(w: &World) -> RenderState {
                 EquipmentKind::Monitor | EquipmentKind::ColorMonitor => e
                     .attached_to
                     .and_then(|d| {
-                        let owner = w.staff.values().find(|s| s.home_desk == Some(d))?;
+                        let owner = w.staff.values().find(|s| s.home_desk() == Some(d))?;
                         (owner.seated_at() == Some(d)).then_some(owner.id)
                     })
                     .map_or(DeviceState::Off, DeviceState::InUse),
@@ -295,7 +300,7 @@ pub fn render_state(w: &World) -> RenderState {
                 }),
                 pose,
                 activity: s.activity,
-                seated_at: s.seated_at(),
+                seated_at: s.seated_station(),
                 fatigue: s.fatigue,
                 morale: s.morale,
                 work_item,

@@ -105,7 +105,7 @@ describe.skipIf(!built)('placed objects in the brick office (kit-wasm, NullEngin
     const l = withObjects([{ id: 'object-1', design: hash, room: 'room-6', x: spot.x, z: spot.z, rot: 0, footprint: [0.5, 0.5], summary: summaryOf(0.5, 0.5) }])
     const { game, bricks } = scene(l, { designOf: (h) => (asked.push(h), h === hash ? CUBE : null) })
     expect(asked).toEqual([hash])
-    expect(bricks.objects).toEqual([{ id: 'object-1', room: 'room-6', design: hash, drawn: 'design', rect: { x: spot.x - 0.25, z: spot.z - 0.25, w: 0.5, d: 0.5 } }])
+    expect(bricks.objects).toEqual([{ id: 'object-1', room: 'room-6', design: hash, drawn: 'design', rect: { x: spot.x - 0.25, z: spot.z - 0.25, w: 0.5, d: 0.5 }, at: { x: spot.x, y: 0, z: spot.z, turn: 0, desk: null }, seat: null }])
     expect(bricks.pendingDesigns()).toEqual([])
     // Its bricks are part of the room's batches: the room has the cube's instances more.
     const cube = kit.compile(CUBE, '')

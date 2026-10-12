@@ -42,7 +42,7 @@ import { baseplateMesh, floorMesh, paintFloor } from './floor'
 import { envIntensityFor, plasticEnvironment } from './environment'
 import { BrickSeamPlugin } from './seams'
 import { mappingOf, paletteOf, type KitApi, type KitBuildLike, type PaletteColour } from './kit'
-import { designText, objectRect, objectsOf, objectTurn, type DesignResolver, type PlacedObjectLayout } from './objects'
+import { deskTopOf, designText, footprintM, objectSeat, objectsOf, objectSpot, rectAt, type DesignResolver, type ObjectSpot, type PlacedObjectLayout } from './objects'
 import { modelPlacement, modelRoom } from './model'
 import { FLOOR_TOP, PLATE, roomPlacements, STUD, turnXZ, type DesignInfo, type Placement, type Turn } from './placements'
 import {
@@ -193,6 +193,10 @@ export interface ObjectDrawn {
   drawn: 'design' | 'placeholder'
   /** The world rect it covers (picking and highlighting use the layout's own, `objectRect`). */
   rect: { x: number; z: number; w: number; d: number }
+  /** Where it is drawn: its layout position, or its desk's slot port (ADR-0088). */
+  at: ObjectSpot
+  /** A workstation object's seat in the world, where its chair stands (ADR-0088); null otherwise. */
+  seat: [number, number] | null
 }
 
 export interface TownItemRect {
@@ -325,7 +329,7 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
   const objectsByRoom = new Map<string, PlacedObjectLayout[]>()
   for (const o of objectsOf(layout)) objectsByRoom.set(o.room, [...(objectsByRoom.get(o.room) ?? []), o])
   const objectsDrawn: ObjectDrawn[] = []
-  const placeholders: Array<{ o: PlacedObjectLayout; room: string }> = []
+  const placeholders: Array<{ o: PlacedObjectLayout; room: string; at: ObjectSpot }> = []
 
   const shellsStart = now()
   const shells = JSON.parse(kit.roomShells(JSON.stringify(layout))) as Record<string, Array<{ offset: [number, number]; design: unknown }>>
@@ -419,22 +423,39 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
       if (p.id === owner) f.at = [p.x, p.z]
       f.list.push(src)
     }
-    // The player's objects (K-4): placed like equipment, lit by this room.
+    // The player's objects (K-4): placed like equipment, lit by this room. A desk-top object
+    // (ADR-0088) stands at its desk's slot port and arrives with a fresh desk; a workstation object
+    // gets the chair a desk gets, at the seat the layout gives it.
     for (const o of objectsByRoom.get(room.id) ?? []) {
+      const at = objectSpot(o, layout, mapping, (d, p) => compiled(d, p).info)
+      if (!at) {
+        console.warn(`[bricks] ${o.id} stands on ${deskTopOf(o)?.desk ?? 'a desk'}, which the layout does not have`)
+        continue
+      }
       const c = objectBuild(o.design)
       if (!c) {
-        placeholders.push({ o, room: room.id })
-        objectsDrawn.push({ id: o.id, room: room.id, design: o.design, drawn: 'placeholder', rect: objectRect(o) })
+        placeholders.push({ o, room: room.id, at })
+        objectsDrawn.push({ id: o.id, room: room.id, design: o.design, drawn: 'placeholder', rect: rectAt(at.x, at.z, footprintM(o), at.turn), at, seat: null })
         continue
       }
-      const placement: Placement = { id: o.id, role: 'prop', design: `object:${o.design}`, params: '{}', x: o.x, y: 0, z: o.z, turn: objectTurn(o) }
-      const src: ChunkSource = { build: c.build, placement, footprint: [c.info.bounds[0], c.info.bounds[1]], shell: false, surfaces: [] }
-      objectsDrawn.push({ id: o.id, room: room.id, design: o.design, drawn: 'design', rect: footprintRect(o.x, o.z, c.info.bounds, objectTurn(o)) })
-      if (!freshIds.has(o.id)) {
-        sources.push(src)
+      const placement: Placement = { id: o.id, role: 'prop', design: `object:${o.design}`, params: '{}', x: at.x, y: at.y, z: at.z, turn: at.turn, ...(at.desk ? { desk: at.desk } : {}) }
+      const list: ChunkSource[] = [{ build: c.build, placement, footprint: [c.info.bounds[0], c.info.bounds[1]], shell: false, surfaces: [] }]
+      const seat = at.desk ? null : objectSeat(o)
+      if (seat && !((o.summary?.seats ?? 0) > 0)) {
+        const port = c.info.ports.find((p) => p.accepts.includes('seat'))
+        const chair: Placement = { id: `${o.id}/seat`, role: 'seat', design: mapping.desk_seat, params: '{}', x: seat[0], y: 0, z: seat[1], turn: ((at.turn + (port?.turn ?? 0)) % 4) as Turn }
+        const ci = compiled(chair.design, chair.params)
+        list.push({ build: ci.build, placement: chair, footprint: [ci.info.bounds[0], ci.info.bounds[1]], shell: false, surfaces: [] })
+      }
+      objectsDrawn.push({ id: o.id, room: room.id, design: o.design, drawn: 'design', rect: footprintRect(at.x, at.z, c.info.bounds, at.turn), at, seat })
+      const owner = freshIds.has(o.id) ? o.id : at.desk && freshIds.has(at.desk) ? at.desk : null
+      if (!owner) {
+        sources.push(...list)
         continue
       }
-      freshSources.set(o.id, { at: [o.x, o.z], list: [src] })
+      let f = freshSources.get(owner)
+      if (!f) freshSources.set(owner, (f = { at: [at.x, at.z], list: [] }))
+      f.list.push(...list)
     }
     const compileMs = now() - c0
     const m0 = now()
@@ -617,11 +638,11 @@ export function buildBrickOffice(scene: Scene, kit: KitApi, layout: BuildingLayo
     m.diffuseColor = Color3.Black()
     m.specularColor = Color3.Black()
     m.alpha = 0.35
-    for (const { o } of placeholders) {
-      const r = objectRect(o)
+    for (const { o, at } of placeholders) {
+      const r = rectAt(at.x, at.z, footprintM(o), at.turn)
       const h = o.summary?.height ? o.summary.height * PLATE : PLACEHOLDER_H
       const box = MeshBuilder.CreateBox(`object-placeholder-${o.id}`, { width: r.w, depth: r.d, height: h }, scene)
-      box.position.set(r.x + r.w / 2, h / 2, r.z + r.d / 2)
+      box.position.set(r.x + r.w / 2, at.y + h / 2, r.z + r.d / 2)
       box.material = m
       box.isPickable = false
       placeholderMeshes.push(box)

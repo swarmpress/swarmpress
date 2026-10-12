@@ -1,6 +1,7 @@
 //! Players' own kit designs placed in rooms (ADR-0065 §4, ADR-0087 decision
 //! 7, K-4's sim part): `PlaceObject`, `MoveObject`, `RemoveObject`, their
-//! validation, prices and `layout_rev`.
+//! validation, prices and `layout_rev`. Staff at workstation objects and
+//! desk-top objects (ADR-0088) are in `tests/stations.rs`.
 
 use sim_core::building::{Door, RoomKind, Window};
 use sim_core::commands::{Command, DemolishTarget, Placement};
@@ -12,6 +13,7 @@ use sim_core::objects::{
     room_capabilities, Mount, ObjectCapabilities, ObjectSummary, MAX_OBJECT_COST_CENTS,
 };
 use sim_core::scenarios::{demo_office, scenario_with_mode};
+use sim_core::staff::Station;
 use sim_core::{validate, Reject, World};
 
 /// The meeting room: 0..6 m × 8..16 m, its door on the north side at 3 m,
@@ -31,6 +33,7 @@ fn table() -> ObjectSummary {
         mount: Mount::Floor,
         seats: 0,
         workstation: false,
+        seat_at: None,
         lights: 0,
         storage: 0,
         screens: 0,
@@ -47,6 +50,7 @@ fn desk() -> ObjectSummary {
         mount: Mount::Floor,
         seats: 1,
         workstation: true,
+        seat_at: Some([0, 750]),
         lights: 1,
         storage: 0,
         screens: 1,
@@ -63,6 +67,7 @@ fn boxed(n: u32) -> ObjectSummary {
         mount: Mount::Floor,
         seats: 0,
         workstation: false,
+        seat_at: None,
         lights: 0,
         storage: 16,
         screens: 0,
@@ -152,10 +157,20 @@ fn rejects_bad_designs_and_summaries() {
     }
     assert!(matches!(validate(&w, &bad), Err(Reject::Invalid(_))));
 
-    for mount in [Mount::Surface, Mount::Ceiling] {
-        let s = ObjectSummary { mount, ..table() };
-        assert!(matches!(validate(&w, &at(s)), Err(Reject::NotSupported(_))));
-    }
+    let s = ObjectSummary {
+        mount: Mount::Ceiling,
+        ..table()
+    };
+    assert!(matches!(validate(&w, &at(s)), Err(Reject::NotSupported(_))));
+    // desk-top designs go on a desk (`PlaceObjectOnDesk`, tests/stations.rs)
+    let s = ObjectSummary {
+        mount: Mount::Surface,
+        ..table()
+    };
+    assert_eq!(
+        validate(&w, &at(s)),
+        Err(Reject::Invalid("a desk-top design goes on a desk"))
+    );
     let invalid = [
         ObjectSummary {
             footprint: [0, 24],
@@ -213,8 +228,14 @@ fn rejects_bad_spots() {
     );
     assert_eq!(check(place(boxed(8), 300, 13_500, 0)), Ok(()));
     assert!(check(place(boxed(8), 299, 13_500, 0)).is_err());
-    // turned, the desk is 0.75 m wide and 1.5 m deep: it fits along the wall
-    assert_eq!(check(place(desk(), 425, 13_000, 1)), Ok(()));
+    // turned, the desk is 0.75 m wide and 1.5 m deep: it fits along the
+    // wall with its seat to the east; with the seat to the west, the seat
+    // would be in the wall (ADR-0088)
+    assert_eq!(check(place(desk(), 425, 13_000, 3)), Ok(()));
+    assert_eq!(
+        check(place(desk(), 425, 13_000, 1)),
+        Err(Reject::Invalid("the seat would be in the wall"))
+    );
     assert!(check(place(desk(), 425, 13_000, 0)).is_err());
     // the tile inside the door (3..4 m, 8..9 m) stays clear
     assert_eq!(
@@ -436,7 +457,7 @@ fn demolishing_a_room_takes_its_objects_and_buying_land_moves_none() {
 }
 
 #[test]
-fn capabilities_are_totalled_per_room_and_change_nobodys_work() {
+fn capabilities_are_totalled_per_room_and_workstations_are_free_for_hires() {
     let mut w = demo_office(1);
     w.apply(place(desk(), 1_500, 13_500, 0)).unwrap();
     w.apply(place(desk(), 1_500, 11_000, 0)).unwrap();
@@ -455,8 +476,12 @@ fn capabilities_are_totalled_per_room_and_change_nobodys_work() {
         room_capabilities(&w.building, KITCHEN),
         ObjectCapabilities::default()
     );
-    // no new desks for hiring: staff still work at equipment desks
+    // the desks are free workstations for hires, after the built-in desks
+    // (ADR-0088); free desks are only the built-in ones
     assert_eq!(w.free_desks(), demo_office(1).free_desks());
+    let mut free = demo_office(1).free_stations();
+    free.extend([Station::Object(ObjectId(1)), Station::Object(ObjectId(2))]);
+    assert_eq!(w.free_stations(), free);
 }
 
 #[test]

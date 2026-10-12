@@ -17,8 +17,12 @@
 //! - the plan (ADR-0059): open items per project stay within the
 //!   work-in-progress limit; a writer has at most one active draft; an item
 //!   parked at the publish gate has no pending job
-//! - objects (ADR-0065 §4): every placed object stands inside its room, and
-//!   no two objects of a room overlap
+//! - objects (ADR-0065 §4): every placed floor object stands inside its
+//!   room, and no two floor objects of a room overlap; a desk-top object
+//!   (ADR-0088) sits on an existing desk at its position and turn, and every
+//!   desk slot holds at most one item
+//! - stations (ADR-0088): every home is an existing desk or workstation
+//!   object, and no two people share a home
 
 use proptest::prelude::*;
 use proptest::sample::select;
@@ -47,7 +51,7 @@ use sim_core::plan::{
 use sim_core::projects::ProjectStatus;
 use sim_core::roles::Role;
 use sim_core::scenarios::demo_office_with_config;
-use sim_core::staff::Spot;
+use sim_core::staff::{Spot, Station};
 use sim_core::{validate_input, SimConfig, World};
 
 fn side() -> impl Strategy<Value = Side> {
@@ -88,6 +92,10 @@ fn summary() -> impl Strategy<Value = ObjectSummary> {
         ]),
         (0u8..3, any::<bool>(), 0u8..3, 0u32..600, 0u8..3),
         (0u32..300, 0u64..20_000),
+        prop_oneof![
+            1 => Just(None),
+            3 => (-2_000i32..2_000, -2_000i32..2_000).prop_map(|(x, z)| Some([x, z])),
+        ],
     )
         .prop_map(
             |(
@@ -95,6 +103,7 @@ fn summary() -> impl Strategy<Value = ObjectSummary> {
                 mount,
                 (seats, workstation, lights, storage, screens),
                 (parts, cost),
+                seat_at,
             )| {
                 ObjectSummary {
                     footprint: [w, d],
@@ -102,6 +111,7 @@ fn summary() -> impl Strategy<Value = ObjectSummary> {
                     mount,
                     seats,
                     workstation,
+                    seat_at,
                     lights,
                     storage,
                     screens,
@@ -130,6 +140,9 @@ fn object_command() -> impl Strategy<Value = Command> {
             rot,
         }),
         1 => (1u32..6).prop_map(|o| Command::RemoveObject { object: ObjectId(o) }),
+        2 => (design(), 1u32..80, summary()).prop_map(|(design, d, summary)| {
+            Command::PlaceObjectOnDesk { design, desk: EquipId(d), summary }
+        }),
     ]
 }
 
@@ -448,13 +461,19 @@ enum Action {
     FireKey {
         pick: usize,
     },
-    /// A small floor object somewhere inside a room.
+    /// A small floor object somewhere inside a room; every third one a
+    /// workstation (ADR-0088).
     Object {
         pick: usize,
         fx: i32,
         fz: i32,
         n: u32,
         rot: u8,
+    },
+    /// A desk-top design on one of the desks, with or without a screen.
+    DeskTop {
+        pick: usize,
+        screens: u8,
     },
 }
 
@@ -469,6 +488,7 @@ fn action() -> impl Strategy<Value = Action> {
         1 => (0usize..5).prop_map(|pick| Action::FireKey { pick }),
         2 => (0usize..16, 0i32..1000, 0i32..1000, 1u32..24, 0u8..4)
             .prop_map(|(pick, fx, fz, n, rot)| Action::Object { pick, fx, fz, n, rot }),
+        1 => (0usize..32, 0u8..2).prop_map(|(pick, screens)| Action::DeskTop { pick, screens }),
     ]
 }
 
@@ -535,21 +555,55 @@ fn resolve(w: &World, a: Action) -> Input {
                 return Input::Player(Command::Praise { staff: StaffId(1) });
             };
             let (x0, z0) = (r.rect.x * 1_000, r.rect.z * 1_000);
+            let d = n / 2 + 1;
+            let workstation = n % 3 == 0;
+            // the seat half a metre in front of the footprint's south edge
+            let seat_at = workstation.then(|| [0, i32::try_from(d).unwrap_or(0) * 125 / 4 + 500]);
             Input::Player(Command::PlaceObject {
                 design: "5e".repeat(32),
                 pos: PosMm::new(x0 + r.rect.w * fx, z0 + r.rect.d * fz),
                 rot,
                 summary: ObjectSummary {
-                    footprint: [n, n / 2 + 1],
+                    footprint: [n, d],
                     height: 20,
                     mount: Mount::Floor,
                     seats: 1,
-                    workstation: false,
+                    workstation,
+                    seat_at,
                     lights: 0,
                     storage: 0,
                     screens: 0,
                     parts: 3,
                     cost: 500,
+                },
+            })
+        }
+        Action::DeskTop { pick, screens } => {
+            let desks: Vec<EquipId> = w
+                .building
+                .equipment
+                .values()
+                .filter(|e| e.kind == EquipmentKind::Desk)
+                .map(|e| e.id)
+                .collect();
+            let Some(desk) = desks.get(pick % desks.len().max(1)).copied() else {
+                return Input::Player(Command::Praise { staff: StaffId(1) });
+            };
+            Input::Player(Command::PlaceObjectOnDesk {
+                design: "6f".repeat(32),
+                desk,
+                summary: ObjectSummary {
+                    footprint: [4, 4],
+                    height: 10,
+                    mount: Mount::Surface,
+                    seats: 0,
+                    workstation: false,
+                    seat_at: None,
+                    lights: 1 - screens,
+                    storage: 0,
+                    screens,
+                    parts: 5,
+                    cost: 300,
                 },
             })
         }
@@ -617,7 +671,66 @@ fn check(w: &World) {
 }
 
 fn check_objects(w: &World) {
-    let objects: Vec<_> = w.building.objects.values().collect();
+    // desk-top objects sit on a desk, share its spot and keep to their slot
+    for o in w.building.objects.values() {
+        let Some((desk, slot)) = o.on_desk else {
+            continue;
+        };
+        let d = w
+            .building
+            .equipment
+            .get(&desk)
+            .unwrap_or_else(|| panic!("{} sits on a missing desk", o.id));
+        assert_eq!(d.kind, EquipmentKind::Desk);
+        assert_eq!((o.room, o.pos, o.rot), (d.room, d.pos, d.rot), "{}", o.id);
+        let equipment = w
+            .building
+            .equipment
+            .values()
+            .filter(|e| e.attached_to == Some(desk) && e.kind.desk_slot() == Some(slot))
+            .count();
+        let objects = w
+            .building
+            .objects
+            .values()
+            .filter(|p| p.on_desk == Some((desk, slot)))
+            .count();
+        assert_eq!(
+            equipment + objects,
+            1,
+            "{desk}'s {slot:?} slot holds one item"
+        );
+    }
+    // every home exists and is a workstation; no two people share one
+    let mut homes = std::collections::BTreeSet::new();
+    for s in w.staff.values() {
+        let Some(h) = s.home else { continue };
+        match h {
+            Station::Desk(d) => assert!(
+                w.building
+                    .equipment
+                    .get(&d)
+                    .is_some_and(|e| e.kind == EquipmentKind::Desk),
+                "{}'s home {d} is no desk",
+                s.id
+            ),
+            Station::Object(o) => assert!(
+                w.building
+                    .objects
+                    .get(&o)
+                    .is_some_and(sim_core::objects::PlacedObject::is_workstation),
+                "{}'s home {o} is no workstation",
+                s.id
+            ),
+        }
+        assert!(homes.insert(h), "{h} is home to two people");
+    }
+    let objects: Vec<_> = w
+        .building
+        .objects
+        .values()
+        .filter(|o| o.on_desk.is_none())
+        .collect();
     for (i, o) in objects.iter().enumerate() {
         let room = w
             .building

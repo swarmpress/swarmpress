@@ -186,6 +186,14 @@ pub enum Command {
     RemoveObject {
         object: ObjectId,
     },
+    /// Place a desk-top design (`mount` `Surface`) on a built-in desk
+    /// (ADR-0088 decision 3): it takes the desk's screen slot when it has a
+    /// screen, its lamp slot otherwise, and moves and goes with the desk.
+    PlaceObjectOnDesk {
+        design: String,
+        desk: EquipId,
+        summary: ObjectSummary,
+    },
 }
 
 /// What [`Command::UpdateWorkItem`] changes.
@@ -558,6 +566,16 @@ mod tests {
             Command::RemoveObject {
                 object: ObjectId(2),
             },
+            Command::PlaceObjectOnDesk {
+                design: "cd".repeat(32),
+                desk: EquipId(3),
+                summary: ObjectSummary {
+                    mount: crate::objects::Mount::Surface,
+                    workstation: false,
+                    seat_at: None,
+                    ..sample_summary()
+                },
+            },
         ];
         for c in cmds {
             let bytes = postcard::to_allocvec(&c).unwrap();
@@ -609,6 +627,7 @@ mod tests {
             mount: crate::objects::Mount::Floor,
             seats: 0,
             workstation: true,
+            seat_at: Some([0, 750]),
             lights: 1,
             storage: 0,
             screens: 1,
@@ -627,10 +646,16 @@ mod tests {
             summary: sample_summary(),
         };
         let json = format!(
-            r#"{{"PlaceObject":{{"design":"{hash}","pos":{{"x":27000,"z":9000}},"rot":1,"summary":{{"footprint":[24,12],"height":34,"mount":"Floor","seats":0,"workstation":true,"lights":1,"storage":0,"screens":1,"parts":204,"cost":3199}}}}}}"#
+            r#"{{"PlaceObject":{{"design":"{hash}","pos":{{"x":27000,"z":9000}},"rot":1,"summary":{{"footprint":[24,12],"height":34,"mount":"Floor","seats":0,"workstation":true,"seat_at":[0,750],"lights":1,"storage":0,"screens":1,"parts":204,"cost":3199}}}}}}"#
         );
         assert_eq!(serde_json::to_string(&c).unwrap(), json);
         assert_eq!(serde_json::from_str::<Command>(&json).unwrap(), c);
+        // JSON written before ADR-0088 has no seat position: it reads as none
+        let old = json.replace(r#""seat_at":[0,750],"#, "");
+        match serde_json::from_str::<Command>(&old).unwrap() {
+            Command::PlaceObject { summary, .. } => assert_eq!(summary.seat_at, None),
+            other => panic!("{other:?}"),
+        }
         // the kit's kebab-case mount is read too
         let kit = json.replace("\"Floor\"", "\"floor\"");
         assert_eq!(serde_json::from_str::<Command>(&kit).unwrap(), c);
@@ -648,6 +673,28 @@ mod tests {
         let json = r#"{"RemoveObject":{"object":"object-1"}}"#;
         assert_eq!(serde_json::to_string(&c).unwrap(), json);
         assert_eq!(serde_json::from_str::<Command>(json).unwrap(), c);
+        let c = Command::PlaceObjectOnDesk {
+            design: hash.clone(),
+            desk: EquipId(3),
+            summary: ObjectSummary {
+                footprint: [4, 4],
+                height: 12,
+                mount: crate::objects::Mount::Surface,
+                seats: 0,
+                workstation: false,
+                seat_at: None,
+                lights: 0,
+                storage: 0,
+                screens: 1,
+                parts: 9,
+                cost: 450,
+            },
+        };
+        let json = format!(
+            r#"{{"PlaceObjectOnDesk":{{"design":"{hash}","desk":"equip-3","summary":{{"footprint":[4,4],"height":12,"mount":"Surface","seats":0,"workstation":false,"seat_at":null,"lights":0,"storage":0,"screens":1,"parts":9,"cost":450}}}}}}"#
+        );
+        assert_eq!(serde_json::to_string(&c).unwrap(), json);
+        assert_eq!(serde_json::from_str::<Command>(&json).unwrap(), c);
     }
 
     #[test]
@@ -667,6 +714,14 @@ mod tests {
                 object: ObjectId(1)
             }),
             29
+        );
+        assert_eq!(
+            tag(&Command::PlaceObjectOnDesk {
+                design: String::new(),
+                desk: EquipId(1),
+                summary: sample_summary(),
+            }),
+            30
         );
     }
 

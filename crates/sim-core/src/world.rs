@@ -55,8 +55,8 @@ use crate::plan::{
 };
 use crate::projects::{Project, ProjectStatus, MONTH_DAYS};
 use crate::staff::{
-    persona, salary_for, Activity, Candidate, Role, Schedule, Seniority, Spot, Staff, Traits,
-    LATEST_LEAVE, PERSONAS, ROUND_TABLE_SEATS,
+    persona, salary_for, Activity, Candidate, Role, Schedule, Seniority, Spot, Staff, Station,
+    Traits, LATEST_LEAVE, PERSONAS, ROUND_TABLE_SEATS,
 };
 use crate::validate::{grown_lot, is_building_command, price, validate, validate_server, Reject};
 
@@ -432,6 +432,10 @@ impl World {
                 self.building
                     .equipment
                     .retain(|_, e| e.id != id && e.attached_to != Some(id));
+                // desk-top objects go with their desk, like monitors and lamps
+                self.building
+                    .objects
+                    .retain(|_, o| o.on_desk.is_none_or(|(d, _)| d != id));
             }
             Command::PlaceEquipment { kind, placement } => {
                 let (room, pos, rot, attached_to) = match placement {
@@ -483,6 +487,13 @@ impl World {
                         e.attached_to = attached_to;
                     }
                 }
+                for o in self.building.objects.values_mut() {
+                    if o.on_desk.is_some_and(|(d, _)| d == equipment) {
+                        o.room = room;
+                        o.pos = pos;
+                        o.rot = rot;
+                    }
+                }
                 self.charge(LedgerKind::Equipment, cost);
             }
             Command::PlaceTownItem { kind, pos, rot } => {
@@ -519,6 +530,30 @@ impl World {
                         pos,
                         rot,
                         summary,
+                        on_desk: None,
+                    },
+                );
+                self.charge(LedgerKind::Equipment, cost);
+            }
+            Command::PlaceObjectOnDesk {
+                design,
+                desk,
+                summary,
+            } => {
+                let d = &self.building.equipment[&desk];
+                let (room, pos, rot) = (d.room, d.pos, d.rot);
+                let slot = crate::objects::desk_slot_for(&summary);
+                let id = self.ids.object();
+                self.building.objects.insert(
+                    id,
+                    crate::objects::PlacedObject {
+                        id,
+                        design,
+                        room,
+                        pos,
+                        rot,
+                        summary,
+                        on_desk: Some((desk, slot)),
                     },
                 );
                 self.charge(LedgerKind::Equipment, cost);
@@ -538,7 +573,7 @@ impl World {
             Command::Hire { candidate } => {
                 if let Some(c) = self.candidates.remove(&candidate) {
                     let payroll_before = self.payroll_cents_per_day();
-                    let desk = self.free_desks().first().copied();
+                    let home = self.free_stations().first().copied();
                     let id = self.add_staff(
                         c.persona,
                         c.role,
@@ -546,7 +581,7 @@ impl World {
                         c.traits,
                         c.salary,
                         c.role.base_schedule(),
-                        desk,
+                        home,
                     );
                     self.post(LedgerKind::HiringFee, -cost);
                     self.hire_alerts(id, c.salary, payroll_before);
@@ -566,7 +601,10 @@ impl World {
                 }
                 if let Some(s) = self.staff.get_mut(&staff) {
                     s.leaving_for_good = true;
-                    s.home_desk = None;
+                    if matches!(s.home.take(), Some(Station::Object(_))) {
+                        // the layout lists who a workstation object belongs to
+                        self.building.layout_rev = self.building.layout_rev.wrapping_add(1);
+                    }
                     if !s.is_on_site() {
                         self.staff.remove(&staff);
                     }
@@ -860,7 +898,7 @@ impl World {
         traits: Traits,
         salary: i64,
         base_schedule: Schedule,
-        home_desk: Option<EquipId>,
+        home: Option<Station>,
     ) -> StaffId {
         let id = self.ids.staff();
         let today = base_schedule.jittered(&mut self.rng);
@@ -876,7 +914,7 @@ impl World {
                 morale: START_MORALE,
                 fatigue: 0,
                 salary,
-                home_desk,
+                home,
                 base_schedule,
                 today,
                 activity: Activity::OffSite,
@@ -888,6 +926,10 @@ impl World {
                 projects: BTreeMap::new(),
             },
         );
+        if matches!(home, Some(Station::Object(_))) {
+            // the layout lists who a workstation object belongs to
+            self.building.layout_rev = self.building.layout_rev.wrapping_add(1);
+        }
         match role {
             Role::Cfo if self.exec.cfo.is_none() => self.exec.cfo = Some(id),
             Role::Secretary if self.exec.secretary.is_none() => {
@@ -950,13 +992,49 @@ impl World {
 
     /// Desks nobody calls home, lowest id first.
     pub fn free_desks(&self) -> Vec<EquipId> {
-        self.building
+        self.free_stations()
+            .into_iter()
+            .filter_map(Station::desk)
+            .collect()
+    }
+
+    /// Workstations nobody calls home (ADR-0088): built-in desks, then
+    /// workstation objects, each lowest id first. Hiring takes the first.
+    pub fn free_stations(&self) -> Vec<Station> {
+        let homes: std::collections::BTreeSet<Station> =
+            self.staff.values().filter_map(|s| s.home).collect();
+        let desks = self
+            .building
             .equipment
             .values()
             .filter(|e| e.kind == EquipmentKind::Desk)
-            .filter(|e| !self.staff.values().any(|s| s.home_desk == Some(e.id)))
-            .map(|e| e.id)
+            .map(|e| Station::Desk(e.id));
+        let objects = self
+            .building
+            .objects
+            .values()
+            .filter(|o| o.is_workstation())
+            .map(|o| Station::Object(o.id));
+        desks
+            .chain(objects)
+            .filter(|st| !homes.contains(st))
             .collect()
+    }
+
+    /// Who calls `station` home.
+    pub fn station_owner(&self, station: Station) -> Option<StaffId> {
+        self.staff
+            .values()
+            .find(|s| s.home == Some(station))
+            .map(|s| s.id)
+    }
+
+    /// The room a workstation stands in.
+    pub fn station_room(&self, station: Station) -> Option<RoomId> {
+        match station {
+            Station::Desk(d) => self.building.equipment.get(&d).map(|e| e.room),
+            Station::Object(o) => self.building.objects.get(&o).map(|o| o.room),
+        }
     }
 
     /// Floor position of a spot.
@@ -968,6 +1046,7 @@ impl World {
                 self.table_seat(m.room, seat)
             }
             Spot::KitchenSeat { room, seat } => self.table_seat(room, seat),
+            Spot::Object(o) => self.building.objects.get(&o)?.seat_pos(),
         }
     }
 
@@ -1594,7 +1673,7 @@ impl World {
     }
 
     fn want(&self, s: &Staff, now: Clock) -> Want {
-        if s.leaving_for_good || s.home_desk.is_none() {
+        if s.leaving_for_good || s.home.is_none() {
             return Want::Away;
         }
         let leave = self.effective_leave(s.today.leave);
@@ -1635,8 +1714,8 @@ impl World {
 
     /// Target spot, the activity once there, and the activity while walking there.
     fn resolve(&self, s: &Staff, want: Want) -> Option<(Spot, Activity, Activity)> {
-        let desk = s.home_desk?;
-        let at_desk = |activity| Some((Spot::Desk(desk), activity, Activity::ReturningToDesk));
+        let home = s.home?;
+        let at_desk = |activity| Some((home.spot(), activity, Activity::ReturningToDesk));
         match want {
             Want::Away => None,
             Want::Desk => at_desk(Activity::Working),
@@ -1959,7 +2038,7 @@ mod tests {
             w.step();
         }
         let id = StaffId(1);
-        let desk = w.staff[&id].home_desk.unwrap();
+        let desk = w.staff[&id].home_desk().unwrap();
         w.apply(Command::Fire { staff: id }).unwrap();
         assert!(w.free_desks().contains(&desk));
         assert!(w.staff.contains_key(&id), "still walking out");
