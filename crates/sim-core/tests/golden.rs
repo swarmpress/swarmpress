@@ -63,6 +63,11 @@
 //!   the player's design, hires three (the third gets the object) and puts
 //!   a mug of the player's design on a desk's lamp slot.
 //! - `0xb779_a495_3fc3_f821`: world format 13.
+//! - world format 14 (FEAT-026, ADR-0089, ADR-0090): meeting and kitchen
+//!   spots carry a `Seat` (the table's, or a seat object's place), ceiling
+//!   designs are placed; the script places a bench of the player's in the
+//!   kitchen and a lamp of theirs on the meeting room's ceiling.
+//! - `0xb24f_5706_c533_b9a6`: world format 14.
 
 use sim_core::commands::JobFailure;
 use sim_core::equipment::DeskSlot;
@@ -74,7 +79,7 @@ use sim_core::scenarios::{golden_script, run_golden, DEMO_PROJECT, GOLDEN_STEPS}
 use sim_core::staff::Station;
 use sim_core::town::TownKind;
 
-const GOLDEN_HASH: u64 = 0xb779_a495_3fc3_f821;
+const GOLDEN_HASH: u64 = 0xb24f_5706_c533_b9a6;
 
 #[test]
 fn golden_hash() {
@@ -194,7 +199,7 @@ fn golden_hash() {
     // Players' own designs (ADR-0065 §4): the archive's went with the
     // room, the meeting room keeps the moved shelf, the table is gone.
     let objects: Vec<_> = w.building.objects.values().collect();
-    assert_eq!(objects.len(), 3);
+    assert_eq!(objects.len(), 5);
     let shelf = objects[0];
     assert_eq!(shelf.id, sim_core::ids::ObjectId(3));
     assert_eq!(shelf.design, "3c".repeat(32));
@@ -213,6 +218,19 @@ fn golden_hash() {
     assert_eq!(
         w.building.objects[&ObjectId(5)].on_desk,
         Some((EquipId(59), DeskSlot::Lamp))
+    );
+    // ADR-0089, ADR-0090: a bench of the player's seats three in the
+    // kitchen, after its table's eight; a lamp of theirs hangs in the
+    // meeting room, its light among the room's.
+    let bench = &w.building.objects[&ObjectId(6)];
+    assert_eq!(bench.room, sim_core::ids::RoomId(3));
+    assert_eq!(bench.places(), 3);
+    assert_eq!(w.room_seats(bench.room).len(), 11);
+    let lamp = &w.building.objects[&ObjectId(7)];
+    assert!(lamp.is_ceiling());
+    assert_eq!(
+        sim_core::objects::room_capabilities(&w.building, lamp.room).lights,
+        2
     );
     println!("golden hash: {:#018x}", w.hash());
     assert_eq!(w.hash(), GOLDEN_HASH, "got {:#018x}", w.hash());

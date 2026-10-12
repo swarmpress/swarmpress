@@ -556,9 +556,11 @@ mod tests {
             .unwrap();
         assert_eq!(
             meeting["objectCapabilities"],
-            serde_json::json!({"seats":1,"workstations":1,"lights":1,"storage":0,"screens":1})
+            serde_json::json!({"seats":1,"places":0,"workstations":1,"lights":1,"storage":0,"screens":1})
         );
-        // the same spot again overlaps; a ceiling design is not placeable yet
+        // a workstation offers no places at meetings (ADR-0089)
+        assert_eq!(o["places"], serde_json::json!([]));
+        // the same spot again overlaps; a desk 34 plates high hangs too deep (ADR-0090)
         assert!(sim
             .validate_command_json(&place)
             .unwrap()
@@ -567,7 +569,7 @@ mod tests {
         assert!(sim
             .validate_command_json(&ceiling)
             .unwrap()
-            .contains("not supported"));
+            .contains("a ceiling design hangs at most"));
         sim.apply_command_json(moved).unwrap();
         sim.apply_command_json(remove).unwrap();
         assert_eq!(rev(&sim), before + 3);
@@ -576,6 +578,46 @@ mod tests {
         // a sandbox company places for free
         let sandbox = Sim::demo_with(1, "sandbox").unwrap();
         assert_eq!(sandbox.price_command_json(&place), Some(0));
+    }
+
+    #[test]
+    fn seat_objects_and_ceiling_designs_through_json() {
+        // ADR-0089, ADR-0090: a bench's places in the layout, a lamp hung
+        // from the ceiling, both counted in the room's totals.
+        let mut sim = Sim::demo(1);
+        let bench = format!(
+            r#"{{"PlaceObject":{{"design":"{}","pos":{{"x":3000,"z":15000}},"rot":1,"summary":{{"footprint":[24,8],"height":18,"mount":"floor","seats":3,"workstation":false,"seat_at":null,"lights":0,"storage":0,"screens":0,"parts":40,"cost":900}}}}}}"#,
+            "be".repeat(32)
+        );
+        let lamp = format!(
+            r#"{{"PlaceObject":{{"design":"{}","pos":{{"x":3000,"z":12000}},"rot":0,"summary":{{"footprint":[4,4],"height":24,"mount":"Ceiling","seats":0,"workstation":false,"seat_at":null,"lights":1,"storage":0,"screens":0,"parts":12,"cost":600}}}}}}"#,
+            "1a".repeat(32)
+        );
+        sim.apply_command_json(&bench).unwrap();
+        sim.apply_command_json(&lamp).unwrap();
+        let v: Value = serde_json::from_str(&sim.layout_json()).unwrap();
+        let o = &v["objects"];
+        assert_eq!(
+            o[0]["places"],
+            serde_json::json!([[-0.5, 0.0], [0.0, 0.0], [0.5, 0.0]])
+        );
+        assert_eq!(o[1]["summary"]["mount"], "Ceiling");
+        assert_eq!(o[1]["places"], serde_json::json!([]));
+        let meeting = v["rooms"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["id"] == "room-6")
+            .unwrap();
+        assert_eq!(meeting["objectCapabilities"]["places"], 3);
+        assert_eq!(meeting["objectCapabilities"]["lights"], 1);
+        // nobody sits on it at the start: every person says so
+        let rs: Value = serde_json::from_str(&sim.render_state_json()).unwrap();
+        assert!(rs["staff"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s["seatedOn"].is_null()));
     }
 
     #[test]

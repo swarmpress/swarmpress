@@ -21,6 +21,7 @@ import { PENDING, useStore } from '../store'
 import { panelKey, useBridge, useCanvas, type Pick } from './gesture'
 import { asCommand, BrickTile, CommandButton, useVerdict, Verdict } from './parts'
 import { SNAP_MM, turn, type BuildCommand, type CatalogueItem, type Rot } from './types'
+import { hangY } from '../../render/bricks/objects'
 
 /** A placed thing, as the list and the commands need it. */
 export interface Placed {
@@ -44,6 +45,10 @@ export interface Placed {
   fixed?: string
   /** A workstation object (ADR-0088): staff can call it home. */
   workstation?: boolean
+  /** Hangs from the ceiling (ADR-0090). */
+  ceiling?: boolean
+  /** What it provides, in a few words (a seat object's places, a ceiling design's lights; ADR-0089, ADR-0090). */
+  provides?: string
   /** Who calls it home (`staff-N`), null when free; absent when the layout does not say. */
   home?: string | null
 }
@@ -139,8 +144,10 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
       return
     }
     const desk = toolItem.onDesk && toolItem.deskSlot && spot?.desk ? { onDesk: { desk: spot.desk, slot: toolItem.deskSlot } } : {}
-    bridge.ghost({ kind: toolItem.kind, family: cfg.family, x: ghostX, z: ghostZ, rot: tool.rot, ok: r.ok, ...(toolItem.design ? { design: toolItem.design } : {}), ...desk })
-  }, [bridge, tool, toolItem?.kind, toolItem?.design, toolItem?.deskSlot, ghostX, ghostZ, spot?.desk, r.ok, cfg.family])
+    // A ceiling design of the player's (ADR-0090) hangs: its ghost's top at the ceiling.
+    const hang = toolItem.ceiling && toolItem.summary ? { y: hangY(toolItem.summary.height) } : {}
+    bridge.ghost({ kind: toolItem.kind, family: cfg.family, x: ghostX, z: ghostZ, rot: tool.rot, ok: r.ok, ...(toolItem.design ? { design: toolItem.design } : {}), ...desk, ...hang })
+  }, [bridge, tool, toolItem?.kind, toolItem?.design, toolItem?.deskSlot, toolItem?.ceiling, ghostX, ghostZ, spot?.desk, r.ok, cfg.family])
 
   const spotOf = (p: Pick): Spot => {
     const id = p.target ? cfg.resolve(p) : null
@@ -291,7 +298,13 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
                   price={store.price(asCommand(cfg.priceProbe(c)))}
                   pressed={tool?.op === 'place' && tool.item.kind === c.kind}
                   onClick={() => startPlace(c)}
-                  note={c.parts !== undefined ? `${c.onDesk ? 'On a desk · ' : ''}${c.parts} parts` : c.onDesk ? 'On a desk' : undefined}
+                  note={
+                    c.parts !== undefined
+                      ? `${c.onDesk ? 'On a desk · ' : c.ceiling ? 'On the ceiling · ' : ''}${c.parts} parts${c.provides ? ` · ${c.provides}` : ''}`
+                      : c.onDesk
+                        ? 'On a desk'
+                        : undefined
+                  }
                 />
               ))}
             </div>
@@ -361,6 +374,7 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
                     {i.id}
                     {i.target === 'object' && i.on ? ` · on ${i.on}` : ''}
                     {i.workstation ? (i.home ? ` · ${store.nameOf(i.home)} works here` : i.home === null ? ' · a free workstation' : ' · a workstation') : ''}
+                    {i.ceiling ? ' · on the ceiling' : ''}
                   </span>
                 </button>
               </li>
@@ -374,6 +388,12 @@ export function Placer({ cfg }: { cfg: PlacerConfig }) {
           <h3 class="build-h">
             {sel.name} <span class="muted">{sel.id}</span>
           </h3>
+          {sel.provides && (
+            <p class="build-hint muted" data-testid="selected-provides">
+              {sel.provides}
+              {sel.provides.startsWith('Seats') ? ', in a meeting room or the kitchen.' : '.'}
+            </p>
+          )}
           {sel.workstation && (
             <p class="build-hint muted">{sel.home ? `A workstation: ${store.nameOf(sel.home)} calls it home.` : 'A workstation: staff can work here.'}</p>
           )}

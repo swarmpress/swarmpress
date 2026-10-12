@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { boot } from './helpers'
 
 type Layout = {
-  rooms: Array<{ id: string; props: Array<{ id: string; kind: string; attachedTo?: string | null }> }>
+  rooms: Array<{ id: string; props: Array<{ id: string; kind: string; attachedTo?: string | null }>; objectCapabilities?: { places?: number; lights: number } }>
   town?: Array<{ id: string; kind: string }>
   objects?: Array<{
     id: string
@@ -15,6 +15,7 @@ type Layout = {
     room: string
     summary: { parts: number; mount: string; workstation: boolean }
     seatAt?: [number, number] | null
+    places?: Array<[number, number]>
     onDesk?: { desk: string; slot: string } | null
     assignedTo?: string | null
   }>
@@ -141,6 +142,48 @@ test('a desk of your own is a workstation, and a lamp of your own takes a desk\'
   const own = (await layout(page)).objects!.find((o) => o.id !== desk.id)!
   expect(own.summary.mount).toBe('Surface')
   expect(own.onDesk).toEqual({ desk: lamp.attachedTo, slot: 'lamp' })
+
+  expect(errors).toEqual([])
+})
+
+test('a chair of your own seats a meeting, and a lamp of your own hangs from the ceiling', async ({ page }) => {
+  test.setTimeout(300_000)
+  const { errors } = await boot(page, '/?quality=low')
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: /^Build/ }).click()
+
+  // The editor: copies of the kit's office chair (a seat, ADR-0089) and ceiling light (ADR-0090), saved.
+  await page.getByRole('tab', { name: /Designs/ }).click()
+  const editor = page.getByRole('region', { name: 'Design editor' })
+  for (const name of ['Office chair', 'Ceiling light']) {
+    await editor.getByLabel('Start from a kit design').selectOption({ label: name })
+    await editor.getByRole('button', { name: 'Open a copy' }).click()
+    await expect(editor.getByTestId('de-provides')).toContainText(name === 'Office chair' ? 'Seats 1 at meetings and breaks' : 'Hangs from the ceiling · 1 light')
+    await editor.getByRole('button', { name: 'Save to library' }).click()
+    await expect(editor.getByRole('button', { name: `Open ${name} (mine)` })).toBeVisible()
+  }
+
+  // Both go into the meeting room: the chair adds a place at its meetings, the lamp a light.
+  await page.getByRole('tab', { name: /Furniture/ }).click()
+  await page.locator('#build-furniture-room').selectOption('room-6')
+  const tiles = page.locator('.build-tiles')
+  await expect(tiles.getByRole('button', { name: /Office chair \(mine\)/ })).toContainText('Seats 1 at meetings and breaks')
+  await expect(tiles.getByRole('button', { name: /Ceiling light \(mine\)/ })).toContainText('On the ceiling')
+  await tiles.getByRole('button', { name: /Office chair \(mine\)/ }).click()
+  await placeWhereAccepted(page)
+  await expect.poll(async () => ((await layout(page)).objects ?? []).length).toBe(1)
+  const chair = (await layout(page)).objects![0]
+  expect(chair.summary.mount).toBe('Floor')
+  expect(chair.places).toEqual([[0, 0]])
+  await tiles.getByRole('button', { name: /Ceiling light \(mine\)/ }).click()
+  await placeWhereAccepted(page)
+  await expect.poll(async () => ((await layout(page)).objects ?? []).length).toBe(2)
+  const lamp = (await layout(page)).objects!.find((o) => o.id !== chair.id)!
+  expect(lamp.summary.mount).toBe('Ceiling')
+  expect(lamp.room).toBe('room-6')
+  const room = (await layout(page)).rooms.find((r) => r.id === 'room-6')!
+  expect(room.objectCapabilities).toMatchObject({ places: 1, lights: 1 })
+  await expect(page.getByTestId('room-provides')).toContainText('seats 1 at meetings and breaks')
+  await expect(page.getByRole('region', { name: 'Placed' })).toContainText('on the ceiling')
 
   expect(errors).toEqual([])
 })

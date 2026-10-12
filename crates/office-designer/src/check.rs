@@ -5,13 +5,13 @@
 //! |---|---|
 //! | walls | the kit footprint (and a desk's chair) stays inside the walls' inner faces; the sim's clearances hold (centre 0.3 m, a desk's chair 0.2 m from the wall line) |
 //! | collisions | two floor items: the sim's rule (centres at least the sum of their spacing radii apart, Chebyshev) **and** their kit footprints and chairs do not overlap; ceiling lights 0.5 m apart |
-//! | objects | a floor item keeps off the players' own designs (ADR-0088): neither its sim square (centre ± its spacing radius), a desk's 0.5 m chair square, nor its kit footprint and chair overlap an object's turned footprint or a workstation object's 0.5 m seat square (the sim's `objects::equipment_hits_object`) |
+//! | objects | a floor item keeps off the players' own designs (ADR-0088): neither its sim square (centre ± its spacing radius), a desk's 0.5 m chair square, nor its kit footprint and chair overlap an object's turned footprint or a workstation object's 0.5 m seat square (the sim's `objects::equipment_hits_object`); a ceiling light keeps its 0.5 m square off the players' ceiling designs, which floor items pass under (ADR-0090) |
 //! | table | in rooms with a table, nothing stands on the table or its seats |
 //! | doors | nothing stands in the 1 m in front of a door, over the door's width |
 //! | walkability | on a 125 mm grid, with walls, items and the players' floor objects grown by half a person (0.25 m), every new desk's chair, every other door, every table seat, every existing chair and every workstation object's seat can still be reached from door 0 (4-connected, fixed order, as the sim's pathfinding) |
-//! | light | every new desk has a ceiling light (or a floor object with a light) within 2.5 m of its centre or a window opening within 3 m |
+//! | light | every new desk has a ceiling light (or a floor or ceiling object with a light) within 2.5 m of its centre or a window opening within 3 m |
 //! | items | at most the sim's 64 items in the room, objects included |
-//! | brief | the room's counts (existing plus planned, workstation objects and screens and shelves of objects included) meet the brief |
+//! | brief | the room's counts (existing plus planned, workstation objects and screens and shelves of objects included, and the places of seat objects among the meeting seats, ADR-0089) meet the brief |
 //! | cost | the sim's prices of the planned items stay within the brief's budget |
 //!
 //! Things the room already had wrong are warnings, never errors.
@@ -181,7 +181,7 @@ pub fn check(
                 issues.push(at(IssueCode::Collision, b, m));
             }
         }
-        for o in room.objects.iter().filter(|o| o.is_floor()) {
+        for o in room.objects.iter().filter(|o| o.on_desk.is_none()) {
             if let Some(m) = object_collision(b, o) {
                 issues.push(at(IssueCode::Collision, b, m));
             }
@@ -363,8 +363,26 @@ pub(crate) fn object_name(o: &ExistingObject) -> String {
 /// (`objects::equipment_hits_object`: the item's spacing square and a desk's
 /// chair square must not overlap the object's footprint or a workstation's
 /// seat square) and the kit's (its footprint and chair likewise).
+///
+/// A planned ceiling light against a player's ceiling object (ADR-0090): the
+/// light's square (half the light spacing around its centre) must not
+/// overlap the object's footprint; floor items pass under ceiling objects.
 fn object_collision(b: &Body, o: &ExistingObject) -> Option<String> {
-    if b.design.is_ceiling() || !b.design.is_floor() {
+    if b.design.is_ceiling() {
+        if !o.ceiling {
+            return None;
+        }
+        let half = CEILING_LIGHT_SPACING_MM / 2;
+        let light = Rect::around(b.pos, half, half);
+        return light.intersects(&o.rect()).then(|| {
+            format!(
+                "it hangs on {}, which hangs from the ceiling; keep a ceiling light {} clear of it",
+                object_name(o),
+                fmt_m(i64::from(half))
+            )
+        });
+    }
+    if !b.design.is_floor() || !o.is_floor() {
         return None;
     }
     let f = b.design.sim_footprint_mm();
@@ -472,11 +490,12 @@ fn light(room: &Room, existing: &[Body], planned: &[Body]) -> Vec<Issue> {
         .filter(|b| b.design.is_ceiling())
         .map(|b| b.pos)
         .collect();
-    // a player's floor design with a light lights from where it stands
+    // a player's floor design with a light lights from where it stands, a
+    // ceiling design from where it hangs (ADR-0090)
     lights.extend(
         room.objects
             .iter()
-            .filter(|o| o.is_floor() && o.lights > 0)
+            .filter(|o| o.on_desk.is_none() && o.lights > 0)
             .map(ExistingObject::pos),
     );
     let l2 = i64::from(LIGHT_REACH_MM) * i64::from(LIGHT_REACH_MM);
@@ -859,8 +878,17 @@ fn requirements(room: &Room, brief: &Brief, sol: &Solution) -> Vec<Requirement> 
                 Need::Workstations => u32::try_from(desks.iter().filter(|d| screen_on(d)).count())
                     .unwrap_or(0)
                     .saturating_add(objects(&ExistingObject::is_workstation)),
-                // seats of objects seat nobody at the table yet (ADR-0088 decision 4)
-                Need::MeetingSeats => u32::try_from(room.table_seats()).unwrap_or(0),
+                // the table's seats, then the places of the CEO's seat
+                // designs in the room (ADR-0089)
+                Need::MeetingSeats => u32::try_from(room.table_seats())
+                    .unwrap_or(0)
+                    .saturating_add(
+                        room.objects
+                            .iter()
+                            .filter(|o| o.is_floor())
+                            .map(|o| u32::from(o.places))
+                            .sum(),
+                    ),
                 Need::Storage => count(&|d| d == EquipmentDesign::ArchiveShelf)
                     .saturating_add(objects(&|o| o.is_floor() && o.storage > 0)),
                 Need::WritingSurfaces => count(&|d| {

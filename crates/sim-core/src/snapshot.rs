@@ -63,7 +63,10 @@ pub const SNAPSHOT_FORMAT: u16 = 1;
 /// - 13: staff use what the bricks provide (ADR-0088): `Staff.home` is a
 ///   `Station`, `Spot::Object`, `ObjectSummary.seat_at`,
 ///   `PlacedObject.on_desk`.
-pub const WORLD_FORMAT: u32 = 13;
+/// - 14: seats and ceiling designs of the player's own (ADR-0089, ADR-0090):
+///   meeting and kitchen spots carry a `Seat` (the table's, or a seat
+///   object's place); ceiling designs are placed.
+pub const WORLD_FORMAT: u32 = 14;
 /// Bytes before the body.
 pub const HEADER_LEN: usize = 42;
 

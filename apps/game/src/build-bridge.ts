@@ -31,6 +31,8 @@ export interface GhostSpec {
    * `x`, `z` and `rot` are ignored.
    */
   onDesk?: { desk: string; slot: 'screen' | 'lamp' }
+  /** The ghost's base height in metres when not on a desk: a ceiling design hangs under the ceiling (ADR-0090). Default 0. */
+  y?: number
 }
 
 /**

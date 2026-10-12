@@ -454,10 +454,10 @@ fn desk_top_designs_are_checked() {
         mount: Mount::Ceiling,
         ..desk_top(1)
     };
-    assert!(matches!(
+    assert_eq!(
         validate(&w, &on_desk(ceiling, desk)),
-        Err(Reject::NotSupported(_))
-    ));
+        Err(Reject::Invalid("only desk-top designs go on a desk"))
+    );
     assert_eq!(
         validate(&w, &on_desk(desk_top(1), EquipId(999))),
         Err(Reject::UnknownEquipment(EquipId(999)))

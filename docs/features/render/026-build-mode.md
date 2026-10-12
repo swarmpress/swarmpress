@@ -12,6 +12,7 @@ paths:
   - crates/sim-core/src/objects.rs
   - crates/sim-core/tests/objects.rs
   - crates/sim-core/tests/stations.rs
+  - crates/sim-core/tests/seats.rs
   - "apps/game/src/render/bricks/objects*.ts"
   - "apps/game/src/render/bricks/workstations*.ts"
   - "apps/game/src/session/design-store*.ts"
@@ -22,6 +23,8 @@ adrs:
   - ADR-0065
   - ADR-0005
   - ADR-0088
+  - ADR-0089
+  - ADR-0090
 ---
 
 # Build mode and placement
@@ -85,4 +88,16 @@ Decisions: [ADR-0003](../../adr/0003-deterministic-lockstep-server-authority.md)
   `seatedAt` names an object when someone sits at one. Tests: `crates/sim-core/tests/stations.rs`,
   the invariants (every home exists, no two people share one, one item per desk slot), the
   goldens (world format 13).
-
+- **Seats and ceiling designs of your own** (2026-10-12, ADR-0089, ADR-0090; world format 14): a
+  floor seat design (seats, no workstation) in a meeting room or the kitchen adds places after the
+  table's at meetings and lunch (`World::room_seats`; a spot's `Seat` is `Table(n)` or
+  `Object(object, n)`); its places lie in a row along its longer side, bounded by its length and 8;
+  people walk there and sit facing the table (`seatedOn` in the render state); in use it is neither
+  moved nor removed. Ceiling designs are placed with `PlaceObject` and hang with their top at the
+  ceiling: no floor taken, clear only of the ceiling lights and other ceiling designs, at most 32
+  plates deep, their lights counted towards the room's (and by the office designer's light check).
+  The Furniture tab offers ceiling designs ("On the ceiling", the ghost under the ceiling) and says
+  what seats and lights provide (tiles, the selection, the room's totals); the design editor shows
+  it too. Tests: `crates/sim-core/tests/seats.rs`, the invariants (seat places exist, are offered
+  and unshared; floor and ceiling objects may overlap), `my-designs.test.tsx`,
+  `design-editor.test.tsx`, `objects.test.ts`, `pose.test.ts`, the e2e build spec.

@@ -2,16 +2,17 @@
  * The company's designs as Build mode places them (K-4, ADR-0065 §4): each design compiled once
  * by the kit (content-addressed, so per hash for the page's life), its summary turned into the
  * `PlaceObject` the sim validates and prices, and the placed objects of a room listed by their
- * designs. Floor designs the kit builds stand in a room; surface designs go on a desk
- * (`PlaceObjectOnDesk`, ADR-0088); ceiling designs cannot be placed yet.
+ * designs. Floor designs the kit builds stand in a room, ceiling designs hang in one (ADR-0090);
+ * surface designs go on a desk (`PlaceObjectOnDesk`, ADR-0088).
  */
 import { useEffect, useState } from 'preact/hooks'
 import type { CompanyDesign } from './company-designs'
 import { designColour } from './company-designs'
 import { compileDesign, getDesignKit, type EditorKit, type KitSummary } from './design-kit'
 import type { DesignJson } from './design-model'
-import { deskTopOf } from '../../render/bricks/objects'
-import { deskSlotOf, objectSummary, onDeskDesign, placeable, quarter, type CatalogueItem, type PlacedObjectLayout } from './types'
+import { deskTopOf, placesOf } from '../../render/bricks/objects'
+import { ceilingDesign, deskSlotOf, objectSummary, onDeskDesign, placeable, quarter, type CatalogueItem, type PlacedObjectLayout } from './types'
+import { designProvides, placesText } from './provides'
 import type { Placed } from './Placer'
 
 /** The kit, loaded when `enabled` (the page's lazily loaded module, or the one tests inject). */
@@ -56,7 +57,7 @@ export function factsOf(kit: EditorKit, hash: string, design: DesignJson): Facts
 /** The catalogue kind of a design of the player's own (`design:<hash>`). */
 export const designKind = (hash: string) => `design:${hash}`
 
-/** The company's designs as catalogue tiles: those the kit builds that stand on the floor or on a desk; how many others were left out. */
+/** The company's designs as catalogue tiles: those the kit builds (on the floor, on a desk, on the ceiling); how many others were left out. */
 export function myDesignItems(kit: EditorKit, designs: readonly CompanyDesign[]): { items: CatalogueItem[]; left: number } {
   const items: CatalogueItem[] = []
   let left = 0
@@ -68,6 +69,7 @@ export function myDesignItems(kit: EditorKit, designs: readonly CompanyDesign[])
     }
     const summary = objectSummary(f.summary)
     const onDesk = onDeskDesign(f.summary)
+    const ceiling = ceilingDesign(f.summary)
     items.push({
       kind: designKind(d.hash),
       slug: '',
@@ -75,6 +77,8 @@ export function myDesignItems(kit: EditorKit, designs: readonly CompanyDesign[])
       colour: designColour(d.design),
       onDesk,
       ...(onDesk ? { deskSlot: deskSlotOf(summary) } : {}),
+      ...(ceiling ? { ceiling: true } : {}),
+      provides: designProvides(summary),
       hash: d.hash,
       design: JSON.stringify(d.design),
       summary,
@@ -108,6 +112,9 @@ export function placedObject(o: PlacedObjectLayout, design: object | null | unde
     target: 'object',
     ...(top ? { fixed: MOVES_WITH_DESK } : {}),
     ...(o.summary?.workstation && !top ? { workstation: true, home: typeof o.assignedTo === 'string' ? o.assignedTo : null } : {}),
+    // ADR-0089, ADR-0090: a seat object's places at meetings and breaks; a design hanging from the ceiling.
+    ...(placesOf(o).length ? { provides: placesText(placesOf(o).length) } : {}),
+    ...(ceilingDesign(o.summary) ? { ceiling: true, ...(o.summary.lights > 0 ? { provides: designProvides(o.summary) } : {}) } : {}),
     ...(d ? { design: JSON.stringify(d) } : {}),
   }
 }

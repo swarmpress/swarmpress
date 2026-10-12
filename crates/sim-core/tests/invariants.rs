@@ -23,6 +23,10 @@
 //!   desk slot holds at most one item
 //! - stations (ADR-0088): every home is an existing desk or workstation
 //!   object, and no two people share a home
+//! - seats and ceiling designs (ADR-0089, ADR-0090): a floor object and a
+//!   ceiling object may overlap, two of a kind may not; everyone at a place
+//!   of a seat object has an existing seat object of that room, a place it
+//!   offers, and nobody else at the same meeting or break has that place
 
 use proptest::prelude::*;
 use proptest::sample::select;
@@ -51,7 +55,7 @@ use sim_core::plan::{
 use sim_core::projects::ProjectStatus;
 use sim_core::roles::Role;
 use sim_core::scenarios::demo_office_with_config;
-use sim_core::staff::{Spot, Station};
+use sim_core::staff::{Seat, Spot, Station};
 use sim_core::{validate_input, SimConfig, World};
 
 fn side() -> impl Strategy<Value = Side> {
@@ -667,6 +671,7 @@ fn check(w: &World) {
     }
     assert_eq!(w.nav_failures, 0, "everyone can always find a path");
     check_objects(w);
+    check_seats(w);
     check_org(w);
 }
 
@@ -745,12 +750,39 @@ fn check_objects(w: &World) {
         );
         for p in &objects[..i] {
             assert!(
-                p.room != o.room || !p.rect().overlaps(&o.rect()),
+                p.room != o.room
+                    || p.is_ceiling() != o.is_ceiling()
+                    || !p.rect().overlaps(&o.rect()),
                 "{} overlaps {}",
                 o.id,
                 p.id
             );
         }
+    }
+}
+
+fn check_seats(w: &World) {
+    let mut taken = std::collections::BTreeSet::new();
+    for s in w.staff.values() {
+        let (key, room, seat) = match s.spot {
+            Some(Spot::MeetingSeat { meeting, seat }) => {
+                let Some(m) = w.meetings.get(&meeting) else {
+                    continue;
+                };
+                ((Some(meeting), None), m.room, seat)
+            }
+            Some(Spot::KitchenSeat { room, seat }) => ((None, Some(room)), room, seat),
+            _ => continue,
+        };
+        let Seat::Object(o, n) = seat else { continue };
+        let obj = w
+            .building
+            .objects
+            .get(&o)
+            .unwrap_or_else(|| panic!("{} sits on a missing object {o}", s.id));
+        assert_eq!(obj.room, room, "{}'s seat object is in another room", s.id);
+        assert!(n < obj.places(), "{} sits on no place of {o}", s.id);
+        assert!(taken.insert((key, o, n)), "two people on place {n} of {o}");
     }
 }
 

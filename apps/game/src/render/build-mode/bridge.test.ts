@@ -123,7 +123,8 @@ describe('the town from the layout (pure)', () => {
   })
 })
 
-describe.skipIf(!built)('build mode in the scene (kit-wasm, NullEngine)', () => {
+// Each test builds whole brick offices: generous under a loaded full run (as objects.test.ts).
+describe.skipIf(!built)('build mode in the scene (kit-wasm, NullEngine)', { timeout: 30_000 }, () => {
   it('builds the town from the layout and lists every item with its rect', () => {
     const { bricks, game } = setup(withTown)
     expect(bricks.town.map((s) => s.item)).toEqual(['town-1', 'town-2', 'town-3', 'town-4'])

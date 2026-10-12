@@ -12,7 +12,7 @@ import axe from 'axe-core'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { flush } from '../testing'
 import { compileDesign, compileShipped, setDesignKit, type EditorKit } from './design-kit'
-import { mountFact, workstationFacts } from './provides'
+import { designProvides, mountFact, placesFor, workstationFacts } from './provides'
 import { LIBRARY_KEY } from './design-library'
 import { DesignEditor } from './DesignEditor'
 
@@ -165,7 +165,14 @@ describe.skipIf(!built)('what a design provides in the office (ADR-0088)', () =>
     expect(workstationFacts({ summary: { ...r.summary!, seat_at: [10, 760] }, ports: r.ports, bounds: r.bounds })).toMatchObject({ seat: [10, 760] })
     expect(mountFact(compileShipped(kit, 'monitor').summary!)).toBe('Goes on a desk: its screen slot.')
     expect(mountFact(compileShipped(kit, 'desk-lamp').summary!)).toBe('Goes on a desk: its lamp slot.')
-    expect(mountFact(compileShipped(kit, 'ceiling-light').summary!)).toBe('Hangs from the ceiling: not placeable yet.')
+    expect(mountFact(compileShipped(kit, 'ceiling-light').summary!)).toBe('Hangs from the ceiling (its top at the ceiling, over the floor): its lights count towards the room.')
+    // What seat and ceiling designs provide (ADR-0089, ADR-0090), as the sim counts it.
+    expect(designProvides(compileShipped(kit, 'ceiling-light').summary!)).toBe('Hangs from the ceiling · 1 light for the room')
+    expect(designProvides(compileShipped(kit, 'chair').summary!)).toBe('Seats 1 at meetings and breaks')
+    expect(designProvides(compileShipped(kit, 'plant').summary!)).toBeUndefined()
+    expect(placesFor({ mount: 'floor', seats: 5, workstation: false, lights: 0, footprint: [24, 8], height: 18 })).toBe(3)
+    expect(placesFor({ mount: 'floor', seats: 2, workstation: true, lights: 0, footprint: [24, 8], height: 18 })).toBe(0)
+    expect(designProvides({ mount: 'ceiling', seats: 0, workstation: false, lights: 0, footprint: [4, 4], height: 40 })).toMatch(/too deep/)
   })
 
   it('shows workstation yes or no, the seats and the reason beside the compiled facts', async () => {

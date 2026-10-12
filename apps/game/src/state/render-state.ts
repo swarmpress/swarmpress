@@ -110,6 +110,8 @@ export interface RoomLayout {
 /** Totals of a room's objects' capabilities (`sim_core::objects::ObjectCapabilities`). */
 export interface ObjectCapabilities {
   seats: number
+  /** Places at meetings and breaks the room's seat objects offer (ADR-0089); absent in older layouts. */
+  places?: number
   workstations: number
   lights: number
   /** Shelf area, stud². */
@@ -120,7 +122,7 @@ export interface ObjectCapabilities {
 /**
  * `sim_core::objects::Mount`: `Floor` designs are placed with `PlaceObject`,
  * `Surface` ones on a desk with `PlaceObjectOnDesk` (ADR-0088); `Ceiling`
- * ones cannot be placed yet.
+ * ones hang over the floor, placed with `PlaceObject` (ADR-0090).
  */
 export type ObjectMount = 'Floor' | 'Surface' | 'Ceiling'
 
@@ -189,6 +191,11 @@ export interface PlacedObjectLayout {
    * desk's position and turn (`x`, `z`, `rot`) and moves with it.
    */
   onDesk?: ObjectOnDesk | null
+  /**
+   * A seat object's places at meetings and breaks (ADR-0089), each relative
+   * to its centre in metres at turn 0 like `seatAt`; empty unless it is one.
+   */
+  places?: Array<[number, number]>
   /** `staff-N` who calls this workstation object home; null when free (or not a workstation). */
   assignedTo?: string | null
 }
@@ -280,6 +287,11 @@ export interface StaffRender {
    * turns that monitor on) or a workstation object (`object-N`, ADR-0088).
    */
   seatedAt: string | null
+  /**
+   * The seat object of the player's design (`object-N`) the person sits on at
+   * a meeting or a break (ADR-0089); null otherwise, absent in older states.
+   */
+  seatedOn?: string | null
   /** The meeting whose table the person has a seat at (walking there or seated). */
   meeting: string | null
   /**

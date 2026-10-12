@@ -51,6 +51,9 @@ const WORLD_FORMATS: &[(u32, u64)] = &[
     // FEAT-026, ADR-0088: staff homes are stations (desks or workstation objects),
     // Spot::Object, ObjectSummary.seat_at, PlacedObject.on_desk, PlaceObjectOnDesk
     (13, 0xb779_a495_3fc3_f821),
+    // FEAT-026, ADR-0089, ADR-0090: Seat in meeting and kitchen spots (seat
+    // objects' places), ceiling designs placed
+    (14, 0xb24f_5706_c533_b9a6),
 ];
 
 /// The golden hash of the current world format.

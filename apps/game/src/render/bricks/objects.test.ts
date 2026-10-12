@@ -15,9 +15,9 @@ import { createGameScene, type GameScene } from '../scene'
 import { createBuildBridge } from '../build-mode/bridge'
 import { arrivalsFor } from './arrivals'
 import type { KitApi } from './kit'
-import { objectRect, objectsOf, type PlacedObjectLayout } from './objects'
+import { hangsOf, hangY, objectPlaces, objectRect, objectsOf, objectSpot, placesOf, type PlacedObjectLayout } from './objects'
 import { buildBrickOffice, type BrickOfficeOptions } from './office'
-import { STUD } from './placements'
+import { FLOOR_TOP, PLATE, STUD, WALL_TOP } from './placements'
 import type { ObjectSummary } from '../../state/render-state'
 /** A floor design's summary for a footprint in metres (16 studs a metre). */
 const summaryOf = (w: number, d: number): ObjectSummary => ({ footprint: [w * 16, d * 16], height: 3, mount: 'Floor', seats: 0, workstation: false, lights: 0, storage: 0, screens: 0, parts: 1, cost: 100 })
@@ -94,6 +94,23 @@ describe('placed objects (pure)', () => {
     expect(objectRect({ ...o, rot: 0, summary: undefined })).toEqual({ x: 1.5, z: 2.875, w: 1, d: 0.25 })
     expect(objectRect({ ...o, rot: 0 }).w).toBeCloseTo(16 * STUD, 9)
   })
+
+  it('places a seat object’s places turned with it, and hangs a ceiling design with its top at the ceiling (ADR-0089, ADR-0090)', () => {
+    const bench: PlacedObjectLayout = { id: 'object-2', design: 'b'.repeat(64), room: 'room-6', x: 2, z: 3, rot: Math.PI / 2, footprint: [1.5, 0.5], summary: { ...summaryOf(1.5, 0.5), seats: 3 }, places: [[-0.5, 0], [0, 0], [0.5, 0]] }
+    expect(placesOf(bench)).toHaveLength(3)
+    expect(placesOf({ places: [[1, 'x'], null] })).toEqual([])
+    const world = objectPlaces(bench).map(([x, z]) => [Number(x.toFixed(6)), Number(z.toFixed(6))])
+    // a quarter turn clockwise: the row runs north to south
+    expect(world).toEqual([[2, 2.5], [2, 3], [2, 3.5]])
+    expect(hangsOf(bench)).toBe(false)
+    const lamp: PlacedObjectLayout = { id: 'object-3', design: 'c'.repeat(64), room: 'room-6', x: 2, z: 3, rot: 0, footprint: [0.25, 0.25], summary: { ...summaryOf(0.25, 0.25), mount: 'Ceiling', height: 24, lights: 1 } }
+    expect(hangsOf(lamp)).toBe(true)
+    expect(hangY(24)).toBeCloseTo(WALL_TOP - FLOOR_TOP - 24 * PLATE, 9)
+    const at = objectSpot(lamp, base, { equipment: {}, desk_ports: {} } as never, () => {
+      throw new Error('a ceiling design needs no kit info')
+    })
+    expect(at).toEqual({ x: 2, y: hangY(24), z: 3, turn: 0, desk: null })
+  })
 })
 
 // Each test builds whole brick offices: generous under a loaded full run.
@@ -159,6 +176,17 @@ describe.skipIf(!built)('placed objects in the brick office (kit-wasm, NullEngin
   })
 })
 
+describe.skipIf(!built)('ceiling designs in the brick office (ADR-0090, kit-wasm, NullEngine)', { timeout: 30_000 }, () => {
+  it('hangs a ceiling design with its top at the ceiling', () => {
+    const hash = kit.hashDesign(CUBE)
+    const summary: ObjectSummary = { ...summaryOf(0.5, 0.5), mount: 'Ceiling', height: 6 }
+    const l = withObjects([{ id: 'object-1', design: hash, room: 'room-6', x: spot.x, z: spot.z, rot: 0, footprint: [0.5, 0.5], summary }])
+    const { bricks } = scene(l, { designOf: () => CUBE })
+    expect(bricks.objects[0].drawn).toBe('design')
+    expect(bricks.objects[0].at).toEqual({ x: spot.x, y: hangY(6), z: spot.z, turn: 0, desk: null })
+  })
+})
+
 describe.skipIf(!built)('the build bridge with designs of the player’s own (kit-wasm, NullEngine)', { timeout: 30_000 }, () => {
   const canvas = { getBoundingClientRect: () => ({ left: 0, top: 0, right: 512, bottom: 256, width: 512, height: 256 }) } as unknown as HTMLCanvasElement
 
@@ -181,6 +209,9 @@ describe.skipIf(!built)('the build bridge with designs of the player’s own (ki
     expect(bridge.debug().ghost).toBeNull()
     bridge.ghost(null)
     expect(node.isEnabled()).toBe(false)
+    // A ceiling design (ADR-0090) hangs at the height it is given.
+    bridge.ghost({ kind: 'design:cube', family: 'equipment', x: spot.x, z: spot.z, rot: 0, ok: true, design: CUBE, y: hangY(6) })
+    expect(bridge.debug().ghost!.node.position.y).toBeCloseTo(hangY(6), 6)
     bridge.dispose()
   })
 

@@ -75,10 +75,10 @@ describe.skipIf(!built)('render state from the wasm sim (drift)', () => {
     const layout = JSON.parse(sim.layout_json()) as BuildingLayout
     expect(checkLayout(layout).problems).toEqual([])
     expect(layout.objects).toEqual([
-      { id: 'object-1', design: 'ab'.repeat(32), room: 'room-6', x: 1.5, z: 13.5, rot: Math.PI / 2, footprint: [1.5, 0.75], summary, seatAt: [0, 0.75], onDesk: null, assignedTo: null },
-      { id: 'object-2', design: 'cd'.repeat(32), room: 'room-1', x: 1.5, z: 1.5, rot: 0, footprint: [0.25, 0.25], summary: mug, seatAt: null, onDesk: { desk: 'equip-17', slot: 'lamp' }, assignedTo: null },
+      { id: 'object-1', design: 'ab'.repeat(32), room: 'room-6', x: 1.5, z: 13.5, rot: Math.PI / 2, footprint: [1.5, 0.75], summary, seatAt: [0, 0.75], onDesk: null, places: [], assignedTo: null },
+      { id: 'object-2', design: 'cd'.repeat(32), room: 'room-1', x: 1.5, z: 1.5, rot: 0, footprint: [0.25, 0.25], summary: mug, seatAt: null, onDesk: { desk: 'equip-17', slot: 'lamp' }, places: [], assignedTo: null },
     ])
-    expect(layout.rooms.find((r) => r.id === 'room-6')?.objectCapabilities).toEqual({ seats: 1, workstations: 1, lights: 1, storage: 0, screens: 1 })
+    expect(layout.rooms.find((r) => r.id === 'room-6')?.objectCapabilities).toEqual({ seats: 1, places: 0, workstations: 1, lights: 1, storage: 0, screens: 1 })
     sim.free()
   })
 

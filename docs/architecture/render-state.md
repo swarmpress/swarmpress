@@ -12,9 +12,10 @@ FEAT-024 (people), FEAT-020 (the office).
   and size, wall height, floors, the street `entrance` (door centre and `spawn` point), and per
   room its rect, kind, label, level, capacity, `windows`, `doors`, `desks` (with their `seat`),
   `ceilingLights` and `props` (equipment that is not a desk or a ceiling light, with
-  `attachedTo` for desk-top items) and `objectCapabilities` (`{seats, workstations, lights,
+  `attachedTo` for desk-top items) and `objectCapabilities` (`{seats, places, workstations, lights,
   storage, screens}`, the totals of its placed objects' summaries; `workstations` counts floor
-  workstation objects, which are homes for staff (ADR-0088), the rest only count here); the company's `buildMode` (`sandbox` or `economic`), the `town` (ADR-0087): `{id, kind,
+  workstation objects, which are homes for staff (ADR-0088), `places` the places of seat objects
+  at meetings and breaks (ADR-0089), the rest only count here); the company's `buildMode` (`sandbox` or `economic`), the `town` (ADR-0087): `{id, kind,
   x, z, rot}` per house, tree, street lamp and bench, in id order, `rot` in radians like the
   props; and `objects` (ADR-0065 §4, ADR-0087 decision 7): the players' own kit designs placed in
   rooms, in id order, `{id: "object-N", design: <64-hex hash>, room, x, z, rot, footprint: [w, d],
@@ -28,7 +29,10 @@ FEAT-024 (people), FEAT-020 (the office).
   desk-top design placed with `PlaceObjectOnDesk`, which then shares the desk's `x`, `z` and
   `rot` and moves with it; null on the floor) and `assignedTo` (`staff-N` who calls a
   workstation object home, null when free; a hire into an object and the firing of its owner
-  raise `layoutRev`). The bricks are the renderer's: it compiles the
+  raise `layoutRev`). ADR-0089 adds `places`: a seat object's places at meetings and breaks,
+  each relative to its centre in metres at turn 0 like `seatAt` (empty otherwise). A `Ceiling`
+  design (ADR-0090) is drawn with its top at the ceiling over its `x`, `z` (the base at the wall
+  top less its `summary.height`) and lit with its room. The bricks are the renderer's: it compiles the
   design named by the hash from the company's design library. Read at boot and again whenever
   the render state's `layoutRev` moves.
 - `Sim.render_state_json()`: the state, parsed once per sim step (10 Hz at speed 1; once per
@@ -58,7 +62,7 @@ tests and are checked by the same functions.
 | | `path` | `{ waypoints, startStep, speed }` or null | see [Interpolation](#interpolation) |
 | | `pose` | walk, sit, type, talk, listen, idle | `type` is seated at the desk with a `workItem`; `talk` is the meeting's speaker |
 | | `activity` | arriving, working, walking-to-meeting, in-meeting, walking-to-lunch, lunch, returning-to-desk, leaving | |
-| | `seatedAt`, `meeting`, `workItem` | ids or null | the workstation sat at: a desk (`equip-N`) or a workstation object (`object-N`, ADR-0088; `x`, `z` are then its turned seat); the meeting with a seat for them; the work item whose active phase they work on (`World::busy_with`) |
+| | `seatedAt`, `seatedOn`, `meeting`, `workItem` | ids or null | the workstation sat at: a desk (`equip-N`) or a workstation object (`object-N`, ADR-0088; `x`, `z` are then its turned seat); the seat object of the player's design sat on at a meeting or lunch (`object-N`, ADR-0089; `x`, `z` are then its place, drawn seated on it, no stool); the meeting with a seat for them; the work item whose active phase they work on (`World::busy_with`) |
 | | `fatigue`, `morale` | permille | |
 | Meetings | `meetings[]`: `id`, `kind`, `project`, `room`, `day`, `start`, `end`, `active`, `attendees`, `speaker`, `job` | | |
 | Bubbles | `bubbles[]`: `meeting`, `seq`, `speaker`, `startedStep`, `untilStep`, `chars` | | one per meeting with a turn in progress; text is fetched by reference |
@@ -104,7 +108,8 @@ pos      = point_at(path.waypoints, min(distance, sim_distance))             // 
   end before the next one starts, because the display trails by about a step.
 - Facing is the direction of travel, eased over 0.3 m after a corner; seated or standing still,
   people turn to their desk (`seatedAt`) or to the middle of the table room (meeting seats and
-  kitchen seats are around the room's centre, sim-core `table_seat`).
+  kitchen seats are around the room's centre, sim-core `table_seat`; a person on a seat object,
+  `seatedOn`, faces the table too, ADR-0089).
 - Pose motion (typing, the speaker's bob) is a function of the display step and a per-person
   phase from `hash(staff_id)`; a walker's bob is a function of the distance walked. Two clients
   draw the same frame for the same display step.

@@ -604,7 +604,8 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
                 ));
             }
             crate::objects::check_summary(summary)?;
-            if summary.mount != crate::objects::Mount::Floor {
+            // floor designs stand, ceiling designs hang (ADR-0090)
+            if summary.mount == crate::objects::Mount::Surface {
                 return Err(Reject::Invalid("a desk-top design goes on a desk"));
             }
             crate::objects::check_spot(&w.building, summary, *pos, *rot, None)?;
@@ -627,6 +628,13 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
             {
                 return Err(Reject::Occupied("someone is working at this object"));
             }
+            // a seat object (ADR-0089): not while someone sits on it or walks to it
+            if w.staff
+                .values()
+                .any(|s| s.spot.and_then(Spot::seat_object) == Some(*object))
+            {
+                return Err(Reject::Occupied("someone is sitting on this object"));
+            }
             crate::objects::check_spot(&w.building, &o.summary, *pos, *rot, Some(*object))?;
             funds(w, price(w, cmd))
         }
@@ -640,6 +648,12 @@ pub fn validate(w: &World, cmd: &Command) -> Result<(), Reject> {
                 s.home == Some(Station::Object(*object)) || s.spot == Some(Spot::Object(*object))
             }) {
                 return Err(Reject::Occupied("this workstation is assigned"));
+            }
+            if w.staff
+                .values()
+                .any(|s| s.spot.and_then(Spot::seat_object) == Some(*object))
+            {
+                return Err(Reject::Occupied("someone is sitting on this object"));
             }
             Ok(())
         }
@@ -1070,6 +1084,7 @@ fn spot_in_room(w: &World, spot: Spot, room: RoomId) -> bool {
         Spot::MeetingSeat { meeting, .. } => {
             w.meetings.get(&meeting).is_some_and(|m| m.room == room)
         }
+        // a seat object's place stays in its room: objects in use are not moved
         Spot::KitchenSeat { room: r, .. } => r == room,
         Spot::Object(o) => w.building.objects.get(&o).is_some_and(|o| o.room == room),
     }

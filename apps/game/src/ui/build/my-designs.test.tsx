@@ -23,6 +23,7 @@ import { compileDesign, setDesignKit, type EditorKit } from './design-kit'
 import type { DesignJson } from './design-model'
 import { DesignEditor } from './DesignEditor'
 import { objectSummary, type BuildLayout } from './types'
+import { hangY } from '../../render/bricks/objects'
 import type { ObjectSummary } from '../../state/render-state'
 /** A floor design's summary for a footprint in metres (16 studs a metre). */
 const summaryOf = (w: number, d: number): ObjectSummary => ({ footprint: [w * 16, d * 16], height: 3, mount: 'Floor', seats: 0, workstation: false, lights: 0, storage: 0, screens: 0, parts: 1, cost: 100 })
@@ -52,7 +53,7 @@ const cube: DesignJson = {
 }
 /** A design that stands on a desk (ADR-0088): a tile too, placed on a desk's lamp slot (it has no screen). */
 const shelf: DesignJson = { ...cube, id: 'shelf-1', name: 'Desk shelf', mount: 'surface', ops: [{ op: 'box', at: [0, 0, 0], size: [8, 2, 3], part: 'brick', colour: 'blue' }], footprint: [8, 2], height: 3 }
-/** A design that hangs from the ceiling: kept, but not placeable yet. */
+/** A design that hangs from the ceiling (ADR-0090): a tile too, placed over the floor with its top at the ceiling. */
 const pendant: DesignJson = { ...cube, id: 'pendant-1', name: 'Pendant', mount: 'ceiling', ops: [{ op: 'box', at: [0, 0, 0], size: [2, 2, 3], part: 'brick', colour: 'yellow' }], footprint: [2, 2], height: 3 }
 
 function layoutWith(objects: BuildLayout['objects']): BuildLayout {
@@ -174,18 +175,19 @@ describe.skipIf(!built)('my designs in the Furniture tab', () => {
     const { panel } = await open(() => layoutWith([]))
     const mine = within(panel).getByRole('region', { name: 'My designs' })
     const all = within(mine).getAllByRole('button')
-    // The cube on the floor, the shelf on a desk; the pendant hangs from the ceiling.
-    expect(all).toHaveLength(2)
+    // The cube on the floor, the shelf on a desk, the pendant on the ceiling (ADR-0090).
+    expect(all).toHaveLength(3)
     const shelfTile = all.find((t) => t.textContent!.includes('Desk shelf'))!
     expect(shelfTile.textContent).toContain('On a desk')
-    const tiles = all.filter((t) => t !== shelfTile)
+    const pendantTile = all.find((t) => t.textContent!.includes('Pendant'))!
+    expect(pendantTile.textContent).toContain('On the ceiling')
+    expect(pendantTile.textContent).toContain('Hangs from the ceiling')
+    const tiles = all.filter((t) => t !== shelfTile && t !== pendantTile)
     const facts = compileDesign(kit, cube)
     expect(tiles[0].textContent).toContain('Red cube')
     expect(tiles[0].textContent).toContain(`${facts.summary!.parts} parts`)
     expect(tiles[0].textContent).toContain(`€${(facts.summary!.cost / 100).toLocaleString('en', { maximumFractionDigits: facts.summary!.cost % 100 ? 2 : 0 })}`)
     expect(tiles[0].querySelector('svg.st-brick-icon')).toBeTruthy()
-    // The pendant is kept but not placeable.
-    expect(within(mine).getByText(/1 design hangs from the ceiling.*not placeable yet/)).toBeTruthy()
     expect(await audit(panel)).toEqual([])
   })
 
@@ -399,6 +401,40 @@ describe.skipIf(!built)('desk-top designs and workstations (ADR-0088)', () => {
     fireEvent.click(remove)
     await settle()
     expect(sent(run)).toEqual([])
+    expect(await audit(panel)).toEqual([])
+  })
+})
+
+describe.skipIf(!built)('seats and ceiling designs of your own (ADR-0089, ADR-0090)', () => {
+  it('hangs a ceiling design: its ghost’s top at the ceiling, PlaceObject with the Ceiling mount', async () => {
+    const { panel, run, mb, store } = await open(() => layoutWith([]))
+    const pendantHash = store.designs()!.find((d) => d.design.id === 'pendant-1')!.hash
+    fireEvent.click(within(within(panel).getByRole('region', { name: 'My designs' })).getByRole('button', { name: /^Pendant/ }))
+    await settle()
+    await mb.hover({ x: 4.03, z: 3.01, room: 'room-1', target: null })
+    const summary = compileDesign(kit, pendant).summary!
+    expect(mb.bridge.ghost).toHaveBeenLastCalledWith(expect.objectContaining({ kind: `design:${pendantHash}`, x: 4.03, z: 3.01, y: hangY(summary.height), ok: true }))
+    await mb.click({ x: 4.03, z: 3.01, room: 'room-1', target: null })
+    expect(sent(run)).toEqual([{ PlaceObject: expect.objectContaining({ design: pendantHash, pos: { x: 4000, z: 3000 }, summary: expect.objectContaining({ mount: 'Ceiling' }) }) }])
+    expect(await audit(panel)).toEqual([])
+  })
+
+  it('says what a seat object and a ceiling design provide, in the list, the selection and the room’s totals', async () => {
+    const { panel } = await open((h) => {
+      const l = layoutWith([
+        { id: 'object-8', design: h, room: 'room-1', x: 3, z: 6, rot: 0, footprint: [1.5, 0.5], summary: { ...summaryOf(1.5, 0.5), seats: 3 }, places: [[-0.5, 0], [0, 0], [0.5, 0]] },
+        { id: 'object-9', design: h, room: 'room-1', x: 3, z: 6, rot: 0, footprint: [0.25, 0.25], summary: { ...summaryOf(0.25, 0.25), mount: 'Ceiling', lights: 1 } },
+      ])
+      l.rooms[0].objectCapabilities = { seats: 3, places: 3, workstations: 0, lights: 1, storage: 0, screens: 0 }
+      return l
+    })
+    expect(within(panel).getByTestId('room-provides').textContent).toBe('Your designs here provide: seats 3 at meetings and breaks · 1 light')
+    fireEvent.click(within(panel).getByRole('button', { name: /^Red cube object-8/ }))
+    await settle()
+    expect(within(panel).getByTestId('selected-provides').textContent).toBe('Seats 3 at meetings and breaks, in a meeting room or the kitchen.')
+    fireEvent.click(within(panel).getByRole('button', { name: /^Red cube object-9 · on the ceiling/ }))
+    await settle()
+    expect(within(panel).getByTestId('selected-provides').textContent).toBe('Hangs from the ceiling · 1 light for the room.')
     expect(await audit(panel)).toEqual([])
   })
 })

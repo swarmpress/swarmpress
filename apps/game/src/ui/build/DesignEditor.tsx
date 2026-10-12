@@ -17,7 +17,7 @@ import { StoreContext } from '../store'
 import { BrickIcon } from '../studio/bricks'
 import { commit, historyOf, redo, undo, type History } from '../studio/history'
 import { brickAt, compileDesign, compileShipped, getDesignKit, importCompiled, partSize, shippedDesigns, type EditorKit, type KitIssue } from './design-kit'
-import { mountFact, workstationFacts } from './provides'
+import { designProvides, mountFact, workstationFacts } from './provides'
 import { companyLibrary, localStorageLibrary, type DesignLibrary, type SavedDesign } from './design-library'
 import {
   boxFill,
@@ -588,6 +588,8 @@ function OfficeFacts({ compiled }: { compiled: ReturnType<typeof compileDesign> 
   const s = compiled.summary!
   const mount = s.mount.toLowerCase()
   const w = mount === 'floor' ? workstationFacts({ summary: s, ports: compiled.ports, bounds: compiled.bounds }) : null
+  // A seat design's places at meetings and breaks, a ceiling design's lights (ADR-0089, ADR-0090).
+  const provides = s.workstation ? undefined : designProvides(s)
   return (
     <dl class="de-dl" data-testid="de-office">
       <dt>Workstation</dt>
@@ -598,6 +600,12 @@ function OfficeFacts({ compiled }: { compiled: ReturnType<typeof compileDesign> 
       <dd>{s.seats}</dd>
       <dt>In the office</dt>
       <dd>{mountFact(s)}</dd>
+      {provides && (
+        <>
+          <dt>Provides</dt>
+          <dd data-testid="de-provides">{provides}</dd>
+        </>
+      )}
       {w && (
         <>
           <dt class="sr-only">Staff</dt>

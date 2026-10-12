@@ -84,9 +84,9 @@ export type EquipmentKindVariant = string
 export type SideVariant = 'North' | 'East' | 'South' | 'West'
 /**
  * `sim_core::objects::ObjectSummary`: the numbers of a design's compiled kit
- * summary (studs, plates, stud², cents). `Floor` designs go with
- * `PlaceObject`, `Surface` ones on a desk with `PlaceObjectOnDesk`; `Ceiling`
- * is not placeable yet. The kit's kebab-case mounts (`floor`) are accepted
+ * summary (studs, plates, stud², cents). `Floor` and `Ceiling` designs go
+ * with `PlaceObject` (a ceiling design hangs over the floor, ADR-0090),
+ * `Surface` ones on a desk with `PlaceObjectOnDesk`. The kit's kebab-case mounts (`floor`) are accepted
  * too. `seat_at` is a workstation's seat (mm from the footprint centre at
  * turn 0; required when `workstation`, null otherwise, ADR-0088).
  */

@@ -17,7 +17,7 @@ import type { GameScene } from '../scene'
 import { buildRoomChunk, STUD_HEIGHT, STUD_RADIUS, type ChunkSource } from '../bricks/chunk'
 import { mappingOf, type KitApi, type KitBuildLike, type KitMapping } from '../bricks/kit'
 import { footprintRect, type BrickOffice } from '../bricks/office'
-import { deskById, deskTopOf, footprintM, objectRect, objectsOf, objectSpot, rectAt } from '../bricks/objects'
+import { deskById, deskTopOf, footprintM, hangsOf, hangY, objectRect, objectsOf, objectSpot, rectAt } from '../bricks/objects'
 import { deskSlotAt, FLOOR_TOP, PLATE, roomPlacements, turnOf, WALL_TOP, type DesignInfo, type Turn } from '../bricks/placements'
 import { TOWN_DESIGN, TOWN_HOUSES, HOUSE_SECTION, townFrame, treeParams, type TownItemKind } from '../bricks/town'
 import { frameBars, inRect, itemUnder, kebabKind, rayToPlane, snapStud, type PickItem, type Rect } from './pick'
@@ -180,6 +180,8 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
    */
   const objectItems = (): PickItem[] =>
     objectsOf(layout).flatMap((o): PickItem[] => {
+      // A ceiling design (ADR-0090) is picked under the ceiling, after the floor's items.
+      if (!deskTopOf(o) && hangsOf(o)) return [{ id: o.id, rect: objectRect(o), y: hangY(o.summary.height), rank: RANK.ceiling }]
       if (!deskTopOf(o)) return [{ id: o.id, rect: objectRect(o), y: 0, rank: RANK.floor }]
       const at = objectSpot(o, layout, mapping, infoOf)
       return at ? [{ id: o.id, rect: rectAt(at.x, at.z, footprintM(o), at.turn), y: at.y, rank: RANK.attached }] : []
@@ -347,7 +349,8 @@ export function createBuildBridge(deps: BuildBridgeDeps, carry?: BuildBridgeStat
         next.node.position.set(slot.x, g.design !== undefined ? slot.y : 0, slot.z)
         next.node.rotation.y = ghostRotation(slot.turn)
       } else {
-        next.node.position.set(g.x, 0, g.z)
+        // A ceiling design of the player's (ADR-0090) hangs at `y`; everything else stands on the floor.
+        next.node.position.set(g.x, g.y ?? 0, g.z)
         next.node.rotation.y = ghostRotation(g.rot)
       }
       const m = ghostMaterial(g.ok)

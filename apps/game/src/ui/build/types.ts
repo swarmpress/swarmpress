@@ -90,6 +90,10 @@ export interface CatalogueItem {
   onDesk: boolean
   /** The desk slot it takes (`kit/mapping.json` `desk_ports`; a design's by `deskSlotOf`): where its ghost stands. */
   deskSlot?: DeskSlot
+  /** A design that hangs from the ceiling (ADR-0090): placed over the floor, its ghost under the ceiling. */
+  ceiling?: boolean
+  /** What a design of the player's provides, in a few words ("Seats 3 at meetings and breaks", ADR-0089). */
+  provides?: string
   /** A design of the player's own (K-4): its hash, its JSON (the ghost), its compiled summary (the command), its parts. */
   hash?: string
   design?: string
@@ -243,8 +247,13 @@ export function objectSummary(s: KitSummary): ObjectSummary {
   }
 }
 
-/** Floor designs stand in a room (`PlaceObject`), surface designs on a desk (`PlaceObjectOnDesk`, ADR-0088); ceiling designs not yet. */
-export const placeable = (s: Pick<KitSummary, 'mount'> | null | undefined) => !!s && ['floor', 'surface'].includes(s.mount.toLowerCase())
+/**
+ * Floor designs stand in a room and ceiling designs hang in one (`PlaceObject`, ADR-0090), surface
+ * designs go on a desk (`PlaceObjectOnDesk`, ADR-0088).
+ */
+export const placeable = (s: Pick<KitSummary, 'mount'> | null | undefined) => !!s && ['floor', 'surface', 'ceiling'].includes(s.mount.toLowerCase())
+/** A design that hangs from the ceiling (ADR-0090). */
+export const ceilingDesign = (s: Pick<KitSummary, 'mount'> | Pick<ObjectSummary, 'mount'> | null | undefined) => !!s && s.mount.toLowerCase() === 'ceiling'
 /** A design that goes on a desk (mounted on a surface). */
 export const onDeskDesign = (s: Pick<KitSummary, 'mount'> | Pick<ObjectSummary, 'mount'> | null | undefined) => !!s && s.mount.toLowerCase() === 'surface'
 /**

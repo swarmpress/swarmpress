@@ -161,7 +161,8 @@ fn rejects_bad_designs_and_summaries() {
         mount: Mount::Ceiling,
         ..table()
     };
-    assert!(matches!(validate(&w, &at(s)), Err(Reject::NotSupported(_))));
+    // ceiling designs hang (ADR-0090; their bounds are in tests/seats.rs)
+    assert_eq!(validate(&w, &at(s)), Ok(()));
     // desk-top designs go on a desk (`PlaceObjectOnDesk`, tests/stations.rs)
     let s = ObjectSummary {
         mount: Mount::Surface,
@@ -466,6 +467,7 @@ fn capabilities_are_totalled_per_room_and_workstations_are_free_for_hires() {
         room_capabilities(&w.building, MEETING),
         ObjectCapabilities {
             seats: 2,
+            places: 0,
             workstations: 2,
             lights: 2,
             storage: 16,

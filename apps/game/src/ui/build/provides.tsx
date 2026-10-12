@@ -20,7 +20,9 @@ export function roomProvides(room: Pick<RoomLayout, 'id' | 'objectCapabilities'>
     const taken = mine.filter((o) => typeof assignedOf(o) === 'string').length
     out.push(`${plural(c.workstations, 'workstation')}${said ? ` (${Math.max(0, c.workstations - taken)} free)` : ''}`)
   }
-  if (c.seats > 0) out.push(plural(c.seats, 'seat'))
+  // The places of seat objects at meetings and breaks (ADR-0089); other seats are only counted.
+  if (c.places && c.places > 0) out.push(placesText(c.places).toLowerCase())
+  else if (c.seats > 0) out.push(plural(c.seats, 'seat'))
   if (c.screens > 0) out.push(plural(c.screens, 'screen'))
   if (c.lights > 0) out.push(plural(c.lights, 'light'))
   if (c.storage > 0) out.push(`shelves of ${c.storage} stud²`)
@@ -93,6 +95,43 @@ export function workstationFacts(c: FactsInput): WorkstationFacts {
 export function mountFact(s: Pick<FactsInput['summary'], 'mount' | 'screens'>): string {
   const m = s.mount.toLowerCase()
   if (m === 'surface') return `Goes on a desk: its ${s.screens > 0 ? 'screen' : 'lamp'} slot.`
-  if (m === 'ceiling') return 'Hangs from the ceiling: not placeable yet.'
+  if (m === 'ceiling') return 'Hangs from the ceiling (its top at the ceiling, over the floor): its lights count towards the room.'
   return 'Stands on the floor.'
+}
+
+// ---------------------------------------------------------------------------------------------
+// Seats and ceiling designs of the player's own (ADR-0089, ADR-0090)
+
+/** The sim's bounds on a seat object's places (`sim_core::objects`): one per 8 studs of its longer side, 8 at most. */
+export const PLACE_STUDS = 8
+export const MAX_OBJECT_PLACES = 8
+/** The sim's bound on a ceiling design's hang, plates (80 cm). */
+export const MAX_CEILING_HANG = 32
+
+type SummaryFacts = { mount: string; seats: number; workstation: boolean; lights: number; footprint: readonly number[]; height: number }
+
+/** The places a seat design offers at meetings and breaks, as the sim counts them (`objects::places`): 0 unless a floor design that seats people and is no workstation. */
+export function placesFor(s: SummaryFacts): number {
+  if (s.mount.toLowerCase() !== 'floor' || s.workstation || s.seats <= 0) return 0
+  const long = Math.max(s.footprint[0] ?? 0, s.footprint[1] ?? 0)
+  return Math.min(s.seats, Math.max(1, Math.floor(long / PLACE_STUDS)), MAX_OBJECT_PLACES)
+}
+
+/** "Seats 3 at meetings and breaks". */
+export const placesText = (n: number) => `Seats ${n} at meetings and breaks`
+
+/**
+ * What a design provides once placed, in a few words, or undefined when nothing to say: a seat
+ * design's places in a meeting room or the kitchen (ADR-0089), a ceiling design's lights (ADR-0090).
+ */
+export function designProvides(s: SummaryFacts): string | undefined {
+  const m = s.mount.toLowerCase()
+  if (m === 'ceiling') {
+    if (s.height > MAX_CEILING_HANG) return `Hangs too deep (${s.height} of ${MAX_CEILING_HANG} plates)`
+    return s.lights > 0 ? `Hangs from the ceiling · ${plural(s.lights, 'light')} for the room` : 'Hangs from the ceiling'
+  }
+  const n = placesFor(s)
+  if (n > 0) return placesText(n)
+  if (s.workstation && m === 'floor') return 'A workstation'
+  return undefined
 }

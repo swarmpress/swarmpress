@@ -151,7 +151,14 @@ pub struct DesignerObject {
     /// A desk-top object's desk and slot.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_desk: Option<DesignerDeskSpot>,
+    /// Hung from the ceiling (ADR-0090): it takes no floor, keeps clear of
+    /// ceiling lights, and its lights light the room from where it hangs.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ceiling: bool,
     pub seats: u8,
+    /// Places it offers at meetings and breaks (ADR-0089): a seat object's.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub places: u8,
     pub lights: u8,
     /// Shelf area, stud².
     pub storage: u32,
@@ -265,7 +272,9 @@ impl World {
                     }
                     .to_string(),
                 }),
+                ceiling: o.is_ceiling(),
                 seats: o.summary.seats,
+                places: o.places(),
                 lights: o.summary.lights,
                 storage: o.summary.storage,
                 screens: o.summary.screens,
@@ -654,4 +663,9 @@ impl World {
             }
         }
     }
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &u8) -> bool {
+    *n == 0
 }

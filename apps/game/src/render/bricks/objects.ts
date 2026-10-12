@@ -8,14 +8,15 @@
  */
 import type { BuildingLayout, DeskLayout, ObjectSummary as WireSummary, PlacedObjectLayout as WireObject, RoomLayout } from '../../state/render-state'
 import type { KitMapping } from './kit'
-import { deskSlotAt, STUD, turnOf, turnXZ, type DesignInfoOf, type Turn } from './placements'
+import { deskSlotAt, FLOOR_TOP, PLATE, STUD, turnOf, turnXZ, WALL_TOP, type DesignInfoOf, type Turn } from './placements'
 
 /**
  * ADR-0088 adds to the wire types (the sim agent's change to render-state.ts; until it lands they
  * are optional here, and absent means "not said"):
  * - the summary's `seat_at`: a workstation's seat port relative to its footprint centre, mm, unturned;
  * - the layout object's `seatAt` (the same in metres), `onDesk` (a desk-top object's desk and slot)
- *   and `assignedTo` (who calls a workstation object home).
+ *   and `assignedTo` (who calls a workstation object home);
+ * - ADR-0089: the layout object's `places` (a seat object's places at meetings and breaks).
  */
 export type ObjectSummary = WireSummary & { seat_at?: [number, number] | null }
 /** A desk's slot a desk-top object takes (ADR-0088 decision 3). */
@@ -29,6 +30,7 @@ export type PlacedObjectLayout = Omit<WireObject, 'summary'> & {
   seatAt?: [number, number] | null
   onDesk?: DeskTop | null
   assignedTo?: string | null
+  places?: Array<[number, number]>
 }
 
 /** A layout that may carry placed objects. */
@@ -58,6 +60,30 @@ export function objectSeat(o: Pick<PlacedObjectLayout, 'x' | 'z' | 'rot' | 'seat
   if (!s) return null
   const [dx, dz] = turnXZ(s[0], s[1], turnOf(o.rot))
   return [o.x + dx, o.z + dz]
+}
+
+/** Whether an object hangs from the ceiling (ADR-0090): its summary's mount says so. */
+export function hangsOf(o: { summary?: Pick<ObjectSummary, 'mount'> | null }): boolean {
+  return typeof o.summary?.mount === 'string' && o.summary.mount.toLowerCase() === 'ceiling'
+}
+
+/** The base height (metres above the floor) of a design `heightPlates` high hanging from the ceiling: its top at the ceiling. */
+export const hangY = (heightPlates: number) => WALL_TOP - FLOOR_TOP - heightPlates * PLATE
+
+/** A seat object's places at meetings and breaks (ADR-0089), relative metres at turn 0 (the layout's `places`); empty when it has none. */
+export function placesOf(o: { places?: unknown }): Array<[number, number]> {
+  const list = o.places
+  if (!Array.isArray(list)) return []
+  return list.filter((p): p is [number, number] => Array.isArray(p) && p.length === 2 && p.every((v) => typeof v === 'number' && Number.isFinite(v))).map((p) => [p[0], p[1]])
+}
+
+/** Where a seat object's places are in the world: its position plus each place turned by its rot. */
+export function objectPlaces(o: Pick<PlacedObjectLayout, 'x' | 'z' | 'rot'> & { places?: unknown }): Array<[number, number]> {
+  const t = turnOf(o.rot)
+  return placesOf(o).map(([px, pz]) => {
+    const [dx, dz] = turnXZ(px, pz, t)
+    return [o.x + dx, o.z + dz]
+  })
 }
 
 /** Who calls a workstation object home (`staff-N`), or null; undefined when the layout does not say. */
@@ -116,6 +142,8 @@ export interface ObjectSpot {
  */
 export function objectSpot(o: PlacedObjectLayout, layout: BuildingLayout, mapping: KitMapping, infoOf: DesignInfoOf): ObjectSpot | null {
   const top = deskTopOf(o)
+  // A ceiling design (ADR-0090) hangs with its top at the ceiling, over its spot on the floor.
+  if (!top && hangsOf(o)) return { x: o.x, y: hangY(o.summary.height), z: o.z, turn: objectTurn(o), desk: null }
   if (!top) return { x: o.x, y: 0, z: o.z, turn: objectTurn(o), desk: null }
   const found = deskById(layout, top.desk)
   if (!found) return null

@@ -179,7 +179,10 @@ cost); replay applies the summary as logged and never re-runs the kit's compiler
   lamp slot otherwise, refused when that slot holds a monitor, a lamp or another object. A desk-top
   object (`PlacedObject.on_desk = Some((desk, slot))`) shares the desk's position, turn and room,
   moves with it (`MoveEquipment`), goes with it (`Demolish`), is removed by `RemoveObject`, and
-  is never moved on its own. `Ceiling` designs are not placeable yet.
+  is never moved on its own. `Ceiling` designs are placed with `PlaceObject` too (ADR-0090): they
+  take no floor, keep their footprint clear of the room's ceiling lights (±250 mm squares) and of
+  other ceiling objects (as new ceiling lights keep clear of them), hang at most 32 plates and
+  seat nobody; their lights count towards the room's.
 - **Summary bounds** (decision 5): a workstation carries `seat_at` (mm from the footprint centre at
   turn 0, at most 1 m outside the footprint on each axis); anything else carries none; a desk-top
   design is never a workstation; a workstation is one home whatever its `seats`.
@@ -196,7 +199,14 @@ cost); replay applies the summary as logged and never re-runs the kit's compiler
   is demolishing its room; `MoveObject` is refused while someone sits at it or walks to it, and
   allowed while its owner is away (the seat moves with it). A hire into an object, or the firing
   of its owner, raises `layout_rev` (the layout names the owner).
-- **World format 13.**
+- **Seat objects** (ADR-0089): a floor object with `seats > 0` that is no workstation offers
+  `places()` (one per seat, at most one per 8 studs of its longer side and 8 in all) in a row along
+  its longer side, each 200 mm inside the room. A room's seats at meetings and lunch are
+  `World::room_seats`: the table's (`Seat::Table(n)`, `n < min(capacity, 12)`), then each seat
+  object's (`Seat::Object(id, n)`), objects by id; `Spot::MeetingSeat{meeting, seat}` and
+  `Spot::KitchenSeat{room, seat}` carry a `Seat`, and the first free one is taken. A seat object
+  someone sits on or walks to is neither moved nor removed (`Occupied`).
+- **World format 13** (14 since ADR-0089 and ADR-0090: `Seat` in meeting and kitchen spots).
 
 ## Snapshots
 

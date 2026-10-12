@@ -55,8 +55,8 @@ use crate::plan::{
 };
 use crate::projects::{Project, ProjectStatus, MONTH_DAYS};
 use crate::staff::{
-    persona, salary_for, Activity, Candidate, Role, Schedule, Seniority, Spot, Staff, Station,
-    Traits, LATEST_LEAVE, PERSONAS, ROUND_TABLE_SEATS,
+    persona, salary_for, Activity, Candidate, Role, Schedule, Seat, Seniority, Spot, Staff,
+    Station, Traits, LATEST_LEAVE, PERSONAS, ROUND_TABLE_SEATS,
 };
 use crate::validate::{grown_lot, is_building_command, price, validate, validate_server, Reject};
 
@@ -1043,11 +1043,36 @@ impl World {
             Spot::Desk(d) => self.building.equipment.get(&d).map(Equipment::seat_pos),
             Spot::MeetingSeat { meeting, seat } => {
                 let m = self.meetings.get(&meeting)?;
-                self.table_seat(m.room, seat)
+                self.seat_pos(m.room, seat)
             }
-            Spot::KitchenSeat { room, seat } => self.table_seat(room, seat),
+            Spot::KitchenSeat { room, seat } => self.seat_pos(room, seat),
             Spot::Object(o) => self.building.objects.get(&o)?.seat_pos(),
         }
+    }
+
+    /// Where a seat at a meeting or a break is: at the room's table, or on
+    /// a seat object in it (ADR-0089).
+    fn seat_pos(&self, room: RoomId, seat: Seat) -> Option<PosMm> {
+        match seat {
+            Seat::Table(n) => self.table_seat(room, n),
+            Seat::Object(o, n) => self
+                .building
+                .objects
+                .get(&o)
+                .filter(|o| o.room == room)?
+                .place_pos(n),
+        }
+    }
+
+    /// Every seat at a meeting or a break in `room`, in the order they are
+    /// handed out (ADR-0089): the table's seats, then each seat object's
+    /// places, objects by id.
+    pub fn room_seats(&self, room: RoomId) -> Vec<Seat> {
+        let mut v: Vec<Seat> = (0..self.table_size(room)).map(Seat::Table).collect();
+        for o in self.building.objects.values().filter(|o| o.room == room) {
+            v.extend((0..o.places()).map(|n| Seat::Object(o.id, n)));
+        }
+        v
     }
 
     fn table_seat(&self, room: RoomId, seat: u8) -> Option<PosMm> {
@@ -1693,18 +1718,19 @@ impl World {
         Want::Desk
     }
 
-    /// Lowest free seat at a table, keeping the person's current seat.
+    /// First free seat of `room` ([`World::room_seats`]), keeping the
+    /// person's current seat.
     fn free_seat(
         &self,
         me: StaffId,
-        current: Option<u8>,
-        taken: impl Fn(&Spot) -> Option<u8>,
-        size: u8,
-    ) -> Option<u8> {
+        current: Option<Seat>,
+        taken: impl Fn(&Spot) -> Option<Seat>,
+        room: RoomId,
+    ) -> Option<Seat> {
         if current.is_some() {
             return current;
         }
-        (0..size).find(|seat| {
+        self.room_seats(room).into_iter().find(|seat| {
             !self
                 .staff
                 .values()
@@ -1729,7 +1755,7 @@ impl World {
                     Spot::MeetingSeat { meeting, seat } if meeting == mid => Some(seat),
                     _ => None,
                 };
-                match self.free_seat(s.id, current, taken, self.table_size(room)) {
+                match self.free_seat(s.id, current, taken, room) {
                     Some(seat) => Some((
                         Spot::MeetingSeat { meeting: mid, seat },
                         Activity::InMeeting,
@@ -1751,7 +1777,7 @@ impl World {
                     Spot::KitchenSeat { room, seat } if room == kitchen => Some(seat),
                     _ => None,
                 };
-                match self.free_seat(s.id, current, taken, self.table_size(kitchen)) {
+                match self.free_seat(s.id, current, taken, kitchen) {
                     Some(seat) => Some((
                         Spot::KitchenSeat {
                             room: kitchen,

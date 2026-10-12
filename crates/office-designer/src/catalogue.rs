@@ -354,6 +354,19 @@ pub fn room_doc(room: &Room) -> String {
         }
         let fp = o.rect();
         let p = o.pos();
+        if o.ceiling {
+            let _ = write!(
+                s,
+                "\n- equipment:{}: the CEO's own design hanging from the ceiling, {} (west to east) × {} (north to south), at {} from the west wall, {} from the north wall{}. Floor items may stand under it; keep ceiling lights off it.",
+                o.id,
+                fmt_m(i64::from(fp.x1 - fp.x0)),
+                fmt_m(i64::from(fp.z1 - fp.z0)),
+                fmt_m(i64::from(p.x - r.x0)),
+                fmt_m(i64::from(p.z - r.z0)),
+                if o.lights > 0 { "; it has a light" } else { "" },
+            );
+            continue;
+        }
         let _ = write!(
             s,
             "\n- equipment:{}: the CEO's own design, {} (west to east) × {} (north to south), at {} from the west wall, {} from the north wall",
@@ -378,6 +391,9 @@ pub fn room_doc(room: &Room) -> String {
         }
         if o.lights > 0 {
             has.push("a light");
+        }
+        if o.places > 0 {
+            has.push("seats for meetings and breaks");
         }
         if !has.is_empty() {
             let _ = write!(s, "; it has {}", has.join(" and "));

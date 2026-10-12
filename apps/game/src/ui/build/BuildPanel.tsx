@@ -56,7 +56,7 @@ function useMyDesigns(): CatalogueGroup | null {
   if (error) return { label, items: [], note: `The construction kit did not load: ${error}` }
   if (!kit || !designs) return { label, items: [], note: <span role="status">Reading your designs…</span> }
   const { items, left } = myDesignItems(kit, designs)
-  const leftNote = left ? ` ${left} ${left === 1 ? 'design hangs' : 'designs hang'} from the ceiling, or the kit refuses ${left === 1 ? 'it' : 'them'}: not placeable yet.` : ''
+  const leftNote = left ? ` The kit refuses ${left === 1 ? 'one design' : `${left} designs`}: fix ${left === 1 ? 'it' : 'them'} in the Designs tab to place ${left === 1 ? 'it' : 'them'}.` : ''
   if (!designs.length) return { label, items, note: 'None yet: make one in the Designs tab and save it.' }
   return { label, items, note: leftNote ? leftNote.trim() : undefined }
 }

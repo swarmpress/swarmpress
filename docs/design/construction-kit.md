@@ -164,9 +164,25 @@ on a built-in desk with `PlaceObjectOnDesk{design, desk, summary}` and take its 
 screen) or its lamp slot (anything else), refused when the slot is taken, by equipment or another
 object; they move and go with the desk. The sim bounds the summary: a workstation's seat at most
 1 m outside its footprint, one home per workstation whatever its seats, no desk-top workstation
-(`crates/sim-core/tests/stations.rs`). Not built yet: `params` and `ReplaceDesign`; meeting and
-kitchen seats, lights and storage from objects (they only count towards the room's totals);
-ceiling designs; the office designer's plans do not count workstation objects yet.
+(`crates/sim-core/tests/stations.rs`). Not built yet: `params` and `ReplaceDesign`; storage from
+objects (it only counts towards the room's totals); the office designer's plans do not count
+workstation objects yet.
+
+**Built (seats and ceiling designs of your own, ADR-0089 and ADR-0090; world format 14):** a
+floor design that seats people and is no workstation is a **seat object**: in a meeting room its
+places come after the table's seats at that room's meetings, in the kitchen after the kitchen
+table's at lunch (`World::room_seats`: table seats, then objects by id and place; a spot names its
+`Seat`, `Table(n)` or `Object(object, n)`). Its places are derived by the sim from the summary
+(the kit reports no seat positions): one per seat in a row along the longer side, on its middle
+line, at most one per 8 studs of that side and 8 in all, each 20 cm inside the room; people walk
+there and sit facing the table; a seat object in use is neither moved nor removed. **Ceiling
+designs** (`mount: ceiling`, like the kit's `ceiling-light`) are placed with `PlaceObject` and hang
+with their top at the ceiling: they take no floor and collide only on the ceiling, with the
+built-in ceiling lights (±25 cm squares, so two lights keep the 0.5 m spacing) and with other
+ceiling designs; they hang at most 32 plates (80 cm) and seat nobody; their lights count towards
+the room's and light desks in the office designer's light check
+(`crates/sim-core/tests/seats.rs`). The render state names the seat object a person sits on
+(`seatedOn`), the layout each seat object's `places`, the room's totals its `places`.
 
 ## 5. Modes: sandbox and economic
 

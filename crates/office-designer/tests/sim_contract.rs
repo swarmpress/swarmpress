@@ -308,7 +308,25 @@ fn random_objects(g: &mut Lcg, w: &mut World, rect: TileRect) -> usize {
             });
             continue;
         }
-        if g.next(2) == 0 {
+        match g.next(5) {
+            // a lamp of one's own hanging from the ceiling (ADR-0090): the
+            // designer's ceiling lights must keep off it as the sim's do
+            0 => {
+                s.mount = Mount::Ceiling;
+                s.height = 24;
+                s.lights = 1;
+                s.storage = 0;
+                s.screens = 0;
+                s.footprint = [
+                    u32::try_from(2 + g.next(14)).unwrap_or(2),
+                    u32::try_from(2 + g.next(14)).unwrap_or(2),
+                ];
+            }
+            // a seat object (ADR-0089): a bench seating up to three
+            1 => s.seats = u8::try_from(1 + g.next(3)).unwrap_or(1),
+            _ => {}
+        }
+        if s.mount == Mount::Floor && s.seats == 0 && g.next(2) == 0 {
             // a workstation: its seat in front, behind or beside it, within reach
             let (hw, hd) = (
                 i32::try_from(s.footprint[0] * 125 / 4).unwrap_or(0),

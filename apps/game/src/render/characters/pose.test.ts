@@ -52,6 +52,16 @@ describe('pose selection from the render state', () => {
     expect(view(luncher, lunch)).toMatchObject({ stance: 'sit', seat: 'table', faceX: kitchen.x + kitchen.w / 2, faceZ: kitchen.z + kitchen.d / 2 })
   })
 
+  it('seats people on a seat object of the player’s at a meeting or lunch, facing the table (ADR-0089)', () => {
+    const meeting = standup.meetings[0]
+    const room = layout.rooms.find((r) => r.id === meeting.room)!
+    const listener = { ...person(standup, (s) => s.pose === 'listen'), seatedOn: 'object-3' }
+    expect(view(listener, standup)).toMatchObject({ pose: 'listen', stance: 'sit', seat: 'object', faceX: room.x + room.w / 2, faceZ: room.z + room.d / 2 })
+    const kitchen = layout.rooms.find((r) => r.kind === 'kitchen')!
+    const luncher = { ...person(lunch, (s) => s.activity === 'lunch' && s.pose === 'sit' && !s.seatedAt), seatedOn: 'object-4' }
+    expect(view(luncher, lunch)).toMatchObject({ stance: 'sit', seat: 'object', faceX: kitchen.x + kitchen.w / 2 })
+  })
+
   it('walks standing, with no face target (the path gives the heading)', () => {
     const walker = person(lunch, (s) => s.pose === 'walk')
     expect(view(walker, lunch)).toMatchObject({ pose: 'walk', stance: 'stand', seat: null, faceX: null, arms: false })

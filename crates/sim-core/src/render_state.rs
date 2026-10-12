@@ -11,10 +11,14 @@
 //! - a person at a workstation object sits at its seat (ADR-0088): their
 //!   `pos_mm` is the object's position plus its summary's `seat_at`, turned
 //!   with the object, and `seated_at` names the object
+//! - a person at a meeting or a break on a seat object of the player's
+//!   design (ADR-0089) sits at one of its places: `pos_mm` is the place, and
+//!   `seated_on` names the object
 //! - a desk lamp is on while its desk is in use and the time is ≥ 17:00
 //! - ceiling lights follow their room; the coffee machine is on while anyone
 //!   is in; a whiteboard is on during a meeting in its room (`InUse` by the
-//!   current speaker)
+//!   current speaker); a ceiling object of the player's design (ADR-0090)
+//!   is lit like the room's ceiling lights, by its room's `light`
 
 use serde::{Deserialize, Serialize};
 
@@ -22,7 +26,7 @@ use crate::building::RoomKind;
 use crate::clock::{DayPhase, DESK_LAMP_ON};
 use crate::equipment::{DeviceState, EquipmentKind};
 use crate::geom::{PosMm, TileRect};
-use crate::ids::{EquipId, MeetingId, PersonaId, RoomId, StaffId, WorkItemId};
+use crate::ids::{EquipId, MeetingId, ObjectId, PersonaId, RoomId, StaffId, WorkItemId};
 use crate::staff::{Activity, Pose, Role, Spot, Station};
 use crate::world::World;
 
@@ -87,6 +91,9 @@ pub struct StaffRender {
     /// The workstation the person sits at right now: a desk, or a
     /// workstation object (ADR-0088).
     pub seated_at: Option<Station>,
+    /// The seat object of the player's design the person sits on at a
+    /// meeting or a break (ADR-0089), drawn seated on it.
+    pub seated_on: Option<ObjectId>,
     pub fatigue: u16,
     pub morale: u16,
     /// The work item whose active phase this person works on
@@ -301,6 +308,7 @@ pub fn render_state(w: &World) -> RenderState {
                 pose,
                 activity: s.activity,
                 seated_at: s.seated_station(),
+                seated_on: s.seated_on(),
                 fatigue: s.fatigue,
                 morale: s.morale,
                 work_item,

@@ -22,9 +22,27 @@
 //! `seat_at`, turned with the object). A workstation object somebody calls
 //! home, or anyone sits at, follows the desk rules: it is not removed while
 //! it is someone's home, not moved while someone sits at it or walks to it.
-//! Seats, lights and storage of objects still only count towards the room's
-//! totals ([`room_capabilities`]); meeting and kitchen seats come from the
-//! room's table (ADR-0088 decision 4).
+//! Lights and storage of objects only count towards the room's totals
+//! ([`room_capabilities`]).
+//!
+//! **Seats of your own** (ADR-0089). A floor object that seats people and is
+//! no workstation (a chair, a bench, a sofa of the player's design) offers
+//! [`places`] at meetings and breaks: in a meeting room its places come after
+//! the table's seats at that room's meetings, in the kitchen after the
+//! kitchen table's at lunch (table seats first, then objects by id and
+//! place: `World::room_seats`). Its places lie on its footprint, in a row
+//! along its longer side ([`place_offset`]), one per seat its summary counts,
+//! at most one per [`PLACE_STUDS`] of that side and [`MAX_OBJECT_PLACES`]
+//! in all; each lies [`SEAT_CLEARANCE_MM`] inside the room. A seat object
+//! someone sits on or walks to is neither moved nor removed.
+//!
+//! **Ceiling designs** (ADR-0090, [`Mount::Ceiling`]) hang over the floor:
+//! placed with `PlaceObject` like a floor design, they take no floor space
+//! and stand clear only of the ceiling's other items (the built-in ceiling
+//! lights, each the square of half [`crate::validate::CEILING_LIGHT_SPACING_MM`]
+//! around its centre, so two lights keep the sim's spacing; and other
+//! ceiling objects' footprints). They hang at most [`MAX_CEILING_HANG`]
+//! plates down and seat nobody; their lights count towards the room's.
 //!
 //! **Desk-top designs** ([`Mount::Surface`]) take a built-in desk's slot
 //! (`PlaceObjectOnDesk`): one with a screen takes the screen slot, any other
@@ -34,9 +52,8 @@
 //!
 //! # Placement
 //!
-//! - [`Mount::Floor`] designs are placed with `PlaceObject`, `Surface` ones
-//!   on a desk with `PlaceObjectOnDesk`; `Ceiling` designs are
-//!   `NotSupported` until objects can hang.
+//! - [`Mount::Floor`] and [`Mount::Ceiling`] designs are placed with
+//!   `PlaceObject`, `Surface` ones on a desk with `PlaceObjectOnDesk`.
 //! - `pos` is the footprint's centre in millimetres; `rot` turns it by
 //!   quarter turns clockwise seen from above (an odd turn swaps width and
 //!   depth). A stud is 62.5 mm, so the footprint is
@@ -57,7 +74,9 @@
 //!   over; a workstation object's seat is the same square around its seat
 //!   position, and it lies inside the room, [`SEAT_CLEARANCE_MM`] clear of
 //!   the walls, like a desk's chair. Items without floor space (desk
-//!   attachments, desk-top objects, ceiling lights) are ignored. The same rule keeps new equipment off objects
+//!   attachments, desk-top objects, ceiling lights, ceiling objects) are
+//!   ignored; ceiling items are judged among themselves the same way. The
+//!   same rule keeps new equipment off objects
 //!   (`PlaceEquipment`, `MoveEquipment`, the office designer's builds).
 //! - Objects count towards the room's item limit
 //!   (`equipment::MAX_ITEMS_PER_ROOM`), as equipment counts towards theirs.
@@ -91,6 +110,16 @@ pub const CHAIR_HALF_MM: i32 = 250;
 /// How far outside its footprint a workstation's seat may lie, mm (the
 /// kit's `SEAT_REACH`, 16 studs).
 pub const SEAT_REACH_MM: i32 = 1_000;
+/// Most places one seat object offers at meetings and breaks (ADR-0089).
+pub const MAX_OBJECT_PLACES: u8 = 8;
+/// Width of one place along a seat object's longer side, studs (50 cm).
+pub const PLACE_STUDS: u32 = 8;
+/// Deepest a ceiling design hangs, plates (80 cm: under a 2.9 m ceiling
+/// its lowest part stays above 2.1 m, ADR-0090).
+pub const MAX_CEILING_HANG: u32 = 32;
+/// Half the side of the square a ceiling light keeps on the ceiling, mm: two
+/// lights' squares touch at the sim's light spacing.
+pub const CEILING_LIGHT_HALF_MM: i32 = crate::validate::CEILING_LIGHT_SPACING_MM / 2;
 /// Labour for moving an object, percent of its parts' price.
 pub const OBJECT_MOVE_PCT: u64 = crate::town::MOVE_LABOUR_PCT as u64;
 
@@ -171,6 +200,29 @@ impl PlacedObject {
         self.on_desk.is_none() && self.summary.workstation && self.summary.seat_at.is_some()
     }
 
+    /// Hung from the ceiling (ADR-0090): no floor space.
+    pub fn is_ceiling(&self) -> bool {
+        self.summary.mount == Mount::Ceiling
+    }
+
+    /// Places it offers at meetings and breaks (ADR-0089); 0 unless it is a
+    /// floor seat object.
+    pub fn places(&self) -> u8 {
+        if self.on_desk.is_some() {
+            return 0;
+        }
+        places(&self.summary)
+    }
+
+    /// Where place `n` is: its position plus [`place_offset`], turned with
+    /// it. `None` past its places.
+    pub fn place_pos(&self, n: u8) -> Option<PosMm> {
+        if n >= self.places() {
+            return None;
+        }
+        place_offset(&self.summary, n).map(|a| seat_of(self.pos, self.rot, a))
+    }
+
     /// Where a person sits to work at it: the position plus `seat_at`
     /// turned with the object. `None` unless it is a workstation.
     pub fn seat_pos(&self) -> Option<PosMm> {
@@ -183,11 +235,52 @@ impl PlacedObject {
     /// The floor it takes: its footprint and, for a workstation, the square
     /// of its seat. A desk-top object takes none.
     pub fn floor_rects(&self) -> Vec<Rect> {
-        if self.on_desk.is_some() {
+        if self.on_desk.is_some() || self.is_ceiling() {
             return Vec::new();
         }
         floor_rects(&self.summary, self.pos, self.rot)
     }
+
+    /// The ceiling it takes: its footprint when it hangs, else none.
+    pub fn ceiling_rects(&self) -> Vec<Rect> {
+        if self.is_ceiling() {
+            vec![self.rect()]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+/// How many places a design with `summary` offers at meetings and breaks
+/// (ADR-0089): a floor design that seats people and is no workstation
+/// offers one per seat, at most one per [`PLACE_STUDS`] of its longer side
+/// (at least one) and [`MAX_OBJECT_PLACES`] in all.
+pub fn places(summary: &ObjectSummary) -> u8 {
+    if summary.mount != Mount::Floor || summary.workstation || summary.seats == 0 {
+        return 0;
+    }
+    let long = summary.footprint[0].max(summary.footprint[1]);
+    let fit = u8::try_from((long / PLACE_STUDS).max(1)).unwrap_or(u8::MAX);
+    summary.seats.min(fit).min(MAX_OBJECT_PLACES)
+}
+
+/// Place `n` of a seat design relative to its footprint's centre, mm at
+/// turn 0: the middle of the `n`-th of [`places`] equal stretches of its
+/// longer side (x when the sides are equal), on its middle line; truncated
+/// towards zero, so a row is symmetric. `None` past its places.
+pub fn place_offset(summary: &ObjectSummary, n: u8) -> Option<[i32; 2]> {
+    let count = places(summary);
+    if n >= count {
+        return None;
+    }
+    let [w, d] = summary.footprint;
+    let (long, along_x) = if w >= d { (w, true) } else { (d, false) };
+    // (2n + 1 − count) × long × 62.5 mm / (2 count)
+    //   = (2n + 1 − count) × long × 250 qmm / (8 count)
+    let k = 2 * i64::from(n) + 1 - i64::from(count);
+    let off = k * i64::from(long) * STUD_QMM / (8 * i64::from(count));
+    let off = i32::try_from(off).unwrap_or(0);
+    Some(if along_x { [off, 0] } else { [0, off] })
 }
 
 /// `offset` (mm, at turn 0) turned `rot` quarter turns clockwise seen from
@@ -247,6 +340,9 @@ pub fn desk_slot_taken(
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObjectCapabilities {
     pub seats: u32,
+    /// Places at meetings and breaks its seat objects offer (ADR-0089).
+    #[serde(default)]
+    pub places: u32,
     pub workstations: u32,
     pub lights: u32,
     /// Stud².
@@ -326,17 +422,15 @@ pub fn valid_design_hash(s: &str) -> bool {
 }
 
 /// Bounds on a summary's numbers (the sim cannot check them against the
-/// design; see the module docs). The mount is the command's to check, except
-/// that ceiling designs are not placed yet.
+/// design; see the module docs). The mount is the command's to check. A
+/// ceiling design hangs at most [`MAX_CEILING_HANG`] plates and seats nobody
+/// (ADR-0090).
 ///
 /// A workstation carries its seat position, at most [`SEAT_REACH_MM`]
 /// outside its footprint on each axis; anything else carries none. A
 /// workstation is one home whatever its `seats` say (ADR-0088 decision 5),
 /// and a desk-top design is never one.
 pub fn check_summary(s: &ObjectSummary) -> Result<(), Reject> {
-    if s.mount == Mount::Ceiling {
-        return Err(Reject::NotSupported("ceiling designs cannot be placed yet"));
-    }
     let side = 1..=MAX_OBJECT_STUDS;
     if !side.contains(&s.footprint[0]) || !side.contains(&s.footprint[1]) {
         return Err(Reject::Invalid("a footprint side is 1..=192 studs"));
@@ -349,6 +443,16 @@ pub fn check_summary(s: &ObjectSummary) -> Result<(), Reject> {
     }
     if s.cost > MAX_OBJECT_COST_CENTS {
         return Err(Reject::Invalid("an object costs at most €100 000"));
+    }
+    if s.mount == Mount::Ceiling {
+        if s.height > MAX_CEILING_HANG {
+            return Err(Reject::Invalid(
+                "a ceiling design hangs at most 32 plates (80 cm)",
+            ));
+        }
+        if s.seats > 0 {
+            return Err(Reject::Invalid("a ceiling design seats nobody"));
+        }
     }
     match (s.workstation, s.seat_at) {
         (false, Some(_)) => {
@@ -366,8 +470,14 @@ pub fn check_summary(s: &ObjectSummary) -> Result<(), Reject> {
                     "a workstation's seat is at most 1 m outside its footprint",
                 ));
             }
-            if s.mount != Mount::Floor {
-                return Err(Reject::Invalid("a desk-top design is not a workstation"));
+            match s.mount {
+                Mount::Floor => {}
+                Mount::Surface => {
+                    return Err(Reject::Invalid("a desk-top design is not a workstation"));
+                }
+                Mount::Ceiling => {
+                    return Err(Reject::Invalid("a ceiling design is not a workstation"));
+                }
             }
         }
         (false, None) => {}
@@ -399,8 +509,17 @@ pub fn equipment_hits_object(
     pos: PosMm,
     rot: u8,
 ) -> bool {
-    if kind.desk_slot().is_some() || kind == EquipmentKind::CeilingLight {
+    if kind.desk_slot().is_some() {
         return false;
+    }
+    if kind == EquipmentKind::CeilingLight {
+        let light = Rect::square(pos, CEILING_LIGHT_HALF_MM);
+        return b
+            .objects
+            .values()
+            .filter(|o| o.room == room)
+            .flat_map(PlacedObject::ceiling_rects)
+            .any(|o| o.overlaps(&light));
     }
     let mut rects = Vec::new();
     if kind.footprint_mm() > 0 {
@@ -442,8 +561,17 @@ fn door_tiles(b: &Building, room: &TileRect) -> BTreeSet<Tile> {
     out
 }
 
-/// Whether a design with `summary` may stand at `pos` turned `rot` in `b`,
-/// ignoring the object `except` (the one being moved). Returns its room.
+/// The ceiling squares that `room`'s built-in ceiling lights take.
+fn ceiling_light_rects(b: &Building, room: RoomId) -> impl Iterator<Item = Rect> + '_ {
+    b.equipment
+        .values()
+        .filter(move |e| e.room == room && e.kind == EquipmentKind::CeilingLight)
+        .map(|e| Rect::square(e.pos, CEILING_LIGHT_HALF_MM))
+}
+
+/// Whether a design with `summary` may stand (or, a ceiling design, hang) at
+/// `pos` turned `rot` in `b`, ignoring the object `except` (the one being
+/// moved). Returns its room.
 pub fn check_spot(
     b: &Building,
     summary: &ObjectSummary,
@@ -465,6 +593,26 @@ pub fn check_spot(
     if !Rect::of_tiles(&room.rect, OBJECT_WALL_CLEARANCE_MM).contains(&fp) {
         return Err(Reject::Invalid("the object does not fit inside the room"));
     }
+    let moving_within = except
+        .and_then(|id| b.objects.get(&id))
+        .is_some_and(|o| o.room == room_id);
+    if summary.mount == Mount::Ceiling {
+        // On the ceiling (ADR-0090): clear of the lights and the other
+        // ceiling objects only; floor items and doors are below it.
+        if ceiling_light_rects(b, room_id).any(|r| r.overlaps(&fp))
+            || b.objects
+                .values()
+                .filter(|o| Some(o.id) != except && o.room == room_id)
+                .flat_map(PlacedObject::ceiling_rects)
+                .any(|r| r.overlaps(&fp))
+        {
+            return Err(Reject::Overlap);
+        }
+        if !moving_within && items_in_room(b, room_id) >= MAX_ITEMS_PER_ROOM {
+            return Err(Reject::Limit("items per room"));
+        }
+        return Ok(room_id);
+    }
     if let (true, Some(a)) = (summary.workstation, summary.seat_at) {
         if !room
             .rect
@@ -472,6 +620,17 @@ pub fn check_spot(
         {
             return Err(Reject::Invalid("the seat would be in the wall"));
         }
+    }
+    // a seat object's places (ADR-0089): on its footprint, clear of the walls
+    if (0..places(summary))
+        .filter_map(|n| place_offset(summary, n))
+        .any(|a| {
+            !room
+                .rect
+                .contains_pos_inset(seat_of(pos, rot, a), SEAT_CLEARANCE_MM)
+        })
+    {
+        return Err(Reject::Invalid("a seat would be too close to the wall"));
     }
     let rects = floor_rects(summary, pos, rot);
     if door_tiles(b, &room.rect)
@@ -492,9 +651,6 @@ pub fn check_spot(
     {
         return Err(Reject::Overlap);
     }
-    let moving_within = except
-        .and_then(|id| b.objects.get(&id))
-        .is_some_and(|o| o.room == room_id);
     if !moving_within && items_in_room(b, room_id) >= MAX_ITEMS_PER_ROOM {
         return Err(Reject::Limit("items per room"));
     }
@@ -507,6 +663,7 @@ pub fn room_capabilities(b: &Building, room: RoomId) -> ObjectCapabilities {
     for o in b.objects.values().filter(|o| o.room == room) {
         let s = &o.summary;
         c.seats += u32::from(s.seats);
+        c.places += u32::from(o.places());
         c.workstations += u32::from(o.is_workstation());
         c.lights += u32::from(s.lights);
         c.storage += u64::from(s.storage);
@@ -576,7 +733,13 @@ mod tests {
         assert_eq!(check_summary(&summary(24, 12)), Ok(()));
         let mut s = summary(24, 12);
         s.mount = Mount::Ceiling;
-        assert!(matches!(check_summary(&s), Err(Reject::NotSupported(_))));
+        assert_eq!(check_summary(&s), Ok(()), "ceiling designs hang (ADR-0090)");
+        s.height = MAX_CEILING_HANG + 1;
+        assert!(check_summary(&s).is_err(), "too deep a hang");
+        s.height = 24;
+        s.seats = 1;
+        assert!(check_summary(&s).is_err(), "a ceiling design seats nobody");
+        s.seats = 0;
         s.mount = Mount::Surface;
         assert_eq!(check_summary(&s), Ok(()));
         // a workstation's seat: present, and within 1 m of its footprint
@@ -612,6 +775,42 @@ mod tests {
         s.cost = 3_199;
         assert_eq!(s.price(), 3_199);
         assert_eq!(s.move_cost(), 319);
+    }
+
+    #[test]
+    fn seat_objects_offer_places_in_a_row() {
+        let mut chair = summary(8, 8);
+        chair.seats = 1;
+        assert_eq!(places(&chair), 1);
+        assert_eq!(place_offset(&chair, 0), Some([0, 0]));
+        assert_eq!(place_offset(&chair, 1), None);
+        // a bench 1.5 m long and 0.5 m deep: three places along x
+        let mut bench = summary(24, 8);
+        bench.seats = 3;
+        assert_eq!(places(&bench), 3);
+        let row: Vec<_> = (0..3).filter_map(|n| place_offset(&bench, n)).collect();
+        assert_eq!(row, vec![[-500, 0], [0, 0], [500, 0]]);
+        // two seats on it: halves; along z when it is deeper than wide
+        bench.seats = 2;
+        assert_eq!(place_offset(&bench, 0), Some([-375, 0]));
+        bench.footprint = [8, 24];
+        assert_eq!(place_offset(&bench, 1), Some([0, 375]));
+        // a forged count is bounded by the length and the cap
+        bench.seats = 200;
+        assert_eq!(places(&bench), 3);
+        bench.footprint = [192, 8];
+        assert_eq!(places(&bench), MAX_OBJECT_PLACES);
+        // a tiny object still seats one; workstations, desk-top and
+        // ceiling designs offer none
+        let mut tiny = summary(2, 2);
+        tiny.seats = 4;
+        assert_eq!(places(&tiny), 1);
+        tiny.workstation = true;
+        assert_eq!(places(&tiny), 0);
+        tiny.workstation = false;
+        tiny.mount = Mount::Surface;
+        assert_eq!(places(&tiny), 0);
+        assert_eq!(places(&summary(8, 8)), 0, "no seats");
     }
 
     #[test]

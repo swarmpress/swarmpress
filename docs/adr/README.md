@@ -107,5 +107,7 @@ Accepted ADRs are never rewritten.
 | [0085](0085-the-office-is-bricks-everywhere.md) | The office is bricks everywhere | Accepted (amends ADR-0063 decision 7) |
 | [0086](0086-the-lego-app-shell-and-a-generic-town-of-sections.md) | The LEGO app shell and a generic town of sections | Accepted (amends ADR-0018; decision 4 amended by ADR-0087) |
 | [0087](0087-building-in-the-game-build-mode-the-town-and-the-office-designer.md) | Building in the game: build mode, the town designer and the office designer | Accepted (amends ADR-0086 decision 4) |
-| [0088](0088-staff-use-what-the-bricks-provide.md) | Staff use what the bricks provide | Accepted (amends ADR-0087 decision 7) |
+| [0088](0088-staff-use-what-the-bricks-provide.md) | Staff use what the bricks provide | Accepted (amends ADR-0087 decision 7; decision 3's ceiling sentence superseded by ADR-0090, decision 4's seat sentence by ADR-0089) |
+| [0089](0089-seats-of-your-own-at-meetings-and-breaks.md) | Seats of your own at meetings and breaks | Accepted (supersedes ADR-0088 decision 4's seat sentence) |
+| [0090](0090-ceiling-designs-hang-as-lights.md) | Ceiling designs hang as lights | Accepted (supersedes ADR-0088 decision 3's ceiling sentence) |
 | [0091](0091-cloudflare-pages-is-the-static-plane-for-exported-sites.md) | Cloudflare Pages is the static plane for exported sites | Accepted (refines ADR-0049 decision 2 and ADR-0083 §1) |

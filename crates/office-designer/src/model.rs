@@ -447,8 +447,15 @@ pub struct ExistingObject {
     pub seat_at_mm: Option<[i32; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_desk: Option<ObjectOnDesk>,
+    /// Hung from the ceiling (ADR-0090): no floor; it keeps clear of
+    /// ceiling lights and its lights light the room from where it hangs.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ceiling: bool,
     #[serde(default)]
     pub seats: u8,
+    /// Places at meetings and breaks (ADR-0089): a seat object's.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub places: u8,
     #[serde(default)]
     pub lights: u8,
     /// Shelf area, stud².
@@ -479,9 +486,9 @@ impl ExistingObject {
         Pos::new(self.x_mm, self.z_mm)
     }
 
-    /// On the floor (not on a desk).
+    /// On the floor (not on a desk, not on the ceiling).
     pub fn is_floor(&self) -> bool {
-        self.on_desk.is_none()
+        self.on_desk.is_none() && !self.ceiling
     }
 
     /// A floor workstation: a home for staff, with a seat.
@@ -794,6 +801,11 @@ pub const fn snap(v: i32, up: bool) -> i32 {
 /// Rounds `v` to the grid toward `target`.
 pub const fn snap_toward(v: i32, target: i32) -> i32 {
     snap(v, v < target)
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &u8) -> bool {
+    *n == 0
 }
 
 #[cfg(test)]

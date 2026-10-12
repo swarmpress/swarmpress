@@ -1014,6 +1014,31 @@ pub fn golden_script() -> Vec<(u64, Input)> {
                 },
             }),
         ),
+        // seats and ceiling designs of the player's own (ADR-0089,
+        // ADR-0090): a bench seating three in the kitchen, after its table's
+        // eight; a lamp hanging over the meeting room's whiteboard corner
+        (
+            46_560,
+            p(Command::PlaceObject {
+                design: "be".repeat(32),
+                pos: PosMm::new(13_000, 1_000),
+                rot: 0,
+                summary: golden_summary([24, 8], 18, 0, 3, 900),
+            }),
+        ),
+        (
+            46_580,
+            p(Command::PlaceObject {
+                design: "1a".repeat(32),
+                pos: PosMm::new(1_500, 9_500),
+                rot: 0,
+                summary: ObjectSummary {
+                    mount: Mount::Ceiling,
+                    lights: 1,
+                    ..golden_summary([4, 4], 24, 0, 0, 600)
+                },
+            }),
+        ),
         // day 3, 21:00: the editorial board is turned on (ADR-0069)
         (39_500, p(Command::SetPolicy(Policy::EditorialBoard(true)))),
         (

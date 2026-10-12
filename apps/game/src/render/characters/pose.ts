@@ -10,8 +10,11 @@ import { POSES } from '../../state/render-state-shape'
 import { deskTopOf, objectSeat, objectsOf } from '../bricks/objects'
 
 export type Stance = 'stand' | 'sit'
-/** What the person sits on: the chair at a desk or a stool at a table (both part of the office). */
-export type Seat = 'desk' | 'table' | null
+/**
+ * What the person sits on: the chair at a desk or a stool at a table (both part of the office), or
+ * a seat object of the player's design at a meeting or a break (`seatedOn`, ADR-0089).
+ */
+export type Seat = 'desk' | 'table' | 'object' | null
 
 export interface PoseView {
   pose: Pose
@@ -143,7 +146,8 @@ export function poseView(s: StaffRender, ctx: PoseContext, out: PoseView, dev = 
   if (table) {
     const c = centre(table)
     out.stance = 'sit'
-    out.seat = 'table'
+    // On a seat object of the player's (ADR-0089) the sim puts them at its place; they face the table all the same.
+    out.seat = s.seatedOn ? 'object' : 'table'
     out.faceX = c.x
     out.faceZ = c.z
     if (pose === 'listen' && meeting?.speaker && meeting.speaker !== s.id) {

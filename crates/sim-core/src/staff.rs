@@ -198,15 +198,40 @@ impl Schedule {
     }
 }
 
+/// A seat at a meeting or a break (ADR-0089): one of the room's table
+/// seats, or a place on a seat object of the player's design in the room.
+/// Ordered table seats first, then objects by id and place: the order free
+/// seats are handed out in, like [`Station`]s.
+///
+/// JSON: `{"Table":3}` / `{"Object":["object-2",0]}`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum Seat {
+    /// A seat at the room's table (`ROUND_TABLE_SEATS`).
+    Table(u8),
+    /// Place `n` of a seat object ([`crate::objects::PlacedObject::place_pos`]).
+    Object(ObjectId, u8),
+}
+
+impl Seat {
+    /// The seat object this seat is on, if any.
+    pub const fn object(self) -> Option<ObjectId> {
+        match self {
+            Seat::Object(o, _) => Some(o),
+            Seat::Table(_) => None,
+        }
+    }
+}
+
 /// A place a person can be at (or be walking to).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Spot {
     /// The chair at a desk.
     Desk(EquipId),
-    /// A seat at a meeting's table.
-    MeetingSeat { meeting: MeetingId, seat: u8 },
-    /// A seat at the kitchen table.
-    KitchenSeat { room: RoomId, seat: u8 },
+    /// A seat at a meeting: at the table of its room, or on a seat object
+    /// there (ADR-0089).
+    MeetingSeat { meeting: MeetingId, seat: Seat },
+    /// A seat in the kitchen: at its table, or on a seat object there.
+    KitchenSeat { room: RoomId, seat: Seat },
     /// The seat of a workstation object (ADR-0088): the object's position
     /// plus its summary's `seat_at`, turned with it.
     Object(ObjectId),
@@ -219,6 +244,24 @@ impl Spot {
             Spot::Desk(d) => Some(Station::Desk(d)),
             Spot::Object(o) => Some(Station::Object(o)),
             Spot::MeetingSeat { .. } | Spot::KitchenSeat { .. } => None,
+        }
+    }
+
+    /// The placed object this spot is on: a workstation object's seat, or a
+    /// seat object's place at a meeting or a break.
+    pub const fn object(self) -> Option<ObjectId> {
+        match self {
+            Spot::Object(o) => Some(o),
+            Spot::MeetingSeat { seat, .. } | Spot::KitchenSeat { seat, .. } => seat.object(),
+            Spot::Desk(_) => None,
+        }
+    }
+
+    /// The seat object (ADR-0089) this spot is a place on, if any.
+    pub const fn seat_object(self) -> Option<ObjectId> {
+        match self {
+            Spot::MeetingSeat { seat, .. } | Spot::KitchenSeat { seat, .. } => seat.object(),
+            Spot::Desk(_) | Spot::Object(_) => None,
         }
     }
 }
@@ -409,6 +452,15 @@ impl Staff {
     /// The desk this person is sitting at right now.
     pub fn seated_at(&self) -> Option<EquipId> {
         self.seated_station().and_then(Station::desk)
+    }
+
+    /// The seat object (ADR-0089) this person is sitting on right now, at a
+    /// meeting or a break.
+    pub fn seated_on(&self) -> Option<ObjectId> {
+        match (self.spot, &self.path) {
+            (Some(sp), None) if self.is_on_site() => sp.seat_object(),
+            _ => None,
+        }
     }
 }
 

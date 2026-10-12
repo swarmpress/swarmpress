@@ -183,6 +183,7 @@ fn room_capabilities(b: &Building, room: sim_core::ids::RoomId) -> Value {
     json!({
         "seats": c.seats,
         "workstations": c.workstations,
+        "places": c.places,
         "lights": c.lights,
         "storage": c.storage,
         "screens": c.screens,
@@ -197,6 +198,9 @@ fn room_capabilities(b: &Building, room: sim_core::ids::RoomId) -> Value {
 /// footprint; null otherwise), `onDesk` a desk-top object's desk and slot
 /// (null on the floor; it then shares the desk's position and turn), and
 /// `assignedTo` who calls a workstation object home (null when free).
+/// ADR-0089: `places` are a seat object's places at meetings and breaks,
+/// each relative to the centre in metres at turn 0 like `seatAt` (empty
+/// unless it is one).
 fn objects(w: &World) -> Vec<Value> {
     w.building
         .objects
@@ -220,6 +224,10 @@ fn objects(w: &World) -> Vec<Value> {
                         DeskSlot::Lamp => "lamp",
                     },
                 })),
+                "places": (0..o.places())
+                    .filter_map(|n| sim_core::objects::place_offset(&o.summary, n))
+                    .map(|[x, z]| [m(x), m(z)])
+                    .collect::<Vec<_>>(),
                 "assignedTo": w
                     .station_owner(Station::Object(o.id))
                     .map(|s| s.to_string()),
@@ -316,6 +324,7 @@ pub fn render_state(w: &World, rs: &RenderState) -> Value {
                 "pose": s.pose.slug(),
                 "activity": s.activity.slug(),
                 "seatedAt": s.seated_at.map(|st| st.to_string()),
+                "seatedOn": s.seated_on.map(|o| o.to_string()),
                 "meeting": meeting,
                 "workItem": opt_id(s.work_item),
                 "fatigue": s.fatigue,
