@@ -46,7 +46,7 @@ packages = ["server"]
 id = "server/nextest"
 component = "server"
 [[evidence.split]]
-packages = ["agents", "orchestrator", "office-designer"]
+packages = ["agents", "orchestrator", "office-designer", "theme-designer"]
 id = "agents/nextest"
 component = "agents"
 [[evidence.split]]
@@ -62,7 +62,7 @@ packages = ["knowledge"]
 id = "knowledge/nextest"
 component = "content"
 [[evidence.split]]
-packages = ["content-schema", "content-model", "blueprint", "blueprint-wasm", "storage-api", "content-repo", "site-export", "content-import-wp"]
+packages = ["content-schema", "content-model", "blueprint", "blueprint-wasm", "storage-api", "content-repo", "site-export", "content-import-wp", "site-design"]
 id = "content/nextest"
 component = "content"
 [[evidence.split]]

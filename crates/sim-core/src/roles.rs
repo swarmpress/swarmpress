@@ -134,10 +134,15 @@ pub enum Role {
     // older roles stays.
     #[serde(alias = "office-designer")]
     OfficeDesigner,
+    // Web Development (ADR-0093, FEAT-115): renders the site's design from
+    // Claude Design as its WordPress theme. Last, so the encoding of the older
+    // roles stays.
+    #[serde(alias = "web-designer")]
+    WebDesigner,
 }
 
 impl Role {
-    pub const ALL: [Role; 22] = [
+    pub const ALL: [Role; 23] = [
         Role::Cfo,
         Role::Secretary,
         Role::Strategist,
@@ -155,6 +160,7 @@ impl Role {
         Role::WebDeveloper,
         Role::UxDesigner,
         Role::OfficeDesigner,
+        Role::WebDesigner,
         Role::ItEngineer,
         Role::DevOps,
         Role::SeoSpecialist,
@@ -173,9 +179,11 @@ impl Role {
             | Role::Translator
             | Role::FactChecker => Department::Editorial,
             Role::PhotoEditor | Role::Photographer | Role::VideoProducer => Department::PhotoVideo,
-            Role::ArtDirector | Role::WebDeveloper | Role::UxDesigner | Role::OfficeDesigner => {
-                Department::WebDevelopment
-            }
+            Role::ArtDirector
+            | Role::WebDeveloper
+            | Role::UxDesigner
+            | Role::OfficeDesigner
+            | Role::WebDesigner => Department::WebDevelopment,
             Role::ItEngineer | Role::DevOps => Department::ItOperations,
             Role::SeoSpecialist | Role::MarketingManager | Role::SocialMediaManager => {
                 Department::SeoMarketing
@@ -195,7 +203,7 @@ impl Role {
             Role::EditorInChief => 1400,
             Role::ArtDirector => 1300,
             Role::Strategist | Role::DataScientist | Role::WebDeveloper | Role::DevOps => 1250,
-            Role::UxDesigner | Role::ItEngineer => 1200,
+            Role::UxDesigner | Role::ItEngineer | Role::WebDesigner => 1200,
             Role::Editor | Role::MarketingManager | Role::OfficeDesigner => 1150,
             Role::Analyst | Role::PhotoEditor | Role::VideoProducer | Role::SeoSpecialist => 1050,
             Role::Writer | Role::FactChecker | Role::Photographer => 1000,
@@ -233,6 +241,7 @@ impl Role {
             | Role::ArtDirector
             | Role::UxDesigner
             | Role::OfficeDesigner
+            | Role::WebDesigner
             | Role::DevOps => Schedule::new(hm(9, 30), hm(18, 30), hm(13, 0)),
             _ => Schedule::new(hm(9, 0), hm(18, 0), hm(12, 30)),
         }
@@ -258,6 +267,7 @@ impl Role {
             Role::WebDeveloper => "web-developer",
             Role::UxDesigner => "ux-designer",
             Role::OfficeDesigner => "office-designer",
+            Role::WebDesigner => "web-designer",
             Role::ItEngineer => "it-engineer",
             Role::DevOps => "dev-ops",
             Role::SeoSpecialist => "seo-specialist",

@@ -111,6 +111,12 @@ vision = true
 model = "claude-sonnet-5-5"
 effort = "medium"
 
+# The web designer (ADR-0093, FEAT-115): renders the site's design from Claude
+# Design as its WordPress theme.
+[roles.web-designer]
+model = "claude-sonnet-5-5"
+effort = "medium"
+
 # --- IT & Operations --------------------------------------------------------
 
 [roles.it-engineer]
@@ -331,6 +337,14 @@ executor = "browser_then_claude"
 min_tier = "mid"
 role = "office-designer"
 max_tokens = 2048
+
+# The web designer's theme (ADR-0093, FEAT-115): one template or part per call
+# and its repair turns; the CEO approves the theme (ThemeApproval).
+[jobs.web-design]
+executor = "browser_then_claude"
+min_tier = "mid"
+role = "web-designer"
+max_tokens = 8192
 
 [jobs.ops-check]
 executor = "browser_then_claude"

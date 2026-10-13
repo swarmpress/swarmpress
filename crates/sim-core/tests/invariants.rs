@@ -905,8 +905,9 @@ fn check_plan(w: &World) {
                 "{} has a job before it started",
                 item.id
             );
-            // Planned by the board: a start day. An interior waits for an office designer instead.
-            if item.kind != WorkItemKind::Interior {
+            // Planned by the board: a start day. An interior waits for an office designer
+            // instead, a site theme for a web designer (ADR-0093).
+            if !matches!(item.kind, WorkItemKind::Interior | WorkItemKind::SiteTheme) {
                 assert!(item.start_day.is_some(), "{} has no start day", item.id);
             }
         } else if !item.status.is_closed() {

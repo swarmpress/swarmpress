@@ -13,6 +13,8 @@ use crate::gateway::{Attribution, DeployState, GatewayError, Redeploy};
 struct Branch {
     posts: BTreeMap<u64, (WpPost, u64)>,
     head: u64,
+    /// The theme as data (ADR-0093), as JSON.
+    theme: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -32,6 +34,7 @@ struct State {
     merges: u32,
     deploy: BTreeMap<u64, DeployState>,
     models: Option<serde_json::Value>,
+    designs: BTreeMap<u32, serde_json::Value>,
 }
 
 /// The fake: `live` starts empty; [`FakeSiteEngine::put_live`] seeds it.
@@ -111,6 +114,16 @@ impl FakeSiteEngine {
 
     pub fn set_deploy_state(&self, cr: u64, state: DeployState) {
         self.st().deploy.insert(cr, state);
+    }
+
+    /// A design version of the site as the design store answers it.
+    pub fn put_design(&self, version: u32, answer: serde_json::Value) {
+        self.st().designs.insert(version, answer);
+    }
+
+    /// The theme data on `branch` (JSON), if any.
+    pub fn theme(&self, branch: &str) -> Option<String> {
+        self.st().branches.get(branch)?.theme.clone()
     }
 }
 
@@ -250,10 +263,50 @@ impl SiteEngine for FakeSiteEngine {
         for (pid, (p, _)) in src.posts {
             live.posts.insert(pid, (p, c));
         }
+        if src.theme.is_some() {
+            live.theme = src.theme;
+        }
         live.head = c;
         s.merges += 1;
         s.crs.get_mut(&id).expect("exists").merged = Some(sha(c));
         Ok(sha(c))
+    }
+
+    async fn put_theme_data(
+        &self,
+        branch: &str,
+        data: &site_design::ThemeData,
+        author: &Attribution,
+    ) -> Result<String, GatewayError> {
+        if branch == LIVE {
+            return Err(GatewayError("live refuses governed writes".into()));
+        }
+        let text = serde_json::to_string(data).map_err(|e| GatewayError(e.to_string()))?;
+        let mut s = self.st();
+        let same = s
+            .branches
+            .get(branch)
+            .ok_or_else(|| GatewayError(format!("no branch {branch}")))?
+            .theme
+            .as_deref()
+            == Some(text.as_str());
+        if !same {
+            s.next_commit += 1;
+            let c = s.next_commit;
+            s.commits.insert(sha(c), author.clone());
+            let b = s.branches.get_mut(branch).expect("checked");
+            b.theme = Some(text);
+            b.head = c;
+        }
+        Ok(sha(s.branches[branch].head))
+    }
+
+    async fn site_design(&self, version: u32) -> Result<serde_json::Value, GatewayError> {
+        self.st()
+            .designs
+            .get(&version)
+            .cloned()
+            .ok_or_else(|| GatewayError(format!("no design version {version}")))
     }
 
     async fn release_status(&self, id: u64) -> Result<Option<DeployState>, GatewayError> {

@@ -824,6 +824,7 @@ impl World {
             ServerCommand::InteriorPlan { job_id, items } => {
                 self.apply_interior_plan(job_id, &items);
             }
+            ServerCommand::DesignReceived { version } => self.apply_design_received(version),
             ServerCommand::Utterance {
                 meeting,
                 speaker,
@@ -1189,6 +1190,7 @@ impl World {
         self.expire_tickets();
         self.raise_morning_approvals(before, now);
         self.start_waiting_interiors();
+        self.start_waiting_site_themes();
         self.advance_construction();
         self.advance_work();
 

@@ -1031,3 +1031,33 @@ fn with_theme_data_the_site_is_imported_onto_canvas_without_it_onto_its_fallback
         .unwrap()
         .contains("theme_data"));
 }
+
+#[test]
+fn theme_data_is_checked_for_its_shape_before_it_is_written() {
+    use crate::theme::checked;
+    // The fixture above has no index, single, page or 404 template and no footer part.
+    let issues = checked(&theme_data()).unwrap_err();
+    for want in [
+        "templates: has the template index",
+        "templates: has the template 404",
+        "template_parts: has the part footer",
+    ] {
+        assert!(issues.iter().any(|i| i == want), "{want:?} in {issues:#?}");
+    }
+    let mut ok = theme_data();
+    for slug in ["index", "single", "page", "404"] {
+        ok.templates.push(crate::theme_data::ThemeTemplate {
+            slug: slug.into(),
+            title: slug.into(),
+            content: "<!-- wp:post-content /-->".into(),
+        });
+    }
+    ok.template_parts.push(crate::theme_data::ThemePart {
+        slug: "footer".into(),
+        area: crate::theme_data::PartArea::Footer,
+        content: "<!-- wp:site-title /-->".into(),
+    });
+    ok.fonts[0].faces[0].file.sha256 = "ab".repeat(32);
+    ok.fonts[0].faces[1].file.sha256 = "cd".repeat(32);
+    assert_eq!(checked(&ok), Ok(()));
+}

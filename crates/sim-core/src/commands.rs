@@ -427,6 +427,10 @@ pub enum ServerCommand {
         job_id: u64,
         items: Vec<PlannedEquipment>,
     },
+    /// A design version arrived in the site's design store (ADR-0093,
+    /// FEAT-115): the number only; the design stays in the store. A version
+    /// newer than any before it starts the web designer's theme.
+    DesignReceived { version: u32 },
 }
 
 /// Anything that can be applied to a world.

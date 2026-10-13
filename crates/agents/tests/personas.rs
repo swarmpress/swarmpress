@@ -224,7 +224,7 @@ fn catalog_json_is_camel_case() {
         "data keys kept"
     );
     assert!(giulia["cv"]["education"][0]["where"].as_str().is_some());
-    assert_eq!(j["roles"].as_array().unwrap().len(), 22);
+    assert_eq!(j["roles"].as_array().unwrap().len(), 23);
     assert_eq!(j["departments"][0]["id"], "executive-office");
 }
 

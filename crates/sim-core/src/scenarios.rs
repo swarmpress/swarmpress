@@ -373,6 +373,28 @@ pub fn hire_office_designer(w: &mut World) -> StaffId {
     )
 }
 
+/// Puts the catalogue's web designer (Serena, ADR-0093, FEAT-115) on the
+/// staff at the lowest free desk, unstaffed on projects (the designer works
+/// for the site). A scenario builder, like [`hire_office_designer`].
+pub fn hire_web_designer(w: &mut World) -> StaffId {
+    let pid = PERSONAS
+        .iter()
+        .find(|p| p.role == crate::roles::Role::WebDesigner)
+        .map(crate::personas::Persona::persona_id)
+        .expect("the catalogue has a web designer");
+    let p = persona(pid).expect("persona exists");
+    let home = w.free_stations().first().copied();
+    w.add_staff(
+        pid,
+        p.role,
+        p.seniority,
+        Traits::even(650),
+        p.salary_cents_per_day(),
+        p.role.base_schedule(),
+        home,
+    )
+}
+
 /// The demo office with the default clock (20 real minutes per day, 07:00 start).
 pub fn demo_office(seed: u64) -> World {
     demo_office_with_config(seed, SimConfig::default())
@@ -984,19 +1006,19 @@ pub fn golden_script() -> Vec<(u64, Input)> {
         (
             46_460,
             p(Command::Hire {
-                candidate: CandidateId(17),
+                candidate: CandidateId(18),
             }),
         ),
         (
             46_480,
             p(Command::Hire {
-                candidate: CandidateId(18),
+                candidate: CandidateId(19),
             }),
         ),
         (
             46_500,
             p(Command::Hire {
-                candidate: CandidateId(19),
+                candidate: CandidateId(20),
             }),
         ),
         (
@@ -1088,6 +1110,9 @@ pub fn golden_script() -> Vec<(u64, Input)> {
                 brief_ref: 701,
             }),
         ),
+        // ADR-0093, FEAT-115: the site's first design arrives (item 7); the
+        // company has no web designer, so the theme waits and the CEO is asked to hire
+        (49_900, s(ServerCommand::DesignReceived { version: 1 })),
     ]
 }
 

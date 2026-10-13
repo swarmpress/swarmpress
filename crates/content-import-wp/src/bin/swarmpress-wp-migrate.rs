@@ -393,6 +393,13 @@ fn read_theme_data(file: &Path) -> Result<ThemeData> {
             data.format
         );
     }
+    if let Err(issues) = theme::checked(&data) {
+        bail!(
+            "{}: the theme data is not well formed:\n  {}",
+            file.display(),
+            issues.join("\n  ")
+        );
+    }
     let dir = file.parent().unwrap_or(Path::new("."));
     for f in &mut data.fonts {
         for face in &mut f.faces {
@@ -425,6 +432,9 @@ async fn write_theme(
     stylesheet: &str,
 ) -> Result<std::collections::BTreeSet<String>> {
     use reqwest::Method as M;
+    // Nothing of malformed data reaches the branch (ADR-0093).
+    theme::checked(data)
+        .map_err(|i| anyhow!("the theme data is not well formed: {}", i.join("; ")))?;
     let mut families: BTreeMap<String, u64> = BTreeMap::new();
     // A face's file where WordPress keeps it, when that is not where the plan expected it.
     let mut moved: Vec<(String, String)> = Vec::new();

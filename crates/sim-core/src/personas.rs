@@ -65,7 +65,7 @@ const fn p(
 
 /// The house roster (ids 1..=13) and the seed hiring pool (101..).
 #[rustfmt::skip]
-pub const PERSONAS: [Persona; 22] = [
+pub const PERSONAS: [Persona; 23] = [
     p(1, "giulia", "Giulia", 0x8064a2, Role::Writer, Seniority::Senior, 4200, "Food & culture writer"),
     p(2, "isabella", "Isabella", 0xc0504d, Role::Writer, Seniority::Senior, 4000, "Outdoors & hiking writer"),
     p(3, "lorenzo", "Lorenzo", 0x4f81bd, Role::Writer, Seniority::Senior, 4000, "History & culture writer"),
@@ -89,6 +89,7 @@ pub const PERSONAS: [Persona; 22] = [
     p(107, "greta", "Greta", 0xb7dde8, Role::UxDesigner, Seniority::Mid, 4100, "Typography and mood boards"),
     p(108, "riccardo", "Riccardo", 0x632523, Role::PhotoEditor, Seniority::Senior, 4600, "Photo desk, captions and alt text"),
     p(118, "ottavia", "Ottavia Rinaldi", 0xc0912f, Role::OfficeDesigner, Seniority::Mid, 4200, "Office designer, rooms built with the kit"),
+    p(119, "serena", "Serena Pastorino", 0x1f6f8b, Role::WebDesigner, Seniority::Mid, 4300, "Web designer, the site's theme from its design"),
 ];
 
 /// Persona by catalog id.

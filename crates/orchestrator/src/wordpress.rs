@@ -141,6 +141,26 @@ pub trait SiteEngine: MaybeSendSync {
             "this site engine cannot build structures".into(),
         ))
     }
+    /// The site's theme as data (ADR-0093) written on `branch` through WordPress's REST API onto
+    /// the neutral base theme (`content_import_wp::theme::calls`: fonts, global styles, parts,
+    /// templates, patterns, menus, each by slug); the branch's new head. One commit by `author`.
+    async fn put_theme_data(
+        &self,
+        branch: &str,
+        _data: &site_design::ThemeData,
+        _author: &Attribution,
+    ) -> Result<String, GatewayError> {
+        Err(GatewayError(format!(
+            "this site engine cannot write a theme as data yet ({branch})"
+        )))
+    }
+    /// A design version of the site (`{version, manifest, design}`), from the platform's design
+    /// store (ADR-0093).
+    async fn site_design(&self, version: u32) -> Result<Value, GatewayError> {
+        Err(GatewayError(format!(
+            "this site engine cannot read the site's designs (version {version})"
+        )))
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -193,6 +213,17 @@ impl<T: SiteEngine + ?Sized> SiteEngine for std::sync::Arc<T> {
     }
     async fn put_blueprint(&self, body: &Value) -> Result<crate::gateway::ModelsPut, GatewayError> {
         (**self).put_blueprint(body).await
+    }
+    async fn put_theme_data(
+        &self,
+        branch: &str,
+        data: &site_design::ThemeData,
+        author: &Attribution,
+    ) -> Result<String, GatewayError> {
+        (**self).put_theme_data(branch, data, author).await
+    }
+    async fn site_design(&self, version: u32) -> Result<Value, GatewayError> {
+        (**self).site_design(version).await
     }
 }
 
@@ -918,6 +949,45 @@ impl<E: SiteEngine> Gateway for EngineGateway<E> {
         Err(GatewayError(
             "a WordPress site's theme is edited in the Paint shop (plan M6)".into(),
         ))
+    }
+
+    async fn site_design(&self, version: u32) -> Result<Value, GatewayError> {
+        self.engine.site_design(version).await
+    }
+
+    /// The theme as data on its branch (ADR-0093) and the branch's change request into live: the
+    /// web designer's Draft. The Publish job merges it like an article ([`Gateway::merge_as`]).
+    async fn put_theme_data(
+        &self,
+        branch: &str,
+        data: &site_design::ThemeData,
+        message: &str,
+        attribution: Option<&Attribution>,
+    ) -> Result<crate::gateway::ThemePr, GatewayError> {
+        let issues = data.validate_shape();
+        if !issues.is_empty() {
+            return Err(GatewayError(format!(
+                "the theme data was refused: {}",
+                issues
+                    .iter()
+                    .map(|i| format!("{}: {}", i.at, i.message))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            )));
+        }
+        let who = attribution.cloned().unwrap_or_default();
+        let branch = self.engine.branch_for(branch).await?;
+        self.engine.put_theme_data(&branch, data, &who).await?;
+        let title = message.lines().next().unwrap_or("Theme");
+        let cr = self
+            .engine
+            .open_change_request(&branch, title, &who)
+            .await?;
+        Ok(crate::gateway::ThemePr {
+            number: cr.id,
+            branch: cr.branch,
+            head_sha: cr.head,
+        })
     }
 }
 

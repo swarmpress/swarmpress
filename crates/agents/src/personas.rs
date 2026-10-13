@@ -67,6 +67,7 @@ builtin_personas![
     "andrei",
     "hanna",
     "ottavia",
+    "serena",
 ];
 
 /// Writing style (legacy `WritingStyle`) plus the legacy voice data. Style

@@ -9,6 +9,7 @@ paths:
   - crates/server/src/db/designs.rs
   - crates/server/migrations/0009_site_designs.sql
   - crates/server/tests/site_designs.rs
+  - crates/content-import-wp/src/theme_data.rs
 adrs:
   - ADR-0093
   - ADR-0080
@@ -88,5 +89,6 @@ importer writes and the web designer will generate.
 - cinqueterre.travel's **design v1** (the "Salt & Pigment" style guide, kept in the site's repo) sent
   to the store once the site repo carries it.
 - The web designer's job (`ThemeData` from a `SiteDesign`, checks, visual comparison,
-  `ThemeApproval`), the importer's theme-as-data route on the `canvas` base theme, and the connector
-  (`/mcp`, OAuth) follow ADR-0093.
+  `ThemeApproval`) is FEAT-115. The importer's `ThemeData` is this crate's
+  (`content_import_wp::theme_data` re-exports `site_design::wordpress`), and the importer checks
+  `validate_shape()` before it writes. The connector (`/mcp`, OAuth) follows ADR-0093.

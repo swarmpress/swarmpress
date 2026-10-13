@@ -699,6 +699,9 @@ pub fn inbox(w: &World) -> Value {
                 // A room plan's numbers (ADR-0087 decision 6): a BuildApproval, or an
                 // escalation of a construction the sim stopped.
                 "interior": t.work_item.and_then(|i| interior(w, i)),
+                // The design version a theme renders (ADR-0093): a ThemeApproval, or an
+                // escalation of the web designer's job.
+                "designVersion": t.work_item.and_then(|i| w.design_version_of(i)),
             })
         })
         .collect();

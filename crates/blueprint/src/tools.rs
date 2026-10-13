@@ -558,7 +558,7 @@ fn placeholders(t: &str) -> Vec<&str> {
 }
 
 /// The roles an agent step may name (`agents::Role::staff()`, kebab-case).
-pub const ROLES: [&str; 22] = [
+pub const ROLES: [&str; 23] = [
     "cfo",
     "secretary",
     "strategist",
@@ -576,6 +576,7 @@ pub const ROLES: [&str; 22] = [
     "web-developer",
     "ux-designer",
     "office-designer",
+    "web-designer",
     "it-engineer",
     "dev-ops",
     "seo-specialist",

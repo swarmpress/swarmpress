@@ -14,6 +14,9 @@ serde_json.workspace = true
 thiserror.workspace = true
 async-trait = "0.1"
 toml = "0.8"
+# The web designer (ADR-0093, FEAT-115): its prompts carry the theme designer's tasks
+# and presets, and the fake designer answers with its reference markup.
+theme-designer = { path = "../theme-designer" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

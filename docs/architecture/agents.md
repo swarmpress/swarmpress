@@ -265,6 +265,25 @@ Flow:
 4. **QA escapes** (defects found by the SiteAudit after publish) are counted against reputation
    and the leaderboard.
 
+## The web designer (ADR-0093, FEAT-115)
+
+The `web-designer` role (Web Development; Serena Pastorino in the hiring pool) renders the site's
+design from Claude Design as its WordPress theme, as data on the neutral base theme. The job kind
+`web-design` (`config/roles.toml`, `browser_then_claude`) runs once per template or part; the
+prompt is `prompts/web_designer.md`.
+
+- The deterministic part comes first (`crates/theme-designer`): global styles, fonts and menus
+  from the design's tokens, files and menus; the model writes only block markup, one template or
+  part per call (`agents::design::template_prompt`, the task and the presets as JSON), with a
+  reasoning budget of its own (`TEMPLATE_REASONING`, like the office designer's `LAYOUT_REASONING`).
+- Every answer is checked (`check_template`: grammar, core blocks only, the sections, presets only,
+  contrast, safety, links and queries from the site, the design's rules); the checker's issues go
+  back as `web design template fix` turns, at most three per task, then the job fails (rule 11).
+- The theme as a whole is checked again (shape, required templates, licensed fonts) before it is
+  written on its branch; the CEO's `ThemeApproval` decides whether it is merged.
+- The fake (`fake_writer`, `theme_designer::fake`) answers each task's reference markup, with one
+  slip on the front page that its fix removes.
+
 ## Design department
 
 [ADR-0015](../adr/0015-agent-authored-themes-on-site-kit.md); detail in [site-kit.md](site-kit.md).

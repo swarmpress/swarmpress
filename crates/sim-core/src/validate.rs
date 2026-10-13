@@ -924,6 +924,7 @@ pub fn validate_server(w: &World, cmd: &ServerCommand) -> Result<(), Reject> {
             chars,
         } => w.check_remark(*speaker, *listener, *seq, *chars),
         ServerCommand::InteriorPlan { job_id, items } => w.check_interior_plan(*job_id, items),
+        ServerCommand::DesignReceived { version } => w.check_design_received(*version),
         ServerCommand::AnalyticsSignals {
             project,
             day,

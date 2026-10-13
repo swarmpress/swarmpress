@@ -18,6 +18,7 @@ dependencies = [
  "insta",
  "serde",
  "serde_json",
+ "theme-designer",
  "thiserror",
  "tokio",
  "toml",
@@ -492,6 +493,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "site-design",
  "site-export",
  "tokio",
 ]
@@ -1919,6 +1921,8 @@ dependencies = [
  "agents",
  "async-trait",
  "blueprint",
+ "claude",
+ "content-import-wp",
  "content-model",
  "content-repo",
  "content-schema",
@@ -1927,9 +1931,12 @@ dependencies = [
  "jsonschema",
  "knowledge",
  "office-designer",
+ "reqwest",
  "serde",
  "serde_json",
  "sim-core",
+ "site-design",
+ "theme-designer",
  "thiserror",
  "tokio",
  "xxhash-rust",
@@ -3309,6 +3316,15 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.26.2",
  "wiremock",
+]
+
+[[package]]
+name = "theme-designer"
+version = "0.2.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "site-design",
 ]
 
 [[package]]

@@ -167,6 +167,27 @@ placements enter the sim, as numbers.
   in: Published. The plans of closed items are dropped.
 - **World format 9.**
 
+### The site's theme from its design (ADR-0093, FEAT-115)
+
+`crates/sim-core/src/site_theme.rs`. The design, the theme data and the checks' report are store
+text; the sim holds the design version and the work.
+
+- **`ServerCommand::DesignReceived{version}`**: a design version newer than any before it
+  (`Plan.designs.latest`; 0 and older versions are refused) creates a `SiteTheme` work item (phases
+  Draft and Publish, outside the WIP limit) whose `brief_ref` is the version. A theme of an older
+  version still in the works is cancelled, its open approval closed. With no web designer
+  (`Role::WebDesigner`) the item waits, unstarted, and a `MissingRole` ticket asks for one; it starts
+  when one is on the staff.
+- **Draft:** `RequestJob(SiteTheme)`; the outcome is the digest (`JobCompleted{ok, score, words,
+  qa_defects, artifact_sha}`); `ok: false` or `JobFailed` block the item with an escalation.
+- **The gate:** the item always waits at a `ThemeApproval` ticket (CEO-only, High, three days;
+  `Approve`, `Reject`; the default `Reject` keeps the current theme and cancels the item, so the
+  design branch is never merged).
+- **Publish:** `Approve` starts the Publish phase: `RequestJob(Publish)` merges the branch into live
+  (the export and deploy follow every merge). Its completion publishes the item, and its version
+  becomes `Plan.designs.live`.
+- **World format 15.**
+
 ### Players' designs and stations (ADR-0065 §4, ADR-0087 decision 7, ADR-0088)
 
 `crates/sim-core/src/objects.rs`. A placed design is its hash and its compiled summary (numbers

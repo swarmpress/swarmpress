@@ -135,6 +135,11 @@ pub struct ArtifactRecord {
     /// the CEO approves and the sim builds ([`crate::build`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub room_plan: Option<crate::build::RoomPlan>,
+    /// A site theme item's theme (ADR-0093, FEAT-115): the theme data on its
+    /// branch, what the CEO approves and the item's Publish job merges
+    /// ([`crate::site_theme`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub site_theme: Option<crate::site_theme::SiteThemeRecord>,
 }
 
 impl ArtifactRecord {

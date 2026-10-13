@@ -122,6 +122,7 @@ pub mod templates {
         web_developer => "web_developer",
         information_architect => "information_architect",
         office_designer => "office_designer",
+        web_designer => "web_designer",
         strategist => "strategist",
         data_scientist => "data_scientist",
         editorial_board => "editorial_board",

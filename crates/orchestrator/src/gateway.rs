@@ -310,6 +310,35 @@ pub trait Gateway: MaybeSendSync {
             "this gateway cannot merge theme PR #{number}"
         )))
     }
+
+    /// A design version of the site (ADR-0093, FEAT-114:
+    /// `GET /api/sites/{id}/designs/{version}`): `{version, manifest, design}`,
+    /// the bundle's manifest and the design interpreted. The default fails
+    /// loudly (rule 11).
+    async fn site_design(&self, version: u32) -> Result<Value, GatewayError> {
+        Err(GatewayError(format!(
+            "this gateway cannot read the site's designs (version {version})"
+        )))
+    }
+
+    /// The site's theme as data (ADR-0093) written on `branch` (created from
+    /// the live site when it does not exist), and its change request into
+    /// live, opened or found: the web designer's Draft. Idempotent: the same
+    /// data again changes nothing. Merged only by the Publish job after the
+    /// CEO's `ThemeApproval` ([`Gateway::merge_as`]). The default fails
+    /// loudly (rule 11).
+    async fn put_theme_data(
+        &self,
+        branch: &str,
+        data: &site_design::ThemeData,
+        message: &str,
+        attribution: Option<&Attribution>,
+    ) -> Result<ThemePr, GatewayError> {
+        let _ = (data, message, attribution);
+        Err(GatewayError(format!(
+            "this gateway cannot write a theme as data ({branch})"
+        )))
+    }
 }
 
 /// A theme pull request (`PUT /api/site/theme`, FEAT-094): the components of
@@ -437,6 +466,20 @@ impl<T: Gateway + ?Sized> Gateway for Arc<T> {
     async fn merge_theme(&self, number: u64, head_sha: &str) -> Result<String, GatewayError> {
         (**self).merge_theme(number, head_sha).await
     }
+    async fn site_design(&self, version: u32) -> Result<Value, GatewayError> {
+        (**self).site_design(version).await
+    }
+    async fn put_theme_data(
+        &self,
+        branch: &str,
+        data: &site_design::ThemeData,
+        message: &str,
+        attribution: Option<&Attribution>,
+    ) -> Result<ThemePr, GatewayError> {
+        (**self)
+            .put_theme_data(branch, data, message, attribution)
+            .await
+    }
 }
 
 /// A PR in [`FakeGateway`].
@@ -468,6 +511,8 @@ struct FakeState {
     refuse_redeploy: Option<String>,
     /// The site's models, once a test set them ([`FakeGateway::set_site`]).
     site: Option<FakeSite>,
+    /// The site's designs by version ([`FakeGateway::put_design`]).
+    designs: BTreeMap<u32, Value>,
 }
 
 /// The site's models in [`FakeGateway`]: what `blueprint/` holds, and the
@@ -745,6 +790,15 @@ impl FakeGateway {
         self.lock().site.clone()
     }
 
+    /// A design version of the site, as the design store answers it
+    /// (`{version, manifest, design}`, ADR-0093).
+    pub fn put_design(&self, version: u32, answer: Value) {
+        self.lock().designs.insert(version, answer);
+    }
+
+    /// Where [`Gateway::put_theme_data`] writes the theme data on its branch.
+    pub const THEME_DATA_PATH: &'static str = "theme/theme-data.json";
+
     /// Changes another actor's edit made to the blueprint (the base of a
     /// pending proposal goes stale).
     pub fn edit_site(&self, f: impl FnOnce(&mut FakeSite)) {
@@ -866,6 +920,97 @@ impl Gateway for FakeGateway {
             site.theme_files.extend(files.into_keys());
         }
         Ok(sha)
+    }
+
+    async fn site_design(&self, version: u32) -> Result<Value, GatewayError> {
+        self.lock()
+            .designs
+            .get(&version)
+            .cloned()
+            .ok_or_else(|| GatewayError(format!("no design version {version} (404)")))
+    }
+
+    /// As the WordPress engine: the data on `branch` (from main), one commit
+    /// when it changed, and the open PR of the branch.
+    async fn put_theme_data(
+        &self,
+        branch: &str,
+        data: &site_design::ThemeData,
+        message: &str,
+        attribution: Option<&Attribution>,
+    ) -> Result<ThemePr, GatewayError> {
+        if let Some(a) = attribution {
+            a.check().map_err(GatewayError)?;
+        }
+        let issues = data.validate_shape();
+        if !issues.is_empty() {
+            return Err(GatewayError(format!(
+                "the theme data is not well formed (422): {}",
+                issues
+                    .iter()
+                    .map(|i| format!("{}: {}", i.at, i.message))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            )));
+        }
+        if !branch.starts_with("design-") {
+            return Err(GatewayError(format!(
+                "{branch}: a theme goes on a design- branch"
+            )));
+        }
+        let text =
+            serde_json::to_string_pretty(data).map_err(|e| GatewayError(e.to_string()))? + "\n";
+        let path = Self::THEME_DATA_PATH;
+        let mut s = self.lock();
+        let unchanged = s
+            .files
+            .get(branch)
+            .and_then(|f| f.get(path))
+            .is_some_and(|t| *t == text);
+        if !unchanged || !s.heads.contains_key(branch) {
+            s.commits += 1;
+            let n = s.commits.to_string();
+            let sha = fake_sha(&[branch, path, &text, message, &n]);
+            let base = s.files.get("main").cloned().unwrap_or_default();
+            s.files
+                .entry(branch.to_string())
+                .or_insert(base)
+                .insert(path.to_string(), text);
+            if let Some(a) = attribution {
+                s.attributions.insert(sha.clone(), a.clone());
+            }
+            s.heads.insert(branch.to_string(), sha);
+        }
+        let head = s.heads[branch].clone();
+        let open = s
+            .prs
+            .values()
+            .find(|p| p.branch == branch && p.merged_sha.is_none())
+            .map(|p| p.number);
+        let number = match open {
+            Some(n) => n,
+            None => {
+                let n = s.prs.keys().next_back().copied().unwrap_or(0) + 1;
+                s.prs.insert(
+                    n,
+                    FakePr {
+                        number: n,
+                        branch: branch.to_string(),
+                        head_sha: head.clone(),
+                        merged_sha: None,
+                    },
+                );
+                n
+            }
+        };
+        if let Some(p) = s.prs.get_mut(&number) {
+            p.head_sha = head.clone();
+        }
+        Ok(ThemePr {
+            number,
+            branch: branch.to_string(),
+            head_sha: head,
+        })
     }
 
     async fn read_page(&self, path: &str) -> Result<Option<PageFile>, GatewayError> {

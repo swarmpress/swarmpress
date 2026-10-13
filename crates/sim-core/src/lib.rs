@@ -53,6 +53,7 @@ pub mod remarks;
 pub mod render_state;
 pub mod roles;
 pub mod scenarios;
+pub mod site_theme;
 pub mod snapshot;
 pub mod staff;
 pub mod structure;

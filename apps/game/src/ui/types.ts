@@ -183,6 +183,8 @@ export interface TicketJson {
   proposedOption?: string | null
   /** Why the job behind the ticket failed (sim `JobFailure` slug: `timeout`, `needs-media`, …). */
   failure?: string | null
+  /** Sim: the design version a theme item renders (`theme-approval`, ADR-0093). */
+  designVersion?: number | null
 }
 
 export interface SecretaryTaskJson {

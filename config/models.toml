@@ -41,7 +41,7 @@ min_max_buffer_size = 268_435_456
 min_max_storage_buffer_binding_size = 134_217_728
 approx_vram_mb = 900
 tier = "low"
-roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-in-chief", "editor", "writer", "translator", "fact-checker", "photo-editor", "photographer", "video-producer", "art-director", "web-developer", "ux-designer", "office-designer", "it-engineer", "dev-ops", "seo-specialist", "marketing-manager", "social-media-manager"]
+roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-in-chief", "editor", "writer", "translator", "fact-checker", "photo-editor", "photographer", "video-producer", "art-director", "web-developer", "ux-designer", "office-designer", "web-designer", "it-engineer", "dev-ops", "seo-specialist", "marketing-manager", "social-media-manager"]
 eval_pending = false
 
 [[model]]
@@ -56,7 +56,7 @@ min_max_buffer_size = 1_073_741_824
 min_max_storage_buffer_binding_size = 1_073_741_824
 approx_vram_mb = 4200
 tier = "mid"
-roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-in-chief", "editor", "writer", "translator", "fact-checker", "photo-editor", "photographer", "video-producer", "art-director", "web-developer", "ux-designer", "office-designer", "it-engineer", "dev-ops", "seo-specialist", "marketing-manager", "social-media-manager"]
+roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-in-chief", "editor", "writer", "translator", "fact-checker", "photo-editor", "photographer", "video-producer", "art-director", "web-developer", "ux-designer", "office-designer", "web-designer", "it-engineer", "dev-ops", "seo-specialist", "marketing-manager", "social-media-manager"]
 eval_pending = false
 
 [[model]]
@@ -98,7 +98,7 @@ min_max_buffer_size = 2_147_483_648
 min_max_storage_buffer_binding_size = 2_147_483_648
 approx_vram_mb = 9000
 tier = "high"
-roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-in-chief", "editor", "writer", "translator", "fact-checker", "photo-editor", "photographer", "video-producer", "art-director", "web-developer", "ux-designer", "office-designer", "it-engineer", "dev-ops", "seo-specialist", "marketing-manager", "social-media-manager"]
+roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-in-chief", "editor", "writer", "translator", "fact-checker", "photo-editor", "photographer", "video-producer", "art-director", "web-developer", "ux-designer", "office-designer", "web-designer", "it-engineer", "dev-ops", "seo-specialist", "marketing-manager", "social-media-manager"]
 eval_pending = true
 
 # Gemma 4 E4B is the one resident model of the MVP since ADR-0066 (Bonsai was a
@@ -118,7 +118,7 @@ min_max_buffer_size = 1_073_741_824
 min_max_storage_buffer_binding_size = 1_073_741_824
 approx_vram_mb = 3000
 tier = "mid"
-roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-in-chief", "editor", "writer", "translator", "fact-checker", "photo-editor", "photographer", "video-producer", "art-director", "web-developer", "ux-designer", "office-designer", "it-engineer", "dev-ops", "seo-specialist", "marketing-manager", "social-media-manager"]
+roles = ["cfo", "secretary", "strategist", "analyst", "data-scientist", "editor-in-chief", "editor", "writer", "translator", "fact-checker", "photo-editor", "photographer", "video-producer", "art-director", "web-developer", "ux-designer", "office-designer", "web-designer", "it-engineer", "dev-ops", "seo-specialist", "marketing-manager", "social-media-manager"]
 eval_pending = true
 
 # Muse Glimmer: research candidate; the repo name is an unknown placeholder.

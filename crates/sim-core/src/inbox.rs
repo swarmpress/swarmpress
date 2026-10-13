@@ -95,10 +95,15 @@ pub enum TicketKind {
     /// default, `Defer`, never builds.
     #[serde(alias = "build-approval")]
     BuildApproval,
+    /// The web designer's theme from a new design version is on its branch
+    /// (ADR-0093, FEAT-115): the CEO applies it or not. Only the CEO answers;
+    /// its default, `Reject`, keeps the current theme.
+    #[serde(alias = "theme-approval")]
+    ThemeApproval,
 }
 
 impl TicketKind {
-    pub const ALL: [TicketKind; 16] = [
+    pub const ALL: [TicketKind; 17] = [
         TicketKind::BudgetOverrun,
         TicketKind::RunwayLow,
         TicketKind::PayrollSpike,
@@ -115,6 +120,7 @@ impl TicketKind {
         TicketKind::BoardFailed,
         TicketKind::StructureApproval,
         TicketKind::BuildApproval,
+        TicketKind::ThemeApproval,
     ];
 
     pub const fn slug(self) -> &'static str {
@@ -130,6 +136,7 @@ impl TicketKind {
             TicketKind::PublishApproval => "publish-approval",
             TicketKind::StructureApproval => "structure-approval",
             TicketKind::BuildApproval => "build-approval",
+            TicketKind::ThemeApproval => "theme-approval",
             TicketKind::StandupFailed => "standup-failed",
             TicketKind::DeployFailed => "deploy-failed",
             TicketKind::NeedsMedia => "needs-media",
@@ -154,6 +161,7 @@ impl TicketKind {
             | TicketKind::PublishApproval
             | TicketKind::StructureApproval
             | TicketKind::BuildApproval
+            | TicketKind::ThemeApproval
             | TicketKind::StandupFailed
             | TicketKind::DeployFailed
             | TicketKind::NeedsMedia
@@ -169,7 +177,10 @@ impl TicketKind {
     pub const fn ceo_only(self) -> bool {
         matches!(
             self,
-            TicketKind::PublishApproval | TicketKind::StructureApproval | TicketKind::BuildApproval
+            TicketKind::PublishApproval
+                | TicketKind::StructureApproval
+                | TicketKind::BuildApproval
+                | TicketKind::ThemeApproval
         )
     }
 
@@ -200,6 +211,7 @@ impl TicketKind {
             TicketKind::PublishApproval => &[Publish, SendBack, Kill, Defer],
             TicketKind::StructureApproval => &[Approve, SendBack, Kill, Defer],
             TicketKind::BuildApproval => &[Build, Defer, Decline],
+            TicketKind::ThemeApproval => &[Approve, Reject],
             TicketKind::StandupFailed | TicketKind::BoardFailed => &[Retry, Skip],
             TicketKind::DeployFailed => &[Retry, Acknowledge],
             TicketKind::NeedsMedia | TicketKind::NeedsPage => &[Retry, Kill],
@@ -217,7 +229,7 @@ impl TicketKind {
             }
             TicketKind::LoanOffer => TicketOption::CutCosts,
             TicketKind::MissingRole => TicketOption::ArrangeHiring,
-            TicketKind::ProjectProposal => TicketOption::Reject,
+            TicketKind::ProjectProposal | TicketKind::ThemeApproval => TicketOption::Reject,
             TicketKind::Escalation | TicketKind::NeedsMedia | TicketKind::NeedsPage => {
                 TicketOption::Kill
             }
@@ -237,6 +249,8 @@ impl TicketKind {
             | TicketKind::ProjectProposal
             | TicketKind::NeedsMedia
             | TicketKind::NeedsPage => 2,
+            // A theme is looked at side by side with its design: three days.
+            TicketKind::ThemeApproval => 3,
             _ => 1,
         }
     }
@@ -743,6 +757,16 @@ impl World {
                 }
                 self.check_construction(item.id)
             }
+            (TicketKind::ThemeApproval, TicketOption::Approve) => {
+                let item = t
+                    .work_item
+                    .and_then(|i| self.plan.items.get(&i))
+                    .ok_or("the ticket has no work item")?;
+                if !item.awaiting_approval() {
+                    return Err("the theme is not waiting for approval");
+                }
+                Ok(())
+            }
             (TicketKind::StandupFailed, TicketOption::Retry) => {
                 let project = t.project.ok_or("the ticket has no project")?;
                 self.standup_possible(project)
@@ -845,6 +869,12 @@ impl World {
                 (O::Build, Some(id)) => self.publish_item(id),
                 (O::Decline, Some(id)) => self.cancel_item(id),
                 // Defer: parked; a fresh ticket at the next 08:30.
+                _ => {}
+            },
+            TicketKind::ThemeApproval => match (option, t.item) {
+                (O::Approve, Some(id)) => self.publish_item(id),
+                // Reject, also the default: the current theme stays; the branch is never merged.
+                (O::Reject, Some(id)) => self.cancel_item(id),
                 _ => {}
             },
             TicketKind::StandupFailed => {

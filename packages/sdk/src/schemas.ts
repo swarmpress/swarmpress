@@ -222,6 +222,7 @@ export const ROLE_DEPARTMENTS = {
   "web-developer": "web-development",
   "ux-designer": "web-development",
   "office-designer": "web-development",
+  "web-designer": "web-development",
   "it-engineer": "it-operations",
   "dev-ops": "it-operations",
   "seo-specialist": "seo-marketing",

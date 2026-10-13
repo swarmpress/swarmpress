@@ -110,6 +110,7 @@ impl WorkItemKind {
             WorkItemKind::Tool => JobKind::ToolBuild,
             WorkItemKind::Theme => JobKind::ThemeCode,
             WorkItemKind::Interior => JobKind::InteriorDesign,
+            WorkItemKind::SiteTheme => JobKind::SiteTheme,
             _ => JobKind::Draft,
         }
     }

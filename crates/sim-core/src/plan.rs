@@ -155,6 +155,11 @@ pub enum JobKind {
     /// reports the build in the item's thread.
     #[serde(alias = "construct")]
     Construct,
+    /// The web designer's theme from a design version (ADR-0093, FEAT-115):
+    /// the Draft of a `SiteTheme` item (its `brief_ref` is the design
+    /// version). The theme goes onto a branch; its Publish merges it.
+    #[serde(alias = "site-theme")]
+    SiteTheme,
 }
 
 impl JobKind {
@@ -175,6 +180,7 @@ impl JobKind {
             JobKind::ThemeCode => "theme-code",
             JobKind::InteriorDesign => "interior-design",
             JobKind::Construct => "construct",
+            JobKind::SiteTheme => "site-theme",
         }
     }
 
@@ -290,6 +296,11 @@ pub enum WorkItemKind {
     /// Draft plans, its Publish builds (`crate::interior`).
     #[serde(alias = "interior")]
     Interior,
+    /// The site's theme from a design version (ADR-0093, FEAT-115,
+    /// `crate::site_theme`): its Draft renders the design, its Publish
+    /// merges the theme into live after the CEO's `ThemeApproval`.
+    #[serde(alias = "site-theme")]
+    SiteTheme,
 }
 
 impl WorkItemKind {
@@ -303,6 +314,7 @@ impl WorkItemKind {
             WorkItemKind::Tool => "tool",
             WorkItemKind::Theme => "theme",
             WorkItemKind::Interior => "interior",
+            WorkItemKind::SiteTheme => "site-theme",
         }
     }
 
@@ -644,6 +656,9 @@ pub struct Plan {
     /// (ADR-0087 decision 6): numbers only, no text.
     #[serde(default)]
     pub interiors: BTreeMap<WorkItemId, crate::interior::Interior>,
+    /// The site's design versions (ADR-0093, FEAT-115): numbers only.
+    #[serde(default)]
+    pub designs: crate::site_theme::SiteDesigns,
 }
 
 /// Roles that may write a brief's draft.
@@ -1041,7 +1056,7 @@ impl World {
             .items
             .values()
             .filter(|i| i.project == project && !i.status.is_closed() && !i.is_unstarted())
-            .filter(|i| i.kind != WorkItemKind::Interior)
+            .filter(|i| !matches!(i.kind, WorkItemKind::Interior | WorkItemKind::SiteTheme))
             .count()
     }
 
@@ -1051,7 +1066,7 @@ impl World {
             .items
             .values()
             .filter(|i| i.project == project && i.is_unstarted())
-            .filter(|i| i.kind != WorkItemKind::Interior)
+            .filter(|i| !matches!(i.kind, WorkItemKind::Interior | WorkItemKind::SiteTheme))
             .count()
     }
 
@@ -1328,6 +1343,8 @@ impl World {
         let ticket = self.raise_ticket(TicketSpec {
             kind: if kind == WorkItemKind::Interior {
                 TicketKind::BuildApproval
+            } else if kind == WorkItemKind::SiteTheme {
+                TicketKind::ThemeApproval
             } else if kind.is_structural() {
                 TicketKind::StructureApproval
             } else {
@@ -1362,6 +1379,7 @@ impl World {
                         TicketKind::PublishApproval
                             | TicketKind::StructureApproval
                             | TicketKind::BuildApproval
+                            | TicketKind::ThemeApproval
                     )
             })
             .filter_map(|t| t.work_item)
@@ -1555,6 +1573,8 @@ impl World {
             Gate(usize),
             Block,
             Wait,
+            /// A theme went live.
+            Live,
         }
         for (id, kind, result) in ready {
             let Some(item) = self.plan.items.get_mut(&id) else {
@@ -1564,6 +1584,7 @@ impl World {
             item.phases[current].state = PhaseState::Done;
             let structural = item.kind.is_structural();
             let interior = item.kind == WorkItemKind::Interior;
+            let site_theme = item.kind == WorkItemKind::SiteTheme;
             let next = match kind {
                 // A room plan (ADR-0087 decision 6): nothing planned fails
                 // loudly; economic companies approve the price, sandbox ones
@@ -1571,8 +1592,9 @@ impl World {
                 PhaseKind::Draft if interior && !planned.contains(&id) => Next::Block,
                 PhaseKind::Draft if interior && economic => Next::Gate(current + 1),
                 PhaseKind::Draft if interior => Next::Phase(current + 1),
-                // A structural change always waits for the CEO (ADR-0072).
-                PhaseKind::Draft if structural => Next::Gate(current + 1),
+                // A structural change always waits for the CEO (ADR-0072), and so
+                // does a theme (ADR-0093).
+                PhaseKind::Draft if structural || site_theme => Next::Gate(current + 1),
                 PhaseKind::Draft => Next::Phase(current + 1),
                 PhaseKind::Review => {
                     item.last_score = Some(result.score);
@@ -1602,6 +1624,13 @@ impl World {
                     item.published_step = Some(step);
                     Next::Wait
                 }
+                // Merged into live by its Publish job (ADR-0093): the export and
+                // deploy follow every merge; the theme is the live one.
+                PhaseKind::Publish if site_theme => {
+                    item.status = WorkItemStatus::Published;
+                    item.published_step = Some(step);
+                    Next::Live
+                }
                 PhaseKind::Publish => {
                     item.status = WorkItemStatus::Scheduled;
                     Next::Wait
@@ -1612,6 +1641,7 @@ impl World {
                 Next::Gate(i) => self.park_for_approval(id, i),
                 Next::Block => self.block_item(id, TicketKind::Escalation, None),
                 Next::Wait => {}
+                Next::Live => self.site_theme_live(id),
             }
         }
     }

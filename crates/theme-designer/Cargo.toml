@@ -1,0 +1,16 @@
+[package]
+name = "theme-designer"
+description = "The web designer's deterministic core (ADR-0093, FEAT-115): a SiteDesign rendered as WordPress theme data; global styles, fonts and menus derived from the design, one template task per template and part for the model, the checks (block grammar, core blocks only, coverage, presets, contrast, licences, safety, the design's own rules) and the repair loop driver. Pure, no I/O, wasm-compatible"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# The design (tokens, templates, parts, menus, rules) and the ThemeData shape (FEAT-114).
+site-design = { path = "../site-design" }
+
+[lints]
+workspace = true

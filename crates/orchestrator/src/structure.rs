@@ -287,6 +287,7 @@ pub(crate) fn failure(f: &RepairFailed) -> Result<JobFailure> {
 fn reasoning_budget(job: agents::JobKind) -> u32 {
     match job {
         agents::JobKind::OfficeLayout => agents::build::LAYOUT_REASONING,
+        agents::JobKind::WebDesign => agents::design::TEMPLATE_REASONING,
         _ => 512,
     }
 }

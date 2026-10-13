@@ -65,6 +65,11 @@ const TICKET_KINDS: Record<string, KindInfo> = {
     about: 'The office designer’s plan for a room. Build pays for it and sends the builders. Decline drops it. Defer asks again later and never builds.',
     amount: (a) => `${a} to build`,
   },
+  // ADR-0093, FEAT-115: the web designer's theme from a design version, on a branch of its own.
+  'theme-approval': {
+    label: 'Theme approval',
+    about: 'The web designer’s theme from the site’s new design waits on a branch of its own. Approve merges it into the live site. Reject, also the default, keeps the current theme.',
+  },
 }
 
 const OPTION_LABELS: Record<string, string> = {
@@ -78,6 +83,7 @@ const OPTION_LABELS: Record<string, string> = {
   acknowledge: 'Acknowledge',
   build: 'Build',
   decline: 'Decline',
+  reject: 'Reject',
 }
 
 /** `PublishApproval`, `publish_approval` and `publish-approval` are the same id. */
@@ -267,6 +273,11 @@ function Ticket({ t }: { t: TicketJson }) {
         />
       )}
       {t.workItem && kind === 'build-approval' && <BuildApprovalPlan item={t.workItem} room={(t as TicketJson & { room?: string | null }).room} open={open} />}
+      {kind === 'theme-approval' && t.designVersion != null && (
+        <p class="small theme-approval-facts">
+          Design v{t.designVersion} · on the branch <code>design-v{t.designVersion}</code> · the item’s thread has the templates and the checks
+        </p>
+      )}
       {open ? (
         <>
           {delta != null && (

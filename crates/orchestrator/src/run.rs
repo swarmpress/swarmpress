@@ -279,6 +279,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             JobKind::ToolRun => self.tool_run(req).await,
             JobKind::InteriorDesign => self.interior_design(req).await,
             JobKind::Construct => self.construct(req).await,
+            JobKind::SiteTheme => self.site_theme(req).await,
             JobKind::Draft => self.staged_draft(req).await,
             JobKind::Review => self.staged_review(req).await,
             JobKind::Publish => {
@@ -635,6 +636,10 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         // A structural item's artifact holds its proposal: applied, not merged (FEAT-095).
         if art.structure.is_some() {
             return self.apply_structure(req, &item, art).await;
+        }
+        // A theme's artifact holds its branch: merged into live (ADR-0093).
+        if art.site_theme.is_some() {
+            return self.apply_site_theme(req, &item, art).await;
         }
         let (merged_sha, fresh) = match art.merged_sha.clone() {
             // Merged already: no second merge, no second post. This is a run

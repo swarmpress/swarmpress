@@ -44,6 +44,7 @@ mod gateway;
 mod maintain;
 mod run;
 mod site;
+pub mod site_theme;
 mod staged;
 mod standup;
 mod store;
@@ -74,6 +75,7 @@ pub use run::{CancelToken, Orchestrator, OrchestratorError, SiteBinding};
 pub use site::{
     ConfigSource, SeoSuffixSource, SiteKnowledge, STYLE_GUIDE_PATH, WRITER_PROMPT_PATH,
 };
+pub use site_theme::{theme_branch, SiteThemeRecord, TaskOutcome, SITE_THEME_KIND};
 pub use staged::{
     measured_checks, send_back_issues, stage_hash, JOB_REPAIRS, REVIEW_SINGLE_TOKENS,
     SECTION_REPAIRS,
@@ -125,6 +127,10 @@ pub enum JobKind {
     /// The construction of an approved room plan: the sim places the items;
     /// the job reports the build.
     Construct,
+    /// The web designer's theme from a design version: the Draft of a
+    /// `SiteTheme` item (ADR-0093, FEAT-115; [`crate::site_theme`]). Its
+    /// `brief_ref` is the design version.
+    SiteTheme,
 }
 
 /// Someone taking part in a job, as the sim knows them.

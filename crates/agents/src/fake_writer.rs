@@ -177,6 +177,12 @@ pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
         // The office designer (FEAT-084): a plan from the brief, a fix that moves what is named.
         "office layout" => return FakeReply::Json(crate::build::fake::layout(p.0)),
         "office layout fix" => return FakeReply::Json(crate::build::fake::fix(p.0)),
+        // The web designer (FEAT-115): the reference markup of the task; one slip on the
+        // front page that the fix removes.
+        "web design template" => return FakeReply::Json(theme_designer::fake::answer(p.0, false)),
+        "web design template fix" => {
+            return FakeReply::Json(theme_designer::fake::answer(p.0, true))
+        }
         // The site's tools in research (ADR-0072): ask for the first offered tool, then state one fact from its result.
         "tool facts" => {
             let results = later.iter().find(|m| m.starts_with("Tool results"));

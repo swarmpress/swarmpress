@@ -101,6 +101,20 @@ impl Kind {
     }
 }
 
+/// The theme data's structure checked before anything is written (`ThemeData::validate_shape`,
+/// ADR-0093): every issue as `at: message`. Data that fails is never written (rule 11).
+pub fn checked(data: &ThemeData) -> Result<(), Vec<String>> {
+    let issues = data.validate_shape();
+    if issues.is_empty() {
+        Ok(())
+    } else {
+        Err(issues
+            .iter()
+            .map(|i| format!("{}: {}", i.at, i.message))
+            .collect())
+    }
+}
+
 /// The calls that put `data` onto `theme` (normally [`BASE_THEME`]), in their fixed order.
 pub fn calls(data: &ThemeData, theme: &str) -> Vec<Call> {
     let mut out = vec![Call::SwitchTheme {

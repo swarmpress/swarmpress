@@ -20,6 +20,10 @@ blueprint = { path = "../blueprint" }
 # The office designer's deterministic core (ADR-0087 decision 6, FEAT-084):
 # the layout solver, checks and repair driver of the InteriorDesign job.
 office-designer = { path = "../office-designer" }
+# The web designer (ADR-0093, FEAT-115): the site's design (site-design) rendered
+# as theme data, checked and repaired in-process (theme-designer).
+site-design = { path = "../site-design" }
+theme-designer = { path = "../theme-designer" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -29,6 +33,20 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 # Native only: the adapter over the GitHub client (reqwest/tokio are not wasm).
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 github = { path = "../github" }
+# The `swarmpress-site-theme` CLI (feature `cli`): the web designer's job on a design,
+# with the fake or GPT-6-Luna through the central server, outside the game.
+tokio = { version = "1", features = ["macros", "rt-multi-thread"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+content-import-wp = { path = "../content-import-wp", optional = true }
+claude = { path = "../claude", default-features = false, optional = true }
+
+[features]
+cli = ["dep:tokio", "dep:reqwest", "dep:content-import-wp", "dep:claude"]
+
+[[bin]]
+name = "swarmpress-site-theme"
+path = "src/bin/swarmpress-site-theme.rs"
+required-features = ["cli"]
 
 # jsonschema (via content-schema and claude) pulls ahash -> getrandom 0.3, which
 # needs its JS backend on wasm32-unknown-unknown.

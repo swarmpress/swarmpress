@@ -68,6 +68,12 @@
 //!   designs are placed; the script places a bench of the player's in the
 //!   kitchen and a lamp of theirs on the meeting room's ceiling.
 //! - `0xb24f_5706_c533_b9a6`: world format 14.
+//! - world format 15 (FEAT-115, ADR-0093): `Plan.designs`, the web
+//!   designer's role and persona (a new face in the hiring pool, so the
+//!   script's three hires are the next three candidates), `SiteTheme` items
+//!   and jobs, `ThemeApproval`; the script receives the site's first design,
+//!   which waits for a web designer.
+//! - `0xb572_ec55_44f5_3b8d`: world format 15.
 
 use sim_core::commands::JobFailure;
 use sim_core::equipment::DeskSlot;
@@ -79,7 +85,7 @@ use sim_core::scenarios::{golden_script, run_golden, DEMO_PROJECT, GOLDEN_STEPS}
 use sim_core::staff::Station;
 use sim_core::town::TownKind;
 
-const GOLDEN_HASH: u64 = 0xb24f_5706_c533_b9a6;
+const GOLDEN_HASH: u64 = 0xb572_ec55_44f5_3b8d;
 
 #[test]
 fn golden_hash() {
@@ -232,6 +238,18 @@ fn golden_hash() {
         sim_core::objects::room_capabilities(&w.building, lamp.room).lights,
         2
     );
+    // The site's first design (ADR-0093, FEAT-115): nobody can render it yet,
+    // so item 7 waits, unstarted, and the CEO is asked to hire a web designer.
+    assert_eq!(item(7).kind, sim_core::plan::WorkItemKind::SiteTheme);
+    assert!(item(7).is_unstarted());
+    assert_eq!(item(7).brief_ref, Some(1));
+    assert_eq!(w.plan.designs.latest, 1);
+    assert_eq!(w.plan.designs.live, 0);
+    assert!(w
+        .tickets
+        .values()
+        .any(|t| t.kind == TicketKind::MissingRole
+            && t.role == Some(sim_core::roles::Role::WebDesigner)));
     println!("golden hash: {:#018x}", w.hash());
     assert_eq!(w.hash(), GOLDEN_HASH, "got {:#018x}", w.hash());
 }

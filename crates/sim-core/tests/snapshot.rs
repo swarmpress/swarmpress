@@ -54,6 +54,10 @@ const WORLD_FORMATS: &[(u32, u64)] = &[
     // FEAT-026, ADR-0089, ADR-0090: Seat in meeting and kitchen spots (seat
     // objects' places), ceiling designs placed
     (14, 0xb24f_5706_c533_b9a6),
+    // FEAT-115, ADR-0093: the site's theme from its design (Plan.designs, the web
+    // designer's role and persona, SiteTheme items, ThemeApproval; the script
+    // receives a design)
+    (15, 0xb572_ec55_44f5_3b8d),
 ];
 
 /// The golden hash of the current world format.
@@ -104,7 +108,8 @@ fn golden_run_through_snapshots_matches_the_uninterrupted_run() {
     assert_eq!(restores, 6);
     assert_eq!(w.hash(), GOLDEN_HASH, "got {:#018x}", w.hash());
     // five articles and the interior item waiting for an office designer
-    assert_eq!(w.plan.items.len(), 6);
+    // and the site's theme waiting for a web designer
+    assert_eq!(w.plan.items.len(), 7);
     assert_eq!(
         w.plan.items.values().next().map(|i| i.status),
         Some(WorkItemStatus::Published)
