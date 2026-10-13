@@ -160,8 +160,13 @@ fn a_full_export_crawls_the_static_site_and_nothing_dynamic() {
     assert!(e.report.broken.is_empty(), "{:?}", e.report.broken);
 
     let home = String::from_utf8(e.blobs[&e.release.files["/"].sha256].clone()).unwrap();
+    // Links to the site are root-relative (a preview host serves them too); nothing names the sandbox.
     assert!(
-        home.contains("https://cinqueterre.travel/post-a/") && !home.contains(O),
+        home.contains("<a href=\"/post-a/\">A</a>") && !home.contains(O),
+        "{home}"
+    );
+    assert!(
+        home.contains("href=\"/wp-content/themes/t/style.css?ver=1.2\""),
         "{home}"
     );
     assert!(
@@ -288,8 +293,8 @@ fn forms_that_post_to_wordpress_post_to_the_platform() {
         "{page}"
     );
     assert!(
-        page.contains("action=\"https://cinqueterre.travel/\""),
-        "the search form is left as it is"
+        page.contains("action=\"/\""),
+        "the search form is left as it is (root-relative)"
     );
 }
 
@@ -312,7 +317,7 @@ fn a_not_found_page_is_kept_as_404_html() {
     let f = &e.release.files[NOT_FOUND];
     assert!(f.content_type.starts_with("text/html"));
     let body = String::from_utf8(e.blobs[&f.sha256].clone()).unwrap();
-    assert!(body.contains("href=\"https://cinqueterre.travel/\""));
+    assert!(body.contains("href=\"/\""), "{body}");
     assert!(body.contains("action=\"https://platform.example/f/acme?to=/wp-admin/admin-post.php\""));
     assert_eq!(Release::file_path(NOT_FOUND, &f.content_type), "404.html");
     // A sandbox that answers an unknown path with 200 gives no not-found page.
@@ -361,4 +366,48 @@ fn cloudflare_pages_gets_the_redirects_and_the_rewrites_it_cannot_infer() {
     assert!(cloudflare_pages(&release)
         .unwrap_err()
         .contains("2003 redirect rules"));
+}
+
+/// A page's references to the site are root-relative, so a preview host serves the export whole;
+/// what names the page to the outside keeps the public origin.
+#[test]
+fn references_to_the_site_are_root_relative_but_its_names_are_not() {
+    let page = format!(
+        "<head><link rel=\"canonical\" href=\"{O}/a/\"><link rel=\"alternate\" hreflang=\"de\" href=\"{O}/de/a/\"><meta property=\"og:url\" content=\"{O}/a/\"><link rel=\"stylesheet\" href=\"{O}/wp-content/themes/t/style.css\"><style>@font-face{{src:url('{O}/wp-content/themes/t/f.woff2')}}</style></head><body><a href=\"{O}\">Home</a> <a href='{O}/b/'>B</a><img src=\"{O}/u/a.png\" srcset=\"{O}/u/a-300.png 300w, {O}/u/a.png 600w\"><script>var u = \"{O}/wp-json/\";</script><script type=\"importmap\">{{\"imports\":{{\"@wordpress/interactivity\":\"{O}/wp-includes/i.js\"}}}}</script></body>"
+    );
+    let r = root_relative(&page, O, true);
+    assert!(
+        r.contains(&format!("rel=\"canonical\" href=\"{O}/a/\"")),
+        "{r}"
+    );
+    assert!(
+        r.contains(&format!("hreflang=\"de\" href=\"{O}/de/a/\"")),
+        "{r}"
+    );
+    assert!(r.contains(&format!("content=\"{O}/a/\"")), "{r}");
+    assert!(
+        r.contains("rel=\"stylesheet\" href=\"/wp-content/themes/t/style.css\""),
+        "{r}"
+    );
+    assert!(r.contains("src:url('/wp-content/themes/t/f.woff2')"), "{r}");
+    assert!(
+        r.contains("<a href=\"/\">Home</a>") && r.contains("<a href='/b/'>B</a>"),
+        "{r}"
+    );
+    assert!(
+        r.contains("srcset=\"/u/a-300.png 300w, /u/a.png 600w\""),
+        "{r}"
+    );
+    assert!(
+        r.contains(&format!("var u = \"{O}/wp-json/\"")),
+        "scripts keep the origin: {r}"
+    );
+    assert!(
+        r.contains("\"@wordpress/interactivity\":\"/wp-includes/i.js\""),
+        "{r}"
+    );
+    // Files an inline stylesheet names are crawled (the theme's fonts).
+    assert!(html_links(&page).contains(&format!("{O}/wp-content/themes/t/f.woff2")));
+    let css = root_relative(&format!("a{{background:url(\"{O}/x.png\")}}"), O, false);
+    assert_eq!(css, "a{background:url(\"/x.png\")}");
 }

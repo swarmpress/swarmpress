@@ -22,6 +22,7 @@ paths:
   - templates/site-repo/.github/workflows/deploy.yml
   - docs/runbooks/cinqueterre-cutover.md
 adrs:
+  - ADR-0092
   - ADR-0091
   - ADR-0083
   - ADR-0082
@@ -65,8 +66,21 @@ says what stands between the comparison and the switch.
   language; the theme switched through the API; a menu per language; no shortlinks, no guessed
   redirects) and **Coast**, the block theme (the frozen theme's palette, display serif and editorial
   sections).
+- **The theme** (ADR-0092): `cinqueterre` in the sandbox (wp-sandbox 0.7.0), the frozen theme's
+  design carried into a block theme, a child of Coast: `theme.json` (Playfair Display and Inter,
+  self-hosted, OFL; the ink-on-white palette and the villages' colours), templates, the
+  coastal-spine header and the footer as parts, patterns, and a stylesheet for the import's
+  sections. The import activates it for this site (`plan::theme_for`), writes the coastal spine as
+  the main menu and the wordmark, the header's button and the footer as named menus per language
+  (`sp-menu-{name}` → `{name}-{lang}`, the routes plugin), gives each text field's paragraph its
+  class (`ct-{field}`), keeps the HTML some strings carry (paragraphs, bold, links), places a
+  collection's interludes after the item they name, and leaves presentation fields out. The export
+  names the site's own files root-relative, so the Cloudflare preview serves the theme; canonical
+  and alternate links, sitemaps and feeds keep the public origin.
 - **The gate's compositions** (the owner's decisions of 2026-10-12, `compose.rs`):
-  - **the home** (`/`, `/{lang}/`): a hero, the five villages, the latest stories as a `core/query`
+  - **the home** (`/`, `/{lang}/`): a hero (`core/cover`), the editors' picks (the stories the owner
+    curated for the blog index, in the page's language), the five villages, the places to stay (the
+    accommodations collection's featured stays), the latest stories as a `core/query`
     block of the posts in the page's language (every article carries its language as a tag; the
     import resolves the block's term reference to the tag's id when it applies the plan), and the
     newsletter form, which the export sends to the platform's `/f/{company}`;
@@ -84,12 +98,20 @@ says what stands between the comparison and the switch.
   when it is checked out), and `test/wordpress.test.ts` in the runner (a fixture site migrated into
   a fresh Node WordPress: every URL, its text, SEO title, language and links; the composed home's
   query listing the posts of its language and its form sent to the platform; the weather pages'
-  forecast filled from recorded Open-Meteo answers; `404.html`, `_redirects` and `_headers`). The
-  forecast's own tests (`site-export`, `forecast::tests`) never reach the network.
+  forecast filled from recorded Open-Meteo answers; `404.html`, `_redirects` and `_headers`; the
+  site's own files root-relative, the canonical link absolute). The forecast's own tests
+  (`site-export`, `forecast::tests`) never reach the network; `references_to_the_site_are_root_relative`
+  covers the export's references. The crate's tests cover the theme's activation, the spine and
+  named menus (every link of them a page of the live site's plan), the home's picks and stays, and
+  the interludes. The sandbox's conformance suite renders the theme (its parts, named menus, fonts
+  and 404), run locally (2026-10-13: 8/8; WordPress's PHPUnit groups 2116 tests).
+- **The look** (2026-10-13): side-by-side screenshots of the live site and the export, at 1440 and
+  390 px (homes en/de, an article, a village, the village overview, a weather page, a 404). The
+  differences that remain are listed in the runbook.
 
 ## Not built yet
 
-- **The owner's review** (2026-10-12): 635 of 663 URLs pass, no status differs, the median page keeps
+- **The owner's review** (2026-10-13, the `cinqueterre` theme in the preview): 635 of 663 URLs pass, no status differs, the median page keeps
   998‰ of its live content. The 28 others are composed or replaced by the owner's decisions (the 9
   home and village-overview pages, the 11 weather pages) or fixed by the export (8 article URLs the
   live site renders as `[object Object]`); the composed pages and the forecast wait for the owner's

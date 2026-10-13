@@ -8,13 +8,16 @@
 //!   below its group's; a badge-like field (`badge`, `category`, `eyebrow`…) → a small paragraph;
 //! - an image field (`image`, `src`, `heroImage`…, a URL) → `core/image`, with `alt`/`caption`;
 //! - a quote (`quote`, with `author`) → `core/quote`;
-//! - text → `core/paragraph`s (a list of strings: one paragraph each; `callouts`, `tags`,
-//!   `recommendations`, `highlights`… → `core/list`);
+//! - text → `core/paragraph`s with the class `ct-{field}` (a list of strings: one paragraph each;
+//!   `callouts`, `tags`, `recommendations`, `highlights`… → `core/list`, class `ct-{field}`), so a
+//!   theme can place each field (the fields keep the source's order);
 //! - `{text, url}`, `{label, href}` and `buttons` → `core/buttons`; a site link is given the
 //!   page's language;
 //! - `faqs` → `core/details` (the question as its summary);
 //! - an object → a nested group (`ct-{key}`), a list of objects → one nested group per item; a
 //!   story in a listing (`slug` with an `excerpt` or `readTime`) has its title link its article;
+//!   a collection's interludes stand after the item their `afterIndex` names, as the live page
+//!   shows them;
 //! - presentation and bookkeeping (`id`, `variant`, `layout`, `display`, `accent`, `icon`, a
 //!   `persona` id…) are left out; short scalars (`priceRange`, `distance`, `googleRating`…) → a
 //!   `key: value` line.
@@ -50,6 +53,11 @@ const SKIP: &[&str] = &[
     "style",
     "theme",
     "number",
+    // Presentation: a hero's height, an alignment, a listing's length, an image's side.
+    "height",
+    "align",
+    "limit",
+    "imagePosition",
 ];
 
 const TITLES: &[&str] = &[
@@ -190,8 +198,25 @@ fn fields(o: &Map<String, Value>, lang: &str, level: u8) -> String {
         .then(|| o.get("slug").and_then(Value::as_str))
         .flatten()
         .map(|slug| link(&format!("/blog/{slug}"), lang));
+    // Interludes between a collection's items, after the item each names.
+    let interleave = matches!(
+        (o.get("items"), o.get("interludes")),
+        (Some(Value::Array(_)), Some(Value::Array(_)))
+    );
     for (key, v) in o {
         let k = key.as_str();
+        if interleave && k == "interludes" {
+            continue;
+        }
+        if let (true, "items", Some(items), Some(interludes)) = (
+            interleave,
+            k,
+            v.as_array(),
+            o.get("interludes").and_then(Value::as_array),
+        ) {
+            out.push_str(&interleaved(items, interludes, lang, level));
+            continue;
+        }
         if let (Some(href), "title") = (&story_link, k) {
             if let Some(t) = localized(v, lang) {
                 out.push_str(&heading(
@@ -263,6 +288,33 @@ fn fields(o: &Map<String, Value>, lang: &str, level: u8) -> String {
     out
 }
 
+/// A collection's items with each interlude after the item its `afterIndex` names (before the
+/// first item without one, after the last when the index is past the end).
+fn interleaved(items: &[Value], interludes: &[Value], lang: &str, level: u8) -> String {
+    let at = |x: &Value| {
+        x.get("afterIndex").and_then(|a| {
+            a.as_u64()
+                .or_else(|| a.as_str().and_then(|s| s.parse().ok()))
+        })
+    };
+    let one = |key: &str, x: &Value| list_field(key, std::slice::from_ref(x), lang, level);
+    let mut out: String = interludes
+        .iter()
+        .filter(|x| at(x).is_none())
+        .map(|x| one("interludes", x))
+        .collect();
+    for (i, item) in items.iter().enumerate() {
+        out.push_str(&one("items", item));
+        for x in interludes {
+            let last = i + 1 == items.len();
+            if at(x).is_some_and(|n| n as usize == i || (last && n as usize > i)) {
+                out.push_str(&one("interludes", x));
+            }
+        }
+    }
+    out
+}
+
 /// One field's value.
 fn value(key: &str, v: &Value, lang: &str, level: u8) -> String {
     match v {
@@ -320,9 +372,10 @@ fn text_field(key: &str, s: &str, lang: &str, level: u8) -> String {
     {
         return meta_line(key, s);
     }
-    s.split("\n\n")
-        .filter(|p| !p.trim().is_empty())
-        .map(|p| paragraph_html(&inline(p.trim()), None))
+    let class = format!("ct-{}", kebab(key));
+    paragraphs(s)
+        .iter()
+        .map(|p| paragraph_html(&inline(p), Some(&class)))
         .collect()
 }
 
@@ -333,7 +386,7 @@ fn list_field(key: &str, a: &[Value], lang: &str, level: u8) -> String {
     if a.iter().all(|x| localized(x, lang).is_some()) {
         let items: Vec<&str> = a.iter().filter_map(|x| localized(x, lang)).collect();
         if LISTS.contains(&key) {
-            return list(&items);
+            return list_with_class(&items, Some(&format!("ct-{}", kebab(key))));
         }
         return items
             .iter()
@@ -460,7 +513,54 @@ pub fn inline(s: &str) -> String {
     if bold {
         out.push_str("</strong>");
     }
-    out
+    restore_inline_tags(&out)
+}
+
+/// The inline HTML a source string may carry (`<strong>`, `<em>`, `<b>`, `<i>`, `<a href>`), which
+/// the live site renders: kept as tags after escaping; any other tag stays escaped text.
+fn restore_inline_tags(escaped: &str) -> String {
+    let mut out = escaped.to_string();
+    for t in ["strong", "em", "b", "i"] {
+        out = out
+            .replace(&format!("&lt;{t}&gt;"), &format!("<{t}>"))
+            .replace(&format!("&lt;/{t}&gt;"), &format!("</{t}>"));
+    }
+    out = out.replace("&lt;/a&gt;", "</a>");
+    let open = "&lt;a href=\"";
+    let mut res = String::with_capacity(out.len());
+    let mut rest = out.as_str();
+    while let Some(i) = rest.find(open) {
+        res.push_str(&rest[..i]);
+        let after = &rest[i + open.len()..];
+        match after.find("\"&gt;") {
+            Some(end) if !after[..end].contains(['"', '<', '>']) => {
+                res.push_str(&format!("<a href=\"{}\">", &after[..end]));
+                rest = &after[end + "\"&gt;".len()..];
+            }
+            _ => {
+                res.push_str(open);
+                rest = after;
+            }
+        }
+    }
+    res.push_str(rest);
+    res
+}
+
+/// A text's paragraphs: its HTML paragraphs (`<p>…</p>`) when it has them, else its blank-line
+/// separated blocks.
+fn paragraphs(s: &str) -> Vec<String> {
+    if s.contains("<p>") || s.contains("</p>") {
+        s.split("</p>")
+            .map(|p| p.replace("<p>", " ").trim().to_string())
+            .filter(|p| !p.is_empty())
+            .collect()
+    } else {
+        s.split("\n\n")
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty())
+            .collect()
+    }
 }
 
 fn md_link(chars: &[char]) -> Option<(String, String, usize)> {
@@ -546,6 +646,11 @@ pub fn quote(text: &str, author: Option<&str>) -> String {
 }
 
 pub fn list(items: &[&str]) -> String {
+    list_with_class(items, None)
+}
+
+/// A `core/list` with a class of its own.
+pub fn list_with_class(items: &[&str], class: Option<&str>) -> String {
     let lis: String = items
         .iter()
         .map(|i| {
@@ -555,7 +660,35 @@ pub fn list(items: &[&str]) -> String {
             )
         })
         .collect();
-    format!("<!-- wp:list -->\n<ul class=\"wp-block-list\">{lis}</ul>\n<!-- /wp:list -->\n")
+    match class {
+        Some(c) => format!(
+            "<!-- wp:list {} -->\n<ul class=\"wp-block-list {}\">{lis}</ul>\n<!-- /wp:list -->\n",
+            serde_json::json!({ "className": c }),
+            attr(c)
+        ),
+        None => {
+            format!("<!-- wp:list -->\n<ul class=\"wp-block-list\">{lis}</ul>\n<!-- /wp:list -->\n")
+        }
+    }
+}
+
+/// Text without its tags (`<br/>` as a space), whitespace collapsed.
+pub fn strip_tags(s: &str) -> String {
+    let s = s
+        .replace("<br/>", " ")
+        .replace("<br />", " ")
+        .replace("<br>", " ");
+    let mut out = String::new();
+    let mut in_tag = false;
+    for c in s.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 pub fn details(summary: &str, body: &str) -> String {

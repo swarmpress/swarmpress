@@ -48,7 +48,7 @@ fn site() -> Site {
     s.pages.insert(
         "blog/gelato.json".into(),
         json!({"slug": {"en": "/en/blog/gelato", "de": "/de/blog/gelato", "fr": "/fr/blog/gelato", "it": "/it/blog/gelato"},
-               "page_type": "blog-article", "title": {"en": "Gelato"}, "created_at": "2023-10-14T12:00:00.000Z", "body": [
+               "page_type": "blog-article", "title": {"en": "Gelato | The Dispatch"}, "created_at": "2023-10-14T12:00:00.000Z", "body": [
             {"type": "blog-article", "post": {"title": "Gelato", "author": "Marco", "category": "Food", "tags": ["Gelato", "Summer"]},
              "content": {"intro": "Cold and good.", "closing": {"text": "Read more", "url": "/blog"}}}
         ]}),
@@ -171,11 +171,29 @@ fn a_block_keeps_every_string_as_core_blocks() {
     let en = markup::block(&intro, "fr", &mut notes);
     assert!(en.contains("<blockquote class=\"wp-block-quote\"><!-- wp:paragraph -->\n<p>Fish, <strong>always</strong>.</p>"), "{en}");
     assert!(en.contains("<cite>Giulia</cite>"), "{en}");
-    assert!(en.contains("<p>One &amp; two.</p>"), "{en}");
+    // Each field's paragraphs carry its class, so a theme can place it.
+    assert!(
+        en.contains("<p class=\"ct-content\">One &amp; two.</p>"),
+        "{en}"
+    );
     assert!(en.contains("<a href=\"/fr/maps/\">the map</a>"), "{en}");
     assert!(
-        en.contains("<ul class=\"wp-block-list\"><!-- wp:list-item -->\n<li>Early</li>"),
+        en.contains(
+            "<ul class=\"wp-block-list ct-callouts\"><!-- wp:list-item -->\n<li>Early</li>"
+        ),
         "{en}"
+    );
+
+    // The HTML a source string carries (the live site renders it): its paragraphs and inline tags.
+    let html = json!({"type": "editorial-intro", "leftContent": {"en": "<p>Trains every <strong>15 minutes</strong>.</p><p>See <a href=\"/maps\">the map</a> <script>x</script></p>"}});
+    let h = markup::block(&html, "de", &mut notes);
+    assert!(
+        h.contains("<p class=\"ct-left-content\">Trains every <strong>15 minutes</strong>.</p>"),
+        "{h}"
+    );
+    assert!(
+        h.contains("See <a href=\"/de/maps/\">the map</a> &lt;script&gt;"),
+        "{h}"
     );
 
     let faq = json!({"type": "faq-section", "faqs": [{"question": {"en": "Book?"}, "answer": {"en": "Yes.\n\nEarly."}}]});
@@ -195,7 +213,10 @@ fn a_block_keeps_every_string_as_core_blocks() {
 
     let team = json!({"type": "team-grid", "editors": [{"name": "Giulia", "persona": "Early mornings on the rocks.", "love": "Rain."}]});
     let t = markup::block(&team, "en", &mut notes);
-    assert!(t.contains("<p>Early mornings on the rocks.</p>"), "{t}");
+    assert!(
+        t.contains("<p class=\"ct-persona\">Early mornings on the rocks.</p>"),
+        "{t}"
+    );
     let byline = json!({"type": "quote", "quote": "Fish.", "persona": "giulia"});
     let q = markup::block(&byline, "en", &mut notes);
     assert!(!q.contains("giulia"), "an editor's id is left out: {q}");
@@ -251,13 +272,16 @@ fn the_plan_has_one_document_per_url_with_its_route_as_meta() {
         .find(|d| d.route == "/de/manarola/sights/")
         .unwrap();
     assert_eq!(hub.title, "Sehenswürdigkeiten · Manarola");
-    // A blog article is a post with its category, tags, byline and date.
+    // A blog article is a post with its category, tags, byline and date; its heading is the
+    // article's own title, its document title the page's.
     let post = p
         .docs
         .iter()
         .find(|d| d.route == "/de/blog/gelato/")
         .unwrap();
     assert_eq!(post.post_type, "post");
+    assert_eq!(post.title, "Gelato");
+    assert_eq!(post.meta["_swarmpress_seo_title"], "Gelato | The Dispatch");
     assert_eq!(post.slug, "gelato-de");
     assert_eq!(post.category.as_deref(), Some("Food"));
     // Its language is a tag too: the home lists the stories in its own language.
@@ -398,6 +422,40 @@ fn the_live_sites_content_plans() {
             d.route
         );
         assert!(d.meta["_swarmpress_route"] == d.route);
+    }
+    // The site gets its own theme, and every link of its menus is a page the plan publishes.
+    assert_eq!(p.theme, crate::plan::CINQUETERRE_THEME);
+    let routes: std::collections::BTreeSet<&str> =
+        p.docs.iter().map(|d| d.route.as_str()).collect();
+    let mut links = Vec::new();
+    for items in p
+        .menus
+        .values()
+        .chain(p.named_menus.values().flat_map(|m| m.values()))
+    {
+        for i in items {
+            links.push(i.url.clone());
+            links.extend(i.children.iter().map(|c| c.url.clone()));
+        }
+    }
+    assert!(links.len() > 4 * (5 * 11 + 1 + 1 + 18), "{}", links.len());
+    for l in links.iter().filter(|l| !l.is_empty()) {
+        let path = l.split('#').next().unwrap();
+        assert!(routes.contains(path), "{l} is not a page of the site");
+    }
+    // The home's picks and stays come from its content.
+    for lang in crate::LANGS {
+        assert_eq!(
+            crate::compose::editors_picks(&site, lang).len(),
+            crate::compose::PICKS
+        );
+        assert_eq!(
+            crate::compose::places_to_stay(&site, lang).len(),
+            crate::compose::STAYS
+        );
+        for pick in crate::compose::editors_picks(&site, lang) {
+            assert!(routes.contains(pick.href.as_str()), "{}", pick.href);
+        }
     }
 }
 
@@ -595,4 +653,135 @@ fn the_site_repos_cloudflare_pages_workflow() {
     assert!(w.contains("::error::not set in the site repo"));
     // Nothing GitHub Pages is left.
     assert!(!w.contains("deploy-pages") && !w.contains("upload-pages-artifact"));
+}
+
+/// A collection's interludes stand where the source places them: after the item `afterIndex`
+/// names, as the live page shows them.
+#[test]
+fn interludes_stand_after_the_item_they_name() {
+    let b = json!({"type": "collection-with-interludes",
+        "items": [{"title": {"en": "First"}}, {"title": {"en": "Second"}}, {"title": {"en": "Third"}}],
+        "interludes": [{"afterIndex": 0, "title": {"en": "After one"}}, {"afterIndex": 9, "title": {"en": "At the end"}}]});
+    let m = markup::block(&b, "en", &mut Notes::default());
+    let at = |t: &str| m.find(t).unwrap_or_else(|| panic!("{t}: {m}"));
+    assert!(at("First") < at("After one") && at("After one") < at("Second"));
+    assert!(at("Third") < at("At the end"));
+    assert_eq!(m.matches("ct-interludes-item").count(), 2 * 2, "{m}");
+    assert!(!m.contains("afterIndex"));
+}
+
+/// cinqueterre.travel with the theme ported from its Astro theme (ADR-0092): the theme is
+/// activated, the header is the frozen theme's coastal spine, and the wordmark, the header's
+/// button and the footer are named menus in each language.
+#[test]
+fn cinqueterre_gets_its_own_theme_and_the_frozen_themes_menus() {
+    assert_eq!(plan(&site()).theme, "coast");
+    assert!(plan(&site()).named_menus.is_empty());
+    let mut s = site();
+    s.site["id"] = json!("cinqueterre-travel");
+    let p = plan(&s);
+    assert_eq!(p.theme, crate::plan::CINQUETERRE_THEME);
+    let de = &p.menus["de"];
+    let villages: Vec<&str> = de.iter().map(|m| m.url.as_str()).collect();
+    assert_eq!(
+        villages,
+        [
+            "/de/riomaggiore/",
+            "/de/manarola/",
+            "/de/corniglia/",
+            "/de/vernazza/",
+            "/de/monterosso/"
+        ]
+    );
+    let sections: Vec<&str> = de[3].children.iter().map(|m| m.url.as_str()).collect();
+    assert_eq!(sections.len(), 10);
+    assert_eq!(
+        sections[0], "/de/vernazza/",
+        "the overview is the village itself"
+    );
+    assert!(sections.contains(&"/de/vernazza/weather/"));
+    assert_eq!(de[3].children[1].label, "Aktivitäten");
+    for name in ["brand", "cta", "footer"] {
+        assert_eq!(p.named_menus[name].len(), 4, "{name}");
+    }
+    assert_eq!(p.named_menus["brand"]["it"][0].url, "/it/");
+    assert_eq!(p.named_menus["cta"]["fr"][0].url, "/fr/#subscribe");
+    let footer = &p.named_menus["footer"]["de"];
+    assert_eq!(footer.len(), 4);
+    assert_eq!(footer[1].label, "Dörfer");
+    assert_eq!(footer[1].children[0].url, "/de/monterosso/");
+    assert!(footer
+        .iter()
+        .flat_map(|c| &c.children)
+        .all(|m| m.url.starts_with("/de/")));
+}
+
+/// The home's sections from the site's own content: the hero as a cover, the owner's curated
+/// stories as the editors' picks (in the page's language), the featured stays, then the villages,
+/// the latest stories and the newsletter; nothing the content lacks.
+#[test]
+fn the_homes_sections_come_from_the_sites_content() {
+    let mut s = site();
+    s.pages.insert(
+        "blog-index.json".into(),
+        json!({"body": [{"type": "blog-index", "stories": [
+            {"slug": "gone", "title": "Not on the site"},
+            {"slug": "gelato", "title": "Gelato (index)", "excerpt": "Cold.", "author": "Marco", "category": "Food", "image": "https://img.example/g.jpg"},
+            {"slug": "gelato", "title": "Lead", "isLead": "true", "image": "https://img.example/l.jpg"}
+        ]}]}),
+    );
+    s.pages.get_mut("blog/gelato.json").unwrap()["body"][0]["post"]["title"] =
+        json!({"en": "Gelato", "de": "Eis"});
+    s.collections.insert(
+        "accommodations".into(),
+        vec![
+            json!({"village": "vernazza", "items": [
+                {"name": {"en": "Harbour Rooms"}, "featured": true, "rank": 2, "stars": 3, "price_range": {"min": 120, "max": 205}, "ratings": {"average": 8.6}, "details": {"teaser": {"en": "On the water", "de": "Am Wasser"}}},
+                {"name": {"en": "Hidden"}, "featured": true, "rank": 1, "published": false},
+                {"name": {"en": "Plain"}, "rank": 1}
+            ]}),
+            json!({"village": "manarola", "items": [{"name": {"en": "Vineyard House"}, "featured": true, "rank": 5, "ratings": {"average": 4.5}}]}),
+        ],
+    );
+    let picks = crate::compose::editors_picks(&s, "de");
+    assert_eq!(picks.len(), 2, "{picks:?}");
+    assert_eq!(
+        picks[0].title, "Eis",
+        "the lead first, its article's title in German"
+    );
+    assert_eq!(picks[0].href, "/de/blog/gelato/");
+    assert_eq!(picks[0].image, "https://img.example/l.jpg");
+    assert_eq!(picks[1].author, "Marco");
+    let stays = crate::compose::places_to_stay(&s, "de");
+    let names: Vec<&str> = stays.iter().map(|x| x.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["Vineyard House", "Harbour Rooms"],
+        "the villages along the coast, featured and published only"
+    );
+    assert_eq!(stays[1].rating.as_deref(), Some("8.6/10"));
+    assert_eq!(stays[0].rating.as_deref(), Some("4.5/5"));
+    assert_eq!(stays[1].teaser, "Am Wasser");
+
+    let home = crate::compose::home(&s, "de", "Coast Dispatch", "Five villages");
+    let at = |t: &str| home.find(t).unwrap_or_else(|| panic!("{t}: {home}"));
+    assert!(home.starts_with("<!-- wp:cover "), "{home}");
+    assert!(at("ct-home-hero") < at("ct-picks"));
+    assert!(at("ct-picks") < at("ct-villages-home"));
+    assert!(at("ct-villages-home") < at("ct-stays"));
+    assert!(at("ct-stays") < at("ct-home-stories"));
+    assert!(at("ct-home-stories") < at("ct-newsletter"));
+    assert!(home.contains("href=\"/de/itinerary/\""));
+    assert!(home.contains("<a href=\"/de/vernazza/hotels/\">Harbour Rooms</a>"));
+    assert!(home.contains("€120–205 pro Nacht"));
+    assert!(home.contains("ct-stay ct-village-vernazza"));
+    assert!(
+        !home.contains("Not on the site") && !home.contains("Hidden") && !home.contains("Plain")
+    );
+    // Without curated stories or featured stays, those sections are left out, not invented.
+    let bare = crate::compose::home(&site(), "en", "Coast Dispatch", "");
+    assert!(
+        !bare.contains("ct-picks") && !bare.contains("ct-stays"),
+        "{bare}"
+    );
 }

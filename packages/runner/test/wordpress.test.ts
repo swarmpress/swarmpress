@@ -138,7 +138,11 @@ describe.skipIf(!ready || !migrateBinary(REPO_ROOT))("a site moved onto WordPres
         // language, rendered by WordPress's query block; the villages; the newsletter form, sent
         // to the platform by the export.
         const home = page("/de/");
-        expect(home).toContain('href="https://coast.example/de/blog/hafentage/"');
+        // References to the site are root-relative (ADR-0092): a preview host serves the export
+        // whole, its theme's files included; the canonical link keeps the public origin.
+        expect(home).toContain('href="/de/blog/hafentage/"');
+        expect(home).toContain("href='/wp-content/themes/coast/style.css");
+        expect(home).toContain('rel="canonical" href="https://coast.example/de/"');
         expect(home).not.toContain("/en/blog/harbour-days/");
         expect(home).toContain('href="/de/vernazza/"');
         expect(home).toContain('action="https://platform.example/f/coast?to=/wp-admin/admin-post.php"');

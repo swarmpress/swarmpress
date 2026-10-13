@@ -6,7 +6,9 @@
 //!   `blog-article`), a `page` otherwise,
 //!   with its route, language, SEO title and description and its source as meta (the sandbox's
 //!   routes plugin answers the URL with it), its title, excerpt and body in core blocks;
-//! - one menu per language (`site.json`'s `navigation.main`, links in that language);
+//! - one menu per language (`site.json`'s `navigation.main`, links in that language; for the
+//!   ported theme, the frozen theme's own header: the five villages and their sections), and the
+//!   theme's named menus ([`Plan::named_menus`]: its wordmark and footer, per language);
 //! - a report: the block kinds that had no fields (the frozen theme draws them from its own code)
 //!   and the URLs with no content.
 
@@ -23,6 +25,22 @@ use crate::{localized, Site, LANGS};
 /// The theme the sandbox ships for migrated editorial sites.
 pub const THEME: &str = "coast";
 
+/// The sandbox's port of cinqueterre.travel's own Astro theme (ADR-0092): a child of Coast.
+pub const CINQUETERRE_THEME: &str = "cinqueterre";
+
+/// The sites whose own design the sandbox carries as a theme of its own, by `site.json`'s `id`.
+const SITE_THEMES: [(&str, &str); 1] = [("cinqueterre-travel", CINQUETERRE_THEME)];
+
+/// The theme a site is imported with: its own ported theme when the sandbox ships one, else Coast.
+pub fn theme_for(site: &Site) -> &'static str {
+    let id = site.site.get("id").and_then(Value::as_str).unwrap_or("");
+    SITE_THEMES
+        .iter()
+        .find(|(s, _)| *s == id)
+        .map(|(_, t)| *t)
+        .unwrap_or(THEME)
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Plan {
     pub title: String,
@@ -30,6 +48,11 @@ pub struct Plan {
     pub theme: String,
     pub docs: Vec<Doc>,
     pub menus: BTreeMap<String, Vec<MenuItem>>,
+    /// The theme's named menus, by name then language (`footer` → `en` → items): written as the
+    /// navigation `{name}-{lang}`, which a navigation block with the class `sp-menu-{name}` shows
+    /// in the page's language (the sandbox's routes plugin).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub named_menus: BTreeMap<String, BTreeMap<String, Vec<MenuItem>>>,
     pub report: Report,
 }
 
@@ -94,16 +117,31 @@ pub fn plan(site: &Site) -> Plan {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
+    let theme = theme_for(site);
+    let ported = theme == CINQUETERRE_THEME;
     let menus = LANGS
         .iter()
-        .map(|l| (l.to_string(), menu(site, l)))
+        .map(|l| {
+            let items = if ported {
+                compose::spine(l)
+            } else {
+                menu(site, l)
+            };
+            (l.to_string(), items)
+        })
         .collect();
+    let named_menus = if ported {
+        compose::named_menus()
+    } else {
+        BTreeMap::new()
+    };
     Plan {
         title,
         tagline,
-        theme: THEME.into(),
+        theme: theme.into(),
         docs,
         menus,
+        named_menus,
         report,
     }
 }
@@ -142,7 +180,7 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes) -> Doc {
     let mut title = page
         .get("title")
         .and_then(|t| localized(t, lang))
-        .map(strip_tags)
+        .map(markup::strip_tags)
         .unwrap_or_default();
     if let Source::Empty { title: t } = &r.source {
         title = t.clone();
@@ -243,6 +281,13 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes) -> Doc {
         .iter()
         .find(|b| b.get("type").and_then(Value::as_str) == Some("blog-article"))
         .and_then(|b| b.get("post"));
+    // An article's heading is its own title as the live page shows it, without the site's name
+    // the page title carries for the document title (which stays as it was).
+    let heading = article
+        .and_then(|a| a.get("title"))
+        .and_then(|t| localized(t, lang))
+        .map(markup::strip_tags)
+        .filter(|t| !t.is_empty());
     let mut meta = BTreeMap::new();
     meta.insert("_swarmpress_route".to_string(), r.path.clone());
     meta.insert("_swarmpress_lang".to_string(), lang.to_string());
@@ -273,6 +318,10 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes) -> Doc {
     {
         meta.insert("_swarmpress_byline".to_string(), by.to_string());
     }
+    let title = match heading {
+        Some(h) if post => h,
+        _ => title,
+    };
     let slug = if r.path == "/" {
         "home".to_string()
     } else {
@@ -313,24 +362,6 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes) -> Doc {
             .and_then(Value::as_str)
             .map(|d| d.chars().take(19).collect()),
     }
-}
-
-fn strip_tags(s: &str) -> String {
-    let s = s
-        .replace("<br/>", " ")
-        .replace("<br />", " ")
-        .replace("<br>", " ");
-    let mut out = String::new();
-    let mut in_tag = false;
-    for c in s.chars() {
-        match c {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if !in_tag => out.push(c),
-            _ => {}
-        }
-    }
-    out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// A `collection-embed`'s items from `collections/` (the route's village only, on a village page).

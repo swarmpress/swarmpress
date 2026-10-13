@@ -38,11 +38,15 @@ the frozen theme path stays byte-identical in swarmpress until step 4 (CLAUDE.md
 
 ```sh
 # 1. a reference build of the frozen theme as CI builds it: from a copy (the build writes
-#    .astro/ inside the theme, which rule 9 forbids), with the paths CI cannot resolve missing
+#    .astro/ inside the theme, which rule 9 forbids), with the paths CI cannot resolve missing.
+#    node_modules is a real directory of absolute links, so Vite's and Astro's caches land in the
+#    copy, never in the frozen theme's node_modules
 T=packages/site-builder/src/themes/cinque-terre; R=$(mktemp -d)
-rsync -a --exclude node_modules --exclude .astro $T/ $R/theme/ && ln -s $PWD/$T/node_modules $R/theme/node_modules
-(cd $R/theme && CONTENT_DIR=$PWD/../../cinqueterre.travel/content/pages CONTENT_ROOT=/nonexistent \
-   VILLAGE_CONFIG_DIR=/nonexistent ./node_modules/.bin/astro build --outDir $R/reference)
+rsync -a --exclude node_modules --exclude .astro $T/ $R/theme/ && mkdir $R/theme/node_modules
+(cd $T/node_modules && for e in [!@]* @*/*; do [ -e "$e" ] && mkdir -p "$R/theme/node_modules/$(dirname $e)" \
+   && ln -s "$(realpath $e)" "$R/theme/node_modules/$e"; done)
+(cd $R/theme && CONTENT_DIR=$OLDPWD/cinqueterre.travel/content/pages CONTENT_ROOT=/nonexistent \
+   VILLAGE_CONFIG_DIR=/nonexistent node node_modules/astro/astro.js build --outDir $R/reference)
 
 # 2. the import, the export and the comparison (a fresh Node WordPress; see FEAT-112)
 cargo xtask sandbox-fetch --node
@@ -62,11 +66,15 @@ What it does:
    articles as posts with categories and tags; one menu per language; the theme's two local images
    uploaded as media. Written through the REST API on the branch `import-site` as the CEO, merged
    into `live` by one change request, release `import`.
-2. **Theme:** Coast, the sandbox's editorial block theme (the frozen theme's palette and type).
-   The pages the frozen theme drew from its own code are **composed** (the owner's decisions of
-   2026-10-12, `crates/content-import-wp/src/compose.rs`): the home, the village overview, and a live
-   forecast block on the weather pages (below).
-3. **Export:** `live` crawled into a content-addressed release (`export/release.json`, `export/files/`),
+2. **Theme:** `cinqueterre`, the frozen theme's design carried into a block theme in the GPL sandbox
+   ([ADR-0092](../adr/0092-the-astro-design-carried-into-a-wordpress-block-theme.md), wp-sandbox
+   0.7.0, a child of Coast), activated by the import for this site (`plan::theme_for`). The pages
+   the frozen theme drew from its own code are **composed** (the owner's decisions of 2026-10-12,
+   `crates/content-import-wp/src/compose.rs`): the home, the village overview, a live forecast block
+   on the weather pages (below), and the theme's menus (the coastal spine, the wordmark, the
+   header's button and the footer, per language).
+3. **Export:** `live` crawled into a content-addressed release (`export/release.json`, `export/files/`;
+   the site's own files referenced root-relative, so a preview host serves the theme too),
    with WordPress's not-found page as `404.html`, Cloudflare Pages' `_redirects` and `_headers`
    (ADR-0091), forms sent to `--forms-endpoint`, and the forecast blocks filled from Open-Meteo.
 4. **Comparison** (`compare.json`): every URL of the reference build, fetched from the live site
@@ -142,11 +150,36 @@ forecast; the import took 3½ minutes, the export 10 with the forecast):
 | pages only in the export (archives, feeds, the language tags' archives, `404.html`) | 227 |
 | pages with a forecast | 31 (the 11 weather pages and the 20 village weather pages) |
 
+**Result, 2026-10-13** (the export of sandbox 0.7.0, rendered by the `cinqueterre` theme; ADR-0092):
+
+| | |
+|---|---|
+| URLs compared | 663 |
+| pass | **635** (as on 2026-10-12) |
+| status mismatches | 0 |
+| content below 900‰ | 28 (median 998‰), the same rows (below) |
+| missing links to live pages | 122 (was 138; all on the 9 home and village-overview pages) |
+| titles that differ | 4 (the village overview's titles) |
+| pages only in the export | 224 |
+| files in the export | 1004 (the theme's stylesheet and fonts now among them) |
+
+The homes keep 21–99‰ of the live text (was 2–55‰) and miss 8–14 links (was 13–16): the editors'
+picks are the stories the owner curated for the blog index. Side-by-side screenshots of the live
+site and the export (homes in English and German, an article, a village, the village overview, a
+weather page and a 404, at 1440 and 390 px) are FEAT-112's evidence of the look.
+
+**What the theme shows differently from the Astro site** (ADR-0092): the homes' sections come only
+from content (the editors' picks from the blog index, the featured stays of the accommodations
+collection; no trending, audio guides, sample hotels or "about" card); the latest stories and the
+stays are cards without photographs (posts have no featured images); the language switch is four
+links, not a dropdown; there is no search button; an item's "essential information" is chips under
+its text, not a sidebar with a map; the 404 is the site's own page (the live one is GitHub's).
+
 **The gate's rows:**
 
 | URLs | What | Status (2026-10-12) |
 |---|---|---|
-| `/`, `/{en,de,fr,it}/` (5) | the frozen theme's own sections (hero, carousels, trending, places to stay, latest stories, newsletter) | **composed** (decision 1); 2–55‰ of the live text and 13–16 missing links each, by design: the live page's text and links are the theme's carousels (on `/de/`, `/fr/`, `/it/` partly English articles), the composition lists the 6 newest stories in the page's language and links all stories. **Waits for the owner's review in the preview** |
+| `/`, `/{en,de,fr,it}/` (5) | the frozen theme's own sections (hero, carousels, trending, places to stay, latest stories, newsletter) | **composed** (decision 1); 21–99‰ of the live text and 8–14 missing links each (2026-10-13), by design: the live page's text and links are the theme's carousels (on `/de/`, `/fr/`, `/it/` partly English articles); the composition shows the editors' picks the owner curated, the villages, the featured stays, the 6 newest stories in the page's language and links all stories. **Waits for the owner's review in the preview** |
 | `/{lang}/village/` (4) | the village template: the theme's default stories | **composed** as the village overview (decision 2); 0–3‰ and 13–17 missing links each, the same carousels. **Waits for the owner's review** |
 | two articles × 4 languages (8) | **live renders `[object Object]`** (a live bug); the export has the whole article | nothing: the export fixes it |
 | the weather pages (11: `/weather`, `/wetter`, `/meteo`, `/cinque-terre/…`) at 660–762‰ | the frozen theme's weather blocks print sample data; the content's own sample forecast is now left out | **the live forecast block is built** (decision 3); below 900‰ because the live page's sample forecast is not carried, by design. **Waits for the owner's review** |

@@ -111,3 +111,4 @@ Accepted ADRs are never rewritten.
 | [0089](0089-seats-of-your-own-at-meetings-and-breaks.md) | Seats of your own at meetings and breaks | Accepted (supersedes ADR-0088 decision 4's seat sentence) |
 | [0090](0090-ceiling-designs-hang-as-lights.md) | Ceiling designs hang as lights | Accepted (supersedes ADR-0088 decision 3's ceiling sentence) |
 | [0091](0091-cloudflare-pages-is-the-static-plane-for-exported-sites.md) | Cloudflare Pages is the static plane for exported sites | Accepted (refines ADR-0049 decision 2 and ADR-0083 §1) |
+| [0092](0092-the-astro-design-carried-into-a-wordpress-block-theme.md) | The Astro site is the source; its design is carried into a WordPress block theme | Accepted (refines ADR-0083 §5; amends ADR-0091 decision 1) |

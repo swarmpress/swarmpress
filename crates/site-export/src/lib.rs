@@ -13,8 +13,13 @@
 //!   `xmlrpc.php`, `wp-cron.php`, comment posting) are never exported, and a URL with a query
 //!   string is not a static page (it is reported, not exported; static assets keep their files
 //!   and drop the `?ver=` WordPress appends).
-//! - **URLs:** text bodies (HTML, CSS, JS, XML, JSON, text) have the sandbox's origin rewritten to
-//!   the public origin, JSON-escaped forms included.
+//! - **URLs:** a page's and a stylesheet's references to the site itself (links, images,
+//!   stylesheets, scripts, fonts in `url()`) are written root-relative (`/vernazza/`), so the same
+//!   export is served whole from any host: a preview at `*.pages.dev` loads its own theme files, not
+//!   the domain's. What names the site to the outside keeps the public origin: the head's
+//!   `<link rel="canonical|alternate|…">` and `<meta>` tags, sitemaps, feeds, robots.txt, and
+//!   text in scripts and JSON (the sandbox's origin rewritten to the public origin, JSON-escaped and
+//!   URL-encoded forms included).
 //! - **The release:** each file's SHA-256, type and size by URL path, redirects, and the release
 //!   id, a domain-separated SHA-256 (`swarmpress:release:v1`) over that manifest: the same site
 //!   gives the same id. Blobs are returned by digest; a store keeps each once.
@@ -442,7 +447,7 @@ impl Crawler {
         let ct = response.content_type.clone();
         let textual = is_text(&ct);
         let mut body = if textual {
-            self.rewrite(&response.body)
+            self.rewrite_typed(&response.body, &ct)
         } else {
             response.body.clone()
         };
@@ -497,7 +502,7 @@ impl Crawler {
         if response.status != 404 || !is_type(&response.content_type, "html") {
             return;
         }
-        let mut body = self.rewrite(&response.body);
+        let mut body = self.rewrite_typed(&response.body, &response.content_type);
         if let Some(endpoint) = &self.opts.forms_endpoint {
             body = rewrite_forms(
                 &String::from_utf8_lossy(&body),
@@ -665,6 +670,18 @@ impl Crawler {
         Some(p)
     }
 
+    /// A text body for the release: in a page or a stylesheet, references to the site
+    /// root-relative ([`root_relative`]); then the sandbox's origin as the public origin.
+    fn rewrite_typed(&self, body: &[u8], content_type: &str) -> Vec<u8> {
+        if is_type(content_type, "html") || is_type(content_type, "css") {
+            let text = String::from_utf8_lossy(body);
+            let html = is_type(content_type, "html");
+            self.rewrite(root_relative(&text, &self.opts.origin, html).as_bytes())
+        } else {
+            self.rewrite(body)
+        }
+    }
+
     fn rewrite(&self, body: &[u8]) -> Vec<u8> {
         let text = String::from_utf8_lossy(body);
         let o = &self.opts.origin;
@@ -678,6 +695,67 @@ impl Crawler {
         }
         out.into_bytes()
     }
+}
+
+/// `text` (a page when `html`, else a stylesheet) with its references to `origin` root-relative:
+/// in a page, every tag's attributes (`href`, `src`, `srcset`, `action`…) but those of `<meta>`
+/// and of `<link>`s that name the page to the outside (canonical, alternates, shortlink, the API),
+/// `url()` in inline styles, and the import map's module URLs; in a stylesheet, its `url()`s.
+/// Other scripts and text keep the origin (rewritten to the public origin afterwards).
+pub fn root_relative(text: &str, origin: &str, html: bool) -> String {
+    let origin = origin.trim_end_matches('/');
+    let urls = |t: &str| {
+        let mut t = t.to_string();
+        for q in ["", "'", "\""] {
+            t = t.replace(&format!("url({q}{origin}/"), &format!("url({q}/"));
+        }
+        t
+    };
+    if !html {
+        return urls(text);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    // The import map's JSON names the script modules (the navigation's interactivity).
+    let mut importmap = false;
+    while let Some(i) = rest.find('<') {
+        if importmap {
+            out.push_str(&rest[..i].replace(&format!("\"{origin}/"), "\"/"));
+        } else {
+            out.push_str(&urls(&rest[..i]));
+        }
+        let tail = &rest[i..];
+        let end = tail.find('>').map(|j| j + 1).unwrap_or(tail.len());
+        let tag = &tail[..end];
+        let lower = tag.to_ascii_lowercase();
+        importmap = lower.starts_with("<script") && lower.contains("importmap");
+        let named = lower.starts_with("<meta")
+            || (lower.starts_with("<link")
+                && [
+                    "canonical",
+                    "alternate",
+                    "shortlink",
+                    "api.w.org",
+                    "edituri",
+                ]
+                .iter()
+                .any(|r| lower.contains(r)));
+        if named || lower.starts_with("<!--") {
+            out.push_str(tag);
+        } else {
+            let mut t = tag.to_string();
+            for q in ["\"", "'"] {
+                t = t.replace(&format!("={q}{origin}/"), &format!("={q}/"));
+                t = t.replace(&format!("={q}{origin}{q}"), &format!("={q}/{q}"));
+            }
+            // srcset lists and inline styles name the site after the attribute's start too.
+            t = t.replace(&format!(", {origin}/"), ", /");
+            out.push_str(&urls(&t));
+        }
+        rest = &tail[end..];
+    }
+    out.push_str(&urls(rest));
+    out
 }
 
 /// Forms that post to one of WordPress's endpoints ([`FORM_TARGETS`]) post to `endpoint` instead,
@@ -819,6 +897,19 @@ fn html_links(html: &str) -> Vec<String> {
                 out.push(value.to_string());
             }
         }
+    }
+    // Inline stylesheets name files too: the theme's fonts (`@font-face` from theme.json).
+    let mut from = 0;
+    while let Some(i) = lower[from..].find("<style") {
+        let start = from + i;
+        let Some(open) = lower[start..].find('>').map(|j| start + j + 1) else {
+            break;
+        };
+        let end = lower[open..]
+            .find("</style")
+            .map_or(lower.len(), |j| open + j);
+        out.extend(css_links(&html[open..end]));
+        from = end;
     }
     out
 }

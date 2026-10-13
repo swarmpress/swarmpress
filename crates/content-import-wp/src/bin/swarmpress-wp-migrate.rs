@@ -312,6 +312,18 @@ async fn apply(wp: &Wp, p: &Plan, branch: &str, assets: Option<&Path>) -> Result
         )
         .await?;
     }
+    // The theme's named menus (`{name}-{lang}`: the wordmark, the header's button, the footer).
+    for (name, by_lang) in &p.named_menus {
+        for (lang, items) in by_lang {
+            let content: String = items.iter().map(nav_markup).collect();
+            wp.rest_ok(
+                M::POST,
+                "/wp/v2/navigation",
+                &json!({"title": format!("{name} ({lang})"), "slug": format!("{name}-{lang}"), "status": "publish", "content": content}),
+            )
+            .await?;
+        }
+    }
     let cr = wp
         .repo(json!({"op": "cr.open", "source": branch, "title": format!("Import: {} ({} documents)", p.title, p.docs.len()), "author": ceo}))
         .await?;
