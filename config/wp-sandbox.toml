@@ -5,11 +5,11 @@
 # runner and conformance start its Node entry as a separate process.
 #
 # A new sandbox release changes every field below in one commit.
-version = "0.7.1"
+version = "0.8.0"
 repo = "swarmpress/wp-sandbox"
-tag = "v0.7.1"
-asset = "wp-sandbox-0.7.1.tar.gz"
-sha256 = "13ea5cd3e2462b13d72c66429c73f9524aa21c58943d589326fd04e1253a4612"
-size_bytes = 92859503
+tag = "v0.8.0"
+asset = "wp-sandbox-0.8.0.tar.gz"
+sha256 = "6727fc616dab58f1204044b2639b4c39c8d1c7529438f0e5f88ee563b9b19b10"
+size_bytes = 92872782
 php = "8.4"
 wordpress = "swarmpress/wordpress@wp-7.1.3-sp.3"

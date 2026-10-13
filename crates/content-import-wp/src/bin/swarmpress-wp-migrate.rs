@@ -1,8 +1,9 @@
 //! `swarmpress-wp-migrate`: a JSON-block site moved onto a WordPress sandbox (plan M8).
 //!
 //! ```text
-//! swarmpress-wp-migrate plan    --content DIR --out plan.json [--newsletter]
+//! swarmpress-wp-migrate plan    --content DIR --out plan.json [--newsletter] [--theme-data FILE]
 //! swarmpress-wp-migrate apply   --plan plan.json --sandbox URL --repo URL [--branch NAME] [--assets DIR]
+//!                               [--theme-data FILE]
 //! swarmpress-wp-migrate export  --sandbox URL --repo URL --public-origin URL --out DIR
 //!                               [--forms-endpoint URL] [--forecasts DIR]
 //! swarmpress-wp-migrate forecast --export DIR [--forecasts DIR]
@@ -13,7 +14,12 @@
 //! `plan` leaves the newsletter out (the owner's decision of 2026-10-13: no form until the central
 //! server has a public address, a privacy line and a double opt-in); `--newsletter` composes it
 //! (the home's form, the header's button, the footer's link), for an export with
-//! `--forms-endpoint`. `apply` writes the plan through the sandbox's REST API on a branch of its own, as the CEO, then
+//! `--forms-endpoint`. `--theme-data` (a `ThemeData` JSON file, ADR-0093; its font files are paths
+//! relative to it) imports the site onto the neutral theme `canvas` and writes its design as data
+//! before the documents (`content_import_wp::theme`: fonts, global styles, template parts,
+//! templates, patterns, navigation, each updated by slug when it exists); without it the site gets
+//! the fallback theme folder (Coast, or cinqueterre.travel's own until its design runs on data).
+//! On `apply` it replaces the plan's theme data. `apply` writes the plan through the sandbox's REST API on a branch of its own, as the CEO, then
 //! opens a change request and merges it into `live` (ADR-0083 §5). A site image the pages name by
 //! path (`/giulia_rossi.png`) and `--assets` holds is uploaded as media first, and the pages point
 //! at the upload. `export` crawls `live` as a
@@ -33,7 +39,9 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, Context, Result};
 use content_import_wp::compare::{compare_with, Facts};
 use content_import_wp::compose;
-use content_import_wp::plan::{plan_with, Doc, MenuItem, Plan};
+use content_import_wp::plan::{plan_with_theme, Doc, MenuItem, Plan};
+use content_import_wp::theme::{self, Call, Kind};
+use content_import_wp::theme_data::{ThemeData, THEME_DATA_FORMAT};
 use content_import_wp::Site;
 use serde_json::{json, Value};
 
@@ -64,7 +72,10 @@ async fn main() -> Result<()> {
             let opts = compose::Options {
                 newsletter: args.iter().any(|a| a == "--newsletter"),
             };
-            let p = plan_with(&site, opts);
+            let theme_data = arg(&args, "--theme-data")
+                .map(|f| read_theme_data(Path::new(&f)))
+                .transpose()?;
+            let p = plan_with_theme(&site, opts, theme_data);
             std::fs::write(need(&args, "--out")?, serde_json::to_string_pretty(&p)?)?;
             eprintln!(
                 "{} documents ({} posts), {} empty routes, empty block kinds: {:?}",
@@ -80,13 +91,12 @@ async fn main() -> Result<()> {
             let wp = Wp::new(&need(&args, "--sandbox")?, &need(&args, "--repo")?);
             let branch = arg(&args, "--branch").unwrap_or_else(|| "import-site".into());
             let assets = arg(&args, "--assets").map(PathBuf::from);
-            apply(
-                &wp,
-                &serde_json::from_value(p).context("the plan")?,
-                &branch,
-                assets.as_deref(),
-            )
-            .await
+            let mut p: Plan = serde_json::from_value(p).context("the plan")?;
+            if let Some(f) = arg(&args, "--theme-data") {
+                p.theme_data = Some(read_theme_data(Path::new(&f))?);
+                p.theme = theme::BASE_THEME.into();
+            }
+            apply(&wp, &p, &branch, assets.as_deref()).await
         }
         Some("export") => {
             let wp = Wp::new(&need(&args, "--sandbox")?, &need(&args, "--repo")?);
@@ -233,12 +243,19 @@ async fn apply(wp: &Wp, p: &Plan, branch: &str, assets: Option<&Path>) -> Result
     wp.repo(json!({"op": "session.set", "branch": branch, "user_id": 1, "author": ceo, "read_only": false}))
         .await?;
     use reqwest::Method as M;
-    wp.rest_ok(
-        M::POST,
-        "/swarmpress/v1/theme",
-        &json!({"stylesheet": p.theme}),
-    )
-    .await?;
+    // The design: as data on canvas (ADR-0093), else the fallback theme folder.
+    let theme_menus = match &p.theme_data {
+        Some(data) => write_theme(wp, data, &p.theme).await?,
+        None => {
+            wp.rest_ok(
+                M::POST,
+                "/swarmpress/v1/theme",
+                &json!({"stylesheet": p.theme}),
+            )
+            .await?;
+            std::collections::BTreeSet::new()
+        }
+    };
     wp.rest_ok(
         M::POST,
         "/wp/v2/settings",
@@ -309,23 +326,37 @@ async fn apply(wp: &Wp, p: &Plan, branch: &str, assets: Option<&Path>) -> Result
         )
         .await?;
     }
+    // The site's menus, by slug (a second import updates them); a menu the design's data wrote
+    // stays the design's.
     for (lang, items) in &p.menus {
+        let slug = format!("nav-{lang}");
+        if theme_menus.contains(&slug) {
+            continue;
+        }
         let content: String = items.iter().map(nav_markup).collect();
-        wp.rest_ok(
-            M::POST,
-            "/wp/v2/navigation",
-            &json!({"title": format!("Navigation ({lang})"), "slug": format!("nav-{lang}"), "status": "publish", "content": content}),
+        upsert(
+            wp,
+            Kind::Navigation,
+            &p.theme,
+            &slug,
+            &json!({"title": format!("Navigation ({lang})"), "slug": slug, "status": "publish", "content": content}),
         )
         .await?;
     }
     // The theme's named menus (`{name}-{lang}`: the wordmark, the header's button, the footer).
     for (name, by_lang) in &p.named_menus {
         for (lang, items) in by_lang {
+            let slug = format!("{name}-{lang}");
+            if theme_menus.contains(&slug) {
+                continue;
+            }
             let content: String = items.iter().map(nav_markup).collect();
-            wp.rest_ok(
-                M::POST,
-                "/wp/v2/navigation",
-                &json!({"title": format!("{name} ({lang})"), "slug": format!("{name}-{lang}"), "status": "publish", "content": content}),
+            upsert(
+                wp,
+                Kind::Navigation,
+                &p.theme,
+                &slug,
+                &json!({"title": format!("{name} ({lang})"), "slug": slug, "status": "publish", "content": content}),
             )
             .await?;
         }
@@ -346,6 +377,244 @@ async fn apply(wp: &Wp, p: &Plan, branch: &str, assets: Option<&Path>) -> Result
         release["id"]
     );
     Ok(())
+}
+
+/// A `ThemeData` JSON file, its font files made paths from here (they are relative to the file)
+/// and checked against their SHA-256: a file that is not the one the data names fails the import.
+fn read_theme_data(file: &Path) -> Result<ThemeData> {
+    use sha2::{Digest as _, Sha256};
+    let text = std::fs::read_to_string(file).with_context(|| file.display().to_string())?;
+    let mut data: ThemeData =
+        serde_json::from_str(&text).with_context(|| format!("{}: theme data", file.display()))?;
+    if data.format != THEME_DATA_FORMAT {
+        bail!(
+            "{}: format {:?}, expected {THEME_DATA_FORMAT}",
+            file.display(),
+            data.format
+        );
+    }
+    let dir = file.parent().unwrap_or(Path::new("."));
+    for f in &mut data.fonts {
+        for face in &mut f.faces {
+            let path = dir.join(&face.file.path);
+            let bytes = std::fs::read(&path)
+                .with_context(|| format!("{}: font file {}", file.display(), path.display()))?;
+            let sha: String = Sha256::digest(&bytes)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            if sha != face.file.sha256 {
+                bail!(
+                    "{}: {} has sha256 {sha}, the data names {}",
+                    file.display(),
+                    path.display(),
+                    face.file.sha256
+                );
+            }
+            face.file.path = path.to_string_lossy().into_owned();
+        }
+    }
+    Ok(data)
+}
+
+/// The site's design as data, written on the session's branch in the fixed order of
+/// [`theme::calls`]. Returns the menus it wrote (by slug).
+async fn write_theme(
+    wp: &Wp,
+    data: &ThemeData,
+    stylesheet: &str,
+) -> Result<std::collections::BTreeSet<String>> {
+    use reqwest::Method as M;
+    let mut families: BTreeMap<String, u64> = BTreeMap::new();
+    // A face's file where WordPress keeps it, when that is not where the plan expected it.
+    let mut moved: Vec<(String, String)> = Vec::new();
+    let mut menus = std::collections::BTreeSet::new();
+    let calls = theme::calls(data, stylesheet);
+    for call in &calls {
+        match call {
+            Call::SwitchTheme { stylesheet } => {
+                wp.rest_ok(
+                    M::POST,
+                    "/swarmpress/v1/theme",
+                    &json!({"stylesheet": stylesheet}),
+                )
+                .await?;
+            }
+            Call::FontFamily { slug, settings } => {
+                let body = json!({"font_family_settings": settings.to_string()});
+                let (_, found) = wp
+                    .rest(
+                        M::GET,
+                        &format!("/wp/v2/font-families?slug={slug}&_fields=id"),
+                        None,
+                    )
+                    .await?;
+                let id = match first_id(&found) {
+                    Some(id) => {
+                        // A family's slug is its identity: the update leaves it out.
+                        let mut kept = settings.clone();
+                        if let Some(o) = kept.as_object_mut() {
+                            o.remove("slug");
+                        }
+                        let body = json!({"font_family_settings": kept.to_string()});
+                        wp.rest_ok(M::POST, &format!("/wp/v2/font-families/{id}"), &body)
+                            .await?;
+                        id
+                    }
+                    None => wp.rest_ok(M::POST, "/wp/v2/font-families", &body).await?["id"]
+                        .as_u64()
+                        .ok_or_else(|| anyhow!("font family {slug}: no id"))?,
+                };
+                families.insert(slug.clone(), id);
+            }
+            Call::FontFace {
+                family,
+                settings,
+                file,
+                file_name,
+                mime,
+                src,
+            } => {
+                let id = *families
+                    .get(family)
+                    .ok_or_else(|| anyhow!("a face of {family} before its family"))?;
+                let route = format!("/wp/v2/font-families/{id}/font-faces");
+                let (_, faces) = wp
+                    .rest(
+                        M::GET,
+                        &format!("{route}?per_page=100&_fields=id,font_face_settings"),
+                        None,
+                    )
+                    .await?;
+                let same = faces.as_array().into_iter().flatten().find(|f| {
+                    let s = &f["font_face_settings"];
+                    s["fontWeight"] == settings["fontWeight"]
+                        && s["fontStyle"] == settings["fontStyle"]
+                });
+                let at = match same {
+                    Some(f) => f["font_face_settings"]["src"].clone(),
+                    None => {
+                        let bytes = std::fs::read(file).with_context(|| file.clone())?;
+                        let form = reqwest::multipart::Form::new()
+                            .text("font_face_settings", settings.to_string())
+                            .part(
+                                "file-0",
+                                reqwest::multipart::Part::bytes(bytes)
+                                    .file_name(file_name.clone())
+                                    .mime_str(mime)?,
+                            );
+                        let res = wp
+                            .http
+                            .post(format!("{}/?rest_route={route}", wp.sandbox))
+                            .multipart(form)
+                            .send()
+                            .await?;
+                        let status = res.status().as_u16();
+                        let v: Value = res.json().await?;
+                        if status != 201 {
+                            bail!(
+                                "font face {file_name}: {status} {}",
+                                truncate(&v.to_string(), 300)
+                            );
+                        }
+                        v["font_face_settings"]["src"].clone()
+                    }
+                };
+                let at = at.as_str().map(site_path).unwrap_or_default();
+                if !at.is_empty() && at != *src {
+                    moved.push((src.clone(), at));
+                }
+            }
+            Call::GlobalStyles { body } => {
+                let mut text = body.to_string();
+                for (from, to) in &moved {
+                    text = text.replace(from.as_str(), to);
+                }
+                let (_, themes) = wp.rest(M::GET, "/wp/v2/themes?status=active", None).await?;
+                let href = themes[0]["_links"]["wp:user-global-styles"][0]["href"]
+                    .as_str()
+                    .unwrap_or("");
+                let id: u64 = href
+                    .rsplit("global-styles/")
+                    .next()
+                    .and_then(|t| {
+                        t.chars()
+                            .take_while(char::is_ascii_digit)
+                            .collect::<String>()
+                            .parse()
+                            .ok()
+                    })
+                    .ok_or_else(|| anyhow!("the active theme has no user global styles"))?;
+                wp.rest_ok(
+                    M::POST,
+                    &format!("/wp/v2/global-styles/{id}"),
+                    &serde_json::from_str(&text)?,
+                )
+                .await?;
+            }
+            Call::Upsert {
+                kind,
+                slug,
+                body,
+                categories,
+            } => {
+                let mut body = body.clone();
+                if !categories.is_empty() {
+                    let mut ids = Vec::new();
+                    for c in categories {
+                        ids.push(term(wp, "wp_pattern_category", c).await?);
+                    }
+                    body["wp_pattern_category"] = json!(ids);
+                }
+                upsert(wp, *kind, stylesheet, slug, &body).await?;
+                if *kind == Kind::Navigation {
+                    menus.insert(slug.clone());
+                }
+            }
+        }
+    }
+    eprintln!(
+        "the design {} as data on {stylesheet}: {} fonts, {} parts, {} templates, {} patterns, {} menus",
+        data.design,
+        data.fonts.len(),
+        data.template_parts.len(),
+        data.templates.len(),
+        data.patterns.len(),
+        data.navigation.len()
+    );
+    Ok(menus)
+}
+
+/// An object by slug: updated where it exists, created otherwise.
+async fn upsert(wp: &Wp, kind: Kind, theme: &str, slug: &str, body: &Value) -> Result<()> {
+    use reqwest::Method as M;
+    let (status, found) = wp.rest(M::GET, &kind.lookup(theme, slug), None).await?;
+    let existing = match kind {
+        // A template or part the theme or the site has (a theme file's is written as the site's).
+        Kind::Template | Kind::TemplatePart => (status == 200).then_some(0),
+        Kind::Pattern | Kind::Navigation => first_id(&found),
+    };
+    let route = match existing {
+        Some(id) => kind.item(theme, slug, id),
+        None => kind.collection().to_string(),
+    };
+    wp.rest_ok(M::POST, &route, body)
+        .await
+        .with_context(|| format!("{slug} ({})", kind.collection()))?;
+    Ok(())
+}
+
+fn first_id(v: &Value) -> Option<u64> {
+    v.as_array()
+        .and_then(|a| a.first())
+        .and_then(|x| x["id"].as_u64())
+}
+
+/// A URL's path from `/wp-content/` on (the sandbox writes absolute URLs).
+fn site_path(url: &str) -> String {
+    url.find("/wp-content/")
+        .map(|i| url[i..].to_string())
+        .unwrap_or_else(|| url.to_string())
 }
 
 /// Uploads the site images the documents name by path (`src="/x.png"`) and `dir` holds; the

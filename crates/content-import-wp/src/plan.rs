@@ -1,7 +1,8 @@
 //! The import plan: what the sandbox's REST API writes, in order, on the import branch.
 //!
 //! - the site's options (title, tagline; the home is the page at `/`);
-//! - the theme (`swarmpress/v1/theme`);
+//! - the theme (`swarmpress/v1/theme`): `canvas` with the site's design as data ([`crate::theme`],
+//!   ADR-0093), else the fallback theme folder ([`fallback_theme_for`]);
 //! - one document per URL ([`crate::routes`]): a `post` for a blog article (`page_type`
 //!   `blog-article`), a `page` otherwise,
 //!   with its route, language, SEO title and description and its source as meta (the sandbox's
@@ -20,6 +21,7 @@ use serde_json::Value;
 use crate::compose;
 use crate::markup::{self, Notes};
 use crate::routes::{routes, Route, Source, SECTIONS, VILLAGES};
+use crate::theme_data::ThemeData;
 use crate::{localized, Site, LANGS};
 
 /// The theme the sandbox ships for migrated editorial sites.
@@ -28,13 +30,17 @@ pub const THEME: &str = "coast";
 /// The sandbox's port of cinqueterre.travel's own Astro theme (ADR-0092): a child of Coast.
 pub const CINQUETERRE_THEME: &str = "cinqueterre";
 
-/// The sites whose own design the sandbox carries as a theme of its own, by `site.json`'s `id`.
-const SITE_THEMES: [(&str, &str); 1] = [("cinqueterre-travel", CINQUETERRE_THEME)];
+/// FALLBACK, until every site's design runs on data (ADR-0093): the sites whose own design the
+/// sandbox still carries as theme files, by `site.json`'s `id`. Used only for a plan without
+/// [`ThemeData`]; cinqueterre.travel keeps its `cinqueterre` theme folder until its design runs on
+/// data (the plan's step 6), and then this table and the folder go.
+const FALLBACK_SITE_THEMES: [(&str, &str); 1] = [("cinqueterre-travel", CINQUETERRE_THEME)];
 
-/// The theme a site is imported with: its own ported theme when the sandbox ships one, else Coast.
-pub fn theme_for(site: &Site) -> &'static str {
+/// The theme a site without theme data is imported with (FALLBACK, see
+/// [`FALLBACK_SITE_THEMES`]): its own ported theme when the sandbox ships one, else Coast.
+pub fn fallback_theme_for(site: &Site) -> &'static str {
     let id = site.site.get("id").and_then(Value::as_str).unwrap_or("");
-    SITE_THEMES
+    FALLBACK_SITE_THEMES
         .iter()
         .find(|(s, _)| *s == id)
         .map(|(_, t)| *t)
@@ -53,6 +59,11 @@ pub struct Plan {
     /// in the page's language (the sandbox's routes plugin).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub named_menus: BTreeMap<String, BTreeMap<String, Vec<MenuItem>>>,
+    /// The site's design as data (ADR-0093): with it the site is imported onto the neutral theme
+    /// `canvas` ([`crate::theme::BASE_THEME`]) and the data is written over REST before the
+    /// documents ([`crate::theme::calls`]); without it, the fallback theme folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme_data: Option<ThemeData>,
     pub report: Report,
 }
 
@@ -102,6 +113,12 @@ pub fn plan(site: &Site) -> Plan {
 
 /// The plan for the whole site with `opts` (the newsletter only where a form endpoint answers it).
 pub fn plan_with(site: &Site, opts: compose::Options) -> Plan {
+    plan_with_theme(site, opts, None)
+}
+
+/// The plan with the site's design as data: on `canvas` with `theme_data`, else on the fallback
+/// theme folder ([`fallback_theme_for`]).
+pub fn plan_with_theme(site: &Site, opts: compose::Options, theme_data: Option<ThemeData>) -> Plan {
     let mut report = Report::default();
     let mut docs = Vec::new();
     for r in routes(site) {
@@ -122,7 +139,11 @@ pub fn plan_with(site: &Site, opts: compose::Options) -> Plan {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let theme = theme_for(site);
+    let theme = if theme_data.is_some() {
+        crate::theme::BASE_THEME
+    } else {
+        fallback_theme_for(site)
+    };
     let ported = theme == CINQUETERRE_THEME;
     let menus = LANGS
         .iter()
@@ -147,6 +168,7 @@ pub fn plan_with(site: &Site, opts: compose::Options) -> Plan {
         docs,
         menus,
         named_menus,
+        theme_data,
         report,
     }
 }

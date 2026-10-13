@@ -140,14 +140,22 @@ export async function startNodeWordPress(opts: NodeWordPressOptions): Promise<No
 export async function runConformance(opts: NodeWordPressOptions & { junit: string; bench: string }): Promise<number> {
   const wp = await startNodeWordPress(opts);
   const raw = join(mkdtempSync(join(tmpdir(), "wp-bench-")), "bench.json");
+  // A second, fresh site (its own sandbox and storage): the theme as data stays with its site (ADR-0093).
+  let second: NodeWordPress | null = null;
   try {
+    second = await startNodeWordPress({ ...opts, dataDir: undefined, port: undefined, storagePort: undefined });
     const release = sandboxRelease(opts.root)!;
     const child = spawn(
       "node",
-      [join(release, "conformance/run.mjs"), "--sandbox", wp.url, "--repo", `${wp.storageUrl}/repo`, "--junit", opts.junit, "--bench", raw, "--backend", "php-wasm-node"],
+      [
+        join(release, "conformance/run.mjs"), "--sandbox", wp.url, "--repo", `${wp.storageUrl}/repo`, "--junit", opts.junit, "--bench", raw, "--backend", "php-wasm-node",
+        "--sandbox2", second.url, "--repo2", `${second.storageUrl}/repo`,
+      ],
       { stdio: "inherit" },
     );
     let code = await new Promise<number>((resolve) => child.once("exit", (c) => resolve(c ?? 1)));
+    await second.stop();
+    second = null;
     // Storage messages per kind of page (ADR-0084 §4), on a fresh site of their own.
     const queries = join(dirname(raw), "queries.json");
     const fresh = await startNodeWordPress({ ...opts, dataDir: undefined, port: undefined, storagePort: undefined });
@@ -167,6 +175,7 @@ export async function runConformance(opts: NodeWordPressOptions & { junit: strin
     }
     return code;
   } finally {
+    await second?.stop();
     await wp.stop();
     rmSync(dirname(raw), { recursive: true, force: true });
   }
@@ -264,6 +273,12 @@ export interface MigrationOptions extends NodeWordPressOptions {
   formsEndpoint?: string;
   /** Recorded Open-Meteo answers (`{lat},{lng}.json`) for the forecast blocks, instead of the network. */
   forecasts?: string;
+  /**
+   * The site's design as data (a `ThemeData` JSON file, ADR-0093; its font files relative to it):
+   * the site is imported onto the neutral theme `canvas` and the data written over REST. Without
+   * it, the fallback theme folder (Coast, or cinqueterre.travel's own).
+   */
+  themeData?: string;
 }
 
 /**
@@ -278,7 +293,11 @@ export async function runMigration(opts: MigrationOptions): Promise<number> {
   const run = (args: string[]) =>
     new Promise<number>((resolve) => spawn(bin, args, { stdio: "inherit" }).once("exit", (c) => resolve(c ?? 1)));
   const planFile = join(opts.out, "plan.json");
-  let code = await run(["plan", "--content", opts.content, "--out", planFile, ...(opts.formsEndpoint ? ["--newsletter"] : [])]);
+  let code = await run([
+    "plan", "--content", opts.content, "--out", planFile,
+    ...(opts.formsEndpoint ? ["--newsletter"] : []),
+    ...(opts.themeData ? ["--theme-data", opts.themeData] : []),
+  ]);
   if (code !== 0) return code;
   const wp = await startNodeWordPress({ ...opts, timeoutMs: opts.timeoutMs ?? 300_000 });
   try {

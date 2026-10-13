@@ -247,6 +247,35 @@ Plugins keep the Generation 1 SQL path. The exit gate is conformance plus a lowe
 
 **Feature:** FEAT-112.
 
+### After M8: the theme as data on canvas (ADR-0093)
+
+A site's design is site data, not theme files (ADR-0093): the GPL sandbox ships one neutral block
+theme, **`canvas`** (wp-sandbox 0.8.0: `theme.json` v3 with sane defaults, header and footer parts,
+`index`, `singular`, `404`, no PHP; its header shows the menu `nav-{lang}`, its footer the named
+menu `footer`), and a design (`ThemeData`, defined by `crates/site-design`) is written onto it over
+the REST API on a branch and merged through a change request like any content.
+
+- **The calls** (`crates/content-import-wp/src/theme.rs`, sans-IO; the `swarmpress-wp-migrate` CLI
+  runs them), in a fixed order: the switch to `canvas` (`POST /swarmpress/v1/theme`), fonts
+  (`/wp/v2/font-families`, then each face with its file as multipart to
+  `/wp/v2/font-families/{id}/font-faces`), global styles (the active theme's
+  `wp:user-global-styles`, `POST /wp/v2/global-styles/{id}`: settings, styles, custom CSS, every font
+  family with its faces' files), template parts (`/wp/v2/template-parts`), templates
+  (`/wp/v2/templates`), patterns (`/wp/v2/blocks`, unsynced, categories as `wp_pattern_category`),
+  navigation (`/wp/v2/navigation`, `{name}-{lang}`). Every write is idempotent: an object that exists
+  is updated by its slug (a template or part by `canvas//{slug}`, a face kept by weight and style).
+- **The sandbox's seams** (`swarmpress-routes.php`, 0.8.0): a `wp:pattern` slug the pattern registry
+  does not have shows the published `wp_block` of that name (`site/hero` → `hero`), so templates name
+  the site's patterns by slug; the font library's uploads reach the governed layer as
+  `fonts/{file}` under uploads (`DISALLOW_FILE_MODS` does not block them).
+- **The export** carries it with no change: the global styles and `@font-face` rules are inline in
+  every page, and the crawler follows their `url()`s to the font files.
+- **The importer:** `swarmpress-wp-migrate plan|apply --theme-data <json>` (the runner's
+  `wp-migrate --theme-data`) imports a site onto `canvas` with its design as data. Without it the
+  fallback stays: Coast, or cinqueterre.travel's own `cinqueterre` theme folder (`plan::
+  fallback_theme_for`), until cinqueterre's design runs on data (step 6 of the Claude Design plan);
+  then the table and the folders `coast` and `cinqueterre` retire from the sandbox.
+
 ## Cross-cutting
 
 - **Legal review gate:** before any public release, counsel reviews the channel model (ADR-0078 §3, ADR-0084). It is listed as an open item in FEAT-105 and blocks an external release, not internal development.

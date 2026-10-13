@@ -138,6 +138,9 @@
 # An export names its own files root-relative, so the preview serves the theme (FEAT-112, ADR-0092).
 - match: { classname: site-export, title: "tests::references_to_the_site_are_root_relative" }
   features: [FEAT-112, FEAT-109]
+# A design as data (ADR-0093): its global styles and the font library's uploads are exported (FEAT-112).
+- match: { classname: site-export, title: "tests::a_designs_global_styles_and_uploaded_fonts_are_exported" }
+  features: [FEAT-112, FEAT-109]
 # The static export (FEAT-109): its unit tests are its own suite.
 - match: { classname: site-export }
   features: [FEAT-109]

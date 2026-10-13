@@ -13,6 +13,8 @@
 //! - [`plan`]: the import plan: options, the theme, one document per URL, the menus.
 //! - [`compose`]: the pages the frozen theme drew from its own code (the home, the village
 //!   overview) composed as core blocks, and the weather pages' live forecast block.
+//! - [`theme`]: the site's design as data ([`theme_data::ThemeData`], ADR-0093) as the REST calls
+//!   that write it onto the neutral theme `canvas`, in a fixed order, idempotently.
 //! - [`compare`]: the export against the live site, URL by URL: status, title, content, links.
 
 pub mod compare;
@@ -20,6 +22,8 @@ pub mod compose;
 pub mod markup;
 pub mod plan;
 pub mod routes;
+pub mod theme;
+pub mod theme_data;
 
 use std::collections::BTreeMap;
 use std::path::Path;

@@ -10,6 +10,8 @@ paths:
   - crates/content-import-wp/src/plan.rs
   - crates/content-import-wp/src/compose.rs
   - crates/content-import-wp/src/compare.rs
+  - crates/content-import-wp/src/theme.rs
+  - crates/content-import-wp/src/theme_data.rs
   - crates/content-import-wp/src/tests.rs
   - crates/content-import-wp/src/bin/swarmpress-wp-migrate.rs
   - packages/runner/src/wordpress.ts
@@ -17,11 +19,15 @@ paths:
   - packages/runner/test/fixtures/migrate-site/content/site.json
   - packages/runner/test/fixtures/migrate-site/content/pages/weather.json
   - "packages/runner/test/fixtures/open-meteo/**"
+  - "packages/runner/test/fixtures/theme-data/**"
+  - crates/site-export/src/tests.rs
+  - config/wp-sandbox.toml
   - crates/site-export/src/forecast.rs
   - crates/site-export/src/forecast/tests.rs
   - templates/site-repo/.github/workflows/deploy.yml
   - docs/runbooks/cinqueterre-cutover.md
 adrs:
+  - ADR-0093
   - ADR-0092
   - ADR-0091
   - ADR-0083
@@ -71,13 +77,28 @@ says what stands between the comparison and the switch.
   design carried into a block theme, a child of Coast: `theme.json` (Playfair Display and Inter,
   self-hosted, OFL; the ink-on-white palette and the villages' colours), templates, the
   coastal-spine header and the footer as parts, patterns, and a stylesheet for the import's
-  sections. The import activates it for this site (`plan::theme_for`), writes the coastal spine as
+  sections. The import activates it for this site (`plan::fallback_theme_for`), writes the coastal spine as
   the main menu and the wordmark, the header's button and the footer as named menus per language
   (`sp-menu-{name}` → `{name}-{lang}`, the routes plugin), gives each text field's paragraph its
   class (`ct-{field}`), keeps the HTML some strings carry (paragraphs, bold, links), places a
   collection's interludes after the item they name, and leaves presentation fields out. The export
   names the site's own files root-relative, so the Cloudflare preview serves the theme; canonical
   and alternate links, sitemaps and feeds keep the public origin.
+- **The theme as data on canvas** (ADR-0093, wp-sandbox 0.8.0): a site's design as site data on
+  the sandbox's neutral block theme `canvas`, not as a theme folder. `plan|apply --theme-data
+  <json>` (the runner's `wp-migrate --theme-data`) switches the import to `canvas` and writes the
+  `ThemeData` over REST on the import branch before the documents, in a fixed order (fonts with
+  their files → global styles → template parts → templates → patterns → navigation), each updated
+  by slug when it exists (`theme.rs`, a pure call plan the CLI runs). The export carries the global
+  styles, the template output and the font files (the crawler follows the inline `@font-face`
+  `url()`s). Without theme data the fallback stays (Coast, or `cinqueterre` for this site, clearly
+  marked in `plan.rs`): cinqueterre.travel keeps its theme folder until its design runs on data.
+  Evidence: the unit tests `the_theme_data_is_written_in_a_fixed_order_onto_canvas`,
+  `global_styles_carry_the_css_and_every_font_with_its_files`,
+  `with_theme_data_the_site_is_imported_onto_canvas_without_it_onto_its_fallback_theme`,
+  site-export's `a_designs_global_styles_and_uploaded_fonts_are_exported`, the runner's migration
+  with a `ThemeData` fixture against a real Node WordPress, and the sandbox's conformance (the
+  theme as data on canvas; a second site keeps its own).
 - **The gate's compositions** (the owner's decisions of 2026-10-12, `compose.rs`):
   - **the home** (`/`, `/{lang}/`): a hero (`core/cover`), the editors' picks (the stories the owner
     curated for the blog index, in the page's language), the five villages, the places to stay (the

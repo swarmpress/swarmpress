@@ -164,4 +164,54 @@ describe.skipIf(!ready || !migrateBinary(REPO_ROOT))("a site moved onto WordPres
     },
     600_000,
   );
+
+  // The site's design as data on canvas (ADR-0093): written over REST on the import branch.
+  test(
+    "with theme data the site is imported onto canvas, and the export carries its templates, styles and fonts",
+    async () => {
+      const out = mkdtempSync(join(tmpdir(), "swarmpress-migrate-theme-"));
+      try {
+        const code = await runMigration({
+          root: REPO_ROOT,
+          content: join(import.meta.dir, "fixtures/migrate-site/content"),
+          out,
+          publicOrigin: "https://coast.example",
+          forecasts: join(import.meta.dir, "fixtures/open-meteo"),
+          themeData: join(import.meta.dir, "fixtures/theme-data/theme-data.json"),
+        });
+        expect(code).toBe(0);
+        const plan = JSON.parse(readFileSync(join(out, "plan.json"), "utf8")) as { theme: string; theme_data?: unknown };
+        expect(plan.theme).toBe("canvas");
+        expect(plan.theme_data).toBeTruthy();
+        const release = JSON.parse(readFileSync(join(out, "export/release.json"), "utf8")) as { files: Record<string, { content_type: string }> };
+        const page = (p: string) => readFileSync(join(out, "export/files", p.slice(1), "index.html"), "utf8");
+        // The front page through the data's template, its pattern by slug, its parts.
+        const home = page("/");
+        expect(home).toContain("td-front");
+        expect(home).toContain("Boats at dawn");
+        expect(home).toContain("td-header");
+        expect(home).toContain("td-footer");
+        // A page through the data's `page` template, with its own text and the menus by language.
+        const de = page("/de/sights/");
+        expect(de).toContain("td-page");
+        expect(de).toContain("Der Hafen ist der Marktplatz.");
+        expect(page("/en/sights/")).toContain('href="/en/sights/"');
+        expect(page("/en/sights/")).toContain("About the harbour");
+        // Global styles: the palette, the custom CSS, the font face with its file.
+        expect(home).toContain("--wp--preset--color--harbour: #0b5394");
+        expect(home).toContain(".td-hero{letter-spacing:.02em}");
+        expect(home).toContain("--wp--preset--font-family--harbour-serif");
+        expect(home).toContain("/wp-content/uploads/fonts/harbour-serif-400-normal.woff2");
+        // No theme folder's design: canvas has none, and Coast is not active.
+        expect(home).not.toContain("themes/coast/style.css");
+        // The font file itself is in the export (the crawler follows the @font-face url()).
+        const font = "/wp-content/uploads/fonts/harbour-serif-400-normal.woff2";
+        expect(release.files[font]?.content_type ?? `missing ${font}`).toContain("font/woff2");
+        expect(readFileSync(join(out, "export/files", font.slice(1))).subarray(0, 4).toString()).toBe("wOF2");
+      } finally {
+        rmSync(out, { recursive: true, force: true });
+      }
+    },
+    600_000,
+  );
 });

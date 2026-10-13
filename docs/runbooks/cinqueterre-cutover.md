@@ -68,7 +68,12 @@ What it does:
    into `live` by one change request, release `import`.
 2. **Theme:** `cinqueterre`, the frozen theme's design carried into a block theme in the GPL sandbox
    ([ADR-0092](../adr/0092-the-astro-design-carried-into-a-wordpress-block-theme.md), wp-sandbox
-   0.7.0, a child of Coast), activated by the import for this site (`plan::theme_for`). The pages
+   0.7.0, a child of Coast), activated by the import for this site (`plan::fallback_theme_for`:
+   the import's fallback when it has no theme data). Since wp-sandbox 0.8.0 a site's design can be
+   data on the neutral theme `canvas` (theme as data on canvas, ADR-0093: `--theme-data`), but
+   **cinqueterre.travel stays on its `cinqueterre` theme folder** until its own design runs on data
+   (step 6 of the Claude Design plan: its design → `ThemeData` → a preview → the owner's approval);
+   the migration above runs without `--theme-data` until then. The pages
    the frozen theme drew from its own code are **composed** (the owner's decisions of 2026-10-12,
    `crates/content-import-wp/src/compose.rs`): the home, the village overview, a live forecast block
    on the weather pages (below), and the theme's menus (the coastal spine, the wordmark, the

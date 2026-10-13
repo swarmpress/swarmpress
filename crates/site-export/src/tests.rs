@@ -411,3 +411,57 @@ fn references_to_the_site_are_root_relative_but_its_names_are_not() {
     let css = root_relative(&format!("a{{background:url(\"{O}/x.png\")}}"), O, false);
     assert_eq!(css, "a{background:url(\"/x.png\")}");
 }
+
+/// A design as data on `canvas` (ADR-0093): the global styles and the font faces are inline in the
+/// page (`global-styles-inline-css`, `wp-fonts-local`), the font files are font-library uploads
+/// under `/wp-content/uploads/fonts/`, named root-relative. The export keeps the inline CSS as it
+/// is and carries every font file the faces name.
+#[test]
+fn a_designs_global_styles_and_uploaded_fonts_are_exported() {
+    let mut s = BTreeMap::new();
+    let head = format!(
+        "<style id=\"wp-fonts-local\">@font-face{{font-family:\"Harbour Serif\";src:url('/wp-content/uploads/fonts/harbour-serif-400-normal.woff2') format('woff2');}}\
+         @font-face{{font-family:\"Harbour Serif\";src:url(\"{O}/wp-content/uploads/fonts/harbour-serif-700-normal.woff2\") format('woff2');}}</style>\
+         <style id=\"global-styles-inline-css\">:root{{--wp--preset--color--harbour: #0b5394;--wp--preset--font-family--harbour-serif: \"Harbour Serif\", serif;}}.td-hero{{letter-spacing:.02em}}</style>"
+    );
+    s.insert(
+        "/".into(),
+        Response {
+            status: 200,
+            content_type: "text/html; charset=UTF-8".into(),
+            location: None,
+            body: format!("<!doctype html><html><head><title>Harbour</title>{head}</head><body><header class=\"td-header\"></header><main class=\"td-front\"><h2 class=\"td-hero\">Boats at dawn</h2></main></body></html>").into_bytes(),
+        },
+    );
+    for w in ["400", "700"] {
+        s.insert(
+            format!("/wp-content/uploads/fonts/harbour-serif-{w}-normal.woff2"),
+            typed("font/woff2", "wOF2"),
+        );
+    }
+    let mut log = vec![];
+    let e = crawl(
+        Crawler::full(Options::new(O, "https://harbour.example/")),
+        &s,
+        &mut log,
+    );
+    for w in ["400", "700"] {
+        let path = format!("/wp-content/uploads/fonts/harbour-serif-{w}-normal.woff2");
+        assert_eq!(
+            e.release.files.get(&path).map(|f| f.content_type.as_str()),
+            Some("font/woff2"),
+            "{path}: {log:?}"
+        );
+    }
+    let home = &e.release.files["/"];
+    let html = String::from_utf8(e.blobs[&home.sha256].clone()).unwrap();
+    assert!(
+        html.contains("--wp--preset--color--harbour: #0b5394"),
+        "{html}"
+    );
+    assert!(html.contains(".td-hero{letter-spacing:.02em}"), "{html}");
+    assert!(html.contains("class=\"td-front\""), "{html}");
+    // Both faces root-relative in the export, as the static host serves them.
+    assert!(html.contains("url('/wp-content/uploads/fonts/harbour-serif-400-normal.woff2')"));
+    assert!(html.contains("url(\"/wp-content/uploads/fonts/harbour-serif-700-normal.woff2\")"));
+}

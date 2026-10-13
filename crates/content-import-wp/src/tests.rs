@@ -841,3 +841,193 @@ fn the_newsletter_is_hidden_unless_a_form_endpoint_answers_it() {
     // The rest of the plan is the same either way.
     assert_eq!(hidden.docs.len(), shown.docs.len());
 }
+
+// ------------------------------------------------------------------ the theme as data (ADR-0093)
+
+fn theme_data() -> crate::theme_data::ThemeData {
+    let font =
+        |path: &str| json!({"path": path, "sha256": "00".repeat(32), "content_type": "font/woff2"});
+    serde_json::from_value(json!({
+        "format": "swarmpress.theme-data.v1",
+        "design": "d1",
+        // Listed out of order on purpose: the calls' order is the plan's, not the data's.
+        "navigation": [
+            {"name": "nav", "lang": "de", "items": [{"label": "Hafen", "url": "/de/hafen/", "children": [{"label": "Boote", "url": "/de/hafen/boote/"}]}]},
+            {"name": "footer", "lang": "en", "items": []}
+        ],
+        "patterns": [{"slug": "site/hero", "title": "Hero", "categories": ["Sections"], "content": "<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">Boats</h2>\n<!-- /wp:heading -->"}],
+        "templates": [{"slug": "front-page", "title": "Front page", "content": "<!-- wp:template-part {\"slug\":\"header\"} /-->\n<!-- wp:pattern {\"slug\":\"site/hero\"} /-->"}],
+        "template_parts": [{"slug": "header", "area": "header", "content": "<!-- wp:site-title /-->"}],
+        "global_styles": {
+            "version": 3,
+            "settings": {"color": {"palette": [{"slug": "sea", "name": "Sea", "color": "#0b5394"}]}},
+            "styles": {"color": {"background": "var(--wp--preset--color--sea)"}},
+            "css": ".hero{letter-spacing:.02em}"
+        },
+        "fonts": [{"name": "Harbour Serif", "slug": "harbour-serif", "family": "\"Harbour Serif\", serif", "faces": [
+            {"weight": "400", "style": "normal", "file": font("fonts/HarbourSerif-Regular.woff2")},
+            {"weight": "700", "style": "normal", "unicode_range": "U+0000-00FF", "file": font("fonts/HarbourSerif-Bold.woff2")}
+        ]}]
+    }))
+    .unwrap()
+}
+
+#[test]
+fn the_theme_data_is_written_in_a_fixed_order_onto_canvas() {
+    use crate::theme::{calls, Call, Kind, BASE_THEME};
+    let c = calls(&theme_data(), BASE_THEME);
+    let kinds: Vec<String> = c
+        .iter()
+        .map(|c| match c {
+            Call::SwitchTheme { stylesheet } => format!("theme {stylesheet}"),
+            Call::FontFamily { slug, .. } => format!("family {slug}"),
+            Call::FontFace { file_name, .. } => format!("face {file_name}"),
+            Call::GlobalStyles { .. } => "global styles".into(),
+            Call::Upsert { kind, slug, .. } => format!("{kind:?} {slug}"),
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            "theme canvas",
+            "family harbour-serif",
+            "face harbour-serif-400-normal.woff2",
+            "face harbour-serif-700-normal.woff2",
+            "global styles",
+            "TemplatePart header",
+            "Template front-page",
+            "Pattern hero",
+            "Navigation nav-de",
+            "Navigation footer-en",
+        ]
+    );
+    // The face: its file, uploaded under a name of its own, with the settings the font library wants.
+    let Call::FontFace {
+        settings,
+        file,
+        mime,
+        src,
+        ..
+    } = &c[2]
+    else {
+        panic!("{:?}", c[2]);
+    };
+    assert_eq!(file, "fonts/HarbourSerif-Regular.woff2");
+    assert_eq!(mime, "font/woff2");
+    assert_eq!(
+        src,
+        "/wp-content/uploads/fonts/harbour-serif-400-normal.woff2"
+    );
+    assert_eq!(
+        settings,
+        &json!({"fontFamily": "Harbour Serif", "fontWeight": "400", "fontStyle": "normal", "src": "file-0"})
+    );
+    // A pattern is unsynced (inserted as a copy, rendered by slug) with its categories by name; its
+    // post is the slug's name (`site/hero` → `hero`, what the sandbox looks up for `wp:pattern`).
+    let Call::Upsert {
+        body, categories, ..
+    } = &c[7]
+    else {
+        panic!("{:?}", c[7]);
+    };
+    assert_eq!(body["slug"], "hero");
+    assert_eq!(body["meta"]["wp_pattern_sync_status"], "unsynced");
+    assert_eq!(categories, &["Sections"]);
+    // A menu's items as navigation blocks: a submenu with its children.
+    let Call::Upsert { body, .. } = &c[8] else {
+        panic!("{:?}", c[8]);
+    };
+    let nav = body["content"].as_str().unwrap();
+    assert!(nav.starts_with("<!-- wp:navigation-submenu {"), "{nav}");
+    assert!(nav.contains("\"url\":\"/de/hafen/boote/\""), "{nav}");
+    // A face's unicode range travels with it.
+    let Call::FontFace { settings, .. } = &c[3] else {
+        panic!("{:?}", c[3]);
+    };
+    assert_eq!(settings["unicodeRange"], "U+0000-00FF");
+    // Templates and parts are found by their id on the theme; patterns and menus by slug.
+    assert_eq!(
+        Kind::Template.lookup("canvas", "front-page"),
+        "/wp/v2/templates/canvas//front-page"
+    );
+    assert_eq!(
+        Kind::TemplatePart.item("canvas", "header", 0),
+        "/wp/v2/template-parts/canvas//header"
+    );
+    assert!(Kind::Navigation
+        .lookup("canvas", "nav-de")
+        .starts_with("/wp/v2/navigation?slug=nav-de&"));
+    assert_eq!(Kind::Pattern.item("canvas", "hero", 42), "/wp/v2/blocks/42");
+    assert_eq!(Kind::Pattern.collection(), "/wp/v2/blocks");
+    // The same data, the same calls: a second import writes the same objects (by slug).
+    assert_eq!(c, calls(&theme_data(), BASE_THEME));
+}
+
+#[test]
+fn global_styles_carry_the_css_and_every_font_with_its_files() {
+    use crate::theme::global_styles_body;
+    let data = theme_data();
+    let body = global_styles_body(&data);
+    assert_eq!(body["settings"]["color"]["palette"][0]["slug"], "sea");
+    assert_eq!(body["styles"]["css"], ".hero{letter-spacing:.02em}");
+    assert_eq!(
+        body["styles"]["color"]["background"],
+        "var(--wp--preset--color--sea)"
+    );
+    let families = &body["settings"]["typography"]["fontFamilies"];
+    assert_eq!(families[0]["slug"], "harbour-serif");
+    assert_eq!(families[0]["fontFamily"], "\"Harbour Serif\", serif");
+    let faces = families[0]["fontFace"].as_array().unwrap();
+    assert_eq!(faces.len(), 2);
+    assert_eq!(
+        faces[1]["src"],
+        json!(["/wp-content/uploads/fonts/harbour-serif-700-normal.woff2"])
+    );
+
+    // A family the settings list already (by origin here) gets the faces it lacks, nothing twice.
+    let mut d = data.clone();
+    d.global_styles.settings["typography"] = json!({"fontFamilies": {"custom": [
+        {"slug": "harbour-serif", "name": "Harbour Serif", "fontFamily": "serif",
+         "fontFace": [{"fontWeight": "400", "fontStyle": "normal", "src": ["/elsewhere.woff2"]}]}
+    ]}});
+    let body = global_styles_body(&d);
+    let custom = &body["settings"]["typography"]["fontFamilies"]["custom"];
+    assert_eq!(custom.as_array().unwrap().len(), 1);
+    let faces = custom[0]["fontFace"].as_array().unwrap();
+    assert_eq!(faces.len(), 2, "{faces:?}");
+    assert_eq!(faces[0]["src"], json!(["/elsewhere.woff2"]));
+    assert_eq!(faces[1]["fontWeight"], "700");
+
+    // Without fonts and CSS, the styles are the data's own.
+    let mut bare = data.clone();
+    bare.fonts.clear();
+    bare.global_styles.css.clear();
+    let body = global_styles_body(&bare);
+    assert_eq!(body["settings"], data.global_styles.settings);
+    assert!(body["styles"].get("css").is_none());
+}
+
+#[test]
+fn with_theme_data_the_site_is_imported_onto_canvas_without_it_onto_its_fallback_theme() {
+    let opts = crate::compose::Options::default();
+    let mut s = site();
+    s.site["id"] = json!("cinqueterre-travel");
+    // FALLBACK: cinqueterre.travel keeps its theme folder until its design runs on data.
+    let folder = crate::plan::plan_with_theme(&s, opts, None);
+    assert_eq!(folder.theme, crate::plan::CINQUETERRE_THEME);
+    assert!(folder.theme_data.is_none());
+    assert_eq!(crate::plan::fallback_theme_for(&site()), crate::plan::THEME);
+    let data = crate::plan::plan_with_theme(&s, opts, Some(theme_data()));
+    assert_eq!(data.theme, crate::theme::BASE_THEME);
+    assert_eq!(data.theme_data.as_ref(), Some(&theme_data()));
+    // The ported theme's named menus are its own: not on canvas, where the data names its menus.
+    assert!(data.named_menus.is_empty());
+    // The plan file carries the data, and reads back the same.
+    let back: crate::plan::Plan =
+        serde_json::from_str(&serde_json::to_string(&data).unwrap()).unwrap();
+    assert_eq!(back, data);
+    // A plan without data has no `theme_data` key (plans written before it still read).
+    assert!(!serde_json::to_string(&folder)
+        .unwrap()
+        .contains("theme_data"));
+}
