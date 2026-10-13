@@ -11,9 +11,12 @@
 //!   language: [`editors_picks`]), the five villages (each with its own hero image and line,
 //!   linking its page), the places to stay (the accommodations collection's featured stays:
 //!   [`places_to_stay`]), the latest stories as a `core/query` block (the newest posts in the
-//!   page's language: every article carries its language as a tag, [`language_tag`]), and the
-//!   newsletter form, which posts to WordPress's `admin-post.php` and which the export sends to the
-//!   platform's `/f/{company}` (ADR-0083 §3);
+//!   page's language: every article carries its language as a tag, [`language_tag`]), and, only
+//!   with [`Options::newsletter`], the newsletter form, which posts to WordPress's
+//!   `admin-post.php` and which the export sends to the platform's `/f/{company}` (ADR-0083 §3).
+//!   The owner hid the newsletter on 2026-10-13 until the central server has a public address, a
+//!   privacy line and a double opt-in: without the option there is no form, no section, no
+//!   header button and no footer link;
 //! - **the village overview** (`/{lang}/village/`): the five villages with their sections;
 //! - **the weather pages**: the sample forecast's fields are left out and a live forecast block
 //!   ([`site_export::forecast`]) takes their place: the five villages on the general weather
@@ -55,6 +58,15 @@ pub const PICKS: usize = 5;
 
 /// How many featured stays the home shows.
 pub const STAYS: usize = 6;
+
+/// What the compositions include beyond the content.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Options {
+    /// The newsletter: the home's form (`#subscribe`), the header's button and the footer's link.
+    /// Off by default (the owner's decision of 2026-10-13); the migration turns it on only with
+    /// `--forms-endpoint`, the platform's address that answers the form.
+    pub newsletter: bool,
+}
 
 /// The sample forecast fields of the frozen theme's weather blocks: never published as content.
 const SAMPLE_WEATHER: [&str; 3] = ["currentWeather", "current", "forecast"];
@@ -834,13 +846,15 @@ fn hero(site: &Site, lang: &str, name: &str, description: &str) -> String {
 }
 
 /// The home in `lang`: `name` is the site's name, `description` its line.
-pub fn home(site: &Site, lang: &str, name: &str, description: &str) -> String {
+pub fn home(site: &Site, lang: &str, name: &str, description: &str, opts: Options) -> String {
     let mut out = hero(site, lang, name, description);
     out.push_str(&picks_section(site, lang));
     out.push_str(&villages_section(site, lang, false));
     out.push_str(&stays_section(site, lang));
     out.push_str(&latest_stories(lang));
-    out.push_str(&newsletter(lang));
+    if opts.newsletter {
+        out.push_str(&newsletter(lang));
+    }
     out
 }
 
@@ -898,9 +912,11 @@ fn section_name(slug: &str, i: usize) -> &'static str {
 }
 
 /// The ported theme's named menus by name, then language: `brand` (the wordmark, to the home in
-/// the page's language), `cta` (the header's subscribe button) and `footer` (its four columns:
-/// the frozen theme's footer, with the pages the site has instead of its placeholder links).
-pub fn named_menus() -> BTreeMap<String, BTreeMap<String, Vec<MenuItem>>> {
+/// the page's language), `cta` (the header's subscribe button, only with the newsletter: without
+/// a `cta` menu the theme's header shows no button) and `footer` (its four columns: the frozen
+/// theme's footer, with the pages the site has instead of its placeholder links; its newsletter
+/// link only with the newsletter).
+pub fn named_menus(opts: Options) -> BTreeMap<String, BTreeMap<String, Vec<MenuItem>>> {
     let mut brand = BTreeMap::new();
     let mut cta = BTreeMap::new();
     let mut footer = BTreeMap::new();
@@ -908,7 +924,9 @@ pub fn named_menus() -> BTreeMap<String, BTreeMap<String, Vec<MenuItem>>> {
         let i = li(lang);
         let l = |p: &str| format!("/{lang}/{p}");
         brand.insert(lang.to_string(), vec![item("Cinque Terre", l(""))]);
-        cta.insert(lang.to_string(), vec![item(SUBSCRIBE[i], l("#subscribe"))]);
+        if opts.newsletter {
+            cta.insert(lang.to_string(), vec![item(SUBSCRIBE[i], l("#subscribe"))]);
+        }
         let column = |label: &str, children: Vec<MenuItem>| MenuItem {
             label: label.into(),
             url: String::new(),
@@ -944,22 +962,24 @@ pub fn named_menus() -> BTreeMap<String, BTreeMap<String, Vec<MenuItem>>> {
                         item(section_name("events", i), l("events/")),
                     ],
                 ),
-                column(
-                    ABOUT_COLUMN[i],
-                    vec![
+                column(ABOUT_COLUMN[i], {
+                    let mut about = vec![
                         item(TEAM[i], l("team/")),
                         item("FAQ", l("cinque-terre/faq/")),
-                        item(SUBSCRIBE[i], l("#subscribe")),
-                    ],
-                ),
+                    ];
+                    if opts.newsletter {
+                        about.push(item(SUBSCRIBE[i], l("#subscribe")));
+                    }
+                    about
+                }),
             ],
         );
     }
-    BTreeMap::from([
-        ("brand".to_string(), brand),
-        ("cta".to_string(), cta),
-        ("footer".to_string(), footer),
-    ])
+    let mut menus = BTreeMap::from([("brand".to_string(), brand), ("footer".to_string(), footer)]);
+    if !cta.is_empty() {
+        menus.insert("cta".to_string(), cta);
+    }
+    menus
 }
 
 /// The village overview's title and description in `lang`.

@@ -1,7 +1,7 @@
 //! `swarmpress-wp-migrate`: a JSON-block site moved onto a WordPress sandbox (plan M8).
 //!
 //! ```text
-//! swarmpress-wp-migrate plan    --content DIR --out plan.json
+//! swarmpress-wp-migrate plan    --content DIR --out plan.json [--newsletter]
 //! swarmpress-wp-migrate apply   --plan plan.json --sandbox URL --repo URL [--branch NAME] [--assets DIR]
 //! swarmpress-wp-migrate export  --sandbox URL --repo URL --public-origin URL --out DIR
 //!                               [--forms-endpoint URL] [--forecasts DIR]
@@ -10,7 +10,10 @@
 //!                               [--plan plan.json] [--cache DIR] [--skip PREFIX]…
 //! ```
 //!
-//! `apply` writes the plan through the sandbox's REST API on a branch of its own, as the CEO, then
+//! `plan` leaves the newsletter out (the owner's decision of 2026-10-13: no form until the central
+//! server has a public address, a privacy line and a double opt-in); `--newsletter` composes it
+//! (the home's form, the header's button, the footer's link), for an export with
+//! `--forms-endpoint`. `apply` writes the plan through the sandbox's REST API on a branch of its own, as the CEO, then
 //! opens a change request and merges it into `live` (ADR-0083 §5). A site image the pages name by
 //! path (`/giulia_rossi.png`) and `--assets` holds is uploaded as media first, and the pages point
 //! at the upload. `export` crawls `live` as a
@@ -30,7 +33,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, Context, Result};
 use content_import_wp::compare::{compare_with, Facts};
 use content_import_wp::compose;
-use content_import_wp::plan::{plan, Doc, MenuItem, Plan};
+use content_import_wp::plan::{plan_with, Doc, MenuItem, Plan};
 use content_import_wp::Site;
 use serde_json::{json, Value};
 
@@ -58,7 +61,10 @@ async fn main() -> Result<()> {
     match args.first().map(String::as_str) {
         Some("plan") => {
             let site = Site::read(Path::new(&need(&args, "--content")?)).map_err(|e| anyhow!(e))?;
-            let p = plan(&site);
+            let opts = compose::Options {
+                newsletter: args.iter().any(|a| a == "--newsletter"),
+            };
+            let p = plan_with(&site, opts);
             std::fs::write(need(&args, "--out")?, serde_json::to_string_pretty(&p)?)?;
             eprintln!(
                 "{} documents ({} posts), {} empty routes, empty block kinds: {:?}",

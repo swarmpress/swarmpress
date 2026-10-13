@@ -506,10 +506,11 @@ fn doc_at<'a>(p: &'a crate::plan::Plan, route: &str) -> &'a crate::plan::Doc {
 }
 
 /// The owner's decisions of 2026-10-12: the home is composed (the villages, the latest stories in
-/// its language as a query block, the newsletter form), and so is the village overview.
+/// its language as a query block, the newsletter form), and so is the village overview. The
+/// newsletter only with the option (2026-10-13: hidden until a form endpoint answers it).
 #[test]
 fn the_home_and_the_village_overview_are_composed() {
-    let p = plan(&site());
+    let p = crate::plan::plan_with(&site(), crate::compose::Options { newsletter: true });
     for (route, lang, tag) in [("/", "en", "English"), ("/de/", "de", "Deutsch")] {
         let home = doc_at(&p, route);
         let c = &home.content;
@@ -701,11 +702,28 @@ fn cinqueterre_gets_its_own_theme_and_the_frozen_themes_menus() {
     );
     assert!(sections.contains(&"/de/vernazza/weather/"));
     assert_eq!(de[3].children[1].label, "Aktivitäten");
-    for name in ["brand", "cta", "footer"] {
+    for name in ["brand", "footer"] {
         assert_eq!(p.named_menus[name].len(), 4, "{name}");
     }
     assert_eq!(p.named_menus["brand"]["it"][0].url, "/it/");
-    assert_eq!(p.named_menus["cta"]["fr"][0].url, "/fr/#subscribe");
+    // The newsletter is hidden (2026-10-13): no header button, no footer link…
+    assert!(!p.named_menus.contains_key("cta"));
+    // …and with it, both come back in every language.
+    let with = crate::plan::plan_with(&s, crate::compose::Options { newsletter: true });
+    assert_eq!(with.named_menus["cta"].len(), 4);
+    assert_eq!(with.named_menus["cta"]["fr"][0].url, "/fr/#subscribe");
+    let about = |p: &crate::plan::Plan| {
+        p.named_menus["footer"]["it"][3]
+            .children
+            .iter()
+            .map(|m| m.url.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(about(&p), ["/it/team/", "/it/cinque-terre/faq/"]);
+    assert_eq!(
+        about(&with),
+        ["/it/team/", "/it/cinque-terre/faq/", "/it/#subscribe"]
+    );
     let footer = &p.named_menus["footer"]["de"];
     assert_eq!(footer.len(), 4);
     assert_eq!(footer[1].label, "Dörfer");
@@ -763,7 +781,8 @@ fn the_homes_sections_come_from_the_sites_content() {
     assert_eq!(stays[0].rating.as_deref(), Some("4.5/5"));
     assert_eq!(stays[1].teaser, "Am Wasser");
 
-    let home = crate::compose::home(&s, "de", "Coast Dispatch", "Five villages");
+    let with = crate::compose::Options { newsletter: true };
+    let home = crate::compose::home(&s, "de", "Coast Dispatch", "Five villages", with);
     let at = |t: &str| home.find(t).unwrap_or_else(|| panic!("{t}: {home}"));
     assert!(home.starts_with("<!-- wp:cover "), "{home}");
     assert!(at("ct-home-hero") < at("ct-picks"));
@@ -779,9 +798,46 @@ fn the_homes_sections_come_from_the_sites_content() {
         !home.contains("Not on the site") && !home.contains("Hidden") && !home.contains("Plain")
     );
     // Without curated stories or featured stays, those sections are left out, not invented.
-    let bare = crate::compose::home(&site(), "en", "Coast Dispatch", "");
+    let bare = crate::compose::home(&site(), "en", "Coast Dispatch", "", with);
     assert!(
         !bare.contains("ct-picks") && !bare.contains("ct-stays"),
         "{bare}"
     );
+}
+
+/// The owner's decision of 2026-10-13: the newsletter is hidden until the central server has a
+/// public address, a privacy line and a double opt-in. Without the option no page has a form, a
+/// `#subscribe` section or the blog index's invitation; with it (an export with
+/// `--forms-endpoint`), the home's form is back.
+#[test]
+fn the_newsletter_is_hidden_unless_a_form_endpoint_answers_it() {
+    let mut s = site();
+    s.pages.insert(
+        "blog-index.json".into(),
+        json!({"body": [{"type": "blog-index", "intro": {"en": "All our stories."}, "newsletter": {"title": "Get the Dispatch in Your Inbox.", "disclaimer": "By subscribing, you agree."}}]}),
+    );
+    let hidden = plan(&s);
+    assert!(!hidden.docs.is_empty());
+    for d in &hidden.docs {
+        for needle in [
+            "<form",
+            "admin-post.php",
+            "id=\"subscribe\"",
+            "ct-newsletter",
+            "Get the Dispatch",
+            "By subscribing",
+        ] {
+            assert!(!d.content.contains(needle), "{} has {needle}", d.route);
+        }
+    }
+    let shown = crate::plan::plan_with(&s, crate::compose::Options { newsletter: true });
+    let home = doc_at(&shown, "/en/");
+    assert!(home.content.contains("action=\"/wp-admin/admin-post.php\""));
+    assert!(home.content.contains("id=\"subscribe\""));
+    assert!(shown
+        .docs
+        .iter()
+        .any(|d| d.content.contains("Get the Dispatch in Your Inbox.")));
+    // The rest of the plan is the same either way.
+    assert_eq!(hidden.docs.len(), shown.docs.len());
 }

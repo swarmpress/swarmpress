@@ -256,7 +256,11 @@ export interface MigrationOptions extends NodeWordPressOptions {
   cache?: string;
   /** The site's own images the pages name by path (`/giulia_rossi.png`), uploaded as media. */
   assets?: string;
-  /** Where the export's forms post instead of WordPress (the platform's `/f/{company}`). */
+  /**
+   * Where the export's forms post instead of WordPress (the platform's `/f/{company}`). Only with
+   * it does the import compose the newsletter (the home's form, the header's button, the footer's
+   * link): without an endpoint that answers, the site has no form (the owner's decision of 2026-10-13).
+   */
   formsEndpoint?: string;
   /** Recorded Open-Meteo answers (`{lat},{lng}.json`) for the forecast blocks, instead of the network. */
   forecasts?: string;
@@ -274,7 +278,7 @@ export async function runMigration(opts: MigrationOptions): Promise<number> {
   const run = (args: string[]) =>
     new Promise<number>((resolve) => spawn(bin, args, { stdio: "inherit" }).once("exit", (c) => resolve(c ?? 1)));
   const planFile = join(opts.out, "plan.json");
-  let code = await run(["plan", "--content", opts.content, "--out", planFile]);
+  let code = await run(["plan", "--content", opts.content, "--out", planFile, ...(opts.formsEndpoint ? ["--newsletter"] : [])]);
   if (code !== 0) return code;
   const wp = await startNodeWordPress({ ...opts, timeoutMs: opts.timeoutMs ?? 300_000 });
   try {

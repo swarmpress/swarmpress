@@ -95,13 +95,18 @@ pub struct Report {
     pub empty_routes: Vec<String>,
 }
 
-/// The plan for the whole site.
+/// The plan for the whole site, without the newsletter (the owner's decision of 2026-10-13).
 pub fn plan(site: &Site) -> Plan {
+    plan_with(site, compose::Options::default())
+}
+
+/// The plan for the whole site with `opts` (the newsletter only where a form endpoint answers it).
+pub fn plan_with(site: &Site, opts: compose::Options) -> Plan {
     let mut report = Report::default();
     let mut docs = Vec::new();
     for r in routes(site) {
         let mut notes = Notes::default();
-        let doc = doc(site, &r, &mut notes);
+        let doc = doc(site, &r, &mut notes, opts);
         for k in notes.empty_blocks {
             *report.empty_blocks.entry(k).or_default() += 1;
         }
@@ -131,7 +136,7 @@ pub fn plan(site: &Site) -> Plan {
         })
         .collect();
     let named_menus = if ported {
-        compose::named_menus()
+        compose::named_menus(opts)
     } else {
         BTreeMap::new()
     };
@@ -167,8 +172,12 @@ fn last_segment(path: &str) -> String {
     }
 }
 
+/// The fields of a page's blocks that invite to the newsletter (the blog index's "Get the Dispatch
+/// in your inbox"): left out while the newsletter is hidden.
+const NEWSLETTER_FIELDS: [&str; 1] = ["newsletter"];
+
 /// The document a route publishes.
-pub fn doc(site: &Site, r: &Route, notes: &mut Notes) -> Doc {
+pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) -> Doc {
     let lang = r.lang.as_str();
     let (json, source) = match &r.source {
         Source::Page { path } => (site.pages.get(path), format!("pages/{path}")),
@@ -202,6 +211,15 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes) -> Doc {
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
+    if !opts.newsletter {
+        for b in &mut blocks {
+            if let Some(o) = b.as_object_mut() {
+                for k in NEWSLETTER_FIELDS {
+                    o.remove(k);
+                }
+            }
+        }
+    }
     // The theme's village intro renders the village's own content (`config/villages/`).
     let village = r.village.as_ref().and_then(|v| site.villages.get(v));
     // A village's own page without a page of its own is the village's intro.
@@ -235,7 +253,7 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes) -> Doc {
                 .get("description")
                 .and_then(|t| localized(t, lang))
                 .unwrap_or("");
-            compose::home(site, lang, &site_name(site), description)
+            compose::home(site, lang, &site_name(site), description, opts)
         } else {
             compose::village_overview(site, lang)
         };
