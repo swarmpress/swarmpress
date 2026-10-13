@@ -279,6 +279,18 @@ forecast and redeploys production.
 From the switch on, a publish is: the platform's export of `live` committed to `export/` on `main`
 (today by running the migration's export; later by the platform), deployed by the workflow.
 
+## The switch (done 2026-10-13)
+
+- swarmpress/cinqueterre.travel PR #8 merged: `deploy.yml` deploys `export/files` (sandbox 0.7.1,
+  the `cinqueterre` theme, newsletter hidden) to the Pages project `cinqueterre-travel`; GitHub Pages
+  is no longer built and keeps the last Astro deployment for a rollback.
+- The owner attached `cinqueterre.travel` and `www.cinqueterre.travel` to the Pages project
+  (DNS on Cloudflare). Checked on both hosts: the homes in four languages, the blog, the village
+  overview, a village page, a weather page and the feed answer 200, an unknown URL 404.
+- Known content defect, older than the switch: the two images of
+  `/en/blog/last-light-on-sentiero-azzurro/` live in an R2 bucket whose public `r2.dev` URL answers
+  401; the Astro site had the same URLs.
+
 ## After the switch
 
 - Rule 9 ends: delete `packages/site-builder/src/themes/cinque-terre`, its pnpm workspace glob and its
