@@ -21,6 +21,8 @@ content-model = { path = "../content-model" }
 # to the browser, and loaded for the gateway's closed-world draft checks.
 knowledge = { path = "../knowledge" }
 blueprint = { path = "../blueprint" }
+# A site's designs (ADR-0093): the bundle rules, the export unpacking and the interpretation.
+site-design = { path = "../site-design" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

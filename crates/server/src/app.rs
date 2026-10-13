@@ -264,6 +264,21 @@ pub fn router(st: AppState) -> Router {
                 .put(crate::assets::put_asset)
                 .layer(DefaultBodyLimit::max(crate::assets::MAX_ASSET_BYTES + 1024)),
         )
+        // a site's designs (ADR-0093)
+        .route(
+            "/api/sites/{id}/designs",
+            get(crate::site_designs::list_designs)
+                .post(crate::site_designs::post_design)
+                .layer(DefaultBodyLimit::max(crate::site_designs::MAX_BODY_BYTES)),
+        )
+        .route(
+            "/api/sites/{id}/designs/{version}",
+            get(crate::site_designs::get_design),
+        )
+        .route(
+            "/api/sites/{id}/designs/{version}/files/{*path}",
+            get(crate::site_designs::get_design_file),
+        )
         .route("/web/firecrawl/{*rest}", post(web::firecrawl))
         // tracker
         .route(

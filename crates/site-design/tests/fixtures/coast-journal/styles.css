@@ -1,0 +1,21 @@
+/* Coast Journal: a handmade, Claude-Design-like export for the tests. */
+@font-face { font-family: 'Coast Serif'; font-style: normal; font-weight: 400 700; src: url("fonts/coast-serif.woff2") format('woff2'); }
+:root {
+  --color-paper: #FAF7F2;
+  --color-ink: #1B2430;
+  --color-ink-muted: #5A6472;
+  --color-accent: #C4281C;
+  --color-line: #D9D2C5;
+  --font-serif: 'Coast Serif', Georgia, serif;
+  --text-h1: clamp(40px, 4vw + 20px, 72px);
+  --space-4: 16px;
+  --space-8: 64px;
+  --radius-control: 4px;
+  --shadow-card: 0 8px 24px -12px rgba(0,0,0,.3);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-base: 240ms;
+}
+body { background: var(--color-paper); color: var(--color-ink); font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif; }
+h1, h2 { font-family: 'Coast Serif', Georgia, serif; }
+@media (min-width: 640px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1024px) { .cards { grid-template-columns: repeat(3, 1fr); } }

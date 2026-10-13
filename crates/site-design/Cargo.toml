@@ -1,0 +1,23 @@
+[package]
+name = "site-design"
+description = "A site's design from Claude Design (ADR-0093): the design bundle, its engine-neutral interpretation (SiteDesign), reconciliation, and the WordPress rendering's data shape (ThemeData). Pure, no I/O, wasm-compatible"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+# HTML parsing (MIT OR Apache-2.0): the browser-grade parser and its plain DOM;
+# the crate converts it into its own small tree at once.
+html5ever = "0.39"
+markup5ever_rcdom = "0.39"
+# Claude Design's standalone export: base64, gzip (MIT OR Apache-2.0; flate2's
+# pure-Rust backend, so it compiles to wasm).
+base64 = "0.22"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+
+[lints]
+workspace = true

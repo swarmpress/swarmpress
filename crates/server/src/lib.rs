@@ -21,6 +21,7 @@
 //! - [`sync`]: command-log segments and snapshots (backup / new device)
 //! - [`web`]: the fetch proxy (SSRF-guarded) and the Firecrawl stub
 //! - [`tracker`]: first-party analytics collector, rollup, retention, signals
+//! - [`site_designs`]: a site's design versions from Claude Design (ADR-0093)
 //! - [`db`]: every SQL statement (SQLite, single writer + readers)
 //! - [`app`]: state, routes, background tasks
 
@@ -43,6 +44,7 @@ pub mod releases;
 pub mod site_audit;
 pub mod site_blueprint;
 pub mod site_data;
+pub mod site_designs;
 pub mod site_knowledge;
 pub mod site_theme;
 pub mod sync;

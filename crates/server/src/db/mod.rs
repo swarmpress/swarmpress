@@ -15,6 +15,7 @@
 
 pub mod accounts;
 pub mod assets;
+pub mod designs;
 pub mod events;
 pub mod gateway;
 pub mod sync;

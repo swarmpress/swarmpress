@@ -481,7 +481,7 @@ then sees them as function tools:
 | T-1 | The game loads extensions; the Tools tab; the factory district; the Web Developer's `ToolBuild` job; scheduled runs | FEAT-091, FEAT-095 | T-0 |
 | X-1 | Build-time bindings (`content/data/`), the first real tool (ferry times), the tube from machine to storey | FEAT-092 | B-2, T-1 |
 | X-2 | `theme-code` from the blueprint (implementation regenerates; the blueprint stays) | FEAT-094 | X-1, FEAT-045, the site-kit cutover |
-| X-3 | HTML/ZIP and Claude Design export import; n8n import; agents calling tools (§7.4) | FEAT-093, FEAT-096 | B-2, T-1 |
+| X-3 | HTML/ZIP and Claude Design export import; n8n import; agents calling tools (§7.4); the site design from Claude Design (ADR-0093) | FEAT-093, FEAT-096, FEAT-114 | B-2, T-1 |
 
 ## 11. Risks and open points
 
@@ -522,7 +522,7 @@ Every increment of §10 is implemented. Each feature file has an "As built" sect
 | T-1 | The Tools tab and the factory district; the Web Developer's `ToolBuild` job; `ToolRun` jobs on demand, by schedule and through "Run now", run in the browser sandbox | `apps/game/src/tools`, `apps/game/src/render/bricks/machines.ts` |
 | X-1 | Tool output as typed site data (`PUT /api/site/data`), bindings run per page, `ctx.toolData` at build time | `crates/server/src/site_data.rs`, `packages/site-kit` |
 | X-2 | The `ThemeCode` job writes the missing block renderers on `design/<item>`, and Publish merges them; a site on the frozen theme fails loudly | `crates/orchestrator/src/structure.rs`, `crates/server/src/site_theme.rs` |
-| X-3 | HTML/ZIP (Claude Design) import into the draft; n8n import with sealed steps; agents calling tools (`tools#0`) | `apps/game/src/blueprint/design-import.ts`, `packages/toolgraph` (n8n), `crates/orchestrator/src/tool_facts.rs` |
+| X-3 | HTML/ZIP (Claude Design) import into the draft; n8n import with sealed steps; agents calling tools (`tools#0`). Since ADR-0093 (2026-10-13): Claude Design designs are kept per site as write-once versions and interpreted into an engine-neutral site design (the standalone export unpacked natively, tokens, templates, parts, components, design rules, semantic diff and per-template merge, FEAT-114) | `apps/game/src/blueprint/design-import.ts`, `crates/site-design`, `crates/server/src/site_designs.rs`, `packages/toolgraph` (n8n), `crates/orchestrator/src/tool_facts.rs` |
 
 The plan's deviations:
 - The Information Architect is played by the UX designer role (FEAT-095); no new role was added.

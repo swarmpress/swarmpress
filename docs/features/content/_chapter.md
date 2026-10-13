@@ -19,3 +19,4 @@ The content model, closed-world knowledge indexes, the site kit and the agent-au
 | [FEAT-092](092-block-tool-bindings.md) | Block-to-tool bindings at build time | in-progress | normal |
 | [FEAT-093](093-site-import.md) | Blueprint import: reverse-engineering the live site, then HTML and ZIP designs | in-progress | normal |
 | [FEAT-094](094-theme-from-blueprint.md) | Theme generation from the blueprint | in-progress | normal |
+| [FEAT-114](114-site-design-from-claude-design.md) | Site design from Claude Design (bundles, the semantic site design, reconciliation, theme data) | in-progress | high |

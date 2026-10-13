@@ -1,0 +1,657 @@
+{
+  "format": "swarmpress.site-design.v1",
+  "bundle": "b1bafa3fa8798b7139d1330ac186713487e10caec1c4b9c95b0e80f16b3d2366",
+  "title": "Cinque Terre Dispatch Style Guide (mini)",
+  "languages": [
+    "en",
+    "de",
+    "fr",
+    "it"
+  ],
+  "tokens": {
+    "colours": [
+      {
+        "name": "--ct-ink",
+        "value": "#0F1E2E",
+        "role": "text",
+        "group": "core",
+        "label": "Ink · Mare Notte",
+        "usage": "Text, rules, primary buttons. 14.7:1 on Paper.",
+        "contrast": {
+          "against": "--ct-paper",
+          "ratio_x100": 1470,
+          "stated": "14.7:1"
+        }
+      },
+      {
+        "name": "--ct-ink-soft",
+        "value": "#3A4756",
+        "role": "text-muted",
+        "group": "core",
+        "label": "Ink Soft",
+        "usage": "Secondary text, captions, meta. 8.3:1.",
+        "contrast": {
+          "against": "--ct-paper",
+          "ratio_x100": 826,
+          "stated": "8.3:1"
+        }
+      },
+      {
+        "name": "--ct-mist",
+        "value": "#6B7682",
+        "role": "text-muted",
+        "group": "core",
+        "label": "Mist",
+        "usage": "Disabled, icons, ≥24px text only. 4.0:1.",
+        "contrast": {
+          "against": "--ct-paper",
+          "ratio_x100": 403,
+          "stated": "4.0:1"
+        }
+      },
+      {
+        "name": "--ct-paper",
+        "value": "#F3EFE7",
+        "role": "background",
+        "group": "core",
+        "label": "Paper · Intonaco",
+        "usage": "Page ground. Lime-plaster white.",
+        "contrast": {
+          "against": "--ct-ink",
+          "ratio_x100": 1470
+        }
+      },
+      {
+        "name": "--ct-calce",
+        "value": "#E8E2D6",
+        "role": "surface",
+        "group": "core",
+        "label": "Calce",
+        "usage": "Sunken surfaces, callouts, input fills.",
+        "contrast": {
+          "against": "--ct-ink",
+          "ratio_x100": 1307
+        }
+      },
+      {
+        "name": "--ct-line",
+        "value": "#CFC6B6",
+        "role": "border",
+        "group": "core",
+        "label": "Line",
+        "usage": "Hairlines 1px, card borders, dividers.",
+        "contrast": {
+          "against": "--ct-ink",
+          "ratio_x100": 996
+        }
+      },
+      {
+        "name": "--ct-corallo",
+        "value": "#B5482F",
+        "role": "accent",
+        "group": "accents",
+        "label": "Corallo",
+        "usage": "Eyebrows, link hover, primary hover, progress bar, active states.",
+        "contrast": {
+          "against": "--ct-paper",
+          "ratio_x100": 465,
+          "stated": "4.7:1"
+        }
+      },
+      {
+        "name": "--ct-mare",
+        "value": "#1F6F8B",
+        "role": "link",
+        "group": "accents",
+        "label": "Mare",
+        "usage": "Inline links, info notes, map routes, Weather & Getting Here.",
+        "contrast": {
+          "against": "--ct-paper",
+          "ratio_x100": 494,
+          "stated": "4.9:1"
+        }
+      },
+      {
+        "name": "--ct-limone",
+        "value": "#E8C547",
+        "role": "highlight",
+        "group": "accents",
+        "label": "Limone",
+        "usage": "Highlight fill only: text marker, \"New\", focus ring halo.",
+        "contrast": {
+          "against": "--ct-ink",
+          "ratio_x100": 1004,
+          "stated": "10:1"
+        }
+      },
+      {
+        "name": "--ct-v-riomaggiore",
+        "value": "#D98C7A",
+        "role": "pigment",
+        "group": "villages",
+        "label": "Riomaggiore (Rosa Antico)",
+        "tint": "#EFE1D8",
+        "contrast": {
+          "against": "--ct-ink",
+          "ratio_x100": 640,
+          "stated": "6.4:1"
+        }
+      },
+      {
+        "name": "--ct-v-manarola",
+        "value": "#D9A441",
+        "role": "pigment",
+        "group": "villages",
+        "label": "Manarola (Ocra)",
+        "tint": "#EFE4D0",
+        "contrast": {
+          "against": "--ct-ink",
+          "ratio_x100": 749,
+          "stated": "7.5:1"
+        }
+      },
+      {
+        "name": "--ct-v-corniglia",
+        "value": "#9DAA7C",
+        "role": "pigment",
+        "group": "villages",
+        "label": "Corniglia (Salvia)",
+        "tint": "#E7E5D8",
+        "contrast": {
+          "against": "--ct-ink",
+          "ratio_x100": 680,
+          "stated": "6.8:1"
+        }
+      },
+      {
+        "name": "--ct-v-vernazza",
+        "value": "#7FA9C2",
+        "role": "pigment",
+        "group": "villages",
+        "label": "Vernazza (Azzurro)",
+        "tint": "#E3E5E2",
+        "contrast": {
+          "against": "--ct-ink",
+          "ratio_x100": 670,
+          "stated": "6.7:1"
+        }
+      },
+      {
+        "name": "--ct-v-monterosso",
+        "value": "#E8C547",
+        "role": "pigment",
+        "group": "villages",
+        "label": "Monterosso (Limone)",
+        "tint": "#F1E9D1",
+        "contrast": {
+          "against": "--ct-ink",
+          "ratio_x100": 1004,
+          "stated": "10:1"
+        }
+      }
+    ],
+    "schemes": [
+      {
+        "name": "notte",
+        "label": "Notte — dark theme (evening reading, Events, Weather at night)",
+        "dark": true,
+        "colours": [
+          {
+            "name": "--notte",
+            "value": "#0B1622",
+            "role": "background",
+            "group": "dark",
+            "label": "Notte",
+            "usage": "ground",
+            "contrast": {
+              "against": "--salt",
+              "ratio_x100": 1480
+            }
+          },
+          {
+            "name": "--notte-2",
+            "value": "#14212F",
+            "role": "surface",
+            "group": "dark",
+            "label": "Notte 2",
+            "usage": "surface",
+            "contrast": {
+              "against": "--salt",
+              "ratio_x100": 1323
+            }
+          },
+          {
+            "name": "--salt",
+            "value": "#EDE7DB",
+            "role": "text",
+            "group": "dark",
+            "label": "Salt",
+            "usage": "text 14.8:1",
+            "contrast": {
+              "against": "--notte",
+              "ratio_x100": 1480,
+              "stated": "14.8:1"
+            }
+          },
+          {
+            "name": "--corallo-l",
+            "value": "#E8826A",
+            "role": "accent",
+            "group": "dark",
+            "label": "Corallo L",
+            "usage": "accent 6.8:1",
+            "contrast": {
+              "against": "--notte",
+              "ratio_x100": 679,
+              "stated": "6.8:1"
+            }
+          },
+          {
+            "name": "--mare-l",
+            "value": "#6FB3CE",
+            "role": "link",
+            "group": "dark",
+            "label": "Mare L",
+            "usage": "link 7.8:1",
+            "contrast": {
+              "against": "--notte",
+              "ratio_x100": 782,
+              "stated": "7.8:1"
+            }
+          }
+        ]
+      }
+    ],
+    "fonts": [
+      {
+        "name": "IBM Plex Mono",
+        "role": "meta",
+        "stack": "'IBM Plex Mono',ui-monospace,Menlo,monospace",
+        "faces": [
+          {
+            "weight": "400",
+            "style": "normal",
+            "file": "assets/c36f509c0a8f9f85.woff2",
+            "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+          }
+        ]
+      }
+    ]
+  },
+  "templates": [
+    {
+      "slug": "home",
+      "title": "Applied: Homepage",
+      "kind": "home",
+      "source": "pages/06-applied-homepage.html",
+      "sections": [
+        {
+          "id": "hero",
+          "kind": "block",
+          "block": "hero-section",
+          "role": "travel-guide-liguria-italy",
+          "props": {
+            "class": "wrap",
+            "eyebrow": "Travel guide · Liguria, Italy",
+            "heading": "Five villages, walked slowly."
+          },
+          "rule": "the first section with a top heading",
+          "facts": {
+            "tag": "section",
+            "heading": "Five villages, walked slowly.",
+            "heading_level": 1,
+            "images": 0,
+            "media": 0,
+            "links": 2,
+            "paragraphs": 1,
+            "words": 51,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 2,
+            "numbers": 0,
+            "repeated": 0
+          }
+        },
+        {
+          "id": "image",
+          "kind": "block",
+          "block": "image",
+          "props": {
+            "background": "--ct-v-vernazza"
+          },
+          "rule": "an image band with few words",
+          "facts": {
+            "tag": "section",
+            "images": 0,
+            "media": 1,
+            "links": 0,
+            "paragraphs": 0,
+            "words": 19,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 0,
+            "numbers": 0,
+            "repeated": 0
+          }
+        },
+        {
+          "id": "query-collection",
+          "kind": "query",
+          "query": {
+            "source": "collection",
+            "items": 5
+          },
+          "role": "destinations",
+          "props": {
+            "class": "wrap",
+            "eyebrow": "Destinations",
+            "heading": "The five villages",
+            "items": "5"
+          },
+          "rule": "repeated cards with links: a collection's entries",
+          "facts": {
+            "tag": "section",
+            "heading": "The five villages",
+            "heading_level": 2,
+            "images": 0,
+            "media": 5,
+            "links": 5,
+            "paragraphs": 1,
+            "words": 31,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 0,
+            "numbers": 5,
+            "repeated": 5
+          }
+        },
+        {
+          "id": "query-featured",
+          "kind": "query",
+          "query": {
+            "source": "featured",
+            "items": 4
+          },
+          "role": "curated",
+          "props": {
+            "class": "wrap",
+            "eyebrow": "Curated",
+            "heading": "Editors’ picks",
+            "items": "4"
+          },
+          "rule": "repeated cards under a heading that says picks or featured",
+          "facts": {
+            "tag": "section",
+            "heading": "Editors’ picks",
+            "heading_level": 2,
+            "images": 0,
+            "media": 5,
+            "links": 6,
+            "paragraphs": 0,
+            "words": 67,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 0,
+            "numbers": 1,
+            "repeated": 4
+          }
+        },
+        {
+          "id": "query-collection-2",
+          "kind": "query",
+          "query": {
+            "source": "collection",
+            "items": 3
+          },
+          "role": "where-to-sleep",
+          "props": {
+            "background": "--ct-calce",
+            "eyebrow": "Where to sleep",
+            "heading": "Places to stay",
+            "items": "3"
+          },
+          "rule": "repeated cards with links: a collection's entries",
+          "facts": {
+            "tag": "section",
+            "heading": "Places to stay",
+            "heading_level": 2,
+            "images": 0,
+            "media": 3,
+            "links": 4,
+            "paragraphs": 0,
+            "words": 40,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 0,
+            "numbers": 12,
+            "repeated": 3
+          }
+        },
+        {
+          "id": "query-latest",
+          "kind": "query",
+          "query": {
+            "source": "latest",
+            "items": 6
+          },
+          "role": "the-dispatch",
+          "props": {
+            "class": "wrap",
+            "eyebrow": "The Dispatch",
+            "heading": "Latest stories",
+            "items": "6"
+          },
+          "rule": "repeated cards under a heading that says latest",
+          "facts": {
+            "tag": "section",
+            "heading": "Latest stories",
+            "heading_level": 2,
+            "images": 0,
+            "media": 0,
+            "links": 7,
+            "paragraphs": 0,
+            "words": 91,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 0,
+            "numbers": 12,
+            "repeated": 6
+          }
+        },
+        {
+          "id": "content",
+          "kind": "block",
+          "block": "content-section",
+          "role": "the-salt-stone-path",
+          "props": {
+            "background": "--notte",
+            "heading": "The Salt & Stone Path",
+            "items": "4"
+          },
+          "rule": "a heading and paragraphs",
+          "facts": {
+            "tag": "section",
+            "heading": "The Salt & Stone Path",
+            "heading_level": 2,
+            "images": 0,
+            "media": 0,
+            "links": 1,
+            "paragraphs": 1,
+            "words": 64,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 1,
+            "numbers": 1,
+            "repeated": 4
+          }
+        }
+      ],
+      "parts": [
+        "header",
+        "footer"
+      ],
+      "rule": "the page's name says home"
+    }
+  ],
+  "parts": [
+    {
+      "slug": "header",
+      "area": "header",
+      "html": "<header style=\"border-top:3px solid #0F1E2E;border-bottom:1px solid #CFC6B6;background:#F3EFE7\">\n<div class=\"wrap\" style=\"min-height:76px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 32px;padding-top:10px;padding-bottom:10px\">\n<a href=\"#\" style=\"display:flex;align-items:baseline;gap:8px\"><span class=\"disp\" style=\"font-size:26px\">Cinque Terre</span><span class=\"disp\" style=\"font-size:26px;font-style:italic;color:#B5482F\">Dispatch</span></a>\n<nav aria-label=\"Villages\" style=\"display:flex;flex-wrap:wrap;gap:4px 24px\">\n<a class=\"nav-v\" href=\"#\"><span class=\"dot\" style=\"background:#D98C7A\"></span><span class=\"ul\">Riomaggiore</span></a>\n<a class=\"nav-v\" href=\"#\"><span class=\"dot\" style=\"background:#D9A441\"></span><span class=\"ul\">Manarola</span></a>\n<a class=\"nav-v\" href=\"#\"><span class=\"dot\" style=\"background:#9DAA7C\"></span><span class=\"ul\">Corniglia</span></a>\n<a class=\"nav-v\" href=\"#\"><span class=\"dot\" style=\"background:#7FA9C2\"></span><span class=\"ul\">Vernazza</span></a>\n<a class=\"nav-v\" href=\"#\"><span class=\"dot\" style=\"background:#E8C547\"></span><span class=\"ul\">Monterosso</span></a>\n</nav>\n<div style=\"display:flex;align-items:center;gap:16px\">\n<div class=\"mono\" style=\"display:flex;gap:10px;font-size:12px;letter-spacing:0.1em\"><a href=\"#\" style=\"font-weight:500;border-bottom:1px solid #0F1E2E\">EN</a><a href=\"#\" style=\"color:#3A4756\">DE</a><a href=\"#\" style=\"color:#3A4756\">FR</a><a href=\"#\" style=\"color:#3A4756\">IT</a></div>\n<a class=\"btn btn-p\" href=\"#\" style=\"height:44px;padding:0 20px;font-size:14px\">Plan your trip <span class=\"arr\">→</span></a>\n</div>\n</div>\n</header>",
+      "templates": [
+        "home"
+      ],
+      "variants": 1,
+      "menus": [
+        "villages"
+      ]
+    },
+    {
+      "slug": "footer",
+      "area": "footer",
+      "html": "<footer style=\"background:#F3EFE7;border-top:3px solid #0F1E2E\">\n<div class=\"wrap\" style=\"padding-top:64px;padding-bottom:40px;display:flex;flex-direction:column;gap:48px\">\n<div style=\"display:flex;flex-wrap:wrap;gap:40px 48px\">\n<div style=\"flex:2 1 300px;display:flex;flex-direction:column;gap:14px\">\n<a href=\"#\" style=\"display:flex;align-items:baseline;gap:8px\"><span class=\"disp\" style=\"font-size:36px\">Cinque Terre</span><span class=\"disp\" style=\"font-size:36px;font-style:italic;color:#B5482F\">Dispatch</span></a>\n<p style=\"margin:0;max-width:38ch;font-size:15px;line-height:1.6;color:#3A4756\">Slow journalism for the five villages — stories, stays, trails and the practical bits in between.</p>\n</div>\n\n<div style=\"flex:1 1 150px;display:flex;flex-direction:column;gap:4px\">\n<span class=\"mono\" style=\"font-size:11px;letter-spacing:0.14em;text-transform:uppercase;margin-bottom:8px\">Explore</span>\n<a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Cinque Terre</span></a><a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Itineraries</span></a><a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Things to Do</span></a><a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Sights</span></a><a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Stories</span></a>\n</div>\n\n<div style=\"flex:1 1 150px;display:flex;flex-direction:column;gap:4px\">\n<span class=\"mono\" style=\"font-size:11px;letter-spacing:0.14em;text-transform:uppercase;margin-bottom:8px\">Villages</span>\n<a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Riomaggiore</span></a><a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Manarola</span></a><a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Corniglia</span></a><a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Vernazza</span></a><a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Monterosso</span></a>\n</div>\n\n<div style=\"flex:1 1 150px;display:flex;flex-direction:column;gap:4px\">\n<span class=\"mono\" style=\"font-size:11px;letter-spacing:0.14em;text-transform:uppercase;margin-bottom:8px\">Guides</span>\n<a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Food &amp; Drink</span></a><a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Places to Stay</span></a><a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Getting Around</span></a><a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Weather</span></a><a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Events</span></a>\n</div>\n\n<div style=\"flex:1 1 150px;display:flex;flex-direction:column;gap:4px\">\n<span class=\"mono\" style=\"font-size:11px;letter-spacing:0.14em;text-transform:uppercase;margin-bottom:8px\">About</span>\n<a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">Our Team</span></a><a href=\"#\" style=\"font-size:15px;min-height:32px;display:flex;align-items:center\"><span class=\"ul\">FAQ</span></a>\n</div>\n\n</div>\n<div class=\"mono\" style=\"display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;font-size:12px;color:#3A4756;border-top:1px solid #CFC6B6;padding-top:16px\"><span>© 2026 Cinque Terre Dispatch</span><span>44.1270° N · 9.6851° E</span></div>\n</div>\n</footer>",
+      "templates": [
+        "home"
+      ],
+      "variants": 1,
+      "menus": [
+        "footer-explore",
+        "footer-villages",
+        "footer-guides",
+        "footer-about"
+      ]
+    }
+  ],
+  "navigation": [
+    {
+      "slug": "villages",
+      "label": "Villages",
+      "items": [
+        {
+          "label": "Riomaggiore",
+          "href": "#"
+        },
+        {
+          "label": "Manarola",
+          "href": "#"
+        },
+        {
+          "label": "Corniglia",
+          "href": "#"
+        },
+        {
+          "label": "Vernazza",
+          "href": "#"
+        },
+        {
+          "label": "Monterosso",
+          "href": "#"
+        }
+      ]
+    },
+    {
+      "slug": "footer-explore",
+      "label": "Explore",
+      "items": [
+        {
+          "label": "Cinque Terre",
+          "href": "#"
+        },
+        {
+          "label": "Itineraries",
+          "href": "#"
+        },
+        {
+          "label": "Things to Do",
+          "href": "#"
+        },
+        {
+          "label": "Sights",
+          "href": "#"
+        },
+        {
+          "label": "Stories",
+          "href": "#"
+        }
+      ]
+    },
+    {
+      "slug": "footer-villages",
+      "label": "Villages",
+      "items": [
+        {
+          "label": "Riomaggiore",
+          "href": "#"
+        },
+        {
+          "label": "Manarola",
+          "href": "#"
+        },
+        {
+          "label": "Corniglia",
+          "href": "#"
+        },
+        {
+          "label": "Vernazza",
+          "href": "#"
+        },
+        {
+          "label": "Monterosso",
+          "href": "#"
+        }
+      ]
+    },
+    {
+      "slug": "footer-guides",
+      "label": "Guides",
+      "items": [
+        {
+          "label": "Food & Drink",
+          "href": "#"
+        },
+        {
+          "label": "Places to Stay",
+          "href": "#"
+        },
+        {
+          "label": "Getting Around",
+          "href": "#"
+        },
+        {
+          "label": "Weather",
+          "href": "#"
+        },
+        {
+          "label": "Events",
+          "href": "#"
+        }
+      ]
+    },
+    {
+      "slug": "footer-about",
+      "label": "About",
+      "items": [
+        {
+          "label": "Our Team",
+          "href": "#"
+        },
+        {
+          "label": "FAQ",
+          "href": "#"
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "path": "pages/01-color.html",
+      "title": "01 — Color",
+      "role": "guide"
+    },
+    {
+      "path": "pages/06-applied-homepage.html",
+      "title": "06 — Applied: Homepage",
+      "role": "template"
+    }
+  ]
+}

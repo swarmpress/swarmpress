@@ -1,0 +1,602 @@
+{
+  "format": "swarmpress.site-design.v1",
+  "bundle": "1329e936365c2953e56d3e727870012d6b1ea530b034149d3421fe75a08fe8de",
+  "title": "Not found",
+  "languages": [
+    "en",
+    "it"
+  ],
+  "tokens": {
+    "colours": [
+      {
+        "name": "--color-accent",
+        "value": "#C4281C",
+        "role": "accent",
+        "contrast": {
+          "against": "--color-paper",
+          "ratio_x100": 535
+        }
+      },
+      {
+        "name": "--color-highlight",
+        "value": "#F2D16B",
+        "role": "highlight",
+        "contrast": {
+          "against": "--color-ink",
+          "ratio_x100": 1051
+        }
+      },
+      {
+        "name": "--color-ink",
+        "value": "#1B2430",
+        "role": "text",
+        "contrast": {
+          "against": "--color-paper",
+          "ratio_x100": 1464
+        }
+      },
+      {
+        "name": "--color-ink-muted",
+        "value": "#5A6472",
+        "role": "text-muted",
+        "contrast": {
+          "against": "--color-paper",
+          "ratio_x100": 561
+        }
+      },
+      {
+        "name": "--color-line",
+        "value": "#D9D2C5",
+        "role": "border",
+        "contrast": {
+          "against": "--color-ink",
+          "ratio_x100": 1041
+        }
+      },
+      {
+        "name": "--color-paper",
+        "value": "#FAF7F2",
+        "role": "background",
+        "contrast": {
+          "against": "--color-ink",
+          "ratio_x100": 1464
+        }
+      }
+    ],
+    "fonts": [
+      {
+        "name": "Coast Serif",
+        "role": "other",
+        "stack": "'Coast Serif', Georgia, serif",
+        "faces": [
+          {
+            "weight": "400 700",
+            "style": "normal",
+            "file": "fonts/coast-serif.woff2"
+          }
+        ]
+      }
+    ],
+    "type_scale": [
+      {
+        "name": "text-h1",
+        "size": "clamp(40px, 4vw + 20px, 72px)",
+        "fluid": "clamp(40px, 4vw + 20px, 72px)"
+      }
+    ],
+    "spacing": [
+      {
+        "name": "--space-4",
+        "value": "16px"
+      },
+      {
+        "name": "--space-8",
+        "value": "64px"
+      }
+    ],
+    "radii": [
+      {
+        "name": "--radius-control",
+        "value": "4px"
+      }
+    ],
+    "elevations": [
+      {
+        "name": "--shadow-card",
+        "value": "0 8px 24px -12px rgba(0,0,0,.3)"
+      }
+    ],
+    "motion": [
+      {
+        "name": "--dur-base",
+        "kind": "duration",
+        "value": "240ms"
+      },
+      {
+        "name": "--ease-out",
+        "kind": "easing",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "bp-640",
+        "min_px": 0,
+        "max_px": 640
+      },
+      {
+        "name": "bp-1024",
+        "min_px": 641,
+        "max_px": 1024
+      }
+    ],
+    "other": {
+      "--font-serif": "'Coast Serif', Georgia, serif"
+    }
+  },
+  "templates": [
+    {
+      "slug": "home",
+      "title": "Coast Journal",
+      "kind": "home",
+      "source": "index.html",
+      "sections": [
+        {
+          "id": "hero",
+          "kind": "block",
+          "block": "hero-section",
+          "role": "travel-journal-liguria",
+          "props": {
+            "class": "hero",
+            "eyebrow": "Travel journal · Liguria",
+            "heading": "The coast, slowly"
+          },
+          "rule": "the first section with a top heading",
+          "facts": {
+            "tag": "section",
+            "heading": "The coast, slowly",
+            "heading_level": 1,
+            "images": 0,
+            "media": 0,
+            "links": 1,
+            "paragraphs": 1,
+            "words": 17,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 1,
+            "numbers": 0,
+            "repeated": 0
+          }
+        },
+        {
+          "id": "query-featured",
+          "kind": "query",
+          "query": {
+            "source": "featured",
+            "items": 3
+          },
+          "role": "editors-picks",
+          "props": {
+            "class": "cards picks",
+            "heading": "Editors’ picks",
+            "items": "3"
+          },
+          "rule": "repeated cards under a heading that says picks or featured",
+          "facts": {
+            "tag": "section",
+            "heading": "Editors’ picks",
+            "heading_level": 2,
+            "images": 3,
+            "media": 3,
+            "links": 3,
+            "paragraphs": 0,
+            "words": 16,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 0,
+            "numbers": 0,
+            "repeated": 3
+          }
+        },
+        {
+          "id": "query-latest",
+          "kind": "query",
+          "query": {
+            "source": "latest",
+            "items": 4
+          },
+          "role": "latest-stories",
+          "props": {
+            "class": "cards latest",
+            "heading": "Latest stories",
+            "items": "4"
+          },
+          "rule": "repeated cards under a heading that says latest",
+          "facts": {
+            "tag": "section",
+            "heading": "Latest stories",
+            "heading_level": 2,
+            "images": 0,
+            "media": 0,
+            "links": 4,
+            "paragraphs": 0,
+            "words": 19,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 0,
+            "numbers": 0,
+            "repeated": 4
+          }
+        },
+        {
+          "id": "stats",
+          "kind": "block",
+          "block": "stats-section",
+          "role": "5-villages",
+          "props": {
+            "class": "stats",
+            "eyebrow": "5 villages",
+            "items": "3"
+          },
+          "rule": "mostly numbers",
+          "facts": {
+            "tag": "section",
+            "images": 0,
+            "media": 0,
+            "links": 0,
+            "paragraphs": 0,
+            "words": 8,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 0,
+            "numbers": 3,
+            "repeated": 3
+          }
+        },
+        {
+          "id": "newsletter",
+          "kind": "block",
+          "block": "newsletter",
+          "role": "the-sunday-letter",
+          "props": {
+            "class": "newsletter",
+            "heading": "The Sunday letter"
+          },
+          "rule": "a form with an email field",
+          "facts": {
+            "tag": "section",
+            "heading": "The Sunday letter",
+            "heading_level": 2,
+            "images": 0,
+            "media": 0,
+            "links": 0,
+            "paragraphs": 0,
+            "words": 4,
+            "email_form": true,
+            "questions": 0,
+            "buttons": 1,
+            "numbers": 0,
+            "repeated": 0
+          }
+        }
+      ],
+      "parts": [
+        "header",
+        "footer"
+      ],
+      "rule": "the page's name says home"
+    },
+    {
+      "slug": "404",
+      "title": "Not found",
+      "kind": "not-found",
+      "source": "404.html",
+      "sections": [
+        {
+          "id": "hero",
+          "kind": "block",
+          "block": "hero-section",
+          "role": "lost-at-sea",
+          "props": {
+            "class": "lost",
+            "heading": "Lost at sea"
+          },
+          "rule": "the first section with a top heading",
+          "facts": {
+            "tag": "section",
+            "heading": "Lost at sea",
+            "heading_level": 1,
+            "images": 0,
+            "media": 0,
+            "links": 1,
+            "paragraphs": 1,
+            "words": 11,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 1,
+            "numbers": 0,
+            "repeated": 0
+          }
+        }
+      ],
+      "parts": [
+        "header",
+        "footer"
+      ],
+      "rule": "the page's name says 404"
+    },
+    {
+      "slug": "single",
+      "title": "Article",
+      "kind": "single",
+      "source": "article.html",
+      "sections": [
+        {
+          "id": "entry",
+          "kind": "entry",
+          "role": "villages-8-min",
+          "props": {
+            "class": "story",
+            "eyebrow": "Villages · 8 min",
+            "heading": "The last light on the harbour",
+            "items": "3"
+          },
+          "rule": "the entry's own content (an article, else the longest text)",
+          "facts": {
+            "tag": "article",
+            "heading": "The last light on the harbour",
+            "heading_level": 1,
+            "images": 0,
+            "media": 0,
+            "links": 0,
+            "paragraphs": 3,
+            "words": 76,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 0,
+            "numbers": 1,
+            "repeated": 3
+          }
+        },
+        {
+          "id": "query-collection",
+          "kind": "query",
+          "query": {
+            "source": "collection",
+            "items": 3
+          },
+          "role": "read-next",
+          "props": {
+            "class": "cards related",
+            "heading": "Read next",
+            "items": "3"
+          },
+          "rule": "repeated cards with links: a collection's entries",
+          "facts": {
+            "tag": "section",
+            "heading": "Read next",
+            "heading_level": 2,
+            "images": 0,
+            "media": 0,
+            "links": 3,
+            "paragraphs": 0,
+            "words": 13,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 0,
+            "numbers": 0,
+            "repeated": 3
+          }
+        }
+      ],
+      "parts": [
+        "header",
+        "footer"
+      ],
+      "rule": "the page's name says single"
+    },
+    {
+      "slug": "archive",
+      "title": "All stories",
+      "kind": "archive",
+      "source": "stories.html",
+      "sections": [
+        {
+          "id": "hero",
+          "kind": "block",
+          "block": "hero-section",
+          "role": "all-stories",
+          "props": {
+            "class": "page-head",
+            "heading": "All stories"
+          },
+          "rule": "the first section with a top heading",
+          "facts": {
+            "tag": "section",
+            "heading": "All stories",
+            "heading_level": 1,
+            "images": 0,
+            "media": 0,
+            "links": 0,
+            "paragraphs": 1,
+            "words": 9,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 0,
+            "numbers": 0,
+            "repeated": 0
+          }
+        },
+        {
+          "id": "query-inherit",
+          "kind": "query",
+          "query": {
+            "source": "inherit",
+            "items": 5
+          },
+          "role": "the-last-light-on-the-harbour",
+          "props": {
+            "class": "cards list",
+            "eyebrow": "The last light on the harbour",
+            "items": "5"
+          },
+          "rule": "repeated cards in a list template: its own entries",
+          "facts": {
+            "tag": "section",
+            "images": 0,
+            "media": 0,
+            "links": 5,
+            "paragraphs": 0,
+            "words": 22,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 0,
+            "numbers": 0,
+            "repeated": 5
+          }
+        },
+        {
+          "id": "cta",
+          "kind": "block",
+          "block": "cta-section",
+          "role": "more-stories",
+          "props": {
+            "class": "pager",
+            "eyebrow": "More stories"
+          },
+          "rule": "a short section with a button",
+          "facts": {
+            "tag": "section",
+            "images": 0,
+            "media": 0,
+            "links": 1,
+            "paragraphs": 0,
+            "words": 2,
+            "email_form": false,
+            "questions": 0,
+            "buttons": 1,
+            "numbers": 0,
+            "repeated": 0
+          }
+        }
+      ],
+      "parts": [
+        "header",
+        "footer"
+      ],
+      "rule": "the page's name says archive"
+    }
+  ],
+  "parts": [
+    {
+      "slug": "header",
+      "area": "header",
+      "html": "<header class=\"masthead\"><a class=\"brand\" href=\"index.html\">Coast Journal</a>\n<nav aria-label=\"Main\"><a href=\"index.html\">Home</a><a href=\"stories.html\">Stories</a><a href=\"article.html\">Featured</a><a href=\"about.html\">About</a></nav>\n<div class=\"langs\"><a href=\"#\">EN</a><a href=\"#\">IT</a></div></header>",
+      "templates": [
+        "home",
+        "404",
+        "single",
+        "archive"
+      ],
+      "variants": 1,
+      "menus": [
+        "main"
+      ]
+    },
+    {
+      "slug": "footer",
+      "area": "footer",
+      "html": "<footer class=\"site-footer\"><div class=\"cols\">\n<div class=\"col\"><span class=\"label\">Explore</span><a href=\"stories.html\">Stories</a><a href=\"index.html\">Home</a></div>\n<div class=\"col\"><span class=\"label\">About</span><a href=\"about.html\">The team</a><a href=\"mailto:hello@example.com\">Contact</a></div>\n</div><p class=\"legal\">© 2026 Coast Journal</p></footer>",
+      "templates": [
+        "home",
+        "404",
+        "single",
+        "archive"
+      ],
+      "variants": 1,
+      "menus": [
+        "footer-explore",
+        "footer-about"
+      ]
+    }
+  ],
+  "navigation": [
+    {
+      "slug": "main",
+      "label": "Main",
+      "items": [
+        {
+          "label": "Home",
+          "href": "index.html",
+          "template": "home"
+        },
+        {
+          "label": "Stories",
+          "href": "stories.html",
+          "template": "archive"
+        },
+        {
+          "label": "Featured",
+          "href": "article.html",
+          "template": "single"
+        },
+        {
+          "label": "About",
+          "href": "about.html"
+        }
+      ]
+    },
+    {
+      "slug": "footer-explore",
+      "label": "Explore",
+      "items": [
+        {
+          "label": "Stories",
+          "href": "stories.html",
+          "template": "archive"
+        },
+        {
+          "label": "Home",
+          "href": "index.html",
+          "template": "home"
+        }
+      ]
+    },
+    {
+      "slug": "footer-about",
+      "label": "About",
+      "items": [
+        {
+          "label": "The team",
+          "href": "about.html"
+        },
+        {
+          "label": "Contact",
+          "href": "mailto:hello@example.com"
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "path": "404.html",
+      "title": "Not found",
+      "role": "template"
+    },
+    {
+      "path": "article.html",
+      "title": "Article",
+      "role": "template"
+    },
+    {
+      "path": "index.html",
+      "title": "Coast Journal",
+      "role": "template"
+    },
+    {
+      "path": "stories.html",
+      "title": "All stories",
+      "role": "template"
+    }
+  ]
+}
