@@ -163,6 +163,23 @@ forecast; the import took 3½ minutes, the export 10 with the forecast):
 | pages only in the export | 224 |
 | files in the export | 1004 (the theme's stylesheet and fonts now among them) |
 
+**Result, 2026-10-13, the newsletter hidden** (sandbox 0.7.1, no `--forms-endpoint`; the export on
+the site repo's `wordpress-export` branch):
+
+| | |
+|---|---|
+| URLs compared | 663 |
+| pass | **631** (635 before; the 4 blog indexes below, by the owner's decision) |
+| status mismatches | 0 |
+| content below 900‰ | 32 (median 998‰): the 28 rows below, and `/{en,de,fr,it}/blog/` at 803‰ |
+| missing links to live pages | 122 |
+| titles that differ | 4 |
+| files in the export | 1004; none has a `<form`, a "Subscribe" link or `#subscribe` |
+
+The blog indexes (`/{lang}/blog/`) keep 803‰: the live page's invitation to the newsletter ("Get the
+Dispatch in Your Inbox", "By subscribing, you agree…") is left out with the newsletter, so the pages
+do not invite to a form that is not there. It comes back with `--forms-endpoint`.
+
 The homes keep 21–99‰ of the live text (was 2–55‰) and miss 8–14 links (was 13–16): the editors'
 picks are the stories the owner curated for the blog index. Side-by-side screenshots of the live
 site and the export (homes in English and German, an article, a village, the village overview, a
@@ -182,21 +199,36 @@ its text, not a sidebar with a map; the 404 is the site's own page (the live one
 | `/`, `/{en,de,fr,it}/` (5) | the frozen theme's own sections (hero, carousels, trending, places to stay, latest stories, newsletter) | **composed** (decision 1); 21–99‰ of the live text and 8–14 missing links each (2026-10-13), by design: the live page's text and links are the theme's carousels (on `/de/`, `/fr/`, `/it/` partly English articles); the composition shows the editors' picks the owner curated, the villages, the featured stays, the 6 newest stories in the page's language and links all stories. **Waits for the owner's review in the preview** |
 | `/{lang}/village/` (4) | the village template: the theme's default stories | **composed** as the village overview (decision 2); 0–3‰ and 13–17 missing links each, the same carousels. **Waits for the owner's review** |
 | two articles × 4 languages (8) | **live renders `[object Object]`** (a live bug); the export has the whole article | nothing: the export fixes it |
+| `/{lang}/blog/` (4) at 803‰ | the newsletter's invitation, left out while the newsletter is hidden (2026-10-13) | **by decision**; back with `--forms-endpoint` |
 | the weather pages (11: `/weather`, `/wetter`, `/meteo`, `/cinque-terre/…`) at 660–762‰ | the frozen theme's weather blocks print sample data; the content's own sample forecast is now left out | **the live forecast block is built** (decision 3); below 900‰ because the live page's sample forecast is not carried, by design. **Waits for the owner's review** |
 
 Every other URL keeps its content (median 998‰), its links to live pages and its status. Images stay
 where the live site has them (Unsplash and the site's R2 bucket, hot-linked); the theme's two local
 images are uploaded as media.
 
-**Open before the preview:**
-- **The newsletter's endpoint:** the export needs `--forms-endpoint` set to the central server's
-  public `/f/{company}` URL; without it the form posts to `admin-post.php`, which a static host does
-  not answer. The production server's public URL is not decided yet.
-- **Open-Meteo's terms:** the free API is for non-commercial use. If cinqueterre.travel counts as
-  commercial (ads, affiliate links), the owner takes Open-Meteo's paid API (a key would then be a
-  secret of the site repo) or accepts the risk.
-- **The newsletter's consent:** the form records submissions in the company's inbox
-  (`FormSubmitted`); a privacy line and a double opt-in are not part of it yet.
+### The owner's decisions (2026-10-13)
+
+1. **The newsletter is hidden for now.** No newsletter form anywhere on the exported site until the
+   central server has a public address, a privacy line and a double opt-in. The import leaves out
+   the home's newsletter section (`#subscribe`), the header's "Subscribe" button (the `cta` menu),
+   the footer's "Subscribe" link and the blog index's invitation ("Get the Dispatch in your
+   inbox"), in every language (`compose::Options::newsletter`, off by default). The code path
+   stays: `pnpm swarmpress wp-migrate … --forms-endpoint <url>` passes `--newsletter` to the plan
+   and composes all of it again, with the form sent to that endpoint. A theme part that names a
+   menu the site does not have (the header's `sp-menu-cta`) renders nothing, not WordPress's
+   fallback menu (wp-sandbox 0.7.1).
+2. **Open-Meteo stays on its free API**, with its attribution (CC BY 4.0) under every forecast:
+   the owner counts cinqueterre.travel as **non-commercial**. Revisit if the site takes ads or
+   affiliate links (Open-Meteo's paid API; its key would be a secret of the site repo).
+3. **The `cinqueterre` theme's GPL licence is accepted** (ADR-0092's first negative): the ported
+   design is distributed under GPL-2.0-or-later with the sandbox, and anyone who receives the
+   sandbox may reuse it.
+4. **The switch goes ahead** (step 4 below): the PR from `wordpress-export` into the site repo's
+   `main`, then the domain.
+
+**Still open (not before the switch):** the newsletter's endpoint (the central server's public
+`/f/{company}`), its privacy line and double opt-in; the form then comes back with
+`--forms-endpoint`.
 
 ## Step 4: the switch (owner's decision)
 
@@ -216,7 +248,9 @@ forecast and redeploys production.
      commit to build `swarmpress-wp-migrate` from: one that contains this runbook's step).
 
 **1. The preview** (changes nothing a visitor sees):
-1. Run the migration above with `--forms-endpoint` (when decided) and check `compare.json`.
+1. Run the migration above (without `--forms-endpoint` while the newsletter is hidden) and check
+   `compare.json`, that no page has a `<form` (`grep -rl '<form' export/files`) and no "Subscribe"
+   link.
 2. On a branch of the site repo, e.g. `wordpress-export`: commit the export as `export/`
    (`release.json`, `files/`) and the workflow as `.github/workflows/deploy-cloudflare.yml`. The
    Astro `deploy.yml` stays, and only runs on `main`.

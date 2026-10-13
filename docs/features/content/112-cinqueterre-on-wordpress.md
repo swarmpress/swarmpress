@@ -66,7 +66,8 @@ says what stands between the comparison and the switch.
   language; the theme switched through the API; a menu per language; no shortlinks, no guessed
   redirects) and **Coast**, the block theme (the frozen theme's palette, display serif and editorial
   sections).
-- **The theme** (ADR-0092): `cinqueterre` in the sandbox (wp-sandbox 0.7.0), the frozen theme's
+- **The theme** (ADR-0092): `cinqueterre` in the sandbox (wp-sandbox 0.7.0, and 0.7.1: a named
+  menu the site does not have renders nothing), the frozen theme's
   design carried into a block theme, a child of Coast: `theme.json` (Playfair Display and Inter,
   self-hosted, OFL; the ink-on-white palette and the villages' colours), templates, the
   coastal-spine header and the footer as parts, patterns, and a stylesheet for the import's
@@ -82,15 +83,23 @@ says what stands between the comparison and the switch.
     curated for the blog index, in the page's language), the five villages, the places to stay (the
     accommodations collection's featured stays), the latest stories as a `core/query`
     block of the posts in the page's language (every article carries its language as a tag; the
-    import resolves the block's term reference to the tag's id when it applies the plan), and the
-    newsletter form, which the export sends to the platform's `/f/{company}`;
+    import resolves the block's term reference to the tag's id when it applies the plan), and,
+    only with `compose::Options::newsletter`, the newsletter form, which the export sends to the
+    platform's `/f/{company}`;
   - **the village overview** (`/{lang}/village/`): the five villages with links to their sections;
   - **the weather pages**: the content's sample forecast is left out and a live forecast block takes
     its place (the five villages on the general pages, the village on its own weather page).
+- **The newsletter, hidden** (the owner's decision of 2026-10-13): without the option the plan has no
+  form, no `#subscribe` section, no header button (`cta` menu), no footer link and no blog-index
+  invitation, in every language; `swarmpress wp-migrate --forms-endpoint <url>` turns it on
+  (`plan --newsletter`). Tested both ways: `the_newsletter_is_hidden_unless_a_form_endpoint_answers_it`,
+  `cinqueterre_gets_its_own_theme_and_the_frozen_themes_menus`, and the runner's migration test with
+  an endpoint (the form sent to the platform).
 - **The live forecast** (`site_export::forecast`, owner's decision 3): a marker the import writes, filled
   at export from Open-Meteo (fetched by `swarmpress-wp-migrate export`, or again in place by
   `swarmpress-wp-migrate forecast` for the daily rebuild; recorded answers with `--forecasts`), in four
-  languages, with Open-Meteo's attribution; a missing forecast fails the export.
+  languages, with Open-Meteo's attribution; a missing forecast fails the export. The free API stays:
+  the owner counts the site as non-commercial (2026-10-13).
 - **Cloudflare Pages** (ADR-0091): the export writes `404.html`, `_redirects` and `_headers`; the site
   repo's deploy workflow is the template `templates/site-repo/.github/workflows/deploy.yml` (fill the
   forecast, check, `wrangler pages deploy`; previews per branch; a daily rebuild).
@@ -104,7 +113,8 @@ says what stands between the comparison and the switch.
   covers the export's references. The crate's tests cover the theme's activation, the spine and
   named menus (every link of them a page of the live site's plan), the home's picks and stays, and
   the interludes. The sandbox's conformance suite renders the theme (its parts, named menus, fonts
-  and 404), run locally (2026-10-13: 8/8; WordPress's PHPUnit groups 2116 tests).
+  and 404, and no menu the site does not have), run locally (2026-10-13: 8/8 on 0.7.0 and on 0.7.1;
+  WordPress's PHPUnit groups 2116 tests on 0.7.0).
 - **The look** (2026-10-13): side-by-side screenshots of the live site and the export, at 1440 and
   390 px (homes en/de, an article, a village, the village overview, a weather page, a 404). The
   differences that remain are listed in the runbook.
@@ -115,7 +125,10 @@ says what stands between the comparison and the switch.
   998‰ of its live content. The 28 others are composed or replaced by the owner's decisions (the 9
   home and village-overview pages, the 11 weather pages) or fixed by the export (8 article URLs the
   live site renders as `[object Object]`); the composed pages and the forecast wait for the owner's
-  review in a Cloudflare Pages preview (the runbook's step 4).
-- **The newsletter's endpoint** in the export (the central server's public `/f/{company}`) and the
-  check of Open-Meteo's terms for a commercial site (runbook).
-- **The switch** (plan M8 step 4) and the retirement of the legacy path: the owner's decision.
+  review in a Cloudflare Pages preview (the runbook's step 4). With the newsletter hidden (2026-10-13,
+  sandbox 0.7.1) 631 pass: the 4 blog indexes keep 803‰, their newsletter invitation left out by
+  decision; no exported file has a form.
+- **The newsletter's endpoint** (the central server's public `/f/{company}`), its privacy line and
+  double opt-in; until then the newsletter is hidden (runbook, 2026-10-13).
+- **The switch** (plan M8 step 4): approved by the owner on 2026-10-13 (with the theme's GPL licence
+  accepted), not yet made; then the retirement of the legacy path.
