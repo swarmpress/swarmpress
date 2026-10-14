@@ -25,13 +25,20 @@
 //!   the export and deploy follow the merge → JobCompleted{ok, artifact_sha: the merge}
 //! ```
 //!
-//! The visual comparison of the design's pages and the branch's (a pixel and structure score
-//! per page) needs a browser: it runs outside the job, as the runner's step
-//! (`apps/game/e2e/theme-visual.mts`), and is not part of the digest yet.
+//! After the checks, the theme is looked at (`Gateway::visual_check`): the executor renders it
+//! and compares the design's pages with the site's, region by region, at a phone's and a
+//! desktop's width, pictures masked (`apps/game/e2e/theme-visual.mts`). A page below
+//! `theme_designer::visual::VISUAL_THRESHOLD` gets repair rounds (`web design template fix` with
+//! its worst regions: their score, the design's markup and the rendered one), at most
+//! `MAX_VISUAL_ROUNDS`; a fix is kept when it passes the checks and its page does not score
+//! worse. The digest's score is then the visual score (0–10); an executor that cannot render
+//! answers `None`, and the record says the theme was not compared.
 
 use std::collections::BTreeMap;
 
-use agents::design::{answer_schema, fix_prompt, template_prompt, TemplateInput, TEMPLATE_ANSWER};
+use agents::design::{
+    answer_schema, fix_prompt, template_prompt, visual_fix_prompt, TemplateInput, TEMPLATE_ANSWER,
+};
 use agents::prompts::templates;
 use agents::{LlmError, RepairFailed};
 use serde::{Deserialize, Serialize};
@@ -39,6 +46,7 @@ use serde_json::{json, Value};
 use site_design::bundle::BundleManifest;
 use site_design::{SiteDesign, ThemeData};
 use theme_designer::plan::prompt_context;
+use theme_designer::visual::{VisualReport, MAX_VISUAL_ROUNDS, VISUAL_THRESHOLD};
 use theme_designer::{
     assemble, check_template, check_theme, next_step, plan, Issue, SiteContext, Step,
     MAX_REPAIR_ROUNDS,
@@ -88,8 +96,12 @@ pub struct SiteThemeRecord {
     pub notes: Vec<Issue>,
     /// One line for the CEO.
     pub summary: String,
-    /// The digest's score.
+    /// The digest's score: the visual comparison's mean (0–10) when the theme was rendered,
+    /// else the share of tasks right first time.
     pub score: u8,
+    /// The visual comparison, region by region (without the rendered markup).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visual: Option<VisualReport>,
 }
 
 /// The branch a design version's theme is written on.
@@ -180,6 +192,8 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 languages: vec![self.site().language.clone()],
                 links: Vec::new(),
                 collections: Vec::new(),
+                places: Vec::new(),
+                images: Vec::new(),
             },
         };
         Ok((version, design, manifest, site))
@@ -223,6 +237,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         };
         let total = u32::try_from(p.tasks.len()).unwrap_or(u32::MAX);
         let mut markup: BTreeMap<String, String> = BTreeMap::new();
+        let mut visual_tried: Option<Vec<(String, String)>> = None;
         let mut outcomes = Vec::new();
         for (index, task) in p.tasks.iter().enumerate() {
             let index = u32::try_from(index).unwrap_or(u32::MAX);
@@ -344,8 +359,167 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 .site_theme_failed(req, &item, &who, &f, "the theme as a whole does not pass")
                 .await;
         }
+        // The theme rendered and compared with its design; regions far from it get repair
+        // rounds (theme_designer::visual), a fix kept only when it passes the checks and its page
+        // scores no worse.
+        let mut data = data;
+        let mut visual: Option<VisualReport> = None;
+        let mut visual_fixes = 0u32;
+        for round in 0..=MAX_VISUAL_ROUNDS {
+            if let Some(reason) = self.cancelled(req) {
+                return Ok(self.failed(req, reason));
+            }
+            let Some(report) = self.gateway.visual_check(version, &data, round).await? else {
+                break;
+            };
+            // A fix that made its page worse is undone.
+            let mut reverted = false;
+            if let (Some(before), Some(tried)) = (&visual, visual_tried.take()) {
+                for (label, old) in tried {
+                    let t = p.tasks.iter().find(|t| t.label() == label);
+                    let page = t.map(|t| t.slug.clone()).unwrap_or_default();
+                    let worse = report
+                        .worst_of(&page)
+                        .zip(before.worst_of(&page))
+                        .is_some_and(|(now, then)| now < then);
+                    if worse {
+                        markup.insert(label, old);
+                        reverted = true;
+                    }
+                }
+            }
+            if reverted {
+                data = assemble(&p, &markup);
+            }
+            if !reverted || visual.is_none() {
+                visual = Some(report.clone());
+            }
+            // Repairs start from what the current theme looks like.
+            let basis = if reverted {
+                visual.clone().unwrap_or(report)
+            } else {
+                report
+            };
+            let fixes = theme_designer::visual::repairs(&basis, &p);
+            if round == MAX_VISUAL_ROUNDS || fixes.is_empty() {
+                break;
+            }
+            let mut tried = Vec::new();
+            for fix in fixes {
+                let Some(task) = p.tasks.iter().find(|t| t.label() == fix.task) else {
+                    continue;
+                };
+                let Some(current) = markup.get(&fix.task).cloned() else {
+                    continue;
+                };
+                let input = TemplateInput {
+                    task,
+                    presets: &p.presets,
+                    context: &context,
+                };
+                self.report(
+                    req,
+                    Some(&who),
+                    "look",
+                    round + 1,
+                    MAX_VISUAL_ROUNDS,
+                    ProgressState::Started,
+                    json!({"task": fix.task}),
+                );
+                let key = fix.task.replace(' ', ":");
+                let user = visual_fix_prompt(&input, &current, &fix.regions);
+                let answer = self
+                    .propose(
+                        req,
+                        &who,
+                        &template,
+                        agents::JobKind::WebDesign,
+                        &format!("web_design_look:{key}:{}", round + 1),
+                        user,
+                        TEMPLATE_ANSWER,
+                        &schema,
+                        &has_content,
+                    )
+                    .await?;
+                let Ok((v, _)) = answer else {
+                    continue;
+                };
+                let mut candidate = content_of(&v);
+                let mut fixed = 0u8;
+                let passed = loop {
+                    let issues = check_template(task, &candidate, &ctx);
+                    match next_step(&issues, fixed, MAX_REPAIR_ROUNDS) {
+                        Step::Done => break true,
+                        Step::GiveUp { .. } => break false,
+                        Step::Repair(task_fix) => {
+                            let user = fix_prompt(&input, &candidate, &task_fix.prompt());
+                            let answer = self
+                                .propose(
+                                    req,
+                                    &who,
+                                    &template,
+                                    agents::JobKind::WebDesign,
+                                    &format!(
+                                        "web_design_look_fix:{key}:{}:{}",
+                                        round + 1,
+                                        task_fix.round
+                                    ),
+                                    user,
+                                    TEMPLATE_ANSWER,
+                                    &schema,
+                                    &has_content,
+                                )
+                                .await?;
+                            match answer {
+                                Ok((v, _)) => candidate = content_of(&v),
+                                Err(_) => break false,
+                            }
+                            fixed = task_fix.round;
+                        }
+                    }
+                };
+                if passed {
+                    visual_fixes += 1;
+                    tried.push((fix.task.clone(), current));
+                    markup.insert(fix.task.clone(), candidate);
+                }
+            }
+            if tried.is_empty() {
+                break;
+            }
+            let next = assemble(&p, &markup);
+            let theme_errors: Vec<Issue> = check_theme(&next, &p)
+                .into_iter()
+                .filter(Issue::is_error)
+                .collect();
+            if !theme_errors.is_empty() {
+                // The fixes broke the whole; keep the theme as it was.
+                for (label, old) in tried {
+                    markup.insert(label, old);
+                }
+                break;
+            }
+            data = next;
+            visual_tried = Some(tried);
+        }
         let mut notes = p.notes.clone();
         notes.extend(theme_designer::check::guidance(&p));
+        match &visual {
+            Some(v) => {
+                for line in v.lines() {
+                    notes.push(Issue::new(
+                        theme_designer::IssueCode::Note,
+                        "visual check",
+                        format!("{line} (region by region, pictures masked; {VISUAL_THRESHOLD} or more looks like the design)"),
+                    ));
+                }
+            }
+            None => notes.push(Issue::new(
+                theme_designer::IssueCode::Note,
+                "visual check",
+                "not measured: this executor cannot render the theme",
+            )),
+        }
 
         if let Some(reason) = self.cancelled(req) {
             return Ok(self.failed(req, reason));
@@ -354,9 +528,21 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         let n = outcomes.len();
         let first = outcomes.iter().filter(|o| o.rounds == 0).count();
         let repaired: usize = outcomes.iter().map(|o| o.repaired.len()).sum();
-        let score = u8::try_from((first * 10).checked_div(n).unwrap_or(0)).unwrap_or(10);
+        let first_time = u8::try_from((first * 10).checked_div(n).unwrap_or(0)).unwrap_or(10);
+        // The visual score when the theme was rendered, else the share right first time.
+        let score = visual
+            .as_ref()
+            .and_then(theme_designer::visual::score)
+            .unwrap_or(first_time);
+        let looks = match &visual {
+            Some(v) => format!(
+                " Against the design: {} ({visual_fixes} visual repairs).",
+                v.lines().join("; ")
+            ),
+            None => " Not compared with the design (not rendered here).".into(),
+        };
         let summary = format!(
-            "{} (design v{version}): {} templates and {} parts on {branch}; {first} of {n} right first time, {repaired} issues repaired; {} fonts, {} menus.",
+            "{} (design v{version}): {} templates and {} parts on {branch}; {first} of {n} right first time, {repaired} issues repaired; {} fonts, {} menus.{looks}",
             design.title.trim(),
             data.templates.len(),
             data.template_parts.len(),
@@ -382,6 +568,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             notes,
             summary: summary.clone(),
             score,
+            visual: visual.as_ref().map(VisualReport::summary),
         };
         let sha = stage_hash(&[&serde_json::to_string(&record.theme).map_err(corrupt)?]);
         let mut art = self.load_artifact(req, &item).await?.unwrap_or_default();

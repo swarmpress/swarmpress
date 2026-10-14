@@ -672,6 +672,14 @@ pub fn list_with_class(items: &[&str], class: Option<&str>) -> String {
     }
 }
 
+/// Every `alt=""` in `html` given `fallback` (an image must say what it shows).
+pub fn fill_alt(html: &str, fallback: &str) -> String {
+    if fallback.trim().is_empty() || !html.contains("alt=\"\"") {
+        return html.to_string();
+    }
+    html.replace("alt=\"\"", &format!("alt=\"{}\"", attr(fallback.trim())))
+}
+
 /// Text without its tags (`<br/>` as a space), whitespace collapsed.
 pub fn strip_tags(s: &str) -> String {
     let s = s

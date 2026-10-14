@@ -29,7 +29,7 @@ export const SANDBOX_ORIGIN = 'http://sandbox.invalid'
 
 export interface WordPressSiteOptions {
   wordpress: WordPressRuntime
-  client: Pick<CentralClient, 'putAsset' | 'putRelease'>
+  client: Pick<CentralClient, 'putAsset' | 'putRelease'> & Partial<Pick<CentralClient, 'getAsset' | 'siteDesign'>>
   token: () => string
   store: { getKv(key: string): Promise<string | null>; setKv(key: string, value: string): Promise<void> }
   companyId: string
@@ -123,6 +123,14 @@ export async function wordpressSite(o: WordPressSiteOptions): Promise<WordPressS
         releaseStatus: (id: number) => engine.releaseStatus(id),
         redeploy: (id: number) => engine.redeploy(id),
         siteModels: () => site.studioModels(),
+        // The web designer (FEAT-115): the design store's versions, and the theme as data on a branch.
+        ...(o.client.siteDesign ? { siteDesign: (version: number) => o.client.siteDesign!(o.companyId, version) } : {}),
+        ...(o.client.getAsset
+          ? {
+              putThemeData: (branch: string, dataJson: string, attributionJson: string) =>
+                engine.putThemeData(branch, dataJson, attributionJson, { calls: (d) => m.themeDataCalls(d), file: (sha) => o.client.getAsset!(sha) }),
+            }
+          : {}),
         putBlueprint: async (bodyJson: string) => {
           try {
             const r = await site.saveBlueprint(JSON.parse(bodyJson) as PutBlueprintBody)

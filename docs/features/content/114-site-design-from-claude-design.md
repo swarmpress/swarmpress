@@ -50,6 +50,15 @@ importer writes and the web designer will generate.
     footer's labelled groups, links resolved to templates); languages from the language switch;
     patterns; components from numbered sheet parts with their notes; design rules (principles,
     "observed → fix", rules of use) with a closed list of checks.
+  - **A section's design markup** (`Section.html`, expanded and sanitised, at most 24 KB): what the
+    web designer reads for a section's layout and copy (FEAT-115).
+  - **The design's pages, static and marked** (`render::static_pages`): every page a template or a
+    component comes from, expanded with its data, its sections marked `data-sp-section="{id}"`, its
+    parts `data-sp-part`, a sheet's numbered parts `data-sp-component="{slug}"`: the design's side
+    of the web designer's region-by-region visual check.
+  - **The page runtime read further** (2026-10-14): a conditional reads as its first branch (the
+    page as it first renders: `f === 'All' ? all : …`), a shorthand property as its variable's
+    value (`{ acts }`), so the listing sheet's entries have their names.
   - **`diff` and `merge`**: per template, sections aligned by what fills them (same, changed with
     notes, added, removed); token, part, component, menu and rule changes; a later design of some
     templates replaces only those.
@@ -60,7 +69,9 @@ importer writes and the web designer will generate.
   /api/sites/{id}/designs` (lease, own site; JSON files as base64; a Claude Design export unpacked;
   422 with issues, 413 over 20 MB; files in the object store like assets; 201 new, 200 the same
   bundle's version), `GET …/designs`, `GET …/designs/{version}` (manifest and interpretation),
-  `GET …/designs/{version}/files/{*path}` (a sandboxing CSP, `nosniff`).
+  `GET …/designs/{version}/files/{*path}` (a sandboxing CSP, `nosniff`). A new version publishes
+  the event `DesignReceived {version, hash, source}` to the company's inbox: the executor logs it
+  for the sim and the web designer makes its theme (FEAT-115).
 
 ## Tests
 
@@ -77,7 +88,9 @@ importer writes and the web designer will generate.
   export's unpacking (a packed export with nested pages, deduplicated fonts, no scripts), the CSS
   reader, number counting, colour roles, contrast, the rule checks, the theme data's shape rules.
 - `crates/server/tests/site_designs.rs`: the routes (fencing, write-once versions, refusals, read
-  back, the files' headers).
+  back, the files' headers) and the `DesignReceived` event of each new version.
+- `crates/site-design/tests/interpret.rs` `the_designs_pages_render_static_with_their_regions_marked`;
+  `dc::tests::a_conditional_reads_as_its_first_branch`.
 
 ## Next
 
@@ -86,8 +99,9 @@ importer writes and the web designer will generate.
   instead needs a `crates/site-design-wasm` facade (`cargo xtask wasm` entry like `kit-wasm`) and an
   async load in the panel, with design-import.test.ts moved onto the built module. Not done here: the
   panel's import is synchronous and its tests run without the wasm build.
-- cinqueterre.travel's **design v1** (the "Salt & Pigment" style guide, kept in the site's repo) sent
-  to the store once the site repo carries it.
+- cinqueterre.travel's **design v1** (the "Salt & Pigment" style guide) is in the site repo as the
+  unpacked bundle (`design/v1/`, on the `wordpress-export` branch with the preview, 2026-10-14); it
+  is sent to a company's store when the owner's company runs in the game.
 - The web designer's job (`ThemeData` from a `SiteDesign`, checks, visual comparison,
   `ThemeApproval`) is FEAT-115. The importer's `ThemeData` is this crate's
   (`content_import_wp::theme_data` re-exports `site_design::wordpress`), and the importer checks

@@ -69,7 +69,7 @@ pub use build::{interior_brief, OnDesk, RoomPlan, RoomPlanItem, ROOM_PLAN_KIND};
 pub use gateway::GithubGateway;
 pub use gateway::{
     Attribution, DeployState, DraftPr, FakeGateway, FakePr, FakeSite, Gateway, GatewayError,
-    ModelsPut, PageFile, Redeploy, ThemePr,
+    ModelsPut, PageFile, Redeploy, ThemePr, VisualFn, VisualHook,
 };
 pub use run::{CancelToken, Orchestrator, OrchestratorError, SiteBinding};
 pub use site::{

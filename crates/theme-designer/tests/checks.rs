@@ -75,7 +75,7 @@ impl Case {
     }
 }
 
-const HERO: &str = "<!-- wp:heading {\"level\":1} -->\n<h1 class=\"wp-block-heading\">Five villages, walked slowly.</h1>\n<!-- /wp:heading -->";
+const HERO: &str = "<!-- wp:heading {\"level\":1} -->\n<h1 class=\"wp-block-heading\">Five villages,<br>walked <em>slowly.</em></h1>\n<!-- /wp:heading -->";
 
 #[test]
 fn grammar() {
@@ -127,7 +127,7 @@ fn allowed_blocks() {
 #[test]
 fn coverage_of_sections_parts_and_menus() {
     let c = Case::new();
-    c.fails("front-page", "\"className\":\"sp-hero\"", "\"className\":\"hero\"", IssueCode::Missing, "the section hero is missing: render it as a block with \"className\":\"sp-hero\" (the design's \"Five villages, walked slowly.\")");
+    c.fails("front-page", "\"className\":\"sp-hero ds-wrap ds-hero\"", "\"className\":\"hero ds-wrap ds-hero\"", IssueCode::Missing, "the section hero is missing: render it as a block with \"className\":\"sp-hero\" (the design's \"Five villages, walked slowly.\")");
     c.fails(
         "single",
         "<!-- wp:post-content",
@@ -164,8 +164,8 @@ fn presets_only() {
     let c = Case::new();
     c.fails(
         "front-page",
-        "\"fontSize\":\"eyebrow\"",
-        "\"fontSize\":\"huge\"",
+        "{\"className\":\"sp-hero ds-wrap ds-hero\"",
+        "{\"fontSize\":\"huge\",\"className\":\"sp-hero ds-wrap ds-hero\"",
         IssueCode::Token,
         "the font-size preset \"huge\" does not exist",
     );
@@ -178,29 +178,29 @@ fn presets_only() {
     );
     c.fails(
         "front-page",
-        "\"align\":\"wide\"",
-        "\"style\":{\"spacing\":{\"padding\":\"var:preset|spacing|99\"}},\"align\":\"wide\"",
+        "{\"className\":\"sp-hero ds-wrap ds-hero\"",
+        "{\"style\":{\"spacing\":{\"padding\":\"var:preset|spacing|99\"}},\"className\":\"sp-hero ds-wrap ds-hero\"",
         IssueCode::Token,
         "the spacing preset \"99\" does not exist",
     );
     c.fails(
         "front-page",
-        "\"align\":\"wide\"",
-        "\"style\":{\"color\":{\"background\":\"#ffffff\"}},\"align\":\"wide\"",
+        "{\"className\":\"sp-hero ds-wrap ds-hero\"",
+        "{\"style\":{\"color\":{\"background\":\"#ffffff\"}},\"className\":\"sp-hero ds-wrap ds-hero\"",
         IssueCode::Token,
         "sets the raw colour #ffffff in \"background\"; use a palette preset",
     );
     c.fails(
         "front-page",
-        "<div class=\"wp-block-group alignwide sp-hero\">",
-        "<div class=\"wp-block-group alignwide sp-hero\" style=\"color:rgb(0,0,0)\">",
+        "<section class=\"wp-block-group sp-hero ds-wrap ds-hero\">",
+        "<section class=\"wp-block-group sp-hero ds-wrap ds-hero\" style=\"color:rgb(0,0,0)\">",
         IssueCode::Token,
         "sets the raw colour rgb(…)",
     );
     c.fails(
         "front-page",
-        "\"className\":\"sp-hero\"",
-        "\"className\":\"sp-hero has-tiny-font-size\"",
+        "\"className\":\"sp-hero ds-wrap ds-hero\"",
+        "\"className\":\"sp-hero ds-wrap ds-hero has-tiny-font-size\"",
         IssueCode::Token,
         "\"tiny\" names no font-size preset in CSS",
     );
@@ -212,10 +212,10 @@ fn css_forms_follow_wordpress_kebab_case() {
     let c = Case::new();
     let good = c
         .good("front-page")
-        .replacen("\"className\":\"sp-hero\"", "\"className\":\"sp-hero has-h-1-font-size\"", 1)
+        .replacen("\"className\":\"sp-hero ds-wrap ds-hero\"", "\"className\":\"sp-hero ds-wrap ds-hero has-h-1-font-size\"", 1)
         .replacen(
-            "<div class=\"wp-block-group alignwide sp-hero\">",
-            "<div class=\"wp-block-group alignwide sp-hero\" style=\"font-size:var(--wp--preset--font-size--h-1)\">",
+            "<section class=\"wp-block-group sp-hero ds-wrap ds-hero\">",
+            "<section class=\"wp-block-group sp-hero ds-wrap ds-hero\" style=\"font-size:var(--wp--preset--font-size--h-1)\">",
             1,
         );
     assert!(
@@ -236,8 +236,8 @@ fn contrast() {
     // calce's band with the muted text on it
     let i = c.fails(
         "front-page",
-        "{\"fontSize\":\"eyebrow\"} -->\n<p class=\"has-eyebrow-font-size\">Where to sleep",
-        "{\"fontSize\":\"eyebrow\",\"textColor\":\"mist\"} -->\n<p class=\"has-eyebrow-font-size\">Where to sleep",
+        "{\"className\":\"ds-eyebrow\"} -->\n<p class=\"ds-eyebrow\">Where to sleep",
+        "{\"className\":\"ds-eyebrow\",\"textColor\":\"mist\"} -->\n<p class=\"ds-eyebrow\">Where to sleep",
         IssueCode::Contrast,
         "paragraph text \"mist\" on \"calce\" is",
     );
@@ -246,8 +246,8 @@ fn contrast() {
     // A dark band whose links keep the theme's link colour.
     let i = c.fails(
         "404",
-        "{\"align\":\"wide\",\"className\":\"sp-not-found\"",
-        "{\"align\":\"wide\",\"backgroundColor\":\"notte\",\"textColor\":\"salt\",\"className\":\"sp-not-found\"",
+        "{\"className\":\"sp-not-found ds-wrap ds-page-head\"",
+        "{\"backgroundColor\":\"notte\",\"textColor\":\"salt\",\"className\":\"sp-not-found ds-wrap ds-page-head\"",
         IssueCode::Contrast,
         "paragraph links \"mare\" on \"notte\" are",
     );
@@ -264,15 +264,15 @@ fn safety() {
     let c = Case::new();
     c.fails(
         "404",
-        "<p>The page",
-        "<p><script>alert(1)</script>The page",
+        "<p class=\"ds-lede\">The page",
+        "<p class=\"ds-lede\"><script>alert(1)</script>The page",
         IssueCode::Unsafe,
         "a <script> is not allowed",
     );
     c.fails(
         "404",
-        "<p>The page",
-        "<p><iframe src=\"/\"></iframe>The page",
+        "<p class=\"ds-lede\">The page",
+        "<p class=\"ds-lede\"><iframe src=\"/\"></iframe>The page",
         IssueCode::Unsafe,
         "an <iframe> is not allowed",
     );
@@ -337,16 +337,16 @@ fn the_designs_rules() {
     let c = Case::new();
     let i = c.fails(
         "404",
-        "<p>The page",
-        "<p>Rated 4.5/5. The page",
+        "<p class=\"ds-lede\">The page",
+        "<p class=\"ds-lede\">Rated 4.5/5. The page",
         IssueCode::Rule,
         "the rating 4.5/5 is not on the design's scale: n/10 with 1 decimal(s)",
     );
     assert_eq!(i.rule.as_deref(), Some("fix-01"));
     c.fails(
         "404",
-        "<p>The page",
-        "<p>★★★★ The page",
+        "<p class=\"ds-lede\">The page",
+        "<p class=\"ds-lede\">★★★★ The page",
         IssueCode::Rule,
         "ratings in stars",
     );
@@ -354,7 +354,7 @@ fn the_designs_rules() {
         "front-page",
         HERO,
         &HERO.replace(
-            "Five villages, walked slowly.",
+            "Five villages,<br>walked <em>slowly.</em>",
             "Five villages | Cinque Terre Dispatch",
         ),
         IssueCode::Rule,
@@ -370,8 +370,8 @@ fn the_designs_rules() {
     );
     c.fails(
         "header",
-        "{\"isLink\":true,\"level\":0}",
-        "{\"isLink\":true}",
+        "<!-- wp:paragraph {\"className\":\"ds-wordmark\"}",
+        "<!-- wp:site-title {\"isLink\":true} /-->\n<!-- wp:paragraph {\"className\":\"ds-wordmark\"}",
         IssueCode::Rule,
         "core/site-title renders the site's name as an h1; give it \"level\":0",
     );
@@ -384,17 +384,23 @@ fn the_designs_rules() {
     );
     let i = c.fails(
         "404",
-        "<p>The page",
-        "<p><img src=\"/a.jpg\" alt=\"\">The page",
+        "<p class=\"ds-lede\">The page",
+        "<p class=\"ds-lede\"><img src=\"/a.jpg\" alt=\"\">The page",
         IssueCode::Rule,
         "an <img> without alt text",
     );
     assert_eq!(i.rule.as_deref(), Some("fix-06"));
-    c.fails("front-page", "<!-- wp:post-terms {\"fontSize\":\"eyebrow\",\"term\":\"category\"} /-->\n<!-- wp:post-title {\"isLink\":true,\"level\":3} /-->\n<!-- wp:post-excerpt {\"excerptLength\":24} /-->\n<!-- wp:post-date {\"fontSize\":\"meta\"} /-->\n<!-- /wp:post-template -->\n<!-- wp:query-no-results -->\n<!-- wp:paragraph -->\n<p>Nothing here yet.</p>\n<!-- /wp:paragraph -->\n<!-- /wp:query-no-results -->\n</div>\n<!-- /wp:query -->\n</div>\n<!-- /wp:group -->\n<!-- wp:group {\"align\":\"wide\",\"backgroundColor\":\"calce\"", "<!-- wp:post-title {\"isLink\":true,\"level\":3} /-->\n<!-- wp:post-excerpt {\"excerptLength\":24} /-->\n<!-- wp:post-date {\"fontSize\":\"meta\"} /-->\n<!-- /wp:post-template -->\n<!-- wp:query-no-results -->\n<!-- wp:paragraph -->\n<p>Nothing here yet.</p>\n<!-- /wp:paragraph -->\n<!-- /wp:query-no-results -->\n</div>\n<!-- /wp:query -->\n</div>\n<!-- /wp:group -->\n<!-- wp:group {\"align\":\"wide\",\"backgroundColor\":\"calce\"", IssueCode::Rule, "every listed story shows its category");
+    c.fails(
+        "front-page",
+        "<!-- wp:post-terms {\"term\":\"category\"} /-->",
+        "",
+        IssueCode::Rule,
+        "every listed story shows its category",
+    );
     c.fails(
         "404",
-        "<p>The page",
-        "<p>Price: €€€€€. The page",
+        "<p class=\"ds-lede\">The page",
+        "<p class=\"ds-lede\">Price: €€€€€. The page",
         IssueCode::Rule,
         "a price of 5 €; prices go from 1 to 4 €",
     );

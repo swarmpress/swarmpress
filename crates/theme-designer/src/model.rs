@@ -24,6 +24,32 @@ pub struct SiteContext {
     /// The entries a query section may show.
     #[serde(default)]
     pub collections: Vec<Collection>,
+    /// The site's places (`vernazza`): a listed entry of a place carries the class
+    /// `sp_place-{slug}`, which the theme's styles give the place's pigment when the design has one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub places: Vec<Place>,
+    /// Pictures of the site a template may show where the design has a fixed picture (the image
+    /// band), by what they show.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<SiteImage>,
+}
+
+/// A place of the site (a term of `sp_place`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Place {
+    pub slug: String,
+    pub label: String,
+}
+
+/// A picture of the site.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SiteImage {
+    pub url: String,
+    pub alt: String,
+    /// What it shows, in words a section is matched on (`Vernazza harbour`).
+    pub label: String,
 }
 
 impl SiteContext {
@@ -56,6 +82,10 @@ pub struct SiteLink {
     pub label: String,
     /// Root-relative (`/en/things-to-do/`).
     pub url: String,
+    /// The same page in every language (the English label's key, `things-to-do`): a menu or link
+    /// the design names in English finds the page and its label in each language.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
 }
 
 /// Entries the site can list: a `core/query` the host knows works on its WordPress.
@@ -74,6 +104,13 @@ pub struct Collection {
     /// The `query` attribute of the `core/query` block (`postType`, `orderBy`, …) without
     /// `perPage`, which is the section's.
     pub query: Value,
+    /// The entries' fields a template shows with a block binding (`core/post-meta`), beyond
+    /// their title, excerpt, terms and date.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<String>,
+    /// The design's listing it fills (`activity`: the template `archive-activity` lists it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listing: Option<String>,
 }
 
 /// A template or a part.
@@ -121,6 +158,23 @@ pub struct SectionSpec {
     /// The `core/query` block's `query` attribute exactly (with `perPage`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query: Option<Value>,
+    /// The fields its entries have for block bindings (`rating`, `price`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<String>,
+    /// How the design lays it out, in the theme's vocabulary ([`crate::components`]): `hero`,
+    /// `image-band`, `tiles`, `feature`, `cards`, `rows`, `band`, `bar`, `entries`, `prose`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shape: Option<String>,
+    /// The section's markup in the design (expanded, sanitised, shortened): its layout and copy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub html: Option<String>,
+    /// The section's links and buttons to the site's pages, each a one-item menu per language
+    /// (`core/navigation` with its class): a template serves every language.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<MenuSpec>,
+    /// The site's picture for a section whose design shows a fixed one (the image band).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<SiteImage>,
 }
 
 /// A menu a part shows: a `core/navigation` block with the class `sp-menu-{name}` (the

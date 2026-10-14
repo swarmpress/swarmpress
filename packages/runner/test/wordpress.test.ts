@@ -191,6 +191,10 @@ describe.skipIf(!ready || !migrateBinary(REPO_ROOT))("a site moved onto WordPres
         expect(home).toContain("Boats at dawn");
         expect(home).toContain("td-header");
         expect(home).toContain("td-footer");
+        // The other languages' homes are the design's front page too (`page-front`); WordPress's
+        // own first post is not the site's.
+        expect(page("/de/")).toContain("td-front");
+        expect(release.files["/hello-world/index.html"]).toBeUndefined();
         // A page through the data's `page` template, with its own text and the menus by language.
         const de = page("/de/sights/");
         expect(de).toContain("td-page");

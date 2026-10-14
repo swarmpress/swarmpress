@@ -70,10 +70,12 @@ What it does:
    ([ADR-0092](../adr/0092-the-astro-design-carried-into-a-wordpress-block-theme.md), wp-sandbox
    0.7.0, a child of Coast), activated by the import for this site (`plan::fallback_theme_for`:
    the import's fallback when it has no theme data). Since wp-sandbox 0.8.0 a site's design can be
-   data on the neutral theme `canvas` (theme as data on canvas, ADR-0093: `--theme-data`), but
-   **cinqueterre.travel stays on its `cinqueterre` theme folder** until its own design runs on data
-   (step 6 of the Claude Design plan: its design → `ThemeData` → a preview → the owner's approval);
-   the migration above runs without `--theme-data` until then. The pages
+   data on the neutral theme `canvas` (theme as data on canvas, ADR-0093: `--theme-data`).
+   **cinqueterre.travel moves to its design on canvas** (2026-10-14, below: "Salt & Pigment", design
+   v1, its theme made by the web designer): the **preview** runs on it; **production** stays on the
+   `cinqueterre` theme folder until the owner approves the design (the `ThemeApproval`). With
+   `--theme-data` the homes are the design's front page and the composed home below is not used;
+   without it, everything in this paragraph holds as it was. The pages
    the frozen theme drew from its own code are **composed** (the owner's decisions of 2026-10-12,
    `crates/content-import-wp/src/compose.rs`): the home, the village overview, a live forecast block
    on the weather pages (below), and the theme's menus (the coastal spine, the wordmark, the
@@ -84,6 +86,60 @@ What it does:
    (ADR-0091), forms sent to `--forms-endpoint`, and the forecast blocks filled from Open-Meteo.
 4. **Comparison** (`compare.json`): every URL of the reference build, fetched from the live site
    (4 at a time, cached), against the export.
+
+## The design on canvas (2026-10-14)
+
+cinqueterre.travel's new style is the owner's Claude Design export "Salt & Pigment"
+([ADR-0093](../adr/0093-a-sites-design-comes-from-claude-design.md)), design version 1, kept in the
+site repo as the unpacked bundle `design/v1/` (on `wordpress-export`, with the preview). Its theme is
+the web designer's job (FEAT-115), run with GPT-6-Luna through the central server, checked, and
+compared with the design on a Node WordPress that has the site:
+
+```sh
+# a WordPress with the site (the migration above, sandbox 0.9.0), left running on :8440/:18440, then
+cargo build -p orchestrator --features cli --bin swarmpress-site-theme
+cargo build --release -p content-import-wp --features cli
+target/debug/swarmpress-site-theme --design "<Cinque Terre Dispatch Style Guide.html>" \
+   --content cinqueterre.travel/content --out <dir> --llm hosted --server http://127.0.0.1:8081 \
+   --wordpress http://127.0.0.1:8440 --repo http://127.0.0.1:18440/repo
+# then the migration with the job's theme data
+pnpm swarmpress wp-migrate cinqueterre.travel/content --theme-data <dir>/theme-data.json \
+   --reference $R/reference --cache reports/wp-migrate/live --assets $T/public --out reports/wp-migrate
+```
+
+What the design on data changes (wp-sandbox 0.9.0, the import with `--theme-data`):
+- **the site's entries:** the villages, places to stay (rating out of 10, fix-01), restaurants (€ out
+  of 4, fix-10), things to do (time, cost, best time, fix-08) and the editors are entries of content
+  types (`content_import_wp::entries`), in every language, at most 12 per village and type;
+- **the homes** `/` and `/{lang}/` are the design's front page with queries in the page's language
+  (the five villages, the editors' picks as sticky posts, places to stay, the latest stories), not
+  the composed home; the listing pages (things to do and sights, restaurants and food, weather, the
+  team) take the design's listing templates, their own text after the entries; every other page the
+  design's page template;
+- **the design's rules on the pages:** every headline without "| Cinque Terre Dispatch" (fix-02;
+  the document title keeps it), every image with alt text (fix-06, fix-12: the page's title where the
+  content has none), WordPress's "Hello world!" and "Sample Page" deleted by the import;
+- the fonts are the design's (Bodoni Moda, Schibsted Grotesk, IBM Plex Mono, OFL), self-hosted.
+
+**Result, 2026-10-14** (sandbox 0.9.0, design v1 on canvas; the site repo's `wordpress-export`,
+commit `48175b0`, previewed at <https://wordpress-export.cinqueterre-travel.pages.dev>):
+
+| | |
+|---|---|
+| URLs compared | 663 |
+| pass | **631** (as on 2026-10-13, the same rows) |
+| status mismatches | 0 |
+| content below 900‰ | 32: the same rows as before (below); the homes keep 45–57‰ (was 19–96‰), the weather pages 10‰ less (650–752‰), their headline without the site's name |
+| missing links to live pages | 124 (was 122): the homes' (9 and 14 each) |
+| pages only in the export | 222 (WordPress's "Hello world!" and "Sample Page" are gone) |
+| files in the export | 982 |
+| the design, region by region | the homes 865/856 (375/1280 px), the listings 791–825 (FEAT-115) |
+
+The owner reviews the preview against the design: side-by-side screenshots (the homes in English and
+German, a listing, an article, a village, a weather page and the 404, at 375 and 1280 px) are
+FEAT-115's evidence. **Production is not switched**: it stays on the `cinqueterre` theme folder
+until the owner approves the design (the `ThemeApproval`); then `main` gets the export with the
+design, and the `cinqueterre` theme folder retires from the sandbox.
 
 ## The gate
 

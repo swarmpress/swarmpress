@@ -315,3 +315,37 @@ fn bundles_refuse_what_is_not_a_design() {
     let big = BTreeMap::from([("index.html".to_string(), vec![b' '; MAX_BUNDLE_BYTES + 1])]);
     assert!(DesignBundle::new(big, DesignSource::Upload, 0).is_err());
 }
+
+#[test]
+fn the_designs_pages_render_static_with_their_regions_marked() {
+    let bundle = dispatch_mini();
+    let d = interpret(&bundle);
+    let texts: BTreeMap<String, String> = bundle
+        .files()
+        .iter()
+        .filter(|(p, _)| p.ends_with(".html") || p.ends_with(".css"))
+        .map(|(p, b)| (p.clone(), String::from_utf8_lossy(b).into_owned()))
+        .collect();
+    let pages = site_design::render::static_pages(&d, &texts);
+    let home = template(&d, "home");
+    let html = &pages[&home.source];
+    assert!(html.starts_with("<!DOCTYPE html>"));
+    // Every section of the home by its id, in order, and its parts.
+    let mut at = 0;
+    for s in &home.sections {
+        let mark = format!("data-sp-section=\"{}\"", s.id);
+        let i = html[at..]
+            .find(&mark)
+            .unwrap_or_else(|| panic!("{mark} in order"))
+            + at;
+        at = i;
+        // The section's own markup is kept for the web designer, as the interpretation saw it.
+        assert!(!s.html.is_empty(), "{} has its markup", s.id);
+    }
+    assert!(html.contains("data-sp-part=\"header\""));
+    assert!(html.contains("data-sp-part=\"footer\""));
+    // The page's runtime is expanded: the loops' items are there, no template syntax, no script.
+    assert!(!html.contains("<sc-for"), "loops expanded");
+    assert!(!html.contains("{{"), "substitutions made");
+    assert!(!html.contains("<script src"));
+}

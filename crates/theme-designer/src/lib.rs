@@ -34,12 +34,14 @@
 
 pub mod blocks;
 pub mod check;
+pub mod components;
 pub mod fake;
 pub mod model;
 pub mod plan;
 pub mod repair;
 pub mod sketch;
 pub mod styles;
+pub mod visual;
 
 pub use check::{check_template, check_theme, CheckContext};
 pub use model::{

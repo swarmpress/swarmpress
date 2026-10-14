@@ -259,7 +259,7 @@ fn leaves(el: &El) -> Vec<&El> {
 }
 
 /// `(label, label element, the block)` for every element that starts with a label.
-fn labelled(root: &El) -> Vec<(String, &El)> {
+pub(crate) fn labelled(root: &El) -> Vec<(String, &El)> {
     let mut out = Vec::new();
     for e in root.descendants() {
         let kids: Vec<&El> = e.elements().collect();
@@ -767,7 +767,7 @@ pub(crate) fn tokens(pages: &[Page], css_files: &str) -> Tokens {
     t
 }
 
-fn split_number(label: &str) -> Option<(String, String)> {
+pub(crate) fn split_number(label: &str) -> Option<(String, String)> {
     let mut parts = label.splitn(2, ' ');
     let num = parts.next()?;
     let rest = parts.next()?.trim();

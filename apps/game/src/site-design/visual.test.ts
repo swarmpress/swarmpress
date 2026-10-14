@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { visualSimilarity, type Raster } from './visual'
+import { pageScore, visualSimilarity, type Raster } from './visual'
 
 /** A raster filled by `f(x, y) → [r, g, b]`. */
 function raster(width: number, height: number, f: (x: number, y: number) => [number, number, number]): Raster {
@@ -58,5 +58,24 @@ describe('visualSimilarity (FEAT-115)', () => {
     expect(visualSimilarity(page(100, 10), page(100, 30), { cols: 8, worst: 3 })).toEqual(a)
     expect(a.worst).toHaveLength(3)
     expect(visualSimilarity(raster(64, 0, () => PAPER), page(64, 0)).similarity).toBe(0)
+  })
+})
+
+describe('pageScore (FEAT-115)', () => {
+  it('weights regions by the design height and counts a missing region as 0', () => {
+    expect(pageScore([])).toBe(0)
+    expect(pageScore([{ name: 'a', weight: 100, similarity: 900, found: true }])).toBe(900)
+    expect(
+      pageScore([
+        { name: 'hero', weight: 300, similarity: 800, found: true },
+        { name: 'list', weight: 100, similarity: 400, found: true },
+      ]),
+    ).toBe(700)
+    expect(
+      pageScore([
+        { name: 'hero', weight: 100, similarity: 1000, found: true },
+        { name: 'gone', weight: 100, similarity: 950, found: false },
+      ]),
+    ).toBe(500)
   })
 })

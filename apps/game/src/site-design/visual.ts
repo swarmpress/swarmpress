@@ -131,3 +131,28 @@ export function visualSimilarity(a: Raster, b: Raster, opts: VisualOptions = {})
     worst,
   }
 }
+
+/** One region of a page compared: the design's and the site's crop of it. */
+export interface RegionScore {
+  /** `hero`, `header`, `activity-entry`. */
+  name: string
+  /** The design region's height in CSS pixels: its weight in the page's score. */
+  weight: number
+  /** 0–1000; 0 when the site has no such region. */
+  similarity: number
+  /** False when the site has no element for the region. */
+  found: boolean
+}
+
+/**
+ * A page's score from its regions (the section-aligned comparison): the regions' similarities
+ * weighted by the design region's height, a region the site lacks counting 0. Regions compared
+ * one by one, each scaled to the same width, are not thrown off by a section that is taller or
+ * shorter than the design's, which a whole-page grid is (everything below it shifts).
+ */
+export function pageScore(regions: RegionScore[]): number {
+  const total = regions.reduce((n, r) => n + Math.max(0, r.weight), 0)
+  if (total <= 0) return 0
+  const sum = regions.reduce((n, r) => n + Math.max(0, r.weight) * (r.found ? r.similarity : 0), 0)
+  return Math.round(sum / total)
+}

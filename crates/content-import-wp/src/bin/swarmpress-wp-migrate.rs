@@ -4,6 +4,7 @@
 //! swarmpress-wp-migrate plan    --content DIR --out plan.json [--newsletter] [--theme-data FILE]
 //! swarmpress-wp-migrate apply   --plan plan.json --sandbox URL --repo URL [--branch NAME] [--assets DIR]
 //!                               [--theme-data FILE]
+//! swarmpress-wp-migrate theme   --theme-data FILE --sandbox URL --repo URL --branch NAME
 //! swarmpress-wp-migrate export  --sandbox URL --repo URL --public-origin URL --out DIR
 //!                               [--forms-endpoint URL] [--forecasts DIR]
 //! swarmpress-wp-migrate forecast --export DIR [--forecasts DIR]
@@ -19,7 +20,8 @@
 //! before the documents (`content_import_wp::theme`: fonts, global styles, template parts,
 //! templates, patterns, navigation, each updated by slug when it exists); without it the site gets
 //! the fallback theme folder (Coast, or cinqueterre.travel's own until its design runs on data).
-//! On `apply` it replaces the plan's theme data. `apply` writes the plan through the sandbox's REST API on a branch of its own, as the CEO, then
+//! On `apply` it replaces the plan's theme data. `theme` writes theme data alone on a new branch
+//! from `live` and shows that branch to visitors (the web designer's visual check renders it). `apply` writes the plan through the sandbox's REST API on a branch of its own, as the CEO, then
 //! opens a change request and merges it into `live` (ADR-0083 §5). A site image the pages name by
 //! path (`/giulia_rossi.png`) and `--assets` holds is uploaded as media first, and the pages point
 //! at the upload. `export` crawls `live` as a
@@ -71,6 +73,7 @@ async fn main() -> Result<()> {
             let site = Site::read(Path::new(&need(&args, "--content")?)).map_err(|e| anyhow!(e))?;
             let opts = compose::Options {
                 newsletter: args.iter().any(|a| a == "--newsletter"),
+                ..Default::default()
             };
             let theme_data = arg(&args, "--theme-data")
                 .map(|f| read_theme_data(Path::new(&f)))
@@ -97,6 +100,23 @@ async fn main() -> Result<()> {
                 p.theme = theme::BASE_THEME.into();
             }
             apply(&wp, &p, &branch, assets.as_deref()).await
+        }
+        Some("theme") => {
+            // A theme as data on a branch of its own, shown to visitors (the visual check).
+            let wp = Wp::new(&need(&args, "--sandbox")?, &need(&args, "--repo")?);
+            let branch = need(&args, "--branch")?;
+            let data = read_theme_data(Path::new(&need(&args, "--theme-data")?))?;
+            let ceo: Value = serde_json::from_str(CEO)?;
+            let _ = wp.repo(json!({"op": "branch.delete", "name": branch})).await;
+            wp.repo(json!({"op": "branch.create", "name": branch, "from": "live"}))
+                .await?;
+            wp.repo(json!({"op": "session.set", "branch": branch, "user_id": 1, "author": ceo, "read_only": false}))
+                .await?;
+            write_theme(&wp, &data, theme::BASE_THEME).await?;
+            wp.repo(json!({"op": "session.set", "branch": branch, "user_id": 0, "read_only": true}))
+                .await?;
+            eprintln!("the theme is on {branch}, shown to visitors");
+            Ok(())
         }
         Some("export") => {
             let wp = Wp::new(&need(&args, "--sandbox")?, &need(&args, "--repo")?);
@@ -263,6 +283,36 @@ async fn apply(wp: &Wp, p: &Plan, branch: &str, assets: Option<&Path>) -> Result
     )
     .await?;
 
+    // WordPress's own first post and page are not the site's.
+    for (rest, slug) in [("posts", "hello-world"), ("pages", "sample-page")] {
+        let (_, found) = wp
+            .rest(
+                M::GET,
+                &format!("/wp/v2/{rest}?slug={slug}&_fields=id"),
+                None,
+            )
+            .await?;
+        if let Some(id) = first_id(&found) {
+            wp.rest_ok(
+                M::DELETE,
+                &format!("/wp/v2/{rest}/{id}?force=true"),
+                &json!({}),
+            )
+            .await?;
+        }
+    }
+    // The site's content types (wp-sandbox 0.9.0), before anything names their fields.
+    wp.rest_ok(
+        M::POST,
+        "/swarmpress/v1/content-types",
+        &json!({"types": p.content_types.iter().map(|t| json!({
+            "name": t.name,
+            "label": t.label,
+            "fields": t.fields.iter().map(|(k, l)| json!({"key": k, "label": l})).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>()}),
+    )
+    .await?;
+
     // Terms first, by name.
     let mut categories: BTreeMap<String, u64> = BTreeMap::new();
     let mut tags: BTreeMap<String, u64> = BTreeMap::new();
@@ -318,6 +368,7 @@ async fn apply(wp: &Wp, p: &Plan, branch: &str, assets: Option<&Path>) -> Result
             );
         }
     }
+    write_entries(wp, p).await?;
     if let Some(home) = ids.get("/") {
         wp.rest_ok(
             M::POST,
@@ -452,14 +503,20 @@ async fn write_theme(
             }
             Call::FontFamily { slug, settings } => {
                 let body = json!({"font_family_settings": settings.to_string()});
+                // The collection may answer every family (its `slug` filter is not one the font
+                // library honours everywhere): the family is the one whose settings carry the slug.
                 let (_, found) = wp
                     .rest(
                         M::GET,
-                        &format!("/wp/v2/font-families?slug={slug}&_fields=id"),
+                        &format!("/wp/v2/font-families?slug={slug}&per_page=100&_fields=id,slug,font_family_settings"),
                         None,
                     )
                     .await?;
-                let id = match first_id(&found) {
+                let mine = found.as_array().into_iter().flatten().find(|f| {
+                    f["slug"].as_str() == Some(slug.as_str())
+                        || f["font_family_settings"]["slug"].as_str() == Some(slug.as_str())
+                });
+                let id = match mine.and_then(|f| f["id"].as_u64()) {
                     Some(id) => {
                         // A family's slug is its identity: the update leaves it out.
                         let mut kept = settings.clone();
@@ -492,11 +549,15 @@ async fn write_theme(
                 let (_, faces) = wp
                     .rest(
                         M::GET,
-                        &format!("{route}?per_page=100&_fields=id,font_face_settings"),
+                        &format!("{route}?per_page=100&_fields=id,parent,font_face_settings"),
                         None,
                     )
                     .await?;
+                // Only this family's faces (the collection has answered other families' too).
                 let same = faces.as_array().into_iter().flatten().find(|f| {
+                    if f["parent"].as_u64().is_some_and(|p| p != id) {
+                        return false;
+                    }
                     let s = &f["font_face_settings"];
                     s["fontWeight"] == settings["fontWeight"]
                         && s["fontStyle"] == settings["fontStyle"]
@@ -726,6 +787,12 @@ async fn write_doc(
     if let Some(date) = &d.date {
         body["date"] = json!(date);
     }
+    if d.sticky {
+        body["sticky"] = json!(true);
+    }
+    if let Some(t) = &d.template {
+        body["template"] = json!(t);
+    }
     if d.post_type == "post" {
         if let Some(c) = d.category.as_ref().and_then(|c| categories.get(c)) {
             body["categories"] = json!([c]);
@@ -743,6 +810,53 @@ async fn write_doc(
     };
     let v = wp.rest_ok(reqwest::Method::POST, route, &body).await?;
     v["id"].as_u64().ok_or_else(|| anyhow!("no id"))
+}
+
+/// The site's entries (`content_import_wp::entries`): their places as `sp_place` terms, then each
+/// entry with its language, link, place and fields.
+async fn write_entries(wp: &Wp, p: &Plan) -> Result<()> {
+    let mut places: BTreeMap<String, u64> = BTreeMap::new();
+    for e in &p.entries {
+        if let Some(pl) = &e.place {
+            if !places.contains_key(pl) {
+                places.insert(pl.clone(), term(wp, "sp_place", pl).await?);
+            }
+        }
+    }
+    let started = std::time::Instant::now();
+    for (i, e) in p.entries.iter().enumerate() {
+        let mut meta: BTreeMap<String, String> = e.fields.clone();
+        meta.insert("_swarmpress_lang".into(), e.lang.clone());
+        meta.insert("_swarmpress_link".into(), e.link.clone());
+        let mut body = json!({
+            "title": e.title,
+            "slug": e.slug,
+            "status": "publish",
+            "content": e.content,
+            "excerpt": e.excerpt,
+            "menu_order": e.order,
+            "meta": meta,
+        });
+        if let Some(id) = e.place.as_ref().and_then(|pl| places.get(pl)) {
+            body["sp_place"] = json!([id]);
+        }
+        wp.rest_ok(
+            reqwest::Method::POST,
+            &format!("/wp/v2/{}", e.post_type),
+            &body,
+        )
+        .await
+        .with_context(|| format!("{} {}", e.post_type, e.slug))?;
+        if (i + 1).is_multiple_of(100) {
+            eprintln!(
+                "{} of {} entries written ({}s)",
+                i + 1,
+                p.entries.len(),
+                started.elapsed().as_secs()
+            );
+        }
+    }
+    Ok(())
 }
 
 fn nav_markup(item: &MenuItem) -> String {

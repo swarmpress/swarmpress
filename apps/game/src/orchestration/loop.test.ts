@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { CommandRecord } from '../store/company-store'
 import { commandText } from '../sync/segments'
 import type { DueStepSource } from './due-step'
-import { BoundedSet, jobOutcomeKey, KEEP_ERRORS, KEEP_JOBS, OrchestrationLoop, PENDING_DEPLOYS_KEY, type LoopOptions, type LoopSim, type LoopStore } from './loop'
+import { BoundedSet, jobOutcomeKey, KEEP_ERRORS, KEEP_JOBS, OrchestrationLoop, PENDING_DEPLOYS_KEY, PENDING_DESIGNS_KEY,
+  type LoopOptions, type LoopSim, type LoopStore } from './loop'
 
 /** The part of the sim the loop touches, scripted. */
 class StubSim implements LoopSim {
@@ -320,6 +321,33 @@ describe('OrchestrationLoop', () => {
     // Other event kinds are not the loop's.
     await loop.deployEvent({ kind: 'LeaseRevoked', payload: { epoch: 3 } })
     expect(loop.pendingDeploys).toEqual([])
+  })
+
+  // FEAT-115: the design store's upload (or a connector's send) reaches the sim as DesignReceived.
+  it('logs a DesignReceived event at the next boundary, once, newest versions only', async () => {
+    const sim = new StubSim()
+    const store = new MemStore()
+    const loop = new OrchestrationLoop({ sim, store, companyId: 'co', orchestrator: { run: async () => '[]' }, codec })
+    let newest = 0
+    sim.reject = (json) => {
+      const m = /"DesignReceived":\{"version":(\d+)\}/.exec(json)
+      return m && Number(m[1]) <= newest ? 'not newer than the site\'s design' : undefined
+    }
+    await loop.deployEvent({ kind: 'DesignReceived', payload: { version: 2, hash: 'ab', source: 'upload' } })
+    await loop.deployEvent({ kind: 'DesignReceived', payload: { version: 2 } })
+    expect(JSON.parse(store.kv.get(PENDING_DESIGNS_KEY)!)).toEqual([2])
+    loop.boundary()
+    await loop.flush()
+    expect(sim.applied).toEqual(['{"DesignReceived":{"version":2}}'])
+    expect(store.log.map((c) => c.kind)).toEqual(['DesignReceived'])
+    expect(JSON.parse(store.kv.get(PENDING_DESIGNS_KEY)!)).toEqual([])
+    // An older version than the site has is dropped, never applied.
+    newest = 2
+    await loop.deployEvent({ kind: 'DesignReceived', payload: { version: 1 } })
+    loop.boundary()
+    await loop.flush()
+    expect(sim.applied).toHaveLength(1)
+    expect(JSON.parse(store.kv.get(PENDING_DESIGNS_KEY)!)).toEqual([])
   })
 
   // FEAT-085: Retry redeploys; a failed redeploy is a new failure (a higher attempt) with a new ticket.

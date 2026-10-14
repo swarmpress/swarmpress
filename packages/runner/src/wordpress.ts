@@ -299,7 +299,10 @@ export async function runMigration(opts: MigrationOptions): Promise<number> {
     ...(opts.themeData ? ["--theme-data", opts.themeData] : []),
   ]);
   if (code !== 0) return code;
-  const wp = await startNodeWordPress({ ...opts, timeoutMs: opts.timeoutMs ?? 300_000 });
+  // The site's data outlives one PHP: the export runs on a fresh sandbox (php-wasm's memory grows
+  // over the thousands of requests an import makes).
+  const dataDir = opts.dataDir ?? mkdtempSync(join(tmpdir(), "swarmpress-migrate-"));
+  let wp = await startNodeWordPress({ ...opts, dataDir, timeoutMs: opts.timeoutMs ?? 300_000 });
   try {
     const install = await wp.request("/wp-admin/install.php?step=2", {
       method: "POST",
@@ -311,6 +314,11 @@ export async function runMigration(opts: MigrationOptions): Promise<number> {
     await wp.repo({ op: "import.finish" });
     code = await run(["apply", "--plan", planFile, "--sandbox", wp.url, "--repo", `${wp.storageUrl}/repo`, "--branch", "import-site", ...(opts.assets ? ["--assets", opts.assets] : [])]);
     if (code !== 0) return code;
+    await wp.stop();
+    // The same address: WordPress keeps the URL it was installed at.
+    const at = new URL(wp.url);
+    const storageAt = new URL(wp.storageUrl);
+    wp = await startNodeWordPress({ ...opts, dataDir, port: Number(at.port), storagePort: Number(storageAt.port), timeoutMs: opts.timeoutMs ?? 300_000 });
     rmSync(join(opts.out, "export"), { recursive: true, force: true });
     code = await run([
       "export", "--sandbox", wp.url, "--repo", `${wp.storageUrl}/repo`, "--public-origin", opts.publicOrigin, "--out", join(opts.out, "export"),
@@ -320,6 +328,7 @@ export async function runMigration(opts: MigrationOptions): Promise<number> {
     if (code !== 0) return code;
   } finally {
     await wp.stop();
+    if (!opts.dataDir) rmSync(dataDir, { recursive: true, force: true });
   }
   if (!opts.reference) return 0;
   return run([

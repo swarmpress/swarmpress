@@ -50,15 +50,15 @@ fn mutate(kind: u64, s: &str, g: &mut Lcg) -> Option<(String, &'static str)> {
             )
         }),
         // a raw colour in an attribute
-        3 => pick(at(s, "{\"align\":\"wide\""), g).map(|i| {
+        3 => pick(at(s, "{\"className\":\""), g).map(|i| {
             (
                 splice(i, 1, "{\"overlayColor\":\"#123456\","),
                 "a raw colour",
             )
         }),
         // an unknown preset
-        4 => pick(at(s, "\"fontSize\":\""), g)
-            .map(|i| (splice(i, 12, "\"fontSize\":\"zz-"), "an unknown size")),
+        4 => pick(at(s, "{\"className\":\""), g)
+            .map(|i| (splice(i, 1, "{\"fontSize\":\"zz-x\","), "an unknown size")),
         // a script
         5 => pick(at(s, "</div>"), g).map(|i| (splice(i, 0, "<script>x()</script>"), "a script")),
         // a placeholder link
@@ -76,9 +76,19 @@ fn mutate(kind: u64, s: &str, g: &mut Lcg) -> Option<(String, &'static str)> {
             .map(|i| (splice(i, 10, "\"perPage\":9"), "a query changed")),
         // an inline handler
         10 => pick(at(s, "<p"), g).map(|i| (splice(i, 2, "<p onmouseover=\"x()\""), "a handler")),
-        // the site's title as a heading
+        // a second h1 (a section's heading made the page's headline)
         11 => {
-            pick(at(s, "\"level\":0"), g).map(|i| (splice(i, 9, "\"level\":1"), "site title as h1"))
+            let open = "<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">";
+            pick(at(s, open), g).map(|i| {
+                let close = s[i..].find("</h2>").unwrap() + i;
+                let mut o = s.to_string();
+                o.replace_range(close..close + 5, "</h1>");
+                o.replace_range(
+                    i..i + open.len(),
+                    "<!-- wp:heading {\"level\":1} -->\n<h1 class=\"wp-block-heading\">",
+                );
+                (o, "a second h1")
+            })
         }
         _ => None,
     }

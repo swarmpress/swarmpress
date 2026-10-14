@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use serde_json::json;
 use site_design::model::QuerySource;
 use site_design::{interpret, DesignBundle, DesignSource, SiteDesign};
+use theme_designer::model::{Place, SiteImage};
 use theme_designer::{Collection, SiteContext, SiteLink, ThemePlan};
 
 pub fn fixtures() -> PathBuf {
@@ -81,6 +82,7 @@ pub fn cinqueterre() -> SiteContext {
             lang: lang.into(),
             label: label.into(),
             url: format!("/{lang}/{path}"),
+            key: Some(theme_designer::styles::label_key(label)),
         };
         for v in [
             "Riomaggiore",
@@ -94,6 +96,7 @@ pub fn cinqueterre() -> SiteContext {
         links.push(l("Cinque Terre", "cinque-terre/"));
         links.push(l("Things to Do", "things-to-do/"));
         links.push(l("Stories", "blog/"));
+        links.push(l("All stories", "blog/"));
         links.push(l("Food & Drink", "culinary/"));
         links.push(l("Places to Stay", "accommodations/"));
         links.push(l("Weather", "weather/"));
@@ -104,37 +107,111 @@ pub fn cinqueterre() -> SiteContext {
         name: "Cinque Terre Dispatch".into(),
         languages: vec!["en".into(), "de".into(), "fr".into(), "it".into()],
         links,
-        collections: vec![
-            Collection {
-                name: "latest-stories".into(),
-                label: "Latest stories".into(),
-                source: QuerySource::Latest,
-                keywords: vec!["stories".into(), "dispatch".into(), "latest".into()],
-                query: json!({"postType": "post", "order": "desc", "orderBy": "date"}),
-            },
-            Collection {
-                name: "editors-picks".into(),
-                label: "Editors' picks".into(),
-                source: QuerySource::Featured,
-                keywords: vec!["picks".into(), "curated".into()],
-                query: json!({"postType": "post", "sticky": "only"}),
-            },
-            Collection {
-                name: "villages".into(),
-                label: "The five villages".into(),
-                source: QuerySource::Collection,
-                keywords: vec!["villages".into(), "destinations".into()],
-                query: json!({"postType": "page", "orderBy": "menu_order", "order": "asc", "parents": [0], "search": ""}),
-            },
-            Collection {
-                name: "stays".into(),
-                label: "Places to stay".into(),
-                source: QuerySource::Collection,
-                keywords: vec!["stay".into(), "sleep".into(), "accommodations".into()],
-                query: json!({"postType": "page", "orderBy": "title", "order": "asc", "search": "stay"}),
-            },
-        ],
+        collections: collections(),
+        places: [
+            "Riomaggiore",
+            "Manarola",
+            "Corniglia",
+            "Vernazza",
+            "Monterosso",
+        ]
+        .iter()
+        .map(|v| Place {
+            slug: v.to_lowercase(),
+            label: v.to_string(),
+        })
+        .collect(),
+        images: vec![SiteImage {
+            url: "https://images.example/vernazza.jpg".into(),
+            alt: "Vernazza harbour".into(),
+            label: "Vernazza harbour".into(),
+        }],
     }
+}
+
+/// The collections the CLI offers for cinqueterre.travel (content-import-wp's entries).
+pub fn collections() -> Vec<Collection> {
+    let c = |name: &str,
+             source: QuerySource,
+             keywords: &[&str],
+             query: serde_json::Value,
+             fields: &[&str],
+             listing: Option<&str>| Collection {
+        name: name.into(),
+        label: name.into(),
+        source,
+        keywords: keywords.iter().map(|k| k.to_string()).collect(),
+        query,
+        fields: fields.iter().map(|f| f.to_string()).collect(),
+        listing: listing.map(String::from),
+    };
+    vec![
+        c(
+            "latest-stories",
+            QuerySource::Latest,
+            &["stories", "dispatch", "latest"],
+            json!({"postType": "post", "order": "desc", "orderBy": "date"}),
+            &["image", "image_alt"],
+            None,
+        ),
+        c(
+            "editors-picks",
+            QuerySource::Featured,
+            &["picks", "curated"],
+            json!({"postType": "post", "sticky": "only"}),
+            &["image", "image_alt"],
+            None,
+        ),
+        c(
+            "villages",
+            QuerySource::Collection,
+            &["villages", "destinations"],
+            json!({"postType": "sp_village", "orderBy": "menu_order", "order": "asc"}),
+            &["number", "line", "image", "image_alt"],
+            None,
+        ),
+        c(
+            "stays",
+            QuerySource::Collection,
+            &["stay", "sleep", "places"],
+            json!({"postType": "sp_stay", "orderBy": "menu_order", "order": "asc"}),
+            &["village", "price", "price_unit", "rating", "rating_scale"],
+            Some("stay"),
+        ),
+        c(
+            "activities",
+            QuerySource::Collection,
+            &["activities"],
+            json!({"postType": "sp_activity", "orderBy": "menu_order", "order": "asc", "place": "current"}),
+            &["label", "line", "duration", "cost", "best"],
+            Some("activity"),
+        ),
+        c(
+            "restaurants",
+            QuerySource::Collection,
+            &["restaurants"],
+            json!({"postType": "sp_restaurant", "orderBy": "menu_order", "order": "asc", "place": "current"}),
+            &[
+                "cuisine",
+                "line",
+                "price",
+                "price_rest",
+                "rating",
+                "rating_scale",
+                "closed",
+                "book",
+            ],
+            Some("restaurant"),
+        ),
+        c(
+            "editors",
+            QuerySource::Collection,
+            &["editors"],
+            json!({"postType": "sp_editor", "orderBy": "menu_order", "order": "asc"}),
+            &["role", "line", "bio", "image", "image_alt"],
+            Some("editor"),
+        ),
+    ]
 }
 
 /// A small site for the coast journal.
@@ -144,22 +221,27 @@ pub fn coast_site() -> SiteContext {
         languages: vec!["en".into()],
         links: vec![
             SiteLink {
+                key: None,
                 lang: "en".into(),
                 label: "Home".into(),
                 url: "/en/".into(),
             },
             SiteLink {
+                key: None,
                 lang: "en".into(),
                 label: "Stories".into(),
                 url: "/en/stories/".into(),
             },
             SiteLink {
+                key: None,
                 lang: "en".into(),
                 label: "The team".into(),
                 url: "/en/team/".into(),
             },
         ],
         collections: cinqueterre().collections,
+        places: Vec::new(),
+        images: Vec::new(),
     }
 }
 

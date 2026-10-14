@@ -20,8 +20,8 @@ use site_design::model::{
     TemplateKind,
 };
 use site_design::wordpress::{
-    template_slug, GlobalStyles, NavigationMenu, PartArea, ThemeData, ThemeFontFamily, ThemePart,
-    ThemeTemplate, THEME_DATA_FORMAT,
+    template_slug, valid_slug, GlobalStyles, NavigationItem, NavigationMenu, PartArea, ThemeData,
+    ThemeFontFamily, ThemePart, ThemeTemplate, THEME_DATA_FORMAT,
 };
 
 use crate::model::{
@@ -36,6 +36,13 @@ pub const REQUIRED: [&str; 6] = ["index", "single", "page", "404", "archive", "f
 pub const PART_HTML_CHARS: usize = 6000;
 /// A component's notes are cut to this many characters.
 pub const NOTES_CHARS: usize = 480;
+/// A section's design markup is cut to this many characters for the prompt.
+pub const SECTION_HTML_CHARS: usize = 7000;
+/// Entries a listing page shows.
+pub const LISTING_ITEMS: u32 = 12;
+/// The copy of the front page a page in another language takes as its template (WordPress lets a
+/// page name only a custom template): the homes `/{lang}/` render as `/` does.
+pub const LANGUAGE_HOME: &str = "page-front";
 
 /// Everything the job needs besides the model.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -120,8 +127,10 @@ pub fn bind<'a>(
 
 fn section_spec(
     design: &SiteDesign,
+    t: &site_design::model::Template,
     s: &Section,
     site: &SiteContext,
+    links: &mut LinkMenus,
     at: &str,
     notes: &mut Vec<Issue>,
 ) -> Option<SectionSpec> {
@@ -141,7 +150,32 @@ fn section_spec(
         items: s.props.get("items").and_then(|i| i.parse().ok()),
         collection: None,
         query: None,
+        fields: Vec::new(),
+        shape: None,
+        html: None,
+        links: Vec::new(),
+        image: None,
     };
+    let component_html = |slug: &str| {
+        design
+            .components
+            .iter()
+            .find(|c| c.slug == slug)
+            .map(|c| c.html.clone())
+            .filter(|h| !h.is_empty())
+    };
+    let own_html = if s.html.is_empty() {
+        match &s.content {
+            SectionContent::Component { component } => component_html(component),
+            _ => s.props.get("component").and_then(|c| component_html(c)),
+        }
+    } else {
+        Some(s.html.clone())
+    };
+    if let Some(h) = &own_html {
+        spec.links = links.of_html(h, site, design);
+        spec.html = Some(cut(&compact_html(h), SECTION_HTML_CHARS));
+    }
     let component_notes = |slug: &str| {
         design.components.iter().find(|c| c.slug == slug).map(|c| {
             let mut t = c.name.clone();
@@ -174,7 +208,36 @@ fn section_spec(
                 spec.what = Some(c.clone());
                 spec.notes = component_notes(c);
             }
-            if query.source == QuerySource::Inherit {
+            // A listing template lists its own collection (`archive-activity` the activities),
+            // in the page's place when the page has one.
+            let listing = (query.source == QuerySource::Inherit && t.kind == TemplateKind::Listing)
+                .then(|| {
+                    site.collections
+                        .iter()
+                        .find(|c| c.listing.as_deref() == Some(t.slug.as_str()))
+                })
+                .flatten();
+            if let Some(c) = listing {
+                let mut q = c.query.clone();
+                if let Value::Object(m) = &mut q {
+                    m.insert("perPage".into(), json!(LISTING_ITEMS));
+                    m.entry("inherit").or_insert(json!(false));
+                }
+                spec.items = Some(LISTING_ITEMS);
+                spec.collection = Some(c.name.clone());
+                spec.fields = c.fields.clone();
+                spec.query = Some(q);
+            } else if query.source == QuerySource::Inherit && t.kind == TemplateKind::Listing {
+                notes.push(Issue::new(
+                    IssueCode::Note,
+                    at,
+                    format!(
+                        "the listing {} has no collection on the site; its page shows its own content",
+                        t.slug
+                    ),
+                ));
+                return None;
+            } else if query.source == QuerySource::Inherit {
                 spec.collection = Some("inherit".into());
                 spec.query = Some(json!({"inherit": true}));
             } else {
@@ -186,6 +249,7 @@ fn section_spec(
                             m.entry("inherit").or_insert(json!(false));
                         }
                         spec.collection = Some(c.name.clone());
+                        spec.fields = c.fields.clone();
                         spec.query = Some(q);
                     }
                     None => {
@@ -204,7 +268,183 @@ fn section_spec(
             }
         }
     }
+    let shape = shape_of(design, s, &spec, t.kind);
+    if shape == "image-band" || shape == "hero" && s.facts.media > 0 {
+        spec.image = picture_for(&spec, site);
+    }
+    spec.shape = Some(shape.into());
     Some(spec)
+}
+
+/// How a section is laid out in the theme's vocabulary ([`crate::components`]): from what fills
+/// it, the fields of its entries and the design's markup.
+pub fn shape_of(
+    design: &SiteDesign,
+    s: &Section,
+    spec: &SectionSpec,
+    kind: TemplateKind,
+) -> &'static str {
+    let html = spec.html.as_deref().unwrap_or("");
+    let has = |f: &str| spec.fields.iter().any(|x| x == f);
+    match &s.content {
+        SectionContent::Entry => "entry",
+        SectionContent::Component { .. } => "bar",
+        SectionContent::Block { block } => match block.as_str() {
+            "hero-section" => "hero",
+            "image" | "gallery" => "image-band",
+            _ => {
+                let dark = spec.background.as_deref().is_some_and(|b| {
+                    design
+                        .tokens
+                        .schemes
+                        .iter()
+                        .flat_map(|x| x.colours.iter())
+                        .any(|c| {
+                            crate::styles::colour_preset(design, &c.name).as_deref() == Some(b)
+                        })
+                });
+                if dark {
+                    "band"
+                } else {
+                    "prose"
+                }
+            }
+        },
+        SectionContent::Query { query } => {
+            if kind == TemplateKind::Listing {
+                if html.contains("grid-column:1 / span 5") || has("price") && has("closed") {
+                    "restaurants"
+                } else if html.contains("portrait") || has("role") {
+                    "people"
+                } else {
+                    "entries"
+                }
+            } else if has("number") {
+                "tiles"
+            } else if query.source == QuerySource::Featured {
+                "feature"
+            } else if s.facts.media == 0 {
+                "rows"
+            } else {
+                "cards"
+            }
+        }
+    }
+}
+
+/// The site's picture whose words best match the section's (its design markup's text, its role):
+/// `PHOTO · Vernazza harbour` → the picture labelled `Vernazza`. None when no word matches.
+fn picture_for(spec: &SectionSpec, site: &SiteContext) -> Option<crate::model::SiteImage> {
+    let mut said = String::new();
+    if let Some(h) = &spec.html {
+        said.push_str(&site_design::dom::parse(&format!("<body>{h}</body>")).text());
+    }
+    for v in [&spec.role, &spec.heading, &spec.eyebrow]
+        .into_iter()
+        .flatten()
+    {
+        said.push(' ');
+        said.push_str(v);
+    }
+    let said = words(&said);
+    site.images
+        .iter()
+        .map(|i| (words(&i.label).intersection(&said).count(), i))
+        .filter(|(n, _)| *n > 0)
+        .max_by_key(|(n, i)| (*n, std::cmp::Reverse(i.url.clone())))
+        .map(|(_, i)| i.clone())
+}
+
+/// The design's markup without what a renderer never needs (long `@font-face` rules, whitespace
+/// runs), so more of it fits a prompt.
+pub fn compact_html(h: &str) -> String {
+    let mut out = String::with_capacity(h.len());
+    let mut space = false;
+    for c in h.chars() {
+        if c.is_whitespace() {
+            if !space {
+                out.push(' ');
+            }
+            space = true;
+        } else {
+            out.push(c);
+            space = false;
+        }
+    }
+    out.replace("> <", "><")
+}
+
+/// The design's links and buttons as one-item menus per language (`link-{label}`): a template
+/// serves every language, so a link to the site's page is a navigation block the sandbox fills
+/// with the page's language (ADR-0092).
+#[derive(Default)]
+pub struct LinkMenus {
+    pub menus: BTreeMap<String, Vec<NavigationMenu>>,
+}
+
+impl LinkMenus {
+    /// The links of a section's (or part's) markup that the site has a page for.
+    pub fn of_html(
+        &mut self,
+        html: &str,
+        site: &SiteContext,
+        _design: &SiteDesign,
+    ) -> Vec<MenuSpec> {
+        let doc = site_design::dom::parse(&format!("<body>{html}</body>"));
+        let mut out: Vec<MenuSpec> = Vec::new();
+        let anchors: Vec<&site_design::dom::El> = doc
+            .descendants()
+            .into_iter()
+            .filter(|e| e.tag == "a" || e.tag == "button")
+            .collect();
+        for a in anchors {
+            let text = a.text();
+            let class = a.attr("class").unwrap_or("");
+            let action =
+                text.contains('→') || class.split_whitespace().any(|c| c.starts_with("btn"));
+            if !action {
+                continue;
+            }
+            let label = text
+                .replace('→', " ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            if label.is_empty() || label.chars().count() > 40 {
+                continue;
+            }
+            let name = format!("link-{}", slugify(&label));
+            if out.iter().any(|m| m.name == name) || !valid_slug(&name) {
+                continue;
+            }
+            if !self.menus.contains_key(&name) {
+                let mut per_lang = Vec::new();
+                for lang in site.langs() {
+                    if let Some((url, l)) = crate::styles::resolve(site, &lang, &label) {
+                        per_lang.push(NavigationMenu {
+                            name: name.clone(),
+                            lang,
+                            items: vec![NavigationItem {
+                                label: l,
+                                url,
+                                children: Vec::new(),
+                            }],
+                        });
+                    }
+                }
+                if per_lang.is_empty() {
+                    continue;
+                }
+                self.menus.insert(name.clone(), per_lang);
+            }
+            out.push(MenuSpec {
+                class: format!("sp-menu-{name}"),
+                label: label.clone(),
+                name,
+            });
+        }
+        out
+    }
 }
 
 fn synthesized(slug: &str) -> (String, Option<TemplateKind>, String, Vec<SectionSpec>) {
@@ -221,6 +461,20 @@ fn synthesized(slug: &str) -> (String, Option<TemplateKind>, String, Vec<Section
         items: None,
         collection: None,
         query: None,
+        fields: Vec::new(),
+        shape: Some(
+            match kind {
+                "entry" => "entry",
+                "query" => "rows",
+                "title" => "page-head",
+                "content" => "prose",
+                _ => "prose",
+            }
+            .into(),
+        ),
+        html: None,
+        links: Vec::new(),
+        image: None,
     };
     let list = |id: &str| SectionSpec {
         collection: Some("inherit".into()),
@@ -269,11 +523,11 @@ fn synthesized(slug: &str) -> (String, Option<TemplateKind>, String, Vec<Section
 
 /// The theme's plan (module docs).
 pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) -> ThemePlan {
-    let st = styles(design, manifest);
-    let (navigation, menu_notes) = menus(design, site);
+    let mut st = styles(design, manifest);
+    let (mut navigation, menu_notes) = menus(design, site);
     let mut notes = st.notes.clone();
     notes.extend(menu_notes);
-    let menu_names: BTreeSet<String> = navigation.iter().map(|m| m.name.clone()).collect();
+    let mut links = LinkMenus::default();
     let menu_label = |name: &str| {
         design
             .navigation
@@ -288,6 +542,7 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
         ("header", PartArea::Header, DesignArea::Header),
         ("footer", PartArea::Footer, DesignArea::Footer),
     ] {
+        let menu_names: BTreeSet<String> = navigation.iter().map(|m| m.name.clone()).collect();
         let part = design.parts.iter().find(|p| p.area == design_area);
         let mut names: Vec<String> = part
             .map(|p| p.menus.iter().map(|m| slugify(m)).collect())
@@ -298,7 +553,7 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
         if part.is_none() && slug == "header" {
             names.extend(design.navigation.first().map(|m| slugify(&m.slug)));
         }
-        let menus: Vec<MenuSpec> = names
+        let mut menus: Vec<MenuSpec> = names
             .into_iter()
             .filter(|n| menu_names.contains(n))
             .map(|n| MenuSpec {
@@ -307,6 +562,9 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
                 name: n,
             })
             .collect();
+        if let Some(p) = part {
+            menus.extend(links.of_html(&p.html, site, design));
+        }
         tasks.push(TemplateTask {
             kind: TaskKind::Part,
             slug: slug.into(),
@@ -315,14 +573,14 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
             design: part.map(|p| p.slug.clone()),
             template_kind: None,
             purpose: Some(if slug == "header" {
-                "The site's masthead on every page: the site's name (not an h1), its menus.".into()
+                "The site's masthead on every page: the site's name (not an h1), its menus, its button.".into()
             } else {
                 "The site's footer on every page: the site's name, its line, its menus, the copyright.".into()
             }),
             sections: Vec::new(),
             parts: Vec::new(),
             menus,
-            html: part.map(|p| cut(&p.html, PART_HTML_CHARS)),
+            html: part.map(|p| cut(&compact_html(&p.html), PART_HTML_CHARS)),
         });
     }
 
@@ -342,11 +600,18 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
             continue;
         }
         let at = format!("template {slug}");
-        let sections: Vec<SectionSpec> = t
+        let mut sections: Vec<SectionSpec> = t
             .sections
             .iter()
-            .filter_map(|s| section_spec(design, s, site, &at, &mut notes))
+            .filter_map(|s| section_spec(design, t, s, site, &mut links, &at, &mut notes))
             .collect();
+        if t.kind == TemplateKind::Listing {
+            // A listing is a page of the site: its title (the h1) first, its own text after
+            // the entries (the page keeps every word it has).
+            let (title, content) = page_frame();
+            sections.insert(0, title);
+            sections.push(content);
+        }
         let mut parts: Vec<String> = t
             .parts
             .iter()
@@ -391,6 +656,34 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
         seen.insert(r.to_string());
     }
 
+    // The link menus the sections and parts name, per language.
+    for (_, per_lang) in std::mem::take(&mut links.menus) {
+        navigation.extend(per_lang);
+    }
+    // The component styles (theme-designer components.rs), after the global styles' own CSS.
+    let dot_menu = design
+        .parts
+        .iter()
+        .find(|p| p.area == DesignArea::Header)
+        .and_then(|p| p.menus.first())
+        .and_then(|m| design.navigation.iter().find(|n| &n.slug == m))
+        .map(|m| {
+            (
+                slugify(&m.slug),
+                m.items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(),
+            )
+        });
+    st.global_styles
+        .css
+        .push_str(&crate::components::components(
+            &crate::components::ComponentInput {
+                design,
+                presets: &st.presets,
+                site,
+                dot_menu,
+            },
+        ));
+
     let rules = design
         .rules
         .iter()
@@ -410,6 +703,33 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
         site: site.clone(),
         notes,
     }
+}
+
+/// A listing page's frame: its title section (the page's h1) and its own text.
+fn page_frame() -> (SectionSpec, SectionSpec) {
+    let sec = |id: &str, kind: &str, shape: &str| SectionSpec {
+        id: id.into(),
+        class: format!("sp-{id}"),
+        kind: kind.into(),
+        what: None,
+        notes: None,
+        role: None,
+        heading: None,
+        eyebrow: None,
+        background: None,
+        items: None,
+        collection: None,
+        query: None,
+        fields: Vec::new(),
+        shape: Some(shape.into()),
+        html: None,
+        links: Vec::new(),
+        image: None,
+    };
+    (
+        sec("page-title", "title", "page-head"),
+        sec("page-content", "content", "prose"),
+    )
 }
 
 /// The theme data: the plan's deterministic part and the markup of every task (by the
@@ -433,6 +753,16 @@ pub fn assemble(plan: &ThemePlan, markup: &BTreeMap<String, String>) -> ThemeDat
                 area: t.area.unwrap_or(PartArea::Uncategorized),
                 content: content.clone(),
             }),
+        }
+    }
+    // The homes of the other languages render as the front page does.
+    if plan.site.langs().len() > 1 && !templates.iter().any(|t| t.slug == LANGUAGE_HOME) {
+        if let Some(front) = templates.iter().find(|t| t.slug == "front-page").cloned() {
+            templates.push(ThemeTemplate {
+                slug: LANGUAGE_HOME.into(),
+                title: format!("{} (every language)", front.title),
+                content: front.content,
+            });
         }
     }
     ThemeData {

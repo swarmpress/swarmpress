@@ -548,18 +548,36 @@ pub fn styles(design: &SiteDesign, manifest: &BundleManifest) -> Styles {
             styles["elements"][h] = e;
         }
     }
-    if let Some(acc) = &accent {
-        let on = best_on(&presets, acc);
-        let radius = t
-            .radii
-            .iter()
-            .find(|r| r.name == "default")
-            .map_or("0px".to_string(), |r| r.value.clone());
+    // Buttons: a design with a pill radius has pill buttons in its text colour (its primary
+    // button), the accent on hover; else the accent with the default radius.
+    let pill = t
+        .radii
+        .iter()
+        .find(|r| r.name.contains("pill"))
+        .map(|r| r.value.clone());
+    let fill = if pill.is_some() {
+        text.clone()
+    } else {
+        accent.clone()
+    };
+    if let Some(fill) = &fill {
+        let on = best_on(&presets, fill);
+        let radius = pill.clone().unwrap_or_else(|| {
+            t.radii
+                .iter()
+                .find(|r| r.name == "default")
+                .map_or("0px".to_string(), |r| r.value.clone())
+        });
+        let hover = if pill.is_some() {
+            accent.clone()
+        } else {
+            text.clone()
+        };
         styles["elements"]["button"] = json!({
-            "color": {"background": format!("var:preset|color|{acc}"), "text": on.as_ref().map(|o| format!("var:preset|color|{o}"))},
+            "color": {"background": format!("var:preset|color|{fill}"), "text": on.as_ref().map(|o| format!("var:preset|color|{o}"))},
             "border": {"radius": radius},
-            "typography": {"fontFamily": ff(&body_family), "fontWeight": "500"},
-            ":hover": {"color": {"background": c(&text), "text": c(&bg)}},
+            "typography": {"fontFamily": ff(&body_family), "fontWeight": "600"},
+            ":hover": {"color": {"background": c(&hover), "text": c(&bg)}},
         });
     }
     let styles = prune_nulls(styles);
@@ -706,13 +724,31 @@ pub fn prune_nulls(v: Value) -> Value {
     }
 }
 
-/// The site's link for a menu item's label in `lang`.
-fn resolve(site: &SiteContext, lang: &str, label: &str) -> Option<String> {
-    let key = label_key(label);
-    site.links
-        .iter()
-        .find(|l| l.lang == lang && label_key(&l.label) == key)
-        .map(|l| l.url.clone())
+/// The site's page for a label the design wrote (in the site's first language) in `lang`: its URL
+/// and its label in that language (by the link's key, else by the same label in `lang`).
+pub fn resolve(site: &SiteContext, lang: &str, label: &str) -> Option<(String, String)> {
+    let key = label_key(label.trim().trim_end_matches('→').trim());
+    if key.is_empty() {
+        return None;
+    }
+    let first = site.langs()[0].clone();
+    // Of several pages under one label (a hub and a village's section), the shortest path.
+    let pick = |f: &dyn Fn(&crate::model::SiteLink) -> bool| {
+        site.links
+            .iter()
+            .filter(|l| f(l))
+            .min_by_key(|l| (l.url.len(), l.url.clone()))
+    };
+    let same = |l: &crate::model::SiteLink| {
+        label_key(&l.label) == key || l.key.as_deref() == Some(key.as_str())
+    };
+    if let Some(k) = pick(&|l| l.lang == first && same(l)).and_then(|l| l.key.clone()) {
+        if let Some(l) = pick(&|l| l.lang == lang && l.key.as_deref() == Some(k.as_str())) {
+            return Some((l.url.clone(), l.label.clone()));
+        }
+    }
+    pick(&|l| l.lang == lang && label_key(&l.label) == key)
+        .map(|l| (l.url.clone(), l.label.clone()))
 }
 
 /// The design's menus per site language (module docs), and notes on what was left out.
@@ -733,14 +769,14 @@ pub fn menus(design: &SiteDesign, site: &SiteContext) -> (Vec<NavigationMenu>, V
                     && !own.starts_with('#')
                     && !own.to_ascii_lowercase().starts_with("javascript:")
                     && site.urls().contains(own);
-                let url = if kept {
-                    Some(own.to_string())
+                let found = if kept {
+                    Some((own.to_string(), it.label.clone()))
                 } else {
                     resolve(site, &lang, &it.label)
                 };
-                match url {
-                    Some(url) => items.push(NavigationItem {
-                        label: it.label.clone(),
+                match found {
+                    Some((url, label)) => items.push(NavigationItem {
+                        label,
                         url,
                         children: Vec::new(),
                     }),

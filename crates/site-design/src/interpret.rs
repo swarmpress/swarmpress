@@ -542,6 +542,7 @@ fn template_sections(body: &El, kind: TemplateKind, tokens: &Tokens) -> (Vec<Sec
             .or(props.get("heading"))
             .map(|r| kebab(r))
             .filter(|r| !r.is_empty());
+        let html = el.outer_html();
         out.push(Section {
             id: String::new(),
             content,
@@ -550,6 +551,11 @@ fn template_sections(body: &El, kind: TemplateKind, tokens: &Tokens) -> (Vec<Sec
             pattern: None,
             rule,
             facts,
+            html: if html.len() <= crate::model::SECTION_HTML_BYTES {
+                html
+            } else {
+                String::new()
+            },
         });
     }
     // The entry of a single or page template: an <article>, else the longest text.
@@ -816,6 +822,7 @@ pub fn interpret_texts(bundle_hash: &str, texts: &BTreeMap<String, String>) -> S
                     pattern: None,
                     rule: "a shared part of every listing on the sheet".into(),
                     facts: SectionFacts::default(),
+                    html: String::new(),
                 })
                 .collect();
             let facts = c_facts(c);
@@ -838,6 +845,7 @@ pub fn interpret_texts(bundle_hash: &str, texts: &BTreeMap<String, String>) -> S
                     c.number.clone().unwrap_or_default()
                 ),
                 facts,
+                html: String::new(),
             });
             assign_ids(&mut sections);
             templates.push(Template {

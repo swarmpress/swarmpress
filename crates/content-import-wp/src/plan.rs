@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::compose;
+use crate::entries::{self, ContentType, Entry};
 use crate::markup::{self, Notes};
 use crate::routes::{routes, Route, Source, SECTIONS, VILLAGES};
 use crate::theme_data::ThemeData;
@@ -64,6 +65,11 @@ pub struct Plan {
     /// documents ([`crate::theme::calls`]); without it, the fallback theme folder.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme_data: Option<ThemeData>,
+    /// The site's content types and their entries ([`crate::entries`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub content_types: Vec<ContentType>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entries: Vec<Entry>,
     pub report: Report,
 }
 
@@ -88,6 +94,13 @@ pub struct Doc {
     /// Publication date (`2023-10-14T12:00:00`), when the source has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub date: Option<String>,
+    /// A story the editors picked (the blog index's stories): sticky, the design's featured query.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sticky: bool,
+    /// The page's template of the site's design (`archive-activity`, `page-front`), when the
+    /// design has one for it ([`assign_templates`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -118,7 +131,12 @@ pub fn plan_with(site: &Site, opts: compose::Options) -> Plan {
 
 /// The plan with the site's design as data: on `canvas` with `theme_data`, else on the fallback
 /// theme folder ([`fallback_theme_for`]).
-pub fn plan_with_theme(site: &Site, opts: compose::Options, theme_data: Option<ThemeData>) -> Plan {
+pub fn plan_with_theme(
+    site: &Site,
+    mut opts: compose::Options,
+    theme_data: Option<ThemeData>,
+) -> Plan {
+    opts.design = theme_data.is_some();
     let mut report = Report::default();
     let mut docs = Vec::new();
     for r in routes(site) {
@@ -133,6 +151,14 @@ pub fn plan_with_theme(site: &Site, opts: compose::Options, theme_data: Option<T
         docs.push(doc);
     }
     let title = site_name(site);
+    mark_picks(site, &mut docs);
+    if let Some(data) = &theme_data {
+        // The design's rules on the pages (ADR-0093): a headline without the site's name (fix-02).
+        for d in &mut docs {
+            d.title = headline(&d.title, &title);
+        }
+        assign_templates(&mut docs, data);
+    }
     let tagline = site
         .site
         .get("description")
@@ -169,7 +195,105 @@ pub fn plan_with_theme(site: &Site, opts: compose::Options, theme_data: Option<T
         menus,
         named_menus,
         theme_data,
+        content_types: entries::content_types(),
+        entries: entries::entries(site),
         report,
+    }
+}
+
+/// A page's headline without the site's name (the design's rule fix-02: `Vernazza | Cinque Terre
+/// Dispatch` → `Vernazza`; `Cinque Terre Dispatch | Luxury Travel Guide` → `Luxury Travel Guide`).
+/// The document title (`_swarmpress_seo_title`) keeps it.
+pub fn headline(title: &str, site: &str) -> String {
+    let parts: Vec<&str> = title.split(" | ").map(str::trim).collect();
+    let mut kept: Vec<String> = Vec::new();
+    let mut changed = false;
+    for p in &parts {
+        if p.eq_ignore_ascii_case(site) {
+            changed = true;
+            continue;
+        }
+        // The site's name before a place (`Cinque Terre Dispatch · Corniglia`): the place stays.
+        match p.strip_prefix(site).and_then(|r| r.strip_prefix(" · ")) {
+            Some(rest) if !rest.trim().is_empty() => {
+                changed = true;
+                match kept.last_mut() {
+                    Some(last) => {
+                        last.push_str(" · ");
+                        last.push_str(rest.trim());
+                    }
+                    None => kept.push(rest.trim().to_string()),
+                }
+            }
+            _ => kept.push((*p).to_string()),
+        }
+    }
+    if !changed || kept.is_empty() {
+        return title.to_string();
+    }
+    kept.join(" | ")
+}
+
+/// The editors' picks (the blog index's stories, [`compose::editors_picks`]) are sticky: the
+/// design's featured query lists them, in the page's language.
+fn mark_picks(site: &Site, docs: &mut [Doc]) {
+    let mut picked = std::collections::BTreeSet::new();
+    for lang in LANGS {
+        for p in compose::editors_picks(site, lang) {
+            picked.insert(p.href);
+        }
+    }
+    for d in docs {
+        if d.post_type == "post" && picked.contains(&d.route) {
+            d.sticky = true;
+        }
+    }
+}
+
+/// The listing templates of a design by the site's sections: a page of things to do or sights
+/// shows the activities (`archive-activity`), restaurants and food the restaurants, the weather
+/// pages the weather, the team the editors. The design's own words for its listings are matched
+/// with these; a design without such a template leaves the page on its `page` template.
+pub const LISTINGS: [(&str, &str); 7] = [
+    ("things-to-do", "activity"),
+    ("sights", "activity"),
+    ("restaurants", "restaurant"),
+    ("culinary", "restaurant"),
+    ("weather", "weather"),
+    ("team", "editor"),
+    ("hotels", "stay"),
+];
+
+/// The listing a route shows (its section's or hub's), if any.
+pub fn listing_of(route: &str) -> Option<&'static str> {
+    let segs: Vec<&str> = route.trim_matches('/').split('/').collect();
+    let last = *segs.last()?;
+    if segs.len() < 2 {
+        return None;
+    }
+    LISTINGS.iter().find(|(s, _)| *s == last).map(|(_, l)| *l)
+}
+
+/// Pages get the design's templates where it has them (ADR-0093): the homes in every language
+/// the front page's (`page-front`, a copy of `front-page` a page may name), a listing page its
+/// listing's (`archive-{listing}`). `/` is the front page itself.
+pub fn assign_templates(docs: &mut [Doc], data: &ThemeData) {
+    let has = |slug: &str| data.templates.iter().any(|t| t.slug == slug);
+    for d in docs {
+        if d.post_type != "page" || d.route == "/" {
+            continue;
+        }
+        let home = LANGS.iter().any(|l| d.route == format!("/{l}/"));
+        if home && has(crate::theme::LANGUAGE_HOME) {
+            d.template = Some(crate::theme::LANGUAGE_HOME.into());
+            continue;
+        }
+        if let Some(l) = listing_of(&d.route) {
+            let slug = format!("archive-{l}");
+            if has(&slug) {
+                d.template = Some(slug);
+            }
+        }
     }
 }
 
@@ -269,7 +393,16 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
     let home = compose::is_home(r);
     let overview = compose::is_village_overview(r);
     let mut content = String::new();
-    if home || overview {
+    if home && opts.design {
+        // The design's front-page template renders the home (its queries in the page's language).
+        for b in &blocks {
+            let mut own = Notes::default();
+            let m = markup::block(b, lang, &mut own);
+            if own.empty_blocks.is_empty() {
+                content.push_str(&m);
+            }
+        }
+    } else if home || overview {
         content = if home {
             let description = seo
                 .get("description")
@@ -352,6 +485,23 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
             description.to_string(),
         );
     }
+    // A village's pages belong to its place: a query of the design scoped to the page's place
+    // lists that village's entries.
+    if let Some(v) = &r.village {
+        meta.insert("_swarmpress_place".to_string(), v.clone());
+    }
+    // A story's picture as a field (`image`, `image_alt`), for the design's cards.
+    if let Some(img) = article
+        .and_then(|a| a.get("image"))
+        .and_then(Value::as_str)
+        .filter(|s| s.starts_with("http") || s.starts_with('/'))
+    {
+        meta.insert("image".to_string(), img.to_string());
+        meta.insert(
+            "image_alt".to_string(),
+            heading.clone().unwrap_or_else(|| title.clone()),
+        );
+    }
     if let Some(by) = article
         .and_then(|a| a.get("author"))
         .and_then(|a| localized(a, lang))
@@ -362,6 +512,9 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
         Some(h) if post => h,
         _ => title,
     };
+    // Every image says what it shows (the design's rule fix-06/fix-12): an image without its own
+    // description is described by the page's title.
+    let content = markup::fill_alt(&content, &title);
     let slug = if r.path == "/" {
         "home".to_string()
     } else {
@@ -401,6 +554,8 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
             .get("created_at")
             .and_then(Value::as_str)
             .map(|d| d.chars().take(19).collect()),
+        sticky: false,
+        template: None,
     }
 }
 

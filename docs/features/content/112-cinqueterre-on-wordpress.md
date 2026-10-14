@@ -9,6 +9,7 @@ paths:
   - crates/content-import-wp/src/markup.rs
   - crates/content-import-wp/src/plan.rs
   - crates/content-import-wp/src/compose.rs
+  - crates/content-import-wp/src/entries.rs
   - crates/content-import-wp/src/compare.rs
   - crates/content-import-wp/src/theme.rs
   - crates/content-import-wp/src/theme_data.rs
@@ -99,6 +100,25 @@ says what stands between the comparison and the switch.
   site-export's `a_designs_global_styles_and_uploaded_fonts_are_exported`, the runner's migration
   with a `ThemeData` fixture against a real Node WordPress, and the sandbox's conformance (the
   theme as data on canvas; a second site keeps its own).
+- **The design on data** (2026-10-14, ADR-0093 addendum, wp-sandbox 0.9.0): with `--theme-data`
+  - **the site's entries** (`entries.rs`): content types written with
+    `POST /swarmpress/v1/content-types` (the villages, places to stay, restaurants, things to do,
+    the editors; posts take a picture field), each item an entry per language with its language,
+    place (`sp_place`), the page it stands for and its fields on the design's scales (a stay's
+    rating out of 10 with one decimal, fix-01; a restaurant's price as € glyphs out of 4 and its
+    guests' rating on its own scale, fix-10; a sight's time, cost and best time, fix-08), at most
+    12 per village and type, featured first; the editors' picks are sticky posts;
+  - **the design's templates on the pages**: the homes are the design's front page (`/`) and its
+    copy `page-front` (`/{lang}/`), with no composed home; the listing pages (things to do and
+    sights, restaurants and food, weather, the team) take `archive-{listing}` (`plan::LISTINGS`);
+    a village's pages carry their place (`_swarmpress_place`) for place-scoped queries;
+  - **the design's rules on the content**: every headline without the site's name (fix-02, the
+    document title keeps it), every image with alt text (the page's title where the content has
+    none), WordPress's own first post and page deleted by `apply`;
+  - `swarmpress-wp-migrate theme`: theme data alone on a new branch, shown to visitors (the web
+    designer's visual check); a font family found by its slug in the answer, a face only of its
+    own family (the font library's collection answered other families' too); the runner restarts
+    the sandbox (same address and data) before the export.
 - **The gate's compositions** (the owner's decisions of 2026-10-12, `compose.rs`):
   - **the home** (`/`, `/{lang}/`): a hero (`core/cover`), the editors' picks (the stories the owner
     curated for the blog index, in the page's language), the five villages, the places to stay (the
@@ -151,5 +171,7 @@ says what stands between the comparison and the switch.
   decision; no exported file has a form.
 - **The newsletter's endpoint** (the central server's public `/f/{company}`), its privacy line and
   double opt-in; until then the newsletter is hidden (runbook, 2026-10-13).
-- **The switch** (plan M8 step 4): approved by the owner on 2026-10-13 (with the theme's GPL licence
-  accepted), not yet made; then the retirement of the legacy path.
+- **The switch** (plan M8 step 4): made on 2026-10-13 with the `cinqueterre` theme folder (the
+  runbook). **The design on data** (2026-10-14) is on the preview only: production waits for the
+  owner's review and the `ThemeApproval`; then the `cinqueterre` theme folder retires from the
+  sandbox.

@@ -510,7 +510,13 @@ fn doc_at<'a>(p: &'a crate::plan::Plan, route: &str) -> &'a crate::plan::Doc {
 /// newsletter only with the option (2026-10-13: hidden until a form endpoint answers it).
 #[test]
 fn the_home_and_the_village_overview_are_composed() {
-    let p = crate::plan::plan_with(&site(), crate::compose::Options { newsletter: true });
+    let p = crate::plan::plan_with(
+        &site(),
+        crate::compose::Options {
+            newsletter: true,
+            ..Default::default()
+        },
+    );
     for (route, lang, tag) in [("/", "en", "English"), ("/de/", "de", "Deutsch")] {
         let home = doc_at(&p, route);
         let c = &home.content;
@@ -709,7 +715,13 @@ fn cinqueterre_gets_its_own_theme_and_the_frozen_themes_menus() {
     // The newsletter is hidden (2026-10-13): no header button, no footer link…
     assert!(!p.named_menus.contains_key("cta"));
     // …and with it, both come back in every language.
-    let with = crate::plan::plan_with(&s, crate::compose::Options { newsletter: true });
+    let with = crate::plan::plan_with(
+        &s,
+        crate::compose::Options {
+            newsletter: true,
+            ..Default::default()
+        },
+    );
     assert_eq!(with.named_menus["cta"].len(), 4);
     assert_eq!(with.named_menus["cta"]["fr"][0].url, "/fr/#subscribe");
     let about = |p: &crate::plan::Plan| {
@@ -781,7 +793,10 @@ fn the_homes_sections_come_from_the_sites_content() {
     assert_eq!(stays[0].rating.as_deref(), Some("4.5/5"));
     assert_eq!(stays[1].teaser, "Am Wasser");
 
-    let with = crate::compose::Options { newsletter: true };
+    let with = crate::compose::Options {
+        newsletter: true,
+        ..Default::default()
+    };
     let home = crate::compose::home(&s, "de", "Coast Dispatch", "Five villages", with);
     let at = |t: &str| home.find(t).unwrap_or_else(|| panic!("{t}: {home}"));
     assert!(home.starts_with("<!-- wp:cover "), "{home}");
@@ -830,7 +845,13 @@ fn the_newsletter_is_hidden_unless_a_form_endpoint_answers_it() {
             assert!(!d.content.contains(needle), "{} has {needle}", d.route);
         }
     }
-    let shown = crate::plan::plan_with(&s, crate::compose::Options { newsletter: true });
+    let shown = crate::plan::plan_with(
+        &s,
+        crate::compose::Options {
+            newsletter: true,
+            ..Default::default()
+        },
+    );
     let home = doc_at(&shown, "/en/");
     assert!(home.content.contains("action=\"/wp-admin/admin-post.php\""));
     assert!(home.content.contains("id=\"subscribe\""));
@@ -1060,4 +1081,189 @@ fn theme_data_is_checked_for_its_shape_before_it_is_written() {
     ok.fonts[0].faces[0].file.sha256 = "ab".repeat(32);
     ok.fonts[0].faces[1].file.sha256 = "cd".repeat(32);
     assert_eq!(checked(&ok), Ok(()));
+}
+
+#[test]
+fn entries_carry_language_place_link_and_fields_on_the_designs_scales() {
+    use crate::entries::{content_types, entries, price_level, rating_of_ten, PER_PLACE};
+    // fix-01: one scale of ten with one decimal; fix-10: € glyphs out of four.
+    assert_eq!(rating_of_ten(&json!(4.6)).as_deref(), Some("9.2"));
+    assert_eq!(rating_of_ten(&json!(8.1)).as_deref(), Some("8.1"));
+    assert_eq!(rating_of_ten(&json!(4)).as_deref(), Some("8.0"));
+    assert_eq!(rating_of_ten(&json!(4.25)).as_deref(), Some("8.5"));
+    assert_eq!(rating_of_ten(&json!(0)), None);
+    assert_eq!(rating_of_ten(&json!("9")), None);
+    assert_eq!(
+        price_level(&json!("$$$")),
+        Some(("€€€".into(), "€".into(), 3))
+    );
+    assert_eq!(price_level(&json!(5)).map(|p| p.2), Some(4));
+    assert_eq!(price_level(&json!("")), None);
+
+    let mut s = site();
+    s.collections.insert(
+        "accommodations".into(),
+        vec![json!({"village": "vernazza", "items": (0..20).map(|i| json!({
+            "slug": format!("stay-{i}"), "name": {"en": format!("Stay {i}"), "de": format!("Haus {i}")},
+            "rank": i, "featured": i == 7, "price_range": {"min": 100, "max": 200},
+            "ratings": {"average": 4.5}, "details": {"teaser": {"en": "By the sea"}}
+        })).collect::<Vec<_>>()})],
+    );
+    let all = entries(&s);
+    let types = content_types();
+    let names: Vec<&str> = types.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "post",
+            "sp_village",
+            "sp_stay",
+            "sp_restaurant",
+            "sp_activity",
+            "sp_editor"
+        ]
+    );
+    // Every content type's name fits WordPress's 20 characters; every field is public.
+    for t in content_types() {
+        assert!(t.name.len() <= 20);
+        assert!(t.fields.iter().all(|(k, _)| !k.starts_with('_')));
+    }
+    let stays: Vec<_> = all
+        .iter()
+        .filter(|e| e.post_type == "sp_stay" && e.lang == "de")
+        .collect();
+    // At most PER_PLACE per village and language, the featured one first.
+    assert_eq!(stays.len(), PER_PLACE);
+    assert_eq!(stays[0].title, "Haus 7");
+    assert_eq!(stays[0].fields["rating"], "9.0");
+    assert_eq!(stays[0].fields["rating_scale"], "/ 10");
+    assert_eq!(stays[0].fields["price"], "€100–200");
+    assert_eq!(stays[0].fields["price_unit"], "/ Nacht");
+    assert_eq!(stays[0].link, "/de/vernazza/hotels/");
+    assert_eq!(stays[0].place.as_deref(), Some("vernazza"));
+    // The five villages in every language, south to north, with their pictures described.
+    let villages: Vec<_> = all
+        .iter()
+        .filter(|e| e.post_type == "sp_village" && e.lang == "en")
+        .collect();
+    assert_eq!(villages.len(), 5);
+    let v = villages.iter().find(|e| e.title == "Vernazza").unwrap();
+    assert_eq!((v.order, v.fields["number"].as_str()), (4, "04"));
+    assert_eq!(v.fields["image_alt"], "The harbour");
+    assert_eq!(v.link, "/en/vernazza/");
+    // A restaurant's place scopes it; one without a name is left out.
+    let rest: Vec<_> = all
+        .iter()
+        .filter(|e| e.post_type == "sp_restaurant" && e.lang == "en")
+        .collect();
+    assert_eq!(rest.len(), 2);
+    assert!(rest.iter().any(|e| e.place.as_deref() == Some("manarola")));
+}
+
+#[test]
+fn with_a_design_the_homes_are_its_templates_pages_get_its_listings_and_its_rules_hold() {
+    use crate::plan::{assign_templates, headline, listing_of, plan_with_theme};
+    assert_eq!(
+        headline("Vernazza | Cinque Terre Dispatch", "Cinque Terre Dispatch"),
+        "Vernazza"
+    );
+    assert_eq!(
+        headline(
+            "Cinque Terre Dispatch | Luxury Travel Guide",
+            "Cinque Terre Dispatch"
+        ),
+        "Luxury Travel Guide"
+    );
+    assert_eq!(
+        headline("Cinque Terre Dispatch", "Cinque Terre Dispatch"),
+        "Cinque Terre Dispatch"
+    );
+    assert_eq!(headline("A | B", "Other"), "A | B");
+    assert_eq!(
+        headline(
+            "The Culinary Story | Cinque Terre Dispatch · Corniglia",
+            "Cinque Terre Dispatch"
+        ),
+        "The Culinary Story · Corniglia"
+    );
+    assert_eq!(listing_of("/en/vernazza/restaurants/"), Some("restaurant"));
+    assert_eq!(listing_of("/en/things-to-do/"), Some("activity"));
+    assert_eq!(listing_of("/things-to-do/"), None);
+    assert_eq!(listing_of("/en/vernazza/"), None);
+
+    let mut data = theme_data();
+    for slug in [crate::theme::LANGUAGE_HOME, "archive-restaurant"] {
+        data.templates.push(crate::theme_data::ThemeTemplate {
+            slug: slug.into(),
+            title: slug.into(),
+            content: "<!-- wp:post-content /-->".into(),
+        });
+    }
+    let opts = crate::compose::Options::default();
+    let composed = plan_with_theme(&site(), opts, None);
+    let designed = plan_with_theme(&site(), opts, Some(data.clone()));
+    // The composed home is the importer's; with a design the home is its template's.
+    assert!(doc_at(&composed, "/en/").content.contains("wp:query"));
+    assert!(!doc_at(&designed, "/en/").content.contains("wp:query"));
+    assert_eq!(
+        doc_at(&designed, "/de/").template.as_deref(),
+        Some("page-front")
+    );
+    assert_eq!(
+        doc_at(&designed, "/").template,
+        None,
+        "/ is the front page itself"
+    );
+    assert_eq!(
+        doc_at(&designed, "/en/vernazza/restaurants/")
+            .template
+            .as_deref(),
+        Some("archive-restaurant")
+    );
+    assert_eq!(
+        doc_at(&designed, "/en/sights/").template,
+        None,
+        "no such listing in the design"
+    );
+    // A village's pages belong to its place; every image says what it shows.
+    assert_eq!(
+        doc_at(&designed, "/en/vernazza/restaurants/").meta["_swarmpress_place"],
+        "vernazza"
+    );
+    for d in &designed.docs {
+        assert!(
+            !d.content.contains("alt=\"\""),
+            "{} has an image without alt",
+            d.route
+        );
+    }
+    // The entries and their types travel with the plan.
+    assert!(!designed.entries.is_empty());
+    assert_eq!(designed.content_types[0].name, "post");
+    let mut docs = composed.docs.clone();
+    assign_templates(&mut docs, &theme_data());
+    assert!(
+        docs.iter().all(|d| d.template.is_none()),
+        "a design without those templates"
+    );
+    // The theme's calls as JSON for an executor of its own (the browser's engine).
+    let calls = crate::theme::calls_json(&data, crate::theme::BASE_THEME);
+    let kinds: Vec<&str> = calls
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["call"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        kinds[..4],
+        ["switch-theme", "font-family", "font-face", "font-face"]
+    );
+    let part = calls
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["kind"] == "template-part")
+        .unwrap();
+    assert_eq!(part["item"], "/wp/v2/template-parts/canvas//header");
+    assert_eq!(part["lookup"], "/wp/v2/template-parts/canvas//header");
 }

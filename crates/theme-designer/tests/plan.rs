@@ -117,7 +117,9 @@ fn every_reference_rendering_passes_and_the_theme_assembles() {
         let data = assemble(&p, &s);
         assert_eq!(data.validate_shape(), vec![]);
         assert_eq!(check_theme(&data, &p), vec![]);
-        assert_eq!(data.templates.len(), 6);
+        // The design's templates, the required ones, and the front page again for the other
+        // languages' homes (`page-front`).
+        assert_eq!(data.templates.len(), 7);
         assert_eq!(data.template_parts.len(), 2);
     }
 }

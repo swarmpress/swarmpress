@@ -11,6 +11,8 @@
 //!   routing rules (read, never changed: CLAUDE.md rule 9).
 //! - [`markup`]: a JSON block as core block markup, every string of it kept, in one language.
 //! - [`plan`]: the import plan: options, the theme, one document per URL, the menus.
+//! - [`entries`]: the site's structured entries (villages, stays, restaurants, things to do, the
+//!   editors) as content types of their own, for the design's listings and home.
 //! - [`compose`]: the pages the frozen theme drew from its own code (the home, the village
 //!   overview) composed as core blocks, and the weather pages' live forecast block.
 //! - [`theme`]: the site's design as data ([`theme_data::ThemeData`], ADR-0093) as the REST calls
@@ -19,6 +21,7 @@
 
 pub mod compare;
 pub mod compose;
+pub mod entries;
 pub mod markup;
 pub mod plan;
 pub mod routes;

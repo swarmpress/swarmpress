@@ -145,6 +145,12 @@ export interface OrchestratorGateway {
   putTheme?(item: string, filesJson: string, message: string): Promise<string | object>
   /** Optional (FEAT-094): merges a theme pull request after the approval → the merge commit sha. */
   mergeTheme?(number: number, headSha: string): Promise<string>
+  /**
+   * Optional (FEAT-115): a design version of the site (`GET /api/sites/{id}/designs/{version}`)
+   * → `{version, manifest, design}`, an object or its JSON text. Without it the web designer's
+   * job fails loudly.
+   */
+  siteDesign?(version: number): Promise<string | object>
 }
 
 /**
@@ -168,6 +174,14 @@ export interface OrchestratorSiteEngine {
   releaseStatus(id: number): Promise<string | null>
   /** Runs a failed export and deploy again → `{state, requested, attempt, detail}`. */
   redeploy(id: number): Promise<string | object>
+  /**
+   * Optional (FEAT-115): the site's theme as data (`dataJson`, a `ThemeData`) written on `branch`
+   * onto the neutral theme `canvas` (run `themeDataCalls(dataJson)` in order); one commit by the
+   * attribution → the branch's new head. Without it the web designer's job fails loudly.
+   */
+  putThemeData?(branch: string, dataJson: string, attributionJson: string): Promise<string>
+  /** Optional (FEAT-115): a design version of the site → `{version, manifest, design}`. */
+  siteDesign?(version: number): Promise<string | object>
 }
 
 /**
@@ -655,6 +669,21 @@ impl Gateway for JsGateway {
         Self::models_put(&v, "putTool")
     }
 
+    /// `siteDesign(version)`, optional: without it the web designer fails loudly.
+    async fn site_design(&self, version: u32) -> Result<Value, GatewayError> {
+        if !has_method(&self.obj, "siteDesign") {
+            return Err(gw(format!(
+                "this gateway cannot read the site's designs (version {version})"
+            )));
+        }
+        let v = call(&self.obj, "siteDesign", &[JsValue::from(version)])
+            .await
+            .map_err(gw)?;
+        json_of(&v)
+            .map_err(gw)?
+            .ok_or_else(|| gw("siteDesign returned nothing".into()))
+    }
+
     /// `putTheme(item, filesJson, message)`, optional: without it no theme is written.
     async fn put_theme(
         &self,
@@ -832,6 +861,57 @@ impl SiteEngine for JsSiteEngine {
             .ok_or_else(|| gw("putBlueprint returned nothing".into()))?;
         serde_json::from_value(v).map_err(|e| gw(format!("putBlueprint answer: {e}")))
     }
+
+    /// `putThemeData(branch, dataJson, attributionJson)` → the branch's head (optional).
+    async fn put_theme_data(
+        &self,
+        branch: &str,
+        data: &site_design::ThemeData,
+        author: &Attribution,
+    ) -> Result<String, GatewayError> {
+        if !has_method(&self.0, "putThemeData") {
+            return Err(gw(format!(
+                "this site engine cannot write a theme as data ({branch})"
+            )));
+        }
+        let data = serde_json::to_string(data).map_err(|e| gw(e.to_string()))?;
+        self.text(
+            "putThemeData",
+            &[s(branch), s(&data), attribution_json(author)?],
+        )
+        .await
+    }
+
+    /// `siteDesign(version)` → `{version, manifest, design}` (optional).
+    async fn site_design(&self, version: u32) -> Result<Value, GatewayError> {
+        if !has_method(&self.0, "siteDesign") {
+            return Err(gw(format!(
+                "this site engine cannot read the site's designs (version {version})"
+            )));
+        }
+        self.json("siteDesign", &[JsValue::from(version)])
+            .await?
+            .ok_or_else(|| gw("siteDesign returned nothing".into()))
+    }
+}
+
+/// The REST calls that put a site's theme as data onto the neutral theme `canvas`, in their
+/// order (`content_import_wp::theme::calls_json`), for a WordPress engine to run. Theme data that
+/// is not well formed is refused (rule 11).
+#[wasm_bindgen(js_name = themeDataCalls)]
+pub fn theme_data_calls(data_json: &str) -> Result<String, JsError> {
+    let data: site_design::ThemeData =
+        serde_json::from_str(data_json).map_err(|e| JsError::new(&format!("theme data: {e}")))?;
+    content_import_wp::theme::checked(&data).map_err(|i| {
+        JsError::new(&format!(
+            "the theme data is not well formed: {}",
+            i.join("; ")
+        ))
+    })?;
+    Ok(
+        content_import_wp::theme::calls_json(&data, content_import_wp::theme::BASE_THEME)
+            .to_string(),
+    )
 }
 
 /// Whether the JS object has a callable `name`.

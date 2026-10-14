@@ -80,6 +80,53 @@ describe('WpSiteEngine', () => {
   })
 })
 
+describe('WpSiteEngine.putThemeData (FEAT-115)', () => {
+  it('runs the theme calls in order on its branch as the web designer: fonts with their files, styles with the stored paths, parts by slug', async () => {
+    const seen: string[] = []
+    const c = channels((r) => {
+      const route = decodeURIComponent(r.url)
+      seen.push(`${r.method ?? 'GET'} ${route}`)
+      if (route.includes('/wp/v2/font-families&slug=')) return { status: 200, body: [{ id: 3, font_family_settings: { slug: 'other' } }] }
+      if (r.method === 'POST' && route.endsWith('/wp/v2/font-families')) return { status: 201, body: { id: 7 } }
+      if (route.includes('/font-faces&')) return { status: 200, body: [{ parent: 3, font_face_settings: { fontWeight: '400', fontStyle: 'normal', src: 'x' } }] }
+      if (r.method === 'POST' && route.includes('/font-faces')) return { status: 201, body: { font_face_settings: { src: 'http://sandbox.invalid/wp-content/uploads/fonts/serif-400-normal-1.woff2' } } }
+      if (route.includes('/wp/v2/themes')) return { status: 200, body: [{ _links: { 'wp:user-global-styles': [{ href: 'http://sandbox.invalid/?rest_route=/wp/v2/global-styles/12' }] } }] }
+      if ((r.method ?? 'GET') === 'GET' && route.includes('/wp/v2/template-parts/canvas//header')) return { status: 404, body: {} }
+      return { status: 200, body: {} }
+    })
+    const e = new WpSiteEngine(c.wp)
+    const calls = [
+      { call: 'switch-theme', body: { stylesheet: 'canvas' } },
+      { call: 'font-family', slug: 'serif', settings: { name: 'Serif', slug: 'serif', fontFamily: 'Serif' } },
+      { call: 'font-face', family: 'serif', settings: { fontFamily: 'Serif', fontWeight: '400', fontStyle: 'normal', src: 'file-0' }, file: 'assets/a.woff2', file_name: 'serif-400-normal.woff2', mime: 'font/woff2', src: '/wp-content/uploads/fonts/serif-400-normal.woff2' },
+      { call: 'global-styles', body: { settings: { typography: { fontFamilies: [{ fontFace: [{ src: ['/wp-content/uploads/fonts/serif-400-normal.woff2'] }] }] } }, styles: {} } },
+      { call: 'upsert', kind: 'template-part', slug: 'header', body: { slug: 'header', content: '<!-- wp:group /-->' }, categories: [], lookup: '/wp/v2/template-parts/canvas//header', collection: '/wp/v2/template-parts', item: '/wp/v2/template-parts/canvas//header' },
+    ]
+    const data = JSON.stringify({ fonts: [{ slug: 'serif', faces: [{ file: { path: 'assets/a.woff2', sha256: 'abc' } }] }] })
+    const files: string[] = []
+    await e.branchFor('design-v1')
+    const head = await e.putThemeData('design-v1', data, attribution({ job_kind: 'site-theme' }), {
+      calls: () => JSON.stringify(calls),
+      file: async (sha) => (files.push(sha), new Uint8Array([119, 79, 70, 50])),
+    })
+    expect(head).toBe('l1')
+    expect(c.sessions.at(-1)).toMatchObject({ branch: 'design-v1', user_id: 1, author: { kind: 'agent', id: 'staff-1', job: 'site-theme-4' } })
+    expect(files).toEqual(['abc'])
+    const writes = seen.filter((x) => x.startsWith('POST'))
+    expect(writes).toEqual([
+      'POST /?rest_route=/swarmpress/v1/theme',
+      // Another family answered the slug query: this one is created.
+      'POST /?rest_route=/wp/v2/font-families',
+      // Another family's face of the same weight does not count: the file is uploaded.
+      'POST /?rest_route=/wp/v2/font-families/7/font-faces',
+      'POST /?rest_route=/wp/v2/global-styles/12',
+      // A part the site lacks is created in the collection.
+      'POST /?rest_route=/wp/v2/template-parts',
+    ])
+    await expect(e.putThemeData('live', data, attribution(), { calls: () => '[]', file: async () => null })).rejects.toThrow(/live refuses/)
+  })
+})
+
 describe('exportAndDeploy', () => {
   it('crawls live through the sandbox, uploads the blobs, deploys, and keeps the release for the next export', async () => {
     const c = channels((r) => ({ status: 200, body: { path: r.url } }))

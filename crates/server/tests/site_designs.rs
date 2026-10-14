@@ -136,6 +136,18 @@ async fn designs_are_fenced_checked_and_write_once() {
     assert_eq!(st, 413, "more than 20 MB decoded");
 
     // The list, oldest first; only the owner sees it.
+    // Each new version reached the company's inbox once, for the executor (FEAT-115).
+    let (st, events) = s.get_json("/api/events?after=0", Some(&cookie)).await;
+    assert_eq!(st, 200, "{events}");
+    let received: Vec<i64> = events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["kind"] == "DesignReceived")
+        .map(|e| e["payload"]["version"].as_i64().unwrap())
+        .collect();
+    assert_eq!(received, [1, 2], "{events}");
+
     let (st, list) = s
         .get_json(&format!("/api/sites/{site}/designs"), Some(&cookie))
         .await;

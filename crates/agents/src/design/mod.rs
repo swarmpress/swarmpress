@@ -13,9 +13,9 @@ use serde_json::{json, Value};
 use theme_designer::fake::{PRESETS_MARK, TASK_MARK};
 use theme_designer::{Presets, TemplateTask};
 
-/// Answer budget of a template or a part, tokens (a front page with five queries is
-/// about 4,000).
-pub const TEMPLATE_ANSWER: u32 = 8192;
+/// Answer budget of a template or a part, tokens (a front page with seven sections in the
+/// component vocabulary is about 5,000).
+pub const TEMPLATE_ANSWER: u32 = 12_288;
 /// Reasoning budget of a template or a fix, tokens: a page laid out from a design system
 /// is the office designer's kind of puzzle (`crate::build::LAYOUT_REASONING`), with more
 /// to keep in mind.
@@ -40,12 +40,37 @@ pub struct TemplateInput<'a> {
     pub context: &'a str,
 }
 
+/// The theme's component classes in words (`theme_designer::components::VOCABULARY`).
+pub fn vocabulary() -> String {
+    theme_designer::components::VOCABULARY
+        .iter()
+        .map(|(c, what)| format!("- `{c}`: {what}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn body(input: &TemplateInput<'_>) -> String {
     format!(
-        "{}\n\n{TASK_MARK}\n```json\n{}\n```\n\n{PRESETS_MARK}\n```json\n{}\n```",
+        "{}\n\nThe theme's component classes (its styles give them the design's look; use them by className):\n{}\n\n{TASK_MARK}\n```json\n{}\n```\n\n{PRESETS_MARK}\n```json\n{}\n```\n\nA draft that passes the checks, in the component classes (start from it; keep its section classes, queries, bindings and menus; make it match the design's markup where it does not):\n```html\n{}\n```",
         input.context.trim(),
+        vocabulary(),
         serde_json::to_string_pretty(input.task).unwrap_or_default(),
-        serde_json::to_string(input.presets).unwrap_or_default()
+        serde_json::to_string(input.presets).unwrap_or_default(),
+        theme_designer::sketch::template(input.task, input.presets).trim()
+    )
+}
+
+/// The `web design template fix` call after the visual comparison: the task, the markup as it
+/// is, and the regions that look least like the design, each with its score, the design's
+/// markup and the rendered markup of the region.
+pub fn visual_fix_prompt(input: &TemplateInput<'_>, markup: &str, regions: &str) -> String {
+    format!(
+        "## Task: web design template fix\n\nThe {} \"{}\" was rendered on the site and compared with the design, region by region (pictures masked; 1000 is the same picture). Rework the regions below so they look like the design: their layout (columns, rows, order), type sizes, rules, grounds and spacing, with the component classes. Keep every section, query, binding, menu and part, and keep what already matches.\n\n{}\n\nYour markup:\n```html\n{}\n```\n\nThe regions furthest from the design:\n{}\n\nAnswer {{\"content\": \"<block markup>\"}}: the whole template again.",
+        input.task.label(),
+        input.task.title,
+        body(input),
+        markup.trim(),
+        regions.trim()
     )
 }
 

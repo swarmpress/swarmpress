@@ -344,6 +344,22 @@ fn ratings(text: &str) -> Vec<(String, String)> {
     out
 }
 
+/// The first `[…]` in some text that is a design's placeholder (`[°]`, `[CREDIT]`, `[Excerpt — two
+/// lines]`): square brackets around at most 60 characters, not a link's or a binding's.
+pub fn placeholder(text: &str) -> Option<String> {
+    let mut rest = text;
+    while let Some(a) = rest.find('[') {
+        let after = &rest[a + 1..];
+        let b = after.find(']')?;
+        let inner = &after[..b];
+        if b <= 60 && !inner.contains(['{', '[', '<']) && !after[b + 1..].starts_with('(') {
+            return Some(format!("[{inner}]"));
+        }
+        rest = &after[b + 1..];
+    }
+    None
+}
+
 /// The checks of one template or part (module docs). Empty: it passes.
 pub fn check_template(task: &TemplateTask, markup: &str, ctx: &CheckContext<'_>) -> Vec<Issue> {
     let at = task.label();
@@ -471,8 +487,48 @@ pub fn check_template(task: &TemplateTask, markup: &str, ctx: &CheckContext<'_>)
                     ),
                 ));
             }
-            if matches!(k.as_str(), "url" | "href" | "link") {
+            // An image's or a cover's `url` is its picture, not a link.
+            let picture = matches!(b.name.as_str(), "core/image" | "core/cover") && k == "url";
+            if matches!(k.as_str(), "url" | "href" | "link") && !picture {
                 link(&mut out, line, s);
+            }
+        }
+        if let Some(bindings) = b
+            .attrs
+            .get("metadata")
+            .and_then(|m| m.get("bindings"))
+            .and_then(Value::as_object)
+        {
+            let fields: BTreeSet<&str> = task
+                .sections
+                .iter()
+                .flat_map(|s| s.fields.iter().map(String::as_str))
+                .collect();
+            for (attr, binding) in bindings {
+                let source = binding.get("source").and_then(Value::as_str).unwrap_or("");
+                let key = binding
+                    .get("args")
+                    .and_then(|a| a.get("key"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if source != "core/post-meta" {
+                    out.push(Issue::new(
+                        IssueCode::Block,
+                        &at,
+                        format!("line {line}: the binding of \"{attr}\" has the source \"{source}\"; only \"core/post-meta\" (an entry's field) is allowed"),
+                    ));
+                } else if !fields.contains(key) {
+                    let mut known: Vec<&str> = fields.iter().copied().collect();
+                    known.sort_unstable();
+                    out.push(Issue::new(
+                        IssueCode::Query,
+                        &at,
+                        format!(
+                            "line {line}: the field \"{key}\" is none of this template's entries' fields ({})",
+                            if known.is_empty() { "none".to_string() } else { known.join(", ") }
+                        ),
+                    ));
+                }
             }
         }
         if b.name == "core/navigation" && b.attrs.contains_key("ref") {
@@ -547,7 +603,13 @@ pub fn check_template(task: &TemplateTask, markup: &str, ctx: &CheckContext<'_>)
                     }
                 }
             }
-            if tag == "img" {
+            let alt_bound = b
+                .attrs
+                .get("metadata")
+                .and_then(|m| m.get("bindings"))
+                .and_then(|x| x.get("alt"))
+                .is_some();
+            if tag == "img" && !alt_bound {
                 let alt = attrs
                     .iter()
                     .find(|(n, _)| n == "alt")
@@ -563,6 +625,23 @@ pub fn check_template(task: &TemplateTask, markup: &str, ctx: &CheckContext<'_>)
                     );
                 }
             }
+        }
+    }
+
+    // --- the design's placeholders are not the site's content
+    for b in &all {
+        if !TEXT_BLOCKS.contains(&b.name.as_str()) {
+            continue;
+        }
+        if let Some(ph) = placeholder(&b.text()) {
+            out.push(Issue::new(
+                IssueCode::Rule,
+                &at,
+                format!(
+                    "line {}: \"{ph}\" is a placeholder of the design, not the site's content; show the site's data (a field, a query, the entry) or leave it out",
+                    b.line
+                ),
+            ));
         }
     }
 
@@ -606,6 +685,26 @@ pub fn check_template(task: &TemplateTask, markup: &str, ctx: &CheckContext<'_>)
                     ),
                 ));
             }
+        }
+        if s.kind == "title" && !has("core/post-title") {
+            out.push(Issue::new(
+                IssueCode::Missing,
+                &at,
+                format!(
+                    "the section {} is the page's title: it needs core/post-title with \"level\":1",
+                    s.id
+                ),
+            ));
+        }
+        if s.kind == "content" && !has("core/post-content") {
+            out.push(Issue::new(
+                IssueCode::Missing,
+                &at,
+                format!(
+                    "the section {} is the page's own text: it needs core/post-content",
+                    s.id
+                ),
+            ));
         }
         if let Some(q) = &s.query {
             let found = all.iter().any(|b| {

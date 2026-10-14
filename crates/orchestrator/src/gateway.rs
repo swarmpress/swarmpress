@@ -339,6 +339,21 @@ pub trait Gateway: MaybeSendSync {
             "this gateway cannot write a theme as data ({branch})"
         )))
     }
+
+    /// The theme rendered and compared with its design (ADR-0093, FEAT-115): `data` (design
+    /// version `version`, visual round `round`) rendered where this executor can, the design's
+    /// pages and the site's screenshotted at phone and desktop widths and scored region by region.
+    /// `Ok(None)`: this executor cannot render a theme (the score is not measured, and the job
+    /// says so); the default.
+    async fn visual_check(
+        &self,
+        version: u32,
+        data: &site_design::ThemeData,
+        round: u32,
+    ) -> Result<Option<theme_designer::visual::VisualReport>, GatewayError> {
+        let _ = (version, data, round);
+        Ok(None)
+    }
 }
 
 /// A theme pull request (`PUT /api/site/theme`, FEAT-094): the components of
@@ -479,6 +494,14 @@ impl<T: Gateway + ?Sized> Gateway for Arc<T> {
         (**self)
             .put_theme_data(branch, data, message, attribution)
             .await
+    }
+    async fn visual_check(
+        &self,
+        version: u32,
+        data: &site_design::ThemeData,
+        round: u32,
+    ) -> Result<Option<theme_designer::visual::VisualReport>, GatewayError> {
+        (**self).visual_check(version, data, round).await
     }
 }
 
@@ -705,6 +728,27 @@ impl FakeSite {
 #[derive(Debug, Default)]
 pub struct FakeGateway {
     state: Mutex<FakeState>,
+    visual: Mutex<Option<VisualHook>>,
+}
+
+/// What [`FakeGateway::visual_check`] answers: a host's renderer (the CLI's sandbox and
+/// screenshots), or a test's scripted reports.
+pub type VisualFn = dyn Fn(
+        u32,
+        &site_design::ThemeData,
+        u32,
+    ) -> Result<Option<theme_designer::visual::VisualReport>, GatewayError>
+    + Send
+    + Sync;
+
+/// A [`VisualFn`] behind a `Debug` face.
+#[derive(Clone)]
+pub struct VisualHook(pub Arc<VisualFn>);
+
+impl std::fmt::Debug for VisualHook {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("VisualHook")
+    }
 }
 
 fn fake_sha(parts: &[&str]) -> String {
@@ -794,6 +838,12 @@ impl FakeGateway {
     /// (`{version, manifest, design}`, ADR-0093).
     pub fn put_design(&self, version: u32, answer: Value) {
         self.lock().designs.insert(version, answer);
+    }
+
+    /// Renders and compares themes with `f` ([`Gateway::visual_check`]); without it the check
+    /// answers `None` (not measured).
+    pub fn set_visual(&self, f: Arc<VisualFn>) {
+        *self.visual.lock().unwrap_or_else(|e| e.into_inner()) = Some(VisualHook(f));
     }
 
     /// Where [`Gateway::put_theme_data`] writes the theme data on its branch.
@@ -920,6 +970,23 @@ impl Gateway for FakeGateway {
             site.theme_files.extend(files.into_keys());
         }
         Ok(sha)
+    }
+
+    async fn visual_check(
+        &self,
+        version: u32,
+        data: &site_design::ThemeData,
+        round: u32,
+    ) -> Result<Option<theme_designer::visual::VisualReport>, GatewayError> {
+        let hook = self
+            .visual
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        match hook {
+            Some(h) => (h.0)(version, data, round),
+            None => Ok(None),
+        }
     }
 
     async fn site_design(&self, version: u32) -> Result<Value, GatewayError> {

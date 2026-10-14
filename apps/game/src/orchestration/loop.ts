@@ -154,6 +154,9 @@ export interface ApplyResult {
 /** kv key holding work items whose DeployLanded arrived but is not applied yet. */
 export const PENDING_DEPLOYS_KEY = 'deploys.pending'
 
+/** kv key holding design versions whose DesignReceived arrived but is not applied yet (FEAT-115). */
+export const PENDING_DESIGNS_KEY = 'designs.pending'
+
 /** kv key of a job's outcomes JSON, kept from `run()` resolving until its command is logged. */
 export const jobOutcomeKey = (jobId: number) => `job.outcome.${jobId}`
 
@@ -339,6 +342,8 @@ export class OrchestrationLoop {
    * entry per item and kind; an entry whose item is closed is dropped.
    */
   private deploys: HeldDeploy[] = []
+  /** Design versions to log as `DesignReceived` at the next step boundary (FEAT-115). */
+  private designs: number[] = []
   /** `seq` when the held deploys were last checked for closed items. */
   private deploysCheckedAt = -1
   private intake: Promise<void> = Promise.resolve()
@@ -434,10 +439,44 @@ export class OrchestrationLoop {
   /** Restores DeployLanded events that arrived before a reload but were not applied yet. */
   async loadPendingDeploys(): Promise<void> {
     const raw = await this.o.store.getKv(PENDING_DEPLOYS_KEY)
-    if (!raw) return
-    for (const d of JSON.parse(raw) as HeldDeploy[]) {
-      if (!this.holds(d.workItem, !!d.failed)) this.deploys.push(d)
+    if (raw) {
+      for (const d of JSON.parse(raw) as HeldDeploy[]) {
+        if (!this.holds(d.workItem, !!d.failed)) this.deploys.push(d)
+      }
     }
+    const designs = await this.o.store.getKv(PENDING_DESIGNS_KEY)
+    if (designs) for (const v of JSON.parse(designs) as number[]) if (!this.designs.includes(v)) this.designs.push(v)
+  }
+
+  /**
+   * A new design version of the site (the central event `DesignReceived`, ADR-0093): logged as
+   * `ServerCommand::DesignReceived{version}` at the next step boundary, so the web designer makes
+   * its theme. Persisted first, so the event cursor does not move past a version never logged.
+   */
+  async designReceived(version: number): Promise<void> {
+    if (!Number.isInteger(version) || version <= 0 || this.designs.includes(version)) return
+    this.designs.push(version)
+    const snapshot = JSON.stringify(this.designs)
+    await this.write(() => this.o.store.setKv(PENDING_DESIGNS_KEY, snapshot))
+  }
+
+  private tryDesigns() {
+    const left: number[] = []
+    for (const version of [...this.designs].sort((a, b) => a - b)) {
+      const cmd = JSON.stringify({ DesignReceived: { version } })
+      const why = this.o.sim.validate_command_json(cmd)
+      if (why !== undefined) {
+        // The sim takes a version newer than any before it; an older one is never applied.
+        this.log(`DesignReceived ${version} dropped: ${why}`)
+        continue
+      }
+      const r = this.apply(cmd)
+      if (!r.ok) left.push(version)
+      else this.log(`DesignReceived ${version} applied at step ${this.o.sim.step()}`)
+    }
+    this.designs = left
+    const snapshot = JSON.stringify(left)
+    this.write(() => this.o.store.setKv(PENDING_DESIGNS_KEY, snapshot)).catch((e) => this.fail(`pending designs not persisted: ${String(e)}`))
   }
 
   /**
@@ -535,6 +574,7 @@ export class OrchestrationLoop {
     }
     this.ready.push(...held)
     if (this.deploys.length) this.tryDeploys()
+    if (this.designs.length) this.tryDesigns()
   }
 
   /**
@@ -670,9 +710,13 @@ export class OrchestrationLoop {
     await this.persistDeploys()
   }
 
-  /** A central event (`DeployLanded`, `DeployFailed`) for the loop; other kinds are ignored. */
+  /** A central event (`DeployLanded`, `DeployFailed`, `DesignReceived`) for the loop; other kinds are ignored. */
   async deployEvent(ev: { kind: string; payload: Record<string, unknown> }): Promise<void> {
     const p = ev.payload
+    if (ev.kind === 'DesignReceived') {
+      if (typeof p.version === 'number') await this.designReceived(p.version)
+      return
+    }
     if (typeof p.work_item !== 'string') return
     const info = { mergedSha: typeof p.merged_sha === 'string' ? p.merged_sha : undefined, source: typeof p.source === 'string' ? p.source : undefined }
     if (ev.kind === 'DeployLanded') await this.deployLanded(p.work_item, info)

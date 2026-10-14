@@ -166,7 +166,8 @@
             "buttons": 1,
             "numbers": 0,
             "repeated": 0
-          }
+          },
+          "html": "<section class=\"hero\"><span class=\"eyebrow\">Travel journal · Liguria</span><h1>The coast, slowly</h1><p>Stories from five villages, written on foot.</p><a class=\"btn\" href=\"stories.html\">Read the stories</a></section>"
         },
         {
           "id": "query-featured",
@@ -196,7 +197,8 @@
             "buttons": 0,
             "numbers": 0,
             "repeated": 3
-          }
+          },
+          "html": "<section class=\"cards picks\"><h2>Editors’ picks</h2>\n<article class=\"card\"><img src=\"img/a.jpg\" alt=\"Harbour\"><a href=\"article.html\">The last light on the harbour</a></article>\n<article class=\"card\"><img src=\"img/b.jpg\" alt=\"Terraces\"><a href=\"article.html\">Terraces above the sea</a></article>\n<article class=\"card\"><img src=\"img/c.jpg\" alt=\"Lemons\"><a href=\"article.html\">A season of lemons</a></article>\n</section>"
         },
         {
           "id": "query-latest",
@@ -226,7 +228,8 @@
             "buttons": 0,
             "numbers": 0,
             "repeated": 4
-          }
+          },
+          "html": "<section class=\"cards latest\"><h2>Latest stories</h2>\n<article class=\"card\"><a href=\"article.html\">Ferry times explained</a></article>\n<article class=\"card\"><a href=\"article.html\">Where to swim in October</a></article>\n<article class=\"card\"><a href=\"article.html\">A morning in the market</a></article>\n<article class=\"card\"><a href=\"article.html\">The blue trail, reopened</a></article>\n</section>"
         },
         {
           "id": "stats",
@@ -251,7 +254,8 @@
             "buttons": 0,
             "numbers": 3,
             "repeated": 3
-          }
+          },
+          "html": "<section class=\"stats\"><div>5 villages</div><div>120 km of trails</div><div>40 stories</div></section>"
         },
         {
           "id": "newsletter",
@@ -277,7 +281,8 @@
             "buttons": 1,
             "numbers": 0,
             "repeated": 0
-          }
+          },
+          "html": "<section class=\"newsletter\"><h2>The Sunday letter</h2><form><input type=\"email\" name=\"email\"><button>Subscribe</button></form></section>"
         }
       ],
       "parts": [
@@ -316,7 +321,8 @@
             "buttons": 1,
             "numbers": 0,
             "repeated": 0
-          }
+          },
+          "html": "<section class=\"lost\"><h1>Lost at sea</h1><p>This page drifted away.</p><a class=\"btn\" href=\"index.html\">Back to the harbour</a></section>"
         }
       ],
       "parts": [
@@ -356,7 +362,8 @@
             "buttons": 0,
             "numbers": 1,
             "repeated": 3
-          }
+          },
+          "html": "<article class=\"story\"><span class=\"eyebrow\">Villages · 8 min</span><h1>The last light on the harbour</h1>\n<p>Arrive before nine and the piazza belongs to the fishermen mending nets, not to the day trippers stepping off the train.</p>\n<p>By noon the boats are out and the harbour wall is warm enough to sit on; the light turns gold an hour before sunset.</p>\n<p>Walk up to the tower for the view, then down again for a slice of focaccia still warm from the oven.</p></article>"
         },
         {
           "id": "query-collection",
@@ -386,7 +393,8 @@
             "buttons": 0,
             "numbers": 0,
             "repeated": 3
-          }
+          },
+          "html": "<section class=\"cards related\"><h2>Read next</h2>\n<article class=\"card\"><a href=\"article.html\">Terraces above the sea</a></article>\n<article class=\"card\"><a href=\"article.html\">A season of lemons</a></article>\n<article class=\"card\"><a href=\"article.html\">Ferry times explained</a></article>\n</section>"
         }
       ],
       "parts": [
@@ -425,7 +433,8 @@
             "buttons": 0,
             "numbers": 0,
             "repeated": 0
-          }
+          },
+          "html": "<section class=\"page-head\"><h1>All stories</h1><p>Every dispatch from the coast, newest first.</p></section>"
         },
         {
           "id": "query-inherit",
@@ -453,7 +462,8 @@
             "buttons": 0,
             "numbers": 0,
             "repeated": 5
-          }
+          },
+          "html": "<section class=\"cards list\">\n<article class=\"card\"><a href=\"article.html\">The last light on the harbour</a></article>\n<article class=\"card\"><a href=\"article.html\">Terraces above the sea</a></article>\n<article class=\"card\"><a href=\"article.html\">A season of lemons</a></article>\n<article class=\"card\"><a href=\"article.html\">Ferry times explained</a></article>\n<article class=\"card\"><a href=\"article.html\">Where to swim in October</a></article>\n</section>"
         },
         {
           "id": "cta",
@@ -477,7 +487,8 @@
             "buttons": 1,
             "numbers": 0,
             "repeated": 0
-          }
+          },
+          "html": "<section class=\"pager\"><a class=\"btn\" href=\"stories.html\">More stories</a></section>"
         }
       ],
       "parts": [

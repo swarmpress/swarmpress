@@ -147,6 +147,9 @@
 # The importer writes a design's theme data only when its shape checks (ADR-0093, FEAT-114).
 - match: { classname: content-import-wp, title: "tests::theme_data_is_checked_for_its_shape_before_it_is_written" }
   features: [FEAT-114, FEAT-112]
+# The design's lists as entries and the design's templates on the pages (ADR-0093 addendum).
+- match: { classname: content-import-wp, title: "tests::with_a_design_the_homes_are_its_templates_pages_get_its_listings_and_its_rules_hold" }
+  features: [FEAT-112, FEAT-115]
 - match: { classname: content-import-wp }
   features: [FEAT-112]
 # A site's design from Claude Design (FEAT-114): unit tests in crates/site-design/src.

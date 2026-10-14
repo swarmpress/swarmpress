@@ -163,8 +163,57 @@ impl Reader<'_> {
         }
     }
 
-    /// An expression: `Some` when it is a literal, `None` (skipped) otherwise.
+    /// The position of a top-level `?` in the expression starting here (a conditional).
+    fn ternary_at(&self) -> Option<usize> {
+        let mut depth = 0i32;
+        for (k, t) in self.t.iter().enumerate().skip(self.i) {
+            match t {
+                Tok::Punct('(' | '[' | '{') => depth += 1,
+                Tok::Punct(')' | ']' | '}') => {
+                    if depth == 0 {
+                        return None;
+                    }
+                    depth -= 1;
+                }
+                Tok::Punct(',' | ';') if depth == 0 => return None,
+                Tok::Punct('?') if depth == 0 => {
+                    // `?.` and `??` are not conditionals.
+                    let next = self.t.get(k + 1);
+                    return (!matches!(next, Some(Tok::Punct('.' | '?')))
+                        && !matches!(self.t.get(k.wrapping_sub(1)), Some(Tok::Punct('?'))))
+                    .then_some(k);
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// An expression: `Some` when it is a literal, `None` (skipped) otherwise. A conditional
+    /// (`f === 'All' ? all : …`) reads as its first branch: the page as it first renders.
     fn expr(&mut self) -> Option<Value> {
+        if let Some(q) = self.ternary_at() {
+            self.i = q + 1;
+            let v = self.branch();
+            self.skip_expr();
+            return v;
+        }
+        self.expr_plain()
+    }
+
+    /// A conditional's first branch, up to its `:`.
+    fn branch(&mut self) -> Option<Value> {
+        let start = self.i;
+        let v = self.term();
+        if v.is_some() && self.is(':') {
+            self.i += 1;
+            return v;
+        }
+        self.i = start;
+        None
+    }
+
+    fn expr_plain(&mut self) -> Option<Value> {
         let start = self.i;
         let v = self.term();
         let v = match v {
@@ -264,7 +313,7 @@ impl Reader<'_> {
                     if self.is(':') {
                         self.i += 1;
                         if let Some(v) = self.expr() {
-                            m.insert(key, v);
+                            m.insert(key.clone(), v);
                         }
                     } else if self.is('(') {
                         // A method: skip its parameters and body.
@@ -273,7 +322,12 @@ impl Reader<'_> {
                             self.skip_expr();
                         }
                     }
-                    // Shorthand `{ label }`: a variable, left out.
+                    // Shorthand `{ label }`: the variable's value when it is a literal.
+                    if (self.is(',') || self.is('}')) && !m.contains_key(&key) {
+                        if let Some(v) = self.consts.get(&key) {
+                            m.insert(key.clone(), v.clone());
+                        }
+                    }
                     if self.is(',') {
                         self.i += 1;
                     } else if !self.is('}') {
@@ -606,6 +660,27 @@ mod tests {
                 "count": 7, "ok": true, "frac": "0.5"
             })
         );
+    }
+
+    #[test]
+    fn a_conditional_reads_as_its_first_branch() {
+        let v = read_render_vals(
+            r#"class C { renderVals() {
+  const all = [{ n: 'a' }, { n: 'b' }];
+  const f = this.state.f;
+  const acts = f === 'All' ? all : all.filter((x) => x.k === f);
+  return { acts, shown: f ? 'yes' : 'no', safe: x?.y, both: a ?? 'z' };
+} }"#,
+        );
+        assert_eq!(v["shown"], json!("yes"));
+        // A shorthand property is its variable's value (the conditional's first branch); the
+        // optional chain and `??` are not conditionals.
+        assert_eq!(v["acts"], json!([{"n": "a"}, {"n": "b"}]));
+        assert!(v.get("safe").is_none());
+        let v = read_render_vals(
+            "class C { renderVals() { const all = [{n:'a'}]; const acts = f === 'All' ? all : []; return { acts: acts }; } }",
+        );
+        assert_eq!(v["acts"], json!([{"n": "a"}]));
     }
 
     #[test]

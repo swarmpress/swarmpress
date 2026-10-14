@@ -158,3 +158,46 @@ storage API governs (ADR-0080, ADR-0084).
     rules would have to be rebuilt for the next engine.
   - **Keeping the Astro-derived `cinqueterre` theme** as cinqueterre.travel's design: superseded by
     the owner's decision for "Salt & Pigment".
+
+## Addendum (2026-10-14): what running cinqueterre.travel on its design decided
+
+Building step 6 of the plan (cinqueterre.travel rendered from "Salt & Pigment" on the Cloudflare
+Pages preview) settled five things this ADR left open. The decisions above stand; these add to them.
+
+1. **A design's lists run on the site's structured entries, which are content types as data.** The
+   design lists villages, stays, restaurants, activities and the team, which the live site keeps
+   as collections and renders as prose. The import now writes them as entries of content types the
+   sandbox registers from data (`POST /swarmpress/v1/content-types`, wp-sandbox 0.9.0): one entry
+   per item and language, with its fields as public meta (shown by block bindings, `core/post-meta`),
+   its place (`sp_place`), the page it stands for, and no URL of its own. ADR-0080's governed
+   objects gain the option that names the types (an option, governed like the others). A theme
+   reads entries only through `core/query` and bindings; `core/html` stays out (decision 6).
+2. **Queries are scoped by the page they are on.** One template serves every language: a query on
+   a page with a language lists entries in that language, and with `"place":"current"` only the
+   page's place (the sandbox's `query_loop_block_query_vars` filter). So the homes `/` and `/{lang}/`
+   are the design's front page (a page may take only a custom template, so the theme carries the
+   front page again as `page-front`), and the importer composes no home of its own for a site with
+   a design. Listing pages take the design's listing template (`archive-{listing}`) with the page's
+   own text after the entries.
+3. **The theme carries the design's recurring forms as a small vocabulary of classes, styled from
+   its tokens** (`theme_designer::components`: the grid's container, section heads with their
+   rule, the mono eyebrow, pill buttons, pigment tiles with numerals, cards with a place chip and a
+   rating, rows, the dark band and its ledger, the masthead, the footer, a listing's bar and
+   entries). This is custom CSS in the global styles, deterministic and checked like the rest;
+   it does what `theme.json` cannot. The model composes core blocks with these classes, and each
+   call starts from a deterministic draft in them (`theme_designer::sketch`), with the design's own
+   markup of every section in its task.
+4. **The visual check is part of the job.** The executor that can render (today the runner's CLI
+   with a Node WordPress) writes the theme on a branch, screenshots the design's static pages and
+   the site's at 375 and 1280 px (a sheet laid out at a fixed width at that width), pictures
+   masked on both sides, and scores **region by region** (sections by `sp-{id}`, the parts, a
+   listing's components; weighted by the design region's height). A page below 800 gets up to two
+   repair rounds that name its worst regions with both markups; a fix that scores worse is undone.
+   The digest's score is the visual score; an executor that cannot render says so in the record.
+5. **The design's placeholders are not content.** `[°]`, `[CREDIT]`, `[Excerpt — …]` and notes about
+   the design are refused by the checks; a section with no data on the site is left out.
+
+**Negatives:** the vocabulary is a fixed set of editorial forms (a design far from them gets less
+from the deterministic part and more from the model); the browser executor cannot render, so a
+theme made there is not compared; content types are another thing the import writes and the
+sandbox registers; a design's components sheet with a fixed width has no phone layout to compare.

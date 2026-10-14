@@ -38,6 +38,7 @@ pub mod export;
 mod guide;
 pub mod interpret;
 pub mod model;
+pub mod render;
 pub mod wordpress;
 
 pub use bundle::{

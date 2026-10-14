@@ -35,6 +35,10 @@ pub mod kinds {
     /// The deployment of a merged PR failed or was never seen: the same
     /// payload, with `state` `failure`, `error` or `timed_out` and `detail`.
     pub const DEPLOY_FAILED: &str = "DeployFailed";
+    /// A new design version of the site arrived (`POST /api/sites/{id}/designs`, ADR-0093):
+    /// `{version, hash, source}`. The executor logs `ServerCommand::DesignReceived{version}`, and
+    /// the web designer makes its theme (FEAT-115).
+    pub const DESIGN_RECEIVED: &str = "DesignReceived";
     /// A new grant displaced an unreleased lease (ADR-0045):
     /// `{epoch, holder, new_epoch, by}`. Only the executor whose epoch is
     /// `epoch` acts on it; later readers of the inbox ignore it.

@@ -26,6 +26,26 @@ export interface OrchestratorSiteEngine {
   siteModels?(): Promise<object>
   /** An approved structural proposal built into live: `{status: 'landed'|'stale'|'refused', …}`. */
   putBlueprint?(bodyJson: string): Promise<object>
+  /** The site's theme as data written on a branch (ADR-0093, FEAT-115) → the branch's head. */
+  putThemeData?(branch: string, dataJson: string, attributionJson: string): Promise<string>
+  /** A design version of the site from the design store → `{version, manifest, design}`. */
+  siteDesign?(version: number): Promise<object>
+}
+
+/** One REST call of a theme as data (orchestrator-wasm's `themeDataCalls`, content-import-wp's `calls_json`). */
+export type ThemeCall =
+  | { call: 'switch-theme'; body: object }
+  | { call: 'font-family'; slug: string; settings: Record<string, unknown> }
+  | { call: 'font-face'; family: string; settings: Record<string, unknown>; file: string; file_name: string; mime: string; src: string }
+  | { call: 'global-styles'; body: object }
+  | { call: 'upsert'; kind: string; slug: string; body: Record<string, unknown>; categories: string[]; lookup: string; collection: string; item: string | null }
+
+/** What writing a theme as data needs besides WordPress. */
+export interface ThemeDataDeps {
+  /** orchestrator-wasm's `themeDataCalls(dataJson)`: the calls in order, as JSON text. */
+  calls(dataJson: string): string
+  /** A font file's bytes by its SHA-256 (the design store keeps the bundle's files as assets). */
+  file(sha256: string): Promise<Uint8Array | null>
 }
 
 /** What the engine needs: both channels of the company's WordPress. */
@@ -275,6 +295,96 @@ export class WpSiteEngine {
       }
       const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer">`
       return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (h) => h + csp) : csp + html
+    })
+  }
+
+  // ---------------------------------------------------------------- the theme as data (ADR-0093)
+
+  /**
+   * The web designer's theme (`dataJson`, a `ThemeData`) written on `branch` through REST onto the
+   * neutral theme `canvas`, in the order and with the bodies of `deps.calls` (the same calls the
+   * importer runs): fonts with their files, global styles, parts, templates, patterns, menus, each
+   * updated by slug when it exists. One author, the attribution's; the branch's new head.
+   */
+  putThemeData(branch: string, dataJson: string, attributionJson: string, deps: ThemeDataDeps): Promise<string> {
+    if (branch === LIVE) return Promise.reject(new Error('live refuses governed writes'))
+    const data = JSON.parse(dataJson) as { fonts?: { slug: string; faces: { file: { path: string; sha256: string } }[] }[] }
+    const shaOf = new Map<string, string>()
+    for (const f of data.fonts ?? []) for (const face of f.faces) shaOf.set(face.file.path, face.file.sha256)
+    const calls = JSON.parse(deps.calls(dataJson)) as ThemeCall[]
+    return this.exclusive(async () => {
+      await this.session(branch, authorOf(attributionJson))
+      const rest = async <T>(method: string, route: string, body?: unknown, what = route): Promise<T> => {
+        const [path, query] = route.split('?')
+        const url = `/?rest_route=${path}${query ? `&${query}` : ''}`
+        return json<T>(await this.wp.request({ method, url, ...(body !== undefined ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}) }), what)
+      }
+      const families = new Map<string, number>()
+      const moved: [string, string][] = []
+      for (const c of calls) {
+        if (c.call === 'switch-theme') await rest('POST', '/swarmpress/v1/theme', c.body, 'switch the theme')
+        else if (c.call === 'font-family') {
+          const found = await rest<{ id: number; font_family_settings?: { slug?: string } }[]>('GET', `/wp/v2/font-families?slug=${c.slug}&per_page=100&_fields=id,font_family_settings`)
+          const mine = found.find((f) => f.font_family_settings?.slug === c.slug)
+          let id = mine?.id
+          if (id) {
+            const { slug: _slug, ...kept } = c.settings
+            await rest('POST', `/wp/v2/font-families/${id}`, { font_family_settings: JSON.stringify(kept) }, `font family ${c.slug}`)
+          } else id = (await rest<{ id: number }>('POST', '/wp/v2/font-families', { font_family_settings: JSON.stringify(c.settings) }, `font family ${c.slug}`)).id
+          families.set(c.slug, id)
+        } else if (c.call === 'font-face') {
+          const id = families.get(c.family)
+          if (!id) throw new Error(`a face of ${c.family} before its family`)
+          const route = `/wp/v2/font-families/${id}/font-faces`
+          const faces = await rest<{ parent?: number; font_face_settings: Record<string, unknown> }[]>('GET', `${route}?per_page=100&_fields=id,parent,font_face_settings`)
+          const same = faces.find((f) => (f.parent == null || f.parent === id) && f.font_face_settings.fontWeight === c.settings.fontWeight && f.font_face_settings.fontStyle === c.settings.fontStyle)
+          let at = same ? String(same.font_face_settings.src ?? '') : ''
+          if (!same) {
+            const sha = shaOf.get(c.file)
+            const bytes = sha ? await deps.file(sha) : null
+            if (!bytes) throw new Error(`the font file ${c.file} is not in the design store`)
+            const boundary = `----swarmpress${Date.now().toString(36)}`
+            const enc = new TextEncoder()
+            const head = enc.encode(
+              `--${boundary}\r\ncontent-disposition: form-data; name="font_face_settings"\r\n\r\n${JSON.stringify(c.settings)}\r\n` +
+                `--${boundary}\r\ncontent-disposition: form-data; name="file-0"; filename="${c.file_name}"\r\ncontent-type: ${c.mime}\r\n\r\n`,
+            )
+            const tail = enc.encode(`\r\n--${boundary}--\r\n`)
+            const body = new Uint8Array(head.length + bytes.length + tail.length)
+            body.set(head, 0)
+            body.set(bytes, head.length)
+            body.set(tail, head.length + bytes.length)
+            const r = await this.wp.request({ method: 'POST', url: `/?rest_route=${route}`, headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, body })
+            at = String((await json<{ font_face_settings: { src?: string } }>(r, `font face ${c.file_name}`)).font_face_settings.src ?? '')
+          }
+          const path = pathOf(at)
+          if (path && path !== c.src) moved.push([c.src, path])
+        } else if (c.call === 'global-styles') {
+          let text = JSON.stringify(c.body)
+          for (const [from, to] of moved) text = text.split(from).join(to)
+          const themes = await rest<{ _links?: Record<string, { href: string }[]> }[]>('GET', '/wp/v2/themes?status=active')
+          const id = Number(themes[0]?._links?.['wp:user-global-styles']?.[0]?.href.match(/global-styles\/(\d+)/)?.[1])
+          if (!id) throw new Error('the active theme has no user global styles')
+          await rest('POST', `/wp/v2/global-styles/${id}`, JSON.parse(text), 'global styles')
+        } else if (c.call === 'upsert') {
+          const r = await this.wp.request({ url: `/?rest_route=${c.lookup.split('?')[0]}${c.lookup.includes('?') ? `&${c.lookup.split('?')[1]}` : ''}` })
+          let exists: number | null = null
+          if (r.status === 200) {
+            const v = r.json<unknown>()
+            // A template or part the theme or the site has is updated at its item route.
+            exists = c.item ? 0 : ((v as { id: number }[])[0]?.id ?? null)
+          }
+          const categories: number[] = []
+          for (const name of c.categories) {
+            const hits = await rest<{ id: number; name: string }[]>('GET', `/wp/v2/wp_pattern_category?search=${encodeURIComponent(name)}&_fields=id,name`)
+            categories.push(hits.find((h) => decode(h.name) === name)?.id ?? (await rest<{ id: number }>('POST', '/wp/v2/wp_pattern_category', { name })).id)
+          }
+          const body = categories.length ? { ...c.body, wp_pattern_category: categories } : c.body
+          const route = exists == null ? c.collection : c.item ?? `${c.collection}/${exists}`
+          await rest('POST', route, body, `${c.kind} ${c.slug}`)
+        }
+      }
+      return this.head(branch)
     })
   }
 

@@ -66,6 +66,9 @@ pub struct Options {
     /// Off by default (the owner's decision of 2026-10-13); the migration turns it on only with
     /// `--forms-endpoint`, the platform's address that answers the form.
     pub newsletter: bool,
+    /// The site's design runs on data (ADR-0093): the homes are the design's front-page template
+    /// with its queries, so the import composes no home content of its own.
+    pub design: bool,
 }
 
 /// The sample forecast fields of the frozen theme's weather blocks: never published as content.

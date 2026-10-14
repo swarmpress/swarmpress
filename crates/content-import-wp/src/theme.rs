@@ -14,6 +14,11 @@ use crate::theme_data::{NavigationItem, ThemeData, ThemeFontFace, ThemeFontFamil
 /// The sandbox's neutral block theme a design is written onto.
 pub const BASE_THEME: &str = "canvas";
 
+/// The home of every language but the front page's (`/de/`): a copy of the design's `front-page`
+/// template under a name a page may take as its template (WordPress lets a page name only a
+/// custom template, and `front-page` is not one).
+pub const LANGUAGE_HOME: &str = "page-front";
+
 /// Where WordPress's font library keeps uploaded font files (the sandbox keeps them in the governed
 /// layer as `fonts/{file}`).
 pub const FONTS_PATH: &str = "/wp-content/uploads/fonts/";
@@ -278,6 +283,57 @@ fn face_settings(f: &ThemeFontFamily, face: &ThemeFontFace) -> Value {
         v["unicodeRange"] = json!(r);
     }
     v
+}
+
+/// The calls as JSON for an executor that runs them itself (the browser's WordPress engine,
+/// `apps/game/src/php/wp-site-engine.ts`): each with its `call` and the routes it uses, so the
+/// order, the bodies and the routes stay this module's.
+///
+/// - `{call: "switch-theme", body}` → `POST /swarmpress/v1/theme`;
+/// - `{call: "font-family", slug, settings}`;
+/// - `{call: "font-face", family, settings, file, file_name, mime, src}`;
+/// - `{call: "global-styles", body}`;
+/// - `{call: "upsert", kind, slug, body, categories, lookup, collection, item}`: `GET lookup`;
+///   found → `POST item` (a template or part) or `POST {collection}/{id}`; else `POST collection`.
+pub fn calls_json(data: &ThemeData, theme: &str) -> Value {
+    let out: Vec<Value> = calls(data, theme)
+        .into_iter()
+        .map(|c| match c {
+            Call::SwitchTheme { stylesheet } => {
+                json!({"call": "switch-theme", "body": {"stylesheet": stylesheet}})
+            }
+            Call::FontFamily { slug, settings } => {
+                json!({"call": "font-family", "slug": slug, "settings": settings})
+            }
+            Call::FontFace {
+                family,
+                settings,
+                file,
+                file_name,
+                mime,
+                src,
+            } => json!({"call": "font-face", "family": family, "settings": settings, "file": file,
+                "file_name": file_name, "mime": mime, "src": src}),
+            Call::GlobalStyles { body } => json!({"call": "global-styles", "body": body}),
+            Call::Upsert {
+                kind,
+                slug,
+                body,
+                categories,
+            } => {
+                let item = matches!(kind, Kind::Template | Kind::TemplatePart)
+                    .then(|| kind.item(theme, &slug, 0));
+                json!({"call": "upsert", "kind": match kind {
+                    Kind::TemplatePart => "template-part",
+                    Kind::Template => "template",
+                    Kind::Pattern => "pattern",
+                    Kind::Navigation => "navigation",
+                }, "slug": slug, "body": body, "categories": categories,
+                "lookup": kind.lookup(theme, &slug), "collection": kind.collection(), "item": item})
+            }
+        })
+        .collect();
+    Value::Array(out)
 }
 
 /// A pattern's `wp_block` post name: its slug's name (`swarmpress/editorial-hero` →

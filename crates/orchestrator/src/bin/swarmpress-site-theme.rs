@@ -4,6 +4,7 @@
 //! ```text
 //! swarmpress-site-theme --design FILE|DIR --content DIR --out DIR
 //!                       [--llm fake|hosted] [--server URL] [--login NAME] [--version N]
+//!                       [--wordpress URL --repo URL]
 //! ```
 //!
 //! `--design` is a Claude Design standalone export (one `.html`) or a bundle directory; `--content`
@@ -18,8 +19,15 @@
 //!   `swarmpress-wp-migrate --theme-data`: the importer writes it onto `canvas`);
 //! - `report.json`: the digest, every template's and part's outcome (repair rounds and the issues
 //!   repaired), the notes, the model calls, or the failure and why;
-//! - `site.json`: the site as the job saw it; `design/`: the bundle's files, for the visual
-//!   comparison (`apps/game/e2e/theme-visual.mts`).
+//! - `site.json`: the site as the job saw it; `design/`: the bundle's files and the design's
+//!   static pages (`*.static.html`, their regions marked);
+//! - with `--wordpress URL --repo URL` (a Node WordPress that has the site, and its governed API):
+//!   the job's visual check. Each look writes the theme on `design-v{n}-look-{round}`
+//!   (`swarmpress-wp-migrate theme`, shown to visitors) and runs `apps/game/e2e/theme-visual.mts`
+//!   on the design's static pages and the site's pages (the front page, the other languages' home,
+//!   a listing page of a village per listing template); `visual/round-{n}/` keeps the spec, the
+//!   screenshots and `visual.json`. The sandbox serves thousands of requests over a run: start it
+//!   fresh for each run.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -36,6 +44,7 @@ use orchestrator::{
 use serde_json::{json, Value};
 use site_design::model::QuerySource;
 use site_design::{interpret, DesignBundle, DesignSource};
+use theme_designer::model::{Place, SiteImage};
 use theme_designer::{Collection, SiteContext, SiteLink};
 
 const COMPANY: &str = "cli";
@@ -88,43 +97,324 @@ fn bundle(path: &Path) -> DesignBundle {
     }
 }
 
-fn flatten(lang: &str, items: &[MenuItem], out: &mut Vec<SiteLink>) {
-    for it in items {
+fn flatten(lang: &str, items: &[MenuItem], keys: Option<&[MenuItem]>, out: &mut Vec<SiteLink>) {
+    for (i, it) in items.iter().enumerate() {
         let url = it.url.trim();
+        let en = keys.and_then(|k| k.get(i));
         if !url.is_empty() && !url.contains('#') && !it.label.trim().is_empty() {
             out.push(SiteLink {
                 lang: lang.to_string(),
                 label: it.label.clone(),
                 url: url.to_string(),
+                key: en.map(|e| theme_designer::styles::label_key(&e.label)),
             });
         }
-        flatten(lang, &it.children, out);
+        flatten(lang, &it.children, en.map(|e| e.children.as_slice()), out);
     }
 }
 
-/// The site as the theme sees it, from its content (the import's menus and footer).
+/// `pages/06-home.html` → `pages/06-home.static.html`.
+fn static_name(path: &str) -> String {
+    match path.strip_suffix(".html") {
+        Some(p) => format!("{p}.static.html"),
+        None => format!("{path}.static.html"),
+    }
+}
+
+/// Collections the site's WordPress lists (content-import-wp's entries, wp-sandbox 0.9.0): each a
+/// `core/query` the theme may use, its fields for block bindings, the design's listing it fills.
+fn collections() -> Vec<Collection> {
+    let c = |name: &str,
+             label: &str,
+             source: QuerySource,
+             keywords: &[&str],
+             query: Value,
+             fields: &[&str],
+             listing: Option<&str>| Collection {
+        name: name.into(),
+        label: label.into(),
+        source,
+        keywords: keywords.iter().map(|k| k.to_string()).collect(),
+        query,
+        fields: fields.iter().map(|f| f.to_string()).collect(),
+        listing: listing.map(String::from),
+    };
+    vec![
+        c(
+            "latest-stories",
+            "Latest stories",
+            QuerySource::Latest,
+            &["stories", "dispatch", "latest"],
+            json!({"postType": "post", "order": "desc", "orderBy": "date"}),
+            &["image", "image_alt"],
+            None,
+        ),
+        c(
+            "editors-picks",
+            "Editors' picks",
+            QuerySource::Featured,
+            &["picks", "curated", "editors"],
+            json!({"postType": "post", "sticky": "only", "order": "desc", "orderBy": "date"}),
+            &["image", "image_alt"],
+            None,
+        ),
+        c(
+            "villages",
+            "The five villages",
+            QuerySource::Collection,
+            &["villages", "destinations", "five"],
+            json!({"postType": "sp_village", "order": "asc", "orderBy": "menu_order"}),
+            &["number", "line", "image", "image_alt"],
+            None,
+        ),
+        c(
+            "stays",
+            "Places to stay",
+            QuerySource::Collection,
+            &["stay", "stays", "sleep", "places", "hotels"],
+            json!({"postType": "sp_stay", "order": "asc", "orderBy": "menu_order"}),
+            &[
+                "village",
+                "kind",
+                "price",
+                "price_unit",
+                "rating",
+                "rating_scale",
+            ],
+            Some("stay"),
+        ),
+        c(
+            "restaurants",
+            "Restaurants",
+            QuerySource::Collection,
+            &["restaurants", "eat", "food"],
+            json!({"postType": "sp_restaurant", "order": "asc", "orderBy": "menu_order", "place": "current"}),
+            &[
+                "village",
+                "cuisine",
+                "line",
+                "price",
+                "price_rest",
+                "price_label",
+                "rating",
+                "rating_scale",
+                "closed",
+                "book",
+                "closed_label",
+                "book_label",
+            ],
+            Some("restaurant"),
+        ),
+        c(
+            "activities",
+            "Things to do",
+            QuerySource::Collection,
+            &["activities", "things", "do"],
+            json!({"postType": "sp_activity", "order": "asc", "orderBy": "menu_order", "place": "current"}),
+            &[
+                "village",
+                "label",
+                "line",
+                "duration",
+                "cost",
+                "best",
+                "time_label",
+                "cost_label",
+                "best_label",
+            ],
+            Some("activity"),
+        ),
+        c(
+            "editors",
+            "The editors",
+            QuerySource::Collection,
+            &["editors", "team", "people"],
+            json!({"postType": "sp_editor", "order": "asc", "orderBy": "menu_order"}),
+            &["role", "line", "bio", "first", "image", "image_alt"],
+            Some("editor"),
+        ),
+    ]
+}
+
+/// The site as the theme sees it, from its content (the import's menus, pages and entries).
 fn site_of(content: &Path) -> SiteContext {
     let site = content_import_wp::Site::read(content).unwrap_or_else(|e| die(e));
     let plan = content_import_wp::plan::plan(&site);
     let mut links = Vec::new();
+    let en_menu = plan.menus.get("en").cloned().unwrap_or_default();
     for (lang, items) in &plan.menus {
-        flatten(lang, items, &mut links);
+        flatten(lang, items, Some(&en_menu), &mut links);
     }
     for by_lang in plan.named_menus.values() {
+        let en = by_lang.get("en").cloned().unwrap_or_default();
         for (lang, items) in by_lang {
-            flatten(lang, items, &mut links);
+            flatten(lang, items, Some(&en), &mut links);
         }
     }
-    // The blog's index under the design's word for it.
-    for lang in content_import_wp::LANGS {
-        links.push(SiteLink {
-            lang: lang.into(),
-            label: "Stories".into(),
-            url: format!("/{lang}/blog/"),
-        });
+    // The site's hubs under the words a design uses for them: the page's own title in each
+    // language, one key for all.
+    let titles: BTreeMap<&str, &str> = plan
+        .docs
+        .iter()
+        .map(|d| (d.route.as_str(), d.title.as_str()))
+        .collect();
+    // (the design's word, the hub, the word in en, de, fr, it)
+    for (alias, seg, words) in [
+        (
+            "Stories",
+            "blog",
+            ["Stories", "Geschichten", "Histoires", "Storie"],
+        ),
+        (
+            "All stories",
+            "blog",
+            [
+                "All stories",
+                "Alle Geschichten",
+                "Toutes les histoires",
+                "Tutte le storie",
+            ],
+        ),
+        (
+            "Places to Stay",
+            "accommodations",
+            [
+                "Places to Stay",
+                "Unterkünfte",
+                "Hébergements",
+                "Dove dormire",
+            ],
+        ),
+        (
+            "See all stays",
+            "accommodations",
+            [
+                "See all stays",
+                "Alle Unterkünfte",
+                "Tous les hébergements",
+                "Tutti gli alloggi",
+            ],
+        ),
+        (
+            "Explore the villages",
+            "village",
+            [
+                "Explore the villages",
+                "Die Dörfer entdecken",
+                "Découvrir les villages",
+                "Scopri i borghi",
+            ],
+        ),
+        (
+            "Plan your trip",
+            "itinerary",
+            [
+                "Plan your trip",
+                "Reise planen",
+                "Préparer le voyage",
+                "Pianifica il viaggio",
+            ],
+        ),
+        (
+            "Read the itinerary",
+            "itinerary",
+            [
+                "Read the itinerary",
+                "Zur Route",
+                "Lire l'itinéraire",
+                "Leggi l'itinerario",
+            ],
+        ),
+        (
+            "Itineraries",
+            "itinerary",
+            ["Itineraries", "Routen", "Itinéraires", "Itinerari"],
+        ),
+        (
+            "Things to Do",
+            "things-to-do",
+            ["Things to Do", "Aktivitäten", "À faire", "Cosa fare"],
+        ),
+        (
+            "Food & Drink",
+            "culinary",
+            [
+                "Food & Drink",
+                "Essen & Trinken",
+                "Gastronomie",
+                "Cibo e vino",
+            ],
+        ),
+        (
+            "Weather",
+            "weather",
+            ["Weather", "Wetter", "Météo", "Meteo"],
+        ),
+        (
+            "Our Team",
+            "team",
+            ["Our Team", "Unser Team", "Notre équipe", "Il nostro team"],
+        ),
+        (
+            "Getting Around",
+            "transportation",
+            [
+                "Getting Around",
+                "Unterwegs",
+                "Se déplacer",
+                "Come muoversi",
+            ],
+        ),
+        (
+            "Events",
+            "events",
+            ["Events", "Veranstaltungen", "Événements", "Eventi"],
+        ),
+        (
+            "Sights",
+            "sights",
+            ["Sights", "Sehenswürdigkeiten", "Sites", "Attrazioni"],
+        ),
+    ] {
+        for (i, lang) in content_import_wp::LANGS.iter().enumerate() {
+            let url = format!("/{lang}/{seg}/");
+            if !titles.contains_key(url.as_str()) {
+                continue;
+            }
+            links.push(SiteLink {
+                lang: lang.to_string(),
+                label: words[i].to_string(),
+                url,
+                key: Some(theme_designer::styles::label_key(alias)),
+            });
+        }
     }
     links.sort_by(|a, b| (&a.lang, &a.url, &a.label).cmp(&(&b.lang, &b.url, &b.label)));
     links.dedup();
+    let places = content_import_wp::routes::VILLAGES
+        .iter()
+        .map(|(slug, names)| Place {
+            slug: slug.to_string(),
+            label: names[0].to_string(),
+        })
+        .collect();
+    let images = content_import_wp::routes::VILLAGES
+        .iter()
+        .filter_map(|(slug, names)| {
+            let hero = site.villages.get(*slug)?.get("hero")?;
+            let url = hero.get("image")?.as_str()?.to_string();
+            let alt = hero
+                .get("imageAlt")
+                .and_then(|a| content_import_wp::localized(a, "en"))
+                .unwrap_or(names[0])
+                .to_string();
+            Some(SiteImage {
+                label: format!("{} {alt}", names[0]),
+                url,
+                alt,
+            })
+        })
+        .collect();
     SiteContext {
         name: plan.title.clone(),
         languages: content_import_wp::LANGS
@@ -132,24 +422,202 @@ fn site_of(content: &Path) -> SiteContext {
             .map(|l| l.to_string())
             .collect(),
         links,
-        // What the import's WordPress can list by query today: its posts. The villages and the
-        // stays are pages the home composes as content; no query selects them yet.
-        collections: vec![
-            Collection {
-                name: "latest-stories".into(),
-                label: "Latest stories".into(),
-                source: QuerySource::Latest,
-                keywords: vec!["stories".into(), "dispatch".into(), "latest".into()],
-                query: json!({"postType": "post", "order": "desc", "orderBy": "date"}),
-            },
-            Collection {
-                name: "editors-picks".into(),
-                label: "Editors' picks".into(),
-                source: QuerySource::Featured,
-                keywords: vec!["picks".into(), "curated".into()],
-                query: json!({"postType": "post", "sticky": "only"}),
-            },
-        ],
+        collections: collections(),
+        places,
+        images,
+    }
+}
+
+// ------------------------------------------------------------------ the visual check
+
+/// The visual check's host side (`theme_designer::visual`): writes the theme on a branch of a
+/// WordPress that has the site (`swarmpress-wp-migrate theme`), shows it to visitors, and runs
+/// `apps/game/e2e/theme-visual.mts` on the design's static pages and the site's pages.
+struct Visual {
+    wp: String,
+    repo: String,
+    out: PathBuf,
+    bundle: DesignBundle,
+    design: site_design::SiteDesign,
+    site: SiteContext,
+    content: PathBuf,
+}
+
+fn root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+impl Visual {
+    fn fail(e: impl std::fmt::Display) -> orchestrator::GatewayError {
+        orchestrator::GatewayError(format!("the visual check: {e}"))
+    }
+
+    /// The pages to compare: every template with a design page, at the site URL that renders it.
+    fn spec(&self, data: &site_design::ThemeData) -> Value {
+        let plan = theme_designer::plan(&self.design, &self.bundle.manifest(), &self.site);
+        let docs = content_import_wp::Site::read(&self.content)
+            .map(|s| content_import_wp::plan::plan(&s).docs)
+            .unwrap_or_default();
+        let url_for = |slug: &str| -> Option<String> {
+            match slug {
+                "front-page" => Some("/".into()),
+                _ if slug == theme_designer::plan::LANGUAGE_HOME => {
+                    self.site.langs().get(1).map(|l| format!("/{l}/"))
+                }
+                _ => {
+                    let listing = slug.strip_prefix("archive-")?;
+                    // A listing of a place where there is one (the place's own entries).
+                    let mut routes: Vec<&str> = docs
+                        .iter()
+                        .map(|d| d.route.as_str())
+                        .filter(|r| r.starts_with("/en/"))
+                        .filter(|r| content_import_wp::plan::listing_of(r) == Some(listing))
+                        .collect();
+                    // A village's page first (the listing in one place), then the deepest.
+                    let village = |r: &str| {
+                        let seg = r.split('/').nth(2).unwrap_or("");
+                        content_import_wp::routes::VILLAGES
+                            .iter()
+                            .any(|(v, _)| *v == seg)
+                    };
+                    routes.sort_by_key(|r| {
+                        (
+                            !village(r),
+                            std::cmp::Reverse(r.matches('/').count()),
+                            r.to_string(),
+                        )
+                    });
+                    routes.first().map(|r| r.to_string())
+                }
+            }
+        };
+        let mut pages = Vec::new();
+        for t in &data.templates {
+            let Some(task) = plan.tasks.iter().find(|x| {
+                x.slug == t.slug
+                    || (t.slug == theme_designer::plan::LANGUAGE_HOME && x.slug == "front-page")
+            }) else {
+                continue;
+            };
+            let Some(dt) = task
+                .design
+                .as_ref()
+                .and_then(|d| self.design.templates.iter().find(|x| &x.slug == d))
+            else {
+                continue;
+            };
+            let Some(url) = url_for(&t.slug) else {
+                continue;
+            };
+            let mut regions = Vec::new();
+            let listing = dt.kind == site_design::model::TemplateKind::Listing;
+            if !listing {
+                regions.push(json!({"name": "header", "design": "[data-sp-part=header]", "site": "header.wp-block-template-part"}));
+            }
+            for s in &task.sections {
+                let comp = match (&s.kind[..], &s.what) {
+                    ("component", Some(c)) | ("query", Some(c)) if listing => Some(c.clone()),
+                    _ => None,
+                };
+                let design_sel = match comp {
+                    Some(c) => format!("[data-sp-component={c}] > :nth-child(2)"),
+                    None if !listing && dt.sections.iter().any(|x| x.id == s.id) => {
+                        format!("[data-sp-section={}]", s.id)
+                    }
+                    None => continue,
+                };
+                regions.push(json!({"name": s.id, "design": design_sel, "site": format!(".{}", s.class), "sameAspect": listing}));
+            }
+            if !listing {
+                regions.push(json!({"name": "footer", "design": "[data-sp-part=footer]", "site": "footer.wp-block-template-part"}));
+            }
+            pages.push(json!({
+                "name": t.slug,
+                "design": static_name(&dt.source),
+                "site": url,
+                "regions": regions,
+            }));
+        }
+        json!({
+            "design": self.out.join("design"),
+            "site": self.wp,
+            "widths": [375, 1280],
+            "mask": {"design": ".ph", "site": ".ds-tile,.ds-card-img,.wp-block-post-featured-image"},
+            "pages": pages,
+        })
+    }
+
+    fn check(
+        &self,
+        version: u32,
+        data: &site_design::ThemeData,
+        round: u32,
+    ) -> Result<Option<theme_designer::visual::VisualReport>, orchestrator::GatewayError> {
+        let dir = self.out.join("visual").join(format!("round-{round}"));
+        std::fs::create_dir_all(&dir).map_err(Self::fail)?;
+        // The data with its font files beside it, as the importer reads it.
+        let mut data = data.clone();
+        for f in &mut data.fonts {
+            for face in &mut f.faces {
+                let bytes = self.bundle.bytes(&face.file.path).ok_or_else(|| {
+                    Self::fail(format!("{} is not in the bundle", face.file.path))
+                })?;
+                let p = dir.join(&face.file.path);
+                if let Some(d) = p.parent() {
+                    std::fs::create_dir_all(d).map_err(Self::fail)?;
+                }
+                std::fs::write(&p, bytes).map_err(Self::fail)?;
+            }
+        }
+        data.design = self.bundle.hash().to_string();
+        let file = dir.join("theme-data.json");
+        std::fs::write(
+            &file,
+            serde_json::to_string_pretty(&data).map_err(Self::fail)?,
+        )
+        .map_err(Self::fail)?;
+        let migrate = root().join("target/release/swarmpress-wp-migrate");
+        let branch = format!("design-v{version}-look-{round}");
+        let status = std::process::Command::new(&migrate)
+            .args(["theme", "--theme-data"])
+            .arg(&file)
+            .args([
+                "--sandbox",
+                &self.wp,
+                "--repo",
+                &self.repo,
+                "--branch",
+                &branch,
+            ])
+            .status()
+            .map_err(|e| Self::fail(format!("{}: {e}", migrate.display())))?;
+        if !status.success() {
+            return Err(Self::fail(format!("writing the theme on {branch} failed")));
+        }
+        let spec = dir.join("spec.json");
+        std::fs::write(
+            &spec,
+            serde_json::to_string_pretty(&self.spec(&data)).map_err(Self::fail)?,
+        )
+        .map_err(Self::fail)?;
+        let status = std::process::Command::new("bun")
+            .current_dir(root().join("apps/game"))
+            .args(["e2e/theme-visual.mts", "--spec"])
+            .arg(&spec)
+            .arg("--out")
+            .arg(&dir)
+            .status()
+            .map_err(|e| Self::fail(format!("bun: {e}")))?;
+        if !status.success() {
+            return Err(Self::fail("the screenshots failed"));
+        }
+        let text = std::fs::read_to_string(dir.join("visual.json")).map_err(Self::fail)?;
+        let report: theme_designer::visual::VisualReport =
+            serde_json::from_str(&text).map_err(Self::fail)?;
+        for line in report.lines() {
+            eprintln!("look {round}: {line}");
+        }
+        Ok(Some(report))
     }
 }
 
@@ -370,7 +838,7 @@ impl Llm for Hosted {
 async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() || args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("usage: swarmpress-site-theme --design FILE|DIR --content DIR --out DIR [--llm fake|hosted] [--server URL] [--login NAME] [--version N]");
+        println!("usage: swarmpress-site-theme --design FILE|DIR --content DIR --out DIR [--llm fake|hosted] [--server URL] [--login NAME] [--version N] [--wordpress URL --repo URL]");
         return;
     }
     let need = |n: &str| arg(&args, n).unwrap_or_else(|| die(format!("missing {n}")));
@@ -407,12 +875,46 @@ async fn main() {
         }
         std::fs::write(&p, bytes).unwrap_or_else(|e| die(e));
     }
+    // The design's pages as a visitor sees them, their regions marked (the visual check's side).
+    let texts: BTreeMap<String, String> = b
+        .files()
+        .iter()
+        .filter_map(|(p, bytes)| {
+            (p.ends_with(".html") || p.ends_with(".css") || p == "design.json")
+                .then(|| {
+                    std::str::from_utf8(bytes)
+                        .ok()
+                        .map(|t| (p.clone(), t.to_string()))
+                })
+                .flatten()
+        })
+        .collect();
+    for (path, html) in site_design::render::static_pages(&design, &texts) {
+        let p = out.join("design").join(static_name(&path));
+        std::fs::write(&p, html).unwrap_or_else(|e| die(e));
+    }
 
     let gateway = FakeGateway::new();
     gateway.put_design(
         version,
         json!({"version": version, "manifest": b.manifest(), "design": design}),
     );
+    // The visual check on a WordPress that has the site (`--wordpress`, `--repo`): the theme on a
+    // branch of its own, the design's pages and the site's screenshotted and compared.
+    if let (Some(wp), Some(repo)) = (arg(&args, "--wordpress"), arg(&args, "--repo")) {
+        let v = Visual {
+            wp: wp.trim_end_matches('/').to_string(),
+            repo,
+            out: out.clone(),
+            bundle: b.clone(),
+            design: design.clone(),
+            site: site.clone(),
+            content: content.clone(),
+        };
+        gateway.set_visual(Arc::new(move |version, data, round| {
+            v.check(version, data, round)
+        }));
+    }
     let mut hosted: Option<Arc<Hosted>> = None;
     let llm: Arc<dyn Llm> = match which.as_str() {
         "fake" => Arc::new(fake_writer([])),

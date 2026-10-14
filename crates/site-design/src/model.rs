@@ -360,7 +360,14 @@ pub struct Section {
     pub pattern: Option<String>,
     pub rule: String,
     pub facts: SectionFacts,
+    /// The section's markup in the design, expanded and sanitised (no scripts, no handlers),
+    /// at most [`SECTION_HTML_BYTES`]: what a renderer reads for the section's layout and copy.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub html: String,
 }
+
+/// A section's markup is kept up to this size (larger ones are left out).
+pub const SECTION_HTML_BYTES: usize = 24 * 1024;
 
 impl Section {
     /// The section's identity for reconciliation: what fills it.

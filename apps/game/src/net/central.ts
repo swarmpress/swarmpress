@@ -562,6 +562,11 @@ export class CentralClient {
     return res.status === 201
   }
 
+  /** A design version of the site (`GET /api/sites/{id}/designs/{version}`, FEAT-114): `{version, manifest, design}`. */
+  siteDesign(siteId: string, version: number): Promise<object> {
+    return this.json('GET', `/api/sites/${encodeURIComponent(siteId)}/designs/${version}`)
+  }
+
   /** The company's asset bytes (`GET /api/assets/{sha}`); null when it has none by that digest. */
   async getAsset(sha256: string): Promise<Uint8Array | null> {
     try {

@@ -13,7 +13,9 @@
 //!   files; a bundle that breaks the rules is 422 with the issues. Each file's
 //!   bytes go to the object store like an asset ([`crate::assets`]); the
 //!   manifest is a row. Answers `{version, hash, files, bytes}`: 201 for a new
-//!   version, 200 when the site already has this bundle (its version).
+//!   version, 200 when the site already has this bundle (its version). A new
+//!   version publishes the event `DesignReceived {version, hash, source}` to
+//!   the company's inbox: the executor logs it for the sim (FEAT-115).
 //! - `GET /api/sites/{id}/designs`: `{designs: [{version, hash, source,
 //!   created_at, files, bytes}]}`, oldest first.
 //! - `GET /api/sites/{id}/designs/{version}`: `{version, manifest, design}`,
@@ -180,6 +182,16 @@ pub async fn post_design(
         "files": manifest.files.len(),
         "bytes": bundle.total_bytes(),
     });
+    // A new version is news for the executor: it logs `DesignReceived{version}` (FEAT-115).
+    if new {
+        crate::events::publish(
+            &st,
+            &company,
+            crate::events::kinds::DESIGN_RECEIVED,
+            json!({"version": version, "hash": manifest.hash, "source": source_kind(&manifest.source)}),
+        )
+        .await?;
+    }
     let status = if new {
         StatusCode::CREATED
     } else {

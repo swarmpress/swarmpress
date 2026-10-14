@@ -206,9 +206,18 @@ async fn the_fake_designs_every_template_with_one_repair_round() {
         .iter()
         .map(|t| t.slug.as_str())
         .collect();
+    // The site has two languages: the front page again for the other home (`page-front`).
     assert_eq!(
         slugs,
-        ["front-page", "index", "single", "page", "404", "archive"]
+        [
+            "front-page",
+            "index",
+            "single",
+            "page",
+            "404",
+            "archive",
+            "page-front"
+        ]
     );
     let front = rec
         .tasks
@@ -241,7 +250,7 @@ async fn the_fake_designs_every_template_with_one_repair_round() {
     let p = posts(&o).await;
     let artifact = p.iter().find(|p| p["type"] == "artifact").unwrap();
     assert!(artifact["text"].as_str().unwrap().contains(
-        "6 templates and 2 parts on design-v1; 7 of 8 right first time, 1 issues repaired"
+        "7 templates and 2 parts on design-v1; 7 of 8 right first time, 1 issues repaired"
     ));
 
     // A run again (a reload) asks the model nothing new and writes the same.
@@ -452,7 +461,7 @@ async fn design_draft_approve_merge_end_to_end() {
         .file_text("main", FakeGateway::THEME_DATA_PATH)
         .unwrap();
     let data: site_design::ThemeData = serde_json::from_str(&live).unwrap();
-    assert_eq!(data.templates.len(), 6);
+    assert_eq!(data.templates.len(), 7);
     let merge = o.gateway().branch_head("main").unwrap();
     assert_eq!(
         o.gateway()
@@ -503,4 +512,142 @@ async fn on_wordpress_the_theme_goes_on_its_branch_and_merges_into_live() {
     assert!(digest(&out).ok);
     assert_eq!(engine.merge_count(), 1);
     assert_eq!(engine.theme("live"), engine.theme("design-v1"));
+}
+
+/// The looks a scripted visual check was given: the round and the front page's markup.
+type Looks = Arc<std::sync::Mutex<Vec<(u32, String)>>>;
+
+/// A scripted visual check: each round's report, and the theme data it was shown.
+fn visual_hook(
+    reports: Vec<theme_designer::visual::VisualReport>,
+) -> (Arc<orchestrator::VisualFn>, Looks) {
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let s2 = seen.clone();
+    let f: Arc<orchestrator::VisualFn> = Arc::new(move |_version, data, round| {
+        let front = data
+            .templates
+            .iter()
+            .find(|t| t.slug == "front-page")
+            .map(|t| t.content.clone())
+            .unwrap_or_default();
+        s2.lock().unwrap().push((round, front));
+        Ok(reports.get(round as usize).cloned())
+    });
+    (f, seen)
+}
+
+fn report(score: u32, hero: u32) -> theme_designer::visual::VisualReport {
+    use theme_designer::visual::{VisualPage, VisualRegion};
+    theme_designer::visual::VisualReport {
+        pages: [375, 1280]
+            .into_iter()
+            .map(|width| VisualPage {
+                template: "front-page".into(),
+                site: "/".into(),
+                width,
+                compared: true,
+                reason: None,
+                score,
+                whole: 0,
+                regions: vec![VisualRegion {
+                    name: "hero".into(),
+                    weight: 400,
+                    similarity: hero,
+                    found: true,
+                    site_html: Some(
+                        "<section class=\"sp-hero\">the hero as rendered</section>".into(),
+                    ),
+                }],
+            })
+            .collect(),
+    }
+}
+
+#[tokio::test]
+async fn the_rendered_theme_is_compared_and_a_far_region_repaired() {
+    let llm = Arc::new(fake_writer([]));
+    let o = orch(llm.clone(), &dispatch());
+    // The first look finds the hero far from the design; after the repair it is close.
+    let (hook, seen) = visual_hook(vec![report(640, 600), report(860, 870)]);
+    o.gateway().set_visual(hook);
+    let out = o.run(&job(43, JobKind::SiteTheme, 1)).await.unwrap();
+    let d = digest(&out);
+    assert!(d.ok);
+    assert_eq!(d.score, 9, "the visual score of the last look (860 → 9)");
+    // A repair turn named the region, its score and both markups.
+    let calls = llm.calls();
+    let look = calls
+        .iter()
+        .find(|c| {
+            c.request.messages[0]
+                .text
+                .contains("compared with the design, region by region")
+        })
+        .expect("a visual repair turn");
+    let text = &look.request.messages[0].text;
+    assert!(
+        text.contains("### hero: 600 at 375 px, 600 at 1280 px"),
+        "{text}"
+    );
+    assert!(text.contains("the hero as rendered"));
+    assert!(text.contains("The design's markup:"));
+    // Two looks: before and after the repair; the record keeps the last, without the markup.
+    let looks: Vec<u32> = seen.lock().unwrap().iter().map(|(r, _)| *r).collect();
+    assert_eq!(looks, [0, 1]);
+    let art = o
+        .store()
+        .get_artifact(COMPANY, ITEM)
+        .await
+        .unwrap()
+        .unwrap();
+    let rec: orchestrator::SiteThemeRecord =
+        serde_json::from_value(art["site_theme"].clone()).unwrap();
+    let v = rec.visual.unwrap();
+    assert_eq!(v.worst_of("front-page"), Some(860));
+    assert!(v.pages[0].regions[0].site_html.is_none());
+    assert!(
+        rec.summary.contains(
+            "Against the design: front-page: 860 at 375 px, 860 at 1280 px (1 visual repairs)"
+        ),
+        "{}",
+        rec.summary
+    );
+}
+
+#[tokio::test]
+async fn a_fix_that_looks_worse_is_undone_and_an_executor_without_eyes_says_so() {
+    let llm = Arc::new(fake_writer([]));
+    let o = orch(llm.clone(), &dispatch());
+    let (hook, seen) = visual_hook(vec![report(700, 600), report(500, 400), report(500, 400)]);
+    o.gateway().set_visual(hook);
+    let out = o.run(&job(44, JobKind::SiteTheme, 1)).await.unwrap();
+    assert!(digest(&out).ok);
+    let art = o
+        .store()
+        .get_artifact(COMPANY, ITEM)
+        .await
+        .unwrap()
+        .unwrap();
+    let rec: orchestrator::SiteThemeRecord =
+        serde_json::from_value(art["site_theme"].clone()).unwrap();
+    // The worse look is not the record's: the theme went back to what scored 700.
+    assert_eq!(rec.visual.unwrap().worst_of("front-page"), Some(700));
+    let looks = seen.lock().unwrap().clone();
+    assert_eq!(looks.last().map(|(_, front)| front), Some(&looks[0].1));
+    assert_eq!(digest(&out).score, 7);
+
+    // Without a renderer the score is the share right first time, and the record says so.
+    let plain = orch(Arc::new(fake_writer([])), &dispatch());
+    let out = plain.run(&job(45, JobKind::SiteTheme, 1)).await.unwrap();
+    assert_eq!(digest(&out).score, 8);
+    let art = plain
+        .store()
+        .get_artifact(COMPANY, ITEM)
+        .await
+        .unwrap()
+        .unwrap();
+    let rec: orchestrator::SiteThemeRecord =
+        serde_json::from_value(art["site_theme"].clone()).unwrap();
+    assert!(rec.visual.is_none());
+    assert!(rec.notes.iter().any(|n| n.message.contains("not measured")));
 }

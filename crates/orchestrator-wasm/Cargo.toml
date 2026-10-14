@@ -18,6 +18,9 @@ knowledge = { path = "../knowledge" }
 # The static export of a WordPress site's live branch (ADR-0083), crawled through the sandbox.
 site-export = { path = "../site-export" }
 agents = { path = "../agents" }
+# A site's design and its theme as data (ADR-0093): the REST calls a WordPress engine runs.
+site-design = { path = "../site-design" }
+content-import-wp = { path = "../content-import-wp" }
 claude = { path = "../claude", default-features = false }
 serde_json.workspace = true
 async-trait = "0.1"
