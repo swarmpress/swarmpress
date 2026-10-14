@@ -40,6 +40,8 @@ pub(crate) struct Page {
     pub html: El,
     pub lists: Vec<DataList>,
     pub role: PageRole,
+    /// The page's data script, when it has one (read, never run: [`dc::read_script`]).
+    pub script: Option<String>,
 }
 
 pub fn kebab(s: &str) -> String {
@@ -672,6 +674,7 @@ pub fn interpret_texts(bundle_hash: &str, texts: &BTreeMap<String, String>) -> S
         }
         let raw = dom::parse(&texts[&path]);
         let (html, lists) = dc::expand(&raw);
+        let script = dc::page_script(&raw);
         let title = if title.is_empty() {
             dom::title(&html).unwrap_or_else(|| base_name(&path).to_string())
         } else {
@@ -684,6 +687,7 @@ pub fn interpret_texts(bundle_hash: &str, texts: &BTreeMap<String, String>) -> S
             html,
             lists,
             role,
+            script,
         });
     }
 
@@ -887,6 +891,11 @@ pub fn interpret_texts(bundle_hash: &str, texts: &BTreeMap<String, String>) -> S
         components,
         navigation,
         rules: number_rules(pages.iter().flat_map(crate::guide::rules).collect()),
+        icons: pages.iter().flat_map(crate::components::icons).collect(),
+        interactions: pages
+            .iter()
+            .flat_map(crate::components::interactions)
+            .collect(),
         pages: pages
             .iter()
             .map(|p| DesignPage {

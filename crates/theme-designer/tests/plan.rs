@@ -25,12 +25,21 @@ fn the_style_guide_becomes_parts_templates_presets_fonts_and_menus() {
             "template single",
             "template page",
             "template 404",
-            "template archive"
+            "template archive",
+            "template search"
         ]
     );
     assert_eq!(
         p.required,
-        ["404", "archive", "front-page", "index", "page", "single"]
+        [
+            "404",
+            "archive",
+            "front-page",
+            "index",
+            "page",
+            "search",
+            "single"
+        ]
     );
     // palette and roles
     assert_eq!(p.presets.colors["ink"], "#0F1E2E");
@@ -119,7 +128,7 @@ fn every_reference_rendering_passes_and_the_theme_assembles() {
         assert_eq!(check_theme(&data, &p), vec![]);
         // The design's templates, the required ones, and the front page again for the other
         // languages' homes (`page-front`).
-        assert_eq!(data.templates.len(), 7);
+        assert_eq!(data.templates.len(), 8);
         assert_eq!(data.template_parts.len(), 2);
     }
 }

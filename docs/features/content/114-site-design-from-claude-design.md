@@ -73,6 +73,27 @@ importer writes and the web designer will generate.
   the event `DesignReceived {version, hash, source}` to the company's inbox: the executor logs it
   for the sim and the web designer makes its theme (FEAT-115).
 
+- **Components first-class** (`components`, ADR-0093's second addendum of 2026-10-14): each
+  numbered part of a components or listings sheet gets the **functions** it serves (a closed
+  list, `COMPONENT_FUNCTIONS`: `masthead`, `mega-menu`, `faq`, `trail-stats`, `callout`,
+  `essentials`, …, read from its name and a subtitle that lists uses), its **variants** (the
+  subtitle's list, the specimen's small labels), its **states** (a closed list, from its notes and
+  the sheet's pseudo-classes) and the sheet's **style rules** for the classes its specimen uses
+  (hover, focus, `details[open]`, the `@keyframes` they animate, the reduced-motion overrides).
+- **Icons and marks** (`SiteDesign.icons`): an iconography sheet's lists of `[name, [path…]]` with
+  the ids the sheet gives them (`prefix: 'ct-wx-{name}'`), and its place marks (paths and a
+  pigment). The page runtime's reader evaluates a `const` **arrow function of plain arithmetic**
+  (`const c = (x, y, r) => 'M' + (x - r) + …`) with literal arguments, exactly (millionths, no
+  floating point); `for`/`if` blocks before the `return` are skipped whole.
+- **Micro-interactions** (`SiteDesign.interactions`): a motion sheet's numbered list with each
+  one's duration, easing (one of the sheet's curves) and reduced-motion fallback.
+- **Theme data** gains `block_styles` (a component applied to content classes; the importer adds
+  `is-style-{name}`) and `files` (what the static site serves beside its pages: the icon sprite,
+  and the one audited enhancement script, `ENHANCEMENT_SCRIPT` → `/ds.js`;
+  `validate_shape` refuses any other script, a changed one, a drawing with a handler or a
+  `<script>`, and paths that are not plain names). Navigation items may carry a class
+  (`ds-panel-head`, `ds-featured`).
+
 ## Tests
 
 - `crates/site-design/tests/interpret.rs`: the handmade multi-page bundle `coast-journal` (home,
@@ -91,6 +112,11 @@ importer writes and the web designer will generate.
   back, the files' headers) and the `DesignReceived` event of each new version.
 - `crates/site-design/tests/interpret.rs` `the_designs_pages_render_static_with_their_regions_marked`;
   `dc::tests::a_conditional_reads_as_its_first_branch`.
+- 2026-10-14 (second): `components::tests` (functions from names and listing subtitles, style
+  rules following a specimen's classes with keyframes and reduced-motion overrides, icon lists and
+  marks with their ids, micro-interactions with their fallbacks), `dc::tests::
+  arrow_functions_of_plain_arithmetic_are_evaluated`, `wordpress::tests` (block styles and files:
+  a second script, a changed script, an SVG with a handler and a non-plain path each fail).
 
 ## Next
 

@@ -135,6 +135,60 @@ commit `48175b0`, previewed at <https://wordpress-export.cinqueterre-travel.page
 | files in the export | 982 |
 | the design, region by region | the homes 865/856 (375/1280 px), the listings 791–825 (FEAT-115) |
 
+### Every menu entry, every component, every page type (2026-10-14, second)
+
+The owner rejected the first preview: no submenus, the design's components hardly used. The fix
+is the pipeline's (ADR-0093's second addendum, FEAT-115), and the preview was made again:
+
+```sh
+target/debug/swarmpress-site-theme --design "<Cinque Terre Dispatch Style Guide.html>" \
+   --content cinqueterre.travel/content --out <dir> --llm hosted --server http://127.0.0.1:8081 \
+   --wordpress http://127.0.0.1:8440 --repo http://127.0.0.1:18440/repo
+pnpm swarmpress wp-migrate cinqueterre.travel/content --theme-data <dir>/theme-data.json \
+   --reference $R/reference --cache reports/wp-migrate/live --assets $T/public --out reports/wp-migrate
+#   … export --theme-data <dir>/theme-data.json (the sprite and /ds.js), then
+#   swarmpress-wp-migrate design-check --export <out>/export --plan <out>/plan.json \
+#      --live https://cinqueterre.travel --out <out>/design-check.json [--retired F] [--exceptions F]
+# the components' and page types' visual report on the export:
+target/debug/swarmpress-site-theme --design … --content … --out <dir> \
+   --report-export <out>/export --theme-data <dir>/theme-data.json
+```
+
+- **Navigation:** the live site's menus (the five villages with their ten sections each, the
+  footer's four columns, the wordmark) are the theme's, in every language; the header shows each
+  village's panel (its tint, the sections numbered in two columns, its newest story) on hover,
+  and the phone's sheet opens a village's pages in place. `design-check`: **544 live menu entries
+  found on the export (400 nested under their village), 0 missing, 0 broken, 0 retired** (8 pages
+  compared: each language's home and a village section page).
+- **Templates:** 47 templates (one per page type: the village and its sections, FAQ, itinerary,
+  getting here, transportation, team, …) and 2 parts; `design-check`: **0 source pages on the
+  generic page template** (40 templates in use).
+- **Content for the components:** practical lines of facts as the Trail Ledger, questions as the
+  accordion, editors' comments as "local wisdom", interludes and intros as pull quotes, stories
+  with byline, dateline, contents rail and "continue reading", the week ahead with stroke icons,
+  the fixed 10–30° bar and rain ≥ 20 % marked, season cards; the essentials ticker (sea, air,
+  sunset from Open-Meteo, filled at export) on the homes and the weather pages (145 pages).
+- **No "Uncategorized"** (0 pages): the two stories of the older flat shape now keep their
+  category; the one story without a category takes its hero's badge ("On the Trail"), a content gap.
+- **Content gaps** (reported, not filled): restaurants' "ask for" and "menu" (240 entries), the
+  source of a restaurant's rating (236), activities' cost (48) and best time (28), 68 restaurants
+  without a closing day, 4 without booking, 4 activities without a time, 1 story without a category.
+- **Forms:** the only form is the search (`role="search"`, GET), which `/ds.js` opens as the
+  design's overlay over the export's `/search-index.json`; the newsletter stays hidden.
+
+| | |
+|---|---|
+| URLs compared | 663 |
+| pass | **631** (as before) |
+| status mismatches | 0 |
+| files in the export | 999 (the sprite `icons.svg` and `ds.js` among them) |
+| the job | GPT-6-Luna, 48 tasks (47 right first time, 9 issues repaired), 53 calls, $0.054 |
+
+The site repo's `wordpress-export` is at `5d18c86` (the preview redeployed); `main` is untouched.
+Side-by-side screenshots (preview, live, design: the home, a village, Manarola's hiking page, an
+article, the FAQ, weather, getting here, the itinerary, the open village panel, the phone's menu)
+are FEAT-115's evidence.
+
 The owner reviews the preview against the design: side-by-side screenshots (the homes in English and
 German, a listing, an article, a village, a weather page and the 404, at 375 and 1280 px) are
 FEAT-115's evidence. **Production is not switched**: it stays on the `cinqueterre` theme folder

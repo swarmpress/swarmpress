@@ -18,6 +18,11 @@ paths:
   - "apps/game/e2e/theme-visual.mts"
   - "apps/game/src/php/wp-site-engine.test.ts"
   - "apps/game/src/orchestration/loop.test.ts"
+  - crates/content-import-wp/src/design.rs
+  - crates/content-import-wp/src/parity.rs
+  - crates/site-export/src/essentials.rs
+  - crates/site-design/src/enhance.js
+  - "packages/runner/test/fixtures/open-meteo/**"
 adrs:
   - ADR-0093
   - ADR-0080
@@ -133,7 +138,84 @@ branch of its own and merged only at the CEO's word.
   (`visualSimilarity` in `apps/game/src/site-design/visual.ts`, pure: colour and edge structure per
   cell, a length term, the worst cells).
 
+## Built (2026-10-14, second): every menu entry, every component, every page type
+
+ADR-0093's second addendum, after the owner rejected the first preview (no submenus, the design's
+components hardly used):
+
+- **The source site's navigation** (`theme_designer::navigation`): `SiteContext.menus` are the
+  import's source menus (`content_import_wp::plan::source_menus`), nested, per language; each design
+  menu takes the source menu or column its items name (its area first; one design menu per source
+  entry), what none takes becomes the header's main menu, the wordmark or a footer column. The main
+  menu's places get the design's panel (4.1): a head item (number, name, the place's line) and the
+  place's newest story as a featured card; a language row for the phone's sheet (4.20). The header
+  renders it as `core/navigation` with `overlayMenu: "mobile"` and hover submenus, styled as the
+  design's mega-menu (the place's tint, two numbered columns, the featured card; 120 ms intent;
+  drop and fade; reduced motion: fade only) and phone sheet (64 px rows, italic names, pigment dots,
+  numbers; a place's pages open in place). `check_navigation` fails the theme for any source entry
+  (with its parent) the theme data lacks, unless `SiteContext.retired` lists it with a reason.
+- **The catalogue** (`theme_designer::catalog`): `CONTENT_FUNCTIONS` maps the content model's
+  classes to component functions; `block_styles` gives each (component, variant) the content
+  classes it renders; `coverage` reports every component (where used: templates, parts, block
+  styles and the pages with that content; or why unused) and every page type (its template, its
+  components) and fails for a component the site has content for that nothing uses and for a page
+  type without its own template.
+- **The forms** (`theme_designer::forms`): CSS for every component the catalogue can place, from
+  the tokens: the masthead's tide, the mega-menu and phone sheet, the breadcrumb with the place's
+  dot, the page header, badges, the contents rail with the reading progress (a CSS scroll
+  timeline), pagination, the search overlay, the essentials ticker, the week ahead (icon and
+  word, the fixed 10–30° bar, rain ≥ 20 % marked), filter chips, Notte at night; per block style
+  the accordion, the Trail Ledger (four cells, a grade's four-step bar and word), the mode table,
+  the itinerary timeline (roman discs in the place's pigment, the rule drawing down), the page
+  hero, the three callouts (pull quote with the hanging mark, local wisdom on Calce with the pin,
+  the notice on Ink; never a left border), editor profiles, season cards on the design's season
+  grounds, entries, the contents list, the byline, continue reading, tags; the icon set as CSS
+  masks (`.ds-i-{id}`, `.ct-wx-{sky}`, `.ct-mode-{mode}`); the motion tokens as `--ds-…`; the
+  twelve micro-interactions, each with its reduced-motion fallback. The CSS keeps out backslashes
+  and almost all single quotes (the governed storage rebuilds such strings from pieces).
+- **Page-type templates** (`plan`): one task per page type the design has no page for
+  (`page-{type}`, or `single` for stories): the page header (`core/breadcrumbs`, the title as the
+  h1; a story's category and lede), then the content (a story's in the contents-rail grid with the
+  progress bar); `search` joins the required templates. Components each section, part and menu is
+  are listed on the task and must carry `ds-c-{slug}` (a check). The hero's essentials box is a
+  ticker the export fills (`EssentialsSpec`).
+- **Files**: the icon sprite `icons.svg` and the audited `ds.js` (ADR-0093's second addendum,
+  decision 7) in `ThemeData.files`; the export publishes them and loads the script on every page.
+- **The import with a design** (`content_import_wp::design`): page types (`_swarmpress_page_type`)
+  and one template per type; items' classes (`ct-items-{type}`, `ct-mode-{mode}`, `ct-place-…`);
+  facts from practical lines (`ct-facts`, a grade's step); stories as the design's article (byline,
+  dateline, lede, picture, anchored headings and a contents list, tags, the author's line; the
+  older flat story shape too) and what to read next; a story without a category takes its hero's
+  badge (a content gap); pages under their parents (the breadcrumb); block styles applied; content
+  gaps reported. The weather pages get essentials markers.
+- **The export** (`site_export::essentials`, the migrate CLI): tickers filled from Open-Meteo (the
+  forecast API's air and sunset, the marine API's sea surface temperature; recorded answers
+  `essentials-{lat},{lng}.json` for tests), refilled by the daily `forecast` run; the theme's files
+  added, `/ds.js` on every page; `design-check` (`content_import_wp::parity`): the live menus'
+  every entry on the export (nested under its parent, its link working), every source page on a
+  template of its type, no "Uncategorized", the content gaps.
+- **Visual report per component and page type** (`visual::coverage_pages`, the CLI's
+  `--report-export DIR --theme-data FILE`): each used component's instance against its specimen,
+  each page type against the design's closest composition, at 375 and 1280 px.
+- Prompt `web_designer.md` 1.2.0: the main menu's overlay, the component markers, page types.
+
 ## Tests
+
+- `crates/theme-designer/tests/coverage.rs`: the navigation from source menus (nested, panels,
+  featured, wordmark) passing its check; a lost and a flattened entry failing, a retired one
+  noted; components serving content and template functions with every unused one's reason; one
+  failing fixture per coverage check (a missing block style, a missing marker, a page type
+  without its template), a template without its marker failing `check_template`; the CSS within
+  the storage layer's limits; seeded mutations (a source entry dropped, a marker dropped) all
+  caught.
+- `crates/content-import-wp/src/design.rs` (facts and grades, block styles reaching attributes and
+  HTML idempotently, page types and templates), `parity.rs` (nested entries, a lost, flattened or
+  broken entry failing and a retired one spared; templates and "Uncategorized").
+- `crates/site-export/src/essentials.rs` (values parsed, filled in the page's language, refilled;
+  no place or no values failing), the forecast's tests (icons and words, no emoji, the bar, rain
+  marked).
+- `packages/runner/test/wordpress.test.ts`: the essentials ticker filled from recorded answers on a
+  design's weather page; no emoji in the forecast.
 
 - `crates/theme-designer`: unit tests (parser, scanners, styles, the repair driver);
   `tests/plan.rs` (the trimmed style guide's plan, bindings, every reference rendering passing,

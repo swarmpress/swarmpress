@@ -15,6 +15,15 @@
 //! | `patterns` | `wp_block` (synced: false) | `/wp/v2/blocks` |
 //! | `navigation` | `wp_navigation`, one per menu and language (`{name}-{lang}`) | `/wp/v2/navigation` |
 //! | `fonts` | `wp_font_family` / `wp_font_face`, files as uploads | `/wp/v2/font-families` |
+//! | `block_styles` | none: classes the importer gives the content they apply to | — |
+//! | `files` | none: files the static export publishes beside the pages | — |
+//!
+//! **Block styles** name a component of the design and the content classes it renders
+//! (`accordion` for `ct-faq-section`): the importer adds `is-style-{name}` to those blocks and the
+//! global styles' CSS gives the class the component's form. **Files** are what the static site
+//! serves beside its pages: the design's icon sprite (`icons.svg`) and the one audited script
+//! ([`ENHANCEMENT_SCRIPT`], `ds.js`, ADR-0093's addendum of 2026-10-14). No other script is
+//! allowed: [`ThemeData::validate_shape`] refuses a `.js` file that is not byte for byte that one.
 //!
 //! Template and part content is block markup with **core blocks only**
 //! (`<!-- wp:group {…} -->…`). The web designer (FEAT for the job) writes
@@ -56,6 +65,42 @@ pub struct ThemeData {
     pub navigation: Vec<NavigationMenu>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fonts: Vec<ThemeFontFamily>,
+    /// Components applied to the content by class (module docs).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub block_styles: Vec<BlockStyle>,
+    /// Files the static site publishes beside its pages (module docs).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<ThemeFile>,
+}
+
+/// The one script a site's theme may publish: swarm.press's own, audited, the same for every site
+/// (progressive enhancement of the design's behaviours; a site works without it).
+pub const ENHANCEMENT_SCRIPT: &str = include_str!("enhance.js");
+/// Where the static site serves [`ENHANCEMENT_SCRIPT`].
+pub const ENHANCEMENT_PATH: &str = "ds.js";
+
+/// A component of the design applied to content by class: the importer gives every block with one
+/// of `classes` the class `is-style-{name}`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BlockStyle {
+    /// `accordion`: the class `is-style-accordion`.
+    pub name: String,
+    pub label: String,
+    /// The design's component (`accordion`).
+    pub component: String,
+    /// The content's classes it applies to (`ct-faq-section`).
+    pub classes: Vec<String>,
+}
+
+/// A text file the static site serves at `/{path}`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThemeFile {
+    /// `icons.svg`, `ds.js`.
+    pub path: String,
+    pub content_type: String,
+    pub content: String,
 }
 
 /// The user's global styles: a `theme.json` v3 document's `settings` and
@@ -172,6 +217,9 @@ pub struct NavigationItem {
     pub url: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<NavigationItem>,
+    /// A class of the theme's vocabulary for this item (`ds-featured`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -384,6 +432,75 @@ impl ThemeData {
             items(&m.items, &at, &mut out);
         }
         let mut seen = BTreeSet::new();
+        for (i, b) in self.block_styles.iter().enumerate() {
+            let at = format!("block_styles[{i}]");
+            if !valid_slug(&b.name) {
+                out.push(issue(format!("{at}.name"), "is a slug ([a-z0-9-])"));
+            }
+            if !seen.insert(b.name.as_str()) {
+                out.push(issue(format!("{at}.name"), format!("{} is unique", b.name)));
+            }
+            if b.classes.is_empty() || b.classes.iter().any(|c| !valid_slug(c)) {
+                out.push(issue(
+                    format!("{at}.classes"),
+                    "names content classes ([a-z0-9-])",
+                ));
+            }
+        }
+        let mut seen = BTreeSet::new();
+        for (i, f) in self.files.iter().enumerate() {
+            let at = format!("files[{i}]");
+            let plain = !f.path.is_empty()
+                && f.path.len() <= 64
+                && f.path
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '.')
+                && !f.path.starts_with('.')
+                && !f.path.contains("..");
+            if !plain {
+                out.push(issue(
+                    format!("{at}.path"),
+                    "is a plain file name ([a-z0-9.-])",
+                ));
+            }
+            if !seen.insert(f.path.as_str()) {
+                out.push(issue(format!("{at}.path"), format!("{} is unique", f.path)));
+            }
+            let lower = f.content.to_ascii_lowercase();
+            match (
+                f.path.rsplit('.').next().unwrap_or(""),
+                f.content_type.as_str(),
+            ) {
+                ("svg", "image/svg+xml") => {
+                    if lower.contains("<script")
+                        || svg_has_handler(&lower)
+                        || lower.contains("javascript:")
+                        || lower.contains("<foreignobject")
+                    {
+                        out.push(issue(
+                            at.clone(),
+                            "is a drawing without scripts or handlers",
+                        ));
+                    }
+                }
+                ("js", "text/javascript") => {
+                    if f.content != ENHANCEMENT_SCRIPT || f.path != ENHANCEMENT_PATH {
+                        out.push(issue(
+                            at.clone(),
+                            format!("is the audited enhancement script, unchanged, at {ENHANCEMENT_PATH}"),
+                        ));
+                    }
+                }
+                _ => out.push(issue(
+                    format!("{at}.content_type"),
+                    "is an SVG drawing (image/svg+xml) or the enhancement script (text/javascript)",
+                )),
+            }
+            if f.content.len() > 512 * 1024 {
+                out.push(issue(at, "is at most 512 KB"));
+            }
+        }
+        let mut seen = BTreeSet::new();
         for (i, f) in self.fonts.iter().enumerate() {
             let at = format!("fonts[{i}]");
             if !valid_slug(&f.slug) {
@@ -430,6 +547,15 @@ impl ThemeData {
         }
         out
     }
+}
+
+/// An `on…=` attribute in an SVG's markup.
+fn svg_has_handler(lower: &str) -> bool {
+    lower.match_indices(" on").any(|(i, _)| {
+        let rest = &lower[i + 3..];
+        let name: String = rest.chars().take_while(char::is_ascii_alphabetic).collect();
+        !name.is_empty() && rest[name.len()..].trim_start().starts_with('=')
+    })
 }
 
 #[cfg(test)]
@@ -481,6 +607,7 @@ mod tests {
                     label: "Vernazza".into(),
                     url: "/en/vernazza/".into(),
                     children: vec![],
+                    class: None,
                 }],
             }],
             fonts: vec![ThemeFontFamily {
@@ -498,6 +625,24 @@ mod tests {
                     },
                 }],
             }],
+            block_styles: vec![BlockStyle {
+                name: "accordion".into(),
+                label: "Accordion".into(),
+                component: "accordion".into(),
+                classes: vec!["ct-faq-section".into()],
+            }],
+            files: vec![
+                ThemeFile {
+                    path: "icons.svg".into(),
+                    content_type: "image/svg+xml".into(),
+                    content: "<svg xmlns=\"http://www.w3.org/2000/svg\"><symbol id=\"ct-pin\"><path d=\"M1 1\"/></symbol></svg>".into(),
+                },
+                ThemeFile {
+                    path: ENHANCEMENT_PATH.into(),
+                    content_type: "text/javascript".into(),
+                    content: ENHANCEMENT_SCRIPT.into(),
+                },
+            ],
         }
     }
 
@@ -527,6 +672,14 @@ mod tests {
         d.fonts[0].faces[0].file.path = "a.ttf".into();
         d.global_styles.version = 2;
         d.templates[1].content = "<script>x</script>".into();
+        d.block_styles.push(d.block_styles[0].clone());
+        d.files[1].content.push_str("fetch('https://evil')");
+        d.files[0].content = "<svg onload=\"x()\"></svg>".into();
+        d.files.push(ThemeFile {
+            path: "../x.html".into(),
+            content_type: "text/html".into(),
+            content: String::new(),
+        });
         let at: Vec<String> = d
             .validate_shape()
             .into_iter()
@@ -544,6 +697,11 @@ mod tests {
             "navigation[0].items[0].url is a real target",
             "fonts[0].faces[0].file.path is a .woff2 file",
             "templates[1].content has no scripts",
+            "block_styles[1].name accordion is unique",
+            "files[1] is the audited enhancement script, unchanged, at ds.js",
+            "files[0] is a drawing without scripts or handlers",
+            "files[2].path is a plain file name ([a-z0-9.-])",
+            "files[2].content_type is an SVG drawing (image/svg+xml) or the enhancement script (text/javascript)",
         ] {
             assert!(at.iter().any(|a| a == want), "missing {want:?} in {at:#?}");
         }

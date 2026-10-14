@@ -36,6 +36,7 @@
 //!   static host needs for non-HTML directory indexes (`/feed/`) as `_redirects`, and `_headers`
 //!   (ADR-0091).
 
+pub mod essentials;
 pub mod forecast;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -191,6 +192,92 @@ impl Export {
         }
         Ok(n)
     }
+}
+
+/// A page's new text from its path and text (`None`: unchanged).
+pub type HtmlMap<'a> = dyn Fn(&str, &str) -> Result<Option<String>, String> + 'a;
+
+impl Export {
+    /// Every HTML page through `f` (a page `f` leaves alone answers `None`); the release's entries
+    /// and id follow. Returns how many pages changed.
+    pub fn map_html(&mut self, f: &HtmlMap<'_>) -> Result<usize, String> {
+        let blobs = &self.blobs;
+        let changed = map_release_html(&mut self.release, &|sha: &str| blobs.get(sha).cloned(), f)?;
+        let n = changed.len();
+        for (_, body) in changed {
+            let sha = hex(&Sha256::digest(&body));
+            self.blobs.entry(sha).or_insert(body);
+        }
+        Ok(n)
+    }
+
+    /// A file of the site's own beside its pages (`/icons.svg`, `/ds.js`).
+    pub fn add_file(&mut self, path: &str, content_type: &str, bytes: Vec<u8>) {
+        let sha = hex(&Sha256::digest(&bytes));
+        self.release.files.insert(
+            path.to_string(),
+            FileEntry {
+                sha256: sha.clone(),
+                content_type: content_type.to_string(),
+                size: bytes.len() as u64,
+            },
+        );
+        self.blobs.insert(sha, bytes);
+        self.release.id = self.release.computed_id();
+    }
+
+    /// The HTML pages' bytes by URL path.
+    pub fn pages(&self) -> BTreeMap<String, String> {
+        self.release
+            .files
+            .iter()
+            .filter(|(_, f)| is_type(&f.content_type, "html"))
+            .filter_map(|(p, f)| {
+                self.blobs
+                    .get(&f.sha256)
+                    .map(|b| (p.clone(), String::from_utf8_lossy(b).into_owned()))
+            })
+            .collect()
+    }
+}
+
+/// `release`'s HTML files through `f` (by path and text); each changed file's entry gets its new
+/// SHA-256 and size, the release its new id. Returns the changed files' new bytes by URL path.
+pub fn map_release_html(
+    release: &mut Release,
+    read: &dyn Fn(&str) -> Option<Vec<u8>>,
+    f: &HtmlMap<'_>,
+) -> Result<BTreeMap<String, Vec<u8>>, String> {
+    let mut changed = BTreeMap::new();
+    for (path, entry) in release.files.iter_mut() {
+        if !is_type(&entry.content_type, "html") {
+            continue;
+        }
+        let Some(body) = read(&entry.sha256) else {
+            continue;
+        };
+        let html = String::from_utf8_lossy(&body);
+        let Some(out) = f(path, &html).map_err(|e| format!("{path}: {e}"))? else {
+            continue;
+        };
+        let bytes = out.into_bytes();
+        entry.sha256 = hex(&Sha256::digest(&bytes));
+        entry.size = bytes.len() as u64;
+        changed.insert(path.clone(), bytes);
+    }
+    release.id = release.computed_id();
+    Ok(changed)
+}
+
+/// The page with the site's one enhancement script (`/ds.js`, deferred) before `</body>`; `None`
+/// when it has it already or has no body.
+pub fn with_script(html: &str, src: &str) -> Option<String> {
+    let tag = format!("<script src=\"{src}\" defer></script>");
+    if html.contains(&tag) {
+        return None;
+    }
+    let at = html.rfind("</body>")?;
+    Some(format!("{}{tag}\n{}", &html[..at], &html[at..]))
 }
 
 /// The places the forecast markers of `release`'s HTML files ask for; `read` gives a file's

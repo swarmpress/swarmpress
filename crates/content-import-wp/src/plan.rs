@@ -101,6 +101,10 @@ pub struct Doc {
     /// design has one for it ([`assign_templates`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template: Option<String>,
+    /// The route of the page above it (a village's section → the village): WordPress's parent,
+    /// which the breadcrumb follows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -129,6 +133,52 @@ pub fn plan_with(site: &Site, opts: compose::Options) -> Plan {
     plan_with_theme(site, opts, None)
 }
 
+/// A menu of the source site as its visitors know it, in one language.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceMenu {
+    /// `nav`, `footer`, `brand`.
+    pub name: String,
+    /// `header`, `footer` or `other`.
+    pub area: String,
+    pub lang: String,
+    pub items: Vec<MenuItem>,
+}
+
+/// The source site's menus (what its live pages show): for a site whose live theme the sandbox
+/// carries as a fallback (cinqueterre.travel's), that theme's header and named menus; else
+/// `site.json`'s main menu. A design's theme keeps every entry of these (ADR-0093 addendum).
+pub fn source_menus(site: &Site, opts: compose::Options) -> Vec<SourceMenu> {
+    let ported = fallback_theme_for(site) == CINQUETERRE_THEME;
+    let mut out = Vec::new();
+    for l in LANGS {
+        let items = if ported {
+            compose::spine(l)
+        } else {
+            menu(site, l)
+        };
+        out.push(SourceMenu {
+            name: "nav".into(),
+            area: "header".into(),
+            lang: l.to_string(),
+            items,
+        });
+    }
+    if ported {
+        for (name, by_lang) in compose::named_menus(opts) {
+            let area = if name == "footer" { "footer" } else { "other" };
+            for (lang, items) in by_lang {
+                out.push(SourceMenu {
+                    name: name.clone(),
+                    area: area.into(),
+                    lang,
+                    items,
+                });
+            }
+        }
+    }
+    out
+}
+
 /// The plan with the site's design as data: on `canvas` with `theme_data`, else on the fallback
 /// theme folder ([`fallback_theme_for`]).
 pub fn plan_with_theme(
@@ -136,7 +186,7 @@ pub fn plan_with_theme(
     mut opts: compose::Options,
     theme_data: Option<ThemeData>,
 ) -> Plan {
-    opts.design = theme_data.is_some();
+    opts.design = opts.design || theme_data.is_some();
     let mut report = Report::default();
     let mut docs = Vec::new();
     for r in routes(site) {
@@ -152,10 +202,16 @@ pub fn plan_with_theme(
     }
     let title = site_name(site);
     mark_picks(site, &mut docs);
+    if opts.design {
+        // What to read after each story (the design's 4.21).
+        crate::design::continue_reading(&mut docs);
+    }
     if let Some(data) = &theme_data {
         // The design's rules on the pages (ADR-0093): a headline without the site's name (fix-02).
         for d in &mut docs {
             d.title = headline(&d.title, &title);
+            // The design's components on the content, by its classes (block styles).
+            d.content = crate::design::apply_block_styles(&d.content, &data.block_styles);
         }
         assign_templates(&mut docs, data);
     }
@@ -279,20 +335,15 @@ pub fn listing_of(route: &str) -> Option<&'static str> {
 /// listing's (`archive-{listing}`). `/` is the front page itself.
 pub fn assign_templates(docs: &mut [Doc], data: &ThemeData) {
     let has = |slug: &str| data.templates.iter().any(|t| t.slug == slug);
-    for d in docs {
+    let listings = crate::design::listings(data);
+    let types = crate::design::type_templates(docs, &listings);
+    for d in docs.iter_mut() {
         if d.post_type != "page" || d.route == "/" {
             continue;
         }
-        let home = LANGS.iter().any(|l| d.route == format!("/{l}/"));
-        if home && has(crate::theme::LANGUAGE_HOME) {
-            d.template = Some(crate::theme::LANGUAGE_HOME.into());
-            continue;
-        }
-        if let Some(l) = listing_of(&d.route) {
-            let slug = format!("archive-{l}");
-            if has(&slug) {
-                d.template = Some(slug);
-            }
+        let t = crate::design::page_template(d, &types, &listings);
+        if has(&t) {
+            d.template = Some(t);
         }
     }
 }
@@ -366,6 +417,9 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
             }
         }
     }
+    if opts.design {
+        crate::design::prepare(&mut blocks);
+    }
     // The theme's village intro renders the village's own content (`config/villages/`).
     let village = r.village.as_ref().and_then(|v| site.villages.get(v));
     // A village's own page without a page of its own is the village's intro.
@@ -423,7 +477,16 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
     } else {
         let forecast = compose::weather(&mut blocks, r);
         for (i, b) in blocks.iter().enumerate() {
-            content.push_str(&markup::block(b, lang, notes));
+            let kind = b.get("type").and_then(Value::as_str).unwrap_or("");
+            if opts.design && kind == "blog-article" {
+                content.push_str(&crate::design::article(b, lang));
+            } else {
+                content.push_str(&markup::block(b, lang, notes));
+            }
+            // The design's essentials ticker beside the live conditions (filled at export).
+            if opts.design && kind == "weather-live" {
+                content.push_str(&compose::essentials(r));
+            }
             if let Some((_, f)) = forecast.as_ref().filter(|(at, _)| *at == i) {
                 content.push_str(f);
             }
@@ -433,6 +496,9 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
         }
     }
     content.push_str(&collections(site, &blocks, r, lang));
+    if opts.design {
+        content = crate::design::facts(&content);
+    }
     let mut seo_title = seo
         .get("title")
         .and_then(|t| localized(t, lang))
@@ -453,7 +519,8 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
     let article = blocks
         .iter()
         .find(|b| b.get("type").and_then(Value::as_str) == Some("blog-article"))
-        .and_then(|b| b.get("post"));
+        // A story's fields: under `post`, or on the block itself (the older, flat shape).
+        .map(|b| b.get("post").unwrap_or(b));
     // An article's heading is its own title as the live page shows it, without the site's name
     // the page title carries for the document title (which stays as it was).
     let heading = article
@@ -462,6 +529,13 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
         .map(markup::strip_tags)
         .filter(|t| !t.is_empty());
     let mut meta = BTreeMap::new();
+    meta.insert(
+        "_swarmpress_page_type".to_string(),
+        crate::design::page_type(r, page, post),
+    );
+    if let Some(p) = article.and_then(|a| crate::design::story_place(a, lang)) {
+        meta.insert("_swarmpress_story_place".to_string(), p.to_string());
+    }
     meta.insert("_swarmpress_route".to_string(), r.path.clone());
     meta.insert("_swarmpress_lang".to_string(), lang.to_string());
     if !source.is_empty() {
@@ -512,6 +586,28 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
         Some(h) if post => h,
         _ => title,
     };
+    // A story's category: its article's; with a design (fix-06: no "Uncategorized"), else its
+    // hero's badge, reported as a content gap.
+    let mut category = article
+        .and_then(|a| a.get("category"))
+        .and_then(|c| localized(c, lang))
+        .map(String::from);
+    if post && category.is_none() && opts.design {
+        category = blocks
+            .iter()
+            .find(|b| b.get("type").and_then(Value::as_str) == Some("editorial-hero"))
+            .and_then(|b| b.get("badge"))
+            .and_then(|c| localized(c, lang))
+            .map(String::from);
+        if category.is_some() {
+            meta.insert("_swarmpress_category_from_badge".to_string(), "1".into());
+        }
+    }
+    // A village's section sits under the village (WordPress's parent: the breadcrumb).
+    let parent = r.village.as_ref().and_then(|v| {
+        let own = format!("/{lang}/{v}/");
+        (r.path != own && r.path.starts_with(&own)).then_some(own)
+    });
     // Every image says what it shows (the design's rule fix-06/fix-12): an image without its own
     // description is described by the page's title.
     let content = markup::fill_alt(&content, &title);
@@ -529,10 +625,7 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
         excerpt: description.clone(),
         content,
         meta,
-        category: article
-            .and_then(|a| a.get("category"))
-            .and_then(|c| localized(c, lang))
-            .map(String::from),
+        category,
         tags: if post {
             // Every article carries its language as a tag: the home lists the stories in its own.
             let mut tags: Vec<String> = article
@@ -556,6 +649,7 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
             .map(|d| d.chars().take(19).collect()),
         sticky: false,
         template: None,
+        parent,
     }
 }
 

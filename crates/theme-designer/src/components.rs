@@ -149,6 +149,8 @@ pub fn pigment_of(design: &SiteDesign, label: &str) -> Option<String> {
         .and_then(|c| colour_preset(design, &c.name))
 }
 
+pub use crate::forms::sprite;
+
 /// The component styles' CSS (module docs).
 pub fn components(input: &ComponentInput<'_>) -> String {
     let d = input.design;
@@ -265,10 +267,84 @@ pub fn components(input: &ComponentInput<'_>) -> String {
         ("r-story", ratio(d, "story", "4 / 5")),
         ("r-panorama", ratio(d, "panorama", "21 / 9")),
         ("small", format!("{}px", small_bp.saturating_sub(1))),
+        (
+            "md",
+            format!(
+                "{}px",
+                t.breakpoints
+                    .iter()
+                    .map(|b| b.min_px)
+                    .filter(|m| *m >= 768)
+                    .min()
+                    .unwrap_or(960)
+            ),
+        ),
+        (
+            "e1",
+            t.elevations
+                .first()
+                .map_or("0 1px 0 rgba(0,0,0,.12)".to_string(), |e| e.value.clone()),
+        ),
+        (
+            "e2",
+            t.elevations
+                .get(1)
+                .or(t.elevations.first())
+                .map_or("0 24px 64px -24px rgba(0,0,0,.35)".to_string(), |e| {
+                    e.value.clone()
+                }),
+        ),
     ];
+    let block_styles = crate::catalog::block_styles(d, input.site);
     let mut css = String::from(CSS);
+    css.push_str(&crate::forms::motion_vars(d));
+    css.push_str(crate::forms::CSS);
+    css.push_str(crate::forms::MOTION);
+    css.push_str(&crate::forms::block_style_css(d, &block_styles));
     for (k, v) in &vars {
         css = css.replace(&format!("@{k}@"), v);
+    }
+    css.push_str(&crate::forms::icon_css(d));
+    // The pin of a "local wisdom" callout, drawn in the text colour.
+    if let Some(pin) = d
+        .icons
+        .iter()
+        .find(|i| i.name == "pin" && i.colour.is_none())
+    {
+        let paths: String = pin
+            .paths
+            .iter()
+            .map(|p| format!("<path d=%27{p}%27/>"))
+            .collect();
+        let _ = writeln!(
+            css,
+            ":root{{--ds-pin-img:url(\"data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%230F1E2E%27 stroke-width=%271.5%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E{}%3C/svg%3E\")}}",
+            paths.replace('<', "%3C").replace('>', "%3E")
+        );
+    }
+    // Skies and modes: the design's icons on the forecast's and the content's classes.
+    for (class, icon) in [
+        ("ct-wx-sun", "sun"),
+        ("ct-wx-partly-cloudy", "partly-cloudy"),
+        ("ct-wx-overcast", "overcast"),
+        ("ct-wx-rain", "rain"),
+        ("ct-wx-storm", "storm"),
+        ("ct-wx-fog", "fog"),
+        ("ct-wx-wind", "wind"),
+        ("ct-wx-night", "night"),
+        ("ct-mode-train", "train"),
+        ("ct-mode-boat", "boat"),
+        ("ct-mode-walk", "walk"),
+        ("ct-mode-car", "car"),
+        ("ct-mode-bus", "car"),
+        ("ct-mode-plane", "external"),
+    ] {
+        if let Some(id) = crate::forms::icon_id(d, icon) {
+            let _ = writeln!(
+                css,
+                ".{class}{{--ds-i:var(--ds-i-{id})}}.{class}::before{{content:\"\";display:inline-block;width:24px;height:24px;background:currentColor;-webkit-mask:var(--ds-i) center/contain no-repeat;mask:var(--ds-i) center/contain no-repeat}}"
+            );
+        }
     }
     // Pigments by place, and the dots of the villages menu by position.
     for pl in &input.site.places {
@@ -282,16 +358,22 @@ pub fn components(input: &ComponentInput<'_>) -> String {
         }
     }
     if let Some((menu, labels)) = &input.dot_menu {
-        for (i, l) in labels.iter().enumerate() {
-            if let Some(slug) = pigment_of(d, l) {
-                let _ = writeln!(
-                    css,
-                    ".sp-menu-{menu}.ds-nav-dots .wp-block-navigation-item:nth-child({}){{--ds-dot:var(--wp--preset--color--{})}}",
-                    i + 1,
-                    wp_kebab(&slug)
-                );
-            }
-        }
+        let places: Vec<(String, String)> = input
+            .site
+            .places
+            .iter()
+            .filter_map(|pl| {
+                pigment_of(d, &pl.label)
+                    .or_else(|| pigment_of(d, &pl.slug))
+                    .map(|slug| {
+                        (
+                            pl.slug.clone(),
+                            format!("var(--wp--preset--color--{})", wp_kebab(&slug)),
+                        )
+                    })
+            })
+            .collect();
+        css.push_str(&crate::forms::panel_css(d, menu, labels, &places));
     }
     css
 }

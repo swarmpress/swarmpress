@@ -279,6 +279,10 @@ export interface MigrationOptions extends NodeWordPressOptions {
    * it, the fallback theme folder (Coast, or cinqueterre.travel's own).
    */
   themeData?: string;
+  /** Menu entries the owner retired on purpose (JSON: URL → reason): the only ones the design may lose. */
+  retired?: string;
+  /** Pages that may keep a generic template (JSON: route → reason). */
+  templateExceptions?: string;
 }
 
 /**
@@ -324,11 +328,24 @@ export async function runMigration(opts: MigrationOptions): Promise<number> {
       "export", "--sandbox", wp.url, "--repo", `${wp.storageUrl}/repo`, "--public-origin", opts.publicOrigin, "--out", join(opts.out, "export"),
       ...(opts.formsEndpoint ? ["--forms-endpoint", opts.formsEndpoint] : []),
       ...(opts.forecasts ? ["--forecasts", opts.forecasts] : []),
+      ...(opts.themeData ? ["--theme-data", opts.themeData] : []),
     ]);
     if (code !== 0) return code;
   } finally {
     await wp.stop();
     if (!opts.dataDir) rmSync(dataDir, { recursive: true, force: true });
+  }
+  // A design's checks (ADR-0093 addendum): the live menus kept, every page on a template of its
+  // type, no "Uncategorized"; the content gaps reported. Against the live site, so only with a
+  // comparison asked for.
+  if (opts.themeData && opts.reference) {
+    code = await run([
+      "design-check", "--export", join(opts.out, "export"), "--plan", planFile, "--live", opts.publicOrigin,
+      "--out", join(opts.out, "design-check.json"),
+      ...(opts.retired ? ["--retired", opts.retired] : []),
+      ...(opts.templateExceptions ? ["--exceptions", opts.templateExceptions] : []),
+    ]);
+    if (code !== 0) return code;
   }
   if (!opts.reference) return 0;
   return run([

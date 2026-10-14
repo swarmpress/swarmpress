@@ -779,6 +779,7 @@ pub fn menus(design: &SiteDesign, site: &SiteContext) -> (Vec<NavigationMenu>, V
                         label,
                         url,
                         children: Vec::new(),
+                class: None,
                     }),
                     None if lang == site.langs()[0] => notes.push(Issue::new(
                         IssueCode::Note,
@@ -821,6 +822,7 @@ pub fn menus(design: &SiteDesign, site: &SiteContext) -> (Vec<NavigationMenu>, V
                         label: l.to_ascii_uppercase(),
                         url: format!("/{l}/"),
                         children: Vec::new(),
+                        class: None,
                     })
                     .collect(),
             });

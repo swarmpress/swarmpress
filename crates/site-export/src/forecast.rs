@@ -203,7 +203,7 @@ fn find(html: &str) -> Vec<Found> {
 }
 
 /// The end (after `</div>`) of the div whose content starts at `at`.
-fn match_div(html: &str, at: usize) -> Option<usize> {
+pub(crate) fn match_div(html: &str, at: usize) -> Option<usize> {
     let lower = html.to_ascii_lowercase();
     let mut depth = 1usize;
     let mut i = at;
@@ -315,14 +315,15 @@ fn render(m: &Marker, rows: &[(&Place, &Forecast)]) -> String {
             l.t(WIND)
         ));
         for d in fc.days.iter().take(m.days) {
+            let rain = d.rain_pct.map(|p| p.round() as i64);
             table.push_str(&format!(
-                "<tr><th scope=\"row\">{}</th><td>{} {}</td><td>{} / {}</td><td>{}</td><td>{}</td></tr>",
+                "<tr><th scope=\"row\">{}</th><td><span class=\"ct-wx ct-wx-{}\">{}</span></td><td>{}</td><td{}>{}</td><td>{}</td></tr>",
                 esc(&day_label(&d.date, l)),
-                symbol(d.code),
+                sky_icon(d.code),
                 esc(l.t(condition(d.code))),
-                deg(d.max_c),
-                deg(d.min_c),
-                d.rain_pct.map(|p| format!("{}%", p.round() as i64)).unwrap_or_else(|| "–".into()),
+                range(d.min_c, d.max_c),
+                if rain.is_some_and(|r| r >= RAIN_MARKED) { " class=\"ct-rain-high\"" } else { "" },
+                rain.map(|p| format!("{p}%")).unwrap_or_else(|| "–".into()),
                 d.wind_kmh.map(|w| format!("{} km/h", w.round() as i64)).unwrap_or_else(|| "–".into()),
             ));
         }
@@ -338,9 +339,10 @@ fn render(m: &Marker, rows: &[(&Place, &Forecast)]) -> String {
             table.push_str(&format!("<tr><th scope=\"row\">{}</th>", esc(&p.name)));
             for d in fc.days.iter().take(m.days) {
                 table.push_str(&format!(
-                    "<td title=\"{}\">{} {} / {}</td>",
+                    "<td title=\"{}\"><span class=\"ct-wx ct-wx-{}\" role=\"img\" aria-label=\"{}\"></span> {} / {}</td>",
                     esc(l.t(condition(d.code))),
-                    symbol(d.code),
+                    sky_icon(d.code),
+                    esc(l.t(condition(d.code))),
                     deg(d.max_c),
                     deg(d.min_c)
                 ));
@@ -363,6 +365,42 @@ fn render(m: &Marker, rows: &[(&Place, &Forecast)]) -> String {
 
 fn deg(c: f64) -> String {
     format!("{}°", c.round() as i64)
+}
+
+/// A day's chance of rain from which the table marks it (the design's weather rule: ≥ 20 %).
+pub const RAIN_MARKED: i64 = 20;
+/// The fixed scale of the low–high bar (°C), so days compare at a glance.
+pub const SCALE_C: (i64, i64) = (10, 30);
+
+/// `14° ━━━ 22°`: the low and the high, and a bar between them on the fixed [`SCALE_C`].
+fn range(min_c: f64, max_c: f64) -> String {
+    let (lo, hi) = SCALE_C;
+    let pct = |c: f64| ((c.round() as i64 - lo).clamp(0, hi - lo) * 100) / (hi - lo);
+    format!(
+        "<span class=\"ct-range\"><span>{}</span><span class=\"ct-range-bar\" style=\"--lo:{}%;--hi:{}%\" aria-hidden=\"true\"></span><span>{}</span></span>",
+        deg(min_c),
+        pct(min_c),
+        pct(max_c),
+        deg(max_c)
+    )
+}
+
+/// The design's sky icon for a WMO weather code (`ct-wx-{name}`: a stroke icon, never an emoji).
+pub fn sky_icon(code: u8) -> &'static str {
+    match code {
+        0 => "sun",
+        1 | 2 => "partly-cloudy",
+        3 | 71..=77 | 85 | 86 => "overcast",
+        45 | 48 => "fog",
+        51..=67 | 80..=82 => "rain",
+        95..=99 => "storm",
+        _ => "partly-cloudy",
+    }
+}
+
+/// The WMO weather code's word in `lang`.
+pub fn condition_word(code: u8, lang: &str) -> &'static str {
+    Lang::of(lang).t(condition(code))
 }
 
 // ------------------------------------------------------------------ words, in four languages
@@ -388,7 +426,7 @@ type Word = [&'static str; 4];
 const DAY: &Word = &["Day", "Tag", "Jour", "Giorno"];
 const PLACE: &Word = &["Village", "Dorf", "Village", "Borgo"];
 const SKY: &Word = &["Sky", "Himmel", "Ciel", "Cielo"];
-const TEMP: &Word = &["High / low", "Max. / min.", "Max. / min.", "Max / min"];
+const TEMP: &Word = &["Low — high", "Min. — max.", "Min. — max.", "Min — max"];
 const RAIN: &Word = &["Rain", "Regen", "Pluie", "Pioggia"];
 const WIND: &Word = &["Wind", "Wind", "Vent", "Vento"];
 const FROM: &Word = &[
@@ -451,19 +489,6 @@ fn condition(code: u8) -> &'static Word {
         80..=82 => &["Showers", "Schauer", "Averses", "Rovesci"],
         95..=99 => &["Thunderstorms", "Gewitter", "Orages", "Temporali"],
         _ => &["Mixed", "Wechselhaft", "Variable", "Variabile"],
-    }
-}
-
-fn symbol(code: u8) -> &'static str {
-    match code {
-        0 => "☀️",
-        1 | 2 => "⛅",
-        3 => "☁️",
-        45 | 48 => "🌫️",
-        51..=57 | 61..=67 | 80..=82 => "🌧️",
-        71..=77 | 85 | 86 => "🌨️",
-        95..=99 => "⛈️",
-        _ => "🌤️",
     }
 }
 

@@ -209,6 +209,15 @@ describe.skipIf(!ready || !migrateBinary(REPO_ROOT))("a site moved onto WordPres
         // No theme folder's design: canvas has none, and Coast is not active.
         expect(home).not.toContain("themes/coast/style.css");
         // The font file itself is in the export (the crawler follows the @font-face url()).
+        // The design's essentials ticker beside the live conditions, filled at export (recorded
+        // Open-Meteo answers: the sea, the air, the sunset), in the page's language.
+        const weather = page("/de/wetter/");
+        expect(weather).toContain("Sonnenuntergang");
+        expect(weather).toContain('<span class="ds-count">21°</span><span class="ds-meta">Meer</span>');
+        expect(weather).not.toContain("sp-forecast-pending");
+        // The forecast's sky is an icon class and a word, never an emoji.
+        expect(weather).toContain("ct-wx ct-wx-");
+        expect(weather).not.toMatch(/[☀⛅🌧⛈☁]/u);
         const font = "/wp-content/uploads/fonts/harbour-serif-400-normal.woff2";
         expect(release.files[font]?.content_type ?? `missing ${font}`).toContain("font/woff2");
         expect(readFileSync(join(out, "export/files", font.slice(1))).subarray(0, 4).toString()).toBe("wOF2");

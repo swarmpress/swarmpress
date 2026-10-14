@@ -117,6 +117,10 @@ mod tests {
             parts: vec!["header".into()],
             menus: vec![],
             html: None,
+            components: vec![],
+            classes: vec![],
+            brand: None,
+            search: None,
         };
         let presets = Presets::default();
         let input = TemplateInput {

@@ -30,6 +30,7 @@
 #![forbid(unsafe_code)]
 
 pub mod bundle;
+pub mod components;
 pub mod css;
 pub mod dc;
 pub mod diff;

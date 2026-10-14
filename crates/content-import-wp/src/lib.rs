@@ -21,8 +21,10 @@
 
 pub mod compare;
 pub mod compose;
+pub mod design;
 pub mod entries;
 pub mod markup;
+pub mod parity;
 pub mod plan;
 pub mod routes;
 pub mod theme;

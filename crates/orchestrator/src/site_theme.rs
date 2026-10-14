@@ -102,6 +102,9 @@ pub struct SiteThemeRecord {
     /// The visual comparison, region by region (without the rendered markup).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visual: Option<VisualReport>,
+    /// Which component of the design serves what on the site, and why one is unused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coverage: Option<theme_designer::catalog::Coverage>,
 }
 
 /// The branch a design version's theme is written on.
@@ -194,6 +197,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 collections: Vec::new(),
                 places: Vec::new(),
                 images: Vec::new(),
+                ..SiteContext::default()
             },
         };
         Ok((version, design, manifest, site))
@@ -347,12 +351,14 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             });
         }
 
-        // The whole theme, before anything is written.
+        // The whole theme, before anything is written: its checks, the source site's navigation
+        // kept, and every component the site has use for used (theme_designer::catalog).
         let data = assemble(&p, &markup);
-        let errors: Vec<Issue> = check_theme(&data, &p)
+        let mut errors: Vec<Issue> = check_theme(&data, &p)
             .into_iter()
             .filter(Issue::is_error)
             .collect();
+        errors.extend(theme_designer::catalog::coverage(&design, &p, &data).1);
         if !errors.is_empty() {
             let f = invalid_answer(lines(&errors));
             return self
@@ -488,10 +494,11 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 break;
             }
             let next = assemble(&p, &markup);
-            let theme_errors: Vec<Issue> = check_theme(&next, &p)
+            let mut theme_errors: Vec<Issue> = check_theme(&next, &p)
                 .into_iter()
                 .filter(Issue::is_error)
                 .collect();
+            theme_errors.extend(theme_designer::catalog::coverage(&design, &p, &next).1);
             if !theme_errors.is_empty() {
                 // The fixes broke the whole; keep the theme as it was.
                 for (label, old) in tried {
@@ -555,6 +562,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             .gateway
             .put_theme_data(&branch, &data, &message, Some(&who_attr))
             .await?;
+        let coverage = theme_designer::catalog::coverage(&design, &p, &data).0;
         let record = SiteThemeRecord {
             kind: SITE_THEME_KIND.into(),
             design_version: version,
@@ -569,6 +577,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             summary: summary.clone(),
             score,
             visual: visual.as_ref().map(VisualReport::summary),
+            coverage: Some(coverage),
         };
         let sha = stage_hash(&[&serde_json::to_string(&record.theme).map_err(corrupt)?]);
         let mut art = self.load_artifact(req, &item).await?.unwrap_or_default();

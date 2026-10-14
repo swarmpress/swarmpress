@@ -141,6 +141,9 @@
 # A design as data (ADR-0093): its global styles and the font library's uploads are exported (FEAT-112).
 - match: { classname: site-export, title: "tests::a_designs_global_styles_and_uploaded_fonts_are_exported" }
   features: [FEAT-112, FEAT-109]
+# The essentials ticker filled at export (ADR-0093's second addendum, FEAT-115).
+- match: { classname: site-export, title: "essentials::" }
+  features: [FEAT-115, FEAT-109]
 # The static export (FEAT-109): its unit tests are its own suite.
 - match: { classname: site-export }
   features: [FEAT-109]
@@ -150,6 +153,11 @@
 # The design's lists as entries and the design's templates on the pages (ADR-0093 addendum).
 - match: { classname: content-import-wp, title: "tests::with_a_design_the_homes_are_its_templates_pages_get_its_listings_and_its_rules_hold" }
   features: [FEAT-112, FEAT-115]
+# The content for a design's components and the export's checks against the live site (FEAT-115).
+- match: { classname: content-import-wp, title: "design::tests" }
+  features: [FEAT-115, FEAT-112]
+- match: { classname: content-import-wp, title: "parity::tests" }
+  features: [FEAT-115, FEAT-112]
 - match: { classname: content-import-wp }
   features: [FEAT-112]
 # A site's design from Claude Design (FEAT-114): unit tests in crates/site-design/src.

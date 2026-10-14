@@ -41,6 +41,12 @@ pub struct SiteDesign {
     /// Principles, fixes and typesetting rules, some of them checkable.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<DesignRule>,
+    /// The design's icon set and place marks (an iconography sheet's data).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub icons: Vec<Icon>,
+    /// The micro-interactions a motion sheet specifies.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interactions: Vec<Interaction>,
     /// Every page read and what it was taken as.
     pub pages: Vec<DesignPage>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -463,6 +469,110 @@ pub struct Component {
     pub notes: Vec<String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub html: String,
+    /// What the component serves on a site, from [`COMPONENT_FUNCTIONS`] (`faq`, `trail-stats`),
+    /// read from its name and subtitle ([`crate::components`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub functions: Vec<String>,
+    /// The forms it comes in (`story`, `village`, `stay`; `primary`, `secondary`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variants: Vec<String>,
+    /// The states the design specifies (`hover`, `focus`, `open`, `disabled`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub states: Vec<String>,
+    /// The sheet's style rules for the classes its markup uses (interactions, states), at most
+    /// [`COMPONENT_CSS_BYTES`].
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub css: String,
+}
+
+/// A component's style rules are kept up to this size.
+pub const COMPONENT_CSS_BYTES: usize = 6 * 1024;
+
+/// What a component can serve on a site: a closed list, so a renderer and its checks can say
+/// which content each component is for. `(function, what it is)`.
+pub const COMPONENT_FUNCTIONS: &[(&str, &str)] = &[
+    (
+        "masthead",
+        "the site's header: wordmark, main menu, languages, its button",
+    ),
+    ("mega-menu", "a main-menu item's panel of sub-pages"),
+    ("mobile-menu", "the main menu on a phone"),
+    ("button", "buttons and arrow links"),
+    ("tags", "chips, tags and tabs"),
+    ("cards", "entries as cards (stories, places, stays)"),
+    (
+        "trail-stats",
+        "a route's facts: distance, time, grade, access",
+    ),
+    ("essentials", "live facts of a place (sea, air, sunset)"),
+    (
+        "callout",
+        "pull quotes, tips and notices set apart from the text",
+    ),
+    ("byline", "who wrote it, where and when"),
+    (
+        "page-header",
+        "a page's breadcrumb, eyebrow, headline and lede",
+    ),
+    ("breadcrumb", "the path to the page"),
+    ("contents", "the page's sections as a list of links"),
+    ("reading-progress", "how far the reader is"),
+    ("search", "searching the site"),
+    ("form", "form fields"),
+    ("faq", "questions and answers"),
+    ("getting-here", "ways to arrive, one row per mode"),
+    ("itinerary", "a trip's days in order"),
+    ("gallery", "a set of pictures"),
+    ("pagination", "the pages of a list"),
+    ("feedback", "badges, tooltips and toasts"),
+    ("loading", "content on its way"),
+    ("empty", "a list with nothing in it"),
+    ("related", "what to read next"),
+    ("listing-bar", "a listing's title, count, filters and sort"),
+    ("activity", "an activity or sight in a listing"),
+    ("restaurant", "a restaurant in a listing"),
+    ("weather", "the forecast and the seasons"),
+    ("people", "the people who make the site"),
+    ("footer", "the site's footer"),
+];
+
+/// An icon of the design's set (or a mark of a place).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Icon {
+    /// The id the design gives it (`ct-train`, `ct-wx-rain`, `ct-village-vernazza`).
+    pub id: String,
+    pub name: String,
+    /// `interface`, `travel`, `weather`, `mark` (the list it came from).
+    pub group: String,
+    /// The SVG path data, drawn on a 24 × 24 grid with a stroke.
+    pub paths: Vec<String>,
+    /// A mark's fill (its place's pigment).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+/// A micro-interaction the design specifies, with its fallback for reduced motion.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Interaction {
+    /// `01`.
+    pub number: String,
+    /// `Link underline draw`.
+    pub name: String,
+    /// What moves.
+    pub behaviour: String,
+    /// `320ms`, `560 / 320`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub duration: String,
+    /// The easing's name (`tide`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub easing: String,
+    /// What happens under `prefers-reduced-motion: reduce`.
+    pub reduced: String,
+    pub page: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

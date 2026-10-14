@@ -40,7 +40,10 @@ The client-wasm build must exist (cargo xtask wasm) for run, test and sim-rule c
       --forms-endpoint <url>       where the export's forms post (the platform's /f/{company});
                                    only with it is the newsletter composed (form, header button, footer link)
       --forecasts <dir>            recorded Open-Meteo answers ({lat},{lng}.json) instead of the network
-      --theme-data <file>          the site's design as data (ThemeData JSON, ADR-0093): imported onto canvas
+      --theme-data <file>          the site's design as data (ThemeData JSON, ADR-0093): imported onto canvas,
+                                   its files exported, its checks run (design-check.json)
+      --retired <file>             menu entries retired on purpose (JSON: URL → reason)
+      --template-exceptions <file> pages that may keep a generic template (JSON: route → reason)
 
 wp-conformance needs \`cargo xtask sandbox-fetch --node\` and \`cargo build -p storage-api --bin swarmpress-storage\`;
 wp-migrate also \`cargo build -p content-import-wp --features cli\`.`;
@@ -113,6 +116,8 @@ export async function main(argv: string[], out: Out = consoleOut): Promise<numbe
           formsEndpoint: one("forms-endpoint"),
           forecasts: one("forecasts"),
           themeData: one("theme-data"),
+          retired: one("retired"),
+          templateExceptions: one("template-exceptions"),
           log: (line) => out.error(line),
         });
       case undefined:

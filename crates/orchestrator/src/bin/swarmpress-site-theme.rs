@@ -236,8 +236,19 @@ fn collections() -> Vec<Collection> {
     ]
 }
 
-/// The site as the theme sees it, from its content (the import's menus, pages and entries).
-fn site_of(content: &Path) -> SiteContext {
+/// A source menu item as the theme's navigation item.
+fn nav_item(m: &MenuItem) -> site_design::wordpress::NavigationItem {
+    site_design::wordpress::NavigationItem {
+        label: m.label.clone(),
+        url: m.url.clone(),
+        children: m.children.iter().map(nav_item).collect(),
+        class: None,
+    }
+}
+
+/// The site as the theme sees it, from its content (the import's menus, pages and entries) and
+/// the design's listing templates (`archive-…`: which pages they take).
+fn site_of(content: &Path, design: &site_design::SiteDesign) -> SiteContext {
     let site = content_import_wp::Site::read(content).unwrap_or_else(|e| die(e));
     let plan = content_import_wp::plan::plan(&site);
     let mut links = Vec::new();
@@ -396,8 +407,88 @@ fn site_of(content: &Path) -> SiteContext {
         .map(|(slug, names)| Place {
             slug: slug.to_string(),
             label: names[0].to_string(),
+            // A place's line: its hero's subtitle, per language.
+            lines: content_import_wp::LANGS
+                .iter()
+                .filter_map(|l| {
+                    let line = site
+                        .villages
+                        .get(*slug)?
+                        .get("hero")?
+                        .get("subtitle")
+                        .and_then(|s| content_import_wp::localized(s, l))?;
+                    Some((l.to_string(), line.to_string()))
+                })
+                .collect(),
         })
         .collect();
+    // The source site's menus, nested, per language (the theme keeps every entry).
+    let menus = content_import_wp::plan::source_menus(&site, Default::default())
+        .into_iter()
+        .map(|m| theme_designer::model::SourceMenu {
+            name: m.name,
+            lang: m.lang,
+            area: match m.area.as_str() {
+                "header" => theme_designer::model::MenuArea::Header,
+                "footer" => theme_designer::model::MenuArea::Footer,
+                _ => theme_designer::model::MenuArea::Other,
+            },
+            items: m.items.iter().map(nav_item).collect(),
+        })
+        .collect();
+    // The page types, from the content as the import gives it a design (its classes), with the
+    // templates the import assigns.
+    let designed = content_import_wp::plan::plan_with(
+        &site,
+        content_import_wp::compose::Options {
+            design: true,
+            ..Default::default()
+        },
+    );
+    let listings: std::collections::BTreeSet<String> = design
+        .templates
+        .iter()
+        .filter(|t| t.kind == site_design::model::TemplateKind::Listing)
+        .map(|t| site_design::wordpress::template_slug(t.kind, &t.slug))
+        .collect();
+    let page_types = content_import_wp::design::page_types(&designed.docs, &listings)
+        .into_iter()
+        .filter(|p| p.key != "home")
+        .map(|p| theme_designer::model::PageType {
+            key: p.key,
+            label: p.label,
+            template: p.template,
+            count: p.count,
+            sample: p.sample,
+            kinds: p.kinds,
+            post: p.post,
+            placed: p.placed,
+        })
+        .collect();
+    // A story to feature per place and language: the newest that names the place.
+    let mut featured = Vec::new();
+    for (slug, _) in content_import_wp::routes::VILLAGES {
+        for lang in content_import_wp::LANGS {
+            let story = designed
+                .docs
+                .iter()
+                .filter(|d| {
+                    d.post_type == "post"
+                        && d.lang == lang
+                        && d.meta.get("_swarmpress_story_place").map(String::as_str) == Some(slug)
+                })
+                .max_by(|a, b| a.date.cmp(&b.date).then_with(|| b.route.cmp(&a.route)));
+            if let Some(d) = story {
+                featured.push(theme_designer::model::Featured {
+                    place: slug.to_string(),
+                    lang: lang.to_string(),
+                    title: d.title.clone(),
+                    url: d.route.clone(),
+                    image: d.meta.get("image").cloned(),
+                });
+            }
+        }
+    }
     let images = content_import_wp::routes::VILLAGES
         .iter()
         .filter_map(|(slug, names)| {
@@ -425,6 +516,11 @@ fn site_of(content: &Path) -> SiteContext {
         collections: collections(),
         places,
         images,
+        menus,
+        retired: Vec::new(),
+        page_types,
+        featured,
+        forms: false,
     }
 }
 
@@ -853,7 +949,7 @@ async fn main() {
 
     let b = bundle(&design_path);
     let design = interpret(&b);
-    let site = site_of(&content);
+    let site = site_of(&content, &design);
     eprintln!(
         "design {} ({} files, bundle {}): {} templates, {} parts, {} pages read",
         design.title,
@@ -866,6 +962,13 @@ async fn main() {
     std::fs::write(
         out.join("site.json"),
         serde_json::to_string_pretty(&site).unwrap(),
+    )
+    .unwrap_or_else(|e| die(e));
+    // The deterministic plan (tasks, navigation, block styles, files), for review.
+    let the_plan = theme_designer::plan(&design, &b.manifest(), &site);
+    std::fs::write(
+        out.join("plan.json"),
+        serde_json::to_string_pretty(&the_plan).unwrap(),
     )
     .unwrap_or_else(|e| die(e));
     for (path, bytes) in b.files() {
@@ -892,6 +995,66 @@ async fn main() {
     for (path, html) in site_design::render::static_pages(&design, &texts) {
         let p = out.join("design").join(static_name(&path));
         std::fs::write(&p, html).unwrap_or_else(|e| die(e));
+    }
+    // The report of a site already made (`--report-export DIR --theme-data FILE`): the coverage of
+    // the design's components and the site's page types, and their visual comparison at 375 and
+    // 1280 px on the static export, without a job.
+    if let Some(export) = arg(&args, "--report-export") {
+        let file = need("--theme-data");
+        let data: site_design::ThemeData = serde_json::from_str(
+            &std::fs::read_to_string(&file).unwrap_or_else(|e| die(format!("{file}: {e}"))),
+        )
+        .unwrap_or_else(|e| die(format!("{file}: {e}")));
+        let p = theme_designer::plan(&design, &b.manifest(), &site);
+        let (coverage, issues) = theme_designer::catalog::coverage(&design, &p, &data);
+        let pages =
+            theme_designer::visual::coverage_pages(&design, &p, &data, &coverage, &static_name);
+        let spec = json!({
+            "design": out.join("design"),
+            "site": PathBuf::from(&export).join("files"),
+            "widths": [375, 1280],
+            "mask": {"design": ".ph", "site": ".ds-tile,.ds-card-img,.wp-block-post-featured-image"},
+            "pages": pages,
+        });
+        let dir = out.join("visual-coverage");
+        std::fs::create_dir_all(&dir).unwrap_or_else(|e| die(e));
+        std::fs::write(
+            dir.join("spec.json"),
+            serde_json::to_string_pretty(&spec).unwrap(),
+        )
+        .unwrap_or_else(|e| die(e));
+        std::fs::write(
+            out.join("coverage.json"),
+            serde_json::to_string_pretty(&json!({"coverage": coverage, "issues": issues})).unwrap(),
+        )
+        .unwrap_or_else(|e| die(e));
+        let status = std::process::Command::new("bun")
+            .current_dir(root().join("apps/game"))
+            .args(["e2e/theme-visual.mts", "--spec"])
+            .arg(dir.join("spec.json"))
+            .arg("--out")
+            .arg(&dir)
+            .status()
+            .unwrap_or_else(|e| die(format!("bun: {e}")));
+        if !status.success() {
+            die("the screenshots failed");
+        }
+        eprintln!(
+            "coverage: {} components used, {} unused; {} page types; {} issues",
+            coverage
+                .components
+                .iter()
+                .filter(|c| !c.used_in.is_empty())
+                .count(),
+            coverage
+                .components
+                .iter()
+                .filter(|c| c.used_in.is_empty())
+                .count(),
+            coverage.page_types.len(),
+            issues.len()
+        );
+        return;
     }
 
     let gateway = FakeGateway::new();

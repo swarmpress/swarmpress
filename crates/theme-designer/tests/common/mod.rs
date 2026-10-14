@@ -119,6 +119,7 @@ pub fn cinqueterre() -> SiteContext {
         .map(|v| Place {
             slug: v.to_lowercase(),
             label: v.to_string(),
+            lines: Default::default(),
         })
         .collect(),
         images: vec![SiteImage {
@@ -126,6 +127,7 @@ pub fn cinqueterre() -> SiteContext {
             alt: "Vernazza harbour".into(),
             label: "Vernazza harbour".into(),
         }],
+        ..Default::default()
     }
 }
 
@@ -242,6 +244,7 @@ pub fn coast_site() -> SiteContext {
         collections: cinqueterre().collections,
         places: Vec::new(),
         images: Vec::new(),
+        ..Default::default()
     }
 }
 

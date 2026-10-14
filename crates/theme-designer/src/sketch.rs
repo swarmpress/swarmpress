@@ -159,11 +159,17 @@ fn group(class: &str, inner: &str) -> String {
     group_full(&Presets::default(), "div", class, None, inner)
 }
 
-/// A link menu (one item per language) as a navigation block with `extra` classes.
+/// A link menu (one item per language) as a navigation block with `extra` classes (and the
+/// markers of the components it is).
 fn nav(m: &MenuSpec, extra: &str) -> String {
+    let marks: Vec<String> = m
+        .components
+        .iter()
+        .map(|c| crate::catalog::marker(c))
+        .collect();
     void(
         "navigation",
-        json!({"className": format!("{} {extra}", m.class).trim(), "overlayMenu": "never", "ariaLabel": m.label}),
+        json!({"className": format!("{} {extra} {}", m.class, marks.join(" ")).split_whitespace().collect::<Vec<_>>().join(" "), "overlayMenu": "never", "ariaLabel": m.label}),
     )
 }
 
@@ -251,12 +257,53 @@ fn head(s: &SectionSpec, right: &str) -> String {
 
 fn query_block(s: &SectionSpec, class: &str, template: &str) -> String {
     let q = s.query.clone().unwrap_or(json!({"inherit": true}));
+    let inherit = q.get("inherit") == Some(&json!(true));
     let mut a = obj(json!({"query": q}));
     a.insert("className".into(), json!(class));
+    // A list of its own (an archive, the search's results) has pages, and says when it is empty.
+    let mut after = String::new();
+    if inherit {
+        after.push_str(
+            "<!-- wp:query-pagination {\"className\":\"ds-pager\"} -->\n<!-- wp:query-pagination-previous /-->\n<!-- wp:query-pagination-numbers /-->\n<!-- wp:query-pagination-next /-->\n<!-- /wp:query-pagination -->\n",
+        );
+        after.push_str(&format!(
+            "<!-- wp:query-no-results -->\n{}<!-- /wp:query-no-results -->\n",
+            para(
+                "ds-empty",
+                "Nothing here yet. Try the search, or start from the front page."
+            )
+        ));
+    }
     format!(
-        "<!-- wp:query{} -->\n<div class=\"wp-block-query {}\">\n<!-- wp:post-template -->\n{template}<!-- /wp:post-template -->\n</div>\n<!-- /wp:query -->\n",
+        "<!-- wp:query{} -->\n<div class=\"wp-block-query {}\">\n<!-- wp:post-template -->\n{template}<!-- /wp:post-template -->\n{after}</div>\n<!-- /wp:query -->\n",
         attrs(&a),
         esc(class)
+    )
+}
+
+/// An essentials ticker the static export fills (a place's sea, air and sunset, live): its head and
+/// three values held empty in the template, never written in.
+fn ticker(e: &crate::model::EssentialsSpec) -> String {
+    let mut head = String::new();
+    if let Some(l) = &e.label {
+        head.push_str(&para("", &esc(l)));
+    }
+    let mut inner = group("ds-ticker-head", &head);
+    let mut values = String::new();
+    for k in ["sea", "air", "sunset"] {
+        values.push_str(&group(
+            &format!("ds-ticker-value ds-ticker-{k}"),
+            &para("ds-count", "–"),
+        ));
+    }
+    inner.push_str(&group("ds-ticker-values", &values));
+    group(
+        &format!(
+            "ds-ticker sp-essentials sp-place-{} {}",
+            e.place,
+            crate::catalog::marker(&e.component)
+        ),
+        &inner,
     )
 }
 
@@ -291,7 +338,17 @@ fn section_markup(task: &TemplateTask, s: &SectionSpec, p: &Presets, h1: &mut bo
             .map(|e| para("", &esc(e.text().trim())))
         })
         .unwrap_or_default();
-    let outer = |extra: &str| format!("{} {extra}", s.class).trim().to_string();
+    let markers: Vec<String> = s
+        .components
+        .iter()
+        .map(|c| crate::catalog::marker(c))
+        .collect();
+    let outer = |extra: &str| {
+        format!("{} {extra} {}", s.class, markers.join(" "))
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
     match (s.kind.as_str(), shape) {
         ("entry", _) => {
             let mut inner = String::new();
@@ -320,11 +377,50 @@ fn section_markup(task: &TemplateTask, s: &SectionSpec, p: &Presets, h1: &mut bo
             group_full(p, "section", &outer("ds-wrap"), None, &inner)
         }
         ("title", _) => {
-            let mut inner = eyebrow(s);
+            let post = task.template_kind == Some(site_design::model::TemplateKind::Single);
+            let mut inner = void(
+                "breadcrumbs",
+                json!({"showHomeItem": true, "showCurrentItem": true, "className": "ds-crumbs"}),
+            );
+            inner.push_str(&eyebrow(s));
+            if post {
+                inner.push_str(&void(
+                    "post-terms",
+                    json!({"term": "category", "className": "ds-eyebrow"}),
+                ));
+            }
             inner.push_str(&void("post-title", json!({"level": 1})));
             *h1 = true;
+            if post {
+                // The lede; the story's byline and dateline are its content's (`ct-byline`).
+                inner.push_str(&void("post-excerpt", json!({"className": "ds-lede"})));
+            }
             group_full(p, "section", &outer("ds-wrap ds-page-head"), None, &inner)
         }
+        ("content", "article") => {
+            let mut inner = group("ds-progress", "");
+            inner.push_str(&void(
+                "post-content",
+                json!({"className": "ds-prose-article", "layout": {"type": "default"}}),
+            ));
+            group_full(
+                p,
+                "section",
+                &outer("ds-wrap ds-article ds-section"),
+                None,
+                &inner,
+            )
+        }
+        ("content", "prose-wide") => group_full(
+            p,
+            "section",
+            &outer("ds-wrap ds-section"),
+            None,
+            &void(
+                "post-content",
+                json!({"className": "ds-prose-wide", "layout": {"type": "default"}}),
+            ),
+        ),
         ("content", _) => group_full(
             p,
             "section",
@@ -362,7 +458,10 @@ fn section_markup(task: &TemplateTask, s: &SectionSpec, p: &Presets, h1: &mut bo
             if !buttons.is_empty() {
                 main.push_str(&group("ds-buttons", &buttons));
             }
-            let row = group("ds-hero-main", &main);
+            let mut row = group("ds-hero-main", &main);
+            if let Some(e) = &s.essentials {
+                row.push_str(&group("ds-hero-aside", &ticker(e)));
+            }
             group_full(p, "section", &outer("ds-wrap ds-hero"), None, &row)
         }
         (_, "image-band") => {
@@ -618,13 +717,28 @@ fn section_markup(task: &TemplateTask, s: &SectionSpec, p: &Presets, h1: &mut bo
                 *h1 = true;
                 inner.push_str(&para(
                     "ds-lede",
-                    "The page you were looking for is not here. Search the site or go back to the start.",
+                    "The page you were looking for is not here: it may have moved or never existed. Search the site or go back to the start.",
                 ));
                 inner.push_str(&void(
                     "search",
                     json!({"label": "Search", "showLabel": false, "buttonText": "Search"}),
                 ));
                 inner.push_str(&para("ds-more", "<a href=\"/\">Back to the front page</a>"));
+                group_full(
+                    p,
+                    "section",
+                    &outer("ds-wrap ds-page-head ds-empty"),
+                    None,
+                    &inner,
+                )
+            }
+            Some("search-header") => {
+                let mut inner = void("query-title", json!({"type": "search", "level": 1}));
+                *h1 = true;
+                inner.push_str(&void(
+                    "search",
+                    json!({"label": "Search", "showLabel": false, "buttonText": "Search"}),
+                ));
                 group_full(p, "section", &outer("ds-wrap ds-page-head"), None, &inner)
             }
             _ => {
@@ -637,10 +751,9 @@ fn section_markup(task: &TemplateTask, s: &SectionSpec, p: &Presets, h1: &mut bo
                     let first = n.split(['.', ':']).next().unwrap_or(n);
                     inner.push_str(&para("ds-meta", &esc(first)));
                 }
-                if let Some(q) = &s.query {
+                if s.query.is_some() {
                     let mut item = void("post-title", json!({"level": 3, "isLink": true}));
                     item.push_str(&void("post-excerpt", json!({})));
-                    let _ = q;
                     inner.push_str(&query_block(s, "ds-rows", &item));
                 }
                 group_full(
@@ -690,14 +803,40 @@ fn part_markup(task: &TemplateTask, p: &Presets) -> String {
         .iter()
         .filter(|m| !m.name.starts_with("link-"))
         .collect();
+    // The part's own components on its outer group; the menus' on their navigation blocks.
+    let own: String = task
+        .components
+        .iter()
+        .map(|c| crate::catalog::marker(c))
+        .collect::<Vec<_>>()
+        .join(" ");
     if task.slug == "header" {
-        let mut row = wordmark("");
+        let mut row = match &task.brand {
+            Some(b) => void(
+                "navigation",
+                json!({"className": format!("sp-menu-{b} ds-wordmark"), "overlayMenu": "never", "ariaLabel": "Home"}),
+            ),
+            None => wordmark(""),
+        };
         let mut end = String::new();
+        let mut main_done = false;
         for m in &site_menus {
             if m.name == "languages" {
                 end.push_str(&void(
                     "navigation",
                     json!({"className": format!("{} ds-lang", m.class), "overlayMenu": "never", "ariaLabel": m.label}),
+                ));
+            } else if !main_done {
+                main_done = true;
+                let marks: String = m
+                    .components
+                    .iter()
+                    .map(|c| crate::catalog::marker(c))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                row.push_str(&void(
+                    "navigation",
+                    json!({"className": format!("{} ds-nav-dots {marks}", m.class).trim(), "overlayMenu": "mobile", "openSubmenusOnClick": false, "showSubmenuIcon": true, "ariaLabel": m.label}),
                 ));
             } else {
                 row.push_str(&void(
@@ -706,6 +845,12 @@ fn part_markup(task: &TemplateTask, p: &Presets) -> String {
                 ));
             }
         }
+        if let Some(search) = &task.search {
+            end.push_str(&void(
+                "search",
+                json!({"label": "Search", "showLabel": false, "buttonPosition": "button-only", "buttonUseIcon": true, "className": format!("ds-search {}", crate::catalog::marker(search))}),
+            ));
+        }
         for m in &link_menus {
             end.push_str(&nav(m, "ds-btn-primary"));
         }
@@ -713,7 +858,8 @@ fn part_markup(task: &TemplateTask, p: &Presets) -> String {
             row.push_str(&group("ds-masthead-end", &end));
         }
         let inner = group("ds-wrap ds-masthead-row", &row);
-        return group_full(p, "div", "sp-header ds-masthead", None, &inner);
+        let outer = format!("sp-header ds-masthead {own}");
+        return group_full(p, "div", outer.trim(), None, &inner);
     }
     // The footer: brand and line, a column per menu, the colophon.
     let mut brand_col = wordmark("");
@@ -746,7 +892,8 @@ fn part_markup(task: &TemplateTask, p: &Presets) -> String {
         inner.push_str(&group("ds-colophon", &colophon));
     }
     let wrap = group("ds-wrap ds-footer-inner", &inner);
-    group_full(p, "div", "sp-footer ds-footer", None, &wrap)
+    let outer = format!("sp-footer ds-footer {own}");
+    group_full(p, "div", outer.trim(), None, &wrap)
 }
 
 /// The reference markup of `task` (module docs).
@@ -766,11 +913,21 @@ pub fn template(task: &TemplateTask, p: &Presets) -> String {
             for sec in &task.sections {
                 main.push_str(&section_markup(task, sec, p, &mut h1));
             }
-            let _ = write!(
-                s,
-                "<!-- wp:group {} -->\n<main class=\"wp-block-group\">\n{main}</main>\n<!-- /wp:group -->\n",
-                json!({"tagName": "main"})
-            );
+            if task.classes.is_empty() {
+                let _ = write!(
+                    s,
+                    "<!-- wp:group {} -->\n<main class=\"wp-block-group\">\n{main}</main>\n<!-- /wp:group -->\n",
+                    json!({"tagName": "main"})
+                );
+            } else {
+                let c = task.classes.join(" ");
+                let _ = write!(
+                    s,
+                    "<!-- wp:group {} -->\n<main class=\"wp-block-group {}\">\n{main}</main>\n<!-- /wp:group -->\n",
+                    json!({"tagName": "main", "className": c}),
+                    esc(&c)
+                );
+            }
             for part in task.parts.iter().filter(|x| *x != "header") {
                 s.push_str(&void(
                     "template-part",

@@ -33,10 +33,13 @@
 #![forbid(unsafe_code)]
 
 pub mod blocks;
+pub mod catalog;
 pub mod check;
 pub mod components;
 pub mod fake;
+pub mod forms;
 pub mod model;
+pub mod navigation;
 pub mod plan;
 pub mod repair;
 pub mod sketch;
@@ -83,7 +86,6 @@ pub const ALLOWED_BLOCKS: &[&str] = &[
     "core/post-excerpt",
     "core/post-date",
     "core/post-terms",
-    "core/post-author-name",
     "core/post-featured-image",
     "core/post-navigation-link",
     "core/read-more",
@@ -97,6 +99,11 @@ pub const ALLOWED_BLOCKS: &[&str] = &[
     "core/query-pagination-next",
     "core/term-description",
     "core/search",
+    "core/breadcrumbs",
+    "core/post-time-to-read",
+    "core/query-total",
+    "core/table",
+    "core/pullquote",
 ];
 
 /// Font families whose licence is the SIL Open Font License (a theme may ship them).

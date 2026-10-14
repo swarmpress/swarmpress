@@ -342,16 +342,36 @@ pub fn pattern_post_name(slug: &str) -> String {
     slug.rsplit('/').next().unwrap_or(slug).to_string()
 }
 
-/// A menu item as navigation block markup (a link, or a submenu with its children).
+/// A block's attributes as WordPress serialises them: JSON with `<`, `>`, `&` and `--` escaped, so
+/// a label holding markup never ends the block comment.
+pub fn block_attrs(v: &serde_json::Value) -> String {
+    v.to_string()
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('&', "\\u0026")
+        .replace("--", "\\u002d\\u002d")
+}
+
+/// A menu item as navigation block markup (a link, or a submenu with its children), with its
+/// class of the theme's vocabulary when it has one.
 pub fn nav_markup(item: &NavigationItem) -> String {
-    let attrs =
+    let mut attrs =
         json!({"label": item.label, "url": item.url, "kind": "custom", "isTopLevelLink": true});
+    if let Some(c) = &item.class {
+        attrs["className"] = json!(c);
+    }
     if item.children.is_empty() {
-        return format!("<!-- wp:navigation-link {attrs} /-->");
+        return format!("<!-- wp:navigation-link {} /-->", block_attrs(&attrs));
     }
     let inner: String = item.children.iter().map(nav_markup).collect();
-    let attrs = json!({"label": item.label, "url": item.url, "kind": "custom"});
-    format!("<!-- wp:navigation-submenu {attrs} -->{inner}<!-- /wp:navigation-submenu -->")
+    let mut attrs = json!({"label": item.label, "url": item.url, "kind": "custom"});
+    if let Some(c) = &item.class {
+        attrs["className"] = json!(c);
+    }
+    format!(
+        "<!-- wp:navigation-submenu {} -->{inner}<!-- /wp:navigation-submenu -->",
+        block_attrs(&attrs)
+    )
 }
 
 fn title_or_slug(title: &str, slug: &str) -> String {

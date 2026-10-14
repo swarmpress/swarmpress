@@ -126,7 +126,12 @@ pub fn block(b: &Value, lang: &str, notes: &mut Notes) -> String {
     if inner.is_empty() {
         notes.empty_blocks.push(kind.to_string());
     }
-    localize_links(&group(&format!("ct-{}", class_name(kind)), &inner), lang)
+    // A collection says what its items are (`ct-items-trail`): a theme may render kinds apart.
+    let mut class = format!("ct-{}", class_name(kind));
+    if let Some(t) = b.get("itemType").and_then(Value::as_str) {
+        class.push_str(&format!(" ct-items-{}", class_name(t)));
+    }
+    localize_links(&group(&class, &inner), lang)
 }
 
 /// Every site link (`href="/…"`) in the page's language, wherever the source wrote it.
@@ -227,6 +232,7 @@ fn fields(o: &Map<String, Value>, lang: &str, level: u8) -> String {
             }
         }
         if SKIP.contains(&k)
+            || k.starts_with('_')
             || (k == "author" && has_quote)
             // An editor's id (`"persona": "giulia"`); the team grid's persona is prose.
             || (k == "persona" && v.as_str().is_some_and(|s| !s.contains(' ')))
@@ -399,7 +405,13 @@ fn list_field(key: &str, a: &[Value], lang: &str, level: u8) -> String {
             Value::Object(o) => {
                 let inner = fields(o, lang, (level + 1).min(6));
                 if !inner.is_empty() {
-                    out.push_str(&group(&format!("ct-{}-item", kebab(key)), &inner));
+                    // An item's own classes (`_class`: its mode of transport, its place).
+                    let mut class = format!("ct-{}-item", kebab(key));
+                    if let Some(extra) = o.get("_class").and_then(Value::as_str) {
+                        class.push(' ');
+                        class.push_str(extra);
+                    }
+                    out.push_str(&group(&class, &inner));
                 }
             }
             other => out.push_str(&value(key, other, lang, level)),

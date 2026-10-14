@@ -7,7 +7,8 @@
 //! before anything is written ([`crate::theme::checked`]).
 
 pub use site_design::wordpress::{
-    template_slug, valid_slug, AssetRef, GlobalStyles, NavigationItem, NavigationMenu, PartArea,
-    ShapeIssue, ThemeData, ThemeFontFace, ThemeFontFamily, ThemePart, ThemePattern, ThemeTemplate,
-    REQUIRED_PARTS, REQUIRED_TEMPLATES, THEME_DATA_FORMAT, THEME_JSON_VERSION,
+    template_slug, valid_slug, AssetRef, BlockStyle, GlobalStyles, NavigationItem, NavigationMenu,
+    PartArea, ShapeIssue, ThemeData, ThemeFile, ThemeFontFace, ThemeFontFamily, ThemePart,
+    ThemePattern, ThemeTemplate, ENHANCEMENT_PATH, ENHANCEMENT_SCRIPT, REQUIRED_PARTS,
+    REQUIRED_TEMPLATES, THEME_DATA_FORMAT, THEME_JSON_VERSION,
 };

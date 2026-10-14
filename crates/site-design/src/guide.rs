@@ -817,7 +817,7 @@ pub(crate) fn components(p: &Page) -> Vec<Component> {
                 (a.trim().to_string(), Some(b.trim().to_string()))
             });
         let html = block.outer_html();
-        out.push(Component {
+        let mut c = Component {
             slug: kebab(&name),
             name,
             number: Some(number),
@@ -829,7 +829,13 @@ pub(crate) fn components(p: &Page) -> Vec<Component> {
             } else {
                 String::new()
             },
-        });
+            functions: Vec::new(),
+            variants: Vec::new(),
+            states: Vec::new(),
+            css: String::new(),
+        };
+        crate::components::describe(&mut c, block, &p.html);
+        out.push(c);
     }
     out
 }

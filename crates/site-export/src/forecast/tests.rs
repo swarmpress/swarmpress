@@ -103,8 +103,16 @@ fn one_place_is_a_row_per_day_in_the_pages_language() {
     assert!(filled.contains("data-forecast-from=\"2026-10-12\""));
     assert!(!filled.contains("sp-forecast-pending"));
     // 12 October 2026 is a Monday; two days asked for, two rows.
-    assert!(filled.contains("<th scope=\"row\">Mo 12.</th><td>☀️ Klar</td><td>22° / 15°</td><td>3%</td><td>10 km/h</td>"));
-    assert!(filled.contains("<th scope=\"row\">Di 13.</th><td>🌧️ Regen</td><td>20° / 14°</td><td>85%</td><td>24 km/h</td>"));
+    // The sky as the design's stroke icon and its word (never an emoji), low and high on the
+    // fixed 10–30° bar, rain of 20 % or more marked.
+    assert!(filled.contains("<th scope=\"row\">Mo 12.</th><td><span class=\"ct-wx ct-wx-sun\">Klar</span></td><td><span class=\"ct-range\"><span>15°</span><span class=\"ct-range-bar\" style=\"--lo:25%;--hi:60%\" aria-hidden=\"true\"></span><span>22°</span></span></td><td>3%</td><td>10 km/h</td>"), "{filled}");
+    assert!(filled.contains(
+        "<th scope=\"row\">Di 13.</th><td><span class=\"ct-wx ct-wx-rain\">Regen</span></td>"
+    ));
+    assert!(filled.contains("<td class=\"ct-rain-high\">85%</td><td>24 km/h</td>"));
+    for emoji in ["☀", "⛅", "🌧", "⛈", "☁", "🌫", "🌨", "🌤"] {
+        assert!(!filled.contains(emoji), "no emoji: {emoji}");
+    }
     assert!(!filled.contains("Mi 14."));
     assert!(filled.contains("Vorhersage vom 12. Oktober 2026"));
     // Open-Meteo's attribution (CC BY 4.0).
@@ -125,9 +133,9 @@ fn several_places_are_a_row_per_place_and_a_column_per_day() {
     let filled = fill(&page(&m), &forecasts()).unwrap().unwrap();
     assert!(filled.contains("<th>Borgo</th><th>lun 12</th><th>mar 13</th><th>mer 14</th>"));
     assert!(filled.contains(
-        "<tr><th scope=\"row\">Manarola</th><td title=\"Poco nuvoloso\">⛅ 23° / 16°</td>"
+        "<tr><th scope=\"row\">Manarola</th><td title=\"Poco nuvoloso\"><span class=\"ct-wx ct-wx-partly-cloudy\" role=\"img\" aria-label=\"Poco nuvoloso\"></span> 23° / 16°</td>"
     ));
-    assert!(filled.contains("<td title=\"Temporali\">⛈️ 18° / 12°</td>"));
+    assert!(filled.contains("<td title=\"Temporali\"><span class=\"ct-wx ct-wx-storm\" role=\"img\" aria-label=\"Temporali\"></span> 18° / 12°</td>"));
     let manarola_row = filled.find(">Manarola<").unwrap();
     let vernazza_row = filled.find(">Vernazza<").unwrap();
     assert!(

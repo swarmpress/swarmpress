@@ -370,6 +370,10 @@ pub fn merge(base: &SiteDesign, newer: &SiteDesign) -> SiteDesign {
         components: merge_by(&base.components, &newer.components, |x| x.slug.clone()),
         navigation: merge_by(&base.navigation, &newer.navigation, |x| x.slug.clone()),
         rules: merge_by(&base.rules, &newer.rules, |x| format!("{}{}", x.page, x.id)),
+        icons: merge_by(&base.icons, &newer.icons, |x| x.id.clone()),
+        interactions: merge_by(&base.interactions, &newer.interactions, |x| {
+            format!("{}{}", x.page, x.number)
+        }),
         pages: merge_by(&base.pages, &newer.pages, |x| x.path.clone()),
         skipped: newer.skipped.clone(),
     }

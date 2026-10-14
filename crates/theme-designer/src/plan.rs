@@ -24,6 +24,8 @@ use site_design::wordpress::{
     ThemeFontFamily, ThemePart, ThemeTemplate, THEME_DATA_FORMAT,
 };
 
+#[allow(unused_imports)]
+use crate::model::PageType;
 use crate::model::{
     Collection, Issue, IssueCode, MenuSpec, Presets, SectionSpec, SiteContext, TaskKind,
     TemplateTask,
@@ -31,7 +33,15 @@ use crate::model::{
 use crate::styles::{colour_preset, menus, slugify, styles};
 
 /// Templates every theme has (WordPress's fallbacks and the front page).
-pub const REQUIRED: [&str; 6] = ["index", "single", "page", "404", "archive", "front-page"];
+pub const REQUIRED: [&str; 7] = [
+    "index",
+    "single",
+    "page",
+    "404",
+    "archive",
+    "search",
+    "front-page",
+];
 /// A part's design markup is cut to this many characters for the prompt.
 pub const PART_HTML_CHARS: usize = 6000;
 /// A component's notes are cut to this many characters.
@@ -63,6 +73,12 @@ pub struct ThemePlan {
     /// What the deterministic part noted (menu items without a page, sections without a
     /// collection, fonts reduced) and its errors (a font file missing).
     pub notes: Vec<Issue>,
+    /// The design's components applied to the site's content by class ([`crate::catalog`]).
+    #[serde(default)]
+    pub block_styles: Vec<site_design::wordpress::BlockStyle>,
+    /// The files the static site publishes (the icon sprite, the enhancement script).
+    #[serde(default)]
+    pub files: Vec<site_design::wordpress::ThemeFile>,
 }
 
 fn cut(s: &str, n: usize) -> String {
@@ -155,6 +171,8 @@ fn section_spec(
         html: None,
         links: Vec::new(),
         image: None,
+        components: Vec::new(),
+        essentials: None,
     };
     let component_html = |slug: &str| {
         design
@@ -273,7 +291,130 @@ fn section_spec(
         spec.image = picture_for(&spec, site);
     }
     spec.shape = Some(shape.into());
+    spec.components = markers_for(design, &spec, &s.html);
+    // An essentials box in the section (the hero's "today on the coast"): the template holds a
+    // group the export fills with a place's live values; the place is the one the design names,
+    // else the site's first.
+    if let Some(c) = crate::catalog::component_for(design, "essentials") {
+        if spec.components.contains(&c.slug) && !site.places.is_empty() {
+            spec.components.retain(|x| x != &c.slug);
+            let said =
+                slugify(&site_design::dom::parse(&format!("<body>{}</body>", s.html)).text());
+            let place = site
+                .places
+                .iter()
+                .find(|p| said.contains(&slugify(&p.label)))
+                .unwrap_or(&site.places[0]);
+            let label = site_design::dom::parse(&format!("<body>{}</body>", s.html))
+                .descendants()
+                .into_iter()
+                .filter(|e| e.elements().count() == 0)
+                .map(|e| e.text())
+                .find(|t| {
+                    let k = slugify(t);
+                    k.contains("today") || k.contains("essentials") || k.contains("now")
+                });
+            spec.essentials = Some(crate::model::EssentialsSpec {
+                component: c.slug.clone(),
+                place: place.slug.clone(),
+                label,
+            });
+        }
+    }
     Some(spec)
+}
+
+/// The short labels of a component's specimen (`SEA`, `AIR · SUNNY`, `SUNSET`): how its instance
+/// is recognised in a page's section.
+fn specimen_labels(c: &site_design::model::Component) -> BTreeSet<String> {
+    let doc = site_design::dom::parse(&format!("<body>{}</body>", c.html));
+    let mut out = BTreeSet::new();
+    for e in doc.descendants() {
+        if e.elements().count() > 0 {
+            continue;
+        }
+        let class = e.attr("class").unwrap_or("");
+        let style = e.attr("style").unwrap_or("");
+        let label = class.split_whitespace().any(|x| x == "mono")
+            || style.contains("text-transform:uppercase");
+        let t = e.text();
+        let words = t.split_whitespace().count();
+        if label && (1..=2).contains(&words) && !t.chars().any(|ch| ch.is_ascii_digit()) {
+            let k = slugify(&t);
+            if k.len() >= 3 {
+                out.insert(k);
+            }
+        }
+    }
+    out
+}
+
+/// The design's components a section is an instance of: what it names, what its shape is, and
+/// the components whose specimen's labels it shows (at least two, and most of them).
+pub fn markers_for(design: &SiteDesign, spec: &SectionSpec, html: &str) -> Vec<String> {
+    use crate::catalog::component_for;
+    let mut out: Vec<String> = Vec::new();
+    let mut add = |slug: &str| {
+        if !out.iter().any(|x| x == slug) {
+            out.push(slug.to_string());
+        }
+    };
+    if let Some(w) = &spec.what {
+        if design.components.iter().any(|c| &c.slug == w) {
+            add(w);
+        }
+    }
+    let by_shape: &[&str] = match spec.shape.as_deref().unwrap_or("") {
+        "bar" => &["listing-bar"],
+        "cards" | "tiles" | "feature" => &["cards"],
+        "hero" if !spec.links.is_empty() => &["button"],
+        "band" if !spec.links.is_empty() => &["button"],
+        "page-head" => &["page-header"],
+        "entries" => &["activity"],
+        "restaurants" => &["restaurant"],
+        "people" => &["people"],
+        "article" => &["contents", "reading-progress"],
+        _ => &[],
+    };
+    for f in by_shape {
+        if let Some(c) = component_for(design, f) {
+            add(&c.slug);
+        }
+    }
+    if !html.is_empty() {
+        let text = site_design::dom::parse(&format!("<body>{html}</body>"))
+            .text()
+            .to_lowercase();
+        let said: BTreeSet<&str> = text
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .collect();
+        for c in &design.components {
+            if c.functions.iter().any(|f| {
+                matches!(
+                    f.as_str(),
+                    "masthead"
+                        | "mega-menu"
+                        | "mobile-menu"
+                        | "footer"
+                        | "button"
+                        | "tags"
+                        | "cards"
+                )
+            }) {
+                continue;
+            }
+            let labels = specimen_labels(c);
+            let hit = labels
+                .iter()
+                .filter(|l| l.split('-').all(|w| said.contains(w)))
+                .count();
+            if hit >= 2 && hit * 2 >= labels.len().min(6) {
+                add(&c.slug);
+            }
+        }
+    }
+    out
 }
 
 /// How a section is laid out in the theme's vocabulary ([`crate::components`]): from what fills
@@ -428,6 +569,7 @@ impl LinkMenus {
                                 label: l,
                                 url,
                                 children: Vec::new(),
+                                class: None,
                             }],
                         });
                     }
@@ -441,14 +583,16 @@ impl LinkMenus {
                 class: format!("sp-menu-{name}"),
                 label: label.clone(),
                 name,
+                components: Vec::new(),
             });
         }
         out
     }
 }
 
-fn synthesized(slug: &str) -> (String, Option<TemplateKind>, String, Vec<SectionSpec>) {
-    let sec = |id: &str, kind: &str, what: Option<&str>| SectionSpec {
+/// A section of a template the plan composes itself (not from a design page).
+fn sec(id: &str, kind: &str, what: Option<&str>, shape: &str) -> SectionSpec {
+    SectionSpec {
         id: id.into(),
         class: format!("sp-{id}"),
         kind: kind.into(),
@@ -462,79 +606,230 @@ fn synthesized(slug: &str) -> (String, Option<TemplateKind>, String, Vec<Section
         collection: None,
         query: None,
         fields: Vec::new(),
-        shape: Some(
-            match kind {
-                "entry" => "entry",
-                "query" => "rows",
-                "title" => "page-head",
-                "content" => "prose",
-                _ => "prose",
-            }
-            .into(),
-        ),
+        shape: Some(shape.into()),
         html: None,
         links: Vec::new(),
         image: None,
-    };
+        components: Vec::new(),
+        essentials: None,
+    }
+}
+
+/// The component slugs of `functions` in the design (the ones it has).
+fn comps(design: &SiteDesign, functions: &[&str]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for f in functions {
+        if let Some(c) = crate::catalog::component_for(design, f) {
+            if !out.contains(&c.slug) {
+                out.push(c.slug.clone());
+            }
+        }
+    }
+    out
+}
+
+fn synthesized(
+    slug: &str,
+    design: &SiteDesign,
+) -> (String, Option<TemplateKind>, String, Vec<SectionSpec>) {
     let list = |id: &str| SectionSpec {
         collection: Some("inherit".into()),
         query: Some(json!({"inherit": true})),
-        ..sec(id, "query", None)
+        components: comps(design, &["pagination"]),
+        ..sec(id, "query", None, "rows")
+    };
+    let head = || SectionSpec {
+        components: comps(design, &["page-header"]),
+        ..sec("page-header", "block", Some("page-header"), "prose")
     };
     match slug {
         "index" => (
             "Index".into(),
             None,
             "The fallback for every list of entries: the newest stories, each with its title, category, date and excerpt, and the pages of the list.".into(),
-            vec![sec("page-header", "block", Some("page-header")), list("entries")],
+            vec![head(), list("entries")],
         ),
         "archive" => (
             "Archive".into(),
             Some(TemplateKind::Archive),
             "A category's or tag's stories: the archive's title and description, then its entries and the pages of the list.".into(),
-            vec![sec("page-header", "block", Some("page-header")), list("entries")],
+            vec![head(), list("entries")],
+        ),
+        "search" => (
+            "Search results".into(),
+            Some(TemplateKind::Search),
+            "The results of a search: what was searched as the h1, the entries found, the pages of the list, and what to do when nothing was found.".into(),
+            vec![
+                SectionSpec {
+                    components: comps(design, &["page-header", "search"]),
+                    ..sec("search-header", "block", Some("search-header"), "prose")
+                },
+                SectionSpec {
+                    components: comps(design, &["pagination", "empty"]),
+                    ..list("results")
+                },
+            ],
         ),
         "single" => (
             "Single".into(),
             Some(TemplateKind::Single),
             "One story: its title as the page's only h1, its category and date, its featured image, its content.".into(),
-            vec![sec("entry", "entry", None)],
+            vec![sec("entry", "entry", None, "entry")],
         ),
         "page" => (
             "Page".into(),
             Some(TemplateKind::Page),
             "A page of the site: its title as the page's only h1 and its content.".into(),
-            vec![sec("entry", "entry", None)],
+            vec![SectionSpec {
+                components: comps(design, &["page-header"]),
+                ..sec("entry", "entry", None, "entry")
+            }],
         ),
         "404" => (
             "Page not found".into(),
             Some(TemplateKind::NotFound),
-            "The page was not found: say so in one h1, offer the search and a link to the home page.".into(),
-            vec![sec("not-found", "block", Some("not-found"))],
+            "The page was not found: say so in one h1, say why, offer one way out (the search and a link to the home page).".into(),
+            vec![SectionSpec {
+                components: comps(design, &["empty", "search"]),
+                ..sec("not-found", "block", Some("not-found"), "prose")
+            }],
         ),
         _ => (
             "Front page".into(),
             Some(TemplateKind::Home),
             "The site's front page: its own content.".into(),
-            vec![sec("entry", "entry", None)],
+            vec![sec("entry", "entry", None, "entry")],
         ),
     }
+}
+
+/// The template of a page type the design has no page for (ADR-0093 addendum): the page header
+/// (breadcrumb, eyebrow, the title as the only h1, a story's lede and dateline), then the page's own
+/// content, whose blocks the design's components render by their block styles; a story adds the
+/// contents rail with the reading progress.
+fn page_type_task(
+    pt: &crate::model::PageType,
+    design: &SiteDesign,
+    site: &SiteContext,
+) -> TemplateTask {
+    let mut head = sec("page-head", "title", None, "page-head");
+    head.components = comps(design, &["page-header", "breadcrumb"]);
+    let body = if pt.post {
+        SectionSpec {
+            components: comps(design, &["contents", "reading-progress"]),
+            ..sec("article", "content", None, "article")
+        }
+    } else {
+        sec("page-content", "content", None, "prose-wide")
+    };
+    let styles: Vec<String> = crate::catalog::block_styles(design, site)
+        .into_iter()
+        .filter(|b| b.classes.iter().any(|c| pt.kinds.contains_key(c)))
+        .map(|b| b.label)
+        .collect();
+    // A dark scheme the design reserves for some pages (`Notte — … Events, Weather at night`).
+    let mut classes = Vec::new();
+    for sc in design.tokens.schemes.iter().filter(|x| x.dark) {
+        let said: BTreeSet<String> = words(&sc.label);
+        if words(&pt.key.replace("village-", ""))
+            .iter()
+            .any(|w| said.contains(w))
+        {
+            classes.push("ds-notte-at-night".to_string());
+        }
+    }
+    TemplateTask {
+        kind: TaskKind::Template,
+        slug: pt.template.clone(),
+        title: pt.label.clone(),
+        area: None,
+        design: None,
+        template_kind: Some(if pt.post {
+            TemplateKind::Single
+        } else {
+            TemplateKind::Page
+        }),
+        purpose: Some(format!(
+            "The site's {} ({} pages, e.g. {}): the page header (the breadcrumb, the title as the page's only h1{}), then the page's own content (core/post-content), whose blocks the theme's block styles render as the design's components{}.",
+            pt.label,
+            pt.count,
+            pt.sample,
+            if pt.post { ", its category, lede and dateline" } else { "" },
+            if styles.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", styles.join(", "))
+            }
+        )),
+        sections: vec![head, body],
+        parts: vec!["header".into(), "footer".into()],
+        menus: Vec::new(),
+        html: None,
+        components: Vec::new(),
+        classes,
+        brand: None,
+        search: None,
+    }
+}
+
+/// The design's own menus as navigation, for a site without source menus.
+fn design_nav(design: &SiteDesign, site: &SiteContext) -> crate::navigation::NavPlan {
+    let (menus_, notes) = menus(design, site);
+    let names: BTreeSet<String> = menus_.iter().map(|m| m.name.clone()).collect();
+    let label = |n: &str| {
+        design
+            .navigation
+            .iter()
+            .find(|m| slugify(&m.slug) == n)
+            .map_or_else(|| "Languages".to_string(), |m| m.label.clone())
+    };
+    let mut nav = crate::navigation::NavPlan {
+        menus: menus_,
+        notes,
+        ..Default::default()
+    };
+    for (area, list) in [
+        (DesignArea::Header, &mut nav.header),
+        (DesignArea::Footer, &mut nav.footer),
+    ] {
+        let part = design.parts.iter().find(|p| p.area == area);
+        let mut ms: Vec<String> = part
+            .map(|p| p.menus.iter().map(|m| slugify(m)).collect())
+            .unwrap_or_default();
+        if part.is_none() && area == DesignArea::Header {
+            ms.extend(design.navigation.first().map(|m| slugify(&m.slug)));
+        }
+        if area == DesignArea::Header && names.contains("languages") {
+            ms.push("languages".into());
+        }
+        for n in ms.into_iter().filter(|n| names.contains(n)) {
+            list.push((n.clone(), label(&n)));
+        }
+    }
+    nav
 }
 
 /// The theme's plan (module docs).
 pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) -> ThemePlan {
     let mut st = styles(design, manifest);
-    let (mut navigation, menu_notes) = menus(design, site);
-    let mut notes = st.notes.clone();
-    notes.extend(menu_notes);
-    let mut links = LinkMenus::default();
-    let menu_label = |name: &str| {
-        design
-            .navigation
-            .iter()
-            .find(|m| slugify(&m.slug) == name)
-            .map_or_else(|| "Languages".to_string(), |m| m.label.clone())
+    let nav = if site.menus.is_empty() {
+        design_nav(design, site)
+    } else {
+        crate::navigation::navigation(design, site)
     };
+    let mut navigation = nav.menus.clone();
+    let mut notes = st.notes.clone();
+    notes.extend(nav.notes.iter().cloned());
+    let mut links = LinkMenus::default();
+    let main_menu = nav
+        .header
+        .iter()
+        .find(|(n, _)| {
+            navigation
+                .iter()
+                .any(|m| &m.name == n && m.items.iter().any(|i| !i.children.is_empty()))
+        })
+        .map(|(n, _)| n.clone());
 
     // --- parts
     let mut tasks = Vec::new();
@@ -542,29 +837,53 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
         ("header", PartArea::Header, DesignArea::Header),
         ("footer", PartArea::Footer, DesignArea::Footer),
     ] {
-        let menu_names: BTreeSet<String> = navigation.iter().map(|m| m.name.clone()).collect();
         let part = design.parts.iter().find(|p| p.area == design_area);
-        let mut names: Vec<String> = part
-            .map(|p| p.menus.iter().map(|m| slugify(m)).collect())
-            .unwrap_or_default();
-        if slug == "header" && menu_names.contains("languages") {
-            names.push("languages".into());
-        }
-        if part.is_none() && slug == "header" {
-            names.extend(design.navigation.first().map(|m| slugify(&m.slug)));
-        }
-        let mut menus: Vec<MenuSpec> = names
-            .into_iter()
-            .filter(|n| menu_names.contains(n))
-            .map(|n| MenuSpec {
-                label: menu_label(&n),
+        let list = if slug == "header" {
+            &nav.header
+        } else {
+            &nav.footer
+        };
+        let mut menus: Vec<MenuSpec> = list
+            .iter()
+            .map(|(n, l)| MenuSpec {
+                label: l.clone(),
                 class: format!("sp-menu-{n}"),
-                name: n,
+                name: n.clone(),
+                components: if Some(n) == main_menu.as_ref() {
+                    comps(design, &["mega-menu", "mobile-menu"])
+                } else {
+                    Vec::new()
+                },
             })
             .collect();
         if let Some(p) = part {
-            menus.extend(links.of_html(&p.html, site, design));
+            let mut found = links.of_html(&p.html, site, design);
+            if slug == "header" {
+                for m in &mut found {
+                    m.components = comps(design, &["button"]);
+                }
+            }
+            menus.extend(found);
         }
+        // The part's own component (the masthead, the footer) on its outer group; the menus'
+        // and the search's on theirs.
+        let inner: BTreeSet<String> = menus.iter().flat_map(|m| m.components.clone()).collect();
+        let search = if slug == "header" {
+            comps(design, &["search"]).into_iter().next()
+        } else {
+            None
+        };
+        let components: Vec<String> = comps(
+            design,
+            &[if slug == "header" {
+                "masthead"
+            } else {
+                "footer"
+            }],
+        )
+        .into_iter()
+        .filter(|c| !inner.contains(c) || slug == "header")
+        .collect();
         tasks.push(TemplateTask {
             kind: TaskKind::Part,
             slug: slug.into(),
@@ -573,14 +892,18 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
             design: part.map(|p| p.slug.clone()),
             template_kind: None,
             purpose: Some(if slug == "header" {
-                "The site's masthead on every page: the site's name (not an h1), its menus, its button.".into()
+                "The site's masthead on every page: the wordmark (not an h1), the main menu with each item's panel of pages, the languages, the search, its button.".into()
             } else {
-                "The site's footer on every page: the site's name, its line, its menus, the copyright.".into()
+                "The site's footer on every page: the wordmark, its line, its menus as columns, the colophon.".into()
             }),
             sections: Vec::new(),
             parts: Vec::new(),
             menus,
             html: part.map(|p| cut(&compact_html(&p.html), PART_HTML_CHARS)),
+            components,
+            classes: Vec::new(),
+            brand: if slug == "header" { nav.brand.clone() } else { None },
+            search,
         });
     }
 
@@ -608,7 +931,8 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
         if t.kind == TemplateKind::Listing {
             // A listing is a page of the site: its title (the h1) first, its own text after
             // the entries (the page keeps every word it has).
-            let (title, content) = page_frame();
+            let (mut title, content) = page_frame();
+            title.components = comps(design, &["page-header", "breadcrumb"]);
             sections.insert(0, title);
             sections.push(content);
         }
@@ -620,6 +944,12 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
             .collect();
         if parts.is_empty() {
             parts = vec!["header".into(), "footer".into()];
+        }
+        let mut classes = Vec::new();
+        for sc in design.tokens.schemes.iter().filter(|x| x.dark) {
+            if words(&t.slug).iter().any(|w| words(&sc.label).contains(w)) {
+                classes.push("ds-notte-at-night".to_string());
+            }
         }
         tasks.push(TemplateTask {
             kind: TaskKind::Template,
@@ -633,13 +963,27 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
             parts,
             menus: Vec::new(),
             html: None,
+            components: Vec::new(),
+            classes,
+            brand: None,
+            search: None,
         });
+    }
+    // --- the site's page types the design has no page for
+    for pt in &site.page_types {
+        if seen.contains(&pt.template)
+            || crate::catalog::GENERIC_TEMPLATES.contains(&pt.template.as_str())
+        {
+            continue;
+        }
+        tasks.push(page_type_task(pt, design, site));
+        seen.insert(pt.template.clone());
     }
     for r in REQUIRED {
         if seen.contains(r) {
             continue;
         }
-        let (title, kind, purpose, sections) = synthesized(r);
+        let (title, kind, purpose, sections) = synthesized(r, design);
         tasks.push(TemplateTask {
             kind: TaskKind::Template,
             slug: r.into(),
@@ -652,6 +996,10 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
             parts: vec!["header".into(), "footer".into()],
             menus: Vec::new(),
             html: None,
+            components: Vec::new(),
+            classes: Vec::new(),
+            brand: None,
+            search: None,
         });
         seen.insert(r.to_string());
     }
@@ -661,17 +1009,30 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
         navigation.extend(per_lang);
     }
     // The component styles (theme-designer components.rs), after the global styles' own CSS.
-    let dot_menu = design
-        .parts
-        .iter()
-        .find(|p| p.area == DesignArea::Header)
-        .and_then(|p| p.menus.first())
-        .and_then(|m| design.navigation.iter().find(|n| &n.slug == m))
-        .map(|m| {
-            (
-                slugify(&m.slug),
-                m.items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(),
-            )
+    let dot_menu = main_menu
+        .clone()
+        .or_else(|| {
+            design
+                .parts
+                .iter()
+                .find(|p| p.area == DesignArea::Header)
+                .and_then(|p| p.menus.first())
+                .map(|m| slugify(m))
+        })
+        .map(|name| {
+            let first = site.langs()[0].clone();
+            let labels = navigation
+                .iter()
+                .find(|m| m.name == name && m.lang == first)
+                .map(|m| {
+                    m.items
+                        .iter()
+                        .filter(|i| i.class.is_none())
+                        .map(|i| i.label.clone())
+                        .collect()
+                })
+                .unwrap_or_default();
+            (name, labels)
         });
     st.global_styles
         .css
@@ -683,6 +1044,20 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
                 dot_menu,
             },
         ));
+    let block_styles = crate::catalog::block_styles(design, site);
+    let mut files = Vec::new();
+    if let Some(sprite) = crate::components::sprite(design) {
+        files.push(site_design::wordpress::ThemeFile {
+            path: "icons.svg".into(),
+            content_type: "image/svg+xml".into(),
+            content: sprite,
+        });
+    }
+    files.push(site_design::wordpress::ThemeFile {
+        path: site_design::wordpress::ENHANCEMENT_PATH.into(),
+        content_type: "text/javascript".into(),
+        content: site_design::wordpress::ENHANCEMENT_SCRIPT.into(),
+    });
 
     let rules = design
         .rules
@@ -702,33 +1077,16 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
         required,
         site: site.clone(),
         notes,
+        block_styles,
+        files,
     }
 }
 
 /// A listing page's frame: its title section (the page's h1) and its own text.
 fn page_frame() -> (SectionSpec, SectionSpec) {
-    let sec = |id: &str, kind: &str, shape: &str| SectionSpec {
-        id: id.into(),
-        class: format!("sp-{id}"),
-        kind: kind.into(),
-        what: None,
-        notes: None,
-        role: None,
-        heading: None,
-        eyebrow: None,
-        background: None,
-        items: None,
-        collection: None,
-        query: None,
-        fields: Vec::new(),
-        shape: Some(shape.into()),
-        html: None,
-        links: Vec::new(),
-        image: None,
-    };
     (
-        sec("page-title", "title", "page-head"),
-        sec("page-content", "content", "prose"),
+        sec("page-title", "title", None, "page-head"),
+        sec("page-content", "content", None, "prose"),
     )
 }
 
@@ -774,6 +1132,8 @@ pub fn assemble(plan: &ThemePlan, markup: &BTreeMap<String, String>) -> ThemeDat
         patterns: Vec::new(),
         navigation: plan.navigation.clone(),
         fonts: plan.fonts.clone(),
+        block_styles: plan.block_styles.clone(),
+        files: plan.files.clone(),
     }
 }
 

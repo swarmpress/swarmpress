@@ -8,6 +8,8 @@
 //! swarmpress-wp-migrate export  --sandbox URL --repo URL --public-origin URL --out DIR
 //!                               [--forms-endpoint URL] [--forecasts DIR]
 //! swarmpress-wp-migrate forecast --export DIR [--forecasts DIR]
+//! swarmpress-wp-migrate design-check --export DIR --plan plan.json --live URL --out report.json
+//!                               [--retired FILE] [--exceptions FILE]
 //! swarmpress-wp-migrate compare --reference DIR --live URL --export DIR --out report.json
 //!                               [--plan plan.json] [--cache DIR] [--skip PREFIX]…
 //! ```
@@ -126,8 +128,24 @@ async fn main() -> Result<()> {
                 Path::new(&need(&args, "--out")?),
                 arg(&args, "--forms-endpoint"),
                 arg(&args, "--forecasts").map(PathBuf::from).as_deref(),
+                arg(&args, "--theme-data")
+                    .map(|f| read_theme_data(Path::new(&f)))
+                    .transpose()?
+                    .as_ref(),
             )
             .await
+        }
+        Some("design-check") => {
+            let code = design_check(
+                Path::new(&need(&args, "--export")?),
+                Path::new(&need(&args, "--plan")?),
+                &need(&args, "--live")?,
+                arg(&args, "--retired").map(PathBuf::from).as_deref(),
+                arg(&args, "--exceptions").map(PathBuf::from).as_deref(),
+                Path::new(&need(&args, "--out")?),
+            )
+            .await?;
+            std::process::exit(code)
         }
         Some("forecast") => {
             refill_forecasts(
@@ -355,7 +373,10 @@ async fn apply(wp: &Wp, p: &Plan, branch: &str, assets: Option<&Path>) -> Result
     let mut ids: BTreeMap<String, u64> = BTreeMap::new();
     let started = std::time::Instant::now();
     for (i, d) in docs.iter().enumerate() {
-        let id = write_doc(wp, d, &categories, &tags)
+        // A page under the page above it (a village's sections under the village; the routes are
+        // in order, so the parent is written first): WordPress's parent, the breadcrumb's path.
+        let parent = d.parent.as_ref().and_then(|r| ids.get(r)).copied();
+        let id = write_doc(wp, d, &categories, &tags, parent)
             .await
             .with_context(|| d.route.clone())?;
         ids.insert(d.route.clone(), id);
@@ -770,6 +791,7 @@ async fn write_doc(
     d: &Doc,
     categories: &BTreeMap<String, u64>,
     tags: &BTreeMap<String, u64>,
+    parent: Option<u64>,
 ) -> Result<u64> {
     let ids = BTreeMap::from([
         ("post_tag".to_string(), tags.clone()),
@@ -792,6 +814,9 @@ async fn write_doc(
     }
     if let Some(t) = &d.template {
         body["template"] = json!(t);
+    }
+    if let (Some(pid), "page") = (parent, d.post_type.as_str()) {
+        body["parent"] = json!(pid);
     }
     if d.post_type == "post" {
         if let Some(c) = d.category.as_ref().and_then(|c| categories.get(c)) {
@@ -878,6 +903,7 @@ async fn export(
     out: &Path,
     forms_endpoint: Option<String>,
     recorded: Option<&Path>,
+    theme_data: Option<&ThemeData>,
 ) -> Result<()> {
     wp.repo(json!({"op": "session.set", "branch": "live", "user_id": 0, "author": {"kind": "system", "id": "visitor"}, "read_only": true}))
         .await?;
@@ -943,6 +969,41 @@ async fn export(
         let forecasts = fetch_forecasts(&places, recorded).await?;
         let n = e.fill_forecasts(&forecasts).map_err(|err| anyhow!(err))?;
         eprintln!("{n} pages got the forecast for {} places", places.len());
+    }
+    // The essentials tickers (the design's live facts of a place), filled the same way.
+    let table = essentials_places();
+    let mut wanted = std::collections::BTreeSet::new();
+    for html in e.pages().values() {
+        wanted.extend(site_export::essentials::needed(html, &table).map_err(|err| anyhow!(err))?);
+    }
+    if !wanted.is_empty() {
+        let values = fetch_essentials(&wanted, recorded).await?;
+        let n = e
+            .map_html(&|_, html| site_export::essentials::fill(html, &table, &values))
+            .map_err(|err| anyhow!(err))?;
+        eprintln!("{n} pages got the essentials of {} places", wanted.len());
+    }
+    // The theme's own files (the icon sprite, the one audited enhancement script, ADR-0093's
+    // addendum), and the script on every page.
+    if let Some(data) = theme_data {
+        for f in &data.files {
+            e.add_file(
+                &format!("/{}", f.path),
+                &f.content_type,
+                f.content.clone().into_bytes(),
+            );
+        }
+        if data
+            .files
+            .iter()
+            .any(|f| f.path == content_import_wp::theme_data::ENHANCEMENT_PATH)
+        {
+            let src = format!("/{}", content_import_wp::theme_data::ENHANCEMENT_PATH);
+            let n = e
+                .map_html(&|_, html| Ok(site_export::with_script(html, &src)))
+                .map_err(|err| anyhow!(err))?;
+            eprintln!("{n} pages load {src}");
+        }
     }
     std::fs::create_dir_all(out.join("files"))?;
     for (path, f) in &e.release.files {
@@ -1038,6 +1099,70 @@ async fn fetch_forecasts(
     Ok(out)
 }
 
+/// The places a template's essentials ticker may name (`sp-place-{slug}`), with their coordinates.
+fn essentials_places() -> BTreeMap<String, site_export::forecast::Place> {
+    compose::COORDINATES
+        .iter()
+        .filter_map(|(slug, _, _)| compose::place(slug, "en").map(|p| (slug.to_string(), p)))
+        .collect()
+}
+
+/// Each place's live values (sea, air, sunset): from Open-Meteo, or from `recorded`
+/// (`essentials-{lat},{lng}.json`: `{"now": …, "marine": …}`). A place without values fails the
+/// export.
+async fn fetch_essentials(
+    places: &std::collections::BTreeSet<site_export::forecast::Place>,
+    recorded: Option<&Path>,
+) -> Result<BTreeMap<String, site_export::essentials::Essentials>> {
+    use site_export::essentials;
+    let http = reqwest::Client::builder()
+        .user_agent("swarm.press site export (cinqueterre.travel)")
+        .timeout(std::time::Duration::from_secs(20))
+        .build()?;
+    let get = |url: String, name: String| {
+        let http = http.clone();
+        async move {
+            let mut tries = 0;
+            loop {
+                tries += 1;
+                match http.get(&url).send().await {
+                    Ok(r) if r.status().is_success() => return Ok(r.bytes().await?.to_vec()),
+                    Ok(r) if tries >= 3 => bail!("Open-Meteo answered {} for {name}", r.status()),
+                    Err(e) if tries >= 3 => {
+                        return Err(anyhow!(e).context(format!("Open-Meteo for {name}")))
+                    }
+                    _ => tokio::time::sleep(std::time::Duration::from_secs(2 * tries)).await,
+                }
+            }
+        }
+    };
+    let mut out = BTreeMap::new();
+    for p in places {
+        let key = p.key();
+        let (now, marine) = match recorded {
+            Some(dir) => {
+                let file = dir.join(format!("essentials-{key}.json"));
+                let v: Value =
+                    serde_json::from_slice(&std::fs::read(&file).with_context(|| {
+                        format!("{}: no recorded essentials for {}", file.display(), p.name)
+                    })?)?;
+                (
+                    v["now"].to_string().into_bytes(),
+                    v["marine"].to_string().into_bytes(),
+                )
+            }
+            None => (
+                get(essentials::now_url(p), p.name.clone()).await?,
+                get(essentials::marine_url(p), p.name.clone()).await?,
+            ),
+        };
+        let v = essentials::parse(&now, &marine)
+            .map_err(|e| anyhow!("the essentials of {}: {e}", p.name))?;
+        out.insert(key, v);
+    }
+    Ok(out)
+}
+
 /// The daily rebuild: an export directory's forecast blocks filled again, in place.
 async fn refill_forecasts(export_dir: &Path, recorded: Option<&Path>) -> Result<()> {
     let manifest = export_dir.join("release.json");
@@ -1065,13 +1190,46 @@ async fn refill_forecasts(export_dir: &Path, recorded: Option<&Path>) -> Result<
         .collect();
     let read = |sha: &str| by_sha.get(sha).and_then(|p| std::fs::read(p).ok());
     let places = site_export::release_places(&release, &read).map_err(|e| anyhow!(e))?;
-    if places.is_empty() {
+    // The essentials tickers too: their values are live.
+    let table = essentials_places();
+    let mut wanted = std::collections::BTreeSet::new();
+    for (_, f) in release
+        .files
+        .iter()
+        .filter(|(_, f)| f.content_type.starts_with("text/html"))
+    {
+        if let Some(b) = read(&f.sha256) {
+            wanted.extend(
+                site_export::essentials::needed(&String::from_utf8_lossy(&b), &table)
+                    .map_err(|e| anyhow!(e))?,
+            );
+        }
+    }
+    if places.is_empty() && wanted.is_empty() {
         eprintln!("no forecast blocks in {}", export_dir.display());
         return Ok(());
     }
     let forecasts = fetch_forecasts(&places, recorded).await?;
-    let changed =
+    let values = fetch_essentials(&wanted, recorded).await?;
+    let mut changed =
         site_export::fill_release(&mut release, &read, &forecasts).map_err(|e| anyhow!(e))?;
+    // Read the pages as they are now (the forecast filled) and fill their tickers.
+    let now: BTreeMap<String, Vec<u8>> = changed.clone();
+    let shas: BTreeMap<String, String> = release
+        .files
+        .iter()
+        .map(|(p, f)| (f.sha256.clone(), p.clone()))
+        .collect();
+    let read2 = |sha: &str| {
+        shas.get(sha)
+            .and_then(|p| now.get(p).cloned())
+            .or_else(|| read(sha))
+    };
+    let more = site_export::map_release_html(&mut release, &read2, &|_, html| {
+        site_export::essentials::fill(html, &table, &values)
+    })
+    .map_err(|e| anyhow!(e))?;
+    changed.extend(more);
     for (path, bytes) in &changed {
         let f = &release.files[path];
         let file = export_dir
@@ -1087,6 +1245,124 @@ async fn refill_forecasts(export_dir: &Path, recorded: Option<&Path>) -> Result<
         release.id
     );
     Ok(())
+}
+
+// ------------------------------------------------------------------ the design's checks
+
+/// A JSON object of path → reason (`{"/en/#subscribe": "the newsletter is hidden"}`), or empty.
+fn reasons(file: Option<&Path>) -> Result<BTreeMap<String, String>> {
+    match file {
+        Some(f) => Ok(serde_json::from_str(
+            &std::fs::read_to_string(f).with_context(|| f.display().to_string())?,
+        )?),
+        None => Ok(BTreeMap::new()),
+    }
+}
+
+/// The exported site against the live one and the plan (ADR-0093 addendum): the live menus'
+/// every entry on the export (nested ones under their parents, links working), every source page
+/// on a template composed for its type, no "Uncategorized", and the content gaps. Writes the
+/// report; the exit code is 1 when a check fails.
+async fn design_check(
+    export_dir: &Path,
+    plan_file: &Path,
+    live: &str,
+    retired: Option<&Path>,
+    exceptions: Option<&Path>,
+    out: &Path,
+) -> Result<i32> {
+    use content_import_wp::{design, parity};
+    let release: site_export::Release =
+        serde_json::from_str(&std::fs::read_to_string(export_dir.join("release.json"))?)?;
+    let mut pages: BTreeMap<String, String> = BTreeMap::new();
+    for (path, f) in &release.files {
+        if !f.content_type.starts_with("text/html") {
+            continue;
+        }
+        let file = export_dir
+            .join("files")
+            .join(site_export::Release::file_path(path, &f.content_type).trim_start_matches('/'));
+        if let Ok(b) = std::fs::read(&file) {
+            pages.insert(path.clone(), String::from_utf8_lossy(&b).into_owned());
+        }
+    }
+    let plan: Plan = serde_json::from_str(&std::fs::read_to_string(plan_file)?)?;
+    // The live pages whose menus are compared: each language's home and its first village's
+    // section page (the menus mark the current page and its ancestors there).
+    let mut compared: Vec<String> = Vec::new();
+    for lang in content_import_wp::LANGS {
+        compared.push(format!("/{lang}/"));
+        if let Some(d) = plan.docs.iter().find(|d| {
+            d.lang == lang
+                && d.meta
+                    .get("_swarmpress_page_type")
+                    .is_some_and(|t| t.starts_with("village-"))
+        }) {
+            compared.push(d.route.clone());
+        }
+    }
+    let http = reqwest::Client::builder()
+        .user_agent("swarm.press design check")
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+    let mut live_pages = BTreeMap::new();
+    for path in &compared {
+        let url = format!("{}{path}", live.trim_end_matches('/'));
+        let body = http
+            .get(&url)
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?;
+        live_pages.insert(path.clone(), body);
+    }
+    let origin = live.trim_end_matches('/').to_string();
+    let www = origin.replace("://", "://www.");
+    let origins = [origin.as_str(), www.as_str()];
+    let exists = |p: &str| {
+        release.files.contains_key(p)
+            || release.redirects.contains_key(p)
+            || release.redirects.contains_key(p.trim_end_matches('/'))
+    };
+    let nav = parity::navigation_parity(&live_pages, &pages, &origins, &exists, &reasons(retired)?);
+    let source: Vec<String> = plan.docs.iter().map(|d| d.route.clone()).collect();
+    let (templates, generic) = parity::templates(&pages, &source, &reasons(exceptions)?);
+    let uncategorized = parity::uncategorized(&pages);
+    let gaps = design::gaps(&plan.docs, &plan.entries);
+    let ok = nav.ok() && generic.is_empty() && uncategorized.is_empty();
+    let report = json!({
+        "ok": ok,
+        "navigation": nav,
+        "templates": templates,
+        "generic": generic,
+        "uncategorized": uncategorized,
+        "content_gaps": gaps,
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&report)?)?;
+    eprintln!(
+        "navigation: {} entries found ({} nested) on {} pages, {} missing, {} broken, {} retired; templates: {} kinds, {} generic pages; \"Uncategorized\" on {} pages; {} content gaps",
+        nav.found,
+        nav.nested,
+        nav.pages.len(),
+        nav.missing.len(),
+        nav.broken.len(),
+        nav.retired.len(),
+        templates.len(),
+        generic.len(),
+        uncategorized.len(),
+        gaps.len()
+    );
+    for m in nav
+        .missing
+        .iter()
+        .chain(nav.broken.iter())
+        .chain(generic.iter())
+        .take(30)
+    {
+        eprintln!("  - {m}");
+    }
+    Ok(if ok { 0 } else { 1 })
 }
 
 // ------------------------------------------------------------------ the comparison

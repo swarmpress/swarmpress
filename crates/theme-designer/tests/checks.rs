@@ -246,8 +246,8 @@ fn contrast() {
     // A dark band whose links keep the theme's link colour.
     let i = c.fails(
         "404",
-        "{\"className\":\"sp-not-found ds-wrap ds-page-head\"",
-        "{\"backgroundColor\":\"notte\",\"textColor\":\"salt\",\"className\":\"sp-not-found ds-wrap ds-page-head\"",
+        "{\"className\":\"sp-not-found ds-wrap ds-page-head",
+        "{\"backgroundColor\":\"notte\",\"textColor\":\"salt\",\"className\":\"sp-not-found ds-wrap ds-page-head",
         IssueCode::Contrast,
         "paragraph links \"mare\" on \"notte\" are",
     );

@@ -293,6 +293,30 @@ pub fn forecast(places: Vec<Place>, lang: &str) -> String {
     markup::group("ct-forecast", &inner)
 }
 
+/// The design's essentials ticker for a weather page (ADR-0093 addendum): a marker the export
+/// fills with the place's sea, air and sunset (`site_export::essentials`); the village's own on a
+/// village's page, every village's on the general ones.
+pub fn essentials(r: &Route) -> String {
+    let lang = r.lang.as_str();
+    let villages: Vec<&str> = match &r.village {
+        Some(v) => vec![v.as_str()],
+        None => VILLAGES.iter().map(|(v, _)| *v).collect(),
+    };
+    let mut inner = String::new();
+    for v in villages {
+        let Some(p) = place(v, lang) else { continue };
+        inner.push_str(&format!(
+            "<!-- wp:html -->\n<div class=\"{}\" data-place=\"{}|{}|{}\" data-lang=\"{lang}\"><p class=\"sp-forecast-pending\">{}</p></div>\n<!-- /wp:html -->\n",
+            site_export::essentials::CLASS,
+            markup::escape(&p.name),
+            p.lat,
+            p.lng,
+            PENDING[li(lang)]
+        ));
+    }
+    markup::group("ct-essentials", &inner)
+}
+
 /// The weather page's blocks without the sample forecast, and the forecast block to insert after
 /// block `n` (`None`: the route is no weather page).
 pub fn weather(blocks: &mut [Value], r: &Route) -> Option<(usize, String)> {

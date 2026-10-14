@@ -32,6 +32,91 @@ pub struct SiteContext {
     /// band), by what they show.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub images: Vec<SiteImage>,
+    /// The source site's menus as its visitors know them (the import's), nested, per language:
+    /// the theme's navigation is made of them ([`crate::navigation`]) and keeps every entry.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub menus: Vec<SourceMenu>,
+    /// Menu entries the owner retired on purpose: the only entries the navigation may lose.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub retired: Vec<Retired>,
+    /// The site's page types and what their content holds ([`crate::catalog`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub page_types: Vec<PageType>,
+    /// A story to feature per place and language (a menu panel's card).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub featured: Vec<Featured>,
+    /// Whether the site has a form a visitor can send (the newsletter is hidden: none).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub forms: bool,
+}
+
+/// Where a source menu sits on the source site.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MenuArea {
+    /// The main menu (the header's).
+    Header,
+    Footer,
+    /// The wordmark's link and other small menus.
+    Other,
+}
+
+/// A menu of the source site in one language.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceMenu {
+    /// `nav`, `footer`, `brand`.
+    pub name: String,
+    pub lang: String,
+    pub area: MenuArea,
+    pub items: Vec<site_design::wordpress::NavigationItem>,
+}
+
+/// A source menu entry left out on purpose, with why (the owner's decision).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Retired {
+    /// The entry's URL (`/en/#subscribe`), in every language when it names none.
+    pub url: String,
+    pub reason: String,
+}
+
+/// A kind of page the site has, as the import assigns it a template.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PageType {
+    /// `village-hiking`, `article`, `faq`.
+    pub key: String,
+    /// `Hiking (a village's)`.
+    pub label: String,
+    /// The template the import gives its pages (`page-village-hiking`, `archive-activity`).
+    pub template: String,
+    /// How many URLs it has.
+    pub count: u32,
+    /// One of its URLs (the first in the site's first language).
+    pub sample: String,
+    /// The content's classes on its pages and how many pages have each (`ct-faq-section`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub kinds: BTreeMap<String, u32>,
+    /// A post (an article) rather than a page.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub post: bool,
+    /// The place its pages belong to, when every page has one (a village's sections).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub placed: bool,
+}
+
+/// A story a place's menu panel features.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Featured {
+    /// The place's slug (`vernazza`).
+    pub place: String,
+    pub lang: String,
+    pub title: String,
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
 }
 
 /// A place of the site (a term of `sp_place`).
@@ -40,6 +125,9 @@ pub struct SiteContext {
 pub struct Place {
     pub slug: String,
     pub label: String,
+    /// Its short line per language (a menu panel's text).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub lines: BTreeMap<String, String>,
 }
 
 /// A picture of the site.
@@ -175,6 +263,27 @@ pub struct SectionSpec {
     /// The site's picture for a section whose design shows a fixed one (the image band).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<SiteImage>,
+    /// The design's components this section is an instance of: each marked by the class
+    /// `ds-c-{slug}` on one of its blocks ([`crate::catalog`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub components: Vec<String>,
+    /// The essentials ticker this section holds (the design's hero box), filled at export.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub essentials: Option<EssentialsSpec>,
+}
+
+/// An essentials ticker in a template: a group the static export fills with a place's live values
+/// (sea, air, sunset; Open-Meteo), never with values written into the template.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EssentialsSpec {
+    /// The design's component (`essentials-ticker`).
+    pub component: String,
+    /// The site's place it shows (`vernazza`).
+    pub place: String,
+    /// The design's heading of the box (`Today on the coast`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 /// A menu a part shows: a `core/navigation` block with the class `sp-menu-{name}` (the
@@ -185,6 +294,10 @@ pub struct MenuSpec {
     pub name: String,
     pub label: String,
     pub class: String,
+    /// The design's components this menu is an instance of (the main menu's panels and phone
+    /// sheet, a button), each marked `ds-c-{slug}` on its navigation block.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub components: Vec<String>,
 }
 
 /// What the model writes in one call: a template or a part, from its spec.
@@ -218,6 +331,19 @@ pub struct TemplateTask {
     /// A part's markup in the design (sanitised, shortened).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub html: Option<String>,
+    /// The design's components the template or part itself places (a part's masthead and menu
+    /// panels), each marked `ds-c-{slug}`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub components: Vec<String>,
+    /// Extra classes its `main` group carries (`ds-notte-at-night`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub classes: Vec<String>,
+    /// For a part: the wordmark's menu (`brand`), when the site has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub brand: Option<String>,
+    /// For a part: the design's search component, its opener a `core/search` button.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search: Option<String>,
 }
 
 impl TemplateTask {

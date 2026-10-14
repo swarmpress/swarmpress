@@ -163,13 +163,13 @@ async fn the_fake_designs_every_template_with_one_repair_round() {
     let out = o.run(&job(41, JobKind::SiteTheme, 1)).await.unwrap();
     let d = digest(&out);
     assert!(d.ok);
-    // header, footer, front-page, index, single, page, 404, archive
-    assert_eq!(d.words, 8);
+    // header, footer, front-page, index, single, page, 404, archive, search
+    assert_eq!(d.words, 9);
     assert_eq!(d.qa_defects, 1, "the front page's raw colour, repaired");
-    assert_eq!(d.score, 8, "seven of eight right first time");
+    assert_eq!(d.score, 8, "eight of nine right first time");
     // One call per task and one fix, each with the web designer's reasoning budget.
     let calls = llm.calls();
-    assert_eq!(calls.len(), 9);
+    assert_eq!(calls.len(), 10);
     assert!(calls
         .iter()
         .all(|c| c.request.profile.job == agents::JobKind::WebDesign
@@ -216,6 +216,7 @@ async fn the_fake_designs_every_template_with_one_repair_round() {
             "page",
             "404",
             "archive",
+            "search",
             "page-front"
         ]
     );
@@ -226,7 +227,7 @@ async fn the_fake_designs_every_template_with_one_repair_round() {
         .unwrap();
     assert_eq!(front.rounds, 1);
     assert!(front.repaired[0].starts_with("- [token] template front-page: line "));
-    assert!(rec.tasks.iter().filter(|t| t.rounds == 0).count() == 7);
+    assert!(rec.tasks.iter().filter(|t| t.rounds == 0).count() == 8);
     assert!(rec
         .notes
         .iter()
@@ -250,7 +251,7 @@ async fn the_fake_designs_every_template_with_one_repair_round() {
     let p = posts(&o).await;
     let artifact = p.iter().find(|p| p["type"] == "artifact").unwrap();
     assert!(artifact["text"].as_str().unwrap().contains(
-        "7 templates and 2 parts on design-v1; 7 of 8 right first time, 1 issues repaired"
+        "8 templates and 2 parts on design-v1; 8 of 9 right first time, 1 issues repaired"
     ));
 
     // A run again (a reload) asks the model nothing new and writes the same.
@@ -433,7 +434,7 @@ async fn design_to_decision(
     play(&mut w, &o, |w| open_approval(w).is_some()).await;
     let digest = w.plan.items[&item].phases[0].result.unwrap();
     assert!(digest.ok);
-    assert_eq!((digest.score, digest.words, digest.qa_defects), (8, 8, 1));
+    assert_eq!((digest.score, digest.words, digest.qa_defects), (8, 9, 1));
     assert!(o.gateway().branch_head("design-v1").is_some());
     assert_eq!(
         o.gateway().merge_count(),
@@ -461,7 +462,7 @@ async fn design_draft_approve_merge_end_to_end() {
         .file_text("main", FakeGateway::THEME_DATA_PATH)
         .unwrap();
     let data: site_design::ThemeData = serde_json::from_str(&live).unwrap();
-    assert_eq!(data.templates.len(), 7);
+    assert_eq!(data.templates.len(), 8);
     let merge = o.gateway().branch_head("main").unwrap();
     assert_eq!(
         o.gateway()

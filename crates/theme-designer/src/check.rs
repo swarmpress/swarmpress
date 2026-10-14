@@ -648,6 +648,40 @@ pub fn check_template(task: &TemplateTask, markup: &str, ctx: &CheckContext<'_>)
     // --- coverage
     let classes: BTreeSet<&str> = all.iter().flat_map(|b| b.classes()).collect();
     let has = |name: &str| all.iter().any(|b| b.name == name);
+    // Every component instance the plan places carries its marker class.
+    let wanted = task
+        .components
+        .iter()
+        .chain(task.search.iter())
+        .chain(task.menus.iter().flat_map(|m| m.components.iter()))
+        .map(|c| (c.as_str(), None))
+        .chain(task.sections.iter().flat_map(|s| {
+            s.components
+                .iter()
+                .map(move |c| (c.as_str(), Some(s.id.as_str())))
+        }));
+    for (c, section) in wanted {
+        let m = crate::catalog::marker(c);
+        if !classes.contains(m.as_str()) {
+            out.push(Issue::new(
+                IssueCode::Missing,
+                &at,
+                format!(
+                    "the design's component {c} is missing{}: render it and give its outermost block the class \"{m}\"",
+                    section.map(|s| format!(" from the section {s}")).unwrap_or_default()
+                ),
+            ));
+        }
+    }
+    for c in &task.classes {
+        if !classes.contains(c.as_str()) {
+            out.push(Issue::new(
+                IssueCode::Missing,
+                &at,
+                format!("the template's main group needs the class \"{c}\""),
+            ));
+        }
+    }
     for s in &task.sections {
         if !classes.contains(s.class.as_str()) {
             out.push(Issue::new(
@@ -1162,6 +1196,13 @@ pub fn check_theme(data: &ThemeData, plan: &ThemePlan) -> Vec<Issue> {
         }
     }
     out.extend(licences(&data.fonts, &data.global_styles.settings));
+    // the source site's navigation, every entry (ADR-0093 addendum)
+    if !plan.site.menus.is_empty() {
+        out.extend(crate::navigation::check_navigation(
+            &data.navigation,
+            &plan.site,
+        ));
+    }
     // presets and pairs of the global styles
     let p = &plan.presets;
     global_refs(&data.global_styles.styles, p, &mut out);

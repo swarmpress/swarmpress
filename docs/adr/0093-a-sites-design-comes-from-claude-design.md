@@ -201,3 +201,96 @@ Pages preview) settled five things this ADR left open. The decisions above stand
 from the deterministic part and more from the model); the browser executor cannot render, so a
 theme made there is not compared; content types are another thing the import writes and the
 sandbox registers; a design's components sheet with a fixed width has no phone layout to compare.
+
+## Addendum (2026-10-14, second): every menu entry, every component, every page type
+
+The owner rejected the first preview of "Salt & Pigment": the old site's submenus were gone (the
+five villages' ten sections each, the footer's columns) and the design's components were hardly
+used (the web designer made only the design's own pages; every other page type fell back to a
+generic page). Both are now the pipeline's guarantees, for any site and any design. The decisions
+above stand; these add to them.
+
+1. **The source site's navigation is the navigation.** The import says what the source site's
+   menus are (`content_import_wp::plan::source_menus`: a ported theme's own header and footer, else
+   `site.json`'s menu), nested, per language. The web designer puts every entry where the design
+   has a menu for it (`theme_designer::navigation`): each design menu takes the source menu or
+   column its items name (its area first; a source entry goes to one menu only); what no design
+   menu takes becomes the header's main menu, the wordmark, or a footer column of its own. The
+   header's main menu carries the design's panel per place (4.1: its number, name and line as a
+   first item, the place's newest story as a last one) and opens on hover and focus (CSS, a 120 ms
+   intent); on a phone it is the design's sheet (4.20) on core's overlay. **An entry may be lost
+   only when the site lists it as retired, with a reason.** Two checks fail the job otherwise:
+   `check_navigation` (every source entry with its parent in the theme data) and the export's
+   `design-check` (every entry of the live site's `<nav>`s, nested ones under their parents, on
+   the exported page of the same path, its link working).
+2. **Components are first-class.** `site_design::Component` gains the functions it serves (a
+   closed list, `COMPONENT_FUNCTIONS`, read from its name and subtitle), its variants, its states
+   and the sheet's style rules for its classes; a design's icon sets and place marks
+   (`SiteDesign.icons`, read from the sheet's data: a `const` arrow function of plain arithmetic is
+   evaluated exactly, nothing else runs) and its micro-interactions with their reduced-motion
+   fallbacks (`SiteDesign.interactions`).
+3. **Content is mapped to components by a fixed table, the model fills the rest.**
+   `theme_designer::catalog::CONTENT_FUNCTIONS` maps the content model's classes to functions
+   (questions and answers → `faq`, a route's facts → `trail-stats`, an editor's comment → a
+   `callout`, a story's contents → `contents`, …). The design's component for a function renders
+   that content as a **block style**: `ThemeData.block_styles` names it with the content classes
+   it applies to, the importer adds `is-style-{name}` to those blocks, and the theme's CSS
+   (`theme_designer::forms`) gives the class the component's form, from the tokens. Functions a
+   template carries itself (the masthead, the page header, the contents rail, the listing bar,
+   pagination, search) are placed by the plan, each instance marked `ds-c-{component}`; the checks
+   require the marker. The import gives the content the structure the components need, from the
+   content's own data and only with a design (a practical line of `Label: value` facts as a row of
+   facts with a grade's step; a story's byline, dateline, anchored headings with a contents list,
+   and what to read next — the same place first, then the same category; a way to arrive its mode;
+   a day of an itinerary its place).
+4. **Every page type has a template composed from the components.** The import classifies every
+   page (`home`, `article`, `village`, `village-{section}`, else its content's `page_type`) and
+   gives each type one template (its listing's when the design has one, else `page-{type}`); the
+   web designer composes a template for each type the design has no page for (the page header with
+   `core/breadcrumbs` over WordPress's page parents, the content, a story's contents rail and
+   reading progress). The export's `design-check` fails for a source page that renders with the
+   generic `page` template, unless it is listed as an exception.
+5. **The coverage report is part of the job.** `catalog::coverage` lists every component of the
+   design with where it is used (templates, parts, block styles and the pages whose content they
+   style) or why not (no content of its kind, no form on the site, nothing loads after the page,
+   no page of the design places it). A component the site has content for that nothing uses, and
+   a page type without a template of its own, fail the job. The visual check compares each used
+   component's instance with its specimen on the design's sheet, and each page type with the
+   design's closest composition (the template that shares most of its components), at 375 and
+   1280 px (`theme_designer::visual::coverage_pages`).
+6. **Live values are filled at export, never written.** The essentials ticker (4.6, the home's
+   "today on the coast") is a marker the export fills from Open-Meteo (the marine API's sea surface
+   temperature, the air now, today's sunset; a failed fetch fails the export, like the forecast).
+   The forecast's sky is the design's stroke icon and its word, never an emoji; low and high sit on
+   a fixed 10–30° bar; rain of 20 % or more is marked.
+7. **One audited first-party script.** The theme's own markup stays without scripts (decision 6),
+   but a static site cannot open a search, hide a masthead on scroll, count up a value or filter a
+   listing with CSS. So a site's theme may publish exactly one script: swarm.press's own
+   (`site_design::wordpress::ENHANCEMENT_SCRIPT`, `crates/site-design/src/enhance.js`), the same
+   bytes for every site, never written or changed by a model, served by the static export as
+   `/ds.js` (deferred, on every page). `ThemeData::validate_shape` refuses any other script and any
+   change to this one. It is progressive enhancement only (the site works without it), reads only
+   the page and the export's `/search-index.json`, sends nothing, stores nothing but a
+   sessionStorage flag, uses no `eval`, and honours `prefers-reduced-motion`. It does: the masthead's
+   tide (5), the phone sheet's places opening in place (4.20), the essentials count-up (9), the
+   contents rail's current entry (4.10) and the progress bar where CSS scroll timelines are missing
+   (10), the image wipe-in (8), the listing's filter chips (7.1, 11), Notte at night on the pages
+   the scheme names, and the search overlay (4.11: "/" opens it; results grouped villages ·
+   stories · stays; the match marked; ↑↓ and Enter; Esc closes; focus kept in it). The theme's
+   icons are CSS masks of the design's paths and one sprite file, `/icons.svg`.
+8. **Uncategorized never shows.** A story without a category takes its hero's badge (reported as
+   a content gap); the export's `design-check` fails on any page that shows WordPress's default
+   category.
+
+**Alternatives:** CSS only and the search, the masthead's tide, the count-up and the filters
+reported unused (simpler, no code to audit, but four of the design's behaviours missing); a
+script per site written by the web designer (rejected: code from a model on every page); a search
+endpoint on the central server (the static site would depend on a service).
+
+**Negatives:** one template per page type (47 for cinqueterre.travel) is one model call each and a
+longer job; the theme's CSS is about 100 KB; labels the design writes in its sheets in English
+("Village", "Featured", "Local wisdom") stay English on every language's pages; the script is
+code swarm.press ships to every visitor, and its audit is ours; the search is a substring match
+over the export's index (no ranking, no stemming); a place's featured story is chosen by its name
+in the story's title or tags; content the design asks for that the site lacks (an activity's
+cost, a restaurant's "ask for", a rating's source) stays missing and is reported, never filled in.

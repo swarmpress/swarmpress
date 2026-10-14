@@ -262,3 +262,155 @@ pub fn repairs(report: &VisualReport, plan: &ThemePlan) -> Vec<VisualFix> {
     }
     out
 }
+
+/// The comparison spec's pages for the design's **components** and the site's **page types**
+/// (ADR-0093 addendum, 2026-10-14), beside the templates' own:
+///
+/// - each used component: its instance on a page that has it (its marker `ds-c-{slug}`, or its
+///   block style `is-style-{name}`) against its specimen on the design's sheet
+///   (`[data-sp-component={slug}] > :nth-child(2)`);
+/// - each page type: its sample page against the design's closest composition (the design's
+///   template that shares the most of its components), region by region: the parts, and each
+///   shared component.
+///
+/// `static_page` names a design page's static rendering (`pages/04-components.static.html`).
+pub fn coverage_pages(
+    design: &site_design::SiteDesign,
+    plan: &ThemePlan,
+    data: &site_design::ThemeData,
+    coverage: &crate::catalog::Coverage,
+    static_page: &dyn Fn(&str) -> String,
+) -> Vec<serde_json::Value> {
+    use serde_json::json;
+    // An instance is the component's marker or one of its block styles, wherever it is.
+    let site_sel = |slug: &str| -> Option<String> {
+        let mut sels: Vec<String> = Vec::new();
+        let m = crate::catalog::marker(slug);
+        let in_markup = data.templates.iter().any(|t| t.content.contains(&m))
+            || data.template_parts.iter().any(|p| p.content.contains(&m));
+        if in_markup {
+            sels.push(format!(".{m}"));
+        }
+        for b in data.block_styles.iter().filter(|b| b.component == slug) {
+            sels.push(format!(".is-style-{}", b.name));
+        }
+        (!sels.is_empty()).then(|| sels.join(", "))
+    };
+    let in_parts = |slug: &str| {
+        let m = crate::catalog::marker(slug);
+        data.template_parts.iter().any(|p| p.content.contains(&m))
+    };
+    let first_lang = plan.site.langs()[0].clone();
+    let mut pages = Vec::new();
+    for c in coverage.components.iter().filter(|c| !c.used_in.is_empty()) {
+        let Some(comp) = design.components.iter().find(|x| x.slug == c.slug) else {
+            continue;
+        };
+        let Some(sel) = site_sel(&c.slug) else {
+            continue;
+        };
+        // A page that has it: the part's on the home; else the page type with most pages that
+        // shows it in its template or its content.
+        let url = if in_parts(&c.slug) {
+            Some(format!("/{first_lang}/"))
+        } else {
+            coverage
+                .page_types
+                .iter()
+                .filter(|p| p.components.contains(&c.slug))
+                .filter(|p| {
+                    let m = crate::catalog::marker(&c.slug);
+                    data.templates
+                        .iter()
+                        .any(|t| t.slug == p.template && t.content.contains(&m))
+                        || data.block_styles.iter().any(|b| {
+                            b.component == c.slug
+                                && b.classes.iter().any(|cl| {
+                                    plan.site
+                                        .page_types
+                                        .iter()
+                                        .any(|x| x.key == p.key && x.kinds.contains_key(cl))
+                                })
+                        })
+                })
+                .max_by_key(|p| (p.count, std::cmp::Reverse(p.key.clone())))
+                .map(|p| p.sample.clone())
+        };
+        let Some(url) = url else { continue };
+        pages.push(json!({
+            "name": format!("component {} {}", c.number.as_deref().unwrap_or(""), c.slug),
+            "design": static_page(&comp.page),
+            "site": url,
+            "regions": [{"name": c.slug, "design": format!("[data-sp-component={}] > :nth-child(2)", c.slug), "site": sel}],
+        }));
+    }
+    // The design's compositions: its templates, the components each one's sections are.
+    let compositions: Vec<(&site_design::model::Template, Vec<(String, String)>)> = design
+        .templates
+        .iter()
+        .map(|t| {
+            let task = plan
+                .tasks
+                .iter()
+                .find(|x| x.design.as_deref() == Some(t.slug.as_str()));
+            let mut comps: Vec<(String, String)> = Vec::new();
+            for s in task.map(|x| x.sections.as_slice()).unwrap_or(&[]) {
+                for c in s
+                    .components
+                    .iter()
+                    .chain(s.essentials.iter().map(|e| &e.component))
+                {
+                    let sel = if t.kind == site_design::model::TemplateKind::Listing {
+                        format!("[data-sp-component={c}] > :nth-child(2)")
+                    } else {
+                        format!("[data-sp-section={}]", s.id)
+                    };
+                    if !comps.iter().any(|(x, _)| x == c) {
+                        comps.push((c.clone(), sel));
+                    }
+                }
+            }
+            (t, comps)
+        })
+        .collect();
+    for pt in &coverage.page_types {
+        let best = compositions
+            .iter()
+            .map(|(t, cs)| {
+                let shared: Vec<&(String, String)> = cs
+                    .iter()
+                    .filter(|(c, _)| pt.components.contains(c))
+                    .collect();
+                (
+                    shared.len(),
+                    t.kind == site_design::model::TemplateKind::Home,
+                    *t,
+                    shared,
+                )
+            })
+            .max_by_key(|(n, home, t, _)| (*n, *home, std::cmp::Reverse(t.slug.clone())));
+        let Some((_, _, t, shared)) = best else {
+            continue;
+        };
+        let mut regions = Vec::new();
+        if t.kind != site_design::model::TemplateKind::Listing {
+            regions.push(json!({"name": "header", "design": "[data-sp-part=header]", "site": "header.wp-block-template-part"}));
+        }
+        for (c, dsel) in shared {
+            if let Some(ssel) = site_sel(c) {
+                regions.push(json!({"name": c, "design": dsel, "site": ssel, "sameAspect": true}));
+            }
+        }
+        if t.kind != site_design::model::TemplateKind::Listing {
+            regions.push(json!({"name": "footer", "design": "[data-sp-part=footer]", "site": "footer.wp-block-template-part"}));
+        }
+        pages.push(json!({
+            "name": format!("page-type {}", pt.key),
+            "design": static_page(&t.source),
+            "site": pt.sample,
+            "regions": regions,
+            "closest": t.slug,
+        }));
+    }
+    pages
+}

@@ -122,7 +122,11 @@ interface Shot {
 /** A full-page screenshot of `url` at `width`, with the boxes of the named regions. */
 async function shoot(page: Page, url: string, width: number, mask: string | undefined, regions: { name: string; selector: string }[]): Promise<Shot> {
   await page.setViewportSize({ width, height: 900 })
-  await page.goto(url, { waitUntil: 'networkidle' })
+  // A page that keeps the network busy (pictures from elsewhere, prefetching) is taken once it
+  // has loaded and settled for a while.
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+  await page.waitForLoadState('load', { timeout: 20_000 }).catch(() => undefined)
+  await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined)
   await page.addStyleTag({ content: maskCss(mask) })
   await page.evaluate(() => document.fonts.ready.then(() => undefined))
   // Entrance animations run to their end (a headline that rises into view is compared risen).
