@@ -188,8 +188,9 @@ The site repo's `wordpress-export` is at `5d18c86` (the preview redeployed); `ma
 The fixes from the review of the screenshots (FEAT-115: one byline with the real author, the page
 header's order, pictures on every card that has one and never an empty frame, the hero's ticker
 beside the headline, bands at full width, the story's measure, pull quotes, tags, the mode table)
-are in swarmpress; the preview at `5d18c86` predates them. The next run of the web designer and the
-migration brings them (the run on 2026-10-15 stopped when the central server stopped answering).
+are in the preview at `94de781` (swarmpress `d11777d`; GPT-6-Luna: 48 of 48 tasks right first time,
+52 calls, $0.052; the job's visual check: front page 867/845, `page-front` 859/841 at 375/1280 px;
+the gate 631/663; navigation 544 entries, 0 missing; 0 generic pages; 0 "Uncategorized").
 Side-by-side screenshots (preview, live, design: the home, a village, Manarola's hiking page, an
 article, the FAQ, weather, getting here, the itinerary, the open village panel, the phone's menu)
 are FEAT-115's evidence.
