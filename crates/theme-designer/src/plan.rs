@@ -738,6 +738,26 @@ fn page_type_task(
             classes.push("ds-notte-at-night".to_string());
         }
     }
+    // A story whose content carries its byline (author, place, date) shows no WordPress date or
+    // author of its own: one byline, the real author (WordPress's is whoever imported it).
+    let forbid: Vec<(String, String)> = if pt.post && pt.kinds.contains_key("ct-byline") {
+        [
+            "core/post-date",
+            "core/post-time-to-read",
+            "core/post-author-name",
+            "core/post-author",
+        ]
+        .iter()
+        .map(|b| {
+            (
+                b.to_string(),
+                "the story's byline is in its content (one byline, its real author)".to_string(),
+            )
+        })
+        .collect()
+    } else {
+        Vec::new()
+    };
     TemplateTask {
         kind: TaskKind::Template,
         slug: pt.template.clone(),
@@ -769,6 +789,7 @@ fn page_type_task(
         classes,
         brand: None,
         search: None,
+        forbid,
     }
 }
 
@@ -904,6 +925,7 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
             classes: Vec::new(),
             brand: if slug == "header" { nav.brand.clone() } else { None },
             search,
+            forbid: Vec::new(),
         });
     }
 
@@ -967,6 +989,7 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
             classes,
             brand: None,
             search: None,
+            forbid: Vec::new(),
         });
     }
     // --- the site's page types the design has no page for
@@ -1000,6 +1023,7 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
             classes: Vec::new(),
             brand: None,
             search: None,
+            forbid: Vec::new(),
         });
         seen.insert(r.to_string());
     }

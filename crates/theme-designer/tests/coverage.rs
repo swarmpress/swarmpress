@@ -613,3 +613,61 @@ fn every_navigation_and_coverage_mutant_is_caught() {
     }
     assert!(caught >= 40, "only {caught} mutants applied");
 }
+
+#[test]
+fn a_storys_template_has_one_byline_and_the_page_headers_order() {
+    let (_, p, _, _) = made();
+    let parts = p.part_slugs();
+    let t = p.tasks.iter().find(|t| t.slug == "single").unwrap();
+    assert!(t.forbid.iter().any(|(b, _)| b == "core/post-author-name"));
+    let good = theme_designer::sketch::template(t, &p.presets);
+    assert_eq!(check_template(t, &good, &p.context(&parts)), vec![]);
+    // WordPress's author (whoever imported the story) beside the content's byline.
+    let bad = good.replacen(
+        "<!-- wp:post-title {\"level\":1} /-->",
+        "<!-- wp:post-title {\"level\":1} /-->\n<!-- wp:post-author-name /-->",
+        1,
+    );
+    let issues = check_template(t, &bad, &p.context(&parts));
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.message.contains("core/post-author-name is not used here")),
+        "{issues:#?}"
+    );
+    // The eyebrow after the title: the design's header is breadcrumb, eyebrow, title, lede.
+    let eyebrow = "<!-- wp:post-terms {\"className\":\"ds-eyebrow\",\"term\":\"category\"} /-->\n";
+    assert!(good.contains(eyebrow), "{good}");
+    let moved = good.replacen(eyebrow, "", 1).replacen(
+        "<!-- wp:post-title {\"level\":1} /-->\n",
+        &format!("<!-- wp:post-title {{\"level\":1}} /-->\n{eyebrow}"),
+        1,
+    );
+    let issues = check_template(t, &moved, &p.context(&parts));
+    assert!(
+        issues.iter().any(|i| i.code == IssueCode::Rule
+            && i.message.contains("puts the title before the eyebrow")),
+        "{issues:#?}"
+    );
+}
+
+#[test]
+fn tags_lists_and_an_editors_note_take_the_designs_forms() {
+    let (_, p, _, _) = made();
+    let css = &p.global_styles.css;
+    // An empty picture frame is never shown; a wrap inside a wrap is not narrowed again.
+    assert!(css.contains(".ds-card-img:not(:has(img[src]"));
+    assert!(css.contains(".ds-wrap .ds-wrap{max-width:none"));
+    assert_eq!(
+        theme_designer::catalog::function_of("ct-tags"),
+        Some(("tags", "list"))
+    );
+    assert_eq!(
+        theme_designer::catalog::function_of("ct-editor-note"),
+        Some(("callout", "pull-quote"))
+    );
+    assert_eq!(
+        theme_designer::catalog::function_of("ct-items-transport"),
+        Some(("getting-here", ""))
+    );
+}

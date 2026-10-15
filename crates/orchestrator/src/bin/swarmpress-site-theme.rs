@@ -180,6 +180,8 @@ fn collections() -> Vec<Collection> {
                 "price_unit",
                 "rating",
                 "rating_scale",
+                "image",
+                "image_alt",
             ],
             Some("stay"),
         ),

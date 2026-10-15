@@ -193,6 +193,7 @@ pub fn block_style_css(design: &SiteDesign, styles: &[BlockStyle]) -> String {
             ("contents", _) => CONTENTS,
             ("byline", _) => BYLINE,
             ("related", _) => RELATED,
+            ("tags", "list") => TAGS,
             ("tags", _) => TAG,
             _ => "",
         };
@@ -374,6 +375,9 @@ const PULL_QUOTE: &str = r#"&{display:grid!important;grid-template-columns:56px 
 & blockquote p{margin:0}
 & .ct-badge,&::after{font-family:@mono@;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:@muted@}
 &::after{grid-column:2;margin-top:12px}
+& cite,& .ct-author,& .ct-role{order:5;font-family:@mono@;font-size:12px;font-style:normal;letter-spacing:.12em;text-transform:uppercase;color:@muted@}
+& .wp-block-quote::before,& blockquote::before{display:none}
+& .wp-block-image{display:none}
 & .ct-content{font-size:17px;line-height:1.65;font-family:@body@;font-style:normal}
 "#;
 
@@ -479,6 +483,10 @@ const RELATED: &str = r#"&{border-top:3px solid @ink@;display:flex;flex-directio
 & li .ct-related-meta{font-family:@mono@;font-size:11px;color:@muted@}
 "#;
 
+const TAGS: &str = r#"&{display:flex!important;flex-wrap:wrap;gap:6px;list-style:none;padding:0!important;margin:24px 0}
+& li{font-family:@mono@;font-size:11px;letter-spacing:.12em;text-transform:uppercase;border:1px solid @ink@;padding:5px 9px;margin:0;line-height:1.2}
+"#;
+
 const TAG: &str = r#"&{display:inline-block;width:fit-content;align-self:flex-start;justify-self:start;font-family:@mono@;font-size:11px;letter-spacing:.12em;text-transform:uppercase;border:1px solid @ink@;padding:5px 9px;margin:0;line-height:1.2}
 "#;
 
@@ -529,6 +537,18 @@ header.wp-block-template-part:has(.ds-masthead.ds-hidden){transform:translateY(-
 @media (max-width:@small@){.ds-nav-dots .wp-block-navigation__responsive-container-open{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center}}
 @media (min-width:@md@){.ds-masthead-row{flex-wrap:nowrap;gap:12px 24px}.ds-masthead-row>.ds-nav-dots{flex:1 1 auto;justify-content:center}.ds-masthead .ds-nav-dots .wp-block-navigation__container{flex-wrap:nowrap;gap:4px 20px!important}.ds-masthead-end{flex-wrap:nowrap;gap:12px}.ds-masthead .ds-wordmark{white-space:nowrap}}
 @media (max-width:@small@){.ds-masthead-row{flex-wrap:nowrap;gap:8px}.ds-masthead-row>.ds-wordmark,.ds-masthead-row>.wp-block-navigation:first-child{flex:1 1 auto;order:1}.ds-masthead-end{order:2;flex-wrap:nowrap}.ds-masthead-row>.ds-nav-dots{order:3;flex:0 0 auto}}
+/* a wrap inside a wrap is not narrowed again; a band's ground runs the page's full width */
+.ds-wrap .ds-wrap{max-width:none!important;padding-inline:0!important}
+.ds-band.ds-wrap{max-width:none!important;padding-inline:0!important}
+.ds-band.ds-wrap>.ds-wrap{max-width:@container@!important;padding-inline:var(--ds-margin)!important}
+/* never an empty picture frame: an entry without a picture is its text-only variant */
+.ds-card-img:not(:has(img[src]:not([src=""]))):not(:has(.ds-chip:not(:empty))),.wp-block-image:not(:has(img[src]:not([src=""]))){display:none}
+.ds-tile:not(:has(img[src]:not([src=""]))) .ds-numeral{position:static}
+/* a story's text at its measure (64ch at body-l), its section heads at the type sheet's h2 */
+.wp-block-post-content.ds-prose-article p,.wp-block-post-content.ds-prose-article li{max-width:64ch;font-size:var(--wp--preset--font-size--body-l,19px);line-height:1.6}
+.wp-block-post-content :is(.ds-prose-article,.ds-prose-wide) h2,.wp-block-post-content.ds-prose-article h2,.wp-block-post-content.ds-prose-wide h2{font-family:@display@;font-size:@h2-size@;font-weight:400;line-height:1.05;letter-spacing:-0.02em;margin:48px 0 16px}
+.wp-block-post-content.ds-prose-article h3,.wp-block-post-content.ds-prose-wide h3{font-family:@display@;font-size:@h3-size@;font-weight:400;line-height:1.15}
+@media (min-width:@md@){.ds-article .wp-block-post-content{grid-template-columns:minmax(0,760px) minmax(220px,280px)!important;justify-content:space-between}}
 /* the page's own content on the grid's left, at its measure (the design is set flush left) */
 .wp-block-post-content.ds-prose-wide>*,.wp-block-post-content.ds-prose-article>*,.wp-block-post-content .is-layout-constrained>*{margin-left:0!important;margin-right:auto!important}
 .wp-block-post-content.ds-prose-wide>*{max-width:min(100%,1100px)}
@@ -612,9 +632,9 @@ html:not(.ds-js) .ds-search{display:none}
 .ds-ticker-head{display:flex;justify-content:space-between;gap:12px;font-family:@mono@;font-size:11px;letter-spacing:.14em;text-transform:uppercase;margin:0}
 .ds-ticker-head>:first-child{color:@dark-accent@}
 .ds-ticker-head>:last-child{opacity:.7;text-transform:none;letter-spacing:0}
-.ds-ticker-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0}
+.ds-ticker-values{display:grid;grid-template-columns:repeat(3,auto);justify-content:space-between;gap:16px;margin:0}
 .ds-ticker-values>*{display:flex;flex-direction:column;gap:4px;margin:0}
-.ds-ticker .ds-count{font-family:@display@;font-size:clamp(32px,2vw + 16px,48px);line-height:1;font-variant-numeric:tabular-nums}
+.ds-ticker .ds-count{white-space:nowrap;font-family:@display@;font-size:clamp(30px,1.6vw + 14px,44px);line-height:1;font-variant-numeric:tabular-nums}
 .ds-ticker .ds-meta{color:color-mix(in srgb,@dark-text@ 62%,transparent);font-size:11px;text-transform:uppercase}
 .ds-ticker-source{font-family:@mono@;font-size:11px;opacity:.7;margin:0}
 .ds-ticker-source a{color:inherit}

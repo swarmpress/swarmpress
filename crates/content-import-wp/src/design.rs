@@ -909,6 +909,12 @@ pub fn gaps(docs: &[Doc], entries: &[crate::entries::Entry]) -> Vec<Gap> {
         e.0 += 1;
     };
     for d in docs.iter().filter(|d| d.post_type == "post") {
+        if !d.meta.contains_key("image") {
+            add(
+                "a story without a picture (its card shows the text only)".into(),
+                &d.route,
+            );
+        }
         if d.meta.contains_key("_swarmpress_category_from_badge") {
             add(
                 "a story without a category (its hero's badge stands in, fix-06)".into(),
@@ -933,6 +939,17 @@ pub fn gaps(docs: &[Doc], entries: &[crate::entries::Entry]) -> Vec<Gap> {
                     &e.slug,
                 );
             }
+        }
+        if matches!(e.post_type.as_str(), "sp_stay" | "sp_village")
+            && !e.fields.contains_key("image")
+        {
+            add(
+                format!(
+                    "{} without a picture (its card shows the text only)",
+                    e.post_type
+                ),
+                &e.slug,
+            );
         }
         if e.post_type == "sp_restaurant" && e.fields.contains_key("rating") {
             add(

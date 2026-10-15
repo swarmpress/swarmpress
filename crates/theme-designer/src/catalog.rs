@@ -61,6 +61,8 @@ pub const CONTENT_FUNCTIONS: &[(&str, &str, &str)] = &[
     ("ct-byline", "byline", ""),
     ("ct-continue-reading", "related", ""),
     ("ct-category", "tags", "tag"),
+    ("ct-tags", "tags", "list"),
+    ("ct-editor-note", "callout", "pull-quote"),
 ];
 
 /// The function and variant a content class needs, if any.
@@ -68,8 +70,7 @@ pub fn function_of(class: &str) -> Option<(&'static str, &'static str)> {
     if let Some((_, f, v)) = CONTENT_FUNCTIONS.iter().find(|(c, _, _)| *c == class) {
         return Some((f, v));
     }
-    let editor_aside =
-        class.starts_with("ct-") && class.ends_with("-comment") || class == "ct-editor-note";
+    let editor_aside = class.starts_with("ct-") && class.ends_with("-comment");
     editor_aside.then_some(("callout", "local-wisdom"))
 }
 

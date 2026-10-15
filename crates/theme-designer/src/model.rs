@@ -344,6 +344,10 @@ pub struct TemplateTask {
     /// For a part: the design's search component, its opener a `core/search` button.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub search: Option<String>,
+    /// Blocks this template must not use, each with why (a story's byline is its content's, so
+    /// its template shows no WordPress date or author of its own).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forbid: Vec<(String, String)>,
 }
 
 impl TemplateTask {

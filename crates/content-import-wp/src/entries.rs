@@ -98,6 +98,8 @@ pub fn content_types() -> Vec<ContentType> {
                 ("price_unit", "Per night, in the entry's language"),
                 ("rating", "Rating out of 10"),
                 ("rating_scale", "Rating scale"),
+                ("image", "Picture URL"),
+                ("image_alt", "Picture description"),
             ],
         ),
         t(
@@ -327,6 +329,26 @@ pub fn entries(site: &Site) -> Vec<Entry> {
             fields.insert("village".into(), village_name(&v, lang));
             if let Some(k) = item.get("type").and_then(Value::as_str) {
                 fields.insert("kind".into(), k.to_string());
+            }
+            // Its first picture, when it has one (the design's stay card shows it).
+            if let Some(img) = item
+                .get("images")
+                .and_then(Value::as_array)
+                .and_then(|a| a.first())
+            {
+                let url = img
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .or_else(|| img.as_str())
+                    .unwrap_or("");
+                if url.starts_with("http") || url.starts_with('/') {
+                    fields.insert("image".into(), url.to_string());
+                    let alt = img
+                        .get("alt_text")
+                        .and_then(Value::as_str)
+                        .map_or_else(|| title.clone(), String::from);
+                    fields.insert("image_alt".into(), alt);
+                }
             }
             let pr = item.get("price_range");
             let (min, max) = (

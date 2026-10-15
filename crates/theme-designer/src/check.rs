@@ -434,6 +434,47 @@ pub fn check_template(task: &TemplateTask, markup: &str, ctx: &CheckContext<'_>)
         }
     };
 
+    // --- blocks the task forbids
+    for b in &all {
+        if let Some((_, why)) = task.forbid.iter().find(|(n, _)| *n == b.name) {
+            out.push(Issue::new(
+                IssueCode::Block,
+                &at,
+                format!("line {}: {} is not used here: {why}", b.line, b.name),
+            ));
+        }
+    }
+
+    // --- a page header in the design's order (4.9): breadcrumb, eyebrow, title, lede
+    if task.sections.iter().any(|s| s.kind == "title") {
+        let at_of = |f: &dyn Fn(&blocks::Block) -> bool| all.iter().position(|b| f(b));
+        let order = [
+            ("the breadcrumb", at_of(&|b| b.name == "core/breadcrumbs")),
+            (
+                "the eyebrow",
+                at_of(&|b| b.name == "core/post-terms" && b.classes().contains(&"ds-eyebrow")),
+            ),
+            ("the title", at_of(&|b| b.name == "core/post-title")),
+            ("the lede", at_of(&|b| b.name == "core/post-excerpt")),
+        ];
+        let mut last: Option<(&str, usize)> = None;
+        for (what, pos) in order {
+            let Some(pos) = pos else { continue };
+            if let Some((before, p)) = last {
+                if pos < p {
+                    out.push(Issue::new(
+                        IssueCode::Rule,
+                        &at,
+                        format!(
+                            "the page header puts {what} before {before}; the design's order is the breadcrumb, the eyebrow, the title (h1), the lede"
+                        ),
+                    ));
+                }
+            }
+            last = Some((what, pos));
+        }
+    }
+
     // --- each block
     for b in &all {
         let line = b.line;

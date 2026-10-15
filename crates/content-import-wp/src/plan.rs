@@ -564,9 +564,15 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
     if let Some(v) = &r.village {
         meta.insert("_swarmpress_place".to_string(), v.clone());
     }
-    // A story's picture as a field (`image`, `image_alt`), for the design's cards.
+    // A story's picture as a field (`image`, `image_alt`), for the design's cards: its article's,
+    // else its hero's.
+    let hero_image = blocks
+        .iter()
+        .find(|b| b.get("type").and_then(Value::as_str) == Some("editorial-hero"))
+        .and_then(|b| b.get("image"));
     if let Some(img) = article
         .and_then(|a| a.get("image"))
+        .or(if post { hero_image } else { None })
         .and_then(Value::as_str)
         .filter(|s| s.starts_with("http") || s.starts_with('/'))
     {

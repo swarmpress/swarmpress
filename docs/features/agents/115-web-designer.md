@@ -273,12 +273,21 @@ not compared (its specimen's progress bar is 3 px high). Page types against the 
 composition: the listings 776–826 (1440 px), the others 485–626 at 375 and 1280 px (only the
 parts and their shared components are regions; most types' content has no page in the design).
 
-After the review of the side-by-sides three fixes went into the code: `core/post-author-name` is
-no longer an allowed block (it showed WordPress's author, the importer, on stories; the content's
-byline names the author), a tag no longer stretches across its column, and a collection of ways to
-arrive takes the mode table rather than the generic entries (one block style per block). The
-preview at `5d18c86` predates them: rebuilding it needs a new model run, and the central server
-stopped answering (it had held its database through the drive's unmount).
+After the review of the side-by-sides (the owner's coordinator's notes included), fixed for every
+site, each with a check or a test:
+- **One byline, the real author:** a story whose content carries its byline gets a template that
+  must not use `core/post-date`, `core/post-time-to-read` or `core/post-author-name`
+  (`TemplateTask.forbid`, checked); WordPress's author is whoever imported the story.
+- **The page header's order** (4.9: breadcrumb, eyebrow, title, lede) is a check.
+- **Never an empty picture frame:** a story's picture is its article's, else its hero's; a stay
+  carries its first picture; an entry without one shows its text-only variant (CSS), and the
+  content gaps list it.
+- **The hero** keeps the essentials ticker beside the headline at the top, its values unclipped.
+- **A wrap inside a wrap** is not narrowed again; a band's ground runs the page's full width.
+- **A story's measure** is 64ch at body-l, its section heads at the type sheet's h2.
+- **Forms:** an editor's note is the pull quote (its author and role in mono below), a story's tags
+  are 4.3 tags, a tag keeps its own width, a collection of ways to arrive is the mode table (one
+  block style per block, the most specific).
 
 ## Tests added on 2026-10-14
 

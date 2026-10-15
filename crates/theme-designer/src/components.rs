@@ -417,9 +417,9 @@ const CSS: &str = r#"/* component styles: the design's forms as classes (theme-d
 .ds-rating-row{display:flex;align-items:baseline;gap:10px;border-top:1px solid @line@;border-bottom:1px solid @line@;padding:12px 0}
 .ds-rating-row .ds-stat{font-size:34px}
 .wp-block-buttons{gap:12px}
-.ds-hero{display:flex;flex-wrap:wrap;gap:40px 48px;align-items:flex-end;padding-top:clamp(40px,6vw,88px);padding-bottom:clamp(48px,7vw,112px)}
+.ds-hero{display:flex;flex-wrap:wrap;gap:40px 48px;align-items:flex-start;padding-top:clamp(40px,6vw,88px);padding-bottom:clamp(48px,7vw,112px)}
 .ds-hero-main{flex:999 1 560px;min-width:0;display:flex;flex-direction:column;gap:28px}
-.ds-hero-aside{flex:1 1 300px;display:flex;flex-direction:column;gap:12px}
+.ds-hero-aside{flex:1 1 340px;max-width:440px;display:flex;flex-direction:column;gap:12px;align-self:flex-start;margin-top:clamp(0px,3vw,40px)}
 .ds-hero h1{margin:0;font-family:@display@;font-size:@display-size@;font-weight:400;line-height:.88;letter-spacing:-0.035em}
 .ds-hero h1 em{color:@link@}
 .ds-lede,.ds-hero .ds-lede{margin:0;max-width:30ch;font-family:@display@;font-size:@lede-size@;line-height:1.4;font-style:italic}

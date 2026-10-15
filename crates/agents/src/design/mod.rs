@@ -121,6 +121,7 @@ mod tests {
             classes: vec![],
             brand: None,
             search: None,
+            forbid: vec![],
         };
         let presets = Presets::default();
         let input = TemplateInput {
