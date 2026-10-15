@@ -1007,8 +1007,67 @@ async fn main() {
         .unwrap_or_else(|e| die(format!("{file}: {e}")));
         let p = theme_designer::plan(&design, &b.manifest(), &site);
         let (coverage, issues) = theme_designer::catalog::coverage(&design, &p, &data);
-        let pages =
+        let mut pages =
             theme_designer::visual::coverage_pages(&design, &p, &data, &coverage, &static_name);
+        // A component is compared on a page that has it: when its sample page lacks every one of
+        // its classes in its markup, the first exported page (the site's first language first)
+        // that has one.
+        let files = PathBuf::from(&export).join("files");
+        let html_of = |url: &str| {
+            std::fs::read_to_string(files.join(url.trim_start_matches('/')).join("index.html")).ok()
+        };
+        let has = |html: &str, sel: &str| {
+            sel.split(", ").any(|c| {
+                let c = c.trim_start_matches('.');
+                html.match_indices("class=\"").any(|(i, _)| {
+                    let rest = &html[i + 7..];
+                    rest[..rest.find('"').unwrap_or(0)]
+                        .split_whitespace()
+                        .any(|x| x == c)
+                })
+            })
+        };
+        let mut all: Vec<String> = Vec::new();
+        let mut stack = vec![files.clone()];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                let path = e.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.file_name().is_some_and(|n| n == "index.html") {
+                    if let Some(rel) = path.parent().and_then(|d| d.strip_prefix(&files).ok()) {
+                        let r = rel.to_string_lossy();
+                        all.push(if r.is_empty() {
+                            "/".into()
+                        } else {
+                            format!("/{r}/")
+                        });
+                    }
+                }
+            }
+        }
+        let first = format!("/{}/", site.langs()[0]);
+        all.sort_by_key(|u| (!u.starts_with(&first), u.len(), u.clone()));
+        for page in pages.iter_mut().filter(|x| {
+            x["name"]
+                .as_str()
+                .is_some_and(|n| n.starts_with("component "))
+        }) {
+            let sel = page["regions"][0]["site"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            let url = page["site"].as_str().unwrap_or("/").to_string();
+            if html_of(&url).is_some_and(|h| has(&h, &sel)) {
+                continue;
+            }
+            if let Some(u) = all
+                .iter()
+                .find(|u| html_of(u).is_some_and(|h| has(&h, &sel)))
+            {
+                page["site"] = json!(u);
+            }
+        }
         let spec = json!({
             "design": out.join("design"),
             "site": PathBuf::from(&export).join("files"),

@@ -185,6 +185,9 @@ target/debug/swarmpress-site-theme --design … --content … --out <dir> \
 | the job | GPT-6-Luna, 48 tasks (47 right first time, 9 issues repaired), 53 calls, $0.054 |
 
 The site repo's `wordpress-export` is at `5d18c86` (the preview redeployed); `main` is untouched.
+Three fixes from the review of the screenshots (no WordPress author on stories, tags at their own
+width, the mode table for ways to arrive) are in swarmpress but not yet in the preview: the next
+run of the web designer and the migration brings them.
 Side-by-side screenshots (preview, live, design: the home, a village, Manarola's hiking page, an
 article, the FAQ, weather, getting here, the itinerary, the open village panel, the phone's menu)
 are FEAT-115's evidence.

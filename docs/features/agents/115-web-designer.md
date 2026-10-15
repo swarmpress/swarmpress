@@ -253,6 +253,33 @@ stays at 791 (the design shows one entry with two external ratings side by side 
 "ask for" fact the data does not have). The final run: 17 calls, $0.026; all runs of the day: 95
 calls, $0.131. The theme is on the site repo's preview (`wordpress-export`), not in production.
 
+## Results on cinqueterre.travel (2026-10-14, second)
+
+GPT-6-Luna through the central server, 48 tasks (47 templates, 2 parts; 47 right first time, 9
+issues repaired), 53 calls, $0.054; the job's own visual check: front page 843/822, `page-front`
+830/821 (375/1280 px), listings 776–825 at 1440 px. The migration with its theme data: gate
+**631/663**; `design-check`: 544 live menu entries on the export (400 nested), 0 missing, 0 broken;
+0 pages on the generic template; 0 "Uncategorized"; preview `wordpress-export` at `5d18c86`.
+
+Coverage (`coverage.json`, no errors): every component used except 4.12 form controls (no form:
+the newsletter is hidden), 4.16 gallery (no set of pictures in the content) and 4.18 feedback (no
+page places it, no status content). Visual, each component on a page that shows it against its
+specimen (1440 px: the sheets are laid out at that width): masthead and village panel 853, editor
+profile 826, accordion 754, itinerary timeline 749, dateline 714, activity entry 705, listing bar
+703, tags 701, continue reading 681, page header 676, restaurant entry 652, mode table 638, Trail
+Ledger 628, phone sheet 623, callouts 603, week ahead 582, search 533, cards 505, buttons 284
+(one header button against the sheet's row of variants), essentials 229; the contents rail is
+not compared (its specimen's progress bar is 3 px high). Page types against the closest design
+composition: the listings 776–826 (1440 px), the others 485–626 at 375 and 1280 px (only the
+parts and their shared components are regions; most types' content has no page in the design).
+
+After the review of the side-by-sides three fixes went into the code: `core/post-author-name` is
+no longer an allowed block (it showed WordPress's author, the importer, on stories; the content's
+byline names the author), a tag no longer stretches across its column, and a collection of ways to
+arrive takes the mode table rather than the generic entries (one block style per block). The
+preview at `5d18c86` predates them: rebuilding it needs a new model run, and the central server
+stopped answering (it had held its database through the drive's unmount).
+
 ## Tests added on 2026-10-14
 
 - `crates/theme-designer/tests/design_forms.rs`: the component styles from the tokens and the

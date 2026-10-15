@@ -199,13 +199,16 @@ try {
   for (const p of spec.pages) {
     const done = new Set<number>()
     for (const asked of widths) {
+      // A page that cannot be shot in two minutes (a page of thousands of pixels, a stalled
+      // picture) is reported as not compared, and the run goes on.
+      const step = async () => {
       let width = asked
       let a = await shoot(page, `${design.origin}/${p.design}`, width, spec.mask?.design, p.regions.map((r) => ({ name: r.name, selector: r.design })))
       if (a.fixedWidth > width + 20) {
         // A sheet laid out at a fixed width (a components sheet) is compared at that width only.
         results.push({ page: p.name, design: p.design, site: p.site, width: asked, compared: false, reason: `the design's sheet is ${a.fixedWidth} px wide; compared at ${a.fixedWidth} px` })
         width = a.fixedWidth
-        if (done.has(width)) continue
+        if (done.has(width)) return
         console.log(`${p.name}: the design's page is ${width} px wide at any width; compared at ${width} px`)
         a = await shoot(page, `${design.origin}/${p.design}`, width, spec.mask?.design, p.regions.map((r) => ({ name: r.name, selector: r.design })))
       }
@@ -241,7 +244,7 @@ try {
       }
       if (!regions.length) {
         results.push({ page: p.name, design: p.design, site: p.site, width, compared: false, reason: 'no region of the design is on this page' })
-        continue
+        return
       }
       const score = pageScore(regions)
       results.push({ page: p.name, design: p.design, site: p.site, width, score, whole: whole.similarity, regions })
@@ -249,6 +252,22 @@ try {
         `${p.name} @${width}px: ${score}‰ by region (whole page ${whole.similarity}‰) — ` +
           regions.map((r) => `${r.name} ${r.found ? r.similarity : 'missing'}`).join(', '),
       )
+      }
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        await Promise.race([
+          step(),
+          new Promise((_, no) => {
+            timer = setTimeout(() => no(new Error('timed out after 120 s')), 120_000)
+          }),
+        ])
+      } catch (e) {
+        results.push({ page: p.name, design: p.design, site: p.site, width: asked, compared: false, reason: String(e).slice(0, 200) })
+        console.log(`${p.name} @${asked}px: not compared (${String(e).slice(0, 120)})`)
+        await page.goto('about:blank').catch(() => undefined)
+      } finally {
+        clearTimeout(timer)
+      }
     }
   }
 } finally {
