@@ -363,6 +363,9 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             .filter(Issue::is_error)
             .collect();
         errors.extend(theme_designer::catalog::coverage(&design, &p, &data).1);
+        errors.extend(theme_designer::navigation::check_pigments(
+            &design, &data, &site,
+        ));
         if !errors.is_empty() {
             let f = invalid_answer(lines(&errors));
             return self

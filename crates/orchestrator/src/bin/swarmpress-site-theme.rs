@@ -5,7 +5,12 @@
 //! swarmpress-site-theme --design FILE|DIR --content DIR --out DIR
 //!                       [--llm fake|hosted] [--server URL] [--login NAME] [--version N]
 //!                       [--wordpress URL --repo URL]
+//! swarmpress-site-theme --design FILE|DIR --content DIR --out DIR --rebuild-from THEME_DATA
 //! ```
+//!
+//! `--rebuild-from` makes a theme again from an earlier run's model answers without a model call:
+//! this code's deterministic plan (styles, menus, block styles, files) with that run's templates,
+//! parts and labels, assembled and checked as the job does, and says which parts changed.
 //!
 //! `--design` is a Claude Design standalone export (one `.html`) or a bundle directory; `--content`
 //! the site repo's `content/` (cinqueterre.travel's): its menus and footer give the pages a menu
@@ -1002,6 +1007,89 @@ async fn main() {
     // The report of a site already made (`--report-export DIR --theme-data FILE`): the coverage of
     // the design's components and the site's page types, and their visual comparison at 375 and
     // 1280 px on the static export, without a job.
+    // A theme made again from a run's model answers (`--rebuild-from FILE`, no model call): the
+    // deterministic plan of this code with the run's templates, parts and labels, assembled as
+    // the job assembles them, checked as the job checks them; written as `theme-data.json` beside
+    // FILE's assets in `--out`.
+    if let Some(file) = arg(&args, "--rebuild-from") {
+        let old: site_design::ThemeData = serde_json::from_str(
+            &std::fs::read_to_string(&file).unwrap_or_else(|e| die(format!("{file}: {e}"))),
+        )
+        .unwrap_or_else(|e| die(format!("{file}: {e}")));
+        let mut markup = BTreeMap::new();
+        for t in &the_plan.tasks {
+            let content = match t.kind {
+                theme_designer::TaskKind::Template => old
+                    .templates
+                    .iter()
+                    .find(|x| x.slug == t.slug)
+                    .map(|x| x.content.clone()),
+                theme_designer::TaskKind::Part => old
+                    .template_parts
+                    .iter()
+                    .find(|x| x.slug == t.slug)
+                    .map(|x| x.content.clone()),
+            };
+            match content {
+                Some(c) => {
+                    markup.insert(t.label(), c);
+                }
+                None => die(format!("{file} has no {}", t.label())),
+            }
+        }
+        let mut data = theme_designer::assemble(&the_plan, &markup);
+        let mut errors: Vec<String> = theme_designer::check_theme(&data, &the_plan)
+            .into_iter()
+            .filter(theme_designer::Issue::is_error)
+            .map(|i| i.line())
+            .collect();
+        errors.extend(
+            theme_designer::catalog::coverage(&design, &the_plan, &data)
+                .1
+                .iter()
+                .map(theme_designer::Issue::line),
+        );
+        errors.extend(
+            theme_designer::navigation::check_pigments(&design, &data, &site)
+                .iter()
+                .map(theme_designer::Issue::line),
+        );
+        if !old.labels.is_empty() {
+            data.global_styles
+                .css
+                .push_str(&theme_designer::labels::css(&old.labels));
+            data.labels = old.labels.clone();
+        }
+        if !errors.is_empty() {
+            die(errors.join("\n"));
+        }
+        let changed: Vec<&str> = [
+            ("global_styles", data.global_styles != old.global_styles),
+            ("templates", data.templates != old.templates),
+            ("template_parts", data.template_parts != old.template_parts),
+            ("navigation", data.navigation != old.navigation),
+            ("fonts", data.fonts != old.fonts),
+            ("block_styles", data.block_styles != old.block_styles),
+            ("files", data.files != old.files),
+            ("labels", data.labels != old.labels),
+        ]
+        .into_iter()
+        .filter_map(|(k, c)| c.then_some(k))
+        .collect();
+        let target = out.join("theme-data.json");
+        std::fs::write(&target, serde_json::to_string_pretty(&data).unwrap())
+            .unwrap_or_else(|e| die(e));
+        eprintln!(
+            "rebuilt {} from {file}: changed {}",
+            target.display(),
+            if changed.is_empty() {
+                "nothing".to_string()
+            } else {
+                changed.join(", ")
+            }
+        );
+        return;
+    }
     if let Some(export) = arg(&args, "--report-export") {
         let file = need("--theme-data");
         let data: site_design::ThemeData = serde_json::from_str(

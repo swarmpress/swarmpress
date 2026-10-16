@@ -23,7 +23,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use site_design::model::{PartArea as DesignArea, SiteDesign};
-use site_design::wordpress::{valid_slug, NavigationItem, NavigationMenu};
+use site_design::wordpress::{valid_slug, NavigationItem, NavigationMenu, ThemeData};
 
 use crate::model::{Issue, IssueCode, MenuArea, SiteContext, SourceMenu};
 use crate::styles::{label_key, resolve, slugify};
@@ -317,6 +317,19 @@ pub fn navigation(design: &SiteDesign, site: &SiteContext) -> NavPlan {
         .map(|(n, _)| n.clone());
     if let Some(main) = &main {
         for m in plan.menus.iter_mut().filter(|m| &m.name == main) {
+            // Each village's item says which village it is: its dot, tint and panel follow it.
+            for it in &mut m.items {
+                if let Some(place) = place_of(site, it) {
+                    let class = format!("ds-village-{}", place.slug);
+                    it.class = Some(match &it.class {
+                        Some(c) if !c.split_whitespace().any(|x| x == class) => {
+                            format!("{c} {class}")
+                        }
+                        Some(c) => c.clone(),
+                        None => class,
+                    });
+                }
+            }
             let mut n = 0;
             for it in &mut m.items {
                 if it.children.is_empty() {
@@ -558,6 +571,130 @@ pub fn source_entries(site: &SiteContext) -> Vec<(String, String, Option<String>
         entries(&sm.items, None, &mut es);
         for e in es.into_iter().filter(|e| !e.url.is_empty()) {
             out.push((sm.lang.clone(), e.url, e.parent));
+        }
+    }
+    out
+}
+
+/// Each village's tint is the design's pigment for that village, by identity (FEAT-115): its
+/// menu items carry `ds-village-{slug}` (the header's dots, the phone's sheet, the panels), the
+/// CSS gives that class the village's pigment and tint, and the places' classes (`sp_place-…`
+/// on cards and tiles, `ct-place-…`/`ds-place-…` on content and panels) resolve to a palette
+/// colour equal to it. No dot is set by an item's position.
+pub fn check_pigments(design: &SiteDesign, data: &ThemeData, site: &SiteContext) -> Vec<Issue> {
+    let mut out = Vec::new();
+    let css = &data.global_styles.css;
+    let at = "village pigments";
+    if css.contains("-item:nth-child(") && css.contains("--ds-dot") {
+        for line in css
+            .lines()
+            .filter(|l| l.contains(":nth-child(") && l.contains("--ds-dot"))
+        {
+            out.push(Issue::new(
+                IssueCode::Rule,
+                at,
+                format!("a village's dot is set by its position, not by the village: {line}"),
+            ));
+        }
+    }
+    let palette: BTreeMap<String, String> = data.global_styles.settings["color"]["palette"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|p| {
+                    Some((
+                        p["slug"].as_str()?.to_string(),
+                        p["color"].as_str()?.to_ascii_lowercase(),
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    // `{prefix}{--ds-pigment:var(--wp--preset--color--x)}` resolved through the palette.
+    let resolved = |prefix: &str| -> Option<String> {
+        let i = css.find(prefix)?;
+        let rest = &css[i + prefix.len()..];
+        let j = rest.find("--ds-pigment:var(--wp--preset--color--")?;
+        let rest = &rest[j + 38..];
+        let slug = &rest[..rest.find(')')?];
+        palette.get(slug).cloned()
+    };
+    let menus_with_villages: Vec<&NavigationMenu> = data
+        .navigation
+        .iter()
+        .filter(|m| {
+            m.items.iter().any(|i| {
+                i.class
+                    .as_deref()
+                    .is_some_and(|c| c.contains("ds-village-"))
+            })
+        })
+        .collect();
+    for place in &site.places {
+        let Some(pigment) = crate::forms::village_pigment(design, &place.slug, &place.label) else {
+            continue;
+        };
+        let want = pigment.value.to_ascii_lowercase();
+        let class = format!("ds-village-{}", place.slug);
+        // The menu items of the village (every language), by class and by identity.
+        for m in &menus_with_villages {
+            for it in &m.items {
+                let is_it = place_of(site, it).is_some_and(|p| p.slug == place.slug);
+                let has = it
+                    .class
+                    .as_deref()
+                    .is_some_and(|c| c.split_whitespace().any(|x| x == class));
+                if is_it != has {
+                    out.push(Issue::new(
+                        IssueCode::Rule,
+                        at,
+                        format!(
+                            "menu {} ({}): the item {:?} {} the class {class}",
+                            m.name,
+                            m.lang,
+                            it.label,
+                            if has {
+                                "is not the village but has"
+                            } else {
+                                "is the village but lacks"
+                            }
+                        ),
+                    ));
+                }
+            }
+        }
+        if !menus_with_villages.is_empty() {
+            let rule = format!(".ds-village-{}{{--ds-dot:", place.slug);
+            let dot = css.find(&rule).map(|i| {
+                let v = &css[i + rule.len()..];
+                v[..v.find(';').unwrap_or(v.len())].to_ascii_lowercase()
+            });
+            if dot.as_deref() != Some(want.as_str()) {
+                out.push(Issue::new(
+                    IssueCode::Rule,
+                    at,
+                    format!(
+                        "{}: the menu's dot is {:?}, the design's pigment {want}",
+                        place.label, dot
+                    ),
+                ));
+            }
+        }
+        for prefix in [
+            format!(".sp_place-{}{{", place.slug),
+            format!(".ct-place-{},.ds-place-{}{{", place.slug, place.slug),
+        ] {
+            let got = resolved(&prefix);
+            if got.as_deref() != Some(want.as_str()) {
+                out.push(Issue::new(
+                    IssueCode::Rule,
+                    at,
+                    format!(
+                        "{}: {prefix} is {:?}, the design's pigment {want}",
+                        place.label, got
+                    ),
+                ));
+            }
         }
     }
     out

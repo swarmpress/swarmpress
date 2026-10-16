@@ -279,26 +279,20 @@ fn specimen_grounds(html: &str, design: &SiteDesign) -> Vec<String> {
 pub fn panel_css(
     design: &SiteDesign,
     menu: &str,
-    labels: &[String],
+    villages: &[(String, String)],
     places: &[(String, String)],
 ) -> String {
     let mut s = String::new();
-    for (i, l) in labels.iter().enumerate() {
-        let key = crate::styles::slugify(l);
-        let Some(c) = design.tokens.colours.iter().find(|c| {
-            c.role == ColourRole::Pigment
-                && (c.name.ends_with(&format!("-{key}"))
-                    || c.label.as_deref().is_some_and(|x| {
-                        crate::styles::slugify(x).split('-').next() == key.split('-').next()
-                    }))
-        }) else {
+    // Each village's dot and tint by its identity (`ds-village-{slug}` on its menu item), never
+    // by its position in the menu.
+    for (slug, label) in villages {
+        let Some(c) = village_pigment(design, slug, label) else {
             continue;
         };
-        let n = i + 1;
         let tint = c.tint.as_deref().unwrap_or("transparent");
         let _ = writeln!(
             s,
-            ".sp-menu-{menu} .wp-block-navigation__container>.wp-block-navigation-item:nth-child({n}){{--ds-dot:{};--ds-tint:{tint}}}",
+            ".sp-menu-{menu} .wp-block-navigation-item.ds-village-{slug}{{--ds-dot:{};--ds-tint:{tint}}}",
             c.value
         );
     }
@@ -428,6 +422,26 @@ const PEOPLE: &str = r#"&{margin-block:40px}
 & .ct-hobbies li{font-family:@mono@;font-size:11px;letter-spacing:.1em;text-transform:uppercase;border:1px solid @ink@;padding:5px 9px;margin:0}
 @media (prefers-reduced-motion:reduce){& .ct-editors-item:hover .wp-block-image img{transform:none}}
 "#;
+
+/// The design's pigment of a village (`Riomaggiore (Corallo)` or `pigment-riomaggiore`), by its
+/// slug or its name.
+pub fn village_pigment<'a>(
+    design: &'a SiteDesign,
+    slug: &str,
+    label: &str,
+) -> Option<&'a site_design::model::ColourToken> {
+    let keys = [crate::styles::slugify(label), crate::styles::slugify(slug)];
+    design.tokens.colours.iter().find(|c| {
+        c.role == ColourRole::Pigment
+            && keys.iter().any(|key| {
+                !key.is_empty()
+                    && (c.name.ends_with(&format!("-{key}"))
+                        || c.label.as_deref().is_some_and(|x| {
+                            crate::styles::slugify(x).split('-').next() == key.split('-').next()
+                        }))
+            })
+    })
+}
 
 /// An author's profile under a story (7.5 as a byline footer): avatar, name, role, bio.
 const PROFILE: &str = r#"&{display:grid!important;grid-template-columns:64px minmax(0,1fr);gap:4px 20px;align-items:start;border-top:1px solid @ink@;padding:24px 0;margin-block:48px 0;max-width:760px}

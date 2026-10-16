@@ -794,3 +794,64 @@ fn an_authors_profile_takes_the_editor_profiles_form() {
         Some(("people", "profile"))
     );
 }
+
+#[test]
+fn each_villages_tint_is_its_own_pigment_by_identity_never_by_position() {
+    let (d, _, data, s) = made();
+    assert_eq!(
+        theme_designer::navigation::check_pigments(&d, &data, &s),
+        vec![],
+        "the theme as made"
+    );
+    // Every village item carries its own class, wherever the sheet's wordmark puts it.
+    let main = data
+        .navigation
+        .iter()
+        .find(|m| {
+            m.items
+                .iter()
+                .any(|i| i.class.as_deref() == Some("ds-sheet-brand"))
+        })
+        .unwrap();
+    assert!(main.items[1]
+        .class
+        .as_deref()
+        .is_some_and(|c| c.contains("ds-village-riomaggiore")));
+    assert!(!data.global_styles.css.contains("-item:nth-child("));
+    // Mutants: two villages' classes swapped; a dot by position; a wrong pigment.
+    let mut swapped = data.clone();
+    for m in &mut swapped.navigation {
+        for it in &mut m.items {
+            if let Some(c) = &mut it.class {
+                *c = c
+                    .replace("ds-village-riomaggiore", "ds-village-x")
+                    .replace("ds-village-manarola", "ds-village-riomaggiore")
+                    .replace("ds-village-x", "ds-village-manarola");
+            }
+        }
+    }
+    assert!(!theme_designer::navigation::check_pigments(&d, &swapped, &s).is_empty());
+    let mut positional = data.clone();
+    positional.global_styles.css.push_str(
+        ".sp-menu-villages .wp-block-navigation__container>.wp-block-navigation-item:nth-child(1){--ds-dot:#D9A441}\n",
+    );
+    assert!(!theme_designer::navigation::check_pigments(&d, &positional, &s).is_empty());
+    let mut wrong = data.clone();
+    let rio = theme_designer::forms::village_pigment(&d, "riomaggiore", "Riomaggiore")
+        .unwrap()
+        .value
+        .clone();
+    let man = theme_designer::forms::village_pigment(&d, "manarola", "Manarola")
+        .unwrap()
+        .value
+        .clone();
+    wrong.global_styles.css = wrong.global_styles.css.replace(
+        &format!(".ds-village-riomaggiore{{--ds-dot:{rio}"),
+        &format!(".ds-village-riomaggiore{{--ds-dot:{man}"),
+    );
+    let issues = theme_designer::navigation::check_pigments(&d, &wrong, &s);
+    assert!(
+        issues.iter().any(|i| i.message.contains("Riomaggiore")),
+        "{issues:#?}"
+    );
+}

@@ -314,6 +314,12 @@ The second review (on `94de781`), fixed for every site, each with a check or a t
 - **A story's author** closes it as the design's editor profile (7.5): initials, name, role, bio.
 - **Author archives** are exported only for the authors the content names; WordPress's archive of
   the importing user (`/author/admin/`) leaves the release with its sitemap entries.
+- **Village pigments by identity:** the sheet's wordmark became the main menu's first item and the
+  dots, set by position (`:nth-child`), moved one village along. Each village's menu item now
+  carries `ds-village-{slug}` and the CSS sets its dot and tint by that class;
+  `navigation::check_pigments` (in the job and in `--rebuild-from`) fails a theme whose villages'
+  menu classes, dots, tints or place pigments (`sp_place-…`, `ct-place-…`, `ds-place-…`) differ
+  from the design's pigment for that village, or that sets a dot by position.
 
 ## Tests added on 2026-10-14
 

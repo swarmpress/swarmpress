@@ -373,7 +373,14 @@ pub fn components(input: &ComponentInput<'_>) -> String {
                     })
             })
             .collect();
-        css.push_str(&crate::forms::panel_css(d, menu, labels, &places));
+        let villages: Vec<(String, String)> = input
+            .site
+            .places
+            .iter()
+            .map(|pl| (pl.slug.clone(), pl.label.clone()))
+            .collect();
+        let _ = labels;
+        css.push_str(&crate::forms::panel_css(d, menu, &villages, &places));
     }
     // The opening's columns as the design's sheet sets them (its hero row's two flex values).
     if let Some((main, aside)) = hero_columns(d) {
