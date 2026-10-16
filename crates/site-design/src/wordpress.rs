@@ -17,6 +17,7 @@
 //! | `fonts` | `wp_font_family` / `wp_font_face`, files as uploads | `/wp/v2/font-families` |
 //! | `block_styles` | none: classes the importer gives the content they apply to | — |
 //! | `files` | none: files the static export publishes beside the pages | — |
+//! | `labels` | none: the design's own words in every site language, put in at import and export | — |
 //!
 //! **Block styles** name a component of the design and the content classes it renders
 //! (`accordion` for `ct-faq-section`): the importer adds `is-style-{name}` to those blocks and the
@@ -32,7 +33,7 @@
 //! on; the design checks (block grammar, allowed blocks, contrast, fonts'
 //! licences, the visual comparison) are the web designer's.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -71,6 +72,12 @@ pub struct ThemeData {
     /// Files the static site publishes beside its pages (module docs).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<ThemeFile>,
+    /// The design's own words (`Editors' picks`, `On this page`, `Sea`) by key, then language
+    /// (`en` the design's word): filled by the web designer for every site language. Keys
+    /// starting `css-` are the stylesheet's (`content:var(--ds-l-{key})`); the import and the
+    /// export put the others in a page's language where they stand alone (`site_export::labels`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 /// The one script a site's theme may publish: swarm.press's own, audited, the same for every site
@@ -447,6 +454,28 @@ impl ThemeData {
                 ));
             }
         }
+        for (key, by_lang) in &self.labels {
+            let at = format!("labels.{key}");
+            if !valid_slug(key) || key.len() > 64 {
+                out.push(issue(at.clone(), "is a slug ([a-z0-9-]) of at most 64"));
+            }
+            if !by_lang.contains_key("en") {
+                out.push(issue(at.clone(), "has its English (en)"));
+            }
+            for (lang, text) in by_lang {
+                let plain = !text.trim().is_empty()
+                    && text.len() <= 160
+                    && !text.contains(['<', '>', '\\', '"', '\'', '{', '}', ';']);
+                let code =
+                    (2..=3).contains(&lang.len()) && lang.chars().all(|c| c.is_ascii_lowercase());
+                if !plain || !code {
+                    out.push(issue(
+                        format!("{at}.{lang}"),
+                        "is plain text (no markup, quotes, backslashes or braces) in a language code",
+                    ));
+                }
+            }
+        }
         let mut seen = BTreeSet::new();
         for (i, f) in self.files.iter().enumerate() {
             let at = format!("files[{i}]");
@@ -643,7 +672,32 @@ mod tests {
                     content: ENHANCEMENT_SCRIPT.into(),
                 },
             ],
+            labels: BTreeMap::from([(
+                "css-village".to_string(),
+                BTreeMap::from([
+                    ("en".to_string(), "Village".to_string()),
+                    ("de".to_string(), "Dorf".to_string()),
+                ]),
+            )]),
         }
+    }
+
+    #[test]
+    fn labels_are_plain_words_with_their_english() {
+        let mut d = minimal();
+        d.labels.insert(
+            "Bad Key".into(),
+            BTreeMap::from([("de".to_string(), "<b>x</b>".to_string())]),
+        );
+        let got: Vec<String> = d.validate_shape().iter().map(|i| i.at.clone()).collect();
+        assert!(got.contains(&"labels.Bad Key".to_string()), "{got:?}");
+        assert!(got.contains(&"labels.Bad Key.de".to_string()), "{got:?}");
+        d.labels.remove("Bad Key");
+        d.labels
+            .get_mut("css-village")
+            .unwrap()
+            .insert("fr".into(), "Village d'en haut".into());
+        assert_eq!(d.validate_shape().len(), 1);
     }
 
     #[test]

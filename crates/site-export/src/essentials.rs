@@ -209,10 +209,15 @@ pub fn needed(html: &str, places: &BTreeMap<String, Place>) -> Result<BTreeSet<P
 }
 
 /// `html` with every ticker filled from `values` (by [`Place::key`]); `None` when it has none.
+///
+/// Its words come from `labels` (the site's label table over [`crate::labels::DEFAULTS`]) in the
+/// page's language: `today` (the design's head, `Today on the coast`), `updated`, `sea`, `air`,
+/// `sunset`, `weather-data-by`.
 pub fn fill(
     html: &str,
     places: &BTreeMap<String, Place>,
     values: &BTreeMap<String, Essentials>,
+    labels: &crate::labels::Labels,
 ) -> Result<Option<String>, String> {
     let found = find(html);
     if found.is_empty() {
@@ -229,34 +234,12 @@ pub fn fill(
         let lang = attr(&f.open_tag, "data-lang").unwrap_or_else(|| lang.clone());
         out.push_str(&html[at..f.start]);
         out.push_str(&f.open_tag);
-        out.push_str(&render(&place, e, &lang));
+        out.push_str(&render(&place, e, &lang, labels));
         out.push_str("</div>");
         at = f.end;
     }
     out.push_str(&html[at..]);
     Ok(Some(out))
-}
-
-type Word = [&'static str; 4];
-const LIVE: &Word = &["essentials · live", "aktuell", "en direct", "in diretta"];
-const UPDATED: &Word = &["updated", "aktualisiert", "mis à jour", "aggiornato"];
-const SEA: &Word = &["Sea", "Meer", "Mer", "Mare"];
-const AIR: &Word = &["Air", "Luft", "Air", "Aria"];
-const SUNSET: &Word = &["Sunset", "Sonnenuntergang", "Coucher du soleil", "Tramonto"];
-const BY: &Word = &[
-    "Weather data by",
-    "Wetterdaten von",
-    "Données météo :",
-    "Dati meteo di",
-];
-
-fn li(lang: &str) -> usize {
-    match lang {
-        "de" => 1,
-        "fr" => 2,
-        "it" => 3,
-        _ => 0,
-    }
 }
 
 fn esc(s: &str) -> String {
@@ -266,24 +249,24 @@ fn esc(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-fn render(place: &Place, e: &Essentials, lang: &str) -> String {
-    let i = li(lang);
+fn render(place: &Place, e: &Essentials, lang: &str, labels: &crate::labels::Labels) -> String {
+    let w = |k: &str| esc(&crate::labels::word(labels, k, lang).unwrap_or_default());
     let sky = crate::forecast::condition_word(e.code, lang);
     let icon = crate::forecast::sky_icon(e.code);
     format!(
-        "<p class=\"ds-ticker-head\"><span>{} {}</span><span>{} {}</span></p><div class=\"ds-ticker-values\"><p><span class=\"ds-count\">{}°</span><span class=\"ds-meta\">{}</span></p><p><span class=\"ds-count\">{}°</span><span class=\"ds-meta\"><span class=\"ct-wx ct-wx-{icon}\" aria-hidden=\"true\"></span>{} · {}</span></p><p><span class=\"ds-count\">{}</span><span class=\"ds-meta\">{}</span></p></div><p class=\"ds-ticker-source\">{} <a href=\"https://open-meteo.com/\">Open-Meteo.com</a> (CC BY 4.0)</p>",
+        "<p class=\"ds-ticker-head\"><span class=\"ds-ticker-label\">{}</span><span class=\"ds-ticker-at\">{} · {} {}</span></p><div class=\"ds-ticker-values\"><p><span class=\"ds-count\">{}°</span><span class=\"ds-meta\">{}</span></p><p><span class=\"ds-count\">{}°</span><span class=\"ds-meta\"><span class=\"ct-wx ct-wx-{icon}\" aria-hidden=\"true\"></span>{} · {}</span></p><p><span class=\"ds-count\">{}</span><span class=\"ds-meta\">{}</span></p></div><p class=\"ds-ticker-source\">{} <a href=\"https://open-meteo.com/\">Open-Meteo.com</a> (CC BY 4.0)</p>",
+        w("today"),
         esc(&place.name),
-        LIVE[i],
-        UPDATED[i],
+        w("updated"),
         esc(&e.at),
         e.sea_c.round() as i64,
-        SEA[i],
+        w("sea"),
         e.air_c.round() as i64,
-        AIR[i],
+        w("air"),
         esc(sky),
         esc(&e.sunset),
-        SUNSET[i],
-        BY[i],
+        w("sunset"),
+        w("weather-data-by"),
     )
 }
 
@@ -306,18 +289,23 @@ mod tests {
         let html = "<html lang=\"de-DE\"><body><div class=\"wp-block-group ds-ticker sp-essentials sp-place-vernazza\"><p>–</p></div><p>after</p></body></html>";
         assert_eq!(needed(html, &places).unwrap().len(), 1);
         let values = BTreeMap::from([(vernazza().key(), e)]);
-        let out = fill(html, &places, &values).unwrap().unwrap();
+        let labels = crate::labels::with_defaults(&Default::default());
+        let out = fill(html, &places, &values, &labels).unwrap().unwrap();
         assert!(
             out.contains("<span class=\"ds-count\">22°</span><span class=\"ds-meta\">Meer</span>"),
             "{out}"
         );
         assert!(out.contains("Sonnenuntergang"));
+        assert!(
+            out.contains("<span class=\"ds-ticker-label\">Heute</span>"),
+            "{out}"
+        );
         assert!(out.contains("18:41"));
         assert!(out.contains("Open-Meteo.com"));
         assert!(out.contains("<p>after</p>"));
         assert!(!out.contains("<p>–</p>"));
         // Filled again later: the same element is found and refilled.
-        let again = fill(&out, &places, &values).unwrap().unwrap();
+        let again = fill(&out, &places, &values, &labels).unwrap().unwrap();
         assert_eq!(again, out);
     }
 
@@ -327,7 +315,7 @@ mod tests {
         let html = "<div class=\"sp-essentials sp-place-atlantis\"></div>";
         assert!(needed(html, &places).unwrap_err().contains("atlantis"));
         let html = "<div class=\"sp-essentials\" data-place=\"Vernazza|44.1350|9.6847\" data-lang=\"en\"></div>";
-        assert!(fill(html, &places, &BTreeMap::new())
+        assert!(fill(html, &places, &BTreeMap::new(), &Default::default())
             .unwrap_err()
             .contains("no essentials"));
         assert!(parse(b"{\"current\":{}}", b"{}").is_err());

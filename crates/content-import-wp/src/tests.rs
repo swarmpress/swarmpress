@@ -1267,3 +1267,99 @@ fn with_a_design_the_homes_are_its_templates_pages_get_its_listings_and_its_rule
     assert_eq!(part["item"], "/wp/v2/template-parts/canvas//header");
     assert_eq!(part["lookup"], "/wp/v2/template-parts/canvas//header");
 }
+
+#[test]
+fn ways_to_arrive_are_one_compact_mode_table_and_a_missing_time_is_a_gap() {
+    use crate::design::{gaps, mode_table, prepare, split_time};
+    assert_eq!(
+        split_time("8 min from La Spezia"),
+        (Some("8 min".into()), Some("from La Spezia".into()))
+    );
+    assert_eq!(split_time("2 h"), (Some("2 h".into()), None));
+    assert_eq!(
+        split_time("About an hour"),
+        (None, Some("About an hour".into()))
+    );
+    let mut blocks = vec![
+        json!({"type": "collection-with-interludes", "itemType": "transport",
+        "items": [
+            {"name": {"en": "By Train"}, "category": {"en": "Primary Access"}, "duration": {"en": "8 min from La Spezia"},
+             "description": {"en": "The regional line."}, "giuliaComment": {"en": "Take the train."}},
+            {"name": {"en": "By Ferry"}, "category": {"en": "Scenic Option"}, "description": {"en": "Seasonal boats."}}
+        ],
+        "interludes": [{"afterIndex": 0, "badge": {"en": "Interlude"}, "quote": {"en": "Arrive slowly."}}]}),
+    ];
+    prepare(&mut blocks);
+    let html = mode_table(&blocks[0], "en").expect("ways to arrive are a mode table");
+    // One table, one row per mode: its name, its note, its time; the rest opens under it.
+    assert_eq!(html.matches("ct-mode-table").count(), 2, "{html}");
+    assert_eq!(html.matches("<summary>").count(), 2);
+    assert!(html.contains("<summary><span class=\"ct-mode-name\">By Train</span><span class=\"ct-mode-note\">from La Spezia</span><span class=\"ct-mode-time\">8 min</span></summary>"), "{html}");
+    assert!(html.contains("ct-mode-train") && html.contains("ct-mode-boat"));
+    assert!(html.contains("<span class=\"ct-mode-name\">By Ferry</span><span class=\"ct-mode-note\">Scenic Option</span></summary>"));
+    // The interlude follows the table, never between its rows.
+    let table_end = html.rfind("</details>").unwrap();
+    assert!(html.find("Arrive slowly.").unwrap() > table_end);
+    // A way the words do not name is a row of its own, without an icon.
+    let mut three = blocks[0].clone();
+    three["items"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"name": {"en": "Something else"}}));
+    let html3 = mode_table(&three, "en").unwrap();
+    assert!(html3.contains("ct-mode-row ct-mode-other"), "{html3}");
+    // A collection of something else is not a mode table.
+    assert!(mode_table(
+        &json!({"type": "collection", "items": [{"name": {"en": "X"}}]}),
+        "en"
+    )
+    .is_none());
+    let mut doc = plan(&site()).docs[0].clone();
+    doc.post_type = "page".into();
+    doc.content = html;
+    let g = gaps(&[doc], &[]);
+    assert!(
+        g.iter()
+            .any(|g| g.what.starts_with("a way to arrive without its time") && g.count == 1),
+        "{g:?}"
+    );
+}
+
+#[test]
+fn a_storys_author_closes_it_as_the_designs_editor_profile_and_its_words_are_in_its_language() {
+    use crate::plan::plan_with_theme;
+    let mut s = site();
+    s.pages.insert(
+        "blog/harbour.json".into(),
+        json!({"slug": {"en": "/en/blog/harbour", "de": "/de/blog/hafen"},
+               "page_type": "blog-article", "title": {"en": "Harbour"}, "body": [
+            {"type": "blog-article", "post": {"title": {"en": "Harbour", "de": "Hafen"}, "author": {"name": "Elena Moretti", "bio": {"en": "A photographer.", "de": "Eine Fotografin."}, "role": {"en": "Photographer"}}, "category": "Villages"},
+             "content": {"sections": [{"title": {"en": "One", "de": "Eins"}, "text": {"en": "A.", "de": "A."}}, {"title": {"en": "Two", "de": "Zwei"}, "text": {"en": "B.", "de": "B."}}]}}
+        ]}),
+    );
+    let mut data = theme_data();
+    data.labels.insert(
+        "on-this-page".into(),
+        [
+            ("en".to_string(), "On this page".to_string()),
+            ("de".into(), "Inhalt".into()),
+        ]
+        .into(),
+    );
+    let p = plan_with_theme(&s, crate::compose::Options::default(), Some(data));
+    let en = doc_at(&p, "/en/blog/harbour/");
+    assert!(en.content.contains("ct-author-profile"), "{}", en.content);
+    let profile = &en.content[en.content.find("ct-author-profile").unwrap()..];
+    for part in [
+        "<p class=\"ct-avatar\">EM</p>",
+        ">Elena Moretti</p>",
+        ">Photographer</p>",
+        ">A photographer.</p>",
+    ] {
+        assert!(profile.contains(part), "{part} in {profile}");
+    }
+    // The design's words: the site's table first, the platform's words where it has none.
+    let de = doc_at(&p, "/de/blog/hafen/");
+    assert!(de.content.contains(">Inhalt</p>"), "{}", de.content);
+    assert!(!de.content.contains(">On this page<"));
+}

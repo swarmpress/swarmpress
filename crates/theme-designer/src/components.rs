@@ -375,7 +375,42 @@ pub fn components(input: &ComponentInput<'_>) -> String {
             .collect();
         css.push_str(&crate::forms::panel_css(d, menu, labels, &places));
     }
+    // The opening's columns as the design's sheet sets them (its hero row's two flex values).
+    if let Some((main, aside)) = hero_columns(d) {
+        let _ = writeln!(
+            css,
+            ".ds-hero-main{{flex:{main}}}.ds-hero-aside{{flex:{aside}}}"
+        );
+    }
     css
+}
+
+/// The flex values of the design's opening row (`flex:999 1 560px` and `flex:1 1 300px`): the
+/// first section `hero` of a template whose markup has a flex row of two or more columns.
+pub fn hero_columns(design: &SiteDesign) -> Option<(String, String)> {
+    let flex_of = |e: &site_design::dom::El| -> Option<String> {
+        let style = e.attr("style")?;
+        style.split(';').find_map(|d| {
+            let (k, v) = d.split_once(':')?;
+            (k.trim() == "flex").then(|| v.trim().to_string())
+        })
+    };
+    let safe = |v: &str| {
+        v.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '.' | '%'))
+    };
+    design
+        .templates
+        .iter()
+        .flat_map(|t| t.sections.iter())
+        .filter(|s| s.id == "hero")
+        .find_map(|s| {
+            let doc = site_design::dom::parse(&format!("<body>{}</body>", s.html));
+            let row = doc.find(&|e| e.elements().filter(|c| flex_of(c).is_some()).count() >= 2)?;
+            let mut cols = row.elements().filter_map(flex_of);
+            let (main, aside) = (cols.next()?, cols.next()?);
+            (safe(&main) && safe(&aside)).then_some((main, aside))
+        })
 }
 
 /// The vocabulary's CSS with `@name@` placeholders ([`components`] fills them).

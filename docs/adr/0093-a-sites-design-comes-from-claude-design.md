@@ -294,3 +294,38 @@ code swarm.press ships to every visitor, and its audit is ours; the search is a 
 over the export's index (no ranking, no stemming); a place's featured story is chosen by its name
 in the story's title or tags; content the design asks for that the site lacks (an activity's
 cost, a restaurant's "ask for", a rating's source) stays missing and is reported, never filled in.
+
+## Addendum (2026-10-15, third): the design's words in every language
+
+**Context.** The second addendum left the design's own words in English on every language's pages
+(its negatives): the headings a template writes, the stylesheet's "Village", "Featured" and
+"Typical", the ticker's "Today on the coast", the script's search words, WordPress's skip link. A
+site in four languages showed English on three of them.
+
+**Decision.**
+1. **Labels.** Every word a theme shows that is not content is a label: a key, its English (the
+   design's word) and its text in every site language, in `ThemeData.labels`. The sources are
+   listed deterministically (`theme_designer::labels::sources`): the templates' and parts' own
+   texts (pieces split by inline tags carry the whole they belong to; names and figures are not
+   labels), the stylesheet's `var(--ds-l-css-…,"…")` uses, the enhancement script's words, the
+   platform's (the ticker, "On this page", "More in"), WordPress's, and the names of a page's facts
+   the import writes.
+2. **The web designer writes them.** One structured call, `web design labels`, after the templates
+   and the visual check; its answer is checked (every label in every language, plain text, no
+   language more than a third the English words) and repaired like any structured answer. Nothing
+   is written per site in code.
+3. **Where they apply.** The stylesheet's labels are CSS variables set per `:root:lang(…)`; the
+   script reads its own from the same variables. The others are put in a page's language where one
+   stands alone (a text node, an `aria-label`, a `placeholder`) by the import (the content's
+   furniture) and by the export (the templates' words, WordPress's) (`site_export::labels`); the
+   platform's defaults cover a theme without a table. The export's `design-check` fails a page in
+   another language that still shows a label in English.
+
+**Alternatives:** WordPress's own translation files (a `.po` per language: a GPL-side build step
+and no place for a design's words); templates per language (four times the templates and the model
+calls); leaving the design's words in English (the negative this addendum removes).
+
+**Negatives:** one more model call per job; a text a template writes that equals a content text
+elsewhere on a page in another language would be put in that language too (only where it stands
+alone); words split by emphasis are translated piece by piece, so a language's word order can only
+follow the pieces' order.

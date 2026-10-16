@@ -34,15 +34,11 @@ fn li(lang: &str) -> usize {
     LANGS.iter().position(|l| *l == lang).unwrap_or(0)
 }
 
-type Words = [&'static str; 4];
-const ON_THIS_PAGE: Words = [
-    "On this page",
-    "Auf dieser Seite",
-    "Sur cette page",
-    "In questa pagina",
-];
-const MORE_FROM: Words = ["More from", "Mehr aus", "Plus de", "Altro da"];
-const MORE_IN: Words = ["More in", "Mehr zu", "Plus sur", "Altro su"];
+// The design's words the import writes, in English: the import and the export put them in each
+// page's language from the site's label table (`site_export::labels`).
+const ON_THIS_PAGE: &str = "On this page";
+const MORE_FROM: &str = "More from";
+const MORE_IN: &str = "More in";
 
 /// Ways to arrive and the words that name them (en, de, fr, it).
 const MODES: [(&str, &[&str]); 6] = [
@@ -71,7 +67,14 @@ const MODES: [(&str, &[&str]); 6] = [
             "airport",
             "airports",
             "flight",
+            "flights",
+            "fly",
             "plane",
+            "flug",
+            "avion",
+            "vol",
+            "volo",
+            "aereo",
             "flughafen",
             "aéroport",
             "aeroporto",
@@ -383,7 +386,12 @@ pub fn article(b: &Value, lang: &str) -> String {
         .and_then(|p| VILLAGES.iter().find(|(s, _)| *s == p))
         .map(|(_, n)| n[li(lang)]);
     let mut by = String::new();
-    if let Some(a) = text("author") {
+    if let Some(a) = text("author").or_else(|| {
+        post.get("author")
+            .and_then(|a| a.get("name"))
+            .and_then(|n| localized(n, lang))
+            .map(str::to_string)
+    }) {
         by.push_str(&markup::paragraph_html(
             &markup::escape(&initials(&a)),
             Some("ct-avatar"),
@@ -454,10 +462,8 @@ pub fn article(b: &Value, lang: &str) -> String {
             .iter()
             .map(|i| format!("<!-- wp:list-item -->\n<li>{i}</li>\n<!-- /wp:list-item -->\n"))
             .collect();
-        let mut inner = markup::paragraph_html(
-            &markup::escape(ON_THIS_PAGE[li(lang)]),
-            Some("ct-contents-label"),
-        );
+        let mut inner =
+            markup::paragraph_html(&markup::escape(ON_THIS_PAGE), Some("ct-contents-label"));
         inner.push_str(&format!(
             "<!-- wp:list {{\"ordered\":true}} -->\n<ol class=\"wp-block-list\">{lis}</ol>\n<!-- /wp:list -->\n"
         ));
@@ -514,10 +520,44 @@ pub fn article(b: &Value, lang: &str) -> String {
             .and_then(|b| localized(b, lang))
             .map(str::to_string)
     }) {
-        out.push_str(&markup::paragraph_html(
+        // The author's profile closes the story (the design's editor profile, 7.5): initials,
+        // name, role when the content gives one, the bio.
+        let mut inner = String::new();
+        if let Some(a) = text("author").or_else(|| {
+            post.get("author")
+                .and_then(|a| a.get("name"))
+                .and_then(|n| localized(n, lang))
+                .map(str::to_string)
+        }) {
+            inner.push_str(&markup::paragraph_html(
+                &markup::escape(&initials(&a)),
+                Some("ct-avatar"),
+            ));
+            inner.push_str(&markup::paragraph_html(
+                &markup::escape(&a),
+                Some("ct-author"),
+            ));
+        }
+        if let Some(role) = text("authorRole").or_else(|| {
+            post.get("author")
+                .and_then(|a| a.get("role"))
+                .and_then(|r| localized(r, lang))
+                .map(str::to_string)
+        }) {
+            inner.push_str(&markup::paragraph_html(
+                &markup::escape(&role),
+                Some("ct-role"),
+            ));
+        }
+        inner.push_str(&markup::paragraph_html(
             &markup::inline(&bio),
             Some("ct-author-bio"),
         ));
+        let class = match place {
+            Some(p) => format!("ct-author-profile ct-place-{p}"),
+            None => "ct-author-profile".into(),
+        };
+        out.push_str(&markup::group(&class, &inner));
     }
     markup::group("ct-blog-article", &out)
 }
@@ -569,16 +609,23 @@ pub fn continue_reading(docs: &mut [Doc]) {
             continue;
         }
         let i = li(&d.lang);
+        // The design's words alone in their span (labels), the place or category after them.
+        let word = |w: &str| {
+            format!(
+                "<span class=\"ct-related-word\">{}</span>",
+                markup::escape(w)
+            )
+        };
         let label = match (&place, &d.category) {
             (Some(p), _) if picked.first().is_some_and(|s| s.place.as_ref() == Some(p)) => {
                 let name = VILLAGES
                     .iter()
                     .find(|(s, _)| s == p)
                     .map_or(p.as_str(), |(_, n)| n[i]);
-                format!("{} {name}", MORE_FROM[i])
+                format!("{} {}", word(MORE_FROM), markup::escape(name))
             }
-            (_, Some(c)) => format!("{} {c}", MORE_IN[i]),
-            _ => MORE_IN[i].trim().to_string(),
+            (_, Some(c)) => format!("{} {}", word(MORE_IN), markup::escape(c)),
+            _ => word(MORE_IN),
         };
         let lis: String = picked
             .iter()
@@ -600,7 +647,7 @@ pub fn continue_reading(docs: &mut [Doc]) {
                 )
             })
             .collect();
-        let mut inner = markup::paragraph_html(&markup::escape(&label), Some("ct-related-label"));
+        let mut inner = markup::paragraph_html(&label, Some("ct-related-label"));
         inner.push_str(&format!(
             "<!-- wp:list {{\"ordered\":true}} -->\n<ol class=\"wp-block-list\">{lis}</ol>\n<!-- /wp:list -->\n"
         ));
@@ -908,6 +955,27 @@ pub fn gaps(docs: &[Doc], entries: &[crate::entries::Entry]) -> Vec<Gap> {
         let e = by.entry(what).or_insert((0, example.to_string()));
         e.0 += 1;
     };
+    // A way to arrive without its time (the mode table shows it in the display face).
+    for d in docs {
+        let c = d.content.as_str();
+        let mut missing = 0;
+        let mut at = 0;
+        while let Some(i) = c[at..].find("<summary>") {
+            let start = at + i;
+            at = start + 9;
+            let open = &c[c[..start].rfind("<details").unwrap_or(start)..start];
+            let end = c[at..].find("</summary>").map_or(c.len(), |j| at + j);
+            if open.contains("ct-mode-row") && !c[at..end].contains("ct-mode-time") {
+                missing += 1;
+            }
+        }
+        for _ in 0..missing {
+            add(
+                "a way to arrive without its time (its mode table row shows no time)".into(),
+                &d.route,
+            );
+        }
+    }
     for d in docs.iter().filter(|d| d.post_type == "post") {
         if !d.meta.contains_key("image") {
             add(
@@ -965,6 +1033,161 @@ pub fn gaps(docs: &[Doc], entries: &[crate::entries::Entry]) -> Vec<Gap> {
             example,
         })
         .collect()
+}
+
+/// The words the import writes itself in the content, in English (module docs of
+/// `theme_designer::labels`): the names of a page's facts (`<span class="ct-meta-key">Google
+/// rating</span>`), each once, sorted.
+pub fn content_words(docs: &[Doc]) -> Vec<String> {
+    const OPEN: &str = "<span class=\"ct-meta-key\">";
+    let mut out = BTreeSet::new();
+    for d in docs {
+        let mut rest = d.content.as_str();
+        while let Some(i) = rest.find(OPEN) {
+            rest = &rest[i + OPEN.len()..];
+            if let Some(end) = rest.find('<') {
+                let w = rest[..end].trim();
+                if !w.is_empty() {
+                    out.insert(w.to_string());
+                }
+            }
+        }
+    }
+    out.into_iter().collect()
+}
+
+/// A collection of ways to arrive (items with a mode, `ct-mode-{mode}`, [`prepare`]) as the
+/// design's mode table (4.14): one compact row per mode (its icon, its name, a note, its time in
+/// the display face) that opens to the rest of the item; the collection's interludes follow the
+/// table. `None` for any other block.
+pub fn mode_table(b: &Value, lang: &str) -> Option<String> {
+    let items = b.get("items").and_then(Value::as_array)?;
+    let mode_of = |it: &Value| {
+        it.get("_class")
+            .and_then(Value::as_str)
+            .and_then(|c| c.split_whitespace().find(|c| c.starts_with("ct-mode-")))
+            .map(str::to_string)
+    };
+    // Ways to arrive: most of the items name their mode (a way the words do not name is a row
+    // of its own, `ct-mode-other`, without an icon).
+    let named = items.iter().filter(|it| mode_of(it).is_some()).count();
+    if items.is_empty() || named * 2 <= items.len() {
+        return None;
+    }
+    let text = |it: &Value, k: &str| {
+        it.get(k)
+            .and_then(|v| localized(v, lang))
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    };
+    let mut rows = String::new();
+    for it in items {
+        let mode = mode_of(it).unwrap_or_else(|| "ct-mode-other".into());
+        let name = text(it, "name")
+            .or_else(|| text(it, "title"))
+            .unwrap_or_default();
+        let (time, rest) = match text(it, "duration") {
+            Some(d) => split_time(&d),
+            None => (None, None),
+        };
+        let note = rest
+            .or_else(|| text(it, "frequency"))
+            .or_else(|| text(it, "category"));
+        let mut summary = format!(
+            "<span class=\"ct-mode-name\">{}</span>",
+            markup::escape(&name)
+        );
+        if let Some(n) = &note {
+            summary.push_str(&format!(
+                "<span class=\"ct-mode-note\">{}</span>",
+                markup::escape(n)
+            ));
+        }
+        if let Some(t) = &time {
+            summary.push_str(&format!(
+                "<span class=\"ct-mode-time\">{}</span>",
+                markup::escape(t)
+            ));
+        }
+        // The rest of the item opens under its row.
+        let mut more = it.clone();
+        if let Some(o) = more.as_object_mut() {
+            for k in ["name", "title", "duration", "_class"] {
+                o.remove(k);
+            }
+            o.insert("type".into(), json!("mode-detail"));
+        }
+        let mut notes = markup::Notes::default();
+        let inner = markup::block(&more, lang, &mut notes);
+        let class = format!("ct-items-item ct-mode-row {mode}");
+        rows.push_str(&format!(
+            "<!-- wp:details {{\"className\":\"{class}\"}} -->\n<details class=\"wp-block-details {class}\"><summary>{summary}</summary>{inner}</details>\n<!-- /wp:details -->\n"
+        ));
+    }
+    let mut class = format!(
+        "ct-{} ct-mode-table",
+        b.get("type")
+            .and_then(Value::as_str)
+            .unwrap_or("collection")
+    );
+    if let Some(t) = b.get("itemType").and_then(Value::as_str) {
+        class.push_str(&format!(" ct-items-{t}"));
+    }
+    let mut out = String::new();
+    if let Some(h) = b
+        .get("heading")
+        .or(b.get("title"))
+        .and_then(|h| localized(h, lang))
+    {
+        out.push_str(&format!(
+            "<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">{}</h2>\n<!-- /wp:heading -->\n",
+            markup::inline(h)
+        ));
+    }
+    out.push_str(&rows);
+    let mut html = markup::group(&class, &out);
+    // The collection's interludes after the table, as the design's pull quotes.
+    if let Some(xs) = b.get("interludes").and_then(Value::as_array) {
+        for x in xs {
+            let mut q = x.clone();
+            if let Some(o) = q.as_object_mut() {
+                o.remove("afterIndex");
+                o.insert("type".into(), json!("editorial-interlude"));
+            }
+            let mut notes = markup::Notes::default();
+            html.push_str(&markup::block(&q, lang, &mut notes));
+        }
+    }
+    Some(html)
+}
+
+/// A way's time and the rest of its words: `8 min from La Spezia` → (`8 min`, `from La
+/// Spezia`); a short value is all time (`2 h`); a value without a number is a note.
+pub fn split_time(d: &str) -> (Option<String>, Option<String>) {
+    let d = d.trim();
+    let starts_with_number = d.chars().next().is_some_and(|c| c.is_ascii_digit());
+    if !starts_with_number {
+        return (None, Some(d.to_string()));
+    }
+    let words: Vec<&str> = d.split_whitespace().collect();
+    // The number (with a range: `20-30`, `1.5`), then a unit word when one follows.
+    let unit = |w: &str| {
+        let w = w.trim_end_matches(['.', ',']).to_lowercase();
+        w.chars().all(char::is_alphabetic)
+            && w.len() <= 8
+            && !w.is_empty()
+            && (w.starts_with('m') || w.starts_with('h') || w.starts_with('s') || w == "ore")
+    };
+    let mut n = 1;
+    if words.len() > 1 && unit(words[1]) {
+        n = 2;
+    }
+    let time = words[..n].join(" ").trim_end_matches(',').to_string();
+    let rest = words[n..].join(" ");
+    let rest = rest
+        .trim_start_matches(['(', '–', '-', ',', ' '])
+        .trim_end_matches(')');
+    (Some(time), (!rest.is_empty()).then(|| rest.to_string()))
 }
 
 #[cfg(test)]

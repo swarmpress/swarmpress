@@ -38,6 +38,7 @@
 
 pub mod essentials;
 pub mod forecast;
+pub mod labels;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -224,6 +225,116 @@ impl Export {
         );
         self.blobs.insert(sha, bytes);
         self.release.id = self.release.computed_id();
+    }
+
+    /// The authors the content names (`<p class="ct-author">Elena Moretti</p>` in a byline or a
+    /// profile), as the slugs WordPress gives author archives (`elena-moretti`).
+    pub fn content_authors(&self) -> BTreeSet<String> {
+        content_authors(self.pages().values().map(String::as_str))
+    }
+
+    /// Author archives only for the authors the content names (`keep`, by slug): every other
+    /// `/author/{slug}/…` page leaves the release, with its entries in the sitemaps and the search
+    /// index; a users sitemap left empty leaves the release and the sitemap index. WordPress makes
+    /// an archive for whoever imported the stories (`/author/admin/`), who wrote none of them.
+    /// Returns the slugs whose archives were dropped.
+    pub fn keep_author_archives(&mut self, keep: &BTreeSet<String>) -> Vec<String> {
+        let slug_of = |path: &str| -> Option<String> {
+            let rest = path.strip_prefix("/author/")?;
+            let slug = rest.split('/').next()?;
+            (!slug.is_empty()).then(|| slug.to_string())
+        };
+        let dropped: BTreeSet<String> = self
+            .release
+            .files
+            .keys()
+            .filter_map(|p| slug_of(p))
+            .filter(|s| !keep.contains(s))
+            .collect();
+        if dropped.is_empty() {
+            return Vec::new();
+        }
+        self.release
+            .files
+            .retain(|p, _| slug_of(p).is_none_or(|s| !dropped.contains(&s)));
+        self.release
+            .redirects
+            .retain(|p, _| slug_of(p).is_none_or(|s| !dropped.contains(&s)));
+        let gone = |loc: &str| {
+            dropped
+                .iter()
+                .any(|s| loc.contains(&format!("/author/{s}/")))
+        };
+        // Sitemaps and the search index without them.
+        let mut empty_maps = BTreeSet::new();
+        let paths: Vec<String> = self.release.files.keys().cloned().collect();
+        for path in &paths {
+            let entry = self.release.files[path].clone();
+            let Some(body) = self.blobs.get(&entry.sha256) else {
+                continue;
+            };
+            let text = String::from_utf8_lossy(body).into_owned();
+            let new = if path == SEARCH_INDEX {
+                let Ok(mut items) = serde_json::from_str::<Vec<SearchEntry>>(&text) else {
+                    continue;
+                };
+                items.retain(|e| !gone(&e.url));
+                serde_json::to_string(&items).unwrap_or(text.clone())
+            } else if is_type(&entry.content_type, "xml") && text.contains("<urlset") {
+                let kept = drop_xml_entries(&text, "url", &gone);
+                if !kept.contains("<url>") && text.contains("<url>") && path.contains("users") {
+                    empty_maps.insert(path.clone());
+                }
+                kept
+            } else {
+                continue;
+            };
+            if new != text {
+                self.put(path, &entry.content_type, new.into_bytes());
+            }
+        }
+        for path in &empty_maps {
+            self.release.files.remove(path);
+        }
+        if !empty_maps.is_empty() {
+            let maps = empty_maps.clone();
+            for path in &paths {
+                let Some(entry) = self.release.files.get(path).cloned() else {
+                    continue;
+                };
+                if !is_type(&entry.content_type, "xml") {
+                    continue;
+                }
+                let Some(body) = self.blobs.get(&entry.sha256) else {
+                    continue;
+                };
+                let text = String::from_utf8_lossy(body).into_owned();
+                if !text.contains("<sitemapindex") {
+                    continue;
+                }
+                let new = drop_xml_entries(&text, "sitemap", &|loc: &str| {
+                    maps.iter().any(|m| loc.ends_with(m.as_str()))
+                });
+                if new != text {
+                    self.put(path, &entry.content_type, new.into_bytes());
+                }
+            }
+        }
+        self.release.id = self.release.computed_id();
+        dropped.into_iter().collect()
+    }
+
+    fn put(&mut self, path: &str, content_type: &str, bytes: Vec<u8>) {
+        let sha = hex(&Sha256::digest(&bytes));
+        self.release.files.insert(
+            path.to_string(),
+            FileEntry {
+                sha256: sha.clone(),
+                content_type: content_type.to_string(),
+                size: bytes.len() as u64,
+            },
+        );
+        self.blobs.insert(sha, bytes);
     }
 
     /// The HTML pages' bytes by URL path.
@@ -941,6 +1052,76 @@ fn is_text(ct: &str) -> bool {
 
 fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+/// The authors the content names (`<p class="ct-author">Elena Moretti</p>` in a byline or a
+/// profile), as the slugs WordPress gives author archives (`elena-moretti`).
+pub fn content_authors<'a>(pages: impl IntoIterator<Item = &'a str>) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for html in pages {
+        let mut at = 0;
+        while let Some(i) = html[at..].find("class=\"ct-author") {
+            let start = at + i;
+            at = start + 1;
+            let Some(open_end) = html[start..].find('>').map(|j| start + j + 1) else {
+                break;
+            };
+            let class_end = html[start + 7..].find('"').map(|j| start + 7 + j);
+            let class = class_end.map(|e| &html[start + 7..e]).unwrap_or("");
+            if !class.split_ascii_whitespace().any(|c| c == "ct-author") {
+                continue;
+            }
+            let Some(close) = html[open_end..].find('<').map(|j| open_end + j) else {
+                break;
+            };
+            let name = html_unescape(html[open_end..close].trim());
+            let slug = author_slug(&name);
+            if !slug.is_empty() {
+                out.insert(slug);
+            }
+        }
+    }
+    out
+}
+
+/// An author's name as WordPress slugs it for an archive (`Elena Moretti` → `elena-moretti`).
+fn author_slug(name: &str) -> String {
+    let mut out = String::new();
+    for c in name.trim().to_lowercase().chars() {
+        if c.is_alphanumeric() {
+            out.push(c);
+        } else if !out.ends_with('-') && !out.is_empty() {
+            out.push('-');
+        }
+    }
+    out.trim_end_matches('-').to_string()
+}
+
+/// The XML without the `<{tag}>…</{tag}>` entries whose `<loc>` `gone` says.
+fn drop_xml_entries(xml: &str, tag: &str, gone: &dyn Fn(&str) -> bool) -> String {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let mut out = String::with_capacity(xml.len());
+    let mut at = 0;
+    while let Some(i) = xml[at..].find(&open) {
+        let start = at + i;
+        let Some(end) = xml[start..].find(&close).map(|j| start + j + close.len()) else {
+            break;
+        };
+        out.push_str(&xml[at..start]);
+        let entry = &xml[start..end];
+        let loc = entry
+            .split_once("<loc>")
+            .and_then(|(_, r)| r.split_once("</loc>"))
+            .map(|(l, _)| l.trim())
+            .unwrap_or("");
+        if !gone(loc) {
+            out.push_str(entry);
+        }
+        at = end;
+    }
+    out.push_str(&xml[at..]);
+    out
 }
 
 fn html_unescape(s: &str) -> String {

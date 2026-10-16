@@ -167,9 +167,19 @@ async fn the_fake_designs_every_template_with_one_repair_round() {
     assert_eq!(d.words, 9);
     assert_eq!(d.qa_defects, 1, "the front page's raw colour, repaired");
     assert_eq!(d.score, 8, "eight of nine right first time");
-    // One call per task and one fix, each with the web designer's reasoning budget.
+    // One call per task, one fix and the labels in the site's other languages, each with the
+    // web designer's reasoning budget.
     let calls = llm.calls();
-    assert_eq!(calls.len(), 10);
+    assert_eq!(calls.len(), 11);
+    let labels = calls
+        .iter()
+        .find(|c| {
+            c.request.messages[0]
+                .text
+                .starts_with("## Task: web design labels")
+        })
+        .expect("the design's words in the site's languages");
+    assert!(labels.request.messages[0].text.contains("\"on-this-page\""));
     assert!(calls
         .iter()
         .all(|c| c.request.profile.job == agents::JobKind::WebDesign
@@ -200,6 +210,21 @@ async fn the_fake_designs_every_template_with_one_repair_round() {
     assert_eq!(rec.design_version, 1);
     assert_eq!(rec.branch, "design-v1");
     assert_eq!(rec.theme.validate_shape(), vec![]);
+    // The design's words in every language the site has (the fake marks each with its language).
+    let other = rec.theme.labels["on-this-page"]
+        .keys()
+        .find(|l| *l != "en")
+        .expect("a language besides English")
+        .clone();
+    assert_eq!(
+        rec.theme.labels["on-this-page"][&other],
+        format!("On this page ({other})")
+    );
+    assert!(rec
+        .theme
+        .global_styles
+        .css
+        .contains(&format!(":root:lang({other}){{--ds-l-css-")));
     let slugs: Vec<&str> = rec
         .theme
         .templates

@@ -396,6 +396,36 @@ pub fn navigation(design: &SiteDesign, site: &SiteContext) -> NavPlan {
             }
         }
     }
+    // The phone's sheet (4.20) opens with the wordmark beside its close button: the main menu's
+    // first item, `ds-sheet-brand`, shown only in the open sheet.
+    if let (Some(main), Some(mark)) = (&main, wordmark(design)) {
+        let homes: BTreeMap<String, String> = plan
+            .brand
+            .as_ref()
+            .map(|b| {
+                plan.menus
+                    .iter()
+                    .filter(|m| &m.name == b)
+                    .filter_map(|m| m.items.first().map(|i| (m.lang.clone(), i.url.clone())))
+                    .collect()
+            })
+            .unwrap_or_default();
+        for m in plan.menus.iter_mut().filter(|m| &m.name == main) {
+            let url = homes
+                .get(&m.lang)
+                .cloned()
+                .unwrap_or_else(|| format!("/{}/", m.lang));
+            m.items.insert(
+                0,
+                NavigationItem {
+                    label: mark.clone(),
+                    url,
+                    children: Vec::new(),
+                    class: Some("ds-sheet-brand".into()),
+                },
+            );
+        }
+    }
     // The language switch.
     if langs.len() > 1 && !plan.menus.iter().any(|m| m.name == "languages") {
         for lang in &langs {

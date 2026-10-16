@@ -183,6 +183,7 @@ pub fn answer(req: &LlmRequest, schema: Option<&Value>) -> FakeReply {
         "web design template fix" => {
             return FakeReply::Json(theme_designer::fake::answer(p.0, true))
         }
+        "web design labels" => return FakeReply::Json(theme_designer::labels::fake_answer(p.0)),
         // The site's tools in research (ADR-0072): ask for the first offered tool, then state one fact from its result.
         "tool facts" => {
             let results = later.iter().find(|m| m.starts_with("Tool results"));

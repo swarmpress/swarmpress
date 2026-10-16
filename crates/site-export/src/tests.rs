@@ -465,3 +465,51 @@ fn a_designs_global_styles_and_uploaded_fonts_are_exported() {
     assert!(html.contains("url('/wp-content/uploads/fonts/harbour-serif-400-normal.woff2')"));
     assert!(html.contains("url(\"/wp-content/uploads/fonts/harbour-serif-700-normal.woff2\")"));
 }
+
+#[test]
+fn author_archives_are_kept_only_for_the_authors_the_content_names() {
+    let mut s = site("A post", false);
+    s.insert("/".into(), html("Home", &format!("<p class=\"ct-author\">Elena Moretti</p><a href=\"{O}/author/admin/\">x</a><a href=\"{O}/author/elena-moretti/\">y</a>")));
+    s.insert(
+        "/author/admin/".into(),
+        html("admin", "<p>Posts by admin</p>"),
+    );
+    s.insert(
+        "/author/elena-moretti/".into(),
+        html("Elena", "<p>Posts by Elena</p>"),
+    );
+    s.insert("/wp-sitemap.xml".into(), typed("application/xml", &format!("<sitemapindex><sitemap><loc>{O}/wp-sitemap-posts-post-1.xml</loc></sitemap><sitemap><loc>{O}/wp-sitemap-users-1.xml</loc></sitemap></sitemapindex>")));
+    s.insert(
+        "/wp-sitemap-posts-post-1.xml".into(),
+        typed(
+            "application/xml",
+            &format!("<urlset><url><loc>{O}/post-a/</loc></url></urlset>"),
+        ),
+    );
+    s.insert(
+        "/wp-sitemap-users-1.xml".into(),
+        typed(
+            "application/xml",
+            &format!("<urlset><url><loc>{O}/author/admin/</loc></url></urlset>"),
+        ),
+    );
+    let mut log = Vec::new();
+    let mut e = crawl(Crawler::full(opts()), &s, &mut log);
+    assert!(e.release.files.contains_key("/author/admin/"));
+    let authors = e.content_authors();
+    assert_eq!(authors, BTreeSet::from(["elena-moretti".to_string()]));
+    let dropped = e.keep_author_archives(&authors);
+    assert_eq!(dropped, vec!["admin".to_string()]);
+    assert!(!e.release.files.contains_key("/author/admin/"));
+    assert!(e.release.files.contains_key("/author/elena-moretti/"));
+    // The users sitemap held only the dropped archive: it leaves the release and the index.
+    assert!(!e.release.files.contains_key("/wp-sitemap-users-1.xml"));
+    let index = &e.release.files["/wp-sitemap.xml"];
+    let index = String::from_utf8(e.blobs[&index.sha256].clone()).unwrap();
+    assert!(index.contains("wp-sitemap-posts-post-1.xml"), "{index}");
+    assert!(!index.contains("users"), "{index}");
+    let search = &e.release.files["/search-index.json"];
+    let search = String::from_utf8(e.blobs[&search.sha256].clone()).unwrap();
+    assert!(!search.contains("/author/admin/"), "{search}");
+    assert_eq!(e.release.id, e.release.computed_id());
+}

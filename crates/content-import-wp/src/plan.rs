@@ -215,6 +215,21 @@ pub fn plan_with_theme(
         }
         assign_templates(&mut docs, data);
     }
+    if opts.design {
+        // The design's words in each page's language (the site's label table over the
+        // platform's defaults; site_export::labels).
+        let labels = site_export::labels::with_defaults(
+            &theme_data
+                .as_ref()
+                .map(|d| d.labels.clone())
+                .unwrap_or_default(),
+        );
+        for d in &mut docs {
+            if let Some(c) = site_export::labels::localize(&d.content, &d.lang, &labels) {
+                d.content = c;
+            }
+        }
+    }
     let tagline = site
         .site
         .get("description")
@@ -478,8 +493,15 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
         let forecast = compose::weather(&mut blocks, r);
         for (i, b) in blocks.iter().enumerate() {
             let kind = b.get("type").and_then(Value::as_str).unwrap_or("");
+            let modes = if opts.design {
+                crate::design::mode_table(b, lang)
+            } else {
+                None
+            };
             if opts.design && kind == "blog-article" {
                 content.push_str(&crate::design::article(b, lang));
+            } else if let Some(m) = modes {
+                content.push_str(&m);
             } else {
                 content.push_str(&markup::block(b, lang, notes));
             }

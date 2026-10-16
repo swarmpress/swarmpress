@@ -21,6 +21,8 @@ paths:
   - crates/content-import-wp/src/design.rs
   - crates/content-import-wp/src/parity.rs
   - crates/site-export/src/essentials.rs
+  - crates/site-export/src/labels.rs
+  - crates/site-export/src/tests.rs
   - crates/site-design/src/enhance.js
   - "packages/runner/test/fixtures/open-meteo/**"
 adrs:
@@ -288,6 +290,30 @@ site, each with a check or a test:
 - **Forms:** an editor's note is the pull quote (its author and role in mono below), a story's tags
   are 4.3 tags, a tag keeps its own width, a collection of ways to arrive is the mode table (one
   block style per block, the most specific).
+
+The second review (on `94de781`), fixed for every site, each with a check or a test:
+- **Ways to arrive are one mode table (4.14):** a collection whose items carry a mode is one
+  compact table, a row per mode (its icon, its name, a note, its time in the display face with
+  "Typical" under it) that opens to the rest of the item; its interludes follow the table. A row
+  without a time is a content gap; a page with ways to arrive not in a mode table fails the
+  design check.
+- **The design's words in every language (labels):** every word a theme shows that is not content
+  (its templates' own texts, the stylesheet's `Village`, `Featured`, `Typical` and callout names,
+  the ticker's `Today on the coast`, `On this page`, `More in`, the script's search words,
+  WordPress's skip link, the names of a page's facts) is a label. The `web design labels` call
+  writes every label in every site language; the job refuses a table with a gap or a language left
+  in English; the table travels in `ThemeData.labels`. The stylesheet reads its labels from
+  `--ds-l-css-…` variables set per `:lang()`; the import and the export put the others in a page's
+  language where one stands alone (`site_export::labels`). The design check fails a page that
+  still shows one in English.
+- **The phone's sheet (4.20)** opens with the wordmark beside its close button (the main menu's
+  first item, `ds-sheet-brand`, shown only in the open sheet).
+- **The home's headline:** fluid type sizes are the design's own `clamp()` (WordPress's fluid
+  formula gave 157 px where the design has 145 px at 1280 px), and the opening's columns take the
+  homepage sheet's flex values (`hero_columns`).
+- **A story's author** closes it as the design's editor profile (7.5): initials, name, role, bio.
+- **Author archives** are exported only for the authors the content names; WordPress's archive of
+  the importing user (`/author/admin/`) leaves the release with its sitemap entries.
 
 ## Tests added on 2026-10-14
 

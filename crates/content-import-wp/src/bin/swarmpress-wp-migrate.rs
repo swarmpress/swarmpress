@@ -148,9 +148,14 @@ async fn main() -> Result<()> {
             std::process::exit(code)
         }
         Some("forecast") => {
+            let labels = match arg(&args, "--theme-data") {
+                Some(f) => read_theme_data(Path::new(&f))?.labels,
+                None => BTreeMap::new(),
+            };
             refill_forecasts(
                 Path::new(&need(&args, "--export")?),
                 arg(&args, "--forecasts").map(PathBuf::from).as_deref(),
+                &site_export::labels::with_defaults(&labels),
             )
             .await
         }
@@ -963,6 +968,16 @@ async fn export(
         body,
     });
     let mut e = crawler.finish();
+    // Author archives only for the authors the content names (never the importing user's).
+    let authors = e.content_authors();
+    let dropped = e.keep_author_archives(&authors);
+    if !dropped.is_empty() {
+        eprintln!(
+            "author archives: {} kept, dropped {} (no content of theirs)",
+            authors.len(),
+            dropped.join(", ")
+        );
+    }
     // The forecast blocks, filled when the site is published (never in WordPress).
     let places = e.forecast_places().map_err(|err| anyhow!(err))?;
     if !places.is_empty() {
@@ -970,6 +985,10 @@ async fn export(
         let n = e.fill_forecasts(&forecasts).map_err(|err| anyhow!(err))?;
         eprintln!("{n} pages got the forecast for {} places", places.len());
     }
+    // The site's label table over the platform's words (site_export::labels).
+    let labels = site_export::labels::with_defaults(
+        &theme_data.map(|d| d.labels.clone()).unwrap_or_default(),
+    );
     // The essentials tickers (the design's live facts of a place), filled the same way.
     let table = essentials_places();
     let mut wanted = std::collections::BTreeSet::new();
@@ -979,7 +998,7 @@ async fn export(
     if !wanted.is_empty() {
         let values = fetch_essentials(&wanted, recorded).await?;
         let n = e
-            .map_html(&|_, html| site_export::essentials::fill(html, &table, &values))
+            .map_html(&|_, html| site_export::essentials::fill(html, &table, &values, &labels))
             .map_err(|err| anyhow!(err))?;
         eprintln!("{n} pages got the essentials of {} places", wanted.len());
     }
@@ -1004,6 +1023,15 @@ async fn export(
                 .map_err(|err| anyhow!(err))?;
             eprintln!("{n} pages load {src}");
         }
+        // The design's words in each page's language, where the templates and WordPress wrote
+        // them in English.
+        let n = e
+            .map_html(&|_, html| {
+                Ok(site_export::labels::page_lang(html)
+                    .and_then(|lang| site_export::labels::localize(html, &lang, &labels)))
+            })
+            .map_err(|err| anyhow!(err))?;
+        eprintln!("{n} pages got the design's words in their language");
     }
     std::fs::create_dir_all(out.join("files"))?;
     for (path, f) in &e.release.files {
@@ -1164,7 +1192,11 @@ async fn fetch_essentials(
 }
 
 /// The daily rebuild: an export directory's forecast blocks filled again, in place.
-async fn refill_forecasts(export_dir: &Path, recorded: Option<&Path>) -> Result<()> {
+async fn refill_forecasts(
+    export_dir: &Path,
+    recorded: Option<&Path>,
+    labels: &site_export::labels::Labels,
+) -> Result<()> {
     let manifest = export_dir.join("release.json");
     let mut release: site_export::Release = serde_json::from_str(
         &std::fs::read_to_string(&manifest).with_context(|| manifest.display().to_string())?,
@@ -1226,7 +1258,7 @@ async fn refill_forecasts(export_dir: &Path, recorded: Option<&Path>) -> Result<
             .or_else(|| read(sha))
     };
     let more = site_export::map_release_html(&mut release, &read2, &|_, html| {
-        site_export::essentials::fill(html, &table, &values)
+        site_export::essentials::fill(html, &table, &values, labels)
     })
     .map_err(|e| anyhow!(e))?;
     changed.extend(more);
@@ -1330,18 +1362,62 @@ async fn design_check(
     let (templates, generic) = parity::templates(&pages, &source, &reasons(exceptions)?);
     let uncategorized = parity::uncategorized(&pages);
     let gaps = design::gaps(&plan.docs, &plan.entries);
-    let ok = nav.ok() && generic.is_empty() && uncategorized.is_empty();
+    // The design's words in each page's language: none left in English where a label stands
+    // alone (site_export::labels), by page.
+    let labels = site_export::labels::with_defaults(
+        &plan
+            .theme_data
+            .as_ref()
+            .map(|d| d.labels.clone())
+            .unwrap_or_default(),
+    );
+    let mut english: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (path, html) in &pages {
+        if let Some(lang) = site_export::labels::page_lang(html) {
+            let left = site_export::labels::left_in_english(html, &lang, &labels);
+            if !left.is_empty() {
+                english.insert(path.clone(), left);
+            }
+        }
+    }
+    // Author archives only for the authors the content names.
+    let authors = site_export::content_authors(pages.values().map(String::as_str));
+    let stray_authors: Vec<String> = pages
+        .keys()
+        .filter_map(|p| p.strip_prefix("/author/"))
+        .filter_map(|r| r.split('/').next())
+        .filter(|s| !authors.contains(*s))
+        .map(String::from)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    // Ways to arrive are one mode table (4.14), never stacked sections.
+    let stacked_modes: Vec<String> = pages
+        .iter()
+        .filter(|(_, html)| html.contains("ct-mode-") && html.contains("ct-items-transport"))
+        .filter(|(_, html)| !html.contains("ct-mode-table"))
+        .map(|(p, _)| p.clone())
+        .collect();
+    let ok = nav.ok()
+        && stacked_modes.is_empty()
+        && generic.is_empty()
+        && uncategorized.is_empty()
+        && english.is_empty()
+        && stray_authors.is_empty();
     let report = json!({
         "ok": ok,
         "navigation": nav,
         "templates": templates,
         "generic": generic,
         "uncategorized": uncategorized,
+        "left_in_english": english,
+        "author_archives_without_content": stray_authors,
+        "ways_to_arrive_not_a_mode_table": stacked_modes,
         "content_gaps": gaps,
     });
     std::fs::write(out, serde_json::to_string_pretty(&report)?)?;
     eprintln!(
-        "navigation: {} entries found ({} nested) on {} pages, {} missing, {} broken, {} retired; templates: {} kinds, {} generic pages; \"Uncategorized\" on {} pages; {} content gaps",
+        "navigation: {} entries found ({} nested) on {} pages, {} missing, {} broken, {} retired; templates: {} kinds, {} generic pages; \"Uncategorized\" on {} pages; the design's words left in English on {} pages; {} author archives without content; {} pages with ways to arrive not in a mode table; {} content gaps",
         nav.found,
         nav.nested,
         nav.pages.len(),
@@ -1351,6 +1427,9 @@ async fn design_check(
         templates.len(),
         generic.len(),
         uncategorized.len(),
+        english.len(),
+        stray_authors.len(),
+        stacked_modes.len(),
         gaps.len()
     );
     for m in nav

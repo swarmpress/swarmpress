@@ -332,11 +332,14 @@ pub fn styles(design: &SiteDesign, manifest: &BundleManifest) -> Styles {
         if px(&ty.size).is_some_and(|p| p >= 24) {
             presets.large_sizes.insert(slug.clone());
         }
+        // A fluid size is the design's own `clamp()`, verbatim: WordPress's fluid formula (its
+        // own viewport range) gives other sizes between the ends, and a headline set for the
+        // design's measure breaks into more lines (the home's h1 at 1280 px).
         let mut size = json!({"slug": slug, "name": title_case(&slug), "size": ty.size});
-        match ty.fluid.as_deref().and_then(clamp_range) {
-            Some((min, max)) => size["fluid"] = json!({"min": min, "max": max}),
-            None => size["fluid"] = json!(false),
+        if let Some(f) = ty.fluid.as_deref().filter(|f| clamp_range(f).is_some()) {
+            size["size"] = json!(f.trim());
         }
+        size["fluid"] = json!(false);
         sizes.push(size);
         // What the size's class adds (theme.json's sizes carry the size only).
         let mut decl = Vec::new();

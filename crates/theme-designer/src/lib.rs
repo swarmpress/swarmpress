@@ -38,6 +38,7 @@ pub mod check;
 pub mod components;
 pub mod fake;
 pub mod forms;
+pub mod labels;
 pub mod model;
 pub mod navigation;
 pub mod plan;

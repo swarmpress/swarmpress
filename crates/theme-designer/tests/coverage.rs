@@ -671,3 +671,126 @@ fn tags_lists_and_an_editors_note_take_the_designs_forms() {
         Some(("getting-here", ""))
     );
 }
+
+#[test]
+fn the_phones_sheet_opens_with_the_wordmark_and_the_hero_takes_the_sheets_columns() {
+    let (d, p, data, _) = made();
+    // 4.20: the main menu's first item is the wordmark, shown only in the open sheet.
+    let main: Vec<_> = data
+        .navigation
+        .iter()
+        .filter(|m| m.items.iter().any(|i| !i.children.is_empty()))
+        .collect();
+    assert!(!main.is_empty());
+    let mark = theme_designer::navigation::wordmark(&d).expect("the design has a wordmark");
+    for m in main {
+        let first = &m.items[0];
+        assert_eq!(first.class.as_deref(), Some("ds-sheet-brand"), "{}", m.lang);
+        assert_eq!(first.label, mark);
+        assert_eq!(first.url, format!("/{}/", m.lang));
+    }
+    let css = &p.global_styles.css;
+    assert!(css.contains(".is-menu-open .wp-block-navigation__container>.wp-block-navigation-item.ds-sheet-brand{display:flex"));
+    // The opening's columns are the homepage sheet's, its sizes the design's own clamp().
+    if let Some((main, aside)) = theme_designer::components::hero_columns(&d) {
+        assert!(css.contains(&format!(
+            ".ds-hero-main{{flex:{main}}}.ds-hero-aside{{flex:{aside}}}"
+        )));
+    }
+    let sizes = p.global_styles.settings["typography"]["fontSizes"]
+        .as_array()
+        .unwrap();
+    for t in &d.tokens.type_scale {
+        if let Some(f) = t.fluid.as_deref() {
+            let slug = theme_designer::styles::slugify(&t.name);
+            let preset = sizes.iter().find(|s| s["slug"] == slug.as_str());
+            if let Some(preset) = preset {
+                assert_eq!(preset["size"], f.trim(), "{slug}");
+                assert_eq!(preset["fluid"], false, "{slug}");
+            }
+        }
+    }
+}
+
+#[test]
+fn the_hero_columns_are_read_from_the_designs_opening_row() {
+    let (_, mut d) = design();
+    let mut hero = site_design::model::Section {
+        html: "<section><div style=\"display:flex;gap:40px\"><div style=\"flex:999 1 560px;min-width:0\"><h1>A</h1></div><div style=\"flex:1 1 300px\">B</div></div></section>".into(),
+        ..d.templates[0].sections[0].clone()
+    };
+    hero.id = "hero".into();
+    d.templates[0].sections.insert(0, hero);
+    assert_eq!(
+        theme_designer::components::hero_columns(&d),
+        Some(("999 1 560px".to_string(), "1 1 300px".to_string()))
+    );
+}
+
+#[test]
+fn every_word_of_the_theme_is_a_label_and_the_stylesheet_reads_them_per_language() {
+    let (_, p, mut data, mut s) = made();
+    s.words = vec!["Google rating".into()];
+    let (sources, _) = theme_designer::labels::sources(&p, &data, &s);
+    // The stylesheet's (the panel's number, the featured card), the platform's,
+    // WordPress's, the content's own.
+    for k in [
+        "css-village",
+        "css-featured",
+        "today",
+        "on-this-page",
+        "more-in",
+        "wp-skip-to-content",
+        "w-google-rating",
+    ] {
+        assert!(
+            sources.contains_key(k),
+            "{k} in {:?}",
+            sources.keys().collect::<Vec<_>>()
+        );
+    }
+    assert_eq!(sources["css-village"], "Village");
+    assert!(
+        sources.keys().any(|k| k.starts_with("t-")),
+        "the templates' own words"
+    );
+    // Names and figures are not labels.
+    for k in [
+        "t-vernazza",
+        "t-monterosso",
+        "t-44-1270-n-9-6851-e",
+        "t-2026-cinque-terre-dispatch",
+    ] {
+        assert!(!sources.contains_key(k), "{k}");
+    }
+    // The fake answers every label in every language; the table is the theme's.
+    let prompt = theme_designer::labels::prompt(&sources, &BTreeMap::new(), &s.languages, &s.name);
+    let answer = theme_designer::labels::fake_answer(&prompt);
+    let table = theme_designer::labels::check_answer(&sources, &s.languages, &answer).unwrap();
+    let css = theme_designer::labels::css(&table);
+    assert!(css.contains(":root:lang(de){"), "{css}");
+    assert!(css.contains("--ds-l-css-village:\"Village (de)\""));
+    data.labels = table;
+    assert!(
+        data.validate_shape()
+            .iter()
+            .all(|i| !i.at.starts_with("labels")),
+        "{:?}",
+        data.validate_shape()
+    );
+    // A table left in English for a language fails.
+    let english = serde_json::json!({"labels": sources.iter().map(|(k, en)| (k.clone(), serde_json::json!({"de": en, "fr": format!("{en} (fr)"), "it": format!("{en} (it)")}))).collect::<serde_json::Map<_, _>>()});
+    let errs = theme_designer::labels::check_answer(&sources, &s.languages, &english).unwrap_err();
+    assert!(
+        errs.iter().any(|e| e.starts_with("/labels/*/de")),
+        "{errs:?}"
+    );
+}
+
+#[test]
+fn an_authors_profile_takes_the_editor_profiles_form() {
+    assert_eq!(
+        theme_designer::catalog::function_of("ct-author-profile"),
+        Some(("people", "profile"))
+    );
+}

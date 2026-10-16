@@ -523,6 +523,7 @@ fn site_of(content: &Path, design: &site_design::SiteDesign) -> SiteContext {
         page_types,
         featured,
         forms: false,
+        words: content_import_wp::design::content_words(&plan.docs),
     }
 }
 

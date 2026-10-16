@@ -58,6 +58,10 @@ use crate::store::{ArtifactRecord, Store};
 use crate::structure::failure;
 use crate::{Digest, Gateway, JobRequest, Outcome, ProgressState, StaffRef};
 
+/// Answer budget of the `web design labels` call, tokens (a few hundred short words in three
+/// or four languages).
+pub const LABELS_ANSWER: u32 = 16_384;
+
 /// `SiteThemeRecord.kind`.
 pub const SITE_THEME_KIND: &str = "site-theme";
 
@@ -526,6 +530,73 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 "visual check",
                 "not measured: this executor cannot render the theme",
             )),
+        }
+
+        // The design's own words in every site language (theme_designer::labels): one call, its
+        // answer checked (every label in every language, no language left in English) and
+        // repaired like any structured answer; the stylesheet's labels set per language.
+        let languages = site.languages.clone();
+        if languages.iter().any(|l| l != "en") {
+            let (sources, wholes) = theme_designer::labels::sources(&p, &data, &site);
+            let label_schema = theme_designer::labels::answer_schema();
+            let check = |v: &Value| {
+                theme_designer::labels::check_answer(&sources, &languages, v).map(|_| ())
+            };
+            self.report(
+                req,
+                Some(&who),
+                "labels",
+                0,
+                1,
+                ProgressState::Started,
+                json!({"labels": sources.len(), "languages": languages.len()}),
+            );
+            let answer = self
+                .propose(
+                    req,
+                    &who,
+                    &template,
+                    agents::JobKind::WebDesign,
+                    "web_design_labels",
+                    theme_designer::labels::prompt(&sources, &wholes, &languages, &site.name),
+                    LABELS_ANSWER,
+                    &label_schema,
+                    &check,
+                )
+                .await?;
+            let table = match answer {
+                Ok((v, _)) => theme_designer::labels::check_answer(&sources, &languages, &v)
+                    .map_err(|e| invalid(e.join("; ")))?,
+                Err(f) => {
+                    let why = "the model gave the design's words not in every language";
+                    return self.site_theme_failed(req, &item, &who, &f, why).await;
+                }
+            };
+            data.global_styles
+                .css
+                .push_str(&theme_designer::labels::css(&table));
+            data.labels = table;
+            let shape: Vec<String> = data
+                .validate_shape()
+                .iter()
+                .filter(|i| i.at.starts_with("labels"))
+                .map(|i| format!("{}: {}", i.at, i.message))
+                .collect();
+            if !shape.is_empty() {
+                let f = invalid_answer(shape);
+                return self
+                    .site_theme_failed(req, &item, &who, &f, "the labels are not plain words")
+                    .await;
+            }
+            self.report(
+                req,
+                Some(&who),
+                "labels",
+                1,
+                1,
+                ProgressState::Done,
+                json!({"labels": data.labels.len()}),
+            );
         }
 
         if let Some(reason) = self.cancelled(req) {

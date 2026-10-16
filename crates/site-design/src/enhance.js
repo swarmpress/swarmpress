@@ -11,6 +11,12 @@
   root.classList.add('ds-js');
   function $$(sel, el) { return Array.prototype.slice.call((el || d).querySelectorAll(sel)); }
   function on(el, ev, fn, opt) { if (el) el.addEventListener(ev, fn, opt || false); }
+  /* The theme's words in the page's language: its stylesheet sets --ds-l-css-js-{key} per
+   * :lang(); the English is the default. */
+  function L(key, en) {
+    var v = w.getComputedStyle ? w.getComputedStyle(root).getPropertyValue('--ds-l-css-js-' + key).trim() : '';
+    return v ? v.replace(/^["\u201C]|["\u201D]$/g, '') : en;
+  }
 
   /* 05 Masthead tide: past 80px the masthead takes its ground and shadow; scrolling down hides it,
    * any scroll up reveals it. Reduced motion: always visible. */
@@ -117,8 +123,8 @@
     var group = d.createElement('div');
     group.className = 'ds-filter';
     group.setAttribute('role', 'group');
-    group.setAttribute('aria-label', 'Filter');
-    var all = barEl.getAttribute('data-all') || 'All';
+    group.setAttribute('aria-label', L('filter', 'Filter'));
+    var all = barEl.getAttribute('data-all') || L('all', 'All');
     [all].concat(labels).forEach(function (l, i) {
       var b = d.createElement('button');
       b.type = 'button'; b.className = 'ds-filter-chip'; b.textContent = l;
@@ -147,7 +153,7 @@
   var openers = $$('.ds-search, form.wp-block-search');
   if (!openers.length) return;
   var dlg = null, input, results, index = null, timer = null, active = -1, lastFocus = null;
-  var labels = { villages: 'Villages', stories: 'Stories', stays: 'Stays', pages: 'Pages' };
+  var labels = { villages: L('villages', 'Villages'), stories: L('stories', 'Stories'), stays: L('stays', 'Stays'), pages: L('pages', 'Pages') };
   function load(cb) {
     if (index) return cb();
     var x = new XMLHttpRequest();
@@ -193,7 +199,7 @@
       found.forEach(function (e) { html += '<li><a href="' + esc(e.url) + '">' + mark(e.title, q) + '</a></li>'; });
       html += '</ul></div>';
     });
-    results.innerHTML = any ? html : '<p class="ds-search-empty">Nothing found. Try a village or a place.</p>';
+    results.innerHTML = any ? html : '<p class="ds-search-empty">' + esc(L('nothing-found', 'Nothing found. Try a village or a place.')) + '</p>';
   }
   function move(k) {
     var links = $$('a', results);
@@ -215,9 +221,9 @@
       dlg.className = 'ds-search-overlay';
       dlg.setAttribute('role', 'dialog');
       dlg.setAttribute('aria-modal', 'true');
-      dlg.setAttribute('aria-label', 'Search');
-      dlg.innerHTML = '<div class="ds-search-panel"><label class="ds-search-label" for="ds-search-q">Search</label>' +
-        '<input id="ds-search-q" type="search" autocomplete="off" spellcheck="false"><button type="button" class="ds-search-close" aria-label="Close">×</button>' +
+      dlg.setAttribute('aria-label', L('search', 'Search'));
+      dlg.innerHTML = '<div class="ds-search-panel"><label class="ds-search-label" for="ds-search-q">' + esc(L('search', 'Search')) + '</label>' +
+        '<input id="ds-search-q" type="search" autocomplete="off" spellcheck="false"><button type="button" class="ds-search-close" aria-label="' + esc(L('close', 'Close')) + '">×</button>' +
         '<div class="ds-search-results" aria-live="polite"></div></div>';
       d.body.appendChild(dlg);
       input = dlg.querySelector('input');

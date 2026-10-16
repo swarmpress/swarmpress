@@ -1158,6 +1158,7 @@ pub fn assemble(plan: &ThemePlan, markup: &BTreeMap<String, String>) -> ThemeDat
         fonts: plan.fonts.clone(),
         block_styles: plan.block_styles.clone(),
         files: plan.files.clone(),
+        labels: BTreeMap::new(),
     }
 }
 

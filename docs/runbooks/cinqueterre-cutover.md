@@ -191,6 +191,12 @@ beside the headline, bands at full width, the story's measure, pull quotes, tags
 are in the preview at `94de781` (swarmpress `d11777d`; GPT-6-Luna: 48 of 48 tasks right first time,
 52 calls, $0.052; the job's visual check: front page 867/845, `page-front` 859/841 at 375/1280 px;
 the gate 631/663; navigation 544 entries, 0 missing; 0 generic pages; 0 "Uncategorized").
+The second review's fixes (FEAT-115: the mode table, the design's words in every language, the
+wordmark in the phone's sheet, the home's headline at the design's size, the author's profile, no
+author archive without content) are in the next preview (GPT-6-Luna: 47 of 48 right first time,
+55 calls with the labels call, $0.057; front page 857/851, `page-front` 843/850; the gate 631/663;
+`design-check`: 0 words left in English, 0 author archives without content, 0 ways to arrive
+outside a mode table). `design-check` fails a page on any of these, as on the navigation.
 Side-by-side screenshots (preview, live, design: the home, a village, Manarola's hiking page, an
 article, the FAQ, weather, getting here, the itinerary, the open village panel, the phone's menu)
 are FEAT-115's evidence.

@@ -50,6 +50,7 @@ pub const CONTENT_FUNCTIONS: &[(&str, &str, &str)] = &[
     ("ct-practical-advice", "callout", "trail-notice"),
     ("ct-closing-note", "callout", "closing"),
     ("ct-team-grid", "people", ""),
+    ("ct-author-profile", "people", "profile"),
     ("ct-weather-live", "essentials", ""),
     ("ct-essentials", "essentials", ""),
     ("ct-forecast", "weather", "forecast"),

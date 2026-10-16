@@ -48,6 +48,10 @@ pub struct SiteContext {
     /// Whether the site has a form a visitor can send (the newsletter is hidden: none).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub forms: bool,
+    /// Words the import writes itself in the content, in English (the names of a page's facts:
+    /// `Google rating`, `Price range`): labels like the design's, put in each page's language.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub words: Vec<String>,
 }
 
 /// Where a source menu sits on the source site.
