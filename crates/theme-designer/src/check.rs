@@ -445,6 +445,26 @@ pub fn check_template(task: &TemplateTask, markup: &str, ctx: &CheckContext<'_>)
         }
     }
 
+    // --- the page's own content where the task puts it: before the entries when the task's
+    // content section comes before its listings (a page's authored content leads)
+    let content_at = task.sections.iter().position(|s| s.kind == "content");
+    let listing_at = task.sections.iter().position(|s| s.collection.is_some());
+    if let (Some(c), Some(l)) = (content_at, listing_at) {
+        if c < l {
+            let post = all.iter().position(|b| b.name == "core/post-content");
+            let query = all.iter().position(|b| b.name == "core/query");
+            if let (Some(p), Some(q)) = (post, query) {
+                if q < p {
+                    out.push(Issue::new(
+                        IssueCode::Rule,
+                        &at,
+                        "the entries (core/query) come before the page's own content (core/post-content): the page's authored content leads, its listing follows",
+                    ));
+                }
+            }
+        }
+    }
+
     // --- a page header in the design's order (4.9): breadcrumb, eyebrow, title, lede
     if task.sections.iter().any(|s| s.kind == "title") {
         let at_of = |f: &dyn Fn(&blocks::Block) -> bool| all.iter().position(|b| f(b));

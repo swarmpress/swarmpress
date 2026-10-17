@@ -161,6 +161,17 @@ pub trait SiteEngine: MaybeSendSync {
             "this site engine cannot read the site's designs (version {version})"
         )))
     }
+    /// The QA stage on `branch` at `head` (ADR-0094; [`Gateway::site_audit`]): `Ok(None)` when
+    /// this engine cannot export and audit a branch (the default).
+    async fn site_audit(
+        &self,
+        branch: &str,
+        head: &str,
+        round: u32,
+    ) -> Result<Option<site_quality::QaReport>, GatewayError> {
+        let _ = (branch, head, round);
+        Ok(None)
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -224,6 +235,14 @@ impl<T: SiteEngine + ?Sized> SiteEngine for std::sync::Arc<T> {
     }
     async fn site_design(&self, version: u32) -> Result<Value, GatewayError> {
         (**self).site_design(version).await
+    }
+    async fn site_audit(
+        &self,
+        branch: &str,
+        head: &str,
+        round: u32,
+    ) -> Result<Option<site_quality::QaReport>, GatewayError> {
+        (**self).site_audit(branch, head, round).await
     }
 }
 
@@ -953,6 +972,15 @@ impl<E: SiteEngine> Gateway for EngineGateway<E> {
 
     async fn site_design(&self, version: u32) -> Result<Value, GatewayError> {
         self.engine.site_design(version).await
+    }
+
+    async fn site_audit(
+        &self,
+        branch: &str,
+        head_sha: &str,
+        round: u32,
+    ) -> Result<Option<site_quality::QaReport>, GatewayError> {
+        self.engine.site_audit(branch, head_sha, round).await
     }
 
     /// The theme as data on its branch (ADR-0093) and the branch's change request into live: the

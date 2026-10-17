@@ -42,6 +42,7 @@ pub mod labels;
 pub mod model;
 pub mod navigation;
 pub mod plan;
+pub mod quality;
 pub mod repair;
 pub mod sketch;
 pub mod styles;

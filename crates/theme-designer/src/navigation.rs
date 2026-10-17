@@ -369,8 +369,9 @@ pub fn navigation(design: &SiteDesign, site: &SiteContext) -> NavPlan {
                         .as_deref()
                         .map(|src| {
                             format!(
-                                "<img class=\"ds-featured-img\" src=\"{}\" alt=\"\">",
-                                esc(src)
+                                "<img class=\"ds-featured-img\" src=\"{}\" alt=\"{}\">",
+                                esc(src),
+                                esc(&f.title)
                             )
                         })
                         .unwrap_or_default();

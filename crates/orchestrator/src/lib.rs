@@ -42,6 +42,7 @@ pub mod build;
 pub mod eval;
 mod gateway;
 mod maintain;
+pub mod quality;
 mod run;
 mod site;
 pub mod site_theme;
@@ -68,8 +69,8 @@ pub use build::{interior_brief, OnDesk, RoomPlan, RoomPlanItem, ROOM_PLAN_KIND};
 #[cfg(not(target_arch = "wasm32"))]
 pub use gateway::GithubGateway;
 pub use gateway::{
-    Attribution, DeployState, DraftPr, FakeGateway, FakePr, FakeSite, Gateway, GatewayError,
-    ModelsPut, PageFile, Redeploy, ThemePr, VisualFn, VisualHook,
+    Attribution, AuditFn, AuditHook, DeployState, DraftPr, FakeGateway, FakePr, FakeSite, Gateway,
+    GatewayError, ModelsPut, PageFile, Redeploy, ThemePr, VisualFn, VisualHook,
 };
 pub use run::{CancelToken, Orchestrator, OrchestratorError, SiteBinding};
 pub use site::{
@@ -215,6 +216,8 @@ pub enum JobFailure {
     Timeout,
     Cancelled,
     Infrastructure,
+    /// The release's QA stage blocks it (ADR-0094).
+    QualityGate,
 }
 
 /// What a job reports; each becomes a `ServerCommand` for the sim.
@@ -251,6 +254,55 @@ pub enum Outcome {
         job_id: u64,
         items: Vec<PlannedItemOut>,
     },
+    /// The QA stage's digest of a site theme's release (ADR-0094): numbers only, before the
+    /// job's `JobCompleted` or `JobFailed`.
+    SiteQuality {
+        job_id: u64,
+        quality: QualityOut,
+    },
+}
+
+/// The sim's `SiteQualityDigest` (same field names): a QA report's digest as numbers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QualityOut {
+    pub standard: u16,
+    pub pages: u32,
+    pub audits: u32,
+    pub findings: u32,
+    pub exceptions: u32,
+    pub classes: u16,
+    pub passed: bool,
+    pub layout: u16,
+    pub links: u16,
+    pub media: u16,
+    pub accessibility: u16,
+    pub seo: u16,
+    pub content: u16,
+    pub design: u16,
+    pub performance: u16,
+}
+
+impl From<&site_quality::QaDigest> for QualityOut {
+    fn from(d: &site_quality::QaDigest) -> QualityOut {
+        let s = &d.scores;
+        QualityOut {
+            standard: d.standard,
+            pages: d.pages,
+            audits: d.audits,
+            findings: d.findings,
+            exceptions: d.exceptions,
+            classes: d.classes,
+            passed: d.passed,
+            layout: s.layout,
+            links: s.links,
+            media: s.media,
+            accessibility: s.accessibility,
+            seo: s.seo,
+            content: s.content,
+            design: s.design,
+            performance: s.performance,
+        }
+    }
 }
 
 /// One item of a room plan in the sim's `PlannedEquipment` shape:

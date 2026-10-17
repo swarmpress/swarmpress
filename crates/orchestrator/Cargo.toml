@@ -24,6 +24,7 @@ office-designer = { path = "../office-designer" }
 # as theme data, checked and repaired in-process (theme-designer).
 site-design = { path = "../site-design" }
 theme-designer = { path = "../theme-designer" }
+site-quality = { path = "../site-quality" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

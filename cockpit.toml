@@ -62,7 +62,7 @@ packages = ["knowledge"]
 id = "knowledge/nextest"
 component = "content"
 [[evidence.split]]
-packages = ["content-schema", "content-model", "blueprint", "blueprint-wasm", "storage-api", "content-repo", "site-export", "content-import-wp", "site-design"]
+packages = ["content-schema", "content-model", "blueprint", "blueprint-wasm", "storage-api", "content-repo", "site-export", "content-import-wp", "site-design", "site-quality"]
 id = "content/nextest"
 component = "content"
 [[evidence.split]]
@@ -527,6 +527,18 @@ kind = "benchmark"
 path = ["artifacts/bench/wp-migrate*.json"]
 component = "content"
 features = ["FEAT-112"]
+
+# The site QA stage on cinqueterre.travel's export (FEAT-116, ADR-0094): findings per rule and the
+# score per dimension of every page at 1280 and 390 px. Not in CI (WordPress runs locally):
+# `cd apps/game && bun e2e/page-audit.mts --export DIR --out DIR --bench ../../artifacts/bench/site-quality.json`
+[[evidence]]
+id = "bench/site-quality"
+title = "the site QA stage: site-standard v1 on every page of cinqueterre.travel's export"
+format = "cockpit-benchmark"
+kind = "benchmark"
+path = ["artifacts/bench/site-quality*.json"]
+component = "content"
+features = ["FEAT-116"]
 
 [[evidence]]
 id = "bench/model-eval"

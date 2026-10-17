@@ -25,6 +25,20 @@
 //!   the export and deploy follow the merge → JobCompleted{ok, artifact_sha: the merge}
 //! ```
 //!
+//! A job may start from an earlier theme's markup (`context.start_from`: task label → markup, and
+//! `context.labels`: the label table): each template is then checked as if the model had answered
+//! it, and only what does not pass costs a model call (a revision of a theme, not a new one).
+//!
+//! The QA stage (ADR-0094, FEAT-116) follows the branch's write: `Gateway::site_audit` exports the
+//! branch and audits every page against the site standard. Design classes go back into the repair
+//! loop (`theme_designer::quality::repairs`: the class's evidence as the template's fix message, at
+//! most `MAX_QA_ROUNDS`, a fix kept only when it passes the checks), the theme is written again and
+//! audited again. The digest is reported (`Outcome::SiteQuality`); a gate still shut fails the job
+//! (`JobFailed{QualityGate}`, the CEO's Escalation ticket), with the content classes routed to their
+//! roles (`quality::route_content`) in the thread. The Publish job audits the head it merges again
+//! (or reuses the passing report of that same commit) and never merges a blocked release; an
+//! executor that cannot audit cannot publish.
+//!
 //! After the checks, the theme is looked at (`Gateway::visual_check`): the executor renders it
 //! and compares the design's pages with the site's, region by region, at a phone's and a
 //! desktop's width, pictures masked (`apps/game/e2e/theme-visual.mts`). A page below
@@ -52,11 +66,12 @@ use theme_designer::{
     MAX_REPAIR_ROUNDS,
 };
 
+use crate::quality::{quality_outcome, QaRecord};
 use crate::run::{corrupt, invalid, Orchestrator, Result};
 use crate::staged::stage_hash;
 use crate::store::{ArtifactRecord, Store};
 use crate::structure::failure;
-use crate::{Digest, Gateway, JobRequest, Outcome, ProgressState, StaffRef};
+use crate::{Digest, Gateway, JobFailure, JobRequest, Outcome, ProgressState, StaffRef};
 
 /// Answer budget of the `web design labels` call, tokens (a few hundred short words in three
 /// or four languages).
@@ -109,6 +124,10 @@ pub struct SiteThemeRecord {
     /// Which component of the design serves what on the site, and why one is unused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coverage: Option<theme_designer::catalog::Coverage>,
+    /// The QA stage on the theme's branch (ADR-0094): the gate, the digest, the repairs and the
+    /// classes routed; `None` when this executor cannot audit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality: Option<QaRecord>,
 }
 
 /// The branch a design version's theme is written on.
@@ -243,6 +262,14 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 Ok(())
             }
         };
+        let start_from: BTreeMap<String, String> = req
+            .context
+            .get("start_from")
+            .filter(|v| !v.is_null())
+            .map(|v| serde_json::from_value(v.clone()))
+            .transpose()
+            .map_err(|e| invalid(format!("job {}'s start_from: {e}", req.job_id)))?
+            .unwrap_or_default();
         let total = u32::try_from(p.tasks.len()).unwrap_or(u32::MAX);
         let mut markup: BTreeMap<String, String> = BTreeMap::new();
         let mut visual_tried: Option<Vec<(String, String)>> = None;
@@ -268,19 +295,24 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 presets: &p.presets,
                 context: &context,
             };
-            let answer = self
-                .propose(
-                    req,
-                    &who,
-                    &template,
-                    agents::JobKind::WebDesign,
-                    &format!("web_design:{key}"),
-                    template_prompt(&input),
-                    TEMPLATE_ANSWER,
-                    &schema,
-                    &has_content,
-                )
-                .await?;
+            let answer = match start_from.get(&label) {
+                // A revision: the earlier markup stands as the first answer.
+                Some(m) => Ok((json!({"content": m}), ())),
+                None => self
+                    .propose(
+                        req,
+                        &who,
+                        &template,
+                        agents::JobKind::WebDesign,
+                        &format!("web_design:{key}"),
+                        template_prompt(&input),
+                        TEMPLATE_ANSWER,
+                        &schema,
+                        &has_content,
+                    )
+                    .await?
+                    .map(|(v, _)| (v, ())),
+            };
             let mut current = match answer {
                 Ok((v, _)) => content_of(&v),
                 Err(f) => {
@@ -554,19 +586,36 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 ProgressState::Started,
                 json!({"labels": sources.len(), "languages": languages.len()}),
             );
-            let answer = self
-                .propose(
-                    req,
-                    &who,
-                    &template,
-                    agents::JobKind::WebDesign,
-                    "web_design_labels",
-                    theme_designer::labels::prompt(&sources, &wholes, &languages, &site.name),
-                    LABELS_ANSWER,
-                    &label_schema,
-                    &check,
-                )
-                .await?;
+            let earlier = req
+                .context
+                .get("labels")
+                .filter(|v| v.is_object())
+                .filter(|v| {
+                    theme_designer::labels::check_answer(
+                        &sources,
+                        &languages,
+                        &json!({"labels": v}),
+                    )
+                    .is_ok()
+                })
+                .map(|v| json!({"labels": v}));
+            let answer = match earlier {
+                Some(v) => Ok((v, ())),
+                None => self
+                    .propose(
+                        req,
+                        &who,
+                        &template,
+                        agents::JobKind::WebDesign,
+                        "web_design_labels",
+                        theme_designer::labels::prompt(&sources, &wholes, &languages, &site.name),
+                        LABELS_ANSWER,
+                        &label_schema,
+                        &check,
+                    )
+                    .await?
+                    .map(|(v, _)| (v, ())),
+            };
             let table = match answer {
                 Ok((v, _)) => theme_designer::labels::check_answer(&sources, &languages, &v)
                     .map_err(|e| invalid(e.join("; ")))?,
@@ -632,10 +681,156 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         );
         let message = format!("Theme from design v{version} ({item}, job {})", req.job_id);
         let who_attr = self.attribution(req, &who, "site-theme");
-        let pr = self
+        let mut pr = self
             .gateway
             .put_theme_data(&branch, &data, &message, Some(&who_attr))
             .await?;
+        // The QA stage (ADR-0094): the branch audited page by page; design classes repaired in the
+        // loop, the theme written and audited again.
+        let std_q = crate::quality::standard();
+        let mut quality: Option<QaRecord> = None;
+        let mut qa_round = 0u8;
+        let mut qa_repaired: Vec<String> = Vec::new();
+        loop {
+            if let Some(reason) = self.cancelled(req) {
+                return Ok(self.failed(req, reason));
+            }
+            let Some(report) = self
+                .gateway
+                .site_audit(&pr.branch, &pr.head_sha, u32::from(qa_round))
+                .await?
+            else {
+                break;
+            };
+            let routing = site_quality::route(&std_q, &report);
+            let record = QaRecord::new(&report, &routing, qa_round, qa_repaired.clone());
+            self.report(
+                req,
+                Some(&who),
+                "qa",
+                u32::from(qa_round),
+                u32::from(theme_designer::quality::MAX_QA_ROUNDS),
+                ProgressState::Done,
+                json!({"findings": report.digest.findings, "classes": report.digest.classes, "passed": report.gate.passed}),
+            );
+            if report.gate.passed
+                || qa_round >= theme_designer::quality::MAX_QA_ROUNDS
+                || routing.design.is_empty()
+            {
+                quality = Some(record);
+                break;
+            }
+            let mut kept: Vec<(String, String)> = Vec::new();
+            for fix in theme_designer::quality::repairs(&routing.design, &p, &std_q) {
+                let Some(task) = p.tasks.iter().find(|t| t.label() == fix.task) else {
+                    continue;
+                };
+                let Some(current) = markup.get(&fix.task).cloned() else {
+                    continue;
+                };
+                let input = TemplateInput {
+                    task,
+                    presets: &p.presets,
+                    context: &context,
+                };
+                let key = fix.task.replace(' ', ":");
+                let answer = self
+                    .propose(
+                        req,
+                        &who,
+                        &template,
+                        agents::JobKind::WebDesign,
+                        &format!("web_design_qa:{key}:{}", qa_round + 1),
+                        fix_prompt(&input, &current, &fix.message),
+                        TEMPLATE_ANSWER,
+                        &schema,
+                        &has_content,
+                    )
+                    .await?;
+                let Ok((v, _)) = answer else {
+                    continue;
+                };
+                let mut candidate = content_of(&v);
+                let mut fixed = 0u8;
+                let passed = loop {
+                    let issues = check_template(task, &candidate, &ctx);
+                    match next_step(&issues, fixed, MAX_REPAIR_ROUNDS) {
+                        Step::Done => break true,
+                        Step::GiveUp { .. } => break false,
+                        Step::Repair(task_fix) => {
+                            let answer = self
+                                .propose(
+                                    req,
+                                    &who,
+                                    &template,
+                                    agents::JobKind::WebDesign,
+                                    &format!(
+                                        "web_design_qa_fix:{key}:{}:{}",
+                                        qa_round + 1,
+                                        task_fix.round
+                                    ),
+                                    fix_prompt(&input, &candidate, &task_fix.prompt()),
+                                    TEMPLATE_ANSWER,
+                                    &schema,
+                                    &has_content,
+                                )
+                                .await?;
+                            match answer {
+                                Ok((v, _)) => candidate = content_of(&v),
+                                Err(_) => break false,
+                            }
+                            fixed = task_fix.round;
+                        }
+                    }
+                };
+                if passed {
+                    qa_repaired.extend(fix.classes.clone());
+                    kept.push((fix.task.clone(), current));
+                    markup.insert(fix.task.clone(), candidate);
+                }
+            }
+            if kept.is_empty() {
+                quality = Some(record);
+                break;
+            }
+            let mut next = assemble(&p, &markup);
+            if !data.labels.is_empty() {
+                next.global_styles
+                    .css
+                    .push_str(&theme_designer::labels::css(&data.labels));
+                next.labels = data.labels.clone();
+            }
+            let mut theme_errors: Vec<Issue> = check_theme(&next, &p)
+                .into_iter()
+                .filter(Issue::is_error)
+                .collect();
+            theme_errors.extend(theme_designer::catalog::coverage(&design, &p, &next).1);
+            if !theme_errors.is_empty() {
+                for (label, old) in kept {
+                    markup.insert(label, old);
+                }
+                quality = Some(record);
+                break;
+            }
+            data = next;
+            pr = self
+                .gateway
+                .put_theme_data(&branch, &data, &message, Some(&who_attr))
+                .await?;
+            qa_round += 1;
+        }
+        match &quality {
+            Some(q) => notes.push(Issue::new(
+                theme_designer::IssueCode::Note,
+                "qa stage",
+                format!("{} ({} repair rounds)", q.line, q.rounds),
+            )),
+            None => notes.push(Issue::new(
+                theme_designer::IssueCode::Note,
+                "qa stage",
+                "not audited: this executor cannot audit a branch; the Publish job needs one that can (ADR-0094)",
+            )),
+        }
         let coverage = theme_designer::catalog::coverage(&design, &p, &data).0;
         let record = SiteThemeRecord {
             kind: SITE_THEME_KIND.into(),
@@ -652,6 +847,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             score,
             visual: visual.as_ref().map(VisualReport::summary),
             coverage: Some(coverage),
+            quality: quality.clone(),
         };
         let sha = stage_hash(&[&serde_json::to_string(&record.theme).map_err(corrupt)?]);
         let mut art = self.load_artifact(req, &item).await?.unwrap_or_default();
@@ -663,6 +859,32 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         art.head_sha = Some(pr.head_sha.clone());
         art.site_theme = Some(record.clone());
         self.save_artifact(req, &item, &art).await?;
+        let qa_out: Vec<Outcome> = quality
+            .as_ref()
+            .map(|q| quality_outcome(req.job_id, &q.digest))
+            .into_iter()
+            .collect();
+        if let Some(q) = quality.as_ref().filter(|q| !q.passed()) {
+            let text = q.blocked_text();
+            self.system_post(
+                req,
+                &item,
+                "status",
+                0,
+                &text,
+                json!({"site_theme": "blocked", "quality": q}),
+            )
+            .await?;
+            self.report_job(
+                req,
+                Some(&who),
+                ProgressState::Failed,
+                json!({"error": "the QA stage blocks the release"}),
+            );
+            let mut out = qa_out;
+            out.extend(self.failed(req, JobFailure::QualityGate));
+            return Ok(out);
+        }
         let mut text = summary.clone();
         let shown: Vec<&Issue> = record.notes.iter().take(8).collect();
         if !shown.is_empty() {
@@ -702,7 +924,8 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             ProgressState::Done,
             json!({"templates": n, "repairs": repaired, "branch": record.branch}),
         );
-        Ok(vec![Outcome::JobCompleted {
+        let mut out = qa_out;
+        out.push(Outcome::JobCompleted {
             job_id: req.job_id,
             digest: Digest {
                 ok: true,
@@ -711,7 +934,8 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 qa_defects: u16::try_from(repaired).unwrap_or(u16::MAX),
                 artifact_sha: Some(sha),
             },
-        }])
+        });
+        Ok(out)
     }
 
     /// The Publish job of a `SiteTheme` item (after the CEO's Approve): the branch's change
@@ -749,6 +973,57 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             .staff
             .first()
             .ok_or_else(|| invalid(format!("job {} has nobody to do it", req.job_id)))?;
+        // The gate (ADR-0094): the head about to be merged, audited (or the passing report of that
+        // same commit reused); a blocked or unaudited release is never merged.
+        let reuse = rec
+            .quality
+            .clone()
+            .filter(|q| q.passed() && q.commit == rec.head_sha);
+        let q = match reuse {
+            Some(q) => q,
+            None => match self
+                .gateway
+                .site_audit(&rec.branch, &rec.head_sha, 0)
+                .await?
+            {
+                Some(report) => QaRecord::new(
+                    &report,
+                    &site_quality::route(&crate::quality::standard(), &report),
+                    0,
+                    Vec::new(),
+                ),
+                None => {
+                    self.system_post(
+                        req,
+                        item,
+                        "status",
+                        0,
+                        "The theme cannot be published here: this executor cannot audit the release, and no release passes the QA stage unaudited (ADR-0094).",
+                        json!({"site_theme": "not-audited"}),
+                    )
+                    .await?;
+                    return Ok(self.failed(req, JobFailure::Infrastructure));
+                }
+            },
+        };
+        let qa_out = quality_outcome(req.job_id, &q.digest);
+        rec.quality = Some(q.clone());
+        if !q.passed() {
+            art.site_theme = Some(rec.clone());
+            self.save_artifact(req, item, &art).await?;
+            self.system_post(
+                req,
+                item,
+                "status",
+                0,
+                &q.blocked_text(),
+                json!({"site_theme": "blocked", "quality": q}),
+            )
+            .await?;
+            let mut out = vec![qa_out];
+            out.extend(self.failed(req, JobFailure::QualityGate));
+            return Ok(out);
+        }
         let mut attribution = self.attribution(req, who, "publish");
         attribution.approved_by = req.approved_by.clone().filter(|a| !a.trim().is_empty());
         let sha = self
@@ -774,6 +1049,8 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             json!({"site_theme": "merged", "design_version": rec.design_version, "merged_sha": sha}),
         )
         .await?;
-        Ok(completed(sha))
+        let mut out = vec![qa_out];
+        out.extend(completed(sha));
+        Ok(out)
     }
 }

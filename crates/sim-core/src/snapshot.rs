@@ -69,7 +69,10 @@ pub const SNAPSHOT_FORMAT: u16 = 1;
 /// - 15: the site's theme from its design (ADR-0093, FEAT-115):
 ///   `Plan.designs`, the `WebDesigner` role and persona, `SiteTheme` items
 ///   and jobs, `ThemeApproval`, `DesignReceived`.
-pub const WORLD_FORMAT: u32 = 15;
+/// - 16: site quality as a governed stage (ADR-0094, FEAT-116): `SiteDesigns.quality` and
+///   `live_quality` (the QA stage's digests), `ServerCommand::SiteQuality`,
+///   `JobFailure::QualityGate`.
+pub const WORLD_FORMAT: u32 = 16;
 /// Bytes before the body.
 pub const HEADER_LEN: usize = 42;
 

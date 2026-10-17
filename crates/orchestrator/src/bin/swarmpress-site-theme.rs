@@ -6,7 +6,17 @@
 //!                       [--llm fake|hosted] [--server URL] [--login NAME] [--version N]
 //!                       [--wordpress URL --repo URL]
 //! swarmpress-site-theme --design FILE|DIR --content DIR --out DIR --rebuild-from THEME_DATA
+//! swarmpress-site-theme … [--revise-from THEME_DATA] [--wordpress URL --repo URL --audit PLAN
+//!                       [--exceptions FILE] [--public-origin URL]]
 //! ```
+//!
+//! `--revise-from` runs the job on an earlier theme: its templates, parts and labels stand as the
+//! first answers, so only what does not pass its checks or the QA stage costs a model call.
+//! `--audit PLAN` (with `--wordpress` and `--repo`) gives the job its QA stage (ADR-0094): each
+//! round writes the theme on `{branch}-qa-{n}`, exports that branch with the import plan, audits
+//! every page (`apps/game/e2e/page-audit.mts` and `swarmpress-wp-migrate qa`, `--exceptions` the
+//! site's listed content gaps) and keeps it in `qa/round-{n}/`. A theme the gate blocks fails the
+//! job; its data is kept as `theme-data.blocked.json`.
 //!
 //! `--rebuild-from` makes a theme again from an earlier run's model answers without a model call:
 //! this code's deterministic plan (styles, menus, block styles, files) with that run's templates,
@@ -222,6 +232,8 @@ fn collections() -> Vec<Collection> {
                 "village",
                 "label",
                 "line",
+                "image",
+                "image_alt",
                 "duration",
                 "cost",
                 "best",
@@ -721,6 +733,138 @@ impl Visual {
         for line in report.lines() {
             eprintln!("look {round}: {line}");
         }
+        Ok(Some(report))
+    }
+}
+
+// ------------------------------------------------------------------ the QA stage
+
+/// The QA stage's host side (ADR-0094, FEAT-116): the branch's theme written on a branch of a
+/// WordPress that has the site, that branch exported (`swarmpress-wp-migrate export --branch`, the
+/// import plan giving the pages' language versions), every page of the export observed at 1280 and
+/// 390 px and judged (`apps/game/e2e/page-audit.mts`, then `swarmpress-wp-migrate qa`) with the
+/// site's listed content gaps; `qa/round-{n}/` keeps the export, the facts and the report.
+struct Audit {
+    wp: String,
+    repo: String,
+    out: PathBuf,
+    bundle: DesignBundle,
+    plan: PathBuf,
+    exceptions: Option<PathBuf>,
+    public_origin: String,
+}
+
+impl Audit {
+    fn fail(e: impl std::fmt::Display) -> orchestrator::GatewayError {
+        orchestrator::GatewayError(format!("the QA stage: {e}"))
+    }
+
+    fn check(
+        &self,
+        branch: &str,
+        head: &str,
+        round: u32,
+        theme: Option<&str>,
+    ) -> Result<Option<site_quality::QaReport>, orchestrator::GatewayError> {
+        let theme = theme.ok_or_else(|| Self::fail(format!("no theme on {branch}")))?;
+        let mut data: site_design::ThemeData = serde_json::from_str(theme).map_err(Self::fail)?;
+        let dir = self.out.join("qa").join(format!("round-{round}"));
+        std::fs::create_dir_all(&dir).map_err(Self::fail)?;
+        for f in &mut data.fonts {
+            for face in &mut f.faces {
+                let bytes = self.bundle.bytes(&face.file.path).ok_or_else(|| {
+                    Self::fail(format!("{} is not in the bundle", face.file.path))
+                })?;
+                let p = dir.join(&face.file.path);
+                if let Some(d) = p.parent() {
+                    std::fs::create_dir_all(d).map_err(Self::fail)?;
+                }
+                std::fs::write(&p, bytes).map_err(Self::fail)?;
+            }
+        }
+        data.design = self.bundle.hash().to_string();
+        let file = dir.join("theme-data.json");
+        std::fs::write(
+            &file,
+            serde_json::to_string_pretty(&data).map_err(Self::fail)?,
+        )
+        .map_err(Self::fail)?;
+        let migrate = root().join("target/release/swarmpress-wp-migrate");
+        let qa_branch = format!("{branch}-qa-{round}");
+        let run = |cmd: &mut std::process::Command, what: &str| {
+            let status = cmd
+                .status()
+                .map_err(|e| Self::fail(format!("{what}: {e}")))?;
+            if status.success() {
+                Ok(())
+            } else {
+                Err(Self::fail(format!("{what} failed")))
+            }
+        };
+        run(
+            std::process::Command::new(&migrate)
+                .args(["theme", "--theme-data"])
+                .arg(&file)
+                .args([
+                    "--sandbox",
+                    &self.wp,
+                    "--repo",
+                    &self.repo,
+                    "--branch",
+                    &qa_branch,
+                ]),
+            "writing the theme",
+        )?;
+        let export = dir.join("export");
+        let _ = std::fs::remove_dir_all(&export);
+        run(
+            std::process::Command::new(&migrate)
+                .args(["export", "--sandbox", &self.wp, "--repo", &self.repo])
+                .args([
+                    "--public-origin",
+                    &self.public_origin,
+                    "--branch",
+                    &qa_branch,
+                ])
+                .arg("--out")
+                .arg(&export)
+                .arg("--theme-data")
+                .arg(&file)
+                .arg("--plan")
+                .arg(&self.plan),
+            "the export",
+        )?;
+        let mut audit = std::process::Command::new("bun");
+        audit
+            .current_dir(root().join("apps/game"))
+            .args(["e2e/page-audit.mts", "--export"])
+            .arg(&export)
+            .arg("--out")
+            .arg(dir.join("audit"))
+            .arg("--theme-data")
+            .arg(&file)
+            .args([
+                "--production",
+                &self.public_origin,
+                "--branch",
+                branch,
+                "--commit",
+                head,
+            ]);
+        if let Some(e) = &self.exceptions {
+            audit.arg("--exceptions").arg(e);
+        }
+        // Exit 1 is a blocked gate, not a failure of the stage.
+        let status = audit
+            .status()
+            .map_err(|e| Self::fail(format!("bun: {e}")))?;
+        if status.code().is_none_or(|c| c > 1) {
+            return Err(Self::fail("the audit did not run"));
+        }
+        let text =
+            std::fs::read_to_string(dir.join("audit").join("report.json")).map_err(Self::fail)?;
+        let report: site_quality::QaReport = serde_json::from_str(&text).map_err(Self::fail)?;
+        eprintln!("qa {round}: {}", report.line());
         Ok(Some(report))
     }
 }
@@ -1228,6 +1372,45 @@ async fn main() {
             v.check(version, data, round)
         }));
     }
+    // The QA stage on that WordPress (`--audit PLAN`: the import plan; `--exceptions FILE`: the
+    // site's listed content gaps).
+    if let (Some(wp), Some(repo), Some(plan)) = (
+        arg(&args, "--wordpress"),
+        arg(&args, "--repo"),
+        arg(&args, "--audit"),
+    ) {
+        let a = Audit {
+            wp: wp.trim_end_matches('/').to_string(),
+            repo,
+            out: out.clone(),
+            bundle: b.clone(),
+            plan: PathBuf::from(plan),
+            exceptions: arg(&args, "--exceptions").map(PathBuf::from),
+            public_origin: arg(&args, "--public-origin")
+                .unwrap_or_else(|| "https://cinqueterre.travel".into()),
+        };
+        gateway.set_audit(Arc::new(move |branch, head, round, theme| {
+            a.check(branch, head, round, theme)
+        }));
+    }
+    // A revision of an earlier theme (`--revise-from FILE`): its templates, parts and labels are
+    // the first answers; only what does not pass costs a model call.
+    let mut context = json!({"site": site});
+    if let Some(file) = arg(&args, "--revise-from") {
+        let old: site_design::ThemeData = serde_json::from_str(
+            &std::fs::read_to_string(&file).unwrap_or_else(|e| die(format!("{file}: {e}"))),
+        )
+        .unwrap_or_else(|e| die(format!("{file}: {e}")));
+        let mut start = serde_json::Map::new();
+        for t in &old.templates {
+            start.insert(format!("template {}", t.slug), json!(t.content));
+        }
+        for t in &old.template_parts {
+            start.insert(format!("part {}", t.slug), json!(t.content));
+        }
+        context["start_from"] = Value::Object(start);
+        context["labels"] = json!(old.labels);
+    }
     let mut hosted: Option<Arc<Hosted>> = None;
     let llm: Arc<dyn Llm> = match which.as_str() {
         "fake" => Arc::new(fake_writer([])),
@@ -1267,7 +1450,7 @@ async fn main() {
             role: "web-designer".into(),
         }],
         meeting: None,
-        context: json!({"site": site}),
+        context,
         approved_by: None,
     };
     let started = std::time::Instant::now();
@@ -1307,6 +1490,7 @@ async fn main() {
                         .map(|a| a["site_theme"].clone())
                         .unwrap_or_default();
                     report["tasks"] = rec["tasks"].clone();
+                    report["quality"] = rec["quality"].clone();
                     report["notes"] = rec["notes"].clone();
                     report["summary"] = rec["summary"].clone();
                     let mut theme: site_design::ThemeData =
@@ -1342,6 +1526,19 @@ async fn main() {
                 }
                 Some(Outcome::JobFailed { reason, .. }) => {
                     eprintln!("the job failed ({reason:?}); report.json has the thread");
+                    let rec = art
+                        .as_ref()
+                        .map(|a| a["site_theme"].clone())
+                        .unwrap_or_default();
+                    report["quality"] = rec["quality"].clone();
+                    // A theme blocked by the QA stage is kept for the record (never as passing).
+                    if !rec["theme"].is_null() {
+                        std::fs::write(
+                            out.join("theme-data.blocked.json"),
+                            serde_json::to_string_pretty(&rec["theme"]).unwrap(),
+                        )
+                        .unwrap_or_else(|e| die(e));
+                    }
                     1
                 }
                 other => {

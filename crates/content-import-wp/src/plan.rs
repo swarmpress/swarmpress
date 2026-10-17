@@ -637,8 +637,15 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
         (r.path != own && r.path.starts_with(&own)).then_some(own)
     });
     // Every image says what it shows (the design's rule fix-06/fix-12): an image without its own
-    // description is described by the page's title.
-    let content = markup::fill_alt(&content, &title);
+    // description is described by its section's heading, never by the page's SEO title; how many
+    // had none is a content gap.
+    let (content, undescribed) = markup::fill_alt(&content, &headline(&title, &site_name(site)));
+    if undescribed > 0 {
+        meta.insert(
+            "_swarmpress_images_without_alt".to_string(),
+            undescribed.to_string(),
+        );
+    }
     let slug = if r.path == "/" {
         "home".to_string()
     } else {
@@ -784,4 +791,83 @@ fn menu_item(v: &Value, lang: &str) -> Option<MenuItem> {
         url,
         children,
     })
+}
+
+/// A page's language versions (ADR-0094's hreflang rule): the plan's documents grouped by their
+/// source and village (one page of the site in each language), each language's own page chosen
+/// (its localized path where the language has one beside the English path, `/en/…` over `/`), and
+/// `x-default` the English one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Versions {
+    /// The page of this route's language that stands for the group (its canonical).
+    pub canonical: String,
+    /// Language (and `x-default`) → route.
+    pub alternates: BTreeMap<String, String>,
+}
+
+/// Every route's language versions ([`Versions`]).
+pub fn versions(p: &Plan) -> BTreeMap<String, Versions> {
+    let village = |route: &str| -> String {
+        let seg = route.split('/').nth(2).unwrap_or("");
+        if crate::routes::VILLAGES.iter().any(|(v, _)| *v == seg) {
+            seg.to_string()
+        } else {
+            String::new()
+        }
+    };
+    let mut groups: BTreeMap<(String, String), BTreeMap<String, Vec<String>>> = BTreeMap::new();
+    for d in &p.docs {
+        let Some(src) = d.meta.get("_swarmpress_source").filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        groups
+            .entry((src.clone(), village(&d.route)))
+            .or_default()
+            .entry(d.lang.clone())
+            .or_default()
+            .push(d.route.clone());
+    }
+    let mut out = BTreeMap::new();
+    for by_lang in groups.values() {
+        let tail = |r: &str| -> String {
+            let t = r.trim_start_matches('/');
+            t.split_once('/')
+                .map_or(String::new(), |(_, rest)| rest.to_string())
+        };
+        let en_tails: Vec<String> = by_lang
+            .get("en")
+            .map(|v| v.iter().map(|r| tail(r)).collect())
+            .unwrap_or_default();
+        let mut chosen: BTreeMap<String, String> = BTreeMap::new();
+        for (lang, routes) in by_lang {
+            let mut rs = routes.clone();
+            rs.sort();
+            let pick = if lang == "en" {
+                rs.iter().find(|r| r.as_str() != "/").or(rs.first())
+            } else {
+                rs.iter()
+                    .find(|r| !en_tails.contains(&tail(r)))
+                    .or(rs.first())
+            };
+            if let Some(r) = pick {
+                chosen.insert(lang.clone(), r.clone());
+            }
+        }
+        let mut alternates = chosen.clone();
+        if let Some(en) = chosen.get("en") {
+            alternates.insert("x-default".into(), en.clone());
+        }
+        for (lang, routes) in by_lang {
+            for r in routes {
+                out.insert(
+                    r.clone(),
+                    Versions {
+                        canonical: chosen.get(lang).cloned().unwrap_or_else(|| r.clone()),
+                        alternates: alternates.clone(),
+                    },
+                );
+            }
+        }
+    }
+    out
 }

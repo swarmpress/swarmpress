@@ -38,6 +38,7 @@
 
 pub mod essentials;
 pub mod forecast;
+pub mod hygiene;
 pub mod labels;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -322,6 +323,48 @@ impl Export {
         }
         self.release.id = self.release.computed_id();
         dropped.into_iter().collect()
+    }
+
+    /// Pages that are not pages of the site leave the release (with their search entries):
+    /// WordPress answering its home page for a path that names no page (its canonical is the
+    /// home, its path is not), the platform's rule that a release holds each page once
+    /// (ADR-0094). Returns the paths dropped; the report lists them as broken.
+    pub fn drop_home_stand_ins(&mut self, public_origin: &str) -> Vec<String> {
+        let home = format!("{}/", public_origin.trim_end_matches('/'));
+        let gone: Vec<String> = self
+            .pages()
+            .into_iter()
+            .filter(|(path, html)| {
+                path != "/"
+                    && path != NOT_FOUND
+                    && hygiene::canonical(html).as_deref() == Some(home.as_str())
+            })
+            .map(|(p, _)| p)
+            .collect();
+        if gone.is_empty() {
+            return gone;
+        }
+        for p in &gone {
+            self.release.files.remove(p);
+            self.report.broken.push(Skipped {
+                url: p.clone(),
+                reason: "WordPress answered its home page: the path names no page".into(),
+                from: None,
+            });
+        }
+        if let Some(entry) = self.release.files.get(SEARCH_INDEX).cloned() {
+            if let Some(Ok(mut items)) = self
+                .blobs
+                .get(&entry.sha256)
+                .map(|b| serde_json::from_slice::<Vec<SearchEntry>>(b))
+            {
+                items.retain(|e| !gone.contains(&e.url));
+                let bytes = serde_json::to_vec(&items).unwrap_or_default();
+                self.put(SEARCH_INDEX, &entry.content_type, bytes);
+            }
+        }
+        self.release.id = self.release.computed_id();
+        gone
     }
 
     fn put(&mut self, path: &str, content_type: &str, bytes: Vec<u8>) {

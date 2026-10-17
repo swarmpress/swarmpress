@@ -1,0 +1,243 @@
+{
+  "id": "site-standard",
+  "version": 1,
+  "summary": "What every page of a swarm.press site is held to, rendered in a browser at a desktop's and a phone's width (ADR-0094). The same for every site. Deterministic rules block a release on any finding outside a listed content gap; judged rules block it below their threshold once the owner has calibrated them.",
+  "widths": [1280, 390],
+  "dimensions": ["layout", "links", "media", "accessibility", "seo", "content", "design", "performance"],
+  "rules": [
+    {
+      "id": "page-render",
+      "dimension": "performance",
+      "kind": "deterministic",
+      "route": "platform",
+      "applies": "all",
+      "summary": "The page renders: it answers 200 and loads in the browser."
+    },
+    {
+      "id": "empty-frame",
+      "dimension": "layout",
+      "kind": "deterministic",
+      "route": "web-designer",
+      "authored_route": "photo-editor",
+      "applies": "all",
+      "summary": "No empty picture frame: a picture box (an image block, a card's picture, a featured image, a tile) with no picture, no background and next to no text in it. An entry without a picture shows the text-only variant.",
+      "params": { "min_area_px": 4000, "max_text_chars": 40 }
+    },
+    {
+      "id": "broken-image",
+      "dimension": "media",
+      "kind": "deterministic",
+      "route": "photo-editor",
+      "applies": "all",
+      "summary": "Every picture shown loads: no picture whose file is missing or is not a picture."
+    },
+    {
+      "id": "alt-missing",
+      "dimension": "accessibility",
+      "kind": "deterministic",
+      "route": "web-designer",
+      "authored_route": "photo-editor",
+      "applies": "widest",
+      "summary": "Every picture that is not marked decorative says what it shows (alt text)."
+    },
+    {
+      "id": "alt-title",
+      "dimension": "accessibility",
+      "kind": "deterministic",
+      "route": "web-designer",
+      "authored_route": "photo-editor",
+      "applies": "widest",
+      "summary": "A picture's alt text is not the page's title, its SEO title or the site's title: it describes the picture."
+    },
+    {
+      "id": "link-hash",
+      "dimension": "links",
+      "kind": "deterministic",
+      "route": "web-designer",
+      "authored_route": "editor",
+      "applies": "widest",
+      "summary": "No link to `#`, to nothing or to script: every link and button goes somewhere."
+    },
+    {
+      "id": "link-broken",
+      "dimension": "links",
+      "kind": "deterministic",
+      "route": "web-designer",
+      "authored_route": "seo",
+      "applies": "widest",
+      "summary": "Every link inside the site goes to a page the release has."
+    },
+    {
+      "id": "link-anchor",
+      "dimension": "links",
+      "kind": "deterministic",
+      "route": "web-designer",
+      "authored_route": "editor",
+      "applies": "widest",
+      "summary": "Every in-page link (`#section`) has its target on the page."
+    },
+    {
+      "id": "request-failed",
+      "dimension": "performance",
+      "kind": "deterministic",
+      "route": "platform",
+      "applies": "all",
+      "summary": "No request of the page fails (an answer of 400 or more, or no answer)."
+    },
+    {
+      "id": "request-production",
+      "dimension": "performance",
+      "kind": "deterministic",
+      "route": "platform",
+      "applies": "all",
+      "summary": "A release serves itself: no request goes to the production host it will replace (a preview that does depends on the old site)."
+    },
+    {
+      "id": "export-hygiene",
+      "dimension": "performance",
+      "kind": "deterministic",
+      "route": "platform",
+      "applies": "widest",
+      "summary": "The static export carries none of WordPress's runtime extras: no emoji script, emoji styles or emoji settings."
+    },
+    {
+      "id": "overflow",
+      "dimension": "layout",
+      "kind": "deterministic",
+      "route": "web-designer",
+      "applies": "narrow",
+      "summary": "Nothing is wider than a phone's screen: no sideways scrolling at 390 px.",
+      "params": { "max_viewport_px": 500, "tolerance_px": 1 }
+    },
+    {
+      "id": "narrow-column",
+      "dimension": "layout",
+      "kind": "deterministic",
+      "route": "web-designer",
+      "applies": "wide",
+      "summary": "At 1280 px no block sits in under 75% of its page's container with nothing beside it (a half-empty row). A story's text keeps its reading measure and is exempt.",
+      "params": { "min_viewport_px": 1200, "min_container_px": 900, "min_height_px": 150, "min_share_permille": 750 }
+    },
+    {
+      "id": "h1-count",
+      "dimension": "accessibility",
+      "kind": "deterministic",
+      "route": "web-designer",
+      "applies": "all",
+      "summary": "Exactly one h1 is shown."
+    },
+    {
+      "id": "h1-own",
+      "dimension": "accessibility",
+      "kind": "deterministic",
+      "route": "web-designer",
+      "applies": "widest",
+      "summary": "The h1 is the page's own: the authored hero's title when the page has one, else the page's title.",
+      "params": { "prefix_chars": 12 }
+    },
+    {
+      "id": "heading-order",
+      "dimension": "accessibility",
+      "kind": "deterministic",
+      "route": "web-designer",
+      "authored_route": "editor",
+      "applies": "widest",
+      "summary": "Headings go down one level at a time (no h2 then h4) outside the header, the footer and the menus."
+    },
+    {
+      "id": "hero-first",
+      "dimension": "layout",
+      "kind": "deterministic",
+      "route": "web-designer",
+      "applies": "widest",
+      "summary": "A page's authored hero comes first in its content: no listing, filter bar or card grid before it."
+    },
+    {
+      "id": "raw-slug",
+      "dimension": "content",
+      "kind": "deterministic",
+      "route": "editor",
+      "applies": "widest",
+      "summary": "No chip, badge, eyebrow, filter or tag shows a slug (`church`, `getting-here`): labels are words."
+    },
+    {
+      "id": "english-label",
+      "dimension": "design",
+      "kind": "deterministic",
+      "route": "web-designer",
+      "applies": "widest",
+      "summary": "On a page in another language, none of the design's own words is left in English."
+    },
+    {
+      "id": "seo-title",
+      "dimension": "seo",
+      "kind": "deterministic",
+      "route": "seo",
+      "applies": "widest",
+      "summary": "The page has a title of a sane length.",
+      "params": { "min_chars": 10, "max_chars": 90 }
+    },
+    {
+      "id": "seo-description",
+      "dimension": "seo",
+      "kind": "deterministic",
+      "route": "seo",
+      "applies": "widest",
+      "summary": "The page has a meta description of a sane length.",
+      "params": { "min_chars": 50, "max_chars": 300 }
+    },
+    {
+      "id": "seo-canonical",
+      "dimension": "seo",
+      "kind": "deterministic",
+      "route": "platform",
+      "applies": "widest",
+      "summary": "The page names itself as canonical, on the site's public origin."
+    },
+    {
+      "id": "seo-hreflang",
+      "dimension": "seo",
+      "kind": "deterministic",
+      "route": "platform",
+      "applies": "widest",
+      "summary": "On a site in several languages each page lists its language versions (hreflang), itself included; every version listed exists and lists it back."
+    },
+    {
+      "id": "seo-sitemap",
+      "dimension": "seo",
+      "kind": "deterministic",
+      "route": "platform",
+      "applies": "widest",
+      "summary": "The site has a sitemap and every indexable page is in it."
+    },
+    {
+      "id": "seo-duplicate-title",
+      "dimension": "seo",
+      "kind": "deterministic",
+      "route": "seo",
+      "applies": "widest",
+      "summary": "No two pages share a title."
+    },
+    {
+      "id": "photo-matches-section",
+      "dimension": "media",
+      "kind": "judged",
+      "route": "photo-editor",
+      "summary": "A picture shows what its section is about (vision, a fixed rubric). Not judged before step 5 of ADR-0094; its threshold is frozen after the owner's spot check."
+    },
+    {
+      "id": "copy-editorial-bar",
+      "dimension": "content",
+      "kind": "judged",
+      "route": "editor",
+      "summary": "The page's copy holds the editorial bar (a fixed rubric). Not judged before step 5 of ADR-0094."
+    },
+    {
+      "id": "design-family",
+      "dimension": "design",
+      "kind": "judged",
+      "route": "web-designer",
+      "summary": "A page type looks like its design family: its Claude Design page, or the style guide for a type marked derived (vision, a fixed rubric). Not judged before step 5 of ADR-0094."
+    }
+  ]
+}

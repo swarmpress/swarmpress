@@ -585,7 +585,14 @@ header.wp-block-template-part:has(.ds-masthead.ds-hidden){transform:translateY(-
 .ds-band.ds-wrap>.ds-wrap{max-width:@container@!important;padding-inline:var(--ds-margin)!important}
 /* never an empty picture frame: an entry without a picture is its text-only variant */
 .ds-card-img:not(:has(img[src]:not([src=""]))):not(:has(.ds-chip:not(:empty))),.wp-block-image:not(:has(img[src]:not([src=""]))){display:none}
+.ds-card-img:not(:has(img[src]:not([src=""]))):has(.ds-chip:not(:empty)){aspect-ratio:auto!important;height:auto!important;min-height:0!important;background:none!important;padding:0!important;overflow:visible}
+.ds-card-img:not(:has(img[src]:not([src=""]))) .ds-chip{position:static!important}
 .ds-tile:not(:has(img[src]:not([src=""]))) .ds-numeral{position:static}
+/* a page whose content opens with its own hero has that hero as its header and its h1 */
+main:has(.wp-block-post-content>.ct-own-hero:first-child) .ds-page-head .wp-block-post-title{display:none}
+/* a long word breaks rather than widening a phone's page; a table scrolls inside its box */
+:is(h1,h2,h3,h4,h5,h6,.wp-block-post-title,.wp-block-heading,.ds-chip,.ct-fact-value){overflow-wrap:break-word;hyphens:auto}
+.wp-block-table{overflow-x:auto;max-width:100%}
 /* a story's text at its measure (64ch at body-l), its section heads at the type sheet's h2 */
 .wp-block-post-content.ds-prose-article p,.wp-block-post-content.ds-prose-article li{max-width:64ch;font-size:var(--wp--preset--font-size--body-l,19px);line-height:1.6}
 .wp-block-post-content :is(.ds-prose-article,.ds-prose-wide) h2,.wp-block-post-content.ds-prose-article h2,.wp-block-post-content.ds-prose-wide h2{font-family:@display@;font-size:@h2-size@;font-weight:400;line-height:1.05;letter-spacing:-0.02em;margin:48px 0 16px}

@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "audit:pages": "bun e2e/page-audit.mts",
     "bonsai:runtime": "node scripts/bonsai-runtime.mjs",
     "llama:runtime": "node scripts/llama-runtime.mjs"
   },

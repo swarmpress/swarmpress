@@ -18,6 +18,7 @@
 //! - [`theme`]: the site's design as data ([`theme_data::ThemeData`], ADR-0093) as the REST calls
 //!   that write it onto the neutral theme `canvas`, in a fixed order, idempotently.
 //! - [`compare`]: the export against the live site, URL by URL: status, title, content, links.
+//! - [`qa`]: what a release says about its site, for the QA stage's rules (ADR-0094).
 
 pub mod compare;
 pub mod compose;
@@ -26,6 +27,7 @@ pub mod entries;
 pub mod markup;
 pub mod parity;
 pub mod plan;
+pub mod qa;
 pub mod routes;
 pub mod theme;
 pub mod theme_data;

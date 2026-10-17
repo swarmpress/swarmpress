@@ -11,6 +11,8 @@
 //! - **Change requests** carry a semantic diff ([`diff`]) and merge three-way ([`merge`]); a
 //!   conflict is typed, never a silent choice.
 //! - **Releases** tag states of `live`; a rollback is a new commit.
+//! - **Notes** attach an object to a commit without changing its tree (like git notes): the
+//!   QA stage's report on the commit it audited (ADR-0094) is one.
 //!
 //! Pure and deterministic: no clocks, no I/O. A commit's `seq` is the repository's own counter.
 //! Persistence and sync take [`Record`]s.
@@ -184,12 +186,32 @@ impl std::fmt::Display for RepoError {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "r", rename_all = "snake_case")]
 pub enum Record {
-    Object { digest: Digest, value: Value },
+    Object {
+        digest: Digest,
+        value: Value,
+    },
     Commit(Commit),
-    Ref { name: String, head: Option<Digest> },
+    Ref {
+        name: String,
+        head: Option<Digest>,
+    },
     ChangeRequest(ChangeRequest),
     Release(Release),
-    HighWater { table: String, id: i64 },
+    HighWater {
+        table: String,
+        id: i64,
+    },
+    /// An object attached to a commit ([`Repo::put_note`]).
+    Note(Note),
+}
+
+/// An object attached to a commit under a kind (`qa`), its tree unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Note {
+    pub commit: Digest,
+    pub kind: String,
+    /// The attached object's digest.
+    pub digest: Digest,
 }
 
 /// The repository.
@@ -202,6 +224,9 @@ pub struct Repo {
     releases: BTreeMap<u64, Release>,
     /// The highest id each table has used on any branch, so branches never reuse one.
     high_water: BTreeMap<String, i64>,
+    /// `{commit}:{kind}` → the note's object digest.
+    #[serde(default)]
+    notes: BTreeMap<String, Digest>,
     seq: u64,
     /// Records since the last [`Repo::take_records`].
     #[serde(skip)]
@@ -705,6 +730,45 @@ impl Repo {
         Ok(id)
     }
 
+    // ---- notes
+
+    /// Attaches `value` to `commit` under `kind` (replacing an earlier note of that kind); the
+    /// commit's tree and every branch stay as they are.
+    pub fn put_note(
+        &mut self,
+        commit: &str,
+        kind: &str,
+        value: Value,
+    ) -> Result<Digest, RepoError> {
+        if !self.commits.contains_key(commit) {
+            return Err(RepoError::UnknownCommit(commit.to_string()));
+        }
+        let digest = object_digest(&value);
+        if !self.objects.contains_key(&digest) {
+            self.objects.insert(digest.clone(), value.clone());
+            self.pending.push(Record::Object {
+                digest: digest.clone(),
+                value,
+            });
+        }
+        let note = Note {
+            commit: commit.to_string(),
+            kind: kind.to_string(),
+            digest: digest.clone(),
+        };
+        self.notes
+            .insert(format!("{commit}:{kind}"), digest.clone());
+        self.pending.push(Record::Note(note));
+        Ok(digest)
+    }
+
+    /// The note of `kind` on `commit`.
+    pub fn note(&self, commit: &str, kind: &str) -> Option<&Value> {
+        self.notes
+            .get(&format!("{commit}:{kind}"))
+            .and_then(|d| self.objects.get(d))
+    }
+
     // ---- persistence and sync
 
     /// The records written since the last call, for the store and the sync segments.
@@ -736,6 +800,14 @@ impl Repo {
                 .map(Record::ChangeRequest),
         );
         out.extend(self.releases.values().cloned().map(Record::Release));
+        out.extend(self.notes.iter().filter_map(|(k, d)| {
+            let (commit, kind) = k.split_once(':')?;
+            Some(Record::Note(Note {
+                commit: commit.to_string(),
+                kind: kind.to_string(),
+                digest: d.clone(),
+            }))
+        }));
         out.extend(self.refs.iter().map(|(n, h)| Record::Ref {
             name: n.clone(),
             head: Some(h.clone()),
@@ -779,6 +851,10 @@ impl Repo {
                 Record::HighWater { table, id } => {
                     let e = self.high_water.entry(table).or_insert(0);
                     *e = (*e).max(id);
+                }
+                Record::Note(n) => {
+                    self.notes
+                        .insert(format!("{}:{}", n.commit, n.kind), n.digest);
                 }
             }
         }
@@ -874,6 +950,27 @@ mod tests {
 
     fn post(title: &str, text: &str) -> Value {
         json!({"row": {"post_title": title, "post_status": "draft"}, "blocks": blocks::parse(&format!("<!-- wp:paragraph --><p>{text}</p><!-- /wp:paragraph -->"))})
+    }
+
+    #[test]
+    fn a_note_rides_on_its_commit_and_survives_a_restore() {
+        let mut r = repo();
+        let head = r.head(LIVE).cloned().unwrap();
+        let tree = r.tree(LIVE);
+        assert!(r.put_note("nope", "qa", json!({})).is_err());
+        let d = r
+            .put_note(&head, "qa", json!({"gate": {"passed": false}}))
+            .unwrap();
+        r.put_note(&head, "qa", json!({"gate": {"passed": true}}))
+            .unwrap();
+        assert_eq!(r.note(&head, "qa").unwrap()["gate"]["passed"], true);
+        assert_eq!(r.head(LIVE), Some(&head), "a note moves no branch");
+        assert_eq!(r.tree(LIVE), tree);
+        assert_ne!(d, object_digest(&json!({"gate": {"passed": true}})));
+        let mut copy = Repo::new();
+        copy.apply(r.all_records()).unwrap();
+        assert_eq!(copy.note(&head, "qa").unwrap()["gate"]["passed"], true);
+        assert!(copy.note(&head, "visual").is_none());
     }
 
     fn repo() -> Repo {

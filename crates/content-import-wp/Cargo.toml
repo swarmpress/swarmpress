@@ -16,6 +16,7 @@ sha2 = { version = "0.10", optional = true }
 site-export = { path = "../site-export" }
 # The theme as data (ADR-0093): its types and shape rules are the site design's (FEAT-114).
 site-design = { path = "../site-design" }
+site-quality = { path = "../site-quality" }
 
 [features]
 # The migration CLI (`swarmpress-wp-migrate`): applies a plan over HTTP, exports, compares.

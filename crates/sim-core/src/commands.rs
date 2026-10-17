@@ -299,10 +299,14 @@ pub enum JobFailure {
     /// Store, gateway or network.
     #[serde(alias = "infrastructure")]
     Infrastructure,
+    /// The release's QA stage blocks it (ADR-0094): deterministic findings outside listed
+    /// content gaps after the repairs allowed, or classes no role on the staff can repair.
+    #[serde(alias = "quality-gate")]
+    QualityGate,
 }
 
 impl JobFailure {
-    pub const ALL: [JobFailure; 7] = [
+    pub const ALL: [JobFailure; 8] = [
         JobFailure::Model,
         JobFailure::InvalidOutput,
         JobFailure::NeedsMedia,
@@ -310,6 +314,7 @@ impl JobFailure {
         JobFailure::Timeout,
         JobFailure::Cancelled,
         JobFailure::Infrastructure,
+        JobFailure::QualityGate,
     ];
 
     pub const fn slug(self) -> &'static str {
@@ -321,6 +326,7 @@ impl JobFailure {
             JobFailure::Timeout => "timeout",
             JobFailure::Cancelled => "cancelled",
             JobFailure::Infrastructure => "infrastructure",
+            JobFailure::QualityGate => "quality-gate",
         }
     }
 }
@@ -431,6 +437,13 @@ pub enum ServerCommand {
     /// FEAT-115): the number only; the design stays in the store. A version
     /// newer than any before it starts the web designer's theme.
     DesignReceived { version: u32 },
+    /// The QA stage's digest of a site theme's release (ADR-0094, FEAT-116): numbers only, from
+    /// the web designer's Draft or its Publish, before the job's own outcome. The report stays in
+    /// the content repository.
+    SiteQuality {
+        job_id: u64,
+        quality: crate::site_theme::SiteQualityDigest,
+    },
 }
 
 /// Anything that can be applied to a world.

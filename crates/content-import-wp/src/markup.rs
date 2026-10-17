@@ -107,20 +107,47 @@ pub struct Notes {
     pub empty_blocks: Vec<String>,
 }
 
-/// The page's body (a list of JSON blocks) as block markup in `lang`.
+/// A link that may be per language (`"/en/x"` or `{"en": "/en/x", "de": "/de/x"}`).
+fn url_in<'a>(v: &'a Value, lang: &str) -> Option<&'a str> {
+    match v {
+        Value::String(s) => Some(s.as_str()),
+        Value::Object(_) => localized(v, lang),
+        _ => None,
+    }
+}
+
+/// The page's body (a list of JSON blocks) as block markup in `lang`. A body that opens with a
+/// hero has that hero as the page's header: its title is the page's h1, and it carries the class
+/// `ct-own-hero` (the theme then leaves its own title out, ADR-0094's h1 rule).
 pub fn body(blocks: &[Value], lang: &str, notes: &mut Notes) -> String {
     let mut out = String::new();
-    for b in blocks {
-        out.push_str(&block(b, lang, notes));
+    for (i, b) in blocks.iter().enumerate() {
+        if i == 0 && is_hero(b) {
+            out.push_str(&block_at(b, lang, notes, 1));
+        } else {
+            out.push_str(&block(b, lang, notes));
+        }
     }
     out
 }
 
+/// A block whose type names a hero (`hero`, `editorial-hero`, `villageHero`).
+pub fn is_hero(b: &Value) -> bool {
+    b.get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|t| class_name(t).split('-').any(|w| w == "hero") || t.ends_with("Hero"))
+}
+
 /// One JSON block as a `core/group` with the class `ct-{type}`.
 pub fn block(b: &Value, lang: &str, notes: &mut Notes) -> String {
+    block_at(b, lang, notes, 2)
+}
+
+/// [`block`] with its title-like fields at heading `level` (1: the page's own hero).
+fn block_at(b: &Value, lang: &str, notes: &mut Notes, level: u8) -> String {
     let kind = b.get("type").and_then(Value::as_str).unwrap_or("block");
     let inner = match b {
-        Value::Object(o) => fields(o, lang, 2),
+        Value::Object(o) => fields(o, lang, level),
         _ => String::new(),
     };
     if inner.is_empty() {
@@ -128,6 +155,9 @@ pub fn block(b: &Value, lang: &str, notes: &mut Notes) -> String {
     }
     // A collection says what its items are (`ct-items-trail`): a theme may render kinds apart.
     let mut class = format!("ct-{}", class_name(kind));
+    if level == 1 {
+        class.push_str(" ct-own-hero");
+    }
     if let Some(t) = b.get("itemType").and_then(Value::as_str) {
         class.push_str(&format!(" ct-items-{}", class_name(t)));
     }
@@ -192,7 +222,7 @@ fn fields(o: &Map<String, Value>, lang: &str, level: u8) -> String {
         o.get("text")
             .or(o.get("label"))
             .and_then(|t| localized(t, lang)),
-        o.get("url").or(o.get("href")).and_then(Value::as_str),
+        o.get("url").or(o.get("href")).and_then(|u| url_in(u, lang)),
     ) {
         if o.len() <= 4 {
             return buttons(&[(text.to_string(), link(url, lang))]);
@@ -208,9 +238,24 @@ fn fields(o: &Map<String, Value>, lang: &str, level: u8) -> String {
         (o.get("items"), o.get("interludes")),
         (Some(Value::Array(_)), Some(Value::Array(_)))
     );
+    // A quote's title is its heading: it stands before the quote, in the document's order.
+    let mut lead: Option<&str> = None;
+    if has_quote {
+        if let Some(k) = ["title", "heading"].into_iter().find(|k| {
+            o.get(*k)
+                .and_then(|t| localized(t, lang))
+                .is_some_and(|t| !t.trim().is_empty())
+        }) {
+            out.push_str(&value(k, &o[k], lang, level));
+            lead = Some(k);
+        }
+    }
     for (key, v) in o {
         let k = key.as_str();
         if interleave && k == "interludes" {
+            continue;
+        }
+        if lead == Some(k) {
             continue;
         }
         if let (true, "items", Some(items), Some(interludes)) = (
@@ -278,9 +323,15 @@ fn fields(o: &Map<String, Value>, lang: &str, level: u8) -> String {
                 let bs: Vec<(String, String)> = items
                     .iter()
                     .filter_map(|b| {
+                        // A button without a link is left out (never `#`); a link may be
+                        // per language.
                         let t = b.get("text").and_then(|t| localized(t, lang))?;
-                        let u = b.get("url").and_then(Value::as_str).unwrap_or("#");
-                        Some((t.to_string(), link(u, lang)))
+                        let u = b
+                            .get("url")
+                            .or(b.get("href"))
+                            .and_then(|u| url_in(u, lang))?;
+                        (!u.trim().is_empty() && u.trim() != "#")
+                            .then(|| (t.to_string(), link(u, lang)))
                     })
                     .collect();
                 if !bs.is_empty() {
@@ -348,11 +399,41 @@ fn value(key: &str, v: &Value, lang: &str, level: u8) -> String {
     }
 }
 
+/// `food_wine` → `Food wine`: a label field's value that is a slug, as words (ADR-0094's raw-slug
+/// rule: labels are words, never identifiers).
+pub fn humanize_slug(s: &str) -> String {
+    let words = s.replace(['_', '-'], " ");
+    let mut c = words.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
+}
+
+fn is_slug(s: &str) -> bool {
+    !s.is_empty()
+        && s.starts_with(|c: char| c.is_ascii_lowercase())
+        && s.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+}
+
+/// Fields whose values are labels a reader sees (badges, categories, tags).
+fn is_label_key(key: &str) -> bool {
+    BADGES.contains(&key) || matches!(key, "tags" | "tag" | "labels" | "type" | "kind")
+}
+
 fn text_field(key: &str, s: &str, lang: &str, level: u8) -> String {
     let s = s.trim();
     if s.is_empty() {
         return String::new();
     }
+    let humanized;
+    let s = if is_label_key(key) && is_slug(s) {
+        humanized = humanize_slug(s);
+        humanized.as_str()
+    } else {
+        s
+    };
     if is_url(s) {
         // A bare link field (`viewAllUrl`, `website`): a link paragraph.
         if key.to_ascii_lowercase().contains("url") || key == "website" || key == "link" {
@@ -684,12 +765,66 @@ pub fn list_with_class(items: &[&str], class: Option<&str>) -> String {
     }
 }
 
-/// Every `alt=""` in `html` given `fallback` (an image must say what it shows).
-pub fn fill_alt(html: &str, fallback: &str) -> String {
-    if fallback.trim().is_empty() || !html.contains("alt=\"\"") {
-        return html.to_string();
+/// Every `alt=""` in `html` described by its section (an image must say what it shows, and never
+/// by the page's or the site's title): the heading of the group the image stands in, else the
+/// heading before it, else `fallback` (the page's headline). Returns the markup and how many
+/// images had no description of their own (a content gap).
+pub fn fill_alt(html: &str, fallback: &str) -> (String, usize) {
+    const EMPTY: &str = "alt=\"\"";
+    if !html.contains(EMPTY) {
+        return (html.to_string(), 0);
     }
-    html.replace("alt=\"\"", &format!("alt=\"{}\"", attr(fallback.trim())))
+    let heading_text = |seg: &str| -> Option<String> {
+        let mut at = 0;
+        while let Some(i) = seg[at..].find("<h") {
+            let start = at + i;
+            at = start + 2;
+            let level = seg[start + 2..].chars().next()?;
+            if !('1'..='6').contains(&level) {
+                continue;
+            }
+            let open_end = start + seg[start..].find('>')? + 1;
+            let close = open_end + seg[open_end..].find(&format!("</h{level}>"))?;
+            let text = strip_tags(&seg[open_end..close])
+                .replace("&amp;", "&")
+                .replace("&#8217;", "\u{2019}");
+            if !text.is_empty() {
+                return Some(text);
+            }
+        }
+        None
+    };
+    let last_heading = |seg: &str| -> Option<String> {
+        let mut found = None;
+        let mut at = 0;
+        while let Some(i) = seg[at..].find("<h") {
+            let start = at + i;
+            at = start + 2;
+            if let Some(t) = heading_text(&seg[start..]) {
+                found = Some(t);
+            }
+        }
+        found
+    };
+    let mut out = String::with_capacity(html.len() + 256);
+    let mut n = 0;
+    let mut at = 0;
+    while let Some(i) = html[at..].find(EMPTY) {
+        let p = at + i;
+        let group_start = html[..p].rfind("<div class=\"wp-block-group").unwrap_or(0);
+        let group_end = html[p..]
+            .find("<!-- /wp:group -->")
+            .map_or(html.len(), |j| p + j);
+        let text = heading_text(&html[group_start..group_end])
+            .or_else(|| last_heading(&html[..p]))
+            .unwrap_or_else(|| fallback.trim().to_string());
+        out.push_str(&html[at..p]);
+        out.push_str(&format!("alt=\"{}\"", attr(&text)));
+        n += 1;
+        at = p + EMPTY.len();
+    }
+    out.push_str(&html[at..]);
+    (out, n)
 }
 
 /// Text without its tags (`<br/>` as a space), whitespace collapsed.

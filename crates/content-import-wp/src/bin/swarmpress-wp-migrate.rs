@@ -6,13 +6,31 @@
 //!                               [--theme-data FILE]
 //! swarmpress-wp-migrate theme   --theme-data FILE --sandbox URL --repo URL --branch NAME
 //! swarmpress-wp-migrate export  --sandbox URL --repo URL --public-origin URL --out DIR
-//!                               [--forms-endpoint URL] [--forecasts DIR]
+//!                               [--forms-endpoint URL] [--forecasts DIR] [--plan plan.json]
+//!                               [--branch NAME]
 //! swarmpress-wp-migrate forecast --export DIR [--forecasts DIR]
 //! swarmpress-wp-migrate design-check --export DIR --plan plan.json --live URL --out report.json
 //!                               [--retired FILE] [--exceptions FILE]
 //! swarmpress-wp-migrate compare --reference DIR --live URL --export DIR --out report.json
 //!                               [--plan plan.json] [--cache DIR] [--skip PREFIX]…
+//! swarmpress-wp-migrate release --cr N --report report.json --sandbox URL --repo URL
+//! swarmpress-wp-migrate qa      --facts facts.jsonl --export DIR --out report.json
+//!                               [--production URL] [--public-origin URL] [--theme-data FILE]
+//!                               [--exceptions FILE] [--bench FILE] [--site ID]
+//!                               [--branch NAME --commit SHA] [--repo URL]
 //! ```
+//!
+//! `qa` is the site QA stage's judge (ADR-0094, FEAT-116): the facts the browser observed on every
+//! page of the export (`apps/game/e2e/page-audit.mts`) judged against site-standard v1
+//! (`crates/site-quality`), the listed content gaps applied (`--exceptions`: `[{rule, page, why}]`,
+//! each reason a content gap), the report written (`report.json`: findings, classes by rule × page
+//! type × owner, scores per dimension, the gate, the digest; `summary.json`: the digest and the
+//! table per rule and page type). `apply --hold` writes the branch and opens its change request
+//! without merging it; `export --branch NAME` exports that branch; `release` is the import's gate:
+//! it merges the held change request into `live` and tags the release only when the QA report is
+//! about that branch's current head and its gate passed, and keeps the report as a `qa` note on
+//! the audited commit and the merge (exit 1 when blocked). With `--repo` the report is kept as a note on the audited commit
+//! (`--commit`, else the branch's head) in the governed repository. Exit 1 when the gate blocks.
 //!
 //! `plan` leaves the newsletter out (the owner's decision of 2026-10-13: no form until the central
 //! server has a public address, a privacy line and a double opt-in); `--newsletter` composes it
@@ -101,7 +119,7 @@ async fn main() -> Result<()> {
                 p.theme_data = Some(read_theme_data(Path::new(&f))?);
                 p.theme = theme::BASE_THEME.into();
             }
-            apply(&wp, &p, &branch, assets.as_deref()).await
+            apply(&wp, &p, &branch, assets.as_deref(), args.iter().any(|a| a == "--hold")).await
         }
         Some("theme") => {
             // A theme as data on a branch of its own, shown to visitors (the visual check).
@@ -122,6 +140,9 @@ async fn main() -> Result<()> {
         }
         Some("export") => {
             let wp = Wp::new(&need(&args, "--sandbox")?, &need(&args, "--repo")?);
+            let plan: Option<Plan> = arg(&args, "--plan")
+                .map(|f| -> Result<Plan> { Ok(serde_json::from_str(&std::fs::read_to_string(f)?)?) })
+                .transpose()?;
             export(
                 &wp,
                 &need(&args, "--public-origin")?,
@@ -132,6 +153,8 @@ async fn main() -> Result<()> {
                     .map(|f| read_theme_data(Path::new(&f)))
                     .transpose()?
                     .as_ref(),
+                plan.as_ref(),
+                arg(&args, "--branch").as_deref(),
             )
             .await
         }
@@ -195,8 +218,18 @@ async fn main() -> Result<()> {
             )?;
             Ok(())
         }
+        Some("release") => {
+            let wp = Wp::new(&need(&args, "--sandbox")?, &need(&args, "--repo")?);
+            let id: u64 = need(&args, "--cr")?.parse().context("--cr is a number")?;
+            let code = release(&wp, id, Path::new(&need(&args, "--report")?)).await?;
+            std::process::exit(code)
+        }
+        Some("qa") => {
+            let code = qa(&args).await?;
+            std::process::exit(code)
+        }
         _ => bail!(
-            "usage: swarmpress-wp-migrate plan|apply|export|forecast|compare (see the source's header)"
+            "usage: swarmpress-wp-migrate plan|apply|export|forecast|compare|qa (see the source's header)"
         ),
     }
 }
@@ -279,7 +312,7 @@ fn truncate(s: &str, n: usize) -> String {
 
 const CEO: &str = r#"{"kind":"human","id":"ceo"}"#;
 
-async fn apply(wp: &Wp, p: &Plan, branch: &str, assets: Option<&Path>) -> Result<()> {
+async fn apply(wp: &Wp, p: &Plan, branch: &str, assets: Option<&Path>, hold: bool) -> Result<()> {
     let ceo: Value = serde_json::from_str(CEO)?;
     wp.repo(json!({"op": "branch.create", "name": branch, "from": "live"}))
         .await?;
@@ -441,6 +474,21 @@ async fn apply(wp: &Wp, p: &Plan, branch: &str, assets: Option<&Path>) -> Result
     let cr = wp
         .repo(json!({"op": "cr.open", "source": branch, "title": format!("Import: {} ({} documents)", p.title, p.docs.len()), "author": ceo}))
         .await?;
+    if hold {
+        // The release waits for the QA stage (`release --cr N --report FILE`, ADR-0094).
+        let head = branch_head(wp, branch).await?;
+        println!(
+            "{}",
+            json!({"change_request": cr["id"], "branch": branch, "head": head})
+        );
+        eprintln!(
+            "{} documents written on {branch} in {}s; change request {} held for the QA stage (head {head})",
+            p.docs.len(),
+            started.elapsed().as_secs(),
+            cr["id"]
+        );
+        return Ok(());
+    }
     let merged = wp
         .repo(json!({"op": "cr.merge", "id": cr["id"], "author": ceo}))
         .await?;
@@ -902,6 +950,7 @@ fn nav_markup(item: &MenuItem) -> String {
 
 // ------------------------------------------------------------------ the export
 
+#[allow(clippy::too_many_arguments)]
 async fn export(
     wp: &Wp,
     public_origin: &str,
@@ -909,8 +958,11 @@ async fn export(
     forms_endpoint: Option<String>,
     recorded: Option<&Path>,
     theme_data: Option<&ThemeData>,
+    plan: Option<&Plan>,
+    branch: Option<&str>,
 ) -> Result<()> {
-    wp.repo(json!({"op": "session.set", "branch": "live", "user_id": 0, "author": {"kind": "system", "id": "visitor"}, "read_only": true}))
+    let branch = branch.unwrap_or("live");
+    wp.repo(json!({"op": "session.set", "branch": branch, "user_id": 0, "author": {"kind": "system", "id": "visitor"}, "read_only": true}))
         .await?;
     let mut opts = site_export::Options::new(&wp.sandbox, public_origin);
     opts.forms_endpoint = forms_endpoint;
@@ -978,6 +1030,15 @@ async fn export(
             dropped.join(", ")
         );
     }
+    // WordPress's home answered for paths that name no page: not pages of the site.
+    let stand_ins = e.drop_home_stand_ins(public_origin);
+    if !stand_ins.is_empty() {
+        eprintln!(
+            "{} paths answered with the home page left out (e.g. {})",
+            stand_ins.len(),
+            stand_ins[0]
+        );
+    }
     // The forecast blocks, filled when the site is published (never in WordPress).
     let places = e.forecast_places().map_err(|err| anyhow!(err))?;
     if !places.is_empty() {
@@ -1032,6 +1093,86 @@ async fn export(
             })
             .map_err(|err| anyhow!(err))?;
         eprintln!("{n} pages got the design's words in their language");
+    }
+    // The platform's rules for a site of its own (site_export::hygiene, ADR-0094): no WordPress
+    // runtime extras, every page's canonical and language versions, a sitemap of its pages.
+    {
+        use site_export::hygiene;
+        let origin = public_origin.trim_end_matches('/').to_string();
+        let versions = plan
+            .map(content_import_wp::plan::versions)
+            .unwrap_or_default();
+        let pages: std::collections::BTreeSet<String> = e.pages().into_keys().collect();
+        let n = e
+            .map_html(&|path, html| {
+                if path == "/404.html" {
+                    return Ok(hygiene::strip_runtime(html));
+                }
+                let stripped = hygiene::strip_runtime(html);
+                let stripped =
+                    match hygiene::noindex_term_archive(stripped.as_deref().unwrap_or(html)) {
+                        Some(t) => Some(t),
+                        None => stripped,
+                    };
+                let h = stripped.as_deref().unwrap_or(html);
+                let v = versions.get(path);
+                let canon = match (v, hygiene::canonical(h)) {
+                    (Some(v), _) if pages.contains(&v.canonical) => {
+                        Some(format!("{origin}{}", v.canonical))
+                    }
+                    (_, Some(_)) => None,
+                    (_, None) => Some(format!("{origin}{path}")),
+                };
+                let alts: BTreeMap<String, String> = v
+                    .map(|v| {
+                        v.alternates
+                            .iter()
+                            .filter(|(_, r)| pages.contains(*r))
+                            .map(|(l, r)| (l.clone(), format!("{origin}{r}")))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                // A page in one language only names itself (its language from `<html lang>`).
+                let alts = if alts.keys().filter(|k| *k != "x-default").count() > 1 {
+                    alts
+                } else {
+                    site_export::labels::page_lang(h)
+                        .map(|l| BTreeMap::from([(l, format!("{origin}{path}"))]))
+                        .unwrap_or_default()
+                };
+                Ok(hygiene::with_head_links(h, canon.as_deref(), &alts).or(stripped))
+            })
+            .map_err(|err| anyhow!(err))?;
+        eprintln!("{n} pages without WordPress's runtime extras, with their canonical and language versions");
+        let mut urls: Vec<String> = e
+            .pages()
+            .into_iter()
+            .filter(|(p, h)| {
+                p != "/404.html"
+                    && !hygiene::noindex(h)
+                    && hygiene::canonical(h).is_none_or(|c| c == format!("{origin}{p}"))
+            })
+            .map(|(p, _)| format!("{origin}{p}"))
+            .collect();
+        urls.sort();
+        e.add_file(
+            "/sitemap.xml",
+            "application/xml",
+            hygiene::sitemap(&urls).into_bytes(),
+        );
+        let robots = e
+            .release
+            .files
+            .get("/robots.txt")
+            .and_then(|f| e.blobs.get(&f.sha256))
+            .map(|b| String::from_utf8_lossy(b).into_owned())
+            .unwrap_or_default();
+        e.add_file(
+            "/robots.txt",
+            "text/plain; charset=utf-8",
+            hygiene::robots_with_sitemap(&robots, &format!("{origin}/sitemap.xml")).into_bytes(),
+        );
+        eprintln!("the sitemap lists {} pages", urls.len());
     }
     std::fs::create_dir_all(out.join("files"))?;
     for (path, f) in &e.release.files {
@@ -1585,4 +1726,232 @@ async fn fetch_live(
         std::fs::write(s, status.to_string())?;
     }
     Ok(Facts::from_html(status, &html, origin))
+}
+
+// ------------------------------------------------------------------ the QA stage's judge
+
+async fn qa(args: &[String]) -> Result<i32> {
+    use site_quality::{build, route, Exception, PageFacts, Standard, Subject};
+    let facts_file = need(args, "--facts")?;
+    let export_dir = PathBuf::from(need(args, "--export")?);
+    let out = PathBuf::from(need(args, "--out")?);
+    let production = arg(args, "--production").unwrap_or_default();
+    let public_origin = arg(args, "--public-origin").unwrap_or_else(|| production.clone());
+    let mut pages: Vec<PageFacts> = Vec::new();
+    for (i, line) in std::fs::read_to_string(&facts_file)
+        .with_context(|| facts_file.clone())?
+        .lines()
+        .enumerate()
+    {
+        if line.trim().is_empty() {
+            continue;
+        }
+        pages.push(serde_json::from_str(line).with_context(|| format!("{facts_file}:{}", i + 1))?);
+    }
+    let release: Value =
+        serde_json::from_str(&std::fs::read_to_string(export_dir.join("release.json"))?)?;
+    let files = export_dir.join("files");
+    let read = |p: &str| std::fs::read_to_string(files.join(p.trim_start_matches('/'))).ok();
+    let labels = match arg(args, "--theme-data") {
+        Some(f) => {
+            let v: Value = serde_json::from_str(&std::fs::read_to_string(&f)?)?;
+            serde_json::from_value(v["labels"].clone()).unwrap_or_default()
+        }
+        None => BTreeMap::new(),
+    };
+    let site = content_import_wp::qa::site_facts(
+        &release,
+        &read,
+        &public_origin,
+        &production,
+        labels,
+        &pages,
+    );
+    let exceptions: Vec<Exception> = match arg(args, "--exceptions") {
+        Some(f) => serde_json::from_str(&std::fs::read_to_string(&f)?)
+            .with_context(|| format!("{f}: the exceptions"))?,
+        None => Vec::new(),
+    };
+    let wp = arg(args, "--repo").map(|r| Wp::new("http://127.0.0.1:1", &r));
+    let branch = arg(args, "--branch").unwrap_or_else(|| "live".into());
+    let mut commit = arg(args, "--commit").unwrap_or_default();
+    if commit.is_empty() {
+        if let Some(wp) = &wp {
+            let bs = wp.repo(json!({"op": "branches"})).await?;
+            commit = bs
+                .as_array()
+                .and_then(|a| a.iter().find(|b| b["name"] == branch.as_str()))
+                .and_then(|b| b["head"].as_str())
+                .unwrap_or("")
+                .to_string();
+        }
+    }
+    let std_v1 = Standard::v1();
+    let subject = Subject {
+        site: arg(args, "--site").unwrap_or_else(|| site_quality::facts::host_of(&public_origin)),
+        branch: branch.clone(),
+        commit: commit.clone(),
+        release: None,
+    };
+    let report = match build(&std_v1, subject, &site, &pages, &exceptions) {
+        Ok(r) => r,
+        Err(errors) => {
+            for e in errors {
+                eprintln!("qa: {e}");
+            }
+            return Ok(2);
+        }
+    };
+    if let Some(d) = out.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    std::fs::write(&out, serde_json::to_string_pretty(&report)?)?;
+    let routing = route(&std_v1, &report);
+    let summary = json!({
+        "digest": report.digest,
+        "gate": report.gate,
+        "table": report.table(),
+        "excepted": report.excepted.iter().fold(BTreeMap::<String, BTreeMap<String, u32>>::new(), |mut t, f| {
+            *t.entry(f.rule.clone()).or_default().entry(f.page_type.clone()).or_default() += 1;
+            t
+        }),
+        "classes": report.clusters.iter().map(|c| json!({"rule": c.rule, "page_type": c.page_type, "route": c.route, "findings": c.findings, "pages": c.pages, "example": c.examples.first().map(|e| format!("{} @{}: {}", e.page, e.width, e.detail))})).collect::<Vec<_>>(),
+        "work_orders": routing.content,
+        "unused_exceptions": report.unused_exceptions,
+    });
+    std::fs::write(
+        out.with_file_name("summary.json"),
+        serde_json::to_string_pretty(&summary)?,
+    )?;
+    if let Some(wp) = &wp {
+        if !commit.is_empty() {
+            wp.repo(json!({"op": "note.put", "commit": commit, "kind": "qa", "value": report}))
+                .await
+                .context("keeping the report on the audited commit")?;
+            eprintln!(
+                "the report is a note (qa) on {}",
+                &commit[..commit.len().min(12)]
+            );
+        }
+    }
+    if let Some(bench) = arg(args, "--bench") {
+        let mut metrics = Vec::new();
+        for r in std_v1
+            .rules
+            .iter()
+            .filter(|r| r.kind == site_quality::Kind::Deterministic)
+        {
+            let n = report.findings.iter().filter(|f| f.rule == r.id).count();
+            metrics.push(json!({"name": format!("findings_{}", r.id.replace('-', "_")), "subject": "export", "unit": "findings", "value": n, "determinism": "deterministic", "direction": "lower_is_better", "budget": {"max": 0}}));
+        }
+        for d in site_quality::Dimension::ALL {
+            metrics.push(json!({"name": format!("score_{}", d.slug()), "subject": "export", "unit": "permille", "value": report.scores.get(d), "determinism": "deterministic", "direction": "higher_is_better", "budget": {"min": 1000}}));
+        }
+        metrics.push(json!({"name": "pages", "subject": "export", "unit": "pages", "value": report.pages, "determinism": "deterministic", "direction": "informational"}));
+        metrics.push(json!({"name": "listed_content_gaps", "subject": "export", "unit": "findings", "value": report.excepted.len(), "determinism": "deterministic", "direction": "informational"}));
+        let git = |a: &[&str]| {
+            std::process::Command::new("git")
+                .args(a)
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_default()
+        };
+        let doc = json!({
+            "schema": "cockpit.benchmark.v1",
+            "name": "site-quality",
+            "feature_ids": ["FEAT-116"],
+            "component": "content",
+            "provenance": {
+                "commit": git(&["rev-parse", "HEAD"]),
+                "branch": git(&["rev-parse", "--abbrev-ref", "HEAD"]),
+                "dirty": !git(&["status", "--porcelain"]).is_empty(),
+                "tool": {"name": "swarmpress-wp-migrate qa", "version": format!("{} {}", std_v1.id, std_v1.version)},
+            },
+            "build": {"profile": "static-export"},
+            "machine": {"os": std::env::consts::OS, "arch": std::env::consts::ARCH, "runner": "local"},
+            "workload": {"pages": report.pages, "widths": report.widths, "site": report.subject.site, "branch": report.subject.branch, "commit": report.subject.commit},
+            "metrics": metrics,
+        });
+        if let Some(d) = Path::new(&bench).parent() {
+            std::fs::create_dir_all(d)?;
+        }
+        std::fs::write(&bench, serde_json::to_string_pretty(&doc)?)?;
+    }
+    eprintln!("{}", report.line());
+    for c in report.clusters.iter().take(40) {
+        eprintln!(
+            "  {:<20} {:<28} {:<13} {:>5} on {:>4} pages",
+            c.rule,
+            c.page_type,
+            c.route.slug(),
+            c.findings,
+            c.pages
+        );
+    }
+    if report.clusters.len() > 40 {
+        eprintln!(
+            "  … {} more classes (summary.json)",
+            report.clusters.len() - 40
+        );
+    }
+    for b in &report.gate.blocking {
+        eprintln!("blocked: {b}");
+    }
+    Ok(if report.gate.passed { 0 } else { 1 })
+}
+
+/// The head of `branch` in the governed repository.
+async fn branch_head(wp: &Wp, branch: &str) -> Result<String> {
+    let bs = wp.repo(json!({"op": "branches"})).await?;
+    bs.as_array()
+        .and_then(|a| a.iter().find(|b| b["name"] == branch))
+        .and_then(|b| b["head"].as_str())
+        .map(String::from)
+        .ok_or_else(|| anyhow!("no branch {branch}"))
+}
+
+/// The import's release gate (ADR-0094): the held change request merged only on a passing QA
+/// report of its branch's current head.
+async fn release(wp: &Wp, id: u64, report_file: &Path) -> Result<i32> {
+    let report: site_quality::QaReport =
+        serde_json::from_str(&std::fs::read_to_string(report_file)?).context("the QA report")?;
+    let cr = wp.repo(json!({"op": "cr.get", "id": id})).await?;
+    let source = cr["change_request"]["source"]
+        .as_str()
+        .ok_or_else(|| anyhow!("change request {id} has no source"))?
+        .to_string();
+    let head = branch_head(wp, &source).await?;
+    if report.subject.branch != source || report.subject.commit != head {
+        eprintln!(
+            "blocked: the report is about {} at {}, the change request's branch {source} is at {head}",
+            report.subject.branch, report.subject.commit
+        );
+        return Ok(1);
+    }
+    wp.repo(json!({"op": "note.put", "commit": head, "kind": "qa", "value": report}))
+        .await?;
+    if !report.gate.passed {
+        eprintln!("blocked by the QA stage: {}", report.line());
+        for b in &report.gate.blocking {
+            eprintln!("  {b}");
+        }
+        return Ok(1);
+    }
+    let ceo: Value = serde_json::from_str(CEO)?;
+    let merged = wp
+        .repo(json!({"op": "cr.merge", "id": id, "author": ceo}))
+        .await?;
+    let merge = merged["head"].as_str().unwrap_or_default().to_string();
+    if !merge.is_empty() {
+        wp.repo(json!({"op": "note.put", "commit": merge, "kind": "qa", "value": report}))
+            .await?;
+    }
+    let rel = wp.repo(json!({"op": "release", "name": "import"})).await?;
+    eprintln!(
+        "change request {id} merged into live at {merge} after the QA stage ({}); release {}",
+        report.line(),
+        rel["id"]
+    );
+    Ok(0)
 }

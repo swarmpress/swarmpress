@@ -35,6 +35,7 @@ struct State {
     deploy: BTreeMap<u64, DeployState>,
     models: Option<serde_json::Value>,
     designs: BTreeMap<u32, serde_json::Value>,
+    audit: Option<std::sync::Arc<crate::gateway::AuditFn>>,
 }
 
 /// The fake: `live` starts empty; [`FakeSiteEngine::put_live`] seeds it.
@@ -56,6 +57,12 @@ fn sha(n: u64) -> String {
 }
 
 impl FakeSiteEngine {
+    /// Audits branches with `f` (the QA stage, ADR-0094): it gets the branch, its head, the
+    /// round and the theme data on the branch.
+    pub fn set_audit(&self, f: std::sync::Arc<crate::gateway::AuditFn>) {
+        self.st().audit = Some(f);
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -299,6 +306,25 @@ impl SiteEngine for FakeSiteEngine {
             b.head = c;
         }
         Ok(sha(s.branches[branch].head))
+    }
+
+    async fn site_audit(
+        &self,
+        branch: &str,
+        head: &str,
+        round: u32,
+    ) -> Result<Option<site_quality::QaReport>, GatewayError> {
+        let (hook, theme) = {
+            let s = self.st();
+            (
+                s.audit.clone(),
+                s.branches.get(branch).and_then(|b| b.theme.clone()),
+            )
+        };
+        match hook {
+            Some(f) => f(branch, head, round, theme.as_deref()),
+            None => Ok(None),
+        }
     }
 
     async fn site_design(&self, version: u32) -> Result<serde_json::Value, GatewayError> {

@@ -312,6 +312,18 @@ pub fn repo<E: Exec>(host: &mut Host<E>, session: &mut Session, msg: &Value) -> 
             Err(e) => repo_err(e),
         },
         "releases" => json!(host.repo.releases().collect::<Vec<_>>()),
+        // A note on a commit (ADR-0094: the QA report on the commit it audited).
+        "note.put" => match host.repo.put_note(
+            &s("commit"),
+            &s("kind"),
+            msg.get("value").cloned().unwrap_or(Value::Null),
+        ) {
+            Ok(digest) => json!({"commit": s("commit"), "kind": s("kind"), "digest": digest}),
+            Err(e) => repo_err(e),
+        },
+        "note.get" => {
+            json!({"commit": s("commit"), "kind": s("kind"), "value": host.repo.note(&s("commit"), &s("kind"))})
+        }
         "rollback" => match host.repo.rollback(
             msg.get("release").and_then(Value::as_u64).unwrap_or(0),
             author_of(msg.get("author")),

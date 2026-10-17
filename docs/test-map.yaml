@@ -192,3 +192,10 @@
 # desk slots, seat places and ceiling designs in sim-core's src/objects.rs.
 - match: { classname: sim-core, title: "objects::tests" }
   features: [FEAT-026]
+# Site quality (FEAT-116, ADR-0094): commit notes, the export's platform rules, a release's site facts.
+- match: { classname: content-repo, title: "a_note_rides_on_its_commit" }
+  features: [FEAT-116]
+- match: { classname: site-export, title: "hygiene::tests" }
+  features: [FEAT-116]
+- match: { classname: content-import-wp, title: "qa::tests" }
+  features: [FEAT-116]

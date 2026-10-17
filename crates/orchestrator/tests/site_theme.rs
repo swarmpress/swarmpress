@@ -126,16 +126,72 @@ fn job(job_id: u64, kind: JobKind, version: u64) -> JobRequest {
     }
 }
 
+/// A QA stage that finds nothing (ADR-0094): one page at the standard's widths, all clean.
+fn clean_audit() -> Arc<orchestrator::AuditFn> {
+    use site_quality::facts::{Head, Heading, PageFacts, SiteFacts};
+    Arc::new(|branch, head, _round, _theme| {
+        let page = |width| PageFacts {
+            path: "/".into(),
+            width,
+            lang: "en".into(),
+            page_type: "front-page".into(),
+            status: 200,
+            head: Head {
+                title: "Cinque Terre Dispatch".into(),
+                description: Some(
+                    "Five villages, walked slowly: stories and guides from the Cinque Terre."
+                        .into(),
+                ),
+                canonical: Some("https://example.travel/".into()),
+                ..Head::default()
+            },
+            headings: vec![Heading {
+                level: 1,
+                text: "Five villages".into(),
+                ..Heading::default()
+            }],
+            scroll_width: width,
+            ..PageFacts::default()
+        };
+        let site = SiteFacts {
+            public_origin: "https://example.travel".into(),
+            site_title: "Cinque Terre Dispatch".into(),
+            languages: ["en".to_string()].into(),
+            paths: ["/".to_string()].into(),
+            sitemap_found: true,
+            sitemap: ["/".to_string()].into(),
+            ..SiteFacts::default()
+        };
+        let subject = site_quality::Subject {
+            site: "example".into(),
+            branch: branch.into(),
+            commit: head.into(),
+            release: None,
+        };
+        let r = site_quality::build(
+            &site_quality::Standard::v1(),
+            subject,
+            &site,
+            &[page(1280), page(390)],
+            &[],
+        )
+        .map_err(|e| orchestrator::GatewayError(e.join("; ")))?;
+        Ok(Some(r))
+    })
+}
+
 fn orch(
     llm: impl Into<Arc<FakeLlm>>,
     design: &DesignBundle,
 ) -> Orchestrator<MemStore, FakeGateway> {
     let g = FakeGateway::new();
     g.put_design(1, answer_of(design, 1));
+    g.set_audit(clean_audit());
     Orchestrator::new(MemStore::new(), g, llm.into(), site())
 }
 
 fn digest(out: &[Outcome]) -> &orchestrator::Digest {
+    // The QA stage's digest comes first (ADR-0094).
     match out.last() {
         Some(Outcome::JobCompleted { digest, .. }) => digest,
         other => panic!("not a JobCompleted: {other:?}"),
@@ -518,6 +574,7 @@ async fn rejected_the_branch_is_never_merged() {
 async fn on_wordpress_the_theme_goes_on_its_branch_and_merges_into_live() {
     let engine = Arc::new(FakeSiteEngine::new());
     engine.put_design(1, answer_of(&dispatch(), 1));
+    engine.set_audit(clean_audit());
     let o = Orchestrator::new(
         MemStore::new(),
         EngineGateway::new(engine.clone(), Vec::new()),

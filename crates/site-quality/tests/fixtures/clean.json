@@ -1,0 +1,552 @@
+{
+ "site": {
+  "public_origin": "https://example.travel",
+  "production_hosts": [
+   "example.travel",
+   "www.example.travel"
+  ],
+  "languages": [
+   "de",
+   "en"
+  ],
+  "site_title": "Example Coast",
+  "paths": [
+   "/",
+   "/en/",
+   "/de/",
+   "/en/harbour/",
+   "/de/hafen/",
+   "/img/boats.jpg"
+  ],
+  "sitemap_found": true,
+  "sitemap": [
+   "/",
+   "/en/",
+   "/de/",
+   "/en/harbour/",
+   "/de/hafen/"
+  ],
+  "labels": {
+   "Read more": {
+    "en": "Read more",
+    "de": "Weiterlesen"
+   },
+   "css-more": {
+    "en": "More",
+    "de": "Mehr"
+   }
+  }
+ },
+ "pages": [
+  {
+   "path": "/en/harbour/",
+   "width": 1280,
+   "lang": "en",
+   "page_type": "page-village",
+   "status": 200,
+   "head": {
+    "title": "The Harbour | Example Coast",
+    "description": "A walk around the small harbour: the boats, the breakwater and where the ferry stops in summer.",
+    "canonical": "https://example.travel/en/harbour/",
+    "alternates": [
+     {
+      "lang": "en",
+      "href": "https://example.travel/en/harbour/"
+     },
+     {
+      "lang": "de",
+      "href": "https://example.travel/de/hafen/"
+     }
+    ]
+   },
+   "headings": [
+    {
+     "level": 1,
+     "text": "The Harbour"
+    },
+    {
+     "level": 2,
+     "text": "Boats",
+     "authored": true
+    },
+    {
+     "level": 3,
+     "text": "Ferries",
+     "authored": true
+    },
+    {
+     "level": 2,
+     "text": "Newsletter",
+     "chrome": true
+    }
+   ],
+   "hero": {
+    "title": "The Harbour",
+    "contains_h1": true,
+    "after": []
+   },
+   "frames": [
+    {
+     "label": "div.ds-card-img \"Boats\"",
+     "kind": "card",
+     "w": 400,
+     "h": 300,
+     "images": 1,
+     "loaded": 1
+    }
+   ],
+   "images": [
+    {
+     "src": "/img/boats.jpg",
+     "alt": "Fishing boats at the breakwater",
+     "loaded": true,
+     "authored": true
+    }
+   ],
+   "links": [
+    {
+     "href": "/de/hafen/",
+     "label": "a \"language\""
+    },
+    {
+     "href": "#boats",
+     "label": "a \"Boats\"",
+     "target_found": true,
+     "authored": true
+    },
+    {
+     "href": "https://example.travel/en/",
+     "label": "a \"Home\""
+    },
+    {
+     "href": "mailto:desk@example.travel",
+     "label": "a \"Write\""
+    },
+    {
+     "href": "https://maps.example.org/x",
+     "label": "a \"Map\""
+    }
+   ],
+   "requests": [
+    {
+     "url": "https://cdn.example.org/font.woff2",
+     "status": 200,
+     "kind": "font"
+    }
+   ],
+   "assets": [
+    {
+     "kind": "script",
+     "src": "/ds.js"
+    },
+    {
+     "kind": "style",
+     "id": "ds-inline-css",
+     "snippet": ":root{--ink:#111}"
+    }
+   ],
+   "scroll_width": 1280,
+   "blocks": [
+    {
+     "label": "div.ds-prose",
+     "w": 700,
+     "container": 1200,
+     "h": 400,
+     "measure": true
+    },
+    {
+     "label": "div.ds-aside",
+     "w": 600,
+     "container": 1200,
+     "h": 300,
+     "beside": true
+    }
+   ],
+   "chips": [
+    {
+     "label": "p.ds-chip",
+     "text": "Harbour"
+    }
+   ],
+   "texts": [
+    "Read more",
+    "The Harbour"
+   ]
+  },
+  {
+   "path": "/en/harbour/",
+   "width": 390,
+   "lang": "en",
+   "page_type": "page-village",
+   "status": 200,
+   "head": {
+    "title": "The Harbour | Example Coast",
+    "description": "A walk around the small harbour: the boats, the breakwater and where the ferry stops in summer.",
+    "canonical": "https://example.travel/en/harbour/",
+    "alternates": [
+     {
+      "lang": "en",
+      "href": "https://example.travel/en/harbour/"
+     },
+     {
+      "lang": "de",
+      "href": "https://example.travel/de/hafen/"
+     }
+    ]
+   },
+   "headings": [
+    {
+     "level": 1,
+     "text": "The Harbour"
+    },
+    {
+     "level": 2,
+     "text": "Boats",
+     "authored": true
+    },
+    {
+     "level": 3,
+     "text": "Ferries",
+     "authored": true
+    },
+    {
+     "level": 2,
+     "text": "Newsletter",
+     "chrome": true
+    }
+   ],
+   "hero": {
+    "title": "The Harbour",
+    "contains_h1": true,
+    "after": []
+   },
+   "frames": [
+    {
+     "label": "div.ds-card-img \"Boats\"",
+     "kind": "card",
+     "w": 400,
+     "h": 300,
+     "images": 1,
+     "loaded": 1
+    }
+   ],
+   "images": [
+    {
+     "src": "/img/boats.jpg",
+     "alt": "Fishing boats at the breakwater",
+     "loaded": true,
+     "authored": true
+    }
+   ],
+   "links": [
+    {
+     "href": "/de/hafen/",
+     "label": "a \"language\""
+    },
+    {
+     "href": "#boats",
+     "label": "a \"Boats\"",
+     "target_found": true,
+     "authored": true
+    },
+    {
+     "href": "https://example.travel/en/",
+     "label": "a \"Home\""
+    },
+    {
+     "href": "mailto:desk@example.travel",
+     "label": "a \"Write\""
+    },
+    {
+     "href": "https://maps.example.org/x",
+     "label": "a \"Map\""
+    }
+   ],
+   "requests": [
+    {
+     "url": "https://cdn.example.org/font.woff2",
+     "status": 200,
+     "kind": "font"
+    }
+   ],
+   "assets": [
+    {
+     "kind": "script",
+     "src": "/ds.js"
+    },
+    {
+     "kind": "style",
+     "id": "ds-inline-css",
+     "snippet": ":root{--ink:#111}"
+    }
+   ],
+   "scroll_width": 390,
+   "blocks": [],
+   "chips": [
+    {
+     "label": "p.ds-chip",
+     "text": "Harbour"
+    }
+   ],
+   "texts": [
+    "Read more",
+    "The Harbour"
+   ]
+  },
+  {
+   "path": "/de/hafen/",
+   "width": 1280,
+   "lang": "de",
+   "page_type": "page-village",
+   "status": 200,
+   "head": {
+    "title": "Der Hafen | Example Coast",
+    "description": "Ein Spaziergang um den kleinen Hafen: die Boote, die Mole und wo die Fähre im Sommer hält.",
+    "canonical": "https://example.travel/de/hafen/",
+    "alternates": [
+     {
+      "lang": "en",
+      "href": "https://example.travel/en/harbour/"
+     },
+     {
+      "lang": "de",
+      "href": "https://example.travel/de/hafen/"
+     }
+    ]
+   },
+   "headings": [
+    {
+     "level": 1,
+     "text": "Der Hafen"
+    },
+    {
+     "level": 2,
+     "text": "Boats",
+     "authored": true
+    },
+    {
+     "level": 3,
+     "text": "Ferries",
+     "authored": true
+    },
+    {
+     "level": 2,
+     "text": "Newsletter",
+     "chrome": true
+    }
+   ],
+   "hero": {
+    "title": "Der Hafen",
+    "contains_h1": true,
+    "after": []
+   },
+   "frames": [
+    {
+     "label": "div.ds-card-img \"Boats\"",
+     "kind": "card",
+     "w": 400,
+     "h": 300,
+     "images": 1,
+     "loaded": 1
+    }
+   ],
+   "images": [
+    {
+     "src": "/img/boats.jpg",
+     "alt": "Fischerboote an der Mole",
+     "loaded": true,
+     "authored": true
+    }
+   ],
+   "links": [
+    {
+     "href": "/en/harbour/",
+     "label": "a \"language\""
+    },
+    {
+     "href": "#boats",
+     "label": "a \"Boats\"",
+     "target_found": true,
+     "authored": true
+    },
+    {
+     "href": "https://example.travel/de/",
+     "label": "a \"Home\""
+    },
+    {
+     "href": "mailto:desk@example.travel",
+     "label": "a \"Write\""
+    },
+    {
+     "href": "https://maps.example.org/x",
+     "label": "a \"Map\""
+    }
+   ],
+   "requests": [
+    {
+     "url": "https://cdn.example.org/font.woff2",
+     "status": 200,
+     "kind": "font"
+    }
+   ],
+   "assets": [
+    {
+     "kind": "script",
+     "src": "/ds.js"
+    },
+    {
+     "kind": "style",
+     "id": "ds-inline-css",
+     "snippet": ":root{--ink:#111}"
+    }
+   ],
+   "scroll_width": 1280,
+   "blocks": [
+    {
+     "label": "div.ds-prose",
+     "w": 700,
+     "container": 1200,
+     "h": 400,
+     "measure": true
+    },
+    {
+     "label": "div.ds-aside",
+     "w": 600,
+     "container": 1200,
+     "h": 300,
+     "beside": true
+    }
+   ],
+   "chips": [
+    {
+     "label": "p.ds-chip",
+     "text": "Hafen"
+    }
+   ],
+   "texts": [
+    "Weiterlesen",
+    "Der Hafen"
+   ]
+  },
+  {
+   "path": "/de/hafen/",
+   "width": 390,
+   "lang": "de",
+   "page_type": "page-village",
+   "status": 200,
+   "head": {
+    "title": "Der Hafen | Example Coast",
+    "description": "Ein Spaziergang um den kleinen Hafen: die Boote, die Mole und wo die Fähre im Sommer hält.",
+    "canonical": "https://example.travel/de/hafen/",
+    "alternates": [
+     {
+      "lang": "en",
+      "href": "https://example.travel/en/harbour/"
+     },
+     {
+      "lang": "de",
+      "href": "https://example.travel/de/hafen/"
+     }
+    ]
+   },
+   "headings": [
+    {
+     "level": 1,
+     "text": "Der Hafen"
+    },
+    {
+     "level": 2,
+     "text": "Boats",
+     "authored": true
+    },
+    {
+     "level": 3,
+     "text": "Ferries",
+     "authored": true
+    },
+    {
+     "level": 2,
+     "text": "Newsletter",
+     "chrome": true
+    }
+   ],
+   "hero": {
+    "title": "Der Hafen",
+    "contains_h1": true,
+    "after": []
+   },
+   "frames": [
+    {
+     "label": "div.ds-card-img \"Boats\"",
+     "kind": "card",
+     "w": 400,
+     "h": 300,
+     "images": 1,
+     "loaded": 1
+    }
+   ],
+   "images": [
+    {
+     "src": "/img/boats.jpg",
+     "alt": "Fischerboote an der Mole",
+     "loaded": true,
+     "authored": true
+    }
+   ],
+   "links": [
+    {
+     "href": "/en/harbour/",
+     "label": "a \"language\""
+    },
+    {
+     "href": "#boats",
+     "label": "a \"Boats\"",
+     "target_found": true,
+     "authored": true
+    },
+    {
+     "href": "https://example.travel/de/",
+     "label": "a \"Home\""
+    },
+    {
+     "href": "mailto:desk@example.travel",
+     "label": "a \"Write\""
+    },
+    {
+     "href": "https://maps.example.org/x",
+     "label": "a \"Map\""
+    }
+   ],
+   "requests": [
+    {
+     "url": "https://cdn.example.org/font.woff2",
+     "status": 200,
+     "kind": "font"
+    }
+   ],
+   "assets": [
+    {
+     "kind": "script",
+     "src": "/ds.js"
+    },
+    {
+     "kind": "style",
+     "id": "ds-inline-css",
+     "snippet": ":root{--ink:#111}"
+    }
+   ],
+   "scroll_width": 390,
+   "blocks": [],
+   "chips": [
+    {
+     "label": "p.ds-chip",
+     "text": "Hafen"
+    }
+   ],
+   "texts": [
+    "Weiterlesen",
+    "Der Hafen"
+   ]
+  }
+ ]
+}

@@ -955,6 +955,22 @@ pub fn gaps(docs: &[Doc], entries: &[crate::entries::Entry]) -> Vec<Gap> {
         let e = by.entry(what).or_insert((0, example.to_string()));
         e.0 += 1;
     };
+    // Pictures without a description of their own (described by their section's heading).
+    for d in docs {
+        if let Some(n) = d
+            .meta
+            .get("_swarmpress_images_without_alt")
+            .and_then(|n| n.parse::<usize>().ok())
+        {
+            for _ in 0..n {
+                add(
+                    "a picture without its own description (its alt is its section's heading)"
+                        .into(),
+                    &d.route,
+                );
+            }
+        }
+    }
     // A way to arrive without its time (the mode table shows it in the display face).
     for d in docs {
         let c = d.content.as_str();
@@ -1008,8 +1024,10 @@ pub fn gaps(docs: &[Doc], entries: &[crate::entries::Entry]) -> Vec<Gap> {
                 );
             }
         }
-        if matches!(e.post_type.as_str(), "sp_stay" | "sp_village")
-            && !e.fields.contains_key("image")
+        if matches!(
+            e.post_type.as_str(),
+            "sp_stay" | "sp_village" | "sp_activity"
+        ) && !e.fields.contains_key("image")
         {
             add(
                 format!(

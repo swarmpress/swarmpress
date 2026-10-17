@@ -320,7 +320,7 @@ fn parse_build_mode(s: &str) -> Result<sim_core::economy::BuildMode, String> {
 
 /// `ServerCommand` variant names: a JSON command with one of these tags is a
 /// server command, anything else a player command.
-const SERVER_VARIANTS: [&str; 14] = [
+const SERVER_VARIANTS: [&str; 15] = [
     "Remark",
     "JobCompleted",
     "MeetingOutcome",
@@ -338,6 +338,8 @@ const SERVER_VARIANTS: [&str; 14] = [
     "InteriorPlan",
     // A design version in the site's design store (ADR-0093, FEAT-115).
     "DesignReceived",
+    // The QA stage's digest of a theme's release (ADR-0094, FEAT-116).
+    "SiteQuality",
 ];
 
 fn tag(v: &Value) -> Option<&str> {

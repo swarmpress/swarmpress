@@ -1,0 +1,15 @@
+[package]
+name = "site-quality"
+description = "Site quality as a governed stage (ADR-0094, FEAT-116): the versioned site standard as data, the facts a browser collects from each rendered page, the rules judged over them, findings clustered by rule and page type, scores per dimension, routing to roles, the release gate and the digest. Pure, no I/O, wasm-compatible"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+
+[lints]
+workspace = true

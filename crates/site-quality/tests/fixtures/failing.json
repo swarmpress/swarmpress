@@ -1,0 +1,185 @@
+[
+ {
+  "rule": "page-render",
+  "why": "the page did not load in the browser",
+  "set": {
+   "/pages/0/error": "Timeout 45000ms exceeded"
+  }
+ },
+ {
+  "rule": "empty-frame",
+  "why": "a card's picture box with no picture in it",
+  "set": {
+   "/pages/0/frames/0/images": 0,
+   "/pages/0/frames/0/loaded": 0
+  }
+ },
+ {
+  "rule": "broken-image",
+  "why": "a picture whose file is missing",
+  "set": {
+   "/pages/0/images/0/loaded": false
+  }
+ },
+ {
+  "rule": "alt-missing",
+  "why": "a picture with an empty alt",
+  "set": {
+   "/pages/0/images/0/alt": ""
+  }
+ },
+ {
+  "rule": "alt-title",
+  "why": "the SEO title as alt text",
+  "set": {
+   "/pages/0/images/0/alt": "The Harbour | Example Coast"
+  }
+ },
+ {
+  "rule": "link-hash",
+  "why": "a button to #",
+  "set": {
+   "/pages/0/links/0/href": "#"
+  }
+ },
+ {
+  "rule": "link-broken",
+  "why": "a link to a page the release does not have",
+  "set": {
+   "/pages/0/links/0/href": "/en/nowhere/"
+  }
+ },
+ {
+  "rule": "link-anchor",
+  "why": "an anchor the page does not have",
+  "set": {
+   "/pages/0/links/1/target_found": false
+  }
+ },
+ {
+  "rule": "request-failed",
+  "why": "a font that answers 404",
+  "set": {
+   "/pages/0/requests/0/status": 404
+  }
+ },
+ {
+  "rule": "request-production",
+  "why": "a script from the production host",
+  "set": {
+   "/pages/0/requests/0/url": "https://example.travel/wp-includes/js/x.js"
+  }
+ },
+ {
+  "rule": "export-hygiene",
+  "why": "WordPress's emoji script",
+  "set": {
+   "/pages/0/assets/0/src": "/wp-includes/js/wp-emoji-release.min.js"
+  }
+ },
+ {
+  "rule": "overflow",
+  "why": "a page 520 px wide on a phone",
+  "set": {
+   "/pages/1/scroll_width": 520
+  }
+ },
+ {
+  "rule": "narrow-column",
+  "why": "a half-empty row at 1280",
+  "set": {
+   "/pages/0/blocks/1/beside": false
+  }
+ },
+ {
+  "rule": "h1-count",
+  "why": "no h1",
+  "set": {
+   "/pages/0/headings/0/level": 2
+  }
+ },
+ {
+  "rule": "h1-own",
+  "why": "the h1 outside the authored hero",
+  "set": {
+   "/pages/0/hero/contains_h1": false
+  }
+ },
+ {
+  "rule": "heading-order",
+  "why": "h2 then h4",
+  "set": {
+   "/pages/0/headings/2/level": 4
+  }
+ },
+ {
+  "rule": "hero-first",
+  "why": "a listing before the hero",
+  "set": {
+   "/pages/0/hero/after": [
+    "section.ds-bar \"Restaurants\""
+   ]
+  }
+ },
+ {
+  "rule": "raw-slug",
+  "why": "a slug as a chip",
+  "set": {
+   "/pages/0/chips/0/text": "getting-here"
+  }
+ },
+ {
+  "rule": "english-label",
+  "why": "a design word left in English on a German page",
+  "set": {
+   "/pages/2/texts/0": "Read more"
+  }
+ },
+ {
+  "rule": "seo-title",
+  "why": "a title too short",
+  "set": {
+   "/pages/0/head/title": "Harbour"
+  }
+ },
+ {
+  "rule": "seo-description",
+  "why": "no meta description",
+  "set": {
+   "/pages/0/head/description": null
+  }
+ },
+ {
+  "rule": "seo-canonical",
+  "why": "a canonical naming the home page (WordPress's answer for a path that names no page)",
+  "set": {
+   "/pages/0/head/canonical": "https://example.travel/"
+  }
+ },
+ {
+  "rule": "seo-hreflang",
+  "why": "an alternate the release does not have",
+  "set": {
+   "/pages/0/head/alternates/1/href": "https://example.travel/de/nowhere/"
+  }
+ },
+ {
+  "rule": "seo-sitemap",
+  "why": "a page the sitemap leaves out",
+  "set": {
+   "/site/sitemap": [
+    "/",
+    "/en/",
+    "/de/",
+    "/de/hafen/"
+   ]
+  }
+ },
+ {
+  "rule": "seo-duplicate-title",
+  "why": "two pages with one title",
+  "set": {
+   "/pages/2/head/title": "The Harbour | Example Coast"
+  }
+ }
+]

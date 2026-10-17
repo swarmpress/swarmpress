@@ -58,6 +58,9 @@ const WORLD_FORMATS: &[(u32, u64)] = &[
     // designer's role and persona, SiteTheme items, ThemeApproval; the script
     // receives a design)
     (15, 0xb572_ec55_44f5_3b8d),
+    // FEAT-116, ADR-0094: site quality as a governed stage (the QA digests in
+    // Plan.designs, SiteQuality, JobFailure::QualityGate)
+    (16, 0x29f8_ff70_6d80_001f),
 ];
 
 /// The golden hash of the current world format.

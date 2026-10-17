@@ -825,6 +825,9 @@ impl World {
                 self.apply_interior_plan(job_id, &items);
             }
             ServerCommand::DesignReceived { version } => self.apply_design_received(version),
+            ServerCommand::SiteQuality { job_id, quality } => {
+                self.apply_site_quality(job_id, quality);
+            }
             ServerCommand::Utterance {
                 meeting,
                 speaker,

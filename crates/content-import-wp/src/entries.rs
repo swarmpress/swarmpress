@@ -130,6 +130,8 @@ pub fn content_types() -> Vec<ContentType> {
                 ("village", "Village"),
                 ("label", "Kind"),
                 ("line", "One line"),
+                ("image", "Picture URL"),
+                ("image_alt", "Picture description"),
                 ("duration", "Time"),
                 ("cost", "Cost"),
                 ("best", "Best time"),
@@ -263,6 +265,19 @@ fn items<'a>(site: &'a Site, kind: &str) -> Vec<(String, &'a Value)> {
         }
     }
     out
+}
+
+/// `harbor walk` → `Harbor Walk`.
+pub fn title_case(s: &str) -> String {
+    s.split_whitespace()
+        .map(|w| {
+            let mut c = w.chars();
+            c.next()
+                .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn order(item: &Value) -> i64 {
@@ -474,8 +489,37 @@ pub fn entries(site: &Site) -> Vec<Entry> {
             let mut fields = BTreeMap::new();
             fields.insert("village".into(), village_name(&v, lang));
             fields.insert("line".into(), teaser.clone());
-            if let Some(c) = item.get("category").and_then(Value::as_str) {
-                fields.insert("label".into(), c.replace(['_', '-'], " "));
+            // Its kind as a label (`church` → `Church`, an object's `primary`); `other` says
+            // nothing and is left out. The export puts the word in each page's language.
+            let kind = item.get("category").and_then(|c| {
+                c.as_str()
+                    .or_else(|| c.get("primary").and_then(Value::as_str))
+                    .map(str::to_string)
+            });
+            if let Some(c) = kind.filter(|c| !c.trim().eq_ignore_ascii_case("other")) {
+                fields.insert("label".into(), title_case(&c.replace(['_', '-'], " ")));
+            }
+            // Its first picture, when it has one; else its card is the text-only variant.
+            if let Some(img) = item
+                .get("images")
+                .and_then(Value::as_array)
+                .and_then(|a| a.first())
+                .or_else(|| item.get("image"))
+            {
+                let url = img
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .or_else(|| img.as_str())
+                    .unwrap_or("");
+                if url.starts_with("http") || url.starts_with('/') {
+                    fields.insert("image".into(), url.to_string());
+                    let alt = img
+                        .get("alt_text")
+                        .or(img.get("alt"))
+                        .and_then(Value::as_str)
+                        .map_or_else(|| title.clone(), String::from);
+                    fields.insert("image_alt".into(), alt);
+                }
             }
             for (k, from, label) in [
                 ("duration", "duration", ("time_label", TIME)),

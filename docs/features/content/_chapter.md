@@ -20,3 +20,4 @@ The content model, closed-world knowledge indexes, the site kit and the agent-au
 | [FEAT-093](093-site-import.md) | Blueprint import: reverse-engineering the live site, then HTML and ZIP designs | in-progress | normal |
 | [FEAT-094](094-theme-from-blueprint.md) | Theme generation from the blueprint | in-progress | normal |
 | [FEAT-114](114-site-design-from-claude-design.md) | Site design from Claude Design (bundles, the semantic site design, reconciliation, theme data) | in-progress | high |
+| [FEAT-116](116-site-quality.md) | Site quality as a governed stage: the standard, the audit, the gate | in-progress | high |

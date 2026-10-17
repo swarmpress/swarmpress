@@ -74,6 +74,8 @@
 //!   and jobs, `ThemeApproval`; the script receives the site's first design,
 //!   which waits for a web designer.
 //! - `0xb572_ec55_44f5_3b8d`: world format 15.
+//! - `0x29f8_ff70_6d80_001f`: world format 16 (FEAT-116, ADR-0094: the site's QA digests in
+//!   `Plan.designs`).
 
 use sim_core::commands::JobFailure;
 use sim_core::equipment::DeskSlot;
@@ -85,7 +87,7 @@ use sim_core::scenarios::{golden_script, run_golden, DEMO_PROJECT, GOLDEN_STEPS}
 use sim_core::staff::Station;
 use sim_core::town::TownKind;
 
-const GOLDEN_HASH: u64 = 0xb572_ec55_44f5_3b8d;
+const GOLDEN_HASH: u64 = 0x29f8_ff70_6d80_001f;
 
 #[test]
 fn golden_hash() {

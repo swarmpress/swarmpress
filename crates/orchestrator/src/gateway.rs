@@ -354,6 +354,21 @@ pub trait Gateway: MaybeSendSync {
         let _ = (version, data, round);
         Ok(None)
     }
+
+    /// The QA stage (ADR-0094, FEAT-116): `branch` at `head_sha` exported and every page of it
+    /// rendered by this executor at the standard's widths, its facts judged against the site
+    /// standard with the site's listed content gaps (`site_quality::build`), the report kept as a
+    /// note on the audited commit. `round` counts the QA repair rounds (0 first). `Ok(None)`: this
+    /// executor cannot audit a release (the default); a release then cannot pass the gate.
+    async fn site_audit(
+        &self,
+        branch: &str,
+        head_sha: &str,
+        round: u32,
+    ) -> Result<Option<site_quality::QaReport>, GatewayError> {
+        let _ = (branch, head_sha, round);
+        Ok(None)
+    }
 }
 
 /// A theme pull request (`PUT /api/site/theme`, FEAT-094): the components of
@@ -502,6 +517,14 @@ impl<T: Gateway + ?Sized> Gateway for Arc<T> {
         round: u32,
     ) -> Result<Option<theme_designer::visual::VisualReport>, GatewayError> {
         (**self).visual_check(version, data, round).await
+    }
+    async fn site_audit(
+        &self,
+        branch: &str,
+        head_sha: &str,
+        round: u32,
+    ) -> Result<Option<site_quality::QaReport>, GatewayError> {
+        (**self).site_audit(branch, head_sha, round).await
     }
 }
 
@@ -729,6 +752,24 @@ impl FakeSite {
 pub struct FakeGateway {
     state: Mutex<FakeState>,
     visual: Mutex<Option<VisualHook>>,
+    audit: Mutex<Option<AuditHook>>,
+}
+
+/// What [`FakeGateway::site_audit`] answers: a host's QA stage (the CLI's export, browser and
+/// judge), or a test's scripted reports. It gets the branch, its head, the round and the theme
+/// data on the branch (as written).
+pub type AuditFn = dyn Fn(&str, &str, u32, Option<&str>) -> Result<Option<site_quality::QaReport>, GatewayError>
+    + Send
+    + Sync;
+
+/// An [`AuditFn`] behind a `Debug` face.
+#[derive(Clone)]
+pub struct AuditHook(pub Arc<AuditFn>);
+
+impl std::fmt::Debug for AuditHook {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("AuditHook")
+    }
 }
 
 /// What [`FakeGateway::visual_check`] answers: a host's renderer (the CLI's sandbox and
@@ -844,6 +885,11 @@ impl FakeGateway {
     /// answers `None` (not measured).
     pub fn set_visual(&self, f: Arc<VisualFn>) {
         *self.visual.lock().unwrap_or_else(|e| e.into_inner()) = Some(VisualHook(f));
+    }
+
+    /// Audits releases with `f` ([`Gateway::site_audit`]); without it the gateway cannot audit.
+    pub fn set_audit(&self, f: Arc<AuditFn>) {
+        *self.audit.lock().unwrap_or_else(|e| e.into_inner()) = Some(AuditHook(f));
     }
 
     /// Where [`Gateway::put_theme_data`] writes the theme data on its branch.
@@ -987,6 +1033,25 @@ impl Gateway for FakeGateway {
             Some(h) => (h.0)(version, data, round),
             None => Ok(None),
         }
+    }
+
+    async fn site_audit(
+        &self,
+        branch: &str,
+        head_sha: &str,
+        round: u32,
+    ) -> Result<Option<site_quality::QaReport>, GatewayError> {
+        let hook = self.audit.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let Some(h) = hook else {
+            return Ok(None);
+        };
+        let text = self
+            .lock()
+            .files
+            .get(branch)
+            .and_then(|f| f.get(Self::THEME_DATA_PATH))
+            .cloned();
+        (h.0)(branch, head_sha, round, text.as_deref())
     }
 
     async fn site_design(&self, version: u32) -> Result<Value, GatewayError> {

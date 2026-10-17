@@ -17,6 +17,10 @@
 //!              and deploy that follow every merge) ─► JobCompleted{ok} ─► Published
 //!   Reject, and the default at the deadline ─► Cancelled: the current theme stays, the
 //!              branch is never merged
+//! QA stage (ADR-0094): the Draft and the Publish each report `SiteQuality{digest}` (numbers
+//!   only) before their outcome; a blocked gate fails the job (`JobFailed{QualityGate}`):
+//!   Blocked + Escalation, the CEO's ticket. A passing digest of the release that went live is
+//!   `Plan.designs.live_quality`.
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -39,6 +43,50 @@ pub struct SiteDesigns {
     pub latest: u32,
     /// The design version whose theme is live (0: the site's theme from before).
     pub live: u32,
+    /// The QA stage's latest digest of a theme's release (ADR-0094).
+    pub quality: Option<SiteQualityDigest>,
+    /// The digest of the release that went live.
+    pub live_quality: Option<SiteQualityDigest>,
+}
+
+/// Permille is at most this.
+pub const PERMILLE: u16 = 1000;
+
+/// The QA stage's digest (ADR-0094): the standard's version, how much was audited, the open
+/// deterministic findings and the listed content gaps, the open classes, whether the gate passed,
+/// and the score per dimension (‰ of audits clean). Numbers only (rule 2).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SiteQualityDigest {
+    pub standard: u16,
+    pub pages: u32,
+    pub audits: u32,
+    pub findings: u32,
+    pub exceptions: u32,
+    pub classes: u16,
+    pub passed: bool,
+    pub layout: u16,
+    pub links: u16,
+    pub media: u16,
+    pub accessibility: u16,
+    pub seo: u16,
+    pub content: u16,
+    pub design: u16,
+    pub performance: u16,
+}
+
+impl SiteQualityDigest {
+    pub fn scores(&self) -> [u16; 8] {
+        [
+            self.layout,
+            self.links,
+            self.media,
+            self.accessibility,
+            self.seo,
+            self.content,
+            self.design,
+            self.performance,
+        ]
+    }
 }
 
 impl World {
@@ -201,10 +249,58 @@ impl World {
         }
     }
 
-    /// A `SiteTheme` item went live: its version is the live theme's.
+    /// A `SiteTheme` item went live: its version is the live theme's, its audited digest the
+    /// live release's.
     pub(crate) fn site_theme_live(&mut self, id: WorkItemId) {
         if let Some(v) = self.design_version_of(id) {
             self.plan.designs.live = self.plan.designs.live.max(v);
+            if let Some(q) = self.plan.designs.quality.filter(|q| q.passed) {
+                self.plan.designs.live_quality = Some(q);
+            }
+        }
+    }
+
+    /// Validates `ServerCommand::SiteQuality` (pure): the job is a pending job of a `SiteTheme`
+    /// item (its Draft or its Publish); the numbers are in range and say what they claim (a
+    /// passing gate has no open finding).
+    pub(crate) fn check_site_quality(
+        &self,
+        job_id: u64,
+        q: &SiteQualityDigest,
+    ) -> Result<(), Reject> {
+        let job = self
+            .plan
+            .jobs
+            .get(&job_id)
+            .ok_or(Reject::Invalid("no pending job with that id"))?;
+        let theme = job
+            .work_item
+            .and_then(|id| self.plan.items.get(&id))
+            .is_some_and(|i| i.kind == WorkItemKind::SiteTheme);
+        if !theme {
+            return Err(Reject::Invalid("not a site theme's job"));
+        }
+        if q.scores().iter().any(|s| *s > PERMILLE) {
+            return Err(Reject::Invalid("a score is at most 1000 permille"));
+        }
+        if q.pages == 0 || q.audits < q.pages {
+            return Err(Reject::Invalid(
+                "a digest audits at least one page at each width",
+            ));
+        }
+        if q.passed && q.findings > 0 {
+            return Err(Reject::Invalid("a passing gate has no open finding"));
+        }
+        if (q.findings == 0) != (q.classes == 0) {
+            return Err(Reject::Invalid("open findings come in classes"));
+        }
+        Ok(())
+    }
+
+    /// `ServerCommand::SiteQuality` (validated): the latest digest.
+    pub(crate) fn apply_site_quality(&mut self, job_id: u64, q: SiteQualityDigest) {
+        if self.check_site_quality(job_id, &q).is_ok() {
+            self.plan.designs.quality = Some(q);
         }
     }
 }

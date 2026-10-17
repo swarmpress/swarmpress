@@ -113,3 +113,4 @@ Accepted ADRs are never rewritten.
 | [0091](0091-cloudflare-pages-is-the-static-plane-for-exported-sites.md) | Cloudflare Pages is the static plane for exported sites | Accepted (refines ADR-0049 decision 2 and ADR-0083 §1) |
 | [0092](0092-the-astro-design-carried-into-a-wordpress-block-theme.md) | The Astro site is the source; its design is carried into a WordPress block theme | Accepted (refines ADR-0083 §5; amends ADR-0091 decision 1; decision 5's last sentence superseded by ADR-0093) |
 | [0093](0093-a-sites-design-comes-from-claude-design.md) | A site's design comes from Claude Design | Accepted (supersedes ADR-0092 decision 5's last sentence; amends ADR-0080 decision 1) |
+| [0094](0094-site-quality-is-a-governed-stage.md) | Site quality is a governed stage | Accepted (amends ADR-0093 decisions 6 and 7; amends ADR-0080: commit notes) |

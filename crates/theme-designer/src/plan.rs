@@ -951,12 +951,12 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
             .filter_map(|s| section_spec(design, t, s, site, &mut links, &at, &mut notes))
             .collect();
         if t.kind == TemplateKind::Listing {
-            // A listing is a page of the site: its title (the h1) first, its own text after
-            // the entries (the page keeps every word it has).
+            // A listing is a page of the site: its title (the h1), then its own content (the
+            // authored hero, text and components lead), then the entries.
             let (mut title, content) = page_frame();
             title.components = comps(design, &["page-header", "breadcrumb"]);
             sections.insert(0, title);
-            sections.push(content);
+            sections.insert(1, content);
         }
         let mut parts: Vec<String> = t
             .parts
@@ -1110,7 +1110,7 @@ pub fn plan(design: &SiteDesign, manifest: &BundleManifest, site: &SiteContext) 
 fn page_frame() -> (SectionSpec, SectionSpec) {
     (
         sec("page-title", "title", None, "page-head"),
-        sec("page-content", "content", None, "prose"),
+        sec("page-content", "content", None, "prose-wide"),
     )
 }
 
