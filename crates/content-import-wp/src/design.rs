@@ -1074,6 +1074,18 @@ pub fn content_words(docs: &[Doc]) -> Vec<String> {
     out.into_iter().collect()
 }
 
+/// The words an entry shows as its kind (`label`: `Church`, `Beach`), from the English entries:
+/// labels like the design's, put in each page's language (site-standard v3, english-label).
+pub fn entry_words(entries: &[crate::entries::Entry]) -> Vec<String> {
+    let mut out = BTreeSet::new();
+    for e in entries.iter().filter(|e| e.lang == "en") {
+        if let Some(l) = e.fields.get("label").filter(|l| !l.trim().is_empty()) {
+            out.insert(l.trim().to_string());
+        }
+    }
+    out.into_iter().collect()
+}
+
 /// A collection of ways to arrive (items with a mode, `ct-mode-{mode}`, [`prepare`]) as the
 /// design's mode table (4.14): one compact row per mode (its icon, its name, a note, its time in
 /// the display face) that opens to the rest of the item; the collection's interludes follow the

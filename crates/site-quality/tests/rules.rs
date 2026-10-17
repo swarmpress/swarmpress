@@ -75,7 +75,18 @@ fn the_shipped_standard_parses_and_names_exactly_the_evaluated_rules() {
         .map(|r| r.id.as_str())
         .collect();
     let evaluated: BTreeSet<&str> = EVALUATED.iter().copied().collect();
-    assert_eq!(det, evaluated);
+    assert!(det.is_subset(&evaluated));
+    let current = Standard::current();
+    let det_now: BTreeSet<&str> = current
+        .rules
+        .iter()
+        .filter(|r| r.kind == Kind::Deterministic)
+        .map(|r| r.id.as_str())
+        .collect();
+    assert_eq!(
+        det_now, evaluated,
+        "the current standard names every evaluated rule"
+    );
     // Judged rules are listed and not enforced before their calibration.
     let judged: Vec<_> = std
         .rules
@@ -90,8 +101,12 @@ fn the_shipped_standard_parses_and_names_exactly_the_evaluated_rules() {
     let v2 = Standard::from_json(site_quality::standard::V2_JSON).expect("v2 parses");
     assert_eq!((v2.version, v2.changes.len()), (2, 2));
     assert_eq!(v2.rules.len(), std.rules.len());
-    assert_eq!(Standard::current(), v2);
+    let _ = &v2;
     assert_ne!(v2.reference().digest, std.reference().digest);
+    let v3 = Standard::from_json(site_quality::standard::V3_JSON).expect("v3 parses");
+    assert_eq!((v3.version, v3.changes.len()), (3, 6));
+    assert_eq!(v3.rules.len(), v2.rules.len() + 5);
+    assert_eq!(Standard::current(), v3);
 }
 
 #[test]
@@ -252,6 +267,43 @@ fn mutations() -> Vec<(&'static str, Mutation)> {
         }),
         ("seo-duplicate-title", |s| {
             s.pages[0].head.title = "Der Hafen | Example Coast".into();
+        }),
+        ("empty-column", |s| {
+            s.pages[2].columns.push(site_quality::facts::ColumnGap {
+                label: "div.ds-restaurant".into(),
+                w: 1167,
+                h: 300,
+                empty: 300,
+                at: "right".into(),
+            })
+        }),
+        ("transliteration", |s| {
+            s.pages[2].paragraphs.push(site_quality::facts::Para {
+                text: "Die Strasse zum Hafen".into(),
+                authored: false,
+            });
+        }),
+        ("unlabelled-value", |s| {
+            s.pages[2].values.push(site_quality::facts::ValueLine {
+                class: "ct-mode".into(),
+                text: "Aktiv / Immersiv".into(),
+                labelled: false,
+            })
+        }),
+        ("empty-fact", |s| {
+            s.pages[3].cells.push(site_quality::facts::Cell {
+                label: "Am besten".into(),
+                value: " ".into(),
+            })
+        }),
+        ("listing-place", |s| {
+            s.pages[2].listings[0].heading = "Harbour · Unternehmungen".into();
+            s.pages[2].listings[0].places = vec!["lighthouse".into()];
+            s.pages[0].listings.push(site_quality::facts::Listing {
+                label: "q".into(),
+                heading: "Lighthouse".into(),
+                places: vec!["lighthouse".into()],
+            });
         }),
     ]
 }
@@ -444,4 +496,29 @@ fn a_page_that_asks_not_to_be_indexed_needs_no_snippet_or_title_of_its_own() {
             "seo-sitemap".to_string()
         ])
     );
+}
+
+#[test]
+fn v3_an_english_chip_on_a_german_page_is_a_design_word_left_in_english() {
+    let std = Standard::current();
+    let mut s = clean();
+    s.pages[2].chips[1].text = "Church".into();
+    assert_eq!(rules_of(&std, &s), one("english-label"));
+    // A word the label table gives the same in German is no finding; nor is a place's name.
+    s.site.labels.insert(
+        "w-church".into(),
+        [
+            ("en".to_string(), "Church".to_string()),
+            ("de".to_string(), "Church".to_string()),
+        ]
+        .into(),
+    );
+    assert!(rules_of(&std, &s).is_empty());
+    let mut s = clean();
+    s.pages[2].chips[0].text = "Harbour".into();
+    assert!(rules_of(&std, &s).is_empty(), "the place's own name");
+    // v2 did not look at chips.
+    let mut s = clean();
+    s.pages[2].chips[1].text = "Church".into();
+    assert!(rules_of(&Standard::v2(), &s).is_empty());
 }

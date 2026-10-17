@@ -21,7 +21,7 @@
 // pictures load, and observed. Pictures from other hosts are answered with a 1×1 picture in the
 // browser (layout is what the page is looked at for) and each is fetched once from here; one that
 // fails is a fact of every page that shows it. `--shots` writes a full-length screenshot of the
-// first page of each page type at both widths to `<out>/types/`. The exit code is the judge's: 1
+// first page of each page type at both widths to `<out>/types/`, with the real pictures. The exit code is the judge's: 1
 // when the gate blocks.
 import { spawnSync } from 'node:child_process'
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
@@ -263,7 +263,16 @@ const observe = (input: { width: number }) => {
   // chips
   const chips = [...document.querySelectorAll('.ds-chip, .ds-filter-chip, .ct-category, .ds-eyebrow, .wp-block-post-terms a, .ct-tags li, .ds-chips a, .ct-badge, .ds-panel-name')]
     .filter(visible)
-    .map((c) => ({ label: label(c), text: clip(c.textContent ?? '', 60) }))
+    .map((c) => ({
+      label: label(c),
+      text: clip(c.textContent ?? '', 60),
+      // The content's own label (an entry's kind, a badge of the page's text), or the design's.
+      authored: !!c.closest('.wp-block-post-content, .wp-block-post-template, .wp-block-post-terms'),
+    }))
+  // A filter chip mirrors the entries' own labels: the content's when a card's chip says the same.
+  for (const c of chips) {
+    if (!c.authored && c.label.includes('ds-filter-chip') && chips.some((o) => o.authored && o.text === c.text)) c.authored = true
+  }
   // short visible texts (pages in another language: the design's words left in English)
   const texts: string[] = []
   if (lang !== 'en') {
@@ -279,7 +288,95 @@ const observe = (input: { width: number }) => {
       }
     }
   }
-  return { lang, page_type, head, headings, hero, frames, images, links, assets, scroll_width, wide, blocks, chips, texts }
+  // v3: paragraphs of a page in another language (its letters)
+  const paragraphs: { text: string; authored: boolean }[] = []
+  if (lang !== 'en') {
+    const TEXTS = 'p, h1, h2, h3, h4, h5, h6, li, summary, figcaption, blockquote, .ds-featured-title, .ds-panel-line, .ds-panel-name'
+    for (const e of document.body.querySelectorAll(TEXTS)) {
+      // The innermost text only (a menu's item holds its panel's texts).
+      if (paragraphs.length >= 500 || e.closest('script, style, noscript') || e.querySelector(TEXTS) || !visible(e)) continue
+      const t = clip(e.textContent ?? '', 300)
+      // The site's content: its pages' own text and its entries' (titles, excerpts, cards).
+      // (a menu panel's story title and place line are the content's, shown by the theme)
+      const content = !!e.closest('.wp-block-post-content, .entry-content, .wp-block-post-template, .wp-block-post-title, .wp-block-post-excerpt, .ds-featured-title, .ds-panel-line, .wp-block-post-terms')
+      if (t) paragraphs.push({ text: t, authored: content })
+    }
+  }
+  // v3: one-value lines of the authored content, and whether they carry their label
+  const values = [...main.querySelectorAll('.wp-block-post-content p[class*="ct-"]')]
+    .filter((e) => visible(e) && (e.textContent ?? '').trim().length <= 60)
+    .map((e) => {
+      const cls = [...e.classList].filter((c) => c.startsWith('ct-') && c !== 'ct-meta')
+      const before = getComputedStyle(e, '::before').content
+      const prev = e.previousElementSibling
+      const labelled =
+        !!e.querySelector('.ct-meta-key, .ds-label') ||
+        (!!before && before !== 'none' && before !== 'normal' && before !== '""') ||
+        (!!prev && /(^|\s)(ct-[a-z-]*(label|key)|ds-label)(\s|$)/.test(prev.getAttribute('class') ?? ''))
+      return { class: cls[0] ?? '', text: clip(e.textContent ?? '', 60), labelled }
+    })
+  // v3: the design's fact cells
+  const cells = [...main.querySelectorAll('.ds-facts > *')]
+    .filter((c) => visible(c) && c.querySelector('.ds-label'))
+    .map((c) => {
+      const l = c.querySelector('.ds-label')!
+      const label = clip(l.textContent ?? '', 60)
+      const value = clip([...c.children].filter((x) => x !== l).map((x) => x.textContent ?? '').join(' '), 80)
+      return { label, value }
+    })
+  // v3: listings, the heading over them and their entries' places
+  const listings = [...main.querySelectorAll('.wp-block-query')].filter(visible).map((q) => {
+    let heading = ''
+    let at: Element | null = q.closest('section') ?? q
+    for (let i = 0; at && i < 4 && !heading; i++) {
+      let prev = at.previousElementSibling
+      while (prev && !heading) {
+        const bar = prev.matches('.ds-bar') ? prev : prev.querySelector('.ds-bar')
+        if (bar) heading = clip(bar.querySelector('.ds-meta, h2, h3')?.textContent ?? '', 80)
+        prev = heading ? null : prev.previousElementSibling
+      }
+      at = at.parentElement
+    }
+    const places = [...new Set([...q.querySelectorAll('li')].flatMap((li) => [...li.classList].filter((c) => c.startsWith('sp_place-')).map((c) => c.slice(9))))]
+    return { label: label(q), heading, places }
+  })
+  // v3: grid rows with a stretch of their width that nothing covers
+  const columns: unknown[] = []
+  if (input.width >= 1200) {
+    for (const g of main.querySelectorAll('*')) {
+      if (columns.length >= 40) break
+      const gs = getComputedStyle(g)
+      if (gs.display !== 'grid' || !visible(g) || g.closest('.ct-blog-article, .ds-prose-article, .ds-article')) continue
+      const r = g.getBoundingClientRect()
+      if (r.width < 600 || r.height < 100) continue
+      const kids = [...g.children].filter(visible)
+      if (kids.length === 0) continue
+      // Text kept at its reading measure (a max-width) covers its track to the row's end.
+      const iv = kids
+        .map((k) => {
+          const kr = k.getBoundingClientRect()
+          const measured = getComputedStyle(k).maxWidth !== 'none' && k.matches('p, h1, h2, h3, h4, h5, h6, blockquote, ul, ol, .wp-block-heading')
+          return [Math.max(kr.left, r.left), measured ? r.right : Math.min(kr.right, r.right)] as [number, number]
+        })
+        .sort((a, b) => a[0] - b[0])
+      let reach = r.left
+      let best = 0
+      let where = 'middle'
+      for (const [a, b] of iv) {
+        if (a - reach > best) {
+          best = a - reach
+          where = reach === r.left ? 'left' : 'middle'
+        }
+        reach = Math.max(reach, b)
+      }
+      if (r.right - reach > best) {
+        best = r.right - reach
+        where = 'right'
+      }
+      if (best >= 0.15 * r.width) columns.push({ label: label(g), w: Math.round(r.width), h: Math.round(r.height), empty: Math.round(best), at: where })
+    }
+  }
+  return { lang, page_type, head, headings, hero, frames, images, links, assets, scroll_width, wide, blocks, chips, texts, paragraphs, values, cells, listings, columns }
 }
 
 const PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
@@ -307,6 +404,8 @@ async function audit(browser: Browser, path: string, width: number, shot?: strin
       const r = route.request()
       if (r.resourceType() === 'image') {
         ;(imagesOf[r.url()] ??= new Set()).add(path)
+        // A screenshot shows the real pictures; the audit's layout facts need none.
+        if (shot) return route.continue()
         return route.fulfill({ status: 200, contentType: 'image/png', body: PIXEL })
       }
       return route.continue()

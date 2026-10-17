@@ -50,6 +50,64 @@ pub struct PageFacts {
     pub chips: Vec<Chip>,
     /// Visible short texts (one text node each, whitespace collapsed), distinct.
     pub texts: Vec<String>,
+    /// Visible paragraphs, headings and list items (their first characters) of a page in a
+    /// language other than English (v3: transliteration).
+    pub paragraphs: Vec<Para>,
+    /// Short lines of the authored content that hold one value (v3: unlabelled-value).
+    pub values: Vec<ValueLine>,
+    /// The design's fact cells (`.ds-facts`): a label and its value (v3: empty-fact).
+    pub cells: Vec<Cell>,
+    /// Listings: the heading over them and the places of their entries (v3: listing-place).
+    pub listings: Vec<Listing>,
+    /// Grid rows with a stretch of their width that nothing covers (v3: empty-column).
+    pub columns: Vec<ColumnGap>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Para {
+    pub text: String,
+    pub authored: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ValueLine {
+    /// Its first class (`ct-intensity`).
+    pub class: String,
+    pub text: String,
+    /// It carries its label (a key element in it, a label before it, or a label the stylesheet
+    /// writes before it).
+    pub labelled: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Cell {
+    pub label: String,
+    pub value: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Listing {
+    pub label: String,
+    /// The listing bar's text over it, when it has one.
+    pub heading: String,
+    /// The places of its entries (`sp_place-{slug}`), distinct.
+    pub places: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ColumnGap {
+    pub label: String,
+    pub w: u32,
+    pub h: u32,
+    /// The widest stretch of its width no child covers, px.
+    pub empty: u32,
+    /// Where it is: `left`, `right` or `middle`.
+    pub at: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -196,6 +254,8 @@ pub struct Block {
 pub struct Chip {
     pub label: String,
     pub text: String,
+    /// The content's own label (an entry's kind, a badge in the page's text).
+    pub authored: bool,
 }
 
 /// What the release says about the site as a whole.

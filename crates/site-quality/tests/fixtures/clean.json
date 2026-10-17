@@ -166,11 +166,37 @@
     {
      "label": "p.ds-chip",
      "text": "Harbour"
+    },
+    {
+     "label": "p.ds-chip",
+     "text": "Church"
     }
    ],
    "texts": [
     "Read more",
     "The Harbour"
+   ],
+   "values": [
+    {
+     "class": "ct-meta",
+     "text": "Google rating 4.8",
+     "labelled": true
+    }
+   ],
+   "cells": [
+    {
+     "label": "Price",
+     "value": "Free"
+    }
+   ],
+   "listings": [
+    {
+     "label": "div.wp-block-query",
+     "heading": "Harbour · Things to do",
+     "places": [
+      "harbour"
+     ]
+    }
    ]
   },
   {
@@ -286,11 +312,37 @@
     {
      "label": "p.ds-chip",
      "text": "Harbour"
+    },
+    {
+     "label": "p.ds-chip",
+     "text": "Church"
     }
    ],
    "texts": [
     "Read more",
     "The Harbour"
+   ],
+   "values": [
+    {
+     "class": "ct-meta",
+     "text": "Google rating 4.8",
+     "labelled": true
+    }
+   ],
+   "cells": [
+    {
+     "label": "Price",
+     "value": "Free"
+    }
+   ],
+   "listings": [
+    {
+     "label": "div.wp-block-query",
+     "heading": "Harbour · Things to do",
+     "places": [
+      "harbour"
+     ]
+    }
    ]
   },
   {
@@ -421,11 +473,43 @@
     {
      "label": "p.ds-chip",
      "text": "Hafen"
+    },
+    {
+     "label": "p.ds-chip",
+     "text": "Kirche"
     }
    ],
    "texts": [
     "Weiterlesen",
     "Der Hafen"
+   ],
+   "paragraphs": [
+    {
+     "text": "Ein Spaziergang über die Mole, wo die Fähre im Sommer hält.",
+     "authored": true
+    }
+   ],
+   "values": [
+    {
+     "class": "ct-meta",
+     "text": "Google-Bewertung 4.8",
+     "labelled": true
+    }
+   ],
+   "cells": [
+    {
+     "label": "Preis",
+     "value": "Frei"
+    }
+   ],
+   "listings": [
+    {
+     "label": "div.wp-block-query",
+     "heading": "Hafen · Unternehmungen",
+     "places": [
+      "harbour"
+     ]
+    }
    ]
   },
   {
@@ -541,11 +625,43 @@
     {
      "label": "p.ds-chip",
      "text": "Hafen"
+    },
+    {
+     "label": "p.ds-chip",
+     "text": "Kirche"
     }
    ],
    "texts": [
     "Weiterlesen",
     "Der Hafen"
+   ],
+   "paragraphs": [
+    {
+     "text": "Ein Spaziergang über die Mole, wo die Fähre im Sommer hält.",
+     "authored": true
+    }
+   ],
+   "values": [
+    {
+     "class": "ct-meta",
+     "text": "Google-Bewertung 4.8",
+     "labelled": true
+    }
+   ],
+   "cells": [
+    {
+     "label": "Preis",
+     "value": "Frei"
+    }
+   ],
+   "listings": [
+    {
+     "label": "div.wp-block-query",
+     "heading": "Hafen · Unternehmungen",
+     "places": [
+      "harbour"
+     ]
+    }
    ]
   }
  ]

@@ -181,5 +181,65 @@
   "set": {
    "/pages/2/head/title": "The Harbour | Example Coast"
   }
+ },
+ {
+  "rule": "empty-column",
+  "why": "a feature row whose picture column has no picture",
+  "set": {
+   "/pages/0/columns": [
+    {
+     "label": "div.ct-items-item",
+     "w": 1100,
+     "h": 400,
+     "empty": 460,
+     "at": "left"
+    }
+   ]
+  }
+ },
+ {
+  "rule": "transliteration",
+  "why": "German written with ue for ü",
+  "set": {
+   "/pages/2/paragraphs/0/text": "Ein Spaziergang ueber die Mole"
+  }
+ },
+ {
+  "rule": "unlabelled-value",
+  "why": "a value line without its label",
+  "set": {
+   "/pages/0/values/0": {
+    "class": "ct-intensity",
+    "text": "Low to moderate",
+    "labelled": false
+   }
+  }
+ },
+ {
+  "rule": "empty-fact",
+  "why": "a price cell without a price",
+  "set": {
+   "/pages/0/cells/0/value": ""
+  }
+ },
+ {
+  "rule": "listing-place",
+  "why": "a listing titled for the harbour shows the lighthouse's entries too",
+  "set": {
+   "/pages/0/listings/0/places": [
+    "harbour",
+    "lighthouse"
+   ]
+  }
+ },
+ {
+  "rule": "empty-fact",
+  "why": "a fact cell with neither label nor value (an empty box)",
+  "set": {
+   "/pages/1/cells/0": {
+    "label": "",
+    "value": ""
+   }
+  }
  }
 ]

@@ -542,7 +542,15 @@ fn site_of(content: &Path, design: &site_design::SiteDesign) -> SiteContext {
         page_types,
         featured,
         forms: false,
-        words: content_import_wp::design::content_words(&plan.docs),
+        // The content's own words (its facts' names) and its entries' kinds (`Church`, `Beach`):
+        // put in each page's language with the design's (site-standard v3, english-label).
+        words: {
+            let mut w = content_import_wp::design::content_words(&plan.docs);
+            w.extend(content_import_wp::design::entry_words(&plan.entries));
+            w.sort();
+            w.dedup();
+            w
+        },
     }
 }
 

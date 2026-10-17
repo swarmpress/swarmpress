@@ -46,6 +46,9 @@ const SKIP: &[&str] = &[
     "afterIndex",
     "isLead",
     "slug",
+    // Identifiers and plumbing, never a reader's text (site-standard v3, unlabelled-value).
+    "slugs",
+    "collection",
     "coordinates",
     "lat",
     "lng",
@@ -73,10 +76,6 @@ const BADGES: &[&str] = &[
     "date",
     "readTime",
     "role",
-    "duration",
-    "pace",
-    "effort",
-    "bestSeason",
 ];
 const IMAGES: &[&str] = &[
     "image",
@@ -443,6 +442,49 @@ fn is_slug(s: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
 }
 
+/// Fields whose short text is prose or a line of its own (a tagline, a byline, an intro), never a
+/// value that needs its name.
+const PROSE: &[&str] = &[
+    "subtitle",
+    "tagline",
+    "intro",
+    "description",
+    "content",
+    "text",
+    "summary",
+    "excerpt",
+    "signature",
+    "lede",
+    "caption",
+    "quote",
+    "author",
+    "date",
+    "avatar",
+    "role",
+    "readTime",
+    "status",
+    "code",
+    "price",
+    "note",
+    "body",
+    "answer",
+    "comment",
+    "highlight",
+    "teaser",
+];
+
+/// A short value of a field: at most 40 characters and 6 words, no sentence's end.
+fn is_value(key: &str, s: &str) -> bool {
+    !TITLES.contains(&key)
+        && !BADGES.contains(&key)
+        && !PROSE.contains(&key)
+        && !is_label_key(key)
+        && !s.contains('<')
+        && s.chars().count() <= 40
+        && s.split_whitespace().count() <= 6
+        && !s.ends_with(['.', '!', '?', ':', '…'])
+}
+
 /// Fields whose values are labels a reader sees (badges, categories, tags).
 fn is_label_key(key: &str) -> bool {
     BADGES.contains(&key) || matches!(key, "tags" | "tag" | "labels" | "type" | "kind")
@@ -461,12 +503,25 @@ fn text_field(key: &str, s: &str, lang: &str, level: u8) -> String {
         s
     };
     if is_url(s) {
-        // A bare link field (`viewAllUrl`, `website`): a link paragraph.
-        if key.to_ascii_lowercase().contains("url") || key == "website" || key == "link" {
+        // A link field names what it opens (`viewAllUrl` → `View all`, its words put in the
+        // page's language like a fact's name); a bare `url`, `link` or `website` has no words of
+        // its own and shows no address as text (site-standard v3, unlabelled-value).
+        let lower = key.to_ascii_lowercase();
+        let name = lower
+            .strip_suffix("url")
+            .or_else(|| lower.strip_suffix("_url"))
+            .map(|n| n.trim_end_matches(['_', '-']))
+            .filter(|n| !n.is_empty());
+        if let Some(n) = name {
+            let words = humanize(&key[..n.len()]);
             let href = link(s, lang);
             return paragraph_html(
-                &format!("<a href=\"{}\">{}</a>", attr(&href), escape(&href)),
-                Some(&format!("ct-{}", kebab(key))),
+                &format!(
+                    "<a href=\"{}\"><span class=\"ct-meta-key\">{}</span></a>",
+                    attr(&href),
+                    escape(&words)
+                ),
+                Some(&format!("ct-more ct-{}", kebab(key))),
             );
         }
         return String::new();
@@ -483,6 +538,11 @@ fn text_field(key: &str, s: &str, lang: &str, level: u8) -> String {
         && s.chars()
             .any(|c| c.is_ascii_digit() || c == '$' || c == '€')
     {
+        return meta_line(key, s);
+    }
+    // A field that holds one value (`intensity: Low to moderate`, `weather: 22°C`) shows its name
+    // with it: the design's label and value (site-standard v3, unlabelled-value).
+    if is_value(key, s) {
         return meta_line(key, s);
     }
     let class = format!("ct-{}", kebab(key));
@@ -681,6 +741,25 @@ fn restore_inline_tags(escaped: &str) -> String {
 /// A text's paragraphs: its HTML paragraphs (`<p>…</p>`) when it has them, else its blank-line
 /// separated blocks.
 fn paragraphs(s: &str) -> Vec<String> {
+    // `<p class="italic">` is a paragraph like `<p>` (its attributes are the source's styling,
+    // never text a reader sees).
+    let mut norm = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find("<p ") {
+        norm.push_str(&rest[..i]);
+        match rest[i..].find('>') {
+            Some(j) => {
+                norm.push_str("<p>");
+                rest = &rest[i + j + 1..];
+            }
+            None => {
+                norm.push_str(&rest[i..]);
+                rest = "";
+            }
+        }
+    }
+    norm.push_str(rest);
+    let s = norm.as_str();
     if s.contains("<p>") || s.contains("</p>") {
         s.split("</p>")
             .map(|p| p.replace("<p>", " ").trim().to_string())

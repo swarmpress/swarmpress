@@ -310,7 +310,7 @@ async fn a_design_class_is_repaired_in_the_loop_and_audited_again() {
     assert_eq!(fixes.len(), 1);
     assert_eq!(calls.len(), 2);
     let text = fixes[0];
-    assert!(text.contains("site-standard v2"));
+    assert!(text.contains("site-standard v3"));
     assert!(text.contains("[narrow-column] on front-page"));
     assert!(text.contains("760 of 1200 px"));
 }
@@ -585,7 +585,7 @@ async fn defect_finding_repair_audit_merge_the_same_world_twice() {
     assert_eq!(o.gateway().merge_count(), 1);
     let live = a.plan.designs.live_quality.unwrap();
     assert!(live.passed);
-    assert_eq!((live.standard, live.pages, live.findings), (2, 2, 0));
+    assert_eq!((live.standard, live.pages, live.findings), (3, 2, 0));
     let (b, _) = defect_to_live().await;
     assert_eq!(a.hash(), b.hash());
 }

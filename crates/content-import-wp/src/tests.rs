@@ -1394,3 +1394,36 @@ fn a_page_that_opens_with_its_hero_has_it_as_its_h1_and_labels_are_words() {
     assert!(!b.contains("food_wine"));
     assert_eq!(markup::humanize_slug("getting-here"), "Getting here");
 }
+
+#[test]
+fn a_value_says_its_name_a_link_its_words_and_no_identifier_shows() {
+    let mut notes = markup::Notes::default();
+    let item = json!({"type": "experience-list", "items": [{
+        "title": {"en": "Swimming at the harbour rocks"},
+        "intensity": {"en": "Low to moderate"},
+        "mode": {"en": "Active / Immersive"},
+        "signature": {"en": "Salt on the skin while the sun warms the old stone"},
+        "slugs": ["harbour-rocks"],
+        "url": "/harbour-rocks",
+        "viewAllUrl": "/things-to-do"
+    }]});
+    let h = markup::block(&item, "en", &mut notes);
+    assert!(
+        h.contains("<span class=\"ct-meta-key\">Intensity</span> Low to moderate"),
+        "{h}"
+    );
+    assert!(
+        h.contains("<span class=\"ct-meta-key\">Mode</span> Active / Immersive"),
+        "{h}"
+    );
+    assert!(
+        h.contains(">Salt on the skin while the sun warms the old stone<"),
+        "{h}"
+    );
+    assert!(!h.contains("harbour-rocks"), "{h}");
+    assert!(
+        h.contains("<a href=\"/en/things-to-do/\"><span class=\"ct-meta-key\">View all</span></a>"),
+        "{h}"
+    );
+    assert!(!h.contains(">/en/"), "no address as text: {h}");
+}

@@ -480,3 +480,30 @@ fn fonts_are_licensed() {
         ["/en/", "/en/stories/"]
     );
 }
+
+#[test]
+fn a_template_of_many_pages_names_no_place() {
+    let mut c = Case::new();
+    c.plan.site.places = vec![theme_designer::model::Place {
+        slug: "corniglia".into(),
+        label: "Corniglia".into(),
+        lines: Default::default(),
+    }];
+    let para = "<!-- wp:paragraph {\"className\":\"ds-meta\"} -->\n<p class=\"ds-meta\">Corniglia · Things to do</p>\n<!-- /wp:paragraph -->\n";
+    c.fails(
+        "page",
+        "<!-- wp:post-content",
+        &format!("{para}<!-- wp:post-content"),
+        IssueCode::Rule,
+        "names Corniglia",
+    );
+    // The home is one page: its copy may name the places it introduces.
+    let good = c.good("front-page");
+    let issues = c.check("front-page", &good);
+    assert!(
+        issues
+            .iter()
+            .all(|i| !i.message.contains("names Corniglia")),
+        "{issues:#?}"
+    );
+}

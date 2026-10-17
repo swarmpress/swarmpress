@@ -37,6 +37,14 @@ release that does not pass, and findings go by class to the role that repairs th
   failing fixture (`tests/fixtures/failing.json` over `clean.json`) and a mutation, each breaks exactly
   its rule, and without the rule in the standard the fixture passes; the same facts give the same
   report bytes.
+- **Versions** (`standard/v1.json`, `v2.json`, `v3.json`; each lists its `changes`; reports name
+  theirs): v2 refined two v1 rules (a chip row is no picture frame; the page's own title block is
+  its own h1). v3 added the classes the coordinator found on a passing preview: `empty-column` (a
+  grid row with a quarter of its width covered by nothing), `transliteration` (German, French and
+  Italian in their own letters), `unlabelled-value` (a value line says its name), `empty-fact` (no
+  empty fact cell), `listing-place` (a listing titled for a place lists only its entries), and
+  `english-label` over chips (a label a page in another language shows exactly as its English
+  page, naming no place; the content's own labels go to the editor).
 - **The collector** (`apps/game/e2e/page-audit.mts`): every HTML page of an export at 1280 and 390 px,
   scrolled, observed (no rule in it), remote pictures checked once; writes `facts.jsonl`, optional
   screenshots of one page per page type, then runs the judge.
@@ -63,6 +71,22 @@ release that does not pass, and findings go by class to the role that repairs th
 - **The import's gate** (`swarmpress-wp-migrate apply --hold`, `export --branch`, `release --cr`).
 - **The sim's digest** (FEAT-115's item): `ServerCommand::SiteQuality`, `Plan.designs.quality` and
   `live_quality`, `JobFailure::QualityGate` (world format 16).
+
+## cinqueterre.travel (2026-10-17)
+
+- Before (the preview the owner reviewed, 882 pages at 1280 and 390 px, judged with v2): 11,911
+  deterministic findings in 288 classes; performance 0‰ (the emoji script from the production host
+  on every page), SEO 500‰, accessibility 621‰, layout 629‰.
+- The burn-down went through the pipeline: platform fixes in the export and the importer, the
+  theme's deterministic plan, and the web designer's job on hosted GPT-6-Luna with its QA stage
+  (`swarmpress-site-theme --revise-from --audit`): 2,081 findings in 18 classes → 778 → 487 in its
+  first run's QA rounds; after the deterministic fixes the job's QA stage passed on its first audit.
+- After: the import held on `import-site`, exported, audited (753 pages, 1,506 audits) and released
+  by `swarmpress-wp-migrate release`: 0 open findings, 571 listed content gaps (373 links to pages
+  the site does not have, live included; 115 titles not translated or not the page's own; 80 calls
+  to action naming sections the page does not have; 2 pictures that answer 401; 1 story without a
+  description), every dimension 1000‰; the report is a `qa` note on the audited commit and the merge.
+  `compare` stays at 631/663. Cockpit evidence: `artifacts/bench/site-quality.json`.
 
 ## Not built yet
 

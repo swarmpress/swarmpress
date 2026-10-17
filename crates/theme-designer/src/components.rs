@@ -572,7 +572,7 @@ const CSS: &str = r#"/* component styles: the design's forms as classes (theme-d
 .ds-price>*{margin:0!important}
 .ds-price .ds-price-rest{color:@line@}
 .ds-restaurants .ds-restaurant-text>.wp-block-post-excerpt{max-width:60ch;font-size:17px;line-height:1.6;margin:0}
-.ds-know{background:@surface@;padding:16px 20px 20px;display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.ds-know{background:@surface@;padding:16px 20px 20px;display:grid!important;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px}
 .ds-know>*{display:flex;flex-direction:column;gap:4px;margin:0!important}
 .ds-know .ds-label{font-family:@mono@;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:@muted@;margin:0}
 .ds-know p:not(.ds-label){font-size:15px;font-weight:600;margin:0}

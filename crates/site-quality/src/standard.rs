@@ -7,8 +7,10 @@ use sha2::{Digest as _, Sha256};
 
 /// `site-standard v1` as shipped (kept: a report names the version it was judged against).
 pub const V1_JSON: &str = include_str!("../standard/v1.json");
-/// `site-standard v2`: the current standard (its `changes` say what moved from v1).
+/// `site-standard v2`.
 pub const V2_JSON: &str = include_str!("../standard/v2.json");
+/// `site-standard v3`: the current standard (its `changes` say what moved from v2).
+pub const V3_JSON: &str = include_str!("../standard/v3.json");
 
 /// What a rule is about; scores are given per dimension.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -130,6 +132,9 @@ pub struct Rule {
     pub summary: String,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, i64>,
+    /// Word lists a rule uses (v3: transliterations per language, exempt classes).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub words: BTreeMap<String, Vec<String>>,
     /// A judged rule's threshold (0–1000), frozen after the owner's calibration; `None` until
     /// then (the rule is not enforced).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -175,8 +180,12 @@ pub struct StandardRef {
 }
 
 impl Standard {
-    /// The current standard (v2).
+    /// The current standard (v3).
     pub fn current() -> Standard {
+        Standard::parse_shipped(V3_JSON)
+    }
+
+    pub fn v2() -> Standard {
         Standard::parse_shipped(V2_JSON)
     }
 

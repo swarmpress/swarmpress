@@ -23,6 +23,11 @@ pub const EVALUATED: &[&str] = &[
     "export-hygiene",
     "overflow",
     "narrow-column",
+    "empty-column",
+    "transliteration",
+    "unlabelled-value",
+    "empty-fact",
+    "listing-place",
     "h1-count",
     "h1-own",
     "heading-order",
@@ -157,6 +162,8 @@ struct Ctx<'a> {
     std: &'a Standard,
     site: &'a SiteFacts,
     out: Vec<Finding>,
+    /// The places the release's listings show (`sp_place-{slug}`).
+    places: BTreeSet<String>,
 }
 
 impl Ctx<'_> {
@@ -204,6 +211,10 @@ pub fn evaluate(std: &Standard, site: &SiteFacts, pages: &[PageFacts]) -> Vec<Fi
         std,
         site,
         out: Vec::new(),
+        places: pages
+            .iter()
+            .flat_map(|f| f.listings.iter().flat_map(|l| l.places.iter().cloned()))
+            .collect(),
     };
     // The widest audit of each page carries the page-level rules.
     let mut widest: BTreeMap<&str, u32> = BTreeMap::new();
@@ -305,6 +316,63 @@ pub fn evaluate(std: &Standard, site: &SiteFacts, pages: &[PageFacts]) -> Vec<Fi
                         );
                     }
                 }
+            }
+        }
+    }
+    // v3: a chip on a page in another language that its English version shows identically and
+    // that names no place.
+    if let Some(r) = cx.rule("english-label").filter(|r| r.param("chips") > 0) {
+        let by_path: BTreeMap<String, &PageFacts> = tops
+            .iter()
+            .map(|f| (f.path.trim_end_matches('/').to_string(), *f))
+            .collect();
+        let places: BTreeSet<String> = pages
+            .iter()
+            .flat_map(|f| f.listings.iter().flat_map(|l| l.places.iter()))
+            .map(|p| fold(&p.replace('-', " ")))
+            .collect();
+        let same_in = |lang: &str, text: &str| {
+            site.labels.values().any(|by| {
+                by.get("en").is_some_and(|e| norm(e) == text)
+                    && by.get(lang).is_some_and(|t| norm(t) == text)
+            })
+        };
+        for f in tops.iter().filter(|f| !f.lang.is_empty() && f.lang != "en") {
+            let Some(en) = f
+                .head
+                .alternates
+                .iter()
+                .find(|a| a.lang == "en")
+                .and_then(|a| {
+                    site.own_path(&f.path, &a.href)
+                        .and_then(|p| by_path.get(p.trim_end_matches('/')).copied())
+                })
+            else {
+                continue;
+            };
+            if en.path == f.path {
+                continue;
+            }
+            let english: BTreeSet<String> = en.chips.iter().map(|c| norm(&c.text)).collect();
+            let mut seen = BTreeSet::new();
+            for c in &f.chips {
+                let t = norm(&c.text);
+                let folded = fold(&t);
+                if t.is_empty()
+                    || !english.contains(&t)
+                    || !t.chars().any(char::is_alphabetic)
+                    || places.iter().any(|p| folded.contains(p.as_str()))
+                    || same_in(&f.lang, &t)
+                    || !seen.insert(t.clone())
+                {
+                    continue;
+                }
+                cx.add(
+                    &r,
+                    f,
+                    c.authored,
+                    format!("\"{t}\" on {} (its English page shows it so)", c.label),
+                );
             }
         }
     }
@@ -559,6 +627,120 @@ fn page_rule(cx: &mut Ctx<'_>, r: &Rule, f: &PageFacts) {
                         format!(
                             "{} {} of {} px, nothing beside it",
                             b.label, b.w, b.container
+                        ),
+                    );
+                }
+            }
+        }
+        "empty-column" => {
+            let share = r.param("min_share_permille");
+            for g in &f.columns {
+                if i64::from(g.w) < r.param("min_width_px")
+                    || i64::from(g.h) < r.param("min_height_px")
+                {
+                    continue;
+                }
+                if i64::from(g.empty) * 1000 >= share * i64::from(g.w) {
+                    cx.add(
+                        r,
+                        f,
+                        false,
+                        format!(
+                            "{}: {} of its {} px empty on the {} (nothing in that column)",
+                            g.label, g.empty, g.w, g.at
+                        ),
+                    );
+                }
+            }
+        }
+        "transliteration" => {
+            let Some(stems) = r.words.get(&f.lang) else {
+                return;
+            };
+            let prefix = f.lang == "de";
+            let mut by_route: BTreeMap<bool, BTreeSet<String>> = BTreeMap::new();
+            let texts = f.paragraphs.iter().map(|p| (p.text.as_str(), p.authored));
+            for (text, authored) in texts {
+                for w in text.split(|c: char| !c.is_alphabetic()) {
+                    let l = w.to_lowercase();
+                    if l.len() < 3 {
+                        continue;
+                    }
+                    let hit = stems.iter().any(|s| {
+                        if prefix {
+                            l.starts_with(s.as_str())
+                        } else {
+                            l == *s
+                        }
+                    });
+                    if hit {
+                        by_route.entry(authored).or_default().insert(w.to_string());
+                    }
+                }
+            }
+            for (authored, words) in by_route {
+                let list: Vec<String> = words.into_iter().take(8).collect();
+                cx.add(
+                    r,
+                    f,
+                    authored,
+                    format!("letters transliterated in {}: {}", f.lang, list.join(", ")),
+                );
+            }
+        }
+        "unlabelled-value" => {
+            let exempt = r.words.get("exempt").cloned().unwrap_or_default();
+            let max_chars = usize::try_from(r.param("max_chars")).unwrap_or(40);
+            let max_words = usize::try_from(r.param("max_words")).unwrap_or(6);
+            let mut seen = BTreeSet::new();
+            for v in &f.values {
+                let t = norm(&v.text);
+                if v.labelled
+                    || t.is_empty()
+                    || exempt.contains(&v.class)
+                    || t.chars().count() > max_chars
+                    || t.split_whitespace().count() > max_words
+                    || t.ends_with(['.', '!', '?', ':', '…'])
+                    || !seen.insert(v.class.clone())
+                {
+                    continue;
+                }
+                cx.add(r, f, true, format!("\"{t}\" ({}) says no label", v.class));
+            }
+        }
+        "empty-fact" => {
+            let mut seen = BTreeSet::new();
+            for c in &f.cells {
+                let label = norm(&c.label);
+                if norm(&c.value).is_empty() && seen.insert(label.clone()) {
+                    let what = if label.is_empty() {
+                        "a fact cell shown with nothing in it".to_string()
+                    } else {
+                        format!("the fact \"{label}\" shown without a value")
+                    };
+                    cx.add(r, f, false, what);
+                }
+            }
+        }
+        "listing-place" => {
+            for l in &f.listings {
+                let heading = fold(&l.heading);
+                let named: Vec<&String> = cx
+                    .places
+                    .iter()
+                    .filter(|p| {
+                        !heading.is_empty() && heading.contains(&fold(&p.replace('-', " ")))
+                    })
+                    .collect();
+                if !named.is_empty() && l.places.iter().any(|p| !named.contains(&p)) {
+                    cx.add(
+                        r,
+                        f,
+                        false,
+                        format!(
+                            "\"{}\" over entries of {}",
+                            norm(&l.heading),
+                            l.places.join(", ")
                         ),
                     );
                 }

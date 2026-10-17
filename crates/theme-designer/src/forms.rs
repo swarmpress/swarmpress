@@ -317,7 +317,7 @@ const FAQ: &str = r#"&{border-top:1px solid @ink@;max-width:none;margin-block:48
 & summary:focus-visible{outline:2px solid @ink@;outline-offset:3px;box-shadow:0 0 0 7px @highlight@}
 "#;
 
-const LEDGER: &str = r#"&{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid @ink@;border-bottom:1px solid @ink@;margin:20px 0;gap:0!important}
+const LEDGER: &str = r#"&{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));border-top:1px solid @ink@;border-bottom:1px solid @ink@;margin:20px 0;gap:0!important}
 &>.ct-fact{display:flex;flex-direction:column;gap:6px;padding:18px 20px;margin:0!important;border-right:1px solid @line@}
 &>.ct-fact:first-child{padding-left:0}
 &>.ct-fact:nth-child(4n),&>.ct-fact:last-of-type{border-right:0}
@@ -587,12 +587,18 @@ header.wp-block-template-part:has(.ds-masthead.ds-hidden){transform:translateY(-
 .ds-card-img:not(:has(img[src]:not([src=""]))):not(:has(.ds-chip:not(:empty))),.wp-block-image:not(:has(img[src]:not([src=""]))){display:none}
 .ds-card-img:not(:has(img[src]:not([src=""]))):has(.ds-chip:not(:empty)){aspect-ratio:auto!important;height:auto!important;min-height:0!important;background:none!important;padding:0!important;overflow:visible}
 .ds-card-img:not(:has(img[src]:not([src=""]))) .ds-chip{position:static!important}
+/* a card row whose entry has no picture: its text takes the whole row (the design's picture column
+   is never left empty) */
+.wp-block-post-template>li:has(>.ds-card-img):not(:has(>.ds-card-img img[src]:not([src=""])))>*{grid-column:1 / -1!important}
+.wp-block-post-template>li>.ds-card-img:not(:has(img[src]:not([src=""]))){aspect-ratio:auto!important;height:auto!important;min-height:0!important;align-self:start}
 .ds-tile:not(:has(img[src]:not([src=""]))) .ds-numeral{position:static}
 /* a page whose content opens with its own hero has that hero as its header and its h1 */
 main:has(.wp-block-post-content>.ct-own-hero:first-child) .ds-page-head .wp-block-post-title{display:none}
 /* a long word breaks rather than widening a phone's page; a table scrolls inside its box */
 :is(h1,h2,h3,h4,h5,h6,p,li,summary,.wp-block-post-title,.wp-block-heading,.ds-chip){overflow-wrap:break-word;hyphens:auto;min-width:0}
 .wp-block-table{overflow-x:auto;max-width:100%}
+/* a fact the entry has no value for is left out, never an empty cell */
+.ds-facts>*:not(:has(>p:not(.ds-label):not(:empty))),.ds-know>*:not(:has(>p:not(.ds-label):not(:empty))){display:none!important}
 /* a story's text at its measure (64ch at body-l), its section heads at the type sheet's h2 */
 .wp-block-post-content.ds-prose-article p,.wp-block-post-content.ds-prose-article li{max-width:64ch;font-size:var(--wp--preset--font-size--body-l,19px);line-height:1.6}
 .wp-block-post-content :is(.ds-prose-article,.ds-prose-wide) h2,.wp-block-post-content.ds-prose-article h2,.wp-block-post-content.ds-prose-wide h2{font-family:@display@;font-size:@h2-size@;font-weight:400;line-height:1.05;letter-spacing:-0.02em;margin:48px 0 16px}

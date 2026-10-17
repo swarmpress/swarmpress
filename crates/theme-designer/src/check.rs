@@ -445,6 +445,48 @@ pub fn check_template(task: &TemplateTask, markup: &str, ctx: &CheckContext<'_>)
         }
     }
 
+    // --- a template serves every place: its own words name none (a place's name comes from the
+    // page or its entries; site-standard v3, listing-place)
+    // (the home is one page: its copy may name the places it introduces)
+    let one_page = matches!(task.slug.as_str(), "front-page" | "home" | "page-front")
+        || task.slug == crate::plan::LANGUAGE_HOME;
+    if task.kind == crate::model::TaskKind::Template && !one_page && !ctx.site.places.is_empty() {
+        for b in &all {
+            if !matches!(
+                b.name.as_str(),
+                "core/paragraph" | "core/heading" | "core/button"
+            ) {
+                continue;
+            }
+            let text: String = b
+                .inner
+                .iter()
+                .filter_map(|n| match n {
+                    blocks::Node::Html(h) => Some(crate::check::strip(h)),
+                    blocks::Node::Block(_) => None,
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+                .to_lowercase();
+            let words: Vec<&str> = text.split(|c: char| !c.is_alphanumeric()).collect();
+            if let Some(p) = ctx.site.places.iter().find(|p| {
+                let name = p.label.to_lowercase();
+                !name.is_empty() && name.split_whitespace().all(|w| words.contains(&w))
+            }) {
+                out.push(Issue::new(
+                    IssueCode::Rule,
+                    &at,
+                    format!(
+                        "line {}: the template's own text names {} (\"{}\"): a template serves every place; a place's name comes from the page or its entries, never from the template",
+                        b.line,
+                        p.label,
+                        text.trim()
+                    ),
+                ));
+            }
+        }
+    }
+
     // --- the page's own content where the task puts it: before the entries when the task's
     // content section comes before its listings (a page's authored content leads)
     let content_at = task.sections.iter().position(|s| s.kind == "content");
@@ -1339,6 +1381,24 @@ pub fn check_theme(data: &ThemeData, plan: &ThemePlan) -> Vec<Issue> {
         };
         if let Some(c) = content {
             out.extend(check_template(t, c, &ctx));
+        }
+    }
+    out
+}
+
+/// Text of a block's HTML, its tags left out.
+pub(crate) fn strip(html: &str) -> String {
+    let mut out = String::new();
+    let mut tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => tag = true,
+            '>' => {
+                tag = false;
+                out.push(' ');
+            }
+            _ if !tag => out.push(c),
+            _ => {}
         }
     }
     out
