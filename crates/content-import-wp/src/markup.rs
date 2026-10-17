@@ -143,6 +143,11 @@ pub fn block(b: &Value, lang: &str, notes: &mut Notes) -> String {
     block_at(b, lang, notes, 2)
 }
 
+/// A page's opening hero: its title the page's h1, the class `ct-own-hero` (see [`body`]).
+pub fn own_hero(b: &Value, lang: &str, notes: &mut Notes) -> String {
+    block_at(b, lang, notes, 1)
+}
+
 /// [`block`] with its title-like fields at heading `level` (1: the page's own hero).
 fn block_at(b: &Value, lang: &str, notes: &mut Notes, level: u8) -> String {
     let kind = b.get("type").and_then(Value::as_str).unwrap_or("block");
@@ -214,6 +219,18 @@ fn kebab(key: &str) -> String {
 /// An object's fields in order, at heading `level`.
 fn fields(o: &Map<String, Value>, lang: &str, level: u8) -> String {
     let mut out = String::new();
+    // Headings go down one level at a time: an object without a title of its own gives its
+    // nested items the level its title would have had (site-standard v1, heading-order).
+    let titled = TITLES.iter().any(|k| {
+        o.get(*k)
+            .and_then(|t| localized(t, lang))
+            .is_some_and(|t| !t.trim().is_empty())
+    });
+    let nested = if titled || level <= 1 {
+        level
+    } else {
+        level - 1
+    };
     // A quote's author travels with the quote.
     let author = o.get("author").and_then(|a| localized(a, lang));
     let has_quote = o.get("quote").is_some_and(|q| localized(q, lang).is_some());
@@ -238,14 +255,18 @@ fn fields(o: &Map<String, Value>, lang: &str, level: u8) -> String {
         (o.get("items"), o.get("interludes")),
         (Some(Value::Array(_)), Some(Value::Array(_)))
     );
-    // A quote's title is its heading: it stands before the quote, in the document's order.
+    // An object's title is its heading: it stands before everything else of it (the fields come
+    // in key order, and a section's items must not come before its title).
     let mut lead: Option<&str> = None;
-    if has_quote {
-        if let Some(k) = ["title", "heading"].into_iter().find(|k| {
-            o.get(*k)
-                .and_then(|t| localized(t, lang))
-                .is_some_and(|t| !t.trim().is_empty())
-        }) {
+    if story_link.is_none() {
+        if let Some(k) = ["title", "heading", "headline", "name"]
+            .into_iter()
+            .find(|k| {
+                o.get(*k)
+                    .and_then(|t| localized(t, lang))
+                    .is_some_and(|t| !t.trim().is_empty())
+            })
+        {
             out.push_str(&value(k, &o[k], lang, level));
             lead = Some(k);
         }
@@ -264,7 +285,7 @@ fn fields(o: &Map<String, Value>, lang: &str, level: u8) -> String {
             v.as_array(),
             o.get("interludes").and_then(Value::as_array),
         ) {
-            out.push_str(&interleaved(items, interludes, lang, level));
+            out.push_str(&interleaved(items, interludes, lang, nested));
             continue;
         }
         if let (Some(href), "title") = (&story_link, k) {
@@ -340,7 +361,12 @@ fn fields(o: &Map<String, Value>, lang: &str, level: u8) -> String {
                 continue;
             }
         }
-        out.push_str(&value(k, v, lang, level));
+        let at = if v.is_object() || v.is_array() {
+            nested
+        } else {
+            level
+        };
+        out.push_str(&value(k, v, lang, at));
     }
     out
 }
@@ -473,7 +499,19 @@ fn list_field(key: &str, a: &[Value], lang: &str, level: u8) -> String {
     if a.iter().all(|x| localized(x, lang).is_some()) {
         let items: Vec<&str> = a.iter().filter_map(|x| localized(x, lang)).collect();
         if LISTS.contains(&key) {
-            return list_with_class(&items, Some(&format!("ct-{}", kebab(key))));
+            // Tags and labels are words, never slugs.
+            let words: Vec<String> = items
+                .iter()
+                .map(|s| {
+                    if is_label_key(key) && is_slug(s.trim()) {
+                        humanize_slug(s.trim())
+                    } else {
+                        s.to_string()
+                    }
+                })
+                .collect();
+            let words: Vec<&str> = words.iter().map(String::as_str).collect();
+            return list_with_class(&words, Some(&format!("ct-{}", kebab(key))));
         }
         return items
             .iter()

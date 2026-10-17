@@ -86,6 +86,8 @@ pub struct Heading {
     pub chrome: bool,
     /// In the page's authored content.
     pub authored: bool,
+    /// The page's own title block (`post-title`, `query-title`).
+    pub title_block: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

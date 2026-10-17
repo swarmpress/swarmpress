@@ -584,8 +584,10 @@ const CSS: &str = r#"/* component styles: the design's forms as classes (theme-d
 .ds-people .wp-block-post-title{font-family:@display@;font-size:36px;font-weight:400;line-height:1;margin:0}
 .ds-page-head{display:flex;flex-direction:column;gap:20px;padding-top:clamp(40px,6vw,88px);padding-bottom:clamp(24px,4vw,56px)}
 .ds-page-head h1,.ds-page-head .wp-block-post-title,.ds-page-head .wp-block-query-title{margin:0;font-family:@display@;font-size:@h1-size@;font-weight:400;line-height:1;letter-spacing:-0.025em;max-width:20ch}
-.ds-prose{max-width:760px}
-.ds-prose>*{max-width:760px}
+/* text keeps its reading measure; a component of the page (a group, a table, a gallery) uses the
+   container's width, never a half-empty row (site-standard v1, narrow-column) */
+.ds-prose{max-width:none}
+.ds-prose>:is(p,ul,ol,h2,h3,h4,h5,h6,blockquote,.wp-block-heading){max-width:760px}
 .ds-prose .wp-block-image img,.ds-prose figure img{max-width:100%;height:auto}
 .ds-prose h2{font-family:@display@;font-size:@h2-size@;font-weight:400;line-height:1.05;letter-spacing:-0.02em}
 .ds-prose h3{font-family:@display@;font-size:@h3-size@;font-weight:500;line-height:1.15}

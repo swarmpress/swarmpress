@@ -502,6 +502,9 @@ pub fn doc(site: &Site, r: &Route, notes: &mut Notes, opts: compose::Options) ->
                 content.push_str(&crate::design::article(b, lang));
             } else if let Some(m) = modes {
                 content.push_str(&m);
+            } else if i == 0 && markup::is_hero(b) {
+                // The page's own hero leads: it is the page's header and its h1.
+                content.push_str(&markup::own_hero(b, lang, notes));
             } else {
                 content.push_str(&markup::block(b, lang, notes));
             }

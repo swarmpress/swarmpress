@@ -1,7 +1,7 @@
 // The site QA stage's browser side (ADR-0094, FEAT-116): every page of a static export rendered in
 // a real browser at the standard's widths (1280 and 390 px) and observed, never judged. The facts
 // (boxes, pictures, links, requests, headings, labels, the head) go to `facts.jsonl`; the rules of
-// site-standard v1 are judged in Rust (`crates/site-quality`, run by `swarmpress-wp-migrate qa`),
+// site standard (v2) are judged in Rust (`crates/site-quality`, run by `swarmpress-wp-migrate qa`),
 // one implementation for the runner, the CLI and the browser executor. A runner step, not a test
 // (Playwright's testMatch only takes *.spec.ts).
 //
@@ -130,7 +130,13 @@ const observe = (input: { width: number }) => {
   }
   // headings
   const hs = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')].filter(visible)
-  const headings = hs.map((h) => ({ level: Number(h.tagName[1]), text: clip(h.textContent ?? '', 120), chrome: chrome(h), authored: authored(h) }))
+  const headings = hs.map((h) => ({
+    level: Number(h.tagName[1]),
+    text: clip(h.textContent ?? '', 120),
+    chrome: chrome(h),
+    authored: authored(h),
+    title_block: h.matches('.wp-block-post-title, .wp-block-query-title'),
+  }))
   // the authored hero
   let hero
   const heroEl = [...main.querySelectorAll('.wp-block-post-content [class*="ct-"][class*="-hero"]:not(.ct-hero-image)')].find(visible)
@@ -210,6 +216,15 @@ const observe = (input: { width: number }) => {
           .slice(0, 4)
           .map(label)
       : []
+  // Boxes whose content runs past them, deepest first (a summary that does not wrap).
+  if (scroll_width > input.width + 1) {
+    const inner = [...document.body.querySelectorAll('*')].filter(
+      (e) => e.clientWidth > 0 && e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX === 'visible',
+    )
+    for (const e of inner.filter((e) => !inner.some((o) => o !== e && e.contains(o))).slice(0, 3)) {
+      wide.push(`${label(e)} holds ${e.scrollWidth} px in ${e.clientWidth}`)
+    }
+  }
   // Text that runs past the edge (a long word in a narrow box).
   if (scroll_width > input.width + 1) {
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)

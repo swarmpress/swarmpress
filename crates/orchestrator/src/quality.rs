@@ -148,5 +148,5 @@ pub fn quality_outcome(job_id: u64, digest: &QaDigest) -> Outcome {
 
 /// The standard the orchestrator's executors judge against.
 pub fn standard() -> Standard {
-    Standard::v1()
+    Standard::current()
 }

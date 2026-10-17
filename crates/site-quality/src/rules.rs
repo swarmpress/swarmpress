@@ -341,6 +341,10 @@ fn page_rule(cx: &mut Ctx<'_>, r: &Rule, f: &PageFacts) {
             let max_text = r.param("max_text_chars");
             for fr in &f.frames {
                 let area = i64::from(fr.w) * i64::from(fr.h);
+                // v2: a box is a frame only with both sides of `min_side_px` (0 in v1: any).
+                if i64::from(fr.w.min(fr.h)) < r.param("min_side_px") {
+                    continue;
+                }
                 if area >= min_area
                     && fr.images == 0
                     && fr.media == 0
@@ -590,6 +594,10 @@ fn page_rule(cx: &mut Ctx<'_>, r: &Rule, f: &PageFacts) {
                         ),
                     );
                 }
+                return;
+            }
+            // v2: the page's own title block is its own h1 by construction.
+            if h1.title_block && r.param("own_title_block") > 0 {
                 return;
             }
             let own = page_title(&f.head.title);

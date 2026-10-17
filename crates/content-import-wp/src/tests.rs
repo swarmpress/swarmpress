@@ -206,8 +206,19 @@ fn a_block_keeps_every_string_as_core_blocks() {
 
     let index = json!({"type": "blog-index", "stories": [{"id": 1, "slug": "gelato", "title": "Gelato", "excerpt": "Cold."}]});
     let i = markup::block(&index, "de", &mut notes);
+    // The index has no title of its own: its stories' titles take the level it would have had
+    // (headings go down one level at a time).
     assert!(
-        i.contains("<h3 class=\"wp-block-heading\"><a href=\"/de/blog/gelato/\">Gelato</a></h3>"),
+        i.contains("<h2 class=\"wp-block-heading\"><a href=\"/de/blog/gelato/\">Gelato</a></h2>"),
+        "{i}"
+    );
+    let titled = json!({"type": "blog-index", "title": "Stories", "stories": [{"slug": "gelato", "title": "Gelato", "excerpt": "Cold."}]});
+    let i = markup::block(&titled, "de", &mut notes);
+    assert!(
+        i.contains("<h2 class=\"wp-block-heading\">Stories</h2>")
+            && i.contains(
+                "<h3 class=\"wp-block-heading\"><a href=\"/de/blog/gelato/\">Gelato</a></h3>"
+            ),
         "{i}"
     );
 
@@ -1362,4 +1373,24 @@ fn a_storys_author_closes_it_as_the_designs_editor_profile_and_its_words_are_in_
     let de = doc_at(&p, "/de/blog/hafen/");
     assert!(de.content.contains(">Inhalt</p>"), "{}", de.content);
     assert!(!de.content.contains(">On this page<"));
+}
+
+#[test]
+fn a_page_that_opens_with_its_hero_has_it_as_its_h1_and_labels_are_words() {
+    let mut notes = markup::Notes::default();
+    let blocks = vec![
+        json!({"type": "editorial-hero", "title": {"en": "The Village above the Sea"}, "subtitle": {"en": "Corniglia"}}),
+        json!({"type": "editorial-hero", "title": {"en": "Not the first"}}),
+        json!({"type": "event-list", "events": [{"name": "Harvest", "category": "food_wine", "tags": ["frequent"]}]}),
+    ];
+    let b = markup::body(&blocks, "en", &mut notes);
+    assert_eq!(b.matches("<h1").count(), 1, "{b}");
+    assert!(b.contains("ct-editorial-hero ct-own-hero"), "{b}");
+    assert!(
+        b.contains("<h2 class=\"wp-block-heading\">Not the first</h2>"),
+        "{b}"
+    );
+    assert!(b.contains(">Food wine<") && b.contains(">Frequent<"), "{b}");
+    assert!(!b.contains("food_wine"));
+    assert_eq!(markup::humanize_slug("getting-here"), "Getting here");
 }

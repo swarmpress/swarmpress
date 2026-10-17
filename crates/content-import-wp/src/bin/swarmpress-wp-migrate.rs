@@ -1786,7 +1786,7 @@ async fn qa(args: &[String]) -> Result<i32> {
                 .to_string();
         }
     }
-    let std_v1 = Standard::v1();
+    let std_v1 = Standard::current();
     let subject = Subject {
         site: arg(args, "--site").unwrap_or_else(|| site_quality::facts::host_of(&public_origin)),
         branch: branch.clone(),

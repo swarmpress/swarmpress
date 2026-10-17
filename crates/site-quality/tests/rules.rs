@@ -86,6 +86,33 @@ fn the_shipped_standard_parses_and_names_exactly_the_evaluated_rules() {
     assert!(judged.iter().all(|r| r.min_score.is_none()));
     assert_eq!(std.reference(), Standard::v1().reference());
     assert_eq!(std.reference().digest.len(), 64);
+    // v2 is v1 with the changes it lists, and the current standard.
+    let v2 = Standard::from_json(site_quality::standard::V2_JSON).expect("v2 parses");
+    assert_eq!((v2.version, v2.changes.len()), (2, 2));
+    assert_eq!(v2.rules.len(), std.rules.len());
+    assert_eq!(Standard::current(), v2);
+    assert_ne!(v2.reference().digest, std.reference().digest);
+}
+
+#[test]
+fn v2_a_chip_row_is_no_frame_and_the_own_title_block_is_the_own_h1() {
+    let v1 = Standard::v1();
+    let v2 = Standard::current();
+    let mut s = clean();
+    // A card without a picture: its chip row left, 350 x 30.
+    s.pages[1].frames[0].images = 0;
+    s.pages[1].frames[0].loaded = 0;
+    s.pages[1].frames[0].w = 350;
+    s.pages[1].frames[0].h = 30;
+    assert_eq!(rules_of(&v1, &s), one("empty-frame"));
+    assert!(rules_of(&v2, &s).is_empty());
+    // A story whose headline is not its SEO title: its post-title block is still its own h1.
+    let mut s = clean();
+    s.pages[2].hero = None;
+    s.pages[2].headings[0].text = "Willkommen an der Küste".into();
+    s.pages[2].headings[0].title_block = true;
+    assert_eq!(rules_of(&v1, &s), one("h1-own"));
+    assert!(rules_of(&v2, &s).is_empty());
 }
 
 #[test]
@@ -99,7 +126,7 @@ fn a_standard_naming_a_rule_without_evaluation_is_refused() {
 
 #[test]
 fn the_clean_site_passes_every_rule() {
-    let std = Standard::v1();
+    let std = Standard::current();
     let s = clean();
     let found = evaluate(&std, &s.site, &s.pages);
     assert!(found.is_empty(), "{found:#?}");
@@ -112,7 +139,7 @@ fn the_clean_site_passes_every_rule() {
 
 #[test]
 fn every_rule_has_a_failing_fixture_that_breaks_exactly_it() {
-    let std = Standard::v1();
+    let std = Standard::current();
     let fixtures = failing();
     let covered: BTreeSet<&str> = fixtures.iter().map(|f| f.rule.as_str()).collect();
     for rule in EVALUATED {
@@ -231,7 +258,7 @@ fn mutations() -> Vec<(&'static str, Mutation)> {
 
 #[test]
 fn every_rule_has_a_mutation_that_breaks_exactly_it() {
-    let std = Standard::v1();
+    let std = Standard::current();
     let ms = mutations();
     let covered: BTreeSet<&str> = ms.iter().map(|(r, _)| *r).collect();
     for rule in EVALUATED {
@@ -248,7 +275,7 @@ fn every_rule_has_a_mutation_that_breaks_exactly_it() {
 
 #[test]
 fn the_same_facts_give_the_same_report_bytes() {
-    let std = Standard::v1();
+    let std = Standard::current();
     let mut s = clean();
     for f in failing() {
         let p = patched(&f);
@@ -269,7 +296,7 @@ fn the_same_facts_give_the_same_report_bytes() {
 
 #[test]
 fn exceptions_are_content_gaps_of_content_classes_only() {
-    let std = Standard::v1();
+    let std = Standard::current();
     let bad_reason = Exception {
         rule: "alt-missing".into(),
         page: "/en/*".into(),
@@ -331,7 +358,7 @@ fn exceptions_are_content_gaps_of_content_classes_only() {
 
 #[test]
 fn classes_are_rule_by_page_type_by_owner_and_route_to_roles() {
-    let std = Standard::v1();
+    let std = Standard::current();
     let mut s = clean();
     // A design class on two pages of one type, a content class, a platform class.
     for p in &mut s.pages {
@@ -372,7 +399,7 @@ fn classes_are_rule_by_page_type_by_owner_and_route_to_roles() {
 
 #[test]
 fn a_declared_second_url_carries_no_language_versions_sitemap_entry_or_title_of_its_own() {
-    let std = Standard::v1();
+    let std = Standard::current();
     let mut s = clean();
     // `/de/harbour/` beside `/de/hafen/`: the same page under its English slug, its canonical
     // the German page's.
@@ -393,7 +420,7 @@ fn a_declared_second_url_carries_no_language_versions_sitemap_entry_or_title_of_
 
 #[test]
 fn a_page_that_asks_not_to_be_indexed_needs_no_snippet_or_title_of_its_own() {
-    let std = Standard::v1();
+    let std = Standard::current();
     let mut s = clean();
     for p in &mut s.pages {
         if p.path == "/de/hafen/" {

@@ -7,7 +7,7 @@
 //!                       [--wordpress URL --repo URL]
 //! swarmpress-site-theme --design FILE|DIR --content DIR --out DIR --rebuild-from THEME_DATA
 //! swarmpress-site-theme … [--revise-from THEME_DATA] [--wordpress URL --repo URL --audit PLAN
-//!                       [--exceptions FILE] [--public-origin URL]]
+//!                       [--exceptions FILE] [--public-origin URL] [--restart CMD]]
 //! ```
 //!
 //! `--revise-from` runs the job on an earlier theme: its templates, parts and labels stand as the
@@ -15,7 +15,9 @@
 //! `--audit PLAN` (with `--wordpress` and `--repo`) gives the job its QA stage (ADR-0094): each
 //! round writes the theme on `{branch}-qa-{n}`, exports that branch with the import plan, audits
 //! every page (`apps/game/e2e/page-audit.mts` and `swarmpress-wp-migrate qa`, `--exceptions` the
-//! site's listed content gaps) and keeps it in `qa/round-{n}/`. A theme the gate blocks fails the
+//! site's listed content gaps) and keeps it in `qa/round-{n}/`; `--restart CMD` runs before each round
+//! and before each look of the visual check (a fresh WordPress: the Node sandbox tires after
+//! thousands of requests). A theme the gate blocks fails the
 //! job; its data is kept as `theme-data.blocked.json`.
 //!
 //! `--rebuild-from` makes a theme again from an earlier run's model answers without a model call:
@@ -557,6 +559,7 @@ struct Visual {
     design: site_design::SiteDesign,
     site: SiteContext,
     content: PathBuf,
+    restart: Option<String>,
 }
 
 fn root() -> PathBuf {
@@ -671,6 +674,15 @@ impl Visual {
     ) -> Result<Option<theme_designer::visual::VisualReport>, orchestrator::GatewayError> {
         let dir = self.out.join("visual").join(format!("round-{round}"));
         std::fs::create_dir_all(&dir).map_err(Self::fail)?;
+        if let Some(cmd) = &self.restart {
+            let ok = std::process::Command::new("sh")
+                .args(["-c", cmd])
+                .status()
+                .map_err(|e| Self::fail(format!("--restart: {e}")))?;
+            if !ok.success() {
+                return Err(Self::fail("--restart failed"));
+            }
+        }
         // The data with its font files beside it, as the importer reads it.
         let mut data = data.clone();
         for f in &mut data.fonts {
@@ -752,6 +764,9 @@ struct Audit {
     plan: PathBuf,
     exceptions: Option<PathBuf>,
     public_origin: String,
+    /// A command that gives each round a fresh WordPress (`--restart CMD`; the Node sandbox
+    /// tires after thousands of requests).
+    restart: Option<String>,
 }
 
 impl Audit {
@@ -789,6 +804,15 @@ impl Audit {
             serde_json::to_string_pretty(&data).map_err(Self::fail)?,
         )
         .map_err(Self::fail)?;
+        if let Some(cmd) = &self.restart {
+            let ok = std::process::Command::new("sh")
+                .args(["-c", cmd])
+                .status()
+                .map_err(|e| Self::fail(format!("--restart: {e}")))?;
+            if !ok.success() {
+                return Err(Self::fail("--restart failed"));
+            }
+        }
         let migrate = root().join("target/release/swarmpress-wp-migrate");
         let qa_branch = format!("{branch}-qa-{round}");
         let run = |cmd: &mut std::process::Command, what: &str| {
@@ -1367,6 +1391,7 @@ async fn main() {
             design: design.clone(),
             site: site.clone(),
             content: content.clone(),
+            restart: arg(&args, "--restart"),
         };
         gateway.set_visual(Arc::new(move |version, data, round| {
             v.check(version, data, round)
@@ -1388,6 +1413,7 @@ async fn main() {
             exceptions: arg(&args, "--exceptions").map(PathBuf::from),
             public_origin: arg(&args, "--public-origin")
                 .unwrap_or_else(|| "https://cinqueterre.travel".into()),
+            restart: arg(&args, "--restart"),
         };
         gateway.set_audit(Arc::new(move |branch, head, round, theme| {
             a.check(branch, head, round, theme)

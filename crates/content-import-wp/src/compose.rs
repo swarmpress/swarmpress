@@ -366,7 +366,9 @@ fn village_card(site: &Site, village: &str, name: &str, lang: &str, sections: bo
             "<a href=\"/{lang}/{village}/\">{}</a>",
             markup::escape(name)
         ),
-        3,
+        // Under the page's own title (the overview) the cards are its sections; on the home
+        // they stand under the section's h2.
+        if sections { 2 } else { 3 },
     ));
     if let Some(line) = hero
         .and_then(|h| h.get("subtitle"))

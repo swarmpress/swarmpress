@@ -5,8 +5,10 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
-/// `site-standard v1` as shipped.
+/// `site-standard v1` as shipped (kept: a report names the version it was judged against).
 pub const V1_JSON: &str = include_str!("../standard/v1.json");
+/// `site-standard v2`: the current standard (its `changes` say what moved from v1).
+pub const V2_JSON: &str = include_str!("../standard/v2.json");
 
 /// What a rule is about; scores are given per dimension.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -158,6 +160,9 @@ pub struct Standard {
     pub widths: Vec<u32>,
     pub dimensions: Vec<Dimension>,
     pub rules: Vec<Rule>,
+    /// What changed from the version before.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changes: Vec<String>,
 }
 
 /// The standard a report was made against.
@@ -170,15 +175,25 @@ pub struct StandardRef {
 }
 
 impl Standard {
+    /// The current standard (v2).
+    pub fn current() -> Standard {
+        Standard::parse_shipped(V2_JSON)
+    }
+
     /// `site-standard v1` (checked by the crate's tests: it parses and every rule is known).
     pub fn v1() -> Standard {
-        Standard::from_json(V1_JSON).unwrap_or_else(|e| Standard {
+        Standard::parse_shipped(V1_JSON)
+    }
+
+    fn parse_shipped(json: &str) -> Standard {
+        Standard::from_json(json).unwrap_or_else(|e| Standard {
             id: "site-standard".into(),
             version: 0,
             summary: format!("the shipped standard does not parse: {e}"),
             widths: Vec::new(),
             dimensions: Vec::new(),
             rules: Vec::new(),
+            changes: Vec::new(),
         })
     }
 

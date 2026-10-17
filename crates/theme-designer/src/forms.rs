@@ -305,7 +305,7 @@ pub fn panel_css(
     s
 }
 
-const FAQ: &str = r#"&{border-top:1px solid @ink@;max-width:820px;margin-block:48px}
+const FAQ: &str = r#"&{border-top:1px solid @ink@;max-width:none;margin-block:48px}
 &>.wp-block-heading{font-family:@display@;font-size:@h2-size@;font-weight:400;line-height:1.05;margin:24px 0 8px}
 & .wp-block-details,& details{border-bottom:1px solid @line@;margin:0;padding:0}
 & summary{display:flex;justify-content:space-between;align-items:center;gap:24px;min-height:64px;cursor:pointer;list-style:none;font-family:@display@;font-size:24px;line-height:1.2;transition:color var(--ds-dur-quick) var(--ds-ease-tide)}
@@ -376,7 +376,7 @@ const PAGE_HERO: &str = r#"&{display:flex;flex-direction:column;gap:18px;margin-
 & .ct-duration,& .ct-pace,& .ct-effort,& .ct-best-season{display:inline-block;font-family:@mono@;font-size:13px;color:@muted@;margin:0 20px 0 0}
 "#;
 
-const PULL_QUOTE: &str = r#"&{display:grid!important;grid-template-columns:56px minmax(0,1fr);gap:8px 8px;margin-block:48px;max-width:820px}
+const PULL_QUOTE: &str = r#"&{display:grid!important;grid-template-columns:56px minmax(0,1fr);gap:8px 8px;margin-block:48px;max-width:none}
 &::before{content:"“";grid-row:1 / span 6;font-family:@display@;font-size:120px;line-height:.8;color:@accent@;margin-left:-8px}
 &>*{grid-column:2;margin:0}
 & blockquote,& .wp-block-quote,&>.wp-block-heading{font-family:@display@;font-size:clamp(26px,1.4vw + 16px,36px);font-style:italic;font-weight:400;line-height:1.2;letter-spacing:-0.01em;border:0!important;padding:0!important;margin:0}
@@ -389,12 +389,12 @@ const PULL_QUOTE: &str = r#"&{display:grid!important;grid-template-columns:56px 
 & .ct-content{font-size:17px;line-height:1.65;font-family:@body@;font-style:normal}
 "#;
 
-const WISDOM: &str = r#"&{background:@surface@;padding:22px!important;margin-block:16px;display:flex;flex-direction:column;gap:10px;border:0;max-width:820px}
+const WISDOM: &str = r#"&{background:@surface@;padding:22px!important;margin-block:16px;display:flex;flex-direction:column;gap:10px;border:0;max-width:none}
 &::before{display:flex;align-items:center;gap:8px;font-family:@mono@;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:@ink@;padding-left:24px;background:no-repeat left center/16px var(--ds-pin-img,none)}
 p&,&>p{font-size:16px;line-height:1.55;margin:0}
 "#;
 
-const NOTICE: &str = r#"&{background:@ink@;color:@paper@;padding:22px!important;margin-block:16px;max-width:820px;font-size:16px;line-height:1.55}
+const NOTICE: &str = r#"&{background:@ink@;color:@paper@;padding:22px!important;margin-block:16px;max-width:none;font-size:16px;line-height:1.55}
 &::before{display:block;font-family:@mono@;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:@highlight@;margin-bottom:8px}
 & a{color:@paper@;font-weight:600}
 "#;
@@ -473,7 +473,7 @@ const GALLERY: &str = r#"&{background:@ink@;color:@paper@;padding:24px;counter-r
 "#;
 
 const ENTRIES: &str = r#"&{display:flex!important;flex-direction:column;gap:56px;margin-block:48px}
-&>.ct-items-item{display:flex!important;flex-direction:column;gap:14px;border-top:1px solid @ink@;padding-top:24px;margin:0;max-width:820px}
+&>.ct-items-item{display:flex!important;flex-direction:column;gap:14px;border-top:1px solid @ink@;padding-top:24px;margin:0;max-width:none}
 &>.ct-items-item>*{margin:0!important;max-width:68ch}
 &>.ct-items-item:has(>.wp-block-image){display:grid!important;grid-template-columns:repeat(12,minmax(0,1fr));column-gap:@gutter@;row-gap:14px;align-items:start;max-width:none}
 &>.ct-items-item:has(>.wp-block-image)>*{grid-column:6 / span 7}
@@ -591,7 +591,7 @@ header.wp-block-template-part:has(.ds-masthead.ds-hidden){transform:translateY(-
 /* a page whose content opens with its own hero has that hero as its header and its h1 */
 main:has(.wp-block-post-content>.ct-own-hero:first-child) .ds-page-head .wp-block-post-title{display:none}
 /* a long word breaks rather than widening a phone's page; a table scrolls inside its box */
-:is(h1,h2,h3,h4,h5,h6,.wp-block-post-title,.wp-block-heading,.ds-chip,.ct-fact-value){overflow-wrap:break-word;hyphens:auto}
+:is(h1,h2,h3,h4,h5,h6,p,li,summary,.wp-block-post-title,.wp-block-heading,.ds-chip){overflow-wrap:break-word;hyphens:auto;min-width:0}
 .wp-block-table{overflow-x:auto;max-width:100%}
 /* a story's text at its measure (64ch at body-l), its section heads at the type sheet's h2 */
 .wp-block-post-content.ds-prose-article p,.wp-block-post-content.ds-prose-article li{max-width:64ch;font-size:var(--wp--preset--font-size--body-l,19px);line-height:1.6}

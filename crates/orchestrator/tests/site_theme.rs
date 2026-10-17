@@ -169,7 +169,7 @@ fn clean_audit() -> Arc<orchestrator::AuditFn> {
             release: None,
         };
         let r = site_quality::build(
-            &site_quality::Standard::v1(),
+            &site_quality::Standard::current(),
             subject,
             &site,
             &[page(1280), page(390)],
