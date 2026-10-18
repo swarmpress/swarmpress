@@ -241,5 +241,17 @@
     "value": ""
    }
   }
+ },
+ {
+  "rule": "listing-place",
+  "why": "a hub page's title names one place over every place's entries",
+  "set": {
+   "/pages/0/listings/0/heading": "",
+   "/pages/0/listings/0/places": [
+    "harbour",
+    "lighthouse"
+   ],
+   "/pages/0/headings/0/text": "The Harbour's things to do"
+  }
  }
 ]

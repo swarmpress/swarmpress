@@ -298,7 +298,7 @@ const observe = (input: { width: number }) => {
       const t = clip(e.textContent ?? '', 300)
       // The site's content: its pages' own text and its entries' (titles, excerpts, cards).
       // (a menu panel's story title and place line are the content's, shown by the theme)
-      const content = !!e.closest('.wp-block-post-content, .entry-content, .wp-block-post-template, .wp-block-post-title, .wp-block-post-excerpt, .ds-featured-title, .ds-panel-line, .wp-block-post-terms')
+      const content = !!e.closest('.wp-block-post-content, .entry-content, .wp-block-post-template, .wp-block-post-title, .wp-block-post-excerpt, .ds-featured-title, .ds-panel-line, .wp-block-post-terms, .wp-block-breadcrumbs')
       if (t) paragraphs.push({ text: t, authored: content })
     }
   }

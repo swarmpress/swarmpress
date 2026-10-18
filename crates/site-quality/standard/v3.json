@@ -242,7 +242,17 @@
           "ct-village-line",
           "ct-village-sections",
           "ct-price",
-          "ct-related-label"
+          "ct-related-label",
+          "ct-content",
+          "ct-text",
+          "ct-description",
+          "ct-body",
+          "ct-note",
+          "ct-answer",
+          "ct-comment",
+          "ct-excerpt",
+          "ct-teaser",
+          "ct-highlight"
         ]
       }
     },
@@ -260,7 +270,8 @@
       "kind": "deterministic",
       "route": "web-designer",
       "applies": "widest",
-      "summary": "A listing whose heading names a place lists only that place's entries (and a listing of several places names none)."
+      "summary": "A listing whose heading names a place lists only that place's entries; a listing without a heading of its own stands under the page's title, which then must not name one place over entries of several (a hub page written for one village).",
+      "authored_route": "editor"
     },
     {
       "id": "english-label",

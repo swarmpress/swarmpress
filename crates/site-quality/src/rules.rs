@@ -723,8 +723,30 @@ fn page_rule(cx: &mut Ctx<'_>, r: &Rule, f: &PageFacts) {
             }
         }
         "listing-place" => {
-            for l in &f.listings {
-                let heading = fold(&l.heading);
+            // Without a heading of its own a listing stands under the page's title (its h1).
+            let title = f
+                .headings
+                .iter()
+                .find(|h| h.level == 1)
+                .map(|h| h.text.clone())
+                .unwrap_or_default();
+            // The listing's own heading (the theme's) and the page's title over it (the content's).
+            let pairs: Vec<(&crate::facts::Listing, String, bool)> = f
+                .listings
+                .iter()
+                .flat_map(|l| {
+                    let mut v = Vec::new();
+                    if !l.heading.trim().is_empty() {
+                        v.push((l, l.heading.clone(), false));
+                    }
+                    if !title.trim().is_empty() {
+                        v.push((l, title.clone(), true));
+                    }
+                    v
+                })
+                .collect();
+            for (l, text, authored) in pairs {
+                let heading = fold(&text);
                 let named: Vec<&String> = cx
                     .places
                     .iter()
@@ -733,13 +755,14 @@ fn page_rule(cx: &mut Ctx<'_>, r: &Rule, f: &PageFacts) {
                     })
                     .collect();
                 if !named.is_empty() && l.places.iter().any(|p| !named.contains(&p)) {
+                    let under = if authored { "the page's title " } else { "" };
                     cx.add(
                         r,
                         f,
-                        false,
+                        authored,
                         format!(
-                            "\"{}\" over entries of {}",
-                            norm(&l.heading),
+                            "{under}\"{}\" over entries of {}",
+                            norm(&text),
                             l.places.join(", ")
                         ),
                     );

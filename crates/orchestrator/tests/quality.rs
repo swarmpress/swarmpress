@@ -648,3 +648,58 @@ fn the_sim_refuses_a_digest_that_contradicts_itself() {
     .unwrap();
     assert_eq!(w.plan.designs.quality, Some(ok));
 }
+
+#[tokio::test]
+async fn a_qa_round_that_leaves_more_findings_is_undone() {
+    let context = defective_start().await;
+    let o = orch();
+    // Round 0 sees the defect (one finding); the repaired theme, scripted to come out worse,
+    // leaves two (the defect gone, two half-empty rows elsewhere).
+    let first: Arc<Mutex<Option<site_quality::Finding>>> = Arc::new(Mutex::new(None));
+    let f: Arc<orchestrator::AuditFn> = Arc::new(move |branch, head, round, theme| {
+        let mut r = report(branch, head, theme, false);
+        if round == 0 {
+            *first.lock().unwrap() = r.findings.first().cloned();
+        } else if let Some(one) = first.lock().unwrap().clone() {
+            let mut a = one.clone();
+            a.page = "/en/a-story/".into();
+            let mut b = one;
+            b.page = "/en/elsewhere/".into();
+            r.findings = vec![a, b];
+            r.digest.findings = 2;
+            r.digest.classes = 1;
+            r.digest.passed = false;
+            r.gate.passed = false;
+        }
+        Ok(Some(r))
+    });
+    o.gateway().set_audit(f);
+    let out = o.run(&job(8, JobKind::SiteTheme, context)).await.unwrap();
+    assert!(matches!(
+        out.last(),
+        Some(Outcome::JobFailed {
+            reason: JobFailure::QualityGate,
+            ..
+        })
+    ));
+    assert_eq!(quality(&out).findings, 1, "the round before's report");
+    let live = o
+        .gateway()
+        .file_text("design-v1", FakeGateway::THEME_DATA_PATH)
+        .unwrap();
+    let data: site_design::ThemeData = serde_json::from_str(&live).unwrap();
+    let front = data
+        .templates
+        .iter()
+        .find(|t| t.slug == "front-page")
+        .unwrap();
+    assert!(front.content.contains("QA defect"), "the repair was undone");
+    let art = o
+        .store()
+        .get_artifact(COMPANY, ITEM)
+        .await
+        .unwrap()
+        .unwrap();
+    let notes = art["site_theme"]["notes"].to_string();
+    assert!(notes.contains("undone"), "{notes}");
+}

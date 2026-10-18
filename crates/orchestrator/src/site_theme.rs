@@ -691,6 +691,9 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
         let mut quality: Option<QaRecord> = None;
         let mut qa_round = 0u8;
         let mut qa_repaired: Vec<String> = Vec::new();
+        // The round before: its record and the markup its repairs replaced (a round that leaves
+        // more findings than the one before is undone, like a visual fix that looks worse).
+        let mut before: Option<(QaRecord, Vec<(String, String)>)> = None;
         loop {
             if let Some(reason) = self.cancelled(req) {
                 return Ok(self.failed(req, reason));
@@ -704,6 +707,39 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
             };
             let routing = site_quality::route(&std_q, &report);
             let record = QaRecord::new(&report, &routing, qa_round, qa_repaired.clone());
+            if let Some((prev, replaced)) = before
+                .take()
+                .filter(|(prev, _)| report.digest.findings > prev.digest.findings)
+            {
+                for (label, old) in replaced {
+                    markup.insert(label, old);
+                }
+                let mut back = assemble(&p, &markup);
+                if !data.labels.is_empty() {
+                    back.global_styles
+                        .css
+                        .push_str(&theme_designer::labels::css(&data.labels));
+                    back.labels = data.labels.clone();
+                }
+                data = back;
+                pr = self
+                    .gateway
+                    .put_theme_data(&branch, &data, &message, Some(&who_attr))
+                    .await?;
+                notes.push(Issue::new(
+                    theme_designer::IssueCode::Note,
+                    "qa stage",
+                    format!(
+                        "QA round {qa_round}'s repairs left {} findings where there were {}: undone",
+                        report.digest.findings, prev.digest.findings
+                    ),
+                ));
+                // The theme is the round before's again, on a new head: its report, its commit.
+                let mut prev = prev;
+                prev.commit = pr.head_sha.clone();
+                quality = Some(prev);
+                break;
+            }
             self.report(
                 req,
                 Some(&who),
@@ -817,6 +853,7 @@ impl<S: Store, G: Gateway> Orchestrator<S, G> {
                 .gateway
                 .put_theme_data(&branch, &data, &message, Some(&who_attr))
                 .await?;
+            before = Some((record, kept));
             qa_round += 1;
         }
         match &quality {
